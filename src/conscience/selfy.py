@@ -1,28 +1,25 @@
+import math
 from reachy_mini import ReachyMini
+import numpy as np
+
+from src.motion.move import head_pose_matrix
 
 class Maxim:
 
     def __init__(self):
 
         self.name = "Maxim"
+        self.reachy_ip = "192.168.50.149"
 
-        with ReachyMini() as self.mini:
+        self.mini = ReachyMini()
 
-            return self
+    def move(self, x, y, z, roll, pitch, yaw, duration):
+        pose = head_pose_matrix(x, y, z, roll, pitch, yaw)
 
+        self.mini.set_target_head_pose(pose)
 
-
-    def move(self, x, y, z, roll, degrees, mm, duration):
-
-        self.mini.goto_target( 
-            head= ReachyMini.utils.create_head_pose(x,
-                                                    y,
-                                                    z, 
-                                                    roll, 
-                                                    degrees, 
-                                                    mm),
-                                                    duration = 1)
-        return
+        self.mini.goto_target(duration=duration)
+        print("Moved to position.")
 
     def listen():
         return
