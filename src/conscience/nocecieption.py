@@ -1,3 +1,0 @@
-#Pain sensations:
-# - Energy
-# - Motor
