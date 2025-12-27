@@ -16,7 +16,7 @@ class Maxim:
         self.start = time.time()
         self.reachy_ip = "192.168.50.149"
 
-        self.mini = ReachyMini(localhost_only=False, spawn_daemon=True)
+        self.mini = ReachyMini(localhost_only=False)
 
         self.x = 0
         self.y = 0
