@@ -1,7 +1,8 @@
-import time, atexit
+import time, atexit, cv2
 from typing import Optional
-
+from scipy.signal import resample
 from reachy_mini import ReachyMini
+from scipy.io.wavfile import write
 
 from src.motion.movement import move_head
 
@@ -35,7 +36,7 @@ class Maxim:
             #media_backend=media_backend,
         )
 
-        self.mini.wake_up()
+        self.awaken()
 
         self.x = 0.0
         self.y = 0.0
@@ -59,11 +60,34 @@ class Maxim:
         roll: Optional[float] = None,
         pitch: Optional[float] = None,
         yaw: Optional[float] = None,
-        duration: Optional[float] = None,
-    ) -> None:
+        duration: Optional[float] = None) -> None:
+
+        """
+        Docstring for move
+        
+        :param self: Description
+        :param x: Description
+        :type x: Optional[float]
+        :param y: Description
+        :type y: Optional[float]
+        :param z: Description
+        :type z: Optional[float]
+        :param roll: Description
+        :type roll: Optional[float]
+        :param pitch: Description
+        :type pitch: Optional[float]
+        :param yaw: Description
+        :type yaw: Optional[float]
+        :param duration: Description
+        :type duration: Optional[float]
+        """ 
+        
+        # Update duration if specified
         if duration is not None:
             self.duration = duration
 
+
+        # Update only specified parameters
         updates = {
             "x": x,
             "y": y,
@@ -76,6 +100,7 @@ class Maxim:
             if val is not None:
                 setattr(self, attr, val)
 
+        # Execute head movement
         move_head(
             self.mini,
             self.x,
@@ -87,11 +112,32 @@ class Maxim:
             self.duration,
         )
 
-    def hear(self):
+    def hear(self, save_file = None):
+        # Grab audio samples from reachy mini microphone
+        samples = self.mini.media.get_audio_sample()
+
+        # Resample to local rate
+        samples = resample(samples, self.mini.media.get_output_audio_samplerate()*len(samples)/ self.mini.media.get_input_audio_samplerate())
+        
+        if save_file:
+            # Save audio samples to file
+            write(save_file, self.mini.media.get_output_audio_samplerate(), samples)
+        # Return audio samples
+        return samples
+    
+    def speak(self, samples):
+        # Push audio samples to reachy mini speaker
+        self.mini.media.push_audio_sample(samples)
         return
 
-    def watch(self):
-        return
+    def look(self, save_file = None):
+        # Grab frame from reachy mini camera
+        frame = self.mini.media.get_frame()
+        
+        # Save frame to file if specified
+        if save_file is not None:
+            cv2.imwrite(save_file, frame)
+        return frame
 
     def learn(self):
         return
@@ -100,6 +146,10 @@ class Maxim:
         return
     
     def journal(self):
+        return
+    
+    def awaken(self):
+        self.mini.wake_up()
         return
 
     def sleep(self):
