@@ -2,6 +2,8 @@ import math, time
 from reachy_mini import ReachyMini
 import numpy as np
 
+from reachy_mini.io.zenoh_client import ZenohClient
+
 from src.motion.movement import move_head
 
 class Maxim:
@@ -16,7 +18,10 @@ class Maxim:
         self.start = time.time()
         self.reachy_ip = "192.168.50.149"
 
-        self.mini = ReachyMini(spawn_daemon=True)
+        self.client = ZenohClient(prefix="/pollen")
+        self.client.connect(f"tcp/{self.reachy_ip}:7447") 
+
+        self.mini = ReachyMini()
 
         self.x = 0
         self.y = 0
