@@ -2,8 +2,6 @@ import math, time
 from reachy_mini import ReachyMini
 import numpy as np
 
-from reachy_mini.io.zenoh_client import ZenohClient
-
 from src.motion.movement import move_head
 
 class Maxim:
@@ -11,17 +9,20 @@ class Maxim:
     Reachy-Mini modality threader for distributed computing
     """
 
-    def __init__(self):
+    def __init__(self,
+                 reachy_ip = "192.168.50.149",
+                 robot_name = "Maxim",
+                 timeout = 5.0):
         self.alive = True
 
-        self.name = "Maxim"
+        self.name = robot_name
         self.start = time.time()
-        self.reachy_ip = "192.168.50.149"
+        self.__reachy_ip = reachy_ip
 
-        self.client = ZenohClient(prefix="/pollen")
-        self.client.connect(f"tcp/{self.reachy_ip}:7447") 
-
-        self.mini = ReachyMini()
+        self.mini = ReachyMini(
+            robot_name = self.name,
+            localhost_only = False,
+            timeout = timeout)
 
         self.x = 0
         self.y = 0
