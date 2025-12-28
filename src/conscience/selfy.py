@@ -15,6 +15,7 @@ class Maxim:
         reachy_ip: str = "192.168.50.149",
         robot_name: str = "reachy_mini",
         timeout: float = 30.0,
+        media_backend: str = "no_media",  # avoid WebRTC/GStreamer if signalling is down
     ):
         self.alive = True
 
@@ -31,6 +32,7 @@ class Maxim:
             spawn_daemon=False,
             use_sim=False,
             timeout=timeout,
+            media_backend=media_backend,
         )
 
         self.x = 0.0
