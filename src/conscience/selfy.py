@@ -22,7 +22,6 @@ class Maxim:
         self.mini = ReachyMini(
             robot_name = self.name,
             localhost_only = False,
-            spawn_daemon = True,
             timeout = timeout)
 
         self.x = 0
