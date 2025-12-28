@@ -15,7 +15,7 @@ class Maxim:
         reachy_ip: str = "192.168.50.149",
         robot_name: str = "reachy_mini",
         timeout: float = 30.0,
-        media_backend: str = "no_media",  # avoid WebRTC/GStreamer if signalling is down
+        #media_backend: str = "no_media",  # avoid WebRTC/GStreamer if signalling is down
     ):
         self.alive = True
 
@@ -32,8 +32,10 @@ class Maxim:
             spawn_daemon=False,
             use_sim=False,
             timeout=timeout,
-            media_backend=media_backend,
+            #media_backend=media_backend,
         )
+
+        self.mini.wake_up()
 
         self.x = 0.0
         self.y = 0.0
@@ -46,8 +48,8 @@ class Maxim:
         atexit.register(self.sleep)
     
     def live(self):
-        for x in (20, 0):
-            self.move(x=x, duration=0.1)
+        for x in range(20):
+            self.move(x=x, duration=0.7)
 
     def move(
         self,
