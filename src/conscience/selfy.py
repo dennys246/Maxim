@@ -1,4 +1,4 @@
-import time
+import time, atexit
 from typing import Optional
 
 from reachy_mini import ReachyMini
@@ -42,10 +42,12 @@ class Maxim:
         self.roll = 0.0
         self.pitch = 0.0
         self.yaw = 0.0
+
+        atexit.register(self.sleep)
     
     def live(self):
-        for x in (-20, 0, 20, 0):
-            self.move(x=x, duration=0.8)
+        for x in (20, 0):
+            self.move(x=x, duration=0.1)
 
     def move(
         self,
@@ -99,6 +101,7 @@ class Maxim:
         return
 
     def sleep(self):
+        self.mini.goto_sleep()
         return
 
     def thread(self, requests, nodes):
@@ -109,7 +112,6 @@ class Maxim:
 
         # Split modality requests between computing nodes
 
-        # 
         return
 
 
