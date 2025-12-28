@@ -12,7 +12,7 @@ class Maxim:
     def __init__(self,
                  reachy_ip = "192.168.50.149",
                  robot_name = "Maxim",
-                 timeout = 5.0):
+                 timeout = 30.0):
         self.alive = True
 
         self.name = robot_name
@@ -21,6 +21,8 @@ class Maxim:
 
         self.mini = ReachyMini(
             robot_name = self.name,
+            localhost_only = False,
+            spawn_daemon = True,
             timeout = timeout)
 
         self.x = 0
