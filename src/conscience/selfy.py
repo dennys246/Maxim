@@ -4,7 +4,7 @@ from scipy.signal import resample
 from reachy_mini import ReachyMini
 from scipy.io.wavfile import write
 
-from src.motion.movement import move_head
+from src.motion.movement import move_head, load_actions
 
 class Maxim:
     """
@@ -25,6 +25,8 @@ class Maxim:
         self._reachy_ip = reachy_ip
         self.duration = 1.0
 
+        self.actions = load_actions()
+
         # robot_name must match the daemon namespace (default: reachy_mini).
         # localhost_only=False enables zenoh peer discovery across the LAN.
         self.mini = ReachyMini(
@@ -38,13 +40,13 @@ class Maxim:
 
         self.awaken()
 
-        self.x = 0.0
-        self.y = 0.0
-        self.z = 0.0
+        self.x = 0.01
+        self.y = 0.01
+        self.z = 0.01
 
-        self.roll = 0.0
-        self.pitch = 0.0
-        self.yaw = 0.0
+        self.roll = 0.01
+        self.pitch = 0.01
+        self.yaw = 0.01
 
         atexit.register(self.sleep)
     
@@ -111,6 +113,18 @@ class Maxim:
             self.yaw,
             self.duration,
         )
+
+    def act(self, action):
+        for movement in self.actions[action]["movements"]:
+            move_head(
+                movement[0],
+                movement[1],
+                movement[2],
+                movement[3],
+                movement[4],
+                movement[5],
+                movement[6],
+            )
 
     def hear(self, save_file = None):
         # Grab audio samples from reachy mini microphone

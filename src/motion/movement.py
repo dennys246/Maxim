@@ -1,5 +1,24 @@
-import math
+from __future__ import annotations
+
+import math, json
 import numpy as np
+from pathlib import Path
+from typing import Any
+
+_DEFAULT_ACTIONS_PATH = Path(__file__).with_name("actions.json")
+
+def load_actions(path: Path | str = _DEFAULT_ACTIONS_PATH) -> dict[str, Any]:
+    
+    actions_path = Path(path)
+    with actions_path.open("r", encoding="utf-8") as file:
+        actions = json.load(file)
+
+    if not isinstance(actions, dict):
+        raise ValueError(
+            f"Expected top-level JSON object in {actions_path}, got {type(actions).__name__}"
+        )
+
+    return actions
 
 def move_head(mini, x, y, z, roll, pitch, yaw, duration):
     pose = head_pose_matrix(x, y, z, roll, pitch, yaw)
