@@ -125,6 +125,7 @@ class Maxim:
                 movement[5],
                 movement[6]
             )
+            time.sleep(movement[6])
 
     def hear(self, save_file = None):
         # Grab audio samples from reachy mini microphone
