@@ -74,9 +74,6 @@ For easy future use consider editing your Reachy's .bashrc...
 and adding aliases so you can run simple commands to start processes
 
 ```
-MAXIM_ROBOT_NAME=reachy_mini
-REACHY_IP=<INSERT YOUR REACHY IP>
-
 alias mini-env='source /venvs/mini_daemon/bin/activate'
 
 alias list-daemon='ss -lntp | grep 8000'
@@ -84,6 +81,9 @@ alias clear-daemon='sudo systemctl stop reachy-mini-daemon'
 alias start-daemon='python -m reachy_mini.daemon.app.main --wireless-version --no-localhost-only'
 
 alias list-zenoh `ss -lntp | grep 7447`
+
+MAXIM_ROBOT_NAME=reachy_mini
+REACHY_IP=<INSERT YOUR REACHY IP>
 ```
 Then you can simply type commands like list-daemon, clear-daemon or start-daemon.
 
