@@ -1,4 +1,4 @@
-# |------- Maxim ------- |
+# ------- | Maxim | ------- 
 
 A Reachy Mini repo for orchestrating data streaming to and from a PC and Reachy Mini to orchestrate agents and models.
 
@@ -59,13 +59,6 @@ maxim.move(y = 10, yaw = 3)
 ```
 
 Of course extensions of the Maxim class using the datastreams set up are more than welcomed!
-
-```
-from src.conscience.selfy import Maxim
-
-Maxim
-
-```
 
 For easy future use consider editing your Reachy's .bashrc...
 
