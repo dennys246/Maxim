@@ -116,7 +116,7 @@ class Maxim:
 
     def act(self, action):
         for movement in self.actions[action]["movements"]:
-            move_head(
+            self.move(
                 movement[0],
                 movement[1],
                 movement[2],
@@ -124,6 +124,7 @@ class Maxim:
                 movement[4],
                 movement[5],
                 movement[6],
+                movement[7]
             )
 
     def hear(self, save_file = None):
