@@ -208,3 +208,4 @@ __marimo__/
 
 uv.lock
 zenoh.json5
+*.pt
