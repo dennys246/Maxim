@@ -123,8 +123,7 @@ class Maxim:
                 movement[3],
                 movement[4],
                 movement[5],
-                movement[6],
-                movement[7]
+                movement[6]
             )
 
     def hear(self, save_file = None):
