@@ -28,7 +28,7 @@ class Maxim:
         self,
         robot_name: str = "reachy_mini",
         timeout: float = 30.0,
-        media_backend: str = "no_media",  # avoid WebRTC/GStreamer if signalling is down
+        media_backend: str = "default",  # avoid WebRTC/GStreamer if signalling is down
     ):
         self.alive = True
 
@@ -46,7 +46,7 @@ class Maxim:
         # localhost_only=False enables zenoh peer discovery across the LAN.
         self.mini = ReachyMini(
             robot_name=self.name,
-            localhost_only=False,
+            localhost_only=True,
             spawn_daemon=False,
             use_sim=False,
             timeout=timeout,
@@ -275,8 +275,8 @@ class Maxim:
     
     def awaken(self, vision = True, audio = True):
         # Load models
-        if vision:
-            self.segmenter = YOLO8() # Visual segmentation model
+        #if vision:
+        #    self.segmenter = YOLO8() # Visual segmentation model
 
         # Wake up Reachy
         self.mini.wake_up()
