@@ -13,8 +13,9 @@ from scipy.io.wavfile import write
 
 from src.motion.movement import move_head, load_actions
 from src.utils.data_management import build_home
+
 from src.video.sight import load_photos, create_video
-from src.models.segmentation import YOLO8
+#from src.models.segmentation import YOLO8
 
 os.environ["PYOPENGL_PLATFORM"] = "egl"
 
@@ -59,8 +60,6 @@ class Maxim:
         self.roll = 0.01
         self.pitch = 0.01
         self.yaw = 0.01
-
-        self.awaken()
 
         atexit.register(self.sleep)
     
