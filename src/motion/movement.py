@@ -24,6 +24,47 @@ def move_head(mini, x, y, z, roll, pitch, yaw, duration):
     pose = head_pose_matrix(x, y, z, roll, pitch, yaw)
     mini.goto_target(head=pose, duration=duration, body_yaw=None)
 
+def move_antenna(
+    mini,
+    right: float | None = None,
+    left: float | None = None,
+    *,
+    duration: float | None = 0.5,
+    method: str = "minjerk",
+    degrees: bool = True,
+    relative: bool = False,
+) -> None:
+    if right is None and left is None:
+        raise ValueError("At least one of right or left must be provided.")
+
+    if isinstance(method, str):
+        method = method.strip().lower().replace("-", "_")
+        method = {"min_jerk": "minjerk", "ease": "ease_in_out"}.get(method, method)
+
+    current_right, current_left = mini.get_present_antenna_joint_positions()
+
+    def _to_rad(value: float) -> float:
+        value = float(value)
+        return math.radians(value) if degrees else value
+
+    target_right = current_right
+    target_left = current_left
+
+    if right is not None:
+        right = _to_rad(right)
+        target_right = current_right + right if relative else right
+
+    if left is not None:
+        left = _to_rad(left)
+        target_left = current_left + left if relative else left
+
+    target = [target_right, target_left]
+
+    if duration is None or float(duration) <= 0:
+        mini.set_target(antennas=target, body_yaw=None)
+    else:
+        mini.goto_target(antennas=target, duration=float(duration), method=method, body_yaw=None)
+
 def head_pose_matrix(x=0, y=0, z=0, roll=0, pitch=0, yaw=0):
     # Convert units
     x, y, z = x / 1000, y / 1000, z / 1000
