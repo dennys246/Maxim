@@ -11,17 +11,19 @@ from scipy.signal import resample
 from reachy_mini import ReachyMini
 from scipy.io.wavfile import write
 
-from src.motion.movement import move_head, load_actions
+from src.motion.movement import move_antenna, move_head, load_actions
 from src.utils.data_management import build_home
 
-from src.video.sight import load_photos, create_video
-#from src.models.segmentation import YOLO8
+from src.camera.sight import load_photos, create_video
+from src.camera.display import show_photo
+from src.conscience.observation import passive_observation
+from src.models.segmentation import YOLO8
 
 os.environ["PYOPENGL_PLATFORM"] = "egl"
 
 class Maxim:
     """
-    Reachy-Mini modality threader for distributed computing
+    A class for orchestracting models and agents with Reachy-Mini's.
     """
 
     def __init__(
@@ -29,16 +31,23 @@ class Maxim:
         robot_name: str = "reachy_mini",
         timeout: float = 30.0,
         media_backend: str = "default",  # avoid WebRTC/GStreamer if signalling is down
+        home_dir: str = "experiments/maxim/",
+        epochs: int = 1000
     ):
         self.alive = True
+        self._closed = False
 
         self.name = robot_name or os.getenv("MAXIM_ROBOT_NAME", "reachy_mini")
         self.start = time.time()
         self.duration = 1.0
+        self.home_dir = home_dir
 
-        self.epoch = 0
+        self.current_epoch = 0
+        self.epochs = epochs
 
         self.observation_period = 5
+
+        self.interests = [0, 1, 2, 3, 4, 5]
 
         self.actions = load_actions()
 
@@ -46,12 +55,14 @@ class Maxim:
         # localhost_only=False enables zenoh peer discovery across the LAN.
         self.mini = ReachyMini(
             robot_name=self.name,
-            localhost_only=True,
+            localhost_only=False,
             spawn_daemon=False,
             use_sim=False,
             timeout=timeout,
             media_backend=media_backend,
         )
+
+        self.mini.start_recording()
 
         self.x = 0.01
         self.y = 0.01
@@ -62,28 +73,51 @@ class Maxim:
         self.yaw = 0.01
 
         atexit.register(self.sleep)
+
+    def _release_cv2(self) -> None:
+        try:
+            cv2.destroyAllWindows()
+            cv2.waitKey(1)
+        except Exception:
+            pass
+
+    def _release_media(self) -> None:
+        mini = getattr(self, "mini", None)
+        if mini is None:
+            return
+
+        try:
+            mini.media.close()
+        except Exception as e:
+            print(f"[WARN] Failed to close media: {e}")
+
+        self._release_cv2()
     
-    def live(self, home_dir):
+    def live(self, home_dir: Optional[str] = None):
 
-        self.home_dir = home_dir
-        build_home(home_dir)
+        self.awaken()
 
-        while True:
-            self.epoch += 1
+        if home_dir is not None:
+            self.home_dir = home_dir
 
-            self.look(os.path.join(home_dir, "memories", "images", f"img_{self.epoch}.png"))
+        build_home(self.home_dir)
 
-            #self.hear(os.path.join(home_dir, "memories","audio", f"reachy_audio_{self.epoch}.mp3"))
+        try:
+            while True:
+                self.current_epoch += 1
 
-            if self.observation_period and self.epoch % self.observation_period == 0:
+                photos = self.look(os.path.join(self.home_dir, "images", f"img_{self.current_epoch}.png"), show = False)
 
-                self.observe()
+                #self.hear(os.path.join(self.home_dir, "memories","audio", f"reachy_audio_{self.epoch}.mp3"))
 
-            if  self.epoch > self.duration:
-                break
+                if self.observation_period and self.current_epoch% self.observation_period == 0:
 
+                    passive_observation(self, photos)
 
-        self.sleep()
+                if  self.current_epoch > self.epochs:
+                    break
+        finally:
+            self.sleep()
 
     def move(
         self,
@@ -145,6 +179,32 @@ class Maxim:
             self.duration,
         )
 
+    def move_antenna(
+        self,
+        right: Optional[float] = None,
+        left: Optional[float] = None,
+        angle: Optional[float] = None,
+        duration: Optional[float] = None,
+        method: str = "minjerk",
+        degrees: bool = True,
+        relative: bool = False,
+    ) -> None:
+        if angle is not None:
+            right = angle
+            left = angle
+        if duration is None:
+            duration = self.duration
+
+        move_antenna(
+            self.mini,
+            right=right,
+            left=left,
+            duration=duration,
+            method=method,
+            degrees=degrees,
+            relative=relative,
+        )
+
     def act(self, action):
         for movement in self.actions[action]["movements"]:
             self.move(
@@ -193,75 +253,48 @@ class Maxim:
         self.mini.media.push_audio_sample(samples)
         return
 
-    def look(self, save_file = None):
+    def look(self, save_file = None, show = True, release = False):
         # Grab frame from reachy mini camera
+        frame = None
         try:
-            frame = self.mini.media.get_frame()
-        except Exception as e:
-            print(f"[WARN] Failed to capture frame: {e}")
-            return None
-
-        is_empty = frame is None
-        if not is_empty and hasattr(frame, "size"):
-            is_empty = frame.size == 0
-        if is_empty:
-            print("[WARN] Empty frame received.")
-            return None
-        
-        # Save frame to file if specified
-        if save_file is not None:
-            os.makedirs(os.path.dirname(save_file) or ".", exist_ok=True)
             try:
-                ok = cv2.imwrite(save_file, frame)
-                if not ok:
-                    print(f"[WARN] Failed to write image to '{save_file}'.")
+                frame = self.mini.media.get_frame()
             except Exception as e:
-                print(f"[WARN] Failed to write image to '{save_file}': {e}")
-        return frame
+                print(f"[WARN] Failed to capture frame: {e}")
+                return None
+
+            is_empty = frame is None
+            if not is_empty and hasattr(frame, "size"):
+                is_empty = frame.size == 0
+            if is_empty:
+                print("[WARN] Empty frame received.")
+                return None
+            
+            # Show frame if requested
+            if show:
+                try:
+                    show_photo(frame)
+                except Exception as e:
+                    print(f"[WARN] Failed to display frame: {e}")
+                finally:
+                    self._release_cv2()
+            
+            # Save frame to file if specified
+            if save_file is not None:
+                os.makedirs(os.path.dirname(save_file) or ".", exist_ok=True)
+                try:
+                    ok = cv2.imwrite(save_file, frame)
+                    if not ok:
+                        print(f"[WARN] Failed to write image to '{save_file}'.")
+                except Exception as e:
+                    print(f"[WARN] Failed to write image to '{save_file}': {e}")
+
+            return frame
+        finally:
+            if release:
+                self._release_media()
 
     def learn(self):
-        return
-
-    def observe(self, epochs = 10):
-        
-        # Grab last epochs
-        home_dir = getattr(self, "home_dir", None)
-        if not home_dir:
-            print("[WARN] No home directory set; skipping observation.")
-            return
-
-        photos = load_photos(os.path.join(home_dir, "memories", "images"), count = epochs)
-        if not photos:
-            print("[WARN] No photos available for observation.")
-            return
-
-        photo_shape = photos[0].shape
-        photo_height, photo_width = photo_shape[0], photo_shape[1]
-        photo_center = [photo_width / 2, photo_height / 2]
-
-        # Segment photos
-        observations = self.segmenter.segment_photos(photos)
-        if not observations:
-            return
-
-        # Grab a random observation
-        observation = random.choice(observations)
-
-        # Calculate movement to center segmentation
-        observation_center = [(observation[2] + observation[4])/2, (observation[3] + observation[5])/2]
-
-        x_diff = (observation_center[0] - photo_center[0])
-        y_diff = (observation_center[1] - photo_center[1])
-
-        pitch_estimate = (y_diff / photo_height) * 10
-        yaw_estimate = (x_diff / photo_width) * 10
-
-        # Create random roll
-        random_roll = random.randint(-5, 5)
-
-        # Initiate movement
-        self.move(roll = random_roll, pitch = pitch_estimate, yaw = yaw_estimate)
-
         return
     
     def journal(self):
@@ -275,8 +308,8 @@ class Maxim:
     
     def awaken(self, vision = True, audio = True):
         # Load models
-        #if vision:
-        #    self.segmenter = YOLO8() # Visual segmentation model
+        if vision:
+            self.segmenter = YOLO8() # Visual segmentation model
 
         # Wake up Reachy
         self.mini.wake_up()
@@ -284,11 +317,25 @@ class Maxim:
         return
 
     def sleep(self):
-        # Send Reachy to sleep
-        self.mini.goto_sleep()
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
 
-        # Clear memroy of models not being trained
-        del self.segmenter
+        # Send Reachy to sleep
+        try:
+            self.mini.goto_sleep()
+        except Exception as e:
+            print(f"[WARN] Failed to send Reachy to sleep: {e}")
+
+        # Stop recording data
+        try:
+            self.mini.stop_recording()
+        except Exception as e:
+            print(f"[WARN] Failed to stop recording: {e}")
+
+        # Release the camera + any OpenCV resources
+        self._release_media()
+
 
         return
 
