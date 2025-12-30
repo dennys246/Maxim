@@ -1,8 +1,8 @@
 import os
 
-os.environ["REACHY_MEDIA_BACKEND"] = "zenoh"
-os.environ["REACHY_DISABLE_WEBRTC"] = "1"
-os.environ["GST_DISABLE_REGISTRY_FORK"] = "1"
+#os.environ["REACHY_MEDIA_BACKEND"] = "zenoh"
+#os.environ["REACHY_DISABLE_WEBRTC"] = "1"
+#os.environ["GST_DISABLE_REGISTRY_FORK"] = "1"
 
 import json, random
 import time, atexit, cv2
@@ -25,9 +25,9 @@ class Maxim:
 
     def __init__(
         self,
-        robot_name: str | None = None,
+        robot_name: str = "reachy_mini",
         timeout: float = 30.0,
-        media_backend: str = "default",  # avoid WebRTC/GStreamer if signalling is down
+        media_backend: str = "no_media",  # avoid WebRTC/GStreamer if signalling is down
     ):
         self.alive = True
 
@@ -52,8 +52,6 @@ class Maxim:
             media_backend=media_backend,
         )
 
-        self.awaken()
-
         self.x = 0.01
         self.y = 0.01
         self.z = 0.01
@@ -61,6 +59,8 @@ class Maxim:
         self.roll = 0.01
         self.pitch = 0.01
         self.yaw = 0.01
+
+        self.awaken()
 
         atexit.register(self.sleep)
     
@@ -254,11 +254,11 @@ class Maxim:
         x_diff = (observation_center[0] - photo_center[0])
         y_diff = (observation_center[1] - photo_center[1])
 
-        pitch_estimate = (y_diff / photo_height) * 20
-        yaw_estimate = (x_diff / photo_width) * 20
+        pitch_estimate = (y_diff / photo_height) * 10
+        yaw_estimate = (x_diff / photo_width) * 10
 
         # Create random roll
-        random_roll = random.randint(-10, 10)
+        random_roll = random.randint(-5, 5)
 
         # Initiate movement
         self.move(roll = random_roll, pitch = pitch_estimate, yaw = yaw_estimate)
@@ -274,14 +274,14 @@ class Maxim:
         json.loads("")
         return
     
-    def awaken(self):
+    def awaken(self, vision = True, audio = True):
         # Load models
-        self.segmenter = YOLO8() # Visual segmentation model
+        if vision:
+            self.segmenter = YOLO8() # Visual segmentation model
 
         # Wake up Reachy
         self.mini.wake_up()
 
-        
         return
 
     def sleep(self):
