@@ -94,7 +94,7 @@ class Maxim:
 
         self.video_fps = 20.0
 
-        self.interests = [15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+        self.interests = [0, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
 
         self.actions = load_actions()
 
