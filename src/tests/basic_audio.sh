@@ -20,6 +20,7 @@ trap cleanup EXIT
 echo "[basic_audio] tmp=$TMP_DIR"
 
 export TMP_DIR
+export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
 "$PYTHON" - <<'PY'
 import json
@@ -28,7 +29,7 @@ import wave
 
 import numpy as np
 
-from src.data.audio.sound import transcribe_audio
+from maxim.data.audio.sound import transcribe_audio
 
 
 def write_wav(path: str, sample_rate: int, audio_i16: np.ndarray) -> None:
@@ -79,7 +80,7 @@ if os.environ.get("MAXIM_TEST_REAL_WHISPER", "").strip() not in ("1", "true", "y
     raise SystemExit(0)
 
 try:
-    from src.models.audio.whisper import WhisperTranscriber
+    from maxim.models.audio.whisper import WhisperTranscriber
 
     transcriber = WhisperTranscriber(model_size_or_path="tiny", device="cpu", compute_type="int8")
 except Exception as e:

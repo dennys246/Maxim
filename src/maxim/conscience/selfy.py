@@ -19,18 +19,18 @@ from scipy.signal import resample, resample_poly
 
 from reachy_mini import ReachyMini
 
-from src.motion.movement import move_antenna, move_head, load_actions
-from src.utils.data_management import build_home
-from src.utils.logging import configure_logging, warn
+from maxim.motion.movement import move_antenna, move_head, load_actions
+from maxim.utils.data_management import build_home
+from maxim.utils.logging import configure_logging, warn
 
-from src.data.camera.display import show_photo
-from src.inference.observation import (
+from maxim.data.camera.display import show_photo
+from maxim.inference.observation import (
     face_observation,
     motor_cortex_control,
     passive_observation,
     passive_listening,
 )
-from src.models.vision.segmentation import YOLO8
+from maxim.models.vision.segmentation import YOLO8
 
 os.environ["PYOPENGL_PLATFORM"] = "egl"
 
@@ -244,7 +244,7 @@ class Maxim:
         if self.audio and parallel:
             os.makedirs(chunk_dir, exist_ok=True)
             try:
-                from src.data.audio.sound import transcription_worker
+                from maxim.data.audio.sound import transcription_worker
 
                 ctx = mp.get_context("spawn")
                 transcribe_queue = ctx.Queue(maxsize=64)
@@ -909,8 +909,8 @@ class Maxim:
 
         if motor and self.movement_model is None:
             try:
-                from src.models.movement.motor_cortex import LayerScale, MotorCortex
-                from src.utils import config as motor_config
+                from maxim.models.movement.motor_cortex import LayerScale, MotorCortex
+                from maxim.utils import config as motor_config
 
                 self.log.info("Initializing motor cortex...")
                 cfg = motor_config.build(os.path.join("experiments", "models", "MotorCortex"))
@@ -997,8 +997,8 @@ class Maxim:
                     self.log.info("Saved motor history: %s (%d records)", history_path, num_records)
 
                     try:
-                        from src.utils.plotting import update_motor_cortex_loss_plot
-                        from src.utils.plotting import update_motor_cortex_pixel_error_plot
+                        from maxim.utils.plotting import update_motor_cortex_loss_plot
+                        from maxim.utils.plotting import update_motor_cortex_pixel_error_plot
 
                         update_motor_cortex_loss_plot(history, save_dir=save_dir)
                         update_motor_cortex_pixel_error_plot(history, save_dir=save_dir)

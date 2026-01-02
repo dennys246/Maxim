@@ -1,8 +1,8 @@
 import time, os
 import numpy as np
 
-from src.data.camera.display import show_frame
-from src.utils.logging import warn
+from maxim.data.camera.display import show_frame
+from maxim.utils.logging import warn
 
 def motor_cortex_control(
     maxim,
@@ -28,7 +28,7 @@ def motor_cortex_control(
     callback_list = None
     if train and callbacks is not None:
         try:
-            from src.training.callbacks import as_callback_list
+            from maxim.training.callbacks import as_callback_list
 
             callback_list = as_callback_list(callbacks)
         except Exception as e:
@@ -367,7 +367,7 @@ def motor_cortex_control(
         loss_value = None
         try:
             import tensorflow as tf
-            from src.training import losses
+            from maxim.training import losses
 
             x = tf.convert_to_tensor(model_batch, dtype=tf.float32)
 
@@ -507,8 +507,8 @@ def motor_cortex_control(
 
             if loss_scalar is not None and isinstance(history_list, list):
                 try:
-                    from src.utils.plotting import update_motor_cortex_loss_plot
-                    from src.utils.plotting import update_motor_cortex_pixel_error_plot
+                    from maxim.utils.plotting import update_motor_cortex_loss_plot
+                    from maxim.utils.plotting import update_motor_cortex_pixel_error_plot
 
                     save_dir = getattr(cfg, "save_dir", None) if cfg is not None else None
                     update_motor_cortex_loss_plot(history_list, save_dir=save_dir)

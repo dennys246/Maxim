@@ -4,7 +4,7 @@ A Reachy Mini repo for orchestrating data streaming to and from a PC and Reachy 
 
 # - Getting Started with Maxim
 
-Run the Reachy Mini daemon on the robot, then run `Maxim` from any computer on the same LAN/Wi‑Fi (Zenoh peer discovery).
+Run the Reachy Mini daemon on the robot, then run `maxim` from any computer on the same LAN/Wi‑Fi (Zenoh peer discovery).
 
 `ssh pollen@<INSERT YOUR REACHY IP>`
 
@@ -27,22 +27,26 @@ On your controller computer clone this repo into a folder of your choosing
 Prepare a computing environment for running Maxim by creating a new python virtual environment. Avoid installing requirements into a virtual environment you typically use for machine learning as it may mess up your tensorflow or pytorch dependencies and how your GPU is handled.
 
 ```
-python -m venv maxim-env
-
 cd Maxim
+python -m venv maxim-env
+source maxim-env/bin/activate
 pip install -e .
 ```
 
-Run the main command in the Maxim directory to initiate basic observation using Ultralytics incredibly efficient YOLO8 model. This dynamically find objects of interest and center the Reach Mini vision on them. Audio is recorded is transcribed when enabled.
+After `pip install -e .`, run the `maxim` command (from anywhere in that environment) to initiate basic observation using Ultralytics incredibly efficient YOLO8 model. This dynamically find objects of interest and center the Reach Mini vision on them. Audio is recorded is transcribed when enabled.
+
+`maxim`
+
+NOTE: You can also set `MAXIM_ROBOT_NAME=reachy_mini` and run `maxim`.
+
+Legacy entrypoint (still supported when running from a cloned checkout):
 
 `python main.py`
 
-NOTE: You can also set `MAXIM_ROBOT_NAME=reachy_mini` and run `python main.py`.
-
-You can also run Maxim straight from a python shell of your own script by importing it
+You can also run Maxim straight from a python shell or your own script by importing it (package name: `maxim`)
 
 ```
-from src.conscience.selfy import Maxim
+from maxim.conscience.selfy import Maxim
 
 maxim = Maxim()
 

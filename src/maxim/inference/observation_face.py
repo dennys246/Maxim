@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.data.camera.display import show_frame
+from maxim.data.camera.display import show_frame
 
 
 def face_observation(

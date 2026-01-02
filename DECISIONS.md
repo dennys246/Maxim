@@ -96,3 +96,13 @@ Reason:
 
 Tradeoffs:
 - Requires TensorFlow/Keras for training/inference in this repo’s implementation.
+
+## 2026-01-02: Add `maxim` CLI entrypoint
+Decision:
+- `pip install -e .` installs a `maxim` console script (entrypoint: `maxim.cli:main`).
+- The importable package is `maxim` (code lives under `src/maxim/`); `src.*` imports are deprecated/removed.
+- `python main.py` remains supported as a compatibility entrypoint.
+
+Reason:
+- Reduce friction for new users (no need to remember the module/file path).
+- Avoid confusion from a top-level package named `src`.

@@ -212,3 +212,4 @@ zenoh.json5
 
 experiments/
 *.png
+.DS_Store

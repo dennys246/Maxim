@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
-from src.utils.logging import warn
+from maxim.utils.logging import warn
 
 
 def coach_movement(
@@ -34,7 +34,7 @@ def coach_movement(
     callback_list = None
     if callbacks is not None:
         try:
-            from src.training.callbacks import as_callback_list
+            from maxim.training.callbacks import as_callback_list
 
             callback_list = as_callback_list(callbacks)
         except Exception as e:
@@ -90,7 +90,7 @@ def coach_movement(
                 history.append({"time": time.time(), "step": int(step), "loss": float(loss_scalar)})
 
                 try:
-                    from src.utils.plotting import update_motor_cortex_loss_plot
+                    from maxim.utils.plotting import update_motor_cortex_loss_plot
 
                     cfg = getattr(model, "config", None)
                     save_dir = getattr(cfg, "save_dir", None) if cfg is not None else None
