@@ -32,8 +32,8 @@ def move_antenna(
     duration: float | None = 0.5,
     method: str = "minjerk",
     degrees: bool = True,
-    relative: bool = False,
-) -> None:
+    relative: bool = False) -> None:
+    
     if right is None and left is None:
         raise ValueError("At least one of right or left must be provided.")
 
