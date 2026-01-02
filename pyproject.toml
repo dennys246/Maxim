@@ -8,4 +8,5 @@ dependencies = [
     "reachy-mini[gstreamer]>=1.2.4",
     "ultralytics>=8.0.0",
     "lap>=0.5.12",
+    "faster-whisper>=1.0.0",
 ]
