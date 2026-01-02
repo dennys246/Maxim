@@ -3,8 +3,8 @@ import os
 import tensorflow as tf
 import keras
 
-from src.utils import config
-from src.training import losses
+from maxim.utils import config
+from maxim.training import losses
 
 class LayerScale(keras.layers.Layer):
     def __init__(self, init_value: float = 1e-6, **kwargs):

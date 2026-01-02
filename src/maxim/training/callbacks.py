@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from src.utils.logging import warn
+from maxim.utils.logging import warn
 
 
 class Callback:

@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 import numpy as np
 
-from src.utils.logging import warn
+from maxim.utils.logging import warn
 
 
 def _as_mono_float32(audio: Any) -> np.ndarray:
@@ -85,7 +85,7 @@ def transcription_worker(
     try:
         import logging
 
-        from src.utils.logging import configure_logging
+        from maxim.utils.logging import configure_logging
 
         configure_logging(int(verbosity or 0), log_file=log_file)
         log = logging.getLogger("maxim.transcribe")
@@ -93,7 +93,7 @@ def transcription_worker(
         log = None
 
     try:
-        from src.models.audio.whisper import WhisperTranscriber
+        from maxim.models.audio.whisper import WhisperTranscriber
 
         transcriber = WhisperTranscriber(
             model_size_or_path=model_size_or_path,

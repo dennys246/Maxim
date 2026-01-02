@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-from src.utils.logging import warn
+from maxim.utils.logging import warn
 
 COCO_KEYPOINTS: list[str] = [
     "nose",

@@ -15,6 +15,8 @@ fi
 
 echo "[basic_learn] python=$PYTHON"
 
+export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+
 "$PYTHON" - <<'PY'
 import os
 import types
@@ -36,8 +38,8 @@ if not _has_tf():
     print("[basic_learn] SKIP: tensorflow/keras not installed")
     raise SystemExit(0)
 
-from src.models.movement.motor_cortex import MotorCortex
-from src.utils import config as motor_config
+from maxim.models.movement.motor_cortex import MotorCortex
+from maxim.utils import config as motor_config
 
 cfg = motor_config.build(os.path.join("experiments", "models", "MotorCortex"))
 model = MotorCortex(cfg)

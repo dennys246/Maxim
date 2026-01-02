@@ -1,8 +1,8 @@
 import time, os
 import numpy as np
 
-from src.data.camera.display import ensure_bgr, show_frame
-from src.utils.logging import warn
+from maxim.data.camera.display import ensure_bgr, show_frame
+from maxim.utils.logging import warn
 from scipy.io.wavfile import write
 
 
