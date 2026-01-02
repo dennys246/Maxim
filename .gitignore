@@ -211,3 +211,4 @@ zenoh.json5
 *.pt
 
 experiments/
+*.png
