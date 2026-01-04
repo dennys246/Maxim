@@ -98,6 +98,7 @@ Default:
 - `c`: center vision (pauses training briefly in `--mode train`)
 
 Default movement presets are defined in `data/motion/default_actions.json`.
+Default head poses (including `centered`) are defined in `data/motion/default_poses.json`.
 
 ## Smoke Tests
 
