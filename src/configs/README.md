@@ -6,6 +6,7 @@ This folder contains **version-controlled config templates** and quick reference
 
 Most runtime-editable files live under `data/`:
 - Run artifacts (recordings + logs): `data/audio/`, `data/videos/`, `data/images/`, `data/transcript/`, `data/logs/`
+- Training sample logs: `data/training/` (e.g., `motor_training_set.jsonl`)
 - Motion presets: `data/motion/default_actions.json`
 - Default head poses: `data/motion/default_poses.json` (e.g., `centered`)
 - Key bindings: `data/util/key_responses.json` (override via `$MAXIM_KEY_RESPONSES`)
