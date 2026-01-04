@@ -20,6 +20,13 @@ Tradeoffs:
 - Requires codecs/backends for MP4 writing (environment dependent).
 - Large files require log/cleanup discipline.
 
+## 2026-01-04: Store transcripts under `data/transcript/`
+Decision:
+- JSONL transcripts are written under `data/transcript/` (previously `data/text/`).
+
+Reason:
+- Avoid confusion with generic “text” outputs and make transcripts easier to locate.
+
 ## 2026-01-02: Whisper transcription runs in a separate process
 Reason:
 - Whisper inference is heavy and should not stall the control loop.

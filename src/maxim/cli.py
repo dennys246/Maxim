@@ -20,7 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--home-dir",
         default="data",
-        help="Reachy Mini home directory to save audio/pictures, models, and derivatives (default: 'data').",
+        help="Reachy Mini home directory to save run artifacts (audio/videos/images/transcript/logs) (default: 'data').",
     )
     parser.add_argument(
         "--timeout",
