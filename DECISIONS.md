@@ -60,9 +60,9 @@ Reason:
 Tradeoffs:
 - Users who want the previous behavior must pass `--mode live` (or `--mode train`).
 
-## 2026-01-02: Per-run logs saved under `experiments/maxim/logs/`
+## 2026-01-02: Per-run logs saved under `data/logs/`
 Decision:
-- Each CLI run writes logs to `experiments/maxim/logs/reachy_log_<run_id>.log`.
+- Each CLI run writes logs to `data/logs/reachy_log_<run_id>.log`.
 
 Reason:
 - Makes runs debuggable after the fact without copying terminal output.
@@ -71,9 +71,9 @@ Reason:
 Tradeoffs:
 - Produces additional files; users may need periodic cleanup.
 
-## 2026-01-02: Inference code lives under `src/inference/`
+## 2026-01-02: Inference code lives under `src/maxim/inference/`
 Reason:
-- Keep “runtime inference/control” separate from “robot orchestration” (`src/conscience/`) and “model definitions” (`src/models/`).
+- Keep “runtime inference/control” separate from “robot orchestration” (`src/maxim/conscience/`) and “model definitions” (`src/maxim/models/`).
 
 Tradeoffs:
 - Requires stable re-export modules to preserve import paths during refactors.
@@ -100,9 +100,38 @@ Tradeoffs:
 ## 2026-01-02: Add `maxim` CLI entrypoint
 Decision:
 - `pip install -e .` installs a `maxim` console script (entrypoint: `maxim.cli:main`).
-- The importable package is `maxim` (code lives under `src/maxim/`); `src.*` imports are deprecated/removed.
+- The importable package is `maxim` (code lives under `src/maxim/`); `src.*` imports are removed.
 - `python main.py` remains supported as a compatibility entrypoint.
 
 Reason:
 - Reduce friction for new users (no need to remember the module/file path).
 - Avoid confusion from a top-level package named `src`.
+
+## 2026-01-02: JSON-configured key responses
+Decision:
+- Maxim loads `data/util/key_responses.json` on startup and listens for terminal key presses while running (override via `$MAXIM_KEY_RESPONSES`).
+
+Reason:
+- Allow quick, extensible runtime actions (e.g., recenter vision) without impacting the control loop.
+
+## 2026-01-03: Store motion presets under `data/`
+Decision:
+- Default motion actions load from `data/motion/default_actions.json`.
+
+Reason:
+- Keep editable JSON configs separate from code and easy to find.
+
+## 2026-01-03: Store trained models under `data/models/`
+Decision:
+- Default model artifacts (MotorCortex checkpoints/history, YOLO weights) live under `data/models/`.
+
+Reason:
+- Keep model artifacts separate from run outputs under `data/`.
+
+## 2026-01-03: Extract reusable helpers from nested defs
+Decision:
+- Avoid defining reusable helper functions inside other functions/methods.
+- Put cross-cutting helpers under `src/maxim/utils/` (or at module scope) and import them where needed.
+
+Reason:
+- Improve reuse and reduce duplicated logic while keeping runtime loops readable.
