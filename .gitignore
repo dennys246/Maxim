@@ -226,4 +226,9 @@ data/memory/
 *.png
 .DS_Store
 
-data/
+data/*
+!data/motion/
+!data/motion/default_actions.json
+!data/motion/default_poses.json
+!data/util/
+!data/util/key_responses.json
