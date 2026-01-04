@@ -33,6 +33,8 @@ source maxim-env/bin/activate
 pip install -e .
 ```
 
+If you previously installed an older version, re-run `pip install -e .` to refresh the `maxim` command.
+
 After `pip install -e .`, run the `maxim` command (from anywhere in that environment) to initiate basic observation using Ultralytics incredibly efficient YOLO8 model. This dynamically find objects of interest and center the Reach Mini vision on them. Audio is recorded is transcribed when enabled.
 
 `maxim`
@@ -62,11 +64,13 @@ Of course extensions of the Maxim class using the datastreams set up are more th
 
 # Outputs (Default)
 
-Each run writes a timestamped set of artifacts under `experiments/maxim/`:
+Each run writes a timestamped set of artifacts under `data/`:
 - `videos/reachy_video_<YYYY-MM-DD_HHMMSS>.mp4`
 - `audio/reachy_audio_<YYYY-MM-DD_HHMMSS>.wav`
 - `text/reachy_transcript_<YYYY-MM-DD_HHMMSS>.jsonl` (when `--audio true` and Whisper is available)
 - `logs/reachy_log_<YYYY-MM-DD_HHMMSS>.log`
+
+Shared model artifacts and weights live under `data/models/` (e.g., `MotorCortex/`, `YOLO/`).
 
 # CLI Flags
 
@@ -74,6 +78,15 @@ Each run writes a timestamped set of artifacts under `experiments/maxim/`:
 - `--verbosity`: `0`, `1`, `2`
 - `--audio`: `True/False` (enables audio recording + transcription)
 - `--audio_len`: seconds per transcription chunk (default `5.0`)
+
+# Keyboard Shortcuts
+
+While `maxim` is running in a terminal, it listens for single-key presses configured in `data/util/key_responses.json` (or `$MAXIM_KEY_RESPONSES`).
+
+Default:
+- `c`: center vision (pauses training briefly in `--mode train`)
+
+Default movement presets are defined in `data/motion/default_actions.json`.
 
 # Smoke Tests
 
