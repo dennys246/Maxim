@@ -55,7 +55,7 @@ Decision:
 
 Reason:
 - Safer default behavior (no MotorCortex training) while still tracking targets.
-- Reduces surprise ML/compute costs when running `python main.py` with no flags.
+- Reduces surprise ML/compute costs when running `python scripts/main.py` with no flags.
 
 Tradeoffs:
 - Users who want the previous behavior must pass `--mode live` (or `--mode train`).
@@ -101,7 +101,7 @@ Tradeoffs:
 Decision:
 - `pip install -e .` installs a `maxim` console script (entrypoint: `maxim.cli:main`).
 - The importable package is `maxim` (code lives under `src/maxim/`); `src.*` imports are removed.
-- `python main.py` remains supported as a compatibility entrypoint.
+- `python scripts/main.py` remains supported as a compatibility entrypoint.
 
 Reason:
 - Reduce friction for new users (no need to remember the module/file path).
