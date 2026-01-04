@@ -43,7 +43,7 @@ NOTE: You can also set `MAXIM_ROBOT_NAME=reachy_mini` and run `maxim`.
 
 Legacy entrypoint (still supported when running from a cloned checkout):
 
-`python main.py`
+`python scripts/main.py`
 
 You can also run Maxim straight from a python shell or your own script by importing it (package name: `maxim`)
 
