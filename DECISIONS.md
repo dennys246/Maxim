@@ -121,6 +121,18 @@ Decision:
 Reason:
 - Allow quick, extensible runtime actions (e.g., recenter vision) without impacting the control loop.
 
+## 2026-01-04: Training sample log under `data/training/`
+Decision:
+- When vision-driven movement is initiated, Maxim appends a JSONL record to `data/training/motor_training_set.jsonl` via a background writer.
+- The `u` key writes a marked record (`user_marked=true`) for the most recent sample.
+
+Reason:
+- Keep an always-on stream of “trainable moments” for MotorCortex without blocking the control loop.
+- Make it easy to curate a subset of samples for training by marking moments during a run.
+
+Tradeoffs:
+- Samples reference run artifacts (video/audio/transcript paths + timestamps); extracting frames is a post-processing step.
+
 ## 2026-01-03: Store motion presets under `data/`
 Decision:
 - Default motion actions load from `data/motion/default_actions.json`.
