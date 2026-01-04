@@ -575,6 +575,92 @@ def motor_cortex_control(
     pitch_cmd = float(np.clip(pitch_cmd, pitch_min, pitch_max))
     yaw_cmd = float(np.clip(yaw_cmd, yaw_min, yaw_max))
 
+    try:
+        training_logger = getattr(maxim, "_training_logger", None)
+        if training_logger is not None:
+            sample_id = int(getattr(maxim, "_training_sample_seq", 0) or 0) + 1
+            try:
+                setattr(maxim, "_training_sample_seq", sample_id)
+            except Exception:
+                pass
+
+            frame_ts = getattr(maxim, "_last_frame_ts", None)
+            run_start_ts = getattr(maxim, "run_start_ts", None)
+            t_rel_s = None
+            try:
+                if frame_ts is not None and run_start_ts is not None:
+                    t_rel_s = float(frame_ts) - float(run_start_ts)
+            except Exception:
+                t_rel_s = None
+
+            record = {
+                "kind": "motor_sample",
+                "time": time.time(),
+                "sample_id": int(sample_id),
+                "run_id": getattr(maxim, "run_id", None),
+                "mode": getattr(maxim, "mode", None),
+                "epoch": int(getattr(maxim, "current_epoch", 0) or 0),
+                "frame_ts": float(frame_ts) if frame_ts is not None else None,
+                "t_rel_s": t_rel_s,
+                "video_path": getattr(maxim, "video_path", None),
+                "audio_path": getattr(maxim, "audio_path", None),
+                "transcript_path": getattr(maxim, "transcript_path", None),
+                "photo": {"width": int(photo_width), "height": int(photo_height)},
+                "detection": {
+                    "track_id": observation[0] if len(observation) > 0 else None,
+                    "class_id": int(observation[7]) if len(observation) > 7 and observation[7] is not None else None,
+                    "conf": float(observation[6]) if len(observation) > 6 and observation[6] is not None else None,
+                    "bbox_xyxy": [float(x1), float(y1), float(x2), float(y2)],
+                    "is_person": bool(is_person),
+                },
+                "target": {
+                    "method": str(target_method),
+                    "u": int(u_int),
+                    "v": int(v_int),
+                    "center_u": float(center_u),
+                    "center_v": float(center_v),
+                    "pixel_error_px": float(pixel_error_px),
+                },
+                "teacher": {
+                    "yaw_delta": float(teacher_yaw_delta),
+                    "pitch_delta": float(teacher_pitch_delta),
+                },
+                "pred_mode": str(pred_mode),
+                "command": {
+                    "dx": float(cmd_dx),
+                    "dy": float(cmd_dy),
+                    "dz": float(cmd_dz),
+                    "droll": float(cmd_droll),
+                    "dpitch": float(cmd_dpitch),
+                    "dyaw": float(cmd_dyaw),
+                    "duration_s": float(cmd_duration),
+                    "x": float(x_cmd),
+                    "y": float(y_cmd),
+                    "z": float(z_cmd),
+                    "roll": float(roll_cmd),
+                    "pitch": float(pitch_cmd),
+                    "yaw": float(yaw_cmd),
+                },
+                "user_marked": False,
+            }
+
+            if isinstance(pose_info, dict):
+                pose_box_val = pose_info.get("pose_box")
+                record["pose"] = {
+                    "method": pose_info.get("method"),
+                    "iou": pose_info.get("iou"),
+                    "conf": pose_info.get("conf"),
+                    "pose_box_xyxy": list(pose_box_val) if isinstance(pose_box_val, (list, tuple)) else None,
+                }
+
+            try:
+                setattr(maxim, "_last_motor_sample", record)
+            except Exception:
+                pass
+            training_logger.log_motor_sample(record)
+    except Exception as e:
+        warn("Failed to log training sample: %s", e, logger=getattr(maxim, "log", None))
+
     maxim.move(
         x=x_cmd,
         y=y_cmd,
