@@ -93,7 +93,7 @@ def transcription_worker(
         log = None
 
     try:
-        from maxim.models.audio.whisper import WhisperTranscriber
+        from maxim.models.audio.transcription import WhisperTranscriber
 
         transcriber = WhisperTranscriber(
             model_size_or_path=model_size_or_path,
