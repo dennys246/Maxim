@@ -5,7 +5,13 @@ import numpy as np
 from pathlib import Path
 from typing import Any
 
-_DEFAULT_ACTIONS_PATH = Path(__file__).with_name("actions.json")
+_DEFAULT_ACTIONS_PATH = (
+    Path(__file__).resolve().parents[3] / "data" / "motion" / "default_actions.json"
+)
+
+def _to_rad(value: float, *, degrees: bool) -> float:
+    value = float(value)
+    return math.radians(value) if degrees else value
 
 def load_actions(path: Path | str = _DEFAULT_ACTIONS_PATH) -> dict[str, Any]:
     
@@ -43,19 +49,15 @@ def move_antenna(
 
     current_right, current_left = mini.get_present_antenna_joint_positions()
 
-    def _to_rad(value: float) -> float:
-        value = float(value)
-        return math.radians(value) if degrees else value
-
     target_right = current_right
     target_left = current_left
 
     if right is not None:
-        right = _to_rad(right)
+        right = _to_rad(right, degrees=degrees)
         target_right = current_right + right if relative else right
 
     if left is not None:
-        left = _to_rad(left)
+        left = _to_rad(left, degrees=degrees)
         target_left = current_left + left if relative else left
 
     target = [target_right, target_left]

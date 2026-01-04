@@ -41,7 +41,7 @@ if not _has_tf():
 from maxim.models.movement.motor_cortex import MotorCortex
 from maxim.utils import config as motor_config
 
-cfg = motor_config.build(os.path.join("experiments", "models", "MotorCortex"))
+cfg = motor_config.build(motor_config.DEFAULT_SAVE_ROOT)
 model = MotorCortex(cfg)
 
 input_shape = getattr(cfg, "input_shape", 256)

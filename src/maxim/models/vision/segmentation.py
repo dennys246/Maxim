@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from pathlib import Path
 from typing import Any
 
 import cv2
@@ -133,14 +134,19 @@ def _scalar(value: Any) -> Any:
 class YOLO8:
     def __init__(self, pose_model: bool = False):
         # Initialize segmentation model.
-        local_dir = os.path.join("experiments", "models", "YOLO")
+        repo_root = Path(__file__).resolve().parents[4]
+        local_dir = (repo_root / "data" / "models" / "YOLO").as_posix()
+        legacy_dir = (repo_root / "experiments" / "models" / "YOLO").as_posix()
+        legacy_models_dir = (repo_root / "experiments" / "models").as_posix()
         seg_name = "yolov8m-seg.pt"
         seg_local = os.path.join(local_dir, seg_name)
         seg_alt = _first_existing(
             [
                 os.path.join(local_dir, "yolo8m-seg.pt"),
-                os.path.join("experiments", "models", "yolo8m-seg.pt"),
-                os.path.join("experiments", "models", "yolov8m-seg.pt"),
+                os.path.join(legacy_dir, seg_name),
+                os.path.join(legacy_dir, "yolo8m-seg.pt"),
+                os.path.join(legacy_models_dir, "yolo8m-seg.pt"),
+                os.path.join(legacy_models_dir, "yolov8m-seg.pt"),
                 "yolov8m-seg.pt",
                 "yolo8m-seg.pt",
             ]
@@ -161,8 +167,10 @@ class YOLO8:
         pose_alt = _first_existing(
             [
                 os.path.join(local_dir, "yolo8m-pose.pt"),
-                os.path.join("experiments", "models", "yolo8m-pose.pt"),
-                os.path.join("experiments", "models", "yolov8m-pose.pt"),
+                os.path.join(legacy_dir, pose_name),
+                os.path.join(legacy_dir, "yolo8m-pose.pt"),
+                os.path.join(legacy_models_dir, "yolo8m-pose.pt"),
+                os.path.join(legacy_models_dir, "yolov8m-pose.pt"),
                 "yolov8m-pose.pt",
                 "yolo8m-pose.pt",
             ]
