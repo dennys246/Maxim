@@ -8,6 +8,7 @@ Maxim is a Reachy Mini project for capturing audio/video, running perception + m
 - Preserve behavior unless the user asks for functional changes.
 - Keep runtime loops responsive: push heavy I/O and compute off the control loop (threads/processes + queues).
 - Make logging human-friendly; use `src/maxim/utils/logging.py` and respect `--verbosity`.
+- Keep importable Python code under `src/maxim/` (avoid new top-level packages under `src/` unless packaging is updated).
 - Avoid reusable nested functions: if a helper could be reused, define it at module scope (or under `src/maxim/utils/`) instead of inside another function/method. Nested defs are OK when they must capture closure state (e.g., worker threads) or are truly one-off.
 - Any public API or CLI change must be reflected in `DECISIONS.md` and (when user-facing) `README.md`.
 - Add in concise commenting about import code functionality or nuanced.
