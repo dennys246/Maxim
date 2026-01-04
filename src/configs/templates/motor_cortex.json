@@ -1,0 +1,12 @@
+{
+  "save_dir": "data/models/MotorCortex",
+  "checkpoint_path": "data/models/MotorCortex/motor_cortex.keras",
+  "dataset": "data/images/",
+  "input_shape": 256,
+  "output_dim": 7,
+  "epochs": 10,
+  "batch_size": 2,
+  "learning_rate": 1e-5,
+  "rebuild": false
+}
+

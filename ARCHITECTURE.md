@@ -18,6 +18,7 @@ Capture (Reachy) → Writers (video/audio) → Inference (vision/audio) → Cont
 ## Key Modules
 - `src/maxim/cli.py`: primary CLI entrypoint (`maxim` console script).
 - `scripts/main.py`: legacy checkout entrypoint (delegates to `maxim.cli`).
+- `src/configs/`: version-controlled config templates and notes.
 - `src/maxim/conscience/selfy.py`: `Maxim` orchestrator (capture loop, lifecycle, logging, key responses).
 - `src/maxim/inference/`: observation/control functions (vision target selection, motor control, etc.).
 - `src/maxim/models/vision/`: perception models (YOLO segmentation/pose).

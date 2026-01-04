@@ -1,0 +1,7 @@
+{
+  "c": {
+    "call": "center_vision",
+    "pause_training": true
+  }
+}
+
