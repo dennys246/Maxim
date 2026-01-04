@@ -324,7 +324,7 @@ class Maxim:
 
         video_path = os.path.join(self.home_dir, "videos", f"reachy_video_{run_id}.mp4")
         audio_path = os.path.join(self.home_dir, "audio", f"reachy_audio_{run_id}.wav")
-        transcript_path = os.path.join(self.home_dir, "text", f"reachy_transcript_{run_id}.jsonl")
+        transcript_path = os.path.join(self.home_dir, "transcript", f"reachy_transcript_{run_id}.jsonl")
         chunk_dir = os.path.join(self.home_dir, "audio", "chunks")
 
         self.log.info(
@@ -1069,13 +1069,31 @@ class Maxim:
                 self.movement_model = MotorCortex(cfg)
 
                 checkpoint_path = getattr(cfg, "checkpoint_path", None)
-                if checkpoint_path and os.path.exists(checkpoint_path):
+                legacy_checkpoint_path = None
+                if checkpoint_path and not os.path.exists(checkpoint_path):
+                    try:
+                        legacy_checkpoint_path = (
+                            motor_config.LEGACY_SAVE_ROOT / motor_config.DEFAULT_CHECKPOINT_FILENAME
+                        ).as_posix()
+                    except Exception:
+                        legacy_checkpoint_path = None
+
+                load_path = None
+                for candidate in (checkpoint_path, legacy_checkpoint_path):
+                    if candidate and os.path.exists(candidate):
+                        load_path = candidate
+                        break
+
+                if load_path:
                     try:
                         import keras
 
-                        self.log.info("Loading motor checkpoint: %s", checkpoint_path)
+                        if load_path != checkpoint_path:
+                            self.log.info("Loading legacy motor checkpoint: %s", load_path)
+                        else:
+                            self.log.info("Loading motor checkpoint: %s", load_path)
                         loaded = keras.models.load_model(
-                            checkpoint_path,
+                            load_path,
                             custom_objects={
                                 "LayerScale": LayerScale,
                                 "MotorCortex": MotorCortex,
@@ -1084,7 +1102,7 @@ class Maxim:
                         )
                         self.movement_model.model = loaded
                     except Exception as e:
-                        self.log.warning("Failed to load motor checkpoint '%s': %s", checkpoint_path, e)
+                        self.log.warning("Failed to load motor checkpoint '%s': %s", load_path, e)
                 else:
                     self.log.info("No motor checkpoint found; starting fresh.")
             except Exception as e:
@@ -1113,7 +1131,15 @@ class Maxim:
                 save_dir = getattr(cfg, "save_dir", None) if cfg is not None else None
 
                 if not checkpoint_path:
-                    checkpoint_path = os.path.join(self.home_dir, "models", "motor_cortex.keras")
+                    try:
+                        from maxim.utils import config as motor_config
+
+                        checkpoint_path = (
+                            motor_config.DEFAULT_SAVE_ROOT / motor_config.DEFAULT_CHECKPOINT_FILENAME
+                        ).as_posix()
+                        save_dir = save_dir or motor_config.DEFAULT_SAVE_ROOT.as_posix()
+                    except Exception:
+                        checkpoint_path = os.path.join(self.home_dir, "models", "motor_cortex.keras")
 
                 os.makedirs(os.path.dirname(checkpoint_path) or ".", exist_ok=True)
                 to_save = getattr(movement_model, "model", movement_model)

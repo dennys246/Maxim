@@ -5,7 +5,9 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-DEFAULT_SAVE_ROOT = Path(__file__).resolve().parents[3] / "data" / "models" / "MotorCortex"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_SAVE_ROOT = _REPO_ROOT / "data" / "models" / "MotorCortex"
+LEGACY_SAVE_ROOT = _REPO_ROOT / "sandbox" / "models" / "MotorCortex"
 DEFAULT_CHECKPOINT_FILENAME = "motor_cortex.keras"
 DEFAULT_CONFIG_FILENAME = "motor_cortex.json"
 
@@ -110,22 +112,58 @@ class build:
         self.config_filepath = _config_file_from_path(config_filepath).as_posix()
         self._config_dir = Path(self.config_filepath).parent.as_posix()
 
+        requested = Path(config_filepath)
+
         config_path = Path(self.config_filepath)
         if config_path.exists() and config_path.is_file():
             print(f"Loading config file: {self.config_filepath}")
             config_json = self.load_config(self.config_filepath)
         else:
-            print("WARNING: Config not found, building from default template...")
-            config_json = copy.deepcopy(config_template)
+            legacy_config = LEGACY_SAVE_ROOT / DEFAULT_CONFIG_FILENAME
+            is_default_path = config_path == (DEFAULT_SAVE_ROOT / DEFAULT_CONFIG_FILENAME)
 
-            # If user passed a directory, default save_dir/checkpoint under it.
-            try:
+            if is_default_path and legacy_config.exists():
+                print(f"Loading legacy config file: {legacy_config.as_posix()}")
+                config_json = self.load_config(legacy_config.as_posix())
+
+                try:
+                    config_json["save_dir"] = Path(self._config_dir).as_posix()
+                    legacy_checkpoint = config_json.get("checkpoint_path") or config_json.get("checkpoint")
+                    filename = Path(str(legacy_checkpoint)).name if legacy_checkpoint else DEFAULT_CHECKPOINT_FILENAME
+                    config_json["checkpoint_path"] = (Path(config_json["save_dir"]) / filename).as_posix()
+                except Exception:
+                    pass
+            else:
+                print("WARNING: Config not found, building from default template...")
+                config_json = copy.deepcopy(config_template)
+
+                # If user passed a directory, default save_dir/checkpoint under it.
+                try:
+                    config_json["save_dir"] = Path(self._config_dir).as_posix()
+                    config_json["checkpoint_path"] = (
+                        Path(config_json["save_dir"]) / DEFAULT_CHECKPOINT_FILENAME
+                    ).as_posix()
+                except Exception:
+                    pass
+
+        # If the caller passed a directory (not a JSON file), treat that directory as the
+        # canonical save_dir and keep checkpoint_path inside it.
+        try:
+            if requested.suffix.lower() != ".json":
                 config_json["save_dir"] = Path(self._config_dir).as_posix()
-                config_json["checkpoint_path"] = (
-                    Path(config_json["save_dir"]) / DEFAULT_CHECKPOINT_FILENAME
-                ).as_posix()
-            except Exception:
-                pass
+                legacy_checkpoint = config_json.get("checkpoint_path") or config_json.get("checkpoint")
+                filename = Path(str(legacy_checkpoint)).name if legacy_checkpoint else DEFAULT_CHECKPOINT_FILENAME
+                config_json["checkpoint_path"] = (Path(config_json["save_dir"]) / filename).as_posix()
+        except Exception:
+            pass
+
+        # Backwards compatibility: old repos stored datasets under experiments/maxim/.
+        try:
+            dataset = config_json.get("dataset")
+            if isinstance(dataset, str) and "experiments/maxim/images" in dataset:
+                config_json["dataset"] = config_template["dataset"]
+        except Exception:
+            pass
 
         # Backwards compatibility: old configs used "checkpoint".
         if "checkpoint_path" not in config_json and "checkpoint" in config_json:

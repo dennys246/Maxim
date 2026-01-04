@@ -30,8 +30,8 @@ Capture (Reachy) → Writers (video/audio) → Inference (vision/audio) → Cont
 ## Output Layout (Default)
 - `data/videos/`: `reachy_video_<YYYY-MM-DD_HHMMSS>.mp4`
 - `data/audio/`: `reachy_audio_<YYYY-MM-DD_HHMMSS>.wav` and optional `audio/chunks/*.wav`
-- `data/text/`: `reachy_transcript_<YYYY-MM-DD_HHMMSS>.jsonl`
-- `data/models/MotorCortex/`: model checkpoint + training artifacts
+- `data/transcript/`: `reachy_transcript_<YYYY-MM-DD_HHMMSS>.jsonl`
+- `data/models/MotorCortex/`: MotorCortex checkpoint + training artifacts
 
 ## Invariants
 - Control loop must not perform heavy disk I/O.
