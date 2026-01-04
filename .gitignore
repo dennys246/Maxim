@@ -215,11 +215,15 @@ data/models/
 data/audio/
 data/videos/
 data/images/
+data/transcript/
 data/text/
 data/logs/
 data/agents/
 data/credentials/
 data/networking/
+data/memory/
 
 *.png
 .DS_Store
+
+data/
