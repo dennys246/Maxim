@@ -2,5 +2,8 @@
   "c": {
     "call": "center_vision",
     "pause_training": true
+  },
+  "u": {
+    "call": "mark_trainable_moment"
   }
 }
