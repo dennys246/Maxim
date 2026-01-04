@@ -128,6 +128,13 @@ Decision:
 Reason:
 - Keep editable JSON configs separate from code and easy to find.
 
+## 2026-01-04: Store head poses under `data/motion/default_poses.json`
+Decision:
+- Default head poses (including the `centered` pose used by the `c` key) load from `data/motion/default_poses.json`.
+
+Reason:
+- Allow robot-specific calibration of “centered” without changing code.
+
 ## 2026-01-03: Store trained models under `data/models/`
 Decision:
 - Default model artifacts (MotorCortex checkpoints/history, YOLO weights) live under `data/models/`.
