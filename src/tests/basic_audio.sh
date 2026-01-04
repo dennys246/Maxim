@@ -80,7 +80,7 @@ if os.environ.get("MAXIM_TEST_REAL_WHISPER", "").strip() not in ("1", "true", "y
     raise SystemExit(0)
 
 try:
-    from maxim.models.audio.whisper import WhisperTranscriber
+    from maxim.models.audio.transcription import WhisperTranscriber
 
     transcriber = WhisperTranscriber(model_size_or_path="tiny", device="cpu", compute_type="int8")
 except Exception as e:

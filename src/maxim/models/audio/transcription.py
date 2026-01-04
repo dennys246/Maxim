@@ -70,4 +70,3 @@ class WhisperTranscriber:
             "language": language_out,
             "duration": duration_out,
         }
-
