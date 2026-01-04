@@ -6,7 +6,7 @@ import threading
 #os.environ["REACHY_DISABLE_WEBRTC"] = "1"
 #os.environ["GST_DISABLE_REGISTRY_FORK"] = "1"
 
-import json, random
+import json, random, uuid
 import time, atexit, cv2
 import logging
 import multiprocessing as mp
@@ -17,9 +17,9 @@ import numpy as np
 
 from reachy_mini import ReachyMini
 
-from maxim.motion.movement import move_antenna, move_head, load_actions
+from maxim.motion.movement import load_actions, load_poses, move_antenna, move_head
 from maxim.utils.audio import resample_audio, to_int16
-from maxim.utils.data_management import build_home
+from maxim.utils.data_management import TrainingSampleLogger, build_home
 from maxim.utils.logging import configure_logging, warn
 from maxim.utils.queueing import put_latest
 
@@ -97,6 +97,7 @@ class Maxim:
         self.interests = [0, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
 
         self.actions = load_actions()
+        self.poses = load_poses()
 
         # robot_name must match the daemon namespace (default: reachy_mini).
         # localhost_only=False enables zenoh peer discovery across the LAN.
@@ -122,6 +123,22 @@ class Maxim:
         self.pitch = 0.01
         self.yaw = 0.01
 
+        centered = None
+        try:
+            centered = getattr(self, "poses", {}).get("centered")
+        except Exception:
+            centered = None
+        if isinstance(centered, (list, tuple)) and len(centered) >= 6:
+            try:
+                self.x = float(centered[0])
+                self.y = float(centered[1])
+                self.z = float(centered[2])
+                self.roll = float(centered[3])
+                self.pitch = float(centered[4])
+                self.yaw = float(centered[5])
+            except Exception:
+                pass
+
         self._default_head_pose = {
             "x": float(self.x),
             "y": float(self.y),
@@ -142,7 +159,10 @@ class Maxim:
         atexit.register(self.shutdown)
 
     def _load_key_responses(self) -> dict[str, dict]:
-        default = {"c": {"call": "center_vision", "pause_training": True}}
+        default = {
+            "c": {"call": "center_vision", "pause_training": True},
+            "u": {"call": "mark_trainable_moment"},
+        }
 
         candidates: list[str] = []
         env_path = str(os.getenv("MAXIM_KEY_RESPONSES", "")).strip()
@@ -326,6 +346,28 @@ class Maxim:
         audio_path = os.path.join(self.home_dir, "audio", f"reachy_audio_{run_id}.wav")
         transcript_path = os.path.join(self.home_dir, "transcript", f"reachy_transcript_{run_id}.jsonl")
         chunk_dir = os.path.join(self.home_dir, "audio", "chunks")
+
+        self.run_id = run_id
+        self.run_start_ts = time.time()
+        self.log_path = log_path
+        self.video_path = video_path
+        self.audio_path = audio_path
+        self.transcript_path = transcript_path
+
+        try:
+            prev_logger = getattr(self, "_training_logger", None)
+            if prev_logger is not None:
+                prev_logger.stop(timeout=0.5)
+        except Exception:
+            pass
+
+        try:
+            training_dir = os.path.join(self.home_dir, "training")
+            self._training_logger = TrainingSampleLogger(training_dir)
+            self._training_logger.start()
+        except Exception as e:
+            self._training_logger = None
+            warn("Failed to start training sample logger: %s", e, logger=self.log)
 
         self.log.info(
             "Starting live loop (home_dir=%s, epochs=%d, observation_period=%s, mode=%s, audio=%s, audio_len=%.1fs)",
@@ -702,18 +744,24 @@ class Maxim:
 
                     if parallel:
                         try:
-                            _, photo = frame_obs_queue.get(timeout=2.0)
+                            frame_ts, photo = frame_obs_queue.get(timeout=2.0)
                         except queue.Empty:
                             if self.verbosity >= 2:
                                 self.log.debug("Waiting for camera frame...")
                             continue
                     else:
+                        frame_ts = time.time()
                         photo = self.look(show=False)
 
                     if photo is None:
                         if self.verbosity >= 2:
                             self.log.debug("No frame captured.")
                         continue
+
+                    try:
+                        self._last_frame_ts = float(frame_ts)
+                    except Exception:
+                        self._last_frame_ts = None
 
                     self.current_epoch += 1
 
@@ -800,19 +848,62 @@ class Maxim:
         return None
 
     def center_vision(self, *, duration: Optional[float] = None) -> None:
+        return self.goto_pose("centered", duration=duration)
+
+    def mark_trainable_moment(self) -> None:
+        sample = getattr(self, "_last_motor_sample", None)
+        training_logger = getattr(self, "_training_logger", None)
+        if training_logger is None:
+            warn("Training sample logger is not running.", logger=self.log)
+            return
+        if not isinstance(sample, dict) or not sample:
+            warn("No recent motor sample to mark yet.", logger=self.log)
+            return
+
+        record = dict(sample)
+        record["user_marked"] = True
+        record["mark_time"] = time.time()
+        record["mark_id"] = uuid.uuid4().hex
+        record["marked_from_sample_id"] = record.get("sample_id")
+
+        try:
+            training_logger.log_motor_sample(record, flush=True)
+        except Exception as e:
+            warn("Failed to mark trainable moment: %s", e, logger=self.log)
+
+    def goto_pose(self, name: str = "centered", *, duration: Optional[float] = None) -> None:
+        pose = None
+        try:
+            pose = getattr(self, "poses", {}).get(name)
+        except Exception:
+            pose = None
+
+        if isinstance(pose, (list, tuple)) and len(pose) >= 6:
+            try:
+                self.x = float(pose[0])
+                self.y = float(pose[1])
+                self.z = float(pose[2])
+                self.roll = float(pose[3])
+                self.pitch = float(pose[4])
+                self.yaw = float(pose[5])
+                if duration is None and len(pose) >= 7:
+                    duration = float(pose[6])
+            except Exception:
+                pose = None
+
+        if pose is None:
+            fallback = getattr(self, "_default_head_pose", None)
+            if not isinstance(fallback, dict):
+                fallback = {}
+            self.x = float(fallback.get("x", 0.0) or 0.0)
+            self.y = float(fallback.get("y", 0.0) or 0.0)
+            self.z = float(fallback.get("z", 0.0) or 0.0)
+            self.roll = float(fallback.get("roll", 0.0) or 0.0)
+            self.pitch = float(fallback.get("pitch", 0.0) or 0.0)
+            self.yaw = float(fallback.get("yaw", 0.0) or 0.0)
+
         if duration is None:
             duration = float(getattr(self, "duration", 0.5) or 0.5)
-
-        pose = getattr(self, "_default_head_pose", None)
-        if not isinstance(pose, dict):
-            pose = {}
-
-        self.x = float(pose.get("x", 0.0) or 0.0)
-        self.y = float(pose.get("y", 0.0) or 0.0)
-        self.z = float(pose.get("z", 0.0) or 0.0)
-        self.roll = float(pose.get("roll", 0.0) or 0.0)
-        self.pitch = float(pose.get("pitch", 0.0) or 0.0)
-        self.yaw = float(pose.get("yaw", 0.0) or 0.0)
 
         try:
             self._enqueue_motor(
@@ -1121,6 +1212,14 @@ class Maxim:
         if getattr(self, "_closed", False):
             return
         self._closed = True
+
+        try:
+            training_logger = getattr(self, "_training_logger", None)
+            if training_logger is not None:
+                training_logger.stop(timeout=2.0)
+        except Exception:
+            pass
+        self._training_logger = None
 
         # Persist the motor cortex state (best-effort; never blocks shutdown).
         try:

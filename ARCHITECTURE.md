@@ -31,6 +31,7 @@ Capture (Reachy) → Writers (video/audio) → Inference (vision/audio) → Cont
 - `data/videos/`: `reachy_video_<YYYY-MM-DD_HHMMSS>.mp4`
 - `data/audio/`: `reachy_audio_<YYYY-MM-DD_HHMMSS>.wav` and optional `audio/chunks/*.wav`
 - `data/transcript/`: `reachy_transcript_<YYYY-MM-DD_HHMMSS>.jsonl`
+- `data/training/`: `motor_training_set.jsonl` (trainable samples + user marks)
 - `data/models/MotorCortex/`: MotorCortex checkpoint + training artifacts
 
 ## Invariants
