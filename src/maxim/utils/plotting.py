@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from maxim.utils.config import DEFAULT_SAVE_ROOT
 
 def _is_finite_number(value: object) -> bool:
     try:
@@ -51,6 +52,13 @@ def _extract_metric_points(
 
 def _extract_loss_points(history: Sequence[dict], *, max_points: int = 2000) -> list[tuple[int, float]]:
     return _extract_metric_points(history, metric_key="loss", max_points=max_points)
+
+def _fmt_metric(v: float) -> str:
+    if abs(v) >= 1000:
+        return f"{v:.1f}"
+    if abs(v) >= 10:
+        return f"{v:.3f}"
+    return f"{v:.6f}"
 
 
 def render_loss_svg(
@@ -102,13 +110,6 @@ def render_loss_svg(
     last_x = x_of(last_step)
     last_y = y_of(last_loss)
 
-    def _fmt(v: float) -> str:
-        if abs(v) >= 1000:
-            return f"{v:.1f}"
-        if abs(v) >= 10:
-            return f"{v:.3f}"
-        return f"{v:.6f}"
-
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
   <defs>
     <style>
@@ -133,9 +134,9 @@ def render_loss_svg(
 
   <!-- y labels -->
   <text class="label" x="{padding}" y="{padding - 6}">{y_label} (max)</text>
-  <text class="value" x="{padding + 80}" y="{padding - 6}">{_fmt(max_loss)}</text>
+  <text class="value" x="{padding + 80}" y="{padding - 6}">{_fmt_metric(max_loss)}</text>
   <text class="label" x="{padding}" y="{height - padding + 18}">{y_label} (min)</text>
-  <text class="value" x="{padding + 80}" y="{height - padding + 18}">{_fmt(min_loss)}</text>
+  <text class="value" x="{padding + 80}" y="{height - padding + 18}">{_fmt_metric(min_loss)}</text>
 
   <!-- x labels -->
   <text class="label" x="{width - padding - 160}" y="{height - padding + 18}">step</text>
@@ -151,7 +152,7 @@ def render_loss_svg(
   <circle class="pt" cx="{last_x:.2f}" cy="{last_y:.2f}" r="3.5"/>
 
   <text class="label" x="{padding}" y="{padding + 20}">last</text>
-  <text class="value" x="{padding + 40}" y="{padding + 20}">step={last_step} {y_label}={_fmt(last_loss)}</text>
+  <text class="value" x="{padding + 40}" y="{padding + 20}">step={last_step} {y_label}={_fmt_metric(last_loss)}</text>
 </svg>"""
 
 
@@ -166,7 +167,7 @@ def update_motor_cortex_loss_plot(
         return None
 
     if save_dir is None:
-        save_dir = Path("experiments") / "models" / "MotorCortex"
+        save_dir = DEFAULT_SAVE_ROOT
 
     save_dir_path = Path(save_dir)
     path = save_dir_path / filename
@@ -187,7 +188,7 @@ def update_motor_cortex_pixel_error_plot(
         return None
 
     if save_dir is None:
-        save_dir = Path("experiments") / "models" / "MotorCortex"
+        save_dir = DEFAULT_SAVE_ROOT
 
     save_dir_path = Path(save_dir)
     path = save_dir_path / filename

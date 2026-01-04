@@ -2,6 +2,7 @@ import time, os
 import numpy as np
 
 from maxim.data.camera.display import ensure_bgr, show_frame
+from maxim.utils.detections import score_detection_conf_area
 from maxim.utils.logging import warn
 from scipy.io.wavfile import write
 
@@ -42,11 +43,6 @@ def passive_observation(
             show_frame(photo, window_name=window_name, wait_ms=1)
         return
 
-    def _score(obs):
-        x1, y1, x2, y2, conf = obs[2], obs[3], obs[4], obs[5], obs[6]
-        area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-        return (conf, area)
-
     # Prefer people (COCO class 0) when present; otherwise fallback to any detection.
     people = []
     for obs in candidates:
@@ -56,7 +52,7 @@ def passive_observation(
         except Exception:
             continue
 
-    observation = max(people, key=_score) if people else max(candidates, key=_score)
+    observation = max(people, key=score_detection_conf_area) if people else max(candidates, key=score_detection_conf_area)
 
     x1, y1, x2, y2 = observation[2], observation[3], observation[4], observation[5]
 
