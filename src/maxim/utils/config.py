@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-DEFAULT_SAVE_ROOT = Path("experiments") / "models" / "MotorCortex"
+DEFAULT_SAVE_ROOT = Path(__file__).resolve().parents[3] / "data" / "models" / "MotorCortex"
 DEFAULT_CHECKPOINT_FILENAME = "motor_cortex.keras"
 DEFAULT_CONFIG_FILENAME = "motor_cortex.json"
 
@@ -62,7 +62,7 @@ config_template: dict[str, Any] = {
     # I/O
     "save_dir": DEFAULT_SAVE_ROOT.as_posix(),
     "checkpoint_path": (DEFAULT_SAVE_ROOT / DEFAULT_CHECKPOINT_FILENAME).as_posix(),
-    "dataset": (Path("experiments") / "maxim" / "images").as_posix() + "/",
+    "dataset": (Path("data") / "images").as_posix() + "/",
     # Data / input
     "resolution": [1920, 1080],  # [width, height] for camera frames
     "channels": 3,
