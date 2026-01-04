@@ -80,6 +80,7 @@ Each run writes a timestamped set of artifacts under `data/`:
 - `audio/reachy_audio_<YYYY-MM-DD_HHMMSS>.wav`
 - `transcript/reachy_transcript_<YYYY-MM-DD_HHMMSS>.jsonl` (when `--audio true` and Whisper is available)
 - `logs/reachy_log_<YYYY-MM-DD_HHMMSS>.log`
+- `training/motor_training_set.jsonl` (append-only log of trainable vision+movement samples)
 
 Shared model artifacts and weights live under `data/models/` (e.g., `MotorCortex/`, `YOLO/`).
 
@@ -96,6 +97,7 @@ While `maxim` is running in a terminal, it listens for single-key presses config
 
 Default:
 - `c`: center vision (pauses training briefly in `--mode train`)
+- `u`: mark the most recent trainable moment (writes a `user_marked=true` entry to `data/training/motor_training_set.jsonl`)
 
 Default movement presets are defined in `data/motion/default_actions.json`.
 Default head poses (including `centered`) are defined in `data/motion/default_poses.json`.
