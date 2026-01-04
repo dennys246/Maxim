@@ -9,19 +9,19 @@ import threading
 import json, random
 import time, atexit, cv2
 import logging
-import math
 import multiprocessing as mp
 import wave
 from typing import Optional
 
 import numpy as np
-from scipy.signal import resample, resample_poly
 
 from reachy_mini import ReachyMini
 
 from maxim.motion.movement import move_antenna, move_head, load_actions
+from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.data_management import build_home
 from maxim.utils.logging import configure_logging, warn
+from maxim.utils.queueing import put_latest
 
 from maxim.data.camera.display import show_photo
 from maxim.inference.observation import (
@@ -44,7 +44,7 @@ class Maxim:
         robot_name: str = "reachy_mini",
         timeout: float = 30.0,
         media_backend: str = "default",  # avoid WebRTC/GStreamer if signalling is down
-        home_dir: str = "experiments/maxim/",
+        home_dir: str = "data/",
         epochs: int = 1000,
         *,
         verbosity: int = 0,
@@ -122,10 +122,165 @@ class Maxim:
         self.pitch = 0.01
         self.yaw = 0.01
 
+        self._default_head_pose = {
+            "x": float(self.x),
+            "y": float(self.y),
+            "z": float(self.z),
+            "roll": float(self.roll),
+            "pitch": float(self.pitch),
+            "yaw": float(self.yaw),
+        }
+
+        self._training_paused = threading.Event()
+        self._observation_lock = threading.Lock()
+
+        self.key_responses = self._load_key_responses()
+
         self.movement_model = None
         self.motor_history: list[dict] = []
 
         atexit.register(self.shutdown)
+
+    def _load_key_responses(self) -> dict[str, dict]:
+        default = {"c": {"call": "center_vision", "pause_training": True}}
+
+        candidates: list[str] = []
+        env_path = str(os.getenv("MAXIM_KEY_RESPONSES", "")).strip()
+        if env_path:
+            candidates.append(env_path)
+        candidates.append(os.path.join(os.getcwd(), "data", "util", "key_responses.json"))
+        candidates.append(os.path.join(os.getcwd(), "key_responses.json"))
+        try:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+            candidates.append(os.path.join(repo_root, "data", "util", "key_responses.json"))
+            candidates.append(os.path.join(repo_root, "key_responses.json"))
+        except Exception:
+            pass
+
+        raw = None
+        for path in candidates:
+            if path and os.path.isfile(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as fp:
+                        raw = json.load(fp)
+                    break
+                except Exception as e:
+                    warn("Failed to load key responses from '%s': %s", path, e, logger=self.log)
+                    return default
+
+        if not isinstance(raw, dict):
+            return default
+
+        parsed: dict[str, dict] = {}
+        for key, spec in raw.items():
+            if not isinstance(key, str) or not key:
+                continue
+
+            if isinstance(spec, str):
+                parsed[key] = {"call": spec}
+                continue
+
+            if not isinstance(spec, dict):
+                continue
+
+            call = spec.get("call") or spec.get("method")
+            if not isinstance(call, str) or not call:
+                continue
+
+            parsed[key] = {
+                "call": call,
+                "args": spec.get("args") if isinstance(spec.get("args"), list) else [],
+                "kwargs": spec.get("kwargs") if isinstance(spec.get("kwargs"), dict) else {},
+                "pause_training": bool(spec.get("pause_training", False)),
+            }
+
+        return parsed or default
+
+    def _start_key_listener(self, stop_event: threading.Event) -> threading.Thread | None:
+        if not isinstance(getattr(self, "key_responses", None), dict) or not self.key_responses:
+            return None
+
+        def _worker() -> None:
+            try:
+                import select
+                import sys
+                import termios
+                import tty
+            except Exception as e:
+                warn("Keyboard listener unavailable: %s", e, logger=self.log)
+                return
+
+            stdin = sys.stdin
+            if stdin is None or not hasattr(stdin, "isatty") or not stdin.isatty():
+                return
+
+            try:
+                fd = stdin.fileno()
+                old = termios.tcgetattr(fd)
+            except Exception:
+                return
+
+            try:
+                tty.setcbreak(fd)
+                try:
+                    new = termios.tcgetattr(fd)
+                    new[3] &= ~termios.ECHO
+                    termios.tcsetattr(fd, termios.TCSADRAIN, new)
+                except Exception:
+                    pass
+
+                while not stop_event.is_set():
+                    try:
+                        ready, _, _ = select.select([stdin], [], [], 0.1)
+                    except Exception:
+                        continue
+                    if not ready:
+                        continue
+                    try:
+                        ch = stdin.read(1)
+                    except Exception:
+                        continue
+                    if not ch or ch in ("\n", "\r"):
+                        continue
+                    self._handle_keypress(ch)
+            finally:
+                try:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old)
+                except Exception:
+                    pass
+
+        return threading.Thread(target=_worker, name="maxim.keyboard", daemon=True)
+
+    def _handle_keypress(self, key: str) -> None:
+        try:
+            spec = getattr(self, "key_responses", {}).get(key)
+        except Exception:
+            spec = None
+        if not isinstance(spec, dict):
+            return
+
+        call = spec.get("call")
+        if not isinstance(call, str) or not call:
+            return
+
+        pause_training = bool(spec.get("pause_training", False)) and bool(getattr(self, "train", False))
+        if pause_training:
+            self._training_paused.set()
+
+        try:
+            with self._observation_lock:
+                fn = getattr(self, call, None)
+                if not callable(fn):
+                    warn("Unknown key response for '%s': %s", key, call, logger=self.log)
+                    return
+                args = spec.get("args") if isinstance(spec.get("args"), list) else []
+                kwargs = spec.get("kwargs") if isinstance(spec.get("kwargs"), dict) else {}
+                fn(*args, **kwargs)
+        except Exception as e:
+            warn("Key '%s' action failed: %s", key, e, logger=self.log)
+        finally:
+            if pause_training:
+                self._training_paused.clear()
 
     def _release_cv2(self) -> None:
         try:
@@ -188,37 +343,6 @@ class Maxim:
             self.log.info("Transcripts: %s", transcript_path)
 
         self.awaken(vision=bool(vision), motor=bool(motor), audio=bool(self.audio), wake_up=bool(wake_up))
-
-        def _put_latest(q: queue.Queue, item) -> None:
-            try:
-                q.get_nowait()
-            except queue.Empty:
-                pass
-            try:
-                q.put_nowait(item)
-            except queue.Full:
-                pass
-
-        def _to_int16(arr: np.ndarray) -> np.ndarray:
-            if arr.dtype == np.int16:
-                return np.ascontiguousarray(arr)
-            if np.issubdtype(arr.dtype, np.floating):
-                clipped = np.clip(arr, -1.0, 1.0)
-                return np.ascontiguousarray((clipped * 32767.0).astype(np.int16))
-            return np.ascontiguousarray(np.clip(arr, -32768, 32767).astype(np.int16))
-
-        def _resample_audio(sample: np.ndarray, input_rate: Optional[int], output_rate: Optional[int]) -> np.ndarray:
-            if not input_rate or not output_rate or int(input_rate) == int(output_rate):
-                return sample
-
-            try:
-                gcd = math.gcd(int(input_rate), int(output_rate))
-                up = int(output_rate) // gcd
-                down = int(input_rate) // gcd
-                return resample_poly(sample, up, down, axis=0)
-            except Exception:
-                num_sample = int(int(output_rate) * len(sample) / int(input_rate))
-                return resample(sample, num_sample)
 
         media_lock = threading.Lock()
         stop_event = threading.Event()
@@ -316,7 +440,7 @@ class Maxim:
                 except queue.Full:
                     frame_save_queue.put((now, frame))
 
-                _put_latest(frame_obs_queue, (now, frame))
+                put_latest(frame_obs_queue, (now, frame))
 
                 sleep_for = min_period - (now - last_ts)
                 if sleep_for > 0:
@@ -343,8 +467,8 @@ class Maxim:
 
                 try:
                     sample_arr = np.asarray(sample)
-                    sample_arr = _resample_audio(sample_arr, audio_input_rate, audio_output_rate)
-                    sample_i16 = _to_int16(sample_arr)
+                    sample_arr = resample_audio(sample_arr, audio_input_rate, audio_output_rate)
+                    sample_i16 = to_int16(sample_arr)
                 except Exception as e:
                     warn("Failed to process audio sample: %s", e, logger=self.log)
                     time.sleep(0.01)
@@ -546,6 +670,11 @@ class Maxim:
                             continue
 
         threads: list[threading.Thread] = []
+        key_thread = self._start_key_listener(stop_event)
+        if key_thread is not None:
+            threads.append(key_thread)
+            key_thread.start()
+
         if parallel:
             if vision:
                 threads.append(threading.Thread(target=_frame_capture_worker, name="maxim.capture.video", daemon=True))
@@ -557,7 +686,8 @@ class Maxim:
                 threads.append(threading.Thread(target=_audio_writer_worker, name="maxim.write.audio", daemon=True))
 
             for t in threads:
-                t.start()
+                if t is not key_thread:
+                    t.start()
 
         try:
             if not vision:
@@ -589,16 +719,18 @@ class Maxim:
 
                     if self.observation_period and self.current_epoch % self.observation_period == 0:
                         try:
-                            if getattr(self, "mode", "passive-interaction") == "passive-interaction":
-                                passive_observation(self, photo, show=self.verbose)
-                            else:
-                                motor_cortex_control(
-                                    self,
-                                    self.movement_model,
-                                    photo,
-                                    train=bool(getattr(self, "train", False)),
-                                    show=self.verbose,
-                                )
+                            with self._observation_lock:
+                                if getattr(self, "mode", "passive-interaction") == "passive-interaction":
+                                    passive_observation(self, photo, show=self.verbose)
+                                else:
+                                    train_enabled = bool(getattr(self, "train", False)) and not self._training_paused.is_set()
+                                    motor_cortex_control(
+                                        self,
+                                        self.movement_model,
+                                        photo,
+                                        train=train_enabled,
+                                        show=self.verbose,
+                                    )
                         except Exception as e:
                             if self.verbosity >= 2:
                                 self.log.exception(
@@ -666,6 +798,41 @@ class Maxim:
         except queue.Full:
             pass
         return None
+
+    def center_vision(self, *, duration: Optional[float] = None) -> None:
+        if duration is None:
+            duration = float(getattr(self, "duration", 0.5) or 0.5)
+
+        pose = getattr(self, "_default_head_pose", None)
+        if not isinstance(pose, dict):
+            pose = {}
+
+        self.x = float(pose.get("x", 0.0) or 0.0)
+        self.y = float(pose.get("y", 0.0) or 0.0)
+        self.z = float(pose.get("z", 0.0) or 0.0)
+        self.roll = float(pose.get("roll", 0.0) or 0.0)
+        self.pitch = float(pose.get("pitch", 0.0) or 0.0)
+        self.yaw = float(pose.get("yaw", 0.0) or 0.0)
+
+        try:
+            self._enqueue_motor(
+                move_head,
+                self.mini,
+                self.x,
+                self.y,
+                self.z,
+                self.roll,
+                self.pitch,
+                self.yaw,
+                float(duration),
+            )
+        except Exception as e:
+            warn("Failed to center vision: %s", e, logger=self.log)
+
+        try:
+            time.sleep(float(duration))
+        except Exception:
+            pass
 
     def look_at_image(
         self,
@@ -855,15 +1022,7 @@ class Maxim:
             output_rate = None
 
         sample_arr = np.asarray(sample)
-        if input_rate and output_rate and input_rate != output_rate:
-            try:
-                gcd = math.gcd(int(input_rate), int(output_rate))
-                up = int(output_rate) // gcd
-                down = int(input_rate) // gcd
-                sample_arr = resample_poly(sample_arr, up, down, axis=0)
-            except Exception:
-                num_sample = int(int(output_rate) * len(sample_arr) / int(input_rate))
-                sample_arr = resample(sample_arr, num_sample)
+        sample_arr = resample_audio(sample_arr, input_rate, output_rate)
 
         if save_file:
             os.makedirs(os.path.dirname(save_file) or ".", exist_ok=True)
@@ -875,14 +1034,7 @@ class Maxim:
                     wf.setnchannels(channels)
                     wf.setsampwidth(2)
                     wf.setframerate(wav_rate)
-                    if sample_arr.dtype != np.int16:
-                        if np.issubdtype(sample_arr.dtype, np.floating):
-                            clipped = np.clip(sample_arr, -1.0, 1.0)
-                            sample_i16 = (clipped * 32767.0).astype(np.int16)
-                        else:
-                            sample_i16 = np.clip(sample_arr, -32768, 32767).astype(np.int16)
-                    else:
-                        sample_i16 = sample_arr
+                    sample_i16 = to_int16(sample_arr)
                     wf.writeframes(np.ascontiguousarray(sample_i16).tobytes())
                 finally:
                     wf.close()
@@ -913,7 +1065,7 @@ class Maxim:
                 from maxim.utils import config as motor_config
 
                 self.log.info("Initializing motor cortex...")
-                cfg = motor_config.build(os.path.join("experiments", "models", "MotorCortex"))
+                cfg = motor_config.build(motor_config.DEFAULT_SAVE_ROOT)
                 self.movement_model = MotorCortex(cfg)
 
                 checkpoint_path = getattr(cfg, "checkpoint_path", None)
