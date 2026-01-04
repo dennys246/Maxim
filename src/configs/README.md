@@ -5,7 +5,7 @@ This folder contains **version-controlled config templates** and quick reference
 ## Runtime Locations
 
 Most runtime-editable files live under `data/`:
-- Run artifacts (recordings + logs): `data/audio/`, `data/videos/`, `data/images/`, `data/text/`, `data/logs/`
+- Run artifacts (recordings + logs): `data/audio/`, `data/videos/`, `data/images/`, `data/transcript/`, `data/logs/`
 - Motion presets: `data/motion/default_actions.json`
 - Key bindings: `data/util/key_responses.json` (override via `$MAXIM_KEY_RESPONSES`)
 - Model artifacts (weights/checkpoints): `data/models/`
@@ -20,4 +20,3 @@ Copy templates from `src/configs/templates/` into `data/` (or point env vars to 
 - `src/configs/templates/motor_cortex.json`
 - `src/configs/templates/zenoh.json5`
 - `src/configs/templates/env.example`
-

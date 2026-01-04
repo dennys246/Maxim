@@ -78,7 +78,7 @@ Of course extensions of the Maxim class using the datastreams set up are more th
 Each run writes a timestamped set of artifacts under `data/`:
 - `videos/reachy_video_<YYYY-MM-DD_HHMMSS>.mp4`
 - `audio/reachy_audio_<YYYY-MM-DD_HHMMSS>.wav`
-- `text/reachy_transcript_<YYYY-MM-DD_HHMMSS>.jsonl` (when `--audio true` and Whisper is available)
+- `transcript/reachy_transcript_<YYYY-MM-DD_HHMMSS>.jsonl` (when `--audio true` and Whisper is available)
 - `logs/reachy_log_<YYYY-MM-DD_HHMMSS>.log`
 
 Shared model artifacts and weights live under `data/models/` (e.g., `MotorCortex/`, `YOLO/`).
