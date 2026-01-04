@@ -2,7 +2,68 @@ import time, os
 import numpy as np
 
 from maxim.data.camera.display import show_frame
+from maxim.utils.detections import maybe_scale_normalized_xyxy, score_detection_conf_area
 from maxim.utils.logging import warn
+
+def _coerce_model_xy(prediction):
+    arr = np.asarray(prediction).reshape(-1)
+    if arr.size < 2:
+        raise ValueError(f"Expected 2 coordinates, got shape {arr.shape}")
+    return float(arr[0]), float(arr[1])
+
+
+def _coerce_pred_vector(prediction):
+    arr = np.asarray(prediction).reshape(-1)
+    if arr.size == 0:
+        raise ValueError(f"Empty prediction with shape {np.asarray(prediction).shape}")
+    return arr
+
+
+def _infer_model_hw(movement_model):
+    cfg = getattr(movement_model, "config", None)
+    input_shape = getattr(cfg, "input_shape", None) if cfg is not None else None
+
+    if isinstance(input_shape, int):
+        size = int(input_shape)
+        if size > 0:
+            return size, size
+
+    if isinstance(input_shape, (list, tuple)):
+        shape = tuple(input_shape)
+        if len(shape) >= 2:
+            try:
+                h = int(shape[0])
+                w = int(shape[1])
+                if h > 0 and w > 0:
+                    return h, w
+            except (TypeError, ValueError):
+                pass
+
+    model_obj = getattr(movement_model, "model", movement_model)
+    model_input_shape = getattr(model_obj, "input_shape", None)
+    if isinstance(model_input_shape, (list, tuple)) and len(model_input_shape) >= 3:
+        h, w = model_input_shape[1], model_input_shape[2]
+        if isinstance(h, int) and isinstance(w, int) and h > 0 and w > 0:
+            return h, w
+
+    return None, None
+
+
+def _range_from_limits(pose_limits, key: str, fallback: float) -> float:
+    try:
+        lo, hi = pose_limits.get(key, (-fallback / 2.0, fallback / 2.0))
+        return abs(float(hi) - float(lo))
+    except Exception:
+        return float(fallback)
+
+
+def _pose_range(pose_limits, key: str, default: tuple[float, float]) -> tuple[float, float]:
+    try:
+        lo, hi = pose_limits.get(key, default)
+        return float(lo), float(hi)
+    except Exception:
+        return default
+
 
 def motor_cortex_control(
     maxim,
@@ -52,11 +113,6 @@ def motor_cortex_control(
             show_frame(photos[frame_ind], window_name=window_name, wait_ms=1)
         return
 
-    def _score(obs):
-        x1, y1, x2, y2, conf = obs[2], obs[3], obs[4], obs[5], obs[6]
-        area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-        return (conf, area)
-
     # Prefer people (COCO class 0) when present; otherwise fallback to any detection.
     people = []
     for obs in candidates:
@@ -66,46 +122,13 @@ def motor_cortex_control(
         except Exception:
             continue
 
-    observation = max(people, key=_score) if people else max(candidates, key=_score)
+    observation = (
+        max(people, key=score_detection_conf_area) if people else max(candidates, key=score_detection_conf_area)
+    )
 
     x1, y1, x2, y2 = observation[2], observation[3], observation[4], observation[5]
 
-    def _maybe_scale_normalized_xyxy(
-        x1_in: float,
-        y1_in: float,
-        x2_in: float,
-        y2_in: float,
-        width: int,
-        height: int,
-    ) -> tuple[float, float, float, float, bool]:
-        """
-        Some detectors return normalized [0,1] xyxy. Convert to pixels when that appears to be the case.
-        """
-        try:
-            vals = [float(x1_in), float(y1_in), float(x2_in), float(y2_in)]
-        except Exception:
-            return x1_in, y1_in, x2_in, y2_in, False
-
-        if not all(np.isfinite(v) for v in vals):
-            return x1_in, y1_in, x2_in, y2_in, False
-
-        x1_f, y1_f, x2_f, y2_f = vals
-        looks_normalized = (
-            0.0 <= x1_f <= 1.0
-            and 0.0 <= x2_f <= 1.0
-            and 0.0 <= y1_f <= 1.0
-            and 0.0 <= y2_f <= 1.0
-            and width > 2
-            and height > 2
-        )
-        if not looks_normalized:
-            return x1_in, y1_in, x2_in, y2_in, False
-
-        scale_x = float(width - 1)
-        scale_y = float(height - 1)
-        return x1_f * scale_x, y1_f * scale_y, x2_f * scale_x, y2_f * scale_y, True
-
-    x1, y1, x2, y2, scaled_box = _maybe_scale_normalized_xyxy(x1, y1, x2, y2, photo_width, photo_height)
+    x1, y1, x2, y2, scaled_box = maybe_scale_normalized_xyxy(x1, y1, x2, y2, photo_width, photo_height)
     if scaled_box and getattr(maxim, "verbosity", 0) >= 2 and getattr(maxim, "log", None) is not None:
         try:
             maxim.log.debug("Scaled normalized bbox to pixels: (%.3f, %.3f, %.3f, %.3f)", x1, y1, x2, y2)
@@ -154,48 +177,7 @@ def motor_cortex_control(
     u_int = int(np.clip(round(u), 1, photo_width - 1))
     v_int = int(np.clip(round(v), 1, photo_height - 1))
 
-    def _coerce_model_xy(prediction):
-        arr = np.asarray(prediction).reshape(-1)
-        if arr.size < 2:
-            raise ValueError(f"Expected 2 coordinates, got shape {arr.shape}")
-        return float(arr[0]), float(arr[1])
-
-    def _coerce_pred_vector(prediction):
-        arr = np.asarray(prediction).reshape(-1)
-        if arr.size == 0:
-            raise ValueError(f"Empty prediction with shape {np.asarray(prediction).shape}")
-        return arr
-
-    def _infer_model_hw():
-        cfg = getattr(movement_model, "config", None)
-        input_shape = getattr(cfg, "input_shape", None) if cfg is not None else None
-
-        if isinstance(input_shape, int):
-            size = int(input_shape)
-            if size > 0:
-                return size, size
-
-        if isinstance(input_shape, (list, tuple)):
-            shape = tuple(input_shape)
-            if len(shape) >= 2:
-                try:
-                    h = int(shape[0])
-                    w = int(shape[1])
-                    if h > 0 and w > 0:
-                        return h, w
-                except (TypeError, ValueError):
-                    pass
-
-        model_obj = getattr(movement_model, "model", movement_model)
-        model_input_shape = getattr(model_obj, "input_shape", None)
-        if isinstance(model_input_shape, (list, tuple)) and len(model_input_shape) >= 3:
-            h, w = model_input_shape[1], model_input_shape[2]
-            if isinstance(h, int) and isinstance(w, int) and h > 0 and w > 0:
-                return h, w
-
-        return None, None
-
-    model_h, model_w = _infer_model_hw()
+    model_h, model_w = _infer_model_hw(movement_model)
     scale_x = 1.0
     scale_y = 1.0
 
@@ -252,15 +234,8 @@ def motor_cortex_control(
     center_u = float(photo_width) / 2.0
     center_v = float(photo_height) / 2.0
 
-    def _range_from_limits(key: str, fallback: float) -> float:
-        try:
-            lo, hi = pose_limits.get(key, (-fallback / 2.0, fallback / 2.0))
-            return abs(float(hi) - float(lo))
-        except Exception:
-            return float(fallback)
-
-    yaw_gain = _range_from_limits("yaw", 90.0)
-    pitch_gain = _range_from_limits("pitch", 60.0)
+    yaw_gain = _range_from_limits(pose_limits, "yaw", 90.0)
+    pitch_gain = _range_from_limits(pose_limits, "pitch", 60.0)
     teacher_yaw_delta = ((float(u_int) - center_u) / float(photo_width)) * float(yaw_gain)
     teacher_pitch_delta = ((float(v_int) - center_v) / float(photo_height)) * float(pitch_gain)
 
@@ -579,19 +554,12 @@ def motor_cortex_control(
     if abs(u_int - (photo_width / 2)) < deadzone_px and abs(v_int - (photo_height / 2)) < deadzone_px:
         return
 
-    def _pose_range(key: str, default: tuple[float, float]) -> tuple[float, float]:
-        try:
-            lo, hi = pose_limits.get(key, default)
-            return float(lo), float(hi)
-        except Exception:
-            return default
-
-    x_min, x_max = _pose_range("x", (-30.0, 30.0))
-    y_min, y_max = _pose_range("y", (-30.0, 30.0))
-    z_min, z_max = _pose_range("z", (-60.0, 60.0))
-    roll_min, roll_max = _pose_range("roll", (-30.0, 30.0))
-    pitch_min, pitch_max = _pose_range("pitch", (-30.0, 30.0))
-    yaw_min, yaw_max = _pose_range("yaw", (-45.0, 45.0))
+    x_min, x_max = _pose_range(pose_limits, "x", (-30.0, 30.0))
+    y_min, y_max = _pose_range(pose_limits, "y", (-30.0, 30.0))
+    z_min, z_max = _pose_range(pose_limits, "z", (-60.0, 60.0))
+    roll_min, roll_max = _pose_range(pose_limits, "roll", (-30.0, 30.0))
+    pitch_min, pitch_max = _pose_range(pose_limits, "pitch", (-30.0, 30.0))
+    yaw_min, yaw_max = _pose_range(pose_limits, "yaw", (-45.0, 45.0))
 
     x_cmd = float(getattr(maxim, "x", 0.0) or 0.0) + float(cmd_dx)
     y_cmd = float(getattr(maxim, "y", 0.0) or 0.0) + float(cmd_dy)
