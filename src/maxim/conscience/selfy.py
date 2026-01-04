@@ -17,7 +17,7 @@ import numpy as np
 
 from reachy_mini import ReachyMini
 
-from maxim.motion.movement import move_antenna, move_head, load_actions
+from maxim.motion.movement import load_actions, load_poses, move_antenna, move_head
 from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.data_management import build_home
 from maxim.utils.logging import configure_logging, warn
@@ -97,6 +97,7 @@ class Maxim:
         self.interests = [0, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
 
         self.actions = load_actions()
+        self.poses = load_poses()
 
         # robot_name must match the daemon namespace (default: reachy_mini).
         # localhost_only=False enables zenoh peer discovery across the LAN.
@@ -121,6 +122,22 @@ class Maxim:
         self.roll = 0.01
         self.pitch = 0.01
         self.yaw = 0.01
+
+        centered = None
+        try:
+            centered = getattr(self, "poses", {}).get("centered")
+        except Exception:
+            centered = None
+        if isinstance(centered, (list, tuple)) and len(centered) >= 6:
+            try:
+                self.x = float(centered[0])
+                self.y = float(centered[1])
+                self.z = float(centered[2])
+                self.roll = float(centered[3])
+                self.pitch = float(centered[4])
+                self.yaw = float(centered[5])
+            except Exception:
+                pass
 
         self._default_head_pose = {
             "x": float(self.x),
@@ -800,19 +817,41 @@ class Maxim:
         return None
 
     def center_vision(self, *, duration: Optional[float] = None) -> None:
+        return self.goto_pose("centered", duration=duration)
+
+    def goto_pose(self, name: str = "centered", *, duration: Optional[float] = None) -> None:
+        pose = None
+        try:
+            pose = getattr(self, "poses", {}).get(name)
+        except Exception:
+            pose = None
+
+        if isinstance(pose, (list, tuple)) and len(pose) >= 6:
+            try:
+                self.x = float(pose[0])
+                self.y = float(pose[1])
+                self.z = float(pose[2])
+                self.roll = float(pose[3])
+                self.pitch = float(pose[4])
+                self.yaw = float(pose[5])
+                if duration is None and len(pose) >= 7:
+                    duration = float(pose[6])
+            except Exception:
+                pose = None
+
+        if pose is None:
+            fallback = getattr(self, "_default_head_pose", None)
+            if not isinstance(fallback, dict):
+                fallback = {}
+            self.x = float(fallback.get("x", 0.0) or 0.0)
+            self.y = float(fallback.get("y", 0.0) or 0.0)
+            self.z = float(fallback.get("z", 0.0) or 0.0)
+            self.roll = float(fallback.get("roll", 0.0) or 0.0)
+            self.pitch = float(fallback.get("pitch", 0.0) or 0.0)
+            self.yaw = float(fallback.get("yaw", 0.0) or 0.0)
+
         if duration is None:
             duration = float(getattr(self, "duration", 0.5) or 0.5)
-
-        pose = getattr(self, "_default_head_pose", None)
-        if not isinstance(pose, dict):
-            pose = {}
-
-        self.x = float(pose.get("x", 0.0) or 0.0)
-        self.y = float(pose.get("y", 0.0) or 0.0)
-        self.z = float(pose.get("z", 0.0) or 0.0)
-        self.roll = float(pose.get("roll", 0.0) or 0.0)
-        self.pitch = float(pose.get("pitch", 0.0) or 0.0)
-        self.yaw = float(pose.get("yaw", 0.0) or 0.0)
 
         try:
             self._enqueue_motor(
