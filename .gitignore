@@ -211,5 +211,15 @@ zenoh.json5
 *.pt
 
 experiments/
+data/models/
+data/audio/
+data/videos/
+data/images/
+data/text/
+data/logs/
+data/agents/
+data/credentials/
+data/networking/
+
 *.png
 .DS_Store
