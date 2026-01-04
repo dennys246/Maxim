@@ -1,0 +1,73 @@
+{
+  "nod_agree": {
+    "movements": [
+      [0, 0, 0, 10, 0, 0, 0.4],
+      [0, 0, 0, -10, 0, 0, 0.4],
+      [0, 0, 0, 10, 0, 0, 0.4],
+      [0, 0, 0, -10, 0, 0, 0.4]
+    ],
+    "intent": [
+      "agree"
+    ],
+    "emotion": [
+      "neutral"
+    ]
+  },
+  "nod_disagree": {
+    "movements": [
+      [0, 0, 0, 0, 0, 20, 0.4],
+      [0, 0, 0, 0, 0, -20, 0.4],
+      [0, 0, 0, 0, 0, 20, 0.4],
+      [0, 0, 0, 0, 0, -20, 0.4]
+    ],
+    "intent": [
+      "disagree"
+    ],
+    "emotion": [
+      "neutral"
+    ]
+  },
+  "hide": {
+    "movements": [
+      [0, 0, -45, 0, 0, 0, 1.5]
+    ],
+    "intent": [
+      "disappear",
+      "hide"
+    ],
+    "emotion": [
+      "unsure",
+      "scared"
+    ]
+  },
+  "hide_scared": {
+    "movements": [
+      [0, 0, -45, 0, 0, -5, 0.2],
+      [0, 0, -45, 0, 0, -5, 0.2],
+      [0, 0, -45, 0, 0, 5, 0.2],
+      [0, 0, -45, 0, 0, -5, 0.2]
+    ],
+    "intent": [
+      "disappear",
+      "hide"
+    ],
+    "emotion": [
+      "unsure",
+      "scared"
+    ]
+  },
+  "suprised": {
+    "movements": [
+      [0, 0, 5, 0, 0, 10, 0.2],
+      [0, 0, 0, 0, 0, 5, 0.2]
+    ],
+    "intent": [
+      "recognize"
+    ],
+    "emotion": [
+      "suprise",
+      "shock"
+    ]
+  }
+}
+
