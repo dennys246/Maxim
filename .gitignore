@@ -210,7 +210,7 @@ uv.lock
 zenoh.json5
 *.pt
 
-experiments/
+sandbox/*
 data/models/
 data/audio/
 data/videos/
