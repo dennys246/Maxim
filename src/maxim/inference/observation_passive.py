@@ -131,9 +131,87 @@ def passive_observation(
     if duration is None:
         duration = getattr(maxim, "duration", 0.5)
 
+    center_u = float(photo_width) / 2.0
+    center_v = float(photo_height) / 2.0
+    pixel_error_px = float(np.hypot(float(u_int) - center_u, float(v_int) - center_v))
+
+    record = None
+    training_logger = getattr(maxim, "_training_logger", None)
+    try:
+        if training_logger is not None:
+            sample_id = int(getattr(maxim, "_training_sample_seq", 0) or 0) + 1
+            try:
+                setattr(maxim, "_training_sample_seq", sample_id)
+            except Exception:
+                pass
+
+            frame_ts = getattr(maxim, "_last_frame_ts", None)
+            run_start_ts = getattr(maxim, "run_start_ts", None)
+            t_rel_s = None
+            try:
+                if frame_ts is not None and run_start_ts is not None:
+                    t_rel_s = float(frame_ts) - float(run_start_ts)
+            except Exception:
+                t_rel_s = None
+
+            record = {
+                "kind": "motor_sample",
+                "source": "passive_observation",
+                "time": time.time(),
+                "sample_id": int(sample_id),
+                "run_id": getattr(maxim, "run_id", None),
+                "mode": getattr(maxim, "mode", None),
+                "epoch": int(getattr(maxim, "current_epoch", 0) or 0),
+                "frame_ts": float(frame_ts) if frame_ts is not None else None,
+                "t_rel_s": t_rel_s,
+                "video_path": getattr(maxim, "video_path", None),
+                "audio_path": getattr(maxim, "audio_path", None),
+                "transcript_path": getattr(maxim, "transcript_path", None),
+                "photo": {"width": int(photo_width), "height": int(photo_height)},
+                "detection": {
+                    "track_id": observation[0] if len(observation) > 0 else None,
+                    "class_id": int(observation[7]) if len(observation) > 7 and observation[7] is not None else None,
+                    "conf": float(observation[6]) if len(observation) > 6 and observation[6] is not None else None,
+                    "bbox_xyxy": [float(x1), float(y1), float(x2), float(y2)],
+                    "is_person": bool(is_person),
+                },
+                "target": {
+                    "method": str(target_method),
+                    "u": int(u_int),
+                    "v": int(v_int),
+                    "center_u": float(center_u),
+                    "center_v": float(center_v),
+                    "pixel_error_px": float(pixel_error_px),
+                },
+                "pred_mode": "passive",
+                "user_marked": False,
+            }
+
+            if isinstance(pose_info, dict):
+                pose_box_val = pose_info.get("pose_box")
+                record["pose"] = {
+                    "method": pose_info.get("method"),
+                    "iou": pose_info.get("iou"),
+                    "conf": pose_info.get("conf"),
+                    "pose_box_xyxy": list(pose_box_val) if isinstance(pose_box_val, (list, tuple)) else None,
+                }
+    except Exception as e:
+        warn("Failed to build training record: %s", e, logger=getattr(maxim, "log", None))
+        record = None
+
     # Use the Reachy SDK camera model to look directly at the target pixel when available.
     try:
         maxim.look_at_image(u_int, v_int, duration=float(duration), perform_movement=True)
+        if record is not None and training_logger is not None:
+            record["command"] = {
+                "method": "look_at_image",
+                "duration_s": float(duration),
+            }
+            try:
+                setattr(maxim, "_last_motor_sample", record)
+            except Exception:
+                pass
+            training_logger.log_motor_sample(record)
         return
     except Exception:
         pass
@@ -143,6 +221,21 @@ def passive_observation(
     y_diff = v_int - (photo_height / 2)
     yaw_delta = (x_diff / photo_width) * 10
     pitch_delta = (y_diff / photo_height) * 10
+    if record is not None and training_logger is not None:
+        record["command"] = {
+            "method": "proportional",
+            "yaw_delta": float(yaw_delta),
+            "pitch_delta": float(pitch_delta),
+            "yaw": float(getattr(maxim, "yaw", 0.0) or 0.0) + float(yaw_delta),
+            "pitch": float(getattr(maxim, "pitch", 0.0) or 0.0) + float(pitch_delta),
+            "duration_s": float(duration),
+        }
+        try:
+            setattr(maxim, "_last_motor_sample", record)
+        except Exception:
+            pass
+        training_logger.log_motor_sample(record)
+
     maxim.move(
         yaw=getattr(maxim, "yaw", 0.0) + yaw_delta,
         pitch=getattr(maxim, "pitch", 0.0) + pitch_delta,
