@@ -135,3 +135,11 @@ Decision:
 
 Reason:
 - Improve reuse and reduce duplicated logic while keeping runtime loops readable.
+
+## 2026-01-04: Keep Python code under the `maxim` namespace
+Decision:
+- Importable code lives under `src/maxim/` (packaged as `maxim*`).
+- Avoid creating new top-level packages under `src/` (e.g., `src/agents/`) unless `pyproject.toml` explicitly includes them.
+
+Reason:
+- Ensures `pip install -e .` installs everything needed for imports and avoids collisions with overly-generic package names.
