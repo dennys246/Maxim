@@ -13,12 +13,14 @@ Maxim is a Reachy Mini project for capturing audio/video, running perception + m
 - Add in concise commenting about import code functionality or nuanced.
 - Build modules for scalability to be applied to multiple sensory modalities (e.g., diffusion models applied to both images and audio).
 - Run additional analysis on the security of code. If an insecurity is identified within the repo, analyze the bug for potential fixes and notify the user alongside the fix.
+- If files or data are created in the `sandbox/`, delete old and un-necessary files and data if no longer being used.
 
 ## Allowed Actions
 - Modify code under `src/`.
 - Add/modify smoke tests under `src/tests/` (offline-by-default; provide explicit opt-in for robot/network).
 - Update documentation (`README.md`, `DECISIONS.md`, `ARCHITECTURE.md`).
 - Creating new file within a `src/` folder if another file would better seperate module functionality, always request approval first.
+- Create files and data in the `sandbox/` folder for creating experimental functionality and to be added directly into the repo if useful.
 
 ## Forbidden / Avoid
 - Avoid excessively long additions or extensive refactoring without explicit requests.
