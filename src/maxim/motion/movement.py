@@ -5,8 +5,14 @@ import numpy as np
 from pathlib import Path
 from typing import Any
 
+from maxim.utils.logging import warn
+
 _DEFAULT_ACTIONS_PATH = (
     Path(__file__).resolve().parents[3] / "data" / "motion" / "default_actions.json"
+)
+
+_DEFAULT_POSES_PATH = (
+    Path(__file__).resolve().parents[3] / "data" / "motion" / "default_poses.json"
 )
 
 def _to_rad(value: float, *, degrees: bool) -> float:
@@ -25,6 +31,67 @@ def load_actions(path: Path | str = _DEFAULT_ACTIONS_PATH) -> dict[str, Any]:
         )
 
     return actions
+
+def load_poses(path: Path | str = _DEFAULT_POSES_PATH) -> dict[str, list[float]]:
+    """
+    Load named head poses from JSON.
+
+    Each pose can be either:
+    - list: [x, y, z, roll, pitch, yaw] or [x, y, z, roll, pitch, yaw, duration]
+    - dict: {"x":..,"y":..,"z":..,"roll":..,"pitch":..,"yaw":..,"duration":..}
+    """
+    poses_path = Path(path)
+    default = {"centered": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5]}
+
+    if not poses_path.exists():
+        return default
+
+    try:
+        with poses_path.open("r", encoding="utf-8") as file:
+            raw = json.load(file)
+    except Exception as e:
+        warn("Failed to load poses from '%s': %s", poses_path, e)
+        return default
+
+    if not isinstance(raw, dict):
+        return default
+
+    parsed: dict[str, list[float]] = {}
+    for name, spec in raw.items():
+        if not isinstance(name, str) or not name.strip():
+            continue
+
+        vec: list[float] | None = None
+        if isinstance(spec, (list, tuple)) and len(spec) >= 6:
+            try:
+                vec = [float(spec[i]) for i in range(6)]
+                if len(spec) >= 7 and spec[6] is not None:
+                    vec.append(float(spec[6]))
+            except Exception:
+                vec = None
+        elif isinstance(spec, dict):
+            try:
+                vec = [
+                    float(spec.get("x", 0.0) or 0.0),
+                    float(spec.get("y", 0.0) or 0.0),
+                    float(spec.get("z", 0.0) or 0.0),
+                    float(spec.get("roll", 0.0) or 0.0),
+                    float(spec.get("pitch", 0.0) or 0.0),
+                    float(spec.get("yaw", 0.0) or 0.0),
+                ]
+                if spec.get("duration") is not None:
+                    vec.append(float(spec.get("duration") or 0.0))
+            except Exception:
+                vec = None
+
+        if vec is not None:
+            parsed[name.strip()] = vec
+
+    if not parsed:
+        return default
+
+    parsed.setdefault("centered", default["centered"])
+    return parsed
 
 def move_head(mini, x, y, z, roll, pitch, yaw, duration):
     pose = head_pose_matrix(x, y, z, roll, pitch, yaw)
