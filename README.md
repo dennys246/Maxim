@@ -1,32 +1,39 @@
-# ------- | Maxim | ------- 
+# ------- | Maxim | -------
 
 A Reachy Mini repo for orchestrating data streaming to and from a PC and Reachy Mini to orchestrate agents and models.
 
-# - Getting Started with Maxim
+## - Getting Started with Maxim
 
 Run the Reachy Mini daemon on the robot, then run `maxim` from any computer on the same LAN/Wi‑Fi (Zenoh peer discovery).
 
-`ssh pollen@<INSERT YOUR REACHY IP>`
+```bash
+ssh pollen@<INSERT YOUR REACHY IP>
+```
 
 Then enter the default password 'root' if first logging on or the unique password you reset it too.
 
 Stop the process if something is using it.
 
-`sudo systemctl stop reachy-mini-daemon`
+```bash
+sudo systemctl stop reachy-mini-daemon
+```
 
 Check to see if you can start a new daemon process
 
-`source /venvs/mini_daemon/bin/activate`
-
-`python -m reachy_mini.daemon.app.main --wireless-version --no-localhost-only`
+```bash
+source /venvs/mini_daemon/bin/activate
+python -m reachy_mini.daemon.app.main --wireless-version --no-localhost-only
+```
 
 On your controller computer clone this repo into a folder of your choosing
 
-`git clone https://github.com/dennys246/Maxim.git`
+```bash
+git clone https://github.com/dennys246/Maxim.git
+```
 
 Prepare a computing environment for running Maxim by creating a new python virtual environment. Avoid installing requirements into a virtual environment you typically use for machine learning as it may mess up your tensorflow or pytorch dependencies and how your GPU is handled.
 
-```
+```bash
 cd Maxim
 python -m venv maxim-env
 source maxim-env/bin/activate
@@ -37,17 +44,21 @@ If you previously installed an older version, re-run `pip install -e .` to refre
 
 After `pip install -e .`, run the `maxim` command (from anywhere in that environment) to initiate basic observation using Ultralytics incredibly efficient YOLO8 model. This dynamically find objects of interest and center the Reach Mini vision on them. Audio is recorded is transcribed when enabled.
 
-`maxim`
+```bash
+maxim
+```
 
 NOTE: You can also set `MAXIM_ROBOT_NAME=reachy_mini` and run `maxim`.
 
 Legacy entrypoint (still supported when running from a cloned checkout):
 
-`python scripts/main.py`
+```bash
+python scripts/main.py
+```
 
 You can also run Maxim straight from a python shell or your own script by importing it (package name: `maxim`)
 
-```
+```python
 from maxim.conscience.selfy import Maxim
 
 maxim = Maxim()
@@ -62,7 +73,7 @@ maxim.move(y = 10, yaw = 3)
 
 Of course extensions of the Maxim class using the datastreams set up are more than welcomed!
 
-# Outputs (Default)
+## Outputs (Default)
 
 Each run writes a timestamped set of artifacts under `data/`:
 - `videos/reachy_video_<YYYY-MM-DD_HHMMSS>.mp4`
@@ -72,14 +83,14 @@ Each run writes a timestamped set of artifacts under `data/`:
 
 Shared model artifacts and weights live under `data/models/` (e.g., `MotorCortex/`, `YOLO/`).
 
-# CLI Flags
+## CLI Flags
 
 - `--mode`: `passive-interaction` (default), `live`, `train`, `sleep` (audio-only; no `wake_up()`)
 - `--verbosity`: `0`, `1`, `2`
 - `--audio`: `True/False` (enables audio recording + transcription)
 - `--audio_len`: seconds per transcription chunk (default `5.0`)
 
-# Keyboard Shortcuts
+## Keyboard Shortcuts
 
 While `maxim` is running in a terminal, it listens for single-key presses configured in `data/util/key_responses.json` (or `$MAXIM_KEY_RESPONSES`).
 
@@ -88,7 +99,7 @@ Default:
 
 Default movement presets are defined in `data/motion/default_actions.json`.
 
-# Smoke Tests
+## Smoke Tests
 
 Quick local checks live under `src/tests/`:
 - `bash src/tests/basic_vision.sh`
@@ -98,11 +109,13 @@ Quick local checks live under `src/tests/`:
 
 For easy future use consider editing your Reachy's .bashrc...
 
-`nano ~/.bashrc`
+```bash
+nano ~/.bashrc
+```
 
 and adding aliases so you can run simple commands to start processes
 
-```
+```bash
 alias mini-env='source /venvs/mini_daemon/bin/activate'
 
 alias list-daemon='ss -lntp | grep 8000'
@@ -116,24 +129,29 @@ REACHY_IP=<INSERT YOUR REACHY IP>
 ```
 Then you can simply type commands like list-daemon, clear-daemon or start-daemon.
 
-# Networking
+## Networking
 
 Make sure you are on the same network as your Reachy Mini with no VPN. With a VPN you may be able to do simple things like start the daemon but the python SDK will struggle to connect to the Reachy.
 
-
-# Troubleshooting
+## Troubleshooting
 
 1. Reachy Mini immendiately closing down on running or not running at all.
 
 Check if the reachy mini port 8000 is occupied by ssh into you Reachy Mini then
 checking if the port is occupied...
 
-`ss -lntp | grep 8000`
+```bash
+ss -lntp | grep 8000
+```
 
 Stop the process if something is using it.
 
-`sudo systemctl stop reachy-mini-daemon`
+```bash
+sudo systemctl stop reachy-mini-daemon
+```
 
 Check to see if you can start a new process
 
-`python -m reachy_mini.daemon.app.main --wireless-version --no-localhost-only`
+```bash
+python -m reachy_mini.daemon.app.main --wireless-version --no-localhost-only
+```
