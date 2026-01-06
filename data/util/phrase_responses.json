@@ -1,0 +1,43 @@
+{
+  "maxim shutdown": {
+    "call": "request_shutdown",
+    "requires_agentic": false,
+    "cooldown_s": 2.0
+  },
+  "maxim sleep": {
+    "call": "request_sleep",
+    "requires_agentic": false,
+    "cooldown_s": 2.0
+  },
+  "sleep maxim": {
+    "call": "request_sleep",
+    "requires_agentic": false,
+    "cooldown_s": 2.0
+  },
+  "maxim observe": {
+    "call": "request_observe",
+    "requires_agentic": false,
+    "cooldown_s": 2.0
+  },
+  "observe maxim": {
+    "call": "request_observe",
+    "requires_agentic": false,
+    "cooldown_s": 2.0
+  },
+  "maxim": {
+    "call": "wake_up_agentic",
+    "wake_word": true,
+    "cooldown_s": 2.0
+  },
+  "reachy": {
+    "call": "wake_up_agentic",
+    "wake_word": true,
+    "cooldown_s": 2.0
+  },
+  "center": {
+    "call": "center_vision",
+    "pause_training": true,
+    "requires_agentic": true,
+    "cooldown_s": 2.0
+  }
+}
