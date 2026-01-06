@@ -1,11 +1,145 @@
 from __future__ import annotations
 
+import logging
 import math
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Iterable, Sequence
 
 from maxim.utils.config import DEFAULT_SAVE_ROOT
+from maxim.utils.logging import warn
+
+
+def _is_truthy(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in ("1", "true", "t", "yes", "y", "on")
+
+
+def _matplotlib_preflight_command() -> list[str]:
+    code = "\n".join(
+        [
+            "import matplotlib",
+            "from matplotlib import font_manager as fm",
+            "load = getattr(fm, '_load_fontmanager', None)",
+            "if load is None:",
+            "    fm.FontManager()",
+            "else:",
+            "    load(try_read_cache=False)",
+            "print('ok')",
+        ]
+    )
+    return [sys.executable, "-X", "faulthandler", "-c", code]
+
+
+def preflight_matplotlib_fonts(
+    *,
+    cache_dir: str | os.PathLike[str] | None = None,
+    logger: logging.Logger | None = None,
+) -> bool:
+    """
+    Preflight Matplotlib font loading in a subprocess to avoid hard crashes
+    when fonts or caches are corrupted on Linux/WSL.
+    """
+    if _is_truthy(os.getenv("MAXIM_SKIP_MPL_PREFLIGHT")):
+        if cache_dir and not os.getenv("MPLCONFIGDIR"):
+            try:
+                Path(cache_dir).mkdir(parents=True, exist_ok=True)
+                os.environ["MPLCONFIGDIR"] = Path(cache_dir).as_posix()
+            except Exception as e:
+                warn("Failed to create MPLCONFIGDIR '%s': %s (using default cache)", cache_dir, e, logger=logger)
+        os.environ.setdefault("MPLBACKEND", "Agg")
+        return True
+
+    config_dir = os.getenv("MPLCONFIGDIR")
+    if not config_dir and cache_dir:
+        config_dir = Path(cache_dir).as_posix()
+
+    if config_dir:
+        try:
+            Path(config_dir).mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            warn("Failed to create MPLCONFIGDIR '%s': %s (using default cache)", config_dir, e, logger=logger)
+            config_dir = None
+
+    env = os.environ.copy()
+    if config_dir:
+        env["MPLCONFIGDIR"] = config_dir
+    env.setdefault("MPLBACKEND", "Agg")
+
+    result = subprocess.run(
+        _matplotlib_preflight_command(),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        warn(
+            "Matplotlib font preflight failed (exit=%s). See README troubleshooting for font/cache fixes.",
+            result.returncode,
+            logger=logger,
+        )
+        if logger is not None and logger.isEnabledFor(logging.DEBUG):
+            if result.stdout:
+                logger.debug("Matplotlib preflight stdout: %s", result.stdout.strip())
+            if result.stderr:
+                logger.debug("Matplotlib preflight stderr: %s", result.stderr.strip())
+        return False
+
+    if config_dir:
+        os.environ["MPLCONFIGDIR"] = config_dir
+    os.environ.setdefault("MPLBACKEND", "Agg")
+    return True
+
+
+def preload_matplotlib_fonts(
+    *,
+    cache_dir: str | os.PathLike[str] | None = None,
+    logger: logging.Logger | None = None,
+) -> bool:
+    """
+    Load Matplotlib + font manager in-process early to lock shared libraries
+    before other native deps (e.g., GStreamer/Ultralytics) initialize.
+    """
+    if _is_truthy(os.getenv("MAXIM_SKIP_MPL_PRELOAD")):
+        if cache_dir and not os.getenv("MPLCONFIGDIR"):
+            try:
+                Path(cache_dir).mkdir(parents=True, exist_ok=True)
+                os.environ["MPLCONFIGDIR"] = Path(cache_dir).as_posix()
+            except Exception as e:
+                warn("Failed to create MPLCONFIGDIR '%s': %s (using default cache)", cache_dir, e, logger=logger)
+        os.environ.setdefault("MPLBACKEND", "Agg")
+        return True
+
+    config_dir = os.getenv("MPLCONFIGDIR")
+    if not config_dir and cache_dir:
+        config_dir = Path(cache_dir).as_posix()
+    if config_dir:
+        try:
+            Path(config_dir).mkdir(parents=True, exist_ok=True)
+            os.environ["MPLCONFIGDIR"] = config_dir
+        except Exception as e:
+            warn("Failed to create MPLCONFIGDIR '%s': %s (using default cache)", config_dir, e, logger=logger)
+
+    os.environ.setdefault("MPLBACKEND", "Agg")
+
+    try:
+        import matplotlib
+        from matplotlib import font_manager as fm
+
+        load = getattr(fm, "_load_fontmanager", None)
+        if load is None:
+            fm.FontManager()
+        else:
+            load(try_read_cache=False)
+        return True
+    except Exception as e:
+        warn("Failed to preload Matplotlib fonts: %s", e, logger=logger)
+        return False
+
 
 def _is_finite_number(value: object) -> bool:
     try:
