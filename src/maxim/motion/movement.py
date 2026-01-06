@@ -15,6 +15,10 @@ _DEFAULT_POSES_PATH = (
     Path(__file__).resolve().parents[3] / "data" / "motion" / "default_poses.json"
 )
 
+_DEFAULT_THRESHOLDS_PATH = (
+    Path(__file__).resolve().parents[3] / "data" / "motion" / "movement_thresholds.json"
+)
+
 def _to_rad(value: float, *, degrees: bool) -> float:
     value = float(value)
     return math.radians(value) if degrees else value
@@ -92,6 +96,62 @@ def load_poses(path: Path | str = _DEFAULT_POSES_PATH) -> dict[str, list[float]]
 
     parsed.setdefault("centered", default["centered"])
     return parsed
+
+def load_movement_thresholds(path: Path | str = _DEFAULT_THRESHOLDS_PATH) -> dict[str, Any]:
+    """
+    Load movement thresholds (used to clamp per-call head movement steps).
+
+    Units match Maxim's head pose interface:
+    - x/y/z: millimeters
+    - roll/pitch/yaw: degrees
+    """
+    thresholds_path = Path(path)
+    default: dict[str, Any] = {
+        "head": {
+            "max_step": {"x": 0.0, "y": 0.0, "z": 0.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
+        }
+    }
+
+    if not thresholds_path.exists():
+        return default
+
+    try:
+        with thresholds_path.open("r", encoding="utf-8") as file:
+            raw = json.load(file)
+    except Exception as e:
+        warn("Failed to load movement thresholds from '%s': %s", thresholds_path, e)
+        return default
+
+    if not isinstance(raw, dict):
+        return default
+
+    head = raw.get("head")
+    if not isinstance(head, dict):
+        return default
+
+    max_step = head.get("max_step")
+    if not isinstance(max_step, dict):
+        max_step = {}
+
+    def _f(key: str, fallback: float = 0.0) -> float:
+        try:
+            val = max_step.get(key, fallback)
+            return float(val)
+        except Exception:
+            return float(fallback)
+
+    return {
+        "head": {
+            "max_step": {
+                "x": _f("x"),
+                "y": _f("y"),
+                "z": _f("z"),
+                "roll": _f("roll"),
+                "pitch": _f("pitch"),
+                "yaw": _f("yaw"),
+            }
+        }
+    }
 
 def move_head(mini, x, y, z, roll, pitch, yaw, duration):
     pose = head_pose_matrix(x, y, z, roll, pitch, yaw)
