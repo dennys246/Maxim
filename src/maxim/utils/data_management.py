@@ -36,10 +36,12 @@ class TrainingSampleLogger:
         training_dir: str | os.PathLike[str],
         *,
         motor_filename: str = "motor_training_set.jsonl",
+        events_filename: str = "action_events.jsonl",
         max_queue: int = 2048,
     ) -> None:
         self.training_dir = Path(training_dir)
         self.motor_path = self.training_dir / motor_filename
+        self.events_path = self.training_dir / events_filename
         self._q: queue.Queue[tuple[str, dict[str, Any], bool]] = queue.Queue(maxsize=int(max_queue))
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._worker, name="maxim.training.logger", daemon=True)
@@ -63,6 +65,9 @@ class TrainingSampleLogger:
     def log_motor_sample(self, record: dict[str, Any], *, flush: bool = False) -> None:
         self._enqueue("motor", record, flush=flush)
 
+    def log_event(self, record: dict[str, Any], *, flush: bool = False) -> None:
+        self._enqueue("event", record, flush=flush)
+
     def _enqueue(self, kind: str, record: dict[str, Any], *, flush: bool) -> None:
         try:
             self._q.put_nowait((kind, record, bool(flush)))
@@ -81,13 +86,15 @@ class TrainingSampleLogger:
             return
 
     def _worker(self) -> None:
-        fp = None
+        motor_fp = None
+        event_fp = None
         last_flush = 0.0
         flush_every_s = 1.0
 
         try:
             self.training_dir.mkdir(parents=True, exist_ok=True)
-            fp = open(self.motor_path, "a", encoding="utf-8")
+            motor_fp = open(self.motor_path, "a", encoding="utf-8")
+            event_fp = open(self.events_path, "a", encoding="utf-8")
 
             while True:
                 if self._stop.is_set() and self._q.empty():
@@ -100,15 +107,18 @@ class TrainingSampleLogger:
                 try:
                     if kind == "__stop__":
                         break
-                    if kind != "motor":
+                    if kind == "motor":
+                        motor_fp.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+                    elif kind == "event":
+                        event_fp.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+                    else:
                         continue
-
-                    fp.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
 
                     now = time.time()
                     if force_flush or (now - last_flush) >= flush_every_s:
                         try:
-                            fp.flush()
+                            motor_fp.flush()
+                            event_fp.flush()
                         except Exception:
                             pass
                         last_flush = now
@@ -120,7 +130,9 @@ class TrainingSampleLogger:
                     except Exception:
                         pass
         finally:
-            if fp is not None:
+            for fp in (motor_fp, event_fp):
+                if fp is None:
+                    continue
                 try:
                     fp.flush()
                 except Exception:
