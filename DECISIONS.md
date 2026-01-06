@@ -159,6 +159,29 @@ Decision:
 Reason:
 - Keep voice control deterministic for critical mode switches while enabling richer, optional transcript-driven behaviors when compute is available.
 
+## 2026-01-06: Configure Whisper compute type via env var
+Decision:
+- `MAXIM_WHISPER_COMPUTE_TYPE` controls the `faster-whisper` compute type for transcription (default: `int8`).
+
+Reason:
+- Provide a safe fallback for Linux/WSL segfaults in CTranslate2/Whisper without code edits.
+
+Tradeoffs:
+- `float32` is slower and may increase CPU usage; `int8` is faster but less stable on some systems.
+
+## 2026-01-06: Disable OpenCV display in headless/non-main thread runs
+Decision:
+- `MAXIM_DISABLE_IMSHOW=1` or `MAXIM_HEADLESS=1` skips `cv2.imshow` calls to avoid Qt/GTK thread crashes on WSL/headless setups.
+- `MAXIM_IMSHOW_MODE=process` runs `cv2.imshow` in a dedicated process to keep GUI calls on that process's main thread.
+- On Linux/WSL, default to the display process; set `MAXIM_IMSHOW_MODE=direct` to force main-thread imshow.
+
+Reason:
+- OpenCV GUI backends often crash when invoked from non-main threads or without a display server.
+
+Tradeoffs:
+- No on-screen visualization during runs; rely on saved videos/logs instead.
+- Display process adds IPC overhead and may drop frames under load.
+
 ## 2026-01-05: CLI model selection flags
 Decision:
 - `--language-model <profile>` overrides the LLM profile for the run (prints available profiles on unknown).
@@ -237,6 +260,31 @@ Decision:
 
 Reason:
 - Keep editable JSON configs separate from code and easy to find.
+
+## 2026-01-05: Preflight Matplotlib font cache before loading vision models
+Decision:
+- Before loading vision models, Maxim runs a Matplotlib font-cache preflight in a subprocess.
+- The preflight uses `MPLCONFIGDIR` under the run's home directory when not already set and forces `MPLBACKEND=Agg`.
+- `MAXIM_SKIP_MPL_PREFLIGHT=1` bypasses the preflight when needed.
+- Maxim also preloads Matplotlib in-process early (before Reachy/GStreamer/Ultralytics init) to stabilize native font libs.
+- `MAXIM_SKIP_MPL_PRELOAD=1` bypasses the early preload when needed.
+
+Reason:
+- On Linux/WSL, Matplotlib + FreeType can abort while scanning fonts; preflighting isolates failures and surfaces actionable errors.
+
+Tradeoffs:
+- Adds a small startup cost to vision initialization.
+- Users may need to clean or repair system fonts if preflight fails.
+
+## 2026-01-06: Allow disabling VAD filter for faster-whisper transcription
+Decision:
+- `MAXIM_VAD_FILTER=0` disables the faster-whisper VAD filter when running the transcription worker.
+
+Reason:
+- VAD uses onnxruntime (Silero ONNX) and can segfault on some Linux builds; the toggle lets users isolate or bypass that path.
+
+Tradeoffs:
+- Without VAD, transcription may be slower and include more silence.
 
 ## 2026-01-04: Store head poses under `data/motion/default_poses.json`
 Decision:
