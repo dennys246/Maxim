@@ -86,10 +86,14 @@ Shared model artifacts and weights live under `data/models/` (e.g., `MotorCortex
 
 ## CLI Flags
 
-- `--mode`: `passive-interaction` (default), `live`, `train`, `sleep` (audio-only; no `wake_up()`)
+- `--mode`: `passive-interaction` (default), `live`, `train`, `sleep` (audio-only; no `wake_up()`), `agentic` (agentic runtime loop)
+- `--agent`: agent name for `--mode agentic` (default: `reachy_mini`; options: `reachy_mini`, `goal`)
 - `--verbosity`: `0`, `1`, `2`
 - `--audio`: `True/False` (enables audio recording + transcription)
 - `--audio_len`: seconds per transcription chunk (default `5.0`)
+- `--language-model`: LLM profile name (e.g., `mistral-7b-instruct-v0.2`, `smollm-1.7b-instruct`; lists available on unknown)
+- `--segmentation-model`: vision segmentation model (default `YOLO8`; lists available on unknown)
+- `--goal`: goal for `--mode agentic` when using `--agent goal` (e.g., `read_readme` or JSON `{"tool_name":"read_file","params":{"path":"README.md"}}`)
 
 ## Keyboard Shortcuts
 
@@ -98,9 +102,64 @@ While `maxim` is running in a terminal, it listens for single-key presses config
 Default:
 - `c`: center vision (pauses training briefly in `--mode train`)
 - `u`: mark the most recent trainable moment (writes a `user_marked=true` entry to `data/training/motor_training_set.jsonl`)
+- `0`: label outcome as “no errors”
+- `1`–`9`: label outcome as a generic “error/bug/odd behavior” code (metadata can be added later)
+
+Voice triggers are configured in `data/util/phrase_responses.json` (or `$MAXIM_PHRASE_RESPONSES`) and are driven by new transcript lines.
+
+Default:
+- saying `Maxim` (or `Reachy`) wakes the robot (`wake_up()`), starts the agentic runtime loop, and enables voice-triggered actions
+- Voice matching normalizes punctuation/possessives and treats common transcription `maximum` as `maxim`
+- When `maxim` appears in a transcript line, Maxim prefers a more specific command match (e.g., sleep/observe/shutdown) before falling back to the wake word
+- saying `Maxim shutdown` requests a clean shutdown (same as Ctrl+C cleanup)
+- saying `Maxim sleep` (or `sleep maxim`) switches to `--mode sleep` (audio-only)
+- saying `Maxim observe` (or `observe maxim`) switches to `--mode passive-interaction`
+
+## Optional LLM (Transcript → Agentic Actions)
+
+When the agentic runtime is running, Maxim can optionally use a local LLM to route transcript lines **that contain the wake word** (`maxim` and common transcription variants like `maximum`) into a single agentic action.
+
+Hard keyword commands always override the LLM:
+- `sleep maxim` / `maxim sleep`
+- `observe maxim` / `maxim observe`
+- `shutdown maxim` / `maxim shutdown`
+
+Configuration lives in `data/util/llm.json` (or `$MAXIM_LLM_CONFIG`) and is **disabled by default**.
+
+Install the optional local backend (Mistral 7B via llama.cpp):
+
+```bash
+pip install -e '.[llm]'
+```
+
+Then enable + pick a profile (weights are not committed; place GGUF files under `data/models/LLM/`):
+
+```bash
+export MAXIM_LLM_ENABLED=1
+export MAXIM_LLM_PROFILE='mistral-7b-instruct-v0.2'   # or: smollm-1.7b-instruct
+```
+
+Per-run override:
+
+```bash
+maxim --language-model mistral-7b-instruct-v0.2
+```
+
+If you want to override the model file path directly:
+
+```bash
+export MAXIM_LLM_MODEL_PATH='data/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf'
+```
+
+Quick benchmark against recorded transcripts:
+
+```bash
+python -m maxim.evaluation.llm_benchmark --transcript-dir data/transcript --limit 25
+```
 
 Default movement presets are defined in `data/motion/default_actions.json`.
 Default head poses (including `centered`) are defined in `data/motion/default_poses.json`.
+Per-call head movement step limits are defined in `data/motion/movement_thresholds.json`.
 
 ## Smoke Tests
 

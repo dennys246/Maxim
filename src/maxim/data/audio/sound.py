@@ -139,6 +139,8 @@ def transcription_worker(
                     "chunk_index": task.get("chunk_index"),
                     "chunk_path": chunk_path,
                     "audio_sample_rate": task.get("sample_rate"),
+                    "start_s": task.get("start_s"),
+                    "end_s": task.get("end_s"),
                     "text": result.get("text", ""),
                     "segments": result.get("segments"),
                     "language": result.get("language", language),
