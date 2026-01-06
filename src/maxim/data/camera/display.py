@@ -2,10 +2,168 @@ from __future__ import annotations
 
 from typing import Any
 
+import atexit
+import multiprocessing as mp
+import os
+import sys
+import queue as queue_module
+import threading
+
 import cv2
 import numpy as np
 
 _IMSHOW_FAILED = False
+_IMSHOW_DISABLED_WARNED = False
+_DISPLAY_QUEUE = None
+_DISPLAY_PROCESS = None
+_DISPLAY_LOCK = threading.Lock()
+_IMSHOW_MODE = None
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    value = str(raw).strip().lower()
+    if value in ("1", "true", "t", "yes", "y", "on"):
+        return True
+    if value in ("0", "false", "f", "no", "n", "off"):
+        return False
+    return bool(default)
+
+
+def _imshow_mode() -> str:
+    global _IMSHOW_MODE
+    if _IMSHOW_MODE is not None:
+        return _IMSHOW_MODE
+    default = "direct"
+    if os.name != "nt" and (sys.platform.startswith("linux") or _is_wsl()):
+        default = "process"
+    raw = str(os.getenv("MAXIM_IMSHOW_MODE", default) or default).strip().lower()
+    if raw not in ("direct", "process"):
+        raw = "direct"
+    _IMSHOW_MODE = raw
+    return raw
+
+
+def _display_disabled() -> bool:
+    if _env_flag("MAXIM_DISABLE_IMSHOW", False) or _env_flag("MAXIM_HEADLESS", False):
+        return True
+    if os.name != "nt":
+        if not os.getenv("DISPLAY") and not os.getenv("WAYLAND_DISPLAY"):
+            return True
+    return False
+
+
+def _is_wsl() -> bool:
+    if os.getenv("WSL_DISTRO_NAME") or os.getenv("WSL_INTEROP"):
+        return True
+    try:
+        with open("/proc/version", "r", encoding="utf-8") as handle:
+            return "microsoft" in handle.read().lower()
+    except Exception:
+        return False
+
+
+def _warn_display_disabled(reason: str) -> None:
+    global _IMSHOW_DISABLED_WARNED
+    if _IMSHOW_DISABLED_WARNED:
+        return
+    print(f"[WARN] OpenCV display disabled ({reason}). Set MAXIM_DISABLE_IMSHOW=0 to re-enable.")
+    _IMSHOW_DISABLED_WARNED = True
+
+
+def _display_process_main(frame_queue) -> None:
+    window_names: set[str] = set()
+    while True:
+        try:
+            item = frame_queue.get(timeout=0.1)
+        except queue_module.Empty:
+            try:
+                cv2.waitKey(1)
+            except Exception:
+                pass
+            continue
+
+        if item is None:
+            break
+
+        window_name, frame, wait_ms = item
+        try:
+            if window_name not in window_names:
+                cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+                window_names.add(window_name)
+            cv2.imshow(window_name, frame)
+            cv2.waitKey(int(wait_ms) if wait_ms is not None else 1)
+        except Exception:
+            continue
+
+    try:
+        cv2.destroyAllWindows()
+        cv2.waitKey(1)
+    except Exception:
+        pass
+
+
+def _shutdown_display_process() -> None:
+    global _DISPLAY_QUEUE, _DISPLAY_PROCESS
+    try:
+        if _DISPLAY_QUEUE is not None:
+            _DISPLAY_QUEUE.put_nowait(None)
+    except Exception:
+        pass
+    try:
+        if _DISPLAY_PROCESS is not None:
+            _DISPLAY_PROCESS.join(timeout=1.0)
+    except Exception:
+        pass
+    _DISPLAY_QUEUE = None
+    _DISPLAY_PROCESS = None
+
+
+def _ensure_display_process() -> bool:
+    global _DISPLAY_QUEUE, _DISPLAY_PROCESS
+    if threading.current_thread() is not threading.main_thread():
+        return _DISPLAY_PROCESS is not None and _DISPLAY_PROCESS.is_alive()
+    with _DISPLAY_LOCK:
+        if _DISPLAY_PROCESS is not None and _DISPLAY_PROCESS.is_alive():
+            return True
+        try:
+            ctx = mp.get_context("spawn")
+            _DISPLAY_QUEUE = ctx.Queue(maxsize=2)
+            _DISPLAY_PROCESS = ctx.Process(
+                target=_display_process_main,
+                args=(_DISPLAY_QUEUE,),
+                daemon=True,
+            )
+            _DISPLAY_PROCESS.start()
+            atexit.register(_shutdown_display_process)
+            return True
+        except Exception:
+            _DISPLAY_QUEUE = None
+            _DISPLAY_PROCESS = None
+            return False
+
+
+def _enqueue_display(window_name: str, frame: np.ndarray, wait_ms: int) -> None:
+    if _DISPLAY_QUEUE is None:
+        return
+    try:
+        _DISPLAY_QUEUE.put_nowait((window_name, frame, wait_ms))
+    except queue_module.Full:
+        try:
+            _DISPLAY_QUEUE.get_nowait()
+            _DISPLAY_QUEUE.put_nowait((window_name, frame, wait_ms))
+        except Exception:
+            pass
+
+
+def prepare_display() -> None:
+    if _display_disabled():
+        return
+    if _imshow_mode() != "process":
+        return
+    _ensure_display_process()
 
 
 def ensure_bgr(frame: np.ndarray) -> np.ndarray:
@@ -28,6 +186,20 @@ def close_windows() -> None:
 
 def show_photo(photo: np.ndarray, window_name: str = "Camera", wait: bool = True) -> None:
     try:
+        if _display_disabled():
+            _warn_display_disabled("headless or MAXIM_DISABLE_IMSHOW=1")
+            return
+        mode = _imshow_mode()
+        if mode == "process":
+            if not _ensure_display_process():
+                _warn_display_disabled("display process unavailable")
+                return
+            frame = ensure_bgr(photo)
+            _enqueue_display(window_name, frame, 1)
+            return
+        if threading.current_thread() is not threading.main_thread():
+            _warn_display_disabled("non-main thread")
+            return
         frame = ensure_bgr(photo)
         cv2.imshow(window_name, frame)
         if wait:
@@ -282,6 +454,10 @@ def show_frame(
     wait_ms: int = 1,
 ) -> None:
     try:
+        if _display_disabled():
+            _warn_display_disabled("headless or MAXIM_DISABLE_IMSHOW=1")
+            return
+        mode = _imshow_mode()
         annotated = annotate_frame(
             frame,
             boxes=boxes,
@@ -290,6 +466,15 @@ def show_frame(
             target_point=target_point,
             text_lines=text_lines,
         )
+        if mode == "process":
+            if not _ensure_display_process():
+                _warn_display_disabled("display process unavailable")
+                return
+            _enqueue_display(window_name, annotated, wait_ms)
+            return
+        if threading.current_thread() is not threading.main_thread():
+            _warn_display_disabled("non-main thread")
+            return
         cv2.imshow(window_name, annotated)
         cv2.waitKey(wait_ms)
     except Exception as e:

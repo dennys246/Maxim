@@ -31,6 +31,8 @@ On your controller computer clone this repo into a folder of your choosing
 git clone https://github.com/dennys246/Maxim.git
 ```
 
+Before installing the `maxim` library, follow Pollen Robotics' Reachy Mini SDK installation guide for your OS: https://github.com/pollen-robotics/reachy_mini/blob/develop/docs/SDK/installation.md.
+
 Prepare a computing environment for running Maxim by creating a new python virtual environment. Avoid installing requirements into a virtual environment you typically use for machine learning as it may mess up your tensorflow or pytorch dependencies and how your GPU is handled.
 
 ```bash
@@ -217,3 +219,30 @@ Check to see if you can start a new process
 ```bash
 python -m reachy_mini.daemon.app.main --wireless-version --no-localhost-only
 ```
+
+2. Matplotlib font cache crash on Linux/WSL (ft2font / "Can not load face" / core dump)
+
+- Clear Matplotlib's cache: `rm -rf ~/.cache/matplotlib`
+- Rebuild the system font cache: `fc-cache -f`
+- If you have custom fonts under `~/.local/share/fonts`, temporarily move them out and retry.
+- Run with a clean cache dir: `MPLCONFIGDIR=./data/matplotlib maxim`
+- To bypass Maxim's Matplotlib preflight (not recommended): `MAXIM_SKIP_MPL_PREFLIGHT=1 maxim`
+- To bypass Maxim's early Matplotlib preload (not recommended): `MAXIM_SKIP_MPL_PRELOAD=1 maxim`
+
+3. onnxruntime VAD segfaults during audio transcription
+
+- Temporarily disable the VAD filter to confirm the crash source: `MAXIM_VAD_FILTER=0 maxim`
+- If VAD is the culprit, prefer CPU-only `onnxruntime` and avoid `onnxruntime-gpu` in the same environment.
+
+4. faster-whisper / CTranslate2 segfaults after the first chunk (Linux/WSL)
+
+- Force a safer compute type: `MAXIM_WHISPER_COMPUTE_TYPE=float32 maxim`
+- If stable, try `int8_float32` or revert to `int8` to regain speed.
+
+5. OpenCV imshow / Qt thread warnings (WSL/headless)
+
+- Disable OpenCV display: `MAXIM_DISABLE_IMSHOW=1 maxim`
+- Or run headless explicitly: `MAXIM_HEADLESS=1 maxim`
+- If you only need logging, run with `--verbosity 0` to skip on-screen display.
+- On Linux/WSL, Maxim defaults to a display subprocess for thread safety. Force main-thread imshow with `MAXIM_IMSHOW_MODE=direct`.
+- Run imshow in a dedicated process: `MAXIM_IMSHOW_MODE=process maxim`

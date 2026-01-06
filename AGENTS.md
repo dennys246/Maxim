@@ -15,6 +15,7 @@ Maxim is a Reachy Mini project for capturing audio/video, running perception + m
 - Build modules for scalability to be applied to multiple sensory modalities (e.g., diffusion models applied to both images and audio).
 - Run additional analysis on the security of code. If an insecurity is identified within the repo, analyze the bug for potential fixes and notify the user alongside the fix.
 - If files or data are created in the `sandbox/`, delete old and un-necessary files and data if no longer being used.
+- Build code to handle both CPU and GPU execution paths; agentic runtime should only run when a GPU is available.
 
 ## Allowed Actions
 - Modify code under `src/` with user requests.
