@@ -7,6 +7,7 @@ import threading
 #os.environ["GST_DISABLE_REGISTRY_FORK"] = "1"
 
 import json, random, uuid
+import re
 import time, atexit, cv2
 import logging
 import multiprocessing as mp
@@ -17,7 +18,7 @@ import numpy as np
 
 from reachy_mini import ReachyMini
 
-from maxim.motion.movement import load_actions, load_poses, move_antenna, move_head
+from maxim.motion.movement import load_actions, load_movement_thresholds, load_poses, move_antenna, move_head
 from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.data_management import TrainingSampleLogger, build_home
 from maxim.utils.logging import configure_logging, warn
@@ -30,7 +31,7 @@ from maxim.inference.observation import (
     passive_observation,
     passive_listening,
 )
-from maxim.models.vision.segmentation import YOLO8
+from maxim.models.vision.registry import build_segmentation_model
 
 os.environ["PYOPENGL_PLATFORM"] = "egl"
 
@@ -98,6 +99,14 @@ class Maxim:
 
         self.actions = load_actions()
         self.poses = load_poses()
+        self.movement_thresholds = load_movement_thresholds()
+        self._head_max_step = {}
+        try:
+            head_cfg = self.movement_thresholds.get("head") if isinstance(self.movement_thresholds, dict) else None
+            if isinstance(head_cfg, dict) and isinstance(head_cfg.get("max_step"), dict):
+                self._head_max_step = dict(head_cfg.get("max_step") or {})
+        except Exception:
+            self._head_max_step = {}
 
         # robot_name must match the daemon namespace (default: reachy_mini).
         # localhost_only=False enables zenoh peer discovery across the LAN.
@@ -152,8 +161,19 @@ class Maxim:
         self._observation_lock = threading.Lock()
 
         self.key_responses = self._load_key_responses()
+        self.phrase_responses = self._load_phrase_responses()
+        self._voice_agentic_enabled = False
+        self._phrase_last_trigger_ts: dict[str, float] = {}
+        self._outcome_code = 0
+        self._last_action_event_id: str | None = None
+        self._last_transcript_event: dict | None = None
+        self.requested_mode: str | None = None
+        self._agentic_stop_event: threading.Event | None = None
+        self._agentic_thread: threading.Thread | None = None
 
         self.movement_model = None
+        self.segmenter = None
+        self._segmenter_model: str | None = None
         self.motor_history: list[dict] = []
 
         atexit.register(self.shutdown)
@@ -162,6 +182,7 @@ class Maxim:
         default = {
             "c": {"call": "center_vision", "pause_training": True},
             "u": {"call": "mark_trainable_moment"},
+            **{str(i): {"call": "label_outcome", "args": [i]} for i in range(10)},
         }
 
         candidates: list[str] = []
@@ -214,7 +235,134 @@ class Maxim:
                 "pause_training": bool(spec.get("pause_training", False)),
             }
 
-        return parsed or default
+        merged = dict(default)
+        merged.update(parsed)
+        return merged
+
+    def _load_phrase_responses(self) -> dict[str, dict]:
+        default = {
+            "maxim shutdown": {"call": "request_shutdown", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim sleep": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim observe": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "sleep maxim": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
+            "observe maxim": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim": {"call": "wake_up_agentic", "wake_word": True, "cooldown_s": 2.0},
+            "reachy": {"call": "wake_up_agentic", "wake_word": True, "cooldown_s": 2.0},
+            "center": {"call": "center_vision", "pause_training": True, "requires_agentic": True, "cooldown_s": 2.0},
+        }
+
+        candidates: list[str] = []
+        env_path = str(os.getenv("MAXIM_PHRASE_RESPONSES", "")).strip()
+        if env_path:
+            candidates.append(env_path)
+        candidates.append(os.path.join(os.getcwd(), "data", "util", "phrase_responses.json"))
+        candidates.append(os.path.join(os.getcwd(), "phrase_responses.json"))
+        try:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+            candidates.append(os.path.join(repo_root, "data", "util", "phrase_responses.json"))
+            candidates.append(os.path.join(repo_root, "phrase_responses.json"))
+        except Exception:
+            pass
+
+        raw = None
+        for path in candidates:
+            if path and os.path.isfile(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as fp:
+                        raw = json.load(fp)
+                    break
+                except Exception as e:
+                    warn("Failed to load phrase responses from '%s': %s", path, e, logger=self.log)
+                    return default
+
+        if not isinstance(raw, dict):
+            return default
+
+        parsed: dict[str, dict] = {}
+        for phrase, spec in raw.items():
+            if not isinstance(phrase, str) or not phrase.strip():
+                continue
+            phrase = phrase.strip()
+
+            if isinstance(spec, str):
+                spec = {"call": spec}
+            if not isinstance(spec, dict):
+                continue
+
+            call = spec.get("call") or spec.get("method")
+            if not isinstance(call, str) or not call:
+                continue
+
+            wake_word = bool(spec.get("wake_word", False))
+            requires_agentic = bool(spec.get("requires_agentic", not wake_word))
+            cooldown_s = spec.get("cooldown_s")
+            try:
+                cooldown_s = float(cooldown_s) if cooldown_s is not None else 2.0
+            except Exception:
+                cooldown_s = 2.0
+            if float(cooldown_s) <= 0:
+                cooldown_s = 2.0
+
+            parsed[phrase] = {
+                "call": call,
+                "args": spec.get("args") if isinstance(spec.get("args"), list) else [],
+                "kwargs": spec.get("kwargs") if isinstance(spec.get("kwargs"), dict) else {},
+                "pause_training": bool(spec.get("pause_training", False)),
+                "wake_word": wake_word,
+                "requires_agentic": requires_agentic,
+                "cooldown_s": float(cooldown_s),
+                "_pattern": self._compile_phrase_pattern(phrase),
+                "_normalized": self._normalize_trigger_text(phrase),
+            }
+
+        merged = dict(default)
+        merged.update(parsed)
+        # Compile patterns for any defaults that weren't overridden.
+        for phrase, spec in merged.items():
+            if isinstance(spec, dict) and "_pattern" not in spec:
+                spec["_pattern"] = self._compile_phrase_pattern(phrase)
+            if isinstance(spec, dict) and "_normalized" not in spec:
+                spec["_normalized"] = self._normalize_trigger_text(phrase)
+        return merged
+
+    def _compile_phrase_pattern(self, phrase: str):
+        raw = str(phrase or "").strip()
+        if not raw:
+            return None
+        escaped = re.escape(raw)
+        pattern = escaped
+        try:
+            if re.match(r"^\w", raw) and re.search(r"\w$", raw):
+                pattern = rf"\b{escaped}\b"
+            return re.compile(pattern, flags=re.IGNORECASE)
+        except Exception:
+            return None
+
+    def _normalize_trigger_text(self, text: str) -> str:
+        raw = str(text or "").strip().lower()
+        if not raw:
+            return ""
+        cleaned = re.sub(r"[^\w\s]", " ", raw, flags=re.UNICODE)
+        return " ".join(cleaned.split())
+
+    def _normalize_transcript_text(self, text: str) -> str:
+        normalized = self._normalize_trigger_text(text)
+        if not normalized:
+            return ""
+        raw_tokens = normalized.split()
+        tokens = [t for t in raw_tokens if t and t != "s"]
+        aliases = {
+            "maximum": "maxim",
+            "maximums": "maxim",
+            "maxims": "maxim",
+        }
+        changed = tokens != raw_tokens
+        for idx, token in enumerate(tokens):
+            replacement = aliases.get(token)
+            if replacement:
+                tokens[idx] = replacement
+                changed = True
+        return " ".join(tokens) if changed else normalized
 
     def _start_key_listener(self, stop_event: threading.Event) -> threading.Thread | None:
         if not isinstance(getattr(self, "key_responses", None), dict) or not self.key_responses:
@@ -271,6 +419,294 @@ class Maxim:
 
         return threading.Thread(target=_worker, name="maxim.keyboard", daemon=True)
 
+    def _start_transcript_listener(self, stop_event: threading.Event) -> threading.Thread | None:
+        if not bool(getattr(self, "audio", False)):
+            return None
+        if not isinstance(getattr(self, "phrase_responses", None), dict) or not self.phrase_responses:
+            return None
+
+        transcript_path = getattr(self, "transcript_path", None)
+        if not isinstance(transcript_path, str) or not transcript_path.strip():
+            return None
+        transcript_path = transcript_path.strip()
+
+        def _worker() -> None:
+            fp = None
+            try:
+                while not stop_event.is_set():
+                    if fp is None:
+                        try:
+                            fp = open(transcript_path, "r", encoding="utf-8")
+                        except FileNotFoundError:
+                            time.sleep(0.25)
+                            continue
+                        except Exception as e:
+                            warn("Transcript listener unavailable: %s", e, logger=self.log)
+                            return
+
+                    line = fp.readline()
+                    if not line:
+                        time.sleep(0.05)
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except Exception:
+                        continue
+                    if isinstance(record, dict):
+                        self._handle_transcript_record(record)
+            finally:
+                if fp is not None:
+                    try:
+                        fp.close()
+                    except Exception:
+                        pass
+
+        return threading.Thread(target=_worker, name="maxim.transcript", daemon=True)
+
+    def _handle_transcript_record(self, record: dict) -> None:
+        text = str(record.get("text", "") or "").strip()
+        if not text:
+            return
+        normalized_text = self._normalize_transcript_text(text)
+        if not normalized_text:
+            return
+        try:
+            self._last_transcript_event = record
+        except Exception:
+            pass
+
+        def _is_subsequence(needle: list[str], haystack: list[str]) -> bool:
+            if not needle:
+                return True
+            if not haystack:
+                return False
+            hi = 0
+            for token in needle:
+                while hi < len(haystack) and haystack[hi] != token:
+                    hi += 1
+                if hi >= len(haystack):
+                    return False
+                hi += 1
+            return True
+
+        transcript_tokens = normalized_text.split()
+        has_maxim = "maxim" in transcript_tokens
+
+        wake_tokens: set[str] = set()
+        for _, spec in getattr(self, "phrase_responses", {}).items():
+            if not isinstance(spec, dict) or not bool(spec.get("wake_word", False)):
+                continue
+            norm = spec.get("_normalized")
+            if isinstance(norm, str) and norm:
+                wake_tokens.update(norm.split())
+
+        command_tokens = [t for t in transcript_tokens if t not in wake_tokens]
+        command_token_set = set(command_tokens)
+
+        now = time.time()
+        matches: list[tuple[str, dict]] = []
+        for phrase, spec in getattr(self, "phrase_responses", {}).items():
+            if not isinstance(phrase, str) or not phrase:
+                continue
+            if not isinstance(spec, dict):
+                continue
+
+            pattern = spec.get("_pattern")
+            matched = False
+            try:
+                if pattern is not None:
+                    matched = bool(pattern.search(text))
+                else:
+                    matched = phrase.lower() in text.lower()
+            except Exception:
+                matched = False
+            if not matched:
+                normalized_phrase = spec.get("_normalized")
+                if isinstance(normalized_phrase, str) and normalized_phrase:
+                    haystack = f" {normalized_text} "
+                    needle = f" {normalized_phrase} "
+                    matched = needle in haystack
+            if not matched:
+                continue
+
+            if bool(spec.get("requires_agentic", False)) and not bool(getattr(self, "_voice_agentic_enabled", False)):
+                continue
+
+            cooldown_s = float(spec.get("cooldown_s", 0.0) or 0.0)
+            last_ts = float(getattr(self, "_phrase_last_trigger_ts", {}).get(phrase, 0.0) or 0.0)
+            if cooldown_s > 0 and (now - last_ts) < cooldown_s:
+                continue
+
+            matches.append((phrase, spec))
+
+        if not matches:
+            return
+
+        command_matches = [(phrase, spec) for phrase, spec in matches if not bool(spec.get("wake_word", False))]
+        wake_matches = [(phrase, spec) for phrase, spec in matches if bool(spec.get("wake_word", False))]
+
+        def _pick_best(candidates: list[tuple[str, dict]]) -> tuple[str, dict] | None:
+            best = None
+            best_score: tuple[int, int] = (-1, -1)
+            for phrase, spec in candidates:
+                normalized_phrase = spec.get("_normalized")
+                if not isinstance(normalized_phrase, str) or not normalized_phrase:
+                    normalized_phrase = self._normalize_trigger_text(phrase)
+                score = (len(normalized_phrase.split()), len(normalized_phrase))
+                if score > best_score:
+                    best = (phrase, spec)
+                    best_score = score
+            return best
+
+        best = _pick_best(command_matches)
+        if best is None and has_maxim:
+            inferred: list[tuple[str, dict, tuple[int, int, int]]] = []
+            for phrase, spec in getattr(self, "phrase_responses", {}).items():
+                if not isinstance(phrase, str) or not phrase:
+                    continue
+                if not isinstance(spec, dict) or bool(spec.get("wake_word", False)):
+                    continue
+                if bool(spec.get("requires_agentic", False)) and not bool(getattr(self, "_voice_agentic_enabled", False)):
+                    continue
+
+                cooldown_s = float(spec.get("cooldown_s", 0.0) or 0.0)
+                last_ts = float(getattr(self, "_phrase_last_trigger_ts", {}).get(phrase, 0.0) or 0.0)
+                if cooldown_s > 0 and (now - last_ts) < cooldown_s:
+                    continue
+
+                normalized_phrase = spec.get("_normalized")
+                if not isinstance(normalized_phrase, str) or not normalized_phrase:
+                    normalized_phrase = self._normalize_trigger_text(phrase)
+                phrase_tokens = normalized_phrase.split()
+                required_tokens = [t for t in phrase_tokens if t not in wake_tokens]
+                if not required_tokens:
+                    continue
+                if not set(required_tokens) <= command_token_set:
+                    continue
+                if not _is_subsequence(required_tokens, command_tokens):
+                    continue
+                full_subseq = int(_is_subsequence(phrase_tokens, transcript_tokens))
+                score = (len(required_tokens), full_subseq, len(phrase_tokens))
+                inferred.append((phrase, spec, score))
+
+            if inferred:
+                inferred.sort(key=lambda item: item[2], reverse=True)
+                best = inferred[0][0], inferred[0][1]
+
+        if best is None:
+            best = _pick_best(wake_matches)
+            if best is None:
+                return
+            if bool(getattr(self, "_voice_agentic_enabled", False)):
+                return
+
+        phrase, spec = best
+        try:
+            self._phrase_last_trigger_ts[phrase] = now
+        except Exception:
+            pass
+        self._run_action_spec(source="voice", trigger=phrase, spec=spec, transcript=record)
+
+    def _log_event(self, record: dict, *, flush: bool = False) -> None:
+        training_logger = getattr(self, "_training_logger", None)
+        if training_logger is None:
+            return
+        try:
+            training_logger.log_event(record, flush=flush)
+        except Exception:
+            return
+
+    def _run_action_spec(
+        self,
+        *,
+        source: str,
+        trigger: str,
+        spec: dict,
+        transcript: dict | None = None,
+    ) -> None:
+        call = spec.get("call")
+        if not isinstance(call, str) or not call:
+            return
+
+        args = spec.get("args") if isinstance(spec.get("args"), list) else []
+        kwargs = spec.get("kwargs") if isinstance(spec.get("kwargs"), dict) else {}
+
+        if call == "label_outcome":
+            fn = getattr(self, call, None)
+            if callable(fn):
+                try:
+                    kw = dict(kwargs)
+                    kw.setdefault("source", source)
+                    kw.setdefault("trigger", trigger)
+                    fn(*args, **kw)
+                except Exception as e:
+                    warn("Outcome label failed: %s", e, logger=self.log)
+            return
+
+        pause_training = bool(spec.get("pause_training", False)) and bool(getattr(self, "train", False))
+        if pause_training:
+            self._training_paused.set()
+
+        event_id = uuid.uuid4().hex
+        now = time.time()
+
+        last_motor_sample_id = None
+        sample = getattr(self, "_last_motor_sample", None)
+        if isinstance(sample, dict):
+            last_motor_sample_id = sample.get("sample_id")
+
+        event: dict = {
+            "kind": "action_event",
+            "event_id": event_id,
+            "time": float(now),
+            "source": str(source),
+            "trigger": str(trigger),
+            "call": str(call),
+            "args": list(args),
+            "kwargs": dict(kwargs),
+            "pause_training": bool(pause_training),
+            "voice_agentic_enabled": bool(getattr(self, "_voice_agentic_enabled", False)),
+            "outcome_code": int(getattr(self, "_outcome_code", 0) or 0),
+            "run_id": getattr(self, "run_id", None),
+            "mode": getattr(self, "mode", None),
+            "epoch": int(getattr(self, "current_epoch", 0) or 0),
+            "video_path": getattr(self, "video_path", None),
+            "audio_path": getattr(self, "audio_path", None),
+            "transcript_path": getattr(self, "transcript_path", None),
+            "last_motor_sample_id": last_motor_sample_id,
+            "parent_event_id": getattr(self, "_last_action_event_id", None),
+        }
+        if isinstance(transcript, dict):
+            event["transcript"] = {
+                "chunk_index": transcript.get("chunk_index"),
+                "start_s": transcript.get("start_s"),
+                "end_s": transcript.get("end_s"),
+                "text": str(transcript.get("text", "") or "")[:280],
+            }
+
+        try:
+            with self._observation_lock:
+                fn = getattr(self, call, None)
+                if not callable(fn):
+                    warn("Unknown %s action for '%s': %s", source, trigger, call, logger=self.log)
+                    event["success"] = False
+                    event["error"] = f"Unknown action: {call}"
+                else:
+                    fn(*args, **kwargs)
+                    event["success"] = True
+        except Exception as e:
+            warn("%s '%s' action failed: %s", source, trigger, e, logger=self.log)
+            event["success"] = False
+            event["error"] = str(e)
+        finally:
+            self._log_event(event)
+            try:
+                self._last_action_event_id = str(event_id)
+            except Exception:
+                pass
+            if pause_training:
+                self._training_paused.clear()
+
     def _handle_keypress(self, key: str) -> None:
         try:
             spec = getattr(self, "key_responses", {}).get(key)
@@ -278,29 +714,7 @@ class Maxim:
             spec = None
         if not isinstance(spec, dict):
             return
-
-        call = spec.get("call")
-        if not isinstance(call, str) or not call:
-            return
-
-        pause_training = bool(spec.get("pause_training", False)) and bool(getattr(self, "train", False))
-        if pause_training:
-            self._training_paused.set()
-
-        try:
-            with self._observation_lock:
-                fn = getattr(self, call, None)
-                if not callable(fn):
-                    warn("Unknown key response for '%s': %s", key, call, logger=self.log)
-                    return
-                args = spec.get("args") if isinstance(spec.get("args"), list) else []
-                kwargs = spec.get("kwargs") if isinstance(spec.get("kwargs"), dict) else {}
-                fn(*args, **kwargs)
-        except Exception as e:
-            warn("Key '%s' action failed: %s", key, e, logger=self.log)
-        finally:
-            if pause_training:
-                self._training_paused.clear()
+        self._run_action_spec(source="keyboard", trigger=key, spec=spec)
 
     def _release_cv2(self) -> None:
         try:
@@ -320,6 +734,131 @@ class Maxim:
             warn("Failed to close media: %s", e, logger=getattr(self, "log", None))
 
         self._release_cv2()
+
+    def _repo_root(self) -> str:
+        try:
+            return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        except Exception:
+            return os.getcwd()
+
+    def _start_agentic_runtime(self) -> None:
+        existing = getattr(self, "_agentic_thread", None)
+        if existing is not None and getattr(existing, "is_alive", lambda: False)():
+            return
+
+        try:
+            from maxim.agents import ReachyAgent
+            from maxim.environment import ReachyEnv
+            from maxim.runtime import (
+                build_decision_engine,
+                build_evaluators,
+                build_executor,
+                build_memory,
+                build_state,
+                build_tool_registry,
+                run_agent_loop,
+            )
+        except Exception as e:
+            warn("Agentic runtime unavailable: %s", e, logger=self.log)
+            return
+
+        stop_event = threading.Event()
+        self._agentic_stop_event = stop_event
+
+        agent = ReachyAgent()
+        env = ReachyEnv(repo_root=os.getcwd(), data_dir=str(getattr(self, "home_dir", "data") or "data"))
+        state = build_state(max_steps=1_000_000)
+        try:
+            state.data["maxim_runtime"] = {
+                "mode": getattr(self, "mode", None),
+                "interests": list(getattr(self, "interests", []) or []),
+            }
+        except Exception:
+            pass
+        memory = build_memory()
+        decision_engine = build_decision_engine()
+        registry = build_tool_registry(maxim=self)
+        executor = build_executor(registry)
+        evaluators = build_evaluators()
+
+        run_id = getattr(self, "run_id", None) or time.strftime("%Y-%m-%d_%H%M%S")
+
+        def _on_step(ctx: dict) -> None:
+            tool_result = ctx.get("tool_result")
+            action = ctx.get("action") if isinstance(ctx.get("action"), dict) else None
+            goal = ctx.get("goal")
+            decision = ctx.get("decision") if isinstance(ctx.get("decision"), dict) else None
+
+            output_preview = None
+            output_size = None
+            try:
+                if tool_result is not None:
+                    out = getattr(tool_result, "output", None)
+                    if isinstance(out, str):
+                        output_size = len(out)
+                        output_preview = out[:160]
+                    elif isinstance(out, dict):
+                        output_preview = {k: out[k] for k in list(out)[:6]}
+            except Exception:
+                output_preview = None
+
+            record = {
+                "kind": "agentic_action",
+                "event_id": uuid.uuid4().hex,
+                "time": float(time.time()),
+                "run_id": run_id,
+                "agent_name": getattr(agent, "agent_name", getattr(agent, "name", None)),
+                "goal": goal,
+                "action": action,
+                "score": decision.get("score") if isinstance(decision, dict) else None,
+                "success": getattr(tool_result, "success", None) if tool_result is not None else None,
+                "error": getattr(tool_result, "error", None) if tool_result is not None else None,
+                "output_size": output_size,
+                "output_preview": output_preview,
+                "outcome_code": int(getattr(self, "_outcome_code", 0) or 0),
+                "voice_agentic_enabled": bool(getattr(self, "_voice_agentic_enabled", False)),
+            }
+            self._log_event(record)
+
+        def _worker() -> None:
+            try:
+                run_agent_loop(
+                    agent,
+                    env,
+                    state,
+                    memory,
+                    decision_engine,
+                    executor,
+                    evaluators=evaluators,
+                    max_steps=1_000_000,
+                    run_id=run_id,
+                    stop_event=stop_event,
+                    on_step=_on_step,
+                    break_on_no_intent=False,
+                    idle_sleep_s=0.25,
+                )
+            except Exception as e:
+                warn("Agentic runtime loop failed: %s", e, logger=self.log)
+
+        t = threading.Thread(target=_worker, name="maxim.agentic", daemon=True)
+        self._agentic_thread = t
+        t.start()
+
+    def _stop_agentic_runtime(self, *, timeout: float = 2.0) -> None:
+        try:
+            ev = getattr(self, "_agentic_stop_event", None)
+            if ev is not None:
+                ev.set()
+        except Exception:
+            pass
+        t = getattr(self, "_agentic_thread", None)
+        if t is not None:
+            try:
+                t.join(timeout=float(timeout))
+            except Exception:
+                pass
+        self._agentic_thread = None
+        self._agentic_stop_event = None
     
     def live(
         self,
@@ -388,6 +927,7 @@ class Maxim:
 
         media_lock = threading.Lock()
         stop_event = threading.Event()
+        self._live_stop_event = stop_event
 
         frame_obs_queue: queue.Queue = queue.Queue(maxsize=1)
         frame_save_queue: queue.Queue = queue.Queue(maxsize=512)
@@ -717,6 +1257,11 @@ class Maxim:
             threads.append(key_thread)
             key_thread.start()
 
+        transcript_thread = self._start_transcript_listener(stop_event)
+        if transcript_thread is not None:
+            threads.append(transcript_thread)
+            transcript_thread.start()
+
         if parallel:
             if vision:
                 threads.append(threading.Thread(target=_frame_capture_worker, name="maxim.capture.video", daemon=True))
@@ -728,16 +1273,19 @@ class Maxim:
                 threads.append(threading.Thread(target=_audio_writer_worker, name="maxim.write.audio", daemon=True))
 
             for t in threads:
-                if t is not key_thread:
-                    t.start()
+                if t is key_thread or t is transcript_thread:
+                    continue
+                t.start()
 
         try:
             if not vision:
                 self.log.info("Audio-only mode: recording until Ctrl+C.")
-                while True:
+                while not stop_event.is_set():
                     time.sleep(0.25)
             else:
                 while True:
+                    if stop_event.is_set():
+                        break
                     if int(self.current_epoch) >= int(self.epochs):
                         self.log.info("Reached epochs limit (%d). Stopping.", int(self.epochs))
                         break
@@ -746,6 +1294,8 @@ class Maxim:
                         try:
                             frame_ts, photo = frame_obs_queue.get(timeout=2.0)
                         except queue.Empty:
+                            if stop_event.is_set():
+                                break
                             if self.verbosity >= 2:
                                 self.log.debug("Waiting for camera frame...")
                             continue
@@ -762,6 +1312,10 @@ class Maxim:
                         self._last_frame_ts = float(frame_ts)
                     except Exception:
                         self._last_frame_ts = None
+                    try:
+                        self._last_frame = photo
+                    except Exception:
+                        pass
 
                     self.current_epoch += 1
 
@@ -793,22 +1347,62 @@ class Maxim:
                                 )
         finally:
             stop_event.set()
+            try:
+                mini = getattr(self, "mini", None)
+                if mini is not None:
+                    try:
+                        mini.stop_recording()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                with media_lock:
+                    self._release_media()
+            except Exception:
+                pass
             for t in threads:
                 t.join(timeout=2.0)
 
             if transcribe_queue is not None:
                 try:
-                    transcribe_queue.put(None)
+                    transcribe_queue.put_nowait(None)
                 except Exception:
-                    pass
+                    try:
+                        transcribe_queue.put(None, timeout=0.5)
+                    except Exception:
+                        pass
 
             if transcribe_process is not None:
                 try:
                     transcribe_process.join(timeout=5.0)
                 except Exception:
                     pass
+                try:
+                    if transcribe_process.is_alive():
+                        transcribe_process.terminate()
+                        transcribe_process.join(timeout=2.0)
+                except Exception:
+                    pass
+                try:
+                    if transcribe_process.is_alive() and hasattr(transcribe_process, "kill"):
+                        transcribe_process.kill()
+                        transcribe_process.join(timeout=2.0)
+                except Exception:
+                    pass
+
+            if transcribe_queue is not None:
+                try:
+                    transcribe_queue.close()
+                except Exception:
+                    pass
+                try:
+                    transcribe_queue.join_thread()
+                except Exception:
+                    pass
 
             self._motor_queue = None
+            self._live_stop_event = None
             self.shutdown()
 
     def sleep(
@@ -823,6 +1417,7 @@ class Maxim:
         without waking the robot motors. Runs until interrupted.
         """
         self.audio = True
+        self.mini.goto_sleep()
         return self.live(
             home_dir=home_dir,
             parallel=parallel,
@@ -846,6 +1441,109 @@ class Maxim:
         except queue.Full:
             pass
         return None
+
+    def _request_mode(self, mode: str) -> None:
+        requested = str(mode or "").strip().lower()
+        if not requested:
+            return
+
+        current = str(getattr(self, "mode", "") or "").strip().lower()
+        if requested != "shutdown" and requested == current:
+            return
+
+        try:
+            self.log.info("Mode switch requested (%s -> %s).", current or None, requested)
+        except Exception:
+            pass
+
+        self.requested_mode = requested
+        ev = getattr(self, "_live_stop_event", None)
+        if ev is not None:
+            try:
+                ev.set()
+            except Exception:
+                pass
+
+    def request_shutdown(self) -> None:
+        self._request_mode("shutdown")
+
+    def request_sleep(self) -> None:
+        self._request_mode("sleep")
+
+    def request_observe(self) -> None:
+        self._request_mode("passive-interaction")
+
+    def wake_up_agentic(self) -> None:
+        try:
+            self._voice_agentic_enabled = True
+        except Exception:
+            pass
+
+        try:
+            mini = getattr(self, "mini", None)
+            if mini is not None:
+                self._enqueue_motor(mini.wake_up)
+                self._woke_up = True
+        except Exception as e:
+            warn("Failed to wake up Reachy: %s", e, logger=self.log)
+
+        self._start_agentic_runtime()
+
+    def label_outcome(
+        self,
+        code: int,
+        *,
+        source: str | None = None,
+        trigger: str | None = None,
+        note: str | None = None,
+    ) -> None:
+        try:
+            code_int = int(code)
+        except Exception:
+            return
+        if code_int < 0:
+            code_int = 0
+        if code_int > 9:
+            code_int = 9
+        self._outcome_code = int(code_int)
+
+        last_motor_sample_id = None
+        sample = getattr(self, "_last_motor_sample", None)
+        if isinstance(sample, dict):
+            last_motor_sample_id = sample.get("sample_id")
+
+        target_action_event_id = getattr(self, "_last_action_event_id", None)
+
+        transcript = getattr(self, "_last_transcript_event", None)
+        transcript_ref = None
+        if isinstance(transcript, dict):
+            transcript_ref = {
+                "chunk_index": transcript.get("chunk_index"),
+                "start_s": transcript.get("start_s"),
+                "end_s": transcript.get("end_s"),
+                "text": str(transcript.get("text", "") or "")[:280],
+            }
+
+        record: dict = {
+            "kind": "outcome_label",
+            "event_id": uuid.uuid4().hex,
+            "time": float(time.time()),
+            "source": str(source) if source is not None else None,
+            "trigger": str(trigger) if trigger is not None else None,
+            "code": int(code_int),
+            "note": str(note) if note is not None else None,
+            "run_id": getattr(self, "run_id", None),
+            "mode": getattr(self, "mode", None),
+            "epoch": int(getattr(self, "current_epoch", 0) or 0),
+            "video_path": getattr(self, "video_path", None),
+            "audio_path": getattr(self, "audio_path", None),
+            "transcript_path": getattr(self, "transcript_path", None),
+            "target_action_event_id": target_action_event_id,
+            "last_motor_sample_id": last_motor_sample_id,
+            "transcript": transcript_ref,
+        }
+
+        self._log_event(record, flush=True)
 
     def center_vision(self, *, duration: Optional[float] = None) -> None:
         return self.goto_pose("centered", duration=duration)
@@ -977,32 +1675,95 @@ class Maxim:
         if duration is not None:
             self.duration = duration
 
-
-        # Update only specified parameters
-        updates = {
-            "x": x,
-            "y": y,
-            "z": z,
-            "roll": roll,
-            "pitch": pitch,
-            "yaw": yaw,
-        }
-        for attr, val in updates.items():
-            if val is not None:
-                setattr(self, attr, val)
-
         # Execute head movement
-        self._enqueue_motor(
-            move_head,
-            self.mini,
-            self.x,
-            self.y,
-            self.z,
-            self.roll,
-            self.pitch,
-            self.yaw,
-            self.duration,
-        )
+        cur_x = float(getattr(self, "x", 0.0) or 0.0)
+        cur_y = float(getattr(self, "y", 0.0) or 0.0)
+        cur_z = float(getattr(self, "z", 0.0) or 0.0)
+        cur_roll = float(getattr(self, "roll", 0.0) or 0.0)
+        cur_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
+        cur_yaw = float(getattr(self, "yaw", 0.0) or 0.0)
+
+        next_x = cur_x if x is None else float(x)
+        next_y = cur_y if y is None else float(y)
+        next_z = cur_z if z is None else float(z)
+        next_roll = cur_roll if roll is None else float(roll)
+        next_pitch = cur_pitch if pitch is None else float(pitch)
+        next_yaw = cur_yaw if yaw is None else float(yaw)
+
+        max_step = getattr(self, "_head_max_step", None)
+        if isinstance(max_step, dict) and max_step:
+            try:
+                step = float(max_step.get("x", 0.0) or 0.0)
+            except Exception:
+                step = 0.0
+            if step > 0:
+                dx = next_x - cur_x
+                if abs(dx) > step:
+                    next_x = cur_x + (step if dx > 0 else -step)
+
+            try:
+                step = float(max_step.get("y", 0.0) or 0.0)
+            except Exception:
+                step = 0.0
+            if step > 0:
+                dy = next_y - cur_y
+                if abs(dy) > step:
+                    next_y = cur_y + (step if dy > 0 else -step)
+
+            try:
+                step = float(max_step.get("z", 0.0) or 0.0)
+            except Exception:
+                step = 0.0
+            if step > 0:
+                dz = next_z - cur_z
+                if abs(dz) > step:
+                    next_z = cur_z + (step if dz > 0 else -step)
+
+            try:
+                step = float(max_step.get("roll", 0.0) or 0.0)
+            except Exception:
+                step = 0.0
+            if step > 0:
+                droll = next_roll - cur_roll
+                if abs(droll) > step:
+                    next_roll = cur_roll + (step if droll > 0 else -step)
+
+            try:
+                step = float(max_step.get("pitch", 0.0) or 0.0)
+            except Exception:
+                step = 0.0
+            if step > 0:
+                dpitch = next_pitch - cur_pitch
+                if abs(dpitch) > step:
+                    next_pitch = cur_pitch + (step if dpitch > 0 else -step)
+
+            try:
+                step = float(max_step.get("yaw", 0.0) or 0.0)
+            except Exception:
+                step = 0.0
+            if step > 0:
+                dyaw = next_yaw - cur_yaw
+                if abs(dyaw) > step:
+                    next_yaw = cur_yaw + (step if dyaw > 0 else -step)
+
+        if (
+            next_x == cur_x
+            and next_y == cur_y
+            and next_z == cur_z
+            and next_roll == cur_roll
+            and next_pitch == cur_pitch
+            and next_yaw == cur_yaw
+        ):
+            return
+
+        self.x = float(next_x)
+        self.y = float(next_y)
+        self.z = float(next_z)
+        self.roll = float(next_roll)
+        self.pitch = float(next_pitch)
+        self.yaw = float(next_yaw)
+
+        self._enqueue_motor(move_head, self.mini, self.x, self.y, self.z, self.roll, self.pitch, self.yaw, self.duration)
 
     def move_antenna(
         self,
@@ -1143,12 +1904,33 @@ class Maxim:
             "epoch": self.current_epoch,
         }
         return entry
+
+    def _ensure_segmenter(self, *, force: bool = False, model_name: str | None = None) -> None:
+        if not force and getattr(self, "segmenter", None) is not None:
+            return
+
+        seg_model = str(
+            model_name or os.getenv("MAXIM_SEGMENTATION_MODEL", "YOLO8") or "YOLO8"
+        ).strip() or "YOLO8"
+        self.log.info("Loading vision models (%s seg+pose)...", seg_model)
+        try:
+            self.segmenter = build_segmentation_model(seg_model, pose_model=True)  # Visual segmentation + pose model
+            self._segmenter_model = seg_model
+        except Exception as e:
+            warn("Failed to load segmentation model '%s': %s (falling back to YOLO8)", seg_model, e, logger=self.log)
+            self.segmenter = build_segmentation_model("YOLO8", pose_model=True)
+            self._segmenter_model = "YOLO8"
     
     def awaken(self, vision: bool = True, motor: bool = True, audio: bool = True, wake_up: bool = True):
+        if wake_up:
+            # Wake up Reachy before model init to avoid loading while asleep.
+            self.log.info("Waking up Reachy...")
+            self.mini.wake_up()
+            self._woke_up = True
+
         # Load models
         if vision:
-            self.log.info("Loading vision models (YOLOv8 seg+pose)...")
-            self.segmenter = YOLO8(pose_model=True) # Visual segmentation + pose model
+            self._ensure_segmenter()
 
         if motor and self.movement_model is None:
             try:
@@ -1200,18 +1982,13 @@ class Maxim:
                 self.movement_model = None
                 self.log.warning("Motor cortex unavailable: %s", e)
 
-        if wake_up:
-            # Wake up Reachy
-            self.log.info("Waking up Reachy...")
-            self.mini.wake_up()
-            self._woke_up = True
-
         return
 
     def shutdown(self):
         if getattr(self, "_closed", False):
             return
         self._closed = True
+        self._stop_agentic_runtime(timeout=2.0)
 
         try:
             training_logger = getattr(self, "_training_logger", None)
@@ -1285,11 +2062,12 @@ class Maxim:
             self.log.warning("Failed to save motor artifacts: %s", e)
 
         if getattr(self, "_woke_up", False):
-            # Send Reachy to sleep
-            try:
-                self.mini.goto_sleep()
-            except Exception as e:
-                warn("Failed to send Reachy to sleep: %s", e, logger=getattr(self, "log", None))
+            requested = str(getattr(self, "requested_mode", "") or "").strip().lower()
+            if requested not in ("passive-interaction", "live", "train", "agentic"):
+                try:
+                    self.mini.goto_sleep()
+                except Exception as e:
+                    warn("Failed to send Reachy to sleep: %s", e, logger=getattr(self, "log", None))
 
         # Stop recording data
         try:
@@ -1299,6 +2077,20 @@ class Maxim:
 
         # Release the camera + any OpenCV resources
         self._release_media()
+
+        # Best-effort: close any lingering connections.
+        try:
+            mini = getattr(self, "mini", None)
+            if mini is not None:
+                for attr in ("disconnect", "close", "shutdown"):
+                    fn = getattr(mini, attr, None)
+                    if callable(fn):
+                        try:
+                            fn()
+                        except Exception:
+                            pass
+        except Exception:
+            pass
 
 
         return
