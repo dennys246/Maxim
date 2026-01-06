@@ -246,37 +246,76 @@ class YOLO8:
             boxes = getattr(results[0], "boxes", None)
             if boxes is None:
                 continue
+            xyxy = getattr(boxes, "xyxy", None)
+            if xyxy is None:
+                continue
 
-            for box in boxes:
-                track_raw = getattr(box, "id", None)
-                cls_raw = getattr(box, "cls", None)
-                conf_raw = getattr(box, "conf", None)
+            try:
+                xyxy_arr = xyxy.cpu().numpy()
+            except Exception:
+                xyxy_arr = None
 
-                try:
-                    track_val = _scalar(track_raw)
-                    track_id = int(track_val) if track_val is not None else None
-                except Exception:
-                    track_id = None
+            if xyxy_arr is None:
+                continue
 
-                try:
-                    cls_val = _scalar(cls_raw)
-                    cls_id = int(cls_val) if cls_val is not None else None
-                except Exception:
-                    cls_id = None
+            if xyxy_arr.ndim == 1:
+                xyxy_arr = xyxy_arr.reshape(1, -1)
 
-                try:
-                    conf_val = _scalar(conf_raw)
-                    conf = float(conf_val) if conf_val is not None else 0.0
-                except Exception:
-                    conf = 0.0
+            try:
+                box_count = int(xyxy_arr.shape[0])
+            except Exception:
+                box_count = 0
 
-                try:
-                    x1, y1, x2, y2 = box.xyxy.cpu().numpy().squeeze()[:4]
-                except Exception:
+            conf_raw = getattr(boxes, "conf", None)
+            cls_raw = getattr(boxes, "cls", None)
+            track_raw = getattr(boxes, "id", None)
+
+            try:
+                conf_arr = conf_raw.cpu().numpy().reshape(-1) if conf_raw is not None else None
+            except Exception:
+                conf_arr = None
+            try:
+                cls_arr = cls_raw.cpu().numpy().reshape(-1) if cls_raw is not None else None
+            except Exception:
+                cls_arr = None
+            try:
+                track_arr = track_raw.cpu().numpy().reshape(-1) if track_raw is not None else None
+            except Exception:
+                track_arr = None
+
+
+            for box_index in range(box_count):
+                row = xyxy_arr[box_index]
+                if row is None or len(row) < 4:
                     continue
+
+
+                x1, y1, x2, y2 = map(float, row[:4])
+
+                track_id = None
+                if track_arr is not None and box_index < int(track_arr.shape[0]):
+                    try:
+                        track_id = int(_scalar(track_arr[box_index]))
+                    except Exception:
+                        track_id = None
+
+                cls_id = None
+                if cls_arr is not None and box_index < int(cls_arr.shape[0]):
+                    try:
+                        cls_id = int(_scalar(cls_arr[box_index]))
+                    except Exception:
+                        cls_id = None
+
+                conf = 0.0
+                if conf_arr is not None and box_index < int(conf_arr.shape[0]):
+                    try:
+                        conf = float(_scalar(conf_arr[box_index]))
+                    except Exception:
+                        conf = 0.0
 
                 # Preserve observation: [track_id, frame_ind, x1, y1, x2, y2, conf, cls_id]
                 observations.append([track_id, frame_ind, float(x1), float(y1), float(x2), float(y2), conf, cls_id])
+
 
         return observations
 
