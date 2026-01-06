@@ -5,5 +5,65 @@
   },
   "u": {
     "call": "mark_trainable_moment"
+  },
+  "0": {
+    "call": "label_outcome",
+    "args": [
+      0
+    ]
+  },
+  "1": {
+    "call": "label_outcome",
+    "args": [
+      1
+    ]
+  },
+  "2": {
+    "call": "label_outcome",
+    "args": [
+      2
+    ]
+  },
+  "3": {
+    "call": "label_outcome",
+    "args": [
+      3
+    ]
+  },
+  "4": {
+    "call": "label_outcome",
+    "args": [
+      4
+    ]
+  },
+  "5": {
+    "call": "label_outcome",
+    "args": [
+      5
+    ]
+  },
+  "6": {
+    "call": "label_outcome",
+    "args": [
+      6
+    ]
+  },
+  "7": {
+    "call": "label_outcome",
+    "args": [
+      7
+    ]
+  },
+  "8": {
+    "call": "label_outcome",
+    "args": [
+      8
+    ]
+  },
+  "9": {
+    "call": "label_outcome",
+    "args": [
+      9
+    ]
   }
 }
