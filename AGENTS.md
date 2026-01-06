@@ -17,7 +17,7 @@ Maxim is a Reachy Mini project for capturing audio/video, running perception + m
 - If files or data are created in the `sandbox/`, delete old and un-necessary files and data if no longer being used.
 
 ## Allowed Actions
-- Modify code under `src/`.
+- Modify code under `src/` with user requests.
 - Add/modify smoke tests under `src/tests/` (offline-by-default; provide explicit opt-in for robot/network).
 - Update documentation (`README.md`, `DECISIONS.md`, `ARCHITECTURE.md`).
 - Creating new file within a `src/` folder if another file would better seperate module functionality, always request approval first.
@@ -40,3 +40,57 @@ Maxim is a Reachy Mini project for capturing audio/video, running perception + m
 ## When Uncertain
 - Ask for clarification about desired runtime behavior (e.g., “record everything” vs “latest snapshot”).
 - Don’t guess domain logic (robot kinematics, label semantics, training targets); prefer small instrumentation/logging to validate assumptions.
+
+
+## AGENT DEFINITION
+
+An agent is a goal-oriented reasoning module.
+Agents THINK but do not ACT.
+
+
+## ALLOWED AGENT ACTIONS
+
+Agents MAY:
+- Read from state
+- Query memory
+- Propose intents
+- Evaluate outcomes
+- Request plans
+
+Agents MAY NOT:
+- Execute tools
+- Mutate state
+- Control execution loops
+- Inspect environment internals
+- Coordinate directly with other agents
+
+
+## AGENT OUTPUT CONTRACT
+
+Agents must emit STRUCTURED INTENT, never imperative commands.
+
+Valid:
+- Intent objects
+- High-level goals
+- Action proposals
+
+Invalid:
+- Tool calls
+- HTTP requests
+- File operations
+
+
+## MULTI-AGENT RULE
+
+Agents do not call or import other agents.
+All coordination happens through:
+- State
+- Decision engine
+- Explicit message passing
+
+
+## AGENT PURITY RULE
+
+Given the same state, memory, and policy constraints,
+agent output must be deterministic.
+Any randomness must be explicit and injected.
