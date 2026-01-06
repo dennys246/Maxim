@@ -16,15 +16,14 @@ from typing import Optional
 
 import numpy as np
 
-from reachy_mini import ReachyMini
-
 from maxim.motion.movement import load_actions, load_movement_thresholds, load_poses, move_antenna, move_head
 from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.data_management import TrainingSampleLogger, build_home
 from maxim.utils.logging import configure_logging, warn
+from maxim.utils.plotting import preflight_matplotlib_fonts, preload_matplotlib_fonts
 from maxim.utils.queueing import put_latest
 
-from maxim.data.camera.display import show_photo
+from maxim.data.camera.display import prepare_display, show_photo
 from maxim.inference.observation import (
     face_observation,
     motor_cortex_control,
@@ -34,6 +33,17 @@ from maxim.inference.observation import (
 from maxim.models.vision.registry import build_segmentation_model
 
 os.environ["PYOPENGL_PLATFORM"] = "egl"
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    value = str(raw).strip().lower()
+    if value in ("1", "true", "t", "yes", "y", "on"):
+        return True
+    if value in ("0", "false", "f", "no", "n", "off"):
+        return False
+    return bool(default)
 
 class Maxim:
     """
@@ -76,6 +86,12 @@ class Maxim:
         self.duration = 1.0
         self.home_dir = home_dir
 
+        # Load Matplotlib before Reachy/GStreamer so ft2font binds to stable libs.
+        preload_matplotlib_fonts(
+            cache_dir=os.path.join(self.home_dir, "matplotlib"),
+            logger=self.log,
+        )
+
         self.current_epoch = 0
         self.epochs = epochs
         mode = str(mode or "passive-interaction").strip().lower()
@@ -110,6 +126,9 @@ class Maxim:
 
         # robot_name must match the daemon namespace (default: reachy_mini).
         # localhost_only=False enables zenoh peer discovery across the LAN.
+        # Import ReachyMini after Matplotlib preload to avoid native lib conflicts.
+        from reachy_mini import ReachyMini
+
         self.mini = ReachyMini(
             robot_name=self.name,
             localhost_only=False,
@@ -924,6 +943,9 @@ class Maxim:
             self.log.info("Transcripts: %s", transcript_path)
 
         self.awaken(vision=bool(vision), motor=bool(motor), audio=bool(self.audio), wake_up=bool(wake_up))
+        if vision and self.verbose:
+            # Keep OpenCV GUI calls on a dedicated process main thread (safer on Linux/WSL).
+            prepare_display()
 
         media_lock = threading.Lock()
         stop_event = threading.Event()
@@ -953,6 +975,12 @@ class Maxim:
                 from maxim.data.audio.sound import transcription_worker
 
                 ctx = mp.get_context("spawn")
+                vad_filter = _env_flag("MAXIM_VAD_FILTER", True)
+                compute_type = str(os.getenv("MAXIM_WHISPER_COMPUTE_TYPE", "int8") or "int8").strip()
+                if not compute_type:
+                    compute_type = "int8"
+                self.log.info("Transcription VAD filter: %s", "enabled" if vad_filter else "disabled")
+                self.log.info("Whisper compute type: %s", compute_type)
                 transcribe_queue = ctx.Queue(maxsize=64)
                 transcribe_process = ctx.Process(
                     target=transcription_worker,
@@ -960,10 +988,10 @@ class Maxim:
                     kwargs={
                         "model_size_or_path": "tiny",
                         "device": "cpu",
-                        "compute_type": "int8",
+                        "compute_type": compute_type,
                         "language": "en",
                         "beam_size": 1,
-                        "vad_filter": True,
+                        "vad_filter": vad_filter,
                         "cleanup_chunks": True,
                         "verbosity": int(self.verbosity or 0),
                         "log_file": log_path,
@@ -1068,6 +1096,7 @@ class Maxim:
             disabled = False
             width = None
             height = None
+            frames_written = 0
             os.makedirs(os.path.dirname(video_path) or ".", exist_ok=True)
 
             while not stop_event.is_set() or not frame_save_queue.empty():
@@ -1115,6 +1144,7 @@ class Maxim:
                 if opened and writer is not None:
                     try:
                         writer.write(frame_arr)
+                        frames_written += 1
                     except Exception as e:
                         warn("Failed to write video frame: %s", e, logger=self.log)
 
@@ -1125,6 +1155,27 @@ class Maxim:
                     writer.release()
             except Exception:
                 pass
+
+            if frames_written == 0:
+                file_size = None
+                try:
+                    if os.path.exists(video_path):
+                        file_size = os.path.getsize(video_path)
+                except Exception:
+                    file_size = None
+                if file_size is not None:
+                    warn(
+                        "No video frames were written to '%s' (size=%d bytes). The file may be empty/unplayable.",
+                        video_path,
+                        int(file_size),
+                        logger=self.log,
+                    )
+                else:
+                    warn(
+                        "No video frames were written to '%s'. The file may be empty/unplayable.",
+                        video_path,
+                        logger=self.log,
+                    )
 
         def _audio_writer_worker() -> None:
             if not self.audio or audio_save_queue is None:
@@ -1913,6 +1964,13 @@ class Maxim:
             model_name or os.getenv("MAXIM_SEGMENTATION_MODEL", "YOLO8") or "YOLO8"
         ).strip() or "YOLO8"
         self.log.info("Loading vision models (%s seg+pose)...", seg_model)
+        # Preflight matplotlib font cache in a subprocess to avoid hard crashes on Linux/WSL.
+        preflight_ok = preflight_matplotlib_fonts(
+            cache_dir=os.path.join(self.home_dir, "matplotlib"),
+            logger=self.log,
+        )
+        if not preflight_ok:
+            raise RuntimeError("Matplotlib font preflight failed; see README troubleshooting.")
         try:
             self.segmenter = build_segmentation_model(seg_model, pose_model=True)  # Visual segmentation + pose model
             self._segmenter_model = seg_model
