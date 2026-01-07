@@ -56,7 +56,7 @@ class Maxim:
         timeout: float = 30.0,
         media_backend: str = "default",  # avoid WebRTC/GStreamer if signalling is down
         home_dir: str = "data/",
-        epochs: int = 1000,
+        epochs: int | None = None,
         *,
         verbosity: int = 0,
         verbose: bool = False,
@@ -93,7 +93,7 @@ class Maxim:
         )
 
         self.current_epoch = 0
-        self.epochs = epochs
+        self._set_epochs(epochs)
         mode = str(mode or "passive-interaction").strip().lower()
         if train is not None:
             mode = "train" if bool(train) else "live"
@@ -878,11 +878,19 @@ class Maxim:
                 pass
         self._agentic_thread = None
         self._agentic_stop_event = None
+
+    def _set_epochs(self, epochs: int | None) -> None:
+        try:
+            value = int(epochs) if epochs is not None else 0
+        except Exception:
+            value = 0
+        self.epochs = value if value > 0 else None
     
     def live(
         self,
         home_dir: Optional[str] = None,
         *,
+        epochs: int | None = None,
         parallel: bool = True,
         vision: bool = True,
         motor: bool = True,
@@ -894,6 +902,8 @@ class Maxim:
 
         if home_dir is not None:
             self.home_dir = home_dir
+        if epochs is not None:
+            self._set_epochs(epochs)
 
         build_home(self.home_dir)
 
@@ -927,10 +937,11 @@ class Maxim:
             self._training_logger = None
             warn("Failed to start training sample logger: %s", e, logger=self.log)
 
+        epochs_label = "unlimited" if self.epochs is None else str(int(self.epochs))
         self.log.info(
-            "Starting live loop (home_dir=%s, epochs=%d, observation_period=%s, mode=%s, audio=%s, audio_len=%.1fs)",
+            "Starting live loop (home_dir=%s, epochs=%s, observation_period=%s, mode=%s, audio=%s, audio_len=%.1fs)",
             self.home_dir,
-            int(self.epochs),
+            epochs_label,
             str(getattr(self, "observation_period", None)),
             str(getattr(self, "mode", "passive-interaction")),
             str(bool(getattr(self, "audio", True))),
@@ -1337,7 +1348,7 @@ class Maxim:
                 while True:
                     if stop_event.is_set():
                         break
-                    if int(self.current_epoch) >= int(self.epochs):
+                    if self.epochs is not None and int(self.current_epoch) >= int(self.epochs):
                         self.log.info("Reached epochs limit (%d). Stopping.", int(self.epochs))
                         break
 

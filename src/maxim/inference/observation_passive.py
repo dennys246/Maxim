@@ -128,6 +128,15 @@ def passive_observation(
     if abs(u_int - (photo_width / 2)) < deadzone_px and abs(v_int - (photo_height / 2)) < deadzone_px:
         return
 
+    last_target = getattr(maxim, "_last_passive_target", None)
+    if last_target is not None:
+        try:
+            last_u, last_v = last_target
+            if abs(u_int - int(last_u)) < deadzone_px and abs(v_int - int(last_v)) < deadzone_px:
+                return
+        except Exception:
+            pass
+
     if duration is None:
         duration = getattr(maxim, "duration", 0.5)
 
@@ -202,6 +211,10 @@ def passive_observation(
     # Use the Reachy SDK camera model to look directly at the target pixel when available.
     try:
         maxim.look_at_image(u_int, v_int, duration=float(duration), perform_movement=True)
+        try:
+            setattr(maxim, "_last_passive_target", (int(u_int), int(v_int)))
+        except Exception:
+            pass
         if record is not None and training_logger is not None:
             record["command"] = {
                 "method": "look_at_image",
@@ -240,6 +253,10 @@ def passive_observation(
         yaw=getattr(maxim, "yaw", 0.0) + yaw_delta,
         pitch=getattr(maxim, "pitch", 0.0) + pitch_delta,
     )
+    try:
+        setattr(maxim, "_last_passive_target", (int(u_int), int(v_int)))
+    except Exception:
+        pass
 
 
 def passive_listening(maxim, save_file):

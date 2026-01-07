@@ -33,8 +33,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--epochs",
         type=int,
-        default=1000,
-        help="Epochs to run Maxim for.",
+        default=0,
+        help="Epochs to run Maxim for (0 = unlimited).",
     )
     parser.add_argument(
         "--verbosity",
@@ -89,6 +89,14 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _normalize_epoch_value(value: object) -> int:
+    try:
+        epochs = int(value)
+    except Exception:
+        return 0
+    return epochs if epochs > 0 else 0
+
+
 def _normalize_args(args: argparse.Namespace) -> None:
     audio_raw = str(getattr(args, "audio", "true")).strip().lower()
     if audio_raw in ("1", "true", "t", "yes", "y", "on"):
@@ -100,6 +108,7 @@ def _normalize_args(args: argparse.Namespace) -> None:
 
     if str(getattr(args, "mode", "passive-interaction")).strip().lower() == "sleep":
         args.audio = True
+    args.epochs = _normalize_epoch_value(getattr(args, "epochs", 0))
 
     language_model = getattr(args, "language_model", None)
     if language_model is not None:
@@ -136,6 +145,7 @@ def _reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
     if mode == "sleep":
         audio_flag = True
 
+    epochs_value = _normalize_epoch_value(getattr(args, "epochs", 0))
     argv = [
         sys.executable,
         "-m",
@@ -147,7 +157,7 @@ def _reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
         "--timeout",
         str(float(getattr(args, "timeout", 30.0) or 30.0)),
         "--epochs",
-        str(int(getattr(args, "epochs", 1000) or 1000)),
+        str(epochs_value),
         "--verbosity",
         str(int(getattr(args, "verbosity", 1) or 1)),
         "--mode",
@@ -186,12 +196,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         maxim = None
         try:
+            epochs_value = _normalize_epoch_value(getattr(args, "epochs", 0))
+            epochs_label = "unlimited" if epochs_value <= 0 else str(epochs_value)
             logger.info(
-                "Starting Maxim (robot_name=%s, home_dir=%s, timeout=%.1fs, epochs=%d, mode=%s, log=%s)",
+                "Starting Maxim (robot_name=%s, home_dir=%s, timeout=%.1fs, epochs=%s, mode=%s, log=%s)",
                 args.robot_name,
                 args.home_dir,
                 float(args.timeout),
-                int(args.epochs),
+                epochs_label,
                 mode,
                 log_path,
             )
@@ -237,7 +249,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     env = ReachyEnv(data_dir=args.home_dir)
                 else:
                     env = build_environment()
-                state = build_state(max_steps=int(args.epochs))
+                state = build_state(max_steps=epochs_value)
                 memory = build_memory()
                 evaluators = build_evaluators()
 
@@ -249,7 +261,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     decision_engine,
                     executor,
                     evaluators=evaluators,
-                    max_steps=int(args.epochs),
+                    max_steps=epochs_value,
                     run_id=run_id,
                 )
                 return 0
@@ -264,7 +276,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 robot_name=args.robot_name,
                 home_dir=args.home_dir,
                 timeout=args.timeout,
-                epochs=args.epochs,
+                epochs=epochs_value,
                 verbosity=args.verbosity,
                 mode=mode,
                 audio=audio_enabled,

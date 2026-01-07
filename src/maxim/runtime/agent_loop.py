@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import time
+import itertools
 import json
 from typing import Any
 
@@ -74,7 +75,9 @@ def run_agent_loop(
     state_path = os.path.join("data", "agents", agent_name, "runtime", f"state_{run_id}.json")
     _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
 
-    for _ in range(int(max_steps)):
+    max_steps_i = int(max_steps or 0)
+    step_iter = itertools.count() if max_steps_i <= 0 else range(max_steps_i)
+    for _ in step_iter:
         try:
             if stop_event is not None and hasattr(stop_event, "is_set") and stop_event.is_set():
                 break

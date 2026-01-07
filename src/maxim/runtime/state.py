@@ -52,8 +52,14 @@ class RuntimeState:
         if not isinstance(data, dict):
             data = {}
 
+        raw_max_steps = payload.get("max_steps", 100)
+        try:
+            max_steps = int(raw_max_steps)
+        except Exception:
+            max_steps = 100
+
         return cls(
-            max_steps=int(payload.get("max_steps", 100) or 100),
+            max_steps=max_steps,
             confirmed=bool(payload.get("confirmed", False)),
             steps_taken=int(payload.get("steps_taken", 0) or 0),
             done=bool(payload.get("done", False)),
@@ -67,6 +73,6 @@ class RuntimeState:
     def is_done(self) -> bool:
         if self.done:
             return True
-        if int(self.steps_taken) >= int(self.max_steps):
+        if int(self.max_steps) > 0 and int(self.steps_taken) >= int(self.max_steps):
             return True
         return False
