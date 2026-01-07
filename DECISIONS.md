@@ -286,6 +286,18 @@ Reason:
 Tradeoffs:
 - Without VAD, transcription may be slower and include more silence.
 
+## 2026-01-06: Default epochs to unlimited
+Decision:
+- CLI `--epochs` defaults to `0` (unlimited).
+- `Maxim` treats epochs `<= 0` as unlimited; `Maxim.live(epochs=...)` overrides.
+- Agentic `max_steps <= 0` runs without a step cap.
+
+Reason:
+- Prevent unexpected stops in long-running sessions unless the user explicitly sets a limit.
+
+Tradeoffs:
+- Users must pass `--epochs` to cap runtime by default.
+
 ## 2026-01-04: Store head poses under `data/motion/default_poses.json`
 Decision:
 - Default head poses (including the `centered` pose used by the `c` key) load from `data/motion/default_poses.json`.

@@ -51,6 +51,7 @@ maxim
 ```
 
 NOTE: You can also set `MAXIM_ROBOT_NAME=reachy_mini` and run `maxim`.
+By default Maxim runs indefinitely; use `--epochs N` to stop after N cycles.
 
 Legacy entrypoint (still supported when running from a cloned checkout):
 
@@ -67,6 +68,9 @@ maxim = Maxim()
 
 # Starts the live loop (capture → inference/control → record artifacts)
 maxim.live()
+
+# Stop after N epochs (observation cycles)
+# maxim.live(epochs=100)
 
 # General movement wrapper to the Reachy SDK
 maxim.move(y = 10, yaw = 3)
