@@ -50,7 +50,8 @@ def _display_disabled() -> bool:
     if _env_flag("MAXIM_DISABLE_IMSHOW", False) or _env_flag("MAXIM_HEADLESS", False):
         return True
     if os.name != "nt":
-        if not os.getenv("DISPLAY") and not os.getenv("WAYLAND_DISPLAY"):
+        # Only treat missing DISPLAY/WAYLAND_DISPLAY as headless on Linux/WSL.
+        if (sys.platform.startswith("linux") or _is_wsl()) and not os.getenv("DISPLAY") and not os.getenv("WAYLAND_DISPLAY"):
             return True
     return False
 
