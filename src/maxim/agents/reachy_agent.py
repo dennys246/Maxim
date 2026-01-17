@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import time
 from typing import Any
 
@@ -19,6 +20,9 @@ class ReachyAgent(Agent):
 
     agent_name = "reachy_mini"
 
+    # Sentinel value to distinguish "init failed" from "not yet initialized"
+    _LLM_INIT_FAILED = object()
+
     def __init__(self, *, name: str | None = None, enabled: bool = True) -> None:
         super().__init__(name=name, enabled=enabled)
         self._last_transcript_path: str | None = None
@@ -27,6 +31,7 @@ class ReachyAgent(Agent):
         self._last_focus_ts = 0.0
         self._last_llm_chunk_index: int | None = None
         self._llm: LLMRouter | None = None
+        self._llm_lock = threading.Lock()
 
     @staticmethod
     def _normalize_transcript_text(text: str) -> str:
@@ -46,13 +51,28 @@ class ReachyAgent(Agent):
         return " ".join(tokens)
 
     def _llm_router(self) -> LLMRouter | None:
+        # Fast path: already initialized
         if self._llm is not None:
+            if self._llm is ReachyAgent._LLM_INIT_FAILED:
+                return None
             return self._llm if self._llm.enabled() else None
-        try:
-            self._llm = LLMRouter()
-        except Exception:
-            self._llm = None
-        return self._llm if self._llm is not None and self._llm.enabled() else None
+
+        # Thread-safe initialization
+        with self._llm_lock:
+            # Double-check after acquiring lock
+            if self._llm is not None:
+                if self._llm is ReachyAgent._LLM_INIT_FAILED:
+                    return None
+                return self._llm if self._llm.enabled() else None
+
+            try:
+                self._llm = LLMRouter()
+            except Exception:
+                # Mark as failed to avoid retrying on every call
+                self._llm = ReachyAgent._LLM_INIT_FAILED
+                return None
+
+            return self._llm if self._llm.enabled() else None
 
     def propose_intent(self, state: Any, memory: Any, **kwargs: Any) -> dict[str, Any] | None:
         try:
@@ -67,18 +87,21 @@ class ReachyAgent(Agent):
                     chunk_index_int = None
 
                 if chunk_index_int is not None and chunk_index_int != self._last_llm_chunk_index:
-                    self._last_llm_chunk_index = int(chunk_index_int)
                     text = str(record.get("text", "") or "").strip()
                     normalized = self._normalize_transcript_text(text)
                     tokens = normalized.split()
 
                     if "maxim" in tokens:
                         # Hard overrides: treat explicit mode switches as keyword-only (no LLM).
+                        # Mark chunk as processed for these explicit commands.
                         if "sleep" in tokens:
+                            self._last_llm_chunk_index = int(chunk_index_int)
                             return None
                         if "observe" in tokens:
+                            self._last_llm_chunk_index = int(chunk_index_int)
                             return None
                         if "shutdown" in tokens or ("shut" in tokens and "down" in tokens):
+                            self._last_llm_chunk_index = int(chunk_index_int)
                             return None
 
                         remainder = [t for t in tokens if t != "maxim"]
@@ -104,7 +127,10 @@ class ReachyAgent(Agent):
                                     allowed_commands=allowed_commands,
                                 )
                                 if isinstance(action, dict) and action.get("tool_name"):
+                                    # Only mark chunk as processed on successful LLM action
+                                    self._last_llm_chunk_index = int(chunk_index_int)
                                     return {"goal": action, "confidence": 1.0}
+                                # LLM returned None - don't mark as processed so it can be retried
 
             if maxim_runtime:
                 mode = None
