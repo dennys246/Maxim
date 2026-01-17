@@ -18,5 +18,12 @@ class Executor:
         if not isinstance(tool_name, str) or not tool_name:
             return ToolResult(success=False, error=f"Invalid action: {action!r}")
 
-        tool = self.registry.get(tool_name)
-        return tool.run(**params)
+        try:
+            tool = self.registry.get(tool_name)
+        except KeyError:
+            return ToolResult(success=False, error=f"Tool not registered: {tool_name!r}")
+
+        try:
+            return tool.run(**params)
+        except Exception as e:
+            return ToolResult(success=False, error=f"Tool {tool_name!r} execution failed: {e}")
