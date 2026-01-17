@@ -45,6 +45,22 @@ def _env_flag(name: str, default: bool) -> bool:
         return False
     return bool(default)
 
+def _is_connection_error(error: object) -> bool:
+    if error is None:
+        return False
+    message = str(error).strip().lower()
+    if not message:
+        return False
+    if "lost connection" in message:
+        return True
+    if "disconnected" in message:
+        return True
+    if "timeout" in message or "timed out" in message:
+        return True
+    if "connection" in message and any(term in message for term in ("refused", "reset", "broken", "closed")):
+        return True
+    return False
+
 class Maxim:
     """
     A class for orchestracting models and agents with Reachy-Mini's.
@@ -82,6 +98,25 @@ class Maxim:
 
         self.name = robot_name or os.getenv("MAXIM_ROBOT_NAME", "reachy_mini")
         self.log.info("Connecting to Reachy Mini '%s'...", self.name)
+        self._connect_kwargs = {
+            "robot_name": self.name,
+            "localhost_only": False,
+            "spawn_daemon": False,
+            "use_sim": False,
+            "timeout": float(timeout),
+            "media_backend": media_backend,
+        }
+        self._media_lock: threading.Lock | None = None
+        self._reconnect_lock = threading.Lock()
+        self._last_reconnect_ts = 0.0
+        self._reconnect_cooldown_s = 20.0
+        self._reconnect_window_s = 5.0
+        self._reconnect_thresholds = {"motor": 3, "video": 5, "audio": 5}
+        self._connection_failures = {
+            "motor": {"count": 0, "last_ts": 0.0},
+            "video": {"count": 0, "last_ts": 0.0},
+            "audio": {"count": 0, "last_ts": 0.0},
+        }
         self.start = time.time()
         self.duration = 1.0
         self.home_dir = home_dir
@@ -754,6 +789,127 @@ class Maxim:
 
         self._release_cv2()
 
+    def _reset_connection_failures(self) -> None:
+        for state in self._connection_failures.values():
+            try:
+                state["count"] = 0
+                state["last_ts"] = 0.0
+            except Exception:
+                continue
+
+    def _note_connection_failure(self, kind: str, error: object) -> None:
+        if not _is_connection_error(error):
+            return
+
+        state = self._connection_failures.get(kind)
+        if not isinstance(state, dict):
+            state = {"count": 0, "last_ts": 0.0}
+            self._connection_failures[kind] = state
+
+        now = time.time()
+        last_ts = float(state.get("last_ts") or 0.0)
+        if now - last_ts > float(getattr(self, "_reconnect_window_s", 5.0) or 5.0):
+            state["count"] = 0
+
+        state["count"] = int(state.get("count", 0) or 0) + 1
+        state["last_ts"] = now
+
+        threshold = int(self._reconnect_thresholds.get(kind, 3) or 3)
+        if state["count"] >= threshold:
+            self._soft_reconnect(reason=f"{kind}_connection_failed", error=error)
+
+    def _soft_reconnect(self, *, reason: str, error: object | None = None) -> bool:
+        if getattr(self, "_closed", False):
+            return False
+        stop_event = getattr(self, "_live_stop_event", None)
+        if stop_event is not None and stop_event.is_set():
+            return False
+
+        now = time.time()
+        if now - float(getattr(self, "_last_reconnect_ts", 0.0) or 0.0) < float(
+            getattr(self, "_reconnect_cooldown_s", 20.0) or 20.0
+        ):
+            return False
+        if not self._reconnect_lock.acquire(blocking=False):
+            return False
+
+        self._last_reconnect_ts = now
+        try:
+            warn(
+                "Soft reconnect requested (%s): %s",
+                reason,
+                error if error is not None else "unknown error",
+                logger=self.log,
+            )
+
+            old_mini = getattr(self, "mini", None)
+            if old_mini is not None:
+                try:
+                    old_mini.stop_recording()
+                except Exception:
+                    pass
+
+                try:
+                    media = getattr(old_mini, "media", None)
+                    if media is not None:
+                        media_lock = getattr(self, "_media_lock", None)
+                        if media_lock is not None:
+                            with media_lock:
+                                media.close()
+                        else:
+                            media.close()
+                except Exception as e:
+                    warn("Failed to close media during reconnect: %s", e, logger=self.log)
+
+                for attr in ("disconnect", "close", "shutdown"):
+                    fn = getattr(old_mini, attr, None)
+                    if callable(fn):
+                        try:
+                            fn()
+                        except Exception:
+                            pass
+
+            try:
+                from reachy_mini import ReachyMini
+            except Exception as e:
+                warn("Soft reconnect failed (reachy_mini unavailable): %s", e, logger=self.log)
+                return False
+
+            try:
+                new_mini = ReachyMini(**dict(getattr(self, "_connect_kwargs", {}) or {}))
+            except Exception as e:
+                warn("Soft reconnect failed (connect): %s", e, logger=self.log)
+                return False
+
+            self.mini = new_mini
+
+            try:
+                new_mini.start_recording()
+            except Exception as e:
+                warn("Failed to start recording after reconnect: %s", e, logger=self.log)
+
+            if getattr(self, "_woke_up", False):
+                mode = str(getattr(self, "mode", "") or "").strip().lower()
+                if mode != "sleep":
+                    try:
+                        new_mini.wake_up()
+                    except Exception as e:
+                        warn("Failed to wake Reachy after reconnect: %s", e, logger=self.log)
+
+            motor_queue = getattr(self, "_motor_queue", None)
+            if motor_queue is not None:
+                try:
+                    while True:
+                        motor_queue.get_nowait()
+                except queue.Empty:
+                    pass
+
+            self._reset_connection_failures()
+            self.log.info("Soft reconnect complete.")
+            return True
+        finally:
+            self._reconnect_lock.release()
+
     def _repo_root(self) -> str:
         try:
             return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -959,6 +1115,7 @@ class Maxim:
             prepare_display()
 
         media_lock = threading.Lock()
+        self._media_lock = media_lock
         stop_event = threading.Event()
         self._live_stop_event = stop_event
 
@@ -1034,6 +1191,7 @@ class Maxim:
                     fn(*args, **kwargs)
                 except Exception as e:
                     warn("Motor command failed: %s", e, logger=self.log)
+                    self._note_connection_failure("motor", e)
 
         def _frame_capture_worker() -> None:
             min_period = 1.0 / float(getattr(self, "video_fps", 20.0) or 20.0)
@@ -1045,6 +1203,7 @@ class Maxim:
                         frame = self.mini.media.get_frame()
                 except Exception as e:
                     warn("Failed to capture frame: %s", e, logger=self.log)
+                    self._note_connection_failure("video", e)
                     time.sleep(0.01)
                     continue
 
@@ -1079,6 +1238,7 @@ class Maxim:
                         sample = self.mini.media.get_audio_sample()
                 except Exception as e:
                     warn("Failed to capture audio sample: %s", e, logger=self.log)
+                    self._note_connection_failure("audio", e)
                     time.sleep(0.01)
                     continue
 
@@ -1464,6 +1624,7 @@ class Maxim:
                     pass
 
             self._motor_queue = None
+            self._media_lock = None
             self._live_stop_event = None
             self.shutdown()
 
