@@ -2,10 +2,43 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from dataclasses import dataclass
 from typing import Any
 
 from maxim.utils.logging import warn
+
+
+# Quantization levels ordered by quality (higher = better quality, larger size)
+QUANTIZATION_LEVELS: dict[str, dict[str, Any]] = {
+    "Q2_K": {"bits": 2, "description": "Smallest, lowest quality", "suffix": "Q2_K"},
+    "Q3_K_S": {"bits": 3, "description": "Very small, low quality", "suffix": "Q3_K_S"},
+    "Q3_K_M": {"bits": 3, "description": "Small, low quality", "suffix": "Q3_K_M"},
+    "Q3_K_L": {"bits": 3, "description": "Small, better quality", "suffix": "Q3_K_L"},
+    "Q4_0": {"bits": 4, "description": "Medium, legacy format", "suffix": "Q4_0"},
+    "Q4_K_S": {"bits": 4, "description": "Medium, good balance", "suffix": "Q4_K_S"},
+    "Q4_K_M": {"bits": 4, "description": "Medium, recommended default", "suffix": "Q4_K_M"},
+    "Q5_0": {"bits": 5, "description": "Large, legacy format", "suffix": "Q5_0"},
+    "Q5_K_S": {"bits": 5, "description": "Large, high quality", "suffix": "Q5_K_S"},
+    "Q5_K_M": {"bits": 5, "description": "Large, higher quality", "suffix": "Q5_K_M"},
+    "Q6_K": {"bits": 6, "description": "Very large, very high quality", "suffix": "Q6_K"},
+    "Q8_0": {"bits": 8, "description": "Largest, near-original quality", "suffix": "Q8_0"},
+    "F16": {"bits": 16, "description": "Full precision float16", "suffix": "F16"},
+    "F32": {"bits": 32, "description": "Full precision float32", "suffix": "F32"},
+}
+
+DEFAULT_QUANTIZATION = "Q4_K_M"
+
+
+def list_quantization_levels() -> list[str]:
+    """Return available quantization levels ordered by size (smallest first)."""
+    return sorted(QUANTIZATION_LEVELS.keys(), key=lambda k: (QUANTIZATION_LEVELS[k]["bits"], k))
+
+
+def get_quantization_info(level: str) -> dict[str, Any] | None:
+    """Get info about a quantization level."""
+    normalized = str(level or "").strip().upper().replace("-", "_")
+    return QUANTIZATION_LEVELS.get(normalized)
 
 
 _PROFILE_ALIASES: dict[str, str] = {
@@ -15,13 +48,31 @@ _PROFILE_ALIASES: dict[str, str] = {
     "smollm": "smollm-1.7b-instruct",
     "smollm-1.7b": "smollm-1.7b-instruct",
     "smollm-1.7b-instruct": "smollm-1.7b-instruct",
+    # Llama models
+    "llama2": "llama-2-7b-chat",
+    "llama2-7b": "llama-2-7b-chat",
+    "llama2-13b": "llama-2-13b-chat",
+    "llama3": "llama-3-8b-instruct",
+    "llama3-8b": "llama-3-8b-instruct",
+    # Phi models
+    "phi2": "phi-2",
+    "phi3": "phi-3-mini-4k-instruct",
+    "phi3-mini": "phi-3-mini-4k-instruct",
+    # Qwen models
+    "qwen": "qwen2-7b-instruct",
+    "qwen2": "qwen2-7b-instruct",
+    "qwen2-7b": "qwen2-7b-instruct",
+    # Gemma models
+    "gemma": "gemma-2b-it",
+    "gemma-2b": "gemma-2b-it",
+    "gemma-7b": "gemma-7b-it",
 }
 
 _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
     "mistral-7b-instruct-v0.2": {
         "backend": "llama_cpp",
         "model": "mistral-7b-instruct-v0.2",
-        "model_path": "data/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+        "model_base": "mistral-7b-instruct-v0.2",
         "prompt_style": "mistral_instruct",
         "stop": ["</s>"],
         "n_ctx": 4096,
@@ -29,10 +80,74 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
     "smollm-1.7b-instruct": {
         "backend": "llama_cpp",
         "model": "smollm-1.7b-instruct",
-        "model_path": "data/models/LLM/smollm-1.7b-instruct.Q4_K_M.gguf",
+        "model_base": "smollm-1.7b-instruct",
         "prompt_style": "chatml",
         "stop": ["<|im_end|>", "</s>"],
         "n_ctx": 4096,
+    },
+    "llama-2-7b-chat": {
+        "backend": "llama_cpp",
+        "model": "llama-2-7b-chat",
+        "model_base": "llama-2-7b-chat",
+        "prompt_style": "llama2_chat",
+        "stop": ["</s>"],
+        "n_ctx": 4096,
+    },
+    "llama-2-13b-chat": {
+        "backend": "llama_cpp",
+        "model": "llama-2-13b-chat",
+        "model_base": "llama-2-13b-chat",
+        "prompt_style": "llama2_chat",
+        "stop": ["</s>"],
+        "n_ctx": 4096,
+    },
+    "llama-3-8b-instruct": {
+        "backend": "llama_cpp",
+        "model": "llama-3-8b-instruct",
+        "model_base": "Meta-Llama-3-8B-Instruct",
+        "prompt_style": "llama3_instruct",
+        "stop": ["<|eot_id|>"],
+        "n_ctx": 8192,
+    },
+    "phi-2": {
+        "backend": "llama_cpp",
+        "model": "phi-2",
+        "model_base": "phi-2",
+        "prompt_style": "phi",
+        "stop": ["<|endoftext|>"],
+        "n_ctx": 2048,
+    },
+    "phi-3-mini-4k-instruct": {
+        "backend": "llama_cpp",
+        "model": "phi-3-mini-4k-instruct",
+        "model_base": "Phi-3-mini-4k-instruct",
+        "prompt_style": "phi3",
+        "stop": ["<|end|>", "<|endoftext|>"],
+        "n_ctx": 4096,
+    },
+    "qwen2-7b-instruct": {
+        "backend": "llama_cpp",
+        "model": "qwen2-7b-instruct",
+        "model_base": "Qwen2-7B-Instruct",
+        "prompt_style": "chatml",
+        "stop": ["<|im_end|>", "<|endoftext|>"],
+        "n_ctx": 8192,
+    },
+    "gemma-2b-it": {
+        "backend": "llama_cpp",
+        "model": "gemma-2b-it",
+        "model_base": "gemma-2b-it",
+        "prompt_style": "gemma",
+        "stop": ["<end_of_turn>"],
+        "n_ctx": 8192,
+    },
+    "gemma-7b-it": {
+        "backend": "llama_cpp",
+        "model": "gemma-7b-it",
+        "model_base": "gemma-7b-it",
+        "prompt_style": "gemma",
+        "stop": ["<end_of_turn>"],
+        "n_ctx": 8192,
     },
 }
 
@@ -78,18 +193,39 @@ def list_llm_profiles() -> list[str]:
     return sorted(profiles)
 
 
+def build_model_path(
+    model_base: str,
+    quantization: str = DEFAULT_QUANTIZATION,
+    models_dir: str = "data/models/LLM",
+) -> str:
+    """Build the model path from base name and quantization level."""
+    quant = str(quantization or DEFAULT_QUANTIZATION).strip().upper().replace("-", "_")
+    if quant not in QUANTIZATION_LEVELS:
+        quant = DEFAULT_QUANTIZATION
+    base = str(model_base or "").strip()
+    return os.path.join(models_dir, f"{base}.{quant}.gguf")
+
+
 @dataclass(frozen=True, slots=True)
 class LLMConfig:
     enabled: bool = False
     backend: str = "llama_cpp"
     profile: str = "mistral-7b-instruct-v0.2"
     model: str = "mistral-7b-instruct-v0.2"
+    model_base: str = "mistral-7b-instruct-v0.2"
     model_path: str = "data/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+    quantization: str = "Q4_K_M"
     prompt_style: str = "mistral_instruct"
     stop: tuple[str, ...] = ("</s>",)
     n_ctx: int = 4096
     max_tokens: int = 128
     temperature: float = 0.0
+    top_p: float = 0.95
+    top_k: int = 40
+    repeat_penalty: float = 1.1
+    n_gpu_layers: int = -1  # -1 = auto (use all available GPU layers)
+    n_threads: int | None = None  # None = auto-detect
+    seed: int = -1  # -1 = random
 
 
 def _as_bool(value: Any) -> bool | None:
@@ -176,13 +312,36 @@ def load_llm_config() -> LLMConfig:
         )
         or default.model
     ).strip()
-    model_path = str(
+    # Get quantization level (default Q4_K_M)
+    quantization = str(
         os.getenv(
-            "MAXIM_LLM_MODEL_PATH",
-            profile_cfg.get("model_path", raw.get("model_path", builtin.get("model_path", default.model_path))),
+            "MAXIM_LLM_QUANTIZATION",
+            profile_cfg.get("quantization", raw.get("quantization", builtin.get("quantization", default.quantization))),
         )
-        or default.model_path
+        or default.quantization
+    ).strip().upper().replace("-", "_")
+    if quantization not in QUANTIZATION_LEVELS:
+        quantization = DEFAULT_QUANTIZATION
+
+    # Get model_base for path construction
+    model_base = str(
+        os.getenv(
+            "MAXIM_LLM_MODEL_BASE",
+            profile_cfg.get("model_base", raw.get("model_base", builtin.get("model_base", default.model_base))),
+        )
+        or default.model_base
     ).strip()
+
+    # Get model_path - if not explicitly set, build from model_base + quantization
+    explicit_path = os.getenv("MAXIM_LLM_MODEL_PATH")
+    if explicit_path is None:
+        explicit_path = profile_cfg.get("model_path", raw.get("model_path", builtin.get("model_path")))
+
+    if explicit_path:
+        model_path = str(explicit_path).strip()
+    else:
+        # Build path from model_base and quantization
+        model_path = build_model_path(model_base, quantization)
 
     def _as_int(env_key: str, raw_key: str, fallback: int) -> int:
         val = os.getenv(env_key)
@@ -205,6 +364,22 @@ def load_llm_config() -> LLMConfig:
     n_ctx = _as_int("MAXIM_LLM_N_CTX", "n_ctx", default.n_ctx)
     max_tokens = _as_int("MAXIM_LLM_MAX_TOKENS", "max_tokens", default.max_tokens)
     temperature = _as_float("MAXIM_LLM_TEMPERATURE", "temperature", default.temperature)
+    top_p = _as_float("MAXIM_LLM_TOP_P", "top_p", default.top_p)
+    top_k = _as_int("MAXIM_LLM_TOP_K", "top_k", default.top_k)
+    repeat_penalty = _as_float("MAXIM_LLM_REPEAT_PENALTY", "repeat_penalty", default.repeat_penalty)
+    n_gpu_layers = _as_int("MAXIM_LLM_N_GPU_LAYERS", "n_gpu_layers", default.n_gpu_layers)
+    seed = _as_int("MAXIM_LLM_SEED", "seed", default.seed)
+
+    # n_threads: None means auto-detect
+    n_threads_val = os.getenv("MAXIM_LLM_N_THREADS")
+    if n_threads_val is None:
+        n_threads_val = profile_cfg.get("n_threads", raw.get("n_threads", builtin.get("n_threads")))
+    n_threads: int | None = None
+    if n_threads_val is not None:
+        try:
+            n_threads = int(n_threads_val)
+        except Exception:
+            n_threads = None
 
     prompt_style = str(
         os.getenv(
@@ -228,12 +403,20 @@ def load_llm_config() -> LLMConfig:
         backend=backend or default.backend,
         profile=str(profile),
         model=model or default.model,
+        model_base=model_base or default.model_base,
         model_path=model_path or default.model_path,
+        quantization=quantization,
         prompt_style=prompt_style or default.prompt_style,
         stop=stop or default.stop,
         n_ctx=int(n_ctx),
         max_tokens=int(max_tokens),
         temperature=float(temperature),
+        top_p=float(top_p),
+        top_k=int(top_k),
+        repeat_penalty=float(repeat_penalty),
+        n_gpu_layers=int(n_gpu_layers),
+        n_threads=n_threads,
+        seed=int(seed),
     )
 
 
@@ -256,11 +439,90 @@ def _chatml_prompt(system: str, user: str) -> str:
     )
 
 
+def _llama2_chat_prompt(system: str, user: str) -> str:
+    sys_text = str(system or "").strip()
+    user_text = str(user or "").strip()
+    if sys_text:
+        return f"<s>[INST] <<SYS>>\n{sys_text}\n<</SYS>>\n\n{user_text} [/INST]"
+    return f"<s>[INST] {user_text} [/INST]"
+
+
+def _llama3_instruct_prompt(system: str, user: str) -> str:
+    sys_text = str(system or "").strip()
+    user_text = str(user or "").strip()
+    prompt = "<|begin_of_text|>"
+    if sys_text:
+        prompt += f"<|start_header_id|>system<|end_header_id|>\n\n{sys_text}<|eot_id|>"
+    prompt += f"<|start_header_id|>user<|end_header_id|>\n\n{user_text}<|eot_id|>"
+    prompt += "<|start_header_id|>assistant<|end_header_id|>\n\n"
+    return prompt
+
+
+def _phi_prompt(system: str, user: str) -> str:
+    sys_text = str(system or "").strip()
+    user_text = str(user or "").strip()
+    if sys_text:
+        return f"Instruct: {sys_text}\n{user_text}\nOutput:"
+    return f"Instruct: {user_text}\nOutput:"
+
+
+def _phi3_prompt(system: str, user: str) -> str:
+    sys_text = str(system or "").strip()
+    user_text = str(user or "").strip()
+    prompt = ""
+    if sys_text:
+        prompt += f"<|system|>\n{sys_text}<|end|>\n"
+    prompt += f"<|user|>\n{user_text}<|end|>\n<|assistant|>\n"
+    return prompt
+
+
+def _gemma_prompt(system: str, user: str) -> str:
+    sys_text = str(system or "").strip()
+    user_text = str(user or "").strip()
+    if sys_text:
+        user_text = f"{sys_text}\n\n{user_text}"
+    return f"<start_of_turn>user\n{user_text}<end_of_turn>\n<start_of_turn>model\n"
+
+
+def _alpaca_prompt(system: str, user: str) -> str:
+    sys_text = str(system or "").strip()
+    user_text = str(user or "").strip()
+    if sys_text:
+        return f"### System:\n{sys_text}\n\n### Instruction:\n{user_text}\n\n### Response:\n"
+    return f"### Instruction:\n{user_text}\n\n### Response:\n"
+
+
+def _vicuna_prompt(system: str, user: str) -> str:
+    sys_text = str(system or "").strip()
+    user_text = str(user or "").strip()
+    if sys_text:
+        return f"{sys_text}\n\nUSER: {user_text}\nASSISTANT:"
+    return f"USER: {user_text}\nASSISTANT:"
+
+
+_PROMPT_BUILDERS: dict[str, callable] = {
+    "mistral_instruct": _mistral_instruct_prompt,
+    "chatml": _chatml_prompt,
+    "im_start": _chatml_prompt,
+    "llama2_chat": _llama2_chat_prompt,
+    "llama3_instruct": _llama3_instruct_prompt,
+    "phi": _phi_prompt,
+    "phi3": _phi3_prompt,
+    "gemma": _gemma_prompt,
+    "alpaca": _alpaca_prompt,
+    "vicuna": _vicuna_prompt,
+}
+
+
+def list_prompt_styles() -> list[str]:
+    """Return available prompt styles."""
+    return sorted(_PROMPT_BUILDERS.keys())
+
+
 def _build_prompt(cfg: LLMConfig, system: str, user: str) -> str:
     style = str(getattr(cfg, "prompt_style", "") or "").strip().lower().replace("-", "_")
-    if style in ("chatml", "im_start"):
-        return _chatml_prompt(system, user)
-    return _mistral_instruct_prompt(system, user)
+    builder = _PROMPT_BUILDERS.get(style, _mistral_instruct_prompt)
+    return builder(system, user)
 
 
 def _extract_json_object(text: str) -> dict[str, Any] | None:
@@ -283,49 +545,112 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
 
 
 class _LlamaCppBackend:
+    """llama.cpp backend with full configuration support."""
+
     def __init__(self, cfg: LLMConfig) -> None:
         self.cfg = cfg
         self._llm = None
+        self._lock = threading.Lock()
 
     def _ensure(self) -> bool:
         if self._llm is not None:
             return True
-        try:
-            from llama_cpp import Llama  # type: ignore
-        except Exception as e:
-            warn("LLM backend unavailable (install `llama-cpp-python`): %s", e)
-            return False
 
-        model_path = str(self.cfg.model_path or "").strip()
-        if not model_path or not os.path.exists(model_path):
-            warn("LLM model_path not found: %s", model_path)
-            return False
+        with self._lock:
+            # Double-check after acquiring lock
+            if self._llm is not None:
+                return True
 
-        try:
-            self._llm = Llama(
-                model_path=model_path,
-                n_ctx=int(self.cfg.n_ctx),
-                verbose=False,
-            )
-            return True
-        except Exception as e:
-            warn("Failed to load LLM model (%s): %s", model_path, e)
-            self._llm = None
-            return False
+            try:
+                from llama_cpp import Llama  # type: ignore
+            except Exception as e:
+                warn("LLM backend unavailable (install `llama-cpp-python`): %s", e)
+                return False
 
-    def complete(self, prompt: str, *, max_tokens: int, temperature: float, stop: tuple[str, ...]) -> str:
+            model_path = str(self.cfg.model_path or "").strip()
+            if not model_path or not os.path.exists(model_path):
+                warn("LLM model_path not found: %s", model_path)
+                return False
+
+            try:
+                # Build kwargs with all supported options
+                llama_kwargs: dict[str, Any] = {
+                    "model_path": model_path,
+                    "n_ctx": int(self.cfg.n_ctx),
+                    "verbose": False,
+                }
+
+                # GPU layers (-1 = all available)
+                n_gpu_layers = getattr(self.cfg, "n_gpu_layers", -1)
+                if n_gpu_layers is not None:
+                    llama_kwargs["n_gpu_layers"] = int(n_gpu_layers)
+
+                # Thread count (None = auto)
+                n_threads = getattr(self.cfg, "n_threads", None)
+                if n_threads is not None:
+                    llama_kwargs["n_threads"] = int(n_threads)
+
+                # Seed (-1 = random)
+                seed = getattr(self.cfg, "seed", -1)
+                if seed is not None and seed != -1:
+                    llama_kwargs["seed"] = int(seed)
+
+                self._llm = Llama(**llama_kwargs)
+                return True
+            except Exception as e:
+                warn("Failed to load LLM model (%s): %s", model_path, e)
+                self._llm = None
+                return False
+
+    def complete(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int,
+        temperature: float,
+        stop: tuple[str, ...],
+        top_p: float | None = None,
+        top_k: int | None = None,
+        repeat_penalty: float | None = None,
+    ) -> str:
         if not self._ensure():
             return ""
-        out = self._llm(
-            str(prompt),
-            max_tokens=int(max_tokens),
-            temperature=float(temperature),
-            stop=list(stop) if stop else None,
-        )
+
+        # Build generation kwargs
+        gen_kwargs: dict[str, Any] = {
+            "max_tokens": int(max_tokens),
+            "temperature": float(temperature),
+            "stop": list(stop) if stop else None,
+        }
+
+        # Optional parameters from config
+        if top_p is not None:
+            gen_kwargs["top_p"] = float(top_p)
+        elif hasattr(self.cfg, "top_p"):
+            gen_kwargs["top_p"] = float(self.cfg.top_p)
+
+        if top_k is not None:
+            gen_kwargs["top_k"] = int(top_k)
+        elif hasattr(self.cfg, "top_k"):
+            gen_kwargs["top_k"] = int(self.cfg.top_k)
+
+        if repeat_penalty is not None:
+            gen_kwargs["repeat_penalty"] = float(repeat_penalty)
+        elif hasattr(self.cfg, "repeat_penalty"):
+            gen_kwargs["repeat_penalty"] = float(self.cfg.repeat_penalty)
+
+        out = self._llm(str(prompt), **gen_kwargs)
         try:
             return str(out["choices"][0]["text"])
         except Exception:
             return ""
+
+    def unload(self) -> None:
+        """Unload the model to free memory."""
+        with self._lock:
+            if self._llm is not None:
+                del self._llm
+                self._llm = None
 
 
 class LLMRouter:
@@ -336,28 +661,40 @@ class LLMRouter:
     {"tool_name": str, "params": dict}
     """
 
+    # Sentinel value to distinguish "init failed" from "not yet initialized"
+    _INIT_FAILED = object()
+
     def __init__(self, cfg: LLMConfig | None = None) -> None:
         self.cfg = cfg or load_llm_config()
-        self._backend = None
+        self._backend: Any | None = None
+        self._backend_lock = threading.Lock()
 
     def enabled(self) -> bool:
         return bool(getattr(self.cfg, "enabled", False))
 
     def _get_backend(self) -> Any | None:
+        # Fast path: already initialized
         if self._backend is not None:
-            return self._backend
-        if not self.enabled():
-            self._backend = None
+            return None if self._backend is LLMRouter._INIT_FAILED else self._backend
+
+        # Thread-safe initialization
+        with self._backend_lock:
+            # Double-check after acquiring lock
+            if self._backend is not None:
+                return None if self._backend is LLMRouter._INIT_FAILED else self._backend
+
+            if not self.enabled():
+                self._backend = LLMRouter._INIT_FAILED
+                return None
+
+            backend = str(getattr(self.cfg, "backend", "") or "").strip().lower().replace("-", "_")
+            if backend in ("llama", "llama_cpp", "llamacpp"):
+                self._backend = _LlamaCppBackend(self.cfg)
+                return self._backend
+
+            warn("Unknown LLM backend: %s", backend)
+            self._backend = LLMRouter._INIT_FAILED
             return None
-
-        backend = str(getattr(self.cfg, "backend", "") or "").strip().lower().replace("-", "_")
-        if backend in ("llama", "llama_cpp", "llamacpp"):
-            self._backend = _LlamaCppBackend(self.cfg)
-            return self._backend
-
-        warn("Unknown LLM backend: %s", backend)
-        self._backend = None
-        return None
 
     def route(
         self,
