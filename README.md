@@ -121,43 +121,264 @@ Default:
 - saying `Maxim sleep` (or `sleep maxim`) switches to `--mode sleep` (audio-only)
 - saying `Maxim observe` (or `observe maxim`) switches to `--mode passive-interaction`
 
-## Optional LLM (Transcript → Agentic Actions)
+## LLM Integration (Local Language Models)
 
-When the agentic runtime is running, Maxim can optionally use a local LLM to route transcript lines **that contain the wake word** (`maxim` and common transcription variants like `maximum`) into a single agentic action.
+Maxim supports local LLM inference via **llama.cpp** for voice-controlled actions, chat, and agentic task execution. Models run entirely on your machine with no cloud dependencies.
 
-Hard keyword commands always override the LLM:
-- `sleep maxim` / `maxim sleep`
-- `observe maxim` / `maxim observe`
-- `shutdown maxim` / `maxim shutdown`
+### Quick Start
 
-Configuration lives in `data/util/llm.json` (or `$MAXIM_LLM_CONFIG`) and is **disabled by default**.
-
-Install the optional local backend (Mistral 7B via llama.cpp):
+1. Install the LLM dependencies:
 
 ```bash
 pip install -e '.[llm]'
 ```
 
-Then enable + pick a profile (weights are not committed; place GGUF files under `data/models/LLM/`):
+2. Download a GGUF model (Q4_K_M quantization recommended):
+
+```bash
+# Example: Download Mistral 7B (Q4_K_M ~4GB)
+mkdir -p data/models/LLM
+# Place your .gguf file in data/models/LLM/
+# Expected naming: <model-base>.Q4_K_M.gguf
+```
+
+3. Enable and run:
 
 ```bash
 export MAXIM_LLM_ENABLED=1
-export MAXIM_LLM_PROFILE='mistral-7b-instruct-v0.2'   # or: smollm-1.7b-instruct
+maxim --language-model mistral-7b
 ```
 
-Per-run override:
+### Supported Models
+
+| Profile | Model | Context | Prompt Style |
+|---------|-------|---------|--------------|
+| `mistral-7b` | Mistral 7B Instruct v0.2 | 4096 | Mistral |
+| `smollm-1.7b` | SmolLM 1.7B Instruct | 4096 | ChatML |
+| `llama2-7b` / `llama2-13b` | Llama 2 Chat | 4096 | Llama 2 |
+| `llama3-8b` | Llama 3 8B Instruct | 8192 | Llama 3 |
+| `phi2` / `phi3-mini` | Microsoft Phi | 2048/4096 | Phi |
+| `qwen2-7b` | Qwen2 7B Instruct | 8192 | ChatML |
+| `gemma-2b` / `gemma-7b` | Google Gemma IT | 8192 | Gemma |
+
+### Quantization Options
+
+Models can be quantized to reduce size and memory usage. **Q4_K_M is the default** and recommended for most use cases:
+
+| Level | Bits | Size | Quality | Use Case |
+|-------|------|------|---------|----------|
+| Q2_K | 2 | Tiny | Low | Embedded/testing |
+| Q3_K_M | 3 | Small | Fair | Memory constrained |
+| **Q4_K_M** | 4 | Medium | **Good (default)** | **Recommended** |
+| Q5_K_M | 5 | Large | Better | Quality priority |
+| Q6_K | 6 | Larger | High | Near-original |
+| Q8_0 | 8 | Largest | Excellent | Maximum quality |
+
+Set quantization via environment variable:
 
 ```bash
-maxim --language-model mistral-7b-instruct-v0.2
+export MAXIM_LLM_QUANTIZATION=Q4_K_M  # Default
+export MAXIM_LLM_QUANTIZATION=Q5_K_M  # Higher quality
+export MAXIM_LLM_QUANTIZATION=Q3_K_M  # Smaller/faster
 ```
 
-If you want to override the model file path directly:
+### CLI Usage
 
 ```bash
-export MAXIM_LLM_MODEL_PATH='data/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf'
+# Use default profile (Mistral 7B, Q4_K_M)
+maxim --language-model mistral-7b
+
+# Specify a different model
+maxim --language-model llama3-8b
+
+# Override model path directly
+export MAXIM_LLM_MODEL_PATH='data/models/LLM/custom-model.Q4_K_M.gguf'
+maxim --language-model mistral-7b
 ```
 
-Quick benchmark against recorded transcripts:
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAXIM_LLM_ENABLED` | Enable LLM (`1`/`true`) | `false` |
+| `MAXIM_LLM_PROFILE` | Model profile name | `mistral-7b-instruct-v0.2` |
+| `MAXIM_LLM_QUANTIZATION` | Quantization level | `Q4_K_M` |
+| `MAXIM_LLM_MODEL_PATH` | Override model file path | Auto-generated |
+| `MAXIM_LLM_N_CTX` | Context window size | Profile default |
+| `MAXIM_LLM_MAX_TOKENS` | Max generation tokens | `128` |
+| `MAXIM_LLM_TEMPERATURE` | Sampling temperature | `0.0` |
+| `MAXIM_LLM_TOP_P` | Top-p sampling | `0.95` |
+| `MAXIM_LLM_TOP_K` | Top-k sampling | `40` |
+| `MAXIM_LLM_N_GPU_LAYERS` | GPU layers (`-1` = all) | `-1` |
+| `MAXIM_LLM_N_THREADS` | CPU threads (auto if unset) | Auto |
+
+### Programmatic Usage (Python API)
+
+#### Basic LLM Agent
+
+```python
+from maxim.agents import LLMAgent, LLMAgentConfig
+
+# Simple usage with defaults (Mistral 7B, Q4_K_M)
+agent = LLMAgent()
+response = agent.generate("What is Python?")
+print(response)
+
+# Use a different model
+agent = LLMAgent(profile="llama3-8b")
+
+# Custom quantization
+agent = LLMAgent(profile="mistral-7b", quantization="Q5_K_M")
+
+# Full custom configuration
+config = LLMAgentConfig(
+    profile="phi3-mini",
+    quantization="Q4_K_M",
+    temperature=0.8,
+    max_tokens=1024,
+    system_prompt="You are a helpful coding assistant.",
+    n_gpu_layers=-1,  # Use all GPU layers
+)
+agent = LLMAgent(config=config)
+response = agent.generate("Write a Python function to sort a list")
+```
+
+#### Chat Agent (Multi-turn Conversations)
+
+```python
+from maxim.agents import ChatLLMAgent
+
+chat = ChatLLMAgent(profile="llama3-8b", temperature=0.7)
+
+# Conversations maintain history
+chat.generate("Hi! My name is Alex.")
+response = chat.generate("What's my name?")  # Has context
+print(response)  # "Your name is Alex"
+
+# Clear history when needed
+chat.clear_history()
+```
+
+#### Task Agent (Structured JSON Outputs)
+
+```python
+from maxim.agents import TaskLLMAgent
+
+task = TaskLLMAgent(
+    profile="mistral-7b",
+    allowed_tools={"read_file", "write_file", "search"}
+)
+
+# Returns structured intent from state
+intent = task.propose_intent(state, memory)
+# {"goal": {"tool_name": "read_file", "params": {...}}, "confidence": 0.9}
+```
+
+#### JSON Mode
+
+```python
+from maxim.agents import LLMAgent
+
+agent = LLMAgent(profile="mistral-7b")
+
+# Generate structured JSON responses
+result = agent.generate_json(
+    "Extract the person's name and age from: 'John is 25 years old'"
+)
+print(result)  # {"name": "John", "age": 25}
+```
+
+#### Model Switching at Runtime
+
+```python
+from maxim.agents import LLMAgent
+
+agent = LLMAgent(profile="mistral-7b")
+response = agent.generate("Hello!")
+
+# Switch to a different model
+agent.switch_model(profile="phi3-mini", quantization="Q4_K_S")
+response = agent.generate("Hello again!")
+
+# List available options
+print(LLMAgent.list_available_profiles())
+print(LLMAgent.list_quantization_levels())
+print(LLMAgent.get_quantization_info("Q4_K_M"))
+```
+
+#### Using the Low-Level Router
+
+```python
+from maxim.models.language import LLMRouter, load_llm_config
+
+# Load config from environment/files
+config = load_llm_config()
+
+# Create router
+router = LLMRouter(config)
+
+if router.enabled():
+    action = router.route(
+        "Maxim, read the readme file",
+        allowed_tools={"read_file", "write_file"},
+        allowed_commands={"center_vision", "request_sleep"},
+    )
+    print(action)  # {"tool_name": "read_file", "params": {"path": "README.md"}}
+```
+
+### Voice-Controlled Actions (Agentic Runtime)
+
+When running in agentic mode, the LLM routes transcript lines containing the wake word (`maxim`) into actions:
+
+```bash
+maxim --mode agentic --language-model mistral-7b
+```
+
+Hard keyword commands always override the LLM:
+- `sleep maxim` / `maxim sleep` → Switch to sleep mode
+- `observe maxim` / `maxim observe` → Switch to passive mode
+- `shutdown maxim` / `maxim shutdown` → Clean shutdown
+
+### Configuration File
+
+Create `data/util/llm.json` for persistent configuration:
+
+```json
+{
+  "enabled": true,
+  "profile": "mistral-7b-instruct-v0.2",
+  "quantization": "Q4_K_M",
+  "temperature": 0.0,
+  "max_tokens": 128,
+  "n_gpu_layers": -1,
+  "profiles": {
+    "my-custom-model": {
+      "backend": "llama_cpp",
+      "model_base": "my-model-name",
+      "prompt_style": "chatml",
+      "stop": ["<|im_end|>"],
+      "n_ctx": 4096
+    }
+  }
+}
+```
+
+### Model File Naming Convention
+
+Place GGUF files in `data/models/LLM/` with this naming pattern:
+
+```
+<model-base>.<quantization>.gguf
+```
+
+Examples:
+- `mistral-7b-instruct-v0.2.Q4_K_M.gguf`
+- `Meta-Llama-3-8B-Instruct.Q5_K_M.gguf`
+- `Phi-3-mini-4k-instruct.Q4_K_M.gguf`
+
+### Benchmarking
+
+Run against recorded transcripts:
 
 ```bash
 python -m maxim.evaluation.llm_benchmark --transcript-dir data/transcript --limit 25
