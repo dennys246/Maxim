@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 import time
@@ -29,7 +30,7 @@ class RuntimeState:
             "confirmed": bool(self.confirmed),
             "done": bool(self.done),
             "last_error": self.last_error,
-            "data": dict(self.data),
+            "data": copy.deepcopy(self.data),  # Deep copy to prevent shared mutable state
         }
 
     def save_json(self, path: str, *, meta: dict[str, Any] | None = None) -> None:
