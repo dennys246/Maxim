@@ -59,12 +59,17 @@ def run_agent_loop(
     run_id: str | None = None,
     stop_event: Any | None = None,
     on_step: Any | None = None,
-    break_on_no_intent: bool = True,
+    break_on_no_intent: bool = False,
     idle_sleep_s: float = 0.25,
+    persist_every_n_steps: int = 10,
 ) -> None:
     """
     Canonical agentic loop:
     observe → agent proposes intent → planner proposes plans → policy constrains → decision engine selects action → executor runs tool
+
+    Args:
+        persist_every_n_steps: How often to persist state to disk. Default is every 10 steps.
+                              Set to 1 for per-step persistence, 0 to only save at end.
     """
     if evaluators is None:
         evaluators = []
@@ -88,15 +93,19 @@ def run_agent_loop(
         state.update(observation)
 
         intent = None
-        if hasattr(agent, "propose_intent"):
-            intent = agent.propose_intent(state, memory)
-        elif hasattr(agent, "decide"):
-            # Legacy fallback: treat `decide()` as a goal provider.
-            out = agent.decide(state, memory)
-            if isinstance(out, dict):
-                intent = out
-            elif isinstance(out, str) and out:
-                intent = {"goal": out, "confidence": 1.0}
+        try:
+            if hasattr(agent, "propose_intent"):
+                intent = agent.propose_intent(state, memory)
+            elif hasattr(agent, "decide"):
+                # Legacy fallback: treat `decide()` as a goal provider.
+                out = agent.decide(state, memory)
+                if isinstance(out, dict):
+                    intent = out
+                elif isinstance(out, str) and out:
+                    intent = {"goal": out, "confidence": 1.0}
+        except Exception as e:
+            warn("Agent propose_intent/decide failed: %s", e)
+            intent = None
 
         if not isinstance(intent, dict) or not intent:
             if break_on_no_intent:
@@ -199,9 +208,13 @@ def run_agent_loop(
             state.steps_taken += 1
         except Exception:
             pass
-        _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
+
+        # Persist state periodically based on persist_every_n_steps setting
+        if persist_every_n_steps > 0 and state.steps_taken % persist_every_n_steps == 0:
+            _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
 
         if state.is_done():
             break
 
+    # Always persist final state
     _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
