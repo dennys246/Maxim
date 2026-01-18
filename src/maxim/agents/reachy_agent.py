@@ -19,6 +19,7 @@ class ReachyAgent(Agent):
     """
 
     agent_name = "reachy_mini"
+    state_name = "ReachyAgent"
 
     # Sentinel value to distinguish "init failed" from "not yet initialized"
     _LLM_INIT_FAILED = object()

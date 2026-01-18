@@ -84,7 +84,7 @@ If a component cannot be tested in isolation, the architecture is violated.
 - `data/audio/`: `reachy_audio_<YYYY-MM-DD_HHMMSS>.wav` and optional `audio/chunks/*.wav`
 - `data/transcript/`: `reachy_transcript_<YYYY-MM-DD_HHMMSS>.jsonl`
 - `data/training/`: `motor_training_set.jsonl` (trainable samples + user marks)
-- `data/agents/<AGENT_NAME>/runtime/`: `state_<run_id>.json` (agentic runtime state snapshots)
+- `data/agents/<STATE_NAME>/runtime/`: `state_<run_id>.json` (agentic runtime state snapshots; defaults to `agent_name` unless an agent sets `state_name`)
 - `data/models/MotorCortex/`: MotorCortex checkpoint + training artifacts
 - `data/util/llm.json`: optional local LLM config (disabled by default)
 
