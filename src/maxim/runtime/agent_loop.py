@@ -15,7 +15,11 @@ from maxim.utils.logging import warn
 def _safe_agent_name(agent: Any) -> str:
     raw = None
     try:
-        raw = getattr(agent, "agent_name", None) or getattr(agent, "name", None)
+        raw = (
+            getattr(agent, "state_name", None)
+            or getattr(agent, "agent_name", None)
+            or getattr(agent, "name", None)
+        )
     except Exception:
         raw = None
     if not raw:
