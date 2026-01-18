@@ -86,6 +86,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Vision segmentation model (default: YOLO8).",
     )
+    parser.add_argument(
+        "--interactive",
+        type=str,
+        default="true",
+        help="Enable interactive terminal input for keyword actions (True/False).",
+    )
     return parser
 
 
@@ -105,6 +111,14 @@ def _normalize_args(args: argparse.Namespace) -> None:
         args.audio = False
     else:
         raise SystemExit(f"Invalid --audio value: {args.audio!r} (expected True/False)")
+
+    interactive_raw = str(getattr(args, "interactive", "true")).strip().lower()
+    if interactive_raw in ("1", "true", "t", "yes", "y", "on"):
+        args.interactive = True
+    elif interactive_raw in ("0", "false", "f", "no", "n", "off"):
+        args.interactive = False
+    else:
+        raise SystemExit(f"Invalid --interactive value: {args.interactive!r} (expected True/False)")
 
     if str(getattr(args, "mode", "passive-interaction")).strip().lower() == "sleep":
         args.audio = True
@@ -170,6 +184,8 @@ def _reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
         "true" if audio_flag else "false",
         "--audio_len",
         str(float(getattr(args, "audio_len", 5.0) or 5.0)),
+        "--interactive",
+        "true" if bool(getattr(args, "interactive", True)) else "false",
     ]
     language_model = str(getattr(args, "language_model", "") or "").strip()
     if language_model:
@@ -281,6 +297,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 mode=mode,
                 audio=audio_enabled,
                 audio_len=float(getattr(args, "audio_len", 5.0) or 5.0),
+                interactive=bool(getattr(args, "interactive", True)),
             )
 
             if mode == "sleep":
