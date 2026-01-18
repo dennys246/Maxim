@@ -2,6 +2,22 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-01-07: Add interactive terminal input for keyword actions
+Decision:
+- `maxim` starts a line-based terminal prompt (`maxim>`) when `--interactive true` (default).
+- Prompted input is matched against `phrase_responses.json` (same as voice triggers).
+- Single-key shortcut mode is disabled while interactive prompt input is enabled to avoid stdin conflicts.
+- Interactive CLI input is recorded under `data/cli/cli_input_<run_id>.jsonl`.
+- CLI and vision-overlay inputs bypass phrase cooldowns and `requires_agentic` gating.
+- When the OpenCV display is active, the vision overlay includes a text input box with a Send button that routes input through the same phrase responses.
+
+Reason:
+- Provide a reliable non-audio control path for keyword actions without adding new dependencies.
+
+Tradeoffs:
+- Keypress-only shortcuts require `--interactive false` or Enter in the prompt.
+- The overlay input requires a direct OpenCV display backend; process-based display modes cannot capture input.
+
 ## 2026-01-02: Queue-based capture + writer pipeline
 Reason:
 - Avoid blocking perception/motor control on disk I/O.
@@ -219,7 +235,8 @@ Reason:
 
 ## 2026-01-04: Persist agentic runtime state under `data/agents/`
 Decision:
-- Agentic runtime state snapshots are persisted to `data/agents/<AGENT_NAME>/runtime/state_<run_id>.json`.
+- Agentic runtime state snapshots are persisted to `data/agents/<STATE_NAME>/runtime/state_<run_id>.json`.
+- `STATE_NAME` defaults to `Agent.agent_name`, but agents may override it via `state_name`.
 
 Reason:
 - Support resuming/debugging agent runs with a durable, per-agent state artifact outside the installed package.
@@ -240,7 +257,7 @@ Decision:
 
 Reason:
 - Support multiple agents without passing Python classes through the CLI.
-- Keep per-agent runtime state organized under `data/agents/<AGENT_NAME>/`.
+- Keep per-agent runtime state organized under `data/agents/<STATE_NAME>/`.
 
 Tradeoffs:
 - New agents must be added to the registry so they are discoverable via `--agent`.
