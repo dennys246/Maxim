@@ -99,17 +99,24 @@ Shared model artifacts and weights live under `data/models/` (e.g., `MotorCortex
 - `--audio_len`: seconds per transcription chunk (default `5.0`)
 - `--language-model`: LLM profile name (e.g., `mistral-7b-instruct-v0.2`, `smollm-1.7b-instruct`; lists available on unknown)
 - `--segmentation-model`: vision segmentation model (default `YOLO8`; lists available on unknown)
+- `--interactive`: `True/False` (enable terminal prompt for keyword actions; default `True`)
 - `--goal`: goal for `--mode agentic` when using `--agent goal` (e.g., `read_readme` or JSON `{"tool_name":"read_file","params":{"path":"README.md"}}`)
 
 ## Keyboard Shortcuts
 
 While `maxim` is running in a terminal, it listens for single-key presses configured in `data/util/key_responses.json` (or `$MAXIM_KEY_RESPONSES`).
+When `--interactive true`, terminal input switches to line-based commands and single-key mode is disabled (use `--interactive false` to restore single-key behavior).
 
 Default:
 - `c`: center vision (pauses training briefly in `--mode train`)
 - `u`: mark the most recent trainable moment (writes a `user_marked=true` entry to `data/training/motor_training_set.jsonl`)
 - `0`: label outcome as “no errors”
 - `1`–`9`: label outcome as a generic “error/bug/odd behavior” code (metadata can be added later)
+
+With `--interactive true`, Maxim also accepts line-based commands at the `maxim>` prompt; single-key actions can be entered by typing the key and pressing Enter. These are matched against `data/util/phrase_responses.json` (same as voice).
+Interactive CLI input is recorded to `data/cli/cli_input_<run_id>.jsonl` while the prompt is enabled.
+CLI and overlay inputs bypass phrase cooldowns and `requires_agentic` gating to keep local commands responsive.
+When the OpenCV display is active, the vision overlay includes a text input box with a **Send** button that routes input through the same phrase responses. On Linux/WSL, set `MAXIM_IMSHOW_MODE=direct` to enable input capture.
 
 Voice triggers are configured in `data/util/phrase_responses.json` (or `$MAXIM_PHRASE_RESPONSES`) and are driven by new transcript lines.
 
