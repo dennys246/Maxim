@@ -18,7 +18,7 @@ import numpy as np
 
 from maxim.motion.movement import load_actions, load_movement_thresholds, load_poses, move_antenna, move_head
 from maxim.utils.audio import resample_audio, to_int16
-from maxim.utils.data_management import TrainingSampleLogger, build_home
+from maxim.utils.data_management import CLIInputLogger, TrainingSampleLogger, build_home
 from maxim.utils.logging import configure_logging, warn
 from maxim.utils.plotting import preflight_matplotlib_fonts, preload_matplotlib_fonts
 from maxim.utils.queueing import put_latest
@@ -79,7 +79,8 @@ class Maxim:
         mode: str = "passive-interaction",
         train: bool | None = None,
         audio: bool = True,
-        audio_len: float = 5.0):
+        audio_len: float = 5.0,
+        interactive: bool = True):
         
         #
         self.verbosity = int(verbosity or 0)
@@ -145,6 +146,8 @@ class Maxim:
             self.audio_len = 5.0
 
         self.video_fps = 20.0
+
+        self.interactive = bool(interactive)
 
         self.interests = [0, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
 
@@ -224,6 +227,7 @@ class Maxim:
         self.requested_mode: str | None = None
         self._agentic_stop_event: threading.Event | None = None
         self._agentic_thread: threading.Thread | None = None
+        self._cli_logger: CLIInputLogger | None = None
 
         self.movement_model = None
         self.segmenter = None
@@ -295,13 +299,28 @@ class Maxim:
 
     def _load_phrase_responses(self) -> dict[str, dict]:
         default = {
+            # Shutdown commands
             "maxim shutdown": {"call": "request_shutdown", "requires_agentic": False, "cooldown_s": 2.0},
+            "shutdown maxim": {"call": "request_shutdown", "requires_agentic": False, "cooldown_s": 2.0},
+            # Sleep mode commands
             "maxim sleep": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim observe": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
             "sleep maxim": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim nap": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim rest": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
+            # Passive-interaction mode commands (wake from sleep)
+            "maxim observe": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
             "observe maxim": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim watch": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim wake": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "wake maxim": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim wake up": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "wake up maxim": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim passive": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim passive-interaction": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            # Wake words (enable agentic mode)
             "maxim": {"call": "wake_up_agentic", "wake_word": True, "cooldown_s": 2.0},
             "reachy": {"call": "wake_up_agentic", "wake_word": True, "cooldown_s": 2.0},
+            # Other commands
             "center": {"call": "center_vision", "pause_training": True, "requires_agentic": True, "cooldown_s": 2.0},
         }
 
@@ -419,6 +438,8 @@ class Maxim:
         return " ".join(tokens) if changed else normalized
 
     def _start_key_listener(self, stop_event: threading.Event) -> threading.Thread | None:
+        if bool(getattr(self, "interactive", True)):
+            return None
         if not isinstance(getattr(self, "key_responses", None), dict) or not self.key_responses:
             return None
 
@@ -473,6 +494,54 @@ class Maxim:
 
         return threading.Thread(target=_worker, name="maxim.keyboard", daemon=True)
 
+    def _start_cli_listener(self, stop_event: threading.Event) -> threading.Thread | None:
+        if not bool(getattr(self, "interactive", True)):
+            return None
+
+        def _worker() -> None:
+            try:
+                import select
+                import sys
+            except Exception as e:
+                warn("CLI listener unavailable: %s", e, logger=self.log)
+                return
+
+            stdin = sys.stdin
+            stdout = sys.stdout
+            if stdin is None or not hasattr(stdin, "isatty") or not stdin.isatty():
+                return
+
+            prompt = "maxim> "
+            while not stop_event.is_set():
+                try:
+                    stdout.write(prompt)
+                    stdout.flush()
+                except Exception:
+                    pass
+
+                line = None
+                while not stop_event.is_set():
+                    try:
+                        ready, _, _ = select.select([stdin], [], [], 0.1)
+                    except Exception:
+                        ready = []
+                    if not ready:
+                        continue
+                    try:
+                        line = stdin.readline()
+                    except Exception:
+                        line = None
+                    break
+
+                if stop_event.is_set():
+                    break
+                if not line:
+                    time.sleep(0.05)
+                    continue
+                self._handle_cli_text(line)
+
+        return threading.Thread(target=_worker, name="maxim.cli", daemon=True)
+
     def _start_transcript_listener(self, stop_event: threading.Event) -> threading.Thread | None:
         if not bool(getattr(self, "audio", False)):
             return None
@@ -517,17 +586,21 @@ class Maxim:
 
         return threading.Thread(target=_worker, name="maxim.transcript", daemon=True)
 
-    def _handle_transcript_record(self, record: dict) -> None:
-        text = str(record.get("text", "") or "").strip()
-        if not text:
+    def _handle_phrase_text(
+        self,
+        text: str,
+        *,
+        source: str,
+        transcript: dict | None = None,
+    ) -> None:
+        raw_text = str(text or "").strip()
+        if not raw_text:
             return
-        normalized_text = self._normalize_transcript_text(text)
+        source_label = str(source or "").strip().lower()
+        is_cli = source_label == "cli"
+        normalized_text = self._normalize_transcript_text(raw_text)
         if not normalized_text:
             return
-        try:
-            self._last_transcript_event = record
-        except Exception:
-            pass
 
         def _is_subsequence(needle: list[str], haystack: list[str]) -> bool:
             if not needle:
@@ -569,9 +642,9 @@ class Maxim:
             matched = False
             try:
                 if pattern is not None:
-                    matched = bool(pattern.search(text))
+                    matched = bool(pattern.search(raw_text))
                 else:
-                    matched = phrase.lower() in text.lower()
+                    matched = phrase.lower() in raw_text.lower()
             except Exception:
                 matched = False
             if not matched:
@@ -583,13 +656,16 @@ class Maxim:
             if not matched:
                 continue
 
-            if bool(spec.get("requires_agentic", False)) and not bool(getattr(self, "_voice_agentic_enabled", False)):
+            if not is_cli and bool(spec.get("requires_agentic", False)) and not bool(
+                getattr(self, "_voice_agentic_enabled", False)
+            ):
                 continue
 
-            cooldown_s = float(spec.get("cooldown_s", 0.0) or 0.0)
-            last_ts = float(getattr(self, "_phrase_last_trigger_ts", {}).get(phrase, 0.0) or 0.0)
-            if cooldown_s > 0 and (now - last_ts) < cooldown_s:
-                continue
+            if not is_cli:
+                cooldown_s = float(spec.get("cooldown_s", 0.0) or 0.0)
+                last_ts = float(getattr(self, "_phrase_last_trigger_ts", {}).get(phrase, 0.0) or 0.0)
+                if cooldown_s > 0 and (now - last_ts) < cooldown_s:
+                    continue
 
             matches.append((phrase, spec))
 
@@ -620,13 +696,16 @@ class Maxim:
                     continue
                 if not isinstance(spec, dict) or bool(spec.get("wake_word", False)):
                     continue
-                if bool(spec.get("requires_agentic", False)) and not bool(getattr(self, "_voice_agentic_enabled", False)):
+                if not is_cli and bool(spec.get("requires_agentic", False)) and not bool(
+                    getattr(self, "_voice_agentic_enabled", False)
+                ):
                     continue
 
-                cooldown_s = float(spec.get("cooldown_s", 0.0) or 0.0)
-                last_ts = float(getattr(self, "_phrase_last_trigger_ts", {}).get(phrase, 0.0) or 0.0)
-                if cooldown_s > 0 and (now - last_ts) < cooldown_s:
-                    continue
+                if not is_cli:
+                    cooldown_s = float(spec.get("cooldown_s", 0.0) or 0.0)
+                    last_ts = float(getattr(self, "_phrase_last_trigger_ts", {}).get(phrase, 0.0) or 0.0)
+                    if cooldown_s > 0 and (now - last_ts) < cooldown_s:
+                        continue
 
                 normalized_phrase = spec.get("_normalized")
                 if not isinstance(normalized_phrase, str) or not normalized_phrase:
@@ -655,11 +734,50 @@ class Maxim:
                 return
 
         phrase, spec = best
+        if not is_cli:
+            try:
+                self._phrase_last_trigger_ts[phrase] = now
+            except Exception:
+                pass
+        self._run_action_spec(source=source, trigger=phrase, spec=spec, transcript=transcript)
+
+    def _handle_transcript_record(self, record: dict) -> None:
+        text = str(record.get("text", "") or "").strip()
+        if not text:
+            return
         try:
-            self._phrase_last_trigger_ts[phrase] = now
+            self._last_transcript_event = record
         except Exception:
             pass
-        self._run_action_spec(source="voice", trigger=phrase, spec=spec, transcript=record)
+        self._handle_phrase_text(text, source="voice", transcript=record)
+
+    def _handle_cli_text(self, text: str) -> None:
+        raw = str(text or "").strip()
+        if not raw:
+            return
+        self._log_cli_input(raw)
+        if len(raw) == 1:
+            spec = getattr(self, "key_responses", {}).get(raw)
+            if isinstance(spec, dict):
+                self._run_action_spec(source="cli", trigger=raw, spec=spec)
+                return
+        self._handle_phrase_text(raw, source="cli", transcript={"text": raw})
+
+    def _log_cli_input(self, text: str) -> None:
+        logger = getattr(self, "_cli_logger", None)
+        if logger is None:
+            return
+        record = {
+            "kind": "cli_input",
+            "time": float(time.time()),
+            "run_id": getattr(self, "run_id", None),
+            "mode": getattr(self, "mode", None),
+            "text": str(text),
+        }
+        try:
+            logger.log_input(record)
+        except Exception:
+            return
 
     def _log_event(self, record: dict, *, flush: bool = False) -> None:
         training_logger = getattr(self, "_training_logger", None)
@@ -799,6 +917,32 @@ class Maxim:
 
     def _note_connection_failure(self, kind: str, error: object) -> None:
         if not _is_connection_error(error):
+            if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                try:
+                    self.log.debug("Ignoring non-connection error (%s): %s", kind, error)
+                except Exception:
+                    pass
+            return
+        stop_event = getattr(self, "_live_stop_event", None)
+        if stop_event is not None and stop_event.is_set():
+            if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                try:
+                    self.log.debug("Ignoring connection failure during shutdown (%s): %s", kind, error)
+                except Exception:
+                    pass
+            return
+        requested_mode = str(getattr(self, "requested_mode", "") or "").strip().lower()
+        if requested_mode:
+            if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                try:
+                    self.log.debug(
+                        "Ignoring connection failure during mode switch (%s -> %s): %s",
+                        str(getattr(self, "mode", "") or "").strip().lower(),
+                        requested_mode,
+                        error,
+                    )
+                except Exception:
+                    pass
             return
 
         state = self._connection_failures.get(kind)
@@ -815,6 +959,18 @@ class Maxim:
         state["last_ts"] = now
 
         threshold = int(self._reconnect_thresholds.get(kind, 3) or 3)
+        if int(getattr(self, "verbosity", 0) or 0) >= 2:
+            try:
+                self.log.debug(
+                    "Connection failure (%s): count=%d threshold=%d window_s=%.1f error=%s",
+                    kind,
+                    int(state["count"]),
+                    threshold,
+                    float(getattr(self, "_reconnect_window_s", 5.0) or 5.0),
+                    error,
+                )
+            except Exception:
+                pass
         if state["count"] >= threshold:
             self._soft_reconnect(reason=f"{kind}_connection_failed", error=error)
 
@@ -826,15 +982,35 @@ class Maxim:
             return False
 
         now = time.time()
-        if now - float(getattr(self, "_last_reconnect_ts", 0.0) or 0.0) < float(
-            getattr(self, "_reconnect_cooldown_s", 20.0) or 20.0
-        ):
+        last_ts = float(getattr(self, "_last_reconnect_ts", 0.0) or 0.0)
+        cooldown_s = float(getattr(self, "_reconnect_cooldown_s", 20.0) or 20.0)
+        if now - last_ts < cooldown_s:
+            if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                try:
+                    remaining = max(0.0, cooldown_s - (now - last_ts))
+                    self.log.debug(
+                        "Soft reconnect suppressed (cooldown %.1fs remaining): %s",
+                        remaining,
+                        reason,
+                    )
+                except Exception:
+                    pass
             return False
         if not self._reconnect_lock.acquire(blocking=False):
+            if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                try:
+                    self.log.debug("Soft reconnect suppressed (lock busy): %s", reason)
+                except Exception:
+                    pass
             return False
 
         self._last_reconnect_ts = now
         try:
+            if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                try:
+                    self.log.debug("Soft reconnect begin: %s", reason)
+                except Exception:
+                    pass
             warn(
                 "Soft reconnect requested (%s): %s",
                 reason,
@@ -1070,6 +1246,7 @@ class Maxim:
         audio_path = os.path.join(self.home_dir, "audio", f"reachy_audio_{run_id}.wav")
         transcript_path = os.path.join(self.home_dir, "transcript", f"reachy_transcript_{run_id}.jsonl")
         chunk_dir = os.path.join(self.home_dir, "audio", "chunks")
+        cli_path = os.path.join(self.home_dir, "cli", f"cli_input_{run_id}.jsonl")
 
         self.run_id = run_id
         self.run_start_ts = time.time()
@@ -1077,6 +1254,7 @@ class Maxim:
         self.video_path = video_path
         self.audio_path = audio_path
         self.transcript_path = transcript_path
+        self.cli_path = cli_path
 
         try:
             prev_logger = getattr(self, "_training_logger", None)
@@ -1092,6 +1270,24 @@ class Maxim:
         except Exception as e:
             self._training_logger = None
             warn("Failed to start training sample logger: %s", e, logger=self.log)
+
+        try:
+            prev_cli_logger = getattr(self, "_cli_logger", None)
+            if prev_cli_logger is not None:
+                prev_cli_logger.stop(timeout=0.5)
+        except Exception:
+            pass
+        self._cli_logger = None
+
+        if bool(getattr(self, "interactive", True)):
+            try:
+                self._cli_logger = CLIInputLogger(cli_path)
+                self._cli_logger.start()
+                if int(getattr(self, "verbosity", 0) or 0) >= 1:
+                    self.log.info("CLI input recording enabled: %s", cli_path)
+            except Exception as e:
+                self._cli_logger = None
+                warn("Failed to start CLI input logger: %s", e, logger=self.log)
 
         epochs_label = "unlimited" if self.epochs is None else str(int(self.epochs))
         self.log.info(
@@ -1109,7 +1305,13 @@ class Maxim:
             self.log.info("Recording audio: %s", audio_path)
             self.log.info("Transcripts: %s", transcript_path)
 
-        self.awaken(vision=bool(vision), motor=bool(motor), audio=bool(self.audio), wake_up=bool(wake_up))
+        effective_wake_up = bool(wake_up)
+        mode = str(getattr(self, "mode", "") or "").strip().lower()
+        if mode == "sleep":
+            effective_wake_up = False
+        if str(getattr(self, "requested_mode", "") or "").strip().lower() == "sleep":
+            effective_wake_up = False
+        self.awaken(vision=bool(vision), motor=bool(motor), audio=bool(self.audio), wake_up=effective_wake_up)
         if vision and self.verbose:
             # Keep OpenCV GUI calls on a dedicated process main thread (safer on Linux/WSL).
             prepare_display()
@@ -1474,6 +1676,11 @@ class Maxim:
                             continue
 
         threads: list[threading.Thread] = []
+        cli_thread = self._start_cli_listener(stop_event)
+        if cli_thread is not None:
+            threads.append(cli_thread)
+            cli_thread.start()
+
         key_thread = self._start_key_listener(stop_event)
         if key_thread is not None:
             threads.append(key_thread)
@@ -1495,7 +1702,7 @@ class Maxim:
                 threads.append(threading.Thread(target=_audio_writer_worker, name="maxim.write.audio", daemon=True))
 
             for t in threads:
-                if t is key_thread or t is transcript_thread:
+                if t is key_thread or t is transcript_thread or t is cli_thread:
                     continue
                 t.start()
 
@@ -1640,6 +1847,12 @@ class Maxim:
         without waking the robot motors. Runs until interrupted.
         """
         self.audio = True
+        self.mode = "sleep"
+        if int(getattr(self, "verbosity", 0) or 0) >= 2:
+            try:
+                self.log.debug("Entering sleep: reuse live loop (vision=False, motor=False).")
+            except Exception:
+                pass
         self.mini.goto_sleep()
         return self.live(
             home_dir=home_dir,
@@ -1683,6 +1896,8 @@ class Maxim:
         ev = getattr(self, "_live_stop_event", None)
         if ev is not None:
             try:
+                if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                    self.log.debug("Stopping live loop for mode switch -> %s", requested)
                 ev.set()
             except Exception:
                 pass
@@ -2227,6 +2442,13 @@ class Maxim:
         except Exception:
             pass
         self._training_logger = None
+        try:
+            cli_logger = getattr(self, "_cli_logger", None)
+            if cli_logger is not None:
+                cli_logger.stop(timeout=2.0)
+        except Exception:
+            pass
+        self._cli_logger = None
 
         # Persist the motor cortex state (best-effort; never blocks shutdown).
         try:
