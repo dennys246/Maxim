@@ -2,6 +2,25 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-01-18: Agentic MaximAgent naming + GPU-gated runtime
+Decision:
+- The composite agentic implementation is now `MaximAgent` (alias `AgenticMaximAgent` preserved for compatibility).
+- Removed `ReachyMiniAgent`; agentic control now relies on tools for Reachy SDK access.
+- `--mode agentic` requires GPU availability before starting.
+- Vision events are streamed to `data/vision/vision_events_<run_id>.jsonl` and surfaced as `latest_vision_event`.
+- `execute_file` tool execution is opt-in via `MAXIM_ALLOW_EXECUTE_FILE=1`.
+
+Reason:
+- Align the primary agent name with the agentic implementation.
+- Keep agents action-free and centralize SDK control in tools.
+- Avoid running the agentic loop without accelerator support.
+- Feed YOLO detections into the agentic perception loop without blocking control.
+- Reduce the risk of transcript-triggered arbitrary file execution.
+
+Tradeoffs:
+- Existing imports referencing the old class names should update (aliases remain).
+- Agentic runs now exit/skip on GPU-less machines.
+
 ## 2026-01-07: Add interactive terminal input for keyword actions
 Decision:
 - `maxim` starts a line-based terminal prompt (`maxim>`) when `--interactive true` (default).
@@ -248,23 +267,20 @@ Decision:
 Reason:
 - Provide a first-class entrypoint for agentic development/testing without requiring robot connectivity.
 
-## 2026-01-04: Select agentic agents by `--agent` name
+## 2026-01-04: Agentic runtime defaults
 Decision:
-- `--mode agentic` accepts `--agent <agent_name>` and selects from a small built-in registry using `Agent.agent_name`.
-- Built-in names: `goal` (`GoalAgent`) and `reachy_mini` (`ReachyAgent`).
-- Default agent is `reachy_mini`.
-- `reachy_mini` uses `ReachyEnv` to observe artifacts under `data/` and can act on `latest_*` paths in state.
+- `--mode agentic` runs the composite `MaximAgent` (agentic architecture).
+- Alternate agent selection is not exposed via the CLI at the moment.
 
 Reason:
-- Support multiple agents without passing Python classes through the CLI.
-- Keep per-agent runtime state organized under `data/agents/<STATE_NAME>/`.
+- Keep the agentic entrypoint focused on the primary architecture.
 
 Tradeoffs:
-- New agents must be added to the registry so they are discoverable via `--agent`.
+- Switching agents requires code changes rather than a CLI flag.
 
 ## 2026-01-04: Keep agents in independent files
 Decision:
-- Each agent implementation should live in its own file under `src/maxim/agents/` (e.g., `reachy_agent.py`, `goal_agent.py`).
+- Each agent implementation should live in its own file under `src/maxim/agents/` (e.g., `maxim_agent.py`, `goal_agent.py`).
 - `src/maxim/agents/base.py` should only contain shared interfaces/helpers (`Agent`, `AgentList`, utilities).
 - Exception: agents that share nearly all logic via inheritance (or are tightly coupled variants) may be co-located.
 
@@ -351,3 +367,251 @@ Decision:
 
 Reason:
 - Ensures `pip install -e .` installs everything needed for imports and avoids collisions with overly-generic package names.
+
+## 2026-01-19: Architecture migration - `live()` as hardware I/O layer
+
+### Current State
+
+The system has two parallel control paths:
+
+1. **`live()` loop** (`src/maxim/conscience/selfy.py`):
+   - Hardware I/O: frame capture, audio capture, video/audio writing
+   - Media recording: saves MP4/WAV files for training data
+   - Transcription pipeline: spawns Whisper process for speech-to-text
+   - CLI/keyboard listeners: user input handling
+   - Observation functions: `passive_observation()` / `motor_cortex_control()`
+   - Display: shows annotated frames via OpenCV
+
+2. **Agentic runtime** (`src/maxim/runtime/`, `src/maxim/agents/`):
+   - PerceptionAgent: processes frames/audio into Percepts
+   - MemoryAgent: builds StructuredContext from percepts
+   - AgenticGoalAgent: proposes goals based on context
+   - ExecAgent: executes goals via tool calls
+   - AutonomyController: gates tool execution by autonomy level
+   - LLMWorker: non-blocking LLM inference
+
+### Intended Migration Path
+
+**Phase 1 (Current):** Keep both paths, document boundaries.
+- `live()` remains the hardware interface layer
+- `passive_observation()` / `motor_cortex_control()` are fallbacks when agentic runtime is inactive
+- Agentic runtime consumes data from `live()` via shared state (`_last_frame`, transcripts)
+
+**Phase 2:** Make agentic runtime the primary decision-maker.
+- `live()` becomes a pure capture/recording layer (no observation logic)
+- All perception → decision → action flows through the agentic system
+- `passive_observation()` becomes a simple "display frame + detections" helper
+- Remove `motor_cortex_control()` training logic (training moves to offline pipeline)
+
+**Phase 3:** Merge capture threads into agentic runtime.
+- Move frame/audio capture workers into `_start_agentic_runtime()`
+- `live()` becomes a thin wrapper that starts the agentic runtime
+- Single entry point for all modes (sleep/observe/agentic)
+
+### Key Boundaries (Current)
+
+| Component | Responsibility | Does NOT do |
+|-----------|---------------|-------------|
+| `live()` | Hardware I/O, recording, display | Decision-making, goal selection |
+| `passive_observation()` | Legacy fallback: segment + display + simple tracking | Goal proposal, LLM reasoning |
+| PerceptionAgent | Convert raw data → Percepts | Movement commands, tool calls |
+| MemoryAgent | Build context, manage memories | Propose goals, execute actions |
+| AgenticGoalAgent | Propose goals from context | Execute tools directly |
+| ExecAgent | Execute approved actions via tools | Propose goals, bypass autonomy |
+| AutonomyController | Gate tool execution | Make decisions, propose goals |
+
+### Migration Checklist
+
+**Phase 2 (Completed 2026-01-19):**
+- [x] Display logic extracted from `passive_observation()` into `display_detections()` standalone helper
+- [x] `passive_observation()` simplified to display-only (returns target info, no movement)
+- [x] `motor_cortex_control()` removed from `live()` observation loop
+- [x] `live()` now auto-starts agentic runtime when not in sleep mode
+- [x] Target info stored in `_last_detection_target` for agentic system access
+
+**Phase 3 (Completed 2026-01-19):**
+- [x] Created `CaptureManager` class (`src/maxim/runtime/capture.py`) for unified frame/audio capture
+- [x] PerceptionAgent directly receives frames via CaptureManager callbacks (bypasses JSONL polling)
+- [x] MaximAgent accepts `capture_manager` parameter and passes to PerceptionAgent
+- [x] `live()` observation loop uses CaptureManager's pre-segmented frames when available
+- [x] `display_detections()` updated to handle both tuple and dict detection formats
+- [x] Single entry point: `live()` is the unified entry (sleep/observe/agentic modes)
+- [x] `sleep()` calls `live(vision=False, motor=False, wake_up=False)`
+
+### Current Data Flow (Phase 3)
+
+```
+CaptureManager (agentic runtime)
+    ↓ direct frame capture + YOLO segmentation
+    ↓ callback notification
+PerceptionAgent._on_captured_frame()
+    ↓
+Percept published to AgentBus
+    ↓
+MemoryAgent → StructuredContext
+    ↓
+AgenticGoalAgent → Goals
+    ↓
+ExecAgent → Tool calls (via AutonomyController)
+
+live() display loop (parallel)
+    ↓ polls CaptureManager.get_latest_frame()
+    ↓ display_detections() for visualization
+```
+
+### Key Changes in Phase 3
+
+1. **CaptureManager** (`src/maxim/runtime/capture.py`):
+   - Unified capture for frame and audio data
+   - Direct YOLO segmentation in capture thread
+   - Callback-based notification to PerceptionAgent
+   - Bypasses JSONL intermediary for lower latency
+
+2. **PerceptionAgent updates**:
+   - Accepts optional `capture_manager` in constructor
+   - Registers `_on_captured_frame()` callback for direct frame processing
+   - `process_captured_frame()` public API for manual frame processing
+
+3. **Detection format normalization**:
+   - `_normalize_detection()` helper handles both tuple and dict formats
+   - `display_detections()` works with CaptureManager's dict output
+
+### Tradeoffs
+
+- **Keeping `live()` for recording:** Still needed for video/audio file writing; CaptureManager focuses on agentic perception
+- **Dual capture paths:** CaptureManager captures for agentic system; live()'s threads still write to disk
+- **Fallback observation:** `passive_observation()` still available when CaptureManager unavailable
+- **Direct callbacks:** Lower latency but tighter coupling between CaptureManager and PerceptionAgent
+
+## 2026-01-19: Active visual tracking via TrackTargetTool
+
+### Decision
+
+Added `TrackTargetTool` to enable the agentic system to actively move the head to center detected objects of interest.
+
+### Implementation
+
+**New Tool:** `track_target` (`src/maxim/tools/reachy.py`)
+- Reads detection targets from CaptureManager (Phase 3) or `_last_detection_target` (fallback)
+- Computes if target is outside configurable deadzone from frame center
+- Calls `look_at_image()` to move head and center the target
+- Parameters:
+  - `deadzone_px`: Minimum offset from center to trigger movement (default: 40)
+  - `duration_s`: Movement duration in seconds (default: 0.3)
+  - `prefer_people`: Prioritize people over other objects (default: true)
+
+**ExecAgent Changes:**
+- Added `track_target` to available tools in system prompt
+- Updated default behavior: when detections present, propose `track_target` instead of just `focus_interests`
+- Added guidelines encouraging tracking behavior for people/objects
+
+**Flow:**
+```
+CaptureManager → YOLO detections
+    ↓
+ExecAgent sees detected_objects/detected_people in StructuredContext
+    ↓
+Proposes track_target goal (MEDIUM priority)
+    ↓
+TrackTargetTool reads latest detections
+    ↓
+If target outside deadzone: look_at_image(u, v, duration)
+    ↓
+Head centers on target
+```
+
+### Reason
+
+- Enables proactive visual engagement without explicit voice commands
+- Makes Maxim appear more attentive and aware of surroundings
+- Leverages existing detection pipeline for active tracking
+- Respects deadzone to avoid jitter from small movements
+
+### Tradeoffs
+
+- **Continuous movement:** May be distracting; deadzone helps mitigate
+- **Rate limiting:** 10 Hz cap prevents excessive motor commands
+- **LLM-optional:** Default tracking works without LLM; LLM can propose higher-priority goals to override
+- **People preference:** May miss interesting non-person objects when people are present
+
+## 2026-01-19: Enhanced Verbosity System for Agentic Information Flow
+
+### Decision
+
+Updated the verbosity system to provide granular control over agentic logging, making it easier to debug and observe the perception-memory-goal-action pipeline.
+
+### Implementation
+
+**New Verbosity Levels** (`src/maxim/utils/structured_logging.py`):
+- **Level 0 (QUIET):** Errors and critical warnings only
+- **Level 1 (NORMAL):** Key events - goal proposals, tool executions, mode changes
+- **Level 2 (VERBOSE):** + Perception events, memory updates, autonomy decisions
+- **Level 3 (DEBUG):** + Loop iterations, rate limiting, internal state changes
+
+**Event Categories:**
+Events are categorized with minimum verbosity levels:
+```python
+EVENT_VERBOSITY = {
+    # Level 0: Always shown
+    "error": 0, "critical": 0, "hard_stop": 0,
+
+    # Level 1: Key events
+    "goal_proposed": 1, "tool_called": 1, "tool_result": 1,
+    "mode_change": 1, "action_executed": 1, "action_rejected": 1,
+
+    # Level 2: Detailed events
+    "percept": 2, "detection": 2, "memory_store": 2,
+    "autonomy_check": 2, "intent_proposed": 2,
+
+    # Level 3: Debug events
+    "loop_iteration": 3, "rate_limited": 3, "idle": 3,
+}
+```
+
+**CLI Arguments:**
+- `--agentic-verbosity {0,1,2,3}`: Set agentic logging verbosity (default: 1)
+- `--agentic-console`: Print agentic events to console in real-time
+
+**Environment Variables:**
+- `MAXIM_AGENTIC_VERBOSITY`: Default verbosity level (0-3)
+- `MAXIM_AGENTIC_CONSOLE`: Enable console output ("1", "true", "yes")
+
+**New API Functions:**
+```python
+# Configure globally
+configure_agentic_verbosity(verbosity=2, console_output=True)
+
+# Log directly to abstraction stream
+log_agentic("track_target", "detection", {"target_u": 500, "is_person": True})
+
+# Get buffer for inspection
+buf = get_abstraction_buffer()
+print(buf.get_recent_human(10))  # Human-readable output
+print(buf.get_summary())  # Event/source counts
+```
+
+**LogRecord Formats:**
+- `to_compact()`: Minimal JSON for LLM context (`{"t":1234.5,"s":"exec_agent","e":"goal_proposed"}`)
+- `to_verbose()`: Full field names for debugging
+- `to_human()`: Human-readable console format (`12:34:56.789 [exec_agent] goal_proposed | tool=track_target`)
+
+**Agent Loop Integration:**
+The `run_agentic_loop()` now logs throughout the pipeline:
+- Loop iterations (level 3)
+- Intent proposals from agent fallback (level 2)
+- Autonomy checks (level 2)
+- Tool calls and results (level 1)
+- Errors and hard stops (level 0)
+
+### Reason
+
+- **Debugging:** Easier to trace why actions happen or don't happen
+- **Observability:** Clear visibility into the perception→goal→action pipeline
+- **Flexibility:** Different verbosity for development vs production
+- **Non-intrusive:** Default level 1 shows key events without flooding logs
+
+### Tradeoffs
+
+- **Performance:** Level 3 logging adds overhead; use level 1-2 in production
+- **Storage:** AbstractionBuffer is limited to 500 entries by default
+- **Complexity:** Multiple output formats (compact/verbose/human) to maintain
