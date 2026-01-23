@@ -87,20 +87,22 @@ Each run writes a timestamped set of artifacts under `data/`:
 - `transcript/reachy_transcript_<YYYY-MM-DD_HHMMSS>.jsonl` (when `--audio true` and Whisper is available)
 - `logs/reachy_log_<YYYY-MM-DD_HHMMSS>.log`
 - `training/motor_training_set.jsonl` (append-only log of trainable vision+movement samples)
+- `vision/vision_events_<YYYY-MM-DD_HHMMSS>.jsonl` (agentic runtime vision stream)
 
 Shared model artifacts and weights live under `data/models/` (e.g., `MotorCortex/`, `YOLO/`).
 
 ## CLI Flags
 
-- `--mode`: `passive-interaction` (default), `live`, `train`, `sleep` (audio-only; no `wake_up()`), `agentic` (agentic runtime loop)
-- `--agent`: agent name for `--mode agentic` (default: `reachy_mini`; options: `reachy_mini`, `goal`)
+- `--mode`: `passive-interaction` (default), `live`, `train`, `sleep` (audio-only; no `wake_up()`), `agentic` (agentic runtime loop; requires GPU)
 - `--verbosity`: `0`, `1`, `2`
 - `--audio`: `True/False` (enables audio recording + transcription)
 - `--audio_len`: seconds per transcription chunk (default `5.0`)
 - `--language-model`: LLM profile name (e.g., `mistral-7b-instruct-v0.2`, `smollm-1.7b-instruct`; lists available on unknown)
 - `--segmentation-model`: vision segmentation model (default `YOLO8`; lists available on unknown)
 - `--interactive`: `True/False` (enable terminal prompt for keyword actions; default `True`)
-- `--goal`: goal for `--mode agentic` when using `--agent goal` (e.g., `read_readme` or JSON `{"tool_name":"read_file","params":{"path":"README.md"}}`)
+- `--memory-path`: agentic memory persistence path (default: `<home_dir>/memory/memories.json`)
+- `--reset`: reset agentic memory on startup
+- `--enable-embeddings`: enable embedding-based memory similarity (requires `sentence-transformers`)
 
 ## Keyboard Shortcuts
 
@@ -140,13 +142,14 @@ Maxim supports local LLM inference via **llama.cpp** for voice-controlled action
 pip install -e '.[llm]'
 ```
 
-2. Download a GGUF model (Q4_K_M quantization recommended):
+2. Download a model using the built-in download script:
 
 ```bash
-# Example: Download Mistral 7B (Q4_K_M ~4GB)
-mkdir -p data/models/LLM
-# Place your .gguf file in data/models/LLM/
-# Expected naming: <model-base>.Q4_K_M.gguf
+# Download the default small model (SmolLM 1.7B, ~1.1GB - recommended for CPU/limited hardware)
+./scripts/download_models.sh --llm --enable
+
+# Or download a larger, more capable model
+./scripts/download_models.sh --llm mistral-7b-instruct-v0.2 --enable
 ```
 
 3. Enable and run:
@@ -167,6 +170,77 @@ maxim --language-model mistral-7b
 | `phi2` / `phi3-mini` | Microsoft Phi | 2048/4096 | Phi |
 | `qwen2-7b` | Qwen2 7B Instruct | 8192 | ChatML |
 | `gemma-2b` / `gemma-7b` | Google Gemma IT | 8192 | Gemma |
+
+### Model Downloads
+
+Maxim includes a convenient script to download pre-quantized models from HuggingFace:
+
+```bash
+# List all available models
+./scripts/download_models.sh --list
+
+# Check which models are already downloaded
+./scripts/download_models.sh --status
+
+# Download default LLM (SmolLM 1.7B - best for CPU/limited hardware)
+./scripts/download_models.sh --llm
+
+# Download a specific model
+./scripts/download_models.sh --llm mistral-7b-instruct-v0.2
+
+# Download and enable in config
+./scripts/download_models.sh --llm smollm-1.7b-instruct --enable
+
+# Download both LLM and TTS models
+./scripts/download_models.sh --all --enable
+```
+
+#### Available LLM Models
+
+| Model | Size | Description |
+|-------|------|-------------|
+| `smollm-1.7b-instruct` | ~1.1 GB | **Default** - Small, fast, good for CPU |
+| `smollm2-1.7b-instruct` | ~1.0 GB | Improved SmolLM, small and efficient |
+| `phi-2` | ~1.8 GB | Microsoft Phi-2 2.7B - Compact but capable |
+| `gemma-2-2b-it` | ~1.6 GB | Google Gemma 2 2B - Small and efficient |
+| `mistral-7b-instruct-v0.2` | ~4.4 GB | High quality, needs more RAM |
+| `llama-3-8b-instruct` | ~4.9 GB | Excellent quality, needs GPU or lots of RAM |
+| `qwen2-7b-instruct` | ~4.4 GB | Strong multilingual support |
+
+#### TTS Models (Text-to-Speech)
+
+For audio responses, Maxim supports Piper TTS:
+
+```bash
+# Download default TTS voice
+./scripts/download_models.sh --tts
+
+# Download a specific voice
+./scripts/download_models.sh --tts en_US-amy-medium
+```
+
+| Voice | Description |
+|-------|-------------|
+| `en_US-lessac-medium` | **Default** - English US, balanced quality |
+| `en_US-amy-medium` | English US, female voice |
+| `en_GB-alan-medium` | English UK, British male |
+
+#### Python API for Downloads
+
+```python
+from maxim.models import download_llm, download_tts, list_models, check_models
+
+# List available models
+list_models()
+
+# Check what's downloaded
+status = check_models()
+print(status)
+
+# Download programmatically
+download_llm("smollm-1.7b-instruct")
+download_tts("en_US-lessac-medium")
+```
 
 ### Quantization Options
 
@@ -345,6 +419,8 @@ Hard keyword commands always override the LLM:
 - `sleep maxim` / `maxim sleep` → Switch to sleep mode
 - `observe maxim` / `maxim observe` → Switch to passive mode
 - `shutdown maxim` / `maxim shutdown` → Clean shutdown
+
+Note: the `execute_file` tool is disabled by default. Set `MAXIM_ALLOW_EXECUTE_FILE=1` to opt in.
 
 ### Configuration File
 
