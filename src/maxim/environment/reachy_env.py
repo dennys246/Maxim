@@ -55,6 +55,8 @@ class ReachyEnv(Environment):
             data_path = self.repo_root / data_path
         self.data_dir = data_path.resolve()
         self._done = False
+        self._last_cli_line: str | None = None
+        self._last_cli_mtime: float | None = None
 
     def reset(self) -> dict[str, Any]:
         self._done = False
@@ -67,15 +69,20 @@ class ReachyEnv(Environment):
         transcripts = sorted((base / "transcript").glob("*.jsonl")) if (base / "transcript").exists() else []
         logs = sorted((base / "logs").glob("*.log")) if (base / "logs").exists() else []
         training = sorted((base / "training").glob("*.jsonl")) if (base / "training").exists() else []
+        cli_logs = sorted((base / "cli").glob("*.jsonl")) if (base / "cli").exists() else []
+        vision_events = sorted((base / "vision").glob("*.jsonl")) if (base / "vision").exists() else []
 
         latest_transcript = _latest_file(transcripts)
         latest_log = _latest_file(logs)
         latest_training = _latest_file(training)
         latest_video = _latest_file(videos)
         latest_audio = _latest_file(audio)
+        latest_cli_log = _latest_file(cli_logs)
+        latest_vision_event_path = _latest_file(vision_events)
         latest_transcript_record = None
         latest_transcript_text = None
         latest_transcript_chunk_index = None
+        latest_vision_event = None
 
         if latest_transcript:
             try:
@@ -88,6 +95,37 @@ class ReachyEnv(Environment):
                         latest_transcript_chunk_index = rec.get("chunk_index")
             except Exception:
                 latest_transcript_record = None
+
+        if latest_vision_event_path:
+            try:
+                line = _tail_line(Path(latest_vision_event_path))
+                if line:
+                    rec = json.loads(line)
+                    if isinstance(rec, dict):
+                        latest_vision_event = rec
+            except Exception:
+                latest_vision_event = None
+
+        # Check for new CLI input
+        cli_input = None
+        if latest_cli_log:
+            try:
+                cli_path = Path(latest_cli_log)
+                cli_mtime = cli_path.stat().st_mtime
+                # Only read if file is new or modified
+                if self._last_cli_mtime is None or cli_mtime > self._last_cli_mtime:
+                    line = _tail_line(cli_path)
+                    if line and line != self._last_cli_line:
+                        try:
+                            rec = json.loads(line)
+                            if isinstance(rec, dict):
+                                cli_input = rec.get("input") or rec.get("text") or rec.get("command")
+                        except json.JSONDecodeError:
+                            cli_input = line  # Plain text input
+                        self._last_cli_line = line
+                        self._last_cli_mtime = cli_mtime
+            except Exception:
+                pass
 
         def rel(path: str | None) -> str | None:
             if not path:
@@ -104,16 +142,21 @@ class ReachyEnv(Environment):
             "latest_transcript_chunk_index": latest_transcript_chunk_index,
             "latest_transcript_text": latest_transcript_text,
             "latest_transcript_record": latest_transcript_record,
+            "latest_vision_event": latest_vision_event,
+            "latest_vision_event_path": rel(latest_vision_event_path),
             "latest_log": rel(latest_log),
             "latest_training": rel(latest_training),
             "latest_video": rel(latest_video),
             "latest_audio": rel(latest_audio),
+            "cli_input": cli_input,  # New CLI input if any
             "counts": {
                 "videos": len(videos),
                 "audio": len(audio),
                 "transcripts": len(transcripts),
                 "logs": len(logs),
                 "training": len(training),
+                "cli_logs": len(cli_logs),
+                "vision_events": len(vision_events),
             },
         }
 
