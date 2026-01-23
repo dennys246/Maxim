@@ -4,6 +4,18 @@ from pathlib import Path
 import os
 import subprocess
 
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    value = str(raw).strip().lower()
+    if value in ("1", "true", "t", "yes", "y", "on"):
+        return True
+    if value in ("0", "false", "f", "no", "n", "off"):
+        return False
+    return bool(default)
+
 from .base import Tool, ToolResult
 
 class ReadFileTool(Tool):
@@ -92,6 +104,12 @@ class ExecuteFileTool(Tool):
 
     def execute(self, **kwargs) -> ToolResult:
         try:
+            if not _env_flag("MAXIM_ALLOW_EXECUTE_FILE", False):
+                return ToolResult(
+                    success=False,
+                    error="ExecuteFileTool disabled. Set MAXIM_ALLOW_EXECUTE_FILE=1 to enable.",
+                )
+
             path = Path(kwargs["path"])
             timeout = kwargs.get("timeout", 10)
 
