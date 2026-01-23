@@ -498,7 +498,7 @@ If no action needed, return: {{"tool_name": null, "confidence": 0.0}}"""
 
         result = self.generate_json(user_prompt, temperature=0.0)
 
-        if not result:
+        if not result or not isinstance(result, dict):
             return None
 
         tool_name = result.get("tool_name")
