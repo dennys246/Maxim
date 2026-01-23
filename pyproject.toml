@@ -29,6 +29,13 @@ dependencies = [
 llm = [
     "llama-cpp-python>=0.2.20",
 ]
+tts = [
+    "piper-tts>=1.2.0",
+]
+all = [
+    "llama-cpp-python>=0.2.20",
+    "piper-tts>=1.2.0",
+]
 
 [project.scripts]
 maxim = "maxim.cli:main"
