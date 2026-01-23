@@ -752,3 +752,49 @@ Return JSON exactly like:
                 return None
 
         return {"tool_name": tool_name, "params": dict(params)}
+
+    def generate_json(
+        self,
+        prompt: str,
+        temperature: float = 0.3,
+        max_tokens: int = 1024,
+    ) -> dict[str, Any] | None:
+        """Generate a JSON response from a prompt.
+
+        Used by LLMWorker for agentic goal proposal.
+
+        Args:
+            prompt: The full prompt to send to the LLM (used as user message).
+            temperature: Sampling temperature.
+            max_tokens: Maximum tokens to generate.
+
+        Returns:
+            Parsed JSON dict or None if generation failed.
+        """
+        backend = self._get_backend()
+        if backend is None:
+            return None
+
+        # Wrap prompt in the appropriate format for this model (ChatML, Mistral, etc.)
+        system = "You are a helpful robot assistant. Always respond with valid JSON only, no other text."
+        wrapped_prompt = _build_prompt(self.cfg, system, prompt)
+
+        try:
+            text = backend.complete(
+                wrapped_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stop=tuple(getattr(self.cfg, "stop", ("</s>",))),
+            )
+            if text:
+                warn("LLM raw response (first 200 chars): %s", text[:200] if len(text) > 200 else text)
+        except Exception as e:
+            warn("LLM generate_json failed: %s", e)
+            return None
+
+        obj = _extract_json_object(text)
+        if not isinstance(obj, dict):
+            warn("LLM returned non-dict: %s (raw text was: %s)", type(obj), text[:100] if text else "empty")
+            return None
+
+        return obj

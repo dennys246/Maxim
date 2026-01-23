@@ -12,21 +12,21 @@ import time, atexit, cv2
 import logging
 import multiprocessing as mp
 import wave
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 
 from maxim.motion.movement import load_actions, load_movement_thresholds, load_poses, move_antenna, move_head
 from maxim.utils.audio import resample_audio, to_int16
-from maxim.utils.data_management import CLIInputLogger, TrainingSampleLogger, build_home
+from maxim.utils.data_management import CLIInputLogger, TrainingSampleLogger, VisionEventLogger, build_home
 from maxim.utils.logging import configure_logging, warn
 from maxim.utils.plotting import preflight_matplotlib_fonts, preload_matplotlib_fonts
 from maxim.utils.queueing import put_latest
 
 from maxim.data.camera.display import prepare_display, show_photo
 from maxim.inference.observation import (
+    display_detections,
     face_observation,
-    motor_cortex_control,
     passive_observation,
     passive_listening,
 )
@@ -45,6 +45,22 @@ def _env_flag(name: str, default: bool) -> bool:
         return False
     return bool(default)
 
+
+def _gpu_available() -> bool:
+    try:
+        import torch
+    except Exception:
+        return False
+    try:
+        if torch.cuda.is_available():
+            return True
+        mps = getattr(getattr(torch, "backends", None), "mps", None)
+        if mps is not None and getattr(mps, "is_available", None):
+            return bool(mps.is_available())
+    except Exception:
+        return False
+    return False
+
 def _is_connection_error(error: object) -> bool:
     if error is None:
         return False
@@ -58,6 +74,15 @@ def _is_connection_error(error: object) -> bool:
     if "timeout" in message or "timed out" in message:
         return True
     if "connection" in message and any(term in message for term in ("refused", "reset", "broken", "closed")):
+        return True
+    # Dynamixel/serial communication errors (rustypot panics)
+    if "channel closed" in message:
+        return True
+    if "panicexception" in message:
+        return True
+    if "assertion failed" in message and "buffer" in message:
+        return True
+    if "flush serial" in message:
         return True
     return False
 
@@ -96,6 +121,7 @@ class Maxim:
         self.alive = True
         self._closed = False
         self._woke_up = False
+        self.sleeping = False  # Track if Reachy is already in sleep pose
 
         self.name = robot_name or os.getenv("MAXIM_ROBOT_NAME", "reachy_mini")
         self.log.info("Connecting to Reachy Mini '%s'...", self.name)
@@ -227,7 +253,14 @@ class Maxim:
         self.requested_mode: str | None = None
         self._agentic_stop_event: threading.Event | None = None
         self._agentic_thread: threading.Thread | None = None
+        self._agentic_agent = None
+        self._agentic_state = None
         self._cli_logger: CLIInputLogger | None = None
+        self._vision_event_logger: VisionEventLogger | None = None
+        self._vision_event_thread: threading.Thread | None = None
+        self._vision_event_stop_event: threading.Event | None = None
+        self._vision_event_last_frame_ts: float | None = None
+        self.vision_events_path: str | None = None
 
         self.movement_model = None
         self.segmenter = None
@@ -756,6 +789,15 @@ class Maxim:
         if not raw:
             return
         self._log_cli_input(raw)
+
+        # Forward CLI input to agentic state so LLM worker can see it
+        agentic_state = getattr(self, "_agentic_state", None)
+        if agentic_state is not None and hasattr(agentic_state, "data"):
+            agentic_state.data["pending_cli_input"] = raw
+            self.log.warning("CLI input forwarded to agentic state: %s", raw[:50])
+        else:
+            self.log.warning("Agentic state not available for CLI forwarding (state=%s)", agentic_state)
+
         if len(raw) == 1:
             spec = getattr(self, "key_responses", {}).get(raw)
             if isinstance(spec, dict):
@@ -1092,23 +1134,223 @@ class Maxim:
         except Exception:
             return os.getcwd()
 
-    def _start_agentic_runtime(self) -> None:
+    def _ensure_vision_logger(self) -> VisionEventLogger | None:
+        if self._vision_event_logger is not None:
+            return self._vision_event_logger
+
+        run_id = getattr(self, "run_id", None) or time.strftime("%Y-%m-%d_%H%M%S")
+        if not self.vision_events_path:
+            self.vision_events_path = os.path.join(
+                str(getattr(self, "home_dir", "data") or "data"),
+                "vision",
+                f"vision_events_{run_id}.jsonl",
+            )
+
+        try:
+            logger = VisionEventLogger(self.vision_events_path)
+            logger.start()
+            self._vision_event_logger = logger
+            return logger
+        except Exception as e:
+            warn("Failed to start vision event logger: %s", e, logger=self.log)
+            self._vision_event_logger = None
+            return None
+
+    def _start_vision_event_stream(self) -> None:
+        existing = getattr(self, "_vision_event_thread", None)
+        if existing is not None and getattr(existing, "is_alive", lambda: False)():
+            return
+
+        logger = self._ensure_vision_logger()
+        if logger is None:
+            return
+
+        stop_event = threading.Event()
+        self._vision_event_stop_event = stop_event
+        self._vision_event_last_frame_ts = None
+
+        def _worker() -> None:
+            try:
+                hz = float(os.getenv("MAXIM_VISION_EVENT_HZ", "2.0") or 2.0)
+            except Exception:
+                hz = 2.0
+            if hz <= 0:
+                hz = 2.0
+            sleep_s = 1.0 / hz
+
+            while not stop_event.is_set():
+                frame = getattr(self, "_last_frame", None)
+                if frame is None or not isinstance(frame, np.ndarray):
+                    time.sleep(sleep_s)
+                    continue
+
+                frame_ts = getattr(self, "_last_frame_ts", None)
+                ts_val = None
+                try:
+                    ts_val = float(frame_ts) if frame_ts is not None else None
+                except Exception:
+                    ts_val = None
+
+                if ts_val is not None and self._vision_event_last_frame_ts is not None:
+                    if ts_val <= float(self._vision_event_last_frame_ts):
+                        time.sleep(sleep_s)
+                        continue
+
+                segmenter = getattr(self, "segmenter", None)
+                if segmenter is None:
+                    try:
+                        self._ensure_segmenter()
+                    except Exception:
+                        segmenter = None
+                    segmenter = getattr(self, "segmenter", None)
+                if segmenter is None:
+                    time.sleep(sleep_s)
+                    continue
+
+                lock = getattr(self, "_observation_lock", None)
+                acquired = False
+                if lock is not None:
+                    try:
+                        acquired = lock.acquire(blocking=False)
+                    except Exception:
+                        acquired = False
+                if lock is not None and not acquired:
+                    time.sleep(sleep_s)
+                    continue
+
+                try:
+                    observations = segmenter.segment_photos(
+                        frame,
+                        interests=list(getattr(self, "interests", []) or []),
+                    )
+                except Exception as e:
+                    warn("Vision event segmentation failed: %s", e, logger=self.log)
+                    observations = []
+                finally:
+                    if lock is not None and acquired:
+                        try:
+                            lock.release()
+                        except Exception:
+                            pass
+
+                dets: list[dict[str, Any]] = []
+                names = getattr(getattr(segmenter, "model", None), "names", None)
+                for obs in observations or []:
+                    if not isinstance(obs, (list, tuple)) or len(obs) < 8:
+                        continue
+                    try:
+                        track_id = int(obs[0]) if obs[0] is not None else None
+                    except Exception:
+                        track_id = None
+                    try:
+                        cls_id = int(obs[7]) if obs[7] is not None else None
+                    except Exception:
+                        cls_id = None
+                    try:
+                        conf = float(obs[6]) if obs[6] is not None else 0.0
+                    except Exception:
+                        conf = 0.0
+
+                    label = None
+                    try:
+                        if isinstance(names, dict) and cls_id in names:
+                            label = names.get(cls_id)
+                        elif isinstance(names, (list, tuple)) and cls_id is not None:
+                            if 0 <= cls_id < len(names):
+                                label = names[cls_id]
+                    except Exception:
+                        label = None
+
+                    dets.append(
+                        {
+                            "track_id": track_id,
+                            "class_id": cls_id,
+                            "label": label,
+                            "conf": conf,
+                            "bbox_xyxy": [float(obs[2]), float(obs[3]), float(obs[4]), float(obs[5])],
+                        }
+                    )
+
+                record = {
+                    "kind": "vision_event",
+                    "time": float(time.time()),
+                    "run_id": getattr(self, "run_id", None),
+                    "frame_ts": ts_val,
+                    "model": getattr(self, "_segmenter_model", None),
+                    "interests": list(getattr(self, "interests", []) or []),
+                    "detections": dets,
+                }
+                try:
+                    shape = getattr(frame, "shape", None)
+                    if isinstance(shape, tuple) and len(shape) >= 2:
+                        record["frame_shape"] = [int(shape[0]), int(shape[1])]
+                except Exception:
+                    pass
+
+                logger.log_event(record)
+                if ts_val is not None:
+                    self._vision_event_last_frame_ts = float(ts_val)
+
+                time.sleep(sleep_s)
+
+        t = threading.Thread(target=_worker, name="maxim.vision.events", daemon=True)
+        self._vision_event_thread = t
+        t.start()
+
+    def _stop_vision_event_stream(self, *, timeout: float = 2.0) -> None:
+        try:
+            ev = getattr(self, "_vision_event_stop_event", None)
+            if ev is not None:
+                ev.set()
+        except Exception:
+            pass
+        t = getattr(self, "_vision_event_thread", None)
+        if t is not None:
+            try:
+                t.join(timeout=float(timeout))
+            except Exception:
+                pass
+        self._vision_event_thread = None
+        self._vision_event_stop_event = None
+
+        logger = getattr(self, "_vision_event_logger", None)
+        if logger is not None:
+            try:
+                logger.stop(timeout=float(timeout))
+            except Exception:
+                pass
+        self._vision_event_logger = None
+
+    def _start_agentic_runtime(self, *, use_capture_manager: bool = True) -> None:
+        """Start the agentic runtime.
+
+        Args:
+            use_capture_manager: If True, use CaptureManager for direct frame access (Phase 3).
+                                If False, fall back to JSONL-based vision event stream.
+        """
         existing = getattr(self, "_agentic_thread", None)
         if existing is not None and getattr(existing, "is_alive", lambda: False)():
             return
 
+        if not _gpu_available():
+            warn("Agentic runtime requires a GPU; skipping agentic startup.", logger=self.log)
+            return
+
         try:
-            from maxim.agents import ReachyAgent
+            from maxim.agents import MaximAgent
+            from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
+            from maxim.agents.llm_worker import LLMWorker
             from maxim.environment import ReachyEnv
             from maxim.runtime import (
+                CaptureManager,
                 build_decision_engine,
                 build_evaluators,
                 build_executor,
                 build_memory,
                 build_state,
                 build_tool_registry,
-                run_agent_loop,
             )
+            from maxim.runtime.agent_loop import run_agentic_loop
         except Exception as e:
             warn("Agentic runtime unavailable: %s", e, logger=self.log)
             return
@@ -1116,7 +1358,25 @@ class Maxim:
         stop_event = threading.Event()
         self._agentic_stop_event = stop_event
 
-        agent = ReachyAgent()
+        # Phase 3: Initialize CaptureManager for direct frame access
+        capture_manager = None
+        if use_capture_manager:
+            try:
+                capture_manager = CaptureManager(
+                    maxim=self,
+                    target_fps=float(getattr(self, "video_fps", 10.0) or 10.0),
+                    enable_segmentation=True,
+                )
+                self._capture_manager = capture_manager
+            except Exception as e:
+                warn("Failed to create CaptureManager: %s (falling back to JSONL)", e, logger=self.log)
+                capture_manager = None
+
+        agent = MaximAgent(
+            interests=list(getattr(self, "interests", []) or []),
+            data_folder=str(getattr(self, "home_dir", "data") or "data"),
+            capture_manager=capture_manager,
+        )
         env = ReachyEnv(repo_root=os.getcwd(), data_dir=str(getattr(self, "home_dir", "data") or "data"))
         state = build_state(max_steps=1_000_000)
         try:
@@ -1126,13 +1386,112 @@ class Maxim:
             }
         except Exception:
             pass
+        self._agentic_agent = agent
+        self._agentic_state = state
+
+        # Propagate exploration mode context if set by CLI
+        if bool(getattr(self, "_exploration_mode", False)):
+            state.data["exploration_mode"] = True
+            state.data["exploration_focus"] = str(getattr(self, "_exploration_focus", "") or "")
+            state.data["exploration_session_id"] = str(getattr(self, "_exploration_session_id", "") or "")
+            state.data["exploration_policy"] = getattr(self, "_exploration_policy", {}) or {}
+            state.data["mode"] = "exploration"  # Override mode for MemoryAgent
+            # Also update maxim_runtime for consistency
+            if isinstance(state.data.get("maxim_runtime"), dict):
+                state.data["maxim_runtime"]["mode"] = "exploration"
+
         memory = build_memory()
         decision_engine = build_decision_engine()
-        registry = build_tool_registry(maxim=self)
+
+        # Set up ResponseOutput for LLM responses
+        from pathlib import Path
+        from maxim.utils.response_output import ResponseOutput
+
+        sandbox_path = Path(self.home_dir) / "sandbox"
+        tts_engine = None
+        speaker_fn = None
+
+        # Check if TTS is enabled (set via environment or config)
+        if os.environ.get("MAXIM_TTS_ENABLED", "").lower() in ("1", "true", "yes"):
+            try:
+                from maxim.models.audio.tts import TTSEngine
+
+                tts_model = os.environ.get("MAXIM_TTS_MODEL", "en_US-lessac-medium")
+                tts_engine = TTSEngine(model_name=tts_model)
+                if tts_engine.is_available:
+                    speaker_fn = self.speak  # Use Maxim's speak method
+                    self.log.info("TTS enabled with model: %s", tts_model)
+                else:
+                    self.log.warning("TTS model not found, TTS disabled")
+                    tts_engine = None
+            except Exception as e:
+                self.log.warning("Failed to initialize TTS: %s", e)
+                tts_engine = None
+
+        response_output = ResponseOutput(
+            sandbox_path=sandbox_path,
+            logger=self.log,
+            tts_engine=tts_engine,
+            speaker_fn=speaker_fn,
+        )
+
+        registry = build_tool_registry(maxim=self, response_output=response_output)
         executor = build_executor(registry)
         evaluators = build_evaluators()
 
         run_id = getattr(self, "run_id", None) or time.strftime("%Y-%m-%d_%H%M%S")
+
+        # Set up autonomy controller with sensible defaults for live mode
+        supervision_policy = SupervisionPolicy(
+            allowed_tools={
+                "read_file",
+                "focus_interests",
+                "track_target",
+                "maxim_command",
+                "mode_switch",
+                "speak",
+                "respond",
+            },
+            forbidden_tools={"execute_file", "delete_file"},
+            min_confidence_autonomous=0.7,
+            requires_confirmation={"write_file"},
+        )
+        autonomy_controller = AutonomyController(
+            initial_level=AutonomyLevel.SUPERVISED,
+            supervision_policy=supervision_policy,
+        )
+
+        # Create LLM worker for handling user questions
+        llm_worker = None
+        try:
+            from maxim.models.language.router import LLMRouter, load_llm_config
+
+            llm_config = load_llm_config()
+            if llm_config.enabled:
+                llm_router = LLMRouter(llm_config)
+                llm_worker = LLMWorker(llm=llm_router, stale_threshold_s=5.0)
+                llm_worker.start()
+                self.log.info("LLM worker started for user responses")
+            else:
+                self.log.debug("LLM disabled in config, responses will use fallback")
+        except Exception as e:
+            warn("Failed to create LLM worker: %s", e, logger=self.log)
+            llm_worker = None
+
+        self._llm_worker = llm_worker
+
+        # Start capture manager or fall back to vision event stream
+        if capture_manager is not None:
+            try:
+                capture_manager.start()
+                self.log.info("CaptureManager started for direct frame access")
+            except Exception as e:
+                warn("Failed to start CaptureManager: %s", e, logger=self.log)
+                capture_manager = None
+
+        # Fall back to JSONL-based stream if no capture manager
+        if capture_manager is None:
+            self._start_vision_event_stream()
 
         def _on_step(ctx: dict) -> None:
             tool_result = ctx.get("tool_result")
@@ -1173,23 +1532,32 @@ class Maxim:
 
         def _worker() -> None:
             try:
-                run_agent_loop(
+                run_agentic_loop(
                     agent,
                     env,
                     state,
                     memory,
                     decision_engine,
                     executor,
+                    autonomy_controller=autonomy_controller,
+                    llm_worker=llm_worker,
                     evaluators=evaluators,
-                    max_steps=1_000_000,
+                    max_steps=0,  # Unlimited
                     run_id=run_id,
                     stop_event=stop_event,
                     on_step=_on_step,
-                    break_on_no_intent=False,
-                    idle_sleep_s=0.25,
+                    idle_sleep_s=0.1,
+                    target_hz=10.0,  # 10 Hz for responsive CLI handling
                 )
             except Exception as e:
                 warn("Agentic runtime loop failed: %s", e, logger=self.log)
+            finally:
+                # Clean up LLM worker
+                if llm_worker is not None:
+                    try:
+                        llm_worker.stop()
+                    except Exception:
+                        pass
 
         t = threading.Thread(target=_worker, name="maxim.agentic", daemon=True)
         self._agentic_thread = t
@@ -1210,6 +1578,19 @@ class Maxim:
                 pass
         self._agentic_thread = None
         self._agentic_stop_event = None
+        self._agentic_agent = None
+        self._agentic_state = None
+
+        # Stop capture manager (Phase 3)
+        capture_manager = getattr(self, "_capture_manager", None)
+        if capture_manager is not None:
+            try:
+                capture_manager.stop(timeout=timeout)
+            except Exception:
+                pass
+            self._capture_manager = None
+
+        self._stop_vision_event_stream(timeout=timeout)
 
     def _set_epochs(self, epochs: int | None) -> None:
         try:
@@ -1247,6 +1628,7 @@ class Maxim:
         transcript_path = os.path.join(self.home_dir, "transcript", f"reachy_transcript_{run_id}.jsonl")
         chunk_dir = os.path.join(self.home_dir, "audio", "chunks")
         cli_path = os.path.join(self.home_dir, "cli", f"cli_input_{run_id}.jsonl")
+        vision_events_path = os.path.join(self.home_dir, "vision", f"vision_events_{run_id}.jsonl")
 
         self.run_id = run_id
         self.run_start_ts = time.time()
@@ -1255,6 +1637,7 @@ class Maxim:
         self.audio_path = audio_path
         self.transcript_path = transcript_path
         self.cli_path = cli_path
+        self.vision_events_path = vision_events_path
 
         try:
             prev_logger = getattr(self, "_training_logger", None)
@@ -1278,6 +1661,14 @@ class Maxim:
         except Exception:
             pass
         self._cli_logger = None
+
+        try:
+            prev_vision_logger = getattr(self, "_vision_event_logger", None)
+            if prev_vision_logger is not None:
+                self._stop_vision_event_stream(timeout=0.5)
+        except Exception:
+            pass
+        self._vision_event_logger = None
 
         if bool(getattr(self, "interactive", True)):
             try:
@@ -1315,6 +1706,14 @@ class Maxim:
         if vision and self.verbose:
             # Keep OpenCV GUI calls on a dedicated process main thread (safer on Linux/WSL).
             prepare_display()
+
+        # Phase 2: Start agentic runtime automatically when not in sleep mode
+        # The agentic system handles all decision-making; live() just does I/O
+        if mode != "sleep":
+            try:
+                self._start_agentic_runtime()
+            except Exception as e:
+                warn("Failed to start agentic runtime: %s", e, logger=self.log)
 
         media_lock = threading.Lock()
         self._media_lock = media_lock
@@ -1748,20 +2147,39 @@ class Maxim:
 
                     self.current_epoch += 1
 
+                    # Phase 3: Display-only observation loop
+                    # Use CaptureManager frames when available (already segmented)
+                    # Movement decisions are handled by the agentic runtime
                     if self.observation_period and self.current_epoch % self.observation_period == 0:
                         try:
                             with self._observation_lock:
-                                if getattr(self, "mode", "passive-interaction") == "passive-interaction":
-                                    passive_observation(self, photo, show=self.verbose)
+                                # Check if CaptureManager has a recent frame with detections
+                                capture_manager = getattr(self, "_capture_manager", None)
+                                if capture_manager is not None:
+                                    captured = capture_manager.get_latest_frame()
+                                    if captured is not None and captured.segmented:
+                                        # Use pre-segmented frame from CaptureManager
+                                        target_info = display_detections(
+                                            captured.frame,
+                                            captured.detections,
+                                            segmenter=None,  # Already segmented
+                                            window_name="Maxim Observation",
+                                            wait_ms=1,
+                                            show_pose=True,
+                                        ) if self.verbose else None
+                                    else:
+                                        # Fall back to passive_observation if no segmented frame
+                                        target_info = passive_observation(self, photo, show=self.verbose)
                                 else:
-                                    train_enabled = bool(getattr(self, "train", False)) and not self._training_paused.is_set()
-                                    motor_cortex_control(
-                                        self,
-                                        self.movement_model,
-                                        photo,
-                                        train=train_enabled,
-                                        show=self.verbose,
-                                    )
+                                    # No CaptureManager, use legacy behavior
+                                    target_info = passive_observation(self, photo, show=self.verbose)
+
+                                # Store target info for agentic system to act on
+                                if target_info is not None:
+                                    try:
+                                        self._last_detection_target = target_info
+                                    except Exception:
+                                        pass
                         except Exception as e:
                             if self.verbosity >= 2:
                                 self.log.exception(
@@ -1845,6 +2263,15 @@ class Maxim:
         """
         Audio-only loop: streams audio continuously (and transcribes when enabled),
         without waking the robot motors. Runs until interrupted.
+
+        Movement behavior:
+            - If self.sleeping is True, Reachy is already in sleep pose; no movement.
+            - If self.sleeping is False, move Reachy to sleep pose first.
+
+        Args:
+            home_dir: Home directory for artifacts.
+            parallel: Run in parallel mode.
+            run_id: Run identifier for logging.
         """
         self.audio = True
         self.mode = "sleep"
@@ -1853,7 +2280,12 @@ class Maxim:
                 self.log.debug("Entering sleep: reuse live loop (vision=False, motor=False).")
             except Exception:
                 pass
-        self.mini.goto_sleep()
+
+        # Only move to sleep pose if not already sleeping
+        if not self.sleeping:
+            self.mini.goto_sleep()
+            self.sleeping = True
+
         return self.live(
             home_dir=home_dir,
             parallel=parallel,
@@ -1911,21 +2343,82 @@ class Maxim:
     def request_observe(self) -> None:
         self._request_mode("passive-interaction")
 
+    def update_interests(
+        self,
+        add: list[int] | None = None,
+        remove: list[int] | None = None,
+    ) -> None:
+        updated = set(int(v) for v in (getattr(self, "interests", []) or []) if v is not None)
+        if add:
+            updated.update(int(v) for v in add if v is not None)
+        if remove:
+            updated.difference_update(int(v) for v in remove if v is not None)
+
+        self.interests = sorted(updated)
+
+        agent = getattr(self, "_agentic_agent", None)
+        if agent is not None and hasattr(agent, "update_interests"):
+            try:
+                agent.update_interests(add=add, remove=remove)
+            except Exception as e:
+                warn("Failed to update agent interests: %s", e, logger=self.log)
+
+        state = getattr(self, "_agentic_state", None)
+        if state is not None:
+            try:
+                data = getattr(state, "data", None)
+                if isinstance(data, dict):
+                    runtime = data.get("maxim_runtime")
+                    if isinstance(runtime, dict):
+                        runtime["interests"] = list(self.interests)
+            except Exception:
+                pass
+
+        try:
+            self.log.info("Updated interests: %s", self.interests)
+        except Exception:
+            pass
+
     def wake_up_agentic(self) -> None:
+        """Wake up Reachy and transition to passive-interaction mode.
+
+        Called when the wake word "maxim" is detected. This:
+        1. Wakes up the robot motors
+        2. Switches mode from sleep to passive-interaction
+        3. Starts the agentic runtime if available
+        """
         try:
             self._voice_agentic_enabled = True
         except Exception:
             pass
 
+        # Wake up the robot
         try:
             mini = getattr(self, "mini", None)
             if mini is not None:
                 self._enqueue_motor(mini.wake_up)
                 self._woke_up = True
+                self.sleeping = False  # Mark as no longer sleeping
         except Exception as e:
             warn("Failed to wake up Reachy: %s", e, logger=self.log)
 
+        # Switch to passive-interaction mode if currently in sleep mode
+        # This triggers a live loop restart with vision=True
+        current_mode = str(getattr(self, "mode", "") or "").strip().lower()
+        if current_mode == "sleep":
+            try:
+                self.log.info("Waking up from sleep -> requesting passive-interaction mode")
+                self._request_mode("passive-interaction")
+            except Exception:
+                pass
+
         self._start_agentic_runtime()
+        agentic_thread = getattr(self, "_agentic_thread", None)
+        if agentic_thread is None or not getattr(agentic_thread, "is_alive", lambda: False)():
+            try:
+                self._voice_agentic_enabled = False
+            except Exception:
+                pass
 
     def label_outcome(
         self,
@@ -2371,6 +2864,7 @@ class Maxim:
             # Wake up Reachy before model init to avoid loading while asleep.
             self.log.info("Waking up Reachy...")
             self.mini.wake_up()
+            self.sleeping = False  # Mark as awake so next sleep() will move to sleep pose
             self._woke_up = True
 
         # Load models
