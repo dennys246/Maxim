@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.environment.filesystem_env import FileSystemEnv
 from maxim.evaluation.agent_eval import AgentEvaluator
@@ -16,20 +17,128 @@ from maxim.runtime.state import RuntimeState
 from maxim.tools.filesystem import ExecuteFileTool, ReadFileTool, WriteFileTool
 from maxim.tools.registry import ToolRegistry
 
+if TYPE_CHECKING:
+    from maxim.agents.autonomy import AutonomyController
+    from maxim.utils.internet_access import InternetAccessPolicy
+    from maxim.utils.filesystem_policy import FilesystemPolicy
+    from maxim.utils.sandbox_executor import SandboxExecutor
+    from maxim.utils.output_watcher import OutputWatcher
+    from maxim.utils.response_output import ResponseOutput
 
-def build_tool_registry(*, maxim: object | None = None) -> ToolRegistry:
+
+def build_tool_registry(
+    *,
+    maxim: object | None = None,
+    autonomy_controller: AutonomyController | None = None,
+    internet_policy_getter: Callable[[], InternetAccessPolicy] | None = None,
+    filesystem_policy: FilesystemPolicy | None = None,
+    sandbox_executor: SandboxExecutor | None = None,
+    output_watcher: OutputWatcher | None = None,
+    response_output: ResponseOutput | None = None,
+) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(ReadFileTool())
     registry.register(WriteFileTool())
     registry.register(ExecuteFileTool())
+
+    # Register Reachy robot tools
     if maxim is not None:
         try:
-            from maxim.tools.reachy import FocusInterestsTool, MaximCommandTool
+            from maxim.tools.reachy import (
+                FocusInterestsTool,
+                MaximCommandTool,
+                NoveltyTrackTool,
+                TrackTargetTool,
+            )
 
             registry.register(FocusInterestsTool(maxim))
             registry.register(MaximCommandTool(maxim))
+            registry.register(TrackTargetTool(maxim))
+            registry.register(NoveltyTrackTool(maxim))
         except Exception:
             pass
+    else:
+        # Register no-op stubs for observation-only mode (no live Maxim instance)
+        from maxim.tools.reachy_stubs import (
+            NoOpFocusInterestsTool,
+            NoOpMaximCommandTool,
+            NoOpNoveltyTrackTool,
+            NoOpTrackTargetTool,
+        )
+
+        registry.register(NoOpFocusInterestsTool())
+        registry.register(NoOpMaximCommandTool())
+        registry.register(NoOpTrackTargetTool())
+        registry.register(NoOpNoveltyTrackTool())
+
+    # Register mode switch tool
+    if autonomy_controller is not None:
+        try:
+            from maxim.tools.mode_switch import ModeSwitchTool, AutonomyLevelTool
+
+            # Mode switch requires callbacks - provide defaults if maxim not available
+            def get_mode() -> str:
+                if maxim is not None and hasattr(maxim, "mode"):
+                    return str(getattr(maxim, "mode", "observe"))
+                return "observe"
+
+            def set_mode(mode: str) -> None:
+                if maxim is not None and hasattr(maxim, "requested_mode"):
+                    setattr(maxim, "requested_mode", mode)
+
+            registry.register(ModeSwitchTool(
+                get_current_mode=get_mode,
+                set_mode=set_mode,
+                autonomy_controller=autonomy_controller,
+            ))
+            registry.register(AutonomyLevelTool(autonomy_controller))
+        except Exception:
+            pass
+
+    # Register internet tools (if policy getter provided)
+    if internet_policy_getter is not None:
+        try:
+            from maxim.tools.internet_search import InternetSearchTool, InternetAccessTool
+            from maxim.tools.http_fetch import HttpFetchTool
+            from maxim.utils.content_safety import check_content_safety
+
+            registry.register(InternetSearchTool(
+                get_internet_policy=internet_policy_getter,
+            ))
+            registry.register(HttpFetchTool(
+                get_internet_policy=internet_policy_getter,
+                content_safety_checker=check_content_safety,
+            ))
+            registry.register(InternetAccessTool())
+        except Exception:
+            pass
+
+    # Register sandbox tools (if policy and executor provided)
+    if filesystem_policy is not None and sandbox_executor is not None:
+        try:
+            from maxim.tools.sandbox import build_sandbox_tools
+
+            sandbox_tools = build_sandbox_tools(
+                policy=filesystem_policy,
+                executor=sandbox_executor,
+                watcher=output_watcher,
+                autonomy_controller=autonomy_controller,
+            )
+            for tool in sandbox_tools:
+                registry.register(tool)
+        except Exception:
+            pass
+
+    # Register response tools (if response_output provided)
+    if response_output is not None:
+        try:
+            from maxim.tools.response import RespondTool, SpeakTool
+
+            registry.register(RespondTool(response_output))
+            registry.register(SpeakTool(response_output))
+        except Exception:
+            pass
+
     return registry
 
 

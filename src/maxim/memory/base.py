@@ -1,7 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from collections import deque
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from datetime import datetime
+import time
 import uuid
+
+if TYPE_CHECKING:
+    from maxim.agents.bus import StructuredContext
 
 class MemoryRecord:
     """
@@ -84,6 +89,8 @@ class Memory(ABC):
 class InMemoryMemory(Memory):
     def __init__(self) -> None:
         self._records: list[MemoryRecord] = []
+        self._cli_inputs: deque[str] = deque(maxlen=20)
+        self._transcripts: deque[str] = deque(maxlen=20)
 
     def store(self, record: MemoryRecord) -> None:
         self._records.append(record)
@@ -106,3 +113,30 @@ class InMemoryMemory(Memory):
 
     def forget(self, record_id: str) -> None:
         self._records = [r for r in self._records if r.id != record_id]
+
+    def record_command(self, command: str) -> None:
+        """Record a CLI command for context building."""
+        if command:
+            self._cli_inputs.append(str(command))
+
+    def record_transcript(self, text: str) -> None:
+        """Record a transcript line for context building."""
+        if text:
+            self._transcripts.append(str(text))
+
+    def build_context(self) -> "StructuredContext":
+        """Build structured context for LLM goal proposal."""
+        from maxim.agents.bus import StructuredContext
+
+        return StructuredContext(
+            timestamp=time.time(),
+            current_percept=None,
+            active_goal=None,
+            mode="observe",
+            detected_speech=list(self._transcripts),
+            cli_inputs=list(self._cli_inputs),
+            available_environments=["focus_interests", "track_target", "maxim_command", "respond", "speak"],
+            detected_objects=[],
+            detected_people=[],
+            root_goal="Understand reality and help people.",
+        )
