@@ -7,13 +7,54 @@ from __future__ import annotations
 
 from maxim.tools.base import Tool, ToolResult
 from maxim.tools.filesystem import ExecuteFileTool, ReadFileTool, WriteFileTool
+from maxim.tools.response import RespondTool, SpeakTool
+from maxim.tools.reachy import (
+    COCO_CLASSES,
+    DEFAULT_FRAME_HEIGHT,
+    DEFAULT_FRAME_WIDTH,
+    MIN_MOVEMENT_THRESHOLD_PX,
+    VISION_MARGIN_HORIZONTAL,
+    VISION_MARGIN_VERTICAL,
+    VISION_MAX_U,
+    VISION_MAX_V,
+    VISION_MIN_U,
+    VISION_MIN_V,
+    FocusInterestsTool,
+    MaximCommandTool,
+    NoveltyInfo,
+    NoveltyRecord,
+    NoveltyTrackTool,
+    TrackTargetTool,
+    clamp_to_vision_range,
+    is_significant_movement,
+)
 from maxim.tools.registry import ToolRegistry
 
 __all__ = [
+    "COCO_CLASSES",
+    "DEFAULT_FRAME_HEIGHT",
+    "DEFAULT_FRAME_WIDTH",
     "ExecuteFileTool",
+    "FocusInterestsTool",
+    "MIN_MOVEMENT_THRESHOLD_PX",
+    "MaximCommandTool",
+    "NoveltyInfo",
+    "NoveltyRecord",
+    "NoveltyTrackTool",
     "ReadFileTool",
+    "RespondTool",
+    "SpeakTool",
     "Tool",
     "ToolRegistry",
     "ToolResult",
+    "TrackTargetTool",
+    "VISION_MARGIN_HORIZONTAL",
+    "VISION_MARGIN_VERTICAL",
+    "VISION_MAX_U",
+    "VISION_MAX_V",
+    "VISION_MIN_U",
+    "VISION_MIN_V",
     "WriteFileTool",
+    "clamp_to_vision_range",
+    "is_significant_movement",
 ]
