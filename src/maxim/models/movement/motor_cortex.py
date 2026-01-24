@@ -1,5 +1,10 @@
 import os
 
+# Configure TensorFlow for RTX 5080 / Blackwell GPU compatibility
+# Set before TensorFlow initializes CUDA
+os.environ.setdefault('TF_GPU_ALLOCATOR', 'cuda_malloc_async')
+os.environ.setdefault('TF_FORCE_GPU_ALLOW_GROWTH', 'true')
+
 import tensorflow as tf
 import keras
 
