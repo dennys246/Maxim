@@ -1,9 +1,30 @@
 from __future__ import annotations
 
+# CRITICAL: Detect Blackwell GPU and hide CUDA BEFORE any other imports
+# This must happen at module load time to prevent TensorFlow from initializing CUDA
+import os
+import subprocess
+import sys
+
+_blackwell_detected = False
+try:
+    result = subprocess.run(
+        ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
+        capture_output=True, text=True, timeout=2
+    )
+    if result.returncode == 0:
+        gpu_names = result.stdout.strip().lower()
+        if 'rtx 50' in gpu_names or '5080' in gpu_names or '5090' in gpu_names:
+            _blackwell_detected = True
+            os.environ['CUDA_VISIBLE_DEVICES'] = ''
+            # Print to stderr since logging not yet configured
+            print("⚠️  Blackwell GPU detected - CUDA disabled before imports", file=sys.stderr)
+except Exception:
+    pass
+
+# NOW import everything else (TensorFlow will see no GPUs if Blackwell detected)
 import argparse
 import logging
-import os
-import sys
 import time
 from collections.abc import Sequence
 
@@ -45,9 +66,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mode",
         type=str,
-        default="sleep",
-        choices=["live", "train", "passive-interaction", "sleep", "agentic", "exploration"],
-        help="Run mode: sleep (audio-only, no movement; DEFAULT), passive-interaction (track targets without ML), live (no training), train (update MotorCortex), agentic (full perception-memory-goal architecture), exploration (novelty-driven active discovery).",
+        default="exploration",
+        choices=["live", "train", "reflection", "sleep", "agentic", "exploration"],
+        help="Run mode: exploration (novelty-driven active discovery; DEFAULT), sleep (audio-only, no movement), live (no training), train (update MotorCortex), agentic (full perception-memory-goal architecture), reflection (introspection and memory consolidation).",
     )
     parser.add_argument(
         "--audio",
@@ -217,7 +238,7 @@ def _normalize_args(args: argparse.Namespace) -> None:
     else:
         raise SystemExit(f"Invalid --interactive value: {args.interactive!r} (expected True/False)")
 
-    if str(getattr(args, "mode", "passive-interaction")).strip().lower() == "sleep":
+    if str(getattr(args, "mode", "exploration")).strip().lower() == "sleep":
         args.audio = True
     args.epochs = _normalize_epoch_value(getattr(args, "epochs", 0))
 
@@ -268,6 +289,85 @@ def _gpu_available() -> bool:
     except Exception:
         return False
     return False
+
+
+def _check_gpu_status(logger: logging.Logger) -> None:
+    """Check and log GPU availability for TensorFlow and PyTorch.
+
+    Logs detailed information about:
+    - Whether GPUs are detected
+    - GPU names and memory
+    - CPU fallback status
+    """
+    import os
+
+    # Check if GPU is intentionally disabled (including Blackwell auto-detection)
+    cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    if cuda_visible == "":
+        if _blackwell_detected:
+            logger.warning("⚠️  Blackwell GPU detected - TensorFlow CUDA disabled")
+            logger.info("   (Transcription worker will use CPU-only CTranslate2)")
+        else:
+            logger.warning("⚠️  GPU acceleration disabled (CUDA_VISIBLE_DEVICES=\"\")")
+        logger.info("Running in CPU-only mode")
+        return
+
+    # Check TensorFlow GPU
+    tf_gpus = []
+    tf_gpu_info = []
+    try:
+        import tensorflow as tf
+
+        if not blackwell_detected:
+            tf_gpus = tf.config.list_physical_devices('GPU')
+            if tf_gpus:
+                for gpu in tf_gpus:
+                    try:
+                        # Get GPU details
+                        gpu_details = tf.config.experimental.get_device_details(gpu)
+                        gpu_name = gpu_details.get('device_name', 'Unknown GPU')
+                        tf_gpu_info.append(gpu_name)
+                    except Exception:
+                        tf_gpu_info.append(str(gpu).split(":")[-1].rstrip("'"))
+    except Exception:
+        pass
+
+    # Check PyTorch GPU
+    torch_gpus = 0
+    torch_gpu_info = []
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch_gpus = torch.cuda.device_count()
+            for i in range(torch_gpus):
+                try:
+                    gpu_name = torch.cuda.get_device_name(i)
+                    gpu_mem = torch.cuda.get_device_properties(i).total_memory / (1024**3)  # GB
+                    torch_gpu_info.append(f"{gpu_name} ({gpu_mem:.1f} GB)")
+                except Exception:
+                    torch_gpu_info.append(f"GPU {i}")
+    except Exception:
+        pass
+
+    # Log status
+    if tf_gpus or torch_gpus:
+        logger.info("✅ GPU acceleration enabled")
+
+        if tf_gpus:
+            logger.info(f"   TensorFlow detected {len(tf_gpus)} GPU(s):")
+            for i, info in enumerate(tf_gpu_info):
+                logger.info(f"     [{i}] {info}")
+
+        if torch_gpus:
+            logger.info(f"   PyTorch detected {torch_gpus} GPU(s):")
+            for i, info in enumerate(torch_gpu_info):
+                logger.info(f"     [{i}] {info}")
+    else:
+        logger.warning("⚠️  No GPU detected - running in CPU-only mode")
+        logger.info("   For GPU support, ensure:")
+        logger.info("   - NVIDIA drivers are installed (570+)")
+        logger.info("   - CUDA-compatible GPU is available")
+        logger.info("   - tensorflow[and-cuda] is installed")
 
 
 def _configure_cpu_fallback_model(logger: logging.Logger) -> None:
@@ -341,7 +441,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _normalize_args(args)
 
     build_home(args.home_dir)
-    mode = str(getattr(args, "mode", "passive-interaction")).strip().lower()
+    mode = str(getattr(args, "mode", "exploration")).strip().lower()
     while True:
         run_id = time.strftime("%Y-%m-%d_%H%M%S")
         log_path = os.path.join(args.home_dir, "logs", f"reachy_log_{run_id}.log")
@@ -362,6 +462,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 mode,
                 log_path,
             )
+
+            # Check and log GPU status
+            _check_gpu_status(logger)
 
             if mode == "agentic":
                 if not _gpu_available():
@@ -623,7 +726,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     timeout=args.timeout,
                     epochs=epochs_value,
                     verbosity=args.verbosity,
-                    mode="live",  # Use live mode for camera/vision access
+                    mode="exploration",  # Use exploration mode for novelty-driven discovery
                     audio=audio_enabled,
                     audio_len=float(getattr(args, "audio_len", 5.0) or 5.0),
                     interactive=bool(getattr(args, "interactive", True)),
@@ -702,7 +805,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if requested == "shutdown":
             logger.info("Shutdown requested.")
             break
-        if requested in ("sleep", "passive-interaction", "train", "live", "agentic", "exploration"):
+        if requested in ("sleep", "reflection", "train", "live", "agentic", "exploration"):
             logger.info("Switching mode: %s -> %s", mode, requested)
             delay_s = 0.0
             try:
