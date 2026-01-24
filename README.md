@@ -93,7 +93,7 @@ Shared model artifacts and weights live under `data/models/` (e.g., `MotorCortex
 
 ## CLI Flags
 
-- `--mode`: `passive-interaction` (default), `live`, `train`, `sleep` (audio-only; no `wake_up()`), `agentic` (agentic runtime loop; requires GPU)
+- `--mode`: `exploration` (default; novelty-driven active discovery), `live`, `train`, `sleep` (audio-only; no `wake_up()`), `agentic` (agentic runtime loop; requires GPU), `reflection` (introspection and memory consolidation)
 - `--verbosity`: `0`, `1`, `2`
 - `--audio`: `True/False` (enables audio recording + transcription)
 - `--audio_len`: seconds per transcription chunk (default `5.0`)
@@ -128,7 +128,7 @@ Default:
 - When `maxim` appears in a transcript line, Maxim prefers a more specific command match (e.g., sleep/observe/shutdown) before falling back to the wake word
 - saying `Maxim shutdown` requests a clean shutdown (same as Ctrl+C cleanup)
 - saying `Maxim sleep` (or `sleep maxim`) switches to `--mode sleep` (audio-only)
-- saying `Maxim observe` (or `observe maxim`) switches to `--mode passive-interaction`
+- saying `Maxim observe` (or `observe maxim`) switches to `--mode reflection`
 
 ## LLM Integration (Local Language Models)
 
@@ -505,7 +505,84 @@ Then you can simply type commands like list-daemon, clear-daemon or start-daemon
 
 Make sure you are on the same network as your Reachy Mini with no VPN. With a VPN you may be able to do simple things like start the daemon but the python SDK will struggle to connect to the Reachy.
 
+## GPU Acceleration
+
+Maxim automatically detects and uses available GPUs for vision models (YOLO), motor cortex inference, and other ML tasks. On startup, Maxim will report GPU status:
+
+```
+✅ GPU acceleration enabled
+   TensorFlow detected 1 GPU(s):
+     [0] NVIDIA GeForce RTX 5080
+   PyTorch detected 1 GPU(s):
+     [0] NVIDIA GeForce RTX 5080 (15.4 GB)
+```
+
+### RTX 5080 / Blackwell GPU Support
+
+**IMPORTANT**: If you have an RTX 5080 or other Blackwell-architecture GPU, ensure you're using `tensorflow[and-cuda]` instead of plain `tensorflow`:
+
+```toml
+# In pyproject.toml (already configured)
+"tensorflow[and-cuda]>=2.15"
+```
+
+This bundle includes CUDA 12.8+ libraries needed for Blackwell support. The standard `tensorflow==2.x.x` package uses older CUDA versions that will cause segmentation faults on RTX 5080.
+
+### CPU-Only Mode
+
+To force CPU mode (useful for testing or troubleshooting GPU issues):
+
+```bash
+# Use the helper script
+./run_maxim_cpu.sh
+
+# Or set environment variable
+CUDA_VISIBLE_DEVICES="" maxim
+```
+
+When running in CPU-only mode, you'll see:
+
+```
+⚠️  GPU acceleration disabled (CUDA_VISIBLE_DEVICES="")
+Running in CPU-only mode
+```
+
+### GPU Requirements
+
+- **NVIDIA Drivers**: 570+ for Blackwell (RTX 50-series), 525+ for Ada/Ampere
+- **TensorFlow**: Installed via `tensorflow[and-cuda]>=2.15`
+- **PyTorch**: Automatically detects CUDA if available
+
 ## Troubleshooting
+
+0. **Connection Issues - Run Diagnostics First**
+
+If you're having trouble connecting to your Reachy Mini, run the diagnostic script to identify the issue:
+
+```bash
+python scripts/check_reachy_connection.py --host 192.168.50.149
+```
+
+Or if you have the package installed:
+
+```bash
+maxim-diagnostics --host 192.168.50.149
+```
+
+This will test:
+- Basic network connectivity (ping)
+- Port 7447 (Zenoh motor control)
+- Port 8000 (Dashboard/API)
+- Port 8443 (WebRTC media streaming)
+
+**Common Issues:**
+
+- **WebRTC port 8443 connection refused:** The WebRTC signaling server isn't running. Solutions:
+  1. Restart your Reachy (press OFF, wait 5s, press ON)
+  2. SSH into the Reachy and run: `reachyminios_check`
+  3. Or bypass WebRTC by using `media_backend='gstreamer'` in your code (works on Mac/Linux with GStreamer installed)
+
+- **Port 7447 refused:** The Reachy daemon isn't running. SSH in and check: `systemctl status reachy-mini-daemon`
 
 1. Reachy Mini immendiately closing down on running or not running at all.
 
