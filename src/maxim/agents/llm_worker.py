@@ -12,6 +12,7 @@ import queue
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from maxim.agents.autonomy import AutonomyLevel
@@ -272,7 +273,21 @@ class LLMWorker:
 
         try:
             prompt = self._build_prompt(request)
-            response = self._llm.generate_json(prompt, temperature=0.3)
+
+            # Skip LLM call if no meaningful prompt (idle observation)
+            if not prompt or not prompt.strip():
+                return LLMProposal(
+                    request_id=request.request_id,
+                    action=None,
+                    reasoning="No user input to respond to",
+                    strategy_used=None,
+                    confidence=0.0,
+                    mode_goal_achieved=False,
+                    citations=[],
+                    latency_ms=0.0,
+                )
+
+            response = self._llm.generate_json(prompt, temperature=0.3, max_tokens=2048)
 
             latency_ms = (time.time() - start_time) * 1000
             self._update_avg_latency(latency_ms)
@@ -328,34 +343,36 @@ class LLMWorker:
         if context.cli_inputs:
             latest_input = context.cli_inputs[-1] if context.cli_inputs else None
             if latest_input and "maxim" in latest_input.lower():
+                # Strip "maxim" prefix for cleaner question
                 user_question = latest_input
 
-        # For simple user questions, use a simple prompt format
+        # For simple user questions, use a very explicit JSON-only format
         if user_question:
-            return f"""The user said: "{user_question}"
+            # Extract just the question part after "maxim"
+            question_text = user_question.lower().replace("maxim", "").strip()
+            question_text = question_text.lstrip(",").lstrip(":").strip()
+            if question_text.endswith("?"):
+                question_text = question_text[:-1].strip()
 
-Reply with JSON containing your response:
-{{"action": {{"tool_name": "respond", "params": {{"message": "your answer here"}}}}, "reasoning": "answering user", "confidence": 0.9, "mode_goal_achieved": false}}
+            # Get current date/time for context
+            now = datetime.now()
+            date_str = now.strftime("%A, %B %d, %Y")  # e.g., "Friday, January 24, 2025"
+            time_str = now.strftime("%I:%M %p")  # e.g., "11:30 PM"
 
-Only respond with the JSON, nothing else."""
+            # Direct format for small models - no example to copy
+            # The model fills in the ANSWER placeholder
+            return f"""Today is {date_str}. The time is {time_str}.
 
-        # For non-question contexts, use a minimal observation prompt
-        detected_summary = ""
-        if context.detected_objects:
-            obj_names = [obj.get("label", "unknown") for obj in context.detected_objects[:3]]
-            detected_summary = f"Objects seen: {', '.join(obj_names)}"
-        if context.detected_people:
-            detected_summary += f" People: {len(context.detected_people)}"
+User asks: "{question_text}"
 
-        return f"""Current observations: {detected_summary or 'nothing notable'}
+Reply with JSON only:
+{{"action":{{"tool_name":"respond","params":{{"message":"ANSWER"}}}},"reasoning":"question","confidence":0.9,"mode_goal_achieved":false}}
 
-If no action needed, respond:
-{{"action": null, "reasoning": "observing", "confidence": 0.5, "mode_goal_achieved": false}}
+Replace ANSWER with your response to the user's question. Output the JSON now:"""
 
-If action needed, respond:
-{{"action": {{"tool_name": "respond", "params": {{"message": "..."}}}}, "reasoning": "...", "confidence": 0.8, "mode_goal_achieved": false}}
-
-Only respond with JSON, nothing else."""
+        # For non-question contexts, return None (no action needed)
+        # This prevents unnecessary LLM calls for idle observations
+        return ""
 
     def _update_avg_latency(self, latency_ms: float) -> None:
         """Update rolling average latency."""
@@ -404,16 +421,16 @@ class FallbackBehavior:
             # In observe mode, just focus on interests (passive)
             return {"tool_name": "focus_interests", "params": {}}
 
-        if mode_name in ("passive-interaction", "passive_interaction"):
-            # Check for maxim keyword - acknowledge but explain LLM unavailable
+        if mode_name == "reflection":
+            # In reflection mode, acknowledge direct address but stay introspective
             if percept.has_maxim_keyword:
                 return {
                     "tool_name": "speak",
                     "params": {
-                        "text": "I heard you, but I'm having trouble thinking right now. Please try again in a moment."
+                        "text": "I heard you. I'm in reflection mode - give me a moment to gather my thoughts."
                     },
                 }
-            # Stay quiet otherwise
+            # Stay quiet otherwise - focus on internal processing
             return None
 
         if mode_name in ("active-assistance", "active_assistance"):
