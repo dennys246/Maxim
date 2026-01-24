@@ -72,15 +72,11 @@ else
 fi
 
 echo ""
-echo "Installing Python package (core dependencies)..."
-pip install -e .
-
-echo ""
-echo "Installing LLM support..."
+echo "Installing Python package (core dependencies + LLM support)..."
 if [ "$INSTALL_VIDEO" = true ]; then
-    pip install -e '.[llm,video]'
+    pip install -e '.[video]'
 else
-    pip install -e '.[llm]'
+    pip install -e .
 fi
 
 echo ""
@@ -88,14 +84,11 @@ echo "Downloading base LLM model (SmolLM 1.7B - ~1.1GB)..."
 echo "This is optimized for CPU and recommended for getting started."
 echo ""
 
-# Check if download script exists
-if [ -f "scripts/download_models.sh" ]; then
-    chmod +x scripts/download_models.sh
-    ./scripts/download_models.sh --llm smollm-1.7b-instruct --enable
-else
-    echo "Warning: Model download script not found at scripts/download_models.sh"
-    echo "You'll need to download models manually."
-fi
+# Download the default LLM model
+python -m maxim.models.download --llm smollm-1.7b-instruct
+
+echo ""
+echo "✅ Model downloaded successfully!"
 
 echo ""
 echo "===== Installation Complete ====="
@@ -107,21 +100,16 @@ if [ "$INSTALL_VIDEO" = true ]; then
 fi
 echo "  - Maxim core dependencies"
 echo "  - LLM support (llama-cpp-python)"
-echo "  - SmolLM 1.7B base model (~1.1GB)"
+echo "  - SmolLM 1.7B model (~1.1GB)"
 echo ""
 echo "To get started, run:"
 echo "  maxim"
 echo ""
-echo "To use the LLM:"
-echo "  export MAXIM_LLM_ENABLED=1"
-echo "  maxim --language-model smollm-1.7b"
-echo ""
-echo "For more models, run:"
-echo "  ./scripts/download_models.sh --list"
-echo ""
-echo "For video processing (if not installed):"
-echo "  pip install -e '.[video]'"
+echo "The LLM is enabled by default and will run on CPU (slower but compatible with all GPUs)."
+echo "For faster LLM inference, consider downloading a larger model with GPU support:"
+echo "  python -m maxim.models.download --list"
+echo "  python -m maxim.models.download --llm <model-name>"
 echo ""
 echo "For TTS support:"
 echo "  pip install -e '.[tts]'"
-echo "  ./scripts/download_models.sh --tts --enable"
+echo "  python -m maxim.models.download --tts"
