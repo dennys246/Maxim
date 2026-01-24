@@ -16,8 +16,15 @@ class WhisperTranscriber:
         device: str = "cpu",
         compute_type: str = "int8",
     ) -> None:
+        import logging
+        import os
+
+        log = logging.getLogger("maxim.transcribe")
+
         try:
+            log.debug("Importing faster_whisper.WhisperModel...")
             from faster_whisper import WhisperModel
+            log.debug("faster_whisper imported successfully")
         except Exception as e:  # pragma: no cover
             raise ImportError(
                 "Missing dependency `faster-whisper`. Install it (and its backend) to enable transcription."
@@ -26,7 +33,11 @@ class WhisperTranscriber:
         self.model_size_or_path = str(model_size_or_path or "tiny")
         self.device = str(device or "cpu")
         self.compute_type = str(compute_type or "int8")
+
+        log.debug(f"Initializing WhisperModel: model={self.model_size_or_path}, device={self.device}, compute_type={self.compute_type}")
+        log.debug(f"Environment: CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<not set>')}")
         self._model = WhisperModel(self.model_size_or_path, device=self.device, compute_type=self.compute_type)
+        log.debug("WhisperModel created successfully")
 
     def transcribe(
         self,
