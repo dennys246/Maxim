@@ -397,11 +397,23 @@ Based on this context, what goal should be proposed?"""
                 "source": "exec_agent",
             }
 
-        # Default: track targets or focus while observing or in active modes
-        if ctx.mode in ("observe", "passive-interaction", "live", "train", "agentic", "exploration"):
-            # If we have detected objects/people, try to track them
-            has_detections = bool(ctx.detected_objects) or bool(ctx.detected_people)
-            if has_detections:
+        # Reflection mode: introspective, minimal external activity
+        # Only respond to direct address, otherwise remain idle
+        if ctx.mode == "reflection":
+            return None
+
+        # For other active modes, only propose tracking actions when meaningful
+        # This prevents continuous "Action from default_track" spam
+        if ctx.mode in ("observe", "live", "train", "agentic", "exploration"):
+            # Only track if:
+            # 1. There are detected people (always worth tracking)
+            # 2. There's high novelty in current percept
+            # 3. User directly addressed the system
+            has_people = bool(ctx.detected_people)
+            has_high_novelty = ctx.current_percept and ctx.current_percept.novelty > 0.5
+            has_user_address = ctx.current_percept and ctx.current_percept.has_maxim_keyword
+
+            if has_people:
                 return {
                     "goal": {
                         "tool_name": "track_target",
@@ -410,12 +422,16 @@ Based on this context, what goal should be proposed?"""
                     "confidence": 0.6,
                     "source": "default_track",
                 }
-            # Otherwise just run detection
-            return {
-                "goal": {"tool_name": "focus_interests", "params": {}},
-                "confidence": 0.5,
-                "source": "default_focus",
-            }
+
+            if has_high_novelty or has_user_address:
+                return {
+                    "goal": {"tool_name": "focus_interests", "params": {}},
+                    "confidence": 0.5,
+                    "source": "default_focus",
+                }
+
+            # Otherwise, no action needed - let the system idle
+            return None
 
         return None
 
