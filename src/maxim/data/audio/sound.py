@@ -5,6 +5,13 @@ import os
 import time
 from typing import Any, Optional
 
+# CRITICAL: Set CUDA environment BEFORE importing any packages that might use CUDA
+# This runs at module import time, ensuring isolation for subprocess workers
+# Check if we're in a subprocess that should hide CUDA (heuristic: check parent environ)
+if os.environ.get("MAXIM_TRANSCRIPTION_WORKER_CPU_ONLY") == "1":
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
+
 import numpy as np
 
 from maxim.utils.logging import warn
@@ -82,6 +89,14 @@ def transcription_worker(
       - None (sentinel): stop worker
       - dict: {"chunk_path": str, "chunk_index": int, "sample_rate": int, ...}
     """
+    # CRITICAL: Hide GPU from CTranslate2 when using CPU mode
+    # CTranslate2 doesn't respect CUDA_VISIBLE_DEVICES set before process spawn
+    # and will attempt CUDA initialization even with device="cpu" if GPUs are visible
+    # This is especially problematic with RTX 5080/Blackwell (sm_120) GPUs
+    # See: https://github.com/OpenNMT/CTranslate2/issues/1693
+    if device == "cpu":
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
     try:
         import logging
 
@@ -92,37 +107,109 @@ def transcription_worker(
     except Exception:
         log = None
 
+    if log:
+        log.debug(f"Transcription worker starting: device={device}, compute_type={compute_type}")
+        log.debug(f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<not set>')}")
+
+    # Try GPU first, fallback to CPU if initialization fails (e.g., RTX 5080/Blackwell issues)
+    # Note: CTranslate2 4.6.2+ disables INT8 for Blackwell GPUs (sm_120)
+    transcriber = None
     try:
+        if log:
+            log.debug("Importing WhisperTranscriber...")
         from maxim.models.audio.transcription import WhisperTranscriber
 
+        if log:
+            log.debug(f"Creating WhisperTranscriber(model={model_size_or_path}, device={device}, compute_type={compute_type})...")
+        # Try with requested device (usually "cpu", but could be "cuda")
         transcriber = WhisperTranscriber(
             model_size_or_path=model_size_or_path,
             device=device,
             compute_type=compute_type,
         )
+        if log:
+            log.info(f"✅ Whisper initialized on {device} with {compute_type}")
     except Exception as e:
-        warn("Whisper transcriber unavailable: %s", e, logger=log)
+        # If GPU was requested and failed, try CPU fallback
+        if device != "cpu":
+            if log:
+                log.warning(f"Whisper GPU initialization failed, falling back to CPU: {e}")
+
+            # CRITICAL: Hide GPU from CTranslate2 before CPU fallback attempt
+            # See: https://github.com/OpenNMT/CTranslate2/issues/1693
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+            # Use float32 for CPU fallback (int8 disabled for Blackwell in CTranslate2 4.6.2+)
+            cpu_compute_type = "float32" if "int8" in str(compute_type).lower() else compute_type
+
+            try:
+                transcriber = WhisperTranscriber(
+                    model_size_or_path=model_size_or_path,
+                    device="cpu",
+                    compute_type=cpu_compute_type,
+                )
+                if log:
+                    log.info(f"Whisper initialized on CPU with {cpu_compute_type} (fallback)")
+            except Exception as cpu_err:
+                warn("Whisper transcriber unavailable (CPU fallback also failed): %s", cpu_err, logger=log)
+                return
+        else:
+            warn("Whisper transcriber unavailable: %s", e, logger=log)
+            return
+
+    if transcriber is None:
+        warn("Whisper transcriber could not be initialized", logger=log)
         return
 
+    if log:
+        log.debug(f"Creating output directory for: {output_path}")
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
+    if log:
+        log.debug(f"Opening transcript file: {output_path}")
     try:
         fp = open(output_path, "a", encoding="utf-8")
     except Exception as e:
         warn("Failed to open transcript file '%s': %s", output_path, e, logger=log)
         return
 
+    if log:
+        log.debug("Entering transcription worker main loop")
+        log.debug(f"Queue object type: {type(task_queue)}")
+        log.debug("About to call task_queue.get() - this is where segfault likely occurs")
+
     with fp:
+        iteration = 0
         while True:
-            task = task_queue.get()
+            iteration += 1
+            if log:
+                log.debug(f"Loop iteration {iteration}: calling task_queue.get()...")
+
+            try:
+                task = task_queue.get()
+                if log:
+                    log.debug(f"Loop iteration {iteration}: received task: {type(task)}")
+            except Exception as e:
+                if log:
+                    log.error(f"Exception during task_queue.get(): {e}")
+                import traceback
+                traceback.print_exc()
+                break
+
             if task is None:
+                if log:
+                    log.debug("Received sentinel (None), exiting worker")
                 break
 
             if not isinstance(task, dict):
+                if log:
+                    log.warning(f"Received non-dict task: {type(task)}")
                 continue
 
             chunk_path = task.get("chunk_path")
             if not chunk_path:
+                if log:
+                    log.warning("Task missing chunk_path")
                 continue
 
             started = time.time()

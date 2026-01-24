@@ -30,6 +30,7 @@ class CapturedFrame:
     frame_index: int
     detections: list[dict[str, Any]] = field(default_factory=list)
     segmented: bool = False
+    pending_segmentation: bool = False  # True if queued for async segmentation
 
 
 @dataclass
@@ -91,7 +92,11 @@ class CaptureManager:
         self._stop_event = threading.Event()
         self._frame_thread: threading.Thread | None = None
         self._audio_thread: threading.Thread | None = None
+        self._segmentation_thread: threading.Thread | None = None
         self._frame_index = 0
+
+        # Async segmentation queue (decouple from capture for smooth frame pull)
+        self._segmentation_queue: queue.Queue[CapturedFrame] = queue.Queue(maxsize=2)
 
         # Stats
         self._frames_captured = 0
@@ -116,6 +121,15 @@ class CaptureManager:
         )
         self._frame_thread.start()
 
+        # Start async segmentation thread (decoupled from capture to prevent buffer underrun)
+        if self._enable_segmentation:
+            self._segmentation_thread = threading.Thread(
+                target=self._segmentation_loop,
+                name="agentic.capture.segmentation",
+                daemon=True,
+            )
+            self._segmentation_thread.start()
+
         # Start audio capture thread if audio enabled
         if getattr(self._maxim, "audio", False):
             self._audio_thread = threading.Thread(
@@ -125,7 +139,8 @@ class CaptureManager:
             )
             self._audio_thread.start()
 
-        logger.info("CaptureManager started (fps=%.1f, segmentation=%s)", self._target_fps, self._enable_segmentation)
+        logger.info("CaptureManager started (fps=%.1f, segmentation=%s, async=%s)",
+                    self._target_fps, self._enable_segmentation, self._enable_segmentation)
 
     def stop(self, timeout: float = 2.0) -> None:
         """Stop capture threads."""
@@ -134,6 +149,15 @@ class CaptureManager:
         if self._frame_thread is not None:
             self._frame_thread.join(timeout=timeout)
             self._frame_thread = None
+
+        if self._segmentation_thread is not None:
+            # Unblock segmentation queue
+            try:
+                self._segmentation_queue.put_nowait(None)  # type: ignore
+            except queue.Full:
+                pass
+            self._segmentation_thread.join(timeout=timeout)
+            self._segmentation_thread = None
 
         if self._audio_thread is not None:
             self._audio_thread.join(timeout=timeout)
@@ -146,7 +170,11 @@ class CaptureManager:
         )
 
     def _frame_capture_loop(self) -> None:
-        """Frame capture worker."""
+        """Frame capture worker.
+
+        IMPORTANT: This loop must pull frames quickly to prevent WebRTC buffer overflow.
+        Segmentation runs in a separate thread to avoid blocking frame capture.
+        """
         min_period = 1.0 / self._target_fps
         last_capture = 0.0
 
@@ -165,24 +193,33 @@ class CaptureManager:
             self._frame_index += 1
             self._frames_captured += 1
 
-            # Run segmentation if enabled
-            detections = []
-            if self._enable_segmentation:
-                detections = self._segment_frame(frame)
-
+            # Create frame object (segmentation runs async)
             captured = CapturedFrame(
                 frame=frame,
                 timestamp=now,
                 frame_index=self._frame_index,
-                detections=detections,
-                segmented=self._enable_segmentation,
+                detections=[],  # Will be filled by segmentation thread
+                segmented=False,
+                pending_segmentation=self._enable_segmentation,
             )
 
             # Update latest
             with self._frame_lock:
                 self._latest_frame = captured
 
-            # Put in queue (non-blocking, drop oldest if full)
+            # Queue for async segmentation (non-blocking, drop oldest if full)
+            if self._enable_segmentation:
+                try:
+                    self._segmentation_queue.put_nowait(captured)
+                except queue.Full:
+                    # Drop oldest frame to keep up
+                    try:
+                        self._segmentation_queue.get_nowait()
+                        self._segmentation_queue.put_nowait(captured)
+                    except queue.Empty:
+                        pass
+
+            # Put in output queue (non-blocking, drop oldest if full)
             try:
                 self._frame_queue.put_nowait(captured)
             except queue.Full:
@@ -192,12 +229,46 @@ class CaptureManager:
                 except queue.Empty:
                     pass
 
-            # Notify callbacks
+            # Notify callbacks (with unsegmented frame - they'll get updates via latest)
             for callback in self._frame_callbacks:
                 try:
                     callback(captured)
                 except Exception as e:
                     logger.error("Frame callback error: %s", e)
+
+    def _segmentation_loop(self) -> None:
+        """Async segmentation worker.
+
+        Runs YOLO in a separate thread to avoid blocking frame capture.
+        Updates the latest frame with detection results.
+        """
+        while not self._stop_event.is_set():
+            try:
+                # Block waiting for frame (with timeout for stop check)
+                try:
+                    captured = self._segmentation_queue.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+
+                if captured is None:  # Poison pill
+                    break
+
+                # Run segmentation
+                detections = self._segment_frame(captured.frame)
+
+                # Update the captured frame with detections
+                captured.detections = detections
+                captured.segmented = True
+                captured.pending_segmentation = False
+
+                # Update latest frame with segmented version
+                with self._frame_lock:
+                    # Only update if this is still the latest or newer
+                    if self._latest_frame is None or captured.frame_index >= self._latest_frame.frame_index:
+                        self._latest_frame = captured
+
+            except Exception as e:
+                logger.debug("Segmentation loop error: %s", e)
 
     def _audio_capture_loop(self) -> None:
         """Audio capture worker."""
