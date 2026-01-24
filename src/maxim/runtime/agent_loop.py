@@ -309,6 +309,9 @@ def run_agentic_loop(
     last_llm_submit_time = 0.0
     llm_submit_interval = 0.5  # Don't flood LLM with requests
 
+    # Track processed CLI inputs to avoid duplicate submissions
+    processed_cli_inputs: set[str] = set()
+
     # Loop timing
     target_period = 1.0 / target_hz
     max_steps_i = int(max_steps or 0)
@@ -734,7 +737,8 @@ def run_agentic_loop(
                         logger.error(f"Approved action failed: {e}")
 
         # ─────────────────────────────────────────────────────────────────
-        # 6. SUBMIT NEW CONTEXT TO LLM (non-blocking, rate-limited)
+        # 6. SUBMIT NEW CONTEXT TO LLM (non-blocking, event-driven)
+        # Only trigger LLM when there's something meaningful to respond to
         # ─────────────────────────────────────────────────────────────────
         if llm_worker and pending_proposal is None:
             now = time.time()
@@ -744,8 +748,65 @@ def run_agentic_loop(
                     context = None
                     if hasattr(memory, "build_context"):
                         context = memory.build_context()
-                        if context and context.cli_inputs:
-                            logger.warning("Built context with CLI inputs: %s", context.cli_inputs[-3:])
+
+                    # Check if there's something meaningful to react to
+                    # Only submit to LLM if we have:
+                    # 1. New CLI input with "maxim" keyword - not already processed
+                    # 2. New speech detected (transcription with "maxim" keyword)
+                    # 3. Direct address via maxim keyword in recent percepts
+                    # 4. Hard override commands
+                    # 5. Exploration mode with high novelty detection (periodic checks)
+                    has_meaningful_input = False
+                    new_cli_input = None
+                    if context:
+                        # Check for NEW CLI input with "maxim" keyword (not already processed)
+                        # Only process inputs that address Maxim directly
+                        if context.cli_inputs:
+                            for cli_input in context.cli_inputs:
+                                if cli_input and cli_input not in processed_cli_inputs:
+                                    if "maxim" in cli_input.lower():
+                                        new_cli_input = cli_input
+                                        has_meaningful_input = True
+                                        break
+                                    else:
+                                        # Mark non-maxim inputs as processed so we don't re-check
+                                        processed_cli_inputs.add(cli_input)
+
+                        # Check for speech with maxim keyword
+                        if context.detected_speech:
+                            for speech in context.detected_speech:
+                                if speech and "maxim" in speech.lower():
+                                    has_meaningful_input = True
+                                    break
+
+                        # Check for maxim keyword in current percept
+                        if context.current_percept and context.current_percept.has_maxim_keyword:
+                            has_meaningful_input = True
+
+                        # Check for hard override commands
+                        if context.current_percept and context.current_percept.hard_override:
+                            has_meaningful_input = True
+
+                        # In exploration mode, check for high novelty (something interesting)
+                        is_exploration = state.data.get("exploration_mode", False)
+                        if is_exploration and context.current_percept:
+                            # Only trigger LLM in exploration if novelty is high
+                            if context.current_percept.novelty > 0.7:
+                                has_meaningful_input = True
+                            # Or if there's a new explore command
+                            if context.current_percept.explore_command:
+                                has_meaningful_input = True
+
+                    # Skip LLM if nothing to react to
+                    if not has_meaningful_input:
+                        context = None  # Skip this submission
+
+                    # Mark new CLI input as processed to prevent duplicate submissions
+                    if new_cli_input:
+                        processed_cli_inputs.add(new_cli_input)
+                        # Keep only last 20 processed inputs to prevent memory growth
+                        if len(processed_cli_inputs) > 20:
+                            processed_cli_inputs.pop()
 
                     if context:
                         # Get mode info
@@ -823,6 +884,16 @@ def run_agentic_loop(
                         internet_access = state.data.get("internet_access", False)
                         internet_policy_summary = state.data.get("internet_policy_summary", "")
 
+                        # Filter CLI inputs to only include new ones (not already processed)
+                        # This prevents the LLM from seeing the same input multiple times
+                        if context.cli_inputs:
+                            new_inputs = [inp for inp in context.cli_inputs if inp not in processed_cli_inputs or inp == new_cli_input]
+                            # Only keep the most recent new input
+                            if new_cli_input:
+                                context.cli_inputs = [new_cli_input]
+                            else:
+                                context.cli_inputs = new_inputs[-1:] if new_inputs else []
+
                         submitted = llm_worker.submit_context(
                             context=context,
                             mode=mode_info,
@@ -832,8 +903,8 @@ def run_agentic_loop(
                             internet_policy_summary=internet_policy_summary,
                         )
                         last_llm_submit_time = now
-                        if submitted and context.cli_inputs:
-                            logger.warning("Submitted context to LLM with CLI inputs: %s", context.cli_inputs[-1][:50] if context.cli_inputs else "none")
+                        if submitted and new_cli_input:
+                            logger.info("Submitted to LLM: %s", new_cli_input[:50] if len(new_cli_input) > 50 else new_cli_input)
 
                 except Exception as e:
                     logger.warning(f"Failed to submit context to LLM: {e}")
