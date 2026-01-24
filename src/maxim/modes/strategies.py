@@ -70,7 +70,7 @@ BUILTIN_STRATEGIES: dict[str, Strategy] = {
     "wait_for_address": Strategy(
         name="wait_for_address",
         description="Wait until directly spoken to before responding",
-        applicable_contexts=["passive-interaction", "observe", "sleep"],
+        applicable_contexts=["reflection", "observe", "sleep"],
         approach_prompt="""Wait for the user to address you directly (by name or clear indication).
 Don't interrupt or offer unsolicited input. When addressed, respond
 promptly and helpfully.""",
@@ -80,7 +80,7 @@ promptly and helpfully.""",
     "respond_concisely": Strategy(
         name="respond_concisely",
         description="Give brief, focused responses",
-        applicable_contexts=["passive-interaction", "live", "any"],
+        applicable_contexts=["reflection", "live", "any"],
         approach_prompt="""Provide concise, direct answers. Avoid unnecessary elaboration.
 If more detail is needed, offer to expand. Respect the user's time.""",
         success_indicators=["user_satisfied", "no_followup_needed"],
@@ -89,7 +89,7 @@ If more detail is needed, offer to expand. Respect the user's time.""",
     "ask_clarifying_questions": Strategy(
         name="ask_clarifying_questions",
         description="Ask questions to understand the request better",
-        applicable_contexts=["passive-interaction", "active-assistance", "any"],
+        applicable_contexts=["reflection", "active-assistance", "any"],
         approach_prompt="""When the request is ambiguous or could be interpreted multiple ways,
 ask a clarifying question before acting. Be specific about what you need
 to know. One question at a time.""",
