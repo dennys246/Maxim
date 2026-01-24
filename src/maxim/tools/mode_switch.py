@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 VALID_MODES = frozenset(
     {
         "observe",
-        "passive-interaction",
-        "passive_interaction",
+        "reflection",
         "active-assistance",
         "active_assistance",
         "sleep",
         "live",
         "train",
+        "exploration",
     }
 )
 
