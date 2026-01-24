@@ -101,7 +101,7 @@ class Maxim:
         *,
         verbosity: int = 0,
         verbose: bool = False,
-        mode: str = "passive-interaction",
+        mode: str = "exploration",
         train: bool | None = None,
         audio: bool = True,
         audio_len: float = 5.0,
@@ -156,7 +156,7 @@ class Maxim:
 
         self.current_epoch = 0
         self._set_epochs(epochs)
-        mode = str(mode or "passive-interaction").strip().lower()
+        mode = str(mode or "exploration").strip().lower()
         if train is not None:
             mode = "train" if bool(train) else "live"
         self.mode = mode
@@ -349,7 +349,7 @@ class Maxim:
             "maxim wake up": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
             "wake up maxim": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
             "maxim passive": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim passive-interaction": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim reflection": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
             # Wake words (enable agentic mode)
             "maxim": {"call": "wake_up_agentic", "wake_word": True, "cooldown_s": 2.0},
             "reachy": {"call": "wake_up_agentic", "wake_word": True, "cooldown_s": 2.0},
@@ -1332,9 +1332,19 @@ class Maxim:
         if existing is not None and getattr(existing, "is_alive", lambda: False)():
             return
 
+        # Allow CPU-only operation (e.g., when CUDA is hidden for Blackwell GPUs)
         if not _gpu_available():
-            warn("Agentic runtime requires a GPU; skipping agentic startup.", logger=self.log)
-            return
+            import os
+            cuda_hidden = os.environ.get("CUDA_VISIBLE_DEVICES") == ""
+            if cuda_hidden:
+                self.log.info("GPU hidden for compatibility - agentic runtime will use CPU (slower)")
+            else:
+                self.log.warning("No GPU available - agentic runtime will use CPU (slower)")
+
+            # Configure CPU-friendly model defaults
+            os.environ.setdefault("MAXIM_LLM_PROFILE", "smollm-1.7b-instruct")
+            os.environ.setdefault("MAXIM_LLM_N_GPU_LAYERS", "0")
+            self.log.info("Using CPU-friendly LLM: smollm-1.7b-instruct")
 
         try:
             from maxim.agents import MaximAgent
@@ -1686,7 +1696,7 @@ class Maxim:
             self.home_dir,
             epochs_label,
             str(getattr(self, "observation_period", None)),
-            str(getattr(self, "mode", "passive-interaction")),
+            str(getattr(self, "mode", "reflection")),
             str(bool(getattr(self, "audio", True))),
             float(getattr(self, "audio_len", 0.0) or 0.0),
         )
@@ -1707,18 +1717,20 @@ class Maxim:
             # Keep OpenCV GUI calls on a dedicated process main thread (safer on Linux/WSL).
             prepare_display()
 
+        # Create media lock BEFORE starting agentic runtime (CaptureManager needs it)
+        media_lock = threading.Lock()
+        self._media_lock = media_lock
+        stop_event = threading.Event()
+        self._live_stop_event = stop_event
+
         # Phase 2: Start agentic runtime automatically when not in sleep mode
         # The agentic system handles all decision-making; live() just does I/O
+        # Note: Must happen AFTER _media_lock is created for CaptureManager to use it
         if mode != "sleep":
             try:
                 self._start_agentic_runtime()
             except Exception as e:
                 warn("Failed to start agentic runtime: %s", e, logger=self.log)
-
-        media_lock = threading.Lock()
-        self._media_lock = media_lock
-        stop_event = threading.Event()
-        self._live_stop_event = stop_event
 
         frame_obs_queue: queue.Queue = queue.Queue(maxsize=1)
         frame_save_queue: queue.Queue = queue.Queue(maxsize=512)
@@ -1736,27 +1748,80 @@ class Maxim:
             except Exception as e:
                 warn("Failed to read audio sample rates: %s", e, logger=self.log)
 
-        transcribe_queue = None
         transcribe_process = None
+        transcribe_shutdown_file = None
         if self.audio and parallel:
             os.makedirs(chunk_dir, exist_ok=True)
             try:
-                from maxim.data.audio.sound import transcription_worker
+                from maxim.data.audio._file_based_transcription import watch_and_transcribe
 
+                # Use file-based IPC instead of multiprocessing Queues
+                # Queues use shared memory which conflicts with TensorFlow+CUDA in parent
+                # File watching completely isolates parent and child processes
+                # See: https://github.com/tensorflow/tensorflow/issues/8220
+                #      https://github.com/OpenNMT/CTranslate2/issues/1693
                 ctx = mp.get_context("spawn")
+                if self.log:
+                    self.log.debug("Using file-based IPC (no shared memory)")
+
                 vad_filter = _env_flag("MAXIM_VAD_FILTER", True)
                 compute_type = str(os.getenv("MAXIM_WHISPER_COMPUTE_TYPE", "int8") or "int8").strip()
                 if not compute_type:
                     compute_type = "int8"
+
+                # Auto-detect Blackwell GPUs (RTX 50 series) and force CPU + float32 for Whisper
+                # CTranslate2 has critical compatibility issues with sm_120 (Blackwell) architecture:
+                # - All int8 compute types fail with CUBLAS_STATUS_NOT_SUPPORTED (even in CPU mode)
+                # - CUDA libraries are loaded regardless of device="cpu" setting
+                # See: https://github.com/OpenNMT/CTranslate2/issues/1865
+                #      https://github.com/SYSTRAN/faster-whisper/issues/1260
+                default_whisper_device = "cuda"
+                blackwell_detected = False
+
+                # Use nvidia-smi for detection (works even when CUDA_VISIBLE_DEVICES="")
+                # This allows detection after parent has hidden GPUs from TensorFlow
+                try:
+                    import subprocess
+                    result = subprocess.run(
+                        ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
+                        capture_output=True, text=True, timeout=2
+                    )
+                    if result.returncode == 0:
+                        gpu_names = result.stdout.strip().lower()
+                        if 'rtx 50' in gpu_names or '5080' in gpu_names or '5090' in gpu_names:
+                            default_whisper_device = "cpu"
+                            blackwell_detected = True
+                            self.log.warning("⚠️  Detected Blackwell GPU (nvidia-smi)")
+                            self.log.warning("   CTranslate2 int8 incompatible with RTX 50 series - forcing CPU + float32")
+                except Exception as e:
+                    self.log.debug(f"nvidia-smi check failed: {e}")
+
+                whisper_device = str(os.getenv("MAXIM_WHISPER_DEVICE", default_whisper_device) or default_whisper_device).strip()
+
+                # Force float32 for Blackwell GPUs (int8 causes segfaults even in CPU mode)
+                if blackwell_detected and "int8" in compute_type.lower():
+                    compute_type = "float32"
+                    self.log.info("   Compute type auto-changed: int8 → float32 (required for Blackwell)")
+
                 self.log.info("Transcription VAD filter: %s", "enabled" if vad_filter else "disabled")
                 self.log.info("Whisper compute type: %s", compute_type)
-                transcribe_queue = ctx.Queue(maxsize=64)
+                self.log.info("Whisper device: %s (will fallback to CPU if unavailable)", whisper_device)
+
+                # Set environment flag for CPU-only mode BEFORE spawning subprocess
+                # This ensures CUDA_VISIBLE_DEVICES is set at module import time
+                if whisper_device == "cpu":
+                    os.environ["MAXIM_TRANSCRIPTION_WORKER_CPU_ONLY"] = "1"
+                    self.log.debug("Set MAXIM_TRANSCRIPTION_WORKER_CPU_ONLY=1 for subprocess")
+
+                # Create shutdown signal file path
+                transcribe_shutdown_file = os.path.join(chunk_dir, ".shutdown")
+
                 transcribe_process = ctx.Process(
-                    target=transcription_worker,
-                    args=(transcribe_queue, transcript_path),
+                    target=watch_and_transcribe,
+                    args=(chunk_dir, transcript_path),
                     kwargs={
                         "model_size_or_path": "tiny",
-                        "device": "cpu",
+                        "device": whisper_device,
                         "compute_type": compute_type,
                         "language": "en",
                         "beam_size": 1,
@@ -1764,22 +1829,28 @@ class Maxim:
                         "cleanup_chunks": True,
                         "verbosity": int(self.verbosity or 0),
                         "log_file": log_path,
+                        "shutdown_file": transcribe_shutdown_file,
                     },
                     daemon=True,
                 )
                 transcribe_process.start()
+                self.log.debug("Transcription process started, waiting for initialization...")
                 time.sleep(0.1)
                 if not transcribe_process.is_alive():
                     warn(
                         "Transcription worker exited immediately (is `faster-whisper` installed and model available?).",
                         logger=self.log,
                     )
-                    transcribe_queue = None
                     transcribe_process = None
+                    transcribe_shutdown_file = None
+                else:
+                    self.log.debug("Transcription process alive and running")
             except Exception as e:
-                transcribe_queue = None
                 transcribe_process = None
+                transcribe_shutdown_file = None
                 warn("Failed to start transcription worker: %s", e, logger=self.log)
+
+        self.log.debug("Continuing with main loop setup after transcription worker...")
 
         def _motor_worker() -> None:
             while not stop_event.is_set():
@@ -1958,7 +2029,7 @@ class Maxim:
 
             sample_rate = int(audio_output_rate or audio_input_rate or 16000)
             chunk_frames = None
-            if transcribe_queue is not None:
+            if transcribe_process is not None:
                 chunk_frames = int(float(getattr(self, "audio_len", 5.0) or 5.0) * float(sample_rate))
                 chunk_frames = max(chunk_frames, sample_rate)  # at least 1s
 
@@ -1971,19 +2042,29 @@ class Maxim:
             chunk_index = 0
 
             def _flush_pending() -> None:
+                from maxim.data.audio._file_based_transcription import create_task_file
                 nonlocal pending_tasks
-                if transcribe_queue is None:
+                if transcribe_process is None:
                     return
                 while pending_tasks:
                     try:
-                        transcribe_queue.put_nowait(pending_tasks[0])
-                        pending_tasks.pop(0)
+                        task = pending_tasks[0]
+                        task_file = create_task_file(
+                            chunk_dir=chunk_dir,
+                            chunk_path=task["chunk_path"],
+                            chunk_index=task["chunk_index"],
+                            sample_rate=task["sample_rate"],
+                        )
+                        if task_file:
+                            pending_tasks.pop(0)
+                        else:
+                            break  # Failed to create task file, retry later
                     except Exception:
                         break
 
             def _write_chunk(chunk_arr: np.ndarray, start_frame: int) -> None:
                 nonlocal chunk_index
-                if transcribe_queue is None:
+                if transcribe_process is None:
                     return
                 chunk_path = os.path.join(chunk_dir, f"chunk_{chunk_index:06d}.wav")
                 wf_chunk = wave.open(chunk_path, "wb")
@@ -2065,12 +2146,22 @@ class Maxim:
                 except Exception:
                     pass
 
-                if transcribe_queue is not None:
+                if transcribe_process is not None:
+                    # Flush all pending transcription tasks
                     _flush_pending()
                     deadline = time.time() + 10.0
                     while pending_tasks and time.time() < deadline:
+                        from maxim.data.audio._file_based_transcription import create_task_file
                         try:
-                            transcribe_queue.put(pending_tasks.pop(0), timeout=1.0)
+                            task = pending_tasks[0]
+                            task_file = create_task_file(
+                                chunk_dir=chunk_dir,
+                                chunk_path=task["chunk_path"],
+                                chunk_index=task["chunk_index"],
+                                sample_rate=task["sample_rate"],
+                            )
+                            if task_file:
+                                pending_tasks.pop(0)
                         except Exception:
                             continue
 
@@ -2159,6 +2250,12 @@ class Maxim:
                                     captured = capture_manager.get_latest_frame()
                                     if captured is not None and captured.segmented:
                                         # Use pre-segmented frame from CaptureManager
+                                        if self.verbosity >= 2:
+                                            self.log.debug(
+                                                "Display frame from CaptureManager (epoch=%d, detections=%d)",
+                                                self.current_epoch,
+                                                len(captured.detections or []),
+                                            )
                                         target_info = display_detections(
                                             captured.frame,
                                             captured.detections,
@@ -2169,9 +2266,20 @@ class Maxim:
                                         ) if self.verbose else None
                                     else:
                                         # Fall back to passive_observation if no segmented frame
+                                        if self.verbosity >= 2:
+                                            self.log.debug(
+                                                "Display fallback to passive_observation (epoch=%d, captured=%s)",
+                                                self.current_epoch,
+                                                captured is not None,
+                                            )
                                         target_info = passive_observation(self, photo, show=self.verbose)
                                 else:
                                     # No CaptureManager, use legacy behavior
+                                    if self.verbosity >= 2:
+                                        self.log.debug(
+                                            "Display using legacy passive_observation (epoch=%d)",
+                                            self.current_epoch,
+                                        )
                                     target_info = passive_observation(self, photo, show=self.verbose)
 
                                 # Store target info for agentic system to act on
@@ -2184,12 +2292,12 @@ class Maxim:
                             if self.verbosity >= 2:
                                 self.log.exception(
                                     "Observation step failed (mode=%s)",
-                                    getattr(self, "mode", "passive-interaction"),
+                                    getattr(self, "mode", "reflection"),
                                 )
                             else:
                                 self.log.error(
                                     "Observation step failed (mode=%s): %s",
-                                    getattr(self, "mode", "passive-interaction"),
+                                    getattr(self, "mode", "reflection"),
                                     e,
                                 )
         finally:
@@ -2211,14 +2319,14 @@ class Maxim:
             for t in threads:
                 t.join(timeout=2.0)
 
-            if transcribe_queue is not None:
+            # Signal transcription worker to shut down via file
+            if transcribe_shutdown_file is not None:
                 try:
-                    transcribe_queue.put_nowait(None)
+                    # Create shutdown signal file
+                    with open(transcribe_shutdown_file, "w") as f:
+                        f.write("shutdown\n")
                 except Exception:
-                    try:
-                        transcribe_queue.put(None, timeout=0.5)
-                    except Exception:
-                        pass
+                    pass
 
             if transcribe_process is not None:
                 try:
@@ -2238,13 +2346,11 @@ class Maxim:
                 except Exception:
                     pass
 
-            if transcribe_queue is not None:
+            # Cleanup shutdown file
+            if transcribe_shutdown_file is not None:
                 try:
-                    transcribe_queue.close()
-                except Exception:
-                    pass
-                try:
-                    transcribe_queue.join_thread()
+                    if os.path.exists(transcribe_shutdown_file):
+                        os.remove(transcribe_shutdown_file)
                 except Exception:
                     pass
 
@@ -2341,7 +2447,7 @@ class Maxim:
         self._request_mode("sleep")
 
     def request_observe(self) -> None:
-        self._request_mode("passive-interaction")
+        self._request_mode("reflection")
 
     def update_interests(
         self,
@@ -2380,11 +2486,11 @@ class Maxim:
             pass
 
     def wake_up_agentic(self) -> None:
-        """Wake up Reachy and transition to passive-interaction mode.
+        """Wake up Reachy and transition to exploration mode.
 
         Called when the wake word "maxim" is detected. This:
         1. Wakes up the robot motors
-        2. Switches mode from sleep to passive-interaction
+        2. Switches mode from sleep to exploration
         3. Starts the agentic runtime if available
         """
         try:
@@ -2402,13 +2508,13 @@ class Maxim:
         except Exception as e:
             warn("Failed to wake up Reachy: %s", e, logger=self.log)
 
-        # Switch to passive-interaction mode if currently in sleep mode
+        # Switch to exploration mode if currently in sleep mode
         # This triggers a live loop restart with vision=True
         current_mode = str(getattr(self, "mode", "") or "").strip().lower()
         if current_mode == "sleep":
             try:
-                self.log.info("Waking up from sleep -> requesting passive-interaction mode")
-                self._request_mode("passive-interaction")
+                self.log.info("Waking up from sleep -> requesting exploration mode")
+                self._request_mode("exploration")
             except Exception:
                 pass
 
@@ -2875,10 +2981,24 @@ class Maxim:
             try:
                 from maxim.models.movement.motor_cortex import LayerScale, MotorCortex
                 from maxim.utils import config as motor_config
+                import tensorflow as tf
 
                 self.log.info("Initializing motor cortex...")
+
                 cfg = motor_config.build(motor_config.DEFAULT_SAVE_ROOT)
-                self.movement_model = MotorCortex(cfg)
+
+                # Try GPU first, fallback to CPU if JIT compilation fails (e.g., RTX 5080/Blackwell)
+                try:
+                    self.movement_model = MotorCortex(cfg)
+                    self.log.info("Motor cortex initialized on GPU")
+                except (RuntimeError, tf.errors.InternalError) as gpu_err:
+                    self.log.warning(f"GPU initialization failed ({type(gpu_err).__name__}), falling back to CPU mode")
+                    self.log.warning("This is expected on RTX 5080/Blackwell GPUs with current TensorFlow")
+
+                    # Force CPU mode
+                    with tf.device('/CPU:0'):
+                        self.movement_model = MotorCortex(cfg)
+                    self.log.info("Motor cortex initialized on CPU")
 
                 checkpoint_path = getattr(cfg, "checkpoint_path", None)
                 legacy_checkpoint_path = None
@@ -3009,7 +3129,7 @@ class Maxim:
 
         if getattr(self, "_woke_up", False):
             requested = str(getattr(self, "requested_mode", "") or "").strip().lower()
-            if requested not in ("passive-interaction", "live", "train", "agentic"):
+            if requested not in ("reflection", "exploration", "live", "train", "agentic"):
                 try:
                     self.mini.goto_sleep()
                 except Exception as e:
