@@ -90,17 +90,19 @@ Reason:
 Tradeoffs:
 - The run won’t auto-stop based on frame epochs; it runs until interrupted.
 
-## 2026-01-02: Default mode is `passive-interaction`
+## 2026-01-02: Default mode is `exploration`
 Decision:
-- Default `--mode` is `passive-interaction`.
-- `Maxim(mode=...)` defaults to `passive-interaction`.
+- Default `--mode` is `exploration`.
+- `Maxim(mode=...)` defaults to `exploration`.
 
 Reason:
-- Safer default behavior (no MotorCortex training) while still tracking targets.
-- Reduces surprise ML/compute costs when running `python scripts/main.py` with no flags.
+- Exploration mode actively discovers and learns about the environment.
+- Maxim is immediately curious and engaged on startup.
+- Aligns with the goal of building understanding through active observation.
 
 Tradeoffs:
-- Users who want the previous behavior must pass `--mode live` (or `--mode train`).
+- Higher resource usage than passive modes like `sleep` or `reflection`.
+- Users who want minimal activity can pass `--mode sleep` or `--mode reflection`.
 
 ## 2026-01-02: Per-run logs saved under `data/logs/`
 Decision:
