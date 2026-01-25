@@ -1,16 +1,55 @@
 import os
 import queue
+import subprocess
 import threading
 
-#os.environ["REACHY_MEDIA_BACKEND"] = "zenoh"
-#os.environ["REACHY_DISABLE_WEBRTC"] = "1"
-#os.environ["GST_DISABLE_REGISTRY_FORK"] = "1"
+# CRITICAL: Set multiprocessing start method to 'spawn' BEFORE any other imports.
+# On Linux, the default 'fork' method causes GStreamer segfaults because:
+# - Thread pools become invalid when accessed from different processes
+# - Mutexes become corrupted across process boundaries
+# - Memory allocators experience concurrent access corruption
+# See: https://www.blog.neudeep.com/howto/fixing-gstreamer-segmentation-faults-in-python-multiprocessing/
+import multiprocessing as mp
+try:
+    mp.set_start_method('spawn', force=True)
+except RuntimeError:
+    pass  # Already set, ignore
+
+# Detect Blackwell GPU and disable GStreamer/WebRTC BEFORE any imports.
+# Blackwell GPUs (RTX 50 series) have issues with NVENC/NVDEC in GStreamer that cause segfaults.
+# The crash occurs during wake_up() when GStreamer pipelines are active - likely a threading issue.
+_blackwell_detected = False
+_original_cuda_devices: str | None = None  # Store original for Whisper subprocess
+try:
+    _result = subprocess.run(
+        ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
+        capture_output=True, text=True, timeout=2
+    )
+    if _result.returncode == 0:
+        _gpu_names = _result.stdout.strip().lower()
+        if 'rtx 50' in _gpu_names or '5080' in _gpu_names or '5090' in _gpu_names:
+            _blackwell_detected = True
+
+            # Store original CUDA_VISIBLE_DEVICES before hiding
+            # This allows Whisper subprocess to use GPU (with float16, not int8)
+            _original_cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "0")
+
+            # CRITICAL: Force CPU-only mode to avoid GStreamer/GLib segfaults
+            # The crash happens in GLib.MainLoop.run() in the WebRTC thread when CUDA is active
+            # Setting CUDA_VISIBLE_DEVICES="" hides GPUs from all CUDA libraries
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+            # Force "default" media backend (OpenCV + Sounddevice) to avoid GStreamer entirely
+            os.environ.setdefault("REACHY_MEDIA_BACKEND", "default")
+            # Disable CUDA for GStreamer (belt and suspenders)
+            os.environ.setdefault("GST_CUDA_NO_CUDA", "1")
+except Exception:
+    pass
 
 import json, random, uuid
 import re
 import time, atexit, cv2
 import logging
-import multiprocessing as mp
 import wave
 from typing import Any, Optional
 
@@ -124,6 +163,8 @@ class Maxim:
         self.sleeping = False  # Track if Reachy is already in sleep pose
 
         self.name = robot_name or os.getenv("MAXIM_ROBOT_NAME", "reachy_mini")
+        if _blackwell_detected:
+            self.log.info("Blackwell GPU detected - GStreamer hardware acceleration disabled")
         self.log.info("Connecting to Reachy Mini '%s'...", self.name)
         self._connect_kwargs = {
             "robot_name": self.name,
@@ -201,11 +242,18 @@ class Maxim:
             timeout=timeout,
             media_backend=media_backend,
         )
-        self.log.info("Connected. Starting recording...")
-        try:
-            self.mini.start_recording()
-        except Exception as e:
-            self.log.warning("Failed to start recording: %s", e)
+
+        # On Blackwell GPUs, don't start recording - it will crash in GStreamer
+        self._recording_started = False
+        if not _blackwell_detected:
+            self.log.info("Connected. Starting recording...")
+            try:
+                self.mini.start_recording()
+                self._recording_started = True
+            except Exception as e:
+                self.log.warning("Failed to start recording: %s", e)
+        else:
+            self.log.info("Connected. (Recording disabled for Blackwell GPU compatibility)")
 
         self.x = 0.01
         self.y = 0.01
@@ -782,6 +830,18 @@ class Maxim:
             self._last_transcript_event = record
         except Exception:
             pass
+
+        # Forward voice transcript to agentic state so LLM worker can see it
+        # Only forward if agentic mode is enabled (user said wake word)
+        if bool(getattr(self, "_voice_agentic_enabled", False)):
+            agentic_state = getattr(self, "_agentic_state", None)
+            if agentic_state is not None and hasattr(agentic_state, "data"):
+                agentic_state.data["pending_voice_input"] = text
+                agentic_state.data["pending_voice_transcript"] = record
+                self.log.info("Voice transcript forwarded to agentic state: %s", text[:50])
+            else:
+                self.log.warning("Agentic state not available for voice forwarding (state=%s)", agentic_state)
+
         self._handle_phrase_text(text, source="voice", transcript=record)
 
     def _handle_cli_text(self, text: str) -> None:
@@ -1649,6 +1709,15 @@ class Maxim:
         self.cli_path = cli_path
         self.vision_events_path = vision_events_path
 
+        # Create transcript directory and empty file early so readers can open it immediately
+        try:
+            os.makedirs(os.path.dirname(transcript_path), exist_ok=True)
+            # Touch the file to create it if it doesn't exist
+            with open(transcript_path, "a", encoding="utf-8"):
+                pass
+        except Exception:
+            pass
+
         try:
             prev_logger = getattr(self, "_training_logger", None)
             if prev_logger is not None:
@@ -1754,6 +1823,12 @@ class Maxim:
             os.makedirs(chunk_dir, exist_ok=True)
             try:
                 from maxim.data.audio._file_based_transcription import watch_and_transcribe
+                from maxim.models.audio.transcription import load_whisper_config
+
+                # Load whisper config from data/util/whisper.json
+                whisper_cfg = load_whisper_config()
+                self.log.info("Whisper config: model=%s, device=%s, compute_type=%s",
+                              whisper_cfg.model, whisper_cfg.device, whisper_cfg.compute_type)
 
                 # Use file-based IPC instead of multiprocessing Queues
                 # Queues use shared memory which conflicts with TensorFlow+CUDA in parent
@@ -1764,19 +1839,23 @@ class Maxim:
                 if self.log:
                     self.log.debug("Using file-based IPC (no shared memory)")
 
-                vad_filter = _env_flag("MAXIM_VAD_FILTER", True)
-                compute_type = str(os.getenv("MAXIM_WHISPER_COMPUTE_TYPE", "int8") or "int8").strip()
-                if not compute_type:
-                    compute_type = "int8"
+                # Get config values (can be overridden by env vars)
+                vad_filter = whisper_cfg.vad_filter
+                compute_type = whisper_cfg.compute_type
+                whisper_model = whisper_cfg.model
+                whisper_device = whisper_cfg.device
 
-                # Auto-detect Blackwell GPUs (RTX 50 series) and force CPU + float32 for Whisper
-                # CTranslate2 has critical compatibility issues with sm_120 (Blackwell) architecture:
-                # - All int8 compute types fail with CUBLAS_STATUS_NOT_SUPPORTED (even in CPU mode)
-                # - CUDA libraries are loaded regardless of device="cpu" setting
+                # Auto-detect Blackwell GPUs (RTX 50 series) and adjust compute type
+                # CTranslate2 has compatibility issues with sm_120 (Blackwell) architecture:
+                # - int8 compute types fail with CUBLAS_STATUS_NOT_SUPPORTED
+                # - float16 works fine on Blackwell CUDA
                 # See: https://github.com/OpenNMT/CTranslate2/issues/1865
                 #      https://github.com/SYSTRAN/faster-whisper/issues/1260
-                default_whisper_device = "cuda"
                 blackwell_detected = False
+
+                # Resolve "auto" device
+                if whisper_device == "auto":
+                    whisper_device = "cuda"  # Default to CUDA
 
                 # Use nvidia-smi for detection (works even when CUDA_VISIBLE_DEVICES="")
                 # This allows detection after parent has hidden GPUs from TensorFlow
@@ -1789,23 +1868,40 @@ class Maxim:
                     if result.returncode == 0:
                         gpu_names = result.stdout.strip().lower()
                         if 'rtx 50' in gpu_names or '5080' in gpu_names or '5090' in gpu_names:
-                            default_whisper_device = "cpu"
                             blackwell_detected = True
                             self.log.warning("⚠️  Detected Blackwell GPU (nvidia-smi)")
-                            self.log.warning("   CTranslate2 int8 incompatible with RTX 50 series - forcing CPU + float32")
                 except Exception as e:
                     self.log.debug(f"nvidia-smi check failed: {e}")
 
-                whisper_device = str(os.getenv("MAXIM_WHISPER_DEVICE", default_whisper_device) or default_whisper_device).strip()
-
-                # Force float32 for Blackwell GPUs (int8 causes segfaults even in CPU mode)
+                # For Blackwell GPUs: int8 fails, but float16 works on CUDA
+                # Use float16 instead of falling back to CPU (faster and uses less VRAM than float32)
                 if blackwell_detected and "int8" in compute_type.lower():
-                    compute_type = "float32"
-                    self.log.info("   Compute type auto-changed: int8 → float32 (required for Blackwell)")
+                    compute_type = "float16"
+                    self.log.info("   Compute type auto-changed: int8 → float16 (int8 incompatible with Blackwell)")
+                    self.log.info("   Keeping CUDA device (float16 works on Blackwell)")
 
+                # Build VAD parameters dict for fine-tuned voice detection
+                # Lower threshold = more sensitive to speech (default Silero is 0.5)
+                vad_parameters = {
+                    "threshold": whisper_cfg.vad_threshold,
+                    "min_speech_duration_ms": whisper_cfg.vad_min_speech_duration_ms,
+                    "min_silence_duration_ms": whisper_cfg.vad_min_silence_duration_ms,
+                    "speech_pad_ms": whisper_cfg.vad_speech_pad_ms,
+                } if vad_filter else None
+
+                self.log.info("Whisper model: %s", whisper_model)
                 self.log.info("Transcription VAD filter: %s", "enabled" if vad_filter else "disabled")
+                if vad_filter:
+                    self.log.info("VAD threshold: %.2f (lower = more sensitive)", whisper_cfg.vad_threshold)
                 self.log.info("Whisper compute type: %s", compute_type)
                 self.log.info("Whisper device: %s (will fallback to CPU if unavailable)", whisper_device)
+
+                # Get original CUDA devices for subprocess (stored before we hid GPUs)
+                cuda_devices_for_subprocess = None
+                if whisper_device == "cuda":
+                    cuda_devices_for_subprocess = _original_cuda_devices
+                    if cuda_devices_for_subprocess:
+                        self.log.info("Whisper subprocess will use GPU: CUDA_VISIBLE_DEVICES=%s", cuda_devices_for_subprocess)
 
                 # Set environment flag for CPU-only mode BEFORE spawning subprocess
                 # This ensures CUDA_VISIBLE_DEVICES is set at module import time
@@ -1820,16 +1916,18 @@ class Maxim:
                     target=watch_and_transcribe,
                     args=(chunk_dir, transcript_path),
                     kwargs={
-                        "model_size_or_path": "tiny",
+                        "model_size_or_path": whisper_model,
                         "device": whisper_device,
                         "compute_type": compute_type,
-                        "language": "en",
-                        "beam_size": 1,
+                        "language": whisper_cfg.language,
+                        "beam_size": whisper_cfg.beam_size,
                         "vad_filter": vad_filter,
-                        "cleanup_chunks": True,
+                        "vad_parameters": vad_parameters,
+                        "cleanup_chunks": whisper_cfg.cleanup_chunks,
                         "verbosity": int(self.verbosity or 0),
                         "log_file": log_path,
                         "shutdown_file": transcribe_shutdown_file,
+                        "cuda_devices": cuda_devices_for_subprocess,
                     },
                     daemon=True,
                 )
@@ -2431,14 +2529,18 @@ class Maxim:
             pass
 
         self.requested_mode = requested
-        ev = getattr(self, "_live_stop_event", None)
-        if ev is not None:
-            try:
-                if int(getattr(self, "verbosity", 0) or 0) >= 2:
-                    self.log.debug("Stopping live loop for mode switch -> %s", requested)
-                ev.set()
-            except Exception:
-                pass
+
+        # Only stop the live loop for shutdown mode
+        # Other mode changes should just update the mode without stopping
+        if requested == "shutdown":
+            ev = getattr(self, "_live_stop_event", None)
+            if ev is not None:
+                try:
+                    if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                        self.log.debug("Stopping live loop for shutdown")
+                    ev.set()
+                except Exception:
+                    pass
 
     def request_shutdown(self) -> None:
         self._request_mode("shutdown")
@@ -2969,9 +3071,31 @@ class Maxim:
         if wake_up:
             # Wake up Reachy before model init to avoid loading while asleep.
             self.log.info("Waking up Reachy...")
-            self.mini.wake_up()
+
+            # On Blackwell GPUs, skip wake_up() entirely due to GStreamer/GLib crash
+            # The crash happens in native GLib.MainLoop.run() code in the WebRTC thread
+            # Bug report: https://github.com/pollen-robotics/reachy_mini/issues
+            if _blackwell_detected:
+                self.log.warning(
+                    "Blackwell GPU detected - skipping wake_up() due to GStreamer incompatibility. "
+                    "Robot should already be in usable state. See: https://github.com/pollen-robotics/reachy_mini/issues"
+                )
+                # Don't call wake_up() - the robot is already connected and motors are accessible
+            else:
+                self.mini.wake_up()
             self.sleeping = False  # Mark as awake so next sleep() will move to sleep pose
             self._woke_up = True
+
+            # On Blackwell GPUs, start recording AFTER wake_up() to avoid
+            # GStreamer/WebRTC threading issues that cause segfaults
+            if _blackwell_detected and not getattr(self, '_recording_started', False):
+                time.sleep(0.3)  # Brief pause to let motor commands complete
+                try:
+                    self.mini.start_recording()
+                    self._recording_started = True
+                    self.log.info("Recording started (delayed for Blackwell GPU)")
+                except Exception as e:
+                    self.log.warning("Failed to start recording: %s", e)
 
         # Load models
         if vision:
