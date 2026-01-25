@@ -15,7 +15,10 @@ from maxim.utils.structured_logging import log_agentic
 
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController
-    from maxim.agents.llm_worker import LLMWorker, LLMProposal
+    from maxim.agents.llm_worker import LLMWorker
+
+# Import LLMProposal for runtime use (multi-step action creation)
+from maxim.agents.llm_worker import LLMProposal
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +270,8 @@ def run_agentic_loop(
     idle_sleep_s: float = 0.05,  # Fast loop for responsiveness
     persist_every_n_steps: int = 10,
     target_hz: float = 30.0,  # Target loop frequency
+    context_pool_config: dict[str, Any] | None = None,  # Context pool configuration
+    use_tool_prompting: bool = True,  # Enable tool-aware LLM prompts
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -289,7 +294,9 @@ def run_agentic_loop(
         Proposal,
         check_hard_stop,
     )
+    from maxim.agents.context_pool import ContextPool, ContextPoolConfig, AgentStateEntry
     from maxim.agents.llm_worker import FallbackBehavior, ModeInfo, StrategyInfo
+    from maxim.modes.definitions import get_mode, TOOL_DESCRIPTIONS
 
     if evaluators is None:
         evaluators = []
@@ -304,13 +311,44 @@ def run_agentic_loop(
     if autonomy_controller is None:
         autonomy_controller = AutonomyController()
 
+    # Initialize context pool for accumulated observations
+    pool_config = ContextPoolConfig()
+    if context_pool_config:
+        pool_config = ContextPoolConfig(
+            max_tokens=context_pool_config.get("max_tokens", 2000),
+            summary_target_tokens=context_pool_config.get("summary_target_tokens", 500),
+            max_entries=context_pool_config.get("max_entries", 50),
+            keep_recent=context_pool_config.get("keep_recent", 5),
+            include_agent_states=context_pool_config.get("include_agent_states", True),
+            include_outcomes=context_pool_config.get("include_outcomes", True),
+            include_abstractions=context_pool_config.get("include_abstractions", True),
+            persistence_path=context_pool_config.get("persistence_path"),
+        )
+    context_pool = ContextPool(config=pool_config)
+
     # Track pending proposal from LLM
     pending_proposal: LLMProposal | None = None
+    pending_next_actions: list[dict[str, Any]] = []  # Multi-step action queue
     last_llm_submit_time = 0.0
     llm_submit_interval = 0.5  # Don't flood LLM with requests
 
     # Track processed CLI inputs to avoid duplicate submissions
     processed_cli_inputs: set[str] = set()
+
+    # Track recent outcomes for learning
+    recent_outcomes: list[dict[str, Any]] = []
+    max_recent_outcomes = 10
+
+    # Track agent states
+    agent_states: list[dict[str, Any]] = []
+
+    # Get available tools from executor registry
+    all_tools: set[str] = set()
+    if hasattr(executor, "registry") and hasattr(executor.registry, "list"):
+        try:
+            all_tools = set(executor.registry.list())
+        except Exception:
+            pass
 
     # Loop timing
     target_period = 1.0 / target_hz
@@ -337,6 +375,12 @@ def run_agentic_loop(
                 break
         except Exception:
             pass
+
+        # Check for shutdown mode - break immediately to stop LLM worker promptly
+        current_mode = state.data.get("mode", "")
+        if current_mode == "shutdown":
+            log_agentic("agent_loop", "shutdown", {"reason": "shutdown_mode"})
+            break
 
         # Check if autonomy is paused
         if autonomy_controller.is_paused:
@@ -375,23 +419,40 @@ def run_agentic_loop(
         if not cli_input:
             cli_input = state.data.pop("pending_cli_input", None)
 
+        # Check for voice input injected from the transcription thread
+        # Voice input only gets forwarded when agentic mode is enabled (wake word was said)
+        voice_input = state.data.pop("pending_voice_input", None)
+        voice_transcript = state.data.pop("pending_voice_transcript", None)
+        is_agentic_voice_input = False
+
+        # Use voice input if no CLI input (CLI takes priority)
+        if not cli_input and voice_input:
+            cli_input = voice_input
+            is_agentic_voice_input = True  # Came from agentic voice session (wake word already said)
+            logger.info("Using voice transcript as user input: %s", voice_input[:50] if voice_input else "")
+
         # Store CLI input in state and memory for LLM processing
         if cli_input:
             cli_text = str(cli_input).strip()
             state.data["pending_user_input"] = cli_text
-            logger.warning("Agent loop received CLI input: %s", cli_text[:100])
+            source_type = "voice" if is_agentic_voice_input else "CLI"
+            logger.warning("Agent loop received %s input: %s", source_type, cli_text[:100])
             log_agentic(
                 "agent_loop",
-                "cli_input_received",
-                {"text": cli_text[:100]},
+                "user_input_received",
+                {"text": cli_text[:100], "source": source_type},
             )
             # Record in memory so it appears in context.cli_inputs
+            # For agentic voice input, prepend "maxim: " so LLM worker recognizes it as a command
             if hasattr(memory, "record_command"):
                 try:
-                    memory.record_command(cli_text)
-                    logger.warning("Recorded CLI input to memory")
+                    memory_text = cli_text
+                    if is_agentic_voice_input and "maxim" not in cli_text.lower():
+                        memory_text = f"maxim: {cli_text}"
+                    memory.record_command(memory_text)
+                    logger.warning("Recorded %s input to memory: %s", source_type, memory_text[:50])
                 except Exception as e:
-                    logger.warning("Failed to record CLI input: %s", e)
+                    logger.warning("Failed to record %s input: %s", source_type, e)
 
         hard_stop_reason = check_hard_stop(transcript, hard_override)
         if hard_stop_reason:
@@ -406,6 +467,34 @@ def run_agentic_loop(
             continue
 
         # ─────────────────────────────────────────────────────────────────
+        # 1.5 ADD PERCEPT TO CONTEXT POOL
+        # ─────────────────────────────────────────────────────────────────
+        if observation:
+            # Build a percept-like object from observation for context pool
+            try:
+                from maxim.agents.bus import Percept
+                percept = None
+                if hasattr(observation, "get"):
+                    # Mark as having maxim keyword if:
+                    # 1. Text contains "maxim", OR
+                    # 2. This is agentic voice input (wake word was already said)
+                    has_keyword = bool(cli_input and "maxim" in str(cli_input).lower()) or is_agentic_voice_input
+                    percept = Percept(
+                        timestamp=time.time(),
+                        source=observation.get("source", "observation"),
+                        transcript_chunk=transcript,
+                        cli_input=cli_input,
+                        has_maxim_keyword=has_keyword,
+                    )
+                elif isinstance(observation, Percept):
+                    percept = observation
+
+                if percept:
+                    context_pool.add_percept(percept)
+            except Exception as e:
+                logger.debug(f"Failed to add percept to context pool: {e}")
+
+        # ─────────────────────────────────────────────────────────────────
         # 2. CHECK FOR LLM PROPOSALS (non-blocking)
         # ─────────────────────────────────────────────────────────────────
         if llm_worker:
@@ -415,8 +504,28 @@ def run_agentic_loop(
                     logger.warning("LLM proposal received: tool=%s, confidence=%.2f",
                                    new_proposal.action.get("tool_name"), new_proposal.confidence)
                     pending_proposal = new_proposal
+                    # Queue any next_actions for sequential execution
+                    if new_proposal.next_actions:
+                        pending_next_actions.extend(new_proposal.next_actions)
+                        log_agentic(
+                            "agent_loop",
+                            "multi_step_queued",
+                            {"count": len(new_proposal.next_actions)},
+                        )
                 elif new_proposal.error:
                     logger.warning("LLM proposal error: %s", new_proposal.error)
+
+        # Check for queued next_actions if no pending proposal
+        if pending_proposal is None and pending_next_actions:
+            next_action = pending_next_actions.pop(0)
+            pending_proposal = LLMProposal(
+                request_id=f"next-{time.time_ns()}",
+                action=next_action,
+                reasoning="multi_step_continuation",
+                strategy_used="multi_step",
+                confidence=0.8,
+                mode_goal_achieved=False,
+            )
 
         # ─────────────────────────────────────────────────────────────────
         # 3. AGENT PROPOSE_INTENT FALLBACK (when no LLM worker or no pending proposal)
@@ -632,6 +741,26 @@ def run_agentic_loop(
                         error=getattr(result, "error", None),
                     )
 
+                    # Track outcome for context pool and learning
+                    outcome = {
+                        "tool": action.get("tool_name"),
+                        "success": success,
+                        "result": str(output)[:100] if output else None,
+                        "error": getattr(result, "error", None),
+                        "timestamp": time.time(),
+                    }
+                    recent_outcomes.append(outcome)
+                    if len(recent_outcomes) > max_recent_outcomes:
+                        recent_outcomes.pop(0)
+
+                    # Add to context pool
+                    context_pool.add_outcome(
+                        tool_name=action.get("tool_name", "unknown"),
+                        success=success,
+                        result_summary=str(output)[:100] if output else None,
+                        error=getattr(result, "error", None),
+                    )
+
                     # Process result
                     try:
                         followup = environment.step(result)
@@ -759,12 +888,32 @@ def run_agentic_loop(
                     has_meaningful_input = False
                     new_cli_input = None
                     if context:
+                        # Known commands that should NOT be sent to LLM
+                        # These are handled by Selfy's phrase response system
+                        SKIP_LLM_COMMANDS = frozenset({
+                            "maxim shutdown", "shutdown maxim",
+                            "maxim sleep", "sleep maxim",
+                            "maxim nap", "maxim rest",
+                            "maxim observe", "observe maxim",
+                            "maxim watch", "maxim wake", "maxim wake up", "wake up maxim",
+                            "maxim explore", "explore maxim",
+                            "maxim stop", "stop maxim",
+                            "maxim pause", "pause maxim",
+                            "maxim resume", "resume maxim",
+                        })
+
                         # Check for NEW CLI input with "maxim" keyword (not already processed)
                         # Only process inputs that address Maxim directly
                         if context.cli_inputs:
                             for cli_input in context.cli_inputs:
                                 if cli_input and cli_input not in processed_cli_inputs:
-                                    if "maxim" in cli_input.lower():
+                                    cli_lower = cli_input.lower().strip()
+                                    if "maxim" in cli_lower:
+                                        # Skip LLM for known commands (handled by Selfy)
+                                        if cli_lower in SKIP_LLM_COMMANDS:
+                                            logger.info("Skipping LLM for command: %s", cli_input)
+                                            processed_cli_inputs.add(cli_input)
+                                            continue
                                         new_cli_input = cli_input
                                         has_meaningful_input = True
                                         break
@@ -833,10 +982,17 @@ def run_agentic_loop(
                                 focus=exploration_focus or "general exploration"
                             )
 
+                            # Get available tools for exploration
+                            exploration_tools = exploration_mode_def.get_available_tools(all_tools) if all_tools else set()
+
                             mode_info = ModeInfo(
                                 name="exploration",
                                 goal=exploration_mode_def.goal,
                                 context_prompt=context_prompt,
+                                allowed_tools=exploration_tools,
+                                forbidden_tools=exploration_mode_def.forbidden_tools,
+                                can_access_filesystem=exploration_mode_def.can_access_filesystem,
+                                can_access_network=exploration_mode_def.can_access_network,
                             )
 
                             # Select exploration strategies
@@ -873,10 +1029,20 @@ def run_agentic_loop(
                                 },
                             )
                         else:
+                            # Get mode definition for tool access
+                            mode_def = get_mode(mode_name)
+                            available_tools_for_mode = set()
+                            if mode_def and all_tools:
+                                available_tools_for_mode = mode_def.get_available_tools(all_tools)
+
                             mode_info = ModeInfo(
                                 name=mode_name,
-                                goal="Respond to user requests" if "interaction" in mode_name else "Observe environment",
-                                context_prompt="",
+                                goal=mode_def.goal if mode_def else "Respond to user requests",
+                                context_prompt=mode_def.context_prompt if mode_def else "",
+                                allowed_tools=available_tools_for_mode,
+                                forbidden_tools=mode_def.forbidden_tools if mode_def else set(),
+                                can_access_filesystem=mode_def.can_access_filesystem if mode_def else True,
+                                can_access_network=mode_def.can_access_network if mode_def else True,
                             )
                             selected_strategies = []
 
@@ -894,6 +1060,20 @@ def run_agentic_loop(
                             else:
                                 context.cli_inputs = new_inputs[-1:] if new_inputs else []
 
+                        # Get available tools for this mode
+                        available_tools = mode_info.get_available_tools(all_tools)
+
+                        # Get tool descriptions for prompt
+                        tool_descriptions = {
+                            name: TOOL_DESCRIPTIONS.get(name, {}).get("description", "")
+                            for name in available_tools
+                        }
+
+                        # Get context pool text
+                        context_pool_text = context_pool.get_context_text(
+                            max_tokens=mode_info.context_window_tokens // 2
+                        )
+
                         submitted = llm_worker.submit_context(
                             context=context,
                             mode=mode_info,
@@ -901,6 +1081,12 @@ def run_agentic_loop(
                             strategies=selected_strategies,
                             internet_access=internet_access,
                             internet_policy_summary=internet_policy_summary,
+                            available_tools=available_tools,
+                            tool_descriptions=tool_descriptions,
+                            context_pool_text=context_pool_text,
+                            agent_states=agent_states,
+                            recent_outcomes=recent_outcomes,
+                            use_tool_prompting=use_tool_prompting and bool(available_tools),
                         )
                         last_llm_submit_time = now
                         if submitted and new_cli_input:
@@ -946,5 +1132,9 @@ def run_agentic_loop(
         if sleep_time > 0:
             time.sleep(sleep_time)
 
-    # Always persist final state
+    # Always persist final state and context pool
     _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
+    try:
+        context_pool.save()
+    except Exception as e:
+        logger.debug(f"Failed to save context pool: {e}")
