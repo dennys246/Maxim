@@ -390,7 +390,7 @@ def parse_explore_command(text: str) -> dict[str, Any] | None:
 
 
 DEFAULT_EXPLORATION_FOCUS = {
-    "root_goal": "Explore the world and help humans",
+    "root_goal": "Explore the world and help people",
     "use_current_interests": True,
     "novelty_driven": True,
 }
