@@ -25,6 +25,7 @@ from maxim.agents.bus import (
 from maxim.agents.llm_agent import ChatLLMAgent, LLMAgentConfig
 from maxim.agents.memory_agent import MemoryAgent
 from maxim.utils.logging import warn
+from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
 
 
@@ -105,7 +106,11 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
         super().__init__(name=name, enabled=enabled)
         self._bus = bus
         self._memory = memory_agent
-        self._system_prompt = system_prompt or self.SYSTEM_PROMPT
+        if system_prompt:
+            self._system_prompt = system_prompt
+        else:
+            prompt = get_agent_prompt(self.agent_name)
+            self._system_prompt = prompt or self.SYSTEM_PROMPT
 
         # LLM config
         self._llm: ChatLLMAgent | None = None
