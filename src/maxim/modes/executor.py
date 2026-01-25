@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from maxim.agents.autonomy import AutonomyLevel
 from maxim.modes.definitions import ModeDefinition, get_mode, MODES
 from maxim.modes.strategies import Strategy, StrategyLibrary, get_strategy_library
+from maxim.utils.prompts import get_system_prompt
 
 if TYPE_CHECKING:
     from maxim.agents.bus import StructuredContext
@@ -191,6 +192,17 @@ class FlexibleModeExecutor:
             ]
         )
 
+        system_parts = []
+        identity_prompt = get_system_prompt("identity")
+        if identity_prompt:
+            system_parts.append(identity_prompt)
+        safety_prompt = get_system_prompt("safety")
+        if safety_prompt:
+            system_parts.append(safety_prompt)
+        system_block = "\n\n".join(system_parts)
+        if system_block:
+            system_block = f"{system_block}\n\n"
+
         autonomy_text = {
             AutonomyLevel.PLANNING: "You are in PLANNING mode. Propose actions but do not execute. Explain your reasoning thoroughly.",
             AutonomyLevel.SUPERVISED: "You are in SUPERVISED mode. You may act within your allowed tools, but explain significant decisions.",
@@ -222,7 +234,7 @@ class FlexibleModeExecutor:
 
         context_summary = "\n".join(context_parts) if context_parts else "(no significant context)"
 
-        return f"""ROOT GOAL: {context.root_goal}
+        return f"""{system_block}ROOT GOAL: {context.root_goal}
 
 CURRENT MODE: {mode.name}
 MODE GOAL: {mode.goal}
@@ -253,13 +265,13 @@ Based on the mode goal, available strategies, and current context, decide:
 4. How confident are you? (0.0-1.0)
 5. Is the mode goal achieved?
 
-Respond with JSON:
+Respond with JSON. If no action is needed, set "action" and "strategy" to null:
 {{
-    "action": {{"tool_name": "...", "params": {{...}}}} or null,
-    "strategy": "strategy_name or null",
+    "action": {{"tool_name": "...", "params": {{...}}}},
+    "strategy": "strategy_name",
     "reasoning": "why this action/inaction",
-    "confidence": 0.0-1.0,
-    "mode_goal_achieved": true/false,
+    "confidence": 0.5,
+    "mode_goal_achieved": false,
     "citations": [{{"title": "...", "url": "..."}}]
 }}
 """
