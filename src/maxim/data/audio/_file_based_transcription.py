@@ -67,16 +67,18 @@ def watch_and_transcribe(
     language: str = "en",
     beam_size: int = 1,
     vad_filter: bool = True,
+    vad_parameters: dict | None = None,
     cleanup_chunks: bool = True,
     verbosity: int = 0,
     log_file: str | None = None,
     shutdown_file: str | None = None,
+    cuda_devices: str | None = None,
 ) -> None:
     """
     Watch chunk_dir for .task files and transcribe them.
 
-    This function runs in a subprocess with CUDA_VISIBLE_DEVICES="" set,
-    completely isolated from the parent's TensorFlow+CUDA state.
+    This function runs in a subprocess. If cuda_devices is provided and device="cuda",
+    it will restore GPU visibility before importing CTranslate2.
 
     Args:
         chunk_dir: Directory to watch for task files
@@ -91,7 +93,20 @@ def watch_and_transcribe(
         verbosity: Logging level
         log_file: Optional log file path
         shutdown_file: Optional file path to signal shutdown
+        cuda_devices: Original CUDA_VISIBLE_DEVICES to restore for GPU mode
     """
+    # CRITICAL: Restore GPU visibility BEFORE any CUDA imports if using GPU
+    # The parent may have hidden GPUs for TensorFlow/GStreamer compatibility,
+    # but Whisper (CTranslate2) can use GPU independently
+    if device == "cuda":
+        # Restore GPU visibility - use provided value or default to "0" (first GPU)
+        gpu_devices = cuda_devices if cuda_devices else "0"
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_devices
+        # Also clear the CPU-only flag in case it was inherited
+        os.environ.pop("MAXIM_TRANSCRIPTION_WORKER_CPU_ONLY", None)
+    elif device == "cpu":
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
     import logging
 
     from maxim.data.audio.sound import transcribe_audio
@@ -101,12 +116,17 @@ def watch_and_transcribe(
     configure_logging(int(verbosity or 0), log_file=log_file)
     log = logging.getLogger("maxim.transcribe")
 
-    log.info(f"File-based transcription worker starting")
+    log.info("File-based transcription worker starting")
     log.info(f"Watching directory: {chunk_dir}")
-    log.info(f"Device: {device}, Compute type: {compute_type}")
-    log.debug(f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<not set>')}")
+    log.info(f"Requested device: {device}, Compute type: {compute_type}")
+    log.info(f"cuda_devices param received: {cuda_devices!r}")
+    log.info(f"CUDA_VISIBLE_DEVICES now set to: {os.environ.get('CUDA_VISIBLE_DEVICES', '<not set>')!r}")
 
-    # Initialize Whisper model
+    # Initialize Whisper model with fallback to CPU
+    transcriber = None
+    actual_device = device
+    actual_compute = compute_type
+
     try:
         transcriber = WhisperTranscriber(
             model_size_or_path=model_size_or_path,
@@ -115,8 +135,26 @@ def watch_and_transcribe(
         )
         log.info(f"✅ Whisper initialized on {device} with {compute_type}")
     except Exception as e:
-        warn(f"Failed to initialize Whisper: {e}", logger=log)
-        return
+        if device == "cuda":
+            # CUDA failed - fall back to CPU with float32
+            log.warning(f"CUDA initialization failed: {e}")
+            log.info("Falling back to CPU with float32...")
+            try:
+                os.environ["CUDA_VISIBLE_DEVICES"] = ""
+                actual_device = "cpu"
+                actual_compute = "float32"
+                transcriber = WhisperTranscriber(
+                    model_size_or_path=model_size_or_path,
+                    device="cpu",
+                    compute_type="float32",
+                )
+                log.info(f"✅ Whisper initialized on CPU with float32 (fallback)")
+            except Exception as e2:
+                warn(f"Failed to initialize Whisper on CPU fallback: {e2}", logger=log)
+                return
+        else:
+            warn(f"Failed to initialize Whisper: {e}", logger=log)
+            return
 
     # Create output directory
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
@@ -126,13 +164,34 @@ def watch_and_transcribe(
 
     log.info("Entering file watch loop...")
 
+    # Handle signals gracefully to ensure file is synced before exit
+    shutdown_requested = False
+    def _signal_handler(signum, frame):
+        nonlocal shutdown_requested
+        log.info(f"Received signal {signum}, requesting shutdown")
+        shutdown_requested = True
+
+    import signal
+    try:
+        signal.signal(signal.SIGTERM, _signal_handler)
+        signal.signal(signal.SIGINT, _signal_handler)
+    except Exception:
+        pass  # Signal handling may not work in all contexts
+
     with open(output_path, "a", encoding="utf-8") as fp:
         while True:
-            # Check for shutdown signal
-            if shutdown_file and os.path.exists(shutdown_file):
-                log.info(f"Shutdown signal detected: {shutdown_file}")
+            # Check for shutdown signal (file or signal)
+            if shutdown_requested or (shutdown_file and os.path.exists(shutdown_file)):
+                log.info("Shutdown signal detected")
+                if shutdown_file:
+                    try:
+                        os.remove(shutdown_file)
+                    except Exception:
+                        pass
+                # Final sync before exit
                 try:
-                    os.remove(shutdown_file)
+                    fp.flush()
+                    os.fsync(fp.fileno())
                 except Exception:
                     pass
                 break
@@ -175,6 +234,7 @@ def watch_and_transcribe(
                         language=language,
                         beam_size=beam_size,
                         vad_filter=vad_filter,
+                        vad_parameters=vad_parameters,
                     )
                     elapsed = time.time() - started
 
@@ -185,6 +245,7 @@ def watch_and_transcribe(
 
                     fp.write(json.dumps(result) + "\n")
                     fp.flush()
+                    os.fsync(fp.fileno())  # Force OS to write to disk immediately
 
                     log.debug(f"Transcribed chunk {task.get('chunk_index', -1)} in {elapsed:.2f}s: \"{result.get('text', '')[:50]}...\"")
 
@@ -209,5 +270,11 @@ def watch_and_transcribe(
             # Sleep if no work found
             if not found_work:
                 time.sleep(0.1)
+
+    # Final filesystem sync to ensure all data is on disk
+    try:
+        os.sync()
+    except Exception:
+        pass
 
     log.info("Transcription worker shutting down")
