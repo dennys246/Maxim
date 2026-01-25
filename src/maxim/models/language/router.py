@@ -66,6 +66,11 @@ _PROFILE_ALIASES: dict[str, str] = {
     "gemma": "gemma-2b-it",
     "gemma-2b": "gemma-2b-it",
     "gemma-7b": "gemma-7b-it",
+    # PyTorch/Transformers variants (for Blackwell GPU support)
+    "smollm-torch": "smollm-1.7b-instruct-torch",
+    "mistral-torch": "mistral-7b-instruct-torch",
+    "llama3-torch": "llama3-8b-instruct-torch",
+    "phi3-torch": "phi3-mini-torch",
 }
 
 _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
@@ -148,6 +153,43 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "gemma",
         "stop": ["<end_of_turn>"],
         "n_ctx": 8192,
+    },
+    # PyTorch/Transformers profiles (for Blackwell GPU support)
+    "smollm-1.7b-instruct-torch": {
+        "backend": "pytorch",
+        "model": "smollm-1.7b-instruct",
+        "model_base": "HuggingFaceTB/SmolLM-1.7B-Instruct",
+        "prompt_style": "chatml",
+        "stop": ["<|im_end|>"],
+        "n_ctx": 2048,
+        "quantization": "F16",
+    },
+    "mistral-7b-instruct-torch": {
+        "backend": "pytorch",
+        "model": "mistral-7b-instruct-v0.2",
+        "model_base": "mistralai/Mistral-7B-Instruct-v0.2",
+        "prompt_style": "mistral_instruct",
+        "stop": ["</s>"],
+        "n_ctx": 4096,
+        "quantization": "F16",
+    },
+    "llama3-8b-instruct-torch": {
+        "backend": "pytorch",
+        "model": "llama-3-8b-instruct",
+        "model_base": "meta-llama/Meta-Llama-3-8B-Instruct",
+        "prompt_style": "llama3_instruct",
+        "stop": ["<|eot_id|>"],
+        "n_ctx": 8192,
+        "quantization": "F16",
+    },
+    "phi3-mini-torch": {
+        "backend": "pytorch",
+        "model": "phi-3-mini-4k-instruct",
+        "model_base": "microsoft/Phi-3-mini-4k-instruct",
+        "prompt_style": "phi3",
+        "stop": ["<|end|>"],
+        "n_ctx": 4096,
+        "quantization": "F16",
     },
 }
 
@@ -529,6 +571,34 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
     raw = str(text or "").strip()
     if not raw:
         return None
+
+    # Detect commentary patterns - LLM is explaining instead of outputting JSON
+    commentary_patterns = [
+        "the provided",
+        "the answer",
+        "to answer",
+        "i will",
+        "i would",
+        "here is",
+        "here's",
+        "let me",
+        "this is",
+        "the question",
+        "the response",
+        "as requested",
+        "the json",
+        "valid json",
+        "the format",
+        "to create",
+        "we can",
+        "you can",
+    ]
+    raw_lower = raw.lower()
+    for pattern in commentary_patterns:
+        if raw_lower.startswith(pattern):
+            # LLM is commenting, not outputting JSON
+            return None
+
     raw = raw.replace("```json", "```").replace("```JSON", "```")
     if "```" in raw:
         parts = raw.split("```")
@@ -692,6 +762,15 @@ class LLMRouter:
                 self._backend = _LlamaCppBackend(self.cfg)
                 return self._backend
 
+            # PyTorch/Transformers backend (for Blackwell GPU support)
+            if backend in ("pytorch", "torch", "transformers", "huggingface", "hf"):
+                from maxim.models.language.transformers_backend import (
+                    _PyTorchTransformersBackend,
+                )
+
+                self._backend = _PyTorchTransformersBackend(self.cfg)
+                return self._backend
+
             warn("Unknown LLM backend: %s", backend)
             self._backend = LLMRouter._INIT_FAILED
             return None
@@ -775,8 +854,27 @@ Return JSON exactly like:
         if backend is None:
             return None
 
+        # Two-stage approach for ANSWER_ONLY prompts
+        # Stage 1: Get plain text answer (easier for small models)
+        # Stage 2: Wrap in JSON programmatically
+        if prompt.startswith("ANSWER_ONLY|"):
+            question = prompt[len("ANSWER_ONLY|"):].strip()
+            return self._generate_answer_only(backend, question, temperature, max_tokens)
+
+        # Tool-aware prompt with full context
+        if prompt.startswith("TOOL_PROMPT|"):
+            tool_prompt = prompt[len("TOOL_PROMPT|"):].strip()
+            return self._generate_tool_response(backend, tool_prompt, temperature, max_tokens)
+
+        # Standard JSON generation path
         # Wrap prompt in the appropriate format for this model (ChatML, Mistral, etc.)
-        system = "You are a helpful robot assistant. Always respond with valid JSON only, no other text."
+        # Use a strict system prompt that works with local models
+        system = (
+            "You are a JSON-only response system. "
+            "Output ONLY valid JSON. No explanations, no code, no markdown. "
+            "If the user prompt contains partial JSON, complete it. "
+            "Never explain how to create JSON - just output the JSON directly."
+        )
         wrapped_prompt = _build_prompt(self.cfg, system, prompt)
 
         try:
@@ -796,5 +894,161 @@ Return JSON exactly like:
         if not isinstance(obj, dict):
             warn("LLM returned non-dict: %s (raw text was: %s)", type(obj), text[:100] if text else "empty")
             return None
+
+        return obj
+
+    def _generate_answer_only(
+        self,
+        backend: Any,
+        question: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> dict[str, Any] | None:
+        """Two-stage answer generation: get plain text, then wrap in JSON.
+
+        This approach works better with small local models that struggle
+        with JSON formatting instructions.
+        """
+        # Stage 1: Ask for a plain text answer (no JSON complexity)
+        system = (
+            "You are Maxim, a helpful robot assistant. "
+            "Answer the user's question directly and concisely. "
+            "Give only the answer, no explanations or preamble."
+        )
+        user = f"Question: {question}\nAnswer:"
+        wrapped_prompt = _build_prompt(self.cfg, system, user)
+
+        try:
+            text = backend.complete(
+                wrapped_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stop=tuple(getattr(self.cfg, "stop", ("</s>",))),
+            )
+        except Exception as e:
+            warn("LLM answer_only failed: %s", e)
+            return None
+
+        if not text or not text.strip():
+            warn("LLM returned empty answer for question: %s", question)
+            return None
+
+        # Clean up the answer
+        answer = text.strip()
+
+        # Remove common prefixes the LLM might add
+        prefixes_to_remove = [
+            "answer:", "the answer is:", "response:", "here is the answer:",
+            "a:", "q:", "the answer:",
+        ]
+        answer_lower = answer.lower()
+        for prefix in prefixes_to_remove:
+            if answer_lower.startswith(prefix):
+                answer = answer[len(prefix):].strip()
+                break
+
+        # Note: Response length is controlled by max_tokens in config
+        # No truncation here - let the full response through
+
+        warn("LLM answer_only response: %s", answer[:500] if len(answer) > 500 else answer)
+
+        # Stage 2: Wrap in JSON programmatically (no LLM needed)
+        # Escape the answer for JSON
+        escaped_answer = answer.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+        return {
+            "action": {
+                "tool_name": "respond",
+                "params": {"message": escaped_answer},
+            },
+            "reasoning": "answer_only",
+            "confidence": 0.85,
+            "mode_goal_achieved": False,
+        }
+
+    def _generate_tool_response(
+        self,
+        backend: Any,
+        tool_prompt: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> dict[str, Any] | None:
+        """Generate a tool-aware response with full context.
+
+        This method handles complex prompts that include:
+        - Mode context and goals
+        - Available tools
+        - Percepts and observations
+        - Agent states
+
+        Returns a structured response with action, reasoning, and optional next_actions.
+        """
+        # Use a system prompt optimized for tool selection
+        system = (
+            "You are Maxim, an intelligent robot assistant. "
+            "You MUST respond with valid JSON only. No explanations outside JSON. "
+            "Select the most appropriate tool based on the context and user request. "
+            "If unsure, use 'respond' to communicate with the user."
+        )
+
+        # Build the full prompt
+        user = f"""{tool_prompt}
+
+Respond with JSON:
+{{"action": {{"tool_name": "...", "params": {{...}}}}, "reasoning": "...", "confidence": 0.0-1.0}}"""
+
+        wrapped_prompt = _build_prompt(self.cfg, system, user)
+
+        try:
+            text = backend.complete(
+                wrapped_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stop=tuple(getattr(self.cfg, "stop", ("</s>",))),
+            )
+            if text:
+                warn("LLM tool_response raw (first 300 chars): %s", text[:300] if len(text) > 300 else text)
+        except Exception as e:
+            warn("LLM tool_response failed: %s", e)
+            return None
+
+        if not text or not text.strip():
+            warn("LLM returned empty tool response")
+            return None
+
+        # Extract JSON from response
+        obj = _extract_json_object(text)
+        if not isinstance(obj, dict):
+            warn("LLM tool_response returned non-dict: %s", type(obj))
+            # Try to salvage by wrapping raw text in respond
+            clean_text = text.strip()[:500]
+            if clean_text:
+                return {
+                    "action": {
+                        "tool_name": "respond",
+                        "params": {"message": clean_text},
+                    },
+                    "reasoning": "fallback_parse",
+                    "confidence": 0.5,
+                    "mode_goal_achieved": False,
+                }
+            return None
+
+        # Validate action structure
+        action = obj.get("action")
+        if action and isinstance(action, dict):
+            if "tool_name" not in action:
+                # Try to extract tool_name from flat structure
+                if "tool_name" in obj:
+                    action = {"tool_name": obj["tool_name"], "params": obj.get("params", {})}
+                    obj["action"] = action
+
+        # Ensure required fields
+        if "confidence" not in obj:
+            obj["confidence"] = 0.7
+        if "reasoning" not in obj:
+            obj["reasoning"] = ""
+        if "mode_goal_achieved" not in obj:
+            obj["mode_goal_achieved"] = False
 
         return obj
