@@ -28,6 +28,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# llama.cpp backend (CPU/GPU via llama-cpp-python)
+llm-llama = [
+    "llama-cpp-python>=0.2.20",
+]
+# PyTorch/Transformers backend (for Blackwell GPU support)
+llm-torch = [
+    "torch>=2.1",
+    "transformers>=4.40.0",
+    "accelerate>=0.27.0",
+    "bitsandbytes>=0.43.0",
+    "sentencepiece>=0.2.0",
+    "huggingface-hub>=0.24.0",
+]
+# Legacy alias
 llm = [
     "llama-cpp-python>=0.2.20",
 ]
@@ -36,6 +50,11 @@ tts = [
 ]
 all = [
     "llama-cpp-python>=0.2.20",
+    "transformers>=4.40.0",
+    "accelerate>=0.27.0",
+    "bitsandbytes>=0.43.0",
+    "sentencepiece>=0.2.0",
+    "huggingface-hub>=0.24.0",
     "piper-tts>=1.2.0",
 ]
 
