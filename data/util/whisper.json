@@ -1,0 +1,127 @@
+{
+  "enabled": true,
+  "model": "large-v3",
+  "device": "auto",
+  "compute_type": "int8",
+  "language": "en",
+  "beam_size": 3,
+  "vad_filter": true,
+  "cleanup_chunks": true,
+
+  "_vad_comment": "VAD (Voice Activity Detection) parameters - tune these if speech is being filtered out",
+  "vad_threshold": 0.25,
+  "vad_min_speech_duration_ms": 100,
+  "vad_min_silence_duration_ms": 1500,
+  "vad_speech_pad_ms": 300,
+
+  "_comment": "Available models and their characteristics",
+  "models": {
+    "tiny": {
+      "description": "Fastest, lowest accuracy (39M params)",
+      "vram_int8": "75 MB",
+      "vram_float16": "150 MB",
+      "speed": "32x",
+      "accuracy": "low"
+    },
+    "tiny.en": {
+      "description": "English-only tiny model, slightly better for English",
+      "vram_int8": "75 MB",
+      "vram_float16": "150 MB",
+      "speed": "32x",
+      "accuracy": "low"
+    },
+    "base": {
+      "description": "Fast with decent accuracy (74M params)",
+      "vram_int8": "150 MB",
+      "vram_float16": "290 MB",
+      "speed": "16x",
+      "accuracy": "medium-low"
+    },
+    "base.en": {
+      "description": "English-only base model",
+      "vram_int8": "150 MB",
+      "vram_float16": "290 MB",
+      "speed": "16x",
+      "accuracy": "medium-low"
+    },
+    "small": {
+      "description": "Good balance of speed and accuracy (244M params)",
+      "vram_int8": "500 MB",
+      "vram_float16": "970 MB",
+      "speed": "6x",
+      "accuracy": "medium"
+    },
+    "small.en": {
+      "description": "English-only small model",
+      "vram_int8": "500 MB",
+      "vram_float16": "970 MB",
+      "speed": "6x",
+      "accuracy": "medium"
+    },
+    "medium": {
+      "description": "High accuracy, slower (769M params)",
+      "vram_int8": "1.5 GB",
+      "vram_float16": "3 GB",
+      "speed": "2x",
+      "accuracy": "high"
+    },
+    "medium.en": {
+      "description": "English-only medium model",
+      "vram_int8": "1.5 GB",
+      "vram_float16": "3 GB",
+      "speed": "2x",
+      "accuracy": "high"
+    },
+    "large-v3": {
+      "description": "Highest accuracy, slowest (1550M params)",
+      "vram_int8": "3 GB",
+      "vram_float16": "6 GB",
+      "speed": "1x",
+      "accuracy": "highest"
+    },
+    "distil-large-v3": {
+      "description": "Distilled large-v3: near-best accuracy at 6x speed (756M params) - RECOMMENDED",
+      "vram_int8": "800 MB",
+      "vram_float16": "1.5 GB",
+      "speed": "6x",
+      "accuracy": "high"
+    },
+    "distil-medium.en": {
+      "description": "Distilled medium, English-only, very fast",
+      "vram_int8": "400 MB",
+      "vram_float16": "800 MB",
+      "speed": "8x",
+      "accuracy": "medium-high"
+    }
+  },
+
+  "_comment2": "Compute type options",
+  "compute_types": {
+    "int8": "Fastest on CPU, good GPU performance (default)",
+    "int8_float16": "int8 weights with float16 compute (GPU only)",
+    "float16": "Standard GPU precision, more accurate than int8",
+    "float32": "Full precision, required for some CPUs/GPUs"
+  },
+
+  "_comment3": "Device options",
+  "devices": {
+    "auto": "Automatically detect best device",
+    "cpu": "Force CPU (slower but always works)",
+    "cuda": "Force NVIDIA GPU (requires CUDA)"
+  },
+
+  "_comment4": "Other options",
+  "options": {
+    "beam_size": "1-5, higher = more accurate but slower (default: 1)",
+    "vad_filter": "Remove silence before transcription (default: true)",
+    "language": "Language code: en, es, fr, de, etc. or 'auto' for detection"
+  },
+
+  "_comment5": "VAD (Voice Activity Detection) tuning - adjust if speech is being incorrectly filtered",
+  "vad_options": {
+    "vad_threshold": "0.0-1.0, lower = more sensitive to speech (default Silero: 0.5, we use 0.25)",
+    "vad_min_speech_duration_ms": "Minimum speech segment length in ms (default: 250, we use 100)",
+    "vad_min_silence_duration_ms": "Minimum silence before splitting segments (default: 2000, we use 1500)",
+    "vad_speech_pad_ms": "Padding around detected speech in ms (default: 400, we use 300)"
+  }
+}
