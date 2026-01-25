@@ -1,7 +1,21 @@
 {
   "enabled": true,
-  "profile": "smollm-1.7b-instruct",
+  "profile": "phi-3-mini-4k-instruct",
+  "max_tokens": 512,
+  "temperature": 0.0,
+  "quantization": "int4",
+  "prompts_dir": "data/prompts",
   "profiles": {
+    "phi-3-mini-4k-instruct": {
+      "backend": "llama_cpp",
+      "model_path": "data/models/LLM/Phi-3-mini-4k-instruct-q4.gguf",
+      "prompt_style": "chatml",
+      "stop": [
+        "<|end|>",
+        "<|endoftext|>"
+      ],
+      "n_ctx": 4096
+    },
     "mistral-7b-instruct-v0.2": {
       "backend": "llama_cpp",
       "model_path": "data/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
@@ -22,6 +36,47 @@
       "n_ctx": 4096
     }
   },
-  "max_tokens": 512,
-  "temperature": 0.0
+  "mode_response_config": {
+    "_comment": "Per-mode response configuration for dynamic context windows",
+    "observe": {
+      "max_response_tokens": 128,
+      "context_window_tokens": 512,
+      "response_format": "minimal"
+    },
+    "sleep": {
+      "max_response_tokens": 64,
+      "context_window_tokens": 256,
+      "response_format": "minimal"
+    },
+    "exploration": {
+      "max_response_tokens": 256,
+      "context_window_tokens": 1024,
+      "response_format": "brief"
+    },
+    "live": {
+      "max_response_tokens": 512,
+      "context_window_tokens": 2048,
+      "response_format": "conversational"
+    },
+    "active-assistance": {
+      "max_response_tokens": 768,
+      "context_window_tokens": 2048,
+      "response_format": "detailed"
+    },
+    "reflection": {
+      "max_response_tokens": 1024,
+      "context_window_tokens": 3072,
+      "response_format": "detailed"
+    },
+    "train": {
+      "max_response_tokens": 512,
+      "context_window_tokens": 2048,
+      "response_format": "conversational"
+    },
+    "research": {
+      "max_response_tokens": 2048,
+      "context_window_tokens": 4096,
+      "response_format": "academic"
+    }
+  }
 }
