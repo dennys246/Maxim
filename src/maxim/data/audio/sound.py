@@ -44,6 +44,7 @@ def transcribe_audio(
     language: str = "en",
     beam_size: int = 1,
     vad_filter: bool = True,
+    vad_parameters: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Transcribe a chunk of audio using the configured Whisper transcriber.
@@ -62,6 +63,7 @@ def transcribe_audio(
         language=str(language or "en"),
         beam_size=int(beam_size or 1),
         vad_filter=bool(vad_filter),
+        vad_parameters=vad_parameters,
     )
     if not isinstance(result, dict):
         return {"text": str(result)}
@@ -78,6 +80,7 @@ def transcription_worker(
     language: str = "en",
     beam_size: int = 1,
     vad_filter: bool = True,
+    vad_parameters: dict[str, Any] | None = None,
     cleanup_chunks: bool = True,
     verbosity: int = 0,
     log_file: str | None = None,
@@ -199,6 +202,12 @@ def transcription_worker(
             if task is None:
                 if log:
                     log.debug("Received sentinel (None), exiting worker")
+                # Final sync before exit
+                try:
+                    fp.flush()
+                    os.fsync(fp.fileno())
+                except Exception:
+                    pass
                 break
 
             if not isinstance(task, dict):
@@ -220,6 +229,7 @@ def transcription_worker(
                     language=language,
                     beam_size=beam_size,
                     vad_filter=vad_filter,
+                    vad_parameters=vad_parameters,
                 )
                 record: dict[str, Any] = {
                     "time": time.time(),
@@ -236,6 +246,7 @@ def transcription_worker(
                 }
                 fp.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
                 fp.flush()
+                os.fsync(fp.fileno())  # Force OS to write to disk immediately
             except Exception as e:
                 warn("Transcription failed for '%s': %s", chunk_path, e, logger=log)
             finally:
@@ -244,3 +255,9 @@ def transcription_worker(
                         os.remove(chunk_path)
                     except Exception:
                         pass
+
+    # Final filesystem sync to ensure all data is on disk before worker exits
+    try:
+        os.sync()
+    except Exception:
+        pass
