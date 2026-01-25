@@ -26,9 +26,10 @@ VALID_MODES = frozenset(
         "active-assistance",
         "active_assistance",
         "sleep",
-        "live",
+        "live",  # Supports agent-defined intent via LiveModeIntentStore
         "train",
         "exploration",
+        "research",
     }
 )
 
