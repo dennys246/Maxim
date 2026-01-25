@@ -1,7 +1,14 @@
 from __future__ import annotations
 
-# CRITICAL: Detect Blackwell GPU and hide CUDA BEFORE any other imports
-# This must happen at module load time to prevent TensorFlow from initializing CUDA
+# CRITICAL: Detect Blackwell GPU and force CPU-only mode BEFORE any other imports
+# Blackwell GPUs (RTX 50 series, sm_120 / compute capability 12.0) cause GStreamer crashes:
+#
+# The reachy_mini SDK uses WebRTC/GStreamer for video streaming, and GLib.MainLoop
+# crashes in native code when CUDA is active on Blackwell GPUs. This appears to be
+# a driver/GStreamer incompatibility that cannot be worked around.
+#
+# Solution: Force CPU-only mode by hiding all GPUs from CUDA
+# See: github_issue.md for details on reporting this to pollen-robotics
 import os
 import subprocess
 import sys
@@ -16,13 +23,17 @@ try:
         gpu_names = result.stdout.strip().lower()
         if 'rtx 50' in gpu_names or '5080' in gpu_names or '5090' in gpu_names:
             _blackwell_detected = True
+            # CRITICAL: Hide CUDA from ALL libraries to prevent GStreamer crash
+            # This forces CPU-only mode for PyTorch, TensorFlow, and GStreamer
             os.environ['CUDA_VISIBLE_DEVICES'] = ''
-            # Print to stderr since logging not yet configured
-            print("⚠️  Blackwell GPU detected - CUDA disabled before imports", file=sys.stderr)
+            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TF warnings
+            os.environ['GST_CUDA_NO_CUDA'] = '1'  # Disable GStreamer CUDA
+
+            print("Blackwell GPU detected - forcing CPU-only mode (GStreamer/CUDA incompatibility)", file=sys.stderr)
 except Exception:
     pass
 
-# NOW import everything else (TensorFlow will see no GPUs if Blackwell detected)
+# Import everything else
 import argparse
 import logging
 import time
@@ -210,6 +221,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="List available exploration sessions and exit.",
     )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear Python bytecode cache (__pycache__) before running.",
+    )
     return parser
 
 
@@ -301,34 +317,32 @@ def _check_gpu_status(logger: logging.Logger) -> None:
     """
     import os
 
-    # Check if GPU is intentionally disabled (including Blackwell auto-detection)
+    # Check if GPU is globally disabled
     cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
     if cuda_visible == "":
-        if _blackwell_detected:
-            logger.warning("⚠️  Blackwell GPU detected - TensorFlow CUDA disabled")
-            logger.info("   (Transcription worker will use CPU-only CTranslate2)")
-        else:
-            logger.warning("⚠️  GPU acceleration disabled (CUDA_VISIBLE_DEVICES=\"\")")
+        logger.warning("GPU acceleration disabled (CUDA_VISIBLE_DEVICES=\"\")")
         logger.info("Running in CPU-only mode")
         return
 
-    # Check TensorFlow GPU
+    # Check TensorFlow GPU (may be empty if Blackwell detected)
     tf_gpus = []
     tf_gpu_info = []
+    tf_on_cpu = False
     try:
         import tensorflow as tf
 
-        if not blackwell_detected:
-            tf_gpus = tf.config.list_physical_devices('GPU')
-            if tf_gpus:
-                for gpu in tf_gpus:
-                    try:
-                        # Get GPU details
-                        gpu_details = tf.config.experimental.get_device_details(gpu)
-                        gpu_name = gpu_details.get('device_name', 'Unknown GPU')
-                        tf_gpu_info.append(gpu_name)
-                    except Exception:
-                        tf_gpu_info.append(str(gpu).split(":")[-1].rstrip("'"))
+        # Check visible devices (respects set_visible_devices configuration)
+        tf_gpus = tf.config.get_visible_devices('GPU')
+        if not tf_gpus and _blackwell_detected:
+            tf_on_cpu = True  # TensorFlow GPU disabled for Blackwell
+        elif tf_gpus:
+            for gpu in tf_gpus:
+                try:
+                    gpu_details = tf.config.experimental.get_device_details(gpu)
+                    gpu_name = gpu_details.get('device_name', 'Unknown GPU')
+                    tf_gpu_info.append(gpu_name)
+                except Exception:
+                    tf_gpu_info.append(str(gpu).split(":")[-1].rstrip("'"))
     except Exception:
         pass
 
@@ -350,24 +364,31 @@ def _check_gpu_status(logger: logging.Logger) -> None:
         pass
 
     # Log status
-    if tf_gpus or torch_gpus:
-        logger.info("✅ GPU acceleration enabled")
+    if torch_gpus:
+        logger.info("✅ GPU acceleration enabled (PyTorch)")
+        logger.info(f"   PyTorch detected {torch_gpus} GPU(s):")
+        for i, info in enumerate(torch_gpu_info):
+            logger.info(f"     [{i}] {info}")
 
-        if tf_gpus:
-            logger.info(f"   TensorFlow detected {len(tf_gpus)} GPU(s):")
-            for i, info in enumerate(tf_gpu_info):
-                logger.info(f"     [{i}] {info}")
-
-        if torch_gpus:
-            logger.info(f"   PyTorch detected {torch_gpus} GPU(s):")
-            for i, info in enumerate(torch_gpu_info):
-                logger.info(f"     [{i}] {info}")
+        if tf_on_cpu:
+            logger.info("   TensorFlow: CPU mode (Blackwell GPU not supported by TF 2.20)")
+        elif tf_gpus:
+            logger.info(f"   TensorFlow detected {len(tf_gpus)} GPU(s)")
+    elif tf_gpus:
+        logger.info("✅ GPU acceleration enabled (TensorFlow)")
+        logger.info(f"   TensorFlow detected {len(tf_gpus)} GPU(s):")
+        for i, info in enumerate(tf_gpu_info):
+            logger.info(f"     [{i}] {info}")
     else:
-        logger.warning("⚠️  No GPU detected - running in CPU-only mode")
-        logger.info("   For GPU support, ensure:")
-        logger.info("   - NVIDIA drivers are installed (570+)")
-        logger.info("   - CUDA-compatible GPU is available")
-        logger.info("   - tensorflow[and-cuda] is installed")
+        if _blackwell_detected:
+            logger.info("Running in CPU-only mode (Blackwell GPU workaround)")
+            logger.info("   RTX 5080/5090 detected but CUDA disabled to avoid GStreamer crash")
+            logger.info("   See github_issue.md for details on this reachy_mini SDK issue")
+        else:
+            logger.warning("No GPU detected - running in CPU-only mode")
+            logger.info("   For GPU support, ensure:")
+            logger.info("   - NVIDIA drivers are installed (570+)")
+            logger.info("   - CUDA-compatible GPU is available")
 
 
 def _configure_cpu_fallback_model(logger: logging.Logger) -> None:
@@ -435,10 +456,48 @@ def _reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
     os.execv(sys.executable, argv)
 
 
+def _clear_python_cache(base_dir: str | None = None) -> int:
+    """Clear Python bytecode cache (__pycache__ directories and .pyc files).
+
+    Returns the number of cache directories removed.
+    """
+    import shutil
+    from pathlib import Path
+
+    if base_dir is None:
+        # Default to src/maxim directory
+        base_dir = str(Path(__file__).parent)
+
+    base_path = Path(base_dir)
+    removed = 0
+
+    # Remove __pycache__ directories
+    for cache_dir in base_path.rglob("__pycache__"):
+        try:
+            shutil.rmtree(cache_dir)
+            removed += 1
+        except Exception:
+            pass
+
+    # Remove any stray .pyc files
+    for pyc_file in base_path.rglob("*.pyc"):
+        try:
+            pyc_file.unlink()
+        except Exception:
+            pass
+
+    return removed
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     _normalize_args(args)
+
+    # Clear Python cache if requested
+    if bool(getattr(args, "clear_cache", False)):
+        removed = _clear_python_cache()
+        print(f"Cleared {removed} __pycache__ director{'y' if removed == 1 else 'ies'}.", file=sys.stderr)
 
     build_home(args.home_dir)
     mode = str(getattr(args, "mode", "exploration")).strip().lower()
