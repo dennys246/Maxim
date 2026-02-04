@@ -1,633 +1,504 @@
-# ------- | Maxim | -------
+# Maxim
 
-A Reachy Mini repo for orchestrating data streaming to and from a PC and Reachy Mini to orchestrate agents and models.
+An agentic robotics framework for orchestrating Reachy Mini with multi-level goal decomposition, local LLM inference, and adaptive planning.
 
-## - Getting Started with Maxim
+## Overview
 
-Run the Reachy Mini daemon on the robot, then run `maxim` from any computer on the same LAN/Wi‑Fi (Zenoh peer discovery).
+Maxim provides:
+- **Robotic control** via Pollen Robotics' Reachy Mini SDK (vision, audio, motor control)
+- **Agentic runtime** with recursive goal decomposition and reflection loops
+- **Local LLM inference** via llama.cpp (no cloud dependencies)
+- **Multi-modal perception** using YOLO vision and Whisper transcription
+- **Low-compute optimization** with prompt profiles for CPU-only and GPU systems
 
-```bash
-ssh pollen@<INSERT YOUR REACHY IP>
-```
+## Features
 
-Then enter the default password 'root' if first logging on or the unique password you reset it too.
+| Feature | Description |
+|---------|-------------|
+| **Recursive Planning** | Multi-level goal decomposition with dynamic re-planning |
+| **Parallel Execution** | Independent sub-goals run concurrently with thread pools |
+| **Reflection Loops** | Post-execution evaluation with adaptive course correction |
+| **Prompt Profiles** | `minimal`, `standard`, `rich` profiles for different hardware |
+| **Checkpointing** | Persist and resume goal trees across restarts |
+| **FearAgent** | Safety review for sensitive operations before execution |
+| **Voice Control** | Wake-word activation and voice-triggered actions |
 
-Stop the process if something is using it.
+---
 
-```bash
-sudo systemctl stop reachy-mini-daemon
-```
+## Getting Started
 
-Check to see if you can start a new daemon process
+### Prerequisites
 
-```bash
-source /venvs/mini_daemon/bin/activate
-python -m reachy_mini.daemon.app.main --wireless-version --no-localhost-only
-```
+1. **Reachy Mini** on the same LAN/Wi-Fi (Zenoh peer discovery)
+2. **Python 3.10+** with virtual environment
+3. Follow Pollen Robotics' [SDK installation guide](https://github.com/pollen-robotics/reachy_mini/blob/develop/docs/SDK/installation.md)
 
-On your controller computer clone this repo into a folder of your choosing
+### Installation
 
 ```bash
 git clone https://github.com/dennys246/Maxim.git
-```
-
-Before installing the `maxim` library, follow Pollen Robotics' Reachy Mini SDK installation guide for your OS: https://github.com/pollen-robotics/reachy_mini/blob/develop/docs/SDK/installation.md.
-
-Prepare a computing environment for running Maxim by creating a new python virtual environment. Avoid installing requirements into a virtual environment you typically use for machine learning as it may mess up your tensorflow or pytorch dependencies and how your GPU is handled.
-
-```bash
 cd Maxim
 python -m venv maxim-env
 source maxim-env/bin/activate
 pip install -e .
 ```
 
-If you previously installed an older version, re-run `pip install -e .` to refresh the `maxim` command.
+For LLM features:
+```bash
+pip install -e '.[llm]'
+./scripts/download_models.sh --llm --enable
+```
 
-After `pip install -e .`, run the `maxim` command (from anywhere in that environment) to initiate basic observation using Ultralytics incredibly efficient YOLO8 model. This dynamically find objects of interest and center the Reach Mini vision on them. Audio is recorded is transcribed when enabled.
+### Running Maxim
 
 ```bash
+# Default exploration mode
 maxim
+
+# With agentic runtime and LLM
+maxim --mode agentic --language-model mistral-7b
+
+# Specify prompt profile for low-compute systems
+maxim --mode agentic --prompt-profile minimal
 ```
 
-NOTE: You can also set `MAXIM_ROBOT_NAME=reachy_mini` and run `maxim`.
-By default Maxim runs indefinitely; use `--epochs N` to stop after N cycles.
+### Reachy Mini Setup
 
-Legacy entrypoint (still supported when running from a cloned checkout):
+SSH into your Reachy and start the daemon:
 
 ```bash
-python scripts/main.py
+ssh pollen@<REACHY_IP>
+sudo systemctl stop reachy-mini-daemon
+source /venvs/mini_daemon/bin/activate
+python -m reachy_mini.daemon.app.main --wireless-version --no-localhost-only
 ```
 
-You can also run Maxim straight from a python shell or your own script by importing it (package name: `maxim`)
+---
+
+## Architecture
+
+Maxim follows a strict layered architecture with one-way dependencies:
+
+```
+Agents → Planning → Decision Engine → Runtime → Executor → Tools → Environment → State → Memory
+```
+
+### Core Modules
+
+| Module | Responsibility |
+|--------|---------------|
+| `src/maxim/agents/` | Goal reasoning, intent generation (no side effects) |
+| `src/maxim/planning/` | Plan generation and refinement |
+| `src/maxim/planning/recursive/` | Hierarchical goal decomposition and execution |
+| `src/maxim/tools/` | Tool implementations (side effects) |
+| `src/maxim/environment/` | World observation (no side effects) |
+| `src/maxim/memory/` | Storage and retrieval |
+| `src/maxim/runtime/` | Agentic orchestration loop |
+| `src/maxim/conscience/` | Reachy capture/inference/control loop |
+| `src/maxim/modes/` | Operating mode definitions and strategies |
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design rules.
+
+---
+
+## Operating Modes
+
+| Mode | Description |
+|------|-------------|
+| `exploration` | Novelty-driven active discovery (default) |
+| `live` | Real-time vision and motor control |
+| `agentic` | Full agentic runtime with goal decomposition |
+| `sleep` | Audio-only mode (no wake_up()) |
+| `reflection` | Introspection and memory consolidation |
+| `train` | Model training mode |
+
+```bash
+maxim --mode agentic
+maxim --mode exploration
+maxim --mode sleep
+```
+
+---
+
+## Recursive Planning System
+
+Maxim implements a deeply recursive planning architecture inspired by modern agentic LLMs:
+
+### Goal Tree Structure
+
+Complex goals decompose into hierarchical trees:
+
+```
+ROOT: "Deploy application to staging"
+├── [COMPLETED] "Build Docker image"
+│   └── docker_build(tag="app:v1.2")
+├── [COMPLETED] "Push to registry"
+│   └── docker_push(image="app:v1.2")
+├── [IN_PROGRESS] "Update Kubernetes deployment"
+│   ├── [COMPLETED] kubectl_apply(file="deployment.yaml")
+│   └── [PENDING] kubectl_rollout_status(deployment="app")
+└── [PENDING] "Run smoke tests"
+```
+
+### Key Components
+
+| Component | Description |
+|-----------|-------------|
+| `GoalNode` | Tree node with status, tool assignment, dependencies |
+| `RecursivePlannerAgent` | Decomposes goals via LLM, handles reflection |
+| `RecursiveGoalExecutor` | Parallel-aware tree traversal with cancellation |
+| `GoalTreeConfig` | Budgets, timeouts, reflection policy |
+
+### Configuration
 
 ```python
-from maxim.conscience.selfy import Maxim
+from maxim.planning.recursive import GoalTreeConfig, PROFILE_CONFIGS
 
-maxim = Maxim()
+# Use a preset profile
+config = PROFILE_CONFIGS["standard"]
 
-# Starts the live loop (capture → inference/control → record artifacts)
-maxim.live()
-
-# Stop after N epochs (observation cycles)
-# maxim.live(epochs=100)
-
-# General movement wrapper to the Reachy SDK
-maxim.move(y = 10, yaw = 3)
-
+# Or customize
+config = GoalTreeConfig(
+    max_depth=5,
+    max_llm_calls=20,
+    max_tool_executions=50,
+    enable_parallel=True,
+    max_parallel_workers=4,
+    reflection_policy="on_failure",  # "always", "never", "depth_limited"
+)
 ```
 
-Of course extensions of the Maxim class using the datastreams set up are more than welcomed!
+### Reflection and Re-planning
 
-## Outputs (Default)
+After each significant step, the planner can:
+- **CONTINUE**: Proceed as planned
+- **ADAPT**: Modify remaining plan
+- **RETRY**: Retry failed step with backoff
+- **ABORT**: Abandon goal
+- **ESCALATE**: Ask user for help
 
-Each run writes a timestamped set of artifacts under `data/`:
-- `videos/reachy_video_<YYYY-MM-DD_HHMMSS>.mp4`
-- `audio/reachy_audio_<YYYY-MM-DD_HHMMSS>.wav`
-- `transcript/reachy_transcript_<YYYY-MM-DD_HHMMSS>.jsonl` (when `--audio true` and Whisper is available)
-- `logs/reachy_log_<YYYY-MM-DD_HHMMSS>.log`
-- `training/motor_training_set.jsonl` (append-only log of trainable vision+movement samples)
-- `vision/vision_events_<YYYY-MM-DD_HHMMSS>.jsonl` (agentic runtime vision stream)
+### Checkpointing
 
-Shared model artifacts and weights live under `data/models/` (e.g., `MotorCortex/`, `YOLO/`).
+Goal trees persist across restarts:
 
-## CLI Flags
+```python
+from maxim.planning.recursive import GoalTreePersistence
 
-- `--mode`: `exploration` (default; novelty-driven active discovery), `live`, `train`, `sleep` (audio-only; no `wake_up()`), `agentic` (agentic runtime loop; requires GPU), `reflection` (introspection and memory consolidation)
-- `--verbosity`: `0`, `1`, `2`
-- `--audio`: `True/False` (enables audio recording + transcription)
-- `--audio_len`: seconds per transcription chunk (default `5.0`)
-- `--language-model`: LLM profile name (e.g., `mistral-7b-instruct-v0.2`, `smollm-1.7b-instruct`; lists available on unknown)
-- `--segmentation-model`: vision segmentation model (default `YOLO8`; lists available on unknown)
-- `--interactive`: `True/False` (enable terminal prompt for keyword actions; default `True`)
-- `--memory-path`: agentic memory persistence path (default: `<home_dir>/memory/memories.json`)
-- `--reset`: reset agentic memory on startup
-- `--enable-embeddings`: enable embedding-based memory similarity (requires `sentence-transformers`)
+persistence = GoalTreePersistence("data/plans/checkpoints")
+checkpoint_id = persistence.checkpoint(tree, config, reason="pre_risky_op")
 
-## Keyboard Shortcuts
+# Later: recover
+tree, config, budgets = persistence.recover(checkpoint_id)
+```
 
-While `maxim` is running in a terminal, it listens for single-key presses configured in `data/util/key_responses.json` (or `$MAXIM_KEY_RESPONSES`).
-When `--interactive true`, terminal input switches to line-based commands and single-key mode is disabled (use `--interactive false` to restore single-key behavior).
+---
 
-Default:
-- `c`: center vision (pauses training briefly in `--mode train`)
-- `u`: mark the most recent trainable moment (writes a `user_marked=true` entry to `data/training/motor_training_set.jsonl`)
-- `0`: label outcome as “no errors”
-- `1`–`9`: label outcome as a generic “error/bug/odd behavior” code (metadata can be added later)
+## Prompt Profiles
 
-With `--interactive true`, Maxim also accepts line-based commands at the `maxim>` prompt; single-key actions can be entered by typing the key and pressing Enter. These are matched against `data/util/phrase_responses.json` (same as voice).
-Interactive CLI input is recorded to `data/cli/cli_input_<run_id>.jsonl` while the prompt is enabled.
-CLI and overlay inputs bypass phrase cooldowns and `requires_agentic` gating to keep local commands responsive.
-When the OpenCV display is active, the vision overlay includes a text input box with a **Send** button that routes input through the same phrase responses. On Linux/WSL, set `MAXIM_IMSHOW_MODE=direct` to enable input capture.
+Optimize for your hardware with prompt profiles:
 
-Voice triggers are configured in `data/util/phrase_responses.json` (or `$MAXIM_PHRASE_RESPONSES`) and are driven by new transcript lines.
+| Profile | Max Depth | LLM Calls | Parallel | Use Case |
+|---------|-----------|-----------|----------|----------|
+| `minimal` | 2 | 8 | No | CPU-only, low RAM |
+| `standard` | 5 | 20 | Yes (4 workers) | GPU or fast CPU |
+| `rich` | 7 | 50 | Yes (8 workers) | High-end GPU |
 
-Default:
-- saying `Maxim` (or `Reachy`) wakes the robot (`wake_up()`), starts the agentic runtime loop, and enables voice-triggered actions
-- Voice matching normalizes punctuation/possessives and treats common transcription `maximum` as `maxim`
-- When `maxim` appears in a transcript line, Maxim prefers a more specific command match (e.g., sleep/observe/shutdown) before falling back to the wake word
-- saying `Maxim shutdown` requests a clean shutdown (same as Ctrl+C cleanup)
-- saying `Maxim sleep` (or `sleep maxim`) switches to `--mode sleep` (audio-only)
-- saying `Maxim observe` (or `observe maxim`) switches to `--mode reflection`
+```bash
+# Set via CLI
+maxim --prompt-profile minimal
 
-## LLM Integration (Local Language Models)
+# Or environment variable
+export MAXIM_PROMPT_PROFILE=minimal
+```
 
-Maxim supports local LLM inference via **llama.cpp** for voice-controlled actions, chat, and agentic task execution. Models run entirely on your machine with no cloud dependencies.
+### Profile Features
+
+**Minimal Profile**:
+- Shallow decomposition (max 2 levels)
+- Reflection only on failure
+- No parallel execution
+- Fast retry backoff
+
+**Standard Profile**:
+- Balanced depth (5 levels)
+- Parallel sibling execution
+- Exponential retry backoff
+- Reflection on failures
+
+**Rich Profile**:
+- Deep decomposition (7 levels)
+- Always reflect
+- Plan validation enabled
+- Maximum parallelism
+
+---
+
+## LLM Integration
+
+Maxim supports local LLM inference via llama.cpp with no cloud dependencies.
 
 ### Quick Start
 
-1. Install the LLM dependencies:
-
 ```bash
+# Install LLM dependencies
 pip install -e '.[llm]'
-```
 
-2. Download a model using the built-in download script:
-
-```bash
-# Download the default small model (SmolLM 1.7B, ~1.1GB - recommended for CPU/limited hardware)
+# Download default model (SmolLM 1.7B, ~1.1GB)
 ./scripts/download_models.sh --llm --enable
 
-# Or download a larger, more capable model
-./scripts/download_models.sh --llm mistral-7b-instruct-v0.2 --enable
-```
-
-3. Enable and run:
-
-```bash
+# Run with LLM
 export MAXIM_LLM_ENABLED=1
-maxim --language-model mistral-7b
+maxim --mode agentic --language-model smollm-1.7b
 ```
 
 ### Supported Models
 
-| Profile | Model | Context | Prompt Style |
-|---------|-------|---------|--------------|
-| `mistral-7b` | Mistral 7B Instruct v0.2 | 4096 | Mistral |
-| `smollm-1.7b` | SmolLM 1.7B Instruct | 4096 | ChatML |
-| `llama2-7b` / `llama2-13b` | Llama 2 Chat | 4096 | Llama 2 |
-| `llama3-8b` | Llama 3 8B Instruct | 8192 | Llama 3 |
-| `phi2` / `phi3-mini` | Microsoft Phi | 2048/4096 | Phi |
-| `qwen2-7b` | Qwen2 7B Instruct | 8192 | ChatML |
-| `gemma-2b` / `gemma-7b` | Google Gemma IT | 8192 | Gemma |
+| Profile | Model | Size | Context |
+|---------|-------|------|---------|
+| `smollm-1.7b` | SmolLM 1.7B Instruct | ~1.1 GB | 4096 |
+| `mistral-7b` | Mistral 7B Instruct v0.2 | ~4.4 GB | 4096 |
+| `llama3-8b` | Llama 3 8B Instruct | ~4.9 GB | 8192 |
+| `phi3-mini` | Microsoft Phi-3 Mini | ~2.3 GB | 4096 |
+| `qwen2-7b` | Qwen2 7B Instruct | ~4.4 GB | 8192 |
 
-### Model Downloads
-
-Maxim includes a convenient script to download pre-quantized models from HuggingFace:
-
-```bash
-# List all available models
-./scripts/download_models.sh --list
-
-# Check which models are already downloaded
-./scripts/download_models.sh --status
-
-# Download default LLM (SmolLM 1.7B - best for CPU/limited hardware)
-./scripts/download_models.sh --llm
-
-# Download a specific model
-./scripts/download_models.sh --llm mistral-7b-instruct-v0.2
-
-# Download and enable in config
-./scripts/download_models.sh --llm smollm-1.7b-instruct --enable
-
-# Download both LLM and TTS models
-./scripts/download_models.sh --all --enable
-```
-
-#### Available LLM Models
-
-| Model | Size | Description |
-|-------|------|-------------|
-| `smollm-1.7b-instruct` | ~1.1 GB | **Default** - Small, fast, good for CPU |
-| `smollm2-1.7b-instruct` | ~1.0 GB | Improved SmolLM, small and efficient |
-| `phi-2` | ~1.8 GB | Microsoft Phi-2 2.7B - Compact but capable |
-| `gemma-2-2b-it` | ~1.6 GB | Google Gemma 2 2B - Small and efficient |
-| `mistral-7b-instruct-v0.2` | ~4.4 GB | High quality, needs more RAM |
-| `llama-3-8b-instruct` | ~4.9 GB | Excellent quality, needs GPU or lots of RAM |
-| `qwen2-7b-instruct` | ~4.4 GB | Strong multilingual support |
-
-#### TTS Models (Text-to-Speech)
-
-For audio responses, Maxim supports Piper TTS:
-
-```bash
-# Download default TTS voice
-./scripts/download_models.sh --tts
-
-# Download a specific voice
-./scripts/download_models.sh --tts en_US-amy-medium
-```
-
-| Voice | Description |
-|-------|-------------|
-| `en_US-lessac-medium` | **Default** - English US, balanced quality |
-| `en_US-amy-medium` | English US, female voice |
-| `en_GB-alan-medium` | English UK, British male |
-
-#### Python API for Downloads
+### Python API
 
 ```python
-from maxim.models import download_llm, download_tts, list_models, check_models
+from maxim.agents import LLMAgent, ChatLLMAgent
 
-# List available models
-list_models()
+# Simple generation
+agent = LLMAgent(profile="mistral-7b")
+response = agent.generate("What is Python?")
 
-# Check what's downloaded
-status = check_models()
-print(status)
+# Multi-turn chat
+chat = ChatLLMAgent(profile="llama3-8b", temperature=0.7)
+chat.generate("Hi! My name is Alex.")
+response = chat.generate("What's my name?")  # Has context
 
-# Download programmatically
-download_llm("smollm-1.7b-instruct")
-download_tts("en_US-lessac-medium")
+# JSON mode
+result = agent.generate_json(
+    "Extract name and age from: 'John is 25 years old'"
+)
+# {"name": "John", "age": 25}
 ```
 
-### Quantization Options
+### Quantization
 
-Models can be quantized to reduce size and memory usage. **Q4_K_M is the default** and recommended for most use cases:
-
-| Level | Bits | Size | Quality | Use Case |
-|-------|------|------|---------|----------|
-| Q2_K | 2 | Tiny | Low | Embedded/testing |
-| Q3_K_M | 3 | Small | Fair | Memory constrained |
-| **Q4_K_M** | 4 | Medium | **Good (default)** | **Recommended** |
-| Q5_K_M | 5 | Large | Better | Quality priority |
-| Q6_K | 6 | Larger | High | Near-original |
-| Q8_0 | 8 | Largest | Excellent | Maximum quality |
-
-Set quantization via environment variable:
+| Level | Quality | Use Case |
+|-------|---------|----------|
+| `Q3_K_M` | Fair | Memory constrained |
+| `Q4_K_M` | Good (default) | Recommended |
+| `Q5_K_M` | Better | Quality priority |
+| `Q8_0` | Excellent | Maximum quality |
 
 ```bash
-export MAXIM_LLM_QUANTIZATION=Q4_K_M  # Default
-export MAXIM_LLM_QUANTIZATION=Q5_K_M  # Higher quality
-export MAXIM_LLM_QUANTIZATION=Q3_K_M  # Smaller/faster
+export MAXIM_LLM_QUANTIZATION=Q4_K_M
 ```
 
-### CLI Usage
+---
+
+## CLI Reference
+
+### Main Command
 
 ```bash
-# Use default profile (Mistral 7B, Q4_K_M)
-maxim --language-model mistral-7b
-
-# Specify a different model
-maxim --language-model llama3-8b
-
-# Override model path directly
-export MAXIM_LLM_MODEL_PATH='data/models/LLM/custom-model.Q4_K_M.gguf'
-maxim --language-model mistral-7b
+maxim [OPTIONS]
 ```
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--mode` | Operating mode | `exploration` |
+| `--verbosity` | Log level (0, 1, 2) | 1 |
+| `--audio` | Enable audio recording | True |
+| `--audio_len` | Transcription chunk seconds | 5.0 |
+| `--language-model` | LLM profile name | None |
+| `--prompt-profile` | Prompt optimization profile | `standard` |
+| `--interactive` | Enable terminal prompt | True |
+| `--memory-path` | Memory persistence path | `~/memory/memories.json` |
+| `--reset` | Reset memory on startup | False |
+| `--epochs` | Stop after N cycles | None (infinite) |
+
+### Voice Commands
+
+When wake word ("Maxim") is detected:
+- `Maxim shutdown` - Clean shutdown
+- `Maxim sleep` - Switch to sleep mode
+- `Maxim observe` - Switch to reflection mode
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `c` | Center vision |
+| `u` | Mark trainable moment |
+| `0` | Label "no errors" |
+| `1-9` | Label error codes |
+
+---
+
+## Configuration
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MAXIM_LLM_ENABLED` | Enable LLM (`1`/`true`) | `false` |
-| `MAXIM_LLM_PROFILE` | Model profile name | `mistral-7b-instruct-v0.2` |
-| `MAXIM_LLM_QUANTIZATION` | Quantization level | `Q4_K_M` |
-| `MAXIM_LLM_MODEL_PATH` | Override model file path | Auto-generated |
-| `MAXIM_LLM_N_CTX` | Context window size | Profile default |
-| `MAXIM_LLM_MAX_TOKENS` | Max generation tokens | `128` |
-| `MAXIM_LLM_TEMPERATURE` | Sampling temperature | `0.0` |
-| `MAXIM_LLM_TOP_P` | Top-p sampling | `0.95` |
-| `MAXIM_LLM_TOP_K` | Top-k sampling | `40` |
-| `MAXIM_LLM_N_GPU_LAYERS` | GPU layers (`-1` = all) | `-1` |
-| `MAXIM_LLM_N_THREADS` | CPU threads (auto if unset) | Auto |
+| Variable | Description |
+|----------|-------------|
+| `MAXIM_LLM_ENABLED` | Enable LLM (1/true) |
+| `MAXIM_LLM_PROFILE` | Model profile name |
+| `MAXIM_LLM_QUANTIZATION` | Quantization level |
+| `MAXIM_PROMPT_PROFILE` | Prompt optimization profile |
+| `MAXIM_ROBOT_NAME` | Robot identifier |
+| `CUDA_VISIBLE_DEVICES` | GPU selection (empty for CPU) |
 
-### Programmatic Usage (Python API)
+### Config Files
 
-#### Basic LLM Agent
+| File | Purpose |
+|------|---------|
+| `data/util/llm.json` | LLM configuration |
+| `data/util/phrase_responses.json` | Voice trigger mappings |
+| `data/util/key_responses.json` | Keyboard shortcuts |
+| `data/motion/default_actions.json` | Movement presets |
+| `data/prompts/planning/` | Recursive planning prompts |
 
-```python
-from maxim.agents import LLMAgent, LLMAgentConfig
+---
 
-# Simple usage with defaults (Mistral 7B, Q4_K_M)
-agent = LLMAgent()
-response = agent.generate("What is Python?")
-print(response)
+## Outputs
 
-# Use a different model
-agent = LLMAgent(profile="llama3-8b")
+Each run creates timestamped artifacts under `data/`:
 
-# Custom quantization
-agent = LLMAgent(profile="mistral-7b", quantization="Q5_K_M")
+| Path | Content |
+|------|---------|
+| `videos/` | MP4 video recordings |
+| `audio/` | WAV audio recordings |
+| `transcript/` | JSONL transcripts |
+| `training/` | Trainable motor samples |
+| `vision/` | Vision event stream |
+| `logs/` | Run logs |
+| `plans/checkpoints/` | Goal tree checkpoints |
+| `plans/exports/` | Exported plan files |
 
-# Full custom configuration
-config = LLMAgentConfig(
-    profile="phi3-mini",
-    quantization="Q4_K_M",
-    temperature=0.8,
-    max_tokens=1024,
-    system_prompt="You are a helpful coding assistant.",
-    n_gpu_layers=-1,  # Use all GPU layers
-)
-agent = LLMAgent(config=config)
-response = agent.generate("Write a Python function to sort a list")
-```
-
-#### Chat Agent (Multi-turn Conversations)
-
-```python
-from maxim.agents import ChatLLMAgent
-
-chat = ChatLLMAgent(profile="llama3-8b", temperature=0.7)
-
-# Conversations maintain history
-chat.generate("Hi! My name is Alex.")
-response = chat.generate("What's my name?")  # Has context
-print(response)  # "Your name is Alex"
-
-# Clear history when needed
-chat.clear_history()
-```
-
-#### Task Agent (Structured JSON Outputs)
-
-```python
-from maxim.agents import TaskLLMAgent
-
-task = TaskLLMAgent(
-    profile="mistral-7b",
-    allowed_tools={"read_file", "write_file", "search"}
-)
-
-# Returns structured intent from state
-intent = task.propose_intent(state, memory)
-# {"goal": {"tool_name": "read_file", "params": {...}}, "confidence": 0.9}
-```
-
-#### JSON Mode
-
-```python
-from maxim.agents import LLMAgent
-
-agent = LLMAgent(profile="mistral-7b")
-
-# Generate structured JSON responses
-result = agent.generate_json(
-    "Extract the person's name and age from: 'John is 25 years old'"
-)
-print(result)  # {"name": "John", "age": 25}
-```
-
-#### Model Switching at Runtime
-
-```python
-from maxim.agents import LLMAgent
-
-agent = LLMAgent(profile="mistral-7b")
-response = agent.generate("Hello!")
-
-# Switch to a different model
-agent.switch_model(profile="phi3-mini", quantization="Q4_K_S")
-response = agent.generate("Hello again!")
-
-# List available options
-print(LLMAgent.list_available_profiles())
-print(LLMAgent.list_quantization_levels())
-print(LLMAgent.get_quantization_info("Q4_K_M"))
-```
-
-#### Using the Low-Level Router
-
-```python
-from maxim.models.language import LLMRouter, load_llm_config
-
-# Load config from environment/files
-config = load_llm_config()
-
-# Create router
-router = LLMRouter(config)
-
-if router.enabled():
-    action = router.route(
-        "Maxim, read the readme file",
-        allowed_tools={"read_file", "write_file"},
-        allowed_commands={"center_vision", "request_sleep"},
-    )
-    print(action)  # {"tool_name": "read_file", "params": {"path": "README.md"}}
-```
-
-### Voice-Controlled Actions (Agentic Runtime)
-
-When running in agentic mode, the LLM routes transcript lines containing the wake word (`maxim`) into actions:
-
-```bash
-maxim --mode agentic --language-model mistral-7b
-```
-
-Hard keyword commands always override the LLM:
-- `sleep maxim` / `maxim sleep` → Switch to sleep mode
-- `observe maxim` / `maxim observe` → Switch to passive mode
-- `shutdown maxim` / `maxim shutdown` → Clean shutdown
-
-Note: the `execute_file` tool is disabled by default. Set `MAXIM_ALLOW_EXECUTE_FILE=1` to opt in.
-
-### Configuration File
-
-Create `data/util/llm.json` for persistent configuration:
-
-```json
-{
-  "enabled": true,
-  "profile": "mistral-7b-instruct-v0.2",
-  "quantization": "Q4_K_M",
-  "temperature": 0.0,
-  "max_tokens": 128,
-  "n_gpu_layers": -1,
-  "profiles": {
-    "my-custom-model": {
-      "backend": "llama_cpp",
-      "model_base": "my-model-name",
-      "prompt_style": "chatml",
-      "stop": ["<|im_end|>"],
-      "n_ctx": 4096
-    }
-  }
-}
-```
-
-### Model File Naming Convention
-
-Place GGUF files in `data/models/LLM/` with this naming pattern:
-
-```
-<model-base>.<quantization>.gguf
-```
-
-Examples:
-- `mistral-7b-instruct-v0.2.Q4_K_M.gguf`
-- `Meta-Llama-3-8B-Instruct.Q5_K_M.gguf`
-- `Phi-3-mini-4k-instruct.Q4_K_M.gguf`
-
-### Benchmarking
-
-Run against recorded transcripts:
-
-```bash
-python -m maxim.evaluation.llm_benchmark --transcript-dir data/transcript --limit 25
-```
-
-Default movement presets are defined in `data/motion/default_actions.json`.
-Default head poses (including `centered`) are defined in `data/motion/default_poses.json`.
-Per-call head movement step limits are defined in `data/motion/movement_thresholds.json`.
-
-## Smoke Tests
-
-Quick local checks live under `src/tests/`:
-- `bash src/tests/basic_vision.sh`
-- `bash src/tests/basic_audio.sh` (set `MAXIM_TEST_REAL_WHISPER=1` to attempt real transcription)
-- `bash src/tests/basic_learn.sh` (skips if `tensorflow/keras` not installed)
-- `bash src/tests/basic_move.sh --require-robot` (requires a Reachy daemon on the network)
-
-For easy future use consider editing your Reachy's .bashrc...
-
-```bash
-nano ~/.bashrc
-```
-
-and adding aliases so you can run simple commands to start processes
-
-```bash
-alias mini-env='source /venvs/mini_daemon/bin/activate'
-
-alias list-daemon='ss -lntp | grep 8000'
-alias clear-daemon='sudo systemctl stop reachy-mini-daemon'
-alias start-daemon='python -m reachy_mini.daemon.app.main --wireless-version --no-localhost-only'
-
-alias list-zenoh='ss -lntp | grep 7447'
-
-MAXIM_ROBOT_NAME=reachy_mini
-REACHY_IP=<INSERT YOUR REACHY IP>
-```
-Then you can simply type commands like list-daemon, clear-daemon or start-daemon.
-
-## Networking
-
-Make sure you are on the same network as your Reachy Mini with no VPN. With a VPN you may be able to do simple things like start the daemon but the python SDK will struggle to connect to the Reachy.
+---
 
 ## GPU Acceleration
 
-Maxim automatically detects and uses available GPUs for vision models (YOLO), motor cortex inference, and other ML tasks. On startup, Maxim will report GPU status:
+Maxim auto-detects GPUs for vision, motor cortex, and LLM inference.
 
+```bash
+# Force CPU-only mode
+CUDA_VISIBLE_DEVICES="" maxim
+
+# Or use helper script
+./run_maxim_cpu.sh
 ```
-✅ GPU acceleration enabled
-   TensorFlow detected 1 GPU(s):
-     [0] NVIDIA GeForce RTX 5080
-   PyTorch detected 1 GPU(s):
-     [0] NVIDIA GeForce RTX 5080 (15.4 GB)
-```
 
-### RTX 5080 / Blackwell GPU Support
+### RTX 5080 / Blackwell Support
 
-**IMPORTANT**: If you have an RTX 5080 or other Blackwell-architecture GPU, ensure you're using `tensorflow[and-cuda]` instead of plain `tensorflow`:
+Use `tensorflow[and-cuda]` for Blackwell-architecture GPUs:
 
 ```toml
-# In pyproject.toml (already configured)
+# In pyproject.toml
 "tensorflow[and-cuda]>=2.15"
 ```
 
-This bundle includes CUDA 12.8+ libraries needed for Blackwell support. The standard `tensorflow==2.x.x` package uses older CUDA versions that will cause segmentation faults on RTX 5080.
-
-### CPU-Only Mode
-
-To force CPU mode (useful for testing or troubleshooting GPU issues):
-
-```bash
-# Use the helper script
-./run_maxim_cpu.sh
-
-# Or set environment variable
-CUDA_VISIBLE_DEVICES="" maxim
-```
-
-When running in CPU-only mode, you'll see:
-
-```
-⚠️  GPU acceleration disabled (CUDA_VISIBLE_DEVICES="")
-Running in CPU-only mode
-```
-
-### GPU Requirements
-
-- **NVIDIA Drivers**: 570+ for Blackwell (RTX 50-series), 525+ for Ada/Ampere
-- **TensorFlow**: Installed via `tensorflow[and-cuda]>=2.15`
-- **PyTorch**: Automatically detects CUDA if available
+---
 
 ## Troubleshooting
 
-0. **Connection Issues - Run Diagnostics First**
+### Connection Issues
 
-If you're having trouble connecting to your Reachy Mini, run the diagnostic script to identify the issue:
-
+Run diagnostics:
 ```bash
-python scripts/check_reachy_connection.py --host 192.168.50.149
+python scripts/check_reachy_connection.py --host <REACHY_IP>
+# Or: maxim-diagnostics --host <REACHY_IP>
 ```
 
-Or if you have the package installed:
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| Port 8443 refused | Restart Reachy or run `reachyminios_check` |
+| Port 7447 refused | Check daemon: `systemctl status reachy-mini-daemon` |
+| Matplotlib crash | `rm -rf ~/.cache/matplotlib && fc-cache -f` |
+| Whisper segfaults | `MAXIM_WHISPER_COMPUTE_TYPE=float32 maxim` |
+| OpenCV Qt warnings | `MAXIM_DISABLE_IMSHOW=1 maxim` |
+
+### Debug Logging
 
 ```bash
-maxim-diagnostics --host 192.168.50.149
+maxim --verbosity 2
 ```
 
-This will test:
-- Basic network connectivity (ping)
-- Port 7447 (Zenoh motor control)
-- Port 8000 (Dashboard/API)
-- Port 8443 (WebRTC media streaming)
+---
 
-**Common Issues:**
+## Development
 
-- **WebRTC port 8443 connection refused:** The WebRTC signaling server isn't running. Solutions:
-  1. Restart your Reachy (press OFF, wait 5s, press ON)
-  2. SSH into the Reachy and run: `reachyminios_check`
-  3. Or bypass WebRTC by using `media_backend='gstreamer'` in your code (works on Mac/Linux with GStreamer installed)
-
-- **Port 7447 refused:** The Reachy daemon isn't running. SSH in and check: `systemctl status reachy-mini-daemon`
-
-1. Reachy Mini immendiately closing down on running or not running at all.
-
-Check if the reachy mini port 8000 is occupied by ssh into you Reachy Mini then
-checking if the port is occupied...
+### Running Tests
 
 ```bash
-ss -lntp | grep 8000
+# Smoke tests
+bash src/tests/basic_vision.sh
+bash src/tests/basic_audio.sh
+bash src/tests/basic_move.sh --require-robot
+
+# Planning system tests
+python -c "
+import sys
+sys.path.insert(0, 'src')
+from maxim.planning.recursive import *
+# ... test code
+"
 ```
 
-Stop the process if something is using it.
+### Project Structure
 
-```bash
-sudo systemctl stop reachy-mini-daemon
+```
+Maxim/
+├── src/maxim/           # Main package
+│   ├── agents/          # Agent implementations
+│   ├── planning/        # Planning and decision engine
+│   │   └── recursive/   # Recursive goal decomposition
+│   ├── tools/           # Tool implementations
+│   ├── modes/           # Operating modes
+│   ├── models/          # ML models (vision, audio, language)
+│   └── runtime/         # Agentic orchestration
+├── data/                # Runtime data and configs
+│   ├── prompts/         # LLM prompts
+│   │   └── planning/    # Recursive planning prompts
+│   ├── models/          # Downloaded model weights
+│   └── util/            # Configuration files
+├── scripts/             # Utility scripts
+└── tests/               # Test suite
 ```
 
-Check to see if you can start a new process
+---
 
-```bash
-python -m reachy_mini.daemon.app.main --wireless-version --no-localhost-only
-```
+## Roadmap
 
-2. Matplotlib font cache crash on Linux/WSL (ft2font / "Can not load face" / core dump)
+### Completed (Phase R0-R3)
+- Goal tree data structures and enums
+- Recursive planner agent with LLM decomposition
+- Parallel goal executor with thread pools
+- Checkpointing and persistence
+- Tree visualization and progress rendering
 
-- Clear Matplotlib's cache: `rm -rf ~/.cache/matplotlib`
-- Rebuild the system font cache: `fc-cache -f`
-- If you have custom fonts under `~/.local/share/fonts`, temporarily move them out and retry.
-- Run with a clean cache dir: `MPLCONFIGDIR=./data/matplotlib maxim`
-- To bypass Maxim's Matplotlib preflight (not recommended): `MAXIM_SKIP_MPL_PREFLIGHT=1 maxim`
-- To bypass Maxim's early Matplotlib preload (not recommended): `MAXIM_SKIP_MPL_PRELOAD=1 maxim`
+### In Progress (Phase R4-R5)
+- Enhanced parallel execution
+- Full reflection loop integration
+- Re-planning with completed work preservation
 
-3. onnxruntime VAD segfaults during audio transcription
+### Planned (Phase R6-R9)
+- FearAgent safety integration
+- Goal scheduling and preemption
+- Execution tracing and observability
+- Memory-based pattern learning
 
-- Temporarily disable the VAD filter to confirm the crash source: `MAXIM_VAD_FILTER=0 maxim`
-- If VAD is the culprit, prefer CPU-only `onnxruntime` and avoid `onnxruntime-gpu` in the same environment.
+---
 
-4. faster-whisper / CTranslate2 segfaults after the first chunk (Linux/WSL)
+## License
 
-- Force a safer compute type: `MAXIM_WHISPER_COMPUTE_TYPE=float32 maxim`
-- If stable, try `int8_float32` or revert to `int8` to regain speed.
+See [LICENSE](LICENSE) for details.
 
-5. OpenCV imshow / Qt thread warnings (WSL/headless)
+## Contributing
 
-- Disable OpenCV display: `MAXIM_DISABLE_IMSHOW=1 maxim`
-- Or run headless explicitly: `MAXIM_HEADLESS=1 maxim`
-- If you only need logging, run with `--verbosity 0` to skip on-screen display.
-- On Linux/WSL, Maxim defaults to a display subprocess for thread safety. Force main-thread imshow with `MAXIM_IMSHOW_MODE=direct`.
-- Run imshow in a dedicated process: `MAXIM_IMSHOW_MODE=process maxim`
+Issues and PRs welcome at [github.com/dennys246/Maxim](https://github.com/dennys246/Maxim).
