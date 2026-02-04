@@ -86,7 +86,57 @@ If a component cannot be tested in isolation, the architecture is violated.
 - `data/training/`: `motor_training_set.jsonl` (trainable samples + user marks)
 - `data/agents/<STATE_NAME>/runtime/`: `state_<run_id>.json` (agentic runtime state snapshots; defaults to `agent_name` unless an agent sets `state_name`)
 - `data/models/MotorCortex/`: MotorCortex checkpoint + training artifacts
-- `data/util/llm.json`: optional local LLM config (disabled by default)
+- `data/util/llm.json`: local LLM config (created on install with SmolLM 1.7B as default)
+
+## LLM Configuration
+
+The LLM subsystem uses a JSON config file that persists user preferences across reinstalls.
+
+### Config File Priority
+
+The system searches for config in this order (first found wins):
+1. `MAXIM_LLM_CONFIG` environment variable path
+2. `./data/util/llm.json` (current working directory)
+3. `./llm.json` (current working directory)
+4. Repo root `data/util/llm.json`
+5. Repo root `llm.json`
+
+### Default Configuration
+
+On first install, `data/util/llm.json` is created with:
+- **Default model**: `smollm-1.7b-instruct` (~1.1GB, smallest available)
+- **Enabled**: `true` (ready to use immediately)
+- **Preserved on reinstall**: Existing config is not overwritten
+
+### Switching Models
+
+```bash
+# List available models
+python -m maxim.models.download --list
+
+# Download a different model
+python -m maxim.models.download --llm mistral-7b-instruct-v0.2
+
+# Edit data/util/llm.json and change "profile" to the new model name
+```
+
+### Key Config Fields
+
+| Field | Description |
+|-------|-------------|
+| `enabled` | `true`/`false` - whether LLM is active |
+| `profile` | Active model profile name |
+| `profiles` | Dict of available model configurations |
+| `max_tokens` | Default max response tokens |
+| `temperature` | Sampling temperature (0.0 = deterministic) |
+| `mode_response_config` | Per-mode token limits and response formats |
+
+### Environment Variable Overrides
+
+All config values can be overridden via environment variables:
+- `MAXIM_LLM_ENABLED`, `MAXIM_LLM_PROFILE`, `MAXIM_LLM_BACKEND`
+- `MAXIM_LLM_MODEL_PATH`, `MAXIM_LLM_N_CTX`, `MAXIM_LLM_MAX_TOKENS`
+- `MAXIM_LLM_TEMPERATURE`, `MAXIM_LLM_N_GPU_LAYERS`, etc.
 
 ## Invariants
 - Control loop must not perform heavy disk I/O.
