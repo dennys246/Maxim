@@ -55,8 +55,8 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         fi
 
         echo ""
-        echo "Installing system dependencies (FFmpeg)..."
-        brew install ffmpeg pkg-config
+        echo "Installing system dependencies (FFmpeg, Cairo, GObject)..."
+        brew install ffmpeg pkg-config cairo gobject-introspection
 
         echo ""
         echo "System dependencies installed successfully!"
@@ -69,6 +69,21 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 else
     echo "Skipping video processing support (can be added later with: pip install -e '.[video]')"
     echo ""
+
+    # Still need Cairo/GObject for reachy-mini[gstreamer] on macOS
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "Installing required macOS dependencies (Cairo, GObject)..."
+        if command -v brew &> /dev/null; then
+            brew install cairo gobject-introspection pkg-config
+        else
+            echo "Warning: Homebrew not found. Please install cairo and gobject-introspection manually."
+        fi
+    fi
+fi
+
+# Enable Metal acceleration for llama-cpp-python on Apple Silicon
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    export CMAKE_ARGS="-DLLAMA_METAL=on"
 fi
 
 echo ""
@@ -88,7 +103,95 @@ echo ""
 python -m maxim.models.download --llm smollm-1.7b-instruct
 
 echo ""
-echo "✅ Model downloaded successfully!"
+echo "Model downloaded successfully!"
+
+# Create default LLM config if it doesn't exist
+LLM_CONFIG_PATH="data/util/llm.json"
+if [ ! -f "$LLM_CONFIG_PATH" ]; then
+    echo ""
+    echo "Creating default LLM configuration..."
+    mkdir -p "$(dirname "$LLM_CONFIG_PATH")"
+    cat > "$LLM_CONFIG_PATH" << 'EOF'
+{
+  "enabled": true,
+  "profile": "smollm-1.7b-instruct",
+  "max_tokens": 512,
+  "temperature": 0.0,
+  "quantization": "Q4_K_M",
+  "prompts_dir": "data/prompts",
+  "profiles": {
+    "smollm-1.7b-instruct": {
+      "backend": "llama_cpp",
+      "model_path": "data/models/LLM/SmolLM-1.7B-Instruct.Q4_K_M.gguf",
+      "prompt_style": "chatml",
+      "stop": ["<|im_end|>", "</s>"],
+      "n_ctx": 4096
+    },
+    "mistral-7b-instruct-v0.2": {
+      "backend": "llama_cpp",
+      "model_path": "data/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+      "prompt_style": "mistral_instruct",
+      "stop": ["</s>"],
+      "n_ctx": 4096
+    },
+    "phi-3-mini-4k-instruct": {
+      "backend": "llama_cpp",
+      "model_path": "data/models/LLM/Phi-3-mini-4k-instruct.Q4_K_M.gguf",
+      "prompt_style": "phi3",
+      "stop": ["<|end|>", "<|endoftext|>"],
+      "n_ctx": 4096
+    }
+  },
+  "mode_response_config": {
+    "observe": {
+      "max_response_tokens": 128,
+      "context_window_tokens": 512,
+      "response_format": "minimal"
+    },
+    "sleep": {
+      "max_response_tokens": 64,
+      "context_window_tokens": 256,
+      "response_format": "minimal"
+    },
+    "exploration": {
+      "max_response_tokens": 256,
+      "context_window_tokens": 1024,
+      "response_format": "brief"
+    },
+    "live": {
+      "max_response_tokens": 512,
+      "context_window_tokens": 2048,
+      "response_format": "conversational"
+    },
+    "active-assistance": {
+      "max_response_tokens": 768,
+      "context_window_tokens": 2048,
+      "response_format": "detailed"
+    },
+    "reflection": {
+      "max_response_tokens": 1024,
+      "context_window_tokens": 3072,
+      "response_format": "detailed"
+    },
+    "train": {
+      "max_response_tokens": 512,
+      "context_window_tokens": 2048,
+      "response_format": "conversational"
+    },
+    "research": {
+      "max_response_tokens": 2048,
+      "context_window_tokens": 4096,
+      "response_format": "academic"
+    }
+  }
+}
+EOF
+    echo "Default LLM config created at $LLM_CONFIG_PATH"
+    echo "You can customize this file to change models or settings."
+else
+    echo ""
+    echo "Existing LLM config found at $LLM_CONFIG_PATH (preserved)"
+fi
 
 echo ""
 echo "===== Installation Complete ====="
