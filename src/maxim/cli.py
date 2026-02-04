@@ -14,24 +14,46 @@ import subprocess
 import sys
 
 _blackwell_detected = False
-try:
-    result = subprocess.run(
-        ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
-        capture_output=True, text=True, timeout=2
-    )
-    if result.returncode == 0:
-        gpu_names = result.stdout.strip().lower()
-        if 'rtx 50' in gpu_names or '5080' in gpu_names or '5090' in gpu_names:
-            _blackwell_detected = True
-            # CRITICAL: Hide CUDA from ALL libraries to prevent GStreamer crash
-            # This forces CPU-only mode for PyTorch, TensorFlow, and GStreamer
-            os.environ['CUDA_VISIBLE_DEVICES'] = ''
-            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TF warnings
-            os.environ['GST_CUDA_NO_CUDA'] = '1'  # Disable GStreamer CUDA
 
-            print("Blackwell GPU detected - forcing CPU-only mode (GStreamer/CUDA incompatibility)", file=sys.stderr)
-except Exception:
+# Performance optimization: Check cache first to avoid subprocess on every startup
+# Cache is stored in env var (persists for shell session) or temp file
+_BLACKWELL_CACHE_ENV = "_MAXIM_BLACKWELL_CHECKED"
+_cached_result = os.environ.get(_BLACKWELL_CACHE_ENV)
+
+if _cached_result == "yes":
+    # Cached: Blackwell was detected previously
+    _blackwell_detected = True
+    os.environ['CUDA_VISIBLE_DEVICES'] = ''
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+    os.environ['GST_CUDA_NO_CUDA'] = '1'
+elif _cached_result == "no":
+    # Cached: No Blackwell GPU, skip detection
     pass
+else:
+    # No cache - run detection (with shorter 500ms timeout)
+    try:
+        result = subprocess.run(
+            ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
+            capture_output=True, text=True, timeout=0.5  # Reduced from 2s to 500ms
+        )
+        if result.returncode == 0:
+            gpu_names = result.stdout.strip().lower()
+            if 'rtx 50' in gpu_names or '5080' in gpu_names or '5090' in gpu_names:
+                _blackwell_detected = True
+                # CRITICAL: Hide CUDA from ALL libraries to prevent GStreamer crash
+                os.environ['CUDA_VISIBLE_DEVICES'] = ''
+                os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+                os.environ['GST_CUDA_NO_CUDA'] = '1'
+                os.environ[_BLACKWELL_CACHE_ENV] = "yes"  # Cache for next run
+                print("Blackwell GPU detected - forcing CPU-only mode (GStreamer/CUDA incompatibility)", file=sys.stderr)
+            else:
+                os.environ[_BLACKWELL_CACHE_ENV] = "no"  # Cache: no Blackwell
+        else:
+            os.environ[_BLACKWELL_CACHE_ENV] = "no"  # No nvidia-smi or no GPU
+    except subprocess.TimeoutExpired:
+        os.environ[_BLACKWELL_CACHE_ENV] = "no"  # Timeout = assume no NVIDIA GPU
+    except Exception:
+        pass  # nvidia-smi not found, no NVIDIA GPU
 
 # Import everything else
 import argparse
@@ -143,19 +165,26 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--internet-access",
         action="store_true",
-        help="Enable internet access for search and fetch tools.",
+        default=True,
+        help="Enable internet access for search and fetch tools (enabled by default).",
+    )
+    parser.add_argument(
+        "--no-internet",
+        action="store_true",
+        help="Disable internet access.",
     )
     parser.add_argument(
         "--agentic-verbosity",
         type=int,
-        default=1,
+        default=None,  # Default to match --verbosity
         choices=[0, 1, 2, 3],
-        help="Agentic logging verbosity: 0=quiet, 1=normal (goals/tools), 2=verbose (+perception/memory), 3=debug (+loop).",
+        help="Agentic logging verbosity: 0=quiet, 1=normal (goals/tools), 2=verbose (+perception/memory), 3=debug (+loop). Defaults to --verbosity level.",
     )
     parser.add_argument(
-        "--agentic-console",
+        "--no-agentic-console",
         action="store_true",
-        help="Print agentic events to console in real-time.",
+        dest="no_agentic_console",
+        help="Disable agentic event output to console (enabled by default).",
     )
     # ─────────────────────────────────────────────────────────────────────────
     # TTS (Text-to-Speech) arguments
@@ -194,11 +223,6 @@ def _build_parser() -> argparse.ArgumentParser:
         default="supervised",
         choices=["supervised", "autonomous"],
         help="Autonomy level for exploration: supervised (default) or autonomous.",
-    )
-    parser.add_argument(
-        "--exploration-allow-internet",
-        action="store_true",
-        help="Allow internet search and fetch during exploration.",
     )
     parser.add_argument(
         "--exploration-allow-scripts",
@@ -391,13 +415,35 @@ def _check_gpu_status(logger: logging.Logger) -> None:
             logger.info("   - CUDA-compatible GPU is available")
 
 
-def _configure_cpu_fallback_model(logger: logging.Logger) -> None:
+def _configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data") -> None:
     """Configure a smaller LLM model for CPU-only inference when no GPU is available.
 
     Sets environment variables to use SmolLM 1.7B with CPU inference, which is
     suitable for systems with limited resources (e.g., 24GB unified memory).
+
+    Note: Skips fallback if using llama_cpp backend, which has native Metal support on macOS.
     """
+    import json
     import os
+
+    # Check if we're using llama_cpp backend (has native Metal support on macOS)
+    llm_config_path = os.path.join(home_dir, "util", "llm.json")
+    using_llama_cpp = False
+    try:
+        if os.path.exists(llm_config_path):
+            with open(llm_config_path) as f:
+                llm_cfg = json.load(f)
+            profile_name = llm_cfg.get("profile", "")
+            profiles = llm_cfg.get("profiles", {})
+            if profile_name in profiles:
+                using_llama_cpp = profiles[profile_name].get("backend") == "llama_cpp"
+    except Exception:
+        pass
+
+    if using_llama_cpp:
+        # llama.cpp has native Metal support on macOS - no fallback needed
+        logger.info("Using llama.cpp backend with native Metal GPU support")
+        return
 
     logger.warning(
         "No GPU detected; falling back to smaller model (smollm-1.7b-instruct) "
@@ -527,7 +573,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             if mode == "agentic":
                 if not _gpu_available():
-                    _configure_cpu_fallback_model(logger)
+                    _configure_cpu_fallback_model(logger, args.home_dir)
 
                 from maxim.agents import MaximAgent
                 from maxim.agents.autonomy import (
@@ -545,14 +591,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                     build_memory,
                     build_state,
                     build_tool_registry,
-                    run_agent_loop,
                 )
                 from maxim.runtime.agent_loop import run_agentic_loop
                 from maxim.utils.structured_logging import configure_agentic_verbosity
 
                 # Configure agentic verbosity
-                agentic_verbosity = int(getattr(args, "agentic_verbosity", 1))
-                agentic_console = bool(getattr(args, "agentic_console", False))
+                # Default to --verbosity if --agentic-verbosity not specified
+                agentic_verbosity = getattr(args, "agentic_verbosity", None)
+                if agentic_verbosity is None:
+                    agentic_verbosity = int(getattr(args, "verbosity", 1))
+                else:
+                    agentic_verbosity = int(agentic_verbosity)
+                # Agentic console output is ON by default (unless --no-agentic-console)
+                agentic_console = not bool(getattr(args, "no_agentic_console", False))
                 configure_agentic_verbosity(
                     verbosity=agentic_verbosity,
                     console_output=agentic_console,
@@ -613,7 +664,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                     speaker_fn=speaker_fn,
                 )
 
-                registry = build_tool_registry(response_output=response_output)
+                # Check if internet access is enabled (default: True unless --no-internet)
+                internet_enabled = not bool(getattr(args, "no_internet", False))
+
+                # Create internet policy getter for tool registry
+                def get_internet_policy():
+                    from maxim.utils.internet_access import InternetAccessPolicy
+                    return InternetAccessPolicy(enabled=internet_enabled)
+
+                # Only pass policy getter if internet is enabled
+                internet_policy_getter = get_internet_policy if internet_enabled else None
+
+                registry = build_tool_registry(
+                    response_output=response_output,
+                    internet_policy_getter=internet_policy_getter,
+                )
                 executor = build_executor(registry)
                 decision_engine = build_decision_engine()
                 env = ReachyEnv(data_dir=args.home_dir)
@@ -625,20 +690,32 @@ def main(argv: Sequence[str] | None = None) -> int:
                 autonomy_level_str = str(getattr(args, "autonomy", "planning")).lower()
                 initial_level = AutonomyLevel(autonomy_level_str)
 
+                # Build allowed tools set based on internet policy (uses internet_enabled from above)
+                allowed_tools = {
+                    "read_file",
+                    "write_file",  # Requires confirmation (see requires_confirmation below)
+                    "focus_interests",
+                    "track_target",
+                    "maxim_command",
+                    "mode_switch",
+                    "speak",
+                    "respond",
+                    "list_directory",  # Allow directory listing
+                    "glob",  # Pattern-based file search
+                    "bash",  # Shell command execution (requires MAXIM_ALLOW_BASH=1)
+                }
+
+                # Add internet tools if enabled
+                if internet_enabled:
+                    allowed_tools.add("internet_search")
+                    allowed_tools.add("http_fetch")
+
                 # Configure supervision policy with sensible defaults
                 supervision_policy = SupervisionPolicy(
-                    allowed_tools={
-                        "read_file",
-                        "focus_interests",
-                        "track_target",
-                        "maxim_command",
-                        "mode_switch",
-                        "speak",
-                        "respond",
-                    },
+                    allowed_tools=allowed_tools,
                     forbidden_tools={"execute_file", "delete_file"},
                     min_confidence_autonomous=0.7,
-                    requires_confirmation={"write_file"},
+                    requires_confirmation={"write_file", "bash"},  # bash requires confirmation for safety
                 )
 
                 autonomy_controller = AutonomyController(
@@ -659,12 +736,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 # Set up LLM worker
                 llm_worker = None
                 if hasattr(agentic_agent, "_llm") and agentic_agent._llm is not None:
+                    # Start warming up the LLM in background (reduces first-request latency)
+                    if hasattr(agentic_agent._llm, "warmup"):
+                        agentic_agent._llm.warmup()
                     llm_worker = LLMWorker(agentic_agent._llm)
                     llm_worker.start()
 
-                # Store internet access in state
-                internet_access = bool(getattr(args, "internet_access", False))
-                state.data["internet_access"] = internet_access
+                # Store internet access in state (uses internet_enabled from above)
+                state.data["internet_access"] = internet_enabled
                 state.data["autonomy_level"] = initial_level.value
 
                 logger.info(
@@ -673,7 +752,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     bool(getattr(args, "enable_embeddings", False)),
                     bool(getattr(args, "reset", False)),
                     initial_level.value,
-                    internet_access,
+                    internet_enabled,
                 )
 
                 try:
@@ -714,7 +793,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     return 0
 
                 if not _gpu_available():
-                    _configure_cpu_fallback_model(logger)
+                    _configure_cpu_fallback_model(logger, args.home_dir)
 
                 from maxim.modes.exploration import (
                     AdversarialFocusValidator,
@@ -724,9 +803,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
 
                 # Build exploration policy from CLI args
+                # Internet is enabled by default unless --no-internet is passed
+                allow_internet = not bool(getattr(args, "no_internet", False))
                 exploration_policy = ExplorationPolicy(
                     require_gpu_for_agentic=True,
-                    allow_internet=bool(getattr(args, "exploration_allow_internet", False)),
+                    allow_internet=allow_internet,
                     allow_scripts=bool(getattr(args, "exploration_allow_scripts", False)),
                     allow_training=bool(getattr(args, "exploration_allow_training", False)),
                 )
