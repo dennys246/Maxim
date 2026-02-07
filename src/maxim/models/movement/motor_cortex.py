@@ -5,7 +5,6 @@ import os
 os.environ.setdefault('TF_GPU_ALLOCATOR', 'cuda_malloc_async')
 os.environ.setdefault('TF_FORCE_GPU_ALLOW_GROWTH', 'true')
 
-import tensorflow as tf
 import keras
 
 from maxim.utils import config
