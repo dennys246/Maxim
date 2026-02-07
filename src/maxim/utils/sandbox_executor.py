@@ -9,19 +9,22 @@ Supports Python scripts and shell scripts with:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import resource
-import signal
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
 from typing import Any, Callable
+
+
+def compute_content_hash(content: str) -> str:
+    """Compute SHA-256 hash of content for TOCTOU protection."""
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 logger = logging.getLogger(__name__)
 
@@ -360,14 +363,56 @@ class SandboxExecutor:
     allowed_extensions: set[str] = field(default_factory=lambda: {".py", ".sh"})
 
     # Callbacks for approval flow
-    approval_callback: Callable[[str, str], bool] | None = None  # (script_path, content) -> approved
+    # Signature: (script_path, content, content_hash) -> approved
+    approval_callback: Callable[[str, str, str], bool] | None = None
+
+    # Track approved scripts by path AND content hash to prevent TOCTOU attacks
+    # Key: script_path, Value: content_hash
+    _approved_hashes: dict[str, str] = field(default_factory=dict, repr=False)
+
+    # Prefix for temporary wrapper scripts (for identification during cleanup)
+    TEMP_WRAPPER_PREFIX: str = "_maxim_wrapper_"
 
     def __post_init__(self) -> None:
-        """Ensure sandbox directory exists."""
+        """Ensure sandbox directory exists and clean up stale temp files."""
         os.makedirs(self.sandbox_dir, exist_ok=True)
         os.makedirs(os.path.join(self.sandbox_dir, "scripts"), exist_ok=True)
         os.makedirs(os.path.join(self.sandbox_dir, "workspace"), exist_ok=True)
         os.makedirs(os.path.join(self.sandbox_dir, "outputs"), exist_ok=True)
+
+        # Clean up orphaned temp wrapper files from previous runs
+        self._cleanup_stale_temp_files()
+
+    def _cleanup_stale_temp_files(self) -> None:
+        """Remove orphaned temporary wrapper files from previous runs.
+
+        These files can accumulate if the process is killed before cleanup.
+        Only removes files matching our wrapper prefix that are older than 1 hour.
+        """
+        try:
+            now = time.time()
+            max_age_seconds = 3600  # 1 hour
+
+            for filename in os.listdir(self.sandbox_dir):
+                if not filename.startswith(self.TEMP_WRAPPER_PREFIX):
+                    continue
+                if not filename.endswith(".py"):
+                    continue
+
+                filepath = os.path.join(self.sandbox_dir, filename)
+                if not os.path.isfile(filepath):
+                    continue
+
+                try:
+                    file_age = now - os.path.getmtime(filepath)
+                    if file_age > max_age_seconds:
+                        os.unlink(filepath)
+                        logger.debug(f"Cleaned up stale temp file: {filename}")
+                except Exception as e:
+                    logger.debug(f"Failed to clean up temp file {filename}: {e}")
+
+        except Exception as e:
+            logger.debug(f"Failed to clean up stale temp files: {e}")
 
     def execute(
         self,
@@ -426,20 +471,57 @@ class SandboxExecutor:
                 error=f"Could not read script: {e}",
             )
 
+        # Compute content hash for TOCTOU protection
+        content_hash = compute_content_hash(script_content)
+
+        # Check if this exact script version was previously approved
+        if script_path in self._approved_hashes:
+            if self._approved_hashes[script_path] == content_hash:
+                # Same content as previously approved - skip re-approval
+                require_approval = False
+            else:
+                # Content changed since last approval - require re-approval
+                logger.warning(
+                    f"Script content changed since last approval: {script_path} "
+                    f"(old hash: {self._approved_hashes[script_path][:16]}..., "
+                    f"new hash: {content_hash[:16]}...)"
+                )
+                require_approval = True
+
         # Request approval if callback provided
         if require_approval and self.approval_callback:
             try:
-                approved = self.approval_callback(script_path, script_content)
+                approved = self.approval_callback(script_path, script_content, content_hash)
                 if not approved:
                     return ExecutionResult(
                         status=ExecutionStatus.BLOCKED,
                         error="Script execution not approved",
                     )
+                # Store the approved hash
+                self._approved_hashes[script_path] = content_hash
             except Exception as e:
                 return ExecutionResult(
                     status=ExecutionStatus.FAILED,
                     error=f"Approval check failed: {e}",
                 )
+
+        # Re-verify content hash before execution (TOCTOU protection)
+        # Re-read the file to catch any modifications between approval and execution
+        try:
+            with open(script_path, "r", encoding="utf-8") as f:
+                final_content = f.read()
+            final_hash = compute_content_hash(final_content)
+            if final_hash != content_hash:
+                return ExecutionResult(
+                    status=ExecutionStatus.BLOCKED,
+                    error="Script was modified between approval and execution (TOCTOU attack detected)",
+                )
+            script_content = final_content
+        except Exception as e:
+            return ExecutionResult(
+                status=ExecutionStatus.FAILED,
+                error=f"Could not verify script content: {e}",
+            )
 
         # Execute based on type
         if ext == ".py":
@@ -466,9 +548,10 @@ class SandboxExecutor:
         # Create wrapper script
         wrapper_code = _create_restricted_python_wrapper(script_path, self.sandbox_dir)
 
-        # Create temporary wrapper file
+        # Create temporary wrapper file with identifiable prefix for cleanup
         with tempfile.NamedTemporaryFile(
             mode="w",
+            prefix=self.TEMP_WRAPPER_PREFIX,
             suffix=".py",
             dir=self.sandbox_dir,
             delete=False,
@@ -671,18 +754,20 @@ class SandboxExecutor:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-_global_executor: SandboxExecutor | None = None
+def _get_executor_singleton():
+    """Lazy import to avoid circular dependency."""
+    from maxim.utils.singleton import Singleton
+    return Singleton("sandbox_executor")
 
 
 def get_sandbox_executor() -> SandboxExecutor | None:
     """Get the global sandbox executor."""
-    return _global_executor
+    return _get_executor_singleton().get()
 
 
 def set_sandbox_executor(executor: SandboxExecutor) -> None:
     """Set the global sandbox executor."""
-    global _global_executor
-    _global_executor = executor
+    _get_executor_singleton().set(executor)
 
 
 def init_sandbox_executor(
@@ -690,9 +775,8 @@ def init_sandbox_executor(
     resource_limits: ResourceLimits | None = None,
 ) -> SandboxExecutor:
     """Initialize the global sandbox executor."""
-    executor = SandboxExecutor(
+    return _get_executor_singleton().init(
+        SandboxExecutor,
         sandbox_dir=sandbox_dir,
         resource_limits=resource_limits or ResourceLimits(),
     )
-    set_sandbox_executor(executor)
-    return executor

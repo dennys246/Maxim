@@ -6,7 +6,14 @@ Tools are the only layer allowed to perform side effects (I/O, network, etc.).
 from __future__ import annotations
 
 from maxim.tools.base import Tool, ToolResult
-from maxim.tools.filesystem import ExecuteFileTool, ReadFileTool, WriteFileTool
+from maxim.tools.filesystem import (
+    ExecuteFileTool,
+    PathValidationError,
+    ReadFileTool,
+    WriteFileTool,
+    sanitize_path,
+    validate_path_traversal,
+)
 from maxim.tools.response import RespondTool, SpeakTool
 from maxim.tools.reachy import (
     COCO_CLASSES,
@@ -21,6 +28,7 @@ from maxim.tools.reachy import (
     VISION_MIN_V,
     FocusInterestsTool,
     MaximCommandTool,
+    MoveTool,
     NoveltyInfo,
     NoveltyRecord,
     NoveltyTrackTool,
@@ -38,9 +46,11 @@ __all__ = [
     "FocusInterestsTool",
     "MIN_MOVEMENT_THRESHOLD_PX",
     "MaximCommandTool",
+    "MoveTool",
     "NoveltyInfo",
     "NoveltyRecord",
     "NoveltyTrackTool",
+    "PathValidationError",
     "ReadFileTool",
     "RespondTool",
     "SpeakTool",
@@ -57,4 +67,6 @@ __all__ = [
     "WriteFileTool",
     "clamp_to_vision_range",
     "is_significant_movement",
+    "sanitize_path",
+    "validate_path_traversal",
 ]

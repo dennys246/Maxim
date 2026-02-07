@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from maxim.tools.base import Tool, ToolResult
 
 if TYPE_CHECKING:
-    from maxim.agents.autonomy import AutonomyController, AutonomyLevel
+    from maxim.agents.autonomy import AutonomyController
     from maxim.utils.filesystem_policy import FilesystemPolicy
     from maxim.utils.sandbox_executor import SandboxExecutor
     from maxim.utils.output_watcher import OutputWatcher
@@ -53,7 +53,7 @@ class ReadDataFileTool(Tool):
     ) -> None:
         super().__init__()
         self._policy = policy
-        self._base_data_dir = os.path.abspath(base_data_dir)
+        self._base_data_dir = os.path.realpath(base_data_dir)
 
     def execute(self, **kwargs: Any) -> ToolResult:
         path = kwargs.get("path")
@@ -63,10 +63,10 @@ class ReadDataFileTool(Tool):
         encoding = str(kwargs.get("encoding", "utf-8") or "utf-8")
         max_bytes = int(kwargs.get("max_bytes", 1_000_000) or 1_000_000)
 
-        # Resolve path
+        # Resolve path (realpath resolves symlinks to prevent traversal)
         if not os.path.isabs(path):
             path = os.path.join(self._base_data_dir, path)
-        path = os.path.abspath(path)
+        path = os.path.realpath(path)
 
         # Check permission
         allowed, reason = self._policy.check_permission(
@@ -124,7 +124,7 @@ class ReadSandboxFileTool(Tool):
 
     def __init__(self, sandbox_dir: str = "sandbox") -> None:
         super().__init__()
-        self._sandbox_dir = os.path.abspath(sandbox_dir)
+        self._sandbox_dir = os.path.realpath(sandbox_dir)
 
     def execute(self, **kwargs: Any) -> ToolResult:
         path = kwargs.get("path")
@@ -134,13 +134,13 @@ class ReadSandboxFileTool(Tool):
         encoding = str(kwargs.get("encoding", "utf-8") or "utf-8")
         max_bytes = int(kwargs.get("max_bytes", 1_000_000) or 1_000_000)
 
-        # Resolve path
+        # Resolve path (realpath resolves symlinks to prevent traversal)
         if not os.path.isabs(path):
             path = os.path.join(self._sandbox_dir, path)
-        path = os.path.abspath(path)
+        path = os.path.realpath(path)
 
-        # Ensure within sandbox
-        if not path.startswith(self._sandbox_dir):
+        # Ensure within sandbox (use realpath to handle symlinks)
+        if not path.startswith(self._sandbox_dir + os.sep) and path != self._sandbox_dir:
             return ToolResult(success=False, error="Path must be within sandbox directory")
 
         if not os.path.exists(path):
@@ -180,9 +180,12 @@ class WriteSandboxFileTool(Tool):
         "append": (bool, False),  # Optional: append instead of overwrite
     }
 
+    # Maximum content size to prevent memory exhaustion (10 MB)
+    MAX_CONTENT_SIZE: int = 10 * 1024 * 1024
+
     def __init__(self, sandbox_dir: str = "sandbox") -> None:
         super().__init__()
-        self._sandbox_dir = os.path.abspath(sandbox_dir)
+        self._sandbox_dir = os.path.realpath(sandbox_dir)
 
     def execute(self, **kwargs: Any) -> ToolResult:
         path = kwargs.get("path")
@@ -193,16 +196,23 @@ class WriteSandboxFileTool(Tool):
         if content is None:
             return ToolResult(success=False, error="Missing required parameter: content")
 
+        # Check content size to prevent memory exhaustion
+        if len(content) > self.MAX_CONTENT_SIZE:
+            return ToolResult(
+                success=False,
+                error=f"Content size ({len(content)} bytes) exceeds maximum allowed ({self.MAX_CONTENT_SIZE} bytes)",
+            )
+
         encoding = str(kwargs.get("encoding", "utf-8") or "utf-8")
         append = bool(kwargs.get("append", False))
 
-        # Resolve path
+        # Resolve path (realpath resolves symlinks to prevent traversal)
         if not os.path.isabs(path):
             path = os.path.join(self._sandbox_dir, path)
-        path = os.path.abspath(path)
+        path = os.path.realpath(path)
 
-        # Ensure within sandbox
-        if not path.startswith(self._sandbox_dir):
+        # Ensure within sandbox (use realpath to handle symlinks)
+        if not path.startswith(self._sandbox_dir + os.sep) and path != self._sandbox_dir:
             return ToolResult(success=False, error="Path must be within sandbox directory")
 
         try:
@@ -239,16 +249,17 @@ class ListSandboxTool(Tool):
 
     def __init__(self, sandbox_dir: str = "sandbox") -> None:
         super().__init__()
-        self._sandbox_dir = os.path.abspath(sandbox_dir)
+        self._sandbox_dir = os.path.realpath(sandbox_dir)
 
     def execute(self, **kwargs: Any) -> ToolResult:
         subpath = str(kwargs.get("path", "") or "")
         recursive = bool(kwargs.get("recursive", False))
 
         path = os.path.join(self._sandbox_dir, subpath) if subpath else self._sandbox_dir
-        path = os.path.abspath(path)
+        path = os.path.realpath(path)
 
-        if not path.startswith(self._sandbox_dir):
+        # Ensure within sandbox (use realpath to handle symlinks)
+        if not path.startswith(self._sandbox_dir + os.sep) and path != self._sandbox_dir:
             return ToolResult(success=False, error="Path must be within sandbox directory")
 
         if not os.path.exists(path):
@@ -327,7 +338,9 @@ class ExecuteSandboxScriptTool(Tool):
         super().__init__()
         self._executor = executor
         self._autonomy = autonomy_controller
-        self._approved_scripts: set[str] = set()  # Scripts approved in SUPERVISED mode
+        # Track approvals by (path, content_hash) to prevent TOCTOU attacks
+        # Key: script_path, Value: approved content_hash
+        self._approved_scripts: dict[str, str] = {}
 
     def execute(self, **kwargs: Any) -> ToolResult:
         from maxim.agents.autonomy import AutonomyLevel
@@ -344,6 +357,7 @@ class ExecuteSandboxScriptTool(Tool):
             args = [str(args)]
 
         # Check autonomy level
+        # Note: The executor handles content hash verification internally
         require_approval = True
         if self._autonomy:
             level = self._autonomy.current_level
@@ -361,28 +375,25 @@ class ExecuteSandboxScriptTool(Tool):
                 )
 
             elif level == AutonomyLevel.SUPERVISED:
-                # In SUPERVISED mode, require approval for new scripts
-                script_key = os.path.abspath(
-                    os.path.join(self._executor.sandbox_dir, script_path)
-                    if not os.path.isabs(script_path)
-                    else script_path
-                )
-                if script_key in self._approved_scripts:
-                    require_approval = False
-                else:
-                    # Mark as needing approval (executor will call approval_callback)
-                    require_approval = True
+                # Let the executor handle hash-based approval tracking
+                # We don't skip approval here - the executor will check if
+                # the exact content was previously approved via _approved_hashes
+                require_approval = True
 
             elif level == AutonomyLevel.AUTONOMOUS:
                 # In AUTONOMOUS mode, execute freely
                 require_approval = False
 
         # Set up approval callback for SUPERVISED mode
-        def approval_callback(path: str, content: str) -> bool:
+        # Now includes content_hash for TOCTOU protection
+        def approval_callback(path: str, content: str, content_hash: str) -> bool:
             # For now, auto-approve in SUPERVISED if within sandbox
-            # In real usage, this would prompt the user
-            logger.info(f"Auto-approving script in SUPERVISED mode: {path}")
-            self._approved_scripts.add(path)
+            # In real usage, this would prompt the user with content preview
+            logger.info(
+                f"Auto-approving script in SUPERVISED mode: {path} "
+                f"(content hash: {content_hash[:16]}...)"
+            )
+            self._approved_scripts[path] = content_hash
             return True
 
         if require_approval:
@@ -514,7 +525,7 @@ class ReadOtherInstanceOutputTool(Tool):
     def __init__(self, watcher: OutputWatcher, shared_outputs_dir: str) -> None:
         super().__init__()
         self._watcher = watcher
-        self._shared_outputs_dir = os.path.abspath(shared_outputs_dir)
+        self._shared_outputs_dir = os.path.realpath(shared_outputs_dir)
 
     def execute(self, **kwargs: Any) -> ToolResult:
         path = kwargs.get("path")
@@ -524,18 +535,18 @@ class ReadOtherInstanceOutputTool(Tool):
         encoding = str(kwargs.get("encoding", "utf-8") or "utf-8")
         max_bytes = int(kwargs.get("max_bytes", 1_000_000) or 1_000_000)
 
-        # Resolve path
+        # Resolve path (realpath resolves symlinks to prevent traversal)
         if not os.path.isabs(path):
             path = os.path.join(self._shared_outputs_dir, path)
-        path = os.path.abspath(path)
+        path = os.path.realpath(path)
 
-        # Ensure within shared outputs
-        if not path.startswith(self._shared_outputs_dir):
+        # Ensure within shared outputs (use realpath to handle symlinks)
+        if not path.startswith(self._shared_outputs_dir + os.sep) and path != self._shared_outputs_dir:
             return ToolResult(success=False, error="Path must be within shared outputs directory")
 
         # Don't allow reading own outputs through this tool
-        own_instance_dir = os.path.join(self._shared_outputs_dir, self._watcher.own_instance_id)
-        if path.startswith(own_instance_dir):
+        own_instance_dir = os.path.realpath(os.path.join(self._shared_outputs_dir, self._watcher.own_instance_id))
+        if path.startswith(own_instance_dir + os.sep) or path == own_instance_dir:
             return ToolResult(success=False, error="Use read_sandbox_file to read your own outputs")
 
         if not os.path.exists(path):
@@ -571,9 +582,12 @@ class WriteToSharedOutputsTool(Tool):
         "encoding": (str, "utf-8"),
     }
 
+    # Maximum content size to prevent memory exhaustion (10 MB)
+    MAX_CONTENT_SIZE: int = 10 * 1024 * 1024
+
     def __init__(self, instance_outputs_dir: str) -> None:
         super().__init__()
-        self._outputs_dir = os.path.abspath(instance_outputs_dir)
+        self._outputs_dir = os.path.realpath(instance_outputs_dir)
 
     def execute(self, **kwargs: Any) -> ToolResult:
         filename = kwargs.get("filename")
@@ -583,6 +597,13 @@ class WriteToSharedOutputsTool(Tool):
             return ToolResult(success=False, error="Missing required parameter: filename")
         if content is None:
             return ToolResult(success=False, error="Missing required parameter: content")
+
+        # Check content size to prevent memory exhaustion
+        if len(content) > self.MAX_CONTENT_SIZE:
+            return ToolResult(
+                success=False,
+                error=f"Content size ({len(content)} bytes) exceeds maximum allowed ({self.MAX_CONTENT_SIZE} bytes)",
+            )
 
         encoding = str(kwargs.get("encoding", "utf-8") or "utf-8")
 

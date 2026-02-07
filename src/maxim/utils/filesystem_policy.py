@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import fnmatch
 import os
-import re
 from dataclasses import dataclass, field
 from enum import Flag, auto
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from maxim.utils.singleton import Singleton
 
 
 class Permission(Flag):
@@ -354,18 +355,20 @@ def get_instance_id_from_env(default_prefix: str = "maxim") -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-_global_policy: FilesystemPolicy | None = None
+def _get_policy_singleton() -> "Singleton[FilesystemPolicy]":
+    """Lazy import to avoid circular dependency."""
+    from maxim.utils.singleton import Singleton
+    return Singleton("filesystem_policy")
 
 
 def get_filesystem_policy() -> FilesystemPolicy | None:
     """Get the global filesystem policy."""
-    return _global_policy
+    return _get_policy_singleton().get()
 
 
 def set_filesystem_policy(policy: FilesystemPolicy) -> None:
     """Set the global filesystem policy."""
-    global _global_policy
-    _global_policy = policy
+    _get_policy_singleton().set(policy)
 
 
 def init_filesystem_policy(
@@ -386,10 +389,498 @@ def init_filesystem_policy(
     if instance_id is None:
         instance_id = get_instance_id_from_env()
 
-    policy = FilesystemPolicy(
+    return _get_policy_singleton().init(
+        FilesystemPolicy,
         instance_id=instance_id,
         base_data_dir=base_data_dir,
         sandbox_dir=sandbox_dir,
     )
-    set_filesystem_policy(policy)
-    return policy
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Mode-Based Filesystem Containment
+# ─────────────────────────────────────────────────────────────────────────────
+
+SANDBOX_FOLDER_NAME = ".maxim_sandbox"
+
+
+class CwdAccessLevel:
+    """Access levels for the current working directory."""
+
+    NONE = "none"  # Cannot access CWD at all
+    PROPOSE = "propose"  # Can propose plans to edit CWD (planning mode)
+    SUPERVISED = "supervised"  # Can suggest edits, requires approval
+    FULL = "full"  # Can freely edit within CWD
+
+
+class SandboxExecutePolicy:
+    """Policies for executing code in the sandbox."""
+
+    BLOCKED = "blocked"  # Cannot execute at all
+    APPROVAL_REQUIRED = "approval_required"  # Needs human/autonomy approval
+    ALLOWED = "allowed"  # Can execute freely
+
+
+@dataclass
+class ModeFilesystemConfig:
+    """Filesystem access configuration per operational mode.
+
+    Attributes:
+        mode: Operational mode name (passive, active, singularity)
+        allowed_dirs: List of directories tools can access
+        can_request_directory_change: Whether mode can request CWD change
+        description: Human-readable description of access level
+        sandbox_write_always: Whether sandbox is always writable (for logging/journaling)
+        cwd_access: Level of access to CWD and subdirectories
+        sandbox_execute: Policy for executing files in the sandbox
+        accessible_folders: Additional folders beyond sandbox/CWD that can be accessed
+    """
+
+    mode: str
+    allowed_dirs: list[str]
+    can_request_directory_change: bool = False
+    description: str = ""
+    # New graduated permission fields
+    sandbox_write_always: bool = True  # All modes can write to sandbox for journaling
+    cwd_access: str = CwdAccessLevel.NONE  # Access level for CWD
+    sandbox_execute: str = SandboxExecutePolicy.BLOCKED  # Sandbox execution policy
+    accessible_folders: list[str] = field(default_factory=list)  # Additional allowed folders
+
+
+def get_sandbox_path(cwd: str | None = None) -> str:
+    """Get the sandbox folder path within the current working directory.
+
+    Args:
+        cwd: Current working directory. Uses os.getcwd() if not provided.
+
+    Returns:
+        Absolute path to the sandbox folder.
+    """
+    if cwd is None:
+        cwd = os.getcwd()
+    return os.path.join(os.path.realpath(cwd), SANDBOX_FOLDER_NAME)
+
+
+def ensure_sandbox_exists(cwd: str | None = None) -> str:
+    """Create the sandbox folder if it doesn't exist.
+
+    Args:
+        cwd: Current working directory. Uses os.getcwd() if not provided.
+
+    Returns:
+        Absolute path to the created/existing sandbox folder.
+    """
+    sandbox_path = get_sandbox_path(cwd)
+    os.makedirs(sandbox_path, exist_ok=True)
+    return sandbox_path
+
+
+def get_mode_filesystem_config(
+    mode: str,
+    cwd: str | None = None,
+    accessible_folders: list[str] | None = None,
+) -> ModeFilesystemConfig:
+    """Get filesystem configuration for an operational mode.
+
+    Mode-based containment with graduated permissions:
+
+    PLANNING (passive):
+    - Sandbox: Always writable (for logging/journaling)
+    - Sandbox execute: Requires approval
+    - CWD: Can propose plans to edit (no direct writes)
+    - Can read CWD for context
+
+    SUPERVISED (active):
+    - Sandbox: Always writable
+    - Sandbox execute: Requires approval
+    - CWD: Can suggest direct edits (requires approval)
+    - Can request directory change
+
+    AUTONOMOUS (singularity):
+    - Sandbox: Always writable
+    - Sandbox execute: Allowed freely
+    - CWD: Full read/write access
+    - Full directory change capability
+
+    Args:
+        mode: Operational mode name (passive, active, singularity)
+        cwd: Current working directory. Uses os.getcwd() if not provided.
+        accessible_folders: Additional folders to grant access to.
+
+    Returns:
+        ModeFilesystemConfig with appropriate access settings.
+    """
+    if cwd is None:
+        cwd = os.getcwd()
+    cwd = os.path.realpath(cwd)
+    sandbox_path = get_sandbox_path(cwd)
+    extra_folders = accessible_folders or []
+
+    if mode == "passive" or mode == "planning":
+        # Planning mode: sandbox is writable, CWD is read-only (propose plans)
+        return ModeFilesystemConfig(
+            mode="passive",
+            allowed_dirs=[sandbox_path, cwd] + extra_folders,  # Can read CWD
+            can_request_directory_change=False,
+            description=f"Sandbox writable, CWD read-only (propose edits): {cwd}",
+            sandbox_write_always=True,
+            cwd_access=CwdAccessLevel.PROPOSE,
+            sandbox_execute=SandboxExecutePolicy.APPROVAL_REQUIRED,
+            accessible_folders=extra_folders,
+        )
+    elif mode == "active" or mode == "supervised":
+        # Supervised mode: sandbox writable, CWD edits need approval
+        return ModeFilesystemConfig(
+            mode="active",
+            allowed_dirs=[sandbox_path, cwd] + extra_folders,
+            can_request_directory_change=True,
+            description=f"Sandbox writable, CWD edits need approval: {cwd}",
+            sandbox_write_always=True,
+            cwd_access=CwdAccessLevel.SUPERVISED,
+            sandbox_execute=SandboxExecutePolicy.APPROVAL_REQUIRED,
+            accessible_folders=extra_folders,
+        )
+    elif mode == "singularity" or mode == "autonomous":
+        # Autonomous mode: full access within CWD and sandbox
+        return ModeFilesystemConfig(
+            mode="singularity",
+            allowed_dirs=[sandbox_path, cwd] + extra_folders,  # Still bounded to CWD
+            can_request_directory_change=True,
+            description=f"Full access within CWD: {cwd}",
+            sandbox_write_always=True,
+            cwd_access=CwdAccessLevel.FULL,
+            sandbox_execute=SandboxExecutePolicy.ALLOWED,
+            accessible_folders=extra_folders,
+        )
+    else:
+        # Default to passive-like restrictions for unknown modes
+        return ModeFilesystemConfig(
+            mode=mode,
+            allowed_dirs=[sandbox_path],
+            can_request_directory_change=False,
+            description=f"Unknown mode '{mode}' - defaulting to sandbox: {sandbox_path}",
+            sandbox_write_always=True,
+            cwd_access=CwdAccessLevel.NONE,
+            sandbox_execute=SandboxExecutePolicy.BLOCKED,
+            accessible_folders=[],
+        )
+
+
+# Global tracking of current working directory (can be changed in active mode)
+_current_working_directory: str | None = None
+_cwd_lock = __import__("threading").Lock()
+
+
+def get_effective_cwd() -> str:
+    """Get the effective current working directory.
+
+    This may differ from os.getcwd() if active mode has requested a change.
+
+    Returns:
+        The effective working directory path.
+    """
+    global _current_working_directory
+    with _cwd_lock:
+        if _current_working_directory is None:
+            _current_working_directory = os.getcwd()
+        return _current_working_directory
+
+
+def set_effective_cwd(path: str) -> bool:
+    """Set the effective current working directory.
+
+    Note: This does NOT call os.chdir(). It only updates the tracked directory
+    used for containment boundaries.
+
+    Args:
+        path: New working directory path.
+
+    Returns:
+        True if successful, False if path doesn't exist.
+    """
+    global _current_working_directory
+    path = os.path.realpath(path)
+    if not os.path.isdir(path):
+        return False
+
+    with _cwd_lock:
+        _current_working_directory = path
+    return True
+
+
+def reset_effective_cwd() -> None:
+    """Reset effective CWD to actual os.getcwd()."""
+    global _current_working_directory
+    with _cwd_lock:
+        _current_working_directory = os.getcwd()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Accessible Folders Management
+# ─────────────────────────────────────────────────────────────────────────────
+
+_accessible_folders: list[str] = []
+_accessible_folders_lock = __import__("threading").Lock()
+
+
+def get_accessible_folders() -> list[str]:
+    """Get the list of additional accessible folders."""
+    with _accessible_folders_lock:
+        return list(_accessible_folders)
+
+
+def add_accessible_folder(folder: str) -> bool:
+    """Add a folder to the accessible folders list.
+
+    Args:
+        folder: Path to the folder to add.
+
+    Returns:
+        True if added successfully, False if folder doesn't exist.
+    """
+    global _accessible_folders
+    folder = os.path.realpath(folder)
+    if not os.path.isdir(folder):
+        return False
+
+    with _accessible_folders_lock:
+        if folder not in _accessible_folders:
+            _accessible_folders.append(folder)
+    return True
+
+
+def remove_accessible_folder(folder: str) -> bool:
+    """Remove a folder from the accessible folders list.
+
+    Args:
+        folder: Path to the folder to remove.
+
+    Returns:
+        True if removed, False if not found.
+    """
+    global _accessible_folders
+    folder = os.path.realpath(folder)
+
+    with _accessible_folders_lock:
+        if folder in _accessible_folders:
+            _accessible_folders.remove(folder)
+            return True
+    return False
+
+
+def clear_accessible_folders() -> None:
+    """Clear all additional accessible folders."""
+    global _accessible_folders
+    with _accessible_folders_lock:
+        _accessible_folders = []
+
+
+def set_accessible_folders(folders: list[str]) -> None:
+    """Set the accessible folders list (replaces existing).
+
+    Args:
+        folders: List of folder paths.
+    """
+    global _accessible_folders
+    valid_folders = []
+    for folder in folders:
+        real_folder = os.path.realpath(folder)
+        if os.path.isdir(real_folder):
+            valid_folders.append(real_folder)
+
+    with _accessible_folders_lock:
+        _accessible_folders = valid_folders
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Permission Checking Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def is_path_in_sandbox(path: str, cwd: str | None = None) -> bool:
+    """Check if a path is within the sandbox directory.
+
+    Args:
+        path: Path to check.
+        cwd: Current working directory. Uses effective CWD if not provided.
+
+    Returns:
+        True if path is within sandbox.
+    """
+    if cwd is None:
+        cwd = get_effective_cwd()
+    sandbox = get_sandbox_path(cwd)
+    real_path = os.path.realpath(path)
+    return real_path.startswith(sandbox + os.sep) or real_path == sandbox
+
+
+def is_path_in_cwd(path: str, cwd: str | None = None) -> bool:
+    """Check if a path is within the current working directory.
+
+    Args:
+        path: Path to check.
+        cwd: Current working directory. Uses effective CWD if not provided.
+
+    Returns:
+        True if path is within CWD.
+    """
+    if cwd is None:
+        cwd = get_effective_cwd()
+    cwd = os.path.realpath(cwd)
+    real_path = os.path.realpath(path)
+    return real_path.startswith(cwd + os.sep) or real_path == cwd
+
+
+def is_path_in_accessible_folders(path: str) -> bool:
+    """Check if a path is within any of the accessible folders.
+
+    Args:
+        path: Path to check.
+
+    Returns:
+        True if path is within an accessible folder.
+    """
+    real_path = os.path.realpath(path)
+    for folder in get_accessible_folders():
+        if real_path.startswith(folder + os.sep) or real_path == folder:
+            return True
+    return False
+
+
+@dataclass
+class WritePermissionResult:
+    """Result of a write permission check."""
+
+    allowed: bool
+    requires_approval: bool = False
+    reason: str = ""
+    is_sandbox: bool = False
+    is_cwd: bool = False
+
+
+def check_write_permission(
+    path: str,
+    config: ModeFilesystemConfig,
+    cwd: str | None = None,
+) -> WritePermissionResult:
+    """Check write permission for a path based on mode config.
+
+    Args:
+        path: Path to check.
+        config: Mode filesystem configuration.
+        cwd: Current working directory. Uses effective CWD if not provided.
+
+    Returns:
+        WritePermissionResult with allowed status and approval requirements.
+    """
+    if cwd is None:
+        cwd = get_effective_cwd()
+
+    in_sandbox = is_path_in_sandbox(path, cwd)
+    in_cwd = is_path_in_cwd(path, cwd)
+    in_accessible = is_path_in_accessible_folders(path)
+
+    # Sandbox is always writable if sandbox_write_always is True
+    if in_sandbox and config.sandbox_write_always:
+        return WritePermissionResult(
+            allowed=True,
+            requires_approval=False,
+            reason="Sandbox is always writable",
+            is_sandbox=True,
+        )
+
+    # Check CWD access based on cwd_access level
+    if in_cwd or in_accessible:
+        if config.cwd_access == CwdAccessLevel.FULL:
+            return WritePermissionResult(
+                allowed=True,
+                requires_approval=False,
+                reason="Full CWD access in singularity mode",
+                is_cwd=True,
+            )
+        elif config.cwd_access == CwdAccessLevel.SUPERVISED:
+            return WritePermissionResult(
+                allowed=True,
+                requires_approval=True,
+                reason="CWD edit requires approval in supervised mode",
+                is_cwd=True,
+            )
+        elif config.cwd_access == CwdAccessLevel.PROPOSE:
+            return WritePermissionResult(
+                allowed=False,
+                requires_approval=True,
+                reason="Can only propose edits in planning mode (submit as proposal)",
+                is_cwd=True,
+            )
+        else:  # NONE
+            return WritePermissionResult(
+                allowed=False,
+                requires_approval=False,
+                reason="No CWD access in current mode",
+                is_cwd=True,
+            )
+
+    # Path is outside allowed areas
+    return WritePermissionResult(
+        allowed=False,
+        requires_approval=False,
+        reason="Path is outside sandbox, CWD, and accessible folders",
+    )
+
+
+@dataclass
+class ExecutePermissionResult:
+    """Result of an execute permission check."""
+
+    allowed: bool
+    requires_approval: bool = False
+    reason: str = ""
+
+
+def check_execute_permission(
+    path: str,
+    config: ModeFilesystemConfig,
+    cwd: str | None = None,
+) -> ExecutePermissionResult:
+    """Check execute permission for a path based on mode config.
+
+    Args:
+        path: Path to check.
+        config: Mode filesystem configuration.
+        cwd: Current working directory. Uses effective CWD if not provided.
+
+    Returns:
+        ExecutePermissionResult with allowed status and approval requirements.
+    """
+    if cwd is None:
+        cwd = get_effective_cwd()
+
+    in_sandbox = is_path_in_sandbox(path, cwd)
+
+    # Sandbox execution policy
+    if in_sandbox:
+        if config.sandbox_execute == SandboxExecutePolicy.ALLOWED:
+            return ExecutePermissionResult(
+                allowed=True,
+                requires_approval=False,
+                reason="Sandbox execution allowed in singularity mode",
+            )
+        elif config.sandbox_execute == SandboxExecutePolicy.APPROVAL_REQUIRED:
+            return ExecutePermissionResult(
+                allowed=True,
+                requires_approval=True,
+                reason="Sandbox execution requires approval",
+            )
+        else:  # BLOCKED
+            return ExecutePermissionResult(
+                allowed=False,
+                requires_approval=False,
+                reason="Sandbox execution blocked in current mode",
+            )
+
+    # Execution outside sandbox
+    return ExecutePermissionResult(
+        allowed=False,
+        requires_approval=False,
+        reason="Execution only allowed within sandbox",
+    )

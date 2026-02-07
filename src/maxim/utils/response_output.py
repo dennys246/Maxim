@@ -15,8 +15,56 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+# Import audio utilities at module level to avoid per-call import overhead
+from maxim.utils.audio import resample_audio
+
 if TYPE_CHECKING:
-    import numpy as np
+    pass
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sentence boundary detection for natural speech truncation
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Matches sentence-ending punctuation followed by space or end of string
+_SENTENCE_END_PATTERN = re.compile(r'[.!?]+[\s\n]+|[.!?]+$')
+
+
+def _truncate_at_sentence(text: str, max_length: int) -> str:
+    """Truncate text at the nearest sentence boundary before max_length.
+
+    Args:
+        text: The text to truncate.
+        max_length: Maximum length (will find sentence boundary before this).
+
+    Returns:
+        Truncated text ending at a natural sentence boundary.
+    """
+    if len(text) <= max_length:
+        return text
+
+    # Look for sentence endings within the allowed length
+    search_text = text[:max_length]
+    matches = list(_SENTENCE_END_PATTERN.finditer(search_text))
+
+    if matches:
+        # Use the last complete sentence
+        last_match = matches[-1]
+        return text[:last_match.end()].strip()
+
+    # No sentence boundary found - look for other natural breaks
+    # Try comma, semicolon, or dash
+    for sep in [', ', '; ', ' - ', ' — ']:
+        last_pos = search_text.rfind(sep)
+        if last_pos > max_length // 2:  # Only if it's past halfway
+            return text[:last_pos + len(sep)].strip() + "..."
+
+    # Last resort: break at word boundary
+    last_space = search_text.rfind(' ')
+    if last_space > max_length // 2:
+        return text[:last_space].strip() + "..."
+
+    # Absolute fallback
+    return text[:max_length].strip() + "..."
 
 
 class ResponseOutput:
@@ -224,16 +272,19 @@ class ResponseOutput:
         """Synthesize and play response via TTS.
 
         Args:
-            text: The text to speak. Will be truncated if too long.
+            text: The text to speak. Will be truncated at sentence boundary if too long.
         """
         if not self.audio_enabled:
             return
 
-        # Truncate very long text for speech
+        # Truncate at sentence boundary for natural speech
         max_speech_length = 1000
         if len(text) > max_speech_length:
-            speech_text = text[:max_speech_length] + "..."
-            self.logger.debug("Truncated speech from %d to %d chars", len(text), max_speech_length)
+            speech_text = _truncate_at_sentence(text, max_speech_length)
+            self.logger.debug(
+                "Truncated speech from %d to %d chars at sentence boundary",
+                len(text), len(speech_text)
+            )
         else:
             speech_text = text
 
@@ -241,10 +292,12 @@ class ResponseOutput:
             # Synthesize audio
             audio = self.tts.synthesize(speech_text)
 
+            if len(audio) == 0:
+                self.logger.debug("TTS returned empty audio for text: %s", speech_text[:50])
+                return
+
             # Resample if needed (TTS typically outputs 22050Hz, Reachy needs 16000Hz)
             if hasattr(self.tts, "sample_rate") and self.tts.sample_rate != 16000:
-                from maxim.utils.audio import resample_audio
-
                 audio = resample_audio(audio, self.tts.sample_rate, 16000)
 
             # Play through speaker

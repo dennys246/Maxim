@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from maxim.utils.config import DEFAULT_SAVE_ROOT
 from maxim.utils.logging import warn
@@ -127,7 +127,6 @@ def preload_matplotlib_fonts(
     os.environ.setdefault("MPLBACKEND", "Agg")
 
     try:
-        import matplotlib
         from matplotlib import font_manager as fm
 
         load = getattr(fm, "_load_fontmanager", None)

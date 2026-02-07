@@ -11,7 +11,6 @@ import os
 import threading
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable
 from collections.abc import Iterator
 
@@ -415,18 +414,20 @@ def create_memory_callback(memory: Any) -> Callable[[OutputEvent], None]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-_global_watcher: OutputWatcher | None = None
+def _get_watcher_singleton():
+    """Lazy import to avoid circular dependency."""
+    from maxim.utils.singleton import Singleton
+    return Singleton("output_watcher")
 
 
 def get_output_watcher() -> OutputWatcher | None:
     """Get the global output watcher."""
-    return _global_watcher
+    return _get_watcher_singleton().get()
 
 
 def set_output_watcher(watcher: OutputWatcher) -> None:
     """Set the global output watcher."""
-    global _global_watcher
-    _global_watcher = watcher
+    _get_watcher_singleton().set(watcher)
 
 
 def init_output_watcher(
@@ -448,11 +449,10 @@ def init_output_watcher(
     """
     on_new_file = create_memory_callback(memory) if memory else None
 
-    watcher = OutputWatcher(
+    return _get_watcher_singleton().init(
+        OutputWatcher,
         outputs_dir=outputs_dir,
         own_instance_id=instance_id,
         poll_interval=poll_interval,
         on_new_file=on_new_file,
     )
-    set_output_watcher(watcher)
-    return watcher

@@ -17,42 +17,13 @@ import subprocess
 import sys
 from typing import Tuple
 
-
-class Colors:
-    """ANSI color codes for terminal output"""
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BLUE = '\033[94m'
-    BOLD = '\033[1m'
-    END = '\033[0m'
-
-
-def print_header(text: str) -> None:
-    """Print a formatted header"""
-    print(f"\n{Colors.BOLD}{Colors.BLUE}{'=' * 70}{Colors.END}")
-    print(f"{Colors.BOLD}{Colors.BLUE}{text}{Colors.END}")
-    print(f"{Colors.BOLD}{Colors.BLUE}{'=' * 70}{Colors.END}\n")
-
-
-def print_success(text: str) -> None:
-    """Print success message in green"""
-    print(f"{Colors.GREEN}✓ {text}{Colors.END}")
-
-
-def print_warning(text: str) -> None:
-    """Print warning message in yellow"""
-    print(f"{Colors.YELLOW}⚠ {text}{Colors.END}")
-
-
-def print_error(text: str) -> None:
-    """Print error message in red"""
-    print(f"{Colors.RED}✗ {text}{Colors.END}")
-
-
-def print_info(text: str) -> None:
-    """Print info message"""
-    print(f"  {text}")
+from maxim.utils.formatting import (
+    print_header,
+    print_success,
+    print_warning,
+    print_error,
+    print_info,
+)
 
 
 def test_ping(host: str, timeout: int = 3) -> Tuple[bool, str]:

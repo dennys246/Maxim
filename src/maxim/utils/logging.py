@@ -108,3 +108,20 @@ def warn(message: str, *args: object, logger: Optional[logging.Logger] = None) -
         except Exception:
             formatted = message
         print(f"[WARN] {formatted}")
+
+
+def info(message: str, *args: object, logger: Optional[logging.Logger] = None) -> None:
+    """
+    Convenience info logger that falls back to a simple print when logging
+    isn't configured (useful for module-level utilities).
+    """
+    if logger is None:
+        logger = logging.getLogger("maxim")
+    if logging.getLogger().handlers:
+        logger.info(message, *args)
+    else:
+        try:
+            formatted = message % args if args else message
+        except Exception:
+            formatted = message
+        print(f"[INFO] {formatted}")

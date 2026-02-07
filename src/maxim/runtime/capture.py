@@ -6,6 +6,7 @@ Provides direct frame/audio access without JSONL intermediary.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import queue
 import threading
@@ -87,6 +88,7 @@ class CaptureManager:
         # Callbacks
         self._frame_callbacks: list[Callable[[CapturedFrame], None]] = []
         self._audio_callbacks: list[Callable[[CapturedAudio], None]] = []
+        self._segmented_frame_callbacks: list[Callable[[CapturedFrame], None]] = []
 
         # Control
         self._stop_event = threading.Event()
@@ -96,7 +98,14 @@ class CaptureManager:
         self._frame_index = 0
 
         # Async segmentation queue (decouple from capture for smooth frame pull)
-        self._segmentation_queue: queue.Queue[CapturedFrame] = queue.Queue(maxsize=2)
+        # Size 8 provides better buffering when YOLO or callbacks are slow
+        # Increased from 4 to prevent frame drops during YOLO processing spikes
+        self._segmentation_queue: queue.Queue[CapturedFrame] = queue.Queue(maxsize=8)
+
+        # Thread pool for timeout-wrapped hardware calls
+        self._hw_executor: concurrent.futures.ThreadPoolExecutor | None = None
+        # Timeout for hardware calls (prevents indefinite blocking)
+        self._hw_timeout = 2.0
 
         # Stats
         self._frames_captured = 0
@@ -112,6 +121,11 @@ class CaptureManager:
         self._stop_event.clear()
         self._start_time = time.time()
         self._frame_index = 0
+
+        # Create thread pool for hardware calls with timeout
+        self._hw_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="HWCapture"
+        )
 
         # Start frame capture thread
         self._frame_thread = threading.Thread(
@@ -146,8 +160,19 @@ class CaptureManager:
         """Stop capture threads."""
         self._stop_event.set()
 
+        # Shutdown hardware executor first to unblock any pending hardware calls
+        if self._hw_executor is not None:
+            try:
+                self._hw_executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                # Python < 3.9 doesn't have cancel_futures
+                self._hw_executor.shutdown(wait=False)
+            self._hw_executor = None
+
         if self._frame_thread is not None:
             self._frame_thread.join(timeout=timeout)
+            if self._frame_thread.is_alive():
+                logger.warning("Frame capture thread did not stop in time")
             self._frame_thread = None
 
         if self._segmentation_thread is not None:
@@ -157,10 +182,14 @@ class CaptureManager:
             except queue.Full:
                 pass
             self._segmentation_thread.join(timeout=timeout)
+            if self._segmentation_thread.is_alive():
+                logger.warning("Segmentation thread did not stop in time")
             self._segmentation_thread = None
 
         if self._audio_thread is not None:
             self._audio_thread.join(timeout=timeout)
+            if self._audio_thread.is_alive():
+                logger.warning("Audio capture thread did not stop in time")
             self._audio_thread = None
 
         logger.info(
@@ -267,6 +296,13 @@ class CaptureManager:
                     if self._latest_frame is None or captured.frame_index >= self._latest_frame.frame_index:
                         self._latest_frame = captured
 
+                # Notify segmentation-complete callbacks (for DefaultNetwork/PerceptionAgent)
+                for callback in self._segmented_frame_callbacks:
+                    try:
+                        callback(captured)
+                    except Exception as e:
+                        logger.error("Segmented frame callback error: %s", e)
+
             except Exception as e:
                 logger.debug("Segmentation loop error: %s", e)
 
@@ -302,19 +338,28 @@ class CaptureManager:
                     logger.error("Audio callback error: %s", e)
 
     def _capture_frame(self) -> np.ndarray | None:
-        """Capture a frame from the camera."""
-        if self._maxim is None:
+        """Capture a frame from the camera with timeout protection."""
+        if self._maxim is None or self._stop_event.is_set():
             return None
 
-        try:
+        executor = self._hw_executor
+        if executor is None:
+            return None
+
+        def _do_capture() -> np.ndarray | None:
             mini = getattr(self._maxim, "mini", None)
             if mini is None:
                 return None
 
             media_lock = getattr(self._maxim, "_media_lock", None)
             if media_lock is not None:
-                with media_lock:
+                # Use timeout on lock acquisition
+                if not media_lock.acquire(timeout=self._hw_timeout):
+                    return None
+                try:
                     frame = mini.media.get_frame()
+                finally:
+                    media_lock.release()
             else:
                 frame = mini.media.get_frame()
 
@@ -322,43 +367,100 @@ class CaptureManager:
                 return None
 
             return np.asarray(frame)
+
+        try:
+            future = executor.submit(_do_capture)
+            # Poll with short timeout to check stop_event
+            timeout_remaining = self._hw_timeout
+            poll_interval = 0.1
+            while timeout_remaining > 0:
+                if self._stop_event.is_set():
+                    future.cancel()
+                    return None
+                try:
+                    return future.result(timeout=min(poll_interval, timeout_remaining))
+                except concurrent.futures.TimeoutError:
+                    timeout_remaining -= poll_interval
+                    continue
+            # Timeout exceeded
+            future.cancel()
+            return None
+        except concurrent.futures.CancelledError:
+            return None
         except Exception as e:
             logger.debug("Frame capture failed: %s", e)
             return None
 
     def _capture_audio(self) -> CapturedAudio | None:
-        """Capture an audio sample."""
-        if self._maxim is None:
+        """Capture an audio sample with timeout protection."""
+        if self._maxim is None or self._stop_event.is_set():
             return None
 
-        try:
+        executor = self._hw_executor
+        if executor is None:
+            return None
+
+        def _do_capture() -> CapturedAudio | None:
             mini = getattr(self._maxim, "mini", None)
             if mini is None:
                 return None
 
             media_lock = getattr(self._maxim, "_media_lock", None)
             if media_lock is not None:
-                with media_lock:
+                # Use timeout on lock acquisition
+                if not media_lock.acquire(timeout=self._hw_timeout):
+                    return None
+                try:
                     sample = mini.media.get_audio_sample()
+                    sample_rate = mini.media.get_output_audio_samplerate()
+                finally:
+                    media_lock.release()
             else:
                 sample = mini.media.get_audio_sample()
+                sample_rate = mini.media.get_output_audio_samplerate()
 
             if sample is None or len(sample) == 0:
                 return None
-
-            sample_rate = mini.media.get_output_audio_samplerate()
 
             return CapturedAudio(
                 samples=np.asarray(sample),
                 timestamp=time.time(),
                 sample_rate=int(sample_rate),
             )
+
+        try:
+            future = executor.submit(_do_capture)
+            # Poll with short timeout to check stop_event
+            timeout_remaining = self._hw_timeout
+            poll_interval = 0.1
+            while timeout_remaining > 0:
+                if self._stop_event.is_set():
+                    future.cancel()
+                    return None
+                try:
+                    return future.result(timeout=min(poll_interval, timeout_remaining))
+                except concurrent.futures.TimeoutError:
+                    timeout_remaining -= poll_interval
+                    continue
+            # Timeout exceeded
+            future.cancel()
+            return None
+        except concurrent.futures.CancelledError:
+            return None
         except Exception as e:
             logger.debug("Audio capture failed: %s", e)
             return None
 
+    # Target coordinate system for behaviors (matches look_at_image expectations)
+    _TARGET_WIDTH = 640.0
+    _TARGET_HEIGHT = 480.0
+
     def _segment_frame(self, frame: np.ndarray) -> list[dict[str, Any]]:
-        """Run YOLO segmentation on frame."""
+        """Run YOLO segmentation on frame.
+
+        Returns detections with bounding boxes scaled to 640x480 coordinate system,
+        regardless of the camera's native resolution.
+        """
         if self._maxim is None:
             return []
 
@@ -374,6 +476,22 @@ class CaptureManager:
 
             detections = []
             names = getattr(getattr(segmenter, "model", None), "names", None)
+
+            # Get actual frame dimensions for coordinate scaling
+            frame_height, frame_width = frame.shape[:2]
+            scale_x = self._TARGET_WIDTH / frame_width
+            scale_y = self._TARGET_HEIGHT / frame_height
+
+            # DEBUG: Log camera resolution (only occasionally to avoid spam)
+            import time
+            if not hasattr(self, "_last_res_log_time") or (time.time() - self._last_res_log_time) > 30:
+                self._last_res_log_time = time.time()
+                self._log.warning(
+                    "CAPTURE_DEBUG: camera_resolution=%dx%d, target=%dx%d, scale_x=%.3f, scale_y=%.3f",
+                    frame_width, frame_height,
+                    int(self._TARGET_WIDTH), int(self._TARGET_HEIGHT),
+                    scale_x, scale_y
+                )
 
             for obs in observations or []:
                 if not isinstance(obs, (list, tuple)) or len(obs) < 8:
@@ -404,12 +522,18 @@ class CaptureManager:
                 except Exception:
                     pass
 
+                # Scale bounding box from camera resolution to 640x480
+                x1 = float(obs[2]) * scale_x
+                y1 = float(obs[3]) * scale_y
+                x2 = float(obs[4]) * scale_x
+                y2 = float(obs[5]) * scale_y
+
                 detections.append({
                     "track_id": track_id,
                     "class_id": cls_id,
                     "label": label,
                     "conf": conf,
-                    "bbox_xyxy": [float(obs[2]), float(obs[3]), float(obs[4]), float(obs[5])],
+                    "bbox_xyxy": [x1, y1, x2, y2],
                 })
 
             return detections
@@ -444,8 +568,16 @@ class CaptureManager:
             return None
 
     def on_frame(self, callback: Callable[[CapturedFrame], None]) -> None:
-        """Register callback for new frames."""
+        """Register callback for new frames (fires before segmentation)."""
         self._frame_callbacks.append(callback)
+
+    def on_segmented_frame(self, callback: Callable[[CapturedFrame], None]) -> None:
+        """Register callback for segmented frames (fires after YOLO completes).
+
+        Use this callback instead of on_frame() when you need detection data.
+        The DefaultNetwork and PerceptionAgent should use this for reactive behaviors.
+        """
+        self._segmented_frame_callbacks.append(callback)
 
     def on_audio(self, callback: Callable[[CapturedAudio], None]) -> None:
         """Register callback for new audio."""
@@ -482,5 +614,12 @@ class CaptureManager:
         """Remove an audio callback."""
         try:
             self._audio_callbacks.remove(callback)
+        except ValueError:
+            pass
+
+    def remove_segmented_frame_callback(self, callback: Callable[[CapturedFrame], None]) -> None:
+        """Remove a segmented frame callback."""
+        try:
+            self._segmented_frame_callbacks.remove(callback)
         except ValueError:
             pass
