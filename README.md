@@ -22,6 +22,9 @@ Maxim provides:
 | **Checkpointing** | Persist and resume goal trees across restarts |
 | **FearAgent** | Safety review for sensitive operations before execution |
 | **Voice Control** | Wake-word activation and voice-triggered actions |
+| **Pain Detection** | Proprioceptive monitoring for aversive movement patterns |
+| **Harm Prediction** | Zero-latency prediction of harmful outcomes before execution |
+| **Energy Tracking** | Resource expenditure monitoring for tokens, compute, and movement |
 
 ---
 
@@ -96,6 +99,10 @@ Agents → Planning → Decision Engine → Runtime → Executor → Tools → E
 | `src/maxim/runtime/` | Agentic orchestration loop |
 | `src/maxim/conscience/` | Reachy capture/inference/control loop |
 | `src/maxim/modes/` | Operating mode definitions and strategies |
+| `src/maxim/proprioception/` | Movement tracking and pain detection |
+| `src/maxim/harm/` | Predictive harm detection (velocity, joint limits) |
+| `src/maxim/energy/` | Resource expenditure tracking (tokens, compute, movement) |
+| `src/maxim/bridges/` | Cross-system integration (pain, energy, memory) |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design rules.
 
@@ -319,6 +326,25 @@ maxim [OPTIONS]
 | `--memory-path` | Memory persistence path | `~/memory/memories.json` |
 | `--reset` | Reset memory on startup | False |
 | `--epochs` | Stop after N cycles | None (infinite) |
+| `--clear-memory` | Clear persistent memory and exit | None |
+| `--clear-cache` | Clear Python bytecode cache | False |
+
+### Clearing Persistent Memory
+
+Maxim learns over time and persists state across sessions. To reset learning:
+
+```bash
+# Clear all persistent memory
+maxim --clear-memory
+
+# Clear specific types (comma-separated)
+maxim --clear-memory focus           # Movement gain learning
+maxim --clear-memory bounds          # Workspace bounds
+maxim --clear-memory fear,escalation # Safety and escalation thresholds
+maxim --clear-memory all             # Everything
+```
+
+**Memory types:** `focus`, `bounds`, `escalation`, `fear`, `threshold`, `nac`, `scn`, `hippo`, `pain`
 
 ### Voice Commands
 
