@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from maxim.conscience.fear_agent import (
+# FearAgent moved to maxim.agents - re-export for backward compatibility
+from maxim.agents.fear_agent import (
     DangerCategory,
     FearAgent,
     Finding,
