@@ -344,7 +344,7 @@ maxim --clear-memory fear,escalation # Safety and escalation thresholds
 maxim --clear-memory all             # Everything
 ```
 
-**Memory types:** `focus`, `bounds`, `escalation`, `fear`, `threshold`, `nac`, `scn`, `hippo`, `pain`
+**Memory types:** `focus`, `bounds`, `escalation`, `fear`, `threshold`, `nac`, `scn`, `hippo`, `pain`, `semantic`
 
 ### Voice Commands
 
