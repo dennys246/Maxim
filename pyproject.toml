@@ -49,6 +49,11 @@ llm = [
 tts = [
     "piper-tts>=1.2.0",
 ]
+# Phase 4: Neural semantic similarity (requires torch)
+semantic = [
+    "sentence-transformers>=2.2.0",
+    "torch>=2.1",
+]
 all = [
     "llama-cpp-python==0.3.8",
     "transformers>=4.40.0",
@@ -57,6 +62,7 @@ all = [
     "sentencepiece>=0.2.0",
     "huggingface-hub>=0.24.0",
     "piper-tts>=1.2.0",
+    "sentence-transformers>=2.2.0",
 ]
 
 [project.scripts]
