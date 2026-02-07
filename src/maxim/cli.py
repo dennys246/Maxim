@@ -250,6 +250,19 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Clear Python bytecode cache (__pycache__) before running.",
     )
+    parser.add_argument(
+        "--clear-memory",
+        type=str,
+        nargs="?",
+        const="all",
+        default=None,
+        metavar="TYPE",
+        help=(
+            "Clear persistent memory and exit. "
+            "Types: all (default), focus, bounds, escalation, fear, threshold, "
+            "nac, scn, hippo, pain. Can specify multiple comma-separated types."
+        ),
+    )
     return parser
 
 
@@ -535,6 +548,70 @@ def _clear_python_cache(base_dir: str | None = None) -> int:
     return removed
 
 
+# Memory file paths for --clear-memory
+MEMORY_PATHS = {
+    "focus": "data/util/focus_learner.json",
+    "bounds": "data/util/workspace_bounds.json",
+    "escalation": "data/util/escalation_learning.json",
+    "fear": "data/util/fear_learning.json",
+    "threshold": "data/util/adaptive_thresholds.json",
+    "nac": "data/util/nac_state.json",
+    "scn": "data/util/scn_state.json",
+    "hippo": "data/util/hippocampus.json",
+    "pain": "data/util/pain_detector.json",
+    "semantic": "data/util/semantic_embeddings.npz",  # Phase 4 semantic embeddings
+}
+
+
+def _clear_memory(memory_types: str, home_dir: str = "data") -> dict[str, bool]:
+    """Clear persistent memory files.
+
+    Args:
+        memory_types: Comma-separated memory types or 'all'.
+        home_dir: Base data directory.
+
+    Returns:
+        Dict mapping memory type to success (True if cleared, False if not found).
+    """
+    from pathlib import Path
+
+    results: dict[str, bool] = {}
+
+    # Parse types
+    if memory_types == "all":
+        types_to_clear = list(MEMORY_PATHS.keys())
+    else:
+        types_to_clear = [t.strip().lower() for t in memory_types.split(",")]
+
+    for mem_type in types_to_clear:
+        if mem_type not in MEMORY_PATHS:
+            print(f"Unknown memory type: {mem_type}", file=sys.stderr)
+            print(f"Available types: {', '.join(MEMORY_PATHS.keys())}", file=sys.stderr)
+            results[mem_type] = False
+            continue
+
+        # Get path relative to home_dir
+        rel_path = MEMORY_PATHS[mem_type]
+        # Extract just the filename portion (after data/util/)
+        if rel_path.startswith("data/"):
+            rel_path = rel_path[5:]  # Remove "data/" prefix
+        full_path = Path(home_dir) / rel_path
+
+        if full_path.exists():
+            try:
+                full_path.unlink()
+                results[mem_type] = True
+                print(f"  Cleared: {mem_type} ({full_path})")
+            except Exception as e:
+                print(f"  Failed to clear {mem_type}: {e}", file=sys.stderr)
+                results[mem_type] = False
+        else:
+            results[mem_type] = False
+            print(f"  Not found: {mem_type} ({full_path})")
+
+    return results
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -544,6 +621,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     if bool(getattr(args, "clear_cache", False)):
         removed = _clear_python_cache()
         print(f"Cleared {removed} __pycache__ director{'y' if removed == 1 else 'ies'}.", file=sys.stderr)
+
+    # Clear memory if requested
+    clear_memory = getattr(args, "clear_memory", None)
+    if clear_memory is not None:
+        print(f"Clearing memory ({clear_memory})...")
+        results = _clear_memory(clear_memory, args.home_dir)
+        cleared = sum(1 for v in results.values() if v)
+        total = len(results)
+        print(f"Cleared {cleared}/{total} memory file(s).")
+        return 0  # Exit after clearing
 
     build_home(args.home_dir)
     mode = str(getattr(args, "mode", "exploration")).strip().lower()
