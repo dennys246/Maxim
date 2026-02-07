@@ -1,0 +1,91 @@
+# Default Network Configuration
+# Reactive behavior layer for Maxim
+#
+# This file configures the biologically-inspired Default Network that:
+# 1. Handles routine visual behaviors without LLM involvement
+# 2. Acts as a Thalamic Gate, filtering percepts before deliberation
+# 3. Provides responsive, naturalistic movement through behavior arbitration
+
+default_network:
+  enabled: true
+  update_hz: 30.0           # Target processing rate
+  publish_actions: true     # Publish DNActionProposal to AgentBus
+  fear_gate_enabled: true   # Gate actions through FearAgent
+
+  # Behavior configurations
+  behaviors:
+    orienting:
+      enabled: true
+      priority: 0.8
+      novelty_threshold: 1.2    # Minimum novelty to trigger
+      min_confidence: 0.4       # Minimum detection confidence
+      cooldown_seconds: 0.5     # Max 2x/sec
+
+    social:
+      enabled: true
+      priority: 0.9             # Higher than orienting
+      prefer_faces: true        # Target face region
+      tracking_hysteresis: 0.1  # Bonus for tracked person
+      cooldown_seconds: 0.2
+
+    motion:
+      enabled: true
+      priority: 0.7
+      velocity_threshold: 50.0  # pixels/second minimum
+      history_seconds: 0.5      # Position history duration
+      prediction_seconds: 0.1   # Lead target by this much
+      cooldown_seconds: 0.1
+
+    startle:
+      enabled: true
+      priority: 0.95            # Very high - reflexive
+      peripheral_threshold: 0.7 # Fraction of frame edge
+      appearance_window: 0.3    # Seconds for "sudden"
+      min_confidence: 0.5
+      cooldown_seconds: 2.0     # Long cooldown
+
+    idle_scan:
+      enabled: true
+      priority: 0.2             # Low - only when nothing else
+      idle_timeout: 5.0         # Seconds before scanning
+      scan_speed: 0.5           # Radians/second
+      scan_amplitude: 200.0     # Pixel range
+      cooldown_seconds: 0.5
+
+    microsaccades:
+      enabled: true
+      priority: 0.1             # Very low - background
+      fixation_timeout: 2.0     # Seconds before starting
+      amplitude: 20.0           # Pixel displacement
+      cooldown_seconds: 0.3
+
+    return_to_center:
+      enabled: true
+      priority: 0.15
+      threshold: 0.7            # Fraction of max range
+      return_speed: 0.3         # How fast to return
+      cooldown_seconds: 1.0
+
+  # Arbiter configuration
+  arbiter:
+    hysteresis_bonus: 0.1       # Bonus for current behavior
+    min_switch_interval: 0.3    # Seconds between switches
+    score_threshold: 0.1        # Minimum score to act
+
+  # Thalamic Gate configuration
+  gate:
+    novelty_threshold: 0.7
+    salience_threshold: 0.6
+    anomaly_threshold: 0.7
+    adaptive: true              # Enable adaptive thresholding
+
+    # Adaptive threshold settings
+    min_threshold: 0.3
+    max_threshold: 0.95
+    adaptation_rate: 0.1
+    escalation_rate_target: 0.05  # Target 5% escalation
+
+  # Inhibition settings
+  inhibition:
+    auto_release_timeout: 5.0   # Max inhibition duration
+    inhibit_during_tool_execution: false
