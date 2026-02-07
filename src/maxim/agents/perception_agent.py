@@ -11,13 +11,15 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.base import Agent
 from maxim.agents.bus import AgentBus, Percept
-from maxim.utils.structured_logging import get_abstraction_buffer, log_structured
+from maxim.utils.structured_logging import log_structured
 
 if TYPE_CHECKING:
     from maxim.runtime.capture import CapturedFrame, CaptureManager
@@ -58,9 +60,17 @@ class PerceptionAgent(Agent):
         self._recent_percepts: deque[Percept] = deque(maxlen=novelty_window)
         self._capture_manager = capture_manager
 
-        # Register for direct frame callbacks if capture manager provided
+        # Thread pool for non-blocking percept publishing
+        # This prevents the segmentation thread from being blocked by bus handlers
+        self._publish_executor: ThreadPoolExecutor | None = None
+        if capture_manager is not None:
+            self._publish_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="percept_pub")
+
+        # Register for segmented frame callbacks if capture manager provided
+        # IMPORTANT: Use on_segmented_frame (not on_frame) to get detections
+        # The DefaultNetwork needs detections for reactive head movements
         if self._capture_manager is not None:
-            self._capture_manager.on_frame(self._on_captured_frame)
+            self._capture_manager.on_segmented_frame(self._on_captured_frame)
 
         # State
         self._last_transcript_path: str | None = None
@@ -284,7 +294,17 @@ class PerceptionAgent(Agent):
         return percept
 
     def propose_intent(self, state: Any, memory: Any, **kwargs: Any) -> dict[str, Any] | None:
-        """Process observation and publish percept."""
+        """Process observation and publish percept.
+
+        NOTE: If CaptureManager is active, the callback path (_on_captured_frame)
+        handles Percept publishing. This method only publishes when the callback
+        path is not active to avoid duplicate Percepts.
+        """
+        # Skip if CaptureManager callback is handling perception
+        # The callback path publishes Percepts with actual detections
+        if self._capture_manager is not None:
+            return None
+
         obs = getattr(state, "data", None) if hasattr(state, "data") else None
         if not isinstance(obs, dict):
             obs = {}
@@ -296,7 +316,7 @@ class PerceptionAgent(Agent):
         if file_changed:
             percept.file_changed = file_path
 
-        # Publish for downstream agents
+        # Publish for downstream agents (only when no CaptureManager)
         self._bus.publish(percept)
 
         return None  # PerceptionAgent doesn't propose intents directly
@@ -311,9 +331,11 @@ class PerceptionAgent(Agent):
             self._interests.difference_update(remove)
 
     def _on_captured_frame(self, captured: CapturedFrame) -> None:
-        """Handle frame directly from CaptureManager (Phase 3).
+        """Handle segmented frame from CaptureManager (Phase 3).
 
-        This bypasses JSONL file polling for lower latency.
+        This receives frames AFTER YOLO segmentation completes, so detections
+        are populated. The Percept is published to the bus for DefaultNetwork
+        to enable reactive head movements.
         """
         # Build percept from captured frame
         detections = captured.detections
@@ -355,8 +377,11 @@ class PerceptionAgent(Agent):
                 },
             )
 
-        # Publish for downstream agents
-        self._bus.publish(percept)
+        # Publish for downstream agents (async to avoid blocking segmentation thread)
+        if self._publish_executor is not None:
+            self._publish_executor.submit(self._bus.publish, percept)
+        else:
+            self._bus.publish(percept)
 
     def process_captured_frame(self, captured: CapturedFrame) -> Percept:
         """Process a captured frame into a Percept (public API).
@@ -390,3 +415,8 @@ class PerceptionAgent(Agent):
     def on_stop(self, **kwargs: Any) -> None:
         """Clean up on stop."""
         self._recent_percepts.clear()
+
+        # Shutdown publish executor
+        if self._publish_executor is not None:
+            self._publish_executor.shutdown(wait=False)
+            self._publish_executor = None
