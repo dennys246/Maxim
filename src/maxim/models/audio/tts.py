@@ -13,6 +13,7 @@ Model download (~100MB):
 
 from __future__ import annotations
 
+import hashlib
 import io
 import logging
 import wave
@@ -23,12 +24,65 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phrase Cache for common TTS outputs
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Cache size: ~50 phrases * ~50KB avg = ~2.5MB memory
+_PHRASE_CACHE_SIZE = 50
+
+
+def _cache_key(text: str, sample_rate: int) -> str:
+    """Generate cache key for text + sample rate."""
+    return hashlib.md5(f"{text}:{sample_rate}".encode()).hexdigest()
+
+
+class _AudioCache:
+    """LRU cache for synthesized audio to avoid re-synthesis of common phrases."""
+
+    def __init__(self, maxsize: int = _PHRASE_CACHE_SIZE) -> None:
+        self._cache: dict[str, np.ndarray] = {}
+        self._access_order: list[str] = []
+        self._maxsize = maxsize
+
+    def get(self, key: str) -> np.ndarray | None:
+        """Get cached audio, updating access order."""
+        if key in self._cache:
+            # Move to end (most recently used)
+            self._access_order.remove(key)
+            self._access_order.append(key)
+            return self._cache[key]
+        return None
+
+    def put(self, key: str, audio: np.ndarray) -> None:
+        """Cache audio, evicting oldest if at capacity."""
+        if key in self._cache:
+            return  # Already cached
+
+        # Evict oldest if at capacity
+        while len(self._cache) >= self._maxsize and self._access_order:
+            oldest = self._access_order.pop(0)
+            self._cache.pop(oldest, None)
+
+        self._cache[key] = audio
+        self._access_order.append(key)
+
+    def clear(self) -> None:
+        """Clear the cache."""
+        self._cache.clear()
+        self._access_order.clear()
+
 
 class PiperTTS:
     """Text-to-speech synthesis using Piper.
 
     Piper is a fast, local neural text-to-speech system that runs
     efficiently on CPU. It uses ONNX models for inference.
+
+    Features:
+    - Lazy model loading (loads on first use)
+    - Raw audio synthesis (avoids WAV encode/decode overhead)
+    - LRU phrase caching for common phrases
     """
 
     # Default model paths relative to repo root
@@ -40,6 +94,7 @@ class PiperTTS:
         model_path: str | Path | None = None,
         model_name: str = DEFAULT_MODEL_NAME,
         models_dir: str | Path = DEFAULT_MODEL_DIR,
+        cache_phrases: bool = True,
     ) -> None:
         """Initialize Piper TTS engine.
 
@@ -48,10 +103,16 @@ class PiperTTS:
                 model_name and models_dir are ignored.
             model_name: Name of the model (without extension).
             models_dir: Directory containing model files.
+            cache_phrases: If True, cache synthesized audio for repeated phrases.
         """
         self._piper: Any = None
         self._voice: Any = None
+        self._has_raw_synthesis: bool | None = None  # Detected on first use
         self.sample_rate: int = 22050  # Piper default, will be updated on load
+
+        # Phrase caching
+        self._cache_enabled = cache_phrases
+        self._cache = _AudioCache() if cache_phrases else None
 
         # Resolve model path
         if model_path:
@@ -102,6 +163,9 @@ class PiperTTS:
     def synthesize(self, text: str) -> np.ndarray:
         """Convert text to audio samples.
 
+        Uses raw synthesis if available (faster), falls back to WAV-based
+        synthesis otherwise. Caches common phrases to avoid re-synthesis.
+
         Args:
             text: The text to synthesize.
 
@@ -111,14 +175,62 @@ class PiperTTS:
         if not text or not text.strip():
             return np.array([], dtype=np.int16)
 
+        text = text.strip()
         self._load_model()
 
-        # Synthesize to WAV in memory
+        # Check cache first
+        if self._cache is not None:
+            cache_key = _cache_key(text, self.sample_rate)
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                logger.debug("TTS cache hit for: %s", text[:30])
+                return cached.copy()  # Return copy to prevent mutation
+
+        # Synthesize audio
+        audio = self._synthesize_raw(text)
+
+        # Cache the result (only for shorter phrases to save memory)
+        if self._cache is not None and len(text) < 200:
+            self._cache.put(cache_key, audio.copy())
+
+        return audio
+
+    def _synthesize_raw(self, text: str) -> np.ndarray:
+        """Synthesize audio using raw method if available, else WAV fallback.
+
+        Args:
+            text: The text to synthesize.
+
+        Returns:
+            Audio samples as int16 numpy array.
+        """
+        # Detect if raw synthesis is available (only check once)
+        if self._has_raw_synthesis is None:
+            self._has_raw_synthesis = hasattr(self._voice, "synthesize_stream_raw")
+            if self._has_raw_synthesis:
+                logger.debug("Using raw synthesis (faster)")
+            else:
+                logger.debug("Using WAV-based synthesis (fallback)")
+
+        # Use raw synthesis if available (avoids WAV encode/decode overhead)
+        if self._has_raw_synthesis:
+            try:
+                audio_chunks = []
+                for audio_bytes in self._voice.synthesize_stream_raw(text):
+                    chunk = np.frombuffer(audio_bytes, dtype=np.int16)
+                    audio_chunks.append(chunk)
+                if audio_chunks:
+                    return np.concatenate(audio_chunks)
+                return np.array([], dtype=np.int16)
+            except Exception as e:
+                logger.warning("Raw synthesis failed, falling back to WAV: %s", e)
+                self._has_raw_synthesis = False
+
+        # Fallback: WAV-based synthesis
         wav_buffer = io.BytesIO()
         with wave.open(wav_buffer, "wb") as wav_file:
             self._voice.synthesize(text, wav_file)
 
-        # Read back as numpy array
         wav_buffer.seek(0)
         with wave.open(wav_buffer, "rb") as wav_file:
             audio_data = wav_file.readframes(wav_file.getnframes())
