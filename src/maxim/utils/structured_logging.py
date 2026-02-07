@@ -48,23 +48,35 @@ class EventCategory(enum.Enum):
 
 # Map events to their minimum verbosity level
 EVENT_VERBOSITY: dict[str, int] = {
-    # Level 0: Always shown
+    # Level 0: Critical events (always shown)
     "error": 0,
     "critical": 0,
     "hard_stop": 0,
     "emergency_halt": 0,
-    # Level 1: Key events
-    "goal_proposed": 1,
-    "goal_completed": 1,
-    "goal_failed": 1,
+    # Level 0: Key agentic events (user should always see these)
+    "tool_called": 0,
+    "tool_result": 0,
+    "action_executed": 0,
+    "action_rejected": 0,
+    "goal_proposed": 0,
+    "goal_completed": 0,
+    "goal_failed": 0,
+    "user_input_received": 0,
+    # Level 0: Planning mode events (user needs to see plan approval flow)
+    "plan_awaiting_approval": 0,
+    "plan_approved": 0,
+    "plan_rejected": 0,
+    "plan_modify_requested": 0,
+    "plan_approval_check": 0,
+    # Level 1: Important events
     "goal_cancelled": 1,
-    "tool_called": 1,
-    "tool_result": 1,
     "mode_change": 1,
     "startup": 1,
     "shutdown": 1,
-    "action_executed": 1,
-    "action_rejected": 1,
+    "llm_response": 1,
+    "llm_submit": 1,
+    "exploration_context": 1,
+    "multi_step_queued": 1,
     # Level 2: Detailed events
     "percept": 2,
     "detection": 2,
@@ -84,6 +96,15 @@ EVENT_VERBOSITY: dict[str, int] = {
     "skipped": 3,
     "idle": 3,
     "state_persist": 3,
+    # Default Network events
+    "dn_percept_escalated": 1,      # Important - means LLM will be called
+    "dn_action_executed": 2,        # Detailed - reactive movement
+    "dn_behavior_switched": 2,      # Detailed - behavior change
+    "dn_inhibited": 1,              # Important - DN suppressed
+    "dn_released": 2,               # Detailed - DN released
+    "dn_percept_filtered": 3,       # Debug - routine filtering
+    "dn_behavior_evaluated": 3,     # Debug - behavior evaluation
+    "dn_action_blocked": 2,         # Detailed - FearAgent blocked action
 }
 
 
@@ -286,24 +307,31 @@ class AbstractionBuffer:
 
 
 # Global abstraction buffer (singleton)
-_abstraction_buffer: AbstractionBuffer | None = None
-_buffer_lock = threading.Lock()
 _global_verbosity: int = 1
+
+
+def _get_buffer_singleton():
+    """Lazy import to avoid circular dependency."""
+    from maxim.utils.singleton import Singleton
+    return Singleton("abstraction_buffer")
 
 
 def get_abstraction_buffer() -> AbstractionBuffer:
     """Get or create the global abstraction buffer."""
-    global _abstraction_buffer
-    with _buffer_lock:
-        if _abstraction_buffer is None:
-            verbosity = int(os.environ.get("MAXIM_AGENTIC_VERBOSITY", _global_verbosity))
-            console = os.environ.get("MAXIM_AGENTIC_CONSOLE", "").lower() in ("1", "true", "yes")
-            _abstraction_buffer = AbstractionBuffer(
-                max_entries=500,
-                verbosity=verbosity,
-                console_output=console,
-            )
-        return _abstraction_buffer
+    singleton = _get_buffer_singleton()
+    buf = singleton.get()
+
+    if buf is None:
+        verbosity = int(os.environ.get("MAXIM_AGENTIC_VERBOSITY", _global_verbosity))
+        console = os.environ.get("MAXIM_AGENTIC_CONSOLE", "").lower() in ("1", "true", "yes")
+        buf = AbstractionBuffer(
+            max_entries=500,
+            verbosity=verbosity,
+            console_output=console,
+        )
+        singleton.set(buf)
+
+    return buf
 
 
 def configure_agentic_verbosity(

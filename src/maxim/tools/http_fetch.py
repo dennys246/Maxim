@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from maxim.tools.base import Tool, ToolResult
 
 if TYPE_CHECKING:
-    from maxim.utils.internet_access import InternetAccessPolicy
+    pass
 
 logger = logging.getLogger(__name__)
 

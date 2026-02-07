@@ -2,7 +2,97 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import re
 import subprocess
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from maxim.utils.filesystem_policy import ModeFilesystemConfig
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Path Sanitization Utilities
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class PathValidationError(ValueError):
+    """Raised when path validation fails."""
+    pass
+
+
+def sanitize_path(path: str, *, max_length: int = 4096) -> str:
+    """Sanitize a file path to prevent injection attacks.
+
+    Args:
+        path: The path to sanitize.
+        max_length: Maximum allowed path length.
+
+    Returns:
+        The sanitized path.
+
+    Raises:
+        PathValidationError: If the path is invalid or potentially malicious.
+    """
+    if not path:
+        raise PathValidationError("Path cannot be empty")
+
+    # Check for null bytes (can truncate paths in C-based systems)
+    if "\x00" in path:
+        raise PathValidationError("Path contains null bytes")
+
+    # Check for excessive length
+    if len(path) > max_length:
+        raise PathValidationError(f"Path exceeds maximum length of {max_length}")
+
+    # Check for non-printable characters (except common ones like space, tab)
+    if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", path):
+        raise PathValidationError("Path contains invalid control characters")
+
+    # Normalize the path to resolve . and .. segments
+    normalized = os.path.normpath(path)
+
+    return normalized
+
+
+def validate_path_traversal(
+    path: str,
+    base_dir: str | None = None,
+    allow_symlinks: bool = False,
+) -> str:
+    """Validate a path against traversal attacks.
+
+    Args:
+        path: The path to validate.
+        base_dir: If provided, ensure path is within this directory.
+        allow_symlinks: If False, resolve symlinks and re-check.
+
+    Returns:
+        The validated (and possibly resolved) path.
+
+    Raises:
+        PathValidationError: If the path is outside allowed bounds.
+    """
+    # First sanitize the path
+    path = sanitize_path(path)
+
+    # Resolve to absolute path
+    if not os.path.isabs(path):
+        path = os.path.abspath(path)
+
+    # If checking against base directory
+    if base_dir:
+        base_dir = os.path.realpath(base_dir) if not allow_symlinks else os.path.abspath(base_dir)
+
+        # Resolve symlinks if not allowed
+        check_path = os.path.realpath(path) if not allow_symlinks else path
+
+        # Verify containment
+        if not (check_path.startswith(base_dir + os.sep) or check_path == base_dir):
+            raise PathValidationError(f"Path escapes base directory: {base_dir}")
+
+        return check_path
+
+    return path
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -26,7 +116,32 @@ class ReadFileTool(Tool):
         "tail_lines": (int, None),  # optional
     }
 
-    def execute(self, path: str, tail_lines: int | None = None):
+    def __init__(self, allowed_dirs: list[str] | None = None) -> None:
+        super().__init__()
+        # If allowed_dirs is set, only allow reading from those directories
+        self._allowed_dirs = [os.path.realpath(d) for d in allowed_dirs] if allowed_dirs else None
+
+    def execute(self, path: str, tail_lines: int | None = None) -> ToolResult:
+        try:
+            # Sanitize and validate the path
+            path = sanitize_path(path)
+
+            # Check against allowed directories if configured
+            if self._allowed_dirs:
+                real_path = os.path.realpath(path)
+                in_allowed = False
+                for allowed in self._allowed_dirs:
+                    if real_path.startswith(allowed + os.sep) or real_path == allowed:
+                        in_allowed = True
+                        break
+                if not in_allowed:
+                    return ToolResult(
+                        success=False,
+                        error=f"Path must be within allowed directories",
+                    )
+        except PathValidationError as e:
+            return ToolResult(success=False, error=str(e))
+
         if tail_lines is not None:
             n = int(tail_lines)
             if n <= 0:
@@ -61,17 +176,124 @@ class WriteFileTool(Tool):
         "overwrite": (bool, False),  # optional, default False
     }
 
+    # Maximum content size to prevent memory exhaustion (10 MB)
+    MAX_CONTENT_SIZE: int = 10 * 1024 * 1024
+
+    # Directories that should never be written to
+    FORBIDDEN_PATHS: tuple[str, ...] = (
+        "/bin", "/sbin", "/usr/bin", "/usr/sbin", "/usr/local/bin",
+        "/etc", "/var", "/tmp", "/dev", "/proc", "/sys",
+        "/boot", "/lib", "/lib64", "/opt",
+        "/root", "/home",  # Protect all home directories by default
+        "/System", "/Library", "/Applications",  # macOS system paths
+        "/private/etc", "/private/var",  # macOS private paths
+    )
+
+    # File extensions that should never be written
+    FORBIDDEN_EXTENSIONS: tuple[str, ...] = (
+        ".exe", ".dll", ".so", ".dylib",  # Executables/libraries
+        ".pem", ".key", ".crt", ".p12",  # Certificates/keys
+        ".env", ".credentials", ".secret",  # Secrets
+    )
+
+    def __init__(
+        self,
+        allowed_dirs: list[str] | None = None,
+        mode_config: "ModeFilesystemConfig | None" = None,
+    ) -> None:
+        super().__init__()
+        # If allowed_dirs is set, only allow writing within those directories
+        self._allowed_dirs = [os.path.realpath(d) for d in allowed_dirs] if allowed_dirs else None
+        self._mode_config = mode_config
+
+    def _is_path_allowed(self, path: Path) -> tuple[bool, str]:
+        """Check if path is safe to write to (basic safety checks)."""
+        # Resolve to real path (handles symlinks)
+        real_path = os.path.realpath(str(path))
+
+        # Check against forbidden paths
+        for forbidden in self.FORBIDDEN_PATHS:
+            if real_path.startswith(forbidden + os.sep) or real_path == forbidden:
+                return False, f"Writing to {forbidden} is not allowed"
+
+        # Check against forbidden extensions
+        suffix = path.suffix.lower()
+        if suffix in self.FORBIDDEN_EXTENSIONS:
+            return False, f"Writing files with extension {suffix} is not allowed"
+
+        # If allowlist is set, verify path is within allowed directories
+        if self._allowed_dirs:
+            in_allowed = False
+            for allowed in self._allowed_dirs:
+                if real_path.startswith(allowed + os.sep) or real_path == allowed:
+                    in_allowed = True
+                    break
+            if not in_allowed:
+                return False, f"Path must be within allowed directories: {self._allowed_dirs}"
+
+        return True, ""
+
+    def set_mode_config(self, config: "ModeFilesystemConfig") -> None:
+        """Update the mode filesystem config (for runtime mode changes)."""
+        self._mode_config = config
+
     def execute(self, **kwargs) -> ToolResult:
         try:
-            path = Path(kwargs["path"])
+            raw_path = kwargs["path"]
             content = kwargs["content"]
             overwrite = kwargs.get("overwrite", False)
 
-            # Safety check
+            # Check content size to prevent memory exhaustion
+            if len(content) > self.MAX_CONTENT_SIZE:
+                return ToolResult(
+                    success=False,
+                    error=f"Content size ({len(content)} bytes) exceeds maximum allowed ({self.MAX_CONTENT_SIZE} bytes)",
+                )
+
+            # Sanitize the path first
+            try:
+                validated_path = sanitize_path(raw_path)
+            except PathValidationError as e:
+                return ToolResult(success=False, error=str(e))
+
+            path = Path(validated_path)
+
+            # Check basic path restrictions (forbidden paths, extensions)
+            allowed, reason = self._is_path_allowed(path)
+            if not allowed:
+                return ToolResult(success=False, error=reason)
+
+            # Check mode-based write permission if config is set
+            if self._mode_config is not None:
+                from maxim.utils.filesystem_policy import check_write_permission
+
+                perm_result = check_write_permission(str(path), self._mode_config)
+
+                if not perm_result.allowed:
+                    if perm_result.requires_approval:
+                        # Return a special result indicating approval is needed
+                        return ToolResult(
+                            success=False,
+                            error=perm_result.reason,
+                            output={
+                                "requires_approval": True,
+                                "path": str(path),
+                                "is_proposal": self._mode_config.cwd_access == "propose",
+                            },
+                        )
+                    return ToolResult(success=False, error=perm_result.reason)
+
+                # If approval is required but allowed, mark it in the result
+                if perm_result.requires_approval:
+                    # For supervised mode, we allow the write but flag it
+                    # The autonomy controller should intercept this
+                    pass  # Continue with the write, approval handled at higher level
+
+            # Safety check for overwrite
             if path.exists() and not overwrite:
                 return ToolResult(
                     success=False,
-                    error=f"File already exists: {path}"
+                    error="File already exists (use overwrite=True to replace)",
                 )
 
             # Ensure parent directories exist
@@ -102,6 +324,20 @@ class ExecuteFileTool(Tool):
         ".sh": "bash",
     }
 
+    def __init__(
+        self,
+        allowed_dirs: list[str] | None = None,
+        mode_config: "ModeFilesystemConfig | None" = None,
+    ) -> None:
+        super().__init__()
+        # If allowed_dirs is set, only allow executing from those directories
+        self._allowed_dirs = [os.path.realpath(d) for d in allowed_dirs] if allowed_dirs else None
+        self._mode_config = mode_config
+
+    def set_mode_config(self, config: "ModeFilesystemConfig") -> None:
+        """Update the mode filesystem config (for runtime mode changes)."""
+        self._mode_config = config
+
     def execute(self, **kwargs) -> ToolResult:
         try:
             if not _env_flag("MAXIM_ALLOW_EXECUTE_FILE", False):
@@ -110,24 +346,68 @@ class ExecuteFileTool(Tool):
                     error="ExecuteFileTool disabled. Set MAXIM_ALLOW_EXECUTE_FILE=1 to enable.",
                 )
 
-            path = Path(kwargs["path"])
+            raw_path = kwargs["path"]
             timeout = kwargs.get("timeout", 10)
 
+            # Sanitize and validate the path
+            try:
+                validated_path = sanitize_path(raw_path)
+            except PathValidationError as e:
+                return ToolResult(success=False, error=str(e))
+
+            path = Path(validated_path)
+
+            # Check against allowed directories if configured
+            if self._allowed_dirs:
+                real_path = os.path.realpath(str(path))
+                in_allowed = False
+                for allowed in self._allowed_dirs:
+                    if real_path.startswith(allowed + os.sep) or real_path == allowed:
+                        in_allowed = True
+                        break
+                if not in_allowed:
+                    return ToolResult(
+                        success=False,
+                        error="Path must be within allowed directories",
+                    )
+
+            # Check mode-based execute permission if config is set
+            if self._mode_config is not None:
+                from maxim.utils.filesystem_policy import check_execute_permission
+
+                perm_result = check_execute_permission(str(path), self._mode_config)
+
+                if not perm_result.allowed:
+                    return ToolResult(success=False, error=perm_result.reason)
+
+                if perm_result.requires_approval:
+                    # Return a special result indicating approval is needed
+                    return ToolResult(
+                        success=False,
+                        error=perm_result.reason,
+                        output={
+                            "requires_approval": True,
+                            "path": str(path),
+                            "action": "execute",
+                        },
+                    )
+
             if not path.exists():
-                return ToolResult(success=False, error=f"File does not exist: {path}")
+                return ToolResult(success=False, error="File does not exist")
 
             ext = path.suffix
             if ext not in self.EXT_INTERPRETER:
-                return ToolResult(success=False, error=f"Unsupported file type: {ext}")
+                return ToolResult(success=False, error=f"Unsupported file type: {ext} (allowed: .py, .sh)")
 
             interpreter = self.EXT_INTERPRETER[ext]
 
-            # Run in subprocess
+            # Run in subprocess (uses list form to prevent shell injection)
             result = subprocess.run(
                 [interpreter, str(path)],
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
+                shell=False,  # Explicitly disable shell to prevent injection
             )
 
             return ToolResult(
@@ -142,5 +422,314 @@ class ExecuteFileTool(Tool):
 
         except subprocess.TimeoutExpired:
             return ToolResult(success=False, error="Execution timed out")
+        except Exception as e:
+            return ToolResult(success=False, error=str(e))
+
+
+class GlobTool(Tool):
+    """Search for files and directories using glob patterns.
+
+    Supports patterns like:
+    - *.py - all Python files in current directory
+    - **/*.py - all Python files recursively
+    - src/**/*.ts - TypeScript files under src/
+    - data/*.{json,yaml} - JSON and YAML files in data/
+    """
+    name = "glob"
+    description = "Search for files and directories using glob patterns"
+    input_schema = {
+        "pattern": str,  # Required: glob pattern (e.g., "**/*.py")
+        "path": (str, "."),  # Optional: base path to search from
+        "max_results": (int, 100),  # Optional: max results to return
+        "include_hidden": (bool, False),  # Optional: include hidden files
+    }
+
+    def __init__(self, allowed_dirs: list[str] | None = None) -> None:
+        super().__init__()
+        self._allowed_dirs = [os.path.realpath(d) for d in allowed_dirs] if allowed_dirs else None
+
+    def execute(self, **kwargs) -> ToolResult:
+        try:
+            pattern = kwargs.get("pattern")
+            if not pattern:
+                return ToolResult(success=False, error="Missing required parameter: pattern")
+
+            base_path = kwargs.get("path", ".") or "."
+            max_results = int(kwargs.get("max_results", 100) or 100)
+            include_hidden = bool(kwargs.get("include_hidden", False))
+
+            # Sanitize and validate base path
+            try:
+                validated_path = sanitize_path(base_path)
+            except PathValidationError as e:
+                return ToolResult(success=False, error=str(e))
+
+            base = Path(validated_path).resolve()
+
+            # Check against allowed directories if configured
+            if self._allowed_dirs:
+                in_allowed = False
+                for allowed in self._allowed_dirs:
+                    if str(base).startswith(allowed + os.sep) or str(base) == allowed:
+                        in_allowed = True
+                        break
+                if not in_allowed:
+                    return ToolResult(
+                        success=False,
+                        error="Path must be within allowed directories",
+                    )
+
+            if not base.exists():
+                return ToolResult(success=False, error=f"Base path does not exist: {base}")
+
+            # Perform glob search
+            full_pattern = str(base / pattern)
+            matches = []
+
+            for match in Path(base).glob(pattern):
+                # Skip hidden files if not requested
+                if not include_hidden and any(part.startswith('.') for part in match.parts):
+                    continue
+
+                # Security: ensure match is within base directory
+                try:
+                    real_match = match.resolve()
+                    if self._allowed_dirs:
+                        in_allowed = False
+                        for allowed in self._allowed_dirs:
+                            if str(real_match).startswith(allowed + os.sep) or str(real_match) == allowed:
+                                in_allowed = True
+                                break
+                        if not in_allowed:
+                            continue
+                except (OSError, ValueError):
+                    continue
+
+                matches.append({
+                    "path": str(match),
+                    "name": match.name,
+                    "is_file": match.is_file(),
+                    "is_dir": match.is_dir(),
+                    "size": match.stat().st_size if match.is_file() else None,
+                })
+
+                if len(matches) >= max_results:
+                    break
+
+            return ToolResult(
+                success=True,
+                output={
+                    "pattern": pattern,
+                    "base_path": str(base),
+                    "matches": matches,
+                    "count": len(matches),
+                    "truncated": len(matches) >= max_results,
+                },
+            )
+
+        except Exception as e:
+            return ToolResult(success=False, error=str(e))
+
+
+class RequestDirectoryChangeTool(Tool):
+    """Request to change the effective working directory.
+
+    This tool is available in active mode to request changing the working
+    directory boundary. The change affects what files can be accessed by
+    filesystem tools.
+
+    Note: This does NOT call os.chdir(). It updates the containment boundary
+    used by filesystem tools. Only available when mode allows directory changes.
+    """
+
+    name = "request_directory_change"
+    description = "Request to change the effective working directory for file operations"
+    input_schema = {
+        "path": str,  # Required: new directory path
+        "reason": str,  # Required: why the change is needed
+    }
+
+    def __init__(self, can_change: bool = False) -> None:
+        """Initialize directory change request tool.
+
+        Args:
+            can_change: Whether this mode allows directory changes.
+        """
+        super().__init__()
+        self._can_change = can_change
+
+    def execute(self, **kwargs) -> ToolResult:
+        try:
+            path = kwargs.get("path")
+            reason = kwargs.get("reason", "")
+
+            if not path:
+                return ToolResult(success=False, error="Missing required parameter: path")
+
+            if not self._can_change:
+                return ToolResult(
+                    success=False,
+                    error="Directory change not allowed in current mode. Only active and singularity modes can request directory changes.",
+                )
+
+            # Validate the path
+            try:
+                validated_path = sanitize_path(path)
+            except PathValidationError as e:
+                return ToolResult(success=False, error=str(e))
+
+            # Resolve to absolute path
+            abs_path = os.path.abspath(validated_path)
+
+            if not os.path.isdir(abs_path):
+                return ToolResult(
+                    success=False,
+                    error=f"Directory does not exist: {abs_path}",
+                )
+
+            # Import here to avoid circular dependency
+            from maxim.utils.filesystem_policy import set_effective_cwd, ensure_sandbox_exists
+
+            # Update effective CWD
+            if not set_effective_cwd(abs_path):
+                return ToolResult(
+                    success=False,
+                    error=f"Failed to change to directory: {abs_path}",
+                )
+
+            # Ensure sandbox exists in new directory
+            sandbox_path = ensure_sandbox_exists(abs_path)
+
+            return ToolResult(
+                success=True,
+                output={
+                    "new_cwd": abs_path,
+                    "sandbox_path": sandbox_path,
+                    "reason": reason,
+                    "message": f"Working directory changed to: {abs_path}",
+                },
+            )
+
+        except Exception as e:
+            return ToolResult(success=False, error=str(e))
+
+
+class BashTool(Tool):
+    """Execute shell commands with safety constraints.
+
+    Common commands:
+    - ls: List directory contents
+    - cd: Change directory (note: doesn't persist between calls)
+    - python script.py: Run Python scripts
+    - cat file: Display file contents
+    - grep pattern file: Search for patterns
+    - find . -name "*.py": Find files by pattern
+    """
+    name = "bash"
+    description = "Execute shell commands"
+    input_schema = {
+        "command": str,  # Required: command to execute
+        "timeout": (float, 30.0),  # Optional: timeout in seconds
+        "cwd": (str, None),  # Optional: working directory
+    }
+
+    # Commands that are always blocked for safety
+    BLOCKED_COMMANDS = {
+        "rm -rf /", "rm -rf /*", "dd", "mkfs", "fdisk",
+        ":(){:|:&};:", "chmod 777 /",  # Fork bombs, dangerous perms
+    }
+
+    # Patterns that indicate dangerous operations
+    DANGEROUS_PATTERNS = [
+        r"rm\s+-rf\s+/",  # rm -rf starting from root
+        r">\s*/dev/sd",  # Writing directly to block devices
+        r"mv\s+/\s+",  # Moving root
+        r"chmod\s+-R\s+777\s+/",  # Recursive chmod 777 from root
+    ]
+
+    def __init__(
+        self,
+        allowed_dirs: list[str] | None = None,
+        blocked_commands: set[str] | None = None,
+    ) -> None:
+        super().__init__()
+        self._allowed_dirs = [os.path.realpath(d) for d in allowed_dirs] if allowed_dirs else None
+        self._extra_blocked = blocked_commands or set()
+
+    def _is_command_safe(self, command: str) -> tuple[bool, str]:
+        """Check if command is safe to execute."""
+        # Check explicitly blocked commands
+        if command.strip() in self.BLOCKED_COMMANDS or command.strip() in self._extra_blocked:
+            return False, "This command is explicitly blocked for safety"
+
+        # Check dangerous patterns
+        for pattern in self.DANGEROUS_PATTERNS:
+            if re.search(pattern, command):
+                return False, f"Command contains dangerous pattern"
+
+        return True, ""
+
+    def execute(self, **kwargs) -> ToolResult:
+        try:
+            if not _env_flag("MAXIM_ALLOW_BASH", False):
+                return ToolResult(
+                    success=False,
+                    error="BashTool disabled. Set MAXIM_ALLOW_BASH=1 to enable.",
+                )
+
+            command = kwargs.get("command")
+            if not command:
+                return ToolResult(success=False, error="Missing required parameter: command")
+
+            timeout = float(kwargs.get("timeout", 30.0) or 30.0)
+            cwd = kwargs.get("cwd")
+
+            # Validate working directory if specified
+            if cwd:
+                try:
+                    cwd = sanitize_path(cwd)
+                    cwd = os.path.realpath(cwd)
+                except PathValidationError as e:
+                    return ToolResult(success=False, error=f"Invalid working directory: {e}")
+
+                if self._allowed_dirs:
+                    in_allowed = False
+                    for allowed in self._allowed_dirs:
+                        if cwd.startswith(allowed + os.sep) or cwd == allowed:
+                            in_allowed = True
+                            break
+                    if not in_allowed:
+                        return ToolResult(
+                            success=False,
+                            error="Working directory must be within allowed directories",
+                        )
+
+            # Check command safety
+            is_safe, reason = self._is_command_safe(command)
+            if not is_safe:
+                return ToolResult(success=False, error=reason)
+
+            # Execute command
+            result = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=cwd,
+            )
+
+            return ToolResult(
+                success=(result.returncode == 0),
+                output={
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "returncode": result.returncode,
+                    "command": command,
+                },
+            )
+
+        except subprocess.TimeoutExpired:
+            return ToolResult(success=False, error=f"Command timed out after {timeout} seconds")
         except Exception as e:
             return ToolResult(success=False, error=str(e))

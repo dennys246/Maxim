@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -253,19 +252,24 @@ class ContentSafetyChecker:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-_global_checker: ContentSafetyChecker | None = None
+def _get_checker_singleton():
+    """Lazy import to avoid circular dependency."""
+    from maxim.utils.singleton import Singleton
+    return Singleton("content_safety_checker")
 
 
 def get_content_safety_checker(
     create_if_missing: bool = True,
 ) -> ContentSafetyChecker | None:
     """Get the global content safety checker instance."""
-    global _global_checker
+    singleton = _get_checker_singleton()
+    checker = singleton.get()
 
-    if _global_checker is None and create_if_missing:
-        _global_checker = ContentSafetyChecker()
+    if checker is None and create_if_missing:
+        checker = ContentSafetyChecker()
+        singleton.set(checker)
 
-    return _global_checker
+    return checker
 
 
 def check_content_safety(content: str) -> tuple[bool, str | None]:

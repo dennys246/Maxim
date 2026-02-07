@@ -15,11 +15,11 @@ import logging
 import os
 import threading
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from maxim.utils.singleton import Singleton
 from maxim.utils.structured_logging import (
     AbstractionBuffer,
     LogRecord,
@@ -510,18 +510,17 @@ class AgentOutputManager:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-_global_output_manager: AgentOutputManager | None = None
+_output_manager_singleton: Singleton[AgentOutputManager] = Singleton("output_manager")
 
 
 def get_output_manager() -> AgentOutputManager | None:
     """Get the global output manager."""
-    return _global_output_manager
+    return _output_manager_singleton.get()
 
 
 def set_output_manager(manager: AgentOutputManager) -> None:
     """Set the global output manager."""
-    global _global_output_manager
-    _global_output_manager = manager
+    _output_manager_singleton.set(manager)
 
 
 def init_output_manager(
@@ -531,11 +530,10 @@ def init_output_manager(
     policy: FilesystemPolicy | None = None,
 ) -> AgentOutputManager:
     """Initialize the global output manager."""
-    manager = AgentOutputManager(
+    return _output_manager_singleton.init(
+        AgentOutputManager,
         instance_id=instance_id,
         base_data_dir=base_data_dir,
         sandbox_dir=sandbox_dir,
         policy=policy,
     )
-    set_output_manager(manager)
-    return manager

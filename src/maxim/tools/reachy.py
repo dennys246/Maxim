@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-from maxim.inference.observation_passive import passive_observation
+from maxim.inference.segment_vision import passive_observation
 from maxim.tools.base import Tool, ToolResult
 from maxim.utils.logging import warn
 from maxim.utils.structured_logging import log_agentic
@@ -69,17 +69,18 @@ class NoveltyInfo:
 
 class FocusInterestsTool(Tool):
     """
-    Focus Reachy Mini's attention on YOLOv8 detections matching the current interests list.
+    Focus Reachy Mini's attention on YOLOv8 detections matching specified or default interests.
 
     Requires a live `Maxim` instance (used for the latest frame, vision model, and motor queue).
+    If target_class is provided, temporarily adds it to interests for this detection pass.
     """
 
     name = "focus_interests"
-    description = "Run YOLOv8 on the latest frame and move to center an interesting target."
+    description = "Run YOLOv8 on the latest frame and move to center on detected objects. Use target_class to specify what to look for (e.g., 'person', 'backpack', 'cup')."
 
     input_schema = {
-        "deadzone_px": (int, 20),  # optional
-        "duration_s": (float, None),  # optional
+        "target_class": (str, None),  # optional - specific object class to focus on (e.g., "backpack", "person")
+        "deadzone_px": (int, 20),  # optional - pixels from center before triggering movement
     }
 
     def __init__(self, maxim: Any) -> None:
@@ -88,6 +89,12 @@ class FocusInterestsTool(Tool):
         self._last_frame_ts: float | None = None
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        import time as _time
+        import logging
+        _logger = logging.getLogger(__name__)
+        _exec_start = _time.time()
+        _logger.info("focus_interests: starting execution")
+
         maxim = self._maxim
         if maxim is None:
             return ToolResult(success=False, error="No Maxim context available.")
@@ -111,19 +118,35 @@ class FocusInterestsTool(Tool):
         if getattr(maxim, "segmenter", None) is None:
             return ToolResult(success=False, error="Vision segmenter not initialized.")
 
+        target_class = kwargs.get("target_class")
         deadzone_px = int(kwargs.get("deadzone_px", 20) or 20)
-        duration_s = kwargs.get("duration_s", None)
-        duration: float | None = None
-        if duration_s is not None:
-            try:
-                duration = float(duration_s)
-            except Exception:
-                duration = None
+
+        # Look up class ID for target_class filtering
+        target_class_id: int | None = None
+        original_interests = None
+        if target_class:
+            # Build reverse lookup: class name -> class ID
+            class_name_to_id = {v.lower(): k for k, v in COCO_CLASSES.items()}
+            target_class_id = class_name_to_id.get(str(target_class).lower().strip())
+            _logger.info("focus_interests: target_class='%s' mapped to class_id=%s (valid classes: %s)",
+                         target_class, target_class_id, list(class_name_to_id.keys())[:10])
+
+            # Also add to interests to ensure segmenter detects it
+            # IMPORTANT: interests must be integer class IDs, not strings!
+            original_interests = list(getattr(maxim, "interests", []) or [])
+            current_interests = set(original_interests)
+            if target_class_id is not None:
+                current_interests.add(target_class_id)  # Add integer class ID (e.g., 24 for backpack)
+                _logger.info("focus_interests: added class_id=%d to interests: %s", target_class_id, current_interests)
+            maxim.interests = list(current_interests)
 
         paused = getattr(maxim, "_training_paused", None)
         pause_training = bool(getattr(maxim, "train", False)) and paused is not None
         lock = getattr(maxim, "_observation_lock", None)
 
+        _logger.info("focus_interests: setup took %.2fs, acquiring lock=%s", _time.time() - _exec_start, lock is not None)
+
+        detection_info = None
         try:
             if pause_training:
                 try:
@@ -131,11 +154,16 @@ class FocusInterestsTool(Tool):
                 except Exception:
                     pass
 
+            _lock_start = _time.time()
             if lock is None:
-                passive_observation(maxim, frame, duration=duration, deadzone_px=deadzone_px, show=False)
+                _logger.info("focus_interests: calling passive_observation (no lock)")
+                detection_info = passive_observation(maxim, frame, show=False, target_class_id=target_class_id)
             else:
+                _logger.info("focus_interests: waiting for observation lock")
                 with lock:
-                    passive_observation(maxim, frame, duration=duration, deadzone_px=deadzone_px, show=False)
+                    _logger.info("focus_interests: lock acquired in %.2fs, running detection", _time.time() - _lock_start)
+                    detection_info = passive_observation(maxim, frame, show=False, target_class_id=target_class_id)
+            _logger.info("focus_interests: detection complete in %.2fs", _time.time() - _lock_start)
         except Exception as e:
             warn("focus_interests failed: %s", e, logger=getattr(maxim, "log", None))
             return ToolResult(success=False, error=str(e))
@@ -145,13 +173,66 @@ class FocusInterestsTool(Tool):
                     paused.clear()
                 except Exception:
                     pass
+            # Restore original interests if we modified them
+            if original_interests is not None:
+                maxim.interests = original_interests
 
+        # If we got detection info with a target, attempt to center on it
+        if detection_info and detection_info.get("detection"):
+            _logger.info("focus_interests: detection found: %s", detection_info.get("detection"))
+            # passive_observation returns target_u and target_v as separate keys
+            target_u = detection_info.get("target_u")
+            target_v = detection_info.get("target_v")
+            frame_center = detection_info.get("frame_center")
+            _logger.info("focus_interests: target_u=%s, target_v=%s, frame_center=%s",
+                         target_u, target_v, frame_center)
+            if target_u is not None and target_v is not None and frame_center:
+                offset_x = target_u - frame_center[0]
+                offset_y = target_v - frame_center[1]
+                _logger.info("focus_interests: offset=(%d, %d), deadzone=%d",
+                             offset_x, offset_y, deadzone_px)
+                # Check if outside deadzone
+                if abs(offset_x) > deadzone_px or abs(offset_y) > deadzone_px:
+                    # Use look_at_image which properly enqueues motor commands
+                    look_at_fn = getattr(maxim, "look_at_image", None)
+                    _logger.info("focus_interests: outside deadzone, look_at_image=%s",
+                                 "available" if look_at_fn is not None else "None")
+                    if look_at_fn is not None:
+                        try:
+                            look_at_fn(target_u, target_v, duration=0.3)
+                            _logger.info("focus_interests: look_at_image called for (%d, %d)",
+                                        target_u, target_v)
+                            log_agentic(
+                                "focus_interests",
+                                "movement_queued",
+                                {"target_u": target_u, "target_v": target_v},
+                            )
+                        except Exception as e:
+                            _logger.warning("focus_interests: failed to call look_at_image: %s", e)
+                    else:
+                        _logger.warning("focus_interests: no look_at_image method available")
+                else:
+                    _logger.info("focus_interests: within deadzone, no movement needed")
+            else:
+                _logger.warning("focus_interests: missing target coordinates")
+        else:
+            # Log what was returned to help debug
+            if detection_info:
+                _logger.warning("focus_interests: detection_info returned but no 'detection' key, got: %s",
+                               list(detection_info.keys()))
+            else:
+                _logger.warning("focus_interests: passive_observation returned None (target=%s, class_id=%s)",
+                               target_class, target_class_id)
+
+        _logger.info("focus_interests: total execution took %.2fs", _time.time() - _exec_start)
         return ToolResult(
             success=True,
             output={
-                "focused": True,
+                "focused": detection_info is not None,
                 "frame_ts": ts,
+                "target_class": target_class,
                 "deadzone_px": int(deadzone_px),
+                "detection": detection_info.get("detection") if detection_info else None,
             },
         )
 
@@ -166,12 +247,13 @@ class TrackTargetTool(Tool):
     """
 
     name = "track_target"
-    description = "Move head to center on a detected object of interest."
+    description = "Move head to center on a detected object. Use target_class to specify what to track (e.g., 'person', 'backpack', 'cup'). If not specified, tracks the most prominent detection."
 
     input_schema = {
+        "target_class": (str, None),  # optional - specific object class to track (e.g., "backpack", "person", "cup")
         "deadzone_px": (int, 40),  # Minimum offset from center to trigger movement
         "duration_s": (float, 0.3),  # Movement duration
-        "prefer_people": (bool, True),  # Prioritize people over other objects
+        "prefer_people": (bool, True),  # Prioritize people over other objects (ignored if target_class specified)
     }
 
     def __init__(self, maxim: Any) -> None:
@@ -184,6 +266,16 @@ class TrackTargetTool(Tool):
         self._current_look_u: float | None = None
         self._current_look_v: float | None = None
         self._movement_threshold: float = MIN_MOVEMENT_THRESHOLD_PX
+
+        # Tracking hysteresis - prefer to stay on same target
+        self._current_track_id: int | None = None
+        self._track_hysteresis: float = 0.15  # Bonus confidence for current target
+
+        # Spatial hysteresis - prefer detections near last tracked position
+        # This helps when track_id changes due to head movement
+        self._last_tracked_pos: tuple[float, float] | None = None
+        self._spatial_hysteresis_radius: float = 200.0  # pixels - bonus within this radius
+        self._spatial_hysteresis_bonus: float = 0.20  # confidence bonus for nearby detections
 
     def execute(self, **kwargs: Any) -> ToolResult:
         maxim = self._maxim
@@ -200,6 +292,7 @@ class TrackTargetTool(Tool):
             )
 
         # Get parameters
+        target_class = kwargs.get("target_class")
         deadzone_px = int(kwargs.get("deadzone_px", 40) or 40)
         duration_s = float(kwargs.get("duration_s", 0.3) or 0.3)
         prefer_people = bool(kwargs.get("prefer_people", True))
@@ -219,6 +312,7 @@ class TrackTargetTool(Tool):
                     captured.detections,
                     frame_shape,
                     prefer_people=prefer_people,
+                    target_class=target_class,
                 )
 
         # Fall back to stored detection target (Phase 2 path)
@@ -361,36 +455,136 @@ class TrackTargetTool(Tool):
         detections: list[dict],
         frame_shape: tuple,
         prefer_people: bool = True,
+        target_class: str | None = None,
     ) -> dict | None:
-        """Compute tracking target from detection list."""
+        """Compute tracking target from detection list.
+
+        Args:
+            detections: List of detection dicts with class_id, bbox_xyxy, conf
+            frame_shape: (height, width) tuple
+            prefer_people: If True and no target_class, prioritize person detections
+            target_class: Optional class name to filter by (e.g., "backpack", "person")
+        """
         if not detections:
             return None
 
         height = frame_shape[0] if len(frame_shape) > 0 else 1080
         width = frame_shape[1] if len(frame_shape) > 1 else 1920
 
-        # Separate people from other detections
-        people = []
-        others = []
-        for det in detections:
-            class_id = det.get("class_id")
-            if class_id == 0:  # COCO person class
-                people.append(det)
+        # If target_class specified, filter detections by class name
+        if target_class:
+            # Build reverse lookup: class name -> class ID
+            class_name_to_id = {v.lower(): k for k, v in COCO_CLASSES.items()}
+            target_class_lower = target_class.lower().strip()
+            target_class_id = class_name_to_id.get(target_class_lower)
+
+            if target_class_id is not None:
+                # Filter to only detections matching the target class
+                filtered = [d for d in detections if d.get("class_id") == target_class_id]
+                if filtered:
+                    target_list = filtered
+                else:
+                    # No detections of the specified class found
+                    return None
             else:
-                others.append(det)
-
-        # Choose target based on preference
-        if prefer_people and people:
-            target_list = people
-        elif others:
-            target_list = others
-        elif people:
-            target_list = people
+                # Unknown class name - try fuzzy matching
+                for name, cid in class_name_to_id.items():
+                    if target_class_lower in name or name in target_class_lower:
+                        filtered = [d for d in detections if d.get("class_id") == cid]
+                        if filtered:
+                            target_list = filtered
+                            break
+                else:
+                    # No match found, fall through to default behavior
+                    target_list = detections
         else:
-            return None
+            # Default behavior: separate people from other detections
+            people = []
+            others = []
 
-        # Select best target (highest confidence)
-        best = max(target_list, key=lambda d: float(d.get("conf", 0)))
+            for det in detections:
+                class_id = det.get("class_id")
+                if class_id == 0:  # COCO person class
+                    people.append(det)
+                else:
+                    others.append(det)
+
+            # Choose target based on preference
+            if prefer_people and people:
+                target_list = people
+            elif others:
+                target_list = others
+            elif people:
+                target_list = people
+            else:
+                return None
+
+        # Try to get centralized salience map for spatial hysteresis
+        salience_map = None
+        try:
+            dn = getattr(self._maxim, "_default_network", None)
+            if dn is not None:
+                salience_map = getattr(dn, "_salience_map_unified", None)
+        except Exception:
+            pass
+
+        # Select best target with hysteresis (prefer current target AND nearby positions)
+        def score_target(d: dict) -> float:
+            conf = float(d.get("conf", 0))
+            # Give bonus to currently tracked target to prevent rapid switching
+            if d.get("track_id") == self._current_track_id and self._current_track_id is not None:
+                conf += self._track_hysteresis
+
+            # Spatial hysteresis: bonus for detections near last tracked position
+            # Use centralized salience map if available, fallback to local tracking
+            bbox = d.get("bbox_xyxy", [])
+            if len(bbox) >= 4:
+                det_cx = (bbox[0] + bbox[2]) / 2
+                det_cy = (bbox[1] + bbox[3]) / 2
+
+                if salience_map is not None:
+                    # Use centralized tracking bonus
+                    conf += salience_map.get_tracking_bonus((det_cx, det_cy))
+                elif self._last_tracked_pos is not None:
+                    # Fallback to local tracking
+                    dx = det_cx - self._last_tracked_pos[0]
+                    dy = det_cy - self._last_tracked_pos[1]
+                    dist = (dx * dx + dy * dy) ** 0.5
+                    if dist < self._spatial_hysteresis_radius:
+                        conf += self._spatial_hysteresis_bonus
+
+            return conf
+
+        best = max(target_list, key=score_target)
+
+        # DEBUG: Log all people detections when multiple exist
+        if len(target_list) > 1:
+            log_agentic(
+                "track_target",
+                "multiple_targets",
+                {
+                    "count": len(target_list),
+                    "current_track_id": self._current_track_id,
+                    "last_tracked_pos": self._last_tracked_pos,
+                    "targets": [
+                        {
+                            "track_id": d.get("track_id"),
+                            "conf": round(float(d.get("conf", 0)), 2),
+                            "score": round(score_target(d), 2),
+                            "center": (
+                                round((d.get("bbox_xyxy", [0, 0, 0, 0])[0] + d.get("bbox_xyxy", [0, 0, 0, 0])[2]) / 2, 1),
+                                round((d.get("bbox_xyxy", [0, 0, 0, 0])[1] + d.get("bbox_xyxy", [0, 0, 0, 0])[3]) / 2, 1),
+                            ),
+                        }
+                        for d in target_list[:5]  # Limit to 5
+                    ],
+                    "selected_track_id": best.get("track_id"),
+                },
+                level="WARNING",
+            )
+
+        # Update tracked target
+        self._current_track_id = best.get("track_id")
 
         # Compute center of bounding box
         bbox = best.get("bbox_xyxy", [0, 0, 0, 0])
@@ -400,6 +594,14 @@ class TrackTargetTool(Tool):
         x1, y1, x2, y2 = bbox
         target_u = (x1 + x2) / 2
         target_v = (y1 + y2) / 2
+
+        # Update last tracked position for spatial hysteresis
+        # Only update for person detections to prevent locking onto non-person targets
+        if best.get("class_id") == 0:  # Person class
+            self._last_tracked_pos = (target_u, target_v)
+            # Also update centralized salience map if available
+            if salience_map is not None:
+                salience_map.record_tracking_target((target_u, target_v))
 
         return {
             "target_u": target_u,
@@ -413,6 +615,112 @@ class TrackTargetTool(Tool):
                 "conf": best.get("conf"),
             },
         }
+
+
+class MoveTool(Tool):
+    """
+    Direct head movement control for Maxim.
+
+    This tool provides direct control over Maxim's head position using
+    relative or absolute coordinates. It is marked as always-allowed,
+    meaning it bypasses autonomy approval requirements for responsive
+    movement control.
+
+    Coordinates:
+    - x: left/right movement (-1.0 to 1.0, negative=left, positive=right)
+    - y: up/down movement (-1.0 to 1.0, negative=up, positive=down)
+    - z: not typically used for head movement
+    - roll/pitch/yaw: rotation angles in degrees
+
+    The tool supports both target_x/target_y (normalized -1 to 1) and
+    raw x/y/z/roll/pitch/yaw parameters for flexibility.
+    """
+
+    name = "move"
+    description = "Move Maxim's head to a target position. Use target_x (-1 to 1, left to right) and target_y (-1 to 1, up to down), or raw x/y/z/roll/pitch/yaw values."
+
+    # Mark as always allowed - bypasses autonomy approval
+    always_allowed = True
+
+    input_schema = {
+        "target_x": (float, None),  # Normalized target X (-1 to 1, left to right)
+        "target_y": (float, None),  # Normalized target Y (-1 to 1, up to down)
+        "x": (float, None),  # Raw X movement
+        "y": (float, None),  # Raw Y movement
+        "z": (float, None),  # Raw Z movement
+        "roll": (float, None),  # Roll angle (degrees)
+        "pitch": (float, None),  # Pitch angle (degrees)
+        "yaw": (float, None),  # Yaw angle (degrees)
+        "duration": (float, None),  # Movement duration in seconds
+    }
+
+    def __init__(self, maxim: Any) -> None:
+        super().__init__()
+        self._maxim = maxim
+
+    def execute(self, **kwargs: Any) -> ToolResult:
+        maxim = self._maxim
+        if maxim is None:
+            return ToolResult(success=False, error="No Maxim context available.")
+
+        # Handle target_x/target_y (normalized -1 to 1)
+        target_x = kwargs.get("target_x")
+        target_y = kwargs.get("target_y")
+
+        # Convert normalized targets to raw values if provided
+        x = kwargs.get("x")
+        y = kwargs.get("y")
+
+        if target_x is not None and x is None:
+            # Convert normalized target_x to raw x
+            # target_x: -1 = full left, 0 = center, 1 = full right
+            x = float(target_x)
+
+        if target_y is not None and y is None:
+            # Convert normalized target_y to raw y
+            # target_y: -1 = full up, 0 = center, 1 = full down
+            y = float(target_y)
+
+        z = kwargs.get("z")
+        roll = kwargs.get("roll")
+        pitch = kwargs.get("pitch")
+        yaw = kwargs.get("yaw")
+        duration = kwargs.get("duration")
+
+        try:
+            # Check if maxim has a move method
+            move_fn = getattr(maxim, "move", None)
+            if move_fn is None or not callable(move_fn):
+                return ToolResult(success=False, error="Maxim instance does not support move()")
+
+            move_fn(
+                x=x,
+                y=y,
+                z=z,
+                roll=roll,
+                pitch=pitch,
+                yaw=yaw,
+                duration=duration,
+            )
+
+            return ToolResult(
+                success=True,
+                output={
+                    "moved": True,
+                    "target_x": target_x,
+                    "target_y": target_y,
+                    "x": x,
+                    "y": y,
+                    "z": z,
+                    "roll": roll,
+                    "pitch": pitch,
+                    "yaw": yaw,
+                    "duration": duration,
+                },
+            )
+        except Exception as e:
+            warn("move failed: %s", e, logger=getattr(maxim, "log", None))
+            return ToolResult(success=False, error=str(e))
 
 
 class MaximCommandTool(Tool):
@@ -435,6 +743,7 @@ class MaximCommandTool(Tool):
         "mark_trainable_moment",
         "move",
         "move_antenna",
+        "turn_around",
         "label_outcome",
         "request_sleep",
         "request_observe",
@@ -546,6 +855,30 @@ class MaximCommandTool(Tool):
                 except Exception as e:
                     return ToolResult(success=False, error=str(e))
                 return ToolResult(success=True, output={"command": command})
+            if command == "turn_around":
+                # Rotate the body when head is at yaw limits
+                try:
+                    angle = float(params.get("angle", 90.0))
+                except (TypeError, ValueError):
+                    angle = 90.0
+                try:
+                    duration = float(params.get("duration", 5.0))
+                except (TypeError, ValueError):
+                    duration = 5.0
+                recenter_head = bool(params.get("recenter_head", True))
+                try:
+                    maxim.turn_around(angle, duration=duration, recenter_head=recenter_head)
+                except Exception as e:
+                    return ToolResult(success=False, error=str(e))
+                return ToolResult(
+                    success=True,
+                    output={
+                        "command": command,
+                        "angle": angle,
+                        "duration": duration,
+                        "recenter_head": recenter_head,
+                    },
+                )
 
             fn = getattr(maxim, command, None)
             if not callable(fn):
@@ -647,7 +980,7 @@ def is_significant_movement(
     return distance >= threshold
 
 
-# COCO class names for common objects (subset)
+# Complete COCO class mapping (all 80 classes)
 COCO_CLASSES = {
     0: "person",
     1: "bicycle",
@@ -658,15 +991,38 @@ COCO_CLASSES = {
     6: "train",
     7: "truck",
     8: "boat",
+    9: "traffic light",
+    10: "fire hydrant",
+    11: "stop sign",
+    12: "parking meter",
+    13: "bench",
+    14: "bird",
     15: "cat",
     16: "dog",
     17: "horse",
+    18: "sheep",
+    19: "cow",
+    20: "elephant",
+    21: "bear",
+    22: "zebra",
+    23: "giraffe",
     24: "backpack",
     25: "umbrella",
     26: "handbag",
     27: "tie",
     28: "suitcase",
+    29: "frisbee",
+    30: "skis",
+    31: "snowboard",
+    32: "sports ball",
+    33: "kite",
+    34: "baseball bat",
+    35: "baseball glove",
+    36: "skateboard",
+    37: "surfboard",
+    38: "tennis racket",
     39: "bottle",
+    40: "wine glass",
     41: "cup",
     42: "fork",
     43: "knife",
@@ -674,19 +1030,38 @@ COCO_CLASSES = {
     45: "bowl",
     46: "banana",
     47: "apple",
+    48: "sandwich",
+    49: "orange",
+    50: "broccoli",
+    51: "carrot",
+    52: "hot dog",
+    53: "pizza",
+    54: "donut",
+    55: "cake",
     56: "chair",
     57: "couch",
     58: "potted plant",
     59: "bed",
     60: "dining table",
+    61: "toilet",
     62: "tv",
     63: "laptop",
     64: "mouse",
     65: "remote",
     66: "keyboard",
     67: "cell phone",
+    68: "microwave",
+    69: "oven",
+    70: "toaster",
+    71: "sink",
+    72: "refrigerator",
     73: "book",
     74: "clock",
+    75: "vase",
+    76: "scissors",
+    77: "teddy bear",
+    78: "hair drier",
+    79: "toothbrush",
 }
 
 

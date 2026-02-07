@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 import os
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable
 
 from maxim.environment.filesystem_env import FileSystemEnv
 from maxim.evaluation.agent_eval import AgentEvaluator
@@ -14,16 +15,34 @@ from maxim.planning.planning import TaskPlanner
 from maxim.planning.policy import DefaultPolicy
 from maxim.runtime.executor import Executor
 from maxim.runtime.state import RuntimeState
-from maxim.tools.filesystem import ExecuteFileTool, ReadFileTool, WriteFileTool
+from maxim.tools.filesystem import (
+    ExecuteFileTool,
+    ReadFileTool,
+    WriteFileTool,
+    GlobTool,
+    BashTool,
+    RequestDirectoryChangeTool,
+)
 from maxim.tools.registry import ToolRegistry
+from maxim.utils.filesystem_policy import (
+    ensure_sandbox_exists,
+    get_effective_cwd,
+    get_mode_filesystem_config,
+)
 
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController
+    from maxim.agents.bus import AgentBus
+    from maxim.agents.fear_agent import FearAgent
+    from maxim.decisions.nac import NAc
+    from maxim.default_network import DefaultNetwork
     from maxim.utils.internet_access import InternetAccessPolicy
     from maxim.utils.filesystem_policy import FilesystemPolicy
     from maxim.utils.sandbox_executor import SandboxExecutor
     from maxim.utils.output_watcher import OutputWatcher
     from maxim.utils.response_output import ResponseOutput
+
+logger = logging.getLogger(__name__)
 
 
 def build_tool_registry(
@@ -35,11 +54,59 @@ def build_tool_registry(
     sandbox_executor: SandboxExecutor | None = None,
     output_watcher: OutputWatcher | None = None,
     response_output: ResponseOutput | None = None,
+    operational_mode: str = "passive",
 ) -> ToolRegistry:
+    """Build the tool registry with mode-based filesystem containment.
+
+    Filesystem containment by mode:
+    - passive: Restricted to .maxim_sandbox folder within CWD
+    - active: Can read/write within CWD, can request directory change
+    - singularity: Full filesystem access
+
+    Args:
+        maxim: Maxim robot instance.
+        autonomy_controller: Autonomy level controller.
+        internet_policy_getter: Function to get internet access policy.
+        filesystem_policy: Instance-level filesystem policy.
+        sandbox_executor: Sandbox code executor.
+        output_watcher: Output watcher for monitoring.
+        response_output: Response output handler.
+        operational_mode: Current operational mode (passive, active, singularity).
+
+    Returns:
+        Configured ToolRegistry with appropriate containment.
+    """
     registry = ToolRegistry()
-    registry.register(ReadFileTool())
-    registry.register(WriteFileTool())
-    registry.register(ExecuteFileTool())
+
+    # Get mode-based filesystem configuration
+    cwd = get_effective_cwd()
+    mode_config = get_mode_filesystem_config(operational_mode, cwd)
+
+    # Ensure sandbox exists for passive mode
+    if operational_mode == "passive":
+        sandbox_path = ensure_sandbox_exists(cwd)
+        logger.info("Passive mode: filesystem restricted to sandbox: %s", sandbox_path)
+    elif operational_mode == "active":
+        # Also ensure sandbox exists (for any tools that need it)
+        ensure_sandbox_exists(cwd)
+        logger.info("Active mode: filesystem restricted to CWD: %s", cwd)
+    else:
+        logger.info("Singularity mode: full filesystem access")
+
+    # Get allowed_dirs (None means no restrictions)
+    allowed_dirs = mode_config.allowed_dirs if mode_config.allowed_dirs else None
+
+    # Register filesystem tools with mode-based containment
+    registry.register(ReadFileTool(allowed_dirs=allowed_dirs))
+    registry.register(WriteFileTool(allowed_dirs=allowed_dirs))
+    registry.register(ExecuteFileTool(allowed_dirs=allowed_dirs))
+    registry.register(GlobTool(allowed_dirs=allowed_dirs))
+    registry.register(BashTool(allowed_dirs=allowed_dirs))
+
+    # Register directory change tool (only enabled for active/singularity modes)
+    registry.register(RequestDirectoryChangeTool(
+        can_change=mode_config.can_request_directory_change,
+    ))
 
     # Register Reachy robot tools
     if maxim is not None:
@@ -47,12 +114,14 @@ def build_tool_registry(
             from maxim.tools.reachy import (
                 FocusInterestsTool,
                 MaximCommandTool,
+                MoveTool,
                 NoveltyTrackTool,
                 TrackTargetTool,
             )
 
             registry.register(FocusInterestsTool(maxim))
             registry.register(MaximCommandTool(maxim))
+            registry.register(MoveTool(maxim))  # Direct head movement control
             registry.register(TrackTargetTool(maxim))
             registry.register(NoveltyTrackTool(maxim))
         except Exception:
@@ -62,12 +131,14 @@ def build_tool_registry(
         from maxim.tools.reachy_stubs import (
             NoOpFocusInterestsTool,
             NoOpMaximCommandTool,
+            NoOpMoveTool,
             NoOpNoveltyTrackTool,
             NoOpTrackTargetTool,
         )
 
         registry.register(NoOpFocusInterestsTool())
         registry.register(NoOpMaximCommandTool())
+        registry.register(NoOpMoveTool())  # Direct head movement control (no-op)
         registry.register(NoOpTrackTargetTool())
         registry.register(NoOpNoveltyTrackTool())
 
@@ -196,3 +267,91 @@ def build_memory() -> InMemoryMemory:
 
 def build_evaluators() -> list:
     return [AgentEvaluator(), PlanEvaluator(), ToolExecutionEvaluator()]
+
+
+def build_default_network(
+    *,
+    maxim: object | None = None,
+    bus: "AgentBus | None" = None,
+    fear_agent: "FearAgent | None" = None,
+    nac: "NAc | None" = None,
+    config_path: str | None = None,
+    frame_size: tuple[int, int] = (640, 480),
+) -> "DefaultNetwork | None":
+    """Build the Default Network for reactive behaviors.
+
+    The Default Network provides biologically-inspired reactive behaviors
+    that operate without LLM involvement, enabling fast, naturalistic
+    movement responses.
+
+    Args:
+        maxim: Maxim instance for motor control. Required for DN to function.
+        bus: AgentBus for publishing messages.
+        fear_agent: FearAgent for action gating (safety).
+        nac: NAc instance for causal learning (enables pain detection).
+        config_path: Path to YAML config file. Uses default if not specified.
+        frame_size: Video frame dimensions for peripheral calculations.
+
+    Returns:
+        DefaultNetwork instance, or None if maxim is not available.
+    """
+    if maxim is None:
+        return None
+
+    try:
+        from maxim.default_network import (
+            DefaultNetwork,
+            DefaultNetworkConfig,
+            load_dn_config,
+            create_behaviors_from_config,
+        )
+        from maxim.default_network.arbiter import ArbiterConfig
+        from maxim.default_network.gate import GateConfig
+
+        # Load configuration from YAML
+        dn_config = load_dn_config(config_path)
+
+        # Build DefaultNetworkConfig from loaded config
+        network_config = DefaultNetworkConfig(
+            enabled=dn_config.enabled,
+            update_hz=dn_config.update_hz,
+            publish_actions=dn_config.publish_actions,
+            fear_gate_enabled=dn_config.fear_gate_enabled,
+            arbiter=ArbiterConfig(
+                hysteresis_bonus=dn_config.arbiter.hysteresis_bonus,
+                min_switch_interval=dn_config.arbiter.min_switch_interval,
+                score_threshold=dn_config.arbiter.score_threshold,
+            ),
+            gate=GateConfig(
+                novelty_threshold=dn_config.gate.novelty_threshold,
+                salience_threshold=dn_config.gate.salience_threshold,
+                anomaly_threshold=dn_config.gate.anomaly_threshold,
+                adaptive=dn_config.gate.adaptive,
+            ),
+        )
+
+        # Create the network
+        dn = DefaultNetwork(
+            maxim=maxim,
+            bus=bus,
+            config=network_config,
+            fear_agent=fear_agent,
+            nac=nac,
+        )
+
+        # Create behaviors from config and add them
+        behaviors = create_behaviors_from_config(
+            dn_config.behaviors,
+            novelty_tracker=dn.novelty_tracker,
+            frame_size=frame_size,
+            bounds_learner=dn._bounds_learner,
+        )
+        for behavior in behaviors:
+            dn._behaviors.append(behavior)
+
+        return dn
+
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Failed to build DefaultNetwork: %s", e)
+        return None

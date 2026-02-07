@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -349,7 +348,10 @@ class WebCache:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-_global_cache: WebCache | None = None
+def _get_cache_singleton():
+    """Lazy import to avoid circular dependency."""
+    from maxim.utils.singleton import Singleton
+    return Singleton("web_cache")
 
 
 def get_web_cache(
@@ -357,18 +359,17 @@ def get_web_cache(
     create_if_missing: bool = True,
 ) -> WebCache | None:
     """Get the global web cache instance."""
-    global _global_cache
+    singleton = _get_cache_singleton()
+    cache = singleton.get()
 
-    if _global_cache is None and create_if_missing:
+    if cache is None and create_if_missing:
         default_path = Path("data/internet/web_cache.json")
-        _global_cache = WebCache(
-            persistence_path=persistence_path or default_path,
-        )
+        cache = WebCache(persistence_path=persistence_path or default_path)
+        singleton.set(cache)
 
-    return _global_cache
+    return cache
 
 
 def set_web_cache(cache: WebCache) -> None:
     """Set the global web cache instance."""
-    global _global_cache
-    _global_cache = cache
+    _get_cache_singleton().set(cache)
