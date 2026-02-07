@@ -46,7 +46,7 @@ try:
 except Exception:
     pass
 
-import json, random, uuid
+import json, uuid
 import re
 import time, atexit, cv2
 import logging
@@ -64,10 +64,10 @@ from maxim.utils.queueing import put_latest
 
 from maxim.data.camera.display import prepare_display, show_photo
 from maxim.inference.observation import (
+    DEFAULT_CLASS_WEIGHTS,
+    NoveltyTracker,
     display_detections,
-    face_observation,
     passive_observation,
-    passive_listening,
 )
 from maxim.models.vision.registry import build_segmentation_model
 
@@ -144,7 +144,8 @@ class Maxim:
         train: bool | None = None,
         audio: bool = True,
         audio_len: float = 5.0,
-        interactive: bool = True):
+        interactive: bool = True,
+        novelty_tracker: "NoveltyTracker | None" = None):
         
         #
         self.verbosity = int(verbosity or 0)
@@ -161,6 +162,11 @@ class Maxim:
         self._closed = False
         self._woke_up = False
         self.sleeping = False  # Track if Reachy is already in sleep pose
+
+        # Central thread registry for coordinated shutdown
+        # All threads created by Maxim should be registered here
+        self._thread_registry: dict[str, threading.Thread] = {}
+        self._thread_registry_lock = threading.Lock()
 
         self.name = robot_name or os.getenv("MAXIM_ROBOT_NAME", "reachy_mini")
         if _blackwell_detected:
@@ -218,6 +224,21 @@ class Maxim:
 
         self.interests = [0, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
 
+        # Novelty tracking for attention prioritization
+        # Novel objects get higher priority, familiar objects decay over time
+        # Can be shared with DefaultNetwork for unified tracking
+        if novelty_tracker is not None:
+            self.novelty_tracker = novelty_tracker
+        else:
+            self.novelty_tracker = NoveltyTracker(
+                focus_decay_seconds=10.0,  # Time for novelty to decay while focused
+                recovery_seconds=20.0,     # Time for novelty to recover when not focused
+                max_novelty=2.0,           # Novelty boost for new objects
+                min_novelty=0.5,           # Minimum novelty for familiar objects
+            )
+        # Class weights for attention (default gives slight preference to people)
+        self.class_weights = dict(DEFAULT_CLASS_WEIGHTS)
+
         self.actions = load_actions()
         self.poses = load_poses()
         self.movement_thresholds = load_movement_thresholds()
@@ -262,6 +283,8 @@ class Maxim:
         self.roll = 0.01
         self.pitch = 0.01
         self.yaw = 0.01
+        self.body_yaw = 0.0  # Body rotation (separate from head yaw)
+        self._last_turn_around_time = 0.0  # Cooldown tracking for turn_around
 
         centered = None
         try:
@@ -299,6 +322,10 @@ class Maxim:
         self._last_action_event_id: str | None = None
         self._last_transcript_event: dict | None = None
         self.requested_mode: str | None = None
+        # New architecture state tracking
+        self.operational_mode: str = "passive"  # passive, active, singularity
+        self.processing_state: str = "awake"  # awake, sleep
+        self.current_strategy: str = "observe"  # observe, explore, research, assist, reflect, learn
         self._agentic_stop_event: threading.Event | None = None
         self._agentic_thread: threading.Thread | None = None
         self._agentic_agent = None
@@ -383,21 +410,34 @@ class Maxim:
             # Shutdown commands
             "maxim shutdown": {"call": "request_shutdown", "requires_agentic": False, "cooldown_s": 2.0},
             "shutdown maxim": {"call": "request_shutdown", "requires_agentic": False, "cooldown_s": 2.0},
-            # Sleep mode commands
+            # Sleep processing state commands (new architecture)
             "maxim sleep": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
             "sleep maxim": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
             "maxim nap": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
             "maxim rest": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
-            # Passive-interaction mode commands (wake from sleep)
-            "maxim observe": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
-            "observe maxim": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim watch": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim wake": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
-            "wake maxim": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim wake up": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
-            "wake up maxim": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim passive": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim reflection": {"call": "request_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            # Wake from sleep (processing state)
+            "maxim wake up": {"call": "request_wake", "requires_agentic": False, "cooldown_s": 2.0},
+            "wake up maxim": {"call": "request_wake", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim wake": {"call": "request_wake", "requires_agentic": False, "cooldown_s": 2.0},
+            "wake maxim": {"call": "request_wake", "requires_agentic": False, "cooldown_s": 2.0},
+            # Strategy commands (new architecture)
+            "maxim observe": {"call": "request_strategy_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "observe maxim": {"call": "request_strategy_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim watch": {"call": "request_strategy_observe", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim explore": {"call": "request_strategy_explore", "requires_agentic": False, "cooldown_s": 2.0},
+            "explore maxim": {"call": "request_strategy_explore", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim research": {"call": "request_strategy_research", "requires_agentic": False, "cooldown_s": 2.0},
+            "research maxim": {"call": "request_strategy_research", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim assist": {"call": "request_strategy_assist", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim help": {"call": "request_strategy_assist", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim reflect": {"call": "request_strategy_reflect", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim reflection": {"call": "request_strategy_reflect", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim learn": {"call": "request_strategy_learn", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim train": {"call": "request_strategy_learn", "requires_agentic": False, "cooldown_s": 2.0},
+            # Mode commands (new architecture)
+            "maxim passive": {"call": "request_mode_passive", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim active": {"call": "request_mode_active", "requires_agentic": False, "cooldown_s": 2.0},
+            "maxim singularity": {"call": "request_mode_singularity", "requires_agentic": False, "cooldown_s": 2.0},
             # Wake words (enable agentic mode)
             "maxim": {"call": "wake_up_agentic", "wake_word": True, "cooldown_s": 2.0},
             "reachy": {"call": "wake_up_agentic", "wake_word": True, "cooldown_s": 2.0},
@@ -832,8 +872,10 @@ class Maxim:
             pass
 
         # Forward voice transcript to agentic state so LLM worker can see it
-        # Only forward if agentic mode is enabled (user said wake word)
-        if bool(getattr(self, "_voice_agentic_enabled", False)):
+        # Only forward if transcript explicitly contains wake word (maxim, maximum, or reachy)
+        text_lower = text.lower()
+        has_wake_word = "maxim" in text_lower or "reachy" in text_lower  # "maxim" matches "maximum" too
+        if has_wake_word:
             agentic_state = getattr(self, "_agentic_state", None)
             if agentic_state is not None and hasattr(agentic_state, "data"):
                 agentic_state.data["pending_voice_input"] = text
@@ -1355,6 +1397,7 @@ class Maxim:
 
         t = threading.Thread(target=_worker, name="maxim.vision.events", daemon=True)
         self._vision_event_thread = t
+        self.register_thread("maxim.vision.events", t)
         t.start()
 
     def _stop_vision_event_stream(self, *, timeout: float = 2.0) -> None:
@@ -1393,18 +1436,37 @@ class Maxim:
             return
 
         # Allow CPU-only operation (e.g., when CUDA is hidden for Blackwell GPUs)
+        # Note: llama_cpp backend has native Metal support on macOS, so skip this fallback
+        # when using llama_cpp - it will use Metal GPU acceleration automatically
         if not _gpu_available():
-            import os
-            cuda_hidden = os.environ.get("CUDA_VISIBLE_DEVICES") == ""
-            if cuda_hidden:
-                self.log.info("GPU hidden for compatibility - agentic runtime will use CPU (slower)")
-            else:
-                self.log.warning("No GPU available - agentic runtime will use CPU (slower)")
+            # Check if we're using llama_cpp backend (has native Metal support)
+            llm_config_path = os.path.join(str(getattr(self, "home_dir", "data") or "data"), "util", "llm.json")
+            using_llama_cpp = False
+            try:
+                if os.path.exists(llm_config_path):
+                    with open(llm_config_path) as f:
+                        llm_cfg = json.load(f)
+                    profile_name = llm_cfg.get("profile", "")
+                    profiles = llm_cfg.get("profiles", {})
+                    if profile_name in profiles:
+                        using_llama_cpp = profiles[profile_name].get("backend") == "llama_cpp"
+            except Exception:
+                pass
 
-            # Configure CPU-friendly model defaults
-            os.environ.setdefault("MAXIM_LLM_PROFILE", "smollm-1.7b-instruct")
-            os.environ.setdefault("MAXIM_LLM_N_GPU_LAYERS", "0")
-            self.log.info("Using CPU-friendly LLM: smollm-1.7b-instruct")
+            if using_llama_cpp:
+                # llama.cpp has native Metal support on macOS - no fallback needed
+                self.log.info("Using llama.cpp backend with native Metal GPU support")
+            else:
+                cuda_hidden = os.environ.get("CUDA_VISIBLE_DEVICES") == ""
+                if cuda_hidden:
+                    self.log.info("GPU hidden for compatibility - agentic runtime will use CPU (slower)")
+                else:
+                    self.log.warning("No GPU available - agentic runtime will use CPU (slower)")
+
+                # Configure CPU-friendly model defaults (only for non-llama_cpp backends)
+                os.environ.setdefault("MAXIM_LLM_PROFILE", "smollm-1.7b-instruct")
+                os.environ.setdefault("MAXIM_LLM_N_GPU_LAYERS", "0")
+                self.log.info("Using CPU-friendly LLM: smollm-1.7b-instruct")
 
         try:
             from maxim.agents import MaximAgent
@@ -1420,6 +1482,7 @@ class Maxim:
                 build_state,
                 build_tool_registry,
             )
+            from maxim.runtime.bootstrap import build_default_network
             from maxim.runtime.agent_loop import run_agentic_loop
         except Exception as e:
             warn("Agentic runtime unavailable: %s", e, logger=self.log)
@@ -1482,15 +1545,27 @@ class Maxim:
         speaker_fn = None
 
         # Check if TTS is enabled (set via environment or config)
+        # Environment variables:
+        #   MAXIM_TTS_ENABLED=1     - Enable TTS
+        #   MAXIM_TTS_MODEL=name    - TTS voice model (default: en_US-lessac-medium)
+        #   MAXIM_TTS_LOCAL=1       - Force local audio (skip Reachy speaker)
         if os.environ.get("MAXIM_TTS_ENABLED", "").lower() in ("1", "true", "yes"):
             try:
                 from maxim.models.audio.tts import TTSEngine
+                from maxim.utils.audio import _check_local_audio
 
                 tts_model = os.environ.get("MAXIM_TTS_MODEL", "en_US-lessac-medium")
                 tts_engine = TTSEngine(model_name=tts_model)
                 if tts_engine.is_available:
-                    speaker_fn = self.speak  # Use Maxim's speak method
+                    speaker_fn = self.speak  # Uses Reachy speaker with local fallback
                     self.log.info("TTS enabled with model: %s", tts_model)
+
+                    # Check local audio availability for fallback
+                    prefer_local = os.environ.get("MAXIM_TTS_LOCAL", "").lower() in ("1", "true", "yes")
+                    if prefer_local:
+                        self.log.info("TTS using local audio (MAXIM_TTS_LOCAL=1)")
+                    elif _check_local_audio():
+                        self.log.info("Local audio available as fallback for remote connections")
                 else:
                     self.log.warning("TTS model not found, TTS disabled")
                     tts_engine = None
@@ -1505,23 +1580,48 @@ class Maxim:
             speaker_fn=speaker_fn,
         )
 
-        registry = build_tool_registry(maxim=self, response_output=response_output)
+        # Check if internet access is allowed (from exploration policy or default to True)
+        exploration_policy_dict = getattr(self, "_exploration_policy", {}) or {}
+        allow_internet = exploration_policy_dict.get("allow_internet", True)
+
+        # Create internet policy getter for tool registry
+        def get_internet_policy():
+            from maxim.utils.internet_access import InternetAccessPolicy
+            return InternetAccessPolicy(enabled=allow_internet)
+
+        # Only pass policy getter if internet is allowed
+        internet_policy_getter = get_internet_policy if allow_internet else None
+
+        registry = build_tool_registry(
+            maxim=self,
+            response_output=response_output,
+            internet_policy_getter=internet_policy_getter,
+        )
         executor = build_executor(registry)
         evaluators = build_evaluators()
 
         run_id = getattr(self, "run_id", None) or time.strftime("%Y-%m-%d_%H%M%S")
 
+        # Build allowed tools set based on policy (uses allow_internet from above)
+        allowed_tools = {
+            "read_file",
+            "focus_interests",
+            "track_target",
+            "maxim_command",
+            "mode_switch",
+            "speak",
+            "respond",
+            "list_directory",  # Allow directory listing
+        }
+
+        # Add internet tools if allowed
+        if allow_internet:
+            allowed_tools.add("internet_search")
+            allowed_tools.add("http_fetch")
+
         # Set up autonomy controller with sensible defaults for live mode
         supervision_policy = SupervisionPolicy(
-            allowed_tools={
-                "read_file",
-                "focus_interests",
-                "track_target",
-                "maxim_command",
-                "mode_switch",
-                "speak",
-                "respond",
-            },
+            allowed_tools=allowed_tools,
             forbidden_tools={"execute_file", "delete_file"},
             min_confidence_autonomous=0.7,
             requires_confirmation={"write_file"},
@@ -1539,6 +1639,8 @@ class Maxim:
             llm_config = load_llm_config()
             if llm_config.enabled:
                 llm_router = LLMRouter(llm_config)
+                # Start warming up the LLM in background (reduces first-request latency)
+                llm_router.warmup()
                 llm_worker = LLMWorker(llm=llm_router, stale_threshold_s=5.0)
                 llm_worker.start()
                 self.log.info("LLM worker started for user responses")
@@ -1549,6 +1651,56 @@ class Maxim:
             llm_worker = None
 
         self._llm_worker = llm_worker
+
+        # Extract AgentBus from MaximAgent for Default Network
+        agent_bus = None
+        try:
+            agent_bus = getattr(agent, "_bus", None)
+            if agent_bus is not None:
+                self.log.debug("Extracted AgentBus from MaximAgent for DN")
+        except Exception:
+            pass
+
+        # Create FearAgent for safety gating
+        fear_agent = None
+        try:
+            from maxim.agents.fear_agent import FearAgent
+            fear_agent = FearAgent(llm=None)  # No LLM needed for basic safety checks
+            self._fear_agent = fear_agent
+            self.log.debug("FearAgent created for DN safety gating")
+        except Exception as e:
+            warn("Failed to create FearAgent: %s", e, logger=self.log)
+
+        # Create NAc for causal learning (used by pain detection and decision making)
+        nac = None
+        try:
+            from maxim.decisions.nac import NAc
+            nac = NAc()
+            self._nac = nac
+            self.log.debug("NAc created for causal learning")
+        except Exception as e:
+            warn("Failed to create NAc: %s", e, logger=self.log)
+
+        # Build Default Network for reactive behaviors
+        default_network = None
+        try:
+            default_network = build_default_network(
+                maxim=self,
+                bus=agent_bus,
+                fear_agent=fear_agent,
+                nac=nac,
+                frame_size=(640, 480),
+            )
+            if default_network is not None:
+                self._default_network = default_network
+                self.log.info(
+                    "DefaultNetwork built (bus=%s, fear_agent=%s)",
+                    "connected" if agent_bus else "none",
+                    "enabled" if fear_agent else "none",
+                )
+        except Exception as e:
+            warn("Failed to build DefaultNetwork: %s", e, logger=self.log)
+            default_network = None
 
         # Start capture manager or fall back to vision event stream
         if capture_manager is not None:
@@ -1611,6 +1763,7 @@ class Maxim:
                     executor,
                     autonomy_controller=autonomy_controller,
                     llm_worker=llm_worker,
+                    default_network=default_network,
                     evaluators=evaluators,
                     max_steps=0,  # Unlimited
                     run_id=run_id,
@@ -1633,34 +1786,151 @@ class Maxim:
         self._agentic_thread = t
         t.start()
 
-    def _stop_agentic_runtime(self, *, timeout: float = 2.0) -> None:
+    def _stop_agentic_runtime(self, *, timeout: float = 10.0) -> None:
+        """Stop the agentic runtime with graceful shutdown and force-kill fallback.
+
+        Shutdown sequence:
+        1. Signal all threads to stop via events
+        2. Wait for graceful shutdown with timeout
+        3. Force-terminate any threads that didn't respond
+
+        Args:
+            timeout: Total timeout for the entire shutdown sequence (default 10s).
+                     Individual components get proportional timeouts.
+        """
+        import ctypes
+
+        # Track threads that need to be stopped
+        threads_to_stop: list[tuple[str, threading.Thread | None]] = []
+
+        # Phase 1: Signal all stop events first (non-blocking)
         try:
             ev = getattr(self, "_agentic_stop_event", None)
             if ev is not None:
                 ev.set()
         except Exception:
             pass
-        t = getattr(self, "_agentic_thread", None)
-        if t is not None:
+
+        capture_manager = getattr(self, "_capture_manager", None)
+        if capture_manager is not None:
             try:
-                t.join(timeout=float(timeout))
+                # Just set the stop event, don't wait yet
+                stop_ev = getattr(capture_manager, "_stop_event", None)
+                if stop_ev is not None:
+                    stop_ev.set()
             except Exception:
                 pass
+
+        default_network = getattr(self, "_default_network", None)
+        if default_network is not None:
+            try:
+                # Signal DN to stop
+                default_network._running = False
+                bg_tasks = getattr(default_network, "_background_tasks", None)
+                if bg_tasks is not None:
+                    bg_tasks._running = False
+                    stop_ev = getattr(bg_tasks, "_stop_event", None)
+                    if stop_ev is not None:
+                        stop_ev.set()
+            except Exception:
+                pass
+
+        # Collect all threads
+        t = getattr(self, "_agentic_thread", None)
+        if t is not None:
+            threads_to_stop.append(("agentic", t))
+
+        if capture_manager is not None:
+            for attr, name in [("_frame_thread", "capture.frame"),
+                               ("_segmentation_thread", "capture.segmentation"),
+                               ("_audio_thread", "capture.audio")]:
+                thread = getattr(capture_manager, attr, None)
+                if thread is not None:
+                    threads_to_stop.append((name, thread))
+            # Send poison pills to unblock queues
+            try:
+                seg_queue = getattr(capture_manager, "_segmentation_queue", None)
+                if seg_queue is not None:
+                    seg_queue.put_nowait(None)
+            except Exception:
+                pass
+
+        if default_network is not None:
+            dn_thread = getattr(default_network, "_thread", None)
+            if dn_thread is not None:
+                threads_to_stop.append(("default_network", dn_thread))
+            bg_tasks = getattr(default_network, "_background_tasks", None)
+            if bg_tasks is not None:
+                bg_thread = getattr(bg_tasks, "_thread", None)
+                if bg_thread is not None:
+                    threads_to_stop.append(("background_tasks", bg_thread))
+
+        # Phase 2: Wait for threads to stop gracefully (with per-thread timeout)
+        per_thread_timeout = timeout / max(len(threads_to_stop), 1)
+        still_alive: list[tuple[str, threading.Thread]] = []
+
+        for name, thread in threads_to_stop:
+            if thread is not None and thread.is_alive():
+                try:
+                    thread.join(timeout=per_thread_timeout)
+                    if thread.is_alive():
+                        still_alive.append((name, thread))
+                        self.log.warning("Thread '%s' did not stop gracefully", name)
+                except Exception:
+                    still_alive.append((name, thread))
+
+        # Phase 3: Force-terminate threads that didn't respond
+        # This uses ctypes to raise SystemExit in the thread
+        for name, thread in still_alive:
+            try:
+                if thread.is_alive():
+                    thread_id = thread.ident
+                    if thread_id is not None:
+                        # Raise SystemExit in the thread
+                        res = ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                            ctypes.c_ulong(thread_id),
+                            ctypes.py_object(SystemExit)
+                        )
+                        if res == 0:
+                            self.log.warning("Invalid thread id for '%s'", name)
+                        elif res > 1:
+                            # Reset if more than one thread was affected
+                            ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                                ctypes.c_ulong(thread_id), None
+                            )
+                        else:
+                            self.log.info("Force-terminated thread '%s'", name)
+                        # Give it a moment to terminate
+                        thread.join(timeout=0.5)
+            except Exception as e:
+                self.log.warning("Failed to force-terminate thread '%s': %s", name, e)
+
+        # Phase 4: Cleanup references
         self._agentic_thread = None
         self._agentic_stop_event = None
         self._agentic_agent = None
         self._agentic_state = None
 
-        # Stop capture manager (Phase 3)
-        capture_manager = getattr(self, "_capture_manager", None)
+        # Stop capture manager (will be fast since threads already stopped/terminated)
         if capture_manager is not None:
             try:
-                capture_manager.stop(timeout=timeout)
+                capture_manager.stop(timeout=1.0)
             except Exception:
                 pass
-            self._capture_manager = None
 
-        self._stop_vision_event_stream(timeout=timeout)
+        # Stop Default Network (will be fast since threads already stopped/terminated)
+        if default_network is not None:
+            try:
+                default_network.stop()
+            except Exception:
+                pass
+        self._default_network = None
+        self._capture_manager = None
+
+        # Clear FearAgent reference
+        self._fear_agent = None
+
+        self._stop_vision_event_stream(timeout=2.0)
 
     def _set_epochs(self, epochs: int | None) -> None:
         try:
@@ -1805,7 +2075,7 @@ class Maxim:
         frame_save_queue: queue.Queue = queue.Queue(maxsize=512)
         audio_save_queue: queue.Queue = queue.Queue(maxsize=512) if self.audio else None
 
-        motor_queue: queue.Queue = queue.Queue(maxsize=1)
+        motor_queue: queue.Queue = queue.Queue(maxsize=4)
         self._motor_queue = motor_queue if parallel and motor else None
 
         audio_input_rate = None
@@ -1950,18 +2220,193 @@ class Maxim:
 
         self.log.debug("Continuing with main loop setup after transcription worker...")
 
+        # IK failure detection handler for motor commands
+        class _IKWarningHandler(logging.Handler):
+            """Temporary handler to capture IK warnings during motor commands."""
+            def __init__(self):
+                super().__init__(logging.WARNING)
+                self.ik_failure_detected = False
+                self.failure_message = None
+
+            def emit(self, record):
+                msg = record.getMessage().lower()
+                if "ik error" in msg or "pose not achievable" in msg or "collision detected" in msg:
+                    self.ik_failure_detected = True
+                    self.failure_message = record.getMessage()
+
+        # Track consecutive IK failures to trigger recovery
+        ik_failure_count = [0]  # Use list to allow modification in nested function
+        IK_FAILURE_THRESHOLD = 3  # Reset to center after this many consecutive failures
+        last_ik_reset_time = [0.0]
+
         def _motor_worker() -> None:
+            # Get reachy loggers to monitor for IK warnings (daemon logs to specific path)
+            reachy_loggers = [
+                logging.getLogger("reachy_mini"),
+                logging.getLogger("reachy_mini.daemon"),
+                logging.getLogger("reachy_mini.daemon.backend"),
+                logging.getLogger("reachy_mini.daemon.backend.robot.backend.throttled"),
+            ]
+
             while not stop_event.is_set():
                 try:
                     fn, args, kwargs = motor_queue.get(timeout=0.1)
                 except queue.Empty:
                     continue
 
+                # Create handler to detect IK failures
+                ik_handler = _IKWarningHandler()
+                for rl in reachy_loggers:
+                    rl.addHandler(ik_handler)
+
+                position_info = kwargs.pop("_position_info", None)  # Extract position if passed
+                commanded_6d = kwargs.pop("_commanded_6d", None)  # Extract 6D pose for bounds learning
+                movement_duration = kwargs.get("duration", 0.5)  # Get duration for sync timing
+
                 try:
                     fn(*args, **kwargs)
+
+                    # Check if IK failure was detected via warnings
+                    if ik_handler.ik_failure_detected:
+                        self.log.warning("IK failure detected: %s", ik_handler.failure_message)
+                        ik_failure_count[0] += 1
+
+                        # Record failure in AttentionNetwork for dynamic bounds learning
+                        if position_info is not None:
+                            default_network = getattr(self, "_default_network", None)
+                            if default_network is not None:
+                                attention = getattr(default_network, "_attention_network", None)
+                                if attention is not None:
+                                    try:
+                                        attention.record_gaze(position_info, success=False)
+                                        self.log.debug("Recorded IK failure at position %s", position_info)
+                                    except Exception as rec_err:
+                                        self.log.debug("Failed to record IK failure: %s", rec_err)
+
+                        # Record IK failure for workspace bounds learning
+                        if commanded_6d is not None:
+                            default_network = getattr(self, "_default_network", None)
+                            if default_network is not None:
+                                bounds_learner = getattr(default_network, "_bounds_learner", None)
+                                if bounds_learner is not None:
+                                    try:
+                                        self.sync_head_position()
+                                        actual_6d = {
+                                            "yaw": float(getattr(self, "yaw", 0.0) or 0.0),
+                                            "pitch": float(getattr(self, "pitch", 0.0) or 0.0),
+                                            "y": float(getattr(self, "y", 0.0) or 0.0),
+                                            "z": float(getattr(self, "z", 0.0) or 0.0),
+                                            "roll": float(getattr(self, "roll", 0.0) or 0.0),
+                                            "x": float(getattr(self, "x", 0.0) or 0.0),
+                                        }
+                                        bounds_learner.record_movement_outcome(
+                                            commanded=commanded_6d,
+                                            actual=actual_6d,
+                                            ik_failure=True,
+                                        )
+                                        self.log.debug("Recorded IK failure bounds at %s", commanded_6d)
+                                    except Exception as bounds_err:
+                                        self.log.debug("Failed to record bounds failure: %s", bounds_err)
+
+                        # If too many consecutive failures, sync with hardware and optionally reset
+                        now = time.time()
+                        if ik_failure_count[0] >= IK_FAILURE_THRESHOLD and (now - last_ik_reset_time[0]) > 2.0:
+                            self.log.warning(
+                                "Too many IK failures (%d), syncing with hardware position",
+                                ik_failure_count[0]
+                            )
+                            try:
+                                # First try to sync with actual hardware position
+                                # This corrects any drift between our tracking and reality
+                                synced = self.sync_head_position()
+
+                                if synced:
+                                    self.log.info(
+                                        "Synced position from hardware: yaw=%.1f°, pitch=%.1f°",
+                                        self.yaw, self.pitch
+                                    )
+                                    # If we're already near center, just reset counter
+                                    if abs(self.yaw) < 5.0 and abs(self.pitch) < 5.0:
+                                        self.log.info("Already near center, clearing failure count")
+                                        ik_failure_count[0] = 0
+                                    else:
+                                        # Move toward center from current synced position
+                                        self.log.info("Moving to center from synced position")
+                                        from maxim.motion.movement import move_head
+                                        move_head(self.mini, 0, 0, 0, 0, 0, 0, 0.5)
+                                        self.yaw = 0.0
+                                        self.pitch = 0.0
+                                        ik_failure_count[0] = 0
+                                else:
+                                    # Sync failed, fall back to blind reset
+                                    self.log.warning("Hardware sync failed, blind reset to center")
+                                    self.yaw = 0.0
+                                    self.pitch = 0.0
+                                    from maxim.motion.movement import move_head
+                                    move_head(self.mini, 0, 0, 0, 0, 0, 0, 0.5)
+                                    ik_failure_count[0] = 0
+
+                                last_ik_reset_time[0] = now
+                            except Exception as reset_err:
+                                self.log.warning("Failed to reset head: %s", reset_err)
+                    else:
+                        # Movement succeeded - reset failure counter
+                        ik_failure_count[0] = 0
+
+                        # Record success for reachability learning
+                        if position_info is not None:
+                            default_network = getattr(self, "_default_network", None)
+                            if default_network is not None:
+                                attention = getattr(default_network, "_attention_network", None)
+                                if attention is not None:
+                                    try:
+                                        attention.record_gaze(position_info, success=True)
+                                    except Exception:
+                                        pass
+
+                        # Record outcome for workspace bounds learning
+                        if commanded_6d is not None:
+                            default_network = getattr(self, "_default_network", None)
+                            if default_network is not None:
+                                bounds_learner = getattr(default_network, "_bounds_learner", None)
+                                if bounds_learner is not None:
+                                    try:
+                                        # Wait briefly for movement to settle, then sync
+                                        time.sleep(min(0.1, float(movement_duration) * 0.3))
+                                        self.sync_head_position()
+                                        actual_6d = {
+                                            "yaw": float(getattr(self, "yaw", 0.0) or 0.0),
+                                            "pitch": float(getattr(self, "pitch", 0.0) or 0.0),
+                                            "y": float(getattr(self, "y", 0.0) or 0.0),
+                                            "z": float(getattr(self, "z", 0.0) or 0.0),
+                                            "roll": float(getattr(self, "roll", 0.0) or 0.0),
+                                            "x": float(getattr(self, "x", 0.0) or 0.0),
+                                        }
+                                        bounds_learner.record_movement_outcome(
+                                            commanded=commanded_6d,
+                                            actual=actual_6d,
+                                            ik_failure=False,
+                                        )
+                                    except Exception as bounds_err:
+                                        self.log.debug("Failed to record bounds outcome: %s", bounds_err)
+
                 except Exception as e:
                     warn("Motor command failed: %s", e, logger=self.log)
                     self._note_connection_failure("motor", e)
+
+                    # Also record as failure if we have position info
+                    if position_info is not None:
+                        default_network = getattr(self, "_default_network", None)
+                        if default_network is not None:
+                            attention = getattr(default_network, "_attention_network", None)
+                            if attention is not None:
+                                try:
+                                    attention.record_gaze(position_info, success=False)
+                                except Exception:
+                                    pass
+                finally:
+                    for rl in reachy_loggers:
+                        rl.removeHandler(ik_handler)
 
         def _frame_capture_worker() -> None:
             min_period = 1.0 / float(getattr(self, "video_fps", 20.0) or 20.0)
@@ -2427,22 +2872,50 @@ class Maxim:
                     pass
 
             if transcribe_process is not None:
+                # Phase 1: Wait briefly for graceful shutdown via file signal
                 try:
-                    transcribe_process.join(timeout=5.0)
+                    transcribe_process.join(timeout=2.0)
                 except Exception:
                     pass
-                try:
-                    if transcribe_process.is_alive():
+
+                # Phase 2: Send SIGTERM if still alive
+                if transcribe_process.is_alive():
+                    try:
                         transcribe_process.terminate()
-                        transcribe_process.join(timeout=2.0)
-                except Exception:
-                    pass
-                try:
-                    if transcribe_process.is_alive() and hasattr(transcribe_process, "kill"):
+                    except Exception:
+                        pass
+                    # Also send SIGTERM directly via os.kill for reliability
+                    try:
+                        import signal
+                        os.kill(transcribe_process.pid, signal.SIGTERM)
+                    except Exception:
+                        pass
+                    try:
+                        transcribe_process.join(timeout=1.0)
+                    except Exception:
+                        pass
+
+                # Phase 3: Force kill if still alive
+                if transcribe_process.is_alive():
+                    self.log.warning("Transcription process did not respond to SIGTERM, sending SIGKILL")
+                    try:
                         transcribe_process.kill()
-                        transcribe_process.join(timeout=2.0)
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
+                    # Also send SIGKILL directly for reliability
+                    try:
+                        import signal
+                        os.kill(transcribe_process.pid, signal.SIGKILL)
+                    except Exception:
+                        pass
+                    try:
+                        transcribe_process.join(timeout=1.0)
+                    except Exception:
+                        pass
+
+                # Final check
+                if transcribe_process.is_alive():
+                    self.log.error("Transcription process could not be terminated (pid=%d)", transcribe_process.pid)
 
             # Cleanup shutdown file
             if transcribe_shutdown_file is not None:
@@ -2514,6 +2987,28 @@ class Maxim:
             pass
         return None
 
+    def _clear_motor_queue(self) -> int:
+        """Clear all pending motor commands from the queue.
+
+        Returns:
+            Number of commands that were cleared.
+        """
+        q = getattr(self, "_motor_queue", None)
+        if q is None:
+            return 0
+
+        cleared = 0
+        try:
+            while True:
+                q.get_nowait()
+                cleared += 1
+        except queue.Empty:
+            pass
+
+        if cleared > 0:
+            self.log.debug("Cleared %d pending motor commands from queue", cleared)
+        return cleared
+
     def _request_mode(self, mode: str) -> None:
         requested = str(mode or "").strip().lower()
         if not requested:
@@ -2546,10 +3041,123 @@ class Maxim:
         self._request_mode("shutdown")
 
     def request_sleep(self) -> None:
-        self._request_mode("sleep")
+        """Enter sleep processing state (minimal processing, keyword monitoring)."""
+        self._request_processing_state("sleep")
+
+    def request_wake(self) -> None:
+        """Wake from sleep processing state."""
+        self._request_processing_state("awake")
 
     def request_observe(self) -> None:
-        self._request_mode("reflection")
+        """Legacy: switch to observe strategy."""
+        self._request_strategy("observe")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # New Architecture: Strategy and Mode Switching
+    # ─────────────────────────��───────────────────────────────────────────────
+
+    def _request_processing_state(self, state: str) -> None:
+        """Request a processing state change (awake/sleep)."""
+        current = getattr(self, "processing_state", "awake")
+        if state == current:
+            return
+        try:
+            self.log.info("Processing state change requested: %s -> %s", current, state)
+        except Exception:
+            pass
+        self.processing_state = state
+
+        # Notify agent if running
+        agent = getattr(self, "_agentic_agent", None)
+        if agent is not None and hasattr(agent, "set_processing_state"):
+            try:
+                agent.set_processing_state(state)
+            except Exception as e:
+                try:
+                    self.log.warning("Failed to notify agent of processing state change: %s", e)
+                except Exception:
+                    pass
+
+    def _request_strategy(self, strategy: str) -> None:
+        """Request a strategy change."""
+        current = getattr(self, "current_strategy", "observe")
+        if strategy == current:
+            return
+        try:
+            self.log.info("Strategy change requested: %s -> %s", current, strategy)
+        except Exception:
+            pass
+        self.current_strategy = strategy
+
+        # Also wake up if sleeping
+        if getattr(self, "processing_state", "awake") == "sleep":
+            self._request_processing_state("awake")
+
+        # Notify agent if running
+        agent = getattr(self, "_agentic_agent", None)
+        if agent is not None and hasattr(agent, "set_strategy"):
+            try:
+                agent.set_strategy(strategy)
+            except Exception as e:
+                try:
+                    self.log.warning("Failed to notify agent of strategy change: %s", e)
+                except Exception:
+                    pass
+
+    def _request_operational_mode(self, mode: str) -> None:
+        """Request an operational mode change (passive/active/singularity)."""
+        current = getattr(self, "operational_mode", "passive")
+        if mode == current:
+            return
+        try:
+            self.log.info("Operational mode change requested: %s -> %s", current, mode)
+        except Exception:
+            pass
+        self.operational_mode = mode
+
+        # Also wake up if sleeping
+        if getattr(self, "processing_state", "awake") == "sleep":
+            self._request_processing_state("awake")
+
+        # Notify agent if running
+        agent = getattr(self, "_agentic_agent", None)
+        if agent is not None and hasattr(agent, "set_operational_mode"):
+            try:
+                agent.set_operational_mode(mode)
+            except Exception as e:
+                try:
+                    self.log.warning("Failed to notify agent of operational mode change: %s", e)
+                except Exception:
+                    pass
+
+    # Strategy switch methods (called by phrase responses)
+    def request_strategy_observe(self) -> None:
+        self._request_strategy("observe")
+
+    def request_strategy_explore(self) -> None:
+        self._request_strategy("explore")
+
+    def request_strategy_research(self) -> None:
+        self._request_strategy("research")
+
+    def request_strategy_assist(self) -> None:
+        self._request_strategy("assist")
+
+    def request_strategy_reflect(self) -> None:
+        self._request_strategy("reflect")
+
+    def request_strategy_learn(self) -> None:
+        self._request_strategy("learn")
+
+    # Operational mode switch methods (called by phrase responses)
+    def request_mode_passive(self) -> None:
+        self._request_operational_mode("passive")
+
+    def request_mode_active(self) -> None:
+        self._request_operational_mode("active")
+
+    def request_mode_singularity(self) -> None:
+        self._request_operational_mode("singularity")
 
     def update_interests(
         self,
@@ -2762,6 +3370,412 @@ class Maxim:
         except Exception:
             pass
 
+    def sync_head_position(self) -> bool:
+        """Sync internal position tracking with actual hardware position.
+
+        Reads the current head pose from the reachy_mini SDK and updates
+        the internal yaw/pitch tracking to match. This helps correct drift
+        between software tracking and actual hardware position.
+
+        Returns:
+            True if sync was successful, False otherwise.
+        """
+        try:
+            import math
+
+            # Get current joint positions - this gives us body_yaw directly
+            # Head joints: 6 Stewart platform joints + 1 body_yaw (index 6)
+            # Antenna joints: 2 antenna positions
+            head_joints, antenna_joints = self.mini.get_current_joint_positions()
+
+            # Body yaw is the 7th joint (index 6) - in radians
+            if len(head_joints) >= 7:
+                body_yaw_rad = head_joints[6]
+                body_yaw_deg = math.degrees(body_yaw_rad)
+                self.body_yaw = body_yaw_deg
+            else:
+                body_yaw_deg = float(getattr(self, "body_yaw", 0.0) or 0.0)
+
+            # Get current pose matrix from SDK
+            pose_matrix = self.mini.get_current_head_pose()
+
+            # Extract rotation matrix (upper-left 3x3)
+            R = pose_matrix[:3, :3]
+
+            # Extract Euler angles from rotation matrix
+            # Using ZYX convention (yaw, pitch, roll)
+            # Check for gimbal lock
+            if abs(R[2, 0]) < 0.9999:
+                pitch = -math.asin(R[2, 0])
+                yaw_world = math.atan2(R[1, 0], R[0, 0])
+                roll = math.atan2(R[2, 1], R[2, 2])
+            else:
+                # Gimbal lock - pitch is ±90°
+                pitch = math.copysign(math.pi / 2, -R[2, 0])
+                yaw_world = math.atan2(-R[0, 1], R[1, 1])
+                roll = 0.0
+
+            # Convert to degrees
+            yaw_world_deg = math.degrees(yaw_world)
+            pitch_deg = math.degrees(pitch)
+            roll_deg = math.degrees(roll)
+
+            # The pose matrix from get_current_head_pose() is in WORLD frame.
+            # We need to convert to HEAD-relative yaw by accounting for body rotation.
+            #
+            # SDK sign convention:
+            # - Negative body_yaw = body has turned LEFT
+            # - Positive body_yaw = body has turned RIGHT
+            #
+            # Formula: head_yaw = world_yaw - body_yaw
+            #
+            # Example: body turned left 77° (body_yaw=-77), head at world_yaw=-65
+            # - head_yaw = -65 - (-77) = -65 + 77 = +12° (head is 12° right of body forward)
+            yaw_deg = yaw_world_deg - body_yaw_deg  # SUBTRACT to get head-relative
+
+            # Normalize to [-180, 180]
+            while yaw_deg > 180:
+                yaw_deg -= 360
+            while yaw_deg < -180:
+                yaw_deg += 360
+
+            # DEBUG: Log body_yaw and world_yaw to diagnose frame issues
+            if abs(yaw_deg) > 55.0:
+                self.log.warning(
+                    "SYNC_DEBUG: yaw=%.1f EXCEEDS physical limit | world_yaw=%.1f body_yaw=%.1f",
+                    yaw_deg, yaw_world_deg, body_yaw_deg
+                )
+
+            # SANITY CHECK: The head physically cannot rotate more than ±55° relative
+            # to the body. If calculated yaw exceeds this, clamp it to prevent bad behavior.
+            # Previous ±90° threshold was too permissive and allowed invalid values through.
+            HEAD_YAW_PHYSICAL_LIMIT = 55.0
+            if abs(yaw_deg) > HEAD_YAW_PHYSICAL_LIMIT:
+                old_yaw = float(getattr(self, "yaw", 0.0) or 0.0)
+                # Clamp to physical limit (preserving direction)
+                clamped_yaw = max(-HEAD_YAW_PHYSICAL_LIMIT, min(HEAD_YAW_PHYSICAL_LIMIT, yaw_deg))
+                self.log.warning(
+                    "Sync: clamping invalid yaw=%.1f -> %.1f (world=%.1f - body=%.1f, old=%.1f)",
+                    yaw_deg, clamped_yaw, yaw_world_deg, body_yaw_deg, old_yaw
+                )
+                yaw_deg = clamped_yaw
+
+            # SANITY CHECK: The head physically cannot pitch more than ±35° relative
+            # to the body. Clamp to prevent invalid values from causing issues.
+            HEAD_PITCH_PHYSICAL_LIMIT = 35.0
+            if abs(pitch_deg) > HEAD_PITCH_PHYSICAL_LIMIT:
+                old_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
+                clamped_pitch = max(-HEAD_PITCH_PHYSICAL_LIMIT, min(HEAD_PITCH_PHYSICAL_LIMIT, pitch_deg))
+                self.log.warning(
+                    "Sync: clamping invalid pitch=%.1f -> %.1f (old=%.1f)",
+                    pitch_deg, clamped_pitch, old_pitch
+                )
+                pitch_deg = clamped_pitch
+
+            # SANITY CHECK: Roll also limited to ±35° physical limit
+            HEAD_ROLL_PHYSICAL_LIMIT = 35.0
+            if abs(roll_deg) > HEAD_ROLL_PHYSICAL_LIMIT:
+                old_roll = float(getattr(self, "roll", 0.0) or 0.0)
+                clamped_roll = max(-HEAD_ROLL_PHYSICAL_LIMIT, min(HEAD_ROLL_PHYSICAL_LIMIT, roll_deg))
+                self.log.warning(
+                    "Sync: clamping invalid roll=%.1f -> %.1f (old=%.1f)",
+                    roll_deg, clamped_roll, old_roll
+                )
+                roll_deg = clamped_roll
+
+            # Extract translation (convert meters to mm)
+            x_mm = pose_matrix[0, 3] * 1000
+            y_mm = pose_matrix[1, 3] * 1000
+            z_mm = pose_matrix[2, 3] * 1000
+
+            # Update internal tracking
+            old_yaw = float(getattr(self, "yaw", 0.0) or 0.0)
+            old_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
+            old_y = float(getattr(self, "y", 0.0) or 0.0)
+            old_z = float(getattr(self, "z", 0.0) or 0.0)
+
+            self.x = x_mm
+            self.y = y_mm
+            self.z = z_mm
+            self.roll = roll_deg
+            self.pitch = pitch_deg
+            self.yaw = yaw_deg
+
+            # Only log if there's a significant difference (>2° or >2mm)
+            yaw_diff = abs(old_yaw - yaw_deg)
+            pitch_diff = abs(old_pitch - pitch_deg)
+            y_diff = abs(old_y - y_mm)
+            z_diff = abs(old_z - z_mm)
+
+            if yaw_diff > 2.0 or pitch_diff > 2.0 or y_diff > 2.0 or z_diff > 2.0:
+                self.log.debug(
+                    "Sync: yaw=%.1f (body=%.1f), pitch=%.1f, y=%.1f, z=%.1f",
+                    yaw_deg, body_yaw_deg, pitch_deg, y_mm, z_mm
+                )
+
+            # Record position for pain detection (if enabled)
+            pain_bridge = getattr(
+                getattr(self, "_default_network", None), "_pain_bridge", None
+            )
+            if pain_bridge is not None:
+                try:
+                    pain_bridge.detector.record_position(
+                        yaw=yaw_deg,
+                        pitch=pitch_deg,
+                        x=x_mm,
+                        y=y_mm,
+                        z=z_mm,
+                        roll=roll_deg,
+                    )
+                except Exception as pain_e:
+                    self.log.debug("Pain recording failed: %s", pain_e)
+
+            return True
+
+        except Exception as e:
+            self.log.warning("Failed to sync head position: %s", e)
+            return False
+
+    # Safe pixel bounds for look_at_image to prevent IK failures.
+    # With translation-first approach, we can use more of the frame.
+    _LOOK_AT_PIXEL_BOUNDS = {
+        "u_min": 64,    # ~10% from left edge
+        "u_max": 576,   # ~10% from right edge
+        "v_min": 48,    # ~10% from top edge
+        "v_max": 432,   # ~10% from bottom edge
+    }
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # BLENDED 6-DOF WORKSPACE LIMITS
+    # ═══════════════════════════════════════════════════════════════════════════
+    # We use BOTH translation AND rotation in a balanced way:
+    # - Translation provides mechanical stability for the Stewart platform
+    # - Rotation provides natural head-movement feel
+    #
+    # Coordinate system (from SDK docs):
+    #   X = forward (positive = toward what you're looking at)
+    #   Y = left (positive = left, negative = right)
+    #   Z = upward (positive = up, negative = down)
+    #
+    # SDK hint: "1 degree ≈ 1 mm" as rough equivalence
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    # Translation limits (mm) - moderate range for stability
+    _SAFE_X_LIMIT = 15.0    # Forward/backward (mm) - rarely used
+    _SAFE_Y_LIMIT = 18.0    # Left/right (mm)
+    _SAFE_Z_LIMIT = 15.0    # Up/down (mm)
+
+    # Rotation limits (degrees) - based on Reachy Mini SDK documentation
+    # SDK limits: Roll/Pitch [-40°, +40°], Yaw delta max 65° (head relative to body)
+    # Using slightly conservative values for safety margin
+    _SAFE_ROLL_LIMIT = 35.0   # Head tilt (degrees) - SDK allows ±40°
+    _SAFE_PITCH_LIMIT = 35.0  # Look up/down (degrees) - SDK allows ±40°
+    _SAFE_YAW_LIMIT = 55.0    # Look left/right (degrees) - SDK allows ±65° (relative to body)
+
+    # Turn-around trigger settings
+    # When head is at horizontal limit and target is beyond, rotate body instead
+    # Note: Threshold is now LEARNED via pain detection - no hardcoded _TURN_AROUND_THRESHOLD
+    _TURN_AROUND_MIN_PIXEL_OFFSET = 60  # Min pixel offset to trigger (avoid small targets)
+    _TURN_AROUND_COOLDOWN = 12.0  # Seconds between turn_around triggers
+    _TURN_AROUND_ANGLE = 45.0  # Degrees to rotate body (matches yaw limit for smooth transition)
+    _TURN_AROUND_DURATION = 6.0  # Seconds for body rotation (slow and deliberate)
+    _TURN_AROUND_PAIN_THRESHOLD = 0.3  # Pain risk threshold to trigger turn-around
+    _TURN_AROUND_BOUNDS_THRESHOLD = 0.75  # Fallback: bounds usage threshold if pain not available
+
+    # Camera parameters for converting pixels to movement
+    # Internal coordinate system (matches behavior/detection pipeline)
+    _IMAGE_CENTER_U = 320.0
+    _IMAGE_CENTER_V = 240.0
+    _IMAGE_WIDTH = 640.0
+    _IMAGE_HEIGHT = 480.0
+
+    # SDK's expected resolution (camera native resolution)
+    # The SDK's look_at_image expects coordinates in the camera's native resolution
+    _SDK_IMAGE_WIDTH = 1920.0
+    _SDK_IMAGE_HEIGHT = 1080.0
+    _SDK_IMAGE_CENTER_U = 960.0   # 1920 / 2
+    _SDK_IMAGE_CENTER_V = 540.0   # 1080 / 2
+
+    # Camera FOV (approximate)
+    _HORIZONTAL_FOV_DEG = 70.0  # degrees
+    _VERTICAL_FOV_DEG = 50.0    # degrees
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # BLENDED MOVEMENT PER PIXEL
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Both translation and rotation contribute to movement.
+    # Rotation is now more prominent for natural head movement,
+    # while translation provides the mechanical stability base.
+    # For a 100px offset: ~5mm translation + ~10° rotation
+    _MM_PER_PIXEL_H = 0.05    # mm translation per pixel horizontally
+    _MM_PER_PIXEL_V = 0.04    # mm translation per pixel vertically
+    _DEG_PER_PIXEL_H = 0.10   # degrees rotation per pixel horizontally
+    _DEG_PER_PIXEL_V = 0.08   # degrees rotation per pixel vertically
+
+    def _get_workspace_limits(self) -> dict[str, float]:
+        """Get workspace limits, preferring learned bounds over hardcoded.
+
+        Returns:
+            Dict with x, y, z, roll, pitch, yaw limits (all positive values).
+        """
+        # Try to get learned bounds from bounds_learner
+        bounds_learner = None
+        default_network = getattr(self, "_default_network", None)
+        if default_network is not None:
+            bounds_learner = getattr(default_network, "_bounds_learner", None)
+
+        if bounds_learner is not None:
+            return {
+                "x": bounds_learner.get_bound("x"),
+                "y": bounds_learner.get_bound("y"),
+                "z": bounds_learner.get_bound("z"),
+                "roll": bounds_learner.get_bound("roll"),
+                "pitch": bounds_learner.get_bound("pitch"),
+                "yaw": bounds_learner.get_bound("yaw"),
+            }
+
+        # Fallback to hardcoded limits
+        return {
+            "x": self._SAFE_X_LIMIT,
+            "y": self._SAFE_Y_LIMIT,
+            "z": self._SAFE_Z_LIMIT,
+            "roll": self._SAFE_ROLL_LIMIT,
+            "pitch": self._SAFE_PITCH_LIMIT,
+            "yaw": self._SAFE_YAW_LIMIT,
+        }
+
+    def _clamp_to_workspace_6d(
+        self,
+        x: float, y: float, z: float,
+        roll: float, pitch: float, yaw: float,
+    ) -> tuple[float, float, float, float, float, float]:
+        """Clamp 6-DOF pose to the reachable Stewart platform workspace.
+
+        The Stewart platform has a complex 6D workspace. We use a simplified
+        model with separate ellipsoids for translation and rotation, plus
+        a combined constraint to prevent extreme combinations.
+
+        Translation (x, y, z) is the PRIMARY movement mechanism.
+        Rotation (roll, pitch, yaw) is SECONDARY for personality/fine-tuning.
+
+        Uses learned workspace bounds when available, falling back to hardcoded limits.
+
+        Args:
+            x, y, z: Translation in mm.
+            roll, pitch, yaw: Rotation in degrees.
+
+        Returns:
+            Clamped (x, y, z, roll, pitch, yaw) tuple.
+        """
+        import math
+
+        # Get limits (learned or hardcoded)
+        limits = self._get_workspace_limits()
+        x_limit = limits["x"]
+        y_limit = limits["y"]
+        z_limit = limits["z"]
+        roll_limit = limits["roll"]
+        pitch_limit = limits["pitch"]
+        yaw_limit = limits["yaw"]
+
+        # 1. Clamp translation to rectangular bounds first
+        x = max(-x_limit, min(x_limit, x))
+        y = max(-y_limit, min(y_limit, y))
+        z = max(-z_limit, min(z_limit, z))
+
+        # 2. Clamp rotation to rectangular bounds
+        roll = max(-roll_limit, min(roll_limit, roll))
+        pitch = max(-pitch_limit, min(pitch_limit, pitch))
+        yaw = max(-yaw_limit, min(yaw_limit, yaw))
+
+        # 3. Check translation ellipsoid: (x/max_x)² + (y/max_y)² + (z/max_z)² <= 1
+        if x_limit > 0 and y_limit > 0 and z_limit > 0:
+            norm_x = x / x_limit
+            norm_y = y / y_limit
+            norm_z = z / z_limit
+            trans_dist = norm_x**2 + norm_y**2 + norm_z**2
+
+            if trans_dist > 1.0:
+                scale = 1.0 / math.sqrt(trans_dist)
+                x, y, z = x * scale, y * scale, z * scale
+                self.log.debug("Clamped translation to ellipsoid")
+
+        # 4. Check rotation ellipsoid: (roll/max)² + (pitch/max)² + (yaw/max)² <= 1
+        if roll_limit > 0 and pitch_limit > 0 and yaw_limit > 0:
+            norm_roll = roll / roll_limit
+            norm_pitch = pitch / pitch_limit
+            norm_yaw = yaw / yaw_limit
+            rot_dist = norm_roll**2 + norm_pitch**2 + norm_yaw**2
+
+            if rot_dist > 1.0:
+                scale = 1.0 / math.sqrt(rot_dist)
+                roll, pitch, yaw = roll * scale, pitch * scale, yaw * scale
+                self.log.debug("Clamped rotation to ellipsoid")
+
+        # 5. Combined constraint: only reduce rotation when translation is VERY high
+        # The blended approach allows both translation and rotation to work together,
+        # but we still need to prevent extreme combined positions that cause IK failure.
+        trans_usage = math.sqrt((x/x_limit)**2 + (y/y_limit)**2 + (z/z_limit)**2) if x_limit > 0 else 0
+        rot_usage = math.sqrt((roll/roll_limit)**2 + (pitch/pitch_limit)**2 + (yaw/yaw_limit)**2) if yaw_limit > 0 else 0
+
+        # Only apply combined constraint when BOTH are high
+        combined = trans_usage * 0.5 + rot_usage * 0.5  # Equal weighting
+        if combined > 0.85:  # If combined usage exceeds 85%
+            # Scale both down proportionally to stay within workspace
+            scale = 0.85 / combined
+            x, y, z = x * scale, y * scale, z * scale
+            roll, pitch, yaw = roll * scale, pitch * scale, yaw * scale
+            self.log.debug("Scaled both trans/rot due to combined limit: %.2f -> %.2f", combined, 0.85)
+
+        return (x, y, z, roll, pitch, yaw)
+
+    def _clamp_to_workspace(
+        self, yaw: float, pitch: float
+    ) -> tuple[float, float]:
+        """Legacy 2D clamp for backward compatibility.
+
+        Delegates to 6D clamping with zero translation.
+        """
+        _, _, _, _, pitch_out, yaw_out = self._clamp_to_workspace_6d(
+            0, 0, 0, 0, pitch, yaw
+        )
+        return (yaw_out, pitch_out)
+
+    def _calculate_movement_for_pixel(
+        self, du: float, dv: float
+    ) -> tuple[float, float, float, float, float, float]:
+        """Calculate 6-DOF movement needed to center a pixel offset.
+
+        Uses TRANSLATION as the primary movement mechanism:
+        - Y translation for horizontal movement (left/right)
+        - Z translation for vertical movement (up/down)
+
+        Uses ROTATION as secondary for personality and efficiency:
+        - Yaw for horizontal fine-tuning
+        - Pitch for vertical fine-tuning
+
+        Args:
+            du: Horizontal pixel offset from center (positive = right).
+            dv: Vertical pixel offset from center (positive = down).
+
+        Returns:
+            (dx, dy, dz, droll, dpitch, dyaw) deltas to apply.
+        """
+        # Translation deltas (primary movement)
+        # Note: positive du (right of center) requires negative Y (move head right)
+        # Note: positive dv (below center) requires negative Z (move head down)
+        dy = -du * self._MM_PER_PIXEL_H  # Y = left, so negative for right
+        dz = -dv * self._MM_PER_PIXEL_V  # Z = up, so negative for down
+        dx = 0.0  # X (forward) not typically needed for looking at pixels
+
+        # Rotation deltas (secondary/supplementary)
+        # Same sign convention as translation
+        dyaw = -du * self._DEG_PER_PIXEL_H   # Turn right for right-of-center
+        dpitch = dv * self._DEG_PER_PIXEL_V  # Look down for below-center
+        droll = 0.0  # Roll not used for pixel tracking
+
+        return (dx, dy, dz, droll, dpitch, dyaw)
+
     def look_at_image(
         self,
         u: int,
@@ -2769,16 +3783,345 @@ class Maxim:
         *,
         duration: Optional[float] = None,
         perform_movement: bool = True,
+        min_reachability: float = 0.2,
+        clamp_to_bounds: bool = True,
     ) -> None:
+        """Look at a position in image coordinates.
+
+        Args:
+            u: Horizontal pixel coordinate.
+            v: Vertical pixel coordinate.
+            duration: Movement duration in seconds.
+            perform_movement: Whether to actually move (vs just calculate).
+            min_reachability: Minimum reachability score to attempt movement (0-1).
+                              Set to 0 to disable reachability gating.
+            clamp_to_bounds: Whether to clamp coordinates to safe pixel bounds.
+                             This prevents the robot from drifting outside servo limits.
+        """
         if duration is None:
             duration = getattr(self, "duration", 0.5)
-        self._enqueue_motor(
-            self.mini.look_at_image,
-            int(u),
-            int(v),
-            duration=float(duration),
-            perform_movement=bool(perform_movement),
-        )
+
+        # Clamp pixel coordinates to safe bounds to prevent drift outside servo limits
+        if clamp_to_bounds:
+            bounds = self._LOOK_AT_PIXEL_BOUNDS
+            u_clamped = max(bounds["u_min"], min(bounds["u_max"], int(u)))
+            v_clamped = max(bounds["v_min"], min(bounds["v_max"], int(v)))
+            if u_clamped != int(u) or v_clamped != int(v):
+                self.log.debug(
+                    "Clamped look_at_image coordinates: (%d, %d) -> (%d, %d)",
+                    u, v, u_clamped, v_clamped
+                )
+            u, v = u_clamped, v_clamped
+
+        position = (int(u), int(v))
+
+        # Check reachability before attempting movement (dynamic bounds learning)
+        if min_reachability > 0:
+            default_network = getattr(self, "_default_network", None)
+            if default_network is not None:
+                attention = getattr(default_network, "_attention_network", None)
+                if attention is not None:
+                    try:
+                        reachability = attention.get_reachability(position)
+                        if reachability < min_reachability:
+                            self.log.debug(
+                                "Skipping unreachable position (%d, %d) - reachability %.2f < %.2f",
+                                u, v, reachability, min_reachability
+                            )
+                            return
+                    except Exception:
+                        pass  # Continue if reachability check fails
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # HYBRID APPROACH: SDK look_at_image + position-aware clamping
+        # ═══════════════════════════════════════════════════════════════════════════
+        # The SDK's look_at_image WORKS for centering - it knows the camera model.
+        # The problem was IK failures at extreme positions.
+        # Solution: clamp pixels based on current position to prevent going further
+        # into the limits.
+        # ═══════════════════════════════════════════════════════════════════════════
+        if perform_movement:
+            # Sync to get accurate current position
+            self.sync_head_position()
+
+            cur_yaw = float(getattr(self, "yaw", 0.0) or 0.0)
+            cur_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
+            cur_y = float(getattr(self, "y", 0.0) or 0.0)
+            cur_z = float(getattr(self, "z", 0.0) or 0.0)
+
+            # Calculate pixel offset
+            du = float(u) - self._IMAGE_CENTER_U
+            dv = float(v) - self._IMAGE_CENTER_V
+
+            # ADAPTIVE MOVEMENT GAIN: Use FocusLearner for adaptive dampening
+            # Instead of a fixed dampening factor, we learn the optimal gain
+            # from focus feedback - how far the target ends up from center
+            # after each movement.
+            default_network = getattr(self, "_default_network", None)
+            focus_learner = getattr(default_network, "_focus_learner", None) if default_network else None
+
+            # Debug: log why FocusLearner might not be available
+            if focus_learner is None:
+                if default_network is None:
+                    self.log.debug("FocusLearner unavailable: _default_network is None")
+                else:
+                    self.log.debug("FocusLearner unavailable: _focus_learner is None in DefaultNetwork")
+
+            if focus_learner is not None:
+                gain_h, gain_v = focus_learner.get_gain(du, dv)
+                # Record intent for later result tracking
+                focus_learner.record_intent(du, dv, gain_h, gain_v)
+                self.log.info(
+                    "FocusLearner: raw_du=%.1f raw_dv=%.1f gain_h=%.3f gain_v=%.3f",
+                    du, dv, gain_h, gain_v,
+                )
+                du = du * gain_h
+                dv = dv * gain_v
+            else:
+                # Fallback to fixed dampening if FocusLearner not available
+                DAMPENING_FACTOR = 0.5
+                self.log.warning("Using fallback DAMPENING_FACTOR=0.5 (FocusLearner unavailable)")
+                du = du * DAMPENING_FACTOR
+                dv = dv * DAMPENING_FACTOR
+
+            # POSITION-AWARE CLAMPING: If we're already near a limit,
+            # don't allow pixels that would push us further that direction
+            # This prevents accumulating into IK failure territory
+            #
+            # We check BOTH rotation (yaw, pitch) AND translation (y, z)
+            # and use the MORE restrictive of the two.
+
+            # === HORIZONTAL AXIS (left/right) ===
+            # Rotation: yaw (positive = looking left)
+            # Translation: Y (positive = platform shifted left in mm)
+            # Use learned bounds when available
+            limits = self._get_workspace_limits()
+            yaw_limit = limits["yaw"]
+            y_limit = limits["y"]
+            yaw_usage = abs(cur_yaw) / yaw_limit if yaw_limit > 0 else 0
+            y_usage = abs(cur_y) / y_limit if y_limit > 0 else 0
+            h_usage = max(yaw_usage, y_usage)  # Use the more restrictive
+
+            # Check direction: positive yaw/y = left, negative = right
+            looking_left = cur_yaw > 0 or cur_y > 0
+            looking_right = cur_yaw < 0 or cur_y < 0
+
+            # Get pain bridge for learned movement control
+            pain_bridge = getattr(
+                getattr(self, "_default_network", None), "_pain_bridge", None
+            )
+
+            # === TURN AROUND TRIGGER (LEARNED) ===
+            # If movement in target direction would cause pain, rotate body instead
+            import time as time_module
+            now = time_module.time()
+            can_turn = (now - self._last_turn_around_time) > self._TURN_AROUND_COOLDOWN
+
+            # Check if pixel is significantly in the blocked direction
+            target_is_beyond = (
+                (looking_left and du < -self._TURN_AROUND_MIN_PIXEL_OFFSET) or
+                (looking_right and du > self._TURN_AROUND_MIN_PIXEL_OFFSET)
+            )
+
+            if can_turn and target_is_beyond:
+                # Check pain prediction for the proposed movement
+                should_turn = False
+                turn_reason = ""
+
+                if pain_bridge is not None:
+                    # Create action signature for this movement
+                    dyaw = abs(du * self._DEG_PER_PIXEL_H)
+                    action_sig = f"look_at:dy={dyaw:.0f}:dp=0"
+                    pain_risk = pain_bridge.get_pain_risk(action_sig)
+
+                    if pain_risk >= self._TURN_AROUND_PAIN_THRESHOLD:
+                        should_turn = True
+                        turn_reason = f"pain_risk={pain_risk:.2f}"
+                else:
+                    # Fallback: use bounds usage threshold if pain prediction unavailable
+                    if h_usage > self._TURN_AROUND_BOUNDS_THRESHOLD:
+                        should_turn = True
+                        turn_reason = f"bounds_usage={h_usage:.2f}"
+
+                if should_turn:
+                    # Determine turn direction
+                    # Looking left + pixel further left = turn left (positive angle)
+                    # Looking right + pixel further right = turn right (negative angle)
+                    turn_angle = self._TURN_AROUND_ANGLE if looking_left else -self._TURN_AROUND_ANGLE
+
+                    self.log.info(
+                        "look_at_image triggering turn_around: %s, du=%.1f, turning %.0f°",
+                        turn_reason, du, turn_angle
+                    )
+                    self._last_turn_around_time = now
+
+                    # Record turn_around as action start for positive learning
+                    if pain_bridge is not None:
+                        try:
+                            pain_bridge.record_action_start(
+                                "turn_around",
+                                context={"reason": turn_reason, "angle": turn_angle},
+                            )
+                        except Exception:
+                            pass
+
+                    self.turn_around(turn_angle, duration=self._TURN_AROUND_DURATION, recenter_head=True)
+
+                    # Record successful turn_around (no pain) as positive outcome
+                    if pain_bridge is not None:
+                        try:
+                            pain_bridge.record_action_complete(success=True)
+                        except Exception:
+                            pass
+
+                    return  # Exit early - turn_around handles the movement
+
+            # === LEARNED POSITION CLAMPING (HORIZONTAL) ===
+            # Use pain prediction to determine how much to restrict movement
+            h_restrict = 0.0
+            if pain_bridge is not None:
+                # Calculate pain risk for horizontal movement
+                dyaw_h = abs(du * self._DEG_PER_PIXEL_H)
+                action_sig_h = f"look_at:dy={dyaw_h:.0f}:dp=0"
+                h_pain_risk = pain_bridge.get_pain_risk(action_sig_h)
+                # Use pain risk directly as restriction factor
+                h_restrict = min(1.0, h_pain_risk * 2.0)  # Scale up for faster response
+            elif h_usage > 0.5:
+                # Fallback to bounds-based restriction
+                h_restrict = min(1.0, (h_usage - 0.5) * 2)
+
+            if h_restrict > 0.1:
+                if looking_left and du < 0:  # At left limit, pixel is further left
+                    du = du * (1.0 - h_restrict * 0.8)  # Reduce by up to 80%
+                elif looking_right and du > 0:  # At right limit, pixel is further right
+                    du = du * (1.0 - h_restrict * 0.8)
+
+            # === VERTICAL AXIS (up/down) ===
+            # Rotation: pitch (positive = looking down in this system)
+            # Translation: Z (positive = platform raised up = camera higher = looking down)
+            # Use learned bounds (already fetched in horizontal axis section)
+            pitch_limit = limits["pitch"]
+            z_limit = limits["z"]
+            pitch_usage = abs(cur_pitch) / pitch_limit if pitch_limit > 0 else 0
+            z_usage = abs(cur_z) / z_limit if z_limit > 0 else 0
+            v_usage = max(pitch_usage, z_usage)  # Use the more restrictive
+
+            # === LEARNED POSITION CLAMPING (VERTICAL) ===
+            v_restrict = 0.0
+            if pain_bridge is not None:
+                # Calculate pain risk for vertical movement
+                dpitch_v = abs(dv * self._DEG_PER_PIXEL_V)
+                action_sig_v = f"look_at:dy=0:dp={dpitch_v:.0f}"
+                v_pain_risk = pain_bridge.get_pain_risk(action_sig_v)
+                v_restrict = min(1.0, v_pain_risk * 2.0)
+            elif v_usage > 0.5:
+                # Fallback to bounds-based restriction
+                v_restrict = min(1.0, (v_usage - 0.5) * 2)
+
+            if v_restrict > 0.1:
+                # Image v: positive = below center (looking down)
+                # Pitch positive = looking down, Z positive = raised up = looking down
+                looking_down = cur_pitch > 0 or cur_z > 0
+                looking_up = cur_pitch < 0 or cur_z < 0
+                if looking_down and dv > 0:  # At down limit, pixel is further down
+                    dv = dv * (1.0 - v_restrict * 0.8)
+                elif looking_up and dv < 0:  # At up limit, pixel is further up
+                    dv = dv * (1.0 - v_restrict * 0.8)
+
+            # Calculate final pixel coordinates
+            final_u = int(self._IMAGE_CENTER_U + du)
+            final_v = int(self._IMAGE_CENTER_V + dv)
+
+            # Apply standard bounds as final safety
+            px_bounds = self._LOOK_AT_PIXEL_BOUNDS
+            final_u = max(px_bounds["u_min"], min(px_bounds["u_max"], final_u))
+            final_v = max(px_bounds["v_min"], min(px_bounds["v_max"], final_v))
+
+            # ENHANCED DEBUG: Trace pixel-to-motor direction
+            # du > 0 means target is RIGHT of center (u=320), so yaw should DECREASE (turn right)
+            # du < 0 means target is LEFT of center, so yaw should INCREASE (turn left)
+            du_direction = "RIGHT" if du > 0 else "LEFT" if du < 0 else "CENTER"
+            expected_yaw_change = "decrease" if du > 0 else "increase" if du < 0 else "none"
+            self.log.warning(
+                "LOOK_AT_DEBUG: input_pixel=(%d,%d) center=(320,240) du=%.1f (%s) dv=%.1f "
+                "-> expect_yaw_to_%s | cur_yaw=%.1f cur_pitch=%.1f | final_pixel=(%d,%d)",
+                u, v, du, du_direction, dv, expected_yaw_change,
+                cur_yaw, cur_pitch, final_u, final_v
+            )
+
+            # Calculate estimated commanded 6D pose for bounds learning
+            # This is an approximation since the SDK handles the actual conversion
+            delta = self._calculate_movement_for_pixel(du, dv)
+            commanded_6d = {
+                "yaw": cur_yaw + delta[5],  # dyaw
+                "pitch": cur_pitch + delta[4],  # dpitch
+                "y": cur_y + delta[1],  # dy
+                "z": cur_z + delta[2],  # dz
+                "roll": float(getattr(self, "roll", 0.0) or 0.0) + delta[3],  # droll
+                "x": float(getattr(self, "x", 0.0) or 0.0) + delta[0],  # dx
+            }
+
+            # Record action start for pain detection (before movement)
+            # Includes target position for movement failure detection
+            pain_bridge = getattr(
+                getattr(self, "_default_network", None), "_pain_bridge", None
+            )
+            if pain_bridge is not None:
+                try:
+                    # Create action signature from movement magnitude
+                    dyaw = abs(delta[5])
+                    dpitch = abs(delta[4])
+                    action_sig = f"look_at:dy={dyaw:.0f}:dp={dpitch:.0f}"
+                    pain_bridge.record_action_start(
+                        action_sig,
+                        context={"position": position, "commanded_6d": commanded_6d},
+                        # Pass target position for movement failure detection
+                        target_yaw=commanded_6d.get("yaw"),
+                        target_pitch=commanded_6d.get("pitch"),
+                        target_y=commanded_6d.get("y"),
+                        target_z=commanded_6d.get("z"),
+                    )
+                except Exception as e:
+                    self.log.debug("Pain action start recording failed: %s", e)
+
+            # SCALE COORDINATES: Convert from our 640x480 to SDK's 1920x1080
+            # The SDK expects coordinates in the camera's native resolution
+            sdk_scale_x = self._SDK_IMAGE_WIDTH / self._IMAGE_WIDTH
+            sdk_scale_y = self._SDK_IMAGE_HEIGHT / self._IMAGE_HEIGHT
+            sdk_u = int(final_u * sdk_scale_x)
+            sdk_v = int(final_v * sdk_scale_y)
+
+            self.log.warning(
+                "LOOK_AT_SDK: internal_pixel=(%d,%d) -> sdk_pixel=(%d,%d) scale=(%.2f,%.2f)",
+                final_u, final_v, sdk_u, sdk_v, sdk_scale_x, sdk_scale_y
+            )
+
+            # Use the SDK's look_at_image - it knows how to center on a pixel
+            self._enqueue_motor(
+                self.mini.look_at_image,
+                sdk_u,
+                sdk_v,
+                duration=float(duration),
+                perform_movement=True,
+                _position_info=position,
+                _commanded_6d=commanded_6d,
+            )
+        else:
+            # SCALE COORDINATES for non-movement case too
+            sdk_scale_x = self._SDK_IMAGE_WIDTH / self._IMAGE_WIDTH
+            sdk_scale_y = self._SDK_IMAGE_HEIGHT / self._IMAGE_HEIGHT
+            sdk_u = int(u * sdk_scale_x)
+            sdk_v = int(v * sdk_scale_y)
+
+            # If not performing movement, just use SDK's look_at_image for calculation
+            self._enqueue_motor(
+                self.mini.look_at_image,
+                sdk_u,
+                sdk_v,
+                duration=float(duration),
+                perform_movement=False,
+                _position_info=position,
+            )
 
     def move(
         self,
@@ -2902,7 +4245,223 @@ class Maxim:
         self.pitch = float(next_pitch)
         self.yaw = float(next_yaw)
 
-        self._enqueue_motor(move_head, self.mini, self.x, self.y, self.z, self.roll, self.pitch, self.yaw, self.duration)
+        # Track commanded 6D pose for bounds learning
+        commanded_6d = {
+            "yaw": self.yaw,
+            "pitch": self.pitch,
+            "y": self.y,
+            "z": self.z,
+            "roll": self.roll,
+            "x": self.x,
+        }
+
+        self._enqueue_motor(
+            move_head, self.mini,
+            self.x, self.y, self.z, self.roll, self.pitch, self.yaw, self.duration,
+            _commanded_6d=commanded_6d,
+        )
+
+    def move_relative(
+        self,
+        delta: tuple[float, float],
+        duration: Optional[float] = None,
+    ) -> None:
+        """Move the head by a relative amount (used by DefaultNetwork scan actions).
+
+        This uses TRANSLATION-FIRST approach: the delta primarily affects
+        translation (Y for horizontal, Z for vertical), with a smaller
+        component affecting rotation for personality.
+
+        Args:
+            delta: (dx, dy) tuple where dx affects horizontal and dy affects vertical.
+                   Values are in "scaled units" - divide by 10 to get actual movement.
+            duration: Movement duration in seconds.
+        """
+        if duration is None:
+            duration = getattr(self, "duration", 0.5)
+
+        dx, dy = delta
+
+        # Convert from scaled units to actual movement amounts
+        # Split between translation (primary) and rotation (secondary)
+        scale = 1.0 / 10.0
+
+        # Translation deltas (primary) - mm
+        delta_y = float(dx) * scale * 2.0   # Horizontal: Y translation (2mm per unit)
+        delta_z = float(dy) * scale * 2.0   # Vertical: Z translation
+
+        # Rotation deltas (secondary) - degrees (smaller contribution)
+        delta_yaw = float(dx) * scale * 0.5   # Horizontal: yaw rotation (0.5° per unit)
+        delta_pitch = float(dy) * scale * 0.5  # Vertical: pitch rotation
+
+        # Get current 6D position
+        cur_x = float(getattr(self, "x", 0.0) or 0.0)
+        cur_y = float(getattr(self, "y", 0.0) or 0.0)
+        cur_z = float(getattr(self, "z", 0.0) or 0.0)
+        cur_roll = float(getattr(self, "roll", 0.0) or 0.0)
+        cur_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
+        cur_yaw = float(getattr(self, "yaw", 0.0) or 0.0)
+
+        # Calculate new 6D position
+        new_x = cur_x  # X (forward) unchanged
+        new_y = cur_y + delta_y
+        new_z = cur_z + delta_z
+        new_roll = cur_roll  # Roll unchanged
+        new_pitch = cur_pitch + delta_pitch
+        new_yaw = cur_yaw + delta_yaw
+
+        # Clamp to 6D workspace
+        new_x, new_y, new_z, new_roll, new_pitch, new_yaw = self._clamp_to_workspace_6d(
+            new_x, new_y, new_z, new_roll, new_pitch, new_yaw
+        )
+
+        self.log.debug(
+            "move_relative 6D: delta=(%.1f, %.1f) -> "
+            "trans(y=%.1f,z=%.1f) rot(yaw=%.1f,pitch=%.1f)",
+            dx, dy, new_y, new_z, new_yaw, new_pitch
+        )
+
+        # Execute the 6D movement
+        self.move(
+            x=new_x, y=new_y, z=new_z,
+            roll=new_roll, pitch=new_pitch, yaw=new_yaw,
+            duration=duration
+        )
+
+    def turn_around(
+        self,
+        angle: float,
+        *,
+        duration: float = 5.0,
+        recenter_head: bool = True,
+    ) -> None:
+        """Rotate the body to bring a new area into view.
+
+        This is used when the head is at its yaw limit and there's something
+        interesting beyond what the head can see. The body rotates to bring
+        that area into the camera's view.
+
+        Args:
+            angle: Degrees to rotate body. Positive = counterclockwise (left),
+                   negative = clockwise (right).
+            duration: Time for the rotation in seconds (default 5.0).
+            recenter_head: If True, return head toward center during rotation.
+        """
+        import math
+        import numpy as np
+
+        self.log.info(
+            "turn_around: rotating body %.0f° over %.1fs (recenter_head=%s)",
+            angle, duration, recenter_head
+        )
+
+        # Clear any pending movements from the queue
+        # This prevents old look_at_image commands from executing after the turn
+        cleared = self._clear_motor_queue()
+        if cleared > 0:
+            self.log.debug("Cleared %d queued movements before turn_around", cleared)
+
+        # Inhibit DefaultNetwork to prevent new tracking commands during turn
+        default_network = getattr(self, "_default_network", None)
+        if default_network is not None:
+            try:
+                # Inhibit for the duration of the turn + buffer
+                default_network.inhibit(duration=duration + 2.0)
+                self.log.debug("Inhibited DefaultNetwork for %.1fs during turn_around", duration + 2.0)
+            except Exception as inh_e:
+                self.log.debug("Failed to inhibit DefaultNetwork: %s", inh_e)
+
+        import time as time_mod
+        from maxim.motion.movement import head_pose_matrix
+
+        try:
+            # Get ACTUAL current body yaw from SDK
+            try:
+                head_joints, _ = self.mini.get_current_joint_positions()
+                if len(head_joints) >= 7:
+                    current_body_yaw = math.degrees(head_joints[6])
+                else:
+                    current_body_yaw = float(getattr(self, "body_yaw", 0.0) or 0.0)
+            except Exception:
+                current_body_yaw = float(getattr(self, "body_yaw", 0.0) or 0.0)
+
+            target_body_yaw = current_body_yaw + angle
+            target_body_yaw = max(-160.0, min(160.0, target_body_yaw))
+
+            self.log.info(
+                "turn_around: 3-step sequence starting (body %.1f -> %.1f)",
+                current_body_yaw, target_body_yaw
+            )
+
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 1: Return head to center first (prevents IK issues during turn)
+            # ═══════════════════════════════════════════════════════════════════
+            step1_duration = min(2.0, duration * 0.3)
+            center_pose = head_pose_matrix(0, 0, 0, 0, 0, 0)
+            
+            self.log.info("turn_around STEP 1: centering head (%.1fs)", step1_duration)
+            try:
+                self.mini.goto_target(
+                    head=center_pose,
+                    duration=step1_duration,
+                    method="minjerk",
+                )
+                time_mod.sleep(step1_duration + 0.3)  # Wait for completion + buffer
+            except Exception as e1:
+                self.log.warning("turn_around STEP 1 failed: %s", e1)
+
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 2: Rotate body (head stays centered relative to body)
+            # ═══════════════════════════════════════════════════════════════════
+            step2_duration = max(3.0, duration * 0.5)
+            body_yaw_rad = np.deg2rad(target_body_yaw)
+            
+            self.log.info("turn_around STEP 2: rotating body to %.1f° (%.1fs)", target_body_yaw, step2_duration)
+            try:
+                self.mini.goto_target(
+                    body_yaw=body_yaw_rad,
+                    duration=step2_duration,
+                    method="minjerk",
+                )
+                time_mod.sleep(step2_duration + 0.3)  # Wait for completion + buffer
+            except Exception as e2:
+                self.log.warning("turn_around STEP 2 failed: %s", e2)
+
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 3: Settle and sync position
+            # ═══════════════════════════════════════════════════════════════════
+            self.log.info("turn_around STEP 3: settling and syncing")
+            time_mod.sleep(0.5)  # Let everything settle
+            
+            # Sync with hardware to get accurate position
+            self.sync_head_position()
+
+            # Update internal tracking
+            self.body_yaw = target_body_yaw
+            if recenter_head:
+                self.yaw = 0.0
+                self.pitch = 0.0
+                self.y = 0.0
+                self.z = 0.0
+
+            self.log.info(
+                "turn_around complete: body_yaw %.1f -> %.1f (total %.1fs)",
+                current_body_yaw, target_body_yaw, step1_duration + step2_duration + 0.8
+            )
+
+        except Exception as e:
+            self.log.warning("turn_around failed: %s", e)
+            import traceback
+            self.log.debug("turn_around traceback: %s", traceback.format_exc())
+
+        finally:
+            # Release DefaultNetwork inhibition
+            if default_network is not None:
+                try:
+                    default_network.release()
+                    self.log.debug("Released DefaultNetwork inhibition after turn_around")
+                except Exception:
+                    pass
 
     def move_antenna(
         self,
@@ -2944,10 +4503,50 @@ class Maxim:
             )
             time.sleep(movement[6])
     
-    def speak(self, samples):
-        # Push audio samples to reachy mini speaker
-        self.mini.media.push_audio_sample(samples)
-        return
+    def speak(self, samples, sample_rate: int = 16000):
+        """Push audio samples to Reachy Mini speaker, with local fallback.
+
+        Tries to play through Reachy's speaker first. If that fails (e.g.,
+        when using WebRTC remote connection), falls back to playing through
+        local computer speakers.
+
+        Args:
+            samples: Audio samples as int16 numpy array.
+            sample_rate: Sample rate of the audio (default 16000).
+
+        Returns:
+            True if audio was played successfully, False otherwise.
+        """
+        if samples is None or len(samples) == 0:
+            return False
+
+        # Check if local audio is preferred (set via environment)
+        prefer_local = os.environ.get("MAXIM_TTS_LOCAL", "").lower() in ("1", "true", "yes")
+
+        # Try Reachy speaker first (unless local is preferred)
+        if not prefer_local:
+            try:
+                self.mini.media.push_audio_sample(samples)
+                return True
+            except Exception as e:
+                # Check if this is a "not implemented" error (WebRTC limitation)
+                error_str = str(e).lower()
+                if "not implemented" in error_str or "webrtc" in error_str:
+                    self.log.info("Reachy speaker not available (WebRTC), using local audio")
+                else:
+                    warn("Failed to play audio on Reachy: %s", e, logger=self.log)
+                    self._note_connection_failure("audio", e)
+
+        # Fall back to local audio playback
+        try:
+            from maxim.utils.audio import play_audio_local
+            success = play_audio_local(samples, sample_rate=sample_rate, blocking=False)
+            if success:
+                self.log.debug("Playing audio through local speakers")
+            return success
+        except Exception as e:
+            warn("Local audio playback failed: %s", e, logger=self.log)
+            return False
 
     def look(self, save_file = None, show = True, release = False):
         # Grab frame from reachy mini camera
@@ -3167,11 +4766,96 @@ class Maxim:
 
         return
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Thread Registry for Coordinated Shutdown
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def register_thread(self, name: str, thread: threading.Thread) -> None:
+        """Register a thread for coordinated shutdown tracking.
+
+        Args:
+            name: Unique identifier for this thread
+            thread: The thread to register
+        """
+        with self._thread_registry_lock:
+            self._thread_registry[name] = thread
+
+    def unregister_thread(self, name: str) -> None:
+        """Remove a thread from the registry.
+
+        Args:
+            name: The thread identifier to remove
+        """
+        with self._thread_registry_lock:
+            self._thread_registry.pop(name, None)
+
+    def stop_all_threads(self, timeout: float = 10.0) -> list[str]:
+        """Stop all registered threads with force-kill fallback.
+
+        Args:
+            timeout: Total timeout for stopping all threads
+
+        Returns:
+            List of thread names that could not be stopped
+        """
+        import ctypes
+
+        with self._thread_registry_lock:
+            threads = list(self._thread_registry.items())
+
+        if not threads:
+            return []
+
+        # Calculate per-thread timeout
+        per_thread_timeout = timeout / max(len(threads), 1)
+        failed_threads = []
+
+        for name, thread in threads:
+            if thread is None or not thread.is_alive():
+                continue
+
+            # Try graceful join
+            try:
+                thread.join(timeout=per_thread_timeout)
+            except Exception:
+                pass
+
+            if thread.is_alive():
+                # Try force termination
+                try:
+                    thread_id = thread.ident
+                    if thread_id is not None:
+                        res = ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                            ctypes.c_ulong(thread_id),
+                            ctypes.py_object(SystemExit)
+                        )
+                        if res == 1:
+                            thread.join(timeout=0.5)
+                            if not thread.is_alive():
+                                self.log.info("Force-terminated registered thread '%s'", name)
+                                continue
+                except Exception:
+                    pass
+                failed_threads.append(name)
+                self.log.warning("Could not stop registered thread '%s'", name)
+
+        # Clear registry
+        with self._thread_registry_lock:
+            self._thread_registry.clear()
+
+        return failed_threads
+
     def shutdown(self):
         if getattr(self, "_closed", False):
             return
         self._closed = True
-        self._stop_agentic_runtime(timeout=2.0)
+
+        # Stop all registered threads first
+        failed = self.stop_all_threads(timeout=5.0)
+        if failed:
+            self.log.warning("Some threads did not stop: %s", failed)
+
+        self._stop_agentic_runtime(timeout=10.0)
 
         try:
             training_logger = getattr(self, "_training_logger", None)
