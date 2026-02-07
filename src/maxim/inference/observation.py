@@ -1,25 +1,21 @@
-"""
-Public observation entrypoints.
+"""Backward compatibility - re-exports from segment_vision.py."""
 
-This module re-exports the observation routines from smaller modules to keep the
-implementation modular while preserving the public API.
-
-Phase 2 note: motor_cortex_control is deprecated for new code.
-Use the agentic runtime for movement decisions instead.
-"""
-
-from maxim.inference.observation_face import face_observation
-from maxim.inference.motor_cortex_observation import motor_cortex_control
-from maxim.inference.observation_passive import (
+from maxim.inference.segment_vision import (
+    DEFAULT_CLASS_WEIGHTS,
+    NoveltyTracker,
     display_detections,
+    get_default_novelty_tracker,
     passive_listening,
     passive_observation,
+    score_detection_weighted,
 )
 
 __all__ = [
+    "DEFAULT_CLASS_WEIGHTS",
+    "NoveltyTracker",
     "display_detections",
-    "face_observation",
-    "motor_cortex_control",  # Deprecated: use agentic runtime
+    "get_default_novelty_tracker",
     "passive_listening",
     "passive_observation",
+    "score_detection_weighted",
 ]
