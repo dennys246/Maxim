@@ -201,6 +201,32 @@ class YOLO8:
     def ensure_pose_model(self) -> bool:
         return self._try_load_pose_model()
 
+    def warmup(self, *, include_pose: bool = True) -> None:
+        """Warm up models with a dummy inference to reduce first-use latency.
+
+        This runs inference on a small dummy image to:
+        1. Complete any lazy initialization in YOLO
+        2. Warm up CUDA/GPU memory allocation
+        3. JIT compile any kernels (if applicable)
+
+        Should be called during startup for ~1-3s latency reduction on first real inference.
+        """
+        # Create a small dummy image (64x64 RGB)
+        dummy = np.zeros((64, 64, 3), dtype=np.uint8)
+
+        # Warm up segmentation model
+        try:
+            self.model.predict(dummy, conf=0.5, verbose=False)
+        except Exception:
+            pass
+
+        # Warm up pose model if requested and loaded
+        if include_pose and self.pose_model is not None:
+            try:
+                self.pose_model.predict(dummy, conf=0.25, verbose=False)
+            except Exception:
+                pass
+
     def segment_photos(self, photos, interests = [0, 1, 2, 3, 4], display = False, save_video = False):
 
         observations: list[list[Any]] = [] # Things of interest
