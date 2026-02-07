@@ -86,7 +86,7 @@ class _PyTorchTransformersBackend:
         """Get or create FearAgent instance."""
         if self._fear_agent is None:
             try:
-                from maxim.conscience.fear_agent import FearAgent
+                from maxim.agents.fear_agent import FearAgent
 
                 # FearAgent without LLM for bootstrap (avoid circular dep)
                 self._fear_agent = FearAgent(llm=None)
