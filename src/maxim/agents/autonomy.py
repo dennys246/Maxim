@@ -267,6 +267,11 @@ class SupervisionPolicy:
     escalate_on_repeated_failure: int = 3
     escalate_on_novel_situation: bool = True
 
+    # Sandbox and filesystem policies
+    sandbox_write_auto_approve: bool = True  # Sandbox writes don't need approval
+    sandbox_execute_requires_approval: bool = True  # Sandbox execution needs approval
+    cwd_write_requires_approval: bool = True  # CWD writes need approval in supervised
+
     def can_execute(
         self, action: dict[str, Any], *, confidence: float | None = None
     ) -> tuple[bool, str | None]:
@@ -284,6 +289,24 @@ class SupervisionPolicy:
 
         if tool_name in self.requires_confirmation:
             return False, f"Tool '{tool_name}' requires confirmation"
+
+        # Check sandbox/filesystem-specific policies
+        params = action.get("params", {})
+
+        if tool_name == "write_file":
+            path = str(params.get("path", ""))
+            # Check if writing to sandbox (auto-approve) or CWD (requires approval)
+            from maxim.utils.filesystem_policy import is_path_in_sandbox
+
+            if is_path_in_sandbox(path):
+                if self.sandbox_write_auto_approve:
+                    return True, None
+            elif self.cwd_write_requires_approval:
+                return False, "CWD write requires approval in supervised mode"
+
+        if tool_name == "execute_file":
+            if self.sandbox_execute_requires_approval:
+                return False, "Sandbox execution requires approval"
 
         return True, None
 
@@ -502,19 +525,39 @@ class AutonomyController:
             else:
                 self._autonomous_until = None
 
+    # Tools that bypass all autonomy checks (including PLANNING mode)
+    # These are tools deemed safe for immediate execution without approval
+    ALWAYS_ALLOWED_TOOLS: frozenset[str] = frozenset({
+        # Visual control (responsive, no side effects)
+        "move",             # Direct head movement
+        "track_target",     # Visual tracking
+        "focus_interests",  # Vision focus
+        # Read-only operations (cannot modify state)
+        "glob",             # File pattern search
+        "read_file",        # Read file contents
+        "list_directory",   # List directory contents
+        "respond",          # Send text response to user
+    })
+
     def can_execute_action(
         self, action: dict[str, Any], confidence: float | None = None
     ) -> tuple[bool, str | None]:
         """Check if an action can be executed at current autonomy level."""
         level = self.current_level
+        tool_name = str(action.get("tool_name", "") or "")
 
         if self.is_paused:
             return False, "Execution is paused"
 
+        # Check for always-allowed tools FIRST (bypass all autonomy checks)
+        # These tools are safe for immediate execution without approval
+        if tool_name in self.ALWAYS_ALLOWED_TOOLS:
+            return True, None
+
         # Build runtime context for safety check
         context = RuntimeContext(
             autonomy_level=level,
-            pending_tool=action.get("tool_name"),
+            pending_tool=tool_name,
             actions_last_second=self._get_recent_action_rate(),
             consecutive_failures=self._get_consecutive_failures(),
             mode_switches_last_hour=self._get_mode_switches_last_hour(),

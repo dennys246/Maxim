@@ -108,4 +108,4 @@ def as_agent_list(agents: Any) -> AgentList | None:
 
 
 # Backwards-compatibility: GoalAgent historically lived in this module.
-from maxim.agents.goal_agent import GoalAgent  # noqa: E402
+from maxim.agents.goal_agent import GoalAgent  # noqa: E402, F401

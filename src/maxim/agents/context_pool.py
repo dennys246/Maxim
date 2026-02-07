@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
-    from maxim.agents.bus import Percept, MemoryItem
+    from maxim.agents.bus import Percept
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +158,45 @@ class AbstractionEntry:
         )
 
 
+@dataclass
+class ConversationTurn:
+    """A single turn in the conversation history."""
+
+    user_input: str
+    assistant_response: str
+    timestamp: float = field(default_factory=time.time)
+    tool_used: str | None = None  # e.g., "respond", "speak"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "user": self.user_input,
+            "assistant": self.assistant_response,
+            "timestamp": self.timestamp,
+            "tool": self.tool_used,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ConversationTurn":
+        return cls(
+            user_input=str(data.get("user", "")),
+            assistant_response=str(data.get("assistant", "")),
+            timestamp=float(data.get("timestamp", time.time())),
+            tool_used=data.get("tool"),
+        )
+
+    def to_context_entry(self) -> ContextEntry:
+        return ContextEntry(
+            timestamp=self.timestamp,
+            entry_type="conversation",
+            content=f"User: \"{self.user_input[:100]}\" → Maxim: \"{self.assistant_response[:100]}\"",
+            metadata={
+                "user": self.user_input,
+                "assistant": self.assistant_response,
+                "tool": self.tool_used,
+            },
+        )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Context Pool
 # ─────────────────────────────────────────────────────────────────────────────
@@ -186,8 +225,15 @@ class ContextPool:
         self._summarizer = summarizer
         self._entries: list[ContextEntry] = []
         self._summaries: list[str] = []  # Accumulated summaries
-        self._lock = threading.Lock()
+        self._conversation_history: list[ConversationTurn] = []  # Conversation turns
+        self._lock = threading.RLock()  # RLock for reentrant safety
         self._total_observations = 0
+
+        # Performance: running token total (O(1) instead of O(n) per add)
+        self._total_tokens = 0
+
+        # Performance: cached context text (invalidated on modification)
+        self._cached_context_text: str | None = None
 
         # Load from persistence if configured
         if self.config.persistence_path:
@@ -292,14 +338,59 @@ class ContextPool:
         )
         self._add_entry(entry)
 
+    def add_conversation_turn(
+        self,
+        user_input: str,
+        assistant_response: str,
+        tool_used: str | None = None,
+    ) -> None:
+        """Add a conversation turn (user input + assistant response pair)."""
+        turn = ConversationTurn(
+            user_input=user_input,
+            assistant_response=assistant_response,
+            tool_used=tool_used,
+        )
+        with self._lock:
+            self._conversation_history.append(turn)
+            # Keep only recent conversation history (last 20 turns)
+            if len(self._conversation_history) > 20:
+                self._conversation_history = self._conversation_history[-20:]
+
+        # Also add as context entry for the general pool
+        self._add_entry(turn.to_context_entry())
+
+    def get_conversation_history(self, max_turns: int = 10) -> list[dict[str, Any]]:
+        """Get recent conversation history as list of dicts."""
+        with self._lock:
+            turns = self._conversation_history[-max_turns:]
+            return [turn.to_dict() for turn in turns]
+
+    def get_conversation_text(self, max_turns: int = 10) -> str:
+        """Get conversation history formatted as text for prompts."""
+        with self._lock:
+            turns = self._conversation_history[-max_turns:]
+            if not turns:
+                return ""
+
+            lines = []
+            for turn in turns:
+                lines.append(f"User: {turn.user_input}")
+                lines.append(f"Maxim: {turn.assistant_response}")
+            return "\n".join(lines)
+
     def _add_entry(self, entry: ContextEntry) -> None:
         """Add entry and trigger summarization if needed."""
         with self._lock:
             self._entries.append(entry)
 
-            # Check if summarization is needed
-            total_tokens = sum(e.estimated_tokens for e in self._entries)
-            if total_tokens > self.config.max_tokens or len(self._entries) > self.config.max_entries:
+            # O(1) token update instead of O(n) sum
+            self._total_tokens += entry.estimated_tokens
+
+            # Invalidate cached context text
+            self._cached_context_text = None
+
+            # Check if summarization is needed (now O(1))
+            if self._total_tokens > self.config.max_tokens or len(self._entries) > self.config.max_entries:
                 self._summarize_old_entries()
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -341,6 +432,12 @@ class ContextPool:
 
         self._entries = [summary_entry] + recent_entries
 
+        # Recalculate token total after major modification
+        self._total_tokens = sum(e.estimated_tokens for e in self._entries)
+
+        # Invalidate cached context text
+        self._cached_context_text = None
+
         logger.debug(
             f"Summarized {len(old_entries)} entries into {summary_entry.estimated_tokens} tokens"
         )
@@ -374,9 +471,13 @@ class ContextPool:
     # ─────────────────────────────────────────────────────────────────────────
 
     def get_context_text(self, max_tokens: int | None = None) -> str:
-        """Get the full context as text for LLM prompts."""
+        """Get the full context as text for LLM prompts (cached when no truncation)."""
         with self._lock:
-            # Start with accumulated summaries
+            # Fast path: return cached text if available and no truncation needed
+            if max_tokens is None and self._cached_context_text is not None:
+                return self._cached_context_text
+
+            # Build the text
             parts = []
             if self._summaries:
                 parts.append("=== Historical Context ===")
@@ -391,8 +492,11 @@ class ContextPool:
 
             text = "\n".join(parts)
 
-            # Truncate if needed
-            if max_tokens:
+            # Cache the untruncated version
+            if max_tokens is None:
+                self._cached_context_text = text
+            else:
+                # Truncate if needed
                 max_chars = max_tokens * 4
                 if len(text) > max_chars:
                     text = text[-max_chars:]
@@ -413,11 +517,11 @@ class ContextPool:
     def stats(self) -> dict[str, Any]:
         """Get pool statistics."""
         with self._lock:
-            total_tokens = sum(e.estimated_tokens for e in self._entries)
             return {
                 "entries": len(self._entries),
                 "summaries": len(self._summaries),
-                "estimated_tokens": total_tokens,
+                "conversation_turns": len(self._conversation_history),
+                "estimated_tokens": self._total_tokens,  # Use cached total (O(1))
                 "total_observations": self._total_observations,
                 "types": list(set(e.entry_type for e in self._entries)),
             }
@@ -438,9 +542,18 @@ class ContextPool:
 
                 self._entries = [ContextEntry.from_dict(e) for e in data.get("entries", [])]
                 self._summaries = data.get("summaries", [])
+                self._conversation_history = [
+                    ConversationTurn.from_dict(t) for t in data.get("conversation_history", [])
+                ]
                 self._total_observations = data.get("total_observations", 0)
 
-                logger.info(f"Loaded context pool: {len(self._entries)} entries, {len(self._summaries)} summaries")
+                # Initialize token count from loaded entries
+                self._total_tokens = sum(e.estimated_tokens for e in self._entries)
+
+                logger.info(
+                    f"Loaded context pool: {len(self._entries)} entries, "
+                    f"{len(self._summaries)} summaries, {len(self._conversation_history)} conversation turns"
+                )
         except Exception as e:
             logger.warning(f"Failed to load context pool: {e}")
 
@@ -456,6 +569,7 @@ class ContextPool:
                 data = {
                     "entries": [e.to_dict() for e in self._entries],
                     "summaries": self._summaries,
+                    "conversation_history": [t.to_dict() for t in self._conversation_history],
                     "total_observations": self._total_observations,
                     "saved_at": time.time(),
                 }
@@ -469,10 +583,11 @@ class ContextPool:
             logger.warning(f"Failed to save context pool: {e}")
 
     def clear(self) -> None:
-        """Clear all entries and summaries."""
+        """Clear all entries, summaries, and conversation history."""
         with self._lock:
             self._entries.clear()
             self._summaries.clear()
+            self._conversation_history.clear()
             self._total_observations = 0
 
 
