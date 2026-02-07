@@ -14,7 +14,7 @@
         "<|end|>",
         "<|endoftext|>"
       ],
-      "n_ctx": 4096
+      "n_ctx": 16384
     },
     "mistral-7b-instruct-v0.2": {
       "backend": "llama_cpp",
@@ -23,7 +23,7 @@
       "stop": [
         "</s>"
       ],
-      "n_ctx": 4096
+      "n_ctx": 16384
     },
     "smollm-1.7b-instruct": {
       "backend": "llama_cpp",
@@ -33,7 +33,7 @@
         "<|im_end|>",
         "</s>"
       ],
-      "n_ctx": 4096
+      "n_ctx": 16384
     }
   },
   "mode_response_config": {
