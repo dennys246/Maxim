@@ -40,6 +40,7 @@ Paths refer to the `src/maxim/` package layout.
   - `nac.py`: Nucleus Accumbens - learns event→outcome relationships via temporal difference learning.
 - `src/maxim/similarity/`: owns multi-modal similarity queries.
   - `ec.py`: Entorhinal Cortex - LSH-based approximate nearest neighbor for situation matching.
+  - `semantic.py`: Phase 4 neural semantic embeddings (SentenceTransformer) for deep similarity ("cup" ≈ "mug").
 - `src/maxim/proprioception/`: owns body awareness and pain detection.
   - `focus_learner.py`: Rescorla-Wagner learning for movement gain adaptation. Learns optimal gain from overshoot feedback.
   - `movement_tracker.py`: Tracks position history, computes velocity/acceleration metrics.
@@ -209,7 +210,7 @@ The Hippocampus provides episodic memory for the agentic system, storing complet
 |-----------|---------|--------------|
 | **SCN** (Suprachiasmatic Nucleus) | Temporal rhythm indexing | 24h/7d/monthly bins, pattern detection |
 | **NAc** (Nucleus Accumbens) | Causal inference | Event→outcome learning, reward prediction |
-| **EC** (Entorhinal Cortex) | Similarity queries | LSH-based approximate nearest neighbor |
+| **EC** (Entorhinal Cortex) | Similarity queries | LSH + neural semantic embeddings (Phase 4) |
 
 ### Bridges
 
@@ -452,6 +453,7 @@ maxim --clear-memory escalation,threshold
 - `scn` - SCN temporal patterns
 - `hippo` - Hippocampus memories
 - `pain` - Pain detector history
+- `semantic` - Semantic embeddings (Phase 4)
 - `all` - Clear everything
 
 ### File Format
