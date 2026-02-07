@@ -95,3 +95,368 @@ All coordination happens through:
 Given the same state, memory, and policy constraints,
 agent output must be deterministic.
 Any randomness must be explicit and injected.
+
+
+## HIPPOCAMPUS MEMORY SYSTEM
+
+The Hippocampus is an associative memory substrate that stores complete agentic loop cycles
+(perception → decision → action → outcome) as episodic memories with rich contextual indexing.
+
+### Architecture Overview
+
+```
+                      ┌─────────────────────────────────────────┐
+                      │            HIPPOCAMPUS                  │
+                      │  ┌───────┐ ┌───────┐ ┌───────┐         │
+                      │  │  SCN  │ │  NAc  │ │  EC   │         │
+                      │  └───┬───┘ └───┬───┘ └───┬───┘         │
+                      └──────┼─────────┼─────────┼──────────────┘
+                             │         │         │
+                             └─────────┼─────────┘
+                                       │
+                              ┌────────┴────────┐
+                              │   MEMORY HUB    │
+                              └────────┬────────┘
+                                       │
+     ┌─────────┬─────────┬─────────────┼─────────────┬─────────┬─────────┐
+     ▼         ▼         ▼             ▼             ▼         ▼         ▼
+  Spatial  Salience  Planning     Escalation      Pain     Energy    (Future)
+   Bridge   Bridge    Bridge       Bridge        Bridge    Bridge
+```
+
+### Core Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| **Hippocampus** | `memory/hippocampus.py` | Episodic memory storage, capture, recall, sleep consolidation |
+| **SCN** | `time/scn.py` | Temporal rhythm indexing (circadian, weekly, monthly patterns) |
+| **NAc** | `decisions/nac.py` | Causal inference and reward prediction |
+| **EC** | `similarity/ec.py` | Multi-modal similarity engine (LSH-based) |
+| **MemoryHub** | `integration/memory_hub.py` | Central coordinator for all bridges |
+| **PainDetector** | `proprioception/pain.py` | Detects aversive movement patterns |
+| **MovementTracker** | `proprioception/movement_tracker.py` | Tracks position history, computes velocity |
+| **HarmRegistry** | `harm/registry.py` | Aggregates harm predictions from all predictors |
+| **EnergyRegistry** | `energy/registry.py` | Aggregates energy tracking from all domains |
+
+### Bridges (Cross-System Integration)
+
+Bridges connect the memory system to external perception/decision/action systems:
+
+| Bridge | Connects | Purpose | Persists To |
+|--------|----------|---------|-------------|
+| **SpatialMemoryBridge** | Hippocampus ↔ SpatialMap | Location priors for object finding | - |
+| **SalienceMemoryBridge** | Hippocampus ↔ SalienceNetwork | Interaction history boosts | - |
+| **PlanHistoryBridge** | Hippocampus ↔ NAc | Successful plan template retrieval | - |
+| **EscalationLearningBridge** | Hippocampus ↔ SCN/NAc | Learned escalation thresholds | `escalation_learning.json` |
+| **FearCircuitBridge** | FearAgent ↔ NAc | Learned risk patterns | `fear_learning.json` |
+| **PainCircuitBridge** | PainDetector ↔ NAc | Learns action→pain associations | `pain_detector.json` |
+| **EnergyCircuitBridge** | EnergyRegistry ↔ NAc | Learns action→energy associations | - |
+
+### Memory Types
+
+- **EpisodicMemory**: Complete capture of one agentic loop (~2.5KB)
+  - Perception, Context, Decision, Action, Outcome
+  - Access tracking (created_at, accessed_at, access_count)
+  - Long-term promotion status
+
+- **CompressedMemory**: Lightweight summary for long-term storage (~200 bytes)
+  - Essential fields only (goal, tool, success, novelty, salience)
+  - Preserves enough for pattern matching and learning
+
+### Selective Capture
+
+Only "interesting" loops are captured:
+- User input (CLI or speech)
+- High novelty (> 0.7 threshold)
+- High salience (> 0.7 threshold)
+- Goal changes
+- Failures (for learning)
+- Periodic checkpoints
+
+### Sleep Consolidation
+
+A periodic process (call `hippocampus.sleep()` or `hub.on_session_end()`) manages memory:
+1. **Long-Term Promotion**: Important memories marked for preservation
+2. **Compression**: Old EpisodicMemory → CompressedMemory
+3. **Removal**: Stale memories not accessed in 1 week (configurable)
+4. **Temporal Clustering**: SCN-aware consolidation keeps temporal coverage
+
+### Memory Strategies (Extensible)
+
+Memory management uses a strategy pattern for flexibility:
+- `AccessBasedStrategy`: Recency + frequency of access
+- `ImportanceBasedStrategy`: Novelty + success + user interaction
+- `CompositeStrategy`: Weighted combination
+- `TemporalAwareStrategy`: SCN-integrated with temporal boosts
+
+New strategies can be implemented by subclassing `MemoryStrategy`.
+
+### Access Tracking
+
+Every memory tracks:
+- `created_at`: Original capture time
+- `accessed_at`: Last retrieval time (updated by `recall()`, `get()`, etc.)
+- `access_count`: Total retrieval count
+- `long_term`: Boolean flag for long-term promotion
+- `consolidated_at`: When promoted to long-term (if applicable)
+
+This enables biological-like memory decay and reinforcement.
+
+### Usage Example
+
+```python
+from maxim.memory.hippocampus import Hippocampus
+from maxim.integration import MemoryHub
+from maxim.time.scn import SCN
+from maxim.decisions.nac import NAc
+from maxim.similarity.ec import EntorhinalCortex
+
+# Create core systems
+hippocampus = Hippocampus()
+scn = SCN()
+nac = NAc()
+ec = EntorhinalCortex()
+
+# Create hub
+hub = MemoryHub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec)
+hub.connect()
+
+# Session lifecycle
+hub.on_session_start()
+
+# ... capture memories via hippocampus.capture() or capture_from_loop() ...
+
+# Escalation decision using learned thresholds
+should, reason = hub.should_escalate("find mug", novelty=0.7, salience=0.8)
+
+# Plan success prediction
+success = hub.get_predicted_success("find mug", ["look_around", "grasp"])
+
+# End session (runs sleep consolidation)
+hub.on_session_end()
+```
+
+### Location
+
+- Core: `src/maxim/memory/hippocampus.py`
+- Subsystems: `src/maxim/time/`, `src/maxim/decisions/`, `src/maxim/similarity/`
+- Bridges: `src/maxim/bridges/`
+- Integration: `src/maxim/integration/memory_hub.py`
+
+
+## PROPRIOCEPTION SYSTEM
+
+The proprioception module provides body awareness through movement tracking, pain detection, and adaptive focus learning.
+
+### FocusLearner (Rescorla-Wagner Movement Correction)
+
+The FocusLearner adapts movement gain through closed-loop feedback using Rescorla-Wagner learning:
+
+```
+ΔV = α(λ - V)
+
+Where:
+- V = current gain estimate (prediction)
+- λ = optimal gain computed from overshoot ratio
+- α = learning rate (0.2 default)
+```
+
+**Learning Flow:**
+1. `record_intent(du, dv)` - Record intended pixel movement
+2. Robot executes movement with current gain
+3. `record_result(target_u, target_v)` - Record where target ended up
+4. Compute overshoot ratio: `actual_movement / intended_movement`
+5. Update gain: `new_gain = current + lr × (optimal - current)`
+
+**Directional Gains:**
+Separate gains for each direction (handles mechanical asymmetry):
+- `_gain_h_pos` / `_gain_h_neg` - Horizontal positive/negative
+- `_gain_v_pos` / `_gain_v_neg` - Vertical positive/negative
+
+**Persistence:**
+Learned gains persist to `data/util/focus_learner.json`:
+```json
+{
+  "version": 1,
+  "gains": {
+    "h_pos": 0.72,
+    "h_neg": 0.68,
+    "v_pos": 0.65,
+    "v_neg": 0.71
+  },
+  "stats": {
+    "total_samples": 1523,
+    "successful_focuses": 1102
+  }
+}
+```
+
+### AdaptiveThresholdController
+
+Dynamically adjusts escalation thresholds based on feedback:
+- Too many escalations → raise threshold
+- Escalations ignored by LLM → raise threshold
+- LLM queue busy → raise threshold
+- High fear/risk → lower threshold
+
+Persists to `data/util/adaptive_thresholds.json`.
+
+### Components
+
+| Component | Purpose | Persists |
+|-----------|---------|----------|
+| `FocusLearner` | Adaptive movement gain via R-W learning | Yes |
+| `MovementTracker` | Position history, velocity computation | No |
+| `PainDetector` | Aversive pattern detection | Yes |
+| `AdaptiveThresholdController` | Dynamic escalation thresholds | Yes |
+
+### Location
+
+- `src/maxim/proprioception/focus_learner.py`
+- `src/maxim/proprioception/movement_tracker.py`
+- `src/maxim/proprioception/pain.py`
+- `src/maxim/default_network/gate.py` (AdaptiveThresholdController)
+
+
+## FEAR AGENT (Safety Gating)
+
+The FearAgent reviews actions before execution, integrating with both predictive harm detection
+and learned pain associations to prevent harmful robot behaviors.
+
+### Two-Tier Harm Prevention
+
+```
+Action Proposal
+      │
+      ├──→ Tier 1: HarmRegistry.predict_all()  ← Zero latency (physics-based)
+      │         ├── MovementHarmPredictor (velocity analysis)
+      │         └── JointLimitHarmPredictor (workspace bounds)
+      │
+      └──→ Tier 2: NAc.predict()  ← Learned associations
+                └── Pain patterns learned from past movements
+```
+
+### FearAgent.review_action() Flow
+
+1. **Predictive Check**: Query HarmRegistry for physics-based harm predictions
+2. **Learned Check**: Query PainCircuitBridge for NAc-based pain predictions
+3. **Risk Scoring**: Calculate risk_score = intensity × confidence
+4. **Gating Decision**: Gate if risk_score ≥ 0.7, warn if ≥ 0.4
+
+### Example Integration
+
+```python
+def review_action(
+    self,
+    action_type: str,
+    action_params: dict[str, Any],
+    harm_registry: HarmRegistry | None = None,
+    pain_bridge: PainCircuitBridge | None = None,
+) -> ReviewResult:
+    findings = []
+
+    # Tier 1: Predictive harm
+    if harm_registry:
+        prediction = harm_registry.predict_worst(action_type, action_params)
+        if prediction and prediction.risk_score >= 0.4:
+            findings.append(Finding(
+                category=DangerCategory.RESOURCE_EXHAUSTION,
+                description=f"Predicted: {prediction.reason}",
+                severity=RiskLevel.MEDIUM if prediction.risk_score >= 0.7 else RiskLevel.LOW,
+            ))
+
+    # Tier 2: Learned pain prediction
+    if pain_bridge and action_type == "movement":
+        should_gate, reason = pain_bridge.should_gate_action(
+            action_params.get("action_signature", "")
+        )
+        if should_gate:
+            findings.append(Finding(
+                category=DangerCategory.RESOURCE_EXHAUSTION,
+                description=f"Learned pain risk: {reason}",
+                severity=RiskLevel.MEDIUM,
+            ))
+
+    return ReviewResult(findings=findings)
+```
+
+### Harm Categories
+
+| Category | Description | Predictors |
+|----------|-------------|------------|
+| `MOVEMENT_VELOCITY` | Excessive movement speed | MovementHarmPredictor |
+| `JOINT_LIMIT` | Near workspace boundaries | JointLimitHarmPredictor |
+| `MOTOR_STALL` | Position unreachable | JointLimitHarmPredictor |
+| `LLM_TIMEOUT` | Predicted slow LLM response | (Future) |
+| `RESOURCE_EXHAUSTION` | Energy budget exceeded | EnergyCircuitBridge |
+
+
+## ENERGY TRACKING SYSTEM
+
+The energy system monitors resource expenditure to enable energy-aware decision making.
+
+### Energy Types
+
+| Type | Tracker | Metrics |
+|------|---------|---------|
+| `LLM_TOKENS` | LLMEnergyTracker | input_tokens, output_tokens, model multiplier |
+| `LLM_LATENCY` | LLMEnergyTracker | latency_ms, opportunity cost |
+| `MOTOR_COMMAND` | MovementEnergyTracker | angular_distance, velocity, duration |
+
+### LLM Energy Tracking
+
+The LLMWorker automatically records energy for each LLM call:
+
+```python
+# In LLMWorker._process_request():
+if self._energy_tracker is not None:
+    self._energy_tracker.record(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        model=model_name,
+        latency_ms=latency_ms,
+        context={"request_id": request.request_id},
+    )
+```
+
+### Model Multipliers (Energy Cost)
+
+| Model | Multiplier | Notes |
+|-------|------------|-------|
+| `claude-3-haiku` | 0.5x | Most efficient |
+| `claude-3-sonnet` | 1.0x | Baseline |
+| `claude-3-opus` | 2.0x | High quality, high cost |
+| `claude-opus-4-5` | 2.5x | Latest flagship |
+| `local` | 0.2x | Local inference |
+
+### Energy Budgets
+
+Domains have capacity and recharge:
+
+```python
+# Check budget before expensive action
+if registry.is_low_energy("llm"):
+    # Consider using smaller model
+    model = "claude-3-haiku"
+elif registry.is_critical_energy("llm"):
+    # Skip non-essential LLM calls
+    return fallback_response()
+```
+
+### NAc Integration for Learning
+
+The EnergyCircuitBridge teaches the system which actions are "expensive":
+
+1. **Record Start**: `bridge.record_action_start("llm:planning:complex")`
+2. **Energy Accumulates**: LLM tracker records tokens, latency
+3. **Record End**: `bridge.record_action_end(event_id)` → Reports to NAc
+4. **Future Prediction**: `bridge.predict_energy("llm:planning:complex")` → Learned cost
+
+High-energy actions get NEGATIVE valence, enabling the system to prefer efficient alternatives.
+
+### Location
+
+- Energy Types: `src/maxim/energy/signal.py`
+- Trackers: `src/maxim/energy/llm_tracker.py`, `src/maxim/energy/movement_tracker.py`
+- Registry: `src/maxim/energy/registry.py`
+- NAc Bridge: `src/maxim/bridges/energy_bridge.py`
