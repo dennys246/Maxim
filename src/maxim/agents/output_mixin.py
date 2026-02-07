@@ -19,14 +19,12 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import time
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from maxim.utils.agent_output import AgentOutputManager, OutputDestination
+    from maxim.utils.agent_output import AgentOutputManager
 
 
 logger = logging.getLogger(__name__)

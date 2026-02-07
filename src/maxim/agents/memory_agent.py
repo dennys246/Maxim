@@ -9,12 +9,10 @@ and provides structured context for goal proposal.
 from __future__ import annotations
 
 import json
-import logging
 import os
 import threading
 import time
 from collections import defaultdict, deque
-from dataclasses import asdict
 from typing import Any
 
 from maxim.agents.base import Agent
@@ -29,11 +27,10 @@ from maxim.agents.bus import (
     Percept,
     ProposedGoal,
     StructuredContext,
-    SubGoal,
     ToolResult,
 )
 from maxim.agents.output_mixin import AgentOutputMixin
-from maxim.utils.structured_logging import get_abstraction_buffer, log_structured
+from maxim.utils.structured_logging import get_abstraction_buffer
 
 
 class AssociationIndex:

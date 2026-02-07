@@ -31,6 +31,13 @@ from maxim.agents.memory_agent import AssociationIndex, MemoryAgent, MemoryAssoc
 from maxim.agents.exec_agent import ExecAgent
 from maxim.agents.agentic_goal_agent import AgenticGoalAgent
 from maxim.agents.maxim_agent import AgenticMaximAgent, MaximAgent
+from maxim.agents.fear_agent import (
+    DangerCategory,
+    FearAgent,
+    Finding,
+    ReviewResult,
+    RiskLevel,
+)
 
 # Autonomy and LLM worker
 from maxim.agents.autonomy import (
@@ -96,6 +103,12 @@ __all__ = [
     # Agentic architecture - Agents
     "AgenticGoalAgent",
     "AgenticMaximAgent",
+    # Safety - FearAgent
+    "DangerCategory",
+    "FearAgent",
+    "Finding",
+    "ReviewResult",
+    "RiskLevel",
     "AssociationIndex",
     "ExecAgent",
     "MemoryAgent",

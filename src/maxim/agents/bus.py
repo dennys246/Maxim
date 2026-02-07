@@ -131,11 +131,18 @@ class MemoryItem:
     access_count: int = 0
     promoted_at: float | None = None
 
+    # Cached hash (computed lazily for performance)
+    _cached_memory_id: str | None = field(default=None, repr=False, compare=False)
+
     @property
     def memory_id(self) -> str:
-        """Stable ID based on content hash."""
-        content_str = str(self.content) if not isinstance(self.content, str) else self.content
-        return hashlib.sha256(f"{self.timestamp}:{content_str}".encode()).hexdigest()[:16]
+        """Stable ID based on content hash (cached for performance)."""
+        if self._cached_memory_id is None:
+            content_str = str(self.content) if not isinstance(self.content, str) else self.content
+            self._cached_memory_id = hashlib.sha256(
+                f"{self.timestamp}:{content_str}".encode()
+            ).hexdigest()[:16]
+        return self._cached_memory_id
 
     def access(self) -> None:
         """Mark memory as accessed (refreshes last_accessed)."""
@@ -197,6 +204,10 @@ class StructuredContext:
     goal_history: list[dict] = field(default_factory=list)
     cli_inputs: list[str] = field(default_factory=list)
     available_environments: list[str] = field(default_factory=list)
+
+    # Conversation history (user input + LLM response pairs)
+    # Each entry: {"user": str, "assistant": str, "timestamp": float}
+    conversation_history: list[dict] = field(default_factory=list)
 
     # Root goal reminder
     root_goal: str = "Understand reality and help people."

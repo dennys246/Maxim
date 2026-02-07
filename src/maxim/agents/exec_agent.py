@@ -6,7 +6,6 @@ Uses LLM to propose goals aligned with the root goal:
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import time
@@ -22,6 +21,7 @@ from maxim.agents.bus import (
     StructuredContext,
     SubGoal,
 )
+from maxim.default_network.messages import FilteredPercept
 from maxim.agents.llm_agent import ChatLLMAgent, LLMAgentConfig
 from maxim.agents.memory_agent import MemoryAgent
 from maxim.utils.logging import warn
@@ -72,9 +72,9 @@ Available tools for goals:
             label_outcome, request_sleep, request_observe, request_shutdown,
             goto_pose, move, look_at_image, move_antenna
   update_interests params: {add: [int], remove: [int]}
-- read_file: Read a file. Params: {path: str}
-- write_file: Write a file. Params: {path: str, content: str}
-- execute_file: Execute a file (requires MAXIM_ALLOW_EXECUTE_FILE=1). Params: {path: str}
+- read_file: Read a file. Params: {path: str}. Sandbox files: '.maxim_sandbox/filename'
+- write_file: Write a file. **MUST use '.maxim_sandbox/' prefix!** Params: {path: '.maxim_sandbox/filename.py', content: str}
+- execute_file: Execute a file (requires MAXIM_ALLOW_EXECUTE_FILE=1). Params: {path: '.maxim_sandbox/filename.py'}
 
 Respond with ONLY valid JSON:
 {
@@ -131,8 +131,12 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
         self._worker: threading.Thread | None = None
         self._work_available = threading.Event()
 
-        # Subscribe to percepts
+        # Default Network escalation context
+        self._dn_escalation_context: dict | None = None
+
+        # Subscribe to percepts and filtered percepts (from Default Network)
         self._bus.subscribe(Percept, self._on_percept)
+        self._bus.subscribe(FilteredPercept, self._on_filtered_percept)
 
     def _ensure_llm(self) -> ChatLLMAgent | None:
         """Lazy initialization of LLM."""
@@ -152,7 +156,12 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
         return self._llm
 
     def _on_percept(self, percept: Percept) -> None:
-        """Trigger goal proposal on significant percepts."""
+        """Trigger goal proposal on significant percepts.
+
+        Note: When Default Network is active, most percepts are filtered
+        and only FilteredPercepts reach ExecAgent via _on_filtered_percept.
+        This handler remains for backwards compatibility and direct percepts.
+        """
         if percept.source == "cli":
             self._trigger_proposal()
             return
@@ -165,6 +174,36 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
         # Propose on high salience + novelty
         if percept.salience > 0.5 and percept.novelty > 0.5:
             self._trigger_proposal()
+
+    def _on_filtered_percept(self, filtered: FilteredPercept) -> None:
+        """Handle percepts escalated by the Default Network.
+
+        FilteredPercepts have already passed the ThalamicGate and are
+        deemed worthy of deliberation. Always trigger a proposal.
+        """
+        # Log that we received an escalated percept
+        log_structured(
+            self.log,
+            logging.DEBUG,
+            "filtered_percept_received",
+            {
+                "reason": filtered.escalation_reason,
+                "urgency": filtered.urgency,
+                "source": filtered.original.source if filtered.original else "unknown",
+            },
+        )
+
+        # Store escalation context for use in goal proposal
+        with self._proposal_lock:
+            self._pending_context = None  # Clear any stale context
+            self._dn_escalation_context = {
+                "reason": filtered.escalation_reason,
+                "urgency": filtered.urgency,
+                "dn_context": filtered.dn_context,
+            }
+
+        # Always trigger proposal for escalated percepts
+        self._trigger_proposal()
 
     def _trigger_proposal(self) -> None:
         """Signal that goal proposal is needed."""
@@ -226,6 +265,21 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
             "\n  ".join(ctx.cli_inputs[-3:]) if ctx.cli_inputs else "(none)"
         )
 
+        # DN escalation context (if percept was escalated by Default Network)
+        dn_str = ""
+        with self._proposal_lock:
+            if self._dn_escalation_context:
+                dn_ctx = self._dn_escalation_context
+                dn_str = f"""
+
+DEFAULT NETWORK ESCALATION:
+- Reason: {dn_ctx.get('reason', 'unknown')}
+- Urgency: {dn_ctx.get('urgency', 0.5):.2f}
+- Context: {dn_ctx.get('dn_context', {})}
+(This percept was pre-filtered by the reactive layer and deemed worthy of deliberation)"""
+                # Clear after use
+                self._dn_escalation_context = None
+
         return f"""ROOT GOAL: {ctx.root_goal}
 
 CURRENT STATE:
@@ -249,7 +303,7 @@ RECENT OUTCOMES:
 {outcome_str}
 
 RELEVANT MEMORIES:
-{mem_str}
+{mem_str}{dn_str}
 
 Based on this context, what goal should be proposed?"""
 
@@ -454,5 +508,6 @@ Based on this context, what goal should be proposed?"""
         if self._worker:
             self._worker.join(timeout=2.0)
         self._bus.unsubscribe(Percept, self._on_percept)
+        self._bus.unsubscribe(FilteredPercept, self._on_filtered_percept)
         if self._llm:
             self._llm.on_stop()
