@@ -232,3 +232,7 @@ data/*
 !data/motion/default_poses.json
 !data/util/
 !data/util/key_responses.json
+
+adaptive_thresholds.json
+focus_learner.json
+learned_bounds.json
