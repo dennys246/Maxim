@@ -6,7 +6,8 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
-from maxim.utils.logging import warn
+from maxim.utils.logging import info, warn
+from maxim.utils.structured_logging import log_agentic
 
 
 # Quantization levels ordered by quality (higher = better quality, larger size)
@@ -259,8 +260,8 @@ class LLMConfig:
     quantization: str = "Q4_K_M"
     prompt_style: str = "mistral_instruct"
     stop: tuple[str, ...] = ("</s>",)
-    n_ctx: int = 4096
-    max_tokens: int = 128
+    n_ctx: int = 16384
+    max_tokens: int = 512  # Increased from 128 to support full JSON tool responses
     temperature: float = 0.0
     top_p: float = 0.95
     top_k: int = 40
@@ -567,10 +568,103 @@ def _build_prompt(cfg: LLMConfig, system: str, user: str) -> str:
     return builder(system, user)
 
 
+def _sanitize_json_string(text: str) -> str:
+    """Escape control characters inside JSON strings.
+
+    LLMs sometimes output literal newlines/tabs inside JSON string values,
+    which is invalid JSON. This function escapes them properly.
+    """
+    result = []
+    in_string = False
+    escape_next = False
+
+    for char in text:
+        if escape_next:
+            result.append(char)
+            escape_next = False
+            continue
+
+        if char == '\\':
+            result.append(char)
+            escape_next = True
+            continue
+
+        if char == '"':
+            in_string = not in_string
+            result.append(char)
+            continue
+
+        if in_string:
+            # Escape control characters inside strings
+            if char == '\n':
+                result.append('\\n')
+            elif char == '\r':
+                result.append('\\r')
+            elif char == '\t':
+                result.append('\\t')
+            elif ord(char) < 32:
+                # Other control characters - escape as unicode
+                result.append(f'\\u{ord(char):04x}')
+            else:
+                result.append(char)
+        else:
+            result.append(char)
+
+    return ''.join(result)
+
+
+def _find_first_json_object(text: str) -> str | None:
+    """Find the first complete JSON object in text by matching braces.
+
+    This handles cases where the LLM outputs multiple JSON objects or
+    extra content after the first valid JSON.
+    """
+    if not text or not text.startswith("{"):
+        return None
+
+    depth = 0
+    in_string = False
+    escape_next = False
+
+    for i, char in enumerate(text):
+        if escape_next:
+            escape_next = False
+            continue
+
+        if char == "\\":
+            escape_next = True
+            continue
+
+        if char == '"' and not escape_next:
+            in_string = not in_string
+            continue
+
+        if in_string:
+            continue
+
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                # Found the matching closing brace
+                return text[: i + 1]
+
+    # No matching brace found - return the whole thing for repair attempt
+    return text
+
+
 def _extract_json_object(text: str) -> dict[str, Any] | None:
     raw = str(text or "").strip()
     if not raw:
         return None
+
+    # Strip ChatML tokens that LLMs sometimes include in output
+    chatml_tokens = ["<|im_end|>", "<|im_start|>", "<|assistant|>", "<|user|>", "<|system|>"]
+    for token in chatml_tokens:
+        if token in raw:
+            # Take only content before the first ChatML token
+            raw = raw.split(token)[0].strip()
 
     # Detect commentary patterns - LLM is explaining instead of outputting JSON
     commentary_patterns = [
@@ -599,18 +693,86 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
             # LLM is commenting, not outputting JSON
             return None
 
+    # Extract FIRST code block only (not all of them)
     raw = raw.replace("```json", "```").replace("```JSON", "```")
     if "```" in raw:
         parts = raw.split("```")
-        raw = "".join(parts[1:-1]).strip() if len(parts) >= 3 else raw.replace("```", "").strip()
+        if len(parts) >= 3:
+            # Take only the FIRST code block content
+            raw = parts[1].strip()
+        else:
+            raw = raw.replace("```", "").strip()
+
     start = raw.find("{")
-    end = raw.rfind("}")
-    if start < 0 or end < 0 or end <= start:
+    if start < 0:
+        warn("JSON extraction failed: no opening brace found")
         return None
+
+    # Find the MATCHING closing brace for the first opening brace
+    # This handles cases where there's extra content after the first JSON object
+    json_candidate = _find_first_json_object(raw[start:])
+
+    if json_candidate is None:
+        # No opening brace or completely malformed
+        warn("JSON extraction failed: couldn't find JSON object")
+        return None
+
+    # Check if we got a complete JSON (ends with })
+    if not json_candidate.rstrip().endswith("}"):
+        # Truncated - try to repair by adding missing braces
+        # Single-pass counting (6x faster than 6 separate .count() calls)
+        open_braces = close_braces = open_brackets = close_brackets = 0
+        quote_count = 0
+        prev_char = ""
+        for char in json_candidate:
+            if char == "{":
+                open_braces += 1
+            elif char == "}":
+                close_braces += 1
+            elif char == "[":
+                open_brackets += 1
+            elif char == "]":
+                close_brackets += 1
+            elif char == '"' and prev_char != "\\":
+                quote_count += 1
+            prev_char = char
+
+        missing_braces = open_braces - close_braces
+        missing_brackets = max(0, open_brackets - close_brackets)
+
+        # Strip trailing incomplete content
+        json_candidate = json_candidate.rstrip().rstrip(",")
+
+        # Close unclosed strings
+        if quote_count % 2 == 1:
+            json_candidate += '"'
+
+        # Add closing brackets/braces
+        json_candidate += "]" * missing_brackets + "}" * missing_braces
+        info("JSON repair: added %d braces, %d brackets", missing_braces, missing_brackets)
+
     try:
-        obj = json.loads(raw[start : end + 1])
-    except Exception:
+        obj = json.loads(json_candidate)
+    except json.JSONDecodeError as e:
+        # Try sanitizing control characters inside strings
+        if "control character" in str(e).lower() or "invalid" in str(e).lower():
+            try:
+                sanitized = _sanitize_json_string(json_candidate)
+                obj = json.loads(sanitized)
+                info("JSON parse succeeded after sanitizing control characters")
+            except Exception as e2:
+                warn("JSON parse failed after sanitization: %s | len=%d | last_50: %s",
+                     str(e2)[:80], len(json_candidate), json_candidate[-50:] if len(json_candidate) > 50 else json_candidate)
+                return None
+        else:
+            warn("JSON parse failed: %s | len=%d | last_50: %s",
+                 str(e)[:80], len(json_candidate), json_candidate[-50:] if len(json_candidate) > 50 else json_candidate)
+            return None
+    except Exception as e:
+        warn("JSON parse failed: %s | len=%d | last_50: %s",
+             str(e)[:80], len(json_candidate), json_candidate[-50:] if len(json_candidate) > 50 else json_candidate)
         return None
+
     return obj if isinstance(obj, dict) else None
 
 
@@ -671,6 +833,10 @@ class _LlamaCppBackend:
                 warn("Failed to load LLM model (%s): %s", model_path, e)
                 self._llm = None
                 return False
+
+    def warmup(self) -> bool:
+        """Pre-load the model. Call at startup to avoid first-request latency."""
+        return self._ensure()
 
     def complete(
         self,
@@ -741,6 +907,55 @@ class LLMRouter:
 
     def enabled(self) -> bool:
         return bool(getattr(self.cfg, "enabled", False))
+
+    def warmup(self) -> bool:
+        """
+        Pre-load the LLM model at startup to avoid first-request latency.
+
+        Call this after other initialization is complete. The model loading
+        happens in a background thread so it doesn't block startup.
+
+        Returns True if warmup was initiated, False if LLM is disabled.
+        """
+        if not self.enabled():
+            return False
+
+        import threading
+        import time
+
+        def _warmup_thread():
+            start_time = time.time()
+            log_agentic("llm_router", "startup", {"status": "loading", "model": str(getattr(self.cfg, "model_path", ""))[-50:]})
+            backend = self._get_backend()
+            if backend is not None and hasattr(backend, "warmup"):
+                info("Warming up LLM backend...")
+                if backend.warmup():
+                    elapsed = time.time() - start_time
+                    info("LLM model loaded and ready")
+                    log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
+                else:
+                    warn("LLM warmup failed")
+                    log_agentic("llm_router", "error", {"context": "warmup", "error": "warmup returned false"}, level="WARNING")
+            elif backend is not None:
+                # Backend doesn't have warmup, try a minimal completion to load
+                info("Warming up LLM backend (no warmup method, using test prompt)...")
+                try:
+                    backend.complete(
+                        prompt="Hello",
+                        max_tokens=1,
+                        temperature=0.0,
+                        stop=(),
+                    )
+                    elapsed = time.time() - start_time
+                    info("LLM model loaded and ready")
+                    log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
+                except Exception as e:
+                    warn("LLM warmup failed: %s", e)
+                    log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
+
+        thread = threading.Thread(target=_warmup_thread, daemon=True, name="LLMWarmup")
+        thread.start()
+        return True
 
     def _get_backend(self) -> Any | None:
         # Fast path: already initialized
@@ -885,7 +1100,7 @@ Return JSON exactly like:
                 stop=tuple(getattr(self.cfg, "stop", ("</s>",))),
             )
             if text:
-                warn("LLM raw response (first 200 chars): %s", text[:200] if len(text) > 200 else text)
+                info("LLM raw response (first 200 chars): %s", text[:200] if len(text) > 200 else text)
         except Exception as e:
             warn("LLM generate_json failed: %s", e)
             return None
@@ -950,20 +1165,20 @@ Return JSON exactly like:
         # Note: Response length is controlled by max_tokens in config
         # No truncation here - let the full response through
 
-        warn("LLM answer_only response: %s", answer[:500] if len(answer) > 500 else answer)
+        info("LLM answer_only response: %s", answer[:500] if len(answer) > 500 else answer)
 
         # Stage 2: Wrap in JSON programmatically (no LLM needed)
         # Escape the answer for JSON
         escaped_answer = answer.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
+        # Field order: action → confidence → reasoning (most important first)
         return {
             "action": {
                 "tool_name": "respond",
                 "params": {"message": escaped_answer},
             },
-            "reasoning": "answer_only",
             "confidence": 0.85,
-            "mode_goal_achieved": False,
+            "reasoning": "answer_only",
         }
 
     def _generate_tool_response(
@@ -983,21 +1198,37 @@ Return JSON exactly like:
 
         Returns a structured response with action, reasoning, and optional next_actions.
         """
-        # Use a system prompt optimized for tool selection
-        system = (
-            "You are Maxim, an intelligent robot assistant. "
-            "You MUST respond with valid JSON only. No explanations outside JSON. "
-            "Select the most appropriate tool based on the context and user request. "
-            "If unsure, use 'respond' to communicate with the user."
-        )
+        # Detect PLANNING mode from the prompt banner
+        # Match against key phrase that appears in both old and new banner formats
+        is_planning_mode = "PLANNING MODE" in tool_prompt and "APPROVAL" in tool_prompt
 
-        # Build the full prompt
-        user = f"""{tool_prompt}
+        if is_planning_mode:
+            # PLANNING MODE: Allow proposal text followed by JSON
+            system = (
+                "You are Maxim, an intelligent robot assistant. "
+                "You are in PLANNING mode and need user approval before acting. "
+                "Follow the response format instructions in the prompt exactly."
+            )
+            user = f"""{tool_prompt}
 
-Respond with JSON:
-{{"action": {{"tool_name": "...", "params": {{...}}}}, "reasoning": "...", "confidence": 0.0-1.0}}"""
+IMPORTANT: Follow the PLANNING MODE format exactly as shown above.
+First write your proposal in plain text, then <|action_json|>, then the JSON."""
+        else:
+            # NORMAL MODE: JSON-only response
+            system = (
+                "You are Maxim, an intelligent robot assistant. "
+                "You MUST respond with valid JSON only. No explanations outside JSON. "
+                "Select the most appropriate tool based on the context and user request. "
+                "If unsure, use 'respond' to communicate with the user."
+            )
+            user = f"""{tool_prompt}
+
+Respond with ONLY a valid JSON object. No text before or after the JSON."""
 
         wrapped_prompt = _build_prompt(self.cfg, system, user)
+
+        if is_planning_mode:
+            info("PLANNING mode detected - expecting proposal + <|action_json|> + JSON format")
 
         try:
             text = backend.complete(
@@ -1007,7 +1238,7 @@ Respond with JSON:
                 stop=tuple(getattr(self.cfg, "stop", ("</s>",))),
             )
             if text:
-                warn("LLM tool_response raw (first 300 chars): %s", text[:300] if len(text) > 300 else text)
+                info("LLM tool_response raw (first 300 chars): %s", text[:300] if len(text) > 300 else text)
         except Exception as e:
             warn("LLM tool_response failed: %s", e)
             return None
@@ -1016,21 +1247,54 @@ Respond with JSON:
             warn("LLM returned empty tool response")
             return None
 
+        # Check for planning mode delimiter: plan text followed by <|action_json|> followed by JSON
+        plan_text = None
+        action_json_delimiter = "<|action_json|>"
+        if action_json_delimiter in text:
+            parts = text.split(action_json_delimiter, 1)
+            plan_text = parts[0].strip()
+            text = parts[1].strip() if len(parts) > 1 else ""
+            info("Planning mode: extracted plan_text (%d chars) and JSON", len(plan_text))
+        elif is_planning_mode:
+            # PLANNING MODE FALLBACK: LLM output raw JSON without the delimiter
+            # We'll generate a synthetic proposal after extracting the JSON
+            info("PLANNING mode but no delimiter found - will generate synthetic proposal")
+
         # Extract JSON from response
         obj = _extract_json_object(text)
         if not isinstance(obj, dict):
             warn("LLM tool_response returned non-dict: %s", type(obj))
-            # Try to salvage by wrapping raw text in respond
-            clean_text = text.strip()[:500]
-            if clean_text:
+            # Try to salvage by extracting message from JSON-like text
+            clean_text = text.strip()
+
+            # If text looks like JSON with a respond action, extract the message
+            # Pattern: "message": "actual message content"
+            if '"message"' in clean_text:
+                import re
+                msg_match = re.search(r'"message"\s*:\s*"([^"]*(?:\\"[^"]*)*)"', clean_text)
+                if msg_match:
+                    # Extract and unescape the message
+                    extracted_msg = msg_match.group(1).replace('\\"', '"')
+                    if extracted_msg and len(extracted_msg) > 10:
+                        info("Salvaged message from failed JSON parse: %s", extracted_msg[:50])
+                        return {
+                            "action": {
+                                "tool_name": "respond",
+                                "params": {"message": extracted_msg},
+                            },
+                            "confidence": 0.5,
+                            "reasoning": "salvaged_from_json",
+                        }
+
+            # Last resort: wrap non-JSON text (but NOT raw JSON)
+            if clean_text and not clean_text.startswith("{"):
                 return {
                     "action": {
                         "tool_name": "respond",
-                        "params": {"message": clean_text},
+                        "params": {"message": clean_text[:500]},
                     },
-                    "reasoning": "fallback_parse",
                     "confidence": 0.5,
-                    "mode_goal_achieved": False,
+                    "reasoning": "fallback_parse",
                 }
             return None
 
@@ -1050,5 +1314,40 @@ Respond with JSON:
             obj["reasoning"] = ""
         if "mode_goal_achieved" not in obj:
             obj["mode_goal_achieved"] = False
+
+        # Add planning mode fields if present
+        if plan_text:
+            obj["_plan_text"] = plan_text
+            obj["_requires_approval"] = True
+        elif is_planning_mode:
+            # PLANNING MODE FALLBACK: Generate synthetic proposal from the action
+            # This handles cases where the LLM outputs raw JSON despite instructions
+            action = obj.get("action", {})
+            tool_name = action.get("tool_name", "unknown") if isinstance(action, dict) else "unknown"
+            params = action.get("params", {}) if isinstance(action, dict) else {}
+
+            # Generate a user-friendly proposal based on the tool
+            if tool_name == "internet_search":
+                query = params.get("query", "information")
+                synthetic_plan = f"I'd like to search the internet for: {query}\n\nMay I proceed with this search?"
+            elif tool_name == "read_file":
+                path = params.get("path", "a file")
+                synthetic_plan = f"I'd like to read the file: {path}\n\nMay I proceed?"
+            elif tool_name == "write_file":
+                path = params.get("path", "a file")
+                synthetic_plan = f"I'd like to write to the file: {path}\n\nMay I proceed?"
+            elif tool_name == "http_fetch":
+                url = params.get("url", "a URL")
+                synthetic_plan = f"I'd like to fetch content from: {url}\n\nMay I proceed?"
+            elif tool_name == "respond":
+                # For respond, no approval needed - just pass through
+                synthetic_plan = None
+            else:
+                synthetic_plan = f"I'd like to execute the '{tool_name}' action.\n\nMay I proceed?"
+
+            if synthetic_plan:
+                info("Generated synthetic proposal for PLANNING mode: %s", synthetic_plan[:100])
+                obj["_plan_text"] = synthetic_plan
+                obj["_requires_approval"] = True
 
         return obj
