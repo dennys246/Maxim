@@ -24,11 +24,11 @@ if TYPE_CHECKING:
 class ExplorationPolicy:
     """Opt-in gating for exploration capabilities.
 
-    Defaults to safe/offline mode unless explicitly enabled.
+    Defaults to enabled internet access for general exploration.
     """
 
     require_gpu_for_agentic: bool = True
-    allow_internet: bool = False
+    allow_internet: bool = True  # Default to enabled for exploration
     allow_scripts: bool = False
     allow_training: bool = False
     max_initiative: float = 0.8
@@ -60,7 +60,7 @@ class ExplorationPolicy:
         """Deserialize from dictionary."""
         return cls(
             require_gpu_for_agentic=bool(data.get("require_gpu_for_agentic", True)),
-            allow_internet=bool(data.get("allow_internet", False)),
+            allow_internet=bool(data.get("allow_internet", True)),  # Default to enabled
             allow_scripts=bool(data.get("allow_scripts", False)),
             allow_training=bool(data.get("allow_training", False)),
             max_initiative=float(data.get("max_initiative", 0.8)),
