@@ -9,7 +9,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from maxim.evaluation.base import Evaluator
-from maxim.utils.logging import warn
+from maxim.utils.logging import log_swallowed_exception, warn
 from maxim.utils.structured_logging import log_agentic
 
 if TYPE_CHECKING:
@@ -112,7 +112,8 @@ def _safe_agent_name(agent: Any) -> str:
             or getattr(agent, "agent_name", None)
             or getattr(agent, "name", None)
         )
-    except Exception:
+    except (AttributeError, TypeError) as e:
+        log_swallowed_exception(e, operation="get_agent_name")
         raw = None
     if not raw:
         raw = type(agent).__name__
@@ -203,8 +204,8 @@ def run_agent_loop(
             if hasattr(memory, "record_command"):
                 try:
                     memory.record_command(cli_text)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_swallowed_exception(e, operation="record_command", context={"text_len": len(cli_text)})
 
         intent = None
         try:
@@ -288,15 +289,15 @@ def run_agent_loop(
                         "memory": memory,
                     }
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            log_swallowed_exception(e, operation="on_step_callback")
 
         try:
             followup = environment.step(result)
             if followup:
                 state.update(followup)
-        except Exception:
-            pass
+        except Exception as e:
+            log_swallowed_exception(e, operation="environment_step")
 
         try:
             memory.store_raw(
@@ -315,8 +316,8 @@ def run_agent_loop(
         if getattr(result, "success", True) is False:
             try:
                 state.mark_failure(getattr(result, "error", None))
-            except Exception:
-                pass
+            except Exception as e:
+                log_swallowed_exception(e, operation="mark_failure")
 
         try:
             state.steps_taken += 1
