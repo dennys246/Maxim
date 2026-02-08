@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any
 
 from maxim.retrieval.signals import RetrievalCandidate, RetrievalSignal
 
@@ -32,7 +32,7 @@ class RetrievalResult:
     """
 
     memory_id: str
-    memory: Union["EpisodicMemory", "CompressedMemory", None] = None
+    memory: "EpisodicMemory | CompressedMemory | None" = None
     combined_score: float = 0.0
     signal_scores: dict[str, float] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
