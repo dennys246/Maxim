@@ -1,0 +1,46 @@
+# Robot Configuration
+# Configure multiple robots for coordinated operation.
+#
+# Each robot needs:
+#   - type: Controller type ("reachy_mini" or "simulated")
+#   - primary: Whether this is the primary robot (only one should be true)
+#   - config: Type-specific configuration
+#
+# Example with multiple Reachy Minis:
+#
+# robots:
+#   reachy_primary:
+#     type: reachy_mini
+#     primary: true
+#     config:
+#       robot_name: reachy_mini
+#       media_backend: default
+#       timeout: 30.0
+#
+#   reachy_secondary:
+#     type: reachy_mini
+#     primary: false
+#     config:
+#       robot_name: reachy_mini_2
+#       media_backend: default
+#       timeout: 30.0
+#
+# For testing without hardware:
+#
+# robots:
+#   simulated:
+#     type: simulated
+#     primary: true
+#     config:
+#       video_resolution: [640, 480]
+#       simulate_delays: false
+
+# Default configuration: single Reachy Mini
+robots:
+  primary:
+    type: reachy_mini
+    primary: true
+    config:
+      robot_name: reachy_mini
+      media_backend: default
+      timeout: 30.0
