@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -10,6 +10,41 @@ from maxim.inference.segment_vision import passive_observation
 from maxim.tools.base import Tool, ToolResult
 from maxim.utils.logging import warn
 from maxim.utils.structured_logging import log_agentic
+
+if TYPE_CHECKING:
+    from maxim.hardware import RobotController, RobotRegistry
+
+
+def _get_robot_from_registry(
+    robot_id: str | None,
+    maxim: Any | None = None,
+) -> "RobotController | None":
+    """Get a robot controller by ID, or the primary robot.
+
+    Args:
+        robot_id: Optional robot ID. If None, uses primary robot.
+        maxim: Optional Maxim instance (for backward compatibility).
+
+    Returns:
+        RobotController instance, or None if not found.
+    """
+    # Try to get from maxim's robot first (most common case)
+    if robot_id is None and maxim is not None:
+        robot = getattr(maxim, "_robot", None)
+        if robot is not None:
+            return robot
+
+    # Look up from global registry
+    try:
+        from maxim.hardware import RobotRegistry
+        registry = RobotRegistry()
+
+        if robot_id is not None:
+            return registry.get_robot(robot_id)
+        else:
+            return registry.primary
+    except Exception:
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -244,16 +279,20 @@ class TrackTargetTool(Tool):
     Uses target info from CaptureManager/PerceptionAgent detections to keep
     interesting objects centered in view. This enables active visual tracking
     behavior for the agentic system.
+
+    Multi-robot support:
+    - robot_id: Optional robot ID to target. If not specified, uses the primary robot.
     """
 
     name = "track_target"
-    description = "Move head to center on a detected object. Use target_class to specify what to track (e.g., 'person', 'backpack', 'cup'). If not specified, tracks the most prominent detection."
+    description = "Move head to center on a detected object. Use target_class to specify what to track (e.g., 'person', 'backpack', 'cup'). Optionally specify robot_id to target a specific robot."
 
     input_schema = {
         "target_class": (str, None),  # optional - specific object class to track (e.g., "backpack", "person", "cup")
         "deadzone_px": (int, 40),  # Minimum offset from center to trigger movement
         "duration_s": (float, 0.3),  # Movement duration
         "prefer_people": (bool, True),  # Prioritize people over other objects (ignored if target_class specified)
+        "robot_id": (str, None),  # Optional robot ID for multi-robot support
     }
 
     def __init__(self, maxim: Any) -> None:
@@ -398,13 +437,32 @@ class TrackTargetTool(Tool):
             )
 
         # All gates passed - execute movement
+        robot_id = kwargs.get("robot_id")
+
         try:
-            maxim.look_at_image(
-                int(clamped_u),
-                int(clamped_v),
-                duration=duration_s,
-                perform_movement=True,
-            )
+            # If robot_id specified, use RobotController directly
+            if robot_id is not None:
+                robot = _get_robot_from_registry(robot_id, maxim)
+                if robot is None:
+                    return ToolResult(success=False, error=f"Robot not found: {robot_id}")
+
+                from maxim.hardware import PixelTarget
+                target = PixelTarget(
+                    u=int(clamped_u),
+                    v=int(clamped_v),
+                    duration=duration_s,
+                )
+                success = robot.look_at_pixel(target)
+                if not success:
+                    return ToolResult(success=False, error="Look-at command failed")
+            else:
+                # Fallback to Maxim's look_at_image for backward compatibility
+                maxim.look_at_image(
+                    int(clamped_u),
+                    int(clamped_v),
+                    duration=duration_s,
+                    perform_movement=True,
+                )
 
             # Update position tracking
             self._current_look_u = clamped_u
@@ -634,10 +692,13 @@ class MoveTool(Tool):
 
     The tool supports both target_x/target_y (normalized -1 to 1) and
     raw x/y/z/roll/pitch/yaw parameters for flexibility.
+
+    Multi-robot support:
+    - robot_id: Optional robot ID to target. If not specified, uses the primary robot.
     """
 
     name = "move"
-    description = "Move Maxim's head to a target position. Use target_x (-1 to 1, left to right) and target_y (-1 to 1, up to down), or raw x/y/z/roll/pitch/yaw values."
+    description = "Move Maxim's head to a target position. Use target_x (-1 to 1, left to right) and target_y (-1 to 1, up to down), or raw x/y/z/roll/pitch/yaw values. Optionally specify robot_id to target a specific robot."
 
     # Mark as always allowed - bypasses autonomy approval
     always_allowed = True
@@ -652,6 +713,7 @@ class MoveTool(Tool):
         "pitch": (float, None),  # Pitch angle (degrees)
         "yaw": (float, None),  # Yaw angle (degrees)
         "duration": (float, None),  # Movement duration in seconds
+        "robot_id": (str, None),  # Optional robot ID for multi-robot support
     }
 
     def __init__(self, maxim: Any) -> None:
@@ -660,8 +722,7 @@ class MoveTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolResult:
         maxim = self._maxim
-        if maxim is None:
-            return ToolResult(success=False, error="No Maxim context available.")
+        robot_id = kwargs.get("robot_id")
 
         # Handle target_x/target_y (normalized -1 to 1)
         target_x = kwargs.get("target_x")
@@ -685,10 +746,48 @@ class MoveTool(Tool):
         roll = kwargs.get("roll")
         pitch = kwargs.get("pitch")
         yaw = kwargs.get("yaw")
-        duration = kwargs.get("duration")
+        duration = kwargs.get("duration", 1.0)
 
         try:
-            # Check if maxim has a move method
+            # If robot_id specified, use RobotController directly
+            if robot_id is not None:
+                robot = _get_robot_from_registry(robot_id, maxim)
+                if robot is None:
+                    return ToolResult(success=False, error=f"Robot not found: {robot_id}")
+
+                from maxim.hardware import MotionTarget
+                import math
+
+                # Convert degrees to radians for controller
+                target = MotionTarget(
+                    head_roll=math.radians(roll) if roll is not None else None,
+                    head_pitch=math.radians(pitch) if pitch is not None else None,
+                    head_yaw=math.radians(yaw) if yaw is not None else None,
+                    duration=float(duration) if duration else 1.0,
+                )
+
+                success = robot.goto_target(target)
+                if not success:
+                    return ToolResult(success=False, error="Motion command failed")
+
+                return ToolResult(
+                    success=True,
+                    output={
+                        "moved": True,
+                        "robot_id": robot_id,
+                        "target_x": target_x,
+                        "target_y": target_y,
+                        "roll": roll,
+                        "pitch": pitch,
+                        "yaw": yaw,
+                        "duration": duration,
+                    },
+                )
+
+            # Fallback to Maxim's move method for backward compatibility
+            if maxim is None:
+                return ToolResult(success=False, error="No Maxim context available.")
+
             move_fn = getattr(maxim, "move", None)
             if move_fn is None or not callable(move_fn):
                 return ToolResult(success=False, error="Maxim instance does not support move()")
