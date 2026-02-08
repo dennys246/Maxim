@@ -18,6 +18,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from maxim.conscience.selfy import Maxim
+    from maxim.hardware import RobotController
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ class CaptureManager:
         self,
         maxim: Maxim | None = None,
         *,
+        robot: "RobotController | None" = None,
         frame_queue_size: int = 2,
         audio_queue_size: int = 64,
         target_fps: float = 10.0,
@@ -66,12 +68,18 @@ class CaptureManager:
 
         Args:
             maxim: Maxim instance for hardware access (optional for testing)
+            robot: RobotController for hardware-agnostic access (alternative to maxim)
             frame_queue_size: Max frames to buffer
             audio_queue_size: Max audio samples to buffer
             target_fps: Target frame capture rate
             enable_segmentation: Whether to run YOLO on frames
         """
         self._maxim = maxim
+        self._robot = robot
+
+        # If maxim provided, get its robot controller
+        if self._robot is None and maxim is not None:
+            self._robot = getattr(maxim, "_robot", None)
         self._target_fps = target_fps
         self._enable_segmentation = enable_segmentation
 
@@ -339,7 +347,19 @@ class CaptureManager:
 
     def _capture_frame(self) -> np.ndarray | None:
         """Capture a frame from the camera with timeout protection."""
-        if self._maxim is None or self._stop_event.is_set():
+        if self._stop_event.is_set():
+            return None
+
+        # Try robot controller's video stream first (new abstraction)
+        if self._robot is not None:
+            video_stream = self._robot.get_video_stream()
+            if video_stream is not None and video_stream.is_active:
+                frame = video_stream.get_frame_nonblocking()
+                if frame is not None:
+                    return frame
+
+        # Fall back to Maxim's direct SDK access
+        if self._maxim is None:
             return None
 
         executor = self._hw_executor
@@ -393,7 +413,23 @@ class CaptureManager:
 
     def _capture_audio(self) -> CapturedAudio | None:
         """Capture an audio sample with timeout protection."""
-        if self._maxim is None or self._stop_event.is_set():
+        if self._stop_event.is_set():
+            return None
+
+        # Try robot controller's audio stream first (new abstraction)
+        if self._robot is not None:
+            audio_stream = self._robot.get_audio_stream()
+            if audio_stream is not None and audio_stream.is_active:
+                sample = audio_stream.get_sample(timeout=0.1)
+                if sample is not None:
+                    return CapturedAudio(
+                        samples=sample,
+                        timestamp=time.time(),
+                        sample_rate=audio_stream.input_sample_rate,
+                    )
+
+        # Fall back to Maxim's direct SDK access
+        if self._maxim is None:
             return None
 
         executor = self._hw_executor
