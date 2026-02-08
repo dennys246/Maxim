@@ -30,6 +30,7 @@ from maxim.agents.bus import (
     ToolResult,
 )
 from maxim.agents.output_mixin import AgentOutputMixin
+from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import get_abstraction_buffer
 
 
@@ -206,8 +207,8 @@ class AssociationIndex:
                     np.linalg.norm(query_emb) * np.linalg.norm(mem_emb) + 1e-8
                 )
                 candidates[mid] = 0.3 * candidates[mid] + 0.7 * float(similarity)
-        except Exception:
-            pass
+        except Exception as e:
+            log_swallowed_exception(e, operation="memory_similarity_boost")
 
         return candidates
 
@@ -723,8 +724,8 @@ class MemoryAgent(Agent, AgentOutputMixin):
                         "people_count": len(context.detected_people),
                     }
                     self._write_context(context_dict, share=True)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_swallowed_exception(e, operation="write_context")
 
             return context
 
@@ -776,8 +777,8 @@ class MemoryAgent(Agent, AgentOutputMixin):
                         self._short_term.append(mem)
                     self._association_index.add(mem)
                     self._association_graph.add_memory(mem)
-        except Exception:
-            pass
+        except Exception as e:
+            log_swallowed_exception(e, operation="load_persisted_memories")
 
     def _persist_memories_to_disk(self, share_to_outputs: bool = False) -> None:
         """Persist high-salience memories to disk.
@@ -810,8 +811,8 @@ class MemoryAgent(Agent, AgentOutputMixin):
         if self._output_manager is not None:
             try:
                 self._write_memory(to_persist, share=share_to_outputs)
-            except Exception:
-                pass
+            except Exception as e:
+                log_swallowed_exception(e, operation="persist_memory_to_output_manager")
 
         # Also write to legacy persistence path if specified
         if self._persistence_path:
@@ -819,8 +820,8 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 os.makedirs(os.path.dirname(self._persistence_path) or ".", exist_ok=True)
                 with open(self._persistence_path, "w") as f:
                     json.dump({"memories": to_persist}, f, indent=2)
-            except Exception:
-                pass
+            except (OSError, IOError) as e:
+                log_swallowed_exception(e, operation="persist_memory_to_disk", context={"path": self._persistence_path})
 
     def propose_intent(self, state: Any, memory: Any, **kwargs: Any) -> dict[str, Any] | None:
         """MemoryAgent doesn't propose intents directly."""
