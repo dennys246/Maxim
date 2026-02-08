@@ -125,3 +125,85 @@ def info(message: str, *args: object, logger: Optional[logging.Logger] = None) -
         except Exception:
             formatted = message
         print(f"[INFO] {formatted}")
+
+
+def log_swallowed_exception(
+    exc: BaseException,
+    *,
+    operation: str,
+    context: dict[str, object] | None = None,
+    logger: Optional[logging.Logger] = None,
+    level: int = logging.DEBUG,
+) -> None:
+    """Log an exception that is intentionally swallowed.
+
+    Use this instead of bare `except: pass` to maintain visibility
+    into silently handled errors.
+
+    Args:
+        exc: The exception being swallowed.
+        operation: Brief description of what was attempted.
+        context: Optional dict of relevant context values.
+        logger: Logger to use (defaults to "maxim").
+        level: Log level (defaults to DEBUG for non-critical swallows).
+
+    Example:
+        try:
+            result = risky_operation()
+        except SomeError as e:
+            log_swallowed_exception(e, operation="risky_operation", context={"input": x})
+            result = fallback_value
+    """
+    if logger is None:
+        logger = logging.getLogger("maxim")
+
+    ctx_str = ""
+    if context:
+        ctx_parts = [f"{k}={v!r}" for k, v in context.items()]
+        ctx_str = f" [{', '.join(ctx_parts)}]"
+
+    logger.log(level, "Swallowed %s in %s: %s%s", type(exc).__name__, operation, exc, ctx_str)
+
+
+def log_recoverable_error(
+    exc: BaseException,
+    *,
+    operation: str,
+    recovery: str,
+    context: dict[str, object] | None = None,
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    """Log an error that was recovered from with a fallback.
+
+    Use when an exception triggers fallback behavior rather than failure.
+
+    Args:
+        exc: The exception that occurred.
+        operation: What was attempted.
+        recovery: What recovery action was taken.
+        context: Optional context values.
+        logger: Logger to use.
+
+    Example:
+        try:
+            config = load_config(path)
+        except FileNotFoundError as e:
+            log_recoverable_error(e, operation="load_config", recovery="using defaults")
+            config = default_config
+    """
+    if logger is None:
+        logger = logging.getLogger("maxim")
+
+    ctx_str = ""
+    if context:
+        ctx_parts = [f"{k}={v!r}" for k, v in context.items()]
+        ctx_str = f" [{', '.join(ctx_parts)}]"
+
+    logger.warning(
+        "%s failed (%s: %s), %s%s",
+        operation,
+        type(exc).__name__,
+        exc,
+        recovery,
+        ctx_str,
+    )
