@@ -415,7 +415,7 @@ Maxim auto-detects GPUs for vision, motor cortex, and LLM inference.
 CUDA_VISIBLE_DEVICES="" maxim
 
 # Or use helper script
-./run_maxim_cpu.sh
+./scripts/run_maxim_cpu.sh
 ```
 
 ### RTX 5080 / Blackwell Support
