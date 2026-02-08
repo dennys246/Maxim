@@ -18,7 +18,7 @@ import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Union
+from typing import TYPE_CHECKING, Any, Callable, Iterator
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -137,7 +137,7 @@ class Hippocampus:
         self.config = config or HippocampusConfig()
 
         # Primary storage: memory_id -> EpisodicMemory or CompressedMemory
-        self._memories: dict[str, Union[EpisodicMemory, CompressedMemory]] = {}
+        self._memories: dict[str, EpisodicMemory | CompressedMemory] = {}
 
         # Hash index: context_key -> set of memory_ids
         # e.g., "goal:find cup" -> {"mem_123", "mem_456"}
@@ -381,7 +381,7 @@ class Hippocampus:
             state_snapshot=state_snapshot,
         )
 
-    def get(self, memory_id: str) -> Union[EpisodicMemory, CompressedMemory] | None:
+    def get(self, memory_id: str) -> EpisodicMemory | CompressedMemory | None:
         """Get a memory by its ID.
 
         Updates the access timestamp and count.
@@ -412,7 +412,7 @@ class Hippocampus:
         time_after: float | None = None,
         time_before: float | None = None,
         include_compressed: bool = True,
-    ) -> list[Union[EpisodicMemory, CompressedMemory]]:
+    ) -> list[EpisodicMemory | CompressedMemory]:
         """Find memories matching filters (hash lookup + filtering).
 
         All filters are AND-ed together. Use None to skip a filter.
@@ -470,7 +470,7 @@ class Hippocampus:
                 candidates = set(self._memories.keys())
 
             # Filter by time range and collect results
-            results: list[Union[EpisodicMemory, CompressedMemory]] = []
+            results: list[EpisodicMemory | CompressedMemory] = []
             for memory_id in candidates:
                 memory = self._memories.get(memory_id)
                 if memory is None:
@@ -497,7 +497,7 @@ class Hippocampus:
         perception: Perception,
         limit: int = 5,
         include_compressed: bool = True,
-    ) -> list[Union[EpisodicMemory, CompressedMemory]]:
+    ) -> list[EpisodicMemory | CompressedMemory]:
         """Find memories similar to the given perception.
 
         Scores memories by overlapping detected objects and people.
@@ -540,7 +540,7 @@ class Hippocampus:
             )
 
             # Collect results
-            results: list[Union[EpisodicMemory, CompressedMemory]] = []
+            results: list[EpisodicMemory | CompressedMemory] = []
             for memory_id in scored_ids[:limit]:
                 memory = self._memories.get(memory_id)
                 if memory is not None:
@@ -869,7 +869,7 @@ class Hippocampus:
         with self._rwlock.read():
             return len(self._memories)
 
-    def __iter__(self) -> Iterator[Union[EpisodicMemory, CompressedMemory]]:
+    def __iter__(self) -> Iterator[EpisodicMemory | CompressedMemory]:
         """Iterate over all memories (both full and compressed)."""
         with self._rwlock.read():
             yield from self._memories.values()
