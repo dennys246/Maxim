@@ -41,7 +41,7 @@ import numpy as np
 from maxim.motion.movement import load_actions, load_movement_thresholds, load_poses, move_antenna, move_head
 from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.data_management import CLIInputLogger, TrainingSampleLogger, VisionEventLogger, build_home
-from maxim.utils.logging import configure_logging, warn
+from maxim.utils.logging import configure_logging, log_swallowed_exception, warn
 from maxim.utils.plotting import preflight_matplotlib_fonts, preload_matplotlib_fonts
 from maxim.utils.queueing import put_latest
 
@@ -54,7 +54,17 @@ from maxim.inference.observation import (
 )
 from maxim.models.vision.registry import build_segmentation_model
 
+# Hardware abstraction layer for multi-robot support
+from maxim.hardware import RobotRegistry
+from maxim.hardware.reachy import ReachyMiniController
+from maxim.hardware.simulation import SimulatedController
+
 os.environ["PYOPENGL_PLATFORM"] = "egl"
+
+# Initialize global robot registry with controller types
+_robot_registry = RobotRegistry()
+_robot_registry.register_controller_type("reachy_mini", ReachyMiniController)
+_robot_registry.register_controller_type("simulated", SimulatedController)
 
 
 class Maxim:
@@ -77,7 +87,9 @@ class Maxim:
         audio: bool = True,
         audio_len: float = 5.0,
         interactive: bool = True,
-        novelty_tracker: "NoveltyTracker | None" = None):
+        novelty_tracker: "NoveltyTracker | None" = None,
+        simulation: bool = False,
+        robot_id: str | None = None):
         
         #
         self.verbosity = int(verbosity or 0)
@@ -98,6 +110,11 @@ class Maxim:
         # Central thread registry for coordinated shutdown
         # All threads created by Maxim should be registered here
         self._thread_registry = ThreadRegistry()
+
+        # Hardware abstraction layer
+        self._simulation = bool(simulation)
+        self._robot_id = robot_id
+        self._robot: ReachyMiniController | SimulatedController | None = None
 
         self.name = robot_name or os.getenv("MAXIM_ROBOT_NAME", "reachy_mini")
         if _blackwell_detected:
@@ -144,7 +161,8 @@ class Maxim:
         self.audio = bool(audio)
         try:
             self.audio_len = float(audio_len)
-        except Exception:
+        except (TypeError, ValueError) as e:
+            log_swallowed_exception(e, operation="parse_audio_len", context={"audio_len": audio_len})
             self.audio_len = 5.0
         if self.audio_len <= 0:
             self.audio_len = 5.0
@@ -178,32 +196,49 @@ class Maxim:
             head_cfg = self.movement_thresholds.get("head") if isinstance(self.movement_thresholds, dict) else None
             if isinstance(head_cfg, dict) and isinstance(head_cfg.get("max_step"), dict):
                 self._head_max_step = dict(head_cfg.get("max_step") or {})
-        except Exception:
+        except (KeyError, TypeError, AttributeError) as e:
+            log_swallowed_exception(e, operation="load_head_max_step")
             self._head_max_step = {}
 
-        # robot_name must match the daemon namespace (default: reachy_mini).
-        # localhost_only=False enables zenoh peer discovery across the LAN.
-        # Import ReachyMini after Matplotlib preload to avoid native lib conflicts.
-        from reachy_mini import ReachyMini
+        # Connect to robot using hardware abstraction layer.
+        # Supports both real Reachy Mini hardware and simulation mode.
+        robot_type = "simulated" if self._simulation else "reachy_mini"
+        effective_robot_id = self._robot_id or self.name
 
-        self.mini = ReachyMini(
-            robot_name=self.name,
-            localhost_only=False,
-            spawn_daemon=False,
-            use_sim=False,
+        self.log.info("Connecting to robot '%s' (type=%s)...", effective_robot_id, robot_type)
+
+        # Use the global registry to connect
+        self._robot = _robot_registry.connect_robot(
+            robot_id=effective_robot_id,
+            robot_type=robot_type,
+            config={
+                "robot_name": self.name,
+                "media_backend": media_backend,
+            } if not self._simulation else {
+                "video_resolution": (640, 480),
+                "simulate_delays": False,
+            },
             timeout=timeout,
-            media_backend=media_backend,
+            set_primary=True,
         )
+
+        if self._robot is None:
+            raise RuntimeError(f"Failed to connect to robot: {effective_robot_id}")
 
         # On Blackwell GPUs, don't start recording - it will crash in GStreamer
         self._recording_started = False
-        if not _blackwell_detected:
+        if not _blackwell_detected and not self._simulation:
             self.log.info("Connected. Starting recording...")
             try:
-                self.mini.start_recording()
+                self._robot.start_recording()
                 self._recording_started = True
             except Exception as e:
                 self.log.warning("Failed to start recording: %s", e)
+        elif self._simulation:
+            # Simulation always starts recording
+            self._robot.start_recording()
+            self._recording_started = True
+            self.log.info("Connected to simulated robot.")
         else:
             self.log.info("Connected. (Recording disabled for Blackwell GPU compatibility)")
 
@@ -220,7 +255,8 @@ class Maxim:
         centered = None
         try:
             centered = getattr(self, "poses", {}).get("centered")
-        except Exception:
+        except (AttributeError, TypeError) as e:
+            log_swallowed_exception(e, operation="get_centered_pose")
             centered = None
         if isinstance(centered, (list, tuple)) and len(centered) >= 6:
             try:
@@ -230,8 +266,8 @@ class Maxim:
                 self.roll = float(centered[3])
                 self.pitch = float(centered[4])
                 self.yaw = float(centered[5])
-            except Exception:
-                pass
+            except (TypeError, ValueError, IndexError) as e:
+                log_swallowed_exception(e, operation="parse_centered_pose", context={"centered": centered})
 
         self._default_head_pose = {
             "x": float(self.x),
@@ -272,6 +308,112 @@ class Maxim:
         self.motor_history: list[dict] = []
 
         atexit.register(self.shutdown)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Hardware Properties (backward compatibility + abstraction)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @property
+    def mini(self) -> Any:
+        """Get the underlying ReachyMini SDK instance.
+
+        DEPRECATED: Use self._robot (RobotController) for new code.
+        This property is provided for backward compatibility during migration.
+
+        Returns:
+            ReachyMini SDK instance if using real hardware, None otherwise.
+        """
+        if self._robot is None:
+            return None
+        # ReachyMiniController exposes the SDK instance via .mini property
+        return getattr(self._robot, "mini", None)
+
+    @property
+    def robot(self) -> "ReachyMiniController | SimulatedController | None":
+        """Get the robot controller (new abstraction layer).
+
+        Use this for new code that should work with any robot type.
+        """
+        return self._robot
+
+    def get_frame(self) -> np.ndarray | None:
+        """Get the current video frame from the robot.
+
+        Works with both real hardware and simulation.
+
+        Returns:
+            BGR image as numpy array, or None if not available.
+        """
+        if self._robot is None:
+            return None
+
+        video_stream = self._robot.get_video_stream()
+        if video_stream is not None:
+            return video_stream.get_frame_nonblocking()
+
+        # Fallback to direct SDK access for backward compatibility
+        mini = self.mini
+        if mini is not None:
+            try:
+                return mini.media.get_frame()
+            except Exception:
+                return None
+
+        return None
+
+    def get_audio_sample(self) -> np.ndarray | None:
+        """Get an audio sample from the robot.
+
+        Works with both real hardware and simulation.
+
+        Returns:
+            Audio samples as numpy array, or None if not available.
+        """
+        if self._robot is None:
+            return None
+
+        audio_stream = self._robot.get_audio_stream()
+        if audio_stream is not None:
+            return audio_stream.get_sample(timeout=0.1)
+
+        # Fallback to direct SDK access for backward compatibility
+        mini = self.mini
+        if mini is not None:
+            try:
+                return mini.media.get_audio_sample()
+            except Exception:
+                return None
+
+        return None
+
+    def push_audio_sample(self, samples: np.ndarray) -> bool:
+        """Push audio samples to the robot speaker.
+
+        Works with both real hardware and simulation.
+
+        Args:
+            samples: Audio samples as numpy array.
+
+        Returns:
+            True if samples were pushed successfully.
+        """
+        if self._robot is None:
+            return False
+
+        audio_stream = self._robot.get_audio_stream()
+        if audio_stream is not None:
+            return audio_stream.push_sample(samples)
+
+        # Fallback to direct SDK access for backward compatibility
+        mini = self.mini
+        if mini is not None:
+            try:
+                mini.media.push_audio_sample(samples)
+                return True
+            except Exception:
+                return False
+
+        return False
 
     # ─────────────────────────────────────────────────────────────────────────
     # State Properties (delegate to StateManager)
@@ -923,22 +1065,23 @@ class Maxim:
                         except Exception:
                             pass
 
-            try:
-                from reachy_mini import ReachyMini
-            except Exception as e:
-                warn("Soft reconnect failed (reachy_mini unavailable): %s", e, logger=self.log)
+            # Use the RobotController's reconnect method
+            if self._robot is None:
+                warn("Soft reconnect failed (no robot controller)", logger=self.log)
+                return False
+
+            # For simulation mode, just reset state
+            if self._simulation:
+                self.log.info("Simulation mode - skipping reconnect")
+                return True
+
+            # Attempt reconnection via the controller
+            if not self._robot.reconnect(timeout=30.0, max_attempts=1):
+                warn("Soft reconnect failed (controller reconnect failed)", logger=self.log)
                 return False
 
             try:
-                new_mini = ReachyMini(**dict(getattr(self, "_connect_kwargs", {}) or {}))
-            except Exception as e:
-                warn("Soft reconnect failed (connect): %s", e, logger=self.log)
-                return False
-
-            self.mini = new_mini
-
-            try:
-                new_mini.start_recording()
+                self._robot.start_recording()
             except Exception as e:
                 warn("Failed to start recording after reconnect: %s", e, logger=self.log)
 
@@ -946,7 +1089,7 @@ class Maxim:
                 mode = str(getattr(self, "mode", "") or "").strip().lower()
                 if mode != "sleep":
                     try:
-                        new_mini.wake_up()
+                        self._robot.wake_up()
                     except Exception as e:
                         warn("Failed to wake Reachy after reconnect: %s", e, logger=self.log)
 
@@ -1721,15 +1864,15 @@ class Maxim:
             # Touch the file to create it if it doesn't exist
             with open(transcript_path, "a", encoding="utf-8"):
                 pass
-        except Exception:
-            pass
+        except OSError as e:
+            log_swallowed_exception(e, operation="create_transcript_dir", context={"path": transcript_path})
 
         try:
             prev_logger = getattr(self, "_training_logger", None)
             if prev_logger is not None:
                 prev_logger.stop(timeout=0.5)
-        except Exception:
-            pass
+        except Exception as e:
+            log_swallowed_exception(e, operation="stop_training_logger")
 
         try:
             training_dir = os.path.join(self.home_dir, "training")
@@ -1743,16 +1886,16 @@ class Maxim:
             prev_cli_logger = getattr(self, "_cli_logger", None)
             if prev_cli_logger is not None:
                 prev_cli_logger.stop(timeout=0.5)
-        except Exception:
-            pass
+        except Exception as e:
+            log_swallowed_exception(e, operation="stop_cli_logger")
         self._cli_logger = None
 
         try:
             prev_vision_logger = getattr(self, "_vision_event_logger", None)
             if prev_vision_logger is not None:
                 self._stop_vision_event_stream(timeout=0.5)
-        except Exception:
-            pass
+        except Exception as e:
+            log_swallowed_exception(e, operation="stop_vision_event_logger")
         self._vision_event_logger = None
 
         if bool(getattr(self, "interactive", True)):
@@ -2696,7 +2839,8 @@ class Maxim:
 
         # Only move to sleep pose if not already sleeping
         if not self.sleeping:
-            self.mini.goto_sleep()
+            if self._robot is not None:
+                self._robot.goto_sleep()
             self.sleeping = True
 
         return self.live(
@@ -4332,23 +4476,24 @@ class Maxim:
             # On Blackwell GPUs, skip wake_up() entirely due to GStreamer/GLib crash
             # The crash happens in native GLib.MainLoop.run() code in the WebRTC thread
             # Bug report: https://github.com/pollen-robotics/reachy_mini/issues
-            if _blackwell_detected:
+            if _blackwell_detected and not self._simulation:
                 self.log.warning(
                     "Blackwell GPU detected - skipping wake_up() due to GStreamer incompatibility. "
                     "Robot should already be in usable state. See: https://github.com/pollen-robotics/reachy_mini/issues"
                 )
                 # Don't call wake_up() - the robot is already connected and motors are accessible
-            else:
-                self.mini.wake_up()
+            elif self._robot is not None:
+                self._robot.wake_up()
             self.sleeping = False  # Mark as awake so next sleep() will move to sleep pose
             self._woke_up = True
 
             # On Blackwell GPUs, start recording AFTER wake_up() to avoid
             # GStreamer/WebRTC threading issues that cause segfaults
-            if _blackwell_detected and not getattr(self, '_recording_started', False):
+            if _blackwell_detected and not self._simulation and not getattr(self, '_recording_started', False):
                 time.sleep(0.3)  # Brief pause to let motor commands complete
                 try:
-                    self.mini.start_recording()
+                    if self._robot is not None:
+                        self._robot.start_recording()
                     self._recording_started = True
                     self.log.info("Recording started (delayed for Blackwell GPU)")
                 except Exception as e:
@@ -4534,32 +4679,30 @@ class Maxim:
             requested = str(getattr(self, "requested_mode", "") or "").strip().lower()
             if requested not in ("reflection", "exploration", "live", "train", "agentic"):
                 try:
-                    self.mini.goto_sleep()
+                    if self._robot is not None:
+                        self._robot.goto_sleep()
                 except Exception as e:
                     warn("Failed to send Reachy to sleep: %s", e, logger=getattr(self, "log", None))
 
         # Stop recording data
         try:
-            self.mini.stop_recording()
+            if self._robot is not None:
+                self._robot.stop_recording()
         except Exception as e:
             warn("Failed to stop recording: %s", e, logger=getattr(self, "log", None))
 
         # Release the camera + any OpenCV resources
         self._release_media()
 
-        # Best-effort: close any lingering connections.
+        # Disconnect from robot via registry (handles cleanup)
         try:
-            mini = getattr(self, "mini", None)
-            if mini is not None:
-                for attr in ("disconnect", "close", "shutdown"):
-                    fn = getattr(mini, attr, None)
-                    if callable(fn):
-                        try:
-                            fn()
-                        except Exception:
-                            pass
-        except Exception:
-            pass
+            if self._robot is not None:
+                robot_id = getattr(self._robot, "robot_id", None)
+                if robot_id:
+                    _robot_registry.disconnect_robot(robot_id)
+                self._robot = None
+        except Exception as e:
+            warn("Failed to disconnect robot: %s", e, logger=getattr(self, "log", None))
 
 
         return
