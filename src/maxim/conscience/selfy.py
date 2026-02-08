@@ -1,6 +1,5 @@
 import os
 import queue
-import subprocess
 import threading
 
 # CRITICAL: Set multiprocessing start method to 'spawn' BEFORE any other imports.
@@ -15,36 +14,20 @@ try:
 except RuntimeError:
     pass  # Already set, ignore
 
-# Detect Blackwell GPU and disable GStreamer/WebRTC BEFORE any imports.
-# Blackwell GPUs (RTX 50 series) have issues with NVENC/NVDEC in GStreamer that cause segfaults.
-# The crash occurs during wake_up() when GStreamer pipelines are active - likely a threading issue.
-_blackwell_detected = False
-_original_cuda_devices: str | None = None  # Store original for Whisper subprocess
-try:
-    _result = subprocess.run(
-        ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
-        capture_output=True, text=True, timeout=2
-    )
-    if _result.returncode == 0:
-        _gpu_names = _result.stdout.strip().lower()
-        if 'rtx 50' in _gpu_names or '5080' in _gpu_names or '5090' in _gpu_names:
-            _blackwell_detected = True
+# Detect Blackwell GPU and disable GStreamer/WebRTC BEFORE any other imports.
+from maxim.utils.gpu_compat import detect_blackwell, is_connection_error, is_gpu_available
+from maxim.utils.thread_manager import ThreadRegistry
+from maxim.utils.response_config import (
+    load_key_responses,
+    load_phrase_responses,
+    normalize_trigger_text,
+    normalize_transcript_text,
+)
+from maxim.modes.state_manager import StateManager
 
-            # Store original CUDA_VISIBLE_DEVICES before hiding
-            # This allows Whisper subprocess to use GPU (with float16, not int8)
-            _original_cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "0")
-
-            # CRITICAL: Force CPU-only mode to avoid GStreamer/GLib segfaults
-            # The crash happens in GLib.MainLoop.run() in the WebRTC thread when CUDA is active
-            # Setting CUDA_VISIBLE_DEVICES="" hides GPUs from all CUDA libraries
-            os.environ["CUDA_VISIBLE_DEVICES"] = ""
-
-            # Force "default" media backend (OpenCV + Sounddevice) to avoid GStreamer entirely
-            os.environ.setdefault("REACHY_MEDIA_BACKEND", "default")
-            # Disable CUDA for GStreamer (belt and suspenders)
-            os.environ.setdefault("GST_CUDA_NO_CUDA", "1")
-except Exception:
-    pass
+_gpu_state = detect_blackwell()
+_blackwell_detected = _gpu_state.blackwell_detected
+_original_cuda_devices = _gpu_state.original_cuda_devices
 
 import json, uuid
 import re
@@ -73,57 +56,6 @@ from maxim.models.vision.registry import build_segmentation_model
 
 os.environ["PYOPENGL_PLATFORM"] = "egl"
 
-def _env_flag(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return bool(default)
-    value = str(raw).strip().lower()
-    if value in ("1", "true", "t", "yes", "y", "on"):
-        return True
-    if value in ("0", "false", "f", "no", "n", "off"):
-        return False
-    return bool(default)
-
-
-def _gpu_available() -> bool:
-    try:
-        import torch
-    except Exception:
-        return False
-    try:
-        if torch.cuda.is_available():
-            return True
-        mps = getattr(getattr(torch, "backends", None), "mps", None)
-        if mps is not None and getattr(mps, "is_available", None):
-            return bool(mps.is_available())
-    except Exception:
-        return False
-    return False
-
-def _is_connection_error(error: object) -> bool:
-    if error is None:
-        return False
-    message = str(error).strip().lower()
-    if not message:
-        return False
-    if "lost connection" in message:
-        return True
-    if "disconnected" in message:
-        return True
-    if "timeout" in message or "timed out" in message:
-        return True
-    if "connection" in message and any(term in message for term in ("refused", "reset", "broken", "closed")):
-        return True
-    # Dynamixel/serial communication errors (rustypot panics)
-    if "channel closed" in message:
-        return True
-    if "panicexception" in message:
-        return True
-    if "assertion failed" in message and "buffer" in message:
-        return True
-    if "flush serial" in message:
-        return True
-    return False
 
 class Maxim:
     """
@@ -165,8 +97,7 @@ class Maxim:
 
         # Central thread registry for coordinated shutdown
         # All threads created by Maxim should be registered here
-        self._thread_registry: dict[str, threading.Thread] = {}
-        self._thread_registry_lock = threading.Lock()
+        self._thread_registry = ThreadRegistry()
 
         self.name = robot_name or os.getenv("MAXIM_ROBOT_NAME", "reachy_mini")
         if _blackwell_detected:
@@ -314,18 +245,16 @@ class Maxim:
         self._training_paused = threading.Event()
         self._observation_lock = threading.Lock()
 
-        self.key_responses = self._load_key_responses()
-        self.phrase_responses = self._load_phrase_responses()
+        self.key_responses = load_key_responses(self.log)
+        self.phrase_responses = load_phrase_responses(self.log)
         self._voice_agentic_enabled = False
         self._phrase_last_trigger_ts: dict[str, float] = {}
         self._outcome_code = 0
         self._last_action_event_id: str | None = None
         self._last_transcript_event: dict | None = None
         self.requested_mode: str | None = None
-        # New architecture state tracking
-        self.operational_mode: str = "passive"  # passive, active, singularity
-        self.processing_state: str = "awake"  # awake, sleep
-        self.current_strategy: str = "observe"  # observe, explore, research, assist, reflect, learn
+        # New architecture state tracking via StateManager
+        self._state_manager = StateManager()
         self._agentic_stop_event: threading.Event | None = None
         self._agentic_thread: threading.Thread | None = None
         self._agentic_agent = None
@@ -344,219 +273,24 @@ class Maxim:
 
         atexit.register(self.shutdown)
 
-    def _load_key_responses(self) -> dict[str, dict]:
-        default = {
-            "c": {"call": "center_vision", "pause_training": True},
-            "u": {"call": "mark_trainable_moment"},
-            **{str(i): {"call": "label_outcome", "args": [i]} for i in range(10)},
-        }
+    # ─────────────────────────────────────────────────────────────────────────
+    # State Properties (delegate to StateManager)
+    # ─────────────────────────────────────────────────────────────────────────
 
-        candidates: list[str] = []
-        env_path = str(os.getenv("MAXIM_KEY_RESPONSES", "")).strip()
-        if env_path:
-            candidates.append(env_path)
-        candidates.append(os.path.join(os.getcwd(), "data", "util", "key_responses.json"))
-        candidates.append(os.path.join(os.getcwd(), "key_responses.json"))
-        try:
-            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-            candidates.append(os.path.join(repo_root, "data", "util", "key_responses.json"))
-            candidates.append(os.path.join(repo_root, "key_responses.json"))
-        except Exception:
-            pass
+    @property
+    def operational_mode(self) -> str:
+        """Current operational mode (passive/active/singularity)."""
+        return self._state_manager.operational_mode
 
-        raw = None
-        for path in candidates:
-            if path and os.path.isfile(path):
-                try:
-                    with open(path, "r", encoding="utf-8") as fp:
-                        raw = json.load(fp)
-                    break
-                except Exception as e:
-                    warn("Failed to load key responses from '%s': %s", path, e, logger=self.log)
-                    return default
+    @property
+    def processing_state(self) -> str:
+        """Current processing state (awake/sleep)."""
+        return self._state_manager.processing_state
 
-        if not isinstance(raw, dict):
-            return default
-
-        parsed: dict[str, dict] = {}
-        for key, spec in raw.items():
-            if not isinstance(key, str) or not key:
-                continue
-
-            if isinstance(spec, str):
-                parsed[key] = {"call": spec}
-                continue
-
-            if not isinstance(spec, dict):
-                continue
-
-            call = spec.get("call") or spec.get("method")
-            if not isinstance(call, str) or not call:
-                continue
-
-            parsed[key] = {
-                "call": call,
-                "args": spec.get("args") if isinstance(spec.get("args"), list) else [],
-                "kwargs": spec.get("kwargs") if isinstance(spec.get("kwargs"), dict) else {},
-                "pause_training": bool(spec.get("pause_training", False)),
-            }
-
-        merged = dict(default)
-        merged.update(parsed)
-        return merged
-
-    def _load_phrase_responses(self) -> dict[str, dict]:
-        default = {
-            # Shutdown commands
-            "maxim shutdown": {"call": "request_shutdown", "requires_agentic": False, "cooldown_s": 2.0},
-            "shutdown maxim": {"call": "request_shutdown", "requires_agentic": False, "cooldown_s": 2.0},
-            # Sleep processing state commands (new architecture)
-            "maxim sleep": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
-            "sleep maxim": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim nap": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim rest": {"call": "request_sleep", "requires_agentic": False, "cooldown_s": 2.0},
-            # Wake from sleep (processing state)
-            "maxim wake up": {"call": "request_wake", "requires_agentic": False, "cooldown_s": 2.0},
-            "wake up maxim": {"call": "request_wake", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim wake": {"call": "request_wake", "requires_agentic": False, "cooldown_s": 2.0},
-            "wake maxim": {"call": "request_wake", "requires_agentic": False, "cooldown_s": 2.0},
-            # Strategy commands (new architecture)
-            "maxim observe": {"call": "request_strategy_observe", "requires_agentic": False, "cooldown_s": 2.0},
-            "observe maxim": {"call": "request_strategy_observe", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim watch": {"call": "request_strategy_observe", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim explore": {"call": "request_strategy_explore", "requires_agentic": False, "cooldown_s": 2.0},
-            "explore maxim": {"call": "request_strategy_explore", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim research": {"call": "request_strategy_research", "requires_agentic": False, "cooldown_s": 2.0},
-            "research maxim": {"call": "request_strategy_research", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim assist": {"call": "request_strategy_assist", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim help": {"call": "request_strategy_assist", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim reflect": {"call": "request_strategy_reflect", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim reflection": {"call": "request_strategy_reflect", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim learn": {"call": "request_strategy_learn", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim train": {"call": "request_strategy_learn", "requires_agentic": False, "cooldown_s": 2.0},
-            # Mode commands (new architecture)
-            "maxim passive": {"call": "request_mode_passive", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim active": {"call": "request_mode_active", "requires_agentic": False, "cooldown_s": 2.0},
-            "maxim singularity": {"call": "request_mode_singularity", "requires_agentic": False, "cooldown_s": 2.0},
-            # Wake words (enable agentic mode)
-            "maxim": {"call": "wake_up_agentic", "wake_word": True, "cooldown_s": 2.0},
-            "reachy": {"call": "wake_up_agentic", "wake_word": True, "cooldown_s": 2.0},
-            # Other commands
-            "center": {"call": "center_vision", "pause_training": True, "requires_agentic": True, "cooldown_s": 2.0},
-        }
-
-        candidates: list[str] = []
-        env_path = str(os.getenv("MAXIM_PHRASE_RESPONSES", "")).strip()
-        if env_path:
-            candidates.append(env_path)
-        candidates.append(os.path.join(os.getcwd(), "data", "util", "phrase_responses.json"))
-        candidates.append(os.path.join(os.getcwd(), "phrase_responses.json"))
-        try:
-            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-            candidates.append(os.path.join(repo_root, "data", "util", "phrase_responses.json"))
-            candidates.append(os.path.join(repo_root, "phrase_responses.json"))
-        except Exception:
-            pass
-
-        raw = None
-        for path in candidates:
-            if path and os.path.isfile(path):
-                try:
-                    with open(path, "r", encoding="utf-8") as fp:
-                        raw = json.load(fp)
-                    break
-                except Exception as e:
-                    warn("Failed to load phrase responses from '%s': %s", path, e, logger=self.log)
-                    return default
-
-        if not isinstance(raw, dict):
-            return default
-
-        parsed: dict[str, dict] = {}
-        for phrase, spec in raw.items():
-            if not isinstance(phrase, str) or not phrase.strip():
-                continue
-            phrase = phrase.strip()
-
-            if isinstance(spec, str):
-                spec = {"call": spec}
-            if not isinstance(spec, dict):
-                continue
-
-            call = spec.get("call") or spec.get("method")
-            if not isinstance(call, str) or not call:
-                continue
-
-            wake_word = bool(spec.get("wake_word", False))
-            requires_agentic = bool(spec.get("requires_agentic", not wake_word))
-            cooldown_s = spec.get("cooldown_s")
-            try:
-                cooldown_s = float(cooldown_s) if cooldown_s is not None else 2.0
-            except Exception:
-                cooldown_s = 2.0
-            if float(cooldown_s) <= 0:
-                cooldown_s = 2.0
-
-            parsed[phrase] = {
-                "call": call,
-                "args": spec.get("args") if isinstance(spec.get("args"), list) else [],
-                "kwargs": spec.get("kwargs") if isinstance(spec.get("kwargs"), dict) else {},
-                "pause_training": bool(spec.get("pause_training", False)),
-                "wake_word": wake_word,
-                "requires_agentic": requires_agentic,
-                "cooldown_s": float(cooldown_s),
-                "_pattern": self._compile_phrase_pattern(phrase),
-                "_normalized": self._normalize_trigger_text(phrase),
-            }
-
-        merged = dict(default)
-        merged.update(parsed)
-        # Compile patterns for any defaults that weren't overridden.
-        for phrase, spec in merged.items():
-            if isinstance(spec, dict) and "_pattern" not in spec:
-                spec["_pattern"] = self._compile_phrase_pattern(phrase)
-            if isinstance(spec, dict) and "_normalized" not in spec:
-                spec["_normalized"] = self._normalize_trigger_text(phrase)
-        return merged
-
-    def _compile_phrase_pattern(self, phrase: str):
-        raw = str(phrase or "").strip()
-        if not raw:
-            return None
-        escaped = re.escape(raw)
-        pattern = escaped
-        try:
-            if re.match(r"^\w", raw) and re.search(r"\w$", raw):
-                pattern = rf"\b{escaped}\b"
-            return re.compile(pattern, flags=re.IGNORECASE)
-        except Exception:
-            return None
-
-    def _normalize_trigger_text(self, text: str) -> str:
-        raw = str(text or "").strip().lower()
-        if not raw:
-            return ""
-        cleaned = re.sub(r"[^\w\s]", " ", raw, flags=re.UNICODE)
-        return " ".join(cleaned.split())
-
-    def _normalize_transcript_text(self, text: str) -> str:
-        normalized = self._normalize_trigger_text(text)
-        if not normalized:
-            return ""
-        raw_tokens = normalized.split()
-        tokens = [t for t in raw_tokens if t and t != "s"]
-        aliases = {
-            "maximum": "maxim",
-            "maximums": "maxim",
-            "maxims": "maxim",
-        }
-        changed = tokens != raw_tokens
-        for idx, token in enumerate(tokens):
-            replacement = aliases.get(token)
-            if replacement:
-                tokens[idx] = replacement
-                changed = True
-        return " ".join(tokens) if changed else normalized
+    @property
+    def current_strategy(self) -> str:
+        """Current strategy (observe/explore/research/assist/reflect/learn)."""
+        return self._state_manager.strategy
 
     def _start_key_listener(self, stop_event: threading.Event) -> threading.Thread | None:
         if bool(getattr(self, "interactive", True)):
@@ -719,7 +453,7 @@ class Maxim:
             return
         source_label = str(source or "").strip().lower()
         is_cli = source_label == "cli"
-        normalized_text = self._normalize_transcript_text(raw_text)
+        normalized_text = normalize_transcript_text(raw_text)
         if not normalized_text:
             return
 
@@ -802,7 +536,7 @@ class Maxim:
             for phrase, spec in candidates:
                 normalized_phrase = spec.get("_normalized")
                 if not isinstance(normalized_phrase, str) or not normalized_phrase:
-                    normalized_phrase = self._normalize_trigger_text(phrase)
+                    normalized_phrase = normalize_trigger_text(phrase)
                 score = (len(normalized_phrase.split()), len(normalized_phrase))
                 if score > best_score:
                     best = (phrase, spec)
@@ -830,7 +564,7 @@ class Maxim:
 
                 normalized_phrase = spec.get("_normalized")
                 if not isinstance(normalized_phrase, str) or not normalized_phrase:
-                    normalized_phrase = self._normalize_trigger_text(phrase)
+                    normalized_phrase = normalize_trigger_text(phrase)
                 phrase_tokens = normalized_phrase.split()
                 required_tokens = [t for t in phrase_tokens if t not in wake_tokens]
                 if not required_tokens:
@@ -1060,7 +794,7 @@ class Maxim:
                 continue
 
     def _note_connection_failure(self, kind: str, error: object) -> None:
-        if not _is_connection_error(error):
+        if not is_connection_error(error):
             if int(getattr(self, "verbosity", 0) or 0) >= 2:
                 try:
                     self.log.debug("Ignoring non-connection error (%s): %s", kind, error)
@@ -1438,7 +1172,7 @@ class Maxim:
         # Allow CPU-only operation (e.g., when CUDA is hidden for Blackwell GPUs)
         # Note: llama_cpp backend has native Metal support on macOS, so skip this fallback
         # when using llama_cpp - it will use Metal GPU acceleration automatically
-        if not _gpu_available():
+        if not is_gpu_available():
             # Check if we're using llama_cpp backend (has native Metal support)
             llm_config_path = os.path.join(str(getattr(self, "home_dir", "data") or "data"), "util", "llm.json")
             using_llama_cpp = False
@@ -1521,6 +1255,7 @@ class Maxim:
             pass
         self._agentic_agent = agent
         self._agentic_state = state
+        self._state_manager.set_agent(agent)
 
         # Propagate exploration mode context if set by CLI
         if bool(getattr(self, "_exploration_mode", False)):
@@ -1910,6 +1645,7 @@ class Maxim:
         self._agentic_stop_event = None
         self._agentic_agent = None
         self._agentic_state = None
+        self._state_manager.set_agent(None)
 
         # Stop capture manager (will be fast since threads already stopped/terminated)
         if capture_manager is not None:
@@ -3042,122 +2778,44 @@ class Maxim:
 
     def request_sleep(self) -> None:
         """Enter sleep processing state (minimal processing, keyword monitoring)."""
-        self._request_processing_state("sleep")
+        self._state_manager.request_sleep()
 
     def request_wake(self) -> None:
         """Wake from sleep processing state."""
-        self._request_processing_state("awake")
+        self._state_manager.request_wake()
 
     def request_observe(self) -> None:
         """Legacy: switch to observe strategy."""
-        self._request_strategy("observe")
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # New Architecture: Strategy and Mode Switching
-    # ─────────────────────────��───────────────────────────────────────────────
-
-    def _request_processing_state(self, state: str) -> None:
-        """Request a processing state change (awake/sleep)."""
-        current = getattr(self, "processing_state", "awake")
-        if state == current:
-            return
-        try:
-            self.log.info("Processing state change requested: %s -> %s", current, state)
-        except Exception:
-            pass
-        self.processing_state = state
-
-        # Notify agent if running
-        agent = getattr(self, "_agentic_agent", None)
-        if agent is not None and hasattr(agent, "set_processing_state"):
-            try:
-                agent.set_processing_state(state)
-            except Exception as e:
-                try:
-                    self.log.warning("Failed to notify agent of processing state change: %s", e)
-                except Exception:
-                    pass
-
-    def _request_strategy(self, strategy: str) -> None:
-        """Request a strategy change."""
-        current = getattr(self, "current_strategy", "observe")
-        if strategy == current:
-            return
-        try:
-            self.log.info("Strategy change requested: %s -> %s", current, strategy)
-        except Exception:
-            pass
-        self.current_strategy = strategy
-
-        # Also wake up if sleeping
-        if getattr(self, "processing_state", "awake") == "sleep":
-            self._request_processing_state("awake")
-
-        # Notify agent if running
-        agent = getattr(self, "_agentic_agent", None)
-        if agent is not None and hasattr(agent, "set_strategy"):
-            try:
-                agent.set_strategy(strategy)
-            except Exception as e:
-                try:
-                    self.log.warning("Failed to notify agent of strategy change: %s", e)
-                except Exception:
-                    pass
-
-    def _request_operational_mode(self, mode: str) -> None:
-        """Request an operational mode change (passive/active/singularity)."""
-        current = getattr(self, "operational_mode", "passive")
-        if mode == current:
-            return
-        try:
-            self.log.info("Operational mode change requested: %s -> %s", current, mode)
-        except Exception:
-            pass
-        self.operational_mode = mode
-
-        # Also wake up if sleeping
-        if getattr(self, "processing_state", "awake") == "sleep":
-            self._request_processing_state("awake")
-
-        # Notify agent if running
-        agent = getattr(self, "_agentic_agent", None)
-        if agent is not None and hasattr(agent, "set_operational_mode"):
-            try:
-                agent.set_operational_mode(mode)
-            except Exception as e:
-                try:
-                    self.log.warning("Failed to notify agent of operational mode change: %s", e)
-                except Exception:
-                    pass
+        self._state_manager.request_strategy_observe()
 
     # Strategy switch methods (called by phrase responses)
     def request_strategy_observe(self) -> None:
-        self._request_strategy("observe")
+        self._state_manager.request_strategy_observe()
 
     def request_strategy_explore(self) -> None:
-        self._request_strategy("explore")
+        self._state_manager.request_strategy_explore()
 
     def request_strategy_research(self) -> None:
-        self._request_strategy("research")
+        self._state_manager.request_strategy_research()
 
     def request_strategy_assist(self) -> None:
-        self._request_strategy("assist")
+        self._state_manager.request_strategy_assist()
 
     def request_strategy_reflect(self) -> None:
-        self._request_strategy("reflect")
+        self._state_manager.request_strategy_reflect()
 
     def request_strategy_learn(self) -> None:
-        self._request_strategy("learn")
+        self._state_manager.request_strategy_learn()
 
     # Operational mode switch methods (called by phrase responses)
     def request_mode_passive(self) -> None:
-        self._request_operational_mode("passive")
+        self._state_manager.request_mode_passive()
 
     def request_mode_active(self) -> None:
-        self._request_operational_mode("active")
+        self._state_manager.request_mode_active()
 
     def request_mode_singularity(self) -> None:
-        self._request_operational_mode("singularity")
+        self._state_manager.request_mode_singularity()
 
     def update_interests(
         self,
@@ -4771,79 +4429,16 @@ class Maxim:
     # ─────────────────────────────────────────────────────────────────────────
 
     def register_thread(self, name: str, thread: threading.Thread) -> None:
-        """Register a thread for coordinated shutdown tracking.
-
-        Args:
-            name: Unique identifier for this thread
-            thread: The thread to register
-        """
-        with self._thread_registry_lock:
-            self._thread_registry[name] = thread
+        """Register a thread for coordinated shutdown tracking."""
+        self._thread_registry.register(name, thread)
 
     def unregister_thread(self, name: str) -> None:
-        """Remove a thread from the registry.
-
-        Args:
-            name: The thread identifier to remove
-        """
-        with self._thread_registry_lock:
-            self._thread_registry.pop(name, None)
+        """Remove a thread from the registry."""
+        self._thread_registry.unregister(name)
 
     def stop_all_threads(self, timeout: float = 10.0) -> list[str]:
-        """Stop all registered threads with force-kill fallback.
-
-        Args:
-            timeout: Total timeout for stopping all threads
-
-        Returns:
-            List of thread names that could not be stopped
-        """
-        import ctypes
-
-        with self._thread_registry_lock:
-            threads = list(self._thread_registry.items())
-
-        if not threads:
-            return []
-
-        # Calculate per-thread timeout
-        per_thread_timeout = timeout / max(len(threads), 1)
-        failed_threads = []
-
-        for name, thread in threads:
-            if thread is None or not thread.is_alive():
-                continue
-
-            # Try graceful join
-            try:
-                thread.join(timeout=per_thread_timeout)
-            except Exception:
-                pass
-
-            if thread.is_alive():
-                # Try force termination
-                try:
-                    thread_id = thread.ident
-                    if thread_id is not None:
-                        res = ctypes.pythonapi.PyThreadState_SetAsyncExc(
-                            ctypes.c_ulong(thread_id),
-                            ctypes.py_object(SystemExit)
-                        )
-                        if res == 1:
-                            thread.join(timeout=0.5)
-                            if not thread.is_alive():
-                                self.log.info("Force-terminated registered thread '%s'", name)
-                                continue
-                except Exception:
-                    pass
-                failed_threads.append(name)
-                self.log.warning("Could not stop registered thread '%s'", name)
-
-        # Clear registry
-        with self._thread_registry_lock:
-            self._thread_registry.clear()
-
-        return failed_threads
+        """Stop all registered threads with force-kill fallback."""
+        return self._thread_registry.stop_all(timeout=timeout)
 
     def shutdown(self):
         if getattr(self, "_closed", False):
