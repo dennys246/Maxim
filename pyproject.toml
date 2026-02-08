@@ -8,6 +8,17 @@ version = "0.1.0"
 description = "Agentic robotics framework for Reachy Mini with recursive planning and local LLM inference"
 readme = "README.md"
 requires-python = ">=3.12"
+license = {text = "MIT"}
+keywords = ["robotics", "reachy", "llm", "agentic", "planning", "embodied-ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Robotics",
+]
 dependencies = [
     "reachy-mini[gstreamer]==1.2.6",
     "ultralytics==8.3.248",
