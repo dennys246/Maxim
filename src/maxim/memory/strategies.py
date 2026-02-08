@@ -12,14 +12,14 @@ Strategies:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from maxim.memory.types import CompressedMemory, EpisodicMemory
     from maxim.time.scn import SCN
 
 # Type alias for memory types
-MemoryRecord = Union["EpisodicMemory", "CompressedMemory"]
+MemoryRecord = "EpisodicMemory | CompressedMemory"
 
 
 class MemoryStrategy(ABC):
