@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "maxim"
 version = "0.1.0"
-description = "Add your description here"
+description = "Agentic robotics framework for Reachy Mini with recursive planning and local LLM inference"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -54,6 +54,10 @@ semantic = [
     "sentence-transformers>=2.2.0",
     "torch>=2.1",
 ]
+# Temporal reference parsing for natural language time extraction
+temporal = [
+    "dateparser>=1.2.0",
+]
 all = [
     "llama-cpp-python==0.3.8",
     "transformers>=4.40.0",
@@ -63,6 +67,13 @@ all = [
     "huggingface-hub>=0.24.0",
     "piper-tts>=1.2.0",
     "sentence-transformers>=2.2.0",
+    "dateparser>=1.2.0",
+]
+# Test dependencies
+test = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.5.0",  # Parallel test execution
 ]
 
 [project.scripts]
@@ -75,3 +86,42 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["maxim*"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Testing Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short -ra"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "learning: marks learning/convergence tests that verify ML algorithms",
+    "integration: marks tests requiring multiple subsystems",
+    "robot: marks tests requiring Reachy hardware",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src/maxim"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/conscience/selfy.py",  # Too coupled for unit testing currently
+]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+show_missing = true
