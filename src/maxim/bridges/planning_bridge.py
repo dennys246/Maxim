@@ -134,6 +134,28 @@ class PlanHistoryBridge:
                 success=True,
             )
 
+            # Expand results with associative recall for richer context
+            if memories:
+                seed_ids = [m.id for m in memories[:10]]
+                try:
+                    associated = self.hippocampus.recall_associated(
+                        seed_ids, limit=20
+                    )
+                    seen_ids = {m.id for m in memories}
+                    for mem, _score in associated:
+                        if mem.id not in seen_ids:
+                            # Only include successful associated memories
+                            success_val = (
+                                mem.success if hasattr(mem, "success")
+                                else mem.outcome.success if hasattr(mem, "outcome")
+                                else False
+                            )
+                            if success_val:
+                                seen_ids.add(mem.id)
+                                memories.append(mem)
+                except Exception:
+                    pass  # Associative recall is best-effort
+
             # If exact match fails, try broader search
             if not memories:
                 memories = self.hippocampus.recall(

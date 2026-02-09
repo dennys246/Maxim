@@ -103,6 +103,30 @@ class SalienceMemoryBridge:
             successful = self.hippocampus.recall(limit=500, success=True)
             failed = self.hippocampus.recall(limit=200, success=False)
 
+            # Expand with associative recall for richer context
+            if successful:
+                seed_ids = [m.id for m in successful[:20]]
+                try:
+                    associated = self.hippocampus.recall_associated(
+                        seed_ids, limit=50
+                    )
+                    seen_ids = {m.id for m in successful} | {m.id for m in failed}
+                    for mem, _score in associated:
+                        if mem.id not in seen_ids:
+                            seen_ids.add(mem.id)
+                            # Classify associated memory by its success status
+                            success_val = (
+                                mem.success if hasattr(mem, "success")
+                                else mem.outcome.success if hasattr(mem, "outcome")
+                                else False
+                            )
+                            if success_val:
+                                successful.append(mem)
+                            else:
+                                failed.append(mem)
+                except Exception:
+                    pass  # Associative recall is best-effort
+
             # Build interaction records
             for memory in successful:
                 if hasattr(memory, "perception"):

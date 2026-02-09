@@ -409,6 +409,112 @@ class MemoryHub:
         return self.ec.semantic_enabled
 
     # ─────────────────────────────────────────────────────────────────────────
+    # Associative Recall API
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def recall_associated(
+        self,
+        seed_ids: list[str],
+        limit: int = 10,
+        **kwargs: Any,
+    ) -> list[tuple[Any, float]]:
+        """Retrieve memories via spreading activation through the associative graph.
+
+        Follows recall-triggered edges formed during memory capture to find
+        related memories that may not share direct features but are linked
+        through chains of association.
+
+        This is the primary API for context-bridging recall:
+        "make coffee" -> recalls cup memory -> which is linked to kitchen memory.
+
+        Args:
+            seed_ids: Memory IDs to start activation from.
+            limit: Maximum memories to return.
+            **kwargs: Passed to hippocampus.recall_associated (decay, max_depth, threshold).
+
+        Returns:
+            List of (memory, activation_score) tuples, highest activation first.
+        """
+        try:
+            return self.hippocampus.recall_associated(seed_ids, limit, **kwargs)
+        except Exception as e:
+            logger.warning("Associative recall failed: %s", e)
+            return []
+
+    def recall_with_associations(
+        self,
+        limit: int = 10,
+        association_limit: int = 5,
+        *,
+        goal: str | None = None,
+        tool: str | None = None,
+        success: bool | None = None,
+        object_detected: str | None = None,
+        **recall_kwargs: Any,
+    ) -> list[Any]:
+        """Recall memories and expand results with associative neighbors.
+
+        First performs a standard recall(), then follows associative edges
+        from the results to find additional related memories. This enriches
+        recall results with context that wouldn't be found by filter-based
+        queries alone.
+
+        Args:
+            limit: Maximum direct recall results.
+            association_limit: Maximum associated memories to add.
+            goal: Goal filter for initial recall.
+            tool: Tool filter for initial recall.
+            success: Success filter for initial recall.
+            object_detected: Object filter for initial recall.
+            **recall_kwargs: Additional args for hippocampus.recall.
+
+        Returns:
+            Combined list of direct and associated memories (deduplicated).
+        """
+        try:
+            # Step 1: Standard recall
+            direct = self.hippocampus.recall(
+                limit=limit,
+                goal=goal,
+                tool=tool,
+                success=success,
+                object_detected=object_detected,
+                **recall_kwargs,
+            )
+
+            if not direct:
+                return []
+
+            # Step 2: Follow associations from direct results
+            seed_ids = [m.id for m in direct]
+            associated = self.hippocampus.recall_associated(
+                seed_ids, limit=association_limit
+            )
+
+            # Step 3: Merge and deduplicate
+            seen_ids = set(seed_ids)
+            combined = list(direct)
+            for mem, _score in associated:
+                if mem.id not in seen_ids:
+                    seen_ids.add(mem.id)
+                    combined.append(mem)
+
+            return combined
+
+        except Exception as e:
+            logger.warning("Recall with associations failed: %s", e)
+            # Fall back to standard recall
+            return list(
+                self.hippocampus.recall(
+                    limit=limit,
+                    goal=goal,
+                    tool=tool,
+                    success=success,
+                    object_detected=object_detected,
+                )
+            )
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Spatial Bridge API
     # ─────────────────────────────────────────────────────────────────────────
 

@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from maxim.memory.strategies import MemoryStrategy
     from maxim.time.scn import SCN
 
+from maxim.agents.bus import DependencyGraph, Edge, EdgeType
 from maxim.memory.rwlock import RWLock
 from maxim.memory.state_store import StateStore
 from maxim.memory.types import (
@@ -102,6 +103,24 @@ class HippocampusConfig:
     # Auto-save after sleep consolidation
     auto_save_after_sleep: bool = True
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Associative Graph Settings
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # Enable associative edge formation during capture
+    enable_associative_graph: bool = True
+
+    # Max similar memories to link per capture
+    association_limit: int = 5
+
+    # Minimum similarity score to form an edge (0-1)
+    association_threshold: float = 0.5
+
+    # Spreading activation defaults
+    spreading_activation_decay: float = 0.5
+    spreading_activation_max_depth: int = 3
+    spreading_activation_threshold: float = 0.05
+
 
 class Hippocampus:
     """Hybrid hash-table graph for associative memory of agentic loops.
@@ -169,6 +188,9 @@ class Hippocampus:
 
         # Track compressed vs full memory counts
         self._compressed_count: int = 0
+
+        # Associative graph: memory nodes connected by recall-triggered edges
+        self._graph: DependencyGraph[str] = DependencyGraph()
 
         # Optional SCN reference for temporal-aware strategies
         self._scn: "SCN | None" = None
@@ -283,6 +305,10 @@ class Hippocampus:
                 or perception.transcript
             ):
                 self._add_consolidation_candidate(memory_id)
+
+            # Form associative edges to similar recalled memories
+            if self.config.enable_associative_graph:
+                self._form_associations(memory_id, memory)
 
         logger.debug(
             "Captured memory %s: goal=%s, tool=%s, success=%s",
@@ -550,6 +576,103 @@ class Hippocampus:
 
             return results
 
+    def recall_associated(
+        self,
+        seed_ids: list[str],
+        limit: int = 10,
+        *,
+        decay: float | None = None,
+        max_depth: int | None = None,
+        threshold: float | None = None,
+        include_compressed: bool = True,
+    ) -> list[tuple[EpisodicMemory | CompressedMemory, float]]:
+        """Retrieve memories via spreading activation through the associative graph.
+
+        Starting from one or more seed memories, follows associative edges
+        formed during capture() to find related memories that may not share
+        direct perceptual features but are linked through chains of recall.
+
+        This enables context-bridging recall: a memory about finding a cup
+        (linked when the coffee-making memory was formed) becomes reachable
+        from a "make coffee" query, even though "cup" and "coffee" share
+        no direct index keys.
+
+        Args:
+            seed_ids: Memory IDs to start activation from.
+            limit: Maximum memories to return.
+            decay: Activation decay per hop (default: config value).
+            max_depth: Maximum hops from seed (default: config value).
+            threshold: Minimum activation to include (default: config value).
+            include_compressed: Include CompressedMemory results.
+
+        Returns:
+            List of (memory, activation_score) tuples, highest activation first.
+            Seed memories are excluded from results.
+        """
+        decay = decay if decay is not None else self.config.spreading_activation_decay
+        max_depth = max_depth if max_depth is not None else self.config.spreading_activation_max_depth
+        threshold = threshold if threshold is not None else self.config.spreading_activation_threshold
+
+        with self._rwlock.read():
+            # Run spreading activation on the graph
+            activations = self._graph.spreading_activation(
+                seed_ids,
+                initial_activation=1.0,
+                decay=decay,
+                threshold=threshold,
+                max_depth=max_depth,
+            )
+
+            # Collect results, excluding seeds
+            seed_set = set(seed_ids)
+            results: list[tuple[EpisodicMemory | CompressedMemory, float]] = []
+
+            for memory_id, activation in activations.items():
+                if memory_id in seed_set:
+                    continue
+
+                memory = self._memories.get(memory_id)
+                if memory is None:
+                    continue
+
+                if not include_compressed and isinstance(memory, CompressedMemory):
+                    continue
+
+                results.append((memory, activation))
+
+            # Sort by activation score descending
+            results.sort(key=lambda x: x[1], reverse=True)
+            return results[:limit]
+
+    def get_associated_ids(
+        self,
+        memory_id: str,
+    ) -> list[tuple[str, float]]:
+        """Get directly associated memory IDs and weights for a memory.
+
+        Returns one-hop neighbors only (no spreading activation).
+
+        Args:
+            memory_id: The memory to query.
+
+        Returns:
+            List of (neighbor_memory_id, edge_weight) tuples.
+        """
+        with self._rwlock.read():
+            return self._graph.get_associated(memory_id)
+
+    def get_edge_count(self, memory_id: str) -> int:
+        """Get the number of associative edges for a memory.
+
+        Args:
+            memory_id: The memory to query.
+
+        Returns:
+            Number of outgoing association edges.
+        """
+        with self._rwlock.read():
+            return len(self._graph.get_associated(memory_id))
+
     def get_state(self, state_ref: str) -> dict[str, Any] | None:
         """Retrieve a full state snapshot from the StateStore.
 
@@ -608,13 +731,17 @@ class Hippocampus:
             # Serialize index (convert sets to lists)
             index_data = {k: list(v) for k, v in self._context_index.items()}
 
+            # Serialize associative graph edges
+            graph_data = self._graph.to_dict()
+
             payload = {
-                "version": "2.0",  # Updated for Phase 3 (CompressedMemory support)
+                "version": "3.0",  # Updated for associative graph support
                 "saved_at": time.time(),
                 "memories": memories_data,
                 "context_index": index_data,
                 "stats": dict(self._stats),
                 "compressed_count": self._compressed_count,
+                "associative_graph": graph_data,
             }
 
         # Write atomically
@@ -643,9 +770,9 @@ class Hippocampus:
         with open(path, "r", encoding="utf-8") as f:
             payload = json.load(f)
 
-        # Version check - support 1.0 and 2.0
+        # Version check - support 1.0, 2.0, and 3.0
         version = payload.get("version", "0.0")
-        if version not in ("1.0", "2.0"):
+        if version not in ("1.0", "2.0", "3.0"):
             raise ValueError(f"Unsupported hippocampus version: {version}")
 
         with self._rwlock.write():
@@ -685,11 +812,24 @@ class Hippocampus:
             if "compressed_count" in payload:
                 self._compressed_count = payload["compressed_count"]
 
+            # Restore associative graph (v3.0+)
+            self._graph = DependencyGraph()
+            graph_data = payload.get("associative_graph")
+            if graph_data:
+                self._restore_graph(graph_data)
+
+        edge_count = sum(
+            len(self._graph.get_associated(mid))
+            for mid in self._memories
+            if self._graph.get_node(mid) is not None
+        )
+
         logger.info(
-            "Loaded hippocampus from %s (%d memories, %d compressed)",
+            "Loaded hippocampus from %s (%d memories, %d compressed, %d edges)",
             path,
             len(self._memories),
             self._compressed_count,
+            edge_count,
         )
 
     def load_with_recovery(
@@ -783,6 +923,11 @@ class Hippocampus:
                 1 for m in self._memories.values() if getattr(m, "long_term", False)
             )
 
+            # Count graph nodes and edges
+            graph_stats = self._graph.to_dict()
+            graph_node_count = len(graph_stats.get("nodes", []))
+            graph_edge_count = len(graph_stats.get("edges", []))
+
             return {
                 **self._stats,
                 "total_memories": len(self._memories),
@@ -792,6 +937,9 @@ class Hippocampus:
                 "index_keys": len(self._context_index),
                 "consolidation_candidates": len(self._consolidation_candidates),
                 "state_store": self._state_store.stats(),
+                "graph_nodes": graph_node_count,
+                "graph_edges": graph_edge_count,
+                "graph_enabled": self.config.enable_associative_graph,
             }
 
     def check_consistency(self) -> list[str]:
@@ -819,6 +967,21 @@ class Hippocampus:
                 for index_key in index_keys:
                     if memory_id not in self._context_index.get(index_key, set()):
                         issues.append(f"Reverse index mismatch: {memory_id[:8]} claims {index_key}")
+
+            # Check: Graph node consistency (nodes should reference existing memories)
+            graph_data = self._graph.to_dict()
+            for node_id in graph_data.get("nodes", []):
+                if node_id not in self._memories:
+                    issues.append(f"Orphan graph node: {node_id[:8]} not in memories")
+
+            # Check: Graph edge consistency (edges should reference existing nodes)
+            for edge_data in graph_data.get("edges", []):
+                source = edge_data.get("source", "")
+                target = edge_data.get("target", "")
+                if source not in self._memories:
+                    issues.append(f"Graph edge source missing: {source[:8]}")
+                if target not in self._memories:
+                    issues.append(f"Graph edge target missing: {target[:8]}")
 
         return issues
 
@@ -857,6 +1020,13 @@ class Hippocampus:
             for memory_id, memory in self._memories.items():
                 if memory_id not in self._memory_contexts or not self._memory_contexts[memory_id]:
                     self._index_memory(memory_id, memory)
+                    repaired += 1
+
+            # Remove orphan graph nodes (nodes whose memories no longer exist)
+            graph_data = self._graph.to_dict()
+            for node_id in graph_data.get("nodes", []):
+                if node_id not in self._memories:
+                    self._graph.remove_node(node_id)
                     repaired += 1
 
             if repaired > 0:
@@ -914,12 +1084,226 @@ class Hippocampus:
         """Create an index key from a key-value pair."""
         return f"{key}:{value}"
 
+    def _restore_graph(self, graph_data: dict[str, Any]) -> None:
+        """Restore the associative graph from serialized data (lock must be held).
+
+        Reconstructs nodes and edges from the graph's to_dict() output.
+
+        Args:
+            graph_data: Serialized graph from DependencyGraph.to_dict().
+        """
+        # Restore nodes - only for memories that still exist
+        for node_id in graph_data.get("nodes", []):
+            if node_id in self._memories:
+                self._graph.add_node(node_id, node_id)
+
+        # Restore edges (only ASSOCIATES edges, skip duplicates from bidirectional)
+        seen_pairs: set[tuple[str, str]] = set()
+        for edge_data in graph_data.get("edges", []):
+            source = edge_data.get("source", "")
+            target = edge_data.get("target", "")
+            weight = edge_data.get("weight", 1.0)
+            edge_type_name = edge_data.get("type", "ASSOCIATES")
+
+            # Only restore association edges
+            if edge_type_name != "ASSOCIATES":
+                continue
+
+            # Skip if either memory no longer exists
+            if source not in self._memories or target not in self._memories:
+                continue
+
+            # Avoid duplicating bidirectional edges
+            pair = (min(source, target), max(source, target))
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+
+            # Ensure nodes exist
+            if self._graph.get_node(source) is None:
+                self._graph.add_node(source, source)
+            if self._graph.get_node(target) is None:
+                self._graph.add_node(target, target)
+
+            self._graph.add_bidirectional(source, target, EdgeType.ASSOCIATES, weight)
+
+    def _form_associations(
+        self,
+        memory_id: str,
+        memory: EpisodicMemory,
+    ) -> None:
+        """Form bidirectional edges between a new memory and recalled similar memories.
+
+        Called during capture() while write lock is held. This is the core
+        mechanism for building the associative graph: when a new memory is
+        stored, we find similar existing memories and link them, mimicking
+        how biological hippocampal replay strengthens synaptic connections.
+
+        Args:
+            memory_id: ID of the newly captured memory.
+            memory: The EpisodicMemory being captured.
+        """
+        # Recall similar memories (lock already held)
+        similar = self._recall_similar_unlocked(
+            memory.perception,
+            limit=self.config.association_limit,
+            exclude_id=memory_id,
+        )
+
+        if not similar:
+            return
+
+        # Register the new memory as a node in the graph
+        self._graph.add_node(memory_id, memory_id)
+
+        edges_formed = 0
+        for recalled_mem, score in similar:
+            if score < self.config.association_threshold:
+                continue
+
+            # Compute edge weight
+            weight = self._compute_association_weight(memory, recalled_mem, score)
+
+            # Ensure the recalled memory is a node in the graph
+            if self._graph.get_node(recalled_mem.id) is None:
+                self._graph.add_node(recalled_mem.id, recalled_mem.id)
+
+            # Form bidirectional edge (new ↔ recalled)
+            self._graph.add_bidirectional(
+                memory_id, recalled_mem.id, EdgeType.ASSOCIATES, weight
+            )
+
+            # Touch the recalled memory (strengthens its retention)
+            self._touch_internal(recalled_mem.id)
+
+            edges_formed += 1
+
+        if edges_formed > 0:
+            self._stats["edges_formed"] = (
+                self._stats.get("edges_formed", 0) + edges_formed
+            )
+            logger.debug(
+                "Formed %d associative edges for memory %s",
+                edges_formed,
+                memory_id[:8],
+            )
+
+    def _recall_similar_unlocked(
+        self,
+        perception: Perception,
+        limit: int = 5,
+        exclude_id: str | None = None,
+    ) -> list[tuple[EpisodicMemory | CompressedMemory, float]]:
+        """Find similar memories with scores (lock must already be held).
+
+        Returns (memory, score) tuples sorted by score descending.
+        Used internally by capture() to form associative edges without
+        re-acquiring the write lock.
+
+        Args:
+            perception: Current perception to match against.
+            limit: Maximum memories to return.
+            exclude_id: Memory ID to exclude (the one being captured).
+
+        Returns:
+            List of (memory, similarity_score) tuples.
+        """
+        scores: dict[str, float] = defaultdict(float)
+
+        # Score by overlapping detected objects
+        for obj in perception.detected_objects:
+            index_key = f"object:{obj}"
+            for memory_id in self._context_index.get(index_key, set()):
+                if memory_id != exclude_id:
+                    scores[memory_id] += 1.0
+
+        # Score by overlapping detected people
+        for person in perception.detected_people:
+            index_key = f"person:{person}"
+            for memory_id in self._context_index.get(index_key, set()):
+                if memory_id != exclude_id:
+                    scores[memory_id] += 1.0
+
+        if not scores:
+            return []
+
+        # Normalize scores to 0-1 range
+        max_score = max(scores.values()) if scores else 1.0
+        if max_score > 0:
+            normalized = {mid: s / max_score for mid, s in scores.items()}
+        else:
+            normalized = scores
+
+        # Sort by score, then by timestamp for tiebreaking
+        def sort_key(mid: str) -> tuple[float, float]:
+            mem = self._memories.get(mid)
+            ts = mem.timestamp if mem else 0.0
+            return (normalized[mid], ts)
+
+        sorted_ids = sorted(normalized.keys(), key=sort_key, reverse=True)
+
+        results: list[tuple[EpisodicMemory | CompressedMemory, float]] = []
+        for memory_id in sorted_ids[:limit]:
+            memory = self._memories.get(memory_id)
+            if memory is not None:
+                results.append((memory, normalized[memory_id]))
+
+        return results
+
+    def _compute_association_weight(
+        self,
+        new_memory: EpisodicMemory,
+        recalled_memory: EpisodicMemory | CompressedMemory,
+        similarity_score: float,
+    ) -> float:
+        """Compute edge weight for an associative connection.
+
+        Combines perceptual similarity with goal and temporal proximity.
+
+        Args:
+            new_memory: The memory being captured.
+            recalled_memory: A memory recalled during capture.
+            similarity_score: Raw similarity from _recall_similar_unlocked.
+
+        Returns:
+            Edge weight (0-1).
+        """
+        weight = similarity_score * 0.6  # Base: perceptual overlap
+
+        # Boost for shared goal
+        new_goal = new_memory.context.active_goal or ""
+        if isinstance(recalled_memory, CompressedMemory):
+            old_goal = recalled_memory.goal or ""
+        else:
+            old_goal = recalled_memory.context.active_goal or ""
+
+        if new_goal and old_goal and new_goal == old_goal:
+            weight += 0.25
+        elif new_goal and old_goal:
+            # Partial goal overlap via word intersection
+            w1 = set(new_goal.lower().split())
+            w2 = set(old_goal.lower().split())
+            common = {"the", "a", "an", "to", "and", "or", "in", "on", "at"}
+            w1 -= common
+            w2 -= common
+            if w1 and w2:
+                overlap = len(w1 & w2) / len(w1 | w2)
+                weight += 0.25 * overlap
+
+        # Temporal proximity bonus (closer in time = stronger link)
+        time_diff = abs(new_memory.timestamp - recalled_memory.timestamp)
+        temporal_bonus = 0.15 / (1.0 + time_diff / 3600)  # Decays over hours
+        weight += temporal_bonus
+
+        return min(1.0, weight)
+
     def _remove_memory(self, memory_id: str) -> None:
         """Remove a memory and clean up all references (lock must be held).
 
         This method handles:
         1. Context index cleanup
-        2. Subsystem notification via callbacks
+        2. Associative graph edge cleanup
+        3. Subsystem notification via callbacks
         """
         # Clean up context index
         for index_key in self._memory_contexts.get(memory_id, set()):
@@ -928,6 +1312,10 @@ class Hippocampus:
                 del self._context_index[index_key]
 
         self._memory_contexts.pop(memory_id, None)
+
+        # Clean up associative graph node and its edges
+        if self._graph.get_node(memory_id) is not None:
+            self._graph.remove_node(memory_id)
 
         # Notify subsystems of deletion
         for callback in self._on_memory_deleted:
@@ -1029,8 +1417,8 @@ class Hippocampus:
         for memory_id, record in list(self._memories.items()):
             # Skip if already compressed
             if isinstance(record, CompressedMemory):
-                # Still evaluate for removal
-                score = strategy.score_for_retention(record, now, 0)
+                # Still evaluate for removal (use stored edge_count)
+                score = strategy.score_for_retention(record, now, record.edge_count)
                 # Apply long-term boost
                 if record.long_term:
                     score *= self.config.long_term_retention_boost
@@ -1043,7 +1431,8 @@ class Hippocampus:
                 continue
 
             # Full EpisodicMemory - evaluate
-            score = strategy.score_for_retention(record, now, 0)
+            edge_count = len(self._graph.get_associated(memory_id))
+            score = strategy.score_for_retention(record, now, edge_count)
             # Apply long-term boost
             if record.long_term:
                 score *= self.config.long_term_retention_boost
@@ -1100,8 +1489,9 @@ class Hippocampus:
         if not isinstance(record, EpisodicMemory):
             return  # Already compressed or invalid
 
-        # Create compressed version
-        compressed = CompressedMemory.from_episodic(record, edge_count=0)
+        # Create compressed version with actual edge count from the graph
+        actual_edge_count = len(self._graph.get_associated(memory_id))
+        compressed = CompressedMemory.from_episodic(record, edge_count=actual_edge_count)
 
         # Replace in storage
         self._memories[memory_id] = compressed  # type: ignore[assignment]

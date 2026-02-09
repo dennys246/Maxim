@@ -317,6 +317,7 @@ class FearCircuitBridge:
         category: str,
         pattern: str,
         context: str = "",
+        seed_memory_ids: list[str] | None = None,
     ) -> float:
         """Get learned risk adjustment for a pattern.
 
@@ -325,10 +326,15 @@ class FearCircuitBridge:
         - Zero: Use default risk assessment
         - Positive: Higher risk than default (many true positives)
 
+        When seed_memory_ids are provided, also queries the associative
+        graph for related memories that involved similar risk patterns,
+        enriching the adjustment with contextual history.
+
         Args:
             category: DangerCategory value
             pattern: Specific pattern (e.g., "subprocess", "eval")
             context: Additional context
+            seed_memory_ids: Optional memory IDs to query associations from
 
         Returns:
             Risk adjustment (-0.3 to +0.3)
@@ -337,18 +343,50 @@ class FearCircuitBridge:
             return 0.0
 
         try:
+            adjustment = 0.0
+
             key = (category, pattern)
             if key in self._adjustments:
                 adj = self._adjustments[key]
-                return adj.adjustment
+                adjustment = adj.adjustment
+            else:
+                # Check for category-level adjustment
+                key_any = (category, "*")
+                if key_any in self._adjustments:
+                    adj = self._adjustments[key_any]
+                    adjustment = adj.adjustment * 0.5  # Reduced weight for generic
 
-            # Check for category-level adjustment
-            key_any = (category, "*")
-            if key_any in self._adjustments:
-                adj = self._adjustments[key_any]
-                return adj.adjustment * 0.5  # Reduced weight for generic
+            # Enrich with associative graph context if seeds provided
+            if seed_memory_ids and self.hippocampus:
+                try:
+                    associated = self.hippocampus.recall_associated(
+                        seed_memory_ids, limit=10
+                    )
+                    # Check if associated memories had risk-relevant outcomes
+                    risk_signals = 0
+                    safe_signals = 0
+                    for mem, _score in associated:
+                        success = (
+                            mem.success if hasattr(mem, "success")
+                            else mem.outcome.success if hasattr(mem, "outcome")
+                            else None
+                        )
+                        if success is True:
+                            safe_signals += 1
+                        elif success is False:
+                            risk_signals += 1
 
-            return 0.0
+                    if risk_signals + safe_signals > 0:
+                        # Blend in associative context (capped contribution)
+                        assoc_factor = (risk_signals - safe_signals) / (
+                            risk_signals + safe_signals
+                        )
+                        adjustment += assoc_factor * 0.1  # Max ±0.1 from associations
+                        adjustment = max(-self.max_adjustment, min(self.max_adjustment, adjustment))
+                except Exception:
+                    pass  # Associative recall is best-effort
+
+            return adjustment
 
         except Exception as e:
             self._record_error(e)
