@@ -302,16 +302,22 @@ class EscalationLearningBridge:
         goal: str | None = None,
         novelty: float = 0.5,
         salience: float = 0.5,
+        seed_memory_ids: list[str] | None = None,
     ) -> float:
         """Get learned threshold for current context.
 
         The threshold represents the combined novelty+salience level
         above which we should escalate to human.
 
+        When seed_memory_ids are provided, also queries the associative
+        graph for related memories to inform the threshold with broader
+        contextual history.
+
         Args:
             goal: Current goal (used to determine goal type)
             novelty: Current novelty level
             salience: Current salience level
+            seed_memory_ids: Optional memory IDs to query associations from
 
         Returns:
             Threshold value (0-1). Escalate if novelty+salience > threshold
@@ -336,20 +342,49 @@ class EscalationLearningBridge:
             if key in self._thresholds:
                 threshold = self._thresholds[key]
                 base = (self.default_novelty_threshold + self.default_salience_threshold) / 2
-                return base + threshold.adjustment
-
-            # Try goal-type without hour specificity
-            key_any_hour = (goal_type, -1)
-            if key_any_hour in self._thresholds:
-                threshold = self._thresholds[key_any_hour]
+                result = base + threshold.adjustment
+            elif (goal_type, -1) in self._thresholds:
+                # Try goal-type without hour specificity
+                threshold = self._thresholds[(goal_type, -1)]
                 base = (self.default_novelty_threshold + self.default_salience_threshold) / 2
-
-                # Apply temporal adjustment from SCN
                 temporal_adj = self._get_temporal_adjustment(hour_bin)
-                return base + threshold.adjustment * temporal_adj
+                result = base + threshold.adjustment * temporal_adj
+            else:
+                result = self._get_default_threshold(novelty, salience)
 
-            # No learned threshold, use default
-            return self._get_default_threshold(novelty, salience)
+            # Enrich with associative graph context if seeds provided
+            if seed_memory_ids and self.hippocampus:
+                try:
+                    associated = self.hippocampus.recall_associated(
+                        seed_memory_ids, limit=10
+                    )
+                    # If associated memories show high failure rates, lower threshold
+                    # (escalate more readily in contexts with historically bad outcomes)
+                    successes = 0
+                    failures = 0
+                    for mem, _score in associated:
+                        success_val = (
+                            mem.success if hasattr(mem, "success")
+                            else mem.outcome.success if hasattr(mem, "outcome")
+                            else None
+                        )
+                        if success_val is True:
+                            successes += 1
+                        elif success_val is False:
+                            failures += 1
+
+                    if successes + failures >= 3:
+                        failure_rate = failures / (successes + failures)
+                        # High failure rate in associated memories -> lower threshold
+                        if failure_rate > 0.5:
+                            result -= 0.05 * (failure_rate - 0.5) * 2
+                        # High success rate -> slightly raise threshold
+                        elif failure_rate < 0.2:
+                            result += 0.02
+                except Exception:
+                    pass  # Associative recall is best-effort
+
+            return result
 
         except Exception as e:
             self._record_error(e)

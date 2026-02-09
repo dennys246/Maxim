@@ -117,6 +117,21 @@ class SpatialMemoryBridge:
                 success=True,
             )
 
+            # Expand with associative recall for broader spatial coverage
+            if memories:
+                seed_ids = [m.id for m in memories[:20]]
+                try:
+                    associated = self.hippocampus.recall_associated(
+                        seed_ids, limit=50
+                    )
+                    seen_ids = {m.id for m in memories}
+                    for mem, _score in associated:
+                        if mem.id not in seen_ids and hasattr(mem, "perception"):
+                            seen_ids.add(mem.id)
+                            memories.append(mem)
+                except Exception:
+                    pass  # Associative recall is best-effort
+
             # Extract location patterns
             location_counts: dict[tuple[str, int, int], dict[str, Any]] = {}
 

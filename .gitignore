@@ -236,3 +236,5 @@ data/*
 adaptive_thresholds.json
 focus_learner.json
 learned_bounds.json
+
+htmls-guides/
