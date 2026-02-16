@@ -25,7 +25,7 @@ from maxim.tools.filesystem import (
 )
 from maxim.tools.registry import ToolRegistry
 from maxim.utils.filesystem_policy import (
-    ensure_sandbox_exists,
+    ensure_workspace_exists,
     get_effective_cwd,
     get_mode_filesystem_config,
 )
@@ -55,11 +55,12 @@ def build_tool_registry(
     output_watcher: OutputWatcher | None = None,
     response_output: ResponseOutput | None = None,
     operational_mode: str = "passive",
+    gateway: object | None = None,
 ) -> ToolRegistry:
     """Build the tool registry with mode-based filesystem containment.
 
     Filesystem containment by mode:
-    - passive: Restricted to .maxim_sandbox folder within CWD
+    - passive: Restricted to .maxim_workspace folder within CWD
     - active: Can read/write within CWD, can request directory change
     - singularity: Full filesystem access
 
@@ -82,13 +83,13 @@ def build_tool_registry(
     cwd = get_effective_cwd()
     mode_config = get_mode_filesystem_config(operational_mode, cwd)
 
-    # Ensure sandbox exists for passive mode
+    # Ensure workspace exists for passive mode
     if operational_mode == "passive":
-        sandbox_path = ensure_sandbox_exists(cwd)
-        logger.info("Passive mode: filesystem restricted to sandbox: %s", sandbox_path)
+        workspace_path = ensure_workspace_exists(cwd)
+        logger.info("Passive mode: filesystem restricted to workspace: %s", workspace_path)
     elif operational_mode == "active":
-        # Also ensure sandbox exists (for any tools that need it)
-        ensure_sandbox_exists(cwd)
+        # Also ensure workspace exists (for any tools that need it)
+        ensure_workspace_exists(cwd)
         logger.info("Active mode: filesystem restricted to CWD: %s", cwd)
     else:
         logger.info("Singularity mode: full filesystem access")
@@ -239,6 +240,16 @@ def build_tool_registry(
 
             registry.register(RespondTool(response_output))
             registry.register(SpeakTool(response_output))
+        except Exception:
+            pass
+
+    # Register communication tools (if gateway provided)
+    if gateway is not None:
+        try:
+            from maxim.tools.comms import CallUserTool, SendMessageTool
+
+            registry.register(SendMessageTool(gateway))
+            registry.register(CallUserTool(gateway))
         except Exception:
             pass
 
