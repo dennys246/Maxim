@@ -1,13 +1,18 @@
-"""Hippocampus memory type definitions.
+"""Memory record type definitions.
 
-This module defines the data structures for episodic memory storage.
-Each EpisodicMemory captures a complete agentic loop cycle:
-perception -> context -> decision -> action -> outcome.
+This module defines the base ABCs and concrete data structures for all
+memory systems.  The MemoryRecord ABC provides shared tracking fields
+(id, timestamps, access counts, long-term flag) that are common across
+EpisodicMemory (Hippocampus), MathMemory (Angular Gyrus), and the
+future SemanticMemory (ATL).
+
+CompressedRecord extends MemoryRecord for lightweight compressed forms.
 """
 
 from __future__ import annotations
 
 import time
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -76,7 +81,57 @@ class Outcome:
 
 
 @dataclass
-class CompressedMemory:
+class MemoryRecord(ABC):
+    """Abstract base class for all memory records.
+
+    Provides common tracking fields shared by EpisodicMemory,
+    MathMemory, SemanticMemory, and their compressed forms.
+
+    Concrete subclasses must implement to_dict() and from_dict().
+    """
+
+    id: str
+    timestamp: float
+
+    # Access tracking for memory decay
+    created_at: float = field(default_factory=time.time)
+    accessed_at: float = field(default_factory=time.time)
+    access_count: int = 1
+
+    # Long-term memory flag (consolidated, resistant to removal)
+    long_term: bool = False
+    consolidated_at: float | None = None
+
+    def touch(self) -> None:
+        """Update access tracking (called on recall)."""
+        self.accessed_at = time.time()
+        self.access_count += 1
+
+    @abstractmethod
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for JSON persistence."""
+        ...
+
+    @classmethod
+    @abstractmethod
+    def from_dict(cls, data: dict[str, Any]) -> MemoryRecord:
+        """Deserialize from JSON."""
+        ...
+
+
+@dataclass
+class CompressedRecord(MemoryRecord):
+    """Abstract base for compressed memory forms.
+
+    Extends MemoryRecord with graph edge count.
+    Concrete subclasses: CompressedMemory, CompressedMathMemory.
+    """
+
+    edge_count: int = 0
+
+
+@dataclass
+class CompressedMemory(CompressedRecord):
     """Lightweight summary of an old episodic memory.
 
     Used for long-term storage when full EpisodicMemory data is no longer needed.
@@ -84,20 +139,12 @@ class CompressedMemory:
     reducing memory footprint (~200 bytes vs ~2.5KB for full EpisodicMemory).
 
     Compressed memories still appear in queries but have limited data.
+
+    Inherits from CompressedRecord: id, timestamp, created_at, accessed_at,
+    access_count, long_term, consolidated_at, edge_count, touch().
     """
 
-    id: str
-    timestamp: float
-    run_id: str
-
-    # Access tracking
-    created_at: float
-    accessed_at: float
-    access_count: int
-
-    # Long-term memory flag
-    long_term: bool = False
-    consolidated_at: float | None = None
+    run_id: str = ""
 
     # Essential decision data (for queries)
     goal: str | None = None
@@ -109,9 +156,6 @@ class CompressedMemory:
     object_count: int = 0
     novelty: float = 0.5
     salience: float = 0.5
-
-    # Graph metadata
-    edge_count: int = 0
 
     @classmethod
     def from_episodic(cls, memory: "EpisodicMemory", edge_count: int = 0) -> "CompressedMemory":
@@ -181,28 +225,17 @@ class CompressedMemory:
 
 
 @dataclass
-class EpisodicMemory:
+class EpisodicMemory(MemoryRecord):
     """A complete agentic loop cycle.
 
     This is the fundamental unit stored in the Hippocampus.
     Each record captures: observe -> decide -> act -> evaluate.
 
-    Named EpisodicMemory (not Memory) to avoid collision with the
-    existing Memory ABC in base.py.
+    Inherits from MemoryRecord: id, timestamp, created_at, accessed_at,
+    access_count, long_term, consolidated_at, touch().
     """
 
-    id: str
-    timestamp: float
-    run_id: str
-
-    # Access tracking for memory decay
-    created_at: float = field(default_factory=time.time)
-    accessed_at: float = field(default_factory=time.time)
-    access_count: int = 1
-
-    # Long-term memory flag (consolidated, resistant to removal) - Phase 3
-    long_term: bool = False
-    consolidated_at: float | None = None
+    run_id: str = ""
 
     # The five phases of the loop
     perception: Perception = field(default_factory=Perception)
@@ -317,6 +350,8 @@ class EpisodicMemory:
 
 
 __all__ = [
+    "MemoryRecord",
+    "CompressedRecord",
     "Perception",
     "Context",
     "Decision",

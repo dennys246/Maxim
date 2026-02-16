@@ -15,11 +15,8 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from maxim.memory.types import CompressedMemory, EpisodicMemory
+    from maxim.memory.types import MemoryRecord
     from maxim.time.scn import SCN
-
-# Type alias for memory types
-MemoryRecord = "EpisodicMemory | CompressedMemory"
 
 
 class MemoryStrategy(ABC):
