@@ -227,9 +227,11 @@ class YOLO8:
             except Exception:
                 pass
 
-    def segment_photos(self, photos, interests = [0, 1, 2, 3, 4], display = False, save_video = False):
+    def segment_photos(self, photos, interests=None, display=False, save_video=False):
+        # interests parameter is deprecated — all COCO classes are now detected.
+        # Salience filtering happens downstream in PerceptionAgent/SalienceNetwork.
 
-        observations: list[list[Any]] = [] # Things of interest
+        observations: list[list[Any]] = []
         if photos is None:
             return observations
 
@@ -244,11 +246,10 @@ class YOLO8:
             if not (photo.ndim == 3 and photo.shape[2] == 3):
                 continue
 
-            # Track people in this frame
+            # Track all objects in this frame (all 80 COCO classes)
             try:
                 results = self.model.track(
                     photo,
-                    classes=interests,
                     conf=self.conf,
                     persist=True,
                     verbose=False,
@@ -257,7 +258,6 @@ class YOLO8:
                 try:
                     results = self.model.track(
                         photo,
-                        classes=interests,
                         conf=self.conf,
                         persist=True,
                     )
