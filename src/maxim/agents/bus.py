@@ -57,6 +57,7 @@ class FailureStrategy(Enum):
     SKIP = auto()  # Skip and continue to next
     ABORT_PARENT = auto()  # Fail the entire parent goal
     ESCALATE = auto()  # Raise priority and retry
+    REPLAN = auto()  # Trigger plan-level re-decomposition
 
 
 class EdgeType(Enum):
@@ -99,6 +100,10 @@ class Percept:
 
     # Exploration commands
     explore_command: dict[str, Any] | None = None  # Parsed explore command
+
+    # Generic content and metadata (for comms, archives, preemption context, etc.)
+    content: str | None = None
+    metadata: dict[str, Any] | None = None
 
     # Raw data for downstream
     raw_transcript_text: str | None = None
@@ -209,8 +214,52 @@ class StructuredContext:
     # Each entry: {"user": str, "assistant": str, "timestamp": float}
     conversation_history: list[dict] = field(default_factory=list)
 
+    # Statistical context (from StatisticianAgent via bus)
+    statistical_context: str = ""
+    active_pattern_count: int = 0
+
+    # Knowledge context (from ATL semantic memory + AG pattern memory)
+    # Each entry: {"concept_name", "definition", "category", "confidence",
+    #              "source_layer", "provenance", "relationships": [...]}
+    knowledge_context: list[dict] = field(default_factory=list)
+
     # Root goal reminder
     root_goal: str = "Understand reality and help people."
+
+    # Plan progress (from PlanManager when a long-horizon plan is active)
+    plan_progress: PlanProgressContext | None = None
+
+
+@dataclass
+class PlanProgressContext:
+    """Injected into StructuredContext when a long-horizon plan is active."""
+
+    plan_id: str
+    objective: str
+    status: str
+    current_phase_index: int
+    total_phases: int
+    current_phase_description: str = ""
+    phases_completed: int = 0
+    phases_failed: int = 0
+    energy_utilization: dict[str, float] = field(default_factory=dict)
+    is_replanning: bool = False
+    replan_count: int = 0
+
+    def to_prompt_section(self) -> str:
+        """Format as a structured prompt section for the LLM."""
+        lines = [
+            f"## Active Plan: {self.objective}",
+            f"Status: {self.status}",
+            f"Phase: {self.current_phase_index + 1}/{self.total_phases} — {self.current_phase_description}",
+            f"Completed: {self.phases_completed}, Failed: {self.phases_failed}",
+        ]
+        if self.is_replanning:
+            lines.append(f"REPLANNING (attempt {self.replan_count})")
+        if self.energy_utilization:
+            parts = [f"{d}: {u:.0%}" for d, u in self.energy_utilization.items()]
+            lines.append(f"Energy: {', '.join(parts)}")
+        return "\n".join(lines)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -381,13 +430,120 @@ class ToolCall:
 
 @dataclass
 class ToolResult:
-    """Result of tool execution."""
+    """Result of tool execution, published on the bus.
+
+    Constructed by the agent loop from the raw ToolOutput (tools.base)
+    plus action metadata (tool_call_id, tool_name, params).
+    """
 
     tool_call_id: str
     tool_name: str
     success: bool
     result: Any = None
     error: str | None = None
+    params: dict[str, Any] = field(default_factory=dict)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Data Classes - Plan Events
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class PlanCreated:
+    """Published when a new long-horizon plan is created."""
+
+    plan_id: str
+    objective: str
+    phase_count: int
+    timestamp: float
+
+
+@dataclass
+class PhaseStarted:
+    """Published when a plan phase becomes active."""
+
+    plan_id: str
+    phase_id: str
+    phase_index: int
+    description: str
+    timestamp: float
+
+
+@dataclass
+class PhaseCompleted:
+    """Published when a plan phase completes (success or failure)."""
+
+    plan_id: str
+    phase_id: str
+    success: bool
+    result_summary: str | None = None
+    error: str | None = None
+    energy_spent: float = 0.0
+    timestamp: float = field(default_factory=time.time)
+
+
+@dataclass
+class PlanCompleted:
+    """Published when an entire plan completes."""
+
+    plan_id: str
+    success: bool
+    phases_completed: int
+    phases_total: int
+    total_energy_spent: float = 0.0
+    timestamp: float = field(default_factory=time.time)
+
+
+@dataclass
+class PlanRestored:
+    """Published when a plan is restored from disk on session start."""
+
+    plan_id: str
+    objective: str
+    current_phase_index: int
+    status: str
+    timestamp: float
+
+
+@dataclass
+class PlanReplanRequested:
+    """Published when a phase failure triggers re-decomposition."""
+
+    plan_id: str
+    failed_phase_id: str
+    reason: str
+    replan_context: Any = None  # ReplanContext (Any to avoid circular import)
+    timestamp: float = field(default_factory=time.time)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Data Classes - Statistical
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class StatisticalInsight:
+    """Published by StatisticianAgent when a pattern is confirmed."""
+
+    timestamp: float
+    insight_type: str  # "pattern", "anomaly", "temporal", "correlation"
+    metric: str  # "tool:navigate:success", "goal:search:latency"
+    description: str  # Actionable description
+    severity: float  # 0.0-1.0
+    pattern_type: str  # "trending", "cyclic", "clustering", "random"
+    temporal_context: str  # "normal for this time" or "unusual for Tuesday AM"
+    data: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class StatisticalSummary:
+    """Periodic summary from StatisticianAgent for context building."""
+
+    timestamp: float
+    summary: str  # Actionable natural language (for StructuredContext)
+    active_patterns: int  # Count of CONFIRMED_PATTERN metrics
+    metrics_monitored: int  # Total metrics being tracked
 
 
 # ─────────────────────────────────────────────────────────────────────────────
