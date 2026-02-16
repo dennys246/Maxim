@@ -90,10 +90,10 @@ class OrientingResponse(Behavior):
             if conf < self.min_confidence:
                 continue
 
-            # Get novelty score
+            # Get novelty score (with class-level modulation)
             track_id = det.get("track_id")
             if self._novelty_tracker and track_id is not None:
-                novelty = self._novelty_tracker.get_novelty(track_id)
+                novelty = self._novelty_tracker.get_novelty(track_id, class_id=det.get("class_id"))
             else:
                 # Without tracker, use confidence as proxy
                 novelty = 1.0 + conf
