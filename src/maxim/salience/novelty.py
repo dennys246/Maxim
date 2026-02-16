@@ -8,7 +8,7 @@ This wrapper provides safe concurrent access.
 from __future__ import annotations
 
 import threading
-from typing import Any
+from typing import Any, Callable
 
 from maxim.inference.segment_vision import NoveltyTracker
 
@@ -37,17 +37,18 @@ class ThreadSafeNoveltyTracker:
         self._tracker = tracker or NoveltyTracker()
         self._lock = threading.Lock()
 
-    def get_novelty(self, track_id: Any) -> float:
+    def get_novelty(self, track_id: Any, class_id: int | None = None) -> float:
         """Get novelty score for a track_id (thread-safe).
 
         Args:
             track_id: The track ID to look up.
+            class_id: Optional COCO class ID for class-level modulation.
 
         Returns:
             Novelty score (higher = more novel).
         """
         with self._lock:
-            return self._tracker.get_novelty(track_id)
+            return self._tracker.get_novelty(track_id, class_id=class_id)
 
     def update(self, track_id: Any) -> None:
         """Mark a track_id as seen now (thread-safe).
@@ -58,6 +59,31 @@ class ThreadSafeNoveltyTracker:
         with self._lock:
             self._tracker.update(track_id)
 
+    def update_with_class(self, track_id: Any, class_id: int) -> None:
+        """Mark a track_id as seen and register its class (thread-safe).
+
+        If this is a new track_id, increments the unique instance count
+        for its class, driving class-level habituation.
+
+        Args:
+            track_id: The track ID that was seen.
+            class_id: COCO class ID for this detection.
+        """
+        with self._lock:
+            self._tracker.update_with_class(track_id, class_id)
+
+    def get_class_novelty(self, class_id: int) -> float:
+        """Get class-level novelty score (thread-safe).
+
+        Args:
+            class_id: COCO class ID.
+
+        Returns:
+            Class novelty score (higher = less familiar category).
+        """
+        with self._lock:
+            return self._tracker.get_class_novelty(class_id)
+
     def update_batch(self, track_ids: list[Any]) -> None:
         """Mark multiple track_ids as seen now (thread-safe).
 
@@ -67,18 +93,21 @@ class ThreadSafeNoveltyTracker:
         with self._lock:
             self._tracker.update_batch(track_ids)
 
-    def get_novelty_batch(self, track_ids: list[Any]) -> dict[Any, float]:
+    def get_novelty_batch(self, track_ids: list[Any], class_ids: dict[Any, int] | None = None) -> dict[Any, float]:
         """Get novelty scores for multiple track_ids in one lock acquisition.
 
         More efficient than calling get_novelty() repeatedly.
 
         Args:
             track_ids: List of track IDs to look up.
+            class_ids: Optional mapping of track_id -> class_id for class modulation.
 
         Returns:
             Dict mapping track_id to novelty score.
         """
         with self._lock:
+            if class_ids:
+                return {tid: self._tracker.get_novelty(tid, class_id=class_ids.get(tid)) for tid in track_ids}
             return {tid: self._tracker.get_novelty(tid) for tid in track_ids}
 
     def focus(self, track_id: Any) -> None:
@@ -124,6 +153,20 @@ class ThreadSafeNoveltyTracker:
             novelty = self._tracker.get_novelty(track_id)
             self._tracker.update(track_id)
             return novelty
+
+    def set_modulation_lookup(self, lookup: Callable[[int], float] | None) -> None:
+        """Set sensitization modulation callback (thread-safe).
+
+        Args:
+            lookup: Callable taking class_id (int), returning float >= 1.0. None to disable.
+        """
+        with self._lock:
+            self._tracker.set_modulation_lookup(lookup)
+
+    @property
+    def sensitization_ceiling(self) -> float:
+        """Max multiplier for sensitized class novelty."""
+        return self._tracker.sensitization_ceiling
 
     @property
     def focus_decay_seconds(self) -> float:
