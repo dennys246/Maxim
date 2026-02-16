@@ -415,7 +415,7 @@ OPERATIONAL_MODES: dict[str, ModeDefinition] = {
         allowed_tools=CORE_TOOLS | {"read_file", "glob", "list_directory", "internet_search", "http_fetch", "write_file"},
         forbidden_tools={"execute_file", "maxim_command", "request_directory_change"},
         max_initiative=0.3,  # Low proactivity - mostly reactive
-        can_access_filesystem=True,  # Read CWD, write sandbox
+        can_access_filesystem=True,  # Read CWD, write workspace
         can_access_network=True,
         can_execute_code=False,
         preferred_strategies=["observe", "reflect", "learn"],
@@ -434,16 +434,20 @@ Your role is to:
 - Focus on the current STRATEGY to guide your behavior
 
 FILESYSTEM PERMISSIONS:
-- SANDBOX (.maxim_sandbox/): You can ALWAYS write here - use it for notes, plans, drafts, and logs
+- WORKSPACE (.maxim_workspace/): You can ALWAYS write here - your personal working area
+  - drafts/   → Proposed file edits, code drafts, work-in-progress
+  - notes/    → Journaling, thinking notes, observations
+  - plans/    → Structured plans for CWD modifications
+  - scratch/  → Temporary working files, ephemeral data
 - CWD (current working directory): You can READ files, but can only PROPOSE edits (requires approval)
 - Additional folders: Check accessible_folders for any extra granted access
 - Execution: Sandbox execution requires approval
 
 When in passive mode:
-- You CAN: read files, write to sandbox (journaling), search the internet, respond to questions
+- You CAN: read files, write to workspace (journaling), search the internet, respond to questions
 - You CAN PROPOSE: edits to CWD files (submit as proposals for approval)
 - You CANNOT: execute code, change directories, or act without approval
-- Use the sandbox as your workspace for drafts, plans, and personal notes
+- Use the workspace directories to organize your work: drafts/ for code, plans/ for proposals, notes/ for thinking
 
 Strategy modifies your focus (observe vs explore vs research) but you remain in planning mode.""",
         outcome_memory_key="passive_outcomes",
@@ -480,14 +484,18 @@ Your role is to:
 - Use tools to accomplish objectives
 
 FILESYSTEM PERMISSIONS:
-- SANDBOX (.maxim_sandbox/): You can ALWAYS write here freely - use it for workspace, drafts, logs
+- WORKSPACE (.maxim_workspace/): You can ALWAYS write here freely - your personal working area
+  - drafts/   → Proposed file edits, code drafts, work-in-progress
+  - notes/    → Journaling, thinking notes, observations
+  - plans/    → Structured plans for CWD modifications
+  - scratch/  → Temporary working files, ephemeral data
 - CWD (current working directory): You can SUGGEST direct edits (requires approval before execution)
 - Additional folders: Check accessible_folders for any extra granted access
 - Execution: Sandbox execution requires approval
 - Directory changes: Use 'request_directory_change' tool if you need to work elsewhere
 
 When in active mode:
-- You CAN: read/write sandbox freely, read CWD, search, respond, use robot tools
+- You CAN: read/write workspace freely, read CWD, search, respond, use robot tools
 - You CAN SUGGEST: direct edits to CWD files (shown to user for approval)
 - REQUIRES APPROVAL: CWD writes, sandbox execution, directory changes
 - Act decisively but thoughtfully - quality over speed
@@ -526,14 +534,18 @@ Your role is to:
 - Balance exploration with exploitation
 
 FILESYSTEM PERMISSIONS:
-- SANDBOX (.maxim_sandbox/): Full access - read, write, execute freely
+- WORKSPACE (.maxim_workspace/): Full access - read, write, execute freely
+  - drafts/   → Proposed file edits, code drafts, work-in-progress
+  - notes/    → Journaling, thinking notes, observations
+  - plans/    → Structured plans for CWD modifications
+  - scratch/  → Temporary working files, ephemeral data
 - CWD (current working directory): Full access - read, write, execute freely
 - Additional folders: Check accessible_folders for any extra granted access
 - System directories (/bin, /etc, etc.) are still protected by WriteFileTool safeguards
 - Directory changes: Full capability to change working directory
 
 In singularity mode:
-- You have FULL access to sandbox AND CWD including code execution
+- You have FULL access to workspace AND CWD including code execution
 - You make decisions independently and act on them
 - You are expected to reason about consequences before acting
 - Safety and ethical constraints STILL APPLY - Constitution overrides all
@@ -959,54 +971,54 @@ TOOL_DESCRIPTIONS: dict[str, dict[str, Any]] = {
         "followup_type": None,  # Terminal action
     },
     "read_file": {
-        "description": "Read the contents of a file. For sandbox files, use '.maxim_sandbox/' prefix.",
-        "params": {"path": "Path to the file to read (sandbox files: '.maxim_sandbox/filename')"},
-        "example": {"tool_name": "read_file", "params": {"path": ".maxim_sandbox/script.py"}},
+        "description": "Read the contents of a file. For workspace files, use '.maxim_workspace/' prefix.",
+        "params": {"path": "Path to the file to read (workspace files: '.maxim_workspace/filename')"},
+        "example": {"tool_name": "read_file", "params": {"path": ".maxim_workspace/script.py"}},
         "followup_type": "process",  # LLM should process file contents
     },
     "write_file": {
         "description": """Create or update a file. USE THIS when asked to 'create', 'write', 'make', 'update', 'modify', or 'save' a script, file, or code.
 
-**SANDBOX RESTRICTION (CRITICAL)**: All files MUST be written to the '.maxim_sandbox/' directory.
-Paths MUST start with '.maxim_sandbox/':
-- CORRECT: '.maxim_sandbox/hello.py', '.maxim_sandbox/scripts/test.py'
+**WORKSPACE RESTRICTION (CRITICAL)**: All files MUST be written to the '.maxim_workspace/' directory.
+Paths MUST start with '.maxim_workspace/':
+- CORRECT: '.maxim_workspace/hello.py', '.maxim_workspace/scripts/test.py'
 - WRONG: 'hello.py', '/tmp/test.py', 'scripts/test.py' (will FAIL!)
 
 EXAMPLE - Simple file creation:
 {
-  "action": {"tool_name": "write_file", "params": {"path": ".maxim_sandbox/hello.py", "content": "print('Hello world')"}}
+  "action": {"tool_name": "write_file", "params": {"path": ".maxim_workspace/hello.py", "content": "print('Hello world')"}}
 }
 
 EFFICIENT TWO-CALL WORKFLOW (for complex tasks):
 CALL 1 - BATCHED EXPLORATION:
 {
-  "action": {"tool_name": "glob", "params": {"pattern": ".maxim_sandbox/**/*.py"}},
+  "action": {"tool_name": "glob", "params": {"pattern": ".maxim_workspace/**/*.py"}},
   "parallel_actions": [
-    {"tool_name": "read_file", "params": {"path": ".maxim_sandbox/existing.py"}}
+    {"tool_name": "read_file", "params": {"path": ".maxim_workspace/existing.py"}}
   ]
 }
 
 CALL 2 - INFORMED WRITE:
 {
-  "action": {"tool_name": "write_file", "params": {"path": ".maxim_sandbox/target.py", "content": "...", "overwrite": true}}
+  "action": {"tool_name": "write_file", "params": {"path": ".maxim_workspace/target.py", "content": "...", "overwrite": true}}
 }
 
 CRITICAL RULES:
-- **ALWAYS use '.maxim_sandbox/' prefix** - writes outside the sandbox will FAIL
+- **ALWAYS use '.maxim_workspace/' prefix** - writes outside the workspace will FAIL
 - For EXISTING files: MUST include overwrite=True
 - ALWAYS include ALL content, not just changes""",
         "params": {
-            "path": "Path MUST start with '.maxim_sandbox/' (e.g., '.maxim_sandbox/hello.py')",
+            "path": "Path MUST start with '.maxim_workspace/' (e.g., '.maxim_workspace/hello.py')",
             "content": "The COMPLETE content to write to the file",
             "overwrite": "(Optional) Set to True to replace an existing file. REQUIRED when updating existing files.",
         },
-        "example": {"tool_name": "write_file", "params": {"path": ".maxim_sandbox/hello.py", "content": "print('Hello world')", "overwrite": True}},
+        "example": {"tool_name": "write_file", "params": {"path": ".maxim_workspace/hello.py", "content": "print('Hello world')", "overwrite": True}},
         "followup_type": None,  # Terminal action
     },
     "list_directory": {
-        "description": "List files and directories in a path. For sandbox contents, use '.maxim_sandbox/'",
-        "params": {"path": "Directory path to list (sandbox: '.maxim_sandbox/')"},
-        "example": {"tool_name": "list_directory", "params": {"path": ".maxim_sandbox/"}},
+        "description": "List files and directories in a path. For workspace contents, use '.maxim_workspace/'",
+        "params": {"path": "Directory path to list (workspace: '.maxim_workspace/')"},
+        "example": {"tool_name": "list_directory", "params": {"path": ".maxim_workspace/"}},
         "followup_type": "process",  # LLM should process directory listing
     },
     "internet_search": {
@@ -1075,7 +1087,7 @@ CRITICAL RULES:
 - Match multiple extensions: '*.{json,yaml,yml}' (JSON or YAML files)
 - Find directories: '*/' (all directories), 'src/*/' (subdirectories of src/)
 
-**SANDBOX**: Use '.maxim_sandbox/**/*.py' to search sandbox files.
+**WORKSPACE**: Use '.maxim_workspace/**/*.py' to search workspace files.
 
 PATTERN GUIDE:
 - * matches any characters except /
@@ -1085,16 +1097,16 @@ PATTERN GUIDE:
 - [abc] matches a, b, or c
 
 EXAMPLES:
-- Find sandbox Python files: pattern='.maxim_sandbox/**/*.py'
+- Find workspace Python files: pattern='.maxim_workspace/**/*.py'
 - Find all Python files: pattern='**/*.py'
 - Find config files: pattern='**/{config,settings}*.{json,yaml}'""",
         "params": {
-            "pattern": "Glob pattern (e.g., '.maxim_sandbox/**/*.py' for sandbox Python files)",
+            "pattern": "Glob pattern (e.g., '.maxim_workspace/**/*.py' for workspace Python files)",
             "path": "(Optional) Base directory to search from, defaults to current directory",
             "max_results": "(Optional) Maximum number of results to return, defaults to 100",
             "include_hidden": "(Optional) Whether to include hidden files (starting with .), defaults to False",
         },
-        "example": {"tool_name": "glob", "params": {"pattern": ".maxim_sandbox/**/*.py"}},
+        "example": {"tool_name": "glob", "params": {"pattern": ".maxim_workspace/**/*.py"}},
         "followup_type": "process",  # LLM should process results for analysis or next action
     },
     "bash": {
