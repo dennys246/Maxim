@@ -6,11 +6,22 @@ from typing import Any
 
 
 @dataclass(slots=True)
-class ToolResult:
+class ToolOutput:
+    """Raw output from a single tool execution.
+
+    Internal to the tools layer. The agent loop converts this to a bus
+    ToolResult (agents.bus.ToolResult) before publishing, adding
+    tool_call_id, tool_name, and params for downstream subscribers.
+    """
+
     success: bool
     output: Any = None
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+# Backward-compat alias — existing tools that import ToolResult keep working.
+ToolResult = ToolOutput
 
 
 class Tool(ABC):
@@ -22,15 +33,15 @@ class Tool(ABC):
         if not getattr(self, "name", ""):
             raise ValueError("Tool must define a non-empty name")
 
-    def run(self, **kwargs: Any) -> ToolResult:
+    def run(self, **kwargs: Any) -> ToolOutput:
         try:
             self._validate_input(kwargs)
             output = self.execute(**kwargs)
-            if isinstance(output, ToolResult):
+            if isinstance(output, ToolOutput):
                 return output
-            return ToolResult(success=True, output=output)
+            return ToolOutput(success=True, output=output)
         except Exception as e:
-            return ToolResult(success=False, error=str(e))
+            return ToolOutput(success=False, error=str(e))
 
     @abstractmethod
     def execute(self, **kwargs: Any) -> Any:
