@@ -19,6 +19,7 @@ from maxim.decisions.causal_link import (
     TemporalDelta,
     Valence,
 )
+from maxim.memory.semantic_promoter import PromotionCandidate
 
 logger = logging.getLogger(__name__)
 
@@ -549,6 +550,41 @@ class NAc:
             for link in self._links.get(event_signature, [])
             if link.outcome_valence == Valence.NEGATIVE
         ]
+
+    def get_promotion_candidates(
+        self,
+        min_confidence: float = 0.6,
+        min_observations: int = 3,
+    ) -> list[PromotionCandidate]:
+        """Scan all CausalLinks for promotion-worthy patterns.
+
+        Implements PromotionSource protocol for the SemanticPromoter.
+        Returns high-confidence positive causal links as candidates
+        for ATL semantic memory promotion.
+        """
+        candidates: list[PromotionCandidate] = []
+        for event_sig, links in self._links.items():
+            for link in links:
+                if (
+                    link.confidence >= min_confidence
+                    and link.observation_count >= min_observations
+                    and link.outcome_valence == Valence.POSITIVE
+                ):
+                    candidates.append(
+                        PromotionCandidate(
+                            pattern_name=f"{link.event_signature} → {link.outcome_signature}",
+                            category="causal_pattern",
+                            confidence=link.confidence,
+                            source_memory_ids=list(link.memory_ids),
+                            metadata={
+                                "event_signature": link.event_signature,
+                                "outcome_signature": link.outcome_signature,
+                                "valence": link.outcome_valence.value,
+                                "observation_count": link.observation_count,
+                            },
+                        )
+                    )
+        return candidates
 
     def remove_memory(self, memory_id: str) -> None:
         """Remove a memory reference from all causal links."""
