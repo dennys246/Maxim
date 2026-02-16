@@ -1026,10 +1026,10 @@ class DefaultNetwork:
             if class_id is not None and class_id in self._interests:
                 return True
 
-            # Check novelty
+            # Check novelty (with class-level modulation)
             track_id = det.get("track_id")
             if track_id is not None:
-                novelty = self._novelty_tracker.get_novelty(track_id)
+                novelty = self._novelty_tracker.get_novelty(track_id, class_id=class_id)
                 if novelty >= self._config.idle_novelty_threshold:
                     return True
 
@@ -1136,9 +1136,13 @@ class DefaultNetwork:
 
         # 4. Update novelty tracker with all track IDs (THROTTLED: 10Hz instead of 30Hz)
         if self._throttlers["novelty"].should_run():
-            track_ids = [d.get("track_id") for d in detections if d.get("track_id") is not None]
-            if track_ids:
-                self._novelty_tracker.update_batch(track_ids)
+            for d in detections:
+                track_id = d.get("track_id")
+                class_id = d.get("class_id")
+                if track_id is not None and class_id is not None:
+                    self._novelty_tracker.update_with_class(track_id, class_id)
+                elif track_id is not None:
+                    self._novelty_tracker.update(track_id)
 
         # 4b. Record observations in spatial map (THROTTLED: 5Hz instead of 30Hz)
         if self._spatial_map is not None and detections and self._throttlers["spatial_map"].should_run():
@@ -1147,12 +1151,14 @@ class DefaultNetwork:
             if current_pos is None:
                 current_pos = (320.0, 240.0)  # Default to center
 
-            # Get novelty scores for all detections
+            # Get novelty scores for all detections (with class-level modulation)
             novelty_scores = {}
             for det in detections:
                 track_id = det.get("track_id")
                 if track_id is not None:
-                    novelty_scores[track_id] = self._novelty_tracker.get_novelty(track_id)
+                    novelty_scores[track_id] = self._novelty_tracker.get_novelty(
+                        track_id, class_id=det.get("class_id")
+                    )
 
             self._spatial_map.record_observation(
                 position=current_pos,
