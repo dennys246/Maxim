@@ -401,7 +401,7 @@ def init_filesystem_policy(
 # Mode-Based Filesystem Containment
 # ─────────────────────────────────────────────────────────────────────────────
 
-SANDBOX_FOLDER_NAME = ".maxim_sandbox"
+WORKSPACE_FOLDER_NAME = ".maxim_workspace"
 
 
 class CwdAccessLevel:
@@ -430,10 +430,10 @@ class ModeFilesystemConfig:
         allowed_dirs: List of directories tools can access
         can_request_directory_change: Whether mode can request CWD change
         description: Human-readable description of access level
-        sandbox_write_always: Whether sandbox is always writable (for logging/journaling)
+        workspace_write_always: Whether workspace is always writable (for logging/journaling)
         cwd_access: Level of access to CWD and subdirectories
         sandbox_execute: Policy for executing files in the sandbox
-        accessible_folders: Additional folders beyond sandbox/CWD that can be accessed
+        accessible_folders: Additional folders beyond workspace/CWD that can be accessed
     """
 
     mode: str
@@ -441,38 +441,54 @@ class ModeFilesystemConfig:
     can_request_directory_change: bool = False
     description: str = ""
     # New graduated permission fields
-    sandbox_write_always: bool = True  # All modes can write to sandbox for journaling
+    workspace_write_always: bool = True  # All modes can write to workspace for journaling
     cwd_access: str = CwdAccessLevel.NONE  # Access level for CWD
     sandbox_execute: str = SandboxExecutePolicy.BLOCKED  # Sandbox execution policy
     accessible_folders: list[str] = field(default_factory=list)  # Additional allowed folders
 
 
-def get_sandbox_path(cwd: str | None = None) -> str:
-    """Get the sandbox folder path within the current working directory.
+def get_workspace_path(cwd: str | None = None) -> str:
+    """Get the workspace folder path within the current working directory.
 
     Args:
         cwd: Current working directory. Uses os.getcwd() if not provided.
 
     Returns:
-        Absolute path to the sandbox folder.
+        Absolute path to the workspace folder.
     """
     if cwd is None:
         cwd = os.getcwd()
-    return os.path.join(os.path.realpath(cwd), SANDBOX_FOLDER_NAME)
+    return os.path.join(os.path.realpath(cwd), WORKSPACE_FOLDER_NAME)
 
 
-def ensure_sandbox_exists(cwd: str | None = None) -> str:
-    """Create the sandbox folder if it doesn't exist.
+# Backward compat alias
+get_sandbox_path = get_workspace_path
+
+
+def ensure_workspace_exists(cwd: str | None = None) -> str:
+    """Create the workspace folder and subdirectories if they don't exist.
+
+    Structure:
+        .maxim_workspace/
+        ├── drafts/    - Proposed file edits, code drafts, work-in-progress
+        ├── notes/     - Journaling, thinking notes, observations
+        ├── plans/     - Structured plans for CWD modifications
+        └── scratch/   - Temporary working files, ephemeral data
 
     Args:
         cwd: Current working directory. Uses os.getcwd() if not provided.
 
     Returns:
-        Absolute path to the created/existing sandbox folder.
+        Absolute path to the created/existing workspace folder.
     """
-    sandbox_path = get_sandbox_path(cwd)
-    os.makedirs(sandbox_path, exist_ok=True)
-    return sandbox_path
+    workspace_path = get_workspace_path(cwd)
+    for subdir in ("", "drafts", "notes", "plans", "scratch"):
+        os.makedirs(os.path.join(workspace_path, subdir), exist_ok=True)
+    return workspace_path
+
+
+# Backward compat alias
+ensure_sandbox_exists = ensure_workspace_exists
 
 
 def get_mode_filesystem_config(
@@ -485,19 +501,19 @@ def get_mode_filesystem_config(
     Mode-based containment with graduated permissions:
 
     PLANNING (passive):
-    - Sandbox: Always writable (for logging/journaling)
+    - Workspace: Always writable (for logging/journaling)
     - Sandbox execute: Requires approval
     - CWD: Can propose plans to edit (no direct writes)
     - Can read CWD for context
 
     SUPERVISED (active):
-    - Sandbox: Always writable
+    - Workspace: Always writable
     - Sandbox execute: Requires approval
     - CWD: Can suggest direct edits (requires approval)
     - Can request directory change
 
     AUTONOMOUS (singularity):
-    - Sandbox: Always writable
+    - Workspace: Always writable
     - Sandbox execute: Allowed freely
     - CWD: Full read/write access
     - Full directory change capability
@@ -513,41 +529,41 @@ def get_mode_filesystem_config(
     if cwd is None:
         cwd = os.getcwd()
     cwd = os.path.realpath(cwd)
-    sandbox_path = get_sandbox_path(cwd)
+    workspace_path = get_workspace_path(cwd)
     extra_folders = accessible_folders or []
 
     if mode == "passive" or mode == "planning":
-        # Planning mode: sandbox is writable, CWD is read-only (propose plans)
+        # Planning mode: workspace is writable, CWD is read-only (propose plans)
         return ModeFilesystemConfig(
             mode="passive",
-            allowed_dirs=[sandbox_path, cwd] + extra_folders,  # Can read CWD
+            allowed_dirs=[workspace_path, cwd] + extra_folders,  # Can read CWD
             can_request_directory_change=False,
-            description=f"Sandbox writable, CWD read-only (propose edits): {cwd}",
-            sandbox_write_always=True,
+            description=f"Workspace writable, CWD read-only (propose edits): {cwd}",
+            workspace_write_always=True,
             cwd_access=CwdAccessLevel.PROPOSE,
             sandbox_execute=SandboxExecutePolicy.APPROVAL_REQUIRED,
             accessible_folders=extra_folders,
         )
     elif mode == "active" or mode == "supervised":
-        # Supervised mode: sandbox writable, CWD edits need approval
+        # Supervised mode: workspace writable, CWD edits need approval
         return ModeFilesystemConfig(
             mode="active",
-            allowed_dirs=[sandbox_path, cwd] + extra_folders,
+            allowed_dirs=[workspace_path, cwd] + extra_folders,
             can_request_directory_change=True,
-            description=f"Sandbox writable, CWD edits need approval: {cwd}",
-            sandbox_write_always=True,
+            description=f"Workspace writable, CWD edits need approval: {cwd}",
+            workspace_write_always=True,
             cwd_access=CwdAccessLevel.SUPERVISED,
             sandbox_execute=SandboxExecutePolicy.APPROVAL_REQUIRED,
             accessible_folders=extra_folders,
         )
     elif mode == "singularity" or mode == "autonomous":
-        # Autonomous mode: full access within CWD and sandbox
+        # Autonomous mode: full access within CWD and workspace
         return ModeFilesystemConfig(
             mode="singularity",
-            allowed_dirs=[sandbox_path, cwd] + extra_folders,  # Still bounded to CWD
+            allowed_dirs=[workspace_path, cwd] + extra_folders,  # Still bounded to CWD
             can_request_directory_change=True,
             description=f"Full access within CWD: {cwd}",
-            sandbox_write_always=True,
+            workspace_write_always=True,
             cwd_access=CwdAccessLevel.FULL,
             sandbox_execute=SandboxExecutePolicy.ALLOWED,
             accessible_folders=extra_folders,
@@ -556,10 +572,10 @@ def get_mode_filesystem_config(
         # Default to passive-like restrictions for unknown modes
         return ModeFilesystemConfig(
             mode=mode,
-            allowed_dirs=[sandbox_path],
+            allowed_dirs=[workspace_path],
             can_request_directory_change=False,
-            description=f"Unknown mode '{mode}' - defaulting to sandbox: {sandbox_path}",
-            sandbox_write_always=True,
+            description=f"Unknown mode '{mode}' - defaulting to workspace: {workspace_path}",
+            workspace_write_always=True,
             cwd_access=CwdAccessLevel.NONE,
             sandbox_execute=SandboxExecutePolicy.BLOCKED,
             accessible_folders=[],
@@ -697,21 +713,25 @@ def set_accessible_folders(folders: list[str]) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def is_path_in_sandbox(path: str, cwd: str | None = None) -> bool:
-    """Check if a path is within the sandbox directory.
+def is_path_in_workspace(path: str, cwd: str | None = None) -> bool:
+    """Check if a path is within the workspace directory.
 
     Args:
         path: Path to check.
         cwd: Current working directory. Uses effective CWD if not provided.
 
     Returns:
-        True if path is within sandbox.
+        True if path is within workspace.
     """
     if cwd is None:
         cwd = get_effective_cwd()
-    sandbox = get_sandbox_path(cwd)
+    workspace = get_workspace_path(cwd)
     real_path = os.path.realpath(path)
-    return real_path.startswith(sandbox + os.sep) or real_path == sandbox
+    return real_path.startswith(workspace + os.sep) or real_path == workspace
+
+
+# Backward compat alias
+is_path_in_sandbox = is_path_in_workspace
 
 
 def is_path_in_cwd(path: str, cwd: str | None = None) -> bool:
@@ -780,12 +800,12 @@ def check_write_permission(
     in_cwd = is_path_in_cwd(path, cwd)
     in_accessible = is_path_in_accessible_folders(path)
 
-    # Sandbox is always writable if sandbox_write_always is True
-    if in_sandbox and config.sandbox_write_always:
+    # Workspace is always writable if workspace_write_always is True
+    if in_sandbox and config.workspace_write_always:
         return WritePermissionResult(
             allowed=True,
             requires_approval=False,
-            reason="Sandbox is always writable",
+            reason="Workspace is always writable",
             is_sandbox=True,
         )
 
@@ -884,3 +904,76 @@ def check_execute_permission(
         requires_approval=False,
         reason="Execution only allowed within sandbox",
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CWD Tree Scanner (for LLM prompt context)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SCAN_SKIP_DIRS: frozenset[str] = frozenset({
+    ".git", "__pycache__", "node_modules", ".venv", "venv",
+    ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache",
+    ".eggs", "dist", "build", ".maxim_workspace",
+    ".idea", ".vscode", ".DS_Store", ".ipynb_checkpoints",
+})
+
+
+def scan_cwd_tree(
+    cwd: str | None = None,
+    max_depth: int = 2,
+    max_entries: int = 30,
+) -> list[str]:
+    """Scan CWD directory tree for LLM context.
+
+    Returns a compact listing of files and directories up to *max_depth*,
+    skipping noise directories (`.git`, `__pycache__`, etc.).
+
+    Args:
+        cwd: Directory to scan.  Uses effective CWD if ``None``.
+        max_depth: Maximum depth to recurse (0 = top-level only).
+        max_entries: Maximum number of entries to return.
+
+    Returns:
+        List of formatted entry strings, directories first, then files.
+    """
+    if cwd is None:
+        cwd = get_effective_cwd()
+
+    dir_entries: list[str] = []
+    file_entries: list[str] = []
+
+    try:
+        for root, dirs, files in os.walk(cwd):
+            # Depth check
+            rel_root = os.path.relpath(root, cwd)
+            depth = 0 if rel_root == "." else rel_root.count(os.sep) + 1
+            if depth > max_depth:
+                dirs.clear()
+                continue
+
+            # Prune noise directories (modifying dirs in-place skips them)
+            dirs[:] = sorted(d for d in dirs if d not in _SCAN_SKIP_DIRS)
+
+            # Record subdirectories
+            for d in dirs:
+                rel = os.path.relpath(os.path.join(root, d), cwd)
+                dir_entries.append(f"  {rel}/")
+
+            # Record files
+            for f in sorted(files):
+                if f.startswith("."):
+                    continue  # skip hidden files
+                fpath = os.path.join(root, f)
+                rel = os.path.relpath(fpath, cwd)
+                try:
+                    size = os.path.getsize(fpath)
+                    size_str = f"{size}B" if size < 1024 else f"{size // 1024}KB"
+                    file_entries.append(f"  {rel} ({size_str})")
+                except OSError:
+                    file_entries.append(f"  {rel}")
+    except OSError:
+        return []
+
+    # Directories first, then files — both sorted
+    combined = sorted(dir_entries) + sorted(file_entries)
+    return combined[:max_entries]
