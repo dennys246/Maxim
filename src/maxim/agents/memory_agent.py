@@ -26,6 +26,7 @@ from maxim.agents.bus import (
     MemoryTier,
     Percept,
     ProposedGoal,
+    StatisticalSummary,
     StructuredContext,
     ToolResult,
 )
@@ -352,9 +353,12 @@ class MemoryAgent(Agent, AgentOutputMixin):
         reset_on_startup: bool = False,
         enable_embeddings: bool = False,
         output_manager: Any | None = None,
+        memory_hub: Any | None = None,
+        plan_manager: Any | None = None,
     ) -> None:
         super().__init__(name=name, enabled=enabled)
         self._bus = bus
+        self._plan_manager = plan_manager
 
         # Initialize output mixin for sandbox/shared output support
         self._init_output(agent_name="memory", output_manager=output_manager)
@@ -397,12 +401,20 @@ class MemoryAgent(Agent, AgentOutputMixin):
         if not self._reset_on_startup and self._persistence_path:
             self._load_memories_from_disk()
 
+        # Statistical context (from StatisticianAgent via bus)
+        self._latest_statistical_summary: str = ""
+        self._active_pattern_count: int = 0
+
+        # Optional MemoryHub for multi-layer knowledge queries
+        self._memory_hub = memory_hub
+
         # Subscribe to messages
         self._bus.subscribe(Percept, self._on_percept)
         self._bus.subscribe(ToolResult, self._on_tool_result)
         self._bus.subscribe(GoalCompleted, self._on_goal_completed)
         self._bus.subscribe(ProposedGoal, self._on_goal_proposed)
         self._bus.subscribe(GoalAccepted, self._on_goal_accepted)
+        self._bus.subscribe(StatisticalSummary, self._on_statistical_summary)
 
     def _on_percept(self, percept: Percept) -> None:
         """Process incoming percept."""
@@ -503,6 +515,11 @@ class MemoryAgent(Agent, AgentOutputMixin):
         """Track when goals are accepted."""
         with self._lock:
             self._active_goal = accepted.goal_id
+
+    def _on_statistical_summary(self, summary: StatisticalSummary) -> None:
+        """Receive statistical summary from StatisticianAgent via bus."""
+        self._latest_statistical_summary = summary.summary
+        self._active_pattern_count = summary.active_patterns
 
     def _add_memory(self, memory: MemoryItem) -> None:
         """Add memory to stores and indexes (must hold lock)."""
@@ -706,7 +723,11 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 goal_history=self._abstraction.get_by_event("goal_proposed", n=5),
                 cli_inputs=list(self._cli_inputs),
                 available_environments=available_tools,
+                statistical_context=self._latest_statistical_summary,
+                active_pattern_count=self._active_pattern_count,
+                knowledge_context=self._build_knowledge_context(),
                 root_goal=self.ROOT_GOAL,
+                plan_progress=self._build_plan_progress(),
             )
 
             # Persist snapshot to shared outputs if requested
@@ -728,6 +749,111 @@ class MemoryAgent(Agent, AgentOutputMixin):
                     log_swallowed_exception(e, operation="write_context")
 
             return context
+
+    def _build_plan_progress(self) -> Any:
+        """Build PlanProgressContext from active plan, or None."""
+        if not self._plan_manager or not self._plan_manager.active_plan:
+            return None
+
+        from maxim.agents.bus import PlanProgressContext
+        from maxim.planning.plan_document import PhaseStatus
+
+        plan = self._plan_manager.active_plan
+        current = plan.get_current_phase()
+
+        return PlanProgressContext(
+            plan_id=plan.id,
+            objective=plan.objective,
+            status=plan.status.name,
+            current_phase_index=plan.current_phase_index,
+            total_phases=len(plan.phases),
+            current_phase_description=current.description if current else "",
+            phases_completed=sum(
+                1 for p in plan.phases if p.status == PhaseStatus.COMPLETED
+            ),
+            phases_failed=sum(
+                1 for p in plan.phases if p.status == PhaseStatus.FAILED
+            ),
+            energy_utilization=(
+                current.energy_budget.utilization
+                if current and current.energy_budget else {}
+            ),
+            is_replanning=plan.status.name == "REPLANNING",
+            replan_count=len(plan.replan_history),
+        )
+
+    def _build_knowledge_context(self) -> list[dict]:
+        """Merge knowledge from ATL + Angular Gyrus into unified context.
+
+        Returns a list of knowledge entries ranked by relevance, capped at 8.
+        Each entry has: concept_name, definition, category, confidence,
+        source_layer, provenance, relationships.
+        """
+        if self._memory_hub is None:
+            return []
+
+        entries: list[dict] = []
+
+        # 1. ATL semantic concepts (if available)
+        hub = self._memory_hub
+        if getattr(hub, "atl", None) is not None:
+            try:
+                concepts = hub.atl.recall(limit=5, min_confidence=0.5)
+                for concept in concepts:
+                    rels: list[dict] = []
+                    try:
+                        rel_pairs = hub.atl.find_by_relationship(concept.id, limit=3)
+                        for target_id, r in rel_pairs:
+                            rels.append({
+                                "type": r.relationship_type,
+                                "target": target_id,
+                                "weight": r.weight,
+                            })
+                    except Exception:
+                        pass
+
+                    entries.append({
+                        "concept_name": concept.name,
+                        "definition": getattr(concept, "definition", ""),
+                        "category": concept.category,
+                        "confidence": concept.confidence,
+                        "source_layer": "atl",
+                        "provenance": getattr(concept, "provenance", "").name
+                        if hasattr(getattr(concept, "provenance", None), "name")
+                        else str(getattr(concept, "provenance", "")),
+                        "relationships": rels,
+                        "relevance": concept.confidence,
+                    })
+            except Exception:
+                pass
+
+        # 2. Angular Gyrus pattern memories (relevant learned knowledge)
+        if getattr(hub, "angular_gyrus", None) is not None:
+            try:
+                from maxim.math.types import MathCategory
+
+                patterns = hub.angular_gyrus.recall(
+                    limit=3,
+                    category=MathCategory.PATTERN,
+                    min_confidence=0.5,
+                )
+                for record in patterns:
+                    entries.append({
+                        "concept_name": record.name,
+                        "definition": record.verbal,
+                        "category": f"math:{record.category.name}",
+                        "confidence": record.confidence,
+                        "source_layer": "angular_gyrus",
+                        "provenance": record.source,
+                        "relationships": [],
+                        "relevance": record.confidence * 0.8,
+                    })
+            except Exception:
+                pass
+
+        # 3. Rank by relevance, cap at 8 entries total
+        entries.sort(key=lambda e: e.get("relevance", 0), reverse=True)
+        return entries[:8]
 
     def set_active_goal(self, goal_id: str | None, description: str | None = None) -> None:
         """Set the currently active goal."""
@@ -836,3 +962,4 @@ class MemoryAgent(Agent, AgentOutputMixin):
         self._bus.unsubscribe(GoalCompleted, self._on_goal_completed)
         self._bus.unsubscribe(ProposedGoal, self._on_goal_proposed)
         self._bus.unsubscribe(GoalAccepted, self._on_goal_accepted)
+        self._bus.unsubscribe(StatisticalSummary, self._on_statistical_summary)
