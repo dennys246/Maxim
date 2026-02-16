@@ -146,7 +146,7 @@ class TurnAround(Behavior):
             track_id = det.get("track_id")
             novelty = 0.0
             if self._novelty_tracker and track_id is not None:
-                novelty = self._novelty_tracker.get_novelty(track_id)
+                novelty = self._novelty_tracker.get_novelty(track_id, class_id=class_id)
                 if novelty > 1.5:
                     is_interesting = True
 
