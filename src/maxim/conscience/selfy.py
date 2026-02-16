@@ -1519,7 +1519,12 @@ class Maxim:
                 llm_router = LLMRouter(llm_config)
                 # Start warming up the LLM in background (reduces first-request latency)
                 llm_router.warmup()
-                llm_worker = LLMWorker(llm=llm_router, stale_threshold_s=5.0)
+                llm_worker = LLMWorker(
+                    llm=llm_router,
+                    stale_threshold_s=5.0,
+                    n_ctx=llm_router.n_ctx,
+                    token_counter=llm_router.get_token_counter(),
+                )
                 llm_worker.start()
                 self.log.info("LLM worker started for user responses")
             else:
