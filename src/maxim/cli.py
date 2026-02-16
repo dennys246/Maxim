@@ -560,6 +560,10 @@ MEMORY_PATHS = {
     "hippo": "data/util/hippocampus.json",
     "pain": "data/util/pain_detector.json",
     "semantic": "data/util/semantic_embeddings.npz",  # Phase 4 semantic embeddings
+    "statistician": "data/util/statistician_state.json",
+    "atl": "data/util/atl_state.json",
+    "cross_layer": "data/util/cross_layer_graph.json",
+    "planning": "data/planning",
 }
 
 
@@ -826,7 +830,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                     # Start warming up the LLM in background (reduces first-request latency)
                     if hasattr(agentic_agent._llm, "warmup"):
                         agentic_agent._llm.warmup()
-                    llm_worker = LLMWorker(agentic_agent._llm)
+                    llm_router = agentic_agent._llm
+                    llm_worker = LLMWorker(
+                        llm_router,
+                        n_ctx=getattr(llm_router, 'n_ctx', 4096),
+                        token_counter=(
+                            llm_router.get_token_counter()
+                            if hasattr(llm_router, 'get_token_counter')
+                            else None
+                        ),
+                    )
                     llm_worker.start()
 
                 # Store internet access in state (uses internet_enabled from above)
