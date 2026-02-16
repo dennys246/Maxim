@@ -20,8 +20,10 @@ from maxim.bridges.salience_bridge import SalienceMemoryBridge
 from maxim.bridges.planning_bridge import PlanHistoryBridge, PlanTemplate
 from maxim.bridges.escalation_bridge import EscalationLearningBridge
 from maxim.bridges.fear_bridge import FearCircuitBridge
+from maxim.bridges.communication_bridge import CommunicationBridge
 
 __all__ = [
+    "CommunicationBridge",
     "SpatialMemoryBridge",
     "SalienceMemoryBridge",
     "PlanHistoryBridge",
