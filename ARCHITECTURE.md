@@ -178,39 +178,41 @@ All config values can be overridden via environment variables:
 - `MAXIM_LLM_MODEL_PATH`, `MAXIM_LLM_N_CTX`, `MAXIM_LLM_MAX_TOKENS`
 - `MAXIM_LLM_TEMPERATURE`, `MAXIM_LLM_N_GPU_LAYERS`, etc.
 
-## Memory Management (Hippocampus + MemoryHub)
+## Cognitive Memory Systems
 
-The Hippocampus provides episodic memory for the agentic system, storing complete loop cycles. The MemoryHub coordinates cross-system integration via bridges.
+Four biologically-inspired systems collaborate to give Maxim memory, temporal awareness, reward prediction, and similarity matching. In the brain, these are anatomically distinct regions that communicate via neural pathways; in Maxim, each lives in its own package and they coordinate through the MemoryHub.
 
 ### System Architecture
 
 ```
-                      ┌─────────────────────────────────────────┐
-                      │            HIPPOCAMPUS                  │
-                      │  ┌───────┐ ┌───────┐ ┌───────┐         │
-                      │  │  SCN  │ │  NAc  │ │  EC   │         │
-                      │  └───┬───┘ └───┬───┘ └───┬───┘         │
-                      └──────┼─────────┼─────────┼──────────────┘
-                             │         │         │
-                             └─────────┼─────────┘
-                                       │
-                              ┌────────┴────────┐
-                              │   MEMORY HUB    │
-                              └────────┬────────┘
-                                       │
-     ┌──────────────┬──────────────────┼──────────────────┬──────────────┐
-     ▼              ▼                  ▼                  ▼              ▼
-  Spatial       Salience           Planning          Escalation      (Future)
-   Bridge        Bridge             Bridge            Bridge          Fear
+  ┌─────────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐
+  │ Hippocampus │  │    SCN    │  │    NAc    │  │    EC     │
+  │  (memory/)  │  │  (time/)  │  │(decisions/)│  │(similarity/)│
+  │  Episodic   │  │ Temporal  │  │  Reward   │  │ Similarity│
+  │  Memory     │  │  Rhythm   │  │ Prediction│  │  Matching │
+  └──────┬──────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘
+         │               │              │               │
+         └───────────────┼──────────────┼───────────────┘
+                         │              │
+                ┌────────┴──────────────┴────────┐
+                │          MEMORY HUB            │
+                │   (integration/memory_hub.py)  │
+                └────────────────┬───────────────┘
+                                 │
+     ┌──────────────┬────────────┼────────────┬──────────────┐
+     ▼              ▼            ▼            ▼              ▼
+  Spatial       Salience     Planning    Escalation      (Future)
+   Bridge        Bridge       Bridge      Bridge          Fear
 ```
 
-### Subsystems
+### Coordinated Systems
 
-| Subsystem | Purpose | Key Features |
-|-----------|---------|--------------|
-| **SCN** (Suprachiasmatic Nucleus) | Temporal rhythm indexing | 24h/7d/monthly bins, pattern detection |
-| **NAc** (Nucleus Accumbens) | Causal inference | Event→outcome learning, reward prediction |
-| **EC** (Entorhinal Cortex) | Similarity queries | LSH + neural semantic embeddings (Phase 4) |
+| System | Brain Region | Purpose | Key Features |
+|--------|-------------|---------|--------------|
+| **Hippocampus** | Medial temporal lobe | Episodic memory | Selective capture, associative graph, sleep consolidation |
+| **SCN** (Suprachiasmatic Nucleus) | Hypothalamus | Temporal rhythm indexing | 24h/7d/monthly bins, coupled oscillator, pattern detection |
+| **NAc** (Nucleus Accumbens) | Ventral striatum | Causal inference | Event→outcome learning, reward prediction |
+| **EC** (Entorhinal Cortex) | Medial temporal lobe (adjacent to hippocampus) | Similarity queries | LSH + neural semantic embeddings (Phase 4) |
 
 ### Bridges
 
