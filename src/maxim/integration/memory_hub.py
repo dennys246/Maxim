@@ -32,7 +32,11 @@ if TYPE_CHECKING:
     from maxim.bridges.salience_bridge import SalienceMemoryBridge
     from maxim.bridges.spatial_bridge import SpatialMemoryBridge
     from maxim.decisions.nac import NAc
+    from maxim.math.angular_gyrus import AngularGyrus
+    from maxim.memory.atl import ATL
+    from maxim.memory.cross_layer import CrossLayerGraph
     from maxim.memory.hippocampus import Hippocampus
+    from maxim.memory.semantic_promoter import PromotionSource, SemanticPromoter
     from maxim.salience.salience_network import SalienceNetwork
     from maxim.similarity.ec import EntorhinalCortex
     from maxim.spatial.spatial_map import SpatialMap
@@ -117,6 +121,15 @@ class MemoryHub:
     # Semantic embedding settings (Phase 4)
     embedding_persist_path: str = "data/util/semantic_embeddings.npz"
 
+    # Multi-layer memory (optional)
+    atl: "ATL | None" = None
+    angular_gyrus: "AngularGyrus | None" = None
+    _cross_layer: "CrossLayerGraph | None" = None
+    _promoter: "SemanticPromoter | None" = None
+
+    # Long-horizon planning (optional)
+    _plan_manager: Any = None
+
     def __post_init__(self) -> None:
         """Initialize and wire core systems."""
         # Connect SCN to Hippocampus for temporal-aware consolidation
@@ -138,7 +151,61 @@ class MemoryHub:
                 )
             logger.info("Semantic embedding enabled")
 
+        # Wire multi-layer memory (ATL, CrossLayerGraph, SemanticPromoter)
+        if self.atl is not None:
+            self._wire_multi_layer()
+
         logger.info("MemoryHub initialized with core systems")
+
+    def _wire_multi_layer(self) -> None:
+        """Wire ATL, CrossLayerGraph, and SemanticPromoter when ATL is available."""
+        from maxim.memory.cross_layer import CrossLayerGraph
+        from maxim.memory.semantic_promoter import SemanticPromoter
+
+        # Build layers dict for CrossLayerGraph
+        layers: dict[str, Any] = {"hippocampus": self.hippocampus}
+        if self.atl is not None:
+            layers["atl"] = self.atl
+        if self.angular_gyrus is not None:
+            layers["angular_gyrus"] = self.angular_gyrus
+
+        # Create CrossLayerGraph if not provided externally
+        if self._cross_layer is None:
+            self._cross_layer = CrossLayerGraph(layers=layers)
+
+        # Register cross-layer deletion callbacks
+        if self._cross_layer is not None:
+            self.hippocampus.register_deletion_callback(
+                lambda rid: self._cross_layer.remove_record("hippocampus", rid)
+            )
+            if self.atl is not None:
+                self.atl.register_deletion_callback(
+                    lambda rid: self._cross_layer.remove_record("atl", rid)
+                )
+
+        # Build promotion sources
+        sources: list[Any] = [self.nac]  # NAc always available
+
+        # Create SemanticPromoter
+        if self.atl is not None:
+            self._promoter = SemanticPromoter(
+                hippocampus=self.hippocampus,
+                atl=self.atl,
+                sources=sources,
+                cross_layer=self._cross_layer,
+            )
+
+        logger.info(
+            "Multi-layer memory wired: ATL=%s, AG=%s, cross_layer=%s",
+            self.atl is not None,
+            self.angular_gyrus is not None,
+            self._cross_layer is not None,
+        )
+
+    def register_promotion_source(self, source: "PromotionSource") -> None:
+        """Register an additional promotion source (e.g., StatisticianAgent)."""
+        if self._promoter is not None:
+            self._promoter._sources.append(source)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Bridge Connection
@@ -268,6 +335,39 @@ class MemoryHub:
                 logger.error("Escalation bridge startup failed: %s", e)
                 self._disabled_bridges.add("escalation")
 
+        # Load ATL state
+        if self.atl is not None:
+            try:
+                self.atl.load()
+                results["atl_concepts"] = len(self.atl)
+            except Exception as e:
+                logger.warning("Failed to load ATL state: %s", e)
+
+        # Load Angular Gyrus state
+        if self.angular_gyrus is not None:
+            try:
+                self.angular_gyrus.load()
+                results["ag_records"] = len(self.angular_gyrus)
+            except Exception as e:
+                logger.warning("Failed to load Angular Gyrus state: %s", e)
+
+        # Load cross-layer graph
+        if self._cross_layer is not None:
+            try:
+                self._cross_layer.load()
+                results["cross_layer_edges"] = self._cross_layer.stats()["total_edges"]
+            except Exception as e:
+                logger.warning("Failed to load cross-layer graph: %s", e)
+
+        # Long-horizon planning session restore
+        if self._plan_manager is not None:
+            try:
+                plan_result = self._plan_manager.on_session_start()
+                if plan_result.get("plan_restored"):
+                    results["plan_restored"] = plan_result["plan_restored"]
+            except Exception as e:
+                logger.warning("PlanManager session start failed: %s", e)
+
         logger.info("Session started: %s", results)
         return results
 
@@ -310,6 +410,61 @@ class MemoryHub:
             except Exception as e:
                 logger.warning("Failed to save semantic embeddings: %s", e)
 
+        # Run semantic promotion (before consolidation — new concepts get consolidated too)
+        if self._promoter is not None:
+            try:
+                promoted = self._promoter.scan_for_promotions()
+                results["concepts_promoted"] = len(promoted)
+            except Exception as e:
+                logger.warning("Semantic promotion failed: %s", e)
+
+        # Consolidate ATL
+        if self.atl is not None:
+            try:
+                atl_results = self.atl.consolidate()
+                results["atl_removed"] = atl_results.get("removed", 0)
+                results["atl_compressed"] = atl_results.get("compressed", 0)
+            except Exception as e:
+                logger.warning("ATL consolidation failed: %s", e)
+
+        # Consolidate Angular Gyrus
+        if self.angular_gyrus is not None:
+            try:
+                ag_results = self.angular_gyrus.consolidate()
+                results.update({f"ag_{k}": v for k, v in ag_results.items()})
+            except Exception as e:
+                logger.warning("AG consolidation failed: %s", e)
+
+        # Save ATL state
+        if self.atl is not None:
+            try:
+                self.atl.save()
+            except Exception as e:
+                logger.warning("Failed to save ATL state: %s", e)
+
+        # Save Angular Gyrus state
+        if self.angular_gyrus is not None:
+            try:
+                self.angular_gyrus.save()
+            except Exception as e:
+                logger.warning("Failed to save AG state: %s", e)
+
+        # Save cross-layer graph
+        if self._cross_layer is not None:
+            try:
+                self._cross_layer.save()
+            except Exception as e:
+                logger.warning("Failed to save cross-layer graph: %s", e)
+
+        # Long-horizon planning session save
+        if self._plan_manager is not None:
+            try:
+                plan_result = self._plan_manager.on_session_end()
+                if plan_result.get("plan_saved"):
+                    results["plan_saved"] = plan_result["plan_saved"]
+            except Exception as e:
+                logger.warning("PlanManager session end failed: %s", e)
+
         self._session_active = False
         session_duration = time.time() - self._session_start_time
         results["session_duration_seconds"] = session_duration
@@ -323,6 +478,36 @@ class MemoryHub:
         Alias for on_session_end() for API compatibility.
         """
         return self.on_session_end()
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Multi-Layer Knowledge Queries
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def recall_concepts(
+        self, limit: int = 10, **filters: Any
+    ) -> list[Any]:
+        """Query ATL semantic concepts. Delegates to ATL.recall()."""
+        if self.atl is None:
+            return []
+        return self.atl.recall(limit=limit, **filters)
+
+    def recall_with_knowledge(
+        self,
+        seed_ids: list[str],
+        start_layer: str = "hippocampus",
+        limit: int = 10,
+    ) -> dict[str, list[tuple[str, float]]]:
+        """Cross-layer spreading activation across all three memory layers.
+
+        Returns: {layer_name: [(record_id, activation_score), ...]}
+        """
+        if self._cross_layer is None:
+            return {}
+        return self._cross_layer.cross_layer_activation(
+            start_layer=start_layer,
+            seed_ids=seed_ids,
+            max_depth=2,
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # Phase 4: Semantic Embedding
