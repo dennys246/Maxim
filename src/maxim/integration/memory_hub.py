@@ -217,6 +217,7 @@ class MemoryHub:
         attention: "AttentionNetwork | None" = None,
         salience: "SalienceNetwork | None" = None,
         fear_agent: "FearAgent | None" = None,
+        novelty_tracker: Any = None,
     ) -> None:
         """Wire up bridges to external systems.
 
@@ -228,6 +229,7 @@ class MemoryHub:
             attention: AttentionNetwork (used with spatial)
             salience: SalienceNetwork for salience memory bridge
             fear_agent: FearAgent for fear circuit bridge
+            novelty_tracker: NoveltyTracker for sensitization wiring
         """
         from maxim.bridges.escalation_bridge import EscalationLearningBridge
         from maxim.bridges.fear_bridge import FearCircuitBridge
@@ -283,6 +285,43 @@ class MemoryHub:
             ec=self.ec,
         )
         logger.info("Connected FearCircuitBridge")
+
+        # Wire sensitization modulation if both salience bridge and tracker available
+        if self._salience_bridge and novelty_tracker is not None:
+            self._wire_sensitization(novelty_tracker)
+
+    def _wire_sensitization(self, novelty_tracker: Any) -> None:
+        """Wire SalienceMemoryBridge interaction history to NoveltyTracker sensitization.
+
+        Creates a callback that computes extremity-based modulation:
+        - Classes with strongly positive OR strongly negative interaction history get
+          sensitized (modulation > 1.0), resisting habituation.
+        - Classes with no history or neutral outcomes get modulation = 1.0 (no effect).
+
+        This mirrors VTA dopaminergic modulation: significant outcomes (both reward
+        and aversion) slow sensory cortex habituation for those stimulus categories.
+        """
+        from maxim.tools.reachy import COCO_CLASSES
+
+        bridge = self._salience_bridge
+        min_interactions = 5
+        sensitization_scale = 0.5
+
+        def modulation_lookup(class_id: int) -> float:
+            class_name = COCO_CLASSES.get(class_id)
+            if class_name is None:
+                return 1.0
+            record = bridge.get_interaction_history(class_name)
+            if record is None or record.total_interactions == 0:
+                return 1.0
+            success_rate = record.success_count / record.total_interactions
+            extremity = abs(success_rate - 0.5) * 2  # 0..1
+            confidence = min(1.0, record.total_interactions / min_interactions)
+            return 1.0 + extremity * confidence * sensitization_scale
+
+        if hasattr(novelty_tracker, "set_modulation_lookup"):
+            novelty_tracker.set_modulation_lookup(modulation_lookup)
+            logger.info("Wired sensitization modulation to NoveltyTracker")
 
     # ─────────────────────────────────────────────────────────────────────────
     # Session Lifecycle
