@@ -107,11 +107,11 @@ class FocusInterestsTool(Tool):
     Focus Reachy Mini's attention on YOLOv8 detections matching specified or default interests.
 
     Requires a live `Maxim` instance (used for the latest frame, vision model, and motor queue).
-    If target_class is provided, temporarily adds it to interests for this detection pass.
+    If target_class is provided, detections are filtered to that class for centering.
     """
 
     name = "focus_interests"
-    description = "Run YOLOv8 on the latest frame and move to center on detected objects. Use target_class to specify what to look for (e.g., 'person', 'backpack', 'cup')."
+    description = "Focus attention on objects in the current frame. Use target_class to prioritize a specific object class (e.g., 'cup', 'backpack', 'person')."
 
     input_schema = {
         "target_class": (str, None),  # optional - specific object class to focus on (e.g., "backpack", "person")
@@ -157,23 +157,14 @@ class FocusInterestsTool(Tool):
         deadzone_px = int(kwargs.get("deadzone_px", 20) or 20)
 
         # Look up class ID for target_class filtering
+        # YOLO detects all 80 COCO classes; target_class_id is used for
+        # post-detection filtering in passive_observation, not YOLO filtering.
         target_class_id: int | None = None
-        original_interests = None
         if target_class:
-            # Build reverse lookup: class name -> class ID
             class_name_to_id = {v.lower(): k for k, v in COCO_CLASSES.items()}
             target_class_id = class_name_to_id.get(str(target_class).lower().strip())
-            _logger.info("focus_interests: target_class='%s' mapped to class_id=%s (valid classes: %s)",
-                         target_class, target_class_id, list(class_name_to_id.keys())[:10])
-
-            # Also add to interests to ensure segmenter detects it
-            # IMPORTANT: interests must be integer class IDs, not strings!
-            original_interests = list(getattr(maxim, "interests", []) or [])
-            current_interests = set(original_interests)
-            if target_class_id is not None:
-                current_interests.add(target_class_id)  # Add integer class ID (e.g., 24 for backpack)
-                _logger.info("focus_interests: added class_id=%d to interests: %s", target_class_id, current_interests)
-            maxim.interests = list(current_interests)
+            _logger.info("focus_interests: target_class='%s' mapped to class_id=%s",
+                         target_class, target_class_id)
 
         paused = getattr(maxim, "_training_paused", None)
         pause_training = bool(getattr(maxim, "train", False)) and paused is not None
@@ -208,9 +199,6 @@ class FocusInterestsTool(Tool):
                     paused.clear()
                 except Exception:
                     pass
-            # Restore original interests if we modified them
-            if original_interests is not None:
-                maxim.interests = original_interests
 
         # If we got detection info with a target, attempt to center on it
         if detection_info and detection_info.get("detection"):
