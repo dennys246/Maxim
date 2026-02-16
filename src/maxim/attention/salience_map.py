@@ -259,10 +259,10 @@ class SalienceMap:
             track_id = det.get("track_id")
             class_id = det.get("class_id")
 
-            # Get novelty score
+            # Get novelty score (with class-level modulation)
             novelty = 0.5  # Default
             if novelty_tracker is not None and track_id is not None:
-                novelty = novelty_tracker.get_novelty(track_id)
+                novelty = novelty_tracker.get_novelty(track_id, class_id=class_id)
                 # Normalize to 0-1 range (novelty is typically 0.5-2.0)
                 novelty = (novelty - 0.5) / 1.5
 
