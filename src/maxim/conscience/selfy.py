@@ -171,6 +171,8 @@ class Maxim:
 
         self.interactive = bool(interactive)
 
+        # Salience boost classes: these get 2x priority in perception scoring.
+        # All 80 COCO classes are always detected; this controls attention priority.
         self.interests = [0, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
 
         # Novelty tracking for attention prioritization
@@ -1198,10 +1200,7 @@ class Maxim:
                     continue
 
                 try:
-                    observations = segmenter.segment_photos(
-                        frame,
-                        interests=list(getattr(self, "interests", []) or []),
-                    )
+                    observations = segmenter.segment_photos(frame)
                 except Exception as e:
                     warn("Vision event segmentation failed: %s", e, logger=self.log)
                     observations = []
@@ -2971,6 +2970,12 @@ class Maxim:
         add: list[int] | None = None,
         remove: list[int] | None = None,
     ) -> None:
+        """Update interest class IDs for salience boosting.
+
+        Interest classes receive higher salience scores in the perception pipeline,
+        making them more likely to be noticed and acted upon. All COCO classes are
+        always detected; this controls prioritization, not visibility.
+        """
         updated = set(int(v) for v in (getattr(self, "interests", []) or []) if v is not None)
         if add:
             updated.update(int(v) for v in add if v is not None)
