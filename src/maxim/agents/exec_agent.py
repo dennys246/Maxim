@@ -63,6 +63,22 @@ Guidelines:
 7. Idle time can be used for LOW priority learning goals
 8. For complex tasks, use goal chaining - break into sub_goals
 
+Statistical reasoning:
+9. The STATISTICAL PATTERNS section (when present) contains confirmed patterns detected by IPS
+   and Angular Gyrus. Patterns are tagged by type:
+   - [PATTERN] = confirmed non-random trend (e.g. declining success rate). Investigate the cause.
+   - [TEMPORAL] = unusual for the current time of day/week. May indicate a transient issue.
+   - [ANOMALY] = single-point anomaly against recent history. Monitor but don't overreact.
+   - [LEARNED] = pattern previously stored in math memory with historical confidence.
+10. When a [PATTERN] shows declining tool success, use sub_goals to:
+    (a) recall_memory to check for prior known patterns with that tool
+    (b) assess_randomness on the recent outcome data to confirm the trend
+    (c) If confirmed: store_memory to persist the finding, then propose a corrective action
+11. Use internet_search to research unfamiliar statistical patterns or analysis techniques.
+    Chain: internet_search → http_fetch → store_memory (category=METHOD) to learn new methods.
+12. Statistical goals are typically LOW or MEDIUM priority — never override HIGH/CRITICAL user requests.
+    Exception: if a pattern indicates imminent failure (severity > 0.8), escalate to HIGH.
+
 Available tools for goals:
 - track_target: Move head to center on detected objects. Params: {deadzone_px: int, duration_s: float, prefer_people: bool}
   Use this to actively track objects/people and keep them centered in view.
@@ -72,9 +88,37 @@ Available tools for goals:
             label_outcome, request_sleep, request_observe, request_shutdown,
             goto_pose, move, look_at_image, move_antenna
   update_interests params: {add: [int], remove: [int]}
-- read_file: Read a file. Params: {path: str}. Sandbox files: '.maxim_sandbox/filename'
-- write_file: Write a file. **MUST use '.maxim_sandbox/' prefix!** Params: {path: '.maxim_sandbox/filename.py', content: str}
-- execute_file: Execute a file (requires MAXIM_ALLOW_EXECUTE_FILE=1). Params: {path: '.maxim_sandbox/filename.py'}
+- read_file: Read a file. Params: {path: str}. Workspace files: '.maxim_workspace/filename'
+- write_file: Write a file. **MUST use '.maxim_workspace/' prefix!** Params: {path: '.maxim_workspace/filename.py', content: str}
+  Workspace structure: drafts/ (code drafts), notes/ (thinking), plans/ (proposals), scratch/ (temp files)
+- execute_file: Execute a file (requires MAXIM_ALLOW_EXECUTE_FILE=1). Params: {path: '.maxim_workspace/filename.py'}
+- math: Mathematical cognition. Params: {operation: str, ...}
+  Approximate (fast): compare {a, b}, trend {data}, anomaly {value, history},
+    estimate_sum {data}, estimate_mean {data}, categorize {value}, assess_randomness {data}
+  Exact (precise): compute {op_type, operands}, analyze {data, method: descriptive|linear|quadratic|percentiles},
+    mat_multiply {a, b}, eigenvalues {matrix}, solve_system {coefficients, constants}, determinant {matrix}
+  Aliases: sqrt {value}, square_root {value}, cube_root {value}, squared {value}, cubed {value}, factorial {value}
+    (these are automatically normalized to compute with power — e.g. sqrt → power [x, 0.5])
+  Multi-step math: Each math operation handles ONE calculation. For compound expressions,
+    decompose into sub_goals using the workspace to pass intermediate results:
+    Example: "square root of 25 plus 3" →
+    sub_goal 1: {"tool_name": "math", "tool_params": {"operation": "sqrt", "value": 25}}
+    sub_goal 2: {"tool_name": "math", "tool_params": {"operation": "store_value", "name": "step1", "value": 5}}
+    sub_goal 3: {"tool_name": "math", "tool_params": {"operation": "compute", "op_type": "add", "operands": [5, 3]}}
+    For unknowable intermediates, store_value the first result, then recall_value in the next step.
+    Always decompose following standard order of operations (parentheses, exponents, multiply/divide, add/subtract).
+  Workspace: store_value {name, value}, recall_value {name}
+  Memory: recall_method {description}, recall_memory {name?, category?, domain?, limit?},
+    list_memories {category?, domain?, limit?}, store_memory {name, verbal, code?, category?, domain?, confidence?}
+  Categories: FACT, METHOD, PATTERN, CONSTANT, RELATIONSHIP
+  Analysis workflow example (use sub_goals):
+    1. {"tool_name": "math", "tool_params": {"operation": "recall_memory", "category": "PATTERN", "domain": "operational_statistics"}}
+    2. {"tool_name": "math", "tool_params": {"operation": "assess_randomness", "data": [...]}}
+    3. {"tool_name": "math", "tool_params": {"operation": "store_memory", "name": "...", "category": "PATTERN", "verbal": "..."}}
+- internet_search: Search the web. Params: {query: str, max_results: int}
+  Use to research analysis methods, look up mathematical techniques, or find information to help people.
+- http_fetch: Fetch a web page. Params: {url: str, extract_text: bool}
+  Use to read full content from URLs found via internet_search.
 
 Respond with ONLY valid JSON:
 {
@@ -280,6 +324,14 @@ DEFAULT NETWORK ESCALATION:
                 # Clear after use
                 self._dn_escalation_context = None
 
+        # Statistical patterns (from StatisticianAgent via bus)
+        stat_str = ""
+        if ctx.statistical_context and ctx.active_pattern_count > 0:
+            stat_str = f"""
+
+STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
+{ctx.statistical_context}"""
+
         return f"""ROOT GOAL: {ctx.root_goal}
 
 CURRENT STATE:
@@ -303,7 +355,7 @@ RECENT OUTCOMES:
 {outcome_str}
 
 RELEVANT MEMORIES:
-{mem_str}{dn_str}
+{mem_str}{stat_str}{dn_str}
 
 Based on this context, what goal should be proposed?"""
 
