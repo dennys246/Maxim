@@ -422,8 +422,8 @@ Research Response Template:
     "glob": """=== GLOB PATTERN GUIDE ===
 Glob patterns are used to match files and directories. Use the 'glob' tool to find files.
 
-**SANDBOX**: Search in '.maxim_sandbox/' for sandbox files:
-- pattern='.maxim_sandbox/**/*.py' (all Python files in sandbox)
+**WORKSPACE**: Search in '.maxim_workspace/' for workspace files:
+- pattern='.maxim_workspace/**/*.py' (all Python files in workspace)
 
 Pattern Syntax:
 - *        → matches any characters EXCEPT /
@@ -444,10 +444,11 @@ Common Patterns:
 - Specific depth:               '*/*.py' (only one level deep)
 - All files in folder:          'src/*' (files only) or 'src/**/*' (recursive)
 
-Sandbox Examples:
-- '.maxim_sandbox/*.py'         → Python files directly in sandbox
-- '.maxim_sandbox/**/*.py'      → All Python files recursively
-- '.maxim_sandbox/scripts/*'    → Everything in scripts folder
+Workspace Examples:
+- '.maxim_workspace/*.py'         → Python files directly in workspace
+- '.maxim_workspace/**/*.py'      → All Python files recursively
+- '.maxim_workspace/drafts/*'     → Everything in drafts folder
+- '.maxim_workspace/scratch/*'    → Everything in scratch folder
 
 Tips:
 - Start broad, then narrow down if too many results
@@ -592,14 +593,18 @@ def get_file_extension_guidelines(filename: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sandbox Path Reminder (always include for file operations)
+# Workspace Path Reminder (always include for file operations)
 # ─────────────────────────────────────────────────────────────────────────────
 
-SANDBOX_REMINDER = """=== FILE SANDBOX REMINDER ===
-All files MUST be written to '.maxim_sandbox/' directory:
-- CORRECT: '.maxim_sandbox/script.py', '.maxim_sandbox/index.html'
+WORKSPACE_REMINDER = """=== FILE WORKSPACE REMINDER ===
+All files MUST be written to '.maxim_workspace/' directory:
+- CORRECT: '.maxim_workspace/drafts/script.py', '.maxim_workspace/scratch/index.html'
 - WRONG: 'script.py', '/tmp/file.py' (will FAIL!)
+Workspace structure: drafts/ (code drafts), notes/ (thinking), plans/ (proposals), scratch/ (temp files)
 """
+
+# Backward compat alias
+SANDBOX_REMINDER = WORKSPACE_REMINDER
 
 
 def build_coding_context(
@@ -611,7 +616,7 @@ def build_coding_context(
 
     Args:
         user_request: The user's request
-        include_sandbox_reminder: Whether to include sandbox path reminder
+        include_sandbox_reminder: Whether to include workspace path reminder
         max_guidelines: Maximum guideline sections to include
 
     Returns:
@@ -619,9 +624,9 @@ def build_coding_context(
     """
     parts = []
 
-    # Always include sandbox reminder for file operations
+    # Always include workspace reminder for file operations
     if include_sandbox_reminder:
-        parts.append(SANDBOX_REMINDER)
+        parts.append(WORKSPACE_REMINDER)
 
     # Add language-specific guidelines
     guidelines = get_guidelines_for_request(user_request, max_guidelines)
