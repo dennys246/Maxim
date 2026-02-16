@@ -14,8 +14,32 @@ Maxim is a Reachy Mini project for capturing audio/video, running perception + m
 - Add in concise commenting about import code functionality or nuanced.
 - Build modules for scalability to be applied to multiple sensory modalities (e.g., diffusion models applied to both images and audio).
 - Run additional analysis on the security of code. If an insecurity is identified within the repo, analyze the bug for potential fixes and notify the user alongside the fix.
-- If files or data are created in the `sandbox/`, delete old and un-necessary files and data if no longer being used.
+- If files or data are created in the `sandbox/` or `.maxim_workspace/`, delete old and un-necessary files and data if no longer being used.
 - Build code to handle both CPU and GPU execution paths; agentic runtime should only run when a GPU is available.
+
+## Naming Conventions (Cross-System Consistency)
+
+When multiple systems share the same functional role, they **must** use the same method and property names. This ensures the codebase reads uniformly and that abstract protocols (ABCs) map cleanly to concrete implementations.
+
+**Rule:** If two or more modules perform the same operation, name that operation identically across all of them — don't invent synonyms.
+
+| Operation | Canonical Name | DO NOT use |
+|-----------|---------------|------------|
+| Compress/decay/remove stale records | `consolidate()` | `sleep()`, `cleanup()`, `gc()` |
+| Store a new record | `capture()` / `store()` | `add()`, `insert()`, `create()` |
+| Retrieve by ID | `get()` | `fetch()`, `find_by_id()` |
+| Query by filters | `recall()` | `search()`, `query()`, `find()` |
+| Persist to disk | `save()` / `load()` | `dump()`, `serialize()`, `write()` |
+| Internal association graph | `graph` (property) | `_graph`, `get_graph()` |
+| Layer identifier | `layer_name` (property) | `name`, `type`, `kind` |
+| Record access tracking | `touch()` | `update_access()`, `mark_read()` |
+
+**Why:** When adding new memory layers (ATL, future layers) or subsystems, they implement the same `MemoryLayer` protocol. Consistent naming means:
+- Protocol compliance is obvious (same names = same interface)
+- Cross-system code (MemoryHub, bridges, promoters) works uniformly
+- New contributors immediately understand the API from any one implementation
+
+**Extending this table:** When introducing a new shared operation, add the canonical name here before implementing. If an existing operation has an inconsistent name in one system, rename it during the next change to that system.
 
 ## Allowed Actions
 - Modify code under `src/` with user requests.
@@ -128,7 +152,7 @@ The Hippocampus is an associative memory substrate that stores complete agentic 
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| **Hippocampus** | `memory/hippocampus.py` | Episodic memory storage, capture, recall, sleep consolidation |
+| **Hippocampus** | `memory/hippocampus.py` | Episodic memory storage, capture, recall, consolidation |
 | **SCN** | `time/scn.py` | Temporal rhythm indexing (circadian, weekly, monthly patterns) |
 | **NAc** | `decisions/nac.py` | Causal inference and reward prediction |
 | **EC** | `similarity/ec.py` | Multi-modal similarity engine (LSH-based) |
@@ -173,9 +197,9 @@ Only "interesting" loops are captured:
 - Failures (for learning)
 - Periodic checkpoints
 
-### Sleep Consolidation
+### Consolidation
 
-A periodic process (call `hippocampus.sleep()` or `hub.on_session_end()`) manages memory:
+A periodic process (call `hippocampus.consolidate()` or `hub.on_session_end()`) manages memory:
 1. **Long-Term Promotion**: Important memories marked for preservation
 2. **Compression**: Old EpisodicMemory → CompressedMemory
 3. **Removal**: Stale memories not accessed in 1 week (configurable)
@@ -232,7 +256,7 @@ should, reason = hub.should_escalate("find mug", novelty=0.7, salience=0.8)
 # Plan success prediction
 success = hub.get_predicted_success("find mug", ["look_around", "grasp"])
 
-# End session (runs sleep consolidation)
+# End session (runs mandatory consolidation cycle)
 hub.on_session_end()
 ```
 
