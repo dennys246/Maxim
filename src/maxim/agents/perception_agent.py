@@ -324,7 +324,11 @@ class PerceptionAgent(Agent):
     def update_interests(
         self, add: list[int] | None = None, remove: list[int] | None = None
     ) -> None:
-        """Update object class interests for salience computation."""
+        """Update object class interests for salience boosting.
+
+        Interest classes get a 2x salience multiplier. All COCO classes are
+        always detected; this controls prioritization, not visibility.
+        """
         if add:
             self._interests.update(add)
         if remove:
