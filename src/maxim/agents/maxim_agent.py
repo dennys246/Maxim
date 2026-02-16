@@ -102,10 +102,48 @@ class MaximAgent(Agent):
             quantization=quantization,
         )
 
+        # PlanManager (created early, wired to agents; services filled in wire_memory_hub)
+        from maxim.planning.plan_manager import PlanManager, PlanServices
+        from maxim.planning.plan_document import LongHorizonConfig
+
+        plans_dir = os.path.join(data_folder or "data", "planning")
+        self._plan_manager = PlanManager(
+            plans_dir=plans_dir,
+            bus=self._bus,
+            config=LongHorizonConfig(),
+            services=PlanServices(),
+        )
+
         self.goal = AgenticGoalAgent(
             self._bus,
             memory_agent=self.memory,
+            plan_manager=self._plan_manager,
         )
+
+        # Give memory agent plan awareness
+        self.memory._plan_manager = self._plan_manager
+
+        # Math cognition for StatisticianAgent (lazy imports to avoid circular dependency)
+        from maxim.agents.statistician_agent import StatisticianAgent
+        from maxim.math.ips import IPS
+        from maxim.math.angular_gyrus import AngularGyrus
+
+        ips = IPS()
+        angular_gyrus = AngularGyrus()
+
+        statistician_path = None
+        if data_folder:
+            statistician_path = os.path.join(data_folder, "util", "statistician_state.json")
+
+        self.statistician = StatisticianAgent(
+            bus=self._bus,
+            ips=ips,
+            angular_gyrus=angular_gyrus,
+            persistence_path=statistician_path,
+        )
+
+        # Angular Gyrus reference (also used by MemoryHub integration)
+        self._angular_gyrus = angular_gyrus
 
         # Throttle control
         self._last_intent_time = 0.0
@@ -113,15 +151,45 @@ class MaximAgent(Agent):
         self._last_log_time = 0.0
         self._log_interval = 1.0  # Log at most once per second
 
+    def wire_memory_hub(self, memory_hub: Any) -> None:
+        """Wire MemoryHub for multi-layer knowledge queries and promotion.
+
+        Call after MemoryHub is created but before on_start().
+        Registers StatisticianAgent as a promotion source and gives
+        MemoryAgent access to knowledge queries. Also wires PlanManager
+        services for rich replan context.
+        """
+        # Give MemoryAgent access for knowledge context building
+        self.memory._memory_hub = memory_hub
+
+        # Register StatisticianAgent as a promotion source
+        if hasattr(memory_hub, "register_promotion_source"):
+            memory_hub.register_promotion_source(self.statistician)
+
+        # Wire PlanManager services for rich replan context
+        if hasattr(self, "_plan_manager") and self._plan_manager:
+            svc = self._plan_manager._services
+            svc.hippocampus = getattr(memory_hub, "_hippocampus", None)
+            svc.nac = getattr(memory_hub, "_nac", None)
+            svc.statistician = self.statistician
+
     def on_start(self, **kwargs: Any) -> None:
         """Start all component agents."""
         self.perception.on_start(**kwargs)
         self.memory.on_start(**kwargs)
         self.exec_agent.on_start(**kwargs)
         self.goal.on_start(**kwargs)
+        try:
+            self.statistician.on_start(**kwargs)
+        except Exception:
+            pass  # Non-critical — don't block startup
 
     def on_stop(self, **kwargs: Any) -> None:
         """Stop all component agents."""
+        try:
+            self.statistician.on_stop(**kwargs)
+        except Exception:
+            pass  # Non-critical — don't block shutdown
         self.goal.on_stop(**kwargs)
         self.exec_agent.on_stop(**kwargs)
         self.memory.on_stop(**kwargs)
@@ -145,6 +213,13 @@ class MaximAgent(Agent):
             return None  # Let agent loop handle idle sleep
 
         self._last_intent_time = now
+
+        # Step 0: Statistical analysis (lightweight, rate-limited internally)
+        # Isolated so failures never block the perception-decision-action pipeline
+        try:
+            self.statistician.on_step(**kwargs)
+        except Exception:
+            pass
 
         # Step 1: Perception (publishes Percept to bus)
         self.perception.propose_intent(state, memory, **kwargs)
@@ -184,6 +259,42 @@ class MaximAgent(Agent):
                 source = result.get("source", "unknown") if result else "unknown"
                 self.log.info("Action from %s", source)
 
+    def wire_communication(
+        self,
+        gateway: Any,
+        nac: Any | None = None,
+        memory_hub: Any | None = None,
+    ) -> None:
+        """Wire CommunicationGateway and CommunicationBridge.
+
+        Call after MemoryHub is created. Sets up:
+        - CommunicationBridge for NAc reward attribution
+        - Registers bridge as PromotionSource with MemoryHub
+        """
+        self._gateway = gateway
+        if nac is not None:
+            from maxim.bridges.communication_bridge import CommunicationBridge
+
+            self._comm_bridge = CommunicationBridge(self._bus, nac)
+            if memory_hub and hasattr(memory_hub, "register_promotion_source"):
+                memory_hub.register_promotion_source(self._comm_bridge)
+
+    def wire_preemption(
+        self,
+        preemption_circuit: Any,
+        execution_tracker: Any,
+        robot: Any = None,
+    ) -> None:
+        """Wire PreemptionCircuit for interrupt handling.
+
+        Call before on_start(). Gives the goal agent preemption awareness.
+        """
+        self._preemption_circuit = preemption_circuit
+        self._execution_tracker = execution_tracker
+        self.goal.execution_tracker = execution_tracker
+        self.goal.preemption_circuit = preemption_circuit
+        self.goal.robot = robot
+
     def publish_tool_result(
         self,
         tool_call_id: str,
@@ -191,6 +302,7 @@ class MaximAgent(Agent):
         success: bool,
         result: Any = None,
         error: str | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         """Publish tool result for feedback."""
         tr = ToolResult(
@@ -199,6 +311,7 @@ class MaximAgent(Agent):
             success=success,
             result=result,
             error=error,
+            params=params or {},
         )
         self._bus.publish(tr)
 
@@ -209,9 +322,12 @@ class MaximAgent(Agent):
         success: bool,
         result: Any = None,
         error: str | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         """Alias for publish_tool_result for compatibility."""
-        self.publish_tool_result(tool_call_id, tool_name, success, result, error)
+        self.publish_tool_result(
+            tool_call_id, tool_name, success, result, error, params
+        )
 
     def update_interests(
         self, add: list[int] | None = None, remove: list[int] | None = None
