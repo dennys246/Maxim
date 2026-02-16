@@ -332,7 +332,11 @@ class MaximAgent(Agent):
     def update_interests(
         self, add: list[int] | None = None, remove: list[int] | None = None
     ) -> None:
-        """Update object class interests for salience computation."""
+        """Update object class interests for salience boosting.
+
+        Interest classes get a 2x salience multiplier. All COCO classes are
+        always detected; this controls prioritization, not visibility.
+        """
         self.perception.update_interests(add=add, remove=remove)
 
     def record_cli_input(self, command: str) -> None:
