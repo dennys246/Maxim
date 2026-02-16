@@ -4,7 +4,7 @@ import json
 import os
 import threading
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from maxim.utils.logging import info, warn
 from maxim.utils.structured_logging import log_agentic
@@ -247,6 +247,74 @@ def build_model_path(
         quant = DEFAULT_QUANTIZATION
     base = str(model_base or "").strip()
     return os.path.join(models_dir, f"{base}.{quant}.gguf")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Token counting
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@runtime_checkable
+class TokenCounter(Protocol):
+    """Protocol for counting tokens in text."""
+
+    def count_tokens(self, text: str) -> int: ...
+
+
+class CharEstimateCounter:
+    """Fallback token counter using ~3 chars per token estimate.
+
+    Structured prompts (JSON, headers, formatting) average ~3.0-3.5 chars/token
+    on common tokenizers. Using //3 is intentionally conservative to prevent
+    context overflow when the real tokenizer isn't available.
+    """
+
+    def count_tokens(self, text: str) -> int:
+        return max(1, len(text) // 3)
+
+
+class LlamaCppTokenCounter:
+    """Token counter backed by llama-cpp-python's actual tokenizer."""
+
+    def __init__(self, llm: Any) -> None:
+        self._llm = llm
+
+    def count_tokens(self, text: str) -> int:
+        try:
+            return len(self._llm.tokenize(text.encode("utf-8")))
+        except Exception:
+            return max(1, len(text) // 3)
+
+
+class _LazyTokenCounter:
+    """Token counter that upgrades to the real tokenizer when the model loads.
+
+    At construction time, the LLM model may still be warming up in a background
+    thread. This counter starts with CharEstimateCounter and transparently
+    upgrades to LlamaCppTokenCounter once the backend model is loaded.
+    """
+
+    def __init__(self, router: Any) -> None:
+        self._router = router
+        self._real_counter: TokenCounter | None = None
+
+    def _try_upgrade(self) -> TokenCounter:
+        if self._real_counter is not None:
+            return self._real_counter
+        # Check if backend model has loaded since construction
+        backend = self._router._backend
+        if backend is not None and hasattr(backend, "_llm") and backend._llm is not None:
+            self._real_counter = LlamaCppTokenCounter(backend._llm)
+            return self._real_counter
+        return CharEstimateCounter()
+
+    def count_tokens(self, text: str) -> int:
+        return self._try_upgrade().count_tokens(text)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LLM configuration
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 @dataclass(frozen=True, slots=True)
@@ -805,10 +873,25 @@ class _LlamaCppBackend:
                 return False
 
             try:
+                # Sanity-check n_ctx against model name hints to avoid
+                # GGML_ASSERT crashes from over-sized KV cache allocations.
+                n_ctx = int(self.cfg.n_ctx)
+                model_lower = os.path.basename(model_path).lower()
+                ctx_hints = {"2k": 2048, "4k": 4096, "8k": 8192, "16k": 16384}
+                for hint, limit in ctx_hints.items():
+                    if hint in model_lower and n_ctx > limit:
+                        warn(
+                            "n_ctx=%d exceeds model's advertised %s context (%s). "
+                            "Clamping to %d to avoid backend allocation failure.",
+                            n_ctx, hint, model_lower, limit,
+                        )
+                        n_ctx = limit
+                        break
+
                 # Build kwargs with all supported options
                 llama_kwargs: dict[str, Any] = {
                     "model_path": model_path,
-                    "n_ctx": int(self.cfg.n_ctx),
+                    "n_ctx": n_ctx,
                     "verbose": False,
                 }
 
@@ -907,6 +990,20 @@ class LLMRouter:
 
     def enabled(self) -> bool:
         return bool(getattr(self.cfg, "enabled", False))
+
+    @property
+    def n_ctx(self) -> int:
+        """Return the model's context window size in tokens."""
+        return int(getattr(self.cfg, "n_ctx", 4096))
+
+    def get_token_counter(self) -> TokenCounter:
+        """Return a token counter that lazily upgrades to the real tokenizer.
+
+        At startup the model may still be loading in a background thread.
+        The returned counter starts with CharEstimateCounter and transparently
+        switches to the actual tokenizer once it's available.
+        """
+        return _LazyTokenCounter(self)
 
     def warmup(self) -> bool:
         """
