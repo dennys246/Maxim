@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from maxim.time.scn import SCN
 
 from maxim.agents.bus import DependencyGraph, Edge, EdgeType
+from maxim.memory.layer import MemoryLayer
 from maxim.memory.rwlock import RWLock
 from maxim.memory.state_store import StateStore
 from maxim.memory.types import (
@@ -122,7 +123,7 @@ class HippocampusConfig:
     spreading_activation_threshold: float = 0.05
 
 
-class Hippocampus:
+class Hippocampus(MemoryLayer):
     """Hybrid hash-table graph for associative memory of agentic loops.
 
     Each node stores a complete EpisodicMemory (observe -> decide -> act -> outcome).
@@ -222,21 +223,51 @@ class Hippocampus:
         return self._scn
 
     # ─────────────────────────────────────────────────────────────────────────
+    # MemoryLayer Protocol
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @property
+    def layer_name(self) -> str:
+        return "hippocampus"
+
+    @property
+    def graph(self) -> DependencyGraph:
+        return self._graph
+
+    def store(self, record: "EpisodicMemory", **kwargs: Any) -> str:
+        """MemoryLayer protocol: store a pre-built EpisodicMemory."""
+        return self.capture(record=record, **kwargs)
+
+    def remove(self, record_id: str) -> None:
+        """MemoryLayer protocol: remove a memory by ID."""
+        with self._rwlock.write():
+            if record_id in self._memories:
+                mem = self._memories[record_id]
+                if isinstance(mem, CompressedMemory):
+                    self._compressed_count -= 1
+                self._remove_memory(record_id)
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Core Operations
     # ─────────────────────────────────────────────────────────────────────────
 
     def capture(
         self,
-        perception: Perception,
-        context: Context,
-        decision: Decision,
-        action: Action,
-        outcome: Outcome,
+        perception: Perception | None = None,
+        context: Context | None = None,
+        decision: Decision | None = None,
+        action: Action | None = None,
+        outcome: Outcome | None = None,
         run_id: str = "",
         *,
+        record: EpisodicMemory | None = None,
         state_snapshot: dict[str, Any] | None = None,
     ) -> str:
         """Capture a complete agentic loop as an episodic memory.
+
+        Supports two paths:
+        1. Individual args (existing API): perception, context, etc.
+        2. Pre-built record (MemoryLayer protocol): record=EpisodicMemory(...)
 
         Args:
             perception: What was observed.
@@ -245,32 +276,41 @@ class Hippocampus:
             action: What action was taken.
             outcome: What happened as a result.
             run_id: Optional run identifier.
+            record: Pre-built EpisodicMemory (overrides individual args).
             state_snapshot: Optional full state to store in StateStore.
 
         Returns:
             The memory_id of the captured memory.
         """
-        memory_id = str(uuid4())
-        now = time.time()
+        if record is not None:
+            # Pre-built path: use record directly
+            memory = record
+            memory_id = memory.id
+        else:
+            # Existing path: construct from individual args
+            memory_id = str(uuid4())
+            now = time.time()
 
-        # Store state snapshot and get reference
-        if state_snapshot is not None:
-            context.state_ref = self._state_store.store(state_snapshot)
+            # Store state snapshot and get reference
+            if state_snapshot is not None:
+                if context is None:
+                    context = Context()
+                context.state_ref = self._state_store.store(state_snapshot)
 
-        # Create the memory
-        memory = EpisodicMemory(
-            id=memory_id,
-            timestamp=now,
-            run_id=run_id,
-            created_at=now,
-            accessed_at=now,
-            access_count=1,
-            perception=perception,
-            context=context,
-            decision=decision,
-            action=action,
-            outcome=outcome,
-        )
+            # Create the memory
+            memory = EpisodicMemory(
+                id=memory_id,
+                timestamp=now,
+                run_id=run_id,
+                created_at=now,
+                accessed_at=now,
+                access_count=1,
+                perception=perception or Perception(),
+                context=context or Context(),
+                decision=decision or Decision(),
+                action=action or Action(),
+                outcome=outcome or Outcome(),
+            )
 
         with self._rwlock.write():
             # Store the memory
@@ -282,27 +322,27 @@ class Hippocampus:
             # Update stats
             self._stats["memories_captured"] += 1
 
-            if outcome.success:
+            if memory.outcome.success:
                 self._stats["successful"] = self._stats.get("successful", 0) + 1
             else:
                 self._stats["failed"] = self._stats.get("failed", 0) + 1
 
             # Check for immediate promotion to long-term (very high importance)
             if (
-                perception.salience >= self.config.immediate_promotion_salience
-                or perception.novelty >= self.config.immediate_promotion_novelty
+                memory.perception.salience >= self.config.immediate_promotion_salience
+                or memory.perception.novelty >= self.config.immediate_promotion_novelty
             ):
                 memory.long_term = True
-                memory.consolidated_at = now
+                memory.consolidated_at = time.time()
                 self._stats["long_term_count"] = self._stats.get("long_term_count", 0) + 1
                 logger.debug("Immediately promoted memory %s to long-term", memory_id[:8])
 
             # Add to consolidation candidates if potentially important
             elif (
-                perception.salience > 0.7
-                or perception.novelty > 0.7
-                or perception.cli_input
-                or perception.transcript
+                memory.perception.salience > 0.7
+                or memory.perception.novelty > 0.7
+                or memory.perception.cli_input
+                or memory.perception.transcript
             ):
                 self._add_consolidation_candidate(memory_id)
 
@@ -313,9 +353,9 @@ class Hippocampus:
         logger.debug(
             "Captured memory %s: goal=%s, tool=%s, success=%s",
             memory_id[:8],
-            context.active_goal,
-            action.tool_name,
-            outcome.success,
+            memory.context.active_goal,
+            memory.action.tool_name,
+            memory.outcome.success,
         )
 
         # Notify capture callbacks (e.g., for semantic embedding)
