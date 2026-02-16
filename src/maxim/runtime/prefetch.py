@@ -139,6 +139,395 @@ def detect_file_intent(text: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Topic-Based File Discovery
+# ─────────────────────────────────────────────────────────────────────────────
+
+_STOPWORDS: frozenset[str] = frozenset({
+    "the", "a", "an", "to", "for", "in", "and", "or", "this", "that",
+    "is", "it", "of", "with", "my", "please", "can", "you", "i", "want",
+    "would", "could", "should", "do", "does", "how", "what", "where",
+    "make", "let", "me", "us", "on", "at", "be", "so", "if", "but",
+    "not", "all", "some", "about", "into", "from", "up", "out", "like",
+})
+
+# Maps domain terms to source directory prefixes (relative to src/maxim/).
+# Fuzzy fallback handles terms not in this map.
+TOPIC_DIRECTORY_MAP: dict[str, list[str]] = {
+    # Memory subsystem
+    "memory": ["memory/"],
+    "hippocampus": ["memory/"],
+    "recall": ["memory/"],
+    "store": ["memory/"],
+    "consolidation": ["memory/"],
+    "engram": ["memory/"],
+    "semantic": ["memory/"],
+    "episodic": ["memory/"],
+    "atl": ["memory/"],
+    "layer": ["memory/"],
+    # Planning
+    "planning": ["planning/"],
+    "plan": ["planning/"],
+    "goal": ["agents/", "planning/"],
+    # Agents
+    "agent": ["agents/"],
+    "llm": ["agents/", "models/language/"],
+    "worker": ["agents/"],
+    "perception": ["agents/"],
+    "statistician": ["agents/"],
+    # Runtime
+    "runtime": ["runtime/"],
+    "loop": ["runtime/"],
+    "executor": ["runtime/"],
+    "prefetch": ["runtime/"],
+    "bootstrap": ["runtime/"],
+    # Tools
+    "tool": ["tools/"],
+    "filesystem": ["tools/", "utils/"],
+    "sandbox": ["utils/", "tools/"],
+    # Math
+    "math": ["math/"],
+    "ips": ["math/"],
+    "angular": ["math/"],
+    "linalg": ["math/"],
+    "number": ["math/"],
+    # Attention & Salience
+    "attention": ["attention/"],
+    "salience": ["attention/"],
+    "gaze": ["attention/"],
+    # Time
+    "time": ["time/"],
+    "scn": ["time/"],
+    "oscillator": ["time/"],
+    "circadian": ["time/"],
+    # Communication
+    "comms": ["comms/"],
+    "communication": ["comms/"],
+    "gateway": ["comms/"],
+    "preemption": ["comms/", "runtime/"],
+    # Modes
+    "mode": ["modes/"],
+    "strategy": ["modes/"],
+    "exploration": ["modes/"],
+    "singularity": ["modes/"],
+    "passive": ["modes/"],
+    "active": ["modes/"],
+    # Bridges
+    "bridge": ["bridges/"],
+    # Decisions
+    "decision": ["decisions/"],
+    "nac": ["decisions/"],
+    "dopamine": ["decisions/"],
+    # Models
+    "model": ["models/"],
+    "router": ["models/language/"],
+    "inference": ["inference/"],
+    # Conscience
+    "conscience": ["conscience/"],
+    "selfy": ["conscience/"],
+    "identity": ["conscience/"],
+}
+
+# Intent keywords beyond the existing MODIFY_KEYWORDS / CREATE_KEYWORDS
+_EXPLORE_KEYWORDS: frozenset[str] = frozenset({
+    "understand", "explain", "how", "what", "where", "show", "list",
+    "find", "search", "look", "check", "explore", "investigate",
+})
+
+
+@dataclass
+class TopicExtraction:
+    """Keywords and topics extracted from user input for file discovery."""
+
+    explicit_topics: list[str]    # Words from input that matched topics
+    directory_hints: list[str]    # Mapped directory prefixes to search
+    action_intent: str            # "modify", "create", "explore", "understand"
+    complexity: str               # "single_file", "multi_file", "system_wide"
+
+
+def extract_topics(
+    text: str,
+    cwd_dirs: list[str] | None = None,
+) -> TopicExtraction:
+    """Extract semantic topics from user input for file discovery.
+
+    Args:
+        text: User input text.
+        cwd_dirs: Optional list of directory names from CWD tree
+                  (for fuzzy fallback matching).
+
+    Returns:
+        TopicExtraction with matched topics and directory hints.
+    """
+    text_lower = text.lower()
+
+    # Detect action intent
+    has_modify = any(kw in text_lower for kw in MODIFY_KEYWORDS)
+    has_create = any(kw in text_lower for kw in CREATE_KEYWORDS)
+    has_explore = any(kw in text_lower for kw in _EXPLORE_KEYWORDS)
+
+    if has_create and not has_modify:
+        action_intent = "create"
+    elif has_modify:
+        action_intent = "modify"
+    elif has_explore:
+        action_intent = "explore"
+    else:
+        action_intent = "understand"
+
+    # Tokenize and filter stopwords
+    words = re.split(r"[\s,;:!?.()\"']+", text_lower)
+    words = [w for w in words if w and w not in _STOPWORDS and len(w) > 1]
+
+    # Match against TOPIC_DIRECTORY_MAP
+    explicit_topics: list[str] = []
+    dir_hints: set[str] = set()
+
+    for word in words:
+        if word in TOPIC_DIRECTORY_MAP:
+            explicit_topics.append(word)
+            dir_hints.update(TOPIC_DIRECTORY_MAP[word])
+
+    # Fuzzy fallback: match words against CWD directory names
+    if cwd_dirs:
+        for word in words:
+            if word in _STOPWORDS or word in explicit_topics:
+                continue
+            for d in cwd_dirs:
+                # Strip trailing slash and compare
+                dname = d.rstrip("/").split("/")[-1].lower()
+                if word in dname or dname in word:
+                    if word not in explicit_topics:
+                        explicit_topics.append(word)
+                    dir_hints.add(d)
+
+    # Determine complexity
+    unique_dirs = len(dir_hints)
+    if unique_dirs >= 3:
+        complexity = "system_wide"
+    elif unique_dirs == 2:
+        complexity = "multi_file"
+    else:
+        complexity = "single_file"
+
+    return TopicExtraction(
+        explicit_topics=explicit_topics,
+        directory_hints=sorted(dir_hints),
+        action_intent=action_intent,
+        complexity=complexity,
+    )
+
+
+@dataclass
+class CandidateFile:
+    """A file candidate discovered by topic matching."""
+
+    path: str
+    rel_path: str
+    score: float             # 0.0–1.0 relevance
+    match_reasons: list[str]
+    size_bytes: int
+
+
+def discover_files_by_topic(
+    topics: TopicExtraction,
+    cwd: str | None = None,
+    user_text: str = "",
+) -> list[CandidateFile]:
+    """Match topics against CWD tree and return scored candidates.
+
+    Uses scan_cwd_tree() as the file listing source, then scores
+    each entry by relevance to the extracted topics.
+    """
+    from maxim.utils.filesystem_policy import get_effective_cwd, scan_cwd_tree
+
+    if cwd is None:
+        cwd = get_effective_cwd()
+
+    # Get a wider tree scan for discovery (depth 3, up to 100 entries)
+    entries = scan_cwd_tree(cwd, max_depth=3, max_entries=100)
+    if not entries:
+        return []
+
+    candidates: list[CandidateFile] = []
+    text_lower = user_text.lower()
+    topic_set = set(topics.explicit_topics)
+
+    for entry in entries:
+        # Parse entry: "  rel/path/file.py (2KB)" or "  rel/path/dir/"
+        entry_stripped = entry.strip()
+        if entry_stripped.endswith("/"):
+            continue  # Skip directory entries, we want files
+
+        # Split off size annotation
+        parts = entry_stripped.rsplit(" (", 1)
+        rel_path = parts[0]
+        size_str = parts[1].rstrip(")") if len(parts) > 1 else "0B"
+
+        # Parse size
+        try:
+            if size_str.endswith("KB"):
+                size_bytes = int(size_str[:-2]) * 1024
+            else:
+                size_bytes = int(size_str[:-1])
+        except (ValueError, IndexError):
+            size_bytes = 0
+
+        abs_path = os.path.join(cwd, rel_path)
+        filename = os.path.basename(rel_path).lower()
+        dirparts = rel_path.lower().split("/")
+
+        # Score this file
+        score = 0.0
+        reasons: list[str] = []
+
+        # Check if filename is explicitly mentioned in user input
+        if filename in text_lower or os.path.splitext(filename)[0] in text_lower:
+            score += 0.5
+            reasons.append("filename_mentioned")
+
+        # Check directory matches
+        for hint in topics.directory_hints:
+            hint_clean = hint.rstrip("/").lower()
+            if any(hint_clean in dp for dp in dirparts):
+                score += 0.2
+                reasons.append(f"dir_match:{hint}")
+                break  # Count once
+
+        # Check if directory name exactly matches a topic
+        for dp in dirparts:
+            if dp in topic_set:
+                score += 0.4
+                reasons.append(f"dir_topic:{dp}")
+                break
+
+        # Check if filename contains a topic keyword
+        fname_stem = os.path.splitext(filename)[0]
+        for topic in topics.explicit_topics:
+            if topic in fname_stem:
+                score += 0.3
+                reasons.append(f"name_match:{topic}")
+                break
+
+        # Test file bonus
+        if "test" in filename:
+            score += 0.1
+            reasons.append("test_file")
+
+        # __init__.py penalty
+        if filename == "__init__.py":
+            score -= 0.15
+            reasons.append("init_file")
+
+        # Only include files with some relevance
+        score = min(score, 1.0)
+        if score >= 0.15 and reasons:
+            candidates.append(CandidateFile(
+                path=abs_path,
+                rel_path=rel_path,
+                score=score,
+                match_reasons=reasons,
+                size_bytes=size_bytes,
+            ))
+
+    # Sort by score descending
+    candidates.sort(key=lambda c: -c.score)
+    return candidates
+
+
+@dataclass
+class DiscoveryPlan:
+    """Structured discovery results for LLM context."""
+
+    topic_extraction: TopicExtraction
+    candidates: list[CandidateFile]
+    full_content_files: dict[str, str]    # path → full content
+    summary_files: dict[str, str]         # path → structure summary
+    listed_files: list[str]               # paths only
+
+
+_STRUCTURE_RE = re.compile(r"^(?:class |def |async def )(\w+)", re.MULTILINE)
+
+
+def summarize_file_structure(path: str, max_chars: int = 500) -> str:
+    """Read a file and extract a compact structure summary.
+
+    Returns class names, function names, and first few lines.
+    """
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read(50000)  # Cap read at 50KB
+    except OSError:
+        return f"(unreadable)"
+
+    filename = os.path.basename(path)
+    size = len(content)
+    size_str = f"{size}B" if size < 1024 else f"{size // 1024}KB"
+
+    # Extract class and function names
+    matches = _STRUCTURE_RE.findall(content)
+    classes = []
+    functions = []
+    for m in matches:
+        # Heuristic: capitalized = class, lowercase = function
+        if m[0].isupper():
+            classes.append(m)
+        else:
+            functions.append(m)
+
+    parts = [f"{filename} ({size_str}):"]
+    if classes:
+        parts.append(f"  Classes: {', '.join(classes[:8])}")
+    if functions:
+        parts.append(f"  Key functions: {', '.join(f + '()' for f in functions[:10])}")
+
+    return "\n".join(parts)
+
+
+def select_files_for_context(
+    candidates: list[CandidateFile],
+    max_total_chars: int = 3000,
+    max_files: int = 8,
+    cwd: str | None = None,
+) -> DiscoveryPlan:
+    """Select and read the most relevant files within a character budget.
+
+    Top-scored files get full content, mid-scored get structure summaries,
+    and the rest are listed by path only.
+    """
+    # The TopicExtraction is not passed here — caller constructs DiscoveryPlan
+    full_content: dict[str, str] = {}
+    summaries: dict[str, str] = {}
+    listed: list[str] = []
+    chars_used = 0
+
+    for candidate in candidates[:max_files]:
+        if candidate.score >= 0.7 and chars_used < max_total_chars - 200:
+            # Full content read
+            try:
+                with open(candidate.path, "r", encoding="utf-8", errors="replace") as f:
+                    content = f.read(min(1500, max_total_chars - chars_used))
+                full_content[candidate.rel_path] = content
+                chars_used += len(content)
+            except OSError:
+                listed.append(candidate.rel_path)
+        elif candidate.score >= 0.4 and chars_used < max_total_chars - 100:
+            # Structure summary
+            summary = summarize_file_structure(candidate.path)
+            summaries[candidate.rel_path] = summary
+            chars_used += len(summary)
+        else:
+            listed.append(candidate.rel_path)
+
+    return DiscoveryPlan(
+        topic_extraction=TopicExtraction([], [], "unknown", "single_file"),  # Caller fills this
+        candidates=candidates[:max_files],
+        full_content_files=full_content,
+        summary_files=summaries,
+        listed_files=listed,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Systematic File Discovery (using bash find)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -508,6 +897,8 @@ class PrefetchResult:
     file_contents: dict[str, str] = field(default_factory=dict)
     related_files: list[str] = field(default_factory=list)
     skip_exploration: bool = False  # True if we can skip LLM exploration call
+    discovery_plan: DiscoveryPlan | None = None  # Topic-based discovery results
+    not_found_refs: list[str] = field(default_factory=list)  # File refs detected but not located
 
 
 class SpeculativePrefetcher:
@@ -537,14 +928,20 @@ class SpeculativePrefetcher:
         """Set the tool executor (for deferred initialization)."""
         self._executor = executor
 
-    def prefetch_for_input(self, user_input: str) -> PrefetchResult:
+    def prefetch_for_input(self, user_input: str, cwd: str | None = None) -> PrefetchResult:
         """Analyze user input and pre-fetch likely needed context.
 
+        First tries explicit file-reference detection (filename patterns).
+        If no explicit files found, falls back to topic-based discovery
+        which maps semantic keywords to directories and scores files by
+        relevance.
+
         Args:
-            user_input: The user's input text
+            user_input: The user's input text.
+            cwd: Current working directory (for topic-based discovery).
 
         Returns:
-            PrefetchResult with pre-gathered context
+            PrefetchResult with pre-gathered context.
         """
         result = PrefetchResult(
             file_references=[],
@@ -556,7 +953,31 @@ class SpeculativePrefetcher:
         result.file_references = refs
         result.intent = detect_file_intent(user_input)
 
+        # Topic-based discovery: when no explicit files found OR complex request
         if not refs:
+            try:
+                topics = extract_topics(user_input)
+                if topics.explicit_topics:
+                    candidates = discover_files_by_topic(
+                        topics, cwd=cwd or self._base_path, user_text=user_input,
+                    )
+                    if candidates:
+                        plan = select_files_for_context(
+                            candidates, max_total_chars=3000, cwd=cwd,
+                        )
+                        plan.topic_extraction = topics
+                        result.discovery_plan = plan
+                        result.file_contents.update(plan.full_content_files)
+                        result.intent = topics.action_intent
+                        logger.info(
+                            "Topic discovery: %s → %d candidates, %d read, %d summarized",
+                            topics.explicit_topics,
+                            len(candidates),
+                            len(plan.full_content_files),
+                            len(plan.summary_files),
+                        )
+            except Exception as e:
+                logger.debug("Topic-based discovery failed (non-critical): %s", e)
             return result
 
         # If creating a new file and we detect a clear filename, skip exploration
@@ -601,6 +1022,37 @@ class SpeculativePrefetcher:
                 # Fall back to old method if discovery fails
                 if self._executor:
                     self._prefetch_file_context(refs, result)
+
+        # ── Safety net: file refs detected but nothing found ──────────────
+        # When the user mentions a file by name but we couldn't locate it,
+        # inject guidance so the LLM searches with tools instead of
+        # hallucinating an unrelated action.
+        if refs and not result.file_contents:
+            ref_names = [r.pattern for r in refs]
+            result.not_found_refs = ref_names
+
+            # Also attempt topic-based discovery as fallback — maybe the
+            # user's keywords match a subsystem even though the exact
+            # filename wasn't in the tree.
+            try:
+                topics = extract_topics(user_input)
+                if topics.explicit_topics:
+                    candidates = discover_files_by_topic(
+                        topics, cwd=cwd or self._base_path, user_text=user_input,
+                    )
+                    if candidates:
+                        plan = select_files_for_context(
+                            candidates, max_total_chars=3000, cwd=cwd,
+                        )
+                        plan.topic_extraction = topics
+                        result.discovery_plan = plan
+                        result.file_contents.update(plan.full_content_files)
+                        logger.info(
+                            "Fallback topic discovery for unresolved refs %s: %d candidates",
+                            ref_names, len(candidates),
+                        )
+            except Exception as e:
+                logger.debug("Fallback topic discovery failed: %s", e)
 
         return result
 
@@ -750,6 +1202,33 @@ class SpeculativePrefetcher:
         Returns a formatted string suitable for including in the LLM prompt.
         Limits total size to avoid exceeding context window.
         """
+        # Discovery plan formatting (topic-based discovery)
+        if result.discovery_plan is not None:
+            plan_text = self._format_discovery_plan(result.discovery_plan, max_total_chars)
+            # Prepend not-found guidance if we also have unresolved file refs
+            if result.not_found_refs:
+                not_found = ", ".join(result.not_found_refs)
+                plan_text = (
+                    f"⚠ REQUESTED FILE(S) NOT FOUND: {not_found}\n"
+                    "The user asked about specific file(s) that could not be located.\n"
+                    "Use glob or read_file to search for the file before taking action.\n"
+                    "Do NOT create unrelated files.\n\n"
+                    + plan_text
+                )
+            return plan_text
+
+        # File refs detected but nothing found — inject search guidance
+        if result.not_found_refs:
+            not_found = ", ".join(result.not_found_refs)
+            return (
+                f"⚠ REQUESTED FILE(S) NOT FOUND: {not_found}\n"
+                f"The user asked about {not_found} but it was not found in the project.\n"
+                "REQUIRED: Use glob to search for the file before taking any action.\n"
+                "Do NOT write a new file or create unrelated files.\n"
+                "Do NOT guess or hallucinate file contents.\n"
+                "Search first, then act on what you find."
+            )
+
         if not result.file_contents and not result.glob_results:
             return ""
 
@@ -837,6 +1316,90 @@ class SpeculativePrefetcher:
         parts.append("\n" + "=" * 60)
         parts.append(">>> END FILE DISCOVERY <<<")
         parts.append("=" * 60)
+
+        return "\n".join(parts)
+
+    @staticmethod
+    def _format_discovery_plan(plan: DiscoveryPlan, max_chars: int = 3000) -> str:
+        """Format a topic-based discovery plan for LLM context."""
+        topics = plan.topic_extraction
+        topic_str = ", ".join(topics.explicit_topics) if topics.explicit_topics else "general"
+        total_files = (
+            len(plan.full_content_files) + len(plan.summary_files) + len(plan.listed_files)
+        )
+
+        parts: list[str] = []
+
+        if topics.complexity in ("multi_file", "system_wide"):
+            # Structured discovery plan — LLM should plan before acting
+            parts.append(f"=== DISCOVERY PLAN (topics: {topic_str}) ===")
+            parts.append(f"Found {total_files} files related to your request.")
+            parts.append("")
+
+            # Group by directory
+            all_files: dict[str, list[tuple[str, str]]] = {}  # dir → [(file, tag)]
+            for path in plan.full_content_files:
+                d = os.path.dirname(path) or "."
+                all_files.setdefault(d, []).append((os.path.basename(path), "READ"))
+            for path in plan.summary_files:
+                d = os.path.dirname(path) or "."
+                all_files.setdefault(d, []).append((os.path.basename(path), "SUMMARY"))
+            for path in plan.listed_files:
+                d = os.path.dirname(path) or "."
+                all_files.setdefault(d, []).append((os.path.basename(path), "LIST"))
+
+            chars_used = sum(len(p) for p in parts)
+
+            for dir_name, files in sorted(all_files.items()):
+                parts.append(f"{dir_name}/ ({len(files)} files):")
+                for fname, tag in files:
+                    full_path = os.path.join(dir_name, fname)
+                    if tag == "READ" and full_path in plan.full_content_files:
+                        content = plan.full_content_files[full_path]
+                        # Truncate to fit budget
+                        available = max_chars - chars_used - 200
+                        if available > 200:
+                            truncated = content[:available]
+                            parts.append(f"  [READ] {fname}:")
+                            parts.append(truncated)
+                            chars_used += len(truncated) + len(fname) + 20
+                        else:
+                            parts.append(f"  [READ] {fname}: (budget exceeded)")
+                    elif tag == "SUMMARY" and full_path in plan.summary_files:
+                        summary = plan.summary_files[full_path]
+                        parts.append(f"  [SUMMARY] {summary}")
+                        chars_used += len(summary) + 15
+                    else:
+                        parts.append(f"  [LIST] {fname}")
+                        chars_used += len(fname) + 15
+
+            parts.append("")
+            parts.append(
+                "PROPOSE YOUR MODIFICATION PLAN based on the files above. "
+                "Which files need changes and what changes are needed?"
+            )
+        else:
+            # Single-file or simple — direct context
+            parts.append(f"=== FILE DISCOVERY (topic: {topic_str}) ===")
+            parts.append(f"Found {total_files} related files.")
+
+            chars_used = sum(len(p) for p in parts)
+
+            for path, content in plan.full_content_files.items():
+                available = max_chars - chars_used - 100
+                if available > 200:
+                    truncated = content[:available]
+                    parts.append(f"\n[FULL] {path}:")
+                    parts.append(truncated)
+                    chars_used += len(truncated) + len(path) + 20
+
+            for path, summary in plan.summary_files.items():
+                parts.append(f"\n[SUMMARY] {summary}")
+                chars_used += len(summary) + 15
+
+            if plan.listed_files:
+                listed = ", ".join(os.path.basename(f) for f in plan.listed_files)
+                parts.append(f"\nAlso relevant: {listed}")
 
         return "\n".join(parts)
 
