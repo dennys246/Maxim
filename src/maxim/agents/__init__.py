@@ -20,6 +20,8 @@ from maxim.agents.bus import (
     MemoryTier,
     Percept,
     ProposedGoal,
+    StatisticalInsight,
+    StatisticalSummary,
     StructuredContext,
     SubGoal,
     SubGoalStatus,
@@ -38,6 +40,7 @@ from maxim.agents.fear_agent import (
     ReviewResult,
     RiskLevel,
 )
+from maxim.agents.statistician_agent import PatternState, StatisticianAgent
 
 # Autonomy and LLM worker
 from maxim.agents.autonomy import (
@@ -100,6 +103,9 @@ __all__ = [
     "SubGoalStatus",
     "ToolCall",
     "ToolResult",
+    # Statistical
+    "StatisticalInsight",
+    "StatisticalSummary",
     # Agentic architecture - Agents
     "AgenticGoalAgent",
     "AgenticMaximAgent",
@@ -114,6 +120,9 @@ __all__ = [
     "MemoryAgent",
     "MemoryAssociationGraph",
     "PerceptionAgent",
+    # Statistician
+    "PatternState",
+    "StatisticianAgent",
     # Autonomy
     "AutonomyController",
     "AutonomyLevel",
