@@ -59,6 +59,9 @@ class SCN:
     # Temporal priors for cold start
     _priors: dict[str, set[int]] = field(default_factory=lambda: defaultdict(set))
 
+    # Coupled oscillator network (optional, disabled by default)
+    _oscillator: Any = field(default=None, repr=False)
+
     def register(self, memory_id: str, signature: TemporalSignature) -> None:
         """Register a memory's temporal signature in all indices.
 
@@ -72,6 +75,10 @@ class SCN:
         self._monthly_bins[week_bin].add(memory_id)
         self._annual_bins[month_bin].add(memory_id)
         self._signatures[memory_id] = signature
+
+        # Feed coupled oscillator (if enabled)
+        if self._oscillator is not None:
+            self._oscillator.observe(signature)
 
     def unregister(self, memory_id: str) -> None:
         """Remove a memory from all temporal indices.
@@ -361,7 +368,7 @@ class SCN:
 
     def stats(self) -> dict[str, Any]:
         """Return SCN statistics."""
-        return {
+        s: dict[str, Any] = {
             "total_signatures": len(self._signatures),
             "circadian_bins_used": len(
                 [b for b in self._circadian_bins.values() if b]
@@ -370,19 +377,88 @@ class SCN:
             "monthly_bins_used": len([b for b in self._monthly_bins.values() if b]),
             "annual_bins_used": len([b for b in self._annual_bins.values() if b]),
         }
+        if self._oscillator is not None:
+            s["oscillator_enabled"] = True
+            s["oscillator_observations"] = self._oscillator._observation_count
+            s["oscillator_coherence"] = self._oscillator.phase_coherence()
+        else:
+            s["oscillator_enabled"] = False
+        return s
 
     def __len__(self) -> int:
         """Number of memories with temporal signatures."""
         return len(self._signatures)
 
     # ─────────────────────────────────────────────────────────────────────────
+    # Coupled Oscillator Network
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def enable_oscillator(self, config: Any = None) -> None:
+        """Enable the coupled oscillator network.
+
+        Args:
+            config: OscillatorConfig or None for defaults.
+        """
+        from maxim.time.oscillator import OscillatorNetwork
+
+        self._oscillator = OscillatorNetwork(config)
+        logger.info("SCN oscillator network enabled")
+
+    @property
+    def oscillator(self) -> Any:
+        """Access the oscillator network (None if disabled)."""
+        return self._oscillator
+
+    def predict_next_occurrence(self, target_hour: float, max_hours: float = 168.0) -> float | None:
+        """Predict hours until the circadian oscillator reaches target phase.
+
+        Args:
+            target_hour: Target hour of day (0-23.999).
+            max_hours: Maximum lookahead in hours.
+
+        Returns:
+            Hours until target, or None if oscillator disabled/not found.
+        """
+        if self._oscillator is None:
+            return None
+        target_phase = target_hour / 24.0
+        return self._oscillator.predict_next_occurrence(target_phase, oscillator=0, max_hours=max_hours)
+
+    def phase_coherence(self) -> float | None:
+        """Kuramoto order parameter — how synchronized are the oscillators?
+
+        Returns 0.0-1.0, or None if oscillator disabled.
+        """
+        if self._oscillator is None:
+            return None
+        return self._oscillator.phase_coherence()
+
+    def coupling_strength(self, osc_a: int, osc_b: int) -> float | None:
+        """Read coupling weight between two oscillators.
+
+        Returns weight, or None if oscillator disabled.
+        """
+        if self._oscillator is None:
+            return None
+        return self._oscillator.coupling_strength_between(osc_a, osc_b)
+
+    def temporal_anomaly_score(self, signature: TemporalSignature) -> float | None:
+        """Score how anomalous a temporal signature is vs predicted phases.
+
+        Returns 0.0-1.0, or None if oscillator disabled.
+        """
+        if self._oscillator is None:
+            return None
+        return self._oscillator.temporal_anomaly_score(signature)
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Persistence
     # ─────────────────────────────────────────────────────────────────────────
 
     def save(self, path: str) -> None:
-        """Save SCN state to JSON file."""
-        data = {
-            "version": "1.0",
+        """Save SCN state to JSON file (v2.0 with optional oscillator)."""
+        data: dict[str, Any] = {
+            "version": "2.0",
             "circadian_bins": {k: list(v) for k, v in self._circadian_bins.items()},
             "weekly_bins": {k: list(v) for k, v in self._weekly_bins.items()},
             "monthly_bins": {k: list(v) for k, v in self._monthly_bins.items()},
@@ -391,18 +467,24 @@ class SCN:
             "priors": {k: list(v) for k, v in self._priors.items()},
         }
 
-        with open(path, "w", encoding="utf-8") as f:
+        if self._oscillator is not None:
+            data["oscillator"] = self._oscillator.to_dict()
+
+        tmp_path = path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
+        import os
+        os.replace(tmp_path, path)
         logger.info("Saved SCN to %s (%d signatures)", path, len(self._signatures))
 
     def load(self, path: str) -> None:
-        """Load SCN state from JSON file."""
+        """Load SCN state from JSON file (supports v1.0 and v2.0)."""
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
         version = data.get("version", "0.0")
-        if version != "1.0":
+        if version not in ("1.0", "2.0"):
             raise ValueError(f"Unsupported SCN version: {version}")
 
         self._circadian_bins = defaultdict(
@@ -425,11 +507,18 @@ class SCN:
             set, {k: set(v) for k, v in data.get("priors", {}).items()}
         )
 
-        logger.info("Loaded SCN from %s (%d signatures)", path, len(self._signatures))
+        # Restore oscillator if present (v2.0)
+        osc_data = data.get("oscillator")
+        if osc_data is not None:
+            from maxim.time.oscillator import OscillatorNetwork
+            self._oscillator = OscillatorNetwork.from_dict(osc_data)
+            logger.info("Restored oscillator (%d observations)", self._oscillator._observation_count)
+
+        logger.info("Loaded SCN v%s from %s (%d signatures)", version, path, len(self._signatures))
 
     def get_version(self) -> str:
         """Return data format version."""
-        return "1.0"
+        return "2.0"
 
 
 __all__ = ["SCN"]
