@@ -8,9 +8,13 @@ import uuid
 if TYPE_CHECKING:
     from maxim.agents.bus import StructuredContext
 
-class MemoryRecord:
+class SimpleRecord:
     """
-    A single unit of memory.
+    A single unit of memory (simple content wrapper).
+
+    Used by InMemoryMemory for lightweight storage.
+    Not to be confused with the MemoryRecord ABC in types.py
+    which is the base class for EpisodicMemory, MathMemory, etc.
     """
     def __init__(
         self,
@@ -40,7 +44,7 @@ class Memory(ABC):
     """
 
     @abstractmethod
-    def store(self, record: MemoryRecord) -> None:
+    def store(self, record: SimpleRecord) -> None:
         """
         Persist a memory record.
         """
@@ -53,7 +57,7 @@ class Memory(ABC):
         *,
         limit: int = 10,
         filters: Optional[Dict[str, Any]] = None,
-    ) -> List[MemoryRecord]:
+    ) -> List[SimpleRecord]:
         """
         Retrieve relevant memory records.
         """
@@ -71,10 +75,10 @@ class Memory(ABC):
         content: Any,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        record = MemoryRecord(content=content, metadata=metadata)
+        record = SimpleRecord(content=content, metadata=metadata)
         self.store(record)
 
-    def retrieve_recent(self, limit: int = 10) -> List[MemoryRecord]:
+    def retrieve_recent(self, limit: int = 10) -> List[SimpleRecord]:
         return self.retrieve(limit=limit)
 
     def clear(self) -> None:
@@ -88,11 +92,11 @@ class Memory(ABC):
 
 class InMemoryMemory(Memory):
     def __init__(self) -> None:
-        self._records: list[MemoryRecord] = []
+        self._records: list[SimpleRecord] = []
         self._cli_inputs: deque[str] = deque(maxlen=20)
         self._transcripts: deque[str] = deque(maxlen=20)
 
-    def store(self, record: MemoryRecord) -> None:
+    def store(self, record: SimpleRecord) -> None:
         self._records.append(record)
 
     def retrieve(
@@ -101,7 +105,7 @@ class InMemoryMemory(Memory):
         *,
         limit: int = 10,
         filters: Optional[Dict[str, Any]] = None,
-    ) -> List[MemoryRecord]:
+    ) -> List[SimpleRecord]:
         items = list(self._records)
         if filters:
             for key, value in filters.items():
