@@ -5,7 +5,8 @@ Tools are the only layer allowed to perform side effects (I/O, network, etc.).
 
 from __future__ import annotations
 
-from maxim.tools.base import Tool, ToolResult
+from maxim.tools.base import Tool, ToolOutput, ToolResult
+from maxim.tools.comms import CallUserTool, SendMessageTool
 from maxim.tools.filesystem import (
     ExecuteFileTool,
     PathValidationError,
@@ -39,6 +40,7 @@ from maxim.tools.reachy import (
 from maxim.tools.registry import ToolRegistry
 
 __all__ = [
+    "CallUserTool",
     "COCO_CLASSES",
     "DEFAULT_FRAME_HEIGHT",
     "DEFAULT_FRAME_WIDTH",
@@ -53,9 +55,11 @@ __all__ = [
     "PathValidationError",
     "ReadFileTool",
     "RespondTool",
+    "SendMessageTool",
     "SpeakTool",
     "Tool",
     "ToolRegistry",
+    "ToolOutput",
     "ToolResult",
     "TrackTargetTool",
     "VISION_MARGIN_HORIZONTAL",
