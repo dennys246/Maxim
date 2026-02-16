@@ -82,12 +82,12 @@ Statistical reasoning:
 Available tools for goals:
 - track_target: Move head to center on detected objects. Params: {deadzone_px: int, duration_s: float, prefer_people: bool}
   Use this to actively track objects/people and keep them centered in view.
-- focus_interests: Run YOLO detection on current frame. Params: {}
+- focus_interests: Focus attention on objects in the current frame. Params: {target_class: str (optional)}
 - maxim_command: Execute command. Params: {command: str, ...}
   Commands: update_interests, center_vision, mark_trainable_moment,
             label_outcome, request_sleep, request_observe, request_shutdown,
             goto_pose, move, look_at_image, move_antenna
-  update_interests params: {add: [int], remove: [int]}
+  update_interests params: {add: [int], remove: [int]} — boosts salience priority for specified COCO class IDs
 - read_file: Read a file. Params: {path: str}. Workspace files: '.maxim_workspace/filename'
 - write_file: Write a file. **MUST use '.maxim_workspace/' prefix!** Params: {path: '.maxim_workspace/filename.py', content: str}
   Workspace structure: drafts/ (code drafts), notes/ (thinking), plans/ (proposals), scratch/ (temp files)
