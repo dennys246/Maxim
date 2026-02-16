@@ -57,12 +57,14 @@ class AgenticGoalAgent(Agent):
         bus: AgentBus,
         memory_agent: MemoryAgent | None = None,
         *,
+        plan_manager: Any = None,
         name: str | None = None,
         enabled: bool = True,
     ) -> None:
         super().__init__(name=name, enabled=enabled)
         self._bus = bus
         self._memory = memory_agent
+        self._plan_manager = plan_manager
 
         # Current goal state
         self._current_goal: ProposedGoal | None = None
@@ -279,6 +281,13 @@ class AgenticGoalAgent(Agent):
             self._memory.set_active_goal(None, None)
             self._memory.set_active_sub_goals([])
 
+        # Delegate phase advancement to PlanManager if a plan is active
+        if self._plan_manager and self._plan_manager.active_plan:
+            try:
+                self._plan_manager.advance_phase(success, result, error)
+            except Exception:
+                pass  # PlanManager failure should not block goal completion
+
     def get_current_goal(self) -> ProposedGoal | None:
         """Get the current active goal."""
         return self._current_goal
@@ -310,6 +319,7 @@ class AgenticGoalAgent(Agent):
         success: bool,
         result: Any = None,
         error: str | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         """Report a tool result back to the goal agent."""
         tr = ToolResult(
@@ -318,6 +328,7 @@ class AgenticGoalAgent(Agent):
             success=success,
             result=result,
             error=error,
+            params=params or {},
         )
         self._bus.publish(tr)
 
