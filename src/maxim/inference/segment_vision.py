@@ -12,7 +12,7 @@ Movement decisions are handled by the agentic runtime, not this module.
 import math
 import os
 import time
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -35,11 +35,17 @@ DEFAULT_CLASS_WEIGHTS: dict[int, float] = {
 
 
 class NoveltyTracker:
-    """Tracks object novelty based on focus recency.
+    """Tracks object novelty at both instance and class levels.
 
-    Objects that haven't been focused recently get a novelty boost.
+    Instance-level: Objects that haven't been focused recently get a novelty boost.
     When focused, novelty slowly decays over focus_decay_seconds.
     When not focused (even if still in frame), novelty recovers over recovery_seconds.
+
+    Class-level: Tracks how many unique instances of each COCO class have been seen.
+    Categories the system encounters frequently (e.g., chairs) become less novel,
+    while rare categories (e.g., first cup ever) retain full novelty. Class novelty
+    modulates instance novelty so familiar categories get reduced attention even for
+    new instances, mimicking biological categorical habituation.
     """
 
     def __init__(
@@ -54,6 +60,11 @@ class NoveltyTracker:
         adaptive_cleanup: bool = True,
         *,
         decay_seconds: float | None = None,  # Backward compatibility alias
+        class_novelty_halflife: int = 10,
+        class_novelty_floor: float = 0.3,
+        class_novelty_weight: float = 0.4,
+        sensitization_ceiling: float = 1.5,
+        _modulation_lookup: Callable[[int], float] | None = None,
     ):
         """Initialize novelty tracker.
 
@@ -67,6 +78,11 @@ class NoveltyTracker:
             max_age: Max age in seconds before entries are cleaned up
             adaptive_cleanup: If True, cleanup more frequently when near capacity
             decay_seconds: Deprecated alias for recovery_seconds (backward compatibility)
+            class_novelty_halflife: Unique instances until class novelty halves
+            class_novelty_floor: Minimum class novelty (never fully habituated)
+            class_novelty_weight: Blend weight for class modulation (0=ignore, 1=fully class-driven)
+            sensitization_ceiling: Max multiplier for sensitized class novelty (e.g. 1.5 = 50% boost)
+            _modulation_lookup: Optional callback mapping class_id -> sensitization modulation
         """
         # Handle backward compatibility: if old decay_seconds is passed, use it for recovery
         if decay_seconds is not None:
@@ -81,6 +97,7 @@ class NoveltyTracker:
         self.cleanup_interval = cleanup_interval
         self._adaptive_cleanup = adaptive_cleanup
 
+        # Instance-level tracking
         # track_id -> last_seen_timestamp (for cleanup/memory management)
         self._track_times: dict[Any, float] = {}
         # track_id -> last_focused_timestamp (for novelty calculation)
@@ -92,37 +109,113 @@ class NoveltyTracker:
         # Hard cap on entries to prevent unbounded growth
         self._max_entries = max_entries
 
-    def get_novelty(self, track_id: Any) -> float:
-        """Get novelty score for a track_id.
+        # Class-level tracking
+        self._class_instance_counts: dict[int, int] = {}  # class_id -> unique instances seen
+        self._class_first_seen: dict[int, float] = {}  # class_id -> timestamp first seen
+        self._track_to_class: dict[Any, int] = {}  # track_id -> class_id mapping
+        self.class_novelty_halflife = class_novelty_halflife
+        self.class_novelty_floor = class_novelty_floor
+        self.class_novelty_weight = class_novelty_weight
+        self.sensitization_ceiling = sensitization_ceiling
+        self._modulation_lookup = _modulation_lookup
+
+    def set_modulation_lookup(self, lookup: Callable[[int], float] | None) -> None:
+        """Set a callback that returns sensitization modulation for a COCO class ID.
+
+        The callback maps int class_id -> float modulation, where:
+        - 1.0 = neutral (no interaction history or middling outcomes)
+        - >1.0 = sensitization (significant positive OR negative interactions)
+
+        Classes with extreme interaction histories (strongly rewarding or aversive)
+        resist habituation and may have amplified class novelty. This mirrors VTA
+        dopaminergic modulation: significant outcomes make sensory cortex slower
+        to habituate to reward/threat-predictive stimuli.
+
+        Args:
+            lookup: Callable taking class_id (int), returning float >= 1.0. None to disable.
+        """
+        self._modulation_lookup = lookup
+
+    def get_class_novelty(self, class_id: int) -> float:
+        """Get novelty score for an object class based on how many unique instances seen.
+
+        Returns max_novelty for never-seen classes. Decays logarithmically with
+        instance count, halving every class_novelty_halflife instances. Never drops
+        below class_novelty_floor * max_novelty.
+
+        If a modulation lookup is set, applies sensitization modulation so that
+        classes with significant interaction histories resist habituation.
+
+        Args:
+            class_id: COCO class ID.
+
+        Returns:
+            Class novelty score.
+        """
+        count = self._class_instance_counts.get(class_id, 0)
+        if count == 0:
+            return self.max_novelty
+        decay = 2 ** (-count / self.class_novelty_halflife)
+        raw_novelty = max(self.class_novelty_floor * self.max_novelty, self.max_novelty * decay)
+
+        # Apply sensitization modulation if available
+        if self._modulation_lookup is not None:
+            try:
+                modulation = self._modulation_lookup(class_id)
+                raw_novelty *= modulation
+                raw_novelty = max(
+                    self.class_novelty_floor * self.max_novelty,
+                    min(raw_novelty, self.max_novelty * self.sensitization_ceiling),
+                )
+            except Exception:
+                pass  # Fall back to unmodulated score
+
+        return raw_novelty
+
+    def get_novelty(self, track_id: Any, class_id: int | None = None) -> float:
+        """Get novelty score for a track_id, optionally modulated by class novelty.
 
         Returns max_novelty for new objects. While focused (recently attended to),
         novelty stays at max. After not being focused for focus_decay_seconds,
         novelty decays. After a long absence, novelty recovers.
+
+        If class_id is provided, instance novelty is blended with class-level novelty
+        so that instances of frequently-seen categories get reduced scores even when
+        the specific instance is new.
+
+        Args:
+            track_id: Instance tracking ID.
+            class_id: Optional COCO class ID for class-level modulation.
+
+        Returns:
+            Novelty score (higher = more novel).
         """
         if track_id is None:
-            return self.max_novelty  # Unknown objects are novel
-
-        now = time.time()
-        last_focused = self._focus_times.get(track_id)
-
-        if last_focused is None:
-            # Never focused before - maximum novelty
-            return self.max_novelty
-
-        time_since_focus = now - last_focused
-
-        if time_since_focus <= self.focus_decay_seconds:
-            # Currently focused or recently focused - novelty stays at max
-            # This keeps objects interesting while being attended to
-            return self.max_novelty
+            instance_novelty = self.max_novelty
         else:
-            # Not focused - decay from max toward min exponentially (habituation)
-            # Decay starts after focus_decay_seconds grace period
-            decay_time = time_since_focus - self.focus_decay_seconds
-            decay_factor = math.exp(-decay_time / self.recovery_seconds)
-            # decay_factor: 1.0 at start, approaches 0 over time
-            novelty = self.min_novelty + (self.max_novelty - self.min_novelty) * decay_factor
-            return novelty
+            now = time.time()
+            last_focused = self._focus_times.get(track_id)
+
+            if last_focused is None:
+                instance_novelty = self.max_novelty
+            else:
+                time_since_focus = now - last_focused
+                if time_since_focus <= self.focus_decay_seconds:
+                    instance_novelty = self.max_novelty
+                else:
+                    decay_time = time_since_focus - self.focus_decay_seconds
+                    decay_factor = math.exp(-decay_time / self.recovery_seconds)
+                    instance_novelty = self.min_novelty + (self.max_novelty - self.min_novelty) * decay_factor
+
+        # Apply class-level modulation if class_id provided
+        if class_id is not None and self.class_novelty_weight > 0:
+            class_nov = self.get_class_novelty(class_id)
+            w = self.class_novelty_weight
+            # Blend: scale instance novelty by class familiarity factor
+            class_factor = class_nov / self.max_novelty  # 0..1
+            instance_novelty *= (1 - w) + w * class_factor
+
+        return instance_novelty
 
     def focus(self, track_id: Any) -> None:
         """Mark a track_id as the current focus target.
@@ -156,6 +249,30 @@ class NoveltyTracker:
         elif self._update_count >= self.cleanup_interval:
             self._cleanup()
             self._update_count = 0
+
+    def update_with_class(self, track_id: Any, class_id: int) -> None:
+        """Mark a track_id as seen and register its class for class-level novelty.
+
+        If this is a new track_id (not previously seen), increments the unique
+        instance count for its class. This drives class-level habituation:
+        seeing many unique chairs reduces "chair" novelty over time.
+
+        Args:
+            track_id: Instance tracking ID.
+            class_id: COCO class ID for this detection.
+        """
+        if track_id is None:
+            self.update(track_id)
+            return
+
+        # Check if this is a new instance for class counting
+        if track_id not in self._track_to_class:
+            self._track_to_class[track_id] = class_id
+            self._class_instance_counts[class_id] = self._class_instance_counts.get(class_id, 0) + 1
+            if class_id not in self._class_first_seen:
+                self._class_first_seen[class_id] = time.time()
+
+        self.update(track_id)
 
     def update_batch(self, track_ids: list[Any]) -> None:
         """Mark multiple track_ids as seen in frame (but not focused).
@@ -224,17 +341,20 @@ class NoveltyTracker:
 
         More aggressive cleanup: removes stale entries first, then if still
         over the hard cap, removes oldest entries until under the limit.
+        Also cleans up class-level mappings for removed track_ids.
         """
         now = time.time()
         cutoff = now - self._max_age
 
         # First pass: remove entries older than max_age
+        old_keys = set(self._track_times.keys())
         self._track_times = {
             k: v for k, v in self._track_times.items() if v > cutoff
         }
         self._focus_times = {
             k: v for k, v in self._focus_times.items() if v > cutoff
         }
+        removed_keys = old_keys - set(self._track_times.keys())
 
         # Second pass: if still over hard cap, remove oldest entries
         if len(self._track_times) > self._max_entries:
@@ -248,6 +368,13 @@ class NoveltyTracker:
             self._focus_times = {
                 k: v for k, v in self._focus_times.items() if k not in keys_to_remove
             }
+            removed_keys |= keys_to_remove
+
+        # Clean up class-level mappings for removed track_ids
+        # Note: _class_instance_counts are NOT decremented — they represent
+        # lifetime totals for class-level habituation (like biological memory)
+        for k in removed_keys:
+            self._track_to_class.pop(k, None)
 
     @property
     def tracked_count(self) -> int:
@@ -282,11 +409,18 @@ def score_detection_weighted(
         except (ValueError, TypeError):
             pass
 
-    # Novelty boost
+    # Novelty boost (with class-level modulation)
     novelty = 1.0
     if novelty_tracker and len(det) > 0:
         track_id = det[0]
-        novelty = novelty_tracker.get_novelty(track_id)
+        # Pass class_id for class-level novelty modulation
+        det_class_id = None
+        if len(det) > 7 and det[7] is not None:
+            try:
+                det_class_id = int(det[7])
+            except (ValueError, TypeError):
+                pass
+        novelty = novelty_tracker.get_novelty(track_id, class_id=det_class_id)
 
     # Apply weights to both conf and area
     weight = class_weight * novelty
@@ -567,10 +701,7 @@ def passive_observation(
 
     # Run segmentation
     try:
-        observations = segmenter.segment_photos(
-            photos,
-            interests=list(getattr(maxim, "interests", []) or []),
-        )
+        observations = segmenter.segment_photos(photos)
     except Exception as e:
         warn("Segmentation failed: %s", e, logger=getattr(maxim, "log", None))
         if show:
