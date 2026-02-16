@@ -337,3 +337,133 @@ def create_memory_batch(hippocampus, count: int, **overrides) -> list[str]:
         ids.append(memory_id)
 
     return ids
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Planning Fixtures
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def mock_bus():
+    """Fresh AgentBus instance for plan tests."""
+    from maxim.agents.bus import AgentBus
+
+    return AgentBus()
+
+
+@pytest.fixture
+def long_horizon_config():
+    """Default LongHorizonConfig for tests."""
+    from maxim.planning.plan_document import LongHorizonConfig
+
+    return LongHorizonConfig()
+
+
+def make_phase(
+    plan_id: str = "plan-1",
+    index: int = 0,
+    description: str = "Test phase",
+    status: str = "PENDING",
+    sub_goals: list | None = None,
+    expected_inputs: dict | None = None,
+    expected_outputs: dict | None = None,
+    phase_id: str | None = None,
+) -> Any:
+    """Factory for creating test Phase instances."""
+    from maxim.planning.plan_document import Phase, PhaseStatus
+
+    return Phase(
+        id=phase_id or f"phase-{plan_id}-{index}",
+        description=description,
+        status=PhaseStatus[status],
+        plan_id=plan_id,
+        index=index,
+        sub_goals=sub_goals or [],
+        expected_inputs=expected_inputs or {},
+        expected_outputs=expected_outputs or {},
+    )
+
+
+def make_plan_document(
+    num_phases: int = 3,
+    objective: str = "Test objective",
+    status: str = "ACTIVE",
+    plan_id: str = "plan-1",
+    with_sub_goals: bool = False,
+) -> Any:
+    """Factory for creating test PlanDocument instances.
+
+    Creates phases with proper linking. If with_sub_goals is True,
+    each phase gets 2 sub-goals with the second depending on the first.
+    """
+    from maxim.agents.bus import FailureStrategy, SubGoal, SubGoalStatus
+    from maxim.planning.plan_document import Phase, PhaseStatus, PlanDocument, PlanStatus
+
+    phases = []
+    for i in range(num_phases):
+        phase_status = PhaseStatus.ACTIVE if i == 0 else PhaseStatus.PENDING
+        sgs = []
+        if with_sub_goals:
+            sg1 = SubGoal(
+                id=f"sg-{plan_id}-{i}-0",
+                description=f"Sub-goal {i}.0",
+                tool_name=f"tool_{i}_0",
+                tool_params={"phase": i, "step": 0},
+                status=SubGoalStatus.PENDING,
+                on_failure=FailureStrategy.REPLAN,
+            )
+            sg2 = SubGoal(
+                id=f"sg-{plan_id}-{i}-1",
+                description=f"Sub-goal {i}.1",
+                tool_name=f"tool_{i}_1",
+                tool_params={"phase": i, "step": 1},
+                status=SubGoalStatus.PENDING,
+                depends_on=[sg1.id],
+                on_failure=FailureStrategy.RETRY,
+            )
+            sgs = [sg1, sg2]
+
+        phase = Phase(
+            id=f"phase-{plan_id}-{i}",
+            description=f"Phase {i}: step {i}",
+            status=phase_status,
+            plan_id=plan_id,
+            index=i,
+            sub_goals=sgs,
+            expected_outputs={f"output_{i}": f"result from phase {i}"},
+        )
+        if i == 0:
+            phase.started_at = time.time()
+        phases.append(phase)
+
+    now = time.time()
+    return PlanDocument(
+        id=plan_id,
+        objective=objective,
+        created_at=now,
+        updated_at=now,
+        status=PlanStatus[status],
+        phases=phases,
+        current_phase_index=0,
+    )
+
+
+def make_plan_manager(
+    tmp_path: Path,
+    bus: Any = None,
+    config: Any = None,
+    services: Any = None,
+) -> Any:
+    """Factory for creating test PlanManager instances."""
+    from maxim.agents.bus import AgentBus
+    from maxim.planning.plan_document import LongHorizonConfig
+    from maxim.planning.plan_manager import PlanManager, PlanServices
+
+    plans_dir = str(tmp_path / "plans")
+    return PlanManager(
+        plans_dir=plans_dir,
+        bus=bus or AgentBus(),
+        config=config or LongHorizonConfig(),
+        services=services or PlanServices(),
+    )
