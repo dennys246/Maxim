@@ -16,9 +16,11 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Protocol
+from enum import IntEnum
+from typing import TYPE_CHECKING, Any, Callable, Protocol
 
 from maxim.agents.autonomy import AutonomyLevel
+from maxim.models.language.router import CharEstimateCounter
 from maxim.utils.coding_guidelines import build_coding_context, is_file_search_request
 from maxim.utils.prompts import get_fallback_responses
 
@@ -36,6 +38,38 @@ except ImportError:
 def _compile_phrase_pattern(phrase: str) -> re.Pattern:
     """Compile and cache regex pattern for phrase matching."""
     return re.compile(rf"\b{re.escape(phrase)}\b")
+
+
+# Simple arithmetic: "number operator number" (supports negatives, decimals, 'x' for multiply)
+_ARITHMETIC_PATTERN = re.compile(
+    r"(-?\d+(?:\.\d+)?)\s*([+\-*/x^%])\s*(-?\d+(?:\.\d+)?)"
+)
+
+_SIMPLE_OPS: dict[str, Any] = {
+    "+": lambda a, b: a + b,
+    "-": lambda a, b: a - b,
+    "*": lambda a, b: a * b,
+    "x": lambda a, b: a * b,
+    "/": lambda a, b: a / b if b != 0 else float("nan"),
+    "^": lambda a, b: a ** b,
+    "%": lambda a, b: a % b if b != 0 else float("nan"),
+}
+
+# Unary math: "square root of 25", "sqrt 25", "cube root of 8", "25 squared"
+_UNARY_MATH_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"(?:square\s*root\s*(?:of\s*)?|sqrt\s*|√\s*)(-?\d+(?:\.\d+)?)"), "sqrt"),
+    (re.compile(r"(?:cube\s*root\s*(?:of\s*)?|cbrt\s*|∛\s*)(-?\d+(?:\.\d+)?)"), "cbrt"),
+    (re.compile(r"(-?\d+(?:\.\d+)?)\s*squared"), "squared"),
+    (re.compile(r"(-?\d+(?:\.\d+)?)\s*cubed"), "cubed"),
+]
+
+# Trailing binary op after unary: "... plus 3", "... + 3", "... minus 2", "... times 4"
+_TRAILING_OP_PATTERN = re.compile(
+    r"(?:plus|\+)\s*(-?\d+(?:\.\d+)?)|"
+    r"(?:minus|-)\s*(-?\d+(?:\.\d+)?)|"
+    r"(?:times|multiplied\s*by|\*|x)\s*(-?\d+(?:\.\d+)?)|"
+    r"(?:divided\s*by|/)\s*(-?\d+(?:\.\d+)?)"
+)
 
 if TYPE_CHECKING:
     from maxim.agents.bus import Percept, StructuredContext
@@ -292,6 +326,313 @@ class LLMProposal:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Prompt Budgeter
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class SectionPriority(IntEnum):
+    """Priority tiers for prompt sections. Lower = higher priority."""
+
+    MANDATORY = 0   # Never dropped (instructions, user request)
+    CRITICAL = 1    # Dropped only under extreme pressure (identity, tools, planning)
+    IMPORTANT = 2   # Truncatable first, then dropped (conversation, context pool)
+    NICE_TO_HAVE = 3  # Dropped first (foundational, mode context, speech)
+
+
+@dataclass
+class PromptSection:
+    """A single section of the assembled prompt."""
+
+    name: str
+    content: str
+    priority: SectionPriority
+    token_count: int
+    insertion_order: int
+    truncatable: bool = False
+    min_tokens: int = 0
+    truncate_fn: Callable[[str, int], str] | None = None
+
+
+class PromptBudgeter:
+    """Assembles prompt sections within a token budget.
+
+    Processes sections by priority tier (MANDATORY first, NICE_TO_HAVE last).
+    Truncatable sections are shortened before being dropped entirely.
+    Final output preserves the original insertion order of included sections.
+    """
+
+    def __init__(
+        self,
+        total_budget: int,
+        response_reserve: int,
+        token_counter: Any,
+        template_overhead: int = 100,
+    ) -> None:
+        self._total_budget = total_budget
+        self._response_reserve = response_reserve
+        self._template_overhead = template_overhead
+        self._counter = token_counter
+        self._sections: list[PromptSection] = []
+        self._insertion_idx = 0
+
+    @property
+    def prompt_budget(self) -> int:
+        """Tokens available for the actual prompt content."""
+        return max(0, self._total_budget - self._response_reserve - self._template_overhead)
+
+    def add(
+        self,
+        name: str,
+        content: str,
+        priority: SectionPriority,
+        truncatable: bool = False,
+        min_tokens: int = 0,
+        truncate_fn: Callable[[str, int], str] | None = None,
+    ) -> None:
+        """Add a section to the budget. Empty content is silently ignored."""
+        if not content or not content.strip():
+            return
+        token_count = self._counter.count_tokens(content)
+        self._sections.append(PromptSection(
+            name=name,
+            content=content,
+            priority=priority,
+            token_count=token_count,
+            insertion_order=self._insertion_idx,
+            truncatable=truncatable,
+            min_tokens=min_tokens,
+            truncate_fn=truncate_fn,
+        ))
+        self._insertion_idx += 1
+
+    def build(self) -> tuple[str, list[str]]:
+        """Assemble the prompt within budget.
+
+        Returns:
+            (prompt_text, list of dropped section names)
+        """
+        budget = self.prompt_budget
+        included: list[PromptSection] = []
+        dropped: list[str] = []
+        used = 0
+
+        # Process by priority tier
+        by_tier: dict[SectionPriority, list[PromptSection]] = {}
+        for s in self._sections:
+            by_tier.setdefault(s.priority, []).append(s)
+
+        for tier in sorted(by_tier.keys()):
+            for section in by_tier[tier]:
+                remaining = budget - used
+                if section.token_count <= remaining:
+                    # Fits entirely
+                    included.append(section)
+                    used += section.token_count
+                elif (
+                    section.truncatable
+                    and section.truncate_fn is not None
+                    and remaining >= section.min_tokens
+                    and remaining > 0
+                ):
+                    # Truncate to fit
+                    truncated = section.truncate_fn(section.content, remaining)
+                    new_count = self._counter.count_tokens(truncated)
+                    if new_count <= remaining and truncated.strip():
+                        included.append(PromptSection(
+                            name=section.name,
+                            content=truncated,
+                            priority=section.priority,
+                            token_count=new_count,
+                            insertion_order=section.insertion_order,
+                            truncatable=section.truncatable,
+                            min_tokens=section.min_tokens,
+                            truncate_fn=section.truncate_fn,
+                        ))
+                        used += new_count
+                        logger.debug("Truncated section '%s': %d→%d tokens",
+                                     section.name, section.token_count, new_count)
+                    else:
+                        dropped.append(section.name)
+                else:
+                    dropped.append(section.name)
+
+        if dropped:
+            logger.info("Prompt budget %d/%d — dropped sections: %s",
+                        used, budget, ", ".join(dropped))
+
+        # Re-sort by original insertion order to preserve prompt flow
+        included.sort(key=lambda s: s.insertion_order)
+        prompt_text = "\n\n".join(s.content for s in included)
+        return prompt_text, dropped
+
+
+# ── Truncation Helpers ──────────────────────────────────────────────────────
+
+
+def _truncate_conversation(content: str, max_tokens: int, counter: Any) -> str:
+    """Drop oldest User+Maxim turn pairs from the front."""
+    lines = content.split("\n")
+    # Find turn boundaries (lines starting with "User:" or "Maxim:")
+    turn_starts: list[int] = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("User:") or stripped.startswith("Maxim:"):
+            turn_starts.append(i)
+
+    if len(turn_starts) < 2:
+        return content
+
+    # Try removing from the front, one turn boundary at a time
+    for cut_idx in range(1, len(turn_starts)):
+        candidate = "\n".join(lines[turn_starts[cut_idx]:])
+        if counter.count_tokens(candidate) <= max_tokens:
+            return candidate
+    # Last resort: return just the last turn
+    return "\n".join(lines[turn_starts[-1]:])
+
+
+def _truncate_context_pool(content: str, max_tokens: int, counter: Any) -> str:
+    """Drop oldest lines from the front of the context pool."""
+    lines = content.split("\n")
+    for start in range(1, len(lines)):
+        candidate = "\n".join(lines[start:])
+        if counter.count_tokens(candidate) <= max_tokens:
+            return candidate
+    return lines[-1] if lines else ""
+
+
+def _truncate_tool_guidance(content: str, max_tokens: int, counter: Any) -> str:
+    """Remove Example lines, then indented detail lines."""
+    lines = content.split("\n")
+    # First pass: remove lines containing "Example" or "e.g."
+    filtered = [l for l in lines if "Example" not in l and "e.g." not in l]
+    candidate = "\n".join(filtered)
+    if counter.count_tokens(candidate) <= max_tokens:
+        return candidate
+    # Second pass: remove indented detail lines (4+ spaces or tab)
+    filtered = [l for l in filtered if not l.startswith("    ") and not l.startswith("\t")]
+    return "\n".join(filtered)
+
+
+def _truncate_reasoning_carryover(content: str, max_tokens: int, counter: Any) -> str:
+    """Drop oldest entries from the reasoning carryover."""
+    lines = content.split("\n")
+    # Keep header line, truncate entry lines from front
+    header_lines: list[str] = []
+    entry_lines: list[str] = []
+    for line in lines:
+        if line.startswith("- "):
+            entry_lines.append(line)
+        else:
+            header_lines.append(line)
+
+    header = "\n".join(header_lines)
+    for start in range(1, len(entry_lines)):
+        candidate = header + "\n" + "\n".join(entry_lines[start:])
+        if counter.count_tokens(candidate) <= max_tokens:
+            return candidate
+    return header
+
+
+def _truncate_manifest(content: str, max_tokens: int, counter: Any) -> str:
+    """Truncate a manifest section by removing file entries from the end."""
+    lines = content.split("\n")
+    # Separate header/rule lines from indented file entries
+    header_lines: list[str] = []
+    entry_lines: list[str] = []
+    for line in lines:
+        if line.startswith("  ") and not line.startswith("  ...") and not line.startswith("  1.") and not line.startswith("  2.") and not line.startswith("  3."):
+            entry_lines.append(line)
+        else:
+            header_lines.append(line)
+
+    # Remove entries from the end until it fits
+    while entry_lines and counter.count_tokens(
+        "\n".join(header_lines + entry_lines)
+    ) > max_tokens:
+        entry_lines.pop()
+
+    if entry_lines:
+        # Reconstruct: headers before entries, then remaining headers after
+        return "\n".join(header_lines[:2] + entry_lines + header_lines[2:])
+    return "\n".join(header_lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reasoning Carryover
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class ReasoningEntry:
+    """A single decision+outcome record for carryover."""
+
+    action_tool: str
+    reasoning: str
+    success: bool
+    result_summary: str
+    timestamp: float = field(default_factory=time.time)
+
+    def to_prompt_line(self) -> str:
+        """Compact one-liner for prompt injection."""
+        status = "OK" if self.success else "FAIL"
+        reason = self.reasoning[:80] if self.reasoning else ""
+        summary = self.result_summary[:100] if self.result_summary else ""
+        return f"- {self.action_tool}: {reason} [{status}: {summary}]"
+
+
+class ReasoningCarryover:
+    """Rolling buffer of recent decision+outcome summaries.
+
+    Thread-safe. Injected into the next LLM prompt as working memory
+    so the model can reason about its own prior decisions.
+    """
+
+    def __init__(self, max_entries: int = 5) -> None:
+        self._max_entries = max_entries
+        self._entries: list[ReasoningEntry] = []
+        self._lock = threading.Lock()
+
+    def record(
+        self,
+        tool_name: str,
+        reasoning: str,
+        success: bool,
+        result_summary: str,
+    ) -> None:
+        """Record a decision+outcome. Evicts oldest if over max."""
+        entry = ReasoningEntry(
+            action_tool=tool_name,
+            reasoning=reasoning,
+            success=success,
+            result_summary=result_summary,
+        )
+        with self._lock:
+            self._entries.append(entry)
+            if len(self._entries) > self._max_entries:
+                self._entries = self._entries[-self._max_entries:]
+
+    def get_prompt_text(self) -> str:
+        """Format entries as prompt text for injection."""
+        with self._lock:
+            if not self._entries:
+                return ""
+            lines = ["=== Recent Decisions (Working Memory) ==="]
+            for entry in self._entries:
+                lines.append(entry.to_prompt_line())
+            return "\n".join(lines)
+
+    def clear(self) -> None:
+        """Wipe the buffer."""
+        with self._lock:
+            self._entries.clear()
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._entries)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # LLM Worker
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -312,13 +653,18 @@ class LLMWorker:
         llm: LLMBackend,
         max_queue_size: int = 5,
         stale_threshold_s: float = 2.0,
-        llm_timeout_s: float = 30.0,
+        llm_timeout_s: float = 60.0,
         energy_tracker: "LLMEnergyTracker | None" = None,
+        n_ctx: int = 4096,
+        token_counter: Any | None = None,
     ):
         self._llm = llm
         self._stale_threshold = stale_threshold_s
         self._llm_timeout = llm_timeout_s
         self._energy_tracker = energy_tracker
+        self._n_ctx = n_ctx
+        self._token_counter = token_counter or CharEstimateCounter()
+        self._reasoning_carryover = ReasoningCarryover(max_entries=5)
 
         # Input: contexts waiting for LLM processing
         self._request_queue: queue.PriorityQueue[tuple[int, LLMRequest | None]] = (
@@ -343,6 +689,38 @@ class LLMWorker:
         self._requests_processed = 0
         self._requests_dropped = 0
         self._avg_latency_ms = 0.0
+
+    def record_outcome(
+        self,
+        tool_name: str,
+        reasoning: str,
+        success: bool,
+        result_summary: str,
+    ) -> None:
+        """Record a decision+outcome into the reasoning carryover buffer."""
+        self._reasoning_carryover.record(tool_name, reasoning, success, result_summary)
+
+    def retry_with_timeout(self, request: LLMRequest, timeout_s: float) -> bool:
+        """Resubmit a request with a temporarily increased timeout.
+
+        Used when the user asks for more processing time after a timeout.
+        The timeout increases permanently (ratchets up) since this model
+        is consistently slow.
+
+        Returns True if queued, False if queue full.
+        """
+        old_timeout = self._llm_timeout
+        self._llm_timeout = timeout_s
+        # Refresh timestamp so the worker loop doesn't drop it as stale
+        request.timestamp = time.time()
+        request.sort_index = (-request.priority, request.timestamp)
+        logger.info("Retrying LLM request with timeout=%.0fs (was %.0fs)", timeout_s, old_timeout)
+        try:
+            self._request_queue.put_nowait((-request.priority, request))
+            return True
+        except queue.Full:
+            self._requests_dropped += 1
+            return False
 
     def start(self) -> None:
         """Start the worker thread."""
@@ -424,7 +802,19 @@ class LLMWorker:
             # Final timeout exceeded
             logger.warning("LLM call timed out after %.1fs", self._llm_timeout)
             future.cancel()
-            return None
+            # Replace the executor so the orphaned thread doesn't block
+            # future LLM calls (max_workers=1 means next submit() queues
+            # behind the still-running orphan, causing cascading timeouts).
+            try:
+                old_executor = self._llm_executor
+                self._llm_executor = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="LLMCall"
+                )
+                if old_executor is not None:
+                    old_executor.shutdown(wait=False, cancel_futures=True)
+            except Exception as e:
+                logger.error("Failed to replace LLM executor after timeout: %s", e)
+            return {"_timeout": True, "_timeout_s": self._llm_timeout}
         except concurrent.futures.CancelledError:
             return None
         except Exception as e:
@@ -628,6 +1018,35 @@ class LLMWorker:
             max_tokens = request.mode.max_response_tokens
             response = self._call_llm_with_timeout(prompt, temperature=0.3, max_tokens=max_tokens)
 
+            # Check for timeout — ask user if they want to wait longer
+            if isinstance(response, dict) and response.get("_timeout"):
+                timeout_s = response.get("_timeout_s", self._llm_timeout)
+                question = (request.triggering_input or "your request")[:50]
+                timeout_msg = (
+                    f"I ran out of time processing '{question}' "
+                    f"(took longer than {int(timeout_s)}s). "
+                    f"Would you like me to try again with more time? "
+                    f"Say 'yes' to double my time limit, a number of minutes "
+                    f"(e.g. '2'), or 'no' to skip."
+                )
+                return LLMProposal(
+                    request_id=request.request_id,
+                    action={
+                        "tool_name": "respond",
+                        "params": {"message": timeout_msg},
+                        "_timeout_retry": True,
+                        "_original_request": request,
+                        "_timeout_s": timeout_s,
+                    },
+                    reasoning="llm_timeout",
+                    strategy_used="fallback",
+                    confidence=0.7,
+                    mode_goal_achieved=False,
+                    citations=[],
+                    latency_ms=(time.time() - start_time) * 1000,
+                    triggering_input=request.triggering_input,
+                )
+
             # Check for shutdown after LLM call
             if self._stop_event.is_set():
                 return LLMProposal(
@@ -805,6 +1224,22 @@ class LLMWorker:
                 if template:
                     fallback_responses[str(key)] = str(template)
 
+        # Try simple arithmetic before generic question-type templates
+        arithmetic_result = self._evaluate_simple_arithmetic(question)
+        if arithmetic_result:
+            return {
+                "tool_name": "respond",
+                "params": {"message": arithmetic_result},
+            }
+
+        # Try unary math (square root, cube root, squared, cubed)
+        unary_result = self._evaluate_unary_math(question)
+        if unary_result:
+            return {
+                "tool_name": "respond",
+                "params": {"message": unary_result},
+            }
+
         # Find matching question type
         for q_type, response in fallback_responses.items():
             if question.startswith(q_type):
@@ -913,6 +1348,391 @@ class LLMWorker:
         # Build full tool-aware prompt
         return self._build_tool_aware_prompt(request, question_text, date_str, time_str)
 
+    # ── Section Builders ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _build_planning_banner(autonomy_level: AutonomyLevel) -> str:
+        """Build the planning mode banner text."""
+        if autonomy_level != AutonomyLevel.PLANNING:
+            return ""
+        lines = [
+            "!" * 60,
+            "!!! CRITICAL: PLANNING MODE - YOU MUST ASK PERMISSION FIRST !!!",
+            "!" * 60,
+            "",
+            "DO NOT output raw JSON. You MUST follow this EXACT format:",
+            "",
+            "STEP 1: Write a proposal IN PLAIN ENGLISH asking for permission",
+            "STEP 2: Write the EXACT delimiter: <|action_json|>",
+            "STEP 3: Write the JSON object",
+            "",
+            "=== CORRECT FORMAT EXAMPLE 1 ===",
+            "I'd like to search the internet for the current Broncos vs Patriots score.",
+            "May I proceed with this search?",
+            "<|action_json|>",
+            '{"action": {"tool_name": "internet_search", "params": {"query": "Broncos vs Patriots score today"}}, "confidence": 0.9}',
+            "",
+            "=== CORRECT FORMAT EXAMPLE 2 ===",
+            "To answer your question about the weather, I need to search online.",
+            "Should I look up the current weather for you?",
+            "<|action_json|>",
+            '{"action": {"tool_name": "internet_search", "params": {"query": "current weather"}}, "confidence": 0.9}',
+            "",
+            "=== WRONG (DO NOT DO THIS) ===",
+            '{"action": {"tool_name": "internet_search", ...}}  <-- NO! Missing proposal text!',
+            "",
+            "YOUR RESPONSE MUST START WITH PLAIN TEXT, NOT JSON!",
+            "!" * 60,
+        ]
+        return "\n".join(lines)
+
+    @staticmethod
+    def _build_modification_section(mod: dict[str, Any]) -> str:
+        """Build the modification request section."""
+        import json
+        lines = [
+            "=" * 60,
+            ">>> ACTION MODIFICATION REQUESTED <<<",
+            "=" * 60,
+            "",
+            "The user requested a modification to the following proposed action:",
+            "",
+            "ORIGINAL ACTION:",
+            f"  Tool: {mod.get('original_tool_name', 'unknown')}",
+            f"  Parameters: {json.dumps(mod.get('original_action', {}).get('params', {}), indent=4)}",
+            f"  Original reasoning: {mod.get('original_reasoning', 'not provided')}",
+            "",
+            "USER'S MODIFICATION REQUEST:",
+            f'  "{mod.get("user_modification", "")}"',
+            "",
+            "YOUR TASK: Revise the action based on the user's feedback.",
+            "- Interpret what change the user wants",
+            "- Keep the same tool if appropriate, or choose a different one",
+            "- Update the parameters according to the user's request",
+            "- Provide updated reasoning",
+            "",
+            "Respond with a REVISED action that incorporates the user's modification.",
+            "=" * 60,
+        ]
+        return "\n".join(lines)
+
+    @staticmethod
+    def _build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, time_str: str) -> str:
+        """Build the system identity and operational state section."""
+        lines = [
+            "You are Maxim, a robot assistant.",
+            "",
+            "=== OPERATIONAL STATE ===",
+            f"Mode: {mode.name.upper()}",
+            f"Mode goal: {mode.goal}",
+        ]
+
+        if request.current_strategy:
+            from maxim.modes.definitions import STRATEGIES
+            strategy = STRATEGIES.get(request.current_strategy)
+            if strategy:
+                lines.append(f"Strategy: {strategy.name.upper()} - {strategy.description}")
+                lines.append(f"Strategy focus: {strategy.focus}")
+
+        lines.append(f"Autonomy level: {request.autonomy_level.value if request.autonomy_level else 'unknown'}")
+
+        if request.is_sleeping:
+            lines.append("Processing state: SLEEP (minimal processing, monitoring for wake keywords)")
+        else:
+            lines.append("Processing state: AWAKE")
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _build_datetime_section(date_str: str, time_str: str) -> str:
+        """Build the date/time section."""
+        lines = [
+            "=== CURRENT DATE/TIME (IMPORTANT) ===",
+            f"Today is {date_str}",
+            f"Current time: {time_str}",
+            "When searching for current events, scores, or news, ALWAYS include the date in your query.",
+            f"Example: Instead of 'Broncos game score', search 'Broncos game score {date_str}'",
+        ]
+        return "\n".join(lines)
+
+    @staticmethod
+    def _build_tools_section(request: LLMRequest, mode_name: str = "passive") -> str:
+        """Build the available tools section, adapted to operational mode."""
+        import json as _json
+        lines = ["=== Available Tools ==="]
+        tool_list = sorted(request.available_tools)
+        for tool_name in tool_list:
+            tool_info = request.tool_descriptions.get(tool_name, {})
+            if isinstance(tool_info, dict) and tool_info:
+                desc = tool_info.get("description", "")
+                params = tool_info.get("params", {})
+                example = tool_info.get("example", {})
+                lines.append(f"- {tool_name}: {desc}")
+                if params:
+                    param_strs = [f"{k}={v}" for k, v in params.items()]
+                    lines.append(f"    REQUIRED params: {', '.join(param_strs)}")
+                if example:
+                    lines.append(f"    Example: {_json.dumps(example)}")
+            elif isinstance(tool_info, str) and tool_info:
+                lines.append(f"- {tool_name}: {tool_info}")
+            else:
+                lines.append(f"- {tool_name}")
+
+        result = "\n".join(lines)
+
+        # In singularity mode, remove .maxim_workspace/ prefix from examples
+        if mode_name == "singularity":
+            result = result.replace(".maxim_workspace/", "")
+
+        return result
+
+    @staticmethod
+    def _scan_workspace_entries(workspace_path: str) -> list[str]:
+        """Scan .maxim_workspace/ and return formatted file entries."""
+        import os
+        if not os.path.isdir(workspace_path):
+            return []
+        entries: list[str] = []
+        try:
+            for root, _dirs, files in os.walk(workspace_path):
+                for fname in sorted(files):
+                    fpath = os.path.join(root, fname)
+                    rel = os.path.relpath(fpath, os.path.dirname(workspace_path))
+                    try:
+                        size = os.path.getsize(fpath)
+                        size_str = f"{size}B" if size < 1024 else f"{size // 1024}KB"
+                        entries.append(f"  {rel} ({size_str})")
+                    except OSError:
+                        entries.append(f"  {rel}")
+        except OSError:
+            return []
+        return entries
+
+    @staticmethod
+    def _build_workspace_manifest(mode_name: str = "passive", cwd: str | None = None) -> str:
+        """Build a file manifest that adapts to the operational mode.
+
+        - **singularity**: Full CWD tree (depth 2) — LLM has full read/write.
+        - **active**: Workspace listing + CWD top-level (read-only, suggest edits).
+        - **passive**: Workspace listing + CWD top-level (read-only, propose plans).
+        """
+        import os
+        from maxim.utils.filesystem_policy import (
+            get_effective_cwd,
+            get_workspace_path,
+            scan_cwd_tree,
+        )
+
+        if cwd is None:
+            cwd = get_effective_cwd()
+        workspace = get_workspace_path(cwd)
+        cwd_name = os.path.basename(cwd) or cwd
+        sections: list[str] = []
+
+        if mode_name == "singularity":
+            # Singularity: CWD is the primary view
+            cwd_entries = scan_cwd_tree(cwd, max_depth=2, max_entries=30)
+            n_entries = len(cwd_entries)
+            sections.append(
+                f"=== PROJECT DIRECTORY ({n_entries} entries, CWD: {cwd_name}) ==="
+            )
+            sections.append(
+                "You have FULL read/write access to all files below."
+            )
+            sections.append(
+                "!! IMPORTANT: These files ALREADY EXIST. Do NOT recreate them. !!"
+            )
+            sections.extend(cwd_entries)
+            # Mention workspace as secondary scratch space
+            ws_entries = LLMWorker._scan_workspace_entries(workspace)
+            if ws_entries:
+                sections.append(
+                    f"\n.maxim_workspace/ also available for scratch/drafts ({len(ws_entries)} files)."
+                )
+            sections.append("\nRULES:")
+            sections.append("  1. Use read_file FIRST to see current contents before editing")
+            sections.append("  2. Then write_file with overwrite=true to update")
+            sections.append("  3. NEVER write a brand-new file that duplicates an existing one")
+            if n_entries >= 5:
+                sections.append(
+                    "PLAN FIRST: With many project files, use 'respond' to outline "
+                    "your approach before making changes."
+                )
+        else:
+            # Passive/Active: Workspace is primary
+            ws_entries = LLMWorker._scan_workspace_entries(workspace)
+            if ws_entries:
+                n_files = len(ws_entries)
+                sections.append(
+                    f"=== EXISTING WORKSPACE ({n_files} file{'s' if n_files != 1 else ''}) ==="
+                )
+                sections.append(
+                    "!! IMPORTANT: These files ALREADY EXIST. Do NOT recreate them. !!"
+                )
+                sections.extend(ws_entries[:15])
+                if n_files > 15:
+                    sections.append(f"  ... and {n_files - 15} more files")
+                sections.append("RULES for existing files:")
+                sections.append("  1. Use read_file FIRST to see current contents")
+                sections.append("  2. Then write_file with overwrite=true to update")
+                sections.append("  3. NEVER write a brand-new file that duplicates an existing one")
+                if n_files >= 3:
+                    sections.append(
+                        "PLAN FIRST: With multiple existing files, use 'respond' to outline "
+                        "your approach before making changes."
+                    )
+
+            # Add CWD read-only context
+            cwd_entries = scan_cwd_tree(cwd, max_depth=1, max_entries=10)
+            if cwd_entries:
+                sections.append(
+                    f"\n=== CWD Context (read-only: {cwd_name}) ==="
+                )
+                if mode_name == "active":
+                    sections.append(
+                        "You can READ these files and SUGGEST edits (requires approval)."
+                    )
+                else:
+                    sections.append(
+                        "You can READ these files. CWD edits must be proposed as plans."
+                    )
+                sections.extend(cwd_entries)
+
+        return "\n".join(sections) if sections else ""
+
+    @staticmethod
+    def _build_tool_guidance_core(mode_name: str = "passive") -> str:
+        """Build compact essential tool guidance, adapted to operational mode."""
+        lines = [
+            "=== Tool Parameters ===",
+            '- respond: {"message": "your answer"}',
+            '- speak: {"text": "text to speak"}',
+        ]
+
+        if mode_name == "singularity":
+            lines.extend([
+                '- write_file: {"path": "src/main.py", "content": "code", "overwrite": true}',
+                '- read_file: {"path": "src/main.py"}',
+                '- internet_search: {"query": "search query"}',
+                "",
+                "=== File Operation Rules ===",
+                "You can read and write ANY file within the project directory.",
+                "EXISTING files: read_file FIRST, then write_file with overwrite=true.",
+                "NEW files: write_file (no overwrite needed).",
+                "NEVER blindly overwrite — always read first to understand current contents.",
+            ])
+        else:
+            lines.extend([
+                '- write_file: {"path": ".maxim_workspace/f.py", "content": "code", "overwrite": true}',
+                '- read_file: {"path": ".maxim_workspace/f.py"}',
+                '- internet_search: {"query": "search query"}',
+                "",
+                "=== File Operation Rules ===",
+                "All file writes MUST use '.maxim_workspace/' prefix.",
+                "EXISTING files: read_file FIRST, then write_file with overwrite=true.",
+                "NEW files: write_file (no overwrite needed).",
+                "NEVER blindly overwrite — always read first to understand current contents.",
+            ])
+            if mode_name == "active":
+                lines.append("CWD files: You can read freely and suggest edits (requires approval).")
+            else:
+                lines.append("CWD files: You can read freely. Edits must be proposed as plans.")
+
+        lines.extend([
+            "",
+            "=== Planning Rule ===",
+            "For changes that touch multiple files or significantly alter existing code:",
+            "  1. Use 'respond' to outline your plan FIRST",
+            "  2. Wait for user confirmation before executing",
+            "  3. Then read_file → modify → write_file for each file",
+            "If request is unclear, use 'respond' to ask for clarification.",
+        ])
+        return "\n".join(lines)
+
+    @staticmethod
+    def _build_tool_guidance_extended(mode_name: str = "passive") -> str:
+        """Build extended tool selection guidance, adapted to operational mode."""
+        lines = [
+            "=== Tool Selection ===",
+            "- REAL-TIME DATA (scores, weather, news, prices): Use 'internet_search'",
+            "- KNOWLEDGE from memory (what is X, explain Y): Use 'respond'",
+            "- CREATE/WRITE FILES (create script, make file): Use 'write_file'",
+            "- VISUAL COMMANDS (look at, focus on, track): Use 'focus_interests', 'track_target'",
+            "- MATH CALCULATIONS: Use 'math' with sqrt/factorial/compute",
+            "- MATH MEMORY: Use 'math' with recall_memory/store_memory",
+            "",
+            "=== FILE WORKSPACE ===",
+        ]
+        if mode_name == "singularity":
+            lines.append(
+                "Project directory: full read/write access to all files."
+            )
+            lines.append(
+                "Workspace (.maxim_workspace/): drafts/ (code), notes/ (thinking), "
+                "plans/ (proposals), scratch/ (temp)"
+            )
+        else:
+            lines.append(
+                "Workspace: drafts/ (code), notes/ (thinking), plans/ (proposals), scratch/ (temp)"
+            )
+        lines.extend([
+            "",
+            "=== BATCHED TOOL CALLS ===",
+            "Batch exploration with parallel_actions for efficiency.",
+        ])
+        return "\n".join(lines)
+
+    @staticmethod
+    def _build_observation_section(percept: Any) -> str:
+        """Build the current observation section."""
+        lines = ["=== Current Observation ==="]
+        if percept.transcript_chunk:
+            lines.append(f'Heard: "{percept.transcript_chunk[:200]}"')
+        if percept.detections:
+            objects = [d.get("label", "?") for d in percept.detections[:5]]
+            lines.append(f"Visible objects: {', '.join(objects)}")
+        if percept.cli_input:
+            lines.append(f'User input: "{percept.cli_input}"')
+        return "\n".join(lines) if len(lines) > 1 else ""
+
+    @staticmethod
+    def _build_instructions_section(request: LLMRequest) -> str:
+        """Build the response format instructions section."""
+        lines = ["=== Instructions ==="]
+        if request.autonomy_level == AutonomyLevel.PLANNING:
+            lines.extend([
+                "!" * 40,
+                "FINAL REMINDER: PLANNING MODE ACTIVE!",
+                "Your response MUST be:",
+                "1. Plain text proposal asking permission (NOT JSON!)",
+                "2. The delimiter <|action_json|>",
+                "3. Then the JSON",
+                "START YOUR RESPONSE WITH PLAIN ENGLISH TEXT!",
+                "!" * 40,
+            ])
+        else:
+            lines.extend([
+                "Respond with a compact JSON object. IMPORTANT: Put fields in this order:",
+                '  "action": {"tool_name": "<tool>", "params": {...}}',
+                '  "confidence": 0.0-1.0',
+                '  "reasoning": "Brief explanation (1 sentence)"',
+                "Keep response compact. Do not include optional fields.",
+            ])
+        return "\n".join(lines)
+
+    @staticmethod
+    def _is_realtime_request(question_text: str) -> bool:
+        """Check if the question is asking for real-time data."""
+        realtime_keywords = [
+            "score", "game", "match", "playing", "vs", "versus",
+            "weather", "temperature", "forecast",
+            "news", "latest", "current", "today", "now", "live",
+            "price", "cost", "stock", "bitcoin", "crypto",
+            "broncos", "patriots", "lakers", "yankees",
+        ]
+        q_lower = question_text.lower() if question_text else ""
+        return any(kw in q_lower for kw in realtime_keywords)
+
     def _build_tool_aware_prompt(
         self,
         request: LLMRequest,
@@ -922,273 +1742,192 @@ class LLMWorker:
     ) -> str:
         """Build a comprehensive tool-aware prompt for complex reasoning.
 
-        This prompt includes:
-        - Mode context and goals
-        - Available tools with descriptions
-        - Recent observations and context
-        - Agent states
-        - Recent action outcomes
+        Uses PromptBudgeter to assemble sections within the model's token
+        budget, dropping lower-priority sections when space is tight.
         """
         context = request.context
         mode = request.mode
-        parts: list[str] = []
+        counter = self._token_counter
+        response_reserve = mode.max_response_tokens
+        mode_name = mode.name  # "passive", "active", or "singularity"
 
-        # Pre-detect real-time data requests
-        realtime_keywords = [
-            "score", "game", "match", "playing", "vs", "versus",
-            "weather", "temperature", "forecast",
-            "news", "latest", "current", "today", "now", "live",
-            "price", "cost", "stock", "bitcoin", "crypto",
-            "broncos", "patriots", "lakers", "yankees",  # Common team names
-        ]
-        q_lower = question_text.lower() if question_text else ""
-        is_realtime_request = any(kw in q_lower for kw in realtime_keywords)
+        from maxim.utils.filesystem_policy import get_effective_cwd
+        effective_cwd = get_effective_cwd()
 
-        # PLANNING MODE BANNER - must be at the very top so LLM sees it first
-        if request.autonomy_level == AutonomyLevel.PLANNING:
-            parts.append("!" * 60)
-            parts.append("!!! CRITICAL: PLANNING MODE - YOU MUST ASK PERMISSION FIRST !!!")
-            parts.append("!" * 60)
-            parts.append("")
-            parts.append("DO NOT output raw JSON. You MUST follow this EXACT format:")
-            parts.append("")
-            parts.append("STEP 1: Write a proposal IN PLAIN ENGLISH asking for permission")
-            parts.append("STEP 2: Write the EXACT delimiter: <|action_json|>")
-            parts.append("STEP 3: Write the JSON object")
-            parts.append("")
-            parts.append("=== CORRECT FORMAT EXAMPLE 1 ===")
-            parts.append("I'd like to search the internet for the current Broncos vs Patriots score.")
-            parts.append("May I proceed with this search?")
-            parts.append("<|action_json|>")
-            parts.append('{"action": {"tool_name": "internet_search", "params": {"query": "Broncos vs Patriots score today"}}, "confidence": 0.9}')
-            parts.append("")
-            parts.append("=== CORRECT FORMAT EXAMPLE 2 ===")
-            parts.append("To answer your question about the weather, I need to search online.")
-            parts.append("Should I look up the current weather for you?")
-            parts.append("<|action_json|>")
-            parts.append('{"action": {"tool_name": "internet_search", "params": {"query": "current weather"}}, "confidence": 0.9}')
-            parts.append("")
-            parts.append("=== WRONG (DO NOT DO THIS) ===")
-            parts.append('{"action": {"tool_name": "internet_search", ...}}  <-- NO! Missing proposal text!')
-            parts.append("")
-            parts.append("YOUR RESPONSE MUST START WITH PLAIN TEXT, NOT JSON!")
-            parts.append("!" * 60)
-            parts.append("")
+        budgeter = PromptBudgeter(
+            total_budget=self._n_ctx,
+            response_reserve=response_reserve,
+            token_counter=counter,
+        )
 
-        # If this is a real-time data request, add instruction
-        if is_realtime_request:
-            parts.append(">>> REAL-TIME DATA NEEDED <<<")
-            if request.autonomy_level == AutonomyLevel.PLANNING:
-                parts.append("Propose using 'internet_search' and ask for approval.")
-            else:
-                parts.append("Use 'internet_search' tool directly.")
-            parts.append("")
+        is_realtime = self._is_realtime_request(question_text)
 
-        # MODIFICATION REQUEST - User wants to revise a previous action
+        # ── MANDATORY sections (never dropped) ──
+
+        # Response format instructions
+        budgeter.add(
+            "instructions",
+            self._build_instructions_section(request),
+            SectionPriority.MANDATORY,
+        )
+
+        # User request
+        if question_text:
+            budgeter.add(
+                "user_request",
+                f'=== User Request ===\n"{question_text}"',
+                SectionPriority.MANDATORY,
+            )
+
+        # ── CRITICAL sections ──
+
+        # Planning mode banner
+        budgeter.add(
+            "planning_banner",
+            self._build_planning_banner(request.autonomy_level),
+            SectionPriority.CRITICAL,
+        )
+
+        # Modification request
         if request.pending_modification:
-            import json
-            mod = request.pending_modification
-            parts.append("=" * 60)
-            parts.append(">>> ACTION MODIFICATION REQUESTED <<<")
-            parts.append("=" * 60)
-            parts.append("")
-            parts.append("The user requested a modification to the following proposed action:")
-            parts.append("")
-            parts.append("ORIGINAL ACTION:")
-            original_action = mod.get("original_action", {})
-            parts.append(f"  Tool: {mod.get('original_tool_name', 'unknown')}")
-            parts.append(f"  Parameters: {json.dumps(original_action.get('params', {}), indent=4)}")
-            parts.append(f"  Original reasoning: {mod.get('original_reasoning', 'not provided')}")
-            parts.append("")
-            parts.append("USER'S MODIFICATION REQUEST:")
-            parts.append(f'  "{mod.get("user_modification", "")}"')
-            parts.append("")
-            parts.append("YOUR TASK: Revise the action based on the user's feedback.")
-            parts.append("- Interpret what change the user wants")
-            parts.append("- Keep the same tool if appropriate, or choose a different one")
-            parts.append("- Update the parameters according to the user's request")
-            parts.append("- Provide updated reasoning")
-            parts.append("")
-            parts.append("Respond with a REVISED action that incorporates the user's modification.")
-            parts.append("=" * 60)
-            parts.append("")
+            budgeter.add(
+                "modification",
+                self._build_modification_section(request.pending_modification),
+                SectionPriority.CRITICAL,
+            )
 
-        # Foundational context (Constitution & Agent Rules)
-        foundational = _load_foundational_context()
-        if foundational:
-            parts.append(foundational)
-            parts.append("")
+        # System identity + operational state
+        budgeter.add(
+            "identity",
+            self._build_identity_section(mode, request, date_str, time_str),
+            SectionPriority.CRITICAL,
+        )
 
-        # System context with new architecture (mode + strategy)
-        parts.append(f"You are Maxim, a robot assistant.")
-        parts.append(f"")
-        parts.append(f"=== OPERATIONAL STATE ===")
-        parts.append(f"Mode: {mode.name.upper()}")
-        parts.append(f"Mode goal: {mode.goal}")
+        # Available tools (truncatable — drop examples first)
+        budgeter.add(
+            "tools",
+            self._build_tools_section(request, mode_name=mode_name),
+            SectionPriority.CRITICAL,
+            truncatable=True,
+            min_tokens=50,
+            truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
+        )
 
-        # Add current strategy if available (new architecture)
-        if request.current_strategy:
-            from maxim.modes.definitions import STRATEGIES
-            strategy = STRATEGIES.get(request.current_strategy)
-            if strategy:
-                parts.append(f"Strategy: {strategy.name.upper()} - {strategy.description}")
-                parts.append(f"Strategy focus: {strategy.focus}")
+        # Workspace manifest — LLM MUST know what files exist
+        workspace_manifest = self._build_workspace_manifest(
+            mode_name=mode_name, cwd=effective_cwd,
+        )
+        if workspace_manifest:
+            is_singularity = (mode_name == "singularity")
+            budgeter.add(
+                "workspace_manifest",
+                workspace_manifest,
+                SectionPriority.CRITICAL,
+                truncatable=is_singularity,
+                min_tokens=80 if is_singularity else 0,
+                truncate_fn=(
+                    (lambda c, m: _truncate_manifest(c, m, counter))
+                    if is_singularity else None
+                ),
+            )
 
-        parts.append(f"Autonomy level: {request.autonomy_level.value if request.autonomy_level else 'unknown'}")
-
-        # Processing state indicator
-        if request.is_sleeping:
-            parts.append(f"Processing state: SLEEP (minimal processing, monitoring for wake keywords)")
-        else:
-            parts.append(f"Processing state: AWAKE")
-
-        parts.append(f"")
-        parts.append(f"=== CURRENT DATE/TIME (IMPORTANT) ===")
-        parts.append(f"Today is {date_str}")
-        parts.append(f"Current time: {time_str}")
-        parts.append(f"When searching for current events, scores, or news, ALWAYS include the date in your query.")
-        parts.append(f"Example: Instead of 'Broncos game score', search 'Broncos game score {date_str}'")
-
-        # Mode context prompt if available
-        if mode.context_prompt:
-            parts.append(f"\n{mode.context_prompt}")
-
-        # Strategy context prompt if available (new architecture)
-        if request.current_strategy:
-            from maxim.modes.definitions import STRATEGIES
-            strategy = STRATEGIES.get(request.current_strategy)
-            if strategy and strategy.context_prompt:
-                parts.append(f"\n{strategy.context_prompt}")
-
-        # Context pool summary (accumulated observations)
-        if request.context_pool_text:
-            parts.append("\n=== Context ===")
-            parts.append(request.context_pool_text)
-
-        # Pre-fetched context (speculative pre-fetching for efficiency)
-        if request.prefetch_context:
-            parts.append("")
-            parts.append(request.prefetch_context)
-            if request.skip_exploration:
-                parts.append("")
-                parts.append("!" * 50)
-                parts.append("!!! ONE-CALL MODE: WRITE DIRECTLY !!!")
-                parts.append("!" * 50)
-                parts.append("")
-                parts.append("File discovery is COMPLETE. Do NOT use glob or read_file.")
-                parts.append("Proceed DIRECTLY to your action:")
-                parts.append("- For EXISTING file: write_file with overwrite=True")
-                parts.append("- For NEW file: write_file (no overwrite needed)")
-                parts.append("")
-                parts.append("Your response should be the write_file action, NOT exploration.")
-                parts.append("")
-
-        # Recent percepts
-        if context.current_percept:
-            percept = context.current_percept
-            parts.append("\n=== Current Observation ===")
-            if percept.transcript_chunk:
-                parts.append(f"Heard: \"{percept.transcript_chunk[:200]}\"")
-            if percept.detections:
-                objects = [d.get("label", "?") for d in percept.detections[:5]]
-                parts.append(f"Visible objects: {', '.join(objects)}")
-            if percept.cli_input:
-                parts.append(f"User input: \"{percept.cli_input}\"")
-
-        # Detected speech
-        if context.detected_speech:
-            parts.append("\n=== Recent Speech ===")
-            for speech in context.detected_speech[-3:]:
-                parts.append(f"- \"{speech[:100]}\"")
-
-        # Conversation history (past user inputs and Maxim's responses)
-        if request.conversation_history_text:
-            parts.append("\n=== Conversation History ===")
-            parts.append(request.conversation_history_text)
-
-        # Agent states (if provided)
-        if request.agent_states:
-            parts.append("\n=== Agent States ===")
-            for state in request.agent_states[-5:]:
-                agent_name = state.get("agent", "unknown")
-                agent_state = state.get("state", "unknown")
-                goal = state.get("goal", "")
-                parts.append(f"- {agent_name}: {agent_state}" + (f" (goal: {goal})" if goal else ""))
-
-        # Recent outcomes (learning from past actions)
-        if request.recent_outcomes:
-            parts.append("\n=== Recent Action Outcomes ===")
-            for outcome in request.recent_outcomes[-3:]:
-                tool = outcome.get("tool", "?")
-                success = "succeeded" if outcome.get("success") else "failed"
-                result = outcome.get("result", "")[:50] if outcome.get("result") else ""
-                parts.append(f"- {tool}: {success}" + (f" ({result})" if result else ""))
-
-        # Available tools with params and examples
-        parts.append("\n=== Available Tools ===")
-        tool_list = sorted(request.available_tools)
-        for tool_name in tool_list:
-            tool_info = request.tool_descriptions.get(tool_name, {})
-            if isinstance(tool_info, dict) and tool_info:
-                desc = tool_info.get("description", "")
-                params = tool_info.get("params", {})
-                example = tool_info.get("example", {})
-                parts.append(f"- {tool_name}: {desc}")
-                if params:
-                    param_strs = [f"{k}={v}" for k, v in params.items()]
-                    parts.append(f"    REQUIRED params: {', '.join(param_strs)}")
-                if example:
-                    import json
-                    parts.append(f"    Example: {json.dumps(example)}")
-            elif isinstance(tool_info, str) and tool_info:
-                parts.append(f"- {tool_name}: {tool_info}")
+        # Real-time data hint
+        if is_realtime:
+            hint = ">>> REAL-TIME DATA NEEDED <<<\n"
+            if request.autonomy_level == AutonomyLevel.PLANNING:
+                hint += "Propose using 'internet_search' and ask for approval."
             else:
-                parts.append(f"- {tool_name}")
+                hint += "Use 'internet_search' tool directly."
+            budgeter.add("realtime_hint", hint, SectionPriority.CRITICAL)
 
-        # Tool selection guidance
-        parts.append("\n=== Tool Selection ===")
-        parts.append("Choose the right tool based on what's needed:")
-        parts.append("- AMBIGUOUS REQUEST (incomplete, unclear): Use 'respond' to ASK FOR CLARIFICATION")
-        parts.append("- REAL-TIME DATA (scores, weather, news, prices): Use 'internet_search'")
-        parts.append("- KNOWLEDGE from memory (what is X, explain Y): Use 'respond'")
-        parts.append("- CREATE/WRITE FILES (create script, make file, save code): Use 'write_file'")
-        parts.append("- VISUAL COMMANDS (look at, focus on, track): Use 'focus_interests', 'track_target'")
-        parts.append("")
-        parts.append("=== AMBIGUOUS REQUESTS ===")
-        parts.append("If the user's request is incomplete or unclear (e.g., 'look up', 'search', 'find'):")
-        parts.append("- DO NOT assume what they want")
-        parts.append("- DO NOT start file exploration or web searches without context")
-        parts.append("- USE 'respond' to ask: 'What would you like me to look up?' or 'What should I search for?'")
-        parts.append("")
-        parts.append("=== CRITICAL: Use Correct Parameters ===")
-        parts.append("- 'respond': params={\"message\": \"your answer\"}")
-        parts.append("- 'speak': params={\"text\": \"text to speak\"}")
-        parts.append("- 'write_file': params={\"path\": \".maxim_sandbox/filename.py\", \"content\": \"file content\"}")
-        parts.append("- 'internet_search': params={\"query\": \"search query\"}")
-        parts.append("- NEVER use wrong param names! 'write_file' uses 'path' and 'content', NOT 'message'!")
-        parts.append("")
-        parts.append("=== FILE SANDBOX (CRITICAL) ===")
-        parts.append("All file writes MUST use '.maxim_sandbox/' prefix:")
-        parts.append("- CORRECT: '.maxim_sandbox/hello.py', '.maxim_sandbox/scripts/test.py'")
-        parts.append("- WRONG: 'hello.py', 'scripts/test.py' (will FAIL!)")
-        parts.append("")
-        parts.append("=== BATCHED TOOL CALLS (EFFICIENT) ===")
-        parts.append("For file modifications, batch exploration into ONE call using parallel_actions:")
-        parts.append('{"action": {"tool_name": "glob", "params": {"pattern": ".maxim_sandbox/**/*.py"}},')
-        parts.append(' "parallel_actions": [')
-        parts.append('   {"tool_name": "read_file", "params": {"path": ".maxim_sandbox/target.py"}},')
-        parts.append('   {"tool_name": "glob", "params": {"pattern": ".maxim_sandbox/**/*.py"}}')
-        parts.append(' ],')
-        parts.append(' "reasoning": "Batched exploration"}')
-        parts.append("All parallel_actions execute together, then results return for your next decision.")
+        # ── IMPORTANT sections (truncatable) ──
 
-        # Inject coding guidelines based on request type
-        # Use question_text, or fall back to modification text if this is a revision request
+        # Tool guidance — compact core (params + workspace rules)
+        budgeter.add(
+            "tool_guidance_core",
+            self._build_tool_guidance_core(mode_name=mode_name),
+            SectionPriority.IMPORTANT,
+        )
+
+        # Tool guidance — extended (selection tips, batching examples)
+        budgeter.add(
+            "tool_guidance_extended",
+            self._build_tool_guidance_extended(mode_name=mode_name),
+            SectionPriority.NICE_TO_HAVE,
+        )
+
+        # Date/time
+        budgeter.add(
+            "datetime",
+            self._build_datetime_section(date_str, time_str),
+            SectionPriority.IMPORTANT,
+        )
+
+        # Conversation history
+        if request.conversation_history_text:
+            budgeter.add(
+                "conversation",
+                "=== Conversation History ===\n" + request.conversation_history_text,
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=50,
+                truncate_fn=lambda c, m: _truncate_conversation(c, m, counter),
+            )
+
+        # Context pool
+        if request.context_pool_text:
+            budgeter.add(
+                "context_pool",
+                "=== Context ===\n" + request.context_pool_text,
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=30,
+                truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter),
+            )
+
+        # Reasoning carryover (NEW)
+        carryover_text = self._reasoning_carryover.get_prompt_text()
+        if carryover_text:
+            budgeter.add(
+                "reasoning_carryover",
+                carryover_text,
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=30,
+                truncate_fn=lambda c, m: _truncate_reasoning_carryover(c, m, counter),
+            )
+
+        # Pre-fetched context
+        if request.prefetch_context:
+            prefetch = request.prefetch_context
+            if request.skip_exploration:
+                prefetch += (
+                    "\n\n" + "!" * 50
+                    + "\n!!! ONE-CALL MODE: WRITE DIRECTLY !!!\n"
+                    + "!" * 50
+                    + "\n\nFile discovery is COMPLETE. Do NOT use glob or read_file."
+                    + "\nProceed DIRECTLY to your action:"
+                    + "\n- For EXISTING file: write_file with overwrite=True"
+                    + "\n- For NEW file: write_file (no overwrite needed)"
+                    + "\n\nYour response should be the write_file action, NOT exploration."
+                )
+            # Discovery plans are higher priority — they contain structured
+            # file context that the LLM needs for planning.
+            has_discovery = "DISCOVERY PLAN" in prefetch or "FILE DISCOVERY" in prefetch
+            priority = SectionPriority.CRITICAL if has_discovery else SectionPriority.IMPORTANT
+            budgeter.add(
+                "prefetch_context",
+                prefetch,
+                priority,
+                truncatable=True,
+                min_tokens=50,
+                truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter),
+            )
+
+        # Coding guidelines
         guidelines_text = question_text
         if not guidelines_text and request.pending_modification:
-            # For modification requests, use the user's modification text for guideline detection
             guidelines_text = request.pending_modification.get("user_modification", "")
-
         if guidelines_text:
             coding_context = build_coding_context(
                 guidelines_text,
@@ -1196,39 +1935,90 @@ class LLMWorker:
                 max_guidelines=2,
             )
             if coding_context:
-                parts.append("")
-                parts.append(coding_context)
+                budgeter.add(
+                    "coding_guidelines",
+                    coding_context,
+                    SectionPriority.NICE_TO_HAVE,
+                )
 
-        # User request
-        if question_text:
-            parts.append(f"\n=== User Request ===")
-            parts.append(f"\"{question_text}\"")
+        # ── NICE_TO_HAVE sections ──
 
-        # Response format instructions - ordered by importance (most critical first)
-        # This ensures truncation loses least important fields first
-        parts.append("\n=== Instructions ===")
+        # Foundational context (Constitution & Agent Rules)
+        budgeter.add(
+            "foundational",
+            _load_foundational_context(),
+            SectionPriority.NICE_TO_HAVE,
+        )
 
-        # In PLANNING mode, remind about the required format
-        if request.autonomy_level == AutonomyLevel.PLANNING:
-            parts.append("!" * 40)
-            parts.append("FINAL REMINDER: PLANNING MODE ACTIVE!")
-            parts.append("Your response MUST be:")
-            parts.append("1. Plain text proposal asking permission (NOT JSON!)")
-            parts.append("2. The delimiter <|action_json|>")
-            parts.append("3. Then the JSON")
-            parts.append("START YOUR RESPONSE WITH PLAIN ENGLISH TEXT!")
-            parts.append("!" * 40)
-        else:
-            parts.append("Respond with a compact JSON object. IMPORTANT: Put fields in this order:")
-            parts.append('  "action": {"tool_name": "<tool>", "params": {...}}')
-            parts.append('  "confidence": 0.0-1.0')
-            parts.append('  "reasoning": "Brief explanation (1 sentence)"')
-            parts.append("Keep response compact. Do not include optional fields.")
+        # Mode context prompt
+        if mode.context_prompt:
+            budgeter.add(
+                "mode_context",
+                mode.context_prompt,
+                SectionPriority.NICE_TO_HAVE,
+            )
 
-        # Combine all parts
-        prompt_text = "\n".join(parts)
+        # Strategy context prompt
+        if request.current_strategy:
+            from maxim.modes.definitions import STRATEGIES
+            strategy = STRATEGIES.get(request.current_strategy)
+            if strategy and strategy.context_prompt:
+                budgeter.add(
+                    "strategy_context",
+                    strategy.context_prompt,
+                    SectionPriority.NICE_TO_HAVE,
+                )
 
-        # Return as TOOL_PROMPT prefix so router knows to handle differently
+        # Current observation
+        if context.current_percept:
+            obs_text = self._build_observation_section(context.current_percept)
+            if obs_text:
+                budgeter.add("observation", obs_text, SectionPriority.NICE_TO_HAVE)
+
+        # Recent speech
+        if context.detected_speech:
+            speech_lines = ["=== Recent Speech ==="]
+            for speech in context.detected_speech[-3:]:
+                speech_lines.append(f'- "{speech[:100]}"')
+            budgeter.add("speech", "\n".join(speech_lines), SectionPriority.NICE_TO_HAVE)
+
+        # Agent states
+        if request.agent_states:
+            state_lines = ["=== Agent States ==="]
+            for state in request.agent_states[-5:]:
+                agent_name = state.get("agent", "unknown")
+                agent_state = state.get("state", "unknown")
+                goal = state.get("goal", "")
+                state_lines.append(f"- {agent_name}: {agent_state}" + (f" (goal: {goal})" if goal else ""))
+            budgeter.add("agent_states", "\n".join(state_lines), SectionPriority.NICE_TO_HAVE)
+
+        # Recent outcomes
+        if request.recent_outcomes:
+            outcome_lines = ["=== Recent Action Outcomes ==="]
+            for outcome in request.recent_outcomes[-3:]:
+                tool = outcome.get("tool", "?")
+                success = "succeeded" if outcome.get("success") else "failed"
+                result = outcome.get("result", "")[:50] if outcome.get("result") else ""
+                outcome_lines.append(f"- {tool}: {success}" + (f" ({result})" if result else ""))
+            budgeter.add("recent_outcomes", "\n".join(outcome_lines), SectionPriority.NICE_TO_HAVE)
+
+        # Statistical patterns
+        if context.statistical_context and context.active_pattern_count > 0:
+            stat_lines = [
+                f"=== Statistical Patterns ({context.active_pattern_count} active) ===",
+                context.statistical_context,
+                "Use 'math' tool to investigate patterns (assess_randomness, analyze, recall_memory).",
+                "Use 'internet_search' to research unfamiliar patterns or analysis techniques.",
+            ]
+            budgeter.add("statistical_patterns", "\n".join(stat_lines), SectionPriority.NICE_TO_HAVE)
+
+        # ── Build final prompt ──
+        prompt_text, dropped = budgeter.build()
+
+        if dropped:
+            logger.info("Prompt budget: dropped %d sections for %s (n_ctx=%d, reserve=%d)",
+                        len(dropped), mode.name, self._n_ctx, response_reserve)
+
         return f"TOOL_PROMPT|{prompt_text}"
 
     def _build_followup_prompt(self, followup_input: str) -> str:
@@ -1420,6 +2210,126 @@ Your response (use tool_name "respond"):"""
         normalized = [str(item).strip() for item in value if item]
         return normalized or default
 
+    @staticmethod
+    def _evaluate_simple_arithmetic(text: str) -> str | None:
+        """Evaluate a simple two-operand arithmetic expression safely.
+
+        Handles: "1 + 1", "what is 5 * 3", "calculate 10 / 2", "1+1"
+        Returns formatted answer string or None if not arithmetic.
+        """
+        match = _ARITHMETIC_PATTERN.search(text)
+        if not match:
+            return None
+
+        left_str, op, right_str = match.groups()
+
+        # Guard: reject chained expressions like "1 + 2 + 3"
+        remainder = text[match.end():].strip()
+        if remainder and re.search(r"\d", remainder):
+            return None
+
+        try:
+            left = float(left_str)
+            right = float(right_str)
+        except ValueError:
+            return None
+
+        op_func = _SIMPLE_OPS.get(op)
+        if op_func is None:
+            return None
+
+        try:
+            result = op_func(left, right)
+        except (OverflowError, ZeroDivisionError):
+            return None
+
+        # NaN check (division by zero)
+        if result != result:
+            return "That operation is undefined (division by zero)."
+
+        def _fmt(v: float) -> str:
+            if isinstance(v, float) and v == int(v) and abs(v) < 1e15:
+                return str(int(v))
+            return f"{v:g}"
+
+        display_op = "*" if op == "x" else op
+        return f"{_fmt(left)} {display_op} {_fmt(right)} = {_fmt(result)}"
+
+    @staticmethod
+    def _evaluate_unary_math(text: str) -> str | None:
+        """Evaluate unary math expressions, optionally followed by a binary op.
+
+        Simple:   "square root of 25"           → "√25 = 5"
+        Compound: "square root of 25 plus 3"    → "√25 + 3 = 8"
+                  "5 squared minus 10"           → "5² - 10 = 15"
+        Returns formatted answer string or None if not a unary math pattern.
+        """
+        lower = text.lower()
+
+        def _fmt(v: float) -> str:
+            if isinstance(v, float) and v == int(v) and abs(v) < 1e15:
+                return str(int(v))
+            return f"{v:g}"
+
+        for pattern, op_type in _UNARY_MATH_PATTERNS:
+            match = pattern.search(lower)
+            if not match:
+                continue
+
+            try:
+                value = float(match.group(1))
+            except ValueError:
+                continue
+
+            # Evaluate the unary operation
+            if op_type == "sqrt":
+                if value < 0:
+                    return "The square root of a negative number is not a real number."
+                unary_result = value ** 0.5
+                label = f"√{_fmt(value)}"
+            elif op_type == "cbrt":
+                unary_result = value ** (1 / 3) if value >= 0 else -((-value) ** (1 / 3))
+                label = f"∛{_fmt(value)}"
+            elif op_type == "squared":
+                unary_result = value ** 2
+                label = f"{_fmt(value)}²"
+            elif op_type == "cubed":
+                unary_result = value ** 3
+                label = f"{_fmt(value)}³"
+            else:
+                continue
+
+            # Check for trailing binary operation: "... plus 3", "... minus 2"
+            remainder = lower[match.end():].strip()
+            trailing = _TRAILING_OP_PATTERN.search(remainder) if remainder else None
+
+            if trailing:
+                # Groups: (plus_val, minus_val, times_val, divide_val)
+                groups = trailing.groups()
+                if groups[0] is not None:
+                    rhs = float(groups[0])
+                    final = unary_result + rhs
+                    return f"{label} + {_fmt(rhs)} = {_fmt(final)}"
+                elif groups[1] is not None:
+                    rhs = float(groups[1])
+                    final = unary_result - rhs
+                    return f"{label} - {_fmt(rhs)} = {_fmt(final)}"
+                elif groups[2] is not None:
+                    rhs = float(groups[2])
+                    final = unary_result * rhs
+                    return f"{label} * {_fmt(rhs)} = {_fmt(final)}"
+                elif groups[3] is not None:
+                    rhs = float(groups[3])
+                    if rhs == 0:
+                        return "That operation is undefined (division by zero)."
+                    final = unary_result / rhs
+                    return f"{label} / {_fmt(rhs)} = {_fmt(final)}"
+
+            # Simple unary — no trailing op
+            return f"{label} = {_fmt(unary_result)}"
+
+        return None
+
     def _generate_simple_answer(
         self, question: str, date_str: str, time_str: str
     ) -> str | None:
@@ -1495,6 +2405,16 @@ Your response (use tool_name "respond"):"""
         # How are you
         if any(self._matches_phrase(q, phrase) for phrase in wellbeing_phrases):
             return "I'm functioning well, thank you for asking. How can I assist you?"
+
+        # Simple arithmetic (e.g., "what is 1+1", "calculate 5*3")
+        arithmetic_result = self._evaluate_simple_arithmetic(q)
+        if arithmetic_result:
+            return arithmetic_result
+
+        # Unary math (e.g., "square root of 25", "5 cubed")
+        unary_result = self._evaluate_unary_math(q)
+        if unary_result:
+            return unary_result
 
         # Can't answer directly - need LLM
         return None
