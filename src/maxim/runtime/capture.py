@@ -505,10 +505,7 @@ class CaptureManager:
             return []
 
         try:
-            observations = segmenter.segment_photos(
-                [frame],
-                interests=list(getattr(self._maxim, "interests", []) or []),
-            )
+            observations = segmenter.segment_photos([frame])
 
             detections = []
             names = getattr(getattr(segmenter, "model", None), "names", None)
