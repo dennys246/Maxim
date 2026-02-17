@@ -199,10 +199,10 @@ Four biologically-inspired systems collaborate to give Maxim memory, temporal aw
                 │   (integration/memory_hub.py)  │
                 └────────────────┬───────────────┘
                                  │
-     ┌──────────────┬────────────┼────────────┬──────────────┐
-     ▼              ▼            ▼            ▼              ▼
-  Spatial       Salience     Planning    Escalation      (Future)
-   Bridge        Bridge       Bridge      Bridge          Fear
+     ┌─────────┬─────────┬──────┼──────┬─────────┬─────────┬──────────┬────────┐
+     ▼         ▼         ▼      ▼      ▼         ▼         ▼          ▼        ▼
+  Spatial  Salience  Planning  Escal  Fear     Pain     Energy    Comms    Math
+   Bridge   Bridge    Bridge  Bridge Bridge   Bridge    Bridge   Bridge  Bridge
 ```
 
 ### Coordinated Systems
@@ -222,6 +222,11 @@ Four biologically-inspired systems collaborate to give Maxim memory, temporal aw
 | **SalienceMemoryBridge** | Hippocampus ↔ SalienceNetwork | Pure novelty/recency | Interaction history boosts |
 | **PlanHistoryBridge** | Hippocampus ↔ NAc | Plans from scratch | Successful template retrieval |
 | **EscalationLearningBridge** | Hippocampus ↔ SCN/NAc | Fixed thresholds | Per-goal, per-time learned thresholds |
+| **FearCircuitBridge** | Hippocampus ↔ NAc ↔ EC | No learned risk patterns | Memory-informed risk assessment |
+| **PainCircuitBridge** | PainDetector ↔ NAc | No movement-pain learning | Learned action→pain associations |
+| **EnergyCircuitBridge** | EnergyRegistry ↔ NAc | No energy cost awareness | Learned action→energy associations |
+| **CommunicationBridge** | Comms ↔ Hippocampus | No communication context | Communication-aware memory |
+| **MathBridge** | AngularGyrus ↔ Hippocampus | No math pattern learning | Learned math patterns promoted to AG |
 
 ### Selective Capture
 

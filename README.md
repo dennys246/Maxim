@@ -33,7 +33,7 @@ Maxim provides:
 ### Prerequisites
 
 1. **Reachy Mini** on the same LAN/Wi-Fi (Zenoh peer discovery)
-2. **Python 3.10+** with virtual environment
+2. **Python 3.12+** with virtual environment
 3. Follow Pollen Robotics' [SDK installation guide](https://github.com/pollen-robotics/reachy_mini/blob/develop/docs/SDK/installation.md)
 
 ### Installation
@@ -91,8 +91,7 @@ Agents → Planning → Decision Engine → Runtime → Executor → Tools → E
 | Module | Responsibility |
 |--------|---------------|
 | `src/maxim/agents/` | Goal reasoning, intent generation (no side effects) |
-| `src/maxim/planning/` | Plan generation and refinement |
-| `src/maxim/planning/recursive/` | Hierarchical goal decomposition and execution |
+| `src/maxim/planning/` | Plan generation, refinement, and decision engine |
 | `src/maxim/tools/` | Tool implementations (side effects) |
 | `src/maxim/environment/` | World observation (no side effects) |
 | `src/maxim/memory/` | Storage and retrieval |
@@ -127,76 +126,28 @@ maxim --mode sleep
 
 ---
 
-## Recursive Planning System
+## Planning System
 
-Maxim implements a deeply recursive planning architecture inspired by modern agentic LLMs:
-
-### Goal Tree Structure
-
-Complex goals decompose into hierarchical trees:
-
-```
-ROOT: "Deploy application to staging"
-├── [COMPLETED] "Build Docker image"
-│   └── docker_build(tag="app:v1.2")
-├── [COMPLETED] "Push to registry"
-│   └── docker_push(image="app:v1.2")
-├── [IN_PROGRESS] "Update Kubernetes deployment"
-│   ├── [COMPLETED] kubectl_apply(file="deployment.yaml")
-│   └── [PENDING] kubectl_rollout_status(deployment="app")
-└── [PENDING] "Run smoke tests"
-```
+Maxim uses a multi-layer planning architecture:
 
 ### Key Components
 
-| Component | Description |
-|-----------|-------------|
-| `GoalNode` | Tree node with status, tool assignment, dependencies |
-| `RecursivePlannerAgent` | Decomposes goals via LLM, handles reflection |
-| `RecursiveGoalExecutor` | Parallel-aware tree traversal with cancellation |
-| `GoalTreeConfig` | Budgets, timeouts, reflection policy |
+| Component | Location | Description |
+|-----------|----------|-------------|
+| `PlanManager` | `planning/plan_manager.py` | Plan lifecycle management |
+| `DecisionEngine` | `planning/decision_engine.py` | Single point of action selection |
+| `Policy` | `planning/policy.py` | Constraints and guardrails |
+| `PlanDocument` | `planning/plan_document.py` | Structured plan representation |
 
-### Configuration
+### Decision Flow
 
-```python
-from maxim.planning.recursive import GoalTreeConfig, PROFILE_CONFIGS
-
-# Use a preset profile
-config = PROFILE_CONFIGS["standard"]
-
-# Or customize
-config = GoalTreeConfig(
-    max_depth=5,
-    max_llm_calls=20,
-    max_tool_executions=50,
-    enable_parallel=True,
-    max_parallel_workers=4,
-    reflection_policy="on_failure",  # "always", "never", "depth_limited"
-)
+```
+Observe state → Agents propose intents → Planners propose plans
+    → Policies constrain plans → Decision engine selects action
+    → Runtime executes
 ```
 
-### Reflection and Re-planning
-
-After each significant step, the planner can:
-- **CONTINUE**: Proceed as planned
-- **ADAPT**: Modify remaining plan
-- **RETRY**: Retry failed step with backoff
-- **ABORT**: Abandon goal
-- **ESCALATE**: Ask user for help
-
-### Checkpointing
-
-Goal trees persist across restarts:
-
-```python
-from maxim.planning.recursive import GoalTreePersistence
-
-persistence = GoalTreePersistence("data/plans/checkpoints")
-checkpoint_id = persistence.checkpoint(tree, config, reason="pre_risky_op")
-
-# Later: recover
-tree, config, budgets = persistence.recover(checkpoint_id)
-```
+Action selection happens in exactly one place: `DecisionEngine.decide()`
 
 ---
 
@@ -471,7 +422,7 @@ bash src/tests/basic_move.sh --require-robot
 python -c "
 import sys
 sys.path.insert(0, 'src')
-from maxim.planning.recursive import *
+from maxim.planning import *
 # ... test code
 "
 ```
@@ -482,15 +433,13 @@ from maxim.planning.recursive import *
 Maxim/
 ├── src/maxim/           # Main package
 │   ├── agents/          # Agent implementations
-│   ├── planning/        # Planning and decision engine
-│   │   └── recursive/   # Recursive goal decomposition
+│   ├── planning/        # Planning, decision engine, and policy
 │   ├── tools/           # Tool implementations
 │   ├── modes/           # Operating modes
 │   ├── models/          # ML models (vision, audio, language)
 │   └── runtime/         # Agentic orchestration
 ├── data/                # Runtime data and configs
 │   ├── prompts/         # LLM prompts
-│   │   └── planning/    # Recursive planning prompts
 │   ├── models/          # Downloaded model weights
 │   └── util/            # Configuration files
 ├── scripts/             # Utility scripts
@@ -501,23 +450,25 @@ Maxim/
 
 ## Roadmap
 
-### Completed (Phase R0-R3)
-- Goal tree data structures and enums
-- Recursive planner agent with LLM decomposition
-- Parallel goal executor with thread pools
-- Checkpointing and persistence
-- Tree visualization and progress rendering
+### Completed
+- Long-horizon planning with PlanDocument (phases, sub-goals, energy budgets)
+- LLM-driven goal decomposition via ExecAgent
+- Worker pool with typed lanes (infer, review, record)
+- Concurrent tool execution with conflict detection
+- Plan checkpointing and session persistence
+- Preemption circuit with soft preemption and rollback
+- FearAgent safety gating (code review, action review, pain prediction)
+- Memory consolidation and associative graph
+- Nine cross-system bridges (Spatial, Salience, Planning, Escalation, Fear, Pain, Energy, Communication, Math)
 
-### In Progress (Phase R4-R5)
-- Enhanced parallel execution
-- Full reflection loop integration
-- Re-planning with completed work preservation
+### In Progress
+- Enhanced parallel execution via WorkerPool
+- Re-planning with failure context and alternative approaches
+- Energy-aware planning with per-phase budgets
 
-### Planned (Phase R6-R9)
-- FearAgent safety integration
-- Goal scheduling and preemption
+### Planned
 - Execution tracing and observability
-- Memory-based pattern learning
+- Memory-based pattern learning for plan optimization
 
 ---
 

@@ -19,9 +19,11 @@ Bridges serve as integration points that:
 | `SalienceMemoryBridge` | Hippocampus ↔ EC ↔ SalienceNetwork | Salience-based memory |
 | `PlanHistoryBridge` | Hippocampus ↔ NAc | Plan template retrieval |
 | `EscalationLearningBridge` | Hippocampus ↔ SCN/NAc | Learned escalation thresholds |
-| `FearCircuitBridge` | Hippocampus ↔ FearAgent ↔ NAc | Learned risk patterns |
-| `PainCircuitBridge` | PainDetector ↔ NAc ↔ FearAgent | Movement pain learning |
-| `EnergyBridge` | EnergyRegistry ↔ NAc | Energy cost learning |
+| `FearCircuitBridge` | Hippocampus ↔ NAc ↔ EC | Learned risk patterns |
+| `PainCircuitBridge` | PainDetector ↔ NAc | Movement pain learning |
+| `EnergyCircuitBridge` | EnergyRegistry ↔ NAc | Energy cost learning |
+| `CommunicationBridge` | Comms ↔ Hippocampus | Communication-aware memory |
+| `MathBridge` | AngularGyrus ↔ Hippocampus | Math pattern learning |
 
 ---
 
@@ -301,14 +303,14 @@ if should_gate:
 
 ---
 
-## EnergyBridge
+## EnergyCircuitBridge
 
 Connects energy tracking to NAc for cost-aware decisions.
 
 ```python
-from maxim.bridges.energy_bridge import EnergyBridge
+from maxim.bridges.energy_bridge import EnergyCircuitBridge
 
-bridge = EnergyBridge(
+bridge = EnergyCircuitBridge(
     energy_registry=get_global_registry(),
     nac=nac,
 )
@@ -377,7 +379,7 @@ All bridges with learning state persist to JSON:
 |--------|--------------|----------|
 | EscalationLearningBridge | `data/util/escalation_learning.json` | Learned thresholds |
 | FearCircuitBridge | `data/util/fear_learning.json` | Risk patterns |
-| PainCircuitBridge | `data/util/pain_bridge.json` | Pain associations |
+| PainCircuitBridge | *(no own persistence — pain learning persisted via NAc)* | Pain associations |
 | MemoryHub (semantic) | `data/util/semantic_embeddings.npz` | Phase 4 neural embeddings |
 
 Clear with: `maxim --clear-memory escalation,fear,semantic`

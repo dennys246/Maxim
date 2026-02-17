@@ -15,7 +15,7 @@ about when each system is accessed and documents the threading/locking model.
 | **Angular Gyrus** | Math knowledge | `RWLock` | `src/maxim/math/angular_gyrus.py` |
 | **CrossLayerGraph** | Inter-layer links | Thread-safe dict | `src/maxim/memory/cross_layer.py` |
 | **SemanticPromoter** | Hippocampus → ATL | No own lock (uses ATL's) | `src/maxim/memory/semantic_promoter.py` |
-| **EC / NeuralEmbedder** | Semantic embeddings | Own thread pool queue | `src/maxim/memory/ec.py` |
+| **EC / NeuralEmbedder** | Semantic embeddings | Own thread pool queue | `src/maxim/similarity/ec.py` |
 | **MemoryHub** | Coordinator | No own lock (delegates) | `src/maxim/integration/memory_hub.py` |
 | **ContextPool** | Growing LLM context | `RLock` | `src/maxim/agents/context_pool.py` |
 | **MemoryAgent** | Agent-level memory | Own `_association_index`, `_association_graph` | `src/maxim/agents/memory_agent.py` |
