@@ -21,8 +21,6 @@ classifiers = [
 ]
 dependencies = [
     "reachy-mini[gstreamer]==1.2.6",
-    "ultralytics==8.3.248",
-    "lap==0.5.12",
     "faster-whisper==1.1.1",
     "ctranslate2==4.6.2",
     "onnxruntime==1.20.1",
@@ -59,6 +57,11 @@ llm = [
 ]
 tts = [
     "piper-tts>=1.2.0",
+]
+# YOLOv8 vision backend (AGPL-3.0 — NOT included in core to keep MIT clean)
+yolo = [
+    "ultralytics==8.3.248",
+    "lap==0.5.12",
 ]
 # Phase 4: Neural semantic similarity (requires torch)
 semantic = [
