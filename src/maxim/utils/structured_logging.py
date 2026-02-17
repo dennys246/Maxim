@@ -407,7 +407,7 @@ def log_agentic(
 
 
 def compact_detection(det: dict[str, Any]) -> dict[str, Any]:
-    """Compact a YOLO detection for LLM context."""
+    """Compact a vision detection for LLM context."""
     return {
         "id": det.get("track_id"),
         "cls": det.get("class_id"),
