@@ -332,6 +332,18 @@ DEFAULT NETWORK ESCALATION:
 STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
 {ctx.statistical_context}"""
 
+            # Append actionable suggestions if available
+            suggestions = getattr(ctx, "statistical_suggestions", [])
+            if suggestions:
+                suggestion_lines = ["\nSUGGESTED ANALYSES:"]
+                for s in suggestions[:3]:
+                    suggestion_lines.append(
+                        f"  -> {s.get('tool_call', 'math')} {s.get('operation', '?')} "
+                        f"on {s.get('metric', '?')} ({s.get('data_type', '?')}, "
+                        f"{s.get('fsm_state', '?')}): {s.get('rationale', '')}"
+                    )
+                stat_str += "\n".join(suggestion_lines)
+
         return f"""ROOT GOAL: {ctx.root_goal}
 
 CURRENT STATE:

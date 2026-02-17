@@ -1752,6 +1752,8 @@ class LLMWorker:
             "- CREATE/WRITE FILES (create script, make file): Use 'write_file'",
             "- VISUAL COMMANDS (look at, focus on, track): Use 'focus_interests', 'track_target'",
             "- MATH CALCULATIONS: Use 'math' with sqrt/factorial/compute",
+            "  For multi-step expressions, decompose in PEMDAS order (parentheses, exponents,",
+            "  multiply/divide, add/subtract). Use store_value/recall_value for intermediates.",
             "- MATH MEMORY: Use 'math' with recall_memory/store_memory",
             "",
             "=== FILE WORKSPACE ===",
@@ -2100,9 +2102,23 @@ class LLMWorker:
             stat_lines = [
                 f"=== Statistical Patterns ({context.active_pattern_count} active) ===",
                 context.statistical_context,
-                "Use 'math' tool to investigate patterns (assess_randomness, analyze, recall_memory).",
-                "Use 'internet_search' to research unfamiliar patterns or analysis techniques.",
             ]
+
+            # Ranked suggestions from StatisticianAgent (preferred over generic guidance)
+            suggestions = getattr(context, "statistical_suggestions", [])
+            if suggestions:
+                stat_lines.append("")
+                stat_lines.append("Recommended analyses (ranked by priority):")
+                for i, s in enumerate(suggestions[:3], 1):
+                    stat_lines.append(
+                        f"  {i}. {s.get('tool_call', 'math')} {s.get('operation', '?')} "
+                        f"on {s.get('metric', '?')} [{s.get('data_type', '?')}] — "
+                        f"{s.get('rationale', '')}"
+                    )
+            else:
+                stat_lines.append("Use 'math' tool to investigate patterns (assess_randomness, analyze, recall_memory).")
+
+            stat_lines.append("Use 'internet_search' to research unfamiliar patterns or analysis techniques.")
             budgeter.add("statistical_patterns", "\n".join(stat_lines), SectionPriority.NICE_TO_HAVE)
 
         # ── Build final prompt ──
