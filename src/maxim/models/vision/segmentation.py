@@ -1,35 +1,26 @@
+"""Segmentation model adapter — delegates to a pluggable VisionEngine.
+
+This module preserves the ``YOLO8`` class name and the exact
+``segment_photos()`` / ``pose_targets_for_box()`` interface used by the
+rest of the codebase so that no downstream code needs to change.
+
+The actual inference is performed by a :class:`VisionEngine` backend
+(``RTMEngine`` by default, ``UltralyticsEngine`` with ``pip install maxim[yolo]``).
+"""
+
 from __future__ import annotations
 
-import os
-import shutil
-from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
-from ultralytics import YOLO
 
-from maxim.utils.logging import warn
+from maxim.models.vision.engine import COCO_KEYPOINTS, VisionEngine
 
-COCO_KEYPOINTS: list[str] = [
-    "nose",
-    "left_eye",
-    "right_eye",
-    "left_ear",
-    "right_ear",
-    "left_shoulder",
-    "right_shoulder",
-    "left_elbow",
-    "right_elbow",
-    "left_wrist",
-    "right_wrist",
-    "left_hip",
-    "right_hip",
-    "left_knee",
-    "right_knee",
-    "left_ankle",
-    "right_ankle",
-]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers (preserved from original module — used downstream)
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def _ensure_bgr(photo: np.ndarray) -> np.ndarray:
@@ -47,7 +38,10 @@ def _area_xyxy(box: tuple[float, float, float, float]) -> float:
     return max(0.0, x2 - x1) * max(0.0, y2 - y1)
 
 
-def _iou_xyxy(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+def _iou_xyxy(
+    a: tuple[float, float, float, float],
+    b: tuple[float, float, float, float],
+) -> float:
     ax1, ay1, ax2, ay2 = a
     bx1, by1, bx2, by2 = b
 
@@ -65,285 +59,115 @@ def _iou_xyxy(a: tuple[float, float, float, float], b: tuple[float, float, float
     return float(inter / union)
 
 
-def _first_existing(paths: list[str]) -> str | None:
-    for path in paths:
-        if path and os.path.exists(path):
-            return path
-    return None
-
-def _ensure_weight_file(
-    local_path: str,
-    asset_name: str,
-    *,
-    alternates: list[str] | None = None,
-) -> str:
-    """
-    Ensure a YOLO weight file exists at `local_path`.
-
-    Strategy (best-effort, minimal dependencies):
-    1) If local_path exists -> use it.
-    2) If an alternate path exists -> copy it into local_path and use it.
-    3) Try Ultralytics' downloader (requires network) and copy into local_path.
-    4) Fallback to `asset_name` so Ultralytics can still use its cache.
-    """
-    if local_path and os.path.exists(local_path):
-        return local_path
-
-    dest_dir = os.path.dirname(local_path) or "."
-    os.makedirs(dest_dir, exist_ok=True)
-
-    for alt in alternates or []:
-        if alt and os.path.exists(alt):
-            try:
-                shutil.copy2(alt, local_path)
-                return local_path
-            except Exception:
-                return alt
-
-    try:
-        from ultralytics.utils.downloads import attempt_download_asset  # type: ignore
-
-        downloaded = attempt_download_asset(asset_name)
-        if downloaded and os.path.exists(downloaded):
-            try:
-                shutil.copy2(downloaded, local_path)
-                return local_path
-            except Exception:
-                return str(downloaded)
-    except Exception as e:
-        warn("Failed to download YOLO weights '%s': %s", asset_name, e)
-
-    return asset_name
+# ─────────────────────────────────────────────────────────────────────────────
+# Namespace proxy for backward compatibility
+# ─────────────────────────────────────────────────────────────────────────────
 
 
-def _scalar(value: Any) -> Any:
-    if value is None:
-        return None
-    try:
-        return value.item()
-    except Exception:
-        pass
-    try:
-        arr = np.asarray(value)
-        if arr.size == 1:
-            return arr.reshape(()).item()
-    except Exception:
-        pass
-    return value
+class _NamespaceProxy:
+    """Expose engine attributes via dotted access (e.g. ``model.names``)."""
+
+    def __init__(self, engine: VisionEngine) -> None:
+        self._engine = engine
+
+    @property
+    def names(self) -> dict[int, str]:
+        return self._engine.class_names
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# YOLO8 — thin adapter around any VisionEngine
+# ─────────────────────────────────────────────────────────────────────────────
+
 
 class YOLO8:
-    def __init__(self, pose_model: bool = False):
-        # Initialize segmentation model.
-        repo_root = Path(__file__).resolve().parents[4]
-        local_dir = (repo_root / "data" / "models" / "YOLO").as_posix()
-        legacy_dir = (repo_root / "experiments" / "models" / "YOLO").as_posix()
-        legacy_models_dir = (repo_root / "experiments" / "models").as_posix()
-        seg_name = "yolov8m-seg.pt"
-        seg_local = os.path.join(local_dir, seg_name)
-        seg_alt = _first_existing(
-            [
-                os.path.join(local_dir, "yolo8m-seg.pt"),
-                os.path.join(legacy_dir, seg_name),
-                os.path.join(legacy_dir, "yolo8m-seg.pt"),
-                os.path.join(legacy_models_dir, "yolo8m-seg.pt"),
-                os.path.join(legacy_models_dir, "yolov8m-seg.pt"),
-                "yolov8m-seg.pt",
-                "yolo8m-seg.pt",
-            ]
-        )
-        seg_path = _ensure_weight_file(seg_local, seg_name, alternates=[seg_alt] if seg_alt else [])
-        self.model = YOLO(seg_path)
+    """Object detection + pose estimation adapter.
 
-        # Thresholds.
-        self.conf = 0.5
-        self.pose_conf = 0.25
-        self.keypoint_conf = 0.25
+    Delegates all inference to a :class:`VisionEngine` backend while
+    preserving the legacy list-based output format consumed by the rest
+    of the codebase.
 
-        # Pose model (lazy-loadable).
-        self.pose_model: YOLO | None = None
-        self._pose_model_load_error: str | None = None
-        pose_name = "yolov8m-pose.pt"
-        pose_local = os.path.join(local_dir, pose_name)
-        pose_alt = _first_existing(
-            [
-                os.path.join(local_dir, "yolo8m-pose.pt"),
-                os.path.join(legacy_dir, pose_name),
-                os.path.join(legacy_dir, "yolo8m-pose.pt"),
-                os.path.join(legacy_models_dir, "yolo8m-pose.pt"),
-                os.path.join(legacy_models_dir, "yolov8m-pose.pt"),
-                "yolov8m-pose.pt",
-                "yolo8m-pose.pt",
-            ]
-        )
-        self._pose_model_path = _ensure_weight_file(pose_local, pose_name, alternates=[pose_alt] if pose_alt else [])
+    Args:
+        pose_model: Whether to eagerly load the pose model.
+        engine: A ``VisionEngine`` instance.  When ``None`` the default
+            RTMEngine is created automatically.
+    """
 
-        if pose_model:
-            self._try_load_pose_model()
+    def __init__(
+        self,
+        pose_model: bool = False,
+        engine: VisionEngine | None = None,
+    ) -> None:
+        if engine is None:
+            from maxim.models.vision.rtm_engine import RTMEngine
 
-    def _try_load_pose_model(self) -> bool:
-        if self.pose_model is not None:
-            return True
-        if self._pose_model_load_error is not None:
-            return False
-        try:
-            self.pose_model = YOLO(self._pose_model_path)
-            return True
-        except Exception as e:
-            self._pose_model_load_error = str(e)
-            warn(
-                "Failed to load YOLOv8 pose model ('%s'): %s",
-                self._pose_model_path,
-                self._pose_model_load_error,
-            )
-            self.pose_model = None
-            return False
+            engine = RTMEngine(load_pose=pose_model)
+
+        self._engine = engine
+
+        # Backward compat: some code accesses ``segmenter.model.names``
+        self.model = _NamespaceProxy(engine)
+
+        # Thresholds (kept for callers that read them directly)
+        self.conf: float = 0.5
+        self.pose_conf: float = 0.25
+        self.keypoint_conf: float = 0.25
+
+    # Expose engine directly for callers that need it
+    @property
+    def engine(self) -> VisionEngine:
+        return self._engine
 
     def ensure_pose_model(self) -> bool:
-        return self._try_load_pose_model()
+        """Attempt to load the pose model.  Returns ``True`` on success."""
+        try:
+            self._engine.warmup(include_pose=True)
+            return True
+        except Exception:
+            return False
 
     def warmup(self, *, include_pose: bool = True) -> None:
-        """Warm up models with a dummy inference to reduce first-use latency.
+        """Run dummy inference to reduce first-use latency."""
+        self._engine.warmup(include_pose=include_pose)
 
-        This runs inference on a small dummy image to:
-        1. Complete any lazy initialization in YOLO
-        2. Warm up CUDA/GPU memory allocation
-        3. JIT compile any kernels (if applicable)
+    # ── Detection + tracking (legacy list format) ────────────────────────
 
-        Should be called during startup for ~1-3s latency reduction on first real inference.
+    def segment_photos(
+        self,
+        photos: Any,
+        interests: Any = None,
+        display: bool = False,
+        save_video: bool = False,
+    ) -> list[list[Any]]:
+        """Run detection + tracking and return the legacy observation lists.
+
+        Each inner list: ``[track_id, frame_ind, x1, y1, x2, y2, conf, cls_id]``
         """
-        # Create a small dummy image (64x64 RGB)
-        dummy = np.zeros((64, 64, 3), dtype=np.uint8)
-
-        # Warm up segmentation model
-        try:
-            self.model.predict(dummy, conf=0.5, verbose=False)
-        except Exception:
-            pass
-
-        # Warm up pose model if requested and loaded
-        if include_pose and self.pose_model is not None:
-            try:
-                self.pose_model.predict(dummy, conf=0.25, verbose=False)
-            except Exception:
-                pass
-
-    def segment_photos(self, photos, interests=None, display=False, save_video=False):
-        # interests parameter is deprecated — all COCO classes are now detected.
-        # Salience filtering happens downstream in PerceptionAgent/SalienceNetwork.
-
-        observations: list[list[Any]] = []
         if photos is None:
-            return observations
+            return []
 
         if isinstance(photos, np.ndarray):
             photos = [photos]
 
-        for frame_ind, photo in enumerate(photos):
-            if not isinstance(photo, np.ndarray):
-                continue
+        frames = [_ensure_bgr(p) for p in photos if isinstance(p, np.ndarray)]
+        if not frames:
+            return []
 
-            photo = _ensure_bgr(photo)
-            if not (photo.ndim == 3 and photo.shape[2] == 3):
-                continue
+        frame_dets = self._engine.detect_and_track(frames, conf=self.conf)
 
-            # Track all objects in this frame (all 80 COCO classes)
-            try:
-                results = self.model.track(
-                    photo,
-                    conf=self.conf,
-                    persist=True,
-                    verbose=False,
-                )
-            except TypeError:
-                try:
-                    results = self.model.track(
-                        photo,
-                        conf=self.conf,
-                        persist=True,
-                    )
-                except Exception:
-                    results = []
-            except Exception:
-                results = []
-
-            if not results:
-                continue
-
-            boxes = getattr(results[0], "boxes", None)
-            if boxes is None:
-                continue
-            xyxy = getattr(boxes, "xyxy", None)
-            if xyxy is None:
-                continue
-
-            try:
-                xyxy_arr = xyxy.cpu().numpy()
-            except Exception:
-                xyxy_arr = None
-
-            if xyxy_arr is None:
-                continue
-
-            if xyxy_arr.ndim == 1:
-                xyxy_arr = xyxy_arr.reshape(1, -1)
-
-            try:
-                box_count = int(xyxy_arr.shape[0])
-            except Exception:
-                box_count = 0
-
-            conf_raw = getattr(boxes, "conf", None)
-            cls_raw = getattr(boxes, "cls", None)
-            track_raw = getattr(boxes, "id", None)
-
-            try:
-                conf_arr = conf_raw.cpu().numpy().reshape(-1) if conf_raw is not None else None
-            except Exception:
-                conf_arr = None
-            try:
-                cls_arr = cls_raw.cpu().numpy().reshape(-1) if cls_raw is not None else None
-            except Exception:
-                cls_arr = None
-            try:
-                track_arr = track_raw.cpu().numpy().reshape(-1) if track_raw is not None else None
-            except Exception:
-                track_arr = None
-
-
-            for box_index in range(box_count):
-                row = xyxy_arr[box_index]
-                if row is None or len(row) < 4:
-                    continue
-
-
-                x1, y1, x2, y2 = map(float, row[:4])
-
-                track_id = None
-                if track_arr is not None and box_index < int(track_arr.shape[0]):
-                    try:
-                        track_id = int(_scalar(track_arr[box_index]))
-                    except Exception:
-                        track_id = None
-
-                cls_id = None
-                if cls_arr is not None and box_index < int(cls_arr.shape[0]):
-                    try:
-                        cls_id = int(_scalar(cls_arr[box_index]))
-                    except Exception:
-                        cls_id = None
-
-                conf = 0.0
-                if conf_arr is not None and box_index < int(conf_arr.shape[0]):
-                    try:
-                        conf = float(_scalar(conf_arr[box_index]))
-                    except Exception:
-                        conf = 0.0
-
-                # Preserve observation: [track_id, frame_ind, x1, y1, x2, y2, conf, cls_id]
-                observations.append([track_id, frame_ind, float(x1), float(y1), float(x2), float(y2), conf, cls_id])
-
-
+        observations: list[list[Any]] = []
+        for dets in frame_dets:
+            for det in dets:
+                observations.append([
+                    det.track_id,
+                    det.frame_index,
+                    det.x1, det.y1, det.x2, det.y2,
+                    det.confidence,
+                    det.class_id,
+                ])
         return observations
+
+    # ── Pose estimation (legacy dict format) ─────────────────────────────
 
     def pose_targets_for_box(
         self,
@@ -351,140 +175,33 @@ class YOLO8:
         box_xyxy: tuple[float, float, float, float],
         *,
         keypoint_conf: float | None = None,
-        min_iou: float = 0.1) -> dict[str, Any] | None:
-        """
-        Run YOLOv8 pose on `photo` and return the best-matching pose for `box_xyxy`.
+        min_iou: float = 0.1,
+    ) -> dict[str, Any] | None:
+        """Estimate pose and return the best match for *box_xyxy*.
 
-        Returns a dict containing:
-        - method: "eyes" | "nose"
-        - target: (x, y)
-        - iou: float
-        - pose_box: (x1, y1, x2, y2)
-        - keypoints: {name: (x, y, conf)}
+        Returns a dict with keys: method, target, iou, pose_box, keypoints
+        (and optionally conf).
         """
         if keypoint_conf is None:
             keypoint_conf = self.keypoint_conf
 
-        if not isinstance(photo, np.ndarray):
-            return None
-
-        photo = _ensure_bgr(photo)
-        if not (photo.ndim == 3 and photo.shape[2] == 3):
-            return None
-
-        if not self.ensure_pose_model():
-            return None
-
-        try:
-            pose_results = self.pose_model.predict(photo, conf=self.pose_conf, verbose=False)  # type: ignore[union-attr]
-        except TypeError:
-            try:
-                pose_results = self.pose_model.predict(photo, conf=self.pose_conf)  # type: ignore[union-attr]
-            except Exception:
-                return None
-        except Exception:
-            return None
-
-        if not pose_results:
-            return None
-
-        result0 = pose_results[0]
-        boxes = getattr(result0, "boxes", None)
-        keypoints = getattr(result0, "keypoints", None)
-        if boxes is None or keypoints is None:
-            return None
-
-        try:
-            pose_xyxy = boxes.xyxy.detach().cpu().numpy()
-        except Exception:
-            return None
-
-        try:
-            pose_conf = boxes.conf.detach().cpu().numpy().reshape(-1)
-        except Exception:
-            pose_conf = None
-
-        try:
-            kp_xy = keypoints.xy.detach().cpu().numpy()
-        except Exception:
-            return None
-
-        kp_conf = None
-        if hasattr(keypoints, "conf") and getattr(keypoints, "conf") is not None:
-            try:
-                kp_conf = keypoints.conf.detach().cpu().numpy()
-            except Exception:
-                kp_conf = None
-
-        best_iou = 0.0
-        best_idx: int | None = None
-        tx1, ty1, tx2, ty2 = map(float, box_xyxy)
-        target_box = (tx1, ty1, tx2, ty2)
-
-        for i in range(int(pose_xyxy.shape[0])):
-            px1, py1, px2, py2 = map(float, pose_xyxy[i][:4])
-            iou = _iou_xyxy(target_box, (px1, py1, px2, py2))
-            if iou > best_iou:
-                best_iou = iou
-                best_idx = i
-
-        if best_idx is None or best_iou < float(min_iou):
-            return None
-
-        i = best_idx
-        px1, py1, px2, py2 = map(float, pose_xyxy[i][:4])
-
-        kp_map: dict[str, tuple[float, float, float | None]] = {}
-        for j, name in enumerate(COCO_KEYPOINTS):
-            try:
-                x, y = map(float, kp_xy[i, j, :2])
-            except Exception:
-                continue
-            c = None
-            if kp_conf is not None:
-                try:
-                    c = float(kp_conf[i, j])
-                except Exception:
-                    c = None
-            kp_map[name] = (x, y, c)
-
-        def _get(name: str) -> tuple[float, float, float] | None:
-            item = kp_map.get(name)
-            if item is None:
-                return None
-            x, y, c = item
-            if c is None:
-                return None
-            if float(c) < float(keypoint_conf):
-                return None
-            return float(x), float(y), float(c)
-
-        left = _get("left_eye")
-        right = _get("right_eye")
-        nose = _get("nose")
-
-        if left is not None and right is not None:
-            lx, ly, _ = left
-            rx, ry, _ = right
-            target = ((lx + rx) / 2.0, (ly + ry) / 2.0)
-            method = "eyes"
-        elif nose is not None:
-            nx, ny, _ = nose
-            target = (nx, ny)
-            method = "nose"
-        else:
+        result = self._engine.estimate_pose(
+            photo,
+            box_xyxy,
+            pose_conf=self.pose_conf,
+            keypoint_conf=keypoint_conf,
+            min_iou=min_iou,
+        )
+        if result is None:
             return None
 
         out: dict[str, Any] = {
-            "method": method,
-            "target": target,
-            "iou": float(best_iou),
-            "pose_box": (px1, py1, px2, py2),
-            "keypoints": kp_map,
+            "method": result.method,
+            "target": result.target,
+            "iou": result.iou,
+            "pose_box": result.pose_box,
+            "keypoints": result.keypoints,
         }
-        if pose_conf is not None and i < int(pose_conf.shape[0]):
-            try:
-                out["conf"] = float(pose_conf[i])
-            except Exception:
-                pass
+        if result.confidence is not None:
+            out["conf"] = result.confidence
         return out

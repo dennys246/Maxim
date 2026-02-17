@@ -104,7 +104,7 @@ class NoveltyInfo:
 
 class FocusInterestsTool(Tool):
     """
-    Focus Reachy Mini's attention on YOLOv8 detections matching specified or default interests.
+    Focus Reachy Mini's attention on vision detections matching specified or default interests.
 
     Requires a live `Maxim` instance (used for the latest frame, vision model, and motor queue).
     If target_class is provided, detections are filtered to that class for centering.
@@ -157,8 +157,8 @@ class FocusInterestsTool(Tool):
         deadzone_px = int(kwargs.get("deadzone_px", 20) or 20)
 
         # Look up class ID for target_class filtering
-        # YOLO detects all 80 COCO classes; target_class_id is used for
-        # post-detection filtering in passive_observation, not YOLO filtering.
+        # Vision model detects all 80 COCO classes; target_class_id is used for
+        # post-detection filtering in passive_observation, not model filtering.
         target_class_id: int | None = None
         if target_class:
             class_name_to_id = {v.lower(): k for k, v in COCO_CLASSES.items()}

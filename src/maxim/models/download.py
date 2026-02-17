@@ -132,13 +132,31 @@ TTS_MODELS: dict[str, dict[str, Any]] = {
     },
 }
 
+VISION_MODELS: dict[str, dict[str, Any]] = {
+    "rtmdet-m": {
+        "description": "RTMDet-m - 80-class COCO object detection (Apache 2.0, ~49.4 mAP)",
+        "size_mb": 100,
+        "url": "https://download.openmmlab.com/mmdetection/v3.0/rtmdet/rtmdet_m_8xb32-300e_coco/rtmdet_m_8xb32-300e_coco_20220719_112220-229f527c.onnx",
+        "filename": "rtmdet-m.onnx",
+    },
+    "rtmpose-m": {
+        "description": "RTMPose-m - 17-keypoint COCO pose estimation (Apache 2.0, ~75.8 AP)",
+        "size_mb": 55,
+        "url": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-m_simcc-body7_pt-body7_420e-256x192-e48f03d0_20230504.zip",
+        "filename": "rtmpose-m.onnx",
+        "archive": True,  # .zip containing .onnx file
+    },
+}
+
 # Default models
 DEFAULT_LLM = "smollm-1.7b-instruct"
 DEFAULT_TTS = "en_US-lessac-medium"
+DEFAULT_VISION = "rtmdet-m"
 
 # Default paths
 DEFAULT_LLM_DIR = "data/models/LLM"
 DEFAULT_TTS_DIR = "data/models/tts"
+DEFAULT_VISION_DIR = "data/models/YOLO"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -261,6 +279,68 @@ def download_tts(
     return success
 
 
+def download_vision(
+    model_name: str = DEFAULT_VISION,
+    models_dir: str | Path = DEFAULT_VISION_DIR,
+) -> bool:
+    """Download a vision model (RTMDet or RTMPose ONNX).
+
+    Args:
+        model_name: Name of the model to download.
+        models_dir: Directory to save the model.
+
+    Returns:
+        True if download succeeded, False otherwise.
+    """
+    if model_name not in VISION_MODELS:
+        print(f"Unknown vision model: {model_name}")
+        print(f"Available models: {', '.join(VISION_MODELS.keys())}")
+        return False
+
+    model_info = VISION_MODELS[model_name]
+    models_dir = Path(models_dir)
+
+    print(f"\nDownloading Vision: {model_name}")
+    print(f"  {model_info['description']}")
+    print(f"  Size: ~{model_info['size_mb']} MB")
+
+    if model_info.get("archive"):
+        # Download zip, extract the .onnx file
+        import tempfile
+        import zipfile
+
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+
+        if not download_file(model_info["url"], tmp_path, f"{model_name} (archive)"):
+            tmp_path.unlink(missing_ok=True)
+            return False
+
+        try:
+            models_dir.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(tmp_path, "r") as zf:
+                # Find the .onnx file inside
+                onnx_files = [n for n in zf.namelist() if n.endswith(".onnx")]
+                if not onnx_files:
+                    print(f"  No .onnx file found in archive")
+                    return False
+                for onnx_name in onnx_files:
+                    dest = models_dir / model_info["filename"]
+                    with zf.open(onnx_name) as src, open(dest, "wb") as dst:
+                        import shutil
+                        shutil.copyfileobj(src, dst)
+                    print(f"  Extracted: {dest}")
+            return True
+        except Exception as e:
+            print(f"  Extract failed: {e}")
+            return False
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    else:
+        dest_path = models_dir / model_info["filename"]
+        return download_file(model_info["url"], dest_path, model_info["filename"])
+
+
 def list_models() -> None:
     """Print available models."""
     print("\n=== Available LLM Models ===")
@@ -283,10 +363,20 @@ def list_models() -> None:
         print(f"    Size: ~{info['size_mb']} MB")
         print()
 
+    print("\n=== Available Vision Models ===")
+    print(f"(Default: all)\n")
+
+    for name, info in VISION_MODELS.items():
+        print(f"  {name}")
+        print(f"    {info['description']}")
+        print(f"    Size: ~{info['size_mb']} MB")
+        print()
+
 
 def check_models(
     llm_dir: str | Path = DEFAULT_LLM_DIR,
     tts_dir: str | Path = DEFAULT_TTS_DIR,
+    vision_dir: str | Path = DEFAULT_VISION_DIR,
 ) -> dict[str, bool]:
     """Check which models are already downloaded.
 
@@ -295,6 +385,7 @@ def check_models(
     """
     llm_dir = Path(llm_dir)
     tts_dir = Path(tts_dir)
+    vision_dir = Path(vision_dir)
 
     status = {}
 
@@ -309,15 +400,20 @@ def check_models(
         )
         status[f"tts:{name}"] = all_exist
 
+    for name, info in VISION_MODELS.items():
+        path = vision_dir / info["filename"]
+        status[f"vision:{name}"] = path.exists()
+
     return status
 
 
 def print_status(
     llm_dir: str | Path = DEFAULT_LLM_DIR,
     tts_dir: str | Path = DEFAULT_TTS_DIR,
+    vision_dir: str | Path = DEFAULT_VISION_DIR,
 ) -> None:
     """Print status of downloaded models."""
-    status = check_models(llm_dir, tts_dir)
+    status = check_models(llm_dir, tts_dir, vision_dir)
 
     print("\n=== Model Status ===\n")
 
@@ -330,6 +426,12 @@ def print_status(
     print("\nTTS Models:")
     for name in TTS_MODELS:
         key = f"tts:{name}"
+        icon = "[x]" if status.get(key) else "[ ]"
+        print(f"  {icon} {name}")
+
+    print("\nVision Models:")
+    for name in VISION_MODELS:
+        key = f"vision:{name}"
         icon = "[x]" if status.get(key) else "[ ]"
         print(f"  {icon} {name}")
 
@@ -385,14 +487,15 @@ def enable_llm_config(
 def main() -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Download models for Maxim (LLM and TTS)",
+        description="Download models for Maxim (LLM, TTS, and Vision)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   %(prog)s --llm                      # Download default LLM (smollm-1.7b)
   %(prog)s --llm mistral-7b-instruct-v0.2  # Download Mistral 7B
   %(prog)s --tts                      # Download default TTS voice
-  %(prog)s --all                      # Download default LLM + TTS
+  %(prog)s --vision                   # Download vision models (RTMDet + RTMPose)
+  %(prog)s --all                      # Download default LLM + TTS + Vision
   %(prog)s --list                     # List available models
   %(prog)s --status                   # Show downloaded models
   %(prog)s --enable                   # Enable LLM in config
@@ -414,9 +517,14 @@ Examples:
         help=f"Download TTS model (default: {DEFAULT_TTS})",
     )
     parser.add_argument(
+        "--vision",
+        action="store_true",
+        help="Download vision models (RTMDet + RTMPose ONNX, Apache 2.0)",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
-        help="Download default LLM and TTS models",
+        help="Download default LLM, TTS, and Vision models",
     )
     parser.add_argument(
         "--list",
@@ -445,6 +553,12 @@ Examples:
         default=DEFAULT_TTS_DIR,
         help=f"TTS models directory (default: {DEFAULT_TTS_DIR})",
     )
+    parser.add_argument(
+        "--vision-dir",
+        type=str,
+        default=DEFAULT_VISION_DIR,
+        help=f"Vision models directory (default: {DEFAULT_VISION_DIR})",
+    )
 
     args = parser.parse_args()
 
@@ -455,13 +569,14 @@ Examples:
 
     # Handle --status
     if args.status:
-        print_status(args.llm_dir, args.tts_dir)
+        print_status(args.llm_dir, args.tts_dir, args.vision_dir)
         return 0
 
     # Handle --all
     if args.all:
         args.llm = DEFAULT_LLM
         args.tts = DEFAULT_TTS
+        args.vision = True
 
     # Track what was downloaded
     downloaded_llm = None
@@ -483,13 +598,22 @@ Examples:
             print(f"\nFailed to download TTS: {args.tts}")
             return 1
 
+    # Download Vision models
+    if args.vision:
+        for vname in VISION_MODELS:
+            if download_vision(vname, args.vision_dir):
+                print(f"\nVision model ready: {vname}")
+            else:
+                print(f"\nFailed to download vision model: {vname}")
+                return 1
+
     # Enable LLM in config if requested
     if args.enable and downloaded_llm:
         print()
         enable_llm_config(downloaded_llm)
 
     # Show help if no action specified
-    if not (args.llm or args.tts or args.all or args.list or args.status):
+    if not (args.llm or args.tts or args.vision or args.all or args.list or args.status):
         parser.print_help()
         return 0
 

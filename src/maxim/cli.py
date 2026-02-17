@@ -125,7 +125,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--segmentation-model",
         type=str,
         default=None,
-        help="Vision segmentation model (default: YOLO8).",
+        help="Vision engine (default: rtm). Options: rtm, yolo (requires [yolo] extra).",
     )
     parser.add_argument(
         "--interactive",
@@ -319,7 +319,7 @@ def _normalize_args(args: argparse.Namespace) -> None:
     if segmentation_model is not None:
         from maxim.models.vision.registry import list_segmentation_models, normalize_segmentation_model
 
-        selected = normalize_segmentation_model(segmentation_model) or "YOLO8"
+        selected = normalize_segmentation_model(segmentation_model) or "rtm"
         available = list_segmentation_models()
         if available and selected not in available:
             opts = ", ".join(available)

@@ -4460,8 +4460,8 @@ class Maxim:
             return
 
         seg_model = str(
-            model_name or os.getenv("MAXIM_SEGMENTATION_MODEL", "YOLO8") or "YOLO8"
-        ).strip() or "YOLO8"
+            model_name or os.getenv("MAXIM_SEGMENTATION_MODEL", "rtm") or "rtm"
+        ).strip() or "rtm"
         self.log.info("Loading vision models (%s seg+pose)...", seg_model)
         # Preflight matplotlib font cache in a subprocess to avoid hard crashes on Linux/WSL.
         preflight_ok = preflight_matplotlib_fonts(
@@ -4474,9 +4474,9 @@ class Maxim:
             self.segmenter = build_segmentation_model(seg_model, pose_model=True)  # Visual segmentation + pose model
             self._segmenter_model = seg_model
         except Exception as e:
-            warn("Failed to load segmentation model '%s': %s (falling back to YOLO8)", seg_model, e, logger=self.log)
-            self.segmenter = build_segmentation_model("YOLO8", pose_model=True)
-            self._segmenter_model = "YOLO8"
+            warn("Failed to load segmentation model '%s': %s (falling back to rtm)", seg_model, e, logger=self.log)
+            self.segmenter = build_segmentation_model("rtm", pose_model=True)
+            self._segmenter_model = "rtm"
     
     def awaken(self, vision: bool = True, motor: bool = True, audio: bool = True, wake_up: bool = True):
         if wake_up:
