@@ -538,6 +538,13 @@ def run_agentic_loop(
             logger.warning("Failed to start MemoryHub session: %s", e)
             memory_hub_enabled = False
 
+    # Start hippocampus async capture worker (after session_start, which reads synchronously)
+    if hippocampus is not None:
+        try:
+            hippocampus.start_capture_worker()
+        except Exception as e:
+            logger.debug("Failed to start hippocampus capture worker: %s", e)
+
     for step_num in step_iter:
         loop_start = time.time()
 
@@ -1260,17 +1267,16 @@ def run_agentic_loop(
                                     except Exception:
                                         pass
 
-                                    # Capture episodic memory to Hippocampus
+                                    # Capture episodic memory to Hippocampus (async — fire-and-forget)
                                     if hippocampus is not None:
                                         try:
-                                            hippocampus.capture_from_loop(
+                                            hippocampus.capture_from_loop_async(
                                                 observation=observation if isinstance(observation, dict) else {},
                                                 state=state,
                                                 intent=intent,
                                                 decision={"action": action, "confidence": confidence},
                                                 action={"tool": action["tool_name"], "params": action.get("params", {})},
                                                 result=result,
-                                                evaluations=None,
                                                 run_id=run_id or "",
                                             )
                                         except Exception as e:
@@ -1755,17 +1761,16 @@ def run_agentic_loop(
                     except Exception:
                         pass
 
-                    # Capture episodic memory to Hippocampus
+                    # Capture episodic memory to Hippocampus (async — fire-and-forget)
                     if hippocampus is not None:
                         try:
-                            hippocampus.capture_from_loop(
+                            hippocampus.capture_from_loop_async(
                                 observation=observation if isinstance(observation, dict) else {},
                                 state=state,
                                 intent={"goal": pending_proposal.reasoning, "source": "llm_worker"},
                                 decision={"action": action, "confidence": confidence},
                                 action={"tool": action.get("tool_name"), "params": action.get("params", {})},
                                 result=result,
-                                evaluations=None,
                                 run_id=run_id or "",
                             )
                         except Exception as e:
@@ -2411,8 +2416,13 @@ def run_agentic_loop(
     except Exception as e:
         logger.debug(f"Failed to save context pool: {e}")
 
-    # Save hippocampus if configured with persistence path
+    # Drain async capture queue and save hippocampus
     if hippocampus is not None:
+        try:
+            hippocampus.flush(timeout=5.0)
+            hippocampus.stop_capture_worker()
+        except Exception as e:
+            logger.debug(f"Failed to flush hippocampus: {e}")
         try:
             if hasattr(hippocampus, "config") and hippocampus.config.persistence_path:
                 hippocampus.save()
