@@ -62,23 +62,30 @@ memory_id = hippo.capture(perception)
 ### Querying Memories
 
 ```python
-# Query by hash index (O(1))
-memories = hippo.query(goal="find_book")
+# Recall by filters (goal, tool, success, mode, time range)
+memories = hippo.recall(goal="find_book")
 
-# Query by time range
-recent = hippo.query_time_range(
-    start=time.time() - 3600,  # Last hour
-    end=time.time(),
+# Recall by time range (parameters on recall())
+recent = hippo.recall(
+    time_after=time.time() - 3600,  # Last hour
+    time_before=time.time(),
 )
 
-# Query with temporal context (via SCN)
-morning_memories = hippo.query_temporal(hour=9)
+# Get by ID (O(1))
+memory = hippo.get(memory_id)
 
-# Associative query (semantic similarity)
-similar = hippo.query_similar(
-    reference_id=memory_id,
-    top_k=10,
-    similarity_threshold=0.5,
+# Similarity-based recall (perception overlap)
+similar = hippo.recall_similar(
+    perception=current_perception,
+    limit=10,
+    threshold=0.5,
+)
+
+# Associative recall (spreading activation through graph)
+associated = hippo.recall_associated(
+    memory_id=memory_id,
+    max_depth=3,
+    decay=0.5,
 )
 ```
 
@@ -89,7 +96,7 @@ similar = hippo.query_similar(
 class HippocampusConfig:
     max_nodes: int = 10_000
     persistence_path: str | None = None
-    indexed_keys: frozenset[str] = frozenset({"goal", "tool", "object"})
+    indexed_keys: frozenset[str] = frozenset({"goal", "tool", "object", "person", "success", "mode"})
 
     # Sleep consolidation
     enable_sleep_consolidation: bool = True
@@ -151,8 +158,11 @@ During sleep mode, the Hippocampus performs memory consolidation:
 3. **Promote**: Move high-value memories to long-term storage
 
 ```python
-# Trigger consolidation
-hippo.sleep_consolidate()
+# Trigger sleep consolidation (compress, remove, promote)
+hippo.sleep()
+
+# Or trigger promotion-only consolidation
+hippo.consolidate()
 
 # Consolidation runs automatically during sleep mode
 # See modes/definitions.py for sleep mode behavior
@@ -237,8 +247,8 @@ hippo = Hippocampus(HippocampusConfig(
 
 ```json
 {
-  "version": 1,
-  "saved_at": "2024-02-06T12:00:00Z",
+  "version": "3.0",
+  "saved_at": 1707235200.0,
   "memories": [...],
   "indices": {...},
   "metadata": {

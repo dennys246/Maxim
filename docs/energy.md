@@ -29,11 +29,15 @@ Maxim tracks energy consumption to enable:
 from maxim.energy import EnergyType
 
 class EnergyType(Enum):
-    LLM = "llm"           # Token generation, inference
-    COMPUTE = "compute"   # CPU/GPU cycles
-    MOVEMENT = "movement" # Motor activity
-    AUDIO = "audio"       # Speech synthesis, transcription
-    NETWORK = "network"   # HTTP requests, data transfer
+    LLM_TOKENS = "llm_tokens"           # Token-based energy (input + output)
+    LLM_LATENCY = "llm_latency"         # Time waiting for LLM response
+    COMPUTE_TIME = "compute_time"       # General CPU/GPU compute time
+    MOTOR_COMMAND = "motor_command"     # Energy to execute movement
+    MOTOR_CURRENT = "motor_current"    # Actual motor current draw
+    VISION_INFERENCE = "vision_inference" # Vision model inference
+    AUDIO_PROCESSING = "audio_processing" # Audio transcription/TTS
+    ATTENTION = "attention"             # Cognitive attention/focus cost
+    MEMORY_ACCESS = "memory_access"    # Memory retrieval cost
 ```
 
 ---

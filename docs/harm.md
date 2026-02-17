@@ -32,11 +32,25 @@ Categories of potential harm:
 from maxim.harm import HarmCategory
 
 class HarmCategory(Enum):
-    PHYSICAL_DAMAGE = "physical_damage"    # Hardware damage risk
-    EXCESSIVE_WEAR = "excessive_wear"      # Long-term wear
-    ENERGY_WASTE = "energy_waste"          # Unnecessary energy use
-    GOAL_OBSTRUCTION = "goal_obstruction"  # Interferes with goals
-    SOCIAL_HARM = "social_harm"            # Inappropriate behavior
+    # Physical/Motor
+    MOVEMENT_VELOCITY = "movement_velocity"      # Excessive movement speed
+    MOVEMENT_ACCELERATION = "movement_acceleration"  # Sudden speed changes
+    MOVEMENT_THRASHING = "movement_thrashing"    # Rapid direction reversals
+    MOTOR_STALL = "motor_stall"                  # Position unreachable
+    JOINT_LIMIT = "joint_limit"                  # Near workspace boundaries
+    # Computational
+    LLM_TIMEOUT = "llm_timeout"                  # Predicted slow LLM response
+    MEMORY_EXHAUSTION = "memory_exhaustion"      # Memory resource limits
+    CONTEXT_OVERFLOW = "context_overflow"        # Context window limits
+    # Social/Interaction
+    USER_FRUSTRATION = "user_frustration"        # User experience harm
+    REPEATED_FAILURE = "repeated_failure"        # Repeated failed attempts
+    CONVERSATION_ABANDON = "conversation_abandon"  # Conversation dropped
+    # Sensory
+    TRACKING_LOSS = "tracking_loss"              # Lost visual tracking
+    AUDIO_DISTORTION = "audio_distortion"        # Audio quality issues
+    # Task/Goal
+    TOOL_FAILURE = "tool_failure"                # Tool execution failure
 ```
 
 ---

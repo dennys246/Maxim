@@ -142,10 +142,10 @@ The Hippocampus is an associative memory substrate that stores complete agentic 
                               │   MEMORY HUB    │
                               └────────┬────────┘
                                        │
-     ┌─────────┬─────────┬─────────────┼─────────────┬─────────┬─────────┐
-     ▼         ▼         ▼             ▼             ▼         ▼         ▼
-  Spatial  Salience  Planning     Escalation      Pain     Energy    (Future)
-   Bridge   Bridge    Bridge       Bridge        Bridge    Bridge
+     ┌─────────┬─────────┬──────────┼──────────┬─────────┬─────────┬─────────┬─────────┐
+     ▼         ▼         ▼          ▼          ▼         ▼         ▼         ▼         ▼
+  Spatial  Salience  Planning   Escalation   Fear      Pain     Energy    Comms     Math
+   Bridge   Bridge    Bridge     Bridge     Bridge    Bridge    Bridge   Bridge    Bridge
 ```
 
 ### Core Components
@@ -172,9 +172,11 @@ Bridges connect the memory system to external perception/decision/action systems
 | **SalienceMemoryBridge** | Hippocampus ↔ SalienceNetwork | Interaction history boosts | - |
 | **PlanHistoryBridge** | Hippocampus ↔ NAc | Successful plan template retrieval | - |
 | **EscalationLearningBridge** | Hippocampus ↔ SCN/NAc | Learned escalation thresholds | `escalation_learning.json` |
-| **FearCircuitBridge** | FearAgent ↔ NAc | Learned risk patterns | `fear_learning.json` |
-| **PainCircuitBridge** | PainDetector ↔ NAc | Learns action→pain associations | `pain_detector.json` |
+| **FearCircuitBridge** | FearAgent ↔ NAc ↔ EC | Memory-informed risk assessment | `fear_learning.json` |
+| **PainCircuitBridge** | PainDetector ↔ NAc | Learns action→pain associations | *(via NAc persistence)* |
 | **EnergyCircuitBridge** | EnergyRegistry ↔ NAc | Learns action→energy associations | - |
+| **CommunicationBridge** | Comms ↔ Hippocampus | Communication-aware memory | - |
+| **MathBridge** | AngularGyrus ↔ Hippocampus | Learned math patterns promoted to AG | - |
 
 ### Memory Types
 

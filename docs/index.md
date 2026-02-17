@@ -146,23 +146,34 @@ src/maxim/
 ├── agents/          → AGENTS.md
 ├── attention/       → attention.md
 ├── bridges/         → bridges.md
+├── comms/           → (communication channels)
 ├── conscience/      → ARCHITECTURE.md (conscience section)
+├── data/            → (camera/audio data utilities)
 ├── decisions/       → decisions.md
 ├── default_network/ → default_network.md
 ├── energy/          → energy.md
 ├── environment/     → README.md (environment section)
+├── evaluation/      → (lightweight evaluators/metrics)
+├── hardware/        → (Reachy hardware + simulation backends)
 ├── harm/            → harm.md
+├── inference/       → (observation/control functions)
+├── integration/     → bridges.md (MemoryHub coordinator)
+├── math/            → (IPS, AngularGyrus, linalg)
 ├── memory/          → memory.md
+├── models/          → (vision, audio, language, movement models)
 ├── modes/           → README.md (modes section)
+├── motion/          → (motion presets and actions)
 ├── planning/        → ARCHITECTURE.md (planning section)
 ├── proprioception/  → proprioception.md
+├── retrieval/       → (retrieval utilities)
 ├── runtime/         → ARCHITECTURE.md (runtime section)
 ├── salience/        → salience.md
 ├── similarity/      → semantic_similarity_analysis.md (Phase 4 implemented)
 ├── spatial/         → bridges.md (SpatialMemoryBridge)
 ├── time/            → time.md
 ├── tools/           → ARCHITECTURE.md (tools section)
-└── utils/           → (internal utilities)
+├── training/        → (training pipelines)
+└── utils/           → (config, logging, plotting, filesystem helpers)
 ```
 
 ---
