@@ -199,7 +199,7 @@ class StructuredContext:
     recent_outcomes: list[dict] = field(default_factory=list)
     relevant_memories: list[MemoryItem] = field(default_factory=list)
 
-    # Detected patterns (from YOLO, NOT raw images)
+    # Detected patterns (from vision model, NOT raw images)
     detected_objects: list[dict] = field(default_factory=list)
     detected_people: list[dict] = field(default_factory=list)
     detected_speech: list[str] = field(default_factory=list)
