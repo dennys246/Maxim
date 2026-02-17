@@ -8,7 +8,7 @@ Maxim provides:
 - **Robotic control** via Pollen Robotics' Reachy Mini SDK (vision, audio, motor control)
 - **Agentic runtime** with recursive goal decomposition and reflection loops
 - **Local LLM inference** via llama.cpp (no cloud dependencies)
-- **Multi-modal perception** using YOLO vision and Whisper transcription
+- **Multi-modal perception** using pluggable vision engines (RTMDet/RTMPose default, YOLO optional) and Whisper transcription
 - **Low-compute optimization** with prompt profiles for CPU-only and GPU systems
 
 ## Features
