@@ -73,6 +73,7 @@ _TRAILING_OP_PATTERN = re.compile(
 
 if TYPE_CHECKING:
     from maxim.agents.bus import Percept, StructuredContext
+    from maxim.runtime.worker_pool import WorkerPool
 
 
 logger = logging.getLogger(__name__)
@@ -657,6 +658,7 @@ class LLMWorker:
         energy_tracker: "LLMEnergyTracker | None" = None,
         n_ctx: int = 4096,
         token_counter: Any | None = None,
+        pool: "WorkerPool | None" = None,
     ):
         self._llm = llm
         self._stale_threshold = stale_threshold_s
@@ -666,23 +668,23 @@ class LLMWorker:
         self._token_counter = token_counter or CharEstimateCounter()
         self._reasoning_carryover = ReasoningCarryover(max_entries=5)
 
-        # Input: contexts waiting for LLM processing
+        # WorkerPool integration: infer lane replaces internal threading
+        self._pool: WorkerPool | None = pool
+        self._owns_pool = pool is None  # create internal pool in start()
+
+        # Legacy queues (used when no pool is provided)
         self._request_queue: queue.PriorityQueue[tuple[int, LLMRequest | None]] = (
             queue.PriorityQueue(maxsize=max_queue_size)
         )
-
-        # Output: proposals ready for main loop
         self._proposal_queue: queue.Queue[LLMProposal] = queue.Queue()
-
-        # Latest proposal (main loop can always get most recent)
         self._latest_proposal: LLMProposal | None = None
         self._proposal_lock = threading.Lock()
 
-        # Worker thread
+        # Worker thread (legacy, unused when pool is active)
         self._stop_event = threading.Event()
         self._worker: threading.Thread | None = None
 
-        # Thread pool for timeout-wrapped LLM calls
+        # Thread pool for timeout-wrapped LLM calls (used in both modes)
         self._llm_executor: concurrent.futures.ThreadPoolExecutor | None = None
 
         # Metrics
@@ -711,42 +713,93 @@ class LLMWorker:
         """
         old_timeout = self._llm_timeout
         self._llm_timeout = timeout_s
-        # Refresh timestamp so the worker loop doesn't drop it as stale
+        # Refresh timestamp so staleness checks don't drop it
         request.timestamp = time.time()
         request.sort_index = (-request.priority, request.timestamp)
         logger.info("Retrying LLM request with timeout=%.0fs (was %.0fs)", timeout_s, old_timeout)
-        try:
-            self._request_queue.put_nowait((-request.priority, request))
-            return True
-        except queue.Full:
-            self._requests_dropped += 1
-            return False
+
+        if self._pool is not None:
+            def _retry_fn(prefetched=None):
+                if self._stop_event.is_set():
+                    return None
+                proposal = self._process_request(request)
+                self._requests_processed += 1
+                return proposal
+
+            try:
+                self._pool.submit(
+                    lane="infer",
+                    job_id=f"{request.request_id}-retry",
+                    fn=_retry_fn,
+                    priority=-request.priority,
+                )
+                return True
+            except queue.Full:
+                self._requests_dropped += 1
+                return False
+        else:
+            # Legacy
+            try:
+                self._request_queue.put_nowait((-request.priority, request))
+                return True
+            except queue.Full:
+                self._requests_dropped += 1
+                return False
 
     def start(self) -> None:
-        """Start the worker thread."""
-        if self._worker is None or not self._worker.is_alive():
-            self._stop_event.clear()
-            # Create thread pool for LLM calls with timeout
+        """Start the worker thread (or infer lane via WorkerPool)."""
+        self._stop_event.clear()
+
+        # Always create the LLM executor (needed for _call_llm_with_timeout)
+        if self._llm_executor is None:
             self._llm_executor = concurrent.futures.ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="LLMCall"
             )
-            self._worker = threading.Thread(
-                target=self._worker_loop,
-                daemon=True,
-                name="LLMWorker",
-            )
-            self._worker.start()
-            logger.info("LLM worker thread started")
+
+        # WorkerPool mode: use infer lane instead of manual thread
+        if self._owns_pool:
+            from maxim.runtime.worker_pool import LaneConfig, WorkerPool
+
+            self._pool = WorkerPool(lane_configs={
+                "infer": LaneConfig(name="infer", max_workers=1, requires_gpu=True),
+            })
+
+        if self._pool is not None:
+            self._pool.start()
+            logger.info("LLM worker started (WorkerPool infer lane)")
+        else:
+            # Legacy: start internal worker thread
+            if self._worker is None or not self._worker.is_alive():
+                self._worker = threading.Thread(
+                    target=self._worker_loop,
+                    daemon=True,
+                    name="LLMWorker",
+                )
+                self._worker.start()
+                logger.info("LLM worker thread started (legacy)")
 
     def stop(self) -> None:
-        """Stop the worker thread."""
+        """Stop the worker thread (or infer lane via WorkerPool)."""
         self._stop_event.set()
-        # Unblock the queue with poison pill
-        try:
-            self._request_queue.put_nowait((0, None))
-        except queue.Full:
-            pass
-        # Shutdown the LLM executor first (don't wait for pending tasks)
+
+        # Stop WorkerPool if we own it
+        if self._pool is not None and self._owns_pool:
+            self._pool.stop()
+            logger.info("LLM worker stopped (WorkerPool infer lane)")
+        elif self._pool is None:
+            # Legacy: unblock the queue with poison pill
+            try:
+                self._request_queue.put_nowait((0, None))
+            except queue.Full:
+                pass
+            if self._worker:
+                self._worker.join(timeout=2.0)
+                if self._worker.is_alive():
+                    logger.warning("LLM worker thread did not stop in time")
+                else:
+                    logger.info("LLM worker thread stopped (legacy)")
+
+        # Always shutdown the LLM executor
         if self._llm_executor is not None:
             try:
                 self._llm_executor.shutdown(wait=False, cancel_futures=True)
@@ -754,12 +807,6 @@ class LLMWorker:
                 # Python < 3.9 doesn't have cancel_futures
                 self._llm_executor.shutdown(wait=False)
             self._llm_executor = None
-        if self._worker:
-            self._worker.join(timeout=2.0)
-            if self._worker.is_alive():
-                logger.warning("LLM worker thread did not stop in time")
-            else:
-                logger.info("LLM worker thread stopped")
 
     def _call_llm_with_timeout(
         self,
@@ -892,14 +939,41 @@ class LLMWorker:
             is_sleeping=is_sleeping,
         )
 
-        try:
-            # Priority queue: lower number = higher priority
-            # Negate priority so higher values are processed first
-            self._request_queue.put_nowait((-priority, request))
-            return True
-        except queue.Full:
-            self._requests_dropped += 1
-            return False
+        if self._pool is not None:
+            # WorkerPool mode: wrap _process_request in a job
+            def _infer_job(prefetched=None):
+                # Staleness guard inside the job
+                age = time.time() - request.timestamp
+                if age > self._stale_threshold:
+                    self._requests_dropped += 1
+                    logger.debug("Dropped stale LLM request (age=%.2fs)", age)
+                    return None
+                if self._stop_event.is_set():
+                    return None
+                proposal = self._process_request(request)
+                self._requests_processed += 1
+                return proposal
+
+            try:
+                # Negate priority: higher caller priority → lower queue value
+                self._pool.submit(
+                    lane="infer",
+                    job_id=request.request_id,
+                    fn=_infer_job,
+                    priority=-priority,
+                )
+                return True
+            except queue.Full:
+                self._requests_dropped += 1
+                return False
+        else:
+            # Legacy: internal priority queue
+            try:
+                self._request_queue.put_nowait((-priority, request))
+                return True
+            except queue.Full:
+                self._requests_dropped += 1
+                return False
 
     def get_latest_proposal(self) -> LLMProposal | None:
         """
@@ -908,20 +982,39 @@ class LLMWorker:
         Main loop calls this each iteration to check for LLM output.
         Returns None if no proposal available.
         """
-        with self._proposal_lock:
-            proposal = self._latest_proposal
-            self._latest_proposal = None
-            return proposal
+        if self._pool is not None:
+            # WorkerPool mode: poll completed infer jobs
+            completed = self._pool.get_completed("infer")
+            if completed is not None and completed.result is not None:
+                return completed.result  # LLMProposal
+            return None
+        else:
+            # Legacy: consume-once latest proposal
+            with self._proposal_lock:
+                proposal = self._latest_proposal
+                self._latest_proposal = None
+                return proposal
 
     def get_all_proposals(self) -> list[LLMProposal]:
         """Get all pending proposals (non-blocking)."""
-        proposals = []
-        while True:
-            try:
-                proposals.append(self._proposal_queue.get_nowait())
-            except queue.Empty:
-                break
-        return proposals
+        if self._pool is not None:
+            # Drain all completed infer jobs
+            proposals = []
+            while True:
+                completed = self._pool.get_completed("infer")
+                if completed is None or completed.result is None:
+                    break
+                proposals.append(completed.result)
+            return proposals
+        else:
+            # Legacy: drain proposal queue
+            proposals = []
+            while True:
+                try:
+                    proposals.append(self._proposal_queue.get_nowait())
+                except queue.Empty:
+                    break
+            return proposals
 
     def _worker_loop(self) -> None:
         """Background worker that processes LLM requests."""
