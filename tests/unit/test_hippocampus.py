@@ -381,3 +381,173 @@ class TestHippocampusStats:
         hippocampus.capture(**complete_memory_args)
 
         assert hippocampus.stats()["memories_captured"] == 1
+
+
+class TestAsyncCapture:
+    """Test passive hippocampus — async capture via background worker."""
+
+    def _make_hippocampus(self):
+        from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+
+        return Hippocampus(HippocampusConfig(
+            persistence_path=None,
+            enable_associative_graph=False,
+        ))
+
+    def test_async_capture_processes_in_background(self):
+        """capture_from_loop_async queues and processes in background."""
+        hipp = self._make_hippocampus()
+        hipp.start_capture_worker()
+        try:
+            hipp.capture_from_loop_async(
+                observation={"detected_objects": ["cup"]},
+                state=None,
+                intent={"goal": "find cup"},
+                decision={"action": "look"},
+                action={"tool": "focus_interests", "params": {}},
+                result=None,
+                run_id="test-1",
+            )
+            flushed = hipp.flush(timeout=5.0)
+            assert flushed is True
+            assert len(hipp) == 1
+        finally:
+            hipp.stop_capture_worker()
+
+    def test_async_capture_multiple(self):
+        """Multiple async captures all get processed."""
+        hipp = self._make_hippocampus()
+        hipp.start_capture_worker()
+        try:
+            for i in range(10):
+                hipp.capture_from_loop_async(
+                    observation={"detected_objects": [f"obj_{i}"]},
+                    state=None,
+                    intent={"goal": f"goal_{i}"},
+                    decision={"action": "look"},
+                    action={"tool": "focus_interests", "params": {}},
+                    result=None,
+                    run_id=f"run-{i}",
+                )
+            flushed = hipp.flush(timeout=5.0)
+            assert flushed is True
+            assert len(hipp) == 10
+        finally:
+            hipp.stop_capture_worker()
+
+    def test_async_capture_snapshots_state(self):
+        """State is snapshotted at queue time, not at processing time."""
+        from unittest.mock import Mock
+
+        hipp = self._make_hippocampus()
+        hipp.start_capture_worker()
+        try:
+            state = Mock()
+            state.snapshot.return_value = {"mode": "active", "val": 1}
+            state.data = {"mode": "active", "val": 1}
+
+            hipp.capture_from_loop_async(
+                observation={},
+                state=state,
+                intent={},
+                decision={},
+                action={"tool": "test"},
+                result=None,
+                run_id="snap-test",
+            )
+
+            # Mutate state after queueing
+            state.snapshot.return_value = {"mode": "changed", "val": 99}
+
+            flushed = hipp.flush(timeout=5.0)
+            assert flushed is True
+            assert len(hipp) == 1
+
+            # Verify snapshot() was called during queueing
+            state.snapshot.assert_called()
+        finally:
+            hipp.stop_capture_worker()
+
+    def test_queue_overflow_drops_oldest(self):
+        """When queue is full, oldest capture is dropped."""
+        from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+
+        hipp = Hippocampus(HippocampusConfig(
+            persistence_path=None,
+            enable_associative_graph=False,
+            capture_queue_size=3,  # tiny queue
+        ))
+        # Don't start worker — items stay queued
+
+        for i in range(5):
+            hipp.capture_from_loop_async(
+                observation={"i": i},
+                state=None,
+                intent={},
+                decision={},
+                action={"tool": "test"},
+                result=None,
+                run_id=f"run-{i}",
+            )
+
+        # Queue should have 3 items (2 dropped)
+        assert hipp._capture_queue.qsize() == 3
+
+    def test_flush_returns_true_when_empty(self):
+        """flush on empty queue returns True immediately."""
+        hipp = self._make_hippocampus()
+        assert hipp.flush(timeout=0.1) is True
+
+    def test_flush_timeout_returns_false(self):
+        """flush returns False if queue doesn't drain in time."""
+        from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+
+        hipp = Hippocampus(HippocampusConfig(
+            persistence_path=None,
+            enable_associative_graph=False,
+            capture_queue_size=10,
+        ))
+        # Queue items but don't start worker
+        for i in range(5):
+            hipp.capture_from_loop_async(
+                observation={},
+                state=None,
+                intent={},
+                decision={},
+                action={"tool": "test"},
+                result=None,
+                run_id=f"run-{i}",
+            )
+        # flush should timeout since no worker is draining
+        result = hipp.flush(timeout=0.1)
+        assert result is False
+
+    def test_stop_drains_queue(self):
+        """stop_capture_worker drains remaining items before stopping."""
+        hipp = self._make_hippocampus()
+        hipp.start_capture_worker()
+        try:
+            for i in range(5):
+                hipp.capture_from_loop_async(
+                    observation={"i": i},
+                    state=None,
+                    intent={},
+                    decision={},
+                    action={"tool": "test"},
+                    result=None,
+                    run_id=f"run-{i}",
+                )
+            hipp.stop_capture_worker()
+            assert len(hipp) == 5
+        except Exception:
+            hipp.stop_capture_worker()
+            raise
+
+    def test_start_stop_lifecycle(self):
+        """Worker can be started and stopped cleanly."""
+        hipp = self._make_hippocampus()
+        hipp.start_capture_worker()
+        hipp.stop_capture_worker()
+        # Can restart
+        hipp.start_capture_worker()
+        hipp.stop_capture_worker()
