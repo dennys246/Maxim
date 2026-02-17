@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -122,6 +124,45 @@ class HippocampusConfig:
     spreading_activation_max_depth: int = 3
     spreading_activation_threshold: float = 0.05
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Async Capture Settings
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # Maximum pending captures before drop-oldest
+    capture_queue_size: int = 100
+
+
+class _SnapshotState:
+    """Minimal state-like wrapper around a pre-resolved dict snapshot.
+
+    capture_from_loop() accesses state attributes (e.g. state.data,
+    state.processing_state). This wrapper presents a dict snapshot as
+    if it were a real state object so capture_from_loop() works unchanged.
+    """
+
+    def __init__(self, data: dict[str, Any] | None) -> None:
+        self.data = data or {}
+        self.processing_state = self.data.get("processing_state")
+        self.operational_mode = self.data.get("operational_mode")
+        self.strategy = self.data.get("strategy")
+
+    def snapshot(self) -> dict[str, Any]:
+        return dict(self.data)
+
+
+@dataclass
+class _CaptureRequest:
+    """Immutable snapshot of capture data, queued for background processing."""
+
+    observation: dict[str, Any]
+    state_snapshot: dict[str, Any] | None
+    intent: dict[str, Any]
+    decision: dict[str, Any]
+    action: dict[str, Any]
+    result: Any
+    run_id: str
+    queued_at: float
+
 
 class Hippocampus(MemoryLayer):
     """Hybrid hash-table graph for associative memory of agentic loops.
@@ -195,6 +236,13 @@ class Hippocampus(MemoryLayer):
 
         # Optional SCN reference for temporal-aware strategies
         self._scn: "SCN | None" = None
+
+        # Async capture infrastructure
+        self._capture_queue: queue.Queue[_CaptureRequest] = queue.Queue(
+            maxsize=self.config.capture_queue_size
+        )
+        self._capture_worker_thread: threading.Thread | None = None
+        self._capture_stop = threading.Event()
 
     # ─────────────────────────────────────────────────────────────────────────
     # SCN Integration
@@ -445,6 +493,132 @@ class Hippocampus(MemoryLayer):
             outcome=out,
             run_id=run_id,
             state_snapshot=state_snapshot,
+        )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Async Capture (Passive Hippocampus)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def start_capture_worker(
+        self,
+        thread_registry: Any | None = None,
+    ) -> None:
+        """Start the background capture worker thread.
+
+        Args:
+            thread_registry: Optional ThreadRegistry for coordinated shutdown.
+        """
+        self._capture_stop.clear()
+        self._capture_worker_thread = threading.Thread(
+            target=self._capture_worker,
+            daemon=True,
+            name="hippocampus-capture",
+        )
+        self._capture_worker_thread.start()
+        if thread_registry is not None:
+            thread_registry.register(
+                "hippocampus-capture", self._capture_worker_thread
+            )
+
+    def stop_capture_worker(self) -> None:
+        """Stop the background capture worker. Drains queue first."""
+        self.flush(timeout=5.0)
+        self._capture_stop.set()
+        if (
+            self._capture_worker_thread is not None
+            and self._capture_worker_thread.is_alive()
+        ):
+            self._capture_worker_thread.join(timeout=2.0)
+
+    def capture_from_loop_async(self, **kwargs: Any) -> None:
+        """Non-blocking capture: queue for background processing.
+
+        Snapshots mutable data immediately to avoid closure issues.
+        If the queue is full, drops the oldest capture (logged warning).
+
+        Accepts the same kwargs as capture_from_loop().
+        """
+        # Snapshot state NOW to avoid stale references
+        state = kwargs.get("state")
+        state_snapshot = None
+        if hasattr(state, "snapshot") and callable(state.snapshot):
+            try:
+                state_snapshot = state.snapshot()
+            except Exception:
+                pass
+        elif hasattr(state, "data") and hasattr(state.data, "items"):
+            state_snapshot = dict(state.data)
+
+        request = _CaptureRequest(
+            observation=dict(kwargs.get("observation", {})),
+            state_snapshot=state_snapshot,
+            intent=dict(kwargs.get("intent", {})),
+            decision=dict(kwargs.get("decision", {})),
+            action=dict(kwargs.get("action", {})),
+            result=kwargs.get("result"),
+            run_id=kwargs.get("run_id", ""),
+            queued_at=time.time(),
+        )
+        try:
+            self._capture_queue.put_nowait(request)
+        except queue.Full:
+            logger.warning("Hippocampus capture queue full, dropping oldest")
+            try:
+                self._capture_queue.get_nowait()
+                self._capture_queue.task_done()
+            except queue.Empty:
+                pass
+            self._capture_queue.put_nowait(request)
+
+    def flush(self, timeout: float = 10.0) -> bool:
+        """Block until all queued captures are processed.
+
+        Call before session-end consolidation or final save.
+        Returns True if queue drained within timeout.
+        """
+        deadline = time.monotonic() + timeout
+        while not self._capture_queue.empty():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                logger.warning(
+                    "Hippocampus flush timed out, %d items remain",
+                    self._capture_queue.qsize(),
+                )
+                return False
+            time.sleep(0.05)
+        # Final check: all task_done() calls completed
+        with self._capture_queue.all_tasks_done:
+            remaining = max(0, deadline - time.monotonic())
+            if self._capture_queue.unfinished_tasks > 0:
+                self._capture_queue.all_tasks_done.wait(timeout=remaining)
+        return self._capture_queue.unfinished_tasks == 0
+
+    def _capture_worker(self) -> None:
+        """Background thread: drain capture queue, process each."""
+        while not self._capture_stop.is_set():
+            try:
+                request = self._capture_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            try:
+                self._process_capture(request)
+            except Exception as e:
+                logger.error("Async capture failed: %s", e)
+            finally:
+                self._capture_queue.task_done()
+
+    def _process_capture(self, request: _CaptureRequest) -> None:
+        """Process a queued capture request. Runs on worker thread."""
+        latency_ms = (time.time() - request.queued_at) * 1000
+        logger.debug("Processing capture (queue latency: %.1fms)", latency_ms)
+        self.capture_from_loop(
+            observation=request.observation,
+            state=_SnapshotState(request.state_snapshot),
+            intent=request.intent,
+            decision=request.decision,
+            action=request.action,
+            result=request.result,
+            run_id=request.run_id,
         )
 
     def get(self, memory_id: str) -> EpisodicMemory | CompressedMemory | None:
