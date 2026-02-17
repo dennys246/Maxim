@@ -32,6 +32,7 @@ from typing import Any
 from maxim.agents.base import Agent
 from maxim.agents.bus import (
     AgentBus,
+    AnalysisSuggestion,
     GoalCompleted,
     Percept,
     StatisticalInsight,
@@ -64,6 +65,15 @@ class PatternState(Enum):
     ESCALATED_TO_AG = auto()
     CONFIRMED_PATTERN = auto()
     CONFIRMED_RANDOM = auto()
+
+
+class MetricDataType(Enum):
+    """Inferred data type for a metric series."""
+
+    BINARY = "binary"          # 0/1 success/fail metrics
+    CONTINUOUS = "continuous"   # Unbounded float values
+    RATE = "rate"              # 0.0-1.0 bounded rates
+    LATENCY = "latency"        # Time-based measurements
 
 
 @dataclass
@@ -239,12 +249,20 @@ class StatisticianAgent(Agent):
         if now - self._last_summary >= self._summary_interval:
             summary = self.summarize_for_context()
             if summary:
+                try:
+                    suggestions = self._generate_suggestions()
+                    data_type_breakdown = self._compute_data_type_breakdown()
+                except Exception:
+                    suggestions = []
+                    data_type_breakdown = {}
                 self._bus.publish(
                     StatisticalSummary(
                         timestamp=now,
                         summary=summary,
                         active_patterns=self._count_active_patterns(),
                         metrics_monitored=len(self._detectors),
+                        suggestions=suggestions,
+                        data_type_breakdown=data_type_breakdown,
                     )
                 )
             self._last_summary = now
@@ -528,6 +546,177 @@ class StatisticianAgent(Agent):
             for d in self._detectors.values()
             if d.state == PatternState.CONFIRMED_PATTERN
         )
+
+    # ------------------------------------------------------------------
+    # Data type inference + suggestion engine
+    # ------------------------------------------------------------------
+
+    def _infer_data_type(self, metric_name: str, series: deque[float]) -> MetricDataType:
+        """Infer the data type from metric naming convention or value distribution."""
+        name_lower = metric_name.lower()
+
+        # Naming convention heuristics (fast path)
+        if name_lower.endswith(":success") or name_lower.endswith(":fail"):
+            return MetricDataType.BINARY
+        if "latency" in name_lower or "duration" in name_lower or "time_ms" in name_lower:
+            return MetricDataType.LATENCY
+        if "rate" in name_lower or "ratio" in name_lower:
+            return MetricDataType.RATE
+
+        # Fall back to value distribution analysis
+        values = list(series)
+        if not values:
+            return MetricDataType.CONTINUOUS
+
+        unique = set(values)
+        if unique <= {0.0, 1.0}:
+            return MetricDataType.BINARY
+        if all(0.0 <= v <= 1.0 for v in values):
+            return MetricDataType.RATE
+        if all(v >= 0.0 for v in values) and max(values) > 1.0:
+            return MetricDataType.LATENCY
+
+        return MetricDataType.CONTINUOUS
+
+    def _generate_suggestions(self) -> list[AnalysisSuggestion]:
+        """Generate ranked analysis suggestions from all active detectors."""
+        suggestions: list[AnalysisSuggestion] = []
+
+        for metric_name, detector in self._detectors.items():
+            series = self._metric_series.get(metric_name)
+            if not series or len(series) < detector.min_observations:
+                continue
+
+            data_type = self._infer_data_type(metric_name, series)
+            suggestion = self._suggest_for_state(detector, data_type, series)
+            if suggestion is not None:
+                suggestions.append(suggestion)
+
+        # Sort by priority (highest first), return top 5
+        suggestions.sort(key=lambda s: s.priority, reverse=True)
+        return suggestions[:5]
+
+    def _suggest_for_state(
+        self,
+        detector: PatternDetector,
+        data_type: MetricDataType,
+        series: deque[float],
+    ) -> AnalysisSuggestion | None:
+        """Decision matrix: FSM state × data type → specific analysis suggestion."""
+        state = detector.state
+
+        if state == PatternState.OBSERVING or state == PatternState.CONFIRMED_RANDOM:
+            return None
+
+        # Base priority by state
+        priority = {
+            PatternState.PATTERN_FORMING: 0.5,
+            PatternState.ESCALATED_TO_AG: 0.8,
+            PatternState.CONFIRMED_PATTERN: 0.6,
+        }.get(state, 0.3)
+
+        # Temporal context boost
+        if detector.temporal_anomaly > 0.5:
+            priority = min(1.0, priority + 0.15)
+
+        # Build recent stats for rationale
+        recent = list(series)[-20:]
+        recent_mean = sum(recent) / len(recent) if recent else 0.0
+
+        if state == PatternState.PATTERN_FORMING:
+            if data_type in (MetricDataType.BINARY, MetricDataType.RATE):
+                return AnalysisSuggestion(
+                    metric=detector.metric_name,
+                    tool_call="math",
+                    operation="assess_randomness",
+                    rationale=(
+                        f"{data_type.value} metric showing emerging pattern "
+                        f"(mean={recent_mean:.2f}, obs={detector.observations})"
+                    ),
+                    priority=priority,
+                    data_type=data_type.value,
+                    fsm_state=state.name,
+                )
+            elif data_type == MetricDataType.LATENCY:
+                return AnalysisSuggestion(
+                    metric=detector.metric_name,
+                    tool_call="math",
+                    operation="anomaly",
+                    rationale=(
+                        f"Latency metric with forming pattern "
+                        f"(mean={recent_mean:.2f}ms, obs={detector.observations})"
+                    ),
+                    priority=priority,
+                    data_type=data_type.value,
+                    fsm_state=state.name,
+                )
+            else:  # CONTINUOUS
+                return AnalysisSuggestion(
+                    metric=detector.metric_name,
+                    tool_call="math",
+                    operation="trend",
+                    rationale=(
+                        f"Continuous metric with forming pattern "
+                        f"(mean={recent_mean:.2f}, obs={detector.observations})"
+                    ),
+                    priority=priority,
+                    data_type=data_type.value,
+                    fsm_state=state.name,
+                )
+
+        elif state == PatternState.ESCALATED_TO_AG:
+            return AnalysisSuggestion(
+                metric=detector.metric_name,
+                tool_call="math",
+                operation="analyze linear",
+                rationale=(
+                    f"IPS uncertain after {detector._forming_steps} steps — "
+                    f"AG precision needed (mean={recent_mean:.2f})"
+                ),
+                priority=priority,
+                data_type=data_type.value,
+                fsm_state=state.name,
+            )
+
+        elif state == PatternState.CONFIRMED_PATTERN:
+            if detector.ag_memory_id:
+                return AnalysisSuggestion(
+                    metric=detector.metric_name,
+                    tool_call="math",
+                    operation="recall_memory",
+                    rationale=(
+                        f"Confirmed pattern with AG memory — "
+                        f"recall for characterization (R²={detector.ag_r_squared or 0:.2f})"
+                    ),
+                    priority=priority,
+                    data_type=data_type.value,
+                    fsm_state=state.name,
+                )
+            else:
+                return AnalysisSuggestion(
+                    metric=detector.metric_name,
+                    tool_call="math",
+                    operation="analyze",
+                    rationale=(
+                        f"Confirmed pattern without AG memory — "
+                        f"characterize trend (mean={recent_mean:.2f})"
+                    ),
+                    priority=priority,
+                    data_type=data_type.value,
+                    fsm_state=state.name,
+                )
+
+        return None
+
+    def _compute_data_type_breakdown(self) -> dict[str, int]:
+        """Count metrics by inferred data type."""
+        breakdown: dict[str, int] = {}
+        for metric_name, series in self._metric_series.items():
+            if not series:
+                continue
+            dt = self._infer_data_type(metric_name, series)
+            breakdown[dt.value] = breakdown.get(dt.value, 0) + 1
+        return breakdown
 
     # ------------------------------------------------------------------
     # Persistence

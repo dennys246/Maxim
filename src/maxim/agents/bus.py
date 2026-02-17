@@ -217,6 +217,7 @@ class StructuredContext:
     # Statistical context (from StatisticianAgent via bus)
     statistical_context: str = ""
     active_pattern_count: int = 0
+    statistical_suggestions: list[dict] = field(default_factory=list)
 
     # Knowledge context (from ATL semantic memory + AG pattern memory)
     # Each entry: {"concept_name", "definition", "category", "confidence",
@@ -537,6 +538,19 @@ class StatisticalInsight:
 
 
 @dataclass
+class AnalysisSuggestion:
+    """A specific, actionable analysis recommendation from StatisticianAgent."""
+
+    metric: str       # "tool:navigate:success"
+    tool_call: str    # "math"
+    operation: str    # "assess_randomness", "analyze", "recall_memory"
+    rationale: str    # Human-readable explanation of why this analysis is suggested
+    priority: float   # 0.0-1.0, higher = more urgent
+    data_type: str    # "binary", "continuous", "rate", "latency"
+    fsm_state: str    # "PATTERN_FORMING", "CONFIRMED_PATTERN", etc.
+
+
+@dataclass
 class StatisticalSummary:
     """Periodic summary from StatisticianAgent for context building."""
 
@@ -544,6 +558,8 @@ class StatisticalSummary:
     summary: str  # Actionable natural language (for StructuredContext)
     active_patterns: int  # Count of CONFIRMED_PATTERN metrics
     metrics_monitored: int  # Total metrics being tracked
+    suggestions: list[AnalysisSuggestion] = field(default_factory=list)
+    data_type_breakdown: dict[str, int] = field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

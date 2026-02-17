@@ -404,6 +404,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
         # Statistical context (from StatisticianAgent via bus)
         self._latest_statistical_summary: str = ""
         self._active_pattern_count: int = 0
+        self._statistical_suggestions: list[dict] = []
 
         # Optional MemoryHub for multi-layer knowledge queries
         self._memory_hub = memory_hub
@@ -520,6 +521,23 @@ class MemoryAgent(Agent, AgentOutputMixin):
         """Receive statistical summary from StatisticianAgent via bus."""
         self._latest_statistical_summary = summary.summary
         self._active_pattern_count = summary.active_patterns
+
+        # Capture analysis suggestions (backward-compat with older StatisticalSummary)
+        raw_suggestions = getattr(summary, "suggestions", [])
+        self._statistical_suggestions = []
+        for s in raw_suggestions:
+            try:
+                self._statistical_suggestions.append({
+                    "metric": s.metric,
+                    "tool_call": s.tool_call,
+                    "operation": s.operation,
+                    "rationale": s.rationale,
+                    "priority": s.priority,
+                    "data_type": s.data_type,
+                    "fsm_state": s.fsm_state,
+                })
+            except AttributeError:
+                pass
 
     def _add_memory(self, memory: MemoryItem) -> None:
         """Add memory to stores and indexes (must hold lock)."""
@@ -725,6 +743,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 available_environments=available_tools,
                 statistical_context=self._latest_statistical_summary,
                 active_pattern_count=self._active_pattern_count,
+                statistical_suggestions=self._statistical_suggestions,
                 knowledge_context=self._build_knowledge_context(),
                 root_goal=self.ROOT_GOAL,
                 plan_progress=self._build_plan_progress(),
