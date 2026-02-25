@@ -29,6 +29,7 @@ class _PyTorchTransformersBackend:
         self._device: str = "cpu"
         self._lock = threading.Lock()
         self._init_attempted = False
+        self.requires_prompt_formatting = True
         self._trust_remote_code = self._get_bool_config("hf_trust_remote_code", False)
         self._require_review = self._get_bool_config("hf_require_review", True)
         self._revision = self._get_str_config("hf_revision", None)

@@ -2,6 +2,21 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-02-25: Optional cloud LLM backends with routing + cost tracking
+Decision:
+- Cloud LLM providers (Anthropic/OpenAI) integrate through `LLMRouter` (no parallel gateway).
+- Cloud usage is explicit opt-in (`cloud_enabled: true`) and requires a redaction policy.
+- Cost tracking persists to `data/util/cost_state.json`; audit logs append to `data/logs/cloud_audit.jsonl`.
+- Budget enforcement uses routing policy thresholds with graceful fallback to local models.
+
+Reason:
+- Preserve the existing local LLM path while enabling cloud quality when explicitly requested.
+- Prevent accidental data egress and unbounded spend.
+
+Tradeoffs:
+- Requires additional config for cloud usage (keys, redaction policy, pricing).
+- Adds routing logic and state to LLMRouter.
+
 ## 2026-01-18: Agentic MaximAgent naming + GPU-gated runtime
 Decision:
 - The composite agentic implementation is now `MaximAgent` (alias `AgenticMaximAgent` preserved for compatibility).
