@@ -23,6 +23,7 @@ class EnergyType(Enum):
     # Compute-related energy
     LLM_TOKENS = "llm_tokens"           # Token-based energy (input + output)
     LLM_LATENCY = "llm_latency"         # Time waiting for LLM response
+    LLM_COST = "llm_cost"               # USD-normalized cost signal
     COMPUTE_TIME = "compute_time"       # General CPU/GPU compute time
 
     # Movement-related energy
@@ -75,6 +76,7 @@ class EnergySignal:
         thresholds = {
             EnergyType.LLM_TOKENS: 1.0,
             EnergyType.LLM_LATENCY: 0.5,
+            EnergyType.LLM_COST: 1.0,
             EnergyType.MOTOR_COMMAND: 0.5,
             EnergyType.VISION_INFERENCE: 0.3,
         }

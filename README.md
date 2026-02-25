@@ -7,7 +7,7 @@ An agentic robotics framework for orchestrating Reachy Mini with multi-level goa
 Maxim provides:
 - **Robotic control** via Pollen Robotics' Reachy Mini SDK (vision, audio, motor control)
 - **Agentic runtime** with recursive goal decomposition and reflection loops
-- **Local LLM inference** via llama.cpp (no cloud dependencies)
+- **Local LLM inference** via llama.cpp, with optional cloud backends (opt-in)
 - **Multi-modal perception** using pluggable vision engines (RTMDet/RTMPose default, YOLO optional) and Whisper transcription
 - **Low-compute optimization** with prompt profiles for CPU-only and GPU systems
 
@@ -193,7 +193,13 @@ export MAXIM_PROMPT_PROFILE=minimal
 
 ## LLM Integration
 
-Maxim supports local LLM inference via llama.cpp with no cloud dependencies.
+Maxim supports local LLM inference via llama.cpp. Optional cloud backends (Anthropic/OpenAI) are supported but **opt-in** via `data/util/llm.json` (`cloud_enabled: true`) and API keys. Cloud calls are budgeted and audited; local remains the default.
+
+To enable cloud providers, install the optional extras:
+```bash
+pip install -e '.[llm-openai]'
+pip install -e '.[llm-anthropic]'
+```
 
 ### Quick Start
 
