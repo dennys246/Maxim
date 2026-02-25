@@ -1815,6 +1815,7 @@ Return JSON exactly like:
         *,
         provider_hint: str | None = None,
         request_context: dict[str, Any] | None = None,
+        system_override: str | None = None,
     ) -> dict[str, Any] | None:
         """Generate a JSON response from a prompt.
 
@@ -1824,6 +1825,9 @@ Return JSON exactly like:
             prompt: The full prompt to send to the LLM (used as user message).
             temperature: Sampling temperature.
             max_tokens: Maximum tokens to generate.
+            provider_hint: Optional provider key to prefer.
+            request_context: Metadata for audit logs (agent, request_id, lane).
+            system_override: Override the default JSON-only system prompt.
 
         Returns:
             Parsed JSON dict or None if generation failed.
@@ -1860,7 +1864,7 @@ Return JSON exactly like:
 
         # Standard JSON generation path
         # Use a strict system prompt
-        system = (
+        system = system_override or (
             "You are a JSON-only response system. "
             "Output ONLY valid JSON. No explanations, no code, no markdown. "
             "If the user prompt contains partial JSON, complete it. "
