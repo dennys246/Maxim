@@ -23,6 +23,8 @@ from maxim.agents.bus import (
 )
 from maxim.default_network.messages import FilteredPercept
 from maxim.agents.llm_agent import ChatLLMAgent, LLMAgentConfig
+from maxim.models.language.router import LLMRouter, load_llm_config
+from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
 from maxim.agents.memory_agent import MemoryAgent
 from maxim.utils.logging import warn
 from maxim.utils.prompts import get_agent_prompt
@@ -160,6 +162,7 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
         self._llm: ChatLLMAgent | None = None
         self._llm_profile = llm_profile
         self._quantization = quantization
+        self._router: LLMRouter | None = None
 
         # Rate limiting
         self._min_interval = 1.0 / rate_limit_hz
@@ -198,6 +201,28 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
                 warn("ExecAgent: Failed to init LLM: %s", e)
                 return None
         return self._llm
+
+    def _ensure_router(self) -> LLMRouter | None:
+        if self._router is not None:
+            return self._router
+        try:
+            cfg = load_llm_config()
+        except Exception as e:
+            warn("ExecAgent: Failed to load LLM config: %s", e)
+            return None
+        if not cfg.enabled:
+            return None
+        self._router = LLMRouter(cfg)
+        return self._router
+
+    def _get_prompt_profile_name(self, router: LLMRouter) -> str | None:
+        profiles = getattr(router.cfg, "prompt_profiles", {})
+        if isinstance(profiles, dict):
+            if "exec_agent" in profiles:
+                return "exec_agent"
+            if "executive" in profiles:
+                return "executive"
+        return None
 
     def _on_percept(self, percept: Percept) -> None:
         """Trigger goal proposal on significant percepts.
@@ -397,14 +422,29 @@ Based on this context, what goal should be proposed?"""
             time.sleep(self._min_interval - elapsed)
         self._last_call_time = time.time()
 
-        llm = self._ensure_llm()
-        if llm is None:
-            return None
-
         prompt = self._build_llm_context(ctx)
 
         try:
-            response = llm.generate_json(prompt, temperature=0.2)
+            router = self._ensure_router()
+            response = None
+            if router is not None:
+                prompt_builder = ExecutivePrompt(self._system_prompt)
+                profile_name = self._get_prompt_profile_name(router)
+                prompt_profile = load_prompt_profile(router.cfg.prompt_profiles, profile_name)
+                injected = prompt_builder.inject(prompt, prompt_profile)
+                request_id = f"exec-{uuid.uuid4()}"
+                response = router.generate_json(
+                    injected.user,
+                    temperature=0.2,
+                    system_override=injected.system,
+                    request_context={"agent": self.agent_name, "request_id": request_id},
+                )
+            else:
+                llm = self._ensure_llm()
+                if llm is None:
+                    return None
+                response = llm.generate_json(prompt, temperature=0.2)
+
             if not response or not isinstance(response, dict) or not response.get("goal_description"):
                 return None
 
