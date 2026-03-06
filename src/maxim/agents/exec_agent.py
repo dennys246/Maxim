@@ -23,6 +23,7 @@ from maxim.agents.bus import (
 )
 from maxim.default_network.messages import FilteredPercept
 from maxim.agents.llm_agent import ChatLLMAgent, LLMAgentConfig
+from maxim.agents.llm_worker import LLMWorker
 from maxim.models.language.router import LLMRouter, load_llm_config
 from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
 from maxim.agents.memory_agent import MemoryAgent
@@ -163,6 +164,7 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
         self._llm_profile = llm_profile
         self._quantization = quantization
         self._router: LLMRouter | None = None
+        self._llm_worker: LLMWorker | None = None
 
         # Rate limiting
         self._min_interval = 1.0 / rate_limit_hz
@@ -202,11 +204,24 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
                 return None
         return self._llm
 
+    def _resolve_profile_override(self, cfg: Any) -> str | None:
+        profiles = getattr(cfg, "agent_profiles", {})
+        if not isinstance(profiles, dict):
+            return None
+        for key in ("exec_agent", "executive"):
+            value = profiles.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
     def _ensure_router(self) -> LLMRouter | None:
         if self._router is not None:
             return self._router
         try:
             cfg = load_llm_config()
+            profile_override = self._resolve_profile_override(cfg)
+            if profile_override:
+                cfg = load_llm_config(profile_override=profile_override)
         except Exception as e:
             warn("ExecAgent: Failed to load LLM config: %s", e)
             return None
@@ -214,6 +229,26 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
             return None
         self._router = LLMRouter(cfg)
         return self._router
+
+    def _ensure_llm_worker(self) -> LLMWorker | None:
+        if self._llm_worker is not None:
+            return self._llm_worker
+        router = self._ensure_router()
+        if router is None:
+            return None
+        try:
+            token_counter = router.get_token_counter() if hasattr(router, "get_token_counter") else None
+            llm_worker = LLMWorker(
+                router,
+                n_ctx=getattr(router, "n_ctx", 4096),
+                token_counter=token_counter,
+            )
+            llm_worker.start()
+            self._llm_worker = llm_worker
+        except Exception as e:
+            warn("ExecAgent: Failed to init LLMWorker: %s", e)
+            return None
+        return self._llm_worker
 
     def _get_prompt_profile_name(self, router: LLMRouter) -> str | None:
         profiles = getattr(router.cfg, "prompt_profiles", {})
@@ -278,7 +313,7 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
         """Signal that goal proposal is needed."""
         self._work_available.set()
 
-    def _build_llm_context(self, ctx: StructuredContext) -> str:
+    def _build_llm_context(self, ctx: StructuredContext, budget_context: str | None = None) -> str:
         """Build prompt from structured context."""
         # Current percept summary
         percept_str = "(none)"
@@ -369,6 +404,8 @@ STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
                     )
                 stat_str += "\n".join(suggestion_lines)
 
+        budget_str = f"\n\n{budget_context}" if budget_context else ""
+
         return f"""ROOT GOAL: {ctx.root_goal}
 
 CURRENT STATE:
@@ -392,7 +429,7 @@ RECENT OUTCOMES:
 {outcome_str}
 
 RELEVANT MEMORIES:
-{mem_str}{stat_str}{dn_str}
+{mem_str}{stat_str}{dn_str}{budget_str}
 
 Based on this context, what goal should be proposed?"""
 
@@ -422,22 +459,38 @@ Based on this context, what goal should be proposed?"""
             time.sleep(self._min_interval - elapsed)
         self._last_call_time = time.time()
 
-        prompt = self._build_llm_context(ctx)
-
         try:
-            router = self._ensure_router()
             response = None
+            llm_worker = self._ensure_llm_worker()
+            router = self._router or self._ensure_router()
+
+            budget_context = llm_worker.get_budget_context() if llm_worker else ""
+            prompt = self._build_llm_context(ctx, budget_context=budget_context)
+
+            prompt_builder = ExecutivePrompt(self._system_prompt)
+            prompt_profile = None
             if router is not None:
-                prompt_builder = ExecutivePrompt(self._system_prompt)
                 profile_name = self._get_prompt_profile_name(router)
                 prompt_profile = load_prompt_profile(router.cfg.prompt_profiles, profile_name)
-                injected = prompt_builder.inject(prompt, prompt_profile)
+            injected = prompt_builder.inject(prompt, prompt_profile)
+
+            if llm_worker is not None:
+                request_id = f"exec-{uuid.uuid4()}"
+                response = llm_worker.generate_json_direct(
+                    system=injected.system,
+                    user=injected.user,
+                    temperature=0.2,
+                    max_tokens=512,
+                    request_id=request_id,
+                    agent_name=self.agent_name,
+                )
+            elif router is not None:
                 request_id = f"exec-{uuid.uuid4()}"
                 response = router.generate_json(
                     injected.user,
                     temperature=0.2,
                     system_override=injected.system,
-                    request_context={"agent": self.agent_name, "request_id": request_id},
+                    request_context={"agent": self.agent_name, "request_id": request_id, "lane": "infer"},
                 )
             else:
                 llm = self._ensure_llm()
@@ -613,5 +666,8 @@ Based on this context, what goal should be proposed?"""
             self._worker.join(timeout=2.0)
         self._bus.unsubscribe(Percept, self._on_percept)
         self._bus.unsubscribe(FilteredPercept, self._on_filtered_percept)
+        if self._llm_worker:
+            self._llm_worker.stop()
+            self._llm_worker = None
         if self._llm:
             self._llm.on_stop()

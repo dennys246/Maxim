@@ -440,7 +440,7 @@ def _read_json(path: str) -> dict[str, Any] | None:
         return None
 
 
-def load_llm_config() -> LLMConfig:
+def load_llm_config(profile_override: str | None = None) -> LLMConfig:
     default = LLMConfig()
 
     candidates: list[str] = []
@@ -464,7 +464,7 @@ def load_llm_config() -> LLMConfig:
                 raw = loaded
             break
 
-    profile_raw = os.getenv("MAXIM_LLM_PROFILE")
+    profile_raw = profile_override or os.getenv("MAXIM_LLM_PROFILE")
     if profile_raw is None:
         profile_raw = raw.get("profile") or raw.get("model") or default.profile
     profile = _normalize_profile(profile_raw) or default.profile
