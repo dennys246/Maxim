@@ -209,6 +209,10 @@ class LLMBackend(Protocol):
         prompt: str,
         temperature: float = 0.3,
         max_tokens: int = 1024,
+        *,
+        provider_hint: str | None = None,
+        request_context: dict[str, Any] | None = None,
+        system_override: str | None = None,
     ) -> dict[str, Any] | None:
         """Generate a JSON response from the LLM."""
         ...
@@ -898,6 +902,7 @@ class LLMWorker:
         *,
         provider_hint: str | None = None,
         request_context: dict[str, Any] | None = None,
+        system_override: str | None = None,
     ) -> dict[str, Any] | None:
         """Call LLM with timeout to allow graceful shutdown.
 
@@ -919,6 +924,7 @@ class LLMWorker:
                 max_tokens,
                 provider_hint=provider_hint,
                 request_context=request_context,
+                system_override=system_override,
             )
             # Wait with timeout, checking stop_event periodically
             timeout_remaining = self._llm_timeout
@@ -954,6 +960,163 @@ class LLMWorker:
         except Exception as e:
             logger.error("LLM call failed: %s", e)
             return None
+
+    def _record_usage(
+        self,
+        *,
+        prompt: str,
+        response: dict[str, Any] | None,
+        latency_ms: float,
+        request_id: str,
+        lane: str,
+        mode_name: str = "unknown",
+    ) -> None:
+        if not response or not isinstance(response, dict):
+            return
+
+        usage = response.get("usage") if isinstance(response.get("usage"), dict) else None
+        if usage is None:
+            usage = response.get("_usage") if isinstance(response.get("_usage"), dict) else {}
+        if not isinstance(usage, dict):
+            usage = {}
+
+        input_tokens = usage.get("input_tokens", usage.get("prompt_tokens", 0))
+        output_tokens = usage.get("output_tokens", usage.get("completion_tokens", 0))
+
+        if self._energy_tracker is not None:
+            # Estimate tokens if missing from usage payload
+            if input_tokens == 0:
+                input_tokens = len(prompt) // 4
+            if output_tokens == 0:
+                try:
+                    response_str = json.dumps(response)
+                    output_tokens = len(response_str) // 4
+                except Exception:
+                    output_tokens = 50
+
+            try:
+                self._energy_tracker.record(
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    model=getattr(self._llm, "model_name", "unknown"),
+                    latency_ms=latency_ms,
+                    context={
+                        "request_id": request_id,
+                        "mode": mode_name or "unknown",
+                        "lane": lane,
+                    },
+                )
+            except Exception as e:
+                logger.debug("Failed to record LLM energy: %s", e)
+
+        cost_usd = usage.get("cost_usd", 0) if isinstance(usage, dict) else 0
+        if cost_usd:
+            try:
+                from maxim.energy.signal import EnergySignal, EnergyType
+                from maxim.energy.registry import get_global_registry
+                registry = get_global_registry()
+                signal = EnergySignal(
+                    energy_type=EnergyType.LLM_COST,
+                    amount=float(cost_usd) * float(self._cost_energy_scale or 100.0),
+                    source="llm_cost",
+                    duration_ms=latency_ms,
+                    context={
+                        "usd": float(cost_usd),
+                        "model": usage.get("model") if isinstance(usage, dict) else "",
+                        "provider": usage.get("provider") if isinstance(usage, dict) else "",
+                        "lane": lane,
+                    },
+                )
+                registry.record_signal(signal)
+            except Exception as e:
+                logger.debug("Failed to record LLM cost energy: %s", e)
+
+    def generate_json_direct(
+        self,
+        *,
+        system: str,
+        user: str,
+        temperature: float = 0.3,
+        max_tokens: int = 1024,
+        request_id: str,
+        agent_name: str = "exec_agent",
+        lane: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Direct JSON generation path for specialized prompts (ExecAgent)."""
+        if self._stop_event.is_set():
+            return None
+
+        start_time = time.time()
+        provider_hint = None
+        provider_semaphore = None
+        is_cloud = False
+
+        if hasattr(self._llm, "preview_provider"):
+            try:
+                preview = self._llm.preview_provider(
+                    system=system,
+                    user=user,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                if isinstance(preview, dict):
+                    provider_hint = preview.get("provider")
+                    is_cloud = bool(preview.get("is_cloud"))
+            except Exception:
+                provider_hint = None
+                is_cloud = False
+
+        lane_name = lane or ("infer_net" if is_cloud else "infer")
+        if provider_hint and provider_hint in self._provider_semaphores:
+            provider_semaphore = self._provider_semaphores[provider_hint]
+
+        request_context = {
+            "request_id": request_id,
+            "agent": agent_name,
+            "lane": lane_name,
+            "provider_hint": provider_hint or "",
+        }
+
+        if provider_semaphore:
+            with provider_semaphore:
+                response = self._call_llm_with_timeout(
+                    user,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    provider_hint=provider_hint,
+                    request_context=request_context,
+                    system_override=system,
+                )
+        else:
+            response = self._call_llm_with_timeout(
+                user,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                provider_hint=provider_hint,
+                request_context=request_context,
+                system_override=system,
+            )
+
+        latency_ms = (time.time() - start_time) * 1000
+        self._update_avg_latency(latency_ms)
+        self._record_usage(
+            prompt=f"{system}\n\n{user}".strip(),
+            response=response if isinstance(response, dict) else None,
+            latency_ms=latency_ms,
+            request_id=request_id,
+            lane=lane_name,
+            mode_name=agent_name,
+        )
+        self._requests_processed += 1
+        return response
+
+    def get_budget_context(self) -> str:
+        """Expose budget context for external prompt builders."""
+        try:
+            return self._build_budget_context()
+        except Exception as e:
+            logger.debug("Failed to build budget context: %s", e)
+            return ""
 
     def submit_context(
         self,
@@ -1290,62 +1453,14 @@ class LLMWorker:
             latency_ms = (time.time() - start_time) * 1000
             self._update_avg_latency(latency_ms)
 
-            # Record energy usage if tracker is available
-            if self._energy_tracker is not None and response and isinstance(response, dict):
-                # Extract token counts from response if available
-                # Models often include usage info in the response
-                usage = response.get("usage", {})
-                input_tokens = usage.get("input_tokens", usage.get("prompt_tokens", 0))
-                output_tokens = usage.get("output_tokens", usage.get("completion_tokens", 0))
-
-                # If no token counts in response, estimate from prompt/response length
-                if input_tokens == 0:
-                    # Rough estimate: ~4 chars per token
-                    input_tokens = len(prompt) // 4
-                if output_tokens == 0:
-                    import json
-                    try:
-                        response_str = json.dumps(response)
-                        output_tokens = len(response_str) // 4
-                    except Exception:
-                        output_tokens = 50  # Fallback estimate
-
-                try:
-                    self._energy_tracker.record(
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        model=getattr(self._llm, "model_name", "unknown"),
-                        latency_ms=latency_ms,
-                        context={
-                            "request_id": request.request_id,
-                            "mode": request.mode.name if request.mode else "unknown",
-                            "lane": request.lane or "infer",
-                        },
-                    )
-                except Exception as e:
-                    logger.debug("Failed to record LLM energy: %s", e)
-
-                cost_usd = usage.get("cost_usd", 0) if isinstance(usage, dict) else 0
-                if cost_usd:
-                    try:
-                        from maxim.energy.signal import EnergySignal, EnergyType
-                        from maxim.energy.registry import get_global_registry
-                        registry = get_global_registry()
-                        signal = EnergySignal(
-                            energy_type=EnergyType.LLM_COST,
-                            amount=float(cost_usd) * float(self._cost_energy_scale or 100.0),
-                            source="llm_cost",
-                            duration_ms=latency_ms,
-                            context={
-                                "usd": float(cost_usd),
-                                "model": usage.get("model") if isinstance(usage, dict) else "",
-                                "provider": usage.get("provider") if isinstance(usage, dict) else "",
-                                "lane": request.lane or "infer",
-                            },
-                        )
-                        registry.record_signal(signal)
-                    except Exception as e:
-                        logger.debug("Failed to record LLM cost energy: %s", e)
+            self._record_usage(
+                prompt=prompt,
+                response=response if isinstance(response, dict) else None,
+                latency_ms=latency_ms,
+                request_id=request.request_id,
+                lane=request.lane or "infer",
+                mode_name=request.mode.name if request.mode else "unknown",
+            )
 
             if not response or not isinstance(response, dict):
                 # LLM failed - generate a fallback response for the user
