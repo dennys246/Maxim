@@ -70,6 +70,12 @@ yolo = [
     "ultralytics==8.3.248",
     "lap==0.5.12",
 ]
+# Twilio SMS/Voice communication
+comms = [
+    "twilio>=9.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.24.0",
+]
 # Phase 4: Neural semantic similarity (requires torch)
 semantic = [
     "sentence-transformers>=2.2.0",

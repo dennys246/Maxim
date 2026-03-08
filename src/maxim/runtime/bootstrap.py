@@ -280,6 +280,78 @@ def build_evaluators() -> list:
     return [AgentEvaluator(), PlanEvaluator(), ToolExecutionEvaluator()]
 
 
+def build_comms_stack(
+    *,
+    bus: "AgentBus",
+    nac: object | None = None,
+    goal_agent: object | None = None,
+    autonomy_controller: object | None = None,
+    mode_controller: object | None = None,
+) -> tuple[object | None, object | None]:
+    """Build communication stack if Twilio env vars are configured.
+
+    Returns ``(gateway, conv_manager)`` on success, ``(None, None)`` if
+    credentials are missing or dependencies are not installed.
+    """
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
+    from_number = os.environ.get("TWILIO_FROM_NUMBER", "")
+
+    if not all([account_sid, auth_token, from_number]):
+        logger.debug(
+            "Twilio env vars not set (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, "
+            "TWILIO_FROM_NUMBER) — comms stack disabled"
+        )
+        return None, None
+
+    try:
+        from maxim.comms.conversation import ConversationManager
+        from maxim.comms.gateway import CommunicationGateway
+        from maxim.comms.channels.twilio_channel import TwilioChannel
+        from maxim.comms.api import start_api_server
+    except ImportError as exc:
+        logger.warning(
+            "Comms dependencies missing (%s). Install with: pip install \"maxim[comms]\"",
+            exc,
+        )
+        return None, None
+
+    try:
+        conv_manager = ConversationManager(bus=bus, nac=nac)
+        gateway = CommunicationGateway(bus=bus)
+
+        twilio_config = {
+            "account_sid": account_sid,
+            "auth_token": auth_token,
+            "from_number": from_number,
+            "voice_enabled": os.environ.get(
+                "TWILIO_VOICE_ENABLED", ""
+            ).lower() in ("1", "true", "yes"),
+        }
+        channel = TwilioChannel(twilio_config, conv_manager, gateway)
+        gateway.register_channel("twilio", channel)
+
+        host = os.environ.get("MAXIM_COMMS_HOST", "127.0.0.1")
+        port = int(os.environ.get("MAXIM_COMMS_PORT", "5000"))
+        start_api_server(
+            bus=bus,
+            gateway=gateway,
+            goal_agent=goal_agent,
+            autonomy_controller=autonomy_controller,
+            mode_controller=mode_controller,
+            host=host,
+            port=port,
+        )
+        logger.info(
+            "Comms stack started (Twilio from=%s, API on %s:%d)",
+            from_number, host, port,
+        )
+        return gateway, conv_manager
+    except Exception:
+        logger.exception("Failed to build comms stack")
+        return None, None
+
+
 def build_default_network(
     *,
     maxim: object | None = None,

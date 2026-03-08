@@ -173,6 +173,11 @@ class MaximAgent(Agent):
             svc.nac = getattr(memory_hub, "_nac", None)
             svc.statistician = self.statistician
 
+        # Wire NAc to ExecAgent for contemplation outcome learning
+        nac = getattr(memory_hub, "_nac", None)
+        if nac is not None:
+            self.exec_agent.wire_nac(nac)
+
     def on_start(self, **kwargs: Any) -> None:
         """Start all component agents."""
         self.perception.on_start(**kwargs)

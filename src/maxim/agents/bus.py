@@ -208,6 +208,9 @@ class StructuredContext:
     recent_logs: list[dict] = field(default_factory=list)
     goal_history: list[dict] = field(default_factory=list)
     cli_inputs: list[str] = field(default_factory=list)
+    # Inbound/outbound comms messages (SMS, voice, etc.)
+    # Each entry: {"direction": str, "content": str, "channel": str, "sender": str, "timestamp": float}
+    comms_messages: list[dict] = field(default_factory=list)
     available_environments: list[str] = field(default_factory=list)
 
     # Conversation history (user input + LLM response pairs)

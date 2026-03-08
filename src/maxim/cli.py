@@ -201,6 +201,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="TTS voice model name (default: en_US-lessac-medium).",
     )
     # ─────────────────────────────────────────────────────────────────────────
+    # Communication (Twilio SMS/Voice)
+    # ─────────────────────────────────────────────────────────────────────────
+    parser.add_argument(
+        "--comms",
+        action="store_true",
+        help="Enable Twilio SMS/Voice communication (requires TWILIO_* env vars).",
+    )
+    # ─────────────────────────────────────────────────────────────────────────
     # Exploration mode arguments
     # ─────────────────────────────────────────────────────────────────────────
     parser.add_argument(
@@ -766,9 +774,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 # Only pass policy getter if internet is enabled
                 internet_policy_getter = get_internet_policy if internet_enabled else None
 
+                # Build comms stack if enabled (--comms flag or MAXIM_COMMS_ENABLED env)
+                comms_enabled = (
+                    bool(getattr(args, "comms", False))
+                    or os.environ.get("MAXIM_COMMS_ENABLED", "").lower() in ("1", "true", "yes")
+                )
+                gateway = None
+                if comms_enabled:
+                    from maxim.runtime.bootstrap import build_comms_stack
+                    gateway, _conv_manager = build_comms_stack(
+                        bus=agentic_agent._bus,
+                    )
+
                 registry = build_tool_registry(
                     response_output=response_output,
                     internet_policy_getter=internet_policy_getter,
+                    gateway=gateway,
                 )
                 executor = build_executor(registry)
                 decision_engine = build_decision_engine()
@@ -800,6 +821,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if internet_enabled:
                     allowed_tools.add("internet_search")
                     allowed_tools.add("http_fetch")
+
+                # Add comms tools if gateway is available
+                if gateway is not None:
+                    allowed_tools.add("send_message")
+                    allowed_tools.add("call_user")
 
                 # Configure supervision policy with sensible defaults
                 supervision_policy = SupervisionPolicy(
@@ -846,13 +872,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 state.data["internet_access"] = internet_enabled
                 state.data["autonomy_level"] = initial_level.value
 
+                # Wire communication gateway if available
+                if gateway is not None:
+                    agentic_agent.wire_communication(gateway=gateway)
+                    logger.info("Communication gateway wired")
+
                 logger.info(
-                    "Starting MaximAgent (memory_path=%s, embeddings=%s, reset=%s, autonomy=%s, internet=%s)",
+                    "Starting MaximAgent (memory_path=%s, embeddings=%s, reset=%s, autonomy=%s, internet=%s, comms=%s)",
                     memory_path,
                     bool(getattr(args, "enable_embeddings", False)),
                     bool(getattr(args, "reset", False)),
                     initial_level.value,
                     internet_enabled,
+                    gateway is not None,
                 )
 
                 try:
