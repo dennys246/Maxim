@@ -23,7 +23,7 @@ These are **hard architectural rules** for the agentic subsystems in this repo. 
 
 Paths refer to the `src/maxim/` package layout.
 
-- `src/maxim/agents/`: owns goals, role-specific reasoning, intent generation; must **not** execute tools, mutate state, or inspect environments.
+- `src/maxim/agents/`: owns goals, role-specific reasoning, intent generation, and contemplation (local chain-of-thought for plan quality); must **not** execute tools, mutate state, or inspect environments.
 - `src/maxim/planning/`: owns plan generation/refinement; must **not** execute actions, select final actions, or mutate state.
 - `src/maxim/planning/decision_engine.py`: owns action selection/arbitration/control flow; must **not** generate plans, execute tools, store memory, or inspect environment internals.
 - `src/maxim/planning/policy.py`: owns constraints/guardrails/safety rules; must **not** perform planning, execution, or goal reasoning.
@@ -475,6 +475,23 @@ All persistence files use JSON with a version field for forward compatibility:
   "config": { ... }
 }
 ```
+
+## Contemplation (Local Chain-of-Thought)
+
+ExecAgent includes a contemplation loop that improves plan quality for complex goals when native extended thinking (Anthropic) is unavailable:
+
+```
+_propose_goal()
+  ├── LLM draft (any provider)
+  ├── Complexity gate: 2+ sub_goals or HIGH/CRITICAL priority
+  ├── Contemplation (standard: critique → refine, or fast: combined)
+  │   ├── Preemption: only urgent percepts interrupt
+  │   └── Fallback: any failure returns original draft
+  ├── NAc outcome tracking: learns when contemplation helps
+  └── Adaptive thresholds: auto-tunes gates from NAc data
+```
+
+Config: `data/util/llm.json` → `contemplation` key. See [AGENTS.md](AGENTS.md#contemplation-system-execagent-local-chain-of-thought) for full documentation.
 
 ## Invariants
 - Control loop must not perform heavy disk I/O.

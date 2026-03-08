@@ -7,7 +7,7 @@ An agentic robotics framework for orchestrating Reachy Mini with multi-level goa
 Maxim provides:
 - **Robotic control** via Pollen Robotics' Reachy Mini SDK (vision, audio, motor control)
 - **Agentic runtime** with recursive goal decomposition and reflection loops
-- **Local LLM inference** via llama.cpp (no cloud dependencies)
+- **Local LLM inference** via llama.cpp, with optional cloud backends (opt-in)
 - **Multi-modal perception** using pluggable vision engines (RTMDet/RTMPose default, YOLO optional) and Whisper transcription
 - **Low-compute optimization** with prompt profiles for CPU-only and GPU systems
 
@@ -24,7 +24,9 @@ Maxim provides:
 | **Voice Control** | Wake-word activation and voice-triggered actions |
 | **Pain Detection** | Proprioceptive monitoring for aversive movement patterns |
 | **Harm Prediction** | Zero-latency prediction of harmful outcomes before execution |
+| **Contemplation** | Local chain-of-thought: multi-pass critique+refine for complex plans |
 | **Energy Tracking** | Resource expenditure monitoring for tokens, compute, and movement |
+| **SMS/Voice Comms** | Send and receive texts/calls via Twilio ([setup guide](docs/communication.md)) |
 
 ---
 
@@ -193,7 +195,13 @@ export MAXIM_PROMPT_PROFILE=minimal
 
 ## LLM Integration
 
-Maxim supports local LLM inference via llama.cpp with no cloud dependencies.
+Maxim supports local LLM inference via llama.cpp. Optional cloud backends (Anthropic/OpenAI) are supported but **opt-in** via `data/util/llm.json` (`cloud_enabled: true`) and API keys. Cloud calls are budgeted and audited; local remains the default.
+
+To enable cloud providers, install the optional extras:
+```bash
+pip install -e '.[llm-openai]'
+pip install -e '.[llm-anthropic]'
+```
 
 ### Quick Start
 
@@ -277,6 +285,7 @@ maxim [OPTIONS]
 | `--memory-path` | Memory persistence path | `~/memory/memories.json` |
 | `--reset` | Reset memory on startup | False |
 | `--epochs` | Stop after N cycles | None (infinite) |
+| `--comms` | Enable SMS/Voice communication | False |
 | `--clear-memory` | Clear persistent memory and exit | None |
 | `--clear-cache` | Clear Python bytecode cache | False |
 
@@ -326,6 +335,10 @@ When wake word ("Maxim") is detected:
 | `MAXIM_LLM_QUANTIZATION` | Quantization level |
 | `MAXIM_PROMPT_PROFILE` | Prompt optimization profile |
 | `MAXIM_ROBOT_NAME` | Robot identifier |
+| `MAXIM_COMMS_ENABLED` | Enable SMS/Voice comms (1/true) |
+| `TWILIO_ACCOUNT_SID` | Twilio Account SID |
+| `TWILIO_AUTH_TOKEN` | Twilio Auth Token |
+| `TWILIO_FROM_NUMBER` | Twilio phone number |
 | `CUDA_VISIBLE_DEVICES` | GPU selection (empty for CPU) |
 
 ### Config Files
@@ -460,6 +473,7 @@ Maxim/
 - FearAgent safety gating (code review, action review, pain prediction)
 - Memory consolidation and associative graph
 - Nine cross-system bridges (Spatial, Salience, Planning, Escalation, Fear, Pain, Energy, Communication, Math)
+- Contemplation loop: local chain-of-thought with adaptive thresholds, fast mode, and smart preemption
 
 ### In Progress
 - Enhanced parallel execution via WorkerPool
@@ -468,7 +482,6 @@ Maxim/
 
 ### Planned
 - Execution tracing and observability
-- Memory-based pattern learning for plan optimization
 
 ---
 

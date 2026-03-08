@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import concurrent.futures
 import functools
+import json
 import logging
+import os
 import queue
 import re
 import threading
@@ -31,6 +33,45 @@ try:
 except ImportError:
     _HAS_ENERGY_TRACKING = False
     LLMEnergyTracker = None  # type: ignore
+
+
+_COST_BRIDGE_DEFAULTS: dict[str, float] = {
+    "cost_energy_scale": 100.0,  # $1.00 -> 100 energy units
+}
+
+
+def _load_cost_bridge_config(path: str = "data/util/energy.json") -> dict[str, float]:
+    cfg = dict(_COST_BRIDGE_DEFAULTS)
+    if not path or not os.path.exists(path):
+        return cfg
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception:
+        return cfg
+    if not isinstance(raw, dict):
+        return cfg
+    bridge = raw.get("cost_bridge")
+    if not isinstance(bridge, dict):
+        return cfg
+    try:
+        cfg["cost_energy_scale"] = float(bridge.get("cost_energy_scale", cfg["cost_energy_scale"]))
+    except Exception:
+        pass
+    return cfg
+
+
+_CLOUD_PROVIDER_TYPES = {
+    "anthropic",
+    "claude",
+    "openai",
+    "openai_compatible",
+    "openai_compat",
+}
+
+
+def _is_cloud_provider_type(provider_type: str) -> bool:
+    return str(provider_type or "").strip().lower().replace("-", "_") in _CLOUD_PROVIDER_TYPES
 
 
 # Performance: Cache compiled regex patterns for phrase matching
@@ -168,6 +209,10 @@ class LLMBackend(Protocol):
         prompt: str,
         temperature: float = 0.3,
         max_tokens: int = 1024,
+        *,
+        provider_hint: str | None = None,
+        request_context: dict[str, Any] | None = None,
+        system_override: str | None = None,
     ) -> dict[str, Any] | None:
         """Generate a JSON response from the LLM."""
         ...
@@ -257,6 +302,9 @@ class LLMRequest:
 
     # The user input that triggered this request (for conversation history)
     triggering_input: str = field(default="", compare=False)
+
+    # Lane hint for WorkerPool routing
+    lane: str = field(default="", compare=False)
 
     # Conversation history text for context
     conversation_history_text: str = field(default="", compare=False)
@@ -667,6 +715,20 @@ class LLMWorker:
         self._n_ctx = n_ctx
         self._token_counter = token_counter or CharEstimateCounter()
         self._reasoning_carryover = ReasoningCarryover(max_entries=5)
+        self._cost_energy_scale = _load_cost_bridge_config().get("cost_energy_scale", 100.0)
+        self._provider_semaphores: dict[str, threading.Semaphore] = {}
+
+        if hasattr(self._llm, "cloud_allowed") and self._llm.cloud_allowed():
+            if hasattr(self._llm, "get_provider_configs"):
+                providers = self._llm.get_provider_configs()
+                try:
+                    max_ctx = max(
+                        int(cfg.get("n_ctx", self._n_ctx) or self._n_ctx)
+                        for cfg in providers.values()
+                    )
+                    self._n_ctx = max(self._n_ctx, max_ctx)
+                except Exception:
+                    pass
 
         # WorkerPool integration: infer lane replaces internal threading
         self._pool: WorkerPool | None = pool
@@ -701,6 +763,25 @@ class LLMWorker:
     ) -> None:
         """Record a decision+outcome into the reasoning carryover buffer."""
         self._reasoning_carryover.record(tool_name, reasoning, success, result_summary)
+
+    def _init_provider_semaphores(self) -> int:
+        """Initialize per-provider concurrency semaphores for cloud backends."""
+        self._provider_semaphores.clear()
+        max_workers = 1
+        if hasattr(self._llm, "get_provider_configs"):
+            providers = self._llm.get_provider_configs()
+            for key, cfg in providers.items():
+                provider_type = cfg.get("type", "")
+                if not _is_cloud_provider_type(provider_type):
+                    continue
+                try:
+                    limit = int(cfg.get("max_concurrent_requests", 1) or 1)
+                except Exception:
+                    limit = 1
+                limit = max(1, limit)
+                self._provider_semaphores[key] = threading.Semaphore(limit)
+                max_workers = max(max_workers, limit)
+        return max_workers
 
     def retry_with_timeout(self, request: LLMRequest, timeout_s: float) -> bool:
         """Resubmit a request with a temporarily increased timeout.
@@ -750,6 +831,9 @@ class LLMWorker:
         """Start the worker thread (or infer lane via WorkerPool)."""
         self._stop_event.clear()
 
+        # Initialize provider semaphores for concurrency control
+        self._init_provider_semaphores()
+
         # Always create the LLM executor (needed for _call_llm_with_timeout)
         if self._llm_executor is None:
             self._llm_executor = concurrent.futures.ThreadPoolExecutor(
@@ -760,8 +844,10 @@ class LLMWorker:
         if self._owns_pool:
             from maxim.runtime.worker_pool import LaneConfig, WorkerPool
 
+            net_workers = self._init_provider_semaphores()
             self._pool = WorkerPool(lane_configs={
                 "infer": LaneConfig(name="infer", max_workers=1, requires_gpu=True),
+                "infer_net": LaneConfig(name="infer_net", max_workers=net_workers, requires_gpu=False),
             })
 
         if self._pool is not None:
@@ -813,6 +899,13 @@ class LLMWorker:
         prompt: str,
         temperature: float,
         max_tokens: int,
+        *,
+        provider_hint: str | None = None,
+        request_context: dict[str, Any] | None = None,
+        system_override: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        thinking: dict[str, Any] | None = None,
+        stream: bool = False,
     ) -> dict[str, Any] | None:
         """Call LLM with timeout to allow graceful shutdown.
 
@@ -832,6 +925,12 @@ class LLMWorker:
                 prompt,
                 temperature,
                 max_tokens,
+                provider_hint=provider_hint,
+                request_context=request_context,
+                system_override=system_override,
+                tools=tools,
+                thinking=thinking,
+                stream=stream,
             )
             # Wait with timeout, checking stop_event periodically
             timeout_remaining = self._llm_timeout
@@ -867,6 +966,166 @@ class LLMWorker:
         except Exception as e:
             logger.error("LLM call failed: %s", e)
             return None
+
+    def _record_usage(
+        self,
+        *,
+        prompt: str,
+        response: dict[str, Any] | None,
+        latency_ms: float,
+        request_id: str,
+        lane: str,
+        mode_name: str = "unknown",
+    ) -> None:
+        if not response or not isinstance(response, dict):
+            return
+
+        usage = response.get("usage") if isinstance(response.get("usage"), dict) else None
+        if usage is None:
+            usage = response.get("_usage") if isinstance(response.get("_usage"), dict) else {}
+        if not isinstance(usage, dict):
+            usage = {}
+
+        input_tokens = usage.get("input_tokens", usage.get("prompt_tokens", 0))
+        output_tokens = usage.get("output_tokens", usage.get("completion_tokens", 0))
+
+        if self._energy_tracker is not None:
+            # Estimate tokens if missing from usage payload
+            if input_tokens == 0:
+                input_tokens = len(prompt) // 4
+            if output_tokens == 0:
+                try:
+                    response_str = json.dumps(response)
+                    output_tokens = len(response_str) // 4
+                except Exception:
+                    output_tokens = 50
+
+            try:
+                self._energy_tracker.record(
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    model=getattr(self._llm, "model_name", "unknown"),
+                    latency_ms=latency_ms,
+                    context={
+                        "request_id": request_id,
+                        "mode": mode_name or "unknown",
+                        "lane": lane,
+                    },
+                )
+            except Exception as e:
+                logger.debug("Failed to record LLM energy: %s", e)
+
+        cost_usd = usage.get("cost_usd", 0) if isinstance(usage, dict) else 0
+        if cost_usd:
+            try:
+                from maxim.energy.signal import EnergySignal, EnergyType
+                from maxim.energy.registry import get_global_registry
+                registry = get_global_registry()
+                signal = EnergySignal(
+                    energy_type=EnergyType.LLM_COST,
+                    amount=float(cost_usd) * float(self._cost_energy_scale or 100.0),
+                    source="llm_cost",
+                    duration_ms=latency_ms,
+                    context={
+                        "usd": float(cost_usd),
+                        "model": usage.get("model") if isinstance(usage, dict) else "",
+                        "provider": usage.get("provider") if isinstance(usage, dict) else "",
+                        "lane": lane,
+                    },
+                )
+                registry.record_signal(signal)
+            except Exception as e:
+                logger.debug("Failed to record LLM cost energy: %s", e)
+
+    def generate_json_direct(
+        self,
+        *,
+        system: str,
+        user: str,
+        temperature: float = 0.3,
+        max_tokens: int = 1024,
+        request_id: str,
+        agent_name: str = "exec_agent",
+        lane: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        thinking: dict[str, Any] | None = None,
+        stream: bool = False,
+    ) -> dict[str, Any] | None:
+        """Direct JSON generation path for specialized prompts (ExecAgent)."""
+        if self._stop_event.is_set():
+            return None
+
+        start_time = time.time()
+        provider_hint = None
+        provider_semaphore = None
+        is_cloud = False
+
+        if hasattr(self._llm, "preview_provider"):
+            try:
+                preview = self._llm.preview_provider(
+                    system=system,
+                    user=user,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                if isinstance(preview, dict):
+                    provider_hint = preview.get("provider")
+                    is_cloud = bool(preview.get("is_cloud"))
+            except Exception:
+                provider_hint = None
+                is_cloud = False
+
+        lane_name = lane or ("infer_net" if is_cloud else "infer")
+        if provider_hint and provider_hint in self._provider_semaphores:
+            provider_semaphore = self._provider_semaphores[provider_hint]
+
+        request_context = {
+            "request_id": request_id,
+            "agent": agent_name,
+            "lane": lane_name,
+            "provider_hint": provider_hint or "",
+        }
+
+        call_kwargs: dict[str, Any] = {
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "provider_hint": provider_hint,
+            "request_context": request_context,
+            "system_override": system,
+        }
+        if tools:
+            call_kwargs["tools"] = tools
+        if thinking:
+            call_kwargs["thinking"] = thinking
+        if stream:
+            call_kwargs["stream"] = True
+
+        if provider_semaphore:
+            with provider_semaphore:
+                response = self._call_llm_with_timeout(user, **call_kwargs)
+        else:
+            response = self._call_llm_with_timeout(user, **call_kwargs)
+
+        latency_ms = (time.time() - start_time) * 1000
+        self._update_avg_latency(latency_ms)
+        self._record_usage(
+            prompt=f"{system}\n\n{user}".strip(),
+            response=response if isinstance(response, dict) else None,
+            latency_ms=latency_ms,
+            request_id=request_id,
+            lane=lane_name,
+            mode_name=agent_name,
+        )
+        self._requests_processed += 1
+        return response
+
+    def get_budget_context(self) -> str:
+        """Expose budget context for external prompt builders."""
+        try:
+            return self._build_budget_context()
+        except Exception as e:
+            logger.debug("Failed to build budget context: %s", e)
+            return ""
 
     def submit_context(
         self,
@@ -940,6 +1199,15 @@ class LLMWorker:
         )
 
         if self._pool is not None:
+            lane = "infer"
+            if hasattr(self._llm, "cloud_allowed") and self._llm.cloud_allowed():
+                if hasattr(self._llm, "get_provider_configs"):
+                    providers = self._llm.get_provider_configs()
+                    for cfg in providers.values():
+                        if _is_cloud_provider_type(cfg.get("type", "")):
+                            lane = "infer_net"
+                            break
+            request.lane = lane
             # WorkerPool mode: wrap _process_request in a job
             def _infer_job(prefetched=None):
                 # Staleness guard inside the job
@@ -957,7 +1225,7 @@ class LLMWorker:
             try:
                 # Negate priority: higher caller priority → lower queue value
                 self._pool.submit(
-                    lane="infer",
+                    lane=lane,
                     job_id=request.request_id,
                     fn=_infer_job,
                     priority=-priority,
@@ -1109,7 +1377,43 @@ class LLMWorker:
 
             # Use mode-specific max tokens for dynamic response length
             max_tokens = request.mode.max_response_tokens
-            response = self._call_llm_with_timeout(prompt, temperature=0.3, max_tokens=max_tokens)
+            provider_hint = None
+            provider_semaphore = None
+            if hasattr(self._llm, "preview_provider"):
+                preview = self._llm.preview_provider(
+                    system="",
+                    user=prompt,
+                    temperature=0.3,
+                    max_tokens=max_tokens,
+                )
+                provider_hint = preview.get("provider")
+                if provider_hint and provider_hint in self._provider_semaphores:
+                    provider_semaphore = self._provider_semaphores[provider_hint]
+
+            request_context = {
+                "request_id": request.request_id,
+                "agent": "llm_worker",
+                "lane": request.lane or "infer",
+                "provider_hint": provider_hint or "",
+            }
+
+            if provider_semaphore:
+                with provider_semaphore:
+                    response = self._call_llm_with_timeout(
+                        prompt,
+                        temperature=0.3,
+                        max_tokens=max_tokens,
+                        provider_hint=provider_hint,
+                        request_context=request_context,
+                    )
+            else:
+                response = self._call_llm_with_timeout(
+                    prompt,
+                    temperature=0.3,
+                    max_tokens=max_tokens,
+                    provider_hint=provider_hint,
+                    request_context=request_context,
+                )
 
             # Check for timeout — ask user if they want to wait longer
             if isinstance(response, dict) and response.get("_timeout"):
@@ -1158,39 +1462,14 @@ class LLMWorker:
             latency_ms = (time.time() - start_time) * 1000
             self._update_avg_latency(latency_ms)
 
-            # Record energy usage if tracker is available
-            if self._energy_tracker is not None and response and isinstance(response, dict):
-                # Extract token counts from response if available
-                # Models often include usage info in the response
-                usage = response.get("usage", {})
-                input_tokens = usage.get("input_tokens", usage.get("prompt_tokens", 0))
-                output_tokens = usage.get("output_tokens", usage.get("completion_tokens", 0))
-
-                # If no token counts in response, estimate from prompt/response length
-                if input_tokens == 0:
-                    # Rough estimate: ~4 chars per token
-                    input_tokens = len(prompt) // 4
-                if output_tokens == 0:
-                    import json
-                    try:
-                        response_str = json.dumps(response)
-                        output_tokens = len(response_str) // 4
-                    except Exception:
-                        output_tokens = 50  # Fallback estimate
-
-                try:
-                    self._energy_tracker.record(
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        model=getattr(self._llm, "model_name", "unknown"),
-                        latency_ms=latency_ms,
-                        context={
-                            "request_id": request.request_id,
-                            "mode": request.mode.name if request.mode else "unknown",
-                        },
-                    )
-                except Exception as e:
-                    logger.debug("Failed to record LLM energy: %s", e)
+            self._record_usage(
+                prompt=prompt,
+                response=response if isinstance(response, dict) else None,
+                latency_ms=latency_ms,
+                request_id=request.request_id,
+                lane=request.lane or "infer",
+                mode_name=request.mode.name if request.mode else "unknown",
+            )
 
             if not response or not isinstance(response, dict):
                 # LLM failed - generate a fallback response for the user
@@ -1547,6 +1826,170 @@ class LLMWorker:
             f"Example: Instead of 'Broncos game score', search 'Broncos game score {date_str}'",
         ]
         return "\n".join(lines)
+
+    def _build_budget_context(self) -> str:
+        if not hasattr(self._llm, "get_cost_tracker"):
+            return ""
+        if not getattr(self._llm, "cloud_allowed", lambda: False)():
+            return ""
+        if not getattr(self._llm, "has_cost_visible_provider", lambda: False)():
+            return ""
+
+        cost_tracker = self._llm.get_cost_tracker()
+        policy = self._llm.get_routing_policy()
+        totals = cost_tracker.get_totals()
+        reserved_ratio = cost_tracker.config.reserved_budget_ratio
+        min_samples = cost_tracker.config.min_spend_samples
+
+        remaining_hour = (
+            max(policy.max_cost_per_hour - totals["hourly"], 0.0)
+            if policy.max_cost_per_hour > 0 else None
+        )
+        remaining_day = (
+            max(policy.max_cost_per_day - totals["daily"], 0.0)
+            if policy.max_cost_per_day > 0 else None
+        )
+        remaining_month = (
+            max(policy.max_cost_per_month - totals["monthly"], 0.0)
+            if policy.max_cost_per_month > 0 else None
+        )
+
+        remaining_hour_visible = remaining_hour * (1.0 - reserved_ratio) if remaining_hour is not None else None
+        remaining_day_visible = remaining_day * (1.0 - reserved_ratio) if remaining_day is not None else None
+        remaining_month_visible = remaining_month * (1.0 - reserved_ratio) if remaining_month is not None else None
+
+        tier = self._compute_budget_tier(policy, totals)
+        is_blocked = tier == "blocked"
+
+        rates = cost_tracker.get_spend_rates()
+        spend_rate_3h = self._format_spend_rate(rates["ema_3h"], min_samples)
+        spend_rate_24h = self._format_spend_rate(rates["ema_24h"], min_samples)
+        spend_rate_7d = self._format_spend_rate(rates["ema_7d"], min_samples)
+
+        hours_daily, daily_note = self._estimate_hours_until_limit(
+            remaining_day_visible,
+            rates["ema_24h"],
+            rates["ema_3h"],
+            min_samples,
+        )
+        hours_monthly, monthly_note = self._estimate_hours_until_limit(
+            remaining_month_visible,
+            rates["ema_7d"],
+            rates["ema_24h"],
+            min_samples,
+            fallback_second=rates["ema_3h"],
+        )
+
+        cost_divergence = self._cost_energy_divergence(policy, totals)
+
+        lines = [
+            "=== Budget Context (USD) ===",
+            f"remaining_per_request: {self._format_usd(policy.max_cost_per_request if policy.max_cost_per_request > 0 else None)}",
+            f"remaining_hour: {self._format_usd(remaining_hour_visible)}",
+            f"remaining_day: {self._format_usd(remaining_day_visible)}",
+            f"remaining_month: {self._format_usd(remaining_month_visible)}",
+            f"current_spend_hour: {self._format_usd(totals['hourly'])}",
+            f"current_spend_day: {self._format_usd(totals['daily'])}",
+            f"current_spend_month: {self._format_usd(totals['monthly'])}",
+            f"active_budget_tier: {tier}",
+            f"is_budget_blocked: {str(is_blocked).lower()}",
+            f"reserved_budget_ratio: {reserved_ratio:.2f}",
+            f"spend_rate_3h: {spend_rate_3h}",
+            f"spend_rate_24h: {spend_rate_24h}",
+            f"spend_rate_7d: {spend_rate_7d}",
+            f"min_spend_samples: {min_samples}",
+            f"hours_until_daily_limit: {hours_daily}{daily_note}",
+            f"hours_until_monthly_limit: {hours_monthly}{monthly_note}",
+            f"cost_energy_divergence: {cost_divergence}",
+        ]
+        if cost_divergence == "high":
+            lines.append("Note: Energy has recharged but USD budget is nearly exhausted. Prefer local or defer.")
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _compute_budget_tier(policy: Any, totals: dict[str, float]) -> str:
+        ratios = []
+        if policy.max_cost_per_hour > 0:
+            ratios.append(totals["hourly"] / policy.max_cost_per_hour)
+        if policy.max_cost_per_day > 0:
+            ratios.append(totals["daily"] / policy.max_cost_per_day)
+        if policy.max_cost_per_month > 0:
+            ratios.append(totals["monthly"] / policy.max_cost_per_month)
+        if not ratios:
+            return "normal"
+        max_ratio = max(ratios)
+        if max_ratio >= 1.0:
+            return "blocked"
+        if max_ratio >= policy.cost_critical_threshold:
+            return "critical"
+        if max_ratio >= policy.cost_warning_threshold:
+            return "warning"
+        return "normal"
+
+    @staticmethod
+    def _format_usd(value: float | None) -> str:
+        if value is None:
+            return "unlimited"
+        if value <= 0:
+            return "$0.00"
+        return f"${value:.2f}"
+
+    @staticmethod
+    def _format_spend_rate(rate: Any, min_samples: int) -> str:
+        if rate.samples < min_samples or rate.value <= 0:
+            return f"immature (samples={rate.samples})"
+        return f"${rate.value:.2f}/hr"
+
+    @staticmethod
+    def _estimate_hours_until_limit(
+        remaining: float | None,
+        preferred: Any,
+        fallback_first: Any,
+        min_samples: int,
+        fallback_second: Any | None = None,
+    ) -> tuple[str, str]:
+        note = ""
+        rate = None
+        if preferred.samples >= min_samples and preferred.value > 0:
+            rate = preferred.value
+        elif fallback_first.samples >= min_samples and fallback_first.value > 0:
+            rate = fallback_first.value
+            note = " (estimated from shorter window)"
+        elif fallback_second and fallback_second.samples >= min_samples and fallback_second.value > 0:
+            rate = fallback_second.value
+            note = " (estimated from shorter window)"
+        if rate is None or remaining is None or remaining <= 0:
+            return "unknown", ""
+        hours = remaining / rate
+        return f"{hours:.1f}h", note
+
+    @staticmethod
+    def _cost_energy_divergence(policy: Any, totals: dict[str, float]) -> str:
+        try:
+            from maxim.energy.registry import get_global_registry
+        except Exception:
+            return "none"
+        registry = get_global_registry()
+        budget = registry.get_budget("llm") if registry else None
+        if budget is None:
+            return "none"
+        energy_pct = budget.percentage
+        remaining_pcts = []
+        if policy.max_cost_per_hour > 0:
+            remaining_pcts.append(1.0 - (totals["hourly"] / policy.max_cost_per_hour))
+        if policy.max_cost_per_day > 0:
+            remaining_pcts.append(1.0 - (totals["daily"] / policy.max_cost_per_day))
+        if policy.max_cost_per_month > 0:
+            remaining_pcts.append(1.0 - (totals["monthly"] / policy.max_cost_per_month))
+        if not remaining_pcts:
+            return "none"
+        cost_remaining_pct = min(remaining_pcts) * 100.0
+        if energy_pct > 50.0 and cost_remaining_pct < 10.0:
+            return "high"
+        if energy_pct > 50.0 and cost_remaining_pct < 30.0:
+            return "moderate"
+        return "none"
 
     @staticmethod
     def _build_tools_section(request: LLMRequest, mode_name: str = "passive") -> str:
@@ -1957,6 +2400,15 @@ class LLMWorker:
             self._build_datetime_section(date_str, time_str),
             SectionPriority.IMPORTANT,
         )
+
+        # Budget context (cloud only)
+        budget_context = self._build_budget_context()
+        if budget_context:
+            budgeter.add(
+                "budget_context",
+                budget_context,
+                SectionPriority.NICE_TO_HAVE,
+            )
 
         # Conversation history
         if request.conversation_history_text:

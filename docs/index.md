@@ -36,6 +36,12 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | [Harm](harm.md) | Predictive harm detection, risk assessment |
 | [Energy](energy.md) | Resource tracking, energy budgeting |
 
+### Communication
+
+| Document | Description |
+|----------|-------------|
+| [Communication](communication.md) | SMS/Voice via Twilio, webhook setup, Cloudflare Tunnel |
+
 ### Integration
 
 | Document | Description |
@@ -49,7 +55,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        AGENTS LAYER                             │
-│  LLMAgent, FearAgent, PerceptionAgent, MemoryAgent, etc.       │
+│  ExecAgent (+ Contemplation), FearAgent, PerceptionAgent, etc. │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
@@ -146,7 +152,7 @@ src/maxim/
 ├── agents/          → AGENTS.md
 ├── attention/       → attention.md
 ├── bridges/         → bridges.md
-├── comms/           → (communication channels)
+├── comms/           → communication.md
 ├── conscience/      → ARCHITECTURE.md (conscience section)
 ├── data/            → (camera/audio data utilities)
 ├── decisions/       → decisions.md
@@ -184,7 +190,7 @@ Maxim's architecture draws inspiration from neuroscience:
 
 | Brain Region | Maxim Component |
 |--------------|-----------------|
-| Prefrontal Cortex | LLMAgent, Planning |
+| Prefrontal Cortex | LLMAgent, Planning, Contemplation (System 2 deliberation) |
 | Hippocampus | Hippocampus memory |
 | Entorhinal Cortex | EC similarity + Phase 4 semantic embeddings |
 | Nucleus Accumbens | NAc decision system |

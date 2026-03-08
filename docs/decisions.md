@@ -202,6 +202,7 @@ context = {
 | **FearAgent** | Gate actions with negative predictions |
 | **PainCircuitBridge** | Learn from movement pain signals |
 | **EscalationLearningBridge** | Learn escalation thresholds |
+| **ExecAgent Contemplation** | Learn when plan critique+refine improves outcomes; auto-tune contemplation gates |
 
 ### Example: Pain Learning Flow
 
@@ -222,6 +223,26 @@ context = {
    - Returns: NEGATIVE, confidence=0.7
          ↓
 6. FearAgent gates or softens action
+```
+
+### Example: Contemplation Learning Flow
+
+```
+1. ExecAgent contemplates a complex plan (critique → refine)
+         ↓
+2. Goal executes, GoalCompleted fires on bus
+         ↓
+3. ExecAgent._on_goal_completed():
+   - NAc.observe():
+     event: "contemplation:refined"
+     outcome: goal success/failure
+     valence: POSITIVE/NEGATIVE
+         ↓
+4. CausalLink created/strengthened
+         ↓
+5. _adaptive_thresholds() queries NAc:
+   - High refined success rate → lower confidence_threshold (contemplate more)
+   - Low refined success rate → raise confidence_threshold (contemplate less)
 ```
 
 ---

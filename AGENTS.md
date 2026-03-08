@@ -417,6 +417,105 @@ def review_action(
 | `RESOURCE_EXHAUSTION` | Energy budget exceeded | EnergyCircuitBridge |
 
 
+## CONTEMPLATION SYSTEM (ExecAgent Local Chain-of-Thought)
+
+When running on local LLMs (or any provider without native extended thinking), ExecAgent uses a multi-pass contemplation loop to improve plan quality for complex goals. This replicates the effect of Anthropic's extended thinking across multiple LLM calls.
+
+### Architecture
+
+```
+_propose_goal(ctx)
+  │
+  ├── Pass 1: DRAFT — Generate initial plan (existing code path)
+  │
+  ├── Complexity gate: _should_contemplate()
+  │   └── Triggers on: 2+ sub_goals OR HIGH/CRITICAL priority
+  │   └── Skips: IDLE, simple plans, extended thinking active
+  │
+  ├── Mode dispatch: _contemplate()
+  │   ├── Standard mode (default): critique → confidence gate → optional refine
+  │   └── Fast mode: single combined critique+refine call
+  │
+  ├── Preemption: only urgent percepts (CLI, voice, comms) interrupt
+  │   └── Normal vision percepts queue until contemplation finishes
+  │
+  └── Fallback: any failure returns original draft unchanged
+```
+
+### Modes
+
+| Mode | Passes | Description |
+|------|--------|-------------|
+| `standard` | 3 max | Separate critique and refine calls. Explicit confidence gate between. |
+| `fast` | 2 max | Combined critique+refine in one call. Confidence gate preserved in response. |
+
+### Quality Metrics (Phase 2)
+
+ExecAgent subscribes to `GoalCompleted` on the AgentBus and correlates outcomes with contemplation metadata:
+- **`_contemplation_log`**: Maps `goal_id → {contemplated, refined, timestamp}`
+- **`_contemplation_stats`**: Running counters for contemplated/uncontemplated success rates
+- **`contemplation_improvement_rate()`**: Returns success rate delta
+
+### NAc Integration
+
+Contemplation outcomes feed to NAc via `nac.observe()`:
+- `event_type="contemplation"`, `event_signature="contemplation:refined"` or `"contemplation:draft"`
+- `outcome_valence=POSITIVE/NEGATIVE` based on goal success
+- NAc learns when contemplation helps vs wastes energy
+
+### Adaptive Thresholds (Phase 3)
+
+`_adaptive_thresholds()` queries NAc for learned contemplation outcomes and adjusts:
+- **`confidence_threshold`**: Lower when contemplation helps (contemplate more), raise when it hurts
+- **`min_sub_goals_to_trigger`**: Loosen gate when contemplation helps, tighten when it doesn't
+- Bounded by configurable floor/ceiling values
+- Requires minimum observations before adapting (default: 10)
+
+### Smart Preemption (Phase 5)
+
+Contemplation checks `_urgent_work_available` (not `_work_available`):
+- **Urgent** (interrupts contemplation): CLI input, comms, voice keywords, high-urgency filtered percepts (≥ 0.7)
+- **Non-urgent** (queues until done): vision percepts, low-urgency filtered percepts
+
+### Configuration
+
+In `data/util/llm.json` under the `contemplation` key:
+
+```json
+{
+  "contemplation": {
+    "enabled": true,
+    "mode": "standard",
+    "confidence_threshold": 0.7,
+    "min_sub_goals_to_trigger": 2,
+    "trigger_on_high_priority": true,
+    "critique_max_tokens": 384,
+    "refine_max_tokens": 512,
+    "fast_max_tokens": 640,
+    "adaptive_enabled": true,
+    "adaptive_min_observations": 10
+  }
+}
+```
+
+### Biological Analogy
+
+| Biological | Maxim Equivalent |
+|------------|------------------|
+| System 1 (fast path) | Simple percept → immediate action, no contemplation |
+| System 2 (slow path) | Complex goal → draft → critique → refine → commit |
+| Feeling of knowing | Confidence threshold — high confidence skips deliberation |
+| Rumination cap | 3-pass maximum prevents infinite deliberation loops |
+| Attentional interrupt | Urgent preemption aborts contemplation for salient stimuli |
+
+### Location
+
+- Core implementation: `src/maxim/agents/exec_agent.py` (methods: `_contemplate`, `_contemplate_standard`, `_contemplate_fast`, `_critique_plan`, `_refine_plan`, `_should_contemplate`, `_contemplation_config`, `_adaptive_thresholds`, `_on_goal_completed`, `contemplation_improvement_rate`)
+- Config field: `src/maxim/models/language/router.py` (`LLMConfig.contemplation`)
+- NAc wiring: `src/maxim/agents/maxim_agent.py` (`wire_memory_hub`)
+- Tests: `tests/unit/test_contemplation.py` (93 tests)
+
+
 ## ENERGY TRACKING SYSTEM
 
 The energy system monitors resource expenditure to enable energy-aware decision making.

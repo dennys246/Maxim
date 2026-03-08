@@ -377,6 +377,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
         self._recent_percepts: deque[Percept] = deque(maxlen=context_window)
         self._recent_outcomes: deque[dict] = deque(maxlen=context_window)
         self._cli_inputs: deque[str] = deque(maxlen=20)
+        self._comms_messages: deque[dict] = deque(maxlen=20)
 
         # Association systems
         self._association_index = AssociationIndex(
@@ -432,13 +433,23 @@ class MemoryAgent(Agent, AgentOutputMixin):
             if percept.cli_input:
                 self._cli_inputs.append(percept.cli_input)
 
+            # Track comms messages (SMS, voice, etc.)
+            if percept.source.startswith("comms:") and percept.content:
+                self._comms_messages.append({
+                    "direction": "inbound",
+                    "content": percept.content,
+                    "channel": (percept.metadata or {}).get("channel", ""),
+                    "sender": (percept.metadata or {}).get("sender", ""),
+                    "timestamp": percept.timestamp,
+                })
+
             # Store as memory if salient
             if percept.salience > self._salience_threshold or percept.has_maxim_keyword:
                 memory = MemoryItem(
                     timestamp=percept.timestamp,
                     content={
                         "source": percept.source,
-                        "transcript": percept.raw_transcript_text,
+                        "transcript": percept.raw_transcript_text or percept.content,
                         "has_maxim": percept.has_maxim_keyword,
                         "detections_count": len(percept.detections),
                     },
@@ -740,6 +751,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 recent_logs=self._abstraction.get_recent(n=15),
                 goal_history=self._abstraction.get_by_event("goal_proposed", n=5),
                 cli_inputs=list(self._cli_inputs),
+                comms_messages=list(self._comms_messages),
                 available_environments=available_tools,
                 statistical_context=self._latest_statistical_summary,
                 active_pattern_count=self._active_pattern_count,
