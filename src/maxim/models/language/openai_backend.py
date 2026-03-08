@@ -62,6 +62,7 @@ class _OpenAIBackend:
         self._client: Any | None = None
         self.requires_prompt_formatting = False
         self.supports_model_override = True
+        self.supports_streaming = True
 
     def _provider_cfg(self) -> dict[str, Any]:
         providers = getattr(self.cfg, "providers", {}) or {}
@@ -160,6 +161,7 @@ class _OpenAIBackend:
         temperature: float,
         stop: tuple[str, ...] = (),
         model_override: str | None = None,
+        stream: bool = False,
     ) -> LLMResponse:
         start = time.time()
         client = self._ensure_client()
@@ -176,6 +178,9 @@ class _OpenAIBackend:
         last_err: Exception | None = None
         for attempt in range(self._get_max_retries() + 1):
             try:
+                if stream:
+                    return self._stream_response(client, model, messages, temperature, max_tokens, stop, start)
+
                 resp = client.chat.completions.create(
                     model=model,
                     messages=messages,
@@ -183,31 +188,7 @@ class _OpenAIBackend:
                     max_tokens=max_tokens,
                     stop=list(stop) if stop else None,
                 )
-                choice = resp.choices[0] if getattr(resp, "choices", None) else None
-                content = ""
-                if choice and getattr(choice, "message", None) is not None:
-                    content = str(getattr(choice.message, "content", "") or "").strip()
-
-                usage = getattr(resp, "usage", None)
-                input_tokens = getattr(usage, "prompt_tokens", 0) if usage is not None else 0
-                output_tokens = getattr(usage, "completion_tokens", 0) if usage is not None else 0
-                cached = 0
-                details = getattr(usage, "prompt_tokens_details", None) if usage is not None else None
-                if details is not None:
-                    cached = getattr(details, "cached_tokens", 0) or 0
-                uncached = max(0, input_tokens - cached) if input_tokens else 0
-
-                return LLMResponse(
-                    content=content,
-                    input_tokens=int(input_tokens or 0),
-                    output_tokens=int(output_tokens or 0),
-                    model=model,
-                    latency_ms=(time.time() - start) * 1000,
-                    provider=self._provider_key,
-                    stop_reason=str(getattr(choice, "finish_reason", "")) if choice else "",
-                    cached_input_tokens=int(cached or 0),
-                    uncached_input_tokens=int(uncached or 0),
-                )
+                return self._parse_response(resp, model, start)
             except Exception as e:
                 last_err = e
                 if _is_auth_error(e):
@@ -219,3 +200,90 @@ class _OpenAIBackend:
 
         warn("OpenAI call failed: %s", last_err)
         return LLMResponse(content="")
+
+    def _parse_response(self, resp: Any, model: str, start: float) -> LLMResponse:
+        """Parse an OpenAI chat completion response."""
+        choice = resp.choices[0] if getattr(resp, "choices", None) else None
+        content = ""
+        if choice and getattr(choice, "message", None) is not None:
+            content = str(getattr(choice.message, "content", "") or "").strip()
+
+        usage = getattr(resp, "usage", None)
+        input_tokens = getattr(usage, "prompt_tokens", 0) if usage is not None else 0
+        output_tokens = getattr(usage, "completion_tokens", 0) if usage is not None else 0
+        cached = 0
+        details = getattr(usage, "prompt_tokens_details", None) if usage is not None else None
+        if details is not None:
+            cached = getattr(details, "cached_tokens", 0) or 0
+        uncached = max(0, input_tokens - cached) if input_tokens else 0
+
+        return LLMResponse(
+            content=content,
+            input_tokens=int(input_tokens or 0),
+            output_tokens=int(output_tokens or 0),
+            model=model,
+            latency_ms=(time.time() - start) * 1000,
+            provider=self._provider_key,
+            stop_reason=str(getattr(choice, "finish_reason", "")) if choice else "",
+            cached_input_tokens=int(cached or 0),
+            uncached_input_tokens=int(uncached or 0),
+        )
+
+    def _stream_response(
+        self,
+        client: Any,
+        model: str,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        stop: tuple[str, ...],
+        start: float,
+    ) -> LLMResponse:
+        """Stream a response, collecting text incrementally."""
+        text_parts: list[str] = []
+        stop_reason = ""
+
+        stream = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stop=list(stop) if stop else None,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+
+        input_tokens = 0
+        output_tokens = 0
+
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                usage = chunk.usage
+                input_tokens = getattr(usage, "prompt_tokens", 0) or 0
+                output_tokens = getattr(usage, "completion_tokens", 0) or 0
+
+            choices = getattr(chunk, "choices", None)
+            if not choices:
+                continue
+            delta = getattr(choices[0], "delta", None)
+            if delta:
+                text = getattr(delta, "content", None)
+                if text:
+                    text_parts.append(str(text))
+            finish = getattr(choices[0], "finish_reason", None)
+            if finish:
+                stop_reason = str(finish)
+
+        content = "".join(text_parts).strip()
+
+        return LLMResponse(
+            content=content,
+            input_tokens=int(input_tokens or 0),
+            output_tokens=int(output_tokens or 0),
+            model=model,
+            latency_ms=(time.time() - start) * 1000,
+            provider=self._provider_key,
+            stop_reason=stop_reason,
+            cached_input_tokens=0,
+            uncached_input_tokens=int(input_tokens or 0),
+        )

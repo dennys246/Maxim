@@ -1399,6 +1399,19 @@ class Maxim:
         self._agentic_state = state
         self._state_manager.set_agent(agent)
 
+        # Extract AgentBus early (needed for comms stack and Default Network)
+        agent_bus = getattr(agent, "_bus", None)
+
+        # Create NAc early (needed for comms stack and Default Network)
+        nac = None
+        try:
+            from maxim.decisions.nac import NAc
+            nac = NAc()
+            self._nac = nac
+            self.log.debug("NAc created for causal learning")
+        except Exception as e:
+            warn("Failed to create NAc: %s", e, logger=self.log)
+
         # Propagate exploration mode context if set by CLI
         if bool(getattr(self, "_exploration_mode", False)):
             state.data["exploration_mode"] = True
@@ -1469,10 +1482,23 @@ class Maxim:
         # Only pass policy getter if internet is allowed
         internet_policy_getter = get_internet_policy if allow_internet else None
 
+        # Build comms stack if enabled (MAXIM_COMMS_ENABLED env)
+        gateway = None
+        if os.environ.get("MAXIM_COMMS_ENABLED", "").lower() in ("1", "true", "yes"):
+            try:
+                from maxim.runtime.bootstrap import build_comms_stack
+                gateway, _conv_manager = build_comms_stack(
+                    bus=agent_bus,
+                    nac=nac,
+                )
+            except Exception as e:
+                warn("Failed to build comms stack: %s", e, logger=self.log)
+
         registry = build_tool_registry(
             maxim=self,
             response_output=response_output,
             internet_policy_getter=internet_policy_getter,
+            gateway=gateway,
         )
         executor = build_executor(registry)
         evaluators = build_evaluators()
@@ -1495,6 +1521,11 @@ class Maxim:
         if allow_internet:
             allowed_tools.add("internet_search")
             allowed_tools.add("http_fetch")
+
+        # Add comms tools if gateway is available
+        if gateway is not None:
+            allowed_tools.add("send_message")
+            allowed_tools.add("call_user")
 
         # Set up autonomy controller with sensible defaults for live mode
         supervision_policy = SupervisionPolicy(
@@ -1534,14 +1565,10 @@ class Maxim:
 
         self._llm_worker = llm_worker
 
-        # Extract AgentBus from MaximAgent for Default Network
-        agent_bus = None
-        try:
-            agent_bus = getattr(agent, "_bus", None)
-            if agent_bus is not None:
-                self.log.debug("Extracted AgentBus from MaximAgent for DN")
-        except Exception:
-            pass
+        # Wire communication gateway if available
+        if gateway is not None:
+            agent.wire_communication(gateway=gateway, nac=nac)
+            self.log.info("Communication gateway wired")
 
         # Create FearAgent for safety gating
         fear_agent = None
@@ -1552,16 +1579,6 @@ class Maxim:
             self.log.debug("FearAgent created for DN safety gating")
         except Exception as e:
             warn("Failed to create FearAgent: %s", e, logger=self.log)
-
-        # Create NAc for causal learning (used by pain detection and decision making)
-        nac = None
-        try:
-            from maxim.decisions.nac import NAc
-            nac = NAc()
-            self._nac = nac
-            self.log.debug("NAc created for causal learning")
-        except Exception as e:
-            warn("Failed to create NAc: %s", e, logger=self.log)
 
         # Build Default Network for reactive behaviors
         default_network = None

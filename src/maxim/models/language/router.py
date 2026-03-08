@@ -369,6 +369,7 @@ class LLMConfig:
     prompt_profiles: dict[str, dict[str, Any]] = field(default_factory=dict)
     pricing: dict[str, dict[str, Any]] = field(default_factory=dict)
     redaction: dict[str, Any] = field(default_factory=dict)
+    contemplation: tuple[tuple[str, Any], ...] = ()
 
 
 @dataclass(slots=True)
@@ -601,6 +602,8 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
     prompt_profiles = raw.get("prompt_profiles") if isinstance(raw.get("prompt_profiles"), dict) else {}
     pricing = raw.get("pricing") if isinstance(raw.get("pricing"), dict) else {}
     redaction = raw.get("redaction") if isinstance(raw.get("redaction"), dict) else {}
+    contemplation_raw = raw.get("contemplation")
+    contemplation = tuple(contemplation_raw.items()) if isinstance(contemplation_raw, dict) else ()
 
     return LLMConfig(
         enabled=bool(enabled),
@@ -628,6 +631,7 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
         prompt_profiles=prompt_profiles,
         pricing=pricing,
         redaction=redaction,
+        contemplation=contemplation,
     )
 
 
@@ -1485,6 +1489,9 @@ class LLMRouter:
         max_tokens: int,
         provider_hint: str | None = None,
         request_context: dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        thinking: dict[str, Any] | None = None,
+        stream: bool = False,
     ) -> tuple[str, dict[str, Any] | None]:
         """Complete text with optional usage metadata."""
         if not self.enabled():
@@ -1570,6 +1577,12 @@ class LLMRouter:
                         }
                         if model_override and getattr(backend, "supports_model_override", False):
                             kwargs["model_override"] = model_override
+                        if tools and getattr(backend, "supports_tool_use", False):
+                            kwargs["tools"] = tools
+                        if thinking:
+                            kwargs["thinking"] = thinking
+                        if stream and getattr(backend, "supports_streaming", False):
+                            kwargs["stream"] = True
                         resp = backend.complete_with_usage(**kwargs)
                         if isinstance(resp, LLMResponse) and resp.content:
                             self._note_provider_success(provider_key)
@@ -1816,6 +1829,9 @@ Return JSON exactly like:
         provider_hint: str | None = None,
         request_context: dict[str, Any] | None = None,
         system_override: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        thinking: dict[str, Any] | None = None,
+        stream: bool = False,
     ) -> dict[str, Any] | None:
         """Generate a JSON response from a prompt.
 
@@ -1828,6 +1844,9 @@ Return JSON exactly like:
             provider_hint: Optional provider key to prefer.
             request_context: Metadata for audit logs (agent, request_id, lane).
             system_override: Override the default JSON-only system prompt.
+            tools: Optional tool definitions for native tool use (Claude/OpenAI).
+            thinking: Optional extended thinking config (e.g. {"budget_tokens": 5000}).
+            stream: Whether to stream the response.
 
         Returns:
             Parsed JSON dict or None if generation failed.
@@ -1878,6 +1897,9 @@ Return JSON exactly like:
             max_tokens=max_tokens,
             provider_hint=provider_hint,
             request_context=request_context,
+            tools=tools,
+            thinking=thinking,
+            stream=stream,
         )
         if text:
             info("LLM raw response (first 200 chars): %s", text[:200] if len(text) > 200 else text)

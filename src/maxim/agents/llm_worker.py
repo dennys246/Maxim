@@ -903,6 +903,9 @@ class LLMWorker:
         provider_hint: str | None = None,
         request_context: dict[str, Any] | None = None,
         system_override: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        thinking: dict[str, Any] | None = None,
+        stream: bool = False,
     ) -> dict[str, Any] | None:
         """Call LLM with timeout to allow graceful shutdown.
 
@@ -925,6 +928,9 @@ class LLMWorker:
                 provider_hint=provider_hint,
                 request_context=request_context,
                 system_override=system_override,
+                tools=tools,
+                thinking=thinking,
+                stream=stream,
             )
             # Wait with timeout, checking stop_event periodically
             timeout_remaining = self._llm_timeout
@@ -1041,6 +1047,9 @@ class LLMWorker:
         request_id: str,
         agent_name: str = "exec_agent",
         lane: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        thinking: dict[str, Any] | None = None,
+        stream: bool = False,
     ) -> dict[str, Any] | None:
         """Direct JSON generation path for specialized prompts (ExecAgent)."""
         if self._stop_event.is_set():
@@ -1077,25 +1086,25 @@ class LLMWorker:
             "provider_hint": provider_hint or "",
         }
 
+        call_kwargs: dict[str, Any] = {
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "provider_hint": provider_hint,
+            "request_context": request_context,
+            "system_override": system,
+        }
+        if tools:
+            call_kwargs["tools"] = tools
+        if thinking:
+            call_kwargs["thinking"] = thinking
+        if stream:
+            call_kwargs["stream"] = True
+
         if provider_semaphore:
             with provider_semaphore:
-                response = self._call_llm_with_timeout(
-                    user,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    provider_hint=provider_hint,
-                    request_context=request_context,
-                    system_override=system,
-                )
+                response = self._call_llm_with_timeout(user, **call_kwargs)
         else:
-            response = self._call_llm_with_timeout(
-                user,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                provider_hint=provider_hint,
-                request_context=request_context,
-                system_override=system,
-            )
+            response = self._call_llm_with_timeout(user, **call_kwargs)
 
         latency_ms = (time.time() - start_time) * 1000
         self._update_avg_latency(latency_ms)

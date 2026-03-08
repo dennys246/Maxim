@@ -6,6 +6,7 @@ Uses LLM to propose goals aligned with the root goal:
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -15,6 +16,7 @@ from typing import Any
 from maxim.agents.base import Agent
 from maxim.agents.bus import (
     AgentBus,
+    GoalCompleted,
     GoalPriority,
     Percept,
     ProposedGoal,
@@ -179,13 +181,26 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
         self._stop_event = threading.Event()
         self._worker: threading.Thread | None = None
         self._work_available = threading.Event()
+        self._urgent_work_available = threading.Event()
 
         # Default Network escalation context
         self._dn_escalation_context: dict | None = None
 
+        # Contemplation quality metrics (Phase 2)
+        # Maps goal_id → {contemplated: bool, refined: bool, confidence: float}
+        self._contemplation_log: dict[str, dict[str, Any]] = {}
+        self._contemplation_stats = {
+            "contemplated_success": 0,
+            "contemplated_total": 0,
+            "uncontemplated_success": 0,
+            "uncontemplated_total": 0,
+        }
+        self._nac: Any = None  # Late-wired via wire_nac()
+
         # Subscribe to percepts and filtered percepts (from Default Network)
         self._bus.subscribe(Percept, self._on_percept)
         self._bus.subscribe(FilteredPercept, self._on_filtered_percept)
+        self._bus.subscribe(GoalCompleted, self._on_goal_completed)
 
     def _ensure_llm(self) -> ChatLLMAgent | None:
         """Lazy initialization of LLM."""
@@ -259,6 +274,543 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
                 return "executive"
         return None
 
+    def _get_tool_definitions(self, router: LLMRouter) -> list[dict[str, Any]] | None:
+        """Return Claude tool definitions if the current provider supports native tool use."""
+        try:
+            preview = router.preview_provider(
+                system=self._system_prompt[:200],
+                user="test",
+                temperature=0.2,
+                max_tokens=512,
+            )
+            if not preview.get("is_cloud"):
+                return None
+            provider_key = preview.get("provider", "")
+            providers = router.get_provider_configs()
+            provider_cfg = providers.get(provider_key, {})
+            provider_type = str(provider_cfg.get("type", "")).strip().lower()
+            if provider_type in ("anthropic", "claude"):
+                from maxim.models.language.anthropic_backend import PROPOSED_GOAL_TOOL
+                return [PROPOSED_GOAL_TOOL]
+        except Exception:
+            pass
+        return None
+
+    def _get_thinking_config(self, router: LLMRouter) -> dict[str, Any] | None:
+        """Return extended thinking config if enabled for the current provider."""
+        try:
+            providers = router.get_provider_configs()
+            for cfg in providers.values():
+                provider_type = str(cfg.get("type", "")).strip().lower()
+                if provider_type in ("anthropic", "claude"):
+                    thinking = cfg.get("thinking")
+                    if isinstance(thinking, dict) and thinking.get("enabled"):
+                        budget = int(thinking.get("budget_tokens", 5000))
+                        budget = max(1024, min(budget, 20000))
+                        return {"budget_tokens": budget}
+        except Exception:
+            pass
+        return None
+
+    # ── Contemplation loop ─────────────────────────────────────────────
+
+    def _contemplation_config(self) -> dict[str, Any]:
+        """Read contemplation config from LLMConfig, with sane defaults.
+
+        If adaptive thresholds are enabled and enough NAc observations exist,
+        ``confidence_threshold`` and ``min_sub_goals_to_trigger`` are adjusted
+        based on learned contemplation outcomes (Phase 3).
+        """
+        defaults: dict[str, Any] = {
+            "enabled": True,
+            "confidence_threshold": 0.7,
+            "min_sub_goals_to_trigger": 2,
+            "trigger_on_high_priority": True,
+            "max_passes": 3,
+            "critique_max_tokens": 384,
+            "refine_max_tokens": 512,
+            "mode": "standard",
+            "fast_max_tokens": 640,
+            "adaptive_enabled": True,
+            "adaptive_min_observations": 10,
+            "adaptive_confidence_floor": 0.3,
+            "adaptive_confidence_ceiling": 0.95,
+            "adaptive_min_sub_goals_floor": 1,
+            "adaptive_min_sub_goals_ceiling": 5,
+        }
+        router = self._router
+        if router is not None:
+            raw = dict(getattr(router.cfg, "contemplation", ()) or ())
+            defaults.update(raw)
+
+        # Phase 3: Apply adaptive adjustments from NAc learned outcomes
+        if defaults.get("adaptive_enabled", True):
+            adjustments = self._adaptive_thresholds(defaults)
+            if adjustments is not None:
+                defaults.update(adjustments)
+
+        return defaults
+
+    def _adaptive_thresholds(self, cfg: dict[str, Any]) -> dict[str, Any] | None:
+        """Compute adaptive threshold adjustments from NAc learned outcomes.
+
+        Queries NAc for contemplation:refined and contemplation:draft outcomes,
+        compares success rates, and shifts ``confidence_threshold`` and
+        ``min_sub_goals_to_trigger`` accordingly.
+
+        Returns adjusted keys or ``None`` if insufficient data.
+        """
+        nac = self._nac
+        if nac is None:
+            return None
+
+        min_obs = int(cfg.get("adaptive_min_observations", 10))
+
+        try:
+            refined_links = nac.get_links_for_event("contemplation:refined")
+            draft_links = nac.get_links_for_event("contemplation:draft")
+        except Exception:
+            return None
+
+        # Count total observations across all links for each signature
+        refined_obs = sum(link.observation_count for link in refined_links)
+        draft_obs = sum(link.observation_count for link in draft_links)
+
+        if refined_obs + draft_obs < min_obs:
+            return None  # Not enough data to adapt
+
+        # Compute weighted success rates from predicted_value (Rescorla-Wagner)
+        # predicted_value is 0-1 where higher = more positive outcomes observed
+        def _weighted_success(links: list) -> float | None:
+            total_obs = sum(link.observation_count for link in links)
+            if total_obs == 0:
+                return None
+            # Weight each link's predicted_value by its observation count
+            return sum(
+                link.predicted_value * link.observation_count for link in links
+            ) / total_obs
+
+        refined_rate = _weighted_success(refined_links)
+        draft_rate = _weighted_success(draft_links)
+
+        if refined_rate is None and draft_rate is None:
+            return None
+
+        adjustments: dict[str, Any] = {}
+
+        # Determine improvement delta: how much does contemplation help?
+        # Positive = contemplation helps, negative = contemplation hurts
+        if refined_rate is not None and draft_rate is not None:
+            improvement = refined_rate - draft_rate
+        elif refined_rate is not None:
+            # Only refined data: if success rate is high, contemplation helps
+            improvement = refined_rate - 0.5
+        else:
+            # Only draft data: if draft success rate is high, no need for contemplation
+            improvement = 0.5 - (draft_rate or 0.5)
+
+        # Adjust confidence_threshold based on improvement
+        # Positive improvement → lower threshold (contemplate more often)
+        # Negative improvement → raise threshold (contemplate less often)
+        base_threshold = float(cfg.get("confidence_threshold", 0.7))
+        floor = float(cfg.get("adaptive_confidence_floor", 0.3))
+        ceiling = float(cfg.get("adaptive_confidence_ceiling", 0.95))
+
+        # Scale: ±0.2 shift per 0.2 improvement delta, clamped to bounds
+        threshold_shift = -improvement  # Lower threshold when improvement is positive
+        new_threshold = base_threshold + threshold_shift
+        new_threshold = max(floor, min(ceiling, new_threshold))
+        adjustments["confidence_threshold"] = round(new_threshold, 3)
+
+        # Adjust min_sub_goals_to_trigger
+        base_min_sg = int(cfg.get("min_sub_goals_to_trigger", 2))
+        sg_floor = int(cfg.get("adaptive_min_sub_goals_floor", 1))
+        sg_ceiling = int(cfg.get("adaptive_min_sub_goals_ceiling", 5))
+
+        if improvement > 0.1:
+            # Contemplation helps — loosen gate (lower min sub_goals)
+            new_min_sg = base_min_sg - 1
+        elif improvement < -0.1:
+            # Contemplation hurts — tighten gate (raise min sub_goals)
+            new_min_sg = base_min_sg + 1
+        else:
+            new_min_sg = base_min_sg
+
+        new_min_sg = max(sg_floor, min(sg_ceiling, new_min_sg))
+        adjustments["min_sub_goals_to_trigger"] = new_min_sg
+
+        log_structured(
+            self.log,
+            logging.DEBUG,
+            "contemplation_adaptive",
+            {
+                "refined_rate": refined_rate,
+                "draft_rate": draft_rate,
+                "improvement": round(improvement, 3),
+                "threshold": adjustments["confidence_threshold"],
+                "min_sub_goals": adjustments["min_sub_goals_to_trigger"],
+                "refined_obs": refined_obs,
+                "draft_obs": draft_obs,
+            },
+        )
+
+        return adjustments
+
+    @staticmethod
+    def _safe_sub_goal_count(response: dict) -> int:
+        """Safely count sub_goals, handling None, missing key, non-list."""
+        sub_goals = response.get("sub_goals")
+        if not isinstance(sub_goals, list):
+            return 0
+        return len(sub_goals)
+
+    def _should_contemplate(self, response: dict) -> bool:
+        """Complexity gate: only contemplate plans that warrant it."""
+        if response.get("_timeout") or not response.get("goal_description"):
+            return False
+        cfg = self._contemplation_config()
+        if not cfg.get("enabled", True):
+            return False
+        priority = str(response.get("priority", "")).upper()
+        if priority in ("IDLE",):
+            return False
+        if cfg.get("trigger_on_high_priority", True) and priority in ("HIGH", "CRITICAL"):
+            return True
+        min_sg = int(cfg.get("min_sub_goals_to_trigger", 2))
+        return self._safe_sub_goal_count(response) >= min_sg
+
+    def _contemplation_llm_call(
+        self, *, system: str, user: str, max_tokens: int
+    ) -> dict[str, Any] | None:
+        """Route a contemplation LLM call through the best available backend."""
+        llm_worker = self._llm_worker
+        router = self._router
+
+        if llm_worker is not None:
+            return llm_worker.generate_json_direct(
+                system=system,
+                user=user,
+                temperature=0.2,
+                max_tokens=max_tokens,
+                request_id=f"contemplate-{uuid.uuid4()}",
+                agent_name=self.agent_name,
+            )
+        elif router is not None:
+            return router.generate_json(
+                user,
+                temperature=0.2,
+                max_tokens=max_tokens,
+                system_override=system,
+                request_context={"agent": self.agent_name, "lane": "infer"},
+            )
+        else:
+            llm = self._ensure_llm()
+            if llm is not None:
+                return llm.generate_json(
+                    user, system_prompt=system, temperature=0.2, max_tokens=max_tokens
+                )
+        return None
+
+    def _critique_plan(
+        self, draft: dict, ctx: StructuredContext
+    ) -> dict[str, Any] | None:
+        """Pass 2: critique the draft plan. Returns critique dict or None on failure."""
+        cfg = self._contemplation_config()
+        draft_json = json.dumps(draft, indent=2, default=str)
+
+        critique_system = "You are evaluating a proposed action plan. Be concise and specific."
+        critique_user = (
+            f"You previously proposed this plan:\n{draft_json}\n\n"
+            f"Context that led to this plan:\n"
+            f"- Root goal: {ctx.root_goal}\n"
+            f"- Current mode: {ctx.mode}\n"
+            f"- Active goal: {ctx.active_goal}\n\n"
+            f"Evaluate the plan by answering:\n"
+            f"1. Are the sub_goals in the right execution order?\n"
+            f"2. Are any critical steps missing?\n"
+            f"3. Is the priority level appropriate for the situation?\n"
+            f"4. Will the tool_params actually work for the chosen tool?\n"
+            f"5. Could this be accomplished with fewer steps?\n\n"
+            f'Respond with ONLY valid JSON:\n'
+            f'{{\n'
+            f'    "confidence": 0.0,\n'
+            f'    "issues": ["issue 1"],\n'
+            f'    "suggestions": ["fix 1"]\n'
+            f'}}'
+        )
+
+        try:
+            response = self._contemplation_llm_call(
+                system=critique_system,
+                user=critique_user,
+                max_tokens=int(cfg.get("critique_max_tokens", 384)),
+            )
+            if not isinstance(response, dict) or "confidence" not in response:
+                return None
+            return response
+        except Exception:
+            return None
+
+    def _refine_plan(
+        self, draft: dict, critique: dict, ctx: StructuredContext
+    ) -> dict[str, Any] | None:
+        """Pass 3: refine the plan based on critique. Returns revised plan or None."""
+        cfg = self._contemplation_config()
+        draft_json = json.dumps(draft, indent=2, default=str)
+        issues = critique.get("issues", [])
+        suggestions = critique.get("suggestions", [])
+
+        refine_system = "You are refining an action plan based on self-critique. Produce an improved version."
+        refine_user = (
+            f"Original plan:\n{draft_json}\n\n"
+            f"Self-critique found these issues:\n"
+            + "\n".join(f"- {i}" for i in issues)
+            + "\n\nSuggestions for improvement:\n"
+            + "\n".join(f"- {s}" for s in suggestions)
+            + f"\n\nContext:\n- Root goal: {ctx.root_goal}\n- Mode: {ctx.mode}\n\n"
+            f"Produce a corrected plan. Respond with ONLY valid JSON:\n"
+            f'{{\n'
+            f'    "goal_description": "...",\n'
+            f'    "priority": "CRITICAL|HIGH|MEDIUM|LOW|IDLE",\n'
+            f'    "tool_name": "...",\n'
+            f'    "tool_params": {{}},\n'
+            f'    "reasoning": "...",\n'
+            f'    "sub_goals": []\n'
+            f'}}'
+        )
+
+        try:
+            response = self._contemplation_llm_call(
+                system=refine_system,
+                user=refine_user,
+                max_tokens=int(cfg.get("refine_max_tokens", 512)),
+            )
+            if not isinstance(response, dict) or not response.get("goal_description"):
+                return None
+            return response
+        except Exception:
+            return None
+
+    def _contemplate(self, draft: dict, ctx: StructuredContext) -> dict:
+        """Run contemplation loop. Dispatches to standard or fast mode.
+
+        Standard mode (default): critique → confidence gate → optional refine (3 passes max).
+        Fast mode: single combined critique+refine call (2 passes max).
+
+        Returns best available plan. Any failure returns the original draft.
+        """
+        cfg = self._contemplation_config()
+        mode = str(cfg.get("mode", "standard")).lower()
+
+        if mode == "fast":
+            return self._contemplate_fast(draft, ctx, cfg)
+        return self._contemplate_standard(draft, ctx, cfg)
+
+    def _contemplate_standard(self, draft: dict, ctx: StructuredContext,
+                              cfg: dict[str, Any]) -> dict:
+        """Standard contemplation: separate critique and refine passes."""
+        # Preemption check before critique — only urgent percepts interrupt
+        if self._urgent_work_available.is_set():
+            return draft
+
+        critique = self._critique_plan(draft, ctx)
+        if critique is None:
+            return draft
+
+        threshold = float(cfg.get("confidence_threshold", 0.7))
+        try:
+            confidence = float(critique.get("confidence", 1.0))
+        except (TypeError, ValueError):
+            confidence = 1.0
+
+        if confidence >= threshold:
+            return draft
+
+        # Preemption check before refine — only urgent percepts interrupt
+        if self._urgent_work_available.is_set():
+            return draft
+
+        refined = self._refine_plan(draft, critique, ctx)
+        if refined is None:
+            return draft
+
+        log_structured(
+            self.log,
+            logging.INFO,
+            "contemplation_refined",
+            {
+                "mode": "standard",
+                "critique_confidence": confidence,
+                "issues": critique.get("issues", []),
+            },
+        )
+
+        return refined
+
+    def _contemplate_fast(self, draft: dict, ctx: StructuredContext,
+                          cfg: dict[str, Any]) -> dict:
+        """Fast contemplation: combined critique+refine in a single LLM call.
+
+        Returns the improved plan if confidence is below threshold,
+        otherwise returns the original draft. Any failure returns draft.
+        """
+        # Preemption check — only urgent percepts interrupt
+        if self._urgent_work_available.is_set():
+            return draft
+
+        draft_json = json.dumps(draft, indent=2, default=str)
+
+        fast_system = (
+            "You are evaluating and improving an action plan. "
+            "First assess quality, then fix any issues."
+        )
+        fast_user = (
+            f"You previously proposed this plan:\n{draft_json}\n\n"
+            f"Context:\n"
+            f"- Root goal: {ctx.root_goal}\n"
+            f"- Current mode: {ctx.mode}\n"
+            f"- Active goal: {ctx.active_goal}\n\n"
+            f"Evaluate the plan:\n"
+            f"1. Are the sub_goals in the right execution order?\n"
+            f"2. Are any critical steps missing?\n"
+            f"3. Is the priority level appropriate?\n"
+            f"4. Will the tool_params work for the chosen tool?\n"
+            f"5. Could this be accomplished with fewer steps?\n\n"
+            f"Respond with ONLY valid JSON containing your evaluation "
+            f"AND the corrected plan:\n"
+            f'{{\n'
+            f'    "confidence": 0.0,\n'
+            f'    "issues": ["issue 1"],\n'
+            f'    "plan": {{\n'
+            f'        "goal_description": "...",\n'
+            f'        "priority": "CRITICAL|HIGH|MEDIUM|LOW|IDLE",\n'
+            f'        "tool_name": "...",\n'
+            f'        "tool_params": {{}},\n'
+            f'        "reasoning": "...",\n'
+            f'        "sub_goals": []\n'
+            f'    }}\n'
+            f'}}'
+        )
+
+        try:
+            response = self._contemplation_llm_call(
+                system=fast_system,
+                user=fast_user,
+                max_tokens=int(cfg.get("fast_max_tokens", 640)),
+            )
+        except Exception:
+            return draft
+
+        if not isinstance(response, dict) or "confidence" not in response:
+            return draft
+
+        threshold = float(cfg.get("confidence_threshold", 0.7))
+        try:
+            confidence = float(response.get("confidence", 1.0))
+        except (TypeError, ValueError):
+            confidence = 1.0
+
+        if confidence >= threshold:
+            return draft
+
+        # Extract the improved plan from the combined response
+        plan = response.get("plan")
+        if not isinstance(plan, dict) or not plan.get("goal_description"):
+            return draft
+
+        log_structured(
+            self.log,
+            logging.INFO,
+            "contemplation_refined",
+            {
+                "mode": "fast",
+                "critique_confidence": confidence,
+                "issues": response.get("issues", []),
+            },
+        )
+
+        return plan
+
+    # ── Contemplation quality metrics (Phase 2) ──────────────────────
+
+    def wire_nac(self, nac: Any) -> None:
+        """Late-wire NAc for contemplation outcome learning."""
+        self._nac = nac
+
+    def _on_goal_completed(self, completed: GoalCompleted) -> None:
+        """Track contemplation outcomes when goals complete."""
+        meta = self._contemplation_log.pop(completed.goal_id, None)
+        if meta is None:
+            return  # Goal not from this agent or already expired
+
+        contemplated = meta.get("contemplated", False)
+        if contemplated:
+            self._contemplation_stats["contemplated_total"] += 1
+            if completed.success:
+                self._contemplation_stats["contemplated_success"] += 1
+        else:
+            self._contemplation_stats["uncontemplated_total"] += 1
+            if completed.success:
+                self._contemplation_stats["uncontemplated_success"] += 1
+
+        # Feed outcome to NAc for causal learning
+        nac = self._nac
+        if nac is not None:
+            try:
+                from maxim.decisions.causal_link import Valence
+
+                event_sig = "contemplation:refined" if meta.get("refined") else "contemplation:draft"
+                valence = Valence.POSITIVE if completed.success else Valence.NEGATIVE
+                delta = time.time() - meta.get("timestamp", time.time())
+                nac.observe(
+                    event_type="contemplation",
+                    event_signature=event_sig,
+                    outcome_type="goal_result",
+                    outcome_signature=f"goal:{completed.goal_id}:{valence.value}",
+                    outcome_valence=valence,
+                    delta_seconds=max(0.0, delta),
+                    context={"contemplated": contemplated, "refined": meta.get("refined", False)},
+                )
+            except Exception:
+                pass  # NAc observation is best-effort
+
+        log_structured(
+            self.log,
+            logging.DEBUG,
+            "contemplation_outcome",
+            {
+                "goal_id": completed.goal_id,
+                "success": completed.success,
+                "contemplated": contemplated,
+                "refined": meta.get("refined", False),
+            },
+        )
+
+    def contemplation_improvement_rate(self) -> dict[str, Any]:
+        """Return contemplation quality metrics.
+
+        Returns dict with success rates for contemplated vs uncontemplated
+        goals and the improvement delta.
+        """
+        stats = self._contemplation_stats
+        ct = stats["contemplated_total"]
+        ut = stats["uncontemplated_total"]
+
+        c_rate = stats["contemplated_success"] / ct if ct > 0 else None
+        u_rate = stats["uncontemplated_success"] / ut if ut > 0 else None
+
+        improvement = None
+        if c_rate is not None and u_rate is not None:
+            improvement = c_rate - u_rate
+
+        return {
+            "contemplated_success_rate": c_rate,
+            "contemplated_total": ct,
+            "uncontemplated_success_rate": u_rate,
+            "uncontemplated_total": ut,
+            "improvement_delta": improvement,
+        }
+
     def _on_percept(self, percept: Percept) -> None:
         """Trigger goal proposal on significant percepts.
 
@@ -267,17 +819,22 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
         This handler remains for backwards compatibility and direct percepts.
         """
         if percept.source == "cli":
-            self._trigger_proposal()
+            self._trigger_proposal(urgent=True)
+            return
+
+        # Always propose on inbound communications (SMS, voice call, etc.)
+        if percept.source.startswith("comms:"):
+            self._trigger_proposal(urgent=True)
             return
 
         # Always propose on voice commands
         if percept.has_maxim_keyword:
-            self._trigger_proposal()
+            self._trigger_proposal(urgent=True)
             return
 
-        # Propose on high salience + novelty
+        # Propose on high salience + novelty (not urgent — can wait for contemplation)
         if percept.salience > 0.5 and percept.novelty > 0.5:
-            self._trigger_proposal()
+            self._trigger_proposal(urgent=False)
 
     def _on_filtered_percept(self, filtered: FilteredPercept) -> None:
         """Handle percepts escalated by the Default Network.
@@ -306,12 +863,20 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
                 "dn_context": filtered.dn_context,
             }
 
-        # Always trigger proposal for escalated percepts
-        self._trigger_proposal()
+        # Trigger proposal — mark as urgent if high-urgency escalation
+        self._trigger_proposal(urgent=filtered.urgency >= 0.7)
 
-    def _trigger_proposal(self) -> None:
-        """Signal that goal proposal is needed."""
+    def _trigger_proposal(self, urgent: bool = False) -> None:
+        """Signal that goal proposal is needed.
+
+        Args:
+            urgent: If True, also signals urgent preemption which interrupts
+                    active contemplation. Use for CLI input, comms, voice
+                    commands, and high-urgency escalated percepts.
+        """
         self._work_available.set()
+        if urgent:
+            self._urgent_work_available.set()
 
     def _build_llm_context(self, ctx: StructuredContext, budget_context: str | None = None) -> str:
         """Build prompt from structured context."""
@@ -324,6 +889,7 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
 - Salience: {p.salience:.2f}
 - Novelty: {p.novelty:.2f}
 - Voice command: {p.raw_transcript_text or "(none)"}
+- Message: {p.content or "(none)"}
 - Has "maxim" keyword: {p.has_maxim_keyword}
 - Hard override: {p.hard_override or "(none)"}"""
 
@@ -368,6 +934,17 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
         cli_str = (
             "\n  ".join(ctx.cli_inputs[-3:]) if ctx.cli_inputs else "(none)"
         )
+
+        # Comms messages (inbound SMS/voice)
+        comms_lines = []
+        for msg in ctx.comms_messages[-5:]:
+            prefix = "User" if msg.get("direction") == "inbound" else "Maxim"
+            channel = msg.get("channel", "sms")
+            sender = msg.get("sender", "unknown")
+            comms_lines.append(
+                f"  [{prefix} via {channel} {sender}] {msg.get('content', '')}"
+            )
+        comms_str = "\n".join(comms_lines) if comms_lines else "(none)"
 
         # DN escalation context (if percept was escalated by Default Network)
         dn_str = ""
@@ -425,6 +1002,9 @@ RECENT SPEECH:
 RECENT CLI INPUTS:
   {cli_str}
 
+COMMS MESSAGES (SMS/Voice):
+  {comms_str}
+
 RECENT OUTCOMES:
 {outcome_str}
 
@@ -474,6 +1054,13 @@ Based on this context, what goal should be proposed?"""
                 prompt_profile = load_prompt_profile(router.cfg.prompt_profiles, profile_name)
             injected = prompt_builder.inject(prompt, prompt_profile)
 
+            # Determine if cloud backend supports native tool use
+            tool_use_tools = None
+            thinking_cfg = None
+            if router is not None and router.cloud_allowed():
+                tool_use_tools = self._get_tool_definitions(router)
+                thinking_cfg = self._get_thinking_config(router)
+
             if llm_worker is not None:
                 request_id = f"exec-{uuid.uuid4()}"
                 response = llm_worker.generate_json_direct(
@@ -483,6 +1070,8 @@ Based on this context, what goal should be proposed?"""
                     max_tokens=512,
                     request_id=request_id,
                     agent_name=self.agent_name,
+                    tools=tool_use_tools,
+                    thinking=thinking_cfg,
                 )
             elif router is not None:
                 request_id = f"exec-{uuid.uuid4()}"
@@ -491,6 +1080,8 @@ Based on this context, what goal should be proposed?"""
                     temperature=0.2,
                     system_override=injected.system,
                     request_context={"agent": self.agent_name, "request_id": request_id, "lane": "infer"},
+                    tools=tool_use_tools,
+                    thinking=thinking_cfg,
                 )
             else:
                 llm = self._ensure_llm()
@@ -500,6 +1091,18 @@ Based on this context, what goal should be proposed?"""
 
             if not response or not isinstance(response, dict) or not response.get("goal_description"):
                 return None
+
+            # Contemplation: critique + refine for complex plans on non-thinking providers
+            contemplated = False
+            refined = False
+            if (
+                not thinking_cfg
+                and self._should_contemplate(response)
+            ):
+                draft = response
+                response = self._contemplate(response, ctx)
+                contemplated = True
+                refined = response is not draft
 
             priority_str = response.get("priority", "MEDIUM").upper()
             try:
@@ -532,6 +1135,18 @@ Based on this context, what goal should be proposed?"""
                 sub_goals=sub_goals,
             )
 
+            # Record contemplation metadata for outcome tracking
+            self._contemplation_log[goal.id] = {
+                "contemplated": contemplated,
+                "refined": refined,
+                "timestamp": time.time(),
+            }
+            # Bound the log to prevent unbounded growth
+            if len(self._contemplation_log) > 200:
+                oldest = sorted(self._contemplation_log, key=lambda k: self._contemplation_log[k]["timestamp"])
+                for k in oldest[:50]:
+                    del self._contemplation_log[k]
+
             # Log to abstraction stream
             log_structured(
                 self.log,
@@ -541,6 +1156,7 @@ Based on this context, what goal should be proposed?"""
                     "goal_id": goal.id,
                     "description": goal.description,
                     "priority": goal.priority.name,
+                    "contemplated": contemplated,
                 },
             )
 
@@ -557,6 +1173,7 @@ Based on this context, what goal should be proposed?"""
             if not triggered:
                 continue
             self._work_available.clear()
+            self._urgent_work_available.clear()
 
             if self._stop_event.is_set():
                 break
@@ -662,10 +1279,12 @@ Based on this context, what goal should be proposed?"""
         """Stop the background worker."""
         self._stop_event.set()
         self._work_available.set()
+        self._urgent_work_available.set()
         if self._worker:
             self._worker.join(timeout=2.0)
         self._bus.unsubscribe(Percept, self._on_percept)
         self._bus.unsubscribe(FilteredPercept, self._on_filtered_percept)
+        self._bus.unsubscribe(GoalCompleted, self._on_goal_completed)
         if self._llm_worker:
             self._llm_worker.stop()
             self._llm_worker = None

@@ -10,7 +10,7 @@ Most runtime-editable files live under `data/`:
 - Motion presets: `data/motion/default_actions.json`
 - Default head poses: `data/motion/default_poses.json` (e.g., `centered`)
 - Key bindings: `data/util/key_responses.json` (override via `$MAXIM_KEY_RESPONSES`)
-- Optional local LLM config: `data/util/llm.json` (override via `$MAXIM_LLM_CONFIG`)
+- Optional local LLM config: `data/util/llm.json` (override via `$MAXIM_LLM_CONFIG`); includes `contemplation` key for plan quality settings
 - Model artifacts (weights/checkpoints): `data/models/`
 - Zenoh/networking config (optional): `data/networking/`
 - Agent/credential files (optional): `data/agents/`, `data/credentials/`

@@ -2,6 +2,26 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-03-08: Contemplation loop for local chain-of-thought in ExecAgent
+
+Decision:
+- ExecAgent uses a multi-pass contemplation loop (draft → critique → refine) to improve plan quality when native extended thinking is unavailable.
+- Contemplation triggers only for complex plans (2+ sub_goals or HIGH/CRITICAL priority) and is mutually exclusive with Anthropic extended thinking.
+- Two modes: `standard` (separate critique and refine calls, 3 passes max) and `fast` (combined in one call, 2 passes max).
+- Smart preemption: only urgent percepts (CLI, voice, comms, high-urgency escalations) interrupt contemplation. Normal vision percepts queue.
+- Quality metrics: outcomes tracked via `GoalCompleted` bus subscription, fed to NAc for causal learning.
+- Adaptive thresholds: NAc-learned outcomes auto-tune `confidence_threshold` and `min_sub_goals_to_trigger` within configurable bounds.
+- Config stored in `LLMConfig.contemplation` as `tuple[tuple[str, Any], ...]` (frozen dataclass compatible), configured via `llm.json` `contemplation` key.
+
+Reason:
+- Local LLMs (1.7B–8B) produce lower-quality plans in a single pass. A structured self-critique loop improves output quality without changing the underlying model.
+- Extended thinking is Anthropic-only. This provides equivalent capability for any provider.
+
+Tradeoffs:
+- Adds 2–3x latency for complex plans (~15–25s on local 1.7B vs ~10s without).
+- Extra LLM calls consume additional energy (tracked via existing energy system).
+- Contemplation can only improve plans, never destroy them — any failure returns the original draft unchanged.
+
 ## 2026-02-25: Optional cloud LLM backends with routing + cost tracking
 Decision:
 - Cloud LLM providers (Anthropic/OpenAI) integrate through `LLMRouter` (no parallel gateway).
