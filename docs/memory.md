@@ -297,6 +297,29 @@ See [bridges.md](bridges.md) for bridge documentation.
 
 ---
 
+## Memory Hierarchy
+
+Maxim maintains multiple memory tiers with different lifespans and retrieval modes:
+
+```
+Percept Buffer → Working Notes → Short-Term Memory → Long-Term Episodic → Semantic Concepts
+  (prompt)        (prompt)        (data/short_term_   (Hippocampus)       (ATL: objects,
+                                   memory/)                                people, goals,
+                                                                           relationships)
+```
+
+| Tier | Retrieval | Contents | Lifespan |
+|------|-----------|----------|----------|
+| Percept buffer | Always present (last N) | Recent percepts, outcomes | Minutes |
+| Working notes | Always present (file read) | Deliberately pinned context | Until LLM removes it |
+| Hippocampus (long-term) | Similarity recall | Consolidated episodic memories | Permanent (retention-scored) |
+| ATL (semantic) | Concept lookup + activation | Concepts, relationships, causal patterns | Permanent |
+| Plan system | Always present when active | Structured goals/phases | Until plan completes |
+
+**Working notes** (`notes/context.md`) give the LLM a persistent scratchpad — always in the prompt, edited via `write_file`. Unlike similarity-based Hippocampus recall, working notes survive regardless of what the LLM is currently perceiving.
+
+**StructuredContext** (built by MemoryAgent each cycle) assembles these tiers into a single object consumed by ExecAgent for goal proposal. Fields include `relevant_memories`, `working_notes`, `workspace_files`, `knowledge_context`, and `plan_progress`.
+
 ## Memory Flow
 
 ```

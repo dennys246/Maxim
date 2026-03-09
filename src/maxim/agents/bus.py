@@ -230,6 +230,12 @@ class StructuredContext:
     # Root goal reminder
     root_goal: str = "Understand reality and help people."
 
+    # Working notes (persistent LLM self-context from .maxim_workspace/notes/context.md)
+    working_notes: str = ""
+
+    # Workspace file inventory (user-facing artifacts, excludes plan system files)
+    workspace_files: list[dict] = field(default_factory=list)
+
     # Plan progress (from PlanManager when a long-horizon plan is active)
     plan_progress: PlanProgressContext | None = None
 

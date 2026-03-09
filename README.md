@@ -1,12 +1,12 @@
 # Maxim
 
-An agentic robotics framework for orchestrating Reachy Mini with multi-level goal decomposition, local LLM inference, and adaptive planning.
+A robotics framework for orchestrating Reachy Mini with multi-level goal decomposition, local LLM inference, and adaptive planning.
 
 ## Overview
 
 Maxim provides:
 - **Robotic control** via Pollen Robotics' Reachy Mini SDK (vision, audio, motor control)
-- **Agentic runtime** with recursive goal decomposition and reflection loops
+- **Agent runtime** with recursive goal decomposition and reflection loops
 - **Local LLM inference** via llama.cpp, with optional cloud backends (opt-in)
 - **Multi-modal perception** using pluggable vision engines (RTMDet/RTMPose default, YOLO optional) and Whisper transcription
 - **Low-compute optimization** with prompt profiles for CPU-only and GPU systems
@@ -57,10 +57,10 @@ pip install -e '.[llm]'
 ### Running Maxim
 
 ```bash
-# Default exploration mode
+# Default exploration mode (legacy)
 maxim
 
-# With agentic runtime and LLM
+# Full agent runtime with LLM
 maxim --mode agentic --language-model mistral-7b
 
 # Specify prompt profile for low-compute systems
@@ -97,7 +97,7 @@ Agents → Planning → Decision Engine → Runtime → Executor → Tools → E
 | `src/maxim/tools/` | Tool implementations (side effects) |
 | `src/maxim/environment/` | World observation (no side effects) |
 | `src/maxim/memory/` | Storage and retrieval |
-| `src/maxim/runtime/` | Agentic orchestration loop |
+| `src/maxim/runtime/` | Agent orchestration loop |
 | `src/maxim/conscience/` | Reachy capture/inference/control loop |
 | `src/maxim/modes/` | Operating mode definitions and strategies |
 | `src/maxim/proprioception/` | Movement tracking and pain detection |
@@ -111,17 +111,23 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design rules.
 
 ## Operating Modes
 
-| Mode | Description |
-|------|-------------|
-| `exploration` | Novelty-driven active discovery (default) |
-| `live` | Real-time vision and motor control |
-| `agentic` | Full agentic runtime with goal decomposition |
-| `sleep` | Audio-only mode (no wake_up()) |
-| `reflection` | Introspection and memory consolidation |
-| `train` | Model training mode |
+Maxim's mode system combines three dimensions: **ProcessingState** (awake/sleep), **OperationalMode** (passive/active/singularity), and **Strategy** (observe, explore, research, assist, reflect, learn). Initiative level is capped by both the operational mode and strategy.
+
+The `--mode agentic` flag runs the full agent runtime — perception-memory-goal architecture with recursive planning, reflection loops, and the complete agent pipeline. All other `--mode` values are **legacy shortcuts** that map to specific ProcessingState × OperationalMode × Strategy combinations:
+
+| Legacy Mode | Mapping | Description |
+|-------------|---------|-------------|
+| `exploration` | active + explore | Novelty-driven active discovery (default) |
+| `live` | active + assist | Real-time vision and motor control |
+| `sleep` | sleep state | Background tasks only, keyword monitoring |
+| `reflection` | passive + reflect | Introspection and memory consolidation |
+| `train` | passive + learn | Incorporate feedback and demonstrations |
 
 ```bash
+# Full agent runtime (recommended)
 maxim --mode agentic
+
+# Legacy modes
 maxim --mode exploration
 maxim --mode sleep
 ```
@@ -212,7 +218,7 @@ pip install -e '.[llm]'
 # Download default model (SmolLM 1.7B, ~1.1GB)
 ./scripts/download_models.sh --llm --enable
 
-# Run with LLM
+# Run with full agent runtime and LLM
 export MAXIM_LLM_ENABLED=1
 maxim --mode agentic --language-model smollm-1.7b
 ```

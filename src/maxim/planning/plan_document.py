@@ -63,7 +63,7 @@ class LongHorizonConfig:
     default_depth_bound: int = 2
     max_depth_bound: int = 4
     max_replan_attempts: int = 2
-    plan_persistence_path: str = "workspace/plans"
+    plan_persistence_path: str = "planning"
 
     # Energy budgets
     phase_budget_hard_cap: bool = False

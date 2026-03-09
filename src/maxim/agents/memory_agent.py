@@ -355,6 +355,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
         output_manager: Any | None = None,
         memory_hub: Any | None = None,
         plan_manager: Any | None = None,
+        workspace_path: str | None = None,
     ) -> None:
         super().__init__(name=name, enabled=enabled)
         self._bus = bus
@@ -409,6 +410,9 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
         # Optional MemoryHub for multi-layer knowledge queries
         self._memory_hub = memory_hub
+
+        # Workspace path for reading working notes
+        self._workspace_path = workspace_path
 
         # Subscribe to messages
         self._bus.subscribe(Percept, self._on_percept)
@@ -706,6 +710,89 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 speech.append(p.raw_transcript_text)
         return speech[:5]
 
+    # ── Working notes ──────────────────────────────────────────────────────
+
+    WORKING_NOTES_MAX_CHARS = 2000
+
+    def _read_working_notes(self) -> str:
+        """Read .maxim_workspace/notes/context.md if it exists.
+
+        Returns the file contents (capped at WORKING_NOTES_MAX_CHARS).
+        Appends a truncation warning if the file exceeds the cap so the
+        LLM knows to prune.
+        """
+        if not self._workspace_path:
+            return ""
+
+        notes_path = os.path.join(self._workspace_path, "notes", "context.md")
+        if not os.path.isfile(notes_path):
+            return ""
+
+        try:
+            with open(notes_path, "r") as f:
+                content = f.read()
+        except OSError:
+            return ""
+
+        if len(content) > self.WORKING_NOTES_MAX_CHARS:
+            content = content[: self.WORKING_NOTES_MAX_CHARS]
+            content += (
+                "\n\n[TRUNCATED — notes exceed "
+                f"{self.WORKING_NOTES_MAX_CHARS} chars. "
+                "Edit the file to prune stale entries.]"
+            )
+
+        return content.strip()
+
+    # ── Workspace context ──────────────────────────────────────────────────
+
+    WORKSPACE_FILE_CAP = 10
+    _WORKSPACE_EXCLUDE = frozenset({
+        os.path.join("plans", "ACTIVE_PLAN.md"),
+        os.path.join("plans", "history.md"),
+        os.path.join("notes", "context.md"),
+    })
+
+    def _scan_workspace_files(self) -> list[dict]:
+        """Scan .maxim_workspace/ for user-facing artifacts.
+
+        Excludes plan system files (ACTIVE_PLAN.md, history.md) and
+        notes/context.md (already injected verbatim via working notes).
+        Returns up to WORKSPACE_FILE_CAP most recently modified files.
+        """
+        if not self._workspace_path or not os.path.isdir(self._workspace_path):
+            return []
+
+        entries: list[dict] = []
+        for dirpath, _dirs, filenames in os.walk(self._workspace_path):
+            # Skip archive directories
+            if "history_archive" in dirpath:
+                continue
+            for fname in filenames:
+                full_path = os.path.join(dirpath, fname)
+                rel_path = os.path.relpath(full_path, self._workspace_path)
+
+                # Skip excluded files
+                if rel_path in self._WORKSPACE_EXCLUDE:
+                    continue
+                # Skip hidden and temp files
+                if fname.startswith(".") or fname.endswith(".tmp"):
+                    continue
+
+                try:
+                    stat = os.stat(full_path)
+                    entries.append({
+                        "path": rel_path,
+                        "size": stat.st_size,
+                        "modified": stat.st_mtime,
+                    })
+                except OSError:
+                    continue
+
+        # Sort by most recently modified, cap
+        entries.sort(key=lambda e: e["modified"], reverse=True)
+        return entries[: self.WORKSPACE_FILE_CAP]
+
     def build_context(self, persist_snapshot: bool = False) -> StructuredContext:
         """Build structured context for goal proposal.
 
@@ -758,6 +845,8 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 statistical_suggestions=self._statistical_suggestions,
                 knowledge_context=self._build_knowledge_context(),
                 root_goal=self.ROOT_GOAL,
+                working_notes=self._read_working_notes(),
+                workspace_files=self._scan_workspace_files(),
                 plan_progress=self._build_plan_progress(),
             )
 

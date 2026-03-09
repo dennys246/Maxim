@@ -42,6 +42,12 @@ Comprehensive documentation for Maxim's systems and subsystems.
 |----------|-------------|
 | [Communication](communication.md) | SMS/Voice via Twilio, webhook setup, Cloudflare Tunnel |
 
+### Planning & Workspace
+
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE.md](../ARCHITECTURE.md#workspace-maxim_workspace) | Workspace structure, working notes, plan dashboard |
+
 ### Integration
 
 | Document | Description |
@@ -169,7 +175,7 @@ src/maxim/
 ├── models/          → (vision, audio, language, movement models)
 ├── modes/           → README.md (modes section)
 ├── motion/          → (motion presets and actions)
-├── planning/        → ARCHITECTURE.md (planning section)
+├── planning/        → ARCHITECTURE.md (planning section, workspace dashboard/logger)
 ├── proprioception/  → proprioception.md
 ├── retrieval/       → (retrieval utilities)
 ├── runtime/         → ARCHITECTURE.md (runtime section)
@@ -220,6 +226,8 @@ Components that persist state:
 | Hippocampus | `data/util/hippocampus.json` | `--clear-memory hippo` |
 | PainDetector | `data/util/pain_detector.json` | `--clear-memory pain` |
 | SemanticEmbeddings | `data/util/semantic_embeddings.npz` | `--clear-memory semantic` |
+| PlanDashboard | `.maxim_workspace/plans/ACTIVE_PLAN.md` | (auto-cleared on plan completion) |
+| PlanLogger | `.maxim_workspace/plans/history.md` | (manual delete) |
 
 Clear all: `maxim --clear-memory all`
 
