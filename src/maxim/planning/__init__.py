@@ -18,6 +18,8 @@ from maxim.planning.plan_document import (
     ReplanRecord,
     classify_failure_type,
 )
+from maxim.planning.plan_dashboard import PlanDashboard
+from maxim.planning.plan_logger import PlanLogger
 from maxim.planning.plan_manager import PlanManager, PlanServices
 from maxim.planning.planning import TaskPlanner
 from maxim.planning.policy import DefaultPolicy
@@ -32,8 +34,10 @@ __all__ = [
     "Phase",
     "PhaseEnergyBudget",
     "PhaseStatus",
+    "PlanDashboard",
     "PlanDocument",
     "PlanEnergyBudget",
+    "PlanLogger",
     "PlanManager",
     "PlanServices",
     "PlanStatus",

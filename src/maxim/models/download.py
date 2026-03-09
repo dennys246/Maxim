@@ -136,7 +136,7 @@ VISION_MODELS: dict[str, dict[str, Any]] = {
     "rtmdet-m": {
         "description": "RTMDet-m - 80-class COCO object detection (Apache 2.0, ~49.4 mAP)",
         "size_mb": 100,
-        "url": "https://download.openmmlab.com/mmdetection/v3.0/rtmdet/rtmdet_m_8xb32-300e_coco/rtmdet_m_8xb32-300e_coco_20220719_112220-229f527c.onnx",
+        "url": "https://huggingface.co/ziq/rtm/resolve/main/rtmdet-m.onnx",
         "filename": "rtmdet-m.onnx",
     },
     "rtmpose-m": {
@@ -311,6 +311,9 @@ def download_vision(
 
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
             tmp_path = Path(tmp.name)
+
+        # Remove any stale temp file so download_file doesn't skip it
+        tmp_path.unlink(missing_ok=True)
 
         if not download_file(model_info["url"], tmp_path, f"{model_name} (archive)"):
             tmp_path.unlink(missing_ok=True)

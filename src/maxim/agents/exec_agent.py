@@ -961,6 +961,34 @@ DEFAULT NETWORK ESCALATION:
                 # Clear after use
                 self._dn_escalation_context = None
 
+        # Working notes (persistent LLM self-context)
+        notes_str = ""
+        if ctx.working_notes:
+            notes_str = f"""
+
+WORKING NOTES (your persistent scratchpad — edit via write_file):
+{ctx.working_notes}"""
+        else:
+            notes_str = (
+                "\n\nWORKING NOTES: (empty — use write_file to "
+                "'.maxim_workspace/notes/context.md' to pin important context)"
+            )
+
+        # Workspace file inventory
+        workspace_str = ""
+        if ctx.workspace_files:
+            ws_lines = ["\n\nWORKSPACE (.maxim_workspace/):"]
+            for wf in ctx.workspace_files:
+                size = wf.get("size", 0)
+                if size >= 1024:
+                    size_str = f"{size / 1024:.1f} KB"
+                else:
+                    size_str = f"{size} bytes"
+                mod_t = time.localtime(wf.get("modified", 0))
+                mod_str = f"{mod_t.tm_year}-{mod_t.tm_mon:02d}-{mod_t.tm_mday:02d}"
+                ws_lines.append(f"  - {wf['path']} ({size_str}, modified {mod_str})")
+            workspace_str = "\n".join(ws_lines)
+
         # Statistical patterns (from StatisticianAgent via bus)
         stat_str = ""
         if ctx.statistical_context and ctx.active_pattern_count > 0:
@@ -1009,7 +1037,7 @@ RECENT OUTCOMES:
 {outcome_str}
 
 RELEVANT MEMORIES:
-{mem_str}{stat_str}{dn_str}{budget_str}
+{mem_str}{notes_str}{workspace_str}{stat_str}{dn_str}{budget_str}
 
 Based on this context, what goal should be proposed?"""
 

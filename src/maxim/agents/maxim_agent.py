@@ -85,6 +85,8 @@ class MaximAgent(Agent):
             capture_manager=capture_manager,
         )
 
+        from maxim.utils.filesystem_policy import get_workspace_path
+
         self.memory = MemoryAgent(
             self._bus,
             max_short_term=100,
@@ -93,6 +95,7 @@ class MaximAgent(Agent):
             persistence_path=memory_persistence_path,
             enable_embeddings=enable_embeddings,
             reset_on_startup=reset_on_startup,
+            workspace_path=get_workspace_path(),
         )
 
         self.exec_agent = ExecAgent(
@@ -106,13 +109,24 @@ class MaximAgent(Agent):
         from maxim.planning.plan_manager import PlanManager, PlanServices
         from maxim.planning.plan_document import LongHorizonConfig
 
-        plans_dir = os.path.join(data_folder or "data", "planning")
+        plan_config = LongHorizonConfig()
+        plans_dir = os.path.join(
+            data_folder or "data", plan_config.plan_persistence_path
+        )
         self._plan_manager = PlanManager(
             plans_dir=plans_dir,
             bus=self._bus,
-            config=LongHorizonConfig(),
+            config=plan_config,
             services=PlanServices(),
         )
+
+        # Plan dashboard + logger (bus-driven, write to workspace)
+        from maxim.planning.plan_dashboard import PlanDashboard
+        from maxim.planning.plan_logger import PlanLogger
+
+        workspace_path = get_workspace_path()
+        self._plan_dashboard = PlanDashboard(workspace_path, self._bus)
+        self._plan_logger = PlanLogger(workspace_path, self._bus)
 
         self.goal = AgenticGoalAgent(
             self._bus,
