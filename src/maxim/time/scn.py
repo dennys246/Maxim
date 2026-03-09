@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time as _time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
@@ -15,6 +16,130 @@ from typing import Any
 from maxim.time.temporal_signature import TemporalSignature
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BinEntry:
+    """A memory entry in an SCN time bin, ordered by insertion time."""
+
+    memory_id: str
+    significance: float  # From significance score or salience
+    registered_at: float  # Timestamp of registration
+
+
+class BoundedBin:
+    """A time bin with max capacity and significance-based eviction.
+
+    Entries are stored in insertion order (newest at front).
+    When full, evicts the least significant entry from the older half.
+
+    Compatible with the old ``set[str]`` interface via ``get_ids()``,
+    ``__contains__``, ``__len__``, and ``__iter__``.
+    """
+
+    def __init__(self, max_size: int = 200) -> None:
+        self.max_size = max_size
+        self.entries: list[BinEntry] = []  # Ordered by insertion (newest first)
+        self._id_set: set[str] = set()  # For O(1) membership checks
+
+    # ── set-compatible interface ──────────────────────────────────────────
+
+    def add(self, memory_id: str, significance: float = 0.5) -> None:
+        """Add a memory to the bin, evicting least-significant old entry if full."""
+        if memory_id in self._id_set:
+            return  # Already present
+
+        entry = BinEntry(memory_id, significance, _time.time())
+
+        if len(self.entries) >= self.max_size:
+            # Find least significant entry, searching from back (oldest)
+            min_idx = len(self.entries) - 1
+            min_sig = self.entries[min_idx].significance
+            for i in range(len(self.entries) - 2, len(self.entries) // 2, -1):
+                if self.entries[i].significance < min_sig:
+                    min_sig = self.entries[i].significance
+                    min_idx = i
+            # Only evict if new entry is more significant
+            if significance > min_sig:
+                evicted = self.entries.pop(min_idx)
+                self._id_set.discard(evicted.memory_id)
+            else:
+                return  # New entry isn't significant enough
+
+        self.entries.insert(0, entry)  # Newest at front
+        self._id_set.add(memory_id)
+
+    def discard(self, memory_id: str) -> None:
+        """Remove a memory from the bin (no-op if absent). ``set.discard`` compat."""
+        self.remove(memory_id)
+
+    def remove(self, memory_id: str) -> None:
+        """Remove a memory from the bin."""
+        if memory_id not in self._id_set:
+            return
+        self.entries = [e for e in self.entries if e.memory_id != memory_id]
+        self._id_set.discard(memory_id)
+
+    def get_ids(self) -> set[str]:
+        """Return a copy of all memory IDs in this bin."""
+        return self._id_set.copy()
+
+    def copy(self) -> set[str]:
+        """Return a copy of IDs — ``set.copy()`` compat for query methods."""
+        return self._id_set.copy()
+
+    def __contains__(self, item: object) -> bool:
+        return item in self._id_set
+
+    def __len__(self) -> int:
+        return len(self.entries)
+
+    def __iter__(self):  # type: ignore[override]
+        return iter(self._id_set)
+
+    def __bool__(self) -> bool:
+        return len(self.entries) > 0
+
+    def __and__(self, other: set[str]) -> set[str]:  # type: ignore[override]
+        return self._id_set & other
+
+    def __rand__(self, other: set[str]) -> set[str]:
+        return other & self._id_set
+
+    # ── Persistence helpers ──────────────────────────────────────────────
+
+    def to_list(self) -> list[dict[str, Any]]:
+        """Serialize entries for JSON persistence."""
+        return [
+            {
+                "memory_id": e.memory_id,
+                "significance": e.significance,
+                "registered_at": e.registered_at,
+            }
+            for e in self.entries
+        ]
+
+    @classmethod
+    def from_list(cls, data: list[Any], max_size: int = 200) -> BoundedBin:
+        """Deserialize from JSON. Accepts list[dict] (v3) or list[str] (v2 compat)."""
+        bb = cls(max_size=max_size)
+        for item in data:
+            if isinstance(item, dict):
+                entry = BinEntry(
+                    memory_id=item["memory_id"],
+                    significance=item.get("significance", 0.5),
+                    registered_at=item.get("registered_at", 0.0),
+                )
+                if entry.memory_id not in bb._id_set:
+                    bb.entries.append(entry)
+                    bb._id_set.add(entry.memory_id)
+            else:
+                # v2 compat: plain string memory IDs
+                mid = str(item)
+                if mid not in bb._id_set:
+                    bb.entries.append(BinEntry(mid, 0.5, 0.0))
+                    bb._id_set.add(mid)
+        return bb
 
 
 @dataclass
@@ -46,14 +171,18 @@ class SCN:
         patterns = scn.find_rhythmic_patterns(min_occurrences=5)
     """
 
-    _circadian_bins: dict[int, set[str]] = field(
-        default_factory=lambda: defaultdict(set)
+    _circadian_bins: dict[int, BoundedBin] = field(
+        default_factory=lambda: defaultdict(BoundedBin)
     )
-    _weekly_bins: dict[int, set[str]] = field(default_factory=lambda: defaultdict(set))
-    _monthly_bins: dict[int, set[str]] = field(
-        default_factory=lambda: defaultdict(set)
+    _weekly_bins: dict[int, BoundedBin] = field(
+        default_factory=lambda: defaultdict(BoundedBin)
     )
-    _annual_bins: dict[int, set[str]] = field(default_factory=lambda: defaultdict(set))
+    _monthly_bins: dict[int, BoundedBin] = field(
+        default_factory=lambda: defaultdict(BoundedBin)
+    )
+    _annual_bins: dict[int, BoundedBin] = field(
+        default_factory=lambda: defaultdict(BoundedBin)
+    )
     _signatures: dict[str, TemporalSignature] = field(default_factory=dict)
 
     # Temporal priors for cold start
@@ -62,18 +191,24 @@ class SCN:
     # Coupled oscillator network (optional, disabled by default)
     _oscillator: Any = field(default=None, repr=False)
 
-    def register(self, memory_id: str, signature: TemporalSignature) -> None:
+    def register(
+        self,
+        memory_id: str,
+        signature: TemporalSignature,
+        significance: float = 0.5,
+    ) -> None:
         """Register a memory's temporal signature in all indices.
 
         Args:
             memory_id: Unique memory identifier
             signature: Temporal signature to register
+            significance: Significance score for bounded-bin eviction (0-1)
         """
         hour_bin, day_bin, week_bin, month_bin = signature.to_bins()
-        self._circadian_bins[hour_bin].add(memory_id)
-        self._weekly_bins[day_bin].add(memory_id)
-        self._monthly_bins[week_bin].add(memory_id)
-        self._annual_bins[month_bin].add(memory_id)
+        self._circadian_bins[hour_bin].add(memory_id, significance)
+        self._weekly_bins[day_bin].add(memory_id, significance)
+        self._monthly_bins[week_bin].add(memory_id, significance)
+        self._annual_bins[month_bin].add(memory_id, significance)
         self._signatures[memory_id] = signature
 
         # Feed coupled oscillator (if enabled)
@@ -102,19 +237,23 @@ class SCN:
 
     def query_hour(self, hour: int) -> set[str]:
         """Get all memory_ids from a specific hour (0-23)."""
-        return self._circadian_bins.get(hour % 24, set()).copy()
+        b = self._circadian_bins.get(hour % 24)
+        return b.get_ids() if b else set()
 
     def query_day(self, day: int) -> set[str]:
         """Get all memory_ids from a specific day (0=Monday, 6=Sunday)."""
-        return self._weekly_bins.get(day % 7, set()).copy()
+        b = self._weekly_bins.get(day % 7)
+        return b.get_ids() if b else set()
 
     def query_week_of_month(self, week: int) -> set[str]:
         """Get all memory_ids from a specific week of month (0-3)."""
-        return self._monthly_bins.get(week % 4, set()).copy()
+        b = self._monthly_bins.get(week % 4)
+        return b.get_ids() if b else set()
 
     def query_month(self, month: int) -> set[str]:
         """Get all memory_ids from a specific month (0=Jan, 11=Dec)."""
-        return self._annual_bins.get(month % 12, set()).copy()
+        b = self._annual_bins.get(month % 12)
+        return b.get_ids() if b else set()
 
     def query_similar_time(
         self,
@@ -135,7 +274,9 @@ class SCN:
 
         # Collect from circadian bins with tolerance
         for h in range(hour_bin - tolerance, hour_bin + tolerance + 1):
-            result.update(self._circadian_bins.get(h % 24, set()))
+            b = self._circadian_bins.get(h % 24)
+            if b:
+                result.update(b.get_ids())
 
         return result
 
@@ -163,13 +304,17 @@ class SCN:
         sets_to_intersect: list[set[str]] = []
 
         if hour is not None:
-            sets_to_intersect.append(self._circadian_bins.get(hour % 24, set()))
+            b = self._circadian_bins.get(hour % 24)
+            sets_to_intersect.append(b.get_ids() if b else set())
         if day is not None:
-            sets_to_intersect.append(self._weekly_bins.get(day % 7, set()))
+            b = self._weekly_bins.get(day % 7)
+            sets_to_intersect.append(b.get_ids() if b else set())
         if week_of_month is not None:
-            sets_to_intersect.append(self._monthly_bins.get(week_of_month % 4, set()))
+            b = self._monthly_bins.get(week_of_month % 4)
+            sets_to_intersect.append(b.get_ids() if b else set())
         if month is not None:
-            sets_to_intersect.append(self._annual_bins.get(month % 12, set()))
+            b = self._annual_bins.get(month % 12)
+            sets_to_intersect.append(b.get_ids() if b else set())
 
         if not sets_to_intersect:
             return set()
@@ -248,7 +393,8 @@ class SCN:
         hour_bin, _, _, _ = signature.to_bins()
 
         # Fewer memories at this hour = higher threshold (less confident)
-        hour_count = len(self._circadian_bins.get(hour_bin, set()))
+        b = self._circadian_bins.get(hour_bin)
+        hour_count = len(b) if b else 0
         if hour_count < 5:
             return 1.2  # Higher threshold when we have little data
         elif hour_count > 50:
@@ -304,9 +450,11 @@ class SCN:
         Returns:
             Set of memory_ids in this temporal cluster
         """
-        hour_memories = self._circadian_bins.get(hour % 24, set())
-        day_memories = self._weekly_bins.get(day % 7, set())
-        return hour_memories & day_memories
+        hb = self._circadian_bins.get(hour % 24)
+        db = self._weekly_bins.get(day % 7)
+        hour_ids = hb.get_ids() if hb else set()
+        day_ids = db.get_ids() if db else set()
+        return hour_ids & day_ids
 
     def get_all_clusters(self) -> dict[tuple[int, int], set[str]]:
         """Get all non-empty temporal clusters.
@@ -364,7 +512,8 @@ class SCN:
             return False
 
         hour_bin, _, _, _ = sig.to_bins()
-        return len(self._circadian_bins.get(hour_bin, set())) >= min_occurrences
+        b = self._circadian_bins.get(hour_bin)
+        return len(b) >= min_occurrences if b else False
 
     def stats(self) -> dict[str, Any]:
         """Return SCN statistics."""
@@ -456,13 +605,21 @@ class SCN:
     # ─────────────────────────────────────────────────────────────────────────
 
     def save(self, path: str) -> None:
-        """Save SCN state to JSON file (v2.0 with optional oscillator)."""
+        """Save SCN state to JSON file (v3.0 with bounded bins)."""
         data: dict[str, Any] = {
-            "version": "2.0",
-            "circadian_bins": {k: list(v) for k, v in self._circadian_bins.items()},
-            "weekly_bins": {k: list(v) for k, v in self._weekly_bins.items()},
-            "monthly_bins": {k: list(v) for k, v in self._monthly_bins.items()},
-            "annual_bins": {k: list(v) for k, v in self._annual_bins.items()},
+            "version": "3.0",
+            "circadian_bins": {
+                str(k): v.to_list() for k, v in self._circadian_bins.items() if v
+            },
+            "weekly_bins": {
+                str(k): v.to_list() for k, v in self._weekly_bins.items() if v
+            },
+            "monthly_bins": {
+                str(k): v.to_list() for k, v in self._monthly_bins.items() if v
+            },
+            "annual_bins": {
+                str(k): v.to_list() for k, v in self._annual_bins.items() if v
+            },
             "signatures": {k: v.to_dict() for k, v in self._signatures.items()},
             "priors": {k: list(v) for k, v in self._priors.items()},
         }
@@ -479,25 +636,30 @@ class SCN:
         logger.info("Saved SCN to %s (%d signatures)", path, len(self._signatures))
 
     def load(self, path: str) -> None:
-        """Load SCN state from JSON file (supports v1.0 and v2.0)."""
+        """Load SCN state from JSON file (supports v1.0, v2.0, and v3.0)."""
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
         version = data.get("version", "0.0")
-        if version not in ("1.0", "2.0"):
+        if version not in ("1.0", "2.0", "3.0"):
             raise ValueError(f"Unsupported SCN version: {version}")
 
+        # BoundedBin.from_list handles both v2 (list[str]) and v3 (list[dict])
         self._circadian_bins = defaultdict(
-            set, {int(k): set(v) for k, v in data.get("circadian_bins", {}).items()}
+            BoundedBin,
+            {int(k): BoundedBin.from_list(v) for k, v in data.get("circadian_bins", {}).items()},
         )
         self._weekly_bins = defaultdict(
-            set, {int(k): set(v) for k, v in data.get("weekly_bins", {}).items()}
+            BoundedBin,
+            {int(k): BoundedBin.from_list(v) for k, v in data.get("weekly_bins", {}).items()},
         )
         self._monthly_bins = defaultdict(
-            set, {int(k): set(v) for k, v in data.get("monthly_bins", {}).items()}
+            BoundedBin,
+            {int(k): BoundedBin.from_list(v) for k, v in data.get("monthly_bins", {}).items()},
         )
         self._annual_bins = defaultdict(
-            set, {int(k): set(v) for k, v in data.get("annual_bins", {}).items()}
+            BoundedBin,
+            {int(k): BoundedBin.from_list(v) for k, v in data.get("annual_bins", {}).items()},
         )
         self._signatures = {
             k: TemporalSignature.from_dict(v)
@@ -518,7 +680,7 @@ class SCN:
 
     def get_version(self) -> str:
         """Return data format version."""
-        return "2.0"
+        return "3.0"
 
 
-__all__ = ["SCN"]
+__all__ = ["BinEntry", "BoundedBin", "SCN"]

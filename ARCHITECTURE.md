@@ -33,11 +33,14 @@ Paths refer to the `src/maxim/` package layout.
   - `hippocampus.py`: Associative memory graph storing complete agentic loops with selective capture, compression, and sleep-based consolidation.
   - `types.py`: EpisodicMemory and CompressedMemory dataclasses.
   - `strategies.py`: Pluggable memory management strategies (AccessBased, ImportanceBased, TemporalAware).
+  - `consolidation.py`: ConsolidationOrchestrator - wave-based sleep consolidation with path-dependent thresholds (acute/chronic).
+  - `context_index.py`: SimilarityIndex - MinHash + LSH for O(1) context/percept similarity lookup.
 - `src/maxim/time/`: owns temporal indexing and rhythm tracking.
-  - `scn.py`: Suprachiasmatic Nucleus - temporal bin indexing for circadian/weekly/monthly patterns.
+  - `scn.py`: Suprachiasmatic Nucleus - temporal bin indexing for circadian/weekly/monthly patterns. BoundedBin for capacity-managed bins with significance-based eviction.
   - `temporal_signature.py`: Phase-based temporal fingerprinting.
 - `src/maxim/decisions/`: owns causal inference and prediction.
   - `nac.py`: Nucleus Accumbens - learns event→outcome relationships via temporal difference learning.
+  - `significance.py`: SignificanceWeightLearner - learnable heuristics for memory staging (RPE, novelty, user interaction, etc.).
 - `src/maxim/similarity/`: owns multi-modal similarity queries.
   - `ec.py`: Entorhinal Cortex - LSH-based approximate nearest neighbor for situation matching.
   - `semantic.py`: Phase 4 neural semantic embeddings (SentenceTransformer) for deep similarity ("cup" ≈ "mug").

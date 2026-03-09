@@ -16,6 +16,8 @@ The time system provides:
 | Component | File | Purpose |
 |-----------|------|---------|
 | `SCN` | `scn.py` | Temporal rhythm indexing |
+| `BoundedBin` | `scn.py` | Capacity-managed time bin with significance-based eviction |
+| `BinEntry` | `scn.py` | Single entry in a bounded bin (memory_id, significance, timestamp) |
 | `TemporalSignature` | `temporal_signature.py` | Multi-scale time encoding |
 | `circular_distance` | `temporal_signature.py` | Cyclic time comparison |
 
@@ -87,6 +89,26 @@ The SCN maintains binned indices for fast temporal queries.
 | Monthly | 4 weekly | Week of month patterns |
 | Annual | 12 monthly | Seasonal patterns |
 
+### BoundedBin (Capacity Management)
+
+Each SCN time bin is a `BoundedBin` with a configurable max capacity (default 200). When a bin is full, the least significant entry from the older half is evicted to make room for more significant new entries.
+
+```python
+from maxim.time.scn import BoundedBin
+
+bb = BoundedBin(max_size=200)
+bb.add("mem_1", significance=0.9)  # High significance
+bb.add("mem_2", significance=0.1)  # Low significance — evicted first when full
+
+# Set-compatible interface
+"mem_1" in bb       # True
+len(bb)             # 2
+set(bb)             # {"mem_1", "mem_2"}
+bb & other_set      # Intersection
+```
+
+BoundedBin is backward-compatible with v1/v2 persistence via `from_list()` which accepts both `list[dict]` (v3) and `list[str]` (v2) formats.
+
 ### Registration
 
 ```python
@@ -94,10 +116,10 @@ from maxim.time import SCN, TemporalSignature
 
 scn = SCN()
 
-# Register a memory with its temporal signature
+# Register a memory with its temporal signature and significance
 memory_id = "mem_123"
 sig = TemporalSignature.from_timestamp(memory.timestamp)
-scn.register(memory_id, sig)
+scn.register(memory_id, sig, significance=0.8)
 ```
 
 ### Querying
@@ -190,16 +212,17 @@ scn.save("data/util/scn_state.json")
 scn.load("data/util/scn_state.json")
 ```
 
-### File Format
+### File Format (v3.0)
 
 ```json
 {
-  "version": 1,
-  "saved_at": "2024-02-06T12:00:00Z",
+  "version": "3.0",
   "circadian_bins": {
-    "9": ["mem_1", "mem_5", "mem_12"],
-    "10": ["mem_2", "mem_8"],
-    ...
+    "9": [
+      {"memory_id": "mem_1", "significance": 0.8, "registered_at": 1704103200.0},
+      {"memory_id": "mem_5", "significance": 0.6, "registered_at": 1704106800.0}
+    ],
+    "10": [...]
   },
   "weekly_bins": {...},
   "monthly_bins": {...},
@@ -209,7 +232,21 @@ scn.load("data/util/scn_state.json")
 }
 ```
 
+v3.0 stores `BoundedBin` entries with significance scores. Loading supports v1.0, v2.0 (plain string IDs), and v3.0 formats.
+
 Clear with: `maxim --clear-memory scn`
+
+---
+
+## Integration with Consolidation
+
+SCN plays a central role in the consolidation pipeline:
+
+1. **Acute staging**: After each goal, `ExecAgent._evaluate_staging()` registers the memory's temporal signature in SCN with its significance score
+2. **Wave scoring**: `ConsolidationOrchestrator._compute_wave_score()` queries `scn.query_similar_time()` for temporal recurrence — memories at the same time of day score higher
+3. **Promotion**: When a staged memory is promoted, it is registered in SCN with its final wave score as significance
+4. **Chronic staging**: `find_chronic_candidates()` queries SCN bounded bins (last 24h of circadian bins, same weekday, similar time tolerance) to find recurring patterns
+5. **Eviction**: BoundedBin prevents unbounded growth — low-significance memories are evicted when bins reach capacity
 
 ---
 

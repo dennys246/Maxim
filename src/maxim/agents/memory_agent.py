@@ -8,7 +8,6 @@ and provides structured context for goal proposal.
 
 from __future__ import annotations
 
-import json
 import os
 import threading
 import time
@@ -18,12 +17,8 @@ from typing import Any
 from maxim.agents.base import Agent
 from maxim.agents.bus import (
     AgentBus,
-    DependencyGraph,
-    EdgeType,
     GoalAccepted,
     GoalCompleted,
-    MemoryItem,
-    MemoryTier,
     Percept,
     ProposedGoal,
     StatisticalSummary,
@@ -36,8 +31,10 @@ from maxim.utils.structured_logging import get_abstraction_buffer
 
 
 class AssociationIndex:
-    """
-    Index for fast similarity-based memory retrieval.
+    """Index for fast similarity-based memory retrieval.
+
+    After Phase 0 unification, this index stores memory IDs and keywords
+    only — full records are resolved from Hippocampus on demand.
 
     Two-tier lookup:
     1. Keyword overlap (fast, coarse) - always available
@@ -72,87 +69,85 @@ class AssociationIndex:
 
     def __init__(self, embedding_model: str | None = None) -> None:
         self._keyword_index: dict[str, set[str]] = defaultdict(set)
-        self._memories: dict[str, MemoryItem] = {}
+        self._memory_keywords: dict[str, set[str]] = {}  # mid → keywords
         self._embedding_model = embedding_model
         self._embedder = None  # Lazy init
         self._lock = threading.Lock()
+        # Phase 3e: LSH-backed context similarity index
+        self._context_index: Any = None  # SimilarityIndex, set via set_context_index()
 
-    def add(self, memory: MemoryItem) -> None:
-        """Add memory to index."""
-        mid = memory.memory_id
+    def set_context_index(self, index: Any) -> None:
+        """Wire a SimilarityIndex for LSH-backed recall (Phase 3e)."""
+        self._context_index = index
+
+    def add_by_id(self, memory_id: str, content: Any) -> None:
+        """Index a memory by keywords extracted from content."""
         with self._lock:
-            self._memories[mid] = memory
-
-            # Extract and index keywords
-            keywords = self._extract_keywords(memory.content)
-            memory.keywords = keywords
+            keywords = self._extract_keywords(content)
+            self._memory_keywords[memory_id] = keywords
             for kw in keywords:
-                self._keyword_index[kw].add(mid)
+                self._keyword_index[kw].add(memory_id)
+            # Also register in LSH index if available
+            if self._context_index is not None:
+                text = content if isinstance(content, str) else " ".join(
+                    str(v) for v in (content.values() if isinstance(content, dict) else [str(content)])
+                    if v
+                )
+                self._context_index.register(memory_id, text)
 
     def remove(self, memory_id: str) -> None:
         """Remove memory from index."""
         with self._lock:
-            if memory_id not in self._memories:
-                return
-            mem = self._memories[memory_id]
-            for kw in mem.keywords:
+            kws = self._memory_keywords.pop(memory_id, set())
+            for kw in kws:
                 self._keyword_index[kw].discard(memory_id)
-            del self._memories[memory_id]
+            if self._context_index is not None:
+                self._context_index.remove(memory_id)
 
     def find_similar(
         self,
-        query: str | MemoryItem,
+        query: str,
         top_k: int = 5,
-        use_embeddings: bool = False,
-    ) -> list[tuple[MemoryItem, float]]:
-        """Find memories similar to query."""
-        with self._lock:
-            if isinstance(query, MemoryItem):
-                query_keywords = query.keywords
-                query_text = str(query.content)
-            else:
-                query_keywords = self._extract_keywords(query)
-                query_text = query
+    ) -> list[tuple[str, float]]:
+        """Find similar memory IDs by similarity.
 
-            # Stage 1: Keyword overlap (Jaccard similarity)
+        Uses LSH (Phase 3e) when available, falls back to keyword Jaccard.
+        Returns (memory_id, score) tuples sorted by score descending.
+        """
+        with self._lock:
+            # Phase 3e: Prefer LSH similarity when index is populated
+            if (
+                self._context_index is not None
+                and self._context_index.signatures
+            ):
+                query_text = str(query) if not isinstance(query, str) else query
+                lsh_results = self._context_index.query_similar(
+                    query_text, min_similarity=0.3
+                )
+                if lsh_results:
+                    return lsh_results[:top_k]
+
+            # Fallback: keyword Jaccard similarity
+            query_keywords = self._extract_keywords(query)
+
             candidates: dict[str, float] = {}
             for kw in query_keywords:
                 for mid in self._keyword_index.get(kw, set()):
                     if mid not in candidates:
                         candidates[mid] = 0.0
-                    mem = self._memories.get(mid)
-                    if mem:
-                        intersection = len(query_keywords & mem.keywords)
-                        union = len(query_keywords | mem.keywords)
+                    mem_kw = self._memory_keywords.get(mid, set())
+                    if mem_kw:
+                        intersection = len(query_keywords & mem_kw)
+                        union = len(query_keywords | mem_kw)
                         if union > 0:
                             candidates[mid] = max(candidates[mid], intersection / union)
 
-            # Stage 2: Optional embedding refinement
-            if use_embeddings and self._embedding_model and candidates:
-                candidates = self._refine_with_embeddings(query_text, candidates)
-
-            # Sort and return top_k
             sorted_results = sorted(
-                [
-                    (self._memories[mid], score)
-                    for mid, score in candidates.items()
-                    if mid in self._memories
-                ],
+                candidates.items(),
                 key=lambda x: x[1],
                 reverse=True,
             )
             return sorted_results[:top_k]
-
-    def build_associations(self, memory: MemoryItem, threshold: float = 0.3) -> None:
-        """Automatically build associations based on similarity."""
-        similar = self.find_similar(memory, top_k=5)
-        for other_mem, score in similar:
-            if score >= threshold and other_mem.memory_id != memory.memory_id:
-                # Bidirectional association
-                if other_mem.memory_id not in memory.associations:
-                    memory.associations.append(other_mem.memory_id)
-                if memory.memory_id not in other_mem.associations:
-                    other_mem.associations.append(memory.memory_id)
 
     def _extract_keywords(self, content: Any) -> set[str]:
         """Extract keywords from content for indexing."""
@@ -168,166 +163,23 @@ class AssociationIndex:
         words = text.lower().split()
         return {w for w in words if len(w) > 2 and w not in self.STOPWORDS}
 
-    def _refine_with_embeddings(
-        self,
-        query_text: str,
-        candidates: dict[str, float],
-    ) -> dict[str, float]:
-        """Refine candidate scores using embedding similarity."""
-        if self._embedder is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-
-                self._embedder = SentenceTransformer(
-                    self._embedding_model or "all-MiniLM-L6-v2"
-                )
-            except ImportError:
-                return candidates
-
-        try:
-            import numpy as np
-
-            query_emb = self._embedder.encode(query_text, convert_to_numpy=True)
-
-            for mid in candidates:
-                mem = self._memories.get(mid)
-                if not mem:
-                    continue
-                if mem.embedding is None:
-                    mem_text = (
-                        str(mem.content)
-                        if not isinstance(mem.content, str)
-                        else mem.content
-                    )
-                    mem.embedding = self._embedder.encode(
-                        mem_text, convert_to_numpy=True
-                    ).tolist()
-
-                mem_emb = np.array(mem.embedding)
-                similarity = np.dot(query_emb, mem_emb) / (
-                    np.linalg.norm(query_emb) * np.linalg.norm(mem_emb) + 1e-8
-                )
-                candidates[mid] = 0.3 * candidates[mid] + 0.7 * float(similarity)
-        except Exception as e:
-            log_swallowed_exception(e, operation="memory_similarity_boost")
-
-        return candidates
-
-
-class MemoryAssociationGraph:
-    """Graph-based memory associations for spreading activation."""
-
-    def __init__(self) -> None:
-        self._graph: DependencyGraph[MemoryItem] = DependencyGraph()
-        self._temporal_index: dict[int, list[str]] = defaultdict(list)
-
-    def add_memory(self, memory: MemoryItem) -> None:
-        """Add memory to the association graph."""
-        self._graph.add_node(memory.memory_id, memory)
-
-        hour_bucket = int(memory.timestamp // 3600)
-        self._temporal_index[hour_bucket].append(memory.memory_id)
-
-        self._build_temporal_associations(memory)
-
-    def associate(
-        self,
-        memory_a: MemoryItem,
-        memory_b: MemoryItem,
-        weight: float = 1.0,
-        edge_type: EdgeType = EdgeType.ASSOCIATES,
-    ) -> None:
-        """Create bidirectional association."""
-        self._graph.add_bidirectional(
-            memory_a.memory_id, memory_b.memory_id, edge_type, weight
-        )
-        if memory_b.memory_id not in memory_a.associations:
-            memory_a.associations.append(memory_b.memory_id)
-        if memory_a.memory_id not in memory_b.associations:
-            memory_b.associations.append(memory_a.memory_id)
-
-    def add_causal_link(
-        self,
-        cause: MemoryItem,
-        effect: MemoryItem,
-        weight: float = 1.0,
-    ) -> None:
-        """Record causal relationship."""
-        self._graph.add_edge(
-            cause.memory_id, effect.memory_id, EdgeType.CAUSES, weight
-        )
-
-    def _build_temporal_associations(
-        self,
-        memory: MemoryItem,
-        window_hours: int = 1,
-        max_associations: int = 5,
-    ) -> None:
-        """Associate with memories close in time."""
-        hour_bucket = int(memory.timestamp // 3600)
-
-        nearby_ids: list[str] = []
-        for offset in range(-window_hours, window_hours + 1):
-            nearby_ids.extend(self._temporal_index.get(hour_bucket + offset, []))
-
-        nearby_ids = [
-            mid
-            for mid in nearby_ids
-            if mid != memory.memory_id and self._graph.get_node(mid) is not None
-        ]
-
-        for mid in nearby_ids[:max_associations]:
-            other = self._graph.get_node(mid)
-            if other:
-                time_diff = abs(memory.timestamp - other.timestamp)
-                weight = 1.0 / (1.0 + time_diff / 3600)
-                self._graph.add_bidirectional(
-                    memory.memory_id, mid, EdgeType.ASSOCIATES, weight
-                )
-
-    def get_related_memories(
-        self,
-        query_memories: list[MemoryItem],
-        top_k: int = 10,
-        activation_decay: float = 0.5,
-    ) -> list[tuple[MemoryItem, float]]:
-        """Get related memories via spreading activation."""
-        source_ids = [m.memory_id for m in query_memories]
-
-        activations = self._graph.spreading_activation(
-            source_ids,
-            initial_activation=1.0,
-            decay=activation_decay,
-            threshold=0.05,
-            max_depth=4,
-        )
-
-        results: list[tuple[MemoryItem, float]] = []
-        for mid, activation in activations.items():
-            if mid not in source_ids:
-                mem = self._graph.get_node(mid)
-                if mem:
-                    results.append((mem, activation))
-
-        results.sort(key=lambda x: x[1], reverse=True)
-        return results[:top_k]
-
 
 class MemoryAgent(Agent, AgentOutputMixin):
-    """
-    Maintains salient memory and builds structured context.
+    """Orchestrates memory retrieval and salience scoring.
 
     THIS IS THE CORE EXPLORATION FOCUS OF THE PROJECT.
 
+    After Phase 0 unification, Hippocampus owns all memory storage and
+    associative graphs. MemoryAgent owns salience scoring, relevance
+    ranking, and context building. They are complementary roles.
+
     Responsibilities:
-    - Preserve salient moments (uses PerceptionAgent salience/novelty)
-    - Recall similar states to enrich StructuredContext
-    - Apply salience decay over time
-    - Inhibit low-salience memories
+    - Score percept salience and track salience decay per memory
+    - Capture memories via Hippocampus (single store)
+    - Recall relevant memories for StructuredContext
     - Track goal outcomes for learning
     - Build StructuredContext for ExecAgent
     - Passively observe ALL agent states and actions
-    - Persist memories across sessions
     - Output to sandbox and shared directories via AgentOutputMixin
     """
 
@@ -363,8 +215,6 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
         # Initialize output mixin for sandbox/shared output support
         self._init_output(agent_name="memory", output_manager=output_manager)
-        self._max_short_term = max_short_term
-        self._max_long_term = max_long_term
         self._salience_threshold = salience_threshold
         self._decay_interval = decay_interval
         self._context_window = context_window
@@ -372,19 +222,24 @@ class MemoryAgent(Agent, AgentOutputMixin):
         self._long_term_max_age = long_term_max_age or self.DEFAULT_LONG_TERM_MAX_AGE
         self._reset_on_startup = reset_on_startup
 
-        # Two-tier memory stores
-        self._short_term: deque[MemoryItem] = deque(maxlen=max_short_term)
-        self._long_term: list[MemoryItem] = []
+        # Hippocampus reference (injected via wire_memory_hub)
+        self._hippocampus: Any | None = None
+
+        # Salience tracking — lightweight metadata for hippocampus memories
+        self._salience: dict[str, float] = {}  # memory_id → current salience
+        self._decay_rates: dict[str, float] = {}  # memory_id → decay rate
+        self._recent_ids: deque[str] = deque(maxlen=max_short_term)  # Bounded window
+
+        # Recency buffers (not memory storage — just prompt context)
         self._recent_percepts: deque[Percept] = deque(maxlen=context_window)
         self._recent_outcomes: deque[dict] = deque(maxlen=context_window)
         self._cli_inputs: deque[str] = deque(maxlen=20)
         self._comms_messages: deque[dict] = deque(maxlen=20)
 
-        # Association systems
+        # Association index (keyword-based, operates on hippocampus memory IDs)
         self._association_index = AssociationIndex(
             embedding_model="all-MiniLM-L6-v2" if enable_embeddings else None
         )
-        self._association_graph = MemoryAssociationGraph()
 
         # Abstraction stream
         self._abstraction = get_abstraction_buffer()
@@ -398,10 +253,6 @@ class MemoryAgent(Agent, AgentOutputMixin):
         self._last_promotion_time: float = time.time()
         self._did_startup: bool = False
         self._lock = threading.Lock()
-
-        # Load persisted memories
-        if not self._reset_on_startup and self._persistence_path:
-            self._load_memories_from_disk()
 
         # Statistical context (from StatisticianAgent via bus)
         self._latest_statistical_summary: str = ""
@@ -447,21 +298,17 @@ class MemoryAgent(Agent, AgentOutputMixin):
                     "timestamp": percept.timestamp,
                 })
 
-            # Store as memory if salient
+            # Capture via Hippocampus if salient
             if percept.salience > self._salience_threshold or percept.has_maxim_keyword:
-                memory = MemoryItem(
-                    timestamp=percept.timestamp,
-                    content={
-                        "source": percept.source,
-                        "transcript": percept.raw_transcript_text or percept.content,
-                        "has_maxim": percept.has_maxim_keyword,
-                        "detections_count": len(percept.detections),
-                    },
-                    salience=self._compute_memory_salience(percept),
-                    source="percept",
-                    decay_rate=0.05 if percept.has_maxim_keyword else 0.1,
-                )
-                self._add_memory(memory)
+                salience = self._compute_memory_salience(percept)
+                decay_rate = 0.05 if percept.has_maxim_keyword else 0.1
+                content = {
+                    "source": percept.source,
+                    "transcript": percept.raw_transcript_text or percept.content,
+                    "has_maxim": percept.has_maxim_keyword,
+                    "detections_count": len(percept.detections),
+                }
+                self._add_memory(content, salience, decay_rate, "percept", percept)
 
     def _on_tool_result(self, result: ToolResult) -> None:
         """Track tool results as outcomes."""
@@ -476,14 +323,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
             # Store significant outcomes
             if not result.success:
-                memory = MemoryItem(
-                    timestamp=time.time(),
-                    content=outcome,
-                    salience=0.8,
-                    source="goal_outcome",
-                    decay_rate=0.02,
-                )
-                self._add_memory(memory)
+                self._add_memory(outcome, 0.8, 0.02, "goal_outcome")
 
     def _on_goal_completed(self, completed: GoalCompleted) -> None:
         """Track goal completion."""
@@ -501,31 +341,18 @@ class MemoryAgent(Agent, AgentOutputMixin):
             }
             self._recent_outcomes.append(outcome)
 
-            # Store as memory
-            memory = MemoryItem(
-                timestamp=time.time(),
-                content=outcome,
-                salience=0.7 if completed.success else 0.9,
-                source="goal_outcome",
-                decay_rate=0.03,
-            )
-            self._add_memory(memory)
+            salience = 0.7 if completed.success else 0.9
+            self._add_memory(outcome, salience, 0.03, "goal_outcome")
 
     def _on_goal_proposed(self, goal: ProposedGoal) -> None:
         """Observe all proposed goals."""
-        memory = MemoryItem(
-            timestamp=time.time(),
-            content={
-                "goal_id": goal.id,
-                "description": goal.description,
-                "priority": goal.priority.name,
-            },
-            salience=0.6,
-            source="goal_proposed",
-            decay_rate=0.08,
-        )
+        content = {
+            "goal_id": goal.id,
+            "description": goal.description,
+            "priority": goal.priority.name,
+        }
         with self._lock:
-            self._add_memory(memory)
+            self._add_memory(content, 0.6, 0.08, "goal_proposed")
 
     def _on_goal_accepted(self, accepted: GoalAccepted) -> None:
         """Track when goals are accepted."""
@@ -554,20 +381,60 @@ class MemoryAgent(Agent, AgentOutputMixin):
             except AttributeError:
                 pass
 
-    def _add_memory(self, memory: MemoryItem) -> None:
-        """Add memory to stores and indexes (must hold lock)."""
-        self._short_term.append(memory)
-        self._association_index.add(memory)
-        self._association_graph.add_memory(memory)
+    def _add_memory(
+        self,
+        content: Any,
+        salience: float,
+        decay_rate: float,
+        source: str,
+        percept: Percept | None = None,
+    ) -> str | None:
+        """Capture a memory via Hippocampus (must hold lock).
 
-        # Build keyword-based associations
-        similar = self._association_index.find_similar(memory, top_k=3)
-        for other_mem, score in similar:
-            if score > 0.3 and other_mem.memory_id != memory.memory_id:
-                self._association_graph.associate(memory, other_mem, weight=score)
+        MemoryAgent no longer creates MemoryItem objects. Hippocampus owns
+        storage; MemoryAgent tracks the ID and salience metadata.
+        """
+        if not self._hippocampus:
+            return None
 
-        # Check for promotion
-        self._check_promotions()
+        # Build observation dict from content
+        observation = {}
+        if percept is not None:
+            observation = {
+                "detections": [d for d in percept.detections],
+                "transcript": percept.raw_transcript_text,
+                "cli_input": percept.cli_input,
+            }
+        elif isinstance(content, dict):
+            observation = content
+
+        memory_id = self._hippocampus.capture_from_loop(
+            observation=observation,
+            state={"salience": salience, "novelty": 0.5, "source": source},
+            intent={},
+            decision={},
+            action=content.get("tool_name", "") if isinstance(content, dict) else {},
+            result=content if isinstance(content, dict) and "success" in content else {},
+        )
+
+        if memory_id:
+            self._salience[memory_id] = salience
+            self._decay_rates[memory_id] = decay_rate
+            self._recent_ids.append(memory_id)
+
+            # Index for keyword lookup
+            self._association_index.add_by_id(memory_id, content)
+
+            # Check for promotion
+            self._check_promotions()
+
+        return memory_id
+
+    def _on_memory_deleted(self, memory_id: str) -> None:
+        """Hippocampus pruned this memory — clean up local tracking."""
+        self._salience.pop(memory_id, None)
+        self._decay_rates.pop(memory_id, None)
+        self._association_index.remove(memory_id)
 
     def _compute_memory_salience(self, percept: Percept) -> float:
         """Compute retention weight using PerceptionAgent salience."""
@@ -587,7 +454,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
         return base
 
     def _apply_decay(self) -> None:
-        """Apply salience decay to memories (must hold lock)."""
+        """Decay salience scores for tracked memories (must hold lock)."""
         now = time.time()
         if now - self._last_decay_time < self._decay_interval:
             return
@@ -595,84 +462,126 @@ class MemoryAgent(Agent, AgentOutputMixin):
         elapsed = now - self._last_decay_time
         self._last_decay_time = now
 
-        # Decay short-term
-        surviving_short: deque[MemoryItem] = deque(maxlen=self._max_short_term)
-        for mem in self._short_term:
-            mem.salience -= mem.decay_rate * elapsed
-            if mem.salience > self._salience_threshold:
-                surviving_short.append(mem)
-            else:
-                self._association_index.remove(mem.memory_id)
-        self._short_term = surviving_short
+        # Decay salience metadata — does NOT remove from hippocampus
+        to_remove = []
+        for mid in list(self._salience):
+            rate = self._decay_rates.get(mid, 0.1)
+            self._salience[mid] -= rate * elapsed
+            if self._salience[mid] <= self._salience_threshold:
+                to_remove.append(mid)
 
-        # Evict old long-term memories
-        surviving_long: list[MemoryItem] = []
-        for mem in self._long_term:
-            if not mem.should_evict_long_term(self._long_term_max_age):
-                surviving_long.append(mem)
-            else:
-                self._association_index.remove(mem.memory_id)
-        self._long_term = surviving_long
+        for mid in to_remove:
+            self._salience.pop(mid, None)
+            self._decay_rates.pop(mid, None)
+            self._association_index.remove(mid)
 
     def _check_promotions(self) -> None:
-        """Check for memories to promote (must hold lock)."""
+        """Promote high-salience memories to long-term in Hippocampus."""
         now = time.time()
         if now - self._last_promotion_time < 10.0:
             return
         self._last_promotion_time = now
 
-        for mem in list(self._short_term):
-            if mem.should_promote():
-                mem.tier = MemoryTier.LONG_TERM
-                mem.promoted_at = time.time()
-                self._long_term.append(mem)
-                self._association_index.build_associations(mem)
+        if not self._hippocampus:
+            return
 
-                # Limit long-term size
-                if len(self._long_term) > self._max_long_term:
-                    oldest = min(self._long_term, key=lambda m: m.last_accessed)
-                    self._long_term.remove(oldest)
-                    self._association_index.remove(oldest.memory_id)
+        for mid, sal in list(self._salience.items()):
+            if sal < 0.7:
+                continue
+            mem = self._hippocampus.get(mid)
+            if mem and hasattr(mem, "long_term") and not mem.long_term:
+                mem.long_term = True
+                mem.consolidated_at = now
 
-    def _get_relevant_memories(self, current: Percept | None) -> list[MemoryItem]:
-        """Get memories relevant to current context using both systems."""
-        all_memories = list(self._short_term) + self._long_term
+    def _get_relevant_memories(self, current: Percept | None) -> list[dict]:
+        """Get memories relevant to current context.
+
+        Returns list of dicts with 'source', 'salience', 'content' keys
+        for consumption by StructuredContext and ExecAgent formatting.
+        """
+        if not self._hippocampus:
+            return []
 
         if current is None:
-            sorted_mems = sorted(all_memories, key=lambda m: m.salience, reverse=True)
-            return list(sorted_mems[: self._context_window])
+            # No context — return most salient tracked memories
+            sorted_ids = sorted(
+                self._salience.items(), key=lambda x: x[1], reverse=True
+            )
+            results = []
+            for mid, sal in sorted_ids[: self._context_window]:
+                mem = self._hippocampus.get(mid)
+                if mem:
+                    results.append(self._memory_to_context_item(mem, sal))
+            return results
 
-        # Stage 1: Keyword similarity
+        # Stage 1: Keyword similarity via AssociationIndex
         query = current.raw_transcript_text or str(current.detections)
         keyword_similar = self._association_index.find_similar(
             query, top_k=self._context_window
         )
 
-        # Stage 2: Spreading activation from keyword matches
-        seed_memories = [mem for mem, _ in keyword_similar[:3]]
-        if seed_memories:
-            graph_related = self._association_graph.get_related_memories(
-                seed_memories, top_k=self._context_window
-            )
-        else:
-            graph_related = []
+        # Stage 2: Spreading activation from top keyword matches
+        seed_ids = [mid for mid, _ in keyword_similar[:3]]
+        graph_related: dict[str, float] = {}
+        if seed_ids and self._hippocampus:
+            try:
+                associated = self._hippocampus.recall_associated(
+                    seed_ids=seed_ids,
+                    max_depth=3,
+                    decay=0.5,
+                )
+                for mem, activation in associated:
+                    graph_related[mem.id] = activation
+            except Exception:
+                pass
 
         # Combine and deduplicate
         seen: set[str] = set()
-        combined: list[tuple[MemoryItem, float]] = []
+        combined: list[tuple[str, float]] = []
 
-        for mem, score in keyword_similar:
-            if mem.memory_id not in seen:
-                seen.add(mem.memory_id)
-                combined.append((mem, score * 0.5 + mem.salience * 0.5))
+        for mid, score in keyword_similar:
+            if mid not in seen:
+                seen.add(mid)
+                sal = self._salience.get(mid, 0.5)
+                combined.append((mid, score * 0.5 + sal * 0.5))
 
-        for mem, activation in graph_related:
-            if mem.memory_id not in seen:
-                seen.add(mem.memory_id)
-                combined.append((mem, activation * 0.4 + mem.salience * 0.6))
+        for mid, activation in graph_related.items():
+            if mid not in seen:
+                seen.add(mid)
+                sal = self._salience.get(mid, 0.5)
+                combined.append((mid, activation * 0.4 + sal * 0.6))
 
         combined.sort(key=lambda x: x[1], reverse=True)
-        return [mem for mem, _ in combined[: self._context_window]]
+
+        results = []
+        for mid, score in combined[: self._context_window]:
+            mem = self._hippocampus.get(mid)
+            if mem:
+                results.append(self._memory_to_context_item(mem, score))
+        return results
+
+    @staticmethod
+    def _memory_to_context_item(record: Any, salience: float) -> dict:
+        """Convert a hippocampus record to the dict format ExecAgent expects."""
+        source = "episodic"
+        content = {}
+        try:
+            if hasattr(record, "context") and record.context:
+                content["goal"] = getattr(record.context, "active_goal", None)
+            if hasattr(record, "action") and record.action:
+                content["action"] = getattr(record.action, "tool_name", None)
+                source = "action"
+            if hasattr(record, "outcome") and record.outcome:
+                content["success"] = getattr(record.outcome, "success", None)
+                source = "goal_outcome" if content.get("success") is not None else source
+            if hasattr(record, "perception") and record.perception:
+                transcript = getattr(record.perception, "transcript", None)
+                if transcript:
+                    content["transcript"] = transcript
+                    source = "percept"
+        except Exception:
+            content = {"summary": str(record)}
+        return {"source": source, "salience": salience, "content": content}
 
     def _extract_detected_objects(self, percepts: list[Percept]) -> list[dict]:
         """Extract unique detected objects from recent percepts."""
@@ -999,75 +908,16 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 return True
             return False
 
-    def _load_memories_from_disk(self) -> None:
-        """Load persisted memories on startup."""
-        if not self._persistence_path:
-            return
-        try:
-            if os.path.exists(self._persistence_path):
-                with open(self._persistence_path, "r") as f:
-                    data = json.load(f)
-                for item in data.get("memories", []):
-                    mem = MemoryItem(
-                        timestamp=item["timestamp"],
-                        content=item["content"],
-                        salience=item["salience"],
-                        source=item["source"],
-                        decay_rate=item.get("decay_rate", 0.1),
-                        associations=item.get("associations", []),
-                        tier=MemoryTier(item.get("tier", "short")),
-                    )
-                    if mem.tier == MemoryTier.LONG_TERM:
-                        self._long_term.append(mem)
-                    else:
-                        self._short_term.append(mem)
-                    self._association_index.add(mem)
-                    self._association_graph.add_memory(mem)
-        except Exception as e:
-            log_swallowed_exception(e, operation="load_persisted_memories")
-
     def _persist_memories_to_disk(self, share_to_outputs: bool = False) -> None:
-        """Persist high-salience memories to disk.
+        """Persist salience metadata to disk.
 
-        Args:
-            share_to_outputs: If True, also write to shared outputs for cross-instance visibility
+        After Phase 0, Hippocampus handles its own persistence.
+        MemoryAgent only persists lightweight salience/decay metadata
+        which is rebuilt each session from percepts. This is optional.
         """
-        # Build list of memories to persist
-        to_persist = []
-        threshold = self._salience_threshold * 1.5
-
-        for m in list(self._short_term) + self._long_term:
-            if m.salience > threshold or m.tier == MemoryTier.LONG_TERM:
-                content = m.content
-                if not isinstance(content, (dict, str, list, int, float, bool, type(None))):
-                    content = str(content)
-                to_persist.append(
-                    {
-                        "timestamp": m.timestamp,
-                        "content": content,
-                        "salience": m.salience,
-                        "source": m.source,
-                        "decay_rate": m.decay_rate,
-                        "associations": m.associations,
-                        "tier": m.tier.value,
-                    }
-                )
-
-        # Write via output manager if available (preferred path)
-        if self._output_manager is not None:
-            try:
-                self._write_memory(to_persist, share=share_to_outputs)
-            except Exception as e:
-                log_swallowed_exception(e, operation="persist_memory_to_output_manager")
-
-        # Also write to legacy persistence path if specified
-        if self._persistence_path:
-            try:
-                os.makedirs(os.path.dirname(self._persistence_path) or ".", exist_ok=True)
-                with open(self._persistence_path, "w") as f:
-                    json.dump({"memories": to_persist}, f, indent=2)
-            except (OSError, IOError) as e:
-                log_swallowed_exception(e, operation="persist_memory_to_disk", context={"path": self._persistence_path})
+        # Salience metadata is ephemeral — rebuilt from percepts each session.
+        # Hippocampus persistence handles the actual memory data.
+        pass
 
     def propose_intent(self, state: Any, memory: Any, **kwargs: Any) -> dict[str, Any] | None:
         """MemoryAgent doesn't propose intents directly."""
