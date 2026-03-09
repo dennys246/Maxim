@@ -29,7 +29,7 @@ from maxim.agents.bus import (
     ToolResult,
 )
 from maxim.agents.perception_agent import PerceptionAgent
-from maxim.agents.memory_agent import AssociationIndex, MemoryAgent, MemoryAssociationGraph
+from maxim.agents.memory_agent import AssociationIndex, MemoryAgent
 from maxim.agents.exec_agent import ExecAgent
 from maxim.agents.agentic_goal_agent import AgenticGoalAgent
 from maxim.agents.maxim_agent import AgenticMaximAgent, MaximAgent
@@ -118,7 +118,6 @@ __all__ = [
     "AssociationIndex",
     "ExecAgent",
     "MemoryAgent",
-    "MemoryAssociationGraph",
     "PerceptionAgent",
     # Statistician
     "PatternState",

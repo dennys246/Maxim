@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 import uuid
@@ -29,6 +30,7 @@ from maxim.agents.llm_worker import LLMWorker
 from maxim.models.language.router import LLMRouter, load_llm_config
 from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
 from maxim.agents.memory_agent import MemoryAgent
+from maxim.decisions.significance import CycleContext, SignificanceConfig, SignificanceWeightLearner
 from maxim.utils.logging import warn
 from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
@@ -93,6 +95,8 @@ Available tools for goals:
             label_outcome, request_sleep, request_observe, request_shutdown,
             goto_pose, move, look_at_image, move_antenna
   update_interests params: {add: [int], remove: [int]} — boosts salience priority for specified COCO class IDs
+- recall_deep: Deep memory recall when automatic recall doesn't surface what you need. Params: {query: str, limit: int (optional, default 10)}
+  Returns memories ranked by similarity, not recency. Use when you need to remember something specific.
 - read_file: Read a file. Params: {path: str}. Workspace files: '.maxim_workspace/filename'
 - write_file: Write a file. **MUST use '.maxim_workspace/' prefix!** Params: {path: '.maxim_workspace/filename.py', content: str}
   Workspace structure: drafts/ (code drafts), notes/ (thinking), plans/ (proposals), scratch/ (temp files)
@@ -196,6 +200,13 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
             "uncontemplated_total": 0,
         }
         self._nac: Any = None  # Late-wired via wire_nac()
+
+        # Phase 3b: Acute staging
+        self._staging_dir: str | None = None  # Set via wire_staging()
+        self._weight_learner: SignificanceWeightLearner | None = None
+        self._significance_config = SignificanceConfig()
+        self._hippocampus: Any = None  # Late-wired via wire_staging()
+        self._scn: Any = None  # Late-wired via wire_staging()
 
         # Subscribe to percepts and filtered percepts (from Default Network)
         self._bus.subscribe(Percept, self._on_percept)
@@ -737,6 +748,161 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
         """Late-wire NAc for contemplation outcome learning."""
         self._nac = nac
 
+    def wire_staging(
+        self,
+        staging_dir: str,
+        hippocampus: Any,
+        scn: Any,
+        weights_path: str | None = None,
+    ) -> None:
+        """Late-wire acute staging dependencies.
+
+        Args:
+            staging_dir: Path to data/short_term_memory/ for JSON sidecars
+            hippocampus: Hippocampus instance for memory capture tracking
+            scn: SCN instance for temporal signatures
+            weights_path: Path for persisting learnable significance weights
+        """
+        self._staging_dir = staging_dir
+        self._hippocampus = hippocampus
+        self._scn = scn
+        os.makedirs(staging_dir, exist_ok=True)
+
+        if weights_path is None:
+            weights_path = os.path.join(
+                os.path.dirname(staging_dir), "util", "significance_weights.json"
+            )
+        self._weight_learner = SignificanceWeightLearner(weights_path, hippocampus)
+        self._weight_learner.load_weights_into_heuristics(
+            self._significance_config.heuristics
+        )
+
+    def _evaluate_staging(
+        self,
+        completed: GoalCompleted,
+        percept: Percept | None = None,
+    ) -> None:
+        """Evaluate significance of a completed cycle and stage if above threshold.
+
+        Writes a JSON sidecar to ``_staging_dir`` if the weighted significance
+        score exceeds the staging threshold. Called from ``_on_goal_completed``.
+        """
+        if self._weight_learner is None or self._staging_dir is None:
+            return
+
+        # Build CycleContext from available signals
+        rpe_raw = 0.0
+        nac = self._nac
+        if nac is not None:
+            try:
+                predicted = getattr(nac, "last_predicted_valence", 0.5)
+                actual = 1.0 if completed.success else 0.0
+                rpe_raw = abs(predicted - actual)
+            except Exception:
+                pass
+
+        has_user = False
+        novelty = 0.5
+        if percept is not None:
+            has_user = percept.source == "cli" or percept.has_maxim_keyword
+            novelty = percept.novelty
+
+        ctx = CycleContext(
+            rpe_raw=rpe_raw,
+            has_user_input=has_user,
+            novelty=novelty,
+            is_plan_boundary=False,
+            energy_crossed_threshold=False,
+            outcome_valence=1.0 if completed.success else 0.0,
+        )
+
+        # Update RPE stats
+        if rpe_raw > 0:
+            self._weight_learner.update_rpe_stats(rpe_raw)
+
+        # Evaluate
+        score, heuristic_scores = self._weight_learner.evaluate(
+            ctx, self._significance_config
+        )
+
+        if score < self._significance_config.staging_threshold:
+            return
+
+        # Write JSON sidecar
+        now = time.time()
+        tool_name = completed.tool_name if hasattr(completed, "tool_name") else "unknown"
+
+        # Compute NAc observation count at staging time
+        nac_obs = 0
+        if nac is not None and tool_name != "unknown":
+            try:
+                links = nac.get_links_for_event(tool_name)
+                nac_obs = sum(getattr(l, "observation_count", 0) for l in links)
+            except Exception:
+                pass
+
+        # Get temporal info
+        temporal = {}
+        if self._scn is not None:
+            try:
+                from maxim.time.temporal_signature import TemporalSignature
+
+                sig = TemporalSignature.now()
+                temporal = {
+                    "circadian_phase": sig.circadian_phase,
+                    "weekly_phase": sig.weekly_phase,
+                    "monthly_phase": sig.monthly_phase,
+                    "annual_phase": sig.annual_phase,
+                }
+                anomaly = self._scn.temporal_anomaly_score(sig)
+                if anomaly is not None:
+                    temporal["anomaly_score"] = anomaly
+            except Exception:
+                pass
+
+        sidecar = {
+            "version": "1.0",
+            "timestamp": now,
+            "staging_path": "acute",
+            "significance_score": round(score, 4),
+            "heuristic_scores": {k: round(v, 4) for k, v in heuristic_scores.items()},
+            "rpe": {
+                "raw": round(rpe_raw, 4),
+                "running_mean": round(self._weight_learner.rpe_running_mean, 4),
+                "running_std": round(self._weight_learner.rpe_running_std, 4),
+            },
+            "temporal": temporal,
+            "nac_obs_at_staging": nac_obs,
+            "context_summary": completed.description if hasattr(completed, "description") else "",
+            "action": {"tool": tool_name},
+            "outcome": {
+                "success": completed.success,
+                "valence": 1.0 if completed.success else 0.0,
+            },
+            "active_goal": completed.goal_id,
+            "sleep_cycles_seen": 0,
+            "wave_scores": [],
+        }
+
+        # Write sidecar
+        label = tool_name.replace(" ", "-")[:30]
+        filename = f"{int(now)}_rpe-{rpe_raw:.2f}_{label}.json"
+        filepath = os.path.join(self._staging_dir, filename)
+        try:
+            tmp = filepath + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(sidecar, f, indent=2)
+            os.replace(tmp, filepath)
+        except Exception as e:
+            self.log.warning("Failed to write staging sidecar: %s", e)
+
+        log_structured(
+            self.log,
+            logging.DEBUG,
+            "acute_staging",
+            {"score": score, "file": filename},
+        )
+
     def _on_goal_completed(self, completed: GoalCompleted) -> None:
         """Track contemplation outcomes when goals complete."""
         meta = self._contemplation_log.pop(completed.goal_id, None)
@@ -786,6 +952,13 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
             },
         )
 
+        # Phase 3b: Evaluate acute staging
+        try:
+            ctx = self._memory.build_context()
+            self._evaluate_staging(completed, percept=ctx.current_percept)
+        except Exception:
+            pass  # Staging is best-effort
+
     def contemplation_improvement_rate(self) -> dict[str, Any]:
         """Return contemplation quality metrics.
 
@@ -810,6 +983,84 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
             "uncontemplated_total": ut,
             "improvement_delta": improvement,
         }
+
+    # ── Phase 3f: recall_deep tool ────────────────────────────────────
+
+    def recall_deep(
+        self,
+        query: str,
+        percept: dict[str, Any] | None = None,
+        limit: int = 10,
+    ) -> list[Any]:
+        """Deep recall tool for ExecAgent. Wraps existing recall systems
+        with broader search parameters.
+
+        Ranks purely by context similarity — NOT recency. The agent is
+        asking "what do I know about X?" not "what happened recently?"
+
+        Search strategy: LSH seeds → recall_associated() spreading
+        activation → recall_similar fallback.
+        """
+        if self._hippocampus is None:
+            return []
+
+        scored: dict[str, tuple[Any, float]] = {}
+
+        # 1. LSH candidates from context_index
+        context_index = getattr(self, "_context_index_ref", None)
+        if query and context_index is not None:
+            try:
+                for mid, sim in context_index.query_similar(query, min_similarity=0.2):
+                    mem = self._hippocampus.get(mid)
+                    if mem:
+                        scored[mid] = (mem, sim)
+            except Exception:
+                pass
+
+        # LSH candidates from percept_index
+        percept_index = getattr(self, "_percept_index_ref", None)
+        if percept and percept_index is not None:
+            try:
+                from maxim.memory.context_index import percept_to_canonical
+
+                percept_str = percept_to_canonical(percept)
+                for mid, sim in percept_index.query_similar(percept_str, min_similarity=0.2):
+                    if mid not in scored:
+                        mem = self._hippocampus.get(mid)
+                        if mem:
+                            scored[mid] = (mem, sim)
+            except Exception:
+                pass
+
+        # 2. Spreading activation from top LSH matches
+        if scored:
+            try:
+                seeds = sorted(scored.values(), key=lambda x: -x[1])[:3]
+                for seed_mem, _ in seeds:
+                    associated = self._hippocampus.recall_associated(
+                        seed_ids=[seed_mem.id], max_depth=2, decay=0.5
+                    )
+                    for mem, activation in associated:
+                        if mem.id not in scored:
+                            scored[mem.id] = (mem, activation)
+            except Exception:
+                pass
+
+        # 3. Fall back to recall_similar if still under limit
+        if len(scored) < limit:
+            try:
+                similar = self._hippocampus.recall_similar(
+                    query, limit=limit - len(scored)
+                )
+                for mem in similar:
+                    if mem.id not in scored:
+                        scored[mem.id] = (mem, 0.3)
+            except Exception:
+                pass
+
+        # Rank by similarity score descending — NOT by time
+        ranked = sorted(scored.values(), key=lambda x: -x[1])
+        return [mem for mem, _ in ranked[:limit]]
 
     def _on_percept(self, percept: Percept) -> None:
         """Trigger goal proposal on significant percepts.
@@ -924,10 +1175,15 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
             )
         outcome_str = "\n".join(outcome_lines) if outcome_lines else "  (none)"
 
-        # Relevant memories
+        # Relevant memories (dict format after Phase 0 unification)
         mem_lines = []
         for mem in ctx.relevant_memories[:3]:
-            mem_lines.append(f"  - [{mem.source}] salience={mem.salience:.2f}")
+            if isinstance(mem, dict):
+                src = mem.get("source", "?")
+                sal = mem.get("salience", 0.0)
+                mem_lines.append(f"  - [{src}] salience={sal:.2f}")
+            else:
+                mem_lines.append(f"  - [{getattr(mem, 'source', '?')}] salience={getattr(mem, 'salience', 0.0):.2f}")
         mem_str = "\n".join(mem_lines) if mem_lines else "  (none)"
 
         # CLI inputs

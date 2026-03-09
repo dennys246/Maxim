@@ -70,6 +70,7 @@ class MaximAgent(Agent):
 
         # Create the message bus
         self._bus = AgentBus()
+        self._data_folder = data_folder
 
         # Default persistence path if not specified
         if memory_persistence_path is None and data_folder:
@@ -172,9 +173,19 @@ class MaximAgent(Agent):
         Registers StatisticianAgent as a promotion source and gives
         MemoryAgent access to knowledge queries. Also wires PlanManager
         services for rich replan context.
+
+        Phase 0: Also injects Hippocampus reference into MemoryAgent so
+        it can capture memories through the single store.
         """
         # Give MemoryAgent access for knowledge context building
         self.memory._memory_hub = memory_hub
+
+        # Phase 0: Wire Hippocampus reference for unified memory storage
+        hippocampus = getattr(memory_hub, "hippocampus", None)
+        if hippocampus is not None:
+            self.memory._hippocampus = hippocampus
+            # Register cleanup callback so MemoryAgent tracks deletions
+            hippocampus.register_deletion_callback(self.memory._on_memory_deleted)
 
         # Register StatisticianAgent as a promotion source
         if hasattr(memory_hub, "register_promotion_source"):
@@ -191,6 +202,33 @@ class MaximAgent(Agent):
         nac = getattr(memory_hub, "_nac", None)
         if nac is not None:
             self.exec_agent.wire_nac(nac)
+
+        # Phase 3e: Wire LSH similarity indices
+        from maxim.memory.context_index import SimilarityIndex
+
+        self._context_index = SimilarityIndex(num_hashes=64, num_bands=8)
+        self._percept_index = SimilarityIndex(num_hashes=64, num_bands=8)
+        self.memory._association_index.set_context_index(self._context_index)
+        # Wire indices to ExecAgent for recall_deep (Phase 3f)
+        self.exec_agent._context_index_ref = self._context_index
+        self.exec_agent._percept_index_ref = self._percept_index
+        if hippocampus is not None:
+            hippocampus._percept_index = self._percept_index
+
+        # Phase 3b: Wire acute staging
+        if hippocampus is not None:
+            data_folder = self._data_folder or "data"
+            staging_dir = os.path.join(data_folder, "short_term_memory")
+            scn = getattr(memory_hub, "scn", None)
+            weights_path = os.path.join(
+                data_folder, "util", "significance_weights.json"
+            )
+            self.exec_agent.wire_staging(
+                staging_dir=staging_dir,
+                hippocampus=hippocampus,
+                scn=scn,
+                weights_path=weights_path,
+            )
 
     def on_start(self, **kwargs: Any) -> None:
         """Start all component agents."""

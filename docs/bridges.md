@@ -423,6 +423,15 @@ if hub.semantic_enabled:
 hub.on_session_end()  # Saves embeddings to disk
 ```
 
+### Consolidation Wiring
+
+MemoryHub also wires the consolidation pipeline during `wire_memory_hub()`:
+
+- Creates `SimilarityIndex` instances (context_index + percept_index)
+- Wires LSH into `AssociationIndex` for O(1) similarity lookups
+- Wires `ExecAgent.wire_staging()` for acute staging after goal completion
+- Wires LSH indices into Hippocampus for `recall_deep` seeding
+
 ### Semantic Capture Flow
 
 ```

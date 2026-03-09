@@ -161,7 +161,7 @@ src/maxim/
 ├── comms/           → communication.md
 ├── conscience/      → ARCHITECTURE.md (conscience section)
 ├── data/            → (camera/audio data utilities)
-├── decisions/       → decisions.md
+├── decisions/       → decisions.md (+ significance.py: learnable heuristics)
 ├── default_network/ → default_network.md
 ├── energy/          → energy.md
 ├── environment/     → README.md (environment section)
@@ -171,7 +171,7 @@ src/maxim/
 ├── inference/       → (observation/control functions)
 ├── integration/     → bridges.md (MemoryHub coordinator)
 ├── math/            → (IPS, AngularGyrus, linalg)
-├── memory/          → memory.md
+├── memory/          → memory.md (+ consolidation.py, context_index.py)
 ├── models/          → (vision, audio, language, movement models)
 ├── modes/           → README.md (modes section)
 ├── motion/          → (motion presets and actions)
@@ -182,7 +182,7 @@ src/maxim/
 ├── salience/        → salience.md
 ├── similarity/      → semantic_similarity_analysis.md (Phase 4 implemented)
 ├── spatial/         → bridges.md (SpatialMemoryBridge)
-├── time/            → time.md
+├── time/            → time.md (+ BoundedBin, significance-based eviction)
 ├── tools/           → ARCHITECTURE.md (tools section)
 ├── training/        → (training pipelines)
 └── utils/           → (config, logging, plotting, filesystem helpers)
@@ -226,6 +226,10 @@ Components that persist state:
 | Hippocampus | `data/util/hippocampus.json` | `--clear-memory hippo` |
 | PainDetector | `data/util/pain_detector.json` | `--clear-memory pain` |
 | SemanticEmbeddings | `data/util/semantic_embeddings.npz` | `--clear-memory semantic` |
+| SignificanceWeights | `data/util/significance_weights.json` | `--clear-memory significance` |
+| SimilarityIndex (context) | `data/util/context_index.json` | `--clear-memory context_index` |
+| SimilarityIndex (percept) | `data/util/percept_index.json` | `--clear-memory percept_index` |
+| Staged Sidecars | `data/short_term_memory/*.json` | `--clear-memory staging` |
 | PlanDashboard | `.maxim_workspace/plans/ACTIVE_PLAN.md` | (auto-cleared on plan completion) |
 | PlanLogger | `.maxim_workspace/plans/history.md` | (manual delete) |
 

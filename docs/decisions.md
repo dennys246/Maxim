@@ -203,6 +203,8 @@ context = {
 | **PainCircuitBridge** | Learn from movement pain signals |
 | **EscalationLearningBridge** | Learn escalation thresholds |
 | **ExecAgent Contemplation** | Learn when plan critique+refine improves outcomes; auto-tune contemplation gates |
+| **SignificanceWeightLearner** | RPE magnitude is the top-weighted significance heuristic (0.35) for memory staging |
+| **ConsolidationOrchestrator** | NAc corroboration (has event→outcome pattern strengthened?) contributes 0.20 of wave score |
 
 ### Example: Pain Learning Flow
 

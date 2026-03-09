@@ -151,11 +151,60 @@ hippo = Hippocampus(config, strategy=strategy)
 
 ## Sleep Consolidation
 
-During sleep mode, the Hippocampus performs memory consolidation:
+During sleep mode, the Hippocampus performs memory consolidation via the **ConsolidationOrchestrator** — a wave-based system that separates consolidation logic from the Hippocampus itself.
 
-1. **Prune**: Remove low-retention memories below threshold
-2. **Compress**: Convert detailed memories to `CompressedMemory`
-3. **Promote**: Move high-value memories to long-term storage
+### Consolidation Pipeline
+
+```
+Agent Cycle → Significance Evaluation → Acute Staging (sidecar JSON)
+                                              ↓
+Sleep Mode → ConsolidationOrchestrator.run_wave()
+                ├── Re-evaluate with NAc corroboration
+                ├── Check temporal recurrence (SCN)
+                ├── Check percept recurrence (LSH)
+                ├── Check context recurrence (LSH)
+                ├── Promote if threshold met
+                ├── Expire after 5 waves
+                └── Harvest utility for weight learning
+```
+
+### Staging Paths
+
+| Path | Threshold | Trigger | Description |
+|------|-----------|---------|-------------|
+| **Acute** | 0.45 | RPE spike / user input | One-shot learning, lower bar |
+| **Chronic** | 0.60 | Temporal recurrence | Needs evidence, higher bar |
+| **Immediate** | 0.85 | Very high significance | Skip waves, promote instantly |
+
+### Significance Heuristics
+
+Moments are scored for staging by `SignificanceWeightLearner` using 6 heuristics:
+
+| Heuristic | Baseline Weight | Signal |
+|-----------|----------------|--------|
+| `rpe_magnitude` | 0.35 | NAc prediction error |
+| `user_interaction` | 0.20 | CLI/transcript present |
+| `novelty` | 0.15 | Perception novelty |
+| `plan_phase_boundary` | 0.10 | Phase start/complete/fail |
+| `energy_state_change` | 0.05 | Crossed low/critical |
+| `outcome_valence_extremity` | 0.10 | Very good/bad outcome |
+
+Weights learn from long-term utility via associative graph integration (Pearson correlation between heuristic scores and edge growth).
+
+### Wave Score Formula
+
+Each consolidation wave re-scores staged moments:
+
+```
+wave_score = 0.30 × significance
+           + 0.20 × nac_corroboration
+           + 0.20 × temporal_recurrence
+           + 0.12 × percept_recurrence
+           + 0.10 × context_recurrence
+           + 0.08 × novelty_decay
+```
+
+### Legacy API
 
 ```python
 # Trigger sleep consolidation (compress, remove, promote)
@@ -262,12 +311,37 @@ Clear with: `maxim --clear-memory hippo`
 
 ---
 
+## Similarity Indices (LSH)
+
+Two `SimilarityIndex` instances provide O(1) approximate similarity lookup using MinHash + Locality-Sensitive Hashing:
+
+| Index | Purpose | Used By |
+|-------|---------|---------|
+| `context_index` | Language/context similarity | `AssociationIndex.find_similar()`, `ConsolidationOrchestrator` |
+| `percept_index` | Percept similarity | `recall_deep`, chronic recurrence detection |
+
+```python
+from maxim.memory.context_index import SimilarityIndex
+
+index = SimilarityIndex(num_hashes=64, num_bands=8)
+index.register("mem_1", "the robot saw a person near the table")
+results = index.query_similar("person at the table", min_similarity=0.3)
+# Returns [(memory_id, estimated_jaccard_similarity), ...]
+```
+
+The LSH index replaces the old keyword Jaccard approach in `AssociationIndex.find_similar()` and O(n) linear scans in `hippocampus.recall_similar()`.
+
+---
+
 ## Integration Points
 
 | System | Integration |
 |--------|-------------|
 | **SCN** | Temporal indexing for time-based queries |
 | **NAc** | Causal learning from episodic sequences |
+| **ConsolidationOrchestrator** | Wave-based sleep consolidation with path-dependent thresholds |
+| **SignificanceWeightLearner** | Learns which heuristics predict useful memories |
+| **SimilarityIndex (LSH)** | O(1) context/percept similarity for recall and consolidation |
 | **SalienceMemoryBridge** | Updates salience from memory patterns |
 | **SpatialMemoryBridge** | Enriches spatial map with memory |
 | **EC Similarity** | Phase 4 neural semantic embeddings for deep similarity queries |
@@ -337,8 +411,11 @@ Perception/Action/Decision
           ↓
     StateStore (cache)
           ↓
-    Sleep Consolidation
-    ├── Prune low-retention
-    ├── Compress old memories
-    └── Promote high-value
+    Sleep Consolidation (ConsolidationOrchestrator)
+    ├── Load staged sidecars
+    ├── Re-score with wave formula
+    ├── Promote if threshold met (acute: 0.45, chronic: 0.60)
+    ├── Expire after 5 waves
+    ├── Chronic staging (recurrence detection via LSH)
+    └── Harvest utility for weight learning
 ```
