@@ -18,7 +18,7 @@ about when each system is accessed and documents the threading/locking model.
 | **EC / NeuralEmbedder** | Semantic embeddings | Own thread pool queue | `src/maxim/similarity/ec.py` |
 | **MemoryHub** | Coordinator | No own lock (delegates) | `src/maxim/integration/memory_hub.py` |
 | **ContextPool** | Growing LLM context | `RLock` | `src/maxim/agents/context_pool.py` |
-| **MemoryAgent** | Agent-level memory | Own `_association_index`, `_association_graph` | `src/maxim/agents/memory_agent.py` |
+| **MemoryAgent** | Agent-level memory (WorkingMemoryEntry wrappers) | Own `_association_index`, `_association_graph`, `_forming_pool` | `src/maxim/agents/memory_agent.py` |
 
 All three core memory layers (Hippocampus, ATL, Angular Gyrus) implement
 the `MemoryLayer` ABC (`src/maxim/memory/layer.py`) which provides a shared

@@ -53,6 +53,26 @@ class MathMemory(MemoryRecord):
     confidence: float = 1.0
     observation_count: int = 0  # Times used/verified
 
+    def keywords(self) -> set[str]:
+        """Extract keywords from math memory fields."""
+        kws: set[str] = set()
+        if self.name:
+            kws.add(self.name.lower())
+        if self.domain:
+            kws.add(self.domain.lower())
+        return kws
+
+    def to_context_dict(self) -> dict[str, Any]:
+        """Format math memory for LLM context."""
+        return {
+            "type": "math",
+            "name": self.name,
+            "domain": self.domain,
+            "verbal": self.verbal,
+            "confidence": self.confidence,
+            "category": self.category.name,
+        }
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON persistence."""
         return {
@@ -121,6 +141,25 @@ class CompressedMathMemory(CompressedRecord):
     category: MathCategory = MathCategory.FACT
     domain: str = ""
     confidence: float = 1.0
+
+    def keywords(self) -> set[str]:
+        """Extract keywords from compressed math memory."""
+        kws: set[str] = set()
+        if self.name:
+            kws.add(self.name.lower())
+        if self.domain:
+            kws.add(self.domain.lower())
+        return kws
+
+    def to_context_dict(self) -> dict[str, Any]:
+        """Format compressed math memory for LLM context."""
+        return {
+            "type": "compressed_math",
+            "name": self.name,
+            "domain": self.domain,
+            "confidence": self.confidence,
+            "category": self.category.name,
+        }
 
     @classmethod
     def from_math_record(cls, record: MathMemory, edge_count: int = 0) -> CompressedMathMemory:

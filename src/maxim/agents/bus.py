@@ -7,6 +7,7 @@ for decoupled communication.
 from __future__ import annotations
 
 import hashlib
+import math as _math
 import threading
 import time
 from collections import defaultdict, deque
@@ -33,8 +34,16 @@ class GoalPriority(Enum):
 
 
 class MemoryTier(Enum):
-    """Memory storage tier."""
+    """Memory storage tier and lifecycle phase.
 
+    FORMING and WORKING are eviction-protected phases during the
+    agent pipeline. SHORT_TERM and LONG_TERM are standard decay tiers.
+
+    Lifecycle: FORMING → WORKING → SHORT_TERM → LONG_TERM → consolidated out.
+    """
+
+    FORMING = "forming"  # Being constructed during pipeline (eviction-protected)
+    WORKING = "working"  # Pipeline complete, awaiting next cycle (eviction-protected)
     SHORT_TERM = "short"  # Fast decay, recent context
     LONG_TERM = "long"  # Slow decay, consolidated knowledge
 
@@ -117,7 +126,14 @@ class Percept:
 
 @dataclass
 class MemoryItem:
-    """A single item in salient memory."""
+    """A single item in salient memory.
+
+    .. deprecated:: 2.0
+        Use :class:`WorkingMemoryEntry` wrapping a :class:`MemoryRecord`
+        subclass instead. ``MemoryItem`` is retained for backward
+        compatibility with ``StructuredContext.relevant_memories`` and
+        will be removed after downstream consumers are updated.
+    """
 
     timestamp: float
     content: Any
@@ -167,6 +183,164 @@ class MemoryItem:
         if self.tier != MemoryTier.LONG_TERM:
             return False
         return (time.time() - self.last_accessed) > max_age_seconds
+
+
+@dataclass
+class WorkingMemoryEntry(Generic[T]):
+    """Agent-level wrapper around a MemoryRecord for working memory.
+
+    Holds the actual structured record (EpisodicMemory, MathMemory,
+    Concept, etc.) plus agent-level metadata for working memory
+    management: salience ranking, decay, lifecycle phase.
+
+    The record itself is the canonical type stored in its memory layer
+    (Hippocampus, AG, ATL). During FORMING phase, the record's
+    decision/action/outcome fields are populated incrementally as the
+    pipeline progresses.
+    """
+
+    record: T  # The actual MemoryRecord subclass
+    salience: float = 0.5  # Agent-level ranking score
+    decay_rate: float = 0.1
+    source: str = "percept"  # "percept", "goal_outcome", "user_feedback", "inference", "ag_grounding"
+    tier: MemoryTier = MemoryTier.SHORT_TERM
+
+    # Pattern completion results (populated during FORMING phase)
+    predicted_outcomes: "list[PredictedOutcome] | None" = None
+    prediction_confidence: float = 0.0
+
+    # Cached for search performance (extracted lazily from record)
+    _keywords: set[str] | None = field(default=None, repr=False)
+    _embedding: list[float] | None = field(default=None, repr=False)
+
+    @property
+    def id(self) -> str:
+        return self.record.id  # type: ignore[union-attr]
+
+    @property
+    def timestamp(self) -> float:
+        return self.record.timestamp  # type: ignore[union-attr]
+
+    @property
+    def is_protected(self) -> bool:
+        """FORMING and WORKING entries cannot be evicted."""
+        return self.tier in (MemoryTier.FORMING, MemoryTier.WORKING)
+
+    def touch(self) -> None:
+        """Delegate access tracking to the underlying record. Thread-safe."""
+        self.record.touch()  # type: ignore[union-attr]
+
+    @property
+    def keywords(self) -> set[str]:
+        """Lazily extract keywords from the underlying record."""
+        if self._keywords is None:
+            self._keywords = self.record.keywords()  # type: ignore[union-attr]
+        return self._keywords
+
+    def invalidate_keywords(self) -> None:
+        """Clear keyword cache after record mutation (e.g., FORMING → complete)."""
+        self._keywords = None
+
+    def should_promote(
+        self, access_threshold: int = 3, salience_threshold: float = 0.7
+    ) -> bool:
+        """Check if this entry should be promoted to long-term."""
+        if self.tier != MemoryTier.SHORT_TERM:
+            return False
+        return (
+            self.record.access_count >= access_threshold  # type: ignore[union-attr]
+            or self.salience >= salience_threshold
+        )
+
+    def should_evict(self, max_age_seconds: float) -> bool:
+        """Check if this entry should be evicted from working memory."""
+        if self.is_protected:
+            return False
+        if self.tier == MemoryTier.SHORT_TERM:
+            return False  # SHORT_TERM eviction is buffer-based, not age-based
+        # LONG_TERM: age-based eviction (consolidation handles active removal)
+        age = time.time() - self.record.accessed_at  # type: ignore[union-attr]
+        return age > max_age_seconds
+
+    def current_salience(self) -> float:
+        """Compute decayed salience based on age. FORMING entries don't decay."""
+        if self.is_protected:
+            return self.salience
+        age = time.time() - self.timestamp
+        return self.salience * _math.exp(-self.decay_rate * age / 60.0)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize wrapper + record for persistence."""
+        from maxim.memory.types import PredictedOutcome as _PO  # noqa: F811
+
+        return {
+            "record_type": type(self.record).__name__,
+            "record": self.record.to_dict(),  # type: ignore[union-attr]
+            "salience": self.salience,
+            "decay_rate": self.decay_rate,
+            "source": self.source,
+            "tier": self.tier.value,
+            "predicted_outcomes": (
+                [p.to_dict() for p in self.predicted_outcomes]
+                if self.predicted_outcomes
+                else None
+            ),
+            "prediction_confidence": self.prediction_confidence,
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        record_registry: "dict[str, type] | None" = None,
+    ) -> "WorkingMemoryEntry":
+        """Deserialize wrapper + record from persistence.
+
+        Args:
+            data: Serialized dict from to_dict().
+            record_registry: Maps type names to classes for deserialization.
+                Defaults to built-in types (EpisodicMemory, MathMemory, etc.).
+        """
+        from maxim.math.math_types import MathMemory
+        from maxim.memory.semantic_types import SemanticMemory
+        from maxim.memory.types import (
+            CompressedMemory,
+            EpisodicMemory,
+            PredictedOutcome,
+        )
+
+        registry = record_registry or {
+            "EpisodicMemory": EpisodicMemory,
+            "MathMemory": MathMemory,
+            "SemanticMemory": SemanticMemory,
+            "CompressedMemory": CompressedMemory,
+        }
+
+        record_type_name = data["record_type"]
+        record_cls = registry.get(record_type_name)
+        if record_cls is None:
+            raise ValueError(f"Unknown record type: {record_type_name}")
+
+        record = record_cls.from_dict(data["record"])
+
+        return cls(
+            record=record,
+            salience=data.get("salience", 0.5),
+            decay_rate=data.get("decay_rate", 0.1),
+            source=data.get("source", "unknown"),
+            tier=MemoryTier(data.get("tier", "short")),
+            predicted_outcomes=(
+                [PredictedOutcome.from_dict(p) for p in data["predicted_outcomes"]]
+                if data.get("predicted_outcomes")
+                else None
+            ),
+            prediction_confidence=data.get("prediction_confidence", 0.0),
+        )
+
+
+# Import for type annotation (avoid circular at module level)
+if False:  # TYPE_CHECKING
+    from maxim.memory.types import PredictedOutcome  # noqa: F401
 
 
 @dataclass

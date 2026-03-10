@@ -2,8 +2,14 @@
 
 THIS IS THE CENTRAL RESEARCH FOCUS OF THE PROJECT.
 
-The MemoryAgent maintains salient memories, builds associations via similarity,
+The MemoryAgent maintains salient memories using WorkingMemoryEntry wrappers
+around structured MemoryRecord subclasses, builds associations via similarity,
 and provides structured context for goal proposal.
+
+Memory lifecycle: FORMING → WORKING → SHORT_TERM → LONG_TERM → consolidated out.
+FORMING entries are created at percept time and filled incrementally through
+the pipeline (Decision → Action → Outcome). Pattern completion can attach
+predicted outcomes during FORMING.
 """
 
 from __future__ import annotations
@@ -12,7 +18,7 @@ import os
 import threading
 import time
 from collections import defaultdict, deque
-from typing import Any
+from typing import Any, Callable
 
 from maxim.agents.base import Agent
 from maxim.agents.bus import (
@@ -24,8 +30,19 @@ from maxim.agents.bus import (
     StatisticalSummary,
     StructuredContext,
     ToolResult,
+    WorkingMemoryEntry,
 )
 from maxim.agents.output_mixin import AgentOutputMixin
+from maxim.memory.types import (
+    Action,
+    Context,
+    Decision,
+    EpisodicMemory,
+    MathContextEntry,
+    Outcome,
+    Perception,
+    PredictedOutcome,
+)
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import get_abstraction_buffer
 
@@ -173,9 +190,15 @@ class MemoryAgent(Agent, AgentOutputMixin):
     associative graphs. MemoryAgent owns salience scoring, relevance
     ranking, and context building. They are complementary roles.
 
+    Staged memory formation (FORMING → WORKING → SHORT_TERM → LONG_TERM)
+    is managed via WorkingMemoryEntry wrappers around the records that
+    Hippocampus stores. Pattern completion can attach predicted outcomes
+    during FORMING via an optional hook.
+
     Responsibilities:
     - Score percept salience and track salience decay per memory
     - Capture memories via Hippocampus (single store)
+    - Staged memory formation with WorkingMemoryEntry wrappers
     - Recall relevant memories for StructuredContext
     - Track goal outcomes for learning
     - Build StructuredContext for ExecAgent
@@ -222,13 +245,19 @@ class MemoryAgent(Agent, AgentOutputMixin):
         self._long_term_max_age = long_term_max_age or self.DEFAULT_LONG_TERM_MAX_AGE
         self._reset_on_startup = reset_on_startup
 
-        # Hippocampus reference (injected via wire_memory_hub)
+        # Hippocampus reference (injected via connect_hippocampus)
         self._hippocampus: Any | None = None
 
         # Salience tracking — lightweight metadata for hippocampus memories
         self._salience: dict[str, float] = {}  # memory_id → current salience
         self._decay_rates: dict[str, float] = {}  # memory_id → decay rate
         self._recent_ids: deque[str] = deque(maxlen=max_short_term)  # Bounded window
+
+        # Staged formation pool (keyed by run_id)
+        self._forming_pool: dict[str, WorkingMemoryEntry] = {}
+
+        # Pattern completion hook (set by ATL/MemoryHub wiring)
+        self._pattern_completion_fn: Callable[[EpisodicMemory], list[PredictedOutcome]] | None = None
 
         # Recency buffers (not memory storage — just prompt context)
         self._recent_percepts: deque[Percept] = deque(maxlen=context_window)
@@ -273,6 +302,181 @@ class MemoryAgent(Agent, AgentOutputMixin):
         self._bus.subscribe(GoalAccepted, self._on_goal_accepted)
         self._bus.subscribe(StatisticalSummary, self._on_statistical_summary)
 
+    # ── Wiring ────────────────────────────────────────────────────────────
+
+    def connect_hippocampus(self, hippocampus: Any) -> None:
+        """Wire Hippocampus reference for unified memory storage."""
+        self._hippocampus = hippocampus
+
+    def set_pattern_completion_fn(
+        self, fn: Callable[[EpisodicMemory], list[PredictedOutcome]]
+    ) -> None:
+        """Wire pattern completion hook (implemented in ATL concept plan)."""
+        self._pattern_completion_fn = fn
+
+    # ── Staged Memory Formation ───────────────────────────────────────────
+
+    def _begin_memory_formation(
+        self, percept: Percept, run_id: str
+    ) -> WorkingMemoryEntry:
+        """Create a FORMING EpisodicMemory from percept + current agentic state.
+
+        The entry is tracked in _forming_pool and also captured via Hippocampus.
+        Pattern completion hook is invoked if wired.
+        """
+        from maxim.agents.bus import MemoryTier
+
+        now = time.time()
+
+        # Sweep WORKING entries from pool
+        self._flush_working_to_captured()
+
+        # Build Context from current agentic state
+        context = Context(
+            active_goal=self._active_goal_description,
+            active_mode=self._mode,
+            fear_level=0.0,
+        )
+
+        episodic = EpisodicMemory(
+            id=f"wm-{now:.0f}-{run_id[:8]}",
+            timestamp=now,
+            run_id=run_id,
+            perception=Perception(
+                detected_objects=list(
+                    det.get("label", det.get("class_name", ""))
+                    for det in (percept.detections or [])
+                    if det.get("label") or det.get("class_name")
+                ),
+                detected_people=[
+                    det.get("label", "person")
+                    for det in (percept.detections or [])
+                    if det.get("class_id") == 0
+                ],
+                salience=percept.salience,
+                novelty=percept.novelty,
+                cli_input=percept.cli_input or percept.raw_transcript_text,
+                observations=percept.metadata or {},
+            ),
+            context=context,
+            # Decision, Action, Outcome left as defaults (empty)
+        )
+
+        salience = self._compute_memory_salience(percept)
+        decay_rate = 0.05 if percept.has_maxim_keyword else 0.1
+
+        entry = WorkingMemoryEntry(
+            record=episodic,
+            salience=salience,
+            source="percept",
+            tier=MemoryTier.FORMING,
+            decay_rate=decay_rate,
+        )
+
+        # Pattern completion hook
+        if self._pattern_completion_fn:
+            try:
+                entry.predicted_outcomes = self._pattern_completion_fn(episodic)
+                if entry.predicted_outcomes:
+                    entry.prediction_confidence = self._compute_prediction_confidence(
+                        entry.predicted_outcomes
+                    )
+            except Exception as e:
+                log_swallowed_exception(e, operation="pattern_completion")
+
+        self._forming_pool[run_id] = entry
+
+        # Also capture via Hippocampus
+        content = {
+            "source": percept.source,
+            "transcript": percept.raw_transcript_text or percept.content,
+            "has_maxim": percept.has_maxim_keyword,
+            "detections_count": len(percept.detections),
+        }
+        memory_id = self._capture_to_hippocampus(content, salience, decay_rate, "percept", percept)
+        if memory_id:
+            entry._hippocampus_id = memory_id  # Cross-reference
+
+        return entry
+
+    def _update_forming_decision(self, run_id: str, decision: Decision) -> None:
+        """Fill in the decision on a FORMING episodic memory."""
+        from maxim.agents.bus import MemoryTier
+
+        entry = self._forming_pool.get(run_id)
+        if entry is None or entry.tier != MemoryTier.FORMING:
+            return
+        assert isinstance(entry.record, EpisodicMemory)
+        entry.record.decision = decision
+        entry.invalidate_keywords()
+
+    def _update_forming_action(self, run_id: str, action: Action) -> None:
+        """Fill in the action on a FORMING episodic memory."""
+        from maxim.agents.bus import MemoryTier
+
+        entry = self._forming_pool.get(run_id)
+        if entry is None or entry.tier != MemoryTier.FORMING:
+            return
+        assert isinstance(entry.record, EpisodicMemory)
+        entry.record.action = action
+        entry.invalidate_keywords()
+
+    def _complete_forming_memory(self, run_id: str, outcome: Outcome) -> None:
+        """Fill in the outcome and transition FORMING → WORKING.
+
+        Entry stays in _forming_pool as WORKING until next cycle sweeps it
+        out via _flush_working_to_captured().
+        """
+        from maxim.agents.bus import MemoryTier
+
+        entry = self._forming_pool.get(run_id)
+        if entry is None or entry.tier != MemoryTier.FORMING:
+            return
+        assert isinstance(entry.record, EpisodicMemory)
+        entry.record.outcome = outcome
+        entry.tier = MemoryTier.WORKING
+        entry.invalidate_keywords()
+
+    def _flush_working_to_captured(self) -> None:
+        """Transition WORKING entries in the pool — remove from forming pool.
+
+        After Phase 0, Hippocampus owns the canonical record. We just clean up
+        the local forming pool reference once the entry is no longer FORMING.
+        """
+        from maxim.agents.bus import MemoryTier
+
+        to_remove = []
+        for run_id, entry in self._forming_pool.items():
+            if entry.tier == MemoryTier.WORKING:
+                to_remove.append(run_id)
+        for run_id in to_remove:
+            del self._forming_pool[run_id]
+
+    def _compute_prediction_confidence(self, predictions: list[PredictedOutcome]) -> float:
+        """Compute confidence from success rate, action consistency, and sample size."""
+        if not predictions:
+            return 0.0
+
+        n = len(predictions)
+
+        # Success rate
+        successes = sum(1 for p in predictions if p.success)
+        success_rate = successes / n
+
+        # Action consistency: what fraction used the most common action?
+        action_counts: dict[str, int] = {}
+        for p in predictions:
+            action_counts[p.tool] = action_counts.get(p.tool, 0) + 1
+        most_common_count = max(action_counts.values()) if action_counts else 0
+        consistency = most_common_count / n
+
+        # Sample size dampening: confidence is low until ~5 matching episodes
+        sample_factor = min(n / 5.0, 1.0)
+
+        return success_rate * consistency * sample_factor
+
+    # ── Bus Callbacks ─────────────────────────────────────────────────────
+
     def _on_percept(self, percept: Percept) -> None:
         """Process incoming percept."""
         with self._lock:
@@ -298,17 +502,10 @@ class MemoryAgent(Agent, AgentOutputMixin):
                     "timestamp": percept.timestamp,
                 })
 
-            # Capture via Hippocampus if salient
+            # Capture via Hippocampus if salient — use staged formation
             if percept.salience > self._salience_threshold or percept.has_maxim_keyword:
-                salience = self._compute_memory_salience(percept)
-                decay_rate = 0.05 if percept.has_maxim_keyword else 0.1
-                content = {
-                    "source": percept.source,
-                    "transcript": percept.raw_transcript_text or percept.content,
-                    "has_maxim": percept.has_maxim_keyword,
-                    "detections_count": len(percept.detections),
-                }
-                self._add_memory(content, salience, decay_rate, "percept", percept)
+                run_id = f"percept-{percept.timestamp:.0f}"
+                self._begin_memory_formation(percept, run_id)
 
     def _on_tool_result(self, result: ToolResult) -> None:
         """Track tool results as outcomes."""
@@ -381,7 +578,9 @@ class MemoryAgent(Agent, AgentOutputMixin):
             except AttributeError:
                 pass
 
-    def _add_memory(
+    # ── Memory Management ─────────────────────────────────────────────────
+
+    def _capture_to_hippocampus(
         self,
         content: Any,
         salience: float,
@@ -389,10 +588,9 @@ class MemoryAgent(Agent, AgentOutputMixin):
         source: str,
         percept: Percept | None = None,
     ) -> str | None:
-        """Capture a memory via Hippocampus (must hold lock).
+        """Capture a memory via Hippocampus and track its salience locally.
 
-        MemoryAgent no longer creates MemoryItem objects. Hippocampus owns
-        storage; MemoryAgent tracks the ID and salience metadata.
+        Returns the memory ID if captured, None otherwise.
         """
         if not self._hippocampus:
             return None
@@ -429,6 +627,21 @@ class MemoryAgent(Agent, AgentOutputMixin):
             self._check_promotions()
 
         return memory_id
+
+    def _add_memory(
+        self,
+        content: Any,
+        salience: float,
+        decay_rate: float,
+        source: str,
+        percept: Percept | None = None,
+    ) -> str | None:
+        """Capture a memory via Hippocampus (must hold lock).
+
+        MemoryAgent no longer creates MemoryItem objects. Hippocampus owns
+        storage; MemoryAgent tracks the ID and salience metadata.
+        """
+        return self._capture_to_hippocampus(content, salience, decay_rate, source, percept)
 
     def _on_memory_deleted(self, memory_id: str) -> None:
         """Hippocampus pruned this memory — clean up local tracking."""
@@ -498,6 +711,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
         Returns list of dicts with 'source', 'salience', 'content' keys
         for consumption by StructuredContext and ExecAgent formatting.
+        Includes prediction context from FORMING entries.
         """
         if not self._hippocampus:
             return []
@@ -539,6 +753,13 @@ class MemoryAgent(Agent, AgentOutputMixin):
         seen: set[str] = set()
         combined: list[tuple[str, float]] = []
 
+        # Include forming pool entries (current episode context) with boost
+        for _run_id, entry in self._forming_pool.items():
+            hid = getattr(entry, "_hippocampus_id", None)
+            if hid and hid not in seen:
+                seen.add(hid)
+                combined.append((hid, self._salience.get(hid, 0.5) + 1.0))
+
         for mid, score in keyword_similar:
             if mid not in seen:
                 seen.add(mid)
@@ -557,7 +778,27 @@ class MemoryAgent(Agent, AgentOutputMixin):
         for mid, score in combined[: self._context_window]:
             mem = self._hippocampus.get(mid)
             if mem:
-                results.append(self._memory_to_context_item(mem, score))
+                item = self._memory_to_context_item(mem, score)
+                # Attach prediction context from forming pool if applicable
+                for entry in self._forming_pool.values():
+                    if getattr(entry, "_hippocampus_id", None) == mid and entry.predicted_outcomes:
+                        item["predictions"] = [
+                            {
+                                "tool": p.tool,
+                                "success": p.success,
+                                "goal": p.goal,
+                                "confidence": p.confidence,
+                                "math_context": (
+                                    [m.to_dict() for m in p.math_context]
+                                    if p.math_context
+                                    else None
+                                ),
+                            }
+                            for p in entry.predicted_outcomes
+                        ]
+                        item["prediction_confidence"] = entry.prediction_confidence
+                        break
+                results.append(item)
         return results
 
     @staticmethod

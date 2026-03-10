@@ -377,8 +377,8 @@ Maxim maintains multiple memory tiers with different lifespans and retrieval mod
 
 ```
 Percept Buffer → Working Notes → Short-Term Memory → Long-Term Episodic → Semantic Concepts
-  (prompt)        (prompt)        (data/short_term_   (Hippocampus)       (ATL: objects,
-                                   memory/)                                people, goals,
+  (prompt)        (prompt)        (MemoryAgent)       (Hippocampus)       (ATL: objects,
+                                                                           people, goals,
                                                                            relationships)
 ```
 
@@ -386,6 +386,7 @@ Percept Buffer → Working Notes → Short-Term Memory → Long-Term Episodic �
 |------|-----------|----------|----------|
 | Percept buffer | Always present (last N) | Recent percepts, outcomes | Minutes |
 | Working notes | Always present (file read) | Deliberately pinned context | Until LLM removes it |
+| MemoryAgent working memory | Association + activation | WorkingMemoryEntry wrappers | Session (decays/promotes) |
 | Hippocampus (long-term) | Similarity recall | Consolidated episodic memories | Permanent (retention-scored) |
 | ATL (semantic) | Concept lookup + activation | Concepts, relationships, causal patterns | Permanent |
 | Plan system | Always present when active | Structured goals/phases | Until plan completes |
@@ -393,6 +394,53 @@ Percept Buffer → Working Notes → Short-Term Memory → Long-Term Episodic �
 **Working notes** (`notes/context.md`) give the LLM a persistent scratchpad — always in the prompt, edited via `write_file`. Unlike similarity-based Hippocampus recall, working notes survive regardless of what the LLM is currently perceiving.
 
 **StructuredContext** (built by MemoryAgent each cycle) assembles these tiers into a single object consumed by ExecAgent for goal proposal. Fields include `relevant_memories`, `working_notes`, `workspace_files`, `knowledge_context`, and `plan_progress`.
+
+## WorkingMemoryEntry and Staged Formation
+
+MemoryAgent wraps all memory records in `WorkingMemoryEntry[T]` — a generic
+wrapper that holds any `MemoryRecord` subclass plus agent-level metadata
+(salience, decay_rate, tier, predicted outcomes).
+
+### Memory Tier Lifecycle
+
+```
+FORMING → WORKING → SHORT_TERM → LONG_TERM → consolidated out
+```
+
+- **FORMING**: Created at percept time, filled incrementally during pipeline. Eviction-protected.
+- **WORKING**: Pipeline complete, awaiting next cycle sweep. Eviction-protected.
+- **SHORT_TERM**: Normal decay and eviction. Promotes to LONG_TERM on high access/salience.
+- **LONG_TERM**: Age-based eviction. Consolidation marks records in Hippocampus.
+
+### Staged Formation
+
+EpisodicMemory is constructed incrementally and held in active working memory
+throughout the pipeline:
+
+1. **Percept arrives** → `_begin_memory_formation()` creates FORMING entry with Perception+Context
+2. **Decision made** → `_update_forming_decision()` fills in Decision
+3. **Action executes** → `_update_forming_action()` fills in Action
+4. **Outcome received** → `_complete_forming_memory()` fills Outcome, transitions to WORKING
+5. **New cycle** → `_flush_working_to_short_term()` sweeps WORKING → SHORT_TERM
+
+### Pattern Completion Hook
+
+Optional `_pattern_completion_fn` callable (wired by ATL) provides predictive
+context during FORMING. Returns `list[PredictedOutcome]` with typed fields
+(`tool`, `success`, `goal`, `confidence`, `math_context`, `source_episode_id`).
+
+### Type Contracts
+
+- `PredictedOutcome`: Typed prediction from graph chaining (defined in `types.py`)
+- `MathContextEntry`: Per-concept math enrichment data (defined in `types.py`)
+- `WorkingMemoryEntry[T]`: Generic wrapper (defined in `bus.py`)
+
+### Coexistence with Hippocampus
+
+MemoryAgent and Hippocampus maintain separate EpisodicMemory instances.
+`agent_loop.py` continues calling `capture_from_loop_async()` independently.
+The two systems coexist — MemoryAgent gets structured types in working memory,
+Hippocampus retains all capture hooks (associations, consolidation, promotion).
 
 ## Memory Flow
 

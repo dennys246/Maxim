@@ -12,9 +12,11 @@ from maxim.memory.types import (
     Context,
     Decision,
     EpisodicMemory,
+    MathContextEntry,
     MemoryRecord,
     Outcome,
     Perception,
+    PredictedOutcome,
 )
 from maxim.memory.state_store import StateStore
 from maxim.memory.rwlock import RWLock
@@ -60,8 +62,10 @@ __all__ = [
     "SimpleRecord",
     # Memory record ABCs
     "CompressedRecord",
+    "MathContextEntry",
     "MemoryRecord",
     "MemoryLayer",
+    "PredictedOutcome",
     # Episodic memory types
     "Action",
     "CompressedMemory",

@@ -183,7 +183,7 @@ class MaximAgent(Agent):
         # Phase 0: Wire Hippocampus reference for unified memory storage
         hippocampus = getattr(memory_hub, "hippocampus", None)
         if hippocampus is not None:
-            self.memory._hippocampus = hippocampus
+            self.memory.connect_hippocampus(hippocampus)
             # Register cleanup callback so MemoryAgent tracks deletions
             hippocampus.register_deletion_callback(self.memory._on_memory_deleted)
 
