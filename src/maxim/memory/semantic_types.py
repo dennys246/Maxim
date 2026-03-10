@@ -173,6 +173,26 @@ class SemanticMemory(MemoryRecord):
     reinforcement_count: int = 1
     embedding_text: str = ""
 
+    def keywords(self) -> set[str]:
+        """Extract keywords from semantic memory fields."""
+        kws: set[str] = set()
+        if self.name:
+            kws.add(self.name.lower())
+        if self.category:
+            kws.add(self.category.lower())
+        return kws
+
+    def to_context_dict(self) -> dict[str, Any]:
+        """Format semantic memory for LLM context."""
+        return {
+            "type": "semantic",
+            "name": self.name,
+            "category": self.category,
+            "definition": self.definition,
+            "confidence": self.confidence,
+            "provenance": self.provenance.name,
+        }
+
     def reinforce(self, episode_id: str) -> None:
         """Reinforce concept with a new confirming episode."""
         self.reinforcement_count += 1
@@ -250,6 +270,24 @@ class CompressedSemantic(CompressedRecord):
     confidence: float = 0.5
     reinforcement_count: int = 1
     provenance: ConceptProvenance = ConceptProvenance.EPISODIC_CONSOLIDATION
+
+    def keywords(self) -> set[str]:
+        """Extract keywords from compressed semantic memory."""
+        kws: set[str] = set()
+        if self.name:
+            kws.add(self.name.lower())
+        if self.category:
+            kws.add(self.category.lower())
+        return kws
+
+    def to_context_dict(self) -> dict[str, Any]:
+        """Format compressed semantic memory for LLM context."""
+        return {
+            "type": "compressed_semantic",
+            "name": self.name,
+            "category": self.category,
+            "confidence": self.confidence,
+        }
 
     @classmethod
     def from_semantic(

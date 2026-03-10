@@ -7,14 +7,106 @@ EpisodicMemory (Hippocampus), MathMemory (Angular Gyrus), and the
 future SemanticMemory (ATL).
 
 CompressedRecord extends MemoryRecord for lightweight compressed forms.
+
+PredictedOutcome and MathContextEntry are typed contracts for pattern
+completion predictions (ATL graph chaining → MemoryAgent).
 """
 
 from __future__ import annotations
 
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pattern completion contracts
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class MathContextEntry:
+    """AG math context for a single property of a concept.
+
+    Typed contract for the math enrichment step in pattern completion.
+    Eliminates raw dict with implicit keys.
+    """
+
+    name: str  # MathMemory name (e.g. "mug:execution_time_ms")
+    verbal: str = ""  # Human-readable label (e.g. "typically ~310ms")
+    confidence: float = 0.0
+    domain: str = ""  # e.g. "timing", "success_rate"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "verbal": self.verbal,
+            "confidence": self.confidence,
+            "domain": self.domain,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MathContextEntry:
+        return cls(
+            name=data["name"],
+            verbal=data.get("verbal", ""),
+            confidence=data.get("confidence", 0.0),
+            domain=data.get("domain", ""),
+        )
+
+
+@dataclass
+class PredictedOutcome:
+    """A predicted outcome from pattern completion.
+
+    Produced by ATL graph chaining, consumed by MemoryAgent during
+    FORMING stage. Typed fields enforce the contract between the
+    two systems — no implicit dict key expectations.
+    """
+
+    tool: str  # Action tool used in the past
+    success: bool  # Whether the past action succeeded
+    goal: str | None = None  # Goal from the past decision
+    confidence: float = 1.0  # Decision confidence from the past episode
+    math_context: list[MathContextEntry] | None = None  # Per-concept layer stats
+    source_episode_id: str = ""  # Which episode this prediction came from
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tool": self.tool,
+            "success": self.success,
+            "goal": self.goal,
+            "confidence": self.confidence,
+            "math_context": (
+                [m.to_dict() for m in self.math_context]
+                if self.math_context
+                else None
+            ),
+            "source_episode_id": self.source_episode_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PredictedOutcome:
+        math_ctx = data.get("math_context")
+        return cls(
+            tool=data["tool"],
+            success=data["success"],
+            goal=data.get("goal"),
+            confidence=data.get("confidence", 1.0),
+            math_context=(
+                [MathContextEntry.from_dict(m) for m in math_ctx]
+                if math_ctx
+                else None
+            ),
+            source_episode_id=data.get("source_episode_id", ""),
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Episodic memory sub-components
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -80,6 +172,11 @@ class Outcome:
     evaluations: list[dict[str, Any]] = field(default_factory=list)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Memory record ABC
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 @dataclass
 class MemoryRecord(ABC):
     """Abstract base class for all memory records.
@@ -87,7 +184,8 @@ class MemoryRecord(ABC):
     Provides common tracking fields shared by EpisodicMemory,
     MathMemory, SemanticMemory, and their compressed forms.
 
-    Concrete subclasses must implement to_dict() and from_dict().
+    Concrete subclasses must implement to_dict(), from_dict(),
+    keywords(), and to_context_dict().
     """
 
     id: str
@@ -102,10 +200,36 @@ class MemoryRecord(ABC):
     long_term: bool = False
     consolidated_at: float | None = None
 
+    # Thread-safe access tracking
+    _touch_lock: threading.Lock = field(
+        default_factory=threading.Lock, repr=False, compare=False
+    )
+
     def touch(self) -> None:
-        """Update access tracking (called on recall)."""
-        self.accessed_at = time.time()
-        self.access_count += 1
+        """Update access tracking (called on recall). Thread-safe."""
+        with self._touch_lock:
+            self.accessed_at = time.time()
+            self.access_count += 1
+
+    @abstractmethod
+    def keywords(self) -> set[str]:
+        """Extract searchable keywords from this record.
+
+        Used by WorkingMemoryEntry for keyword-based similarity search
+        and by MemoryAgent for context building. Each subclass extracts
+        keywords from its own structured fields.
+        """
+        ...
+
+    @abstractmethod
+    def to_context_dict(self) -> dict[str, Any]:
+        """Format this record for LLM context injection.
+
+        Returns a dict suitable for inclusion in StructuredContext.
+        Each subclass formats its own structured fields — no isinstance
+        chains needed in build_context().
+        """
+        ...
 
     @abstractmethod
     def to_dict(self) -> dict[str, Any]:
@@ -156,6 +280,26 @@ class CompressedMemory(CompressedRecord):
     object_count: int = 0
     novelty: float = 0.5
     salience: float = 0.5
+
+    def keywords(self) -> set[str]:
+        """Extract keywords from compressed episodic data."""
+        kws: set[str] = set()
+        if self.goal:
+            kws.update(w.lower() for w in self.goal.split() if len(w) > 2)
+        if self.tool_name:
+            kws.add(self.tool_name.lower())
+        return kws
+
+    def to_context_dict(self) -> dict[str, Any]:
+        """Format compressed memory for LLM context."""
+        return {
+            "type": "compressed_episodic",
+            "goal": self.goal,
+            "tool": self.tool_name,
+            "success": self.success,
+            "had_user_input": self.had_user_input,
+            "object_count": self.object_count,
+        }
 
     @classmethod
     def from_episodic(cls, memory: "EpisodicMemory", edge_count: int = 0) -> "CompressedMemory":
@@ -247,6 +391,40 @@ class EpisodicMemory(MemoryRecord):
     @property
     def duration_ms(self) -> float:
         return self.action.execution_time_ms
+
+    def keywords(self) -> set[str]:
+        """Extract keywords from episodic memory fields."""
+        kws: set[str] = set()
+        # Objects and people
+        kws.update(o.lower() for o in self.perception.detected_objects)
+        kws.update(p.lower() for p in self.perception.detected_people)
+        # Goal
+        goal = self.decision.intent.get("goal") or self.context.active_goal
+        if goal:
+            kws.update(w.lower() for w in goal.split() if len(w) > 2)
+        # Tool
+        if self.action.tool_name:
+            kws.add(self.action.tool_name.lower())
+        # CLI input
+        if self.perception.cli_input:
+            kws.update(
+                w.lower() for w in self.perception.cli_input.split() if len(w) > 2
+            )
+        return kws
+
+    def to_context_dict(self) -> dict[str, Any]:
+        """Format episodic memory for LLM context."""
+        return {
+            "type": "episodic",
+            "detected_objects": self.perception.detected_objects,
+            "detected_people": self.perception.detected_people,
+            "goal": self.decision.intent.get("goal") or self.context.active_goal,
+            "tool": self.action.tool_name,
+            "success": self.outcome.success,
+            "salience": self.perception.salience,
+            "novelty": self.perception.novelty,
+            "cli_input": self.perception.cli_input,
+        }
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for storage."""
@@ -350,6 +528,7 @@ class EpisodicMemory(MemoryRecord):
 
 
 __all__ = [
+    "MathContextEntry",
     "MemoryRecord",
     "CompressedRecord",
     "Perception",
@@ -359,4 +538,5 @@ __all__ = [
     "Outcome",
     "EpisodicMemory",
     "CompressedMemory",
+    "PredictedOutcome",
 ]

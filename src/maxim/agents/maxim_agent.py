@@ -176,6 +176,11 @@ class MaximAgent(Agent):
         # Give MemoryAgent access for knowledge context building
         self.memory._memory_hub = memory_hub
 
+        # Wire Hippocampus reference for piggybacking
+        hippocampus = getattr(memory_hub, "_hippocampus", None)
+        if hippocampus is not None:
+            self.memory.connect_hippocampus(hippocampus)
+
         # Register StatisticianAgent as a promotion source
         if hasattr(memory_hub, "register_promotion_source"):
             memory_hub.register_promotion_source(self.statistician)
