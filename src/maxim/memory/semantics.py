@@ -189,6 +189,61 @@ class Semantics:
 
         return results[:limit]
 
+    def update_edge(
+        self,
+        source_id: str,
+        target_id: str,
+        rel_type: str,
+        weight: float | None = None,
+        confidence: float | None = None,
+        confidence_delta: float | None = None,
+    ) -> bool:
+        """Update an existing relationship's weight and/or confidence.
+
+        Args:
+            weight: Set absolute weight (None = unchanged).
+            confidence: Set absolute confidence (None = unchanged).
+            confidence_delta: Add to current confidence, clamped to [0.05, 0.95].
+                Mutually exclusive with confidence.
+
+        Returns True if edge was found and updated, False if not found.
+        """
+        edge_type = EdgeType.CAUSES if rel_type == "CAUSES" else EdgeType.ASSOCIATES
+
+        # Find the edge via DependencyGraph's public API
+        edge = self._graph.find_edge(
+            source_id, target_id, edge_type,
+            metadata_match={"relationship_type": rel_type},
+        )
+        if edge is None:
+            return False
+
+        # Build metadata updates
+        meta_updates: dict[str, Any] = {}
+        if confidence is not None:
+            meta_updates["confidence"] = confidence
+        elif confidence_delta is not None:
+            current = edge.metadata.get("confidence", 0.5)
+            meta_updates["confidence"] = max(0.05, min(0.95, current + confidence_delta))
+
+        # Apply via DependencyGraph's public update_edge
+        self._graph.update_edge(
+            source_id, target_id, edge_type,
+            weight=weight,
+            metadata_updates=meta_updates if meta_updates else None,
+        )
+
+        # Update symmetric reverse edge
+        if self._registry.is_symmetric(rel_type):
+            rev_meta = dict(meta_updates) if meta_updates else {}
+            self._graph.update_edge(
+                target_id, source_id, edge_type,
+                weight=weight,
+                metadata_updates=rev_meta if rev_meta else None,
+            )
+
+        return True
+
     def get_all_for(self, record_id: str) -> list[SemanticRelationship]:
         """Get all relationships involving a record (both directions)."""
         pairs = self.find(record_id, direction="both", limit=100)

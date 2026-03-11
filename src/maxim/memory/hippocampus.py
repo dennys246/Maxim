@@ -225,6 +225,9 @@ class Hippocampus(MemoryLayer):
         # Capture callbacks for subsystem notification (e.g., semantic embedding)
         self._on_memory_captured: list[Callable[[str, "EpisodicMemory"], None]] = []
 
+        # Compression callbacks for subsystem cleanup (e.g., ConceptExtractor ref removal)
+        self._on_memory_compressed: list[Callable[[str], None]] = []
+
         # Consolidation candidates queue (memories to evaluate for long-term promotion)
         self._consolidation_candidates: list[str] = []
 
@@ -361,6 +364,10 @@ class Hippocampus(MemoryLayer):
             )
 
         with self._rwlock.write():
+            # Capacity check — evict before insert
+            if len(self._memories) >= self.config.max_nodes:
+                self._evict_one()
+
             # Store the memory
             self._memories[memory_id] = memory
 
@@ -638,6 +645,25 @@ class Hippocampus(MemoryLayer):
                 memory.accessed_at = time.time()
                 memory.access_count += 1
             return memory
+
+    def recall_by_ids(
+        self,
+        record_ids: list[str],
+    ) -> list[EpisodicMemory | CompressedMemory]:
+        """Bulk-load memories by ID. Skips missing IDs.
+
+        Single lock acquisition for the entire batch — more efficient
+        than iterating get() which acquires a write lock per call.
+        Does NOT update access tracking (callers doing bulk analysis
+        shouldn't inflate access counts).
+        """
+        with self._rwlock.read():
+            results = []
+            for rid in record_ids:
+                mem = self._memories.get(rid)
+                if mem is not None:
+                    results.append(mem)
+            return results
 
     def recall(
         self,
@@ -1540,6 +1566,38 @@ class Hippocampus(MemoryLayer):
 
         self._memories.pop(memory_id, None)
 
+    def _evict_one(self) -> None:
+        """Evict the lowest-scored memory to make room.
+
+        Reuses _get_memory_strategy() for consistent scoring between
+        store-time eviction and sleep consolidation. Never evicts
+        long-term memories at store time. Must be called with write lock held.
+        """
+        import heapq
+
+        from maxim.memory.types import CompressedMemory
+
+        strategy = self._get_memory_strategy()
+
+        now = time.time()
+        scored: list[tuple[float, str]] = []
+
+        for memory_id, record in self._memories.items():
+            if record.long_term:
+                continue
+            edge_count = (
+                record.edge_count
+                if isinstance(record, CompressedMemory)
+                else len(self._graph.get_associated(memory_id))
+            )
+            score = strategy.score_for_retention(record, now, edge_count)
+            heapq.heappush(scored, (score, memory_id))
+
+        if scored:
+            _, evict_id = heapq.heappop(scored)
+            self._remove_memory(evict_id)
+            logger.debug("Evicted memory %s at capacity", evict_id[:8])
+
     def register_deletion_callback(self, callback: Callable[[str], None]) -> None:
         """Register a callback to be notified when memories are deleted.
 
@@ -1564,6 +1622,20 @@ class Hippocampus(MemoryLayer):
             callback: Function that takes (memory_id, memory) and handles processing.
         """
         self._on_memory_captured.append(callback)
+
+    def register_compression_callback(
+        self,
+        callback: Callable[[str], None],
+    ) -> None:
+        """Register a callback to be notified when memories are compressed.
+
+        Subsystems like ConceptExtractor can register to clean up references
+        when a full EpisodicMemory is replaced with CompressedMemory.
+
+        Args:
+            callback: Function that takes memory_id and handles cleanup.
+        """
+        self._on_memory_compressed.append(callback)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Phase 3: Sleep Consolidation
@@ -1712,6 +1784,13 @@ class Hippocampus(MemoryLayer):
         self._compressed_count += 1
 
         logger.debug("Compressed memory %s", memory_id[:8])
+
+        # Notify subsystems of compression (e.g., ConceptExtractor ref cleanup)
+        for callback in self._on_memory_compressed:
+            try:
+                callback(memory_id)
+            except Exception as e:
+                logger.warning("Memory compression callback failed: %s", e)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Long-Term Memory Consolidation

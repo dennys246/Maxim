@@ -146,6 +146,23 @@ class AngularGyrus(MemoryLayer):
 
         return record
 
+    def recall_by_ids(
+        self,
+        record_ids: list[str],
+    ) -> list[MathMemory | CompressedMathMemory]:
+        """Bulk-load math records by ID. Skips missing IDs.
+
+        Single lock acquisition — more efficient than iterating get().
+        Does NOT update access tracking.
+        """
+        with self._rwlock.read():
+            results = []
+            for rid in record_ids:
+                rec = self._records.get(rid)
+                if rec is not None:
+                    results.append(rec)
+            return results
+
     def remove(self, record_id: str) -> None:
         """Delete a record and clean up indexes/graph."""
         with self._rwlock.write():

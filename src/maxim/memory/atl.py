@@ -28,6 +28,7 @@ from maxim.memory.layer import MemoryLayer
 from maxim.memory.rwlock import RWLock
 from maxim.memory.semantic_types import (
     CompressedSemantic,
+    Concept,
     ConceptProvenance,
     RelationshipRegistry,
     SemanticMemory,
@@ -81,9 +82,31 @@ class ATL(MemoryLayer):
         self._on_concept_captured: list[Callable[[str, SemanticMemory], None]] = []
         self._on_concept_deleted: list[Callable[[str], None]] = []
 
+        # Optional SCN reference for temporal-aware strategies
+        self._scn: Any = None
+
         # Stats
         self._stats: dict[str, int] = {"concepts_stored": 0, "queries": 0}
         self._compressed_count: int = 0
+
+    # ------------------------------------------------------------------
+    # SCN Integration
+    # ------------------------------------------------------------------
+
+    def connect_scn(self, scn: Any) -> None:
+        """Connect SCN for temporal-aware eviction and consolidation.
+
+        When connected, ATL will use TemporalAwareStrategy for smarter
+        concept retention — rhythmically relevant concepts survive even
+        if they haven't been accessed recently.
+        """
+        self._scn = scn
+        logger.info("Connected SCN to ATL (temporal-aware consolidation enabled)")
+
+    @property
+    def scn(self) -> Any:
+        """Get the connected SCN, if any."""
+        return self._scn
 
     # ------------------------------------------------------------------
     # MemoryLayer Protocol
@@ -100,6 +123,10 @@ class ATL(MemoryLayer):
     def store(self, record: SemanticMemory, **kwargs: Any) -> str:
         """Store a semantic concept. Returns its ID."""
         with self._rwlock.write():
+            # Capacity check — evict before insert
+            if len(self._concepts) >= self.config.max_concepts:
+                self._evict_one()
+
             self._concepts[record.id] = record
 
             # Build index entries
@@ -154,6 +181,23 @@ class ATL(MemoryLayer):
                 cb(record_id)
             except Exception as e:
                 logger.warning("ATL deletion callback failed: %s", e)
+
+    def recall_by_ids(
+        self,
+        record_ids: list[str],
+    ) -> list[SemanticMemory | CompressedSemantic]:
+        """Bulk-load concepts by ID. Skips missing IDs.
+
+        Single lock acquisition — more efficient than iterating get().
+        Does NOT update access tracking.
+        """
+        with self._rwlock.read():
+            results = []
+            for rid in record_ids:
+                concept = self._concepts.get(rid)
+                if concept is not None:
+                    results.append(concept)
+            return results
 
     def recall(
         self,
@@ -230,7 +274,7 @@ class ATL(MemoryLayer):
             )
 
             results: list[tuple[SemanticMemory | CompressedSemantic, float]] = []
-            for cid, score in activated:
+            for cid, score in activated.items():
                 if cid in seed_ids:
                     continue
                 concept = self._concepts.get(cid)
@@ -284,6 +328,8 @@ class ATL(MemoryLayer):
                 if c_data.get("_compressed"):
                     concept = CompressedSemantic.from_dict(c_data)
                     self._compressed_count += 1
+                elif c_data.get("_concept"):
+                    concept = Concept.from_dict(c_data)
                 else:
                     concept = SemanticMemory.from_dict(c_data)
 
@@ -307,7 +353,8 @@ class ATL(MemoryLayer):
         logger.debug("ATL loaded from %s (%d concepts)", path, len(self._concepts))
 
     def consolidate(self, **kwargs: Any) -> dict[str, int]:
-        """Consolidation cycle: score concepts, compress/remove low-access ones."""
+        """Consolidation cycle: score concepts via MemoryStrategy, compress/remove."""
+        strategy = self._get_memory_strategy()
         now = time.time()
         removed = 0
         compressed = 0
@@ -317,20 +364,24 @@ class ATL(MemoryLayer):
             to_compress: list[str] = []
 
             for cid, concept in self._concepts.items():
-                age = now - concept.created_at
-                time_since_access = now - concept.accessed_at
-
-                # Score for retention
-                if time_since_access > self.config.max_age_without_access:
-                    if concept.access_count < 3 and concept.confidence < 0.7:
+                if isinstance(concept, CompressedSemantic):
+                    score = strategy.score_for_retention(concept, now, concept.edge_count)
+                    if score < self.config.retention_threshold:
                         to_remove.append(cid)
-                        continue
+                    continue
 
-                # Compression eligibility
-                if isinstance(concept, SemanticMemory):
-                    if age > 7 * 86400 and concept.access_count < 3:
-                        if concept.confidence < self.config.compression_threshold:
-                            to_compress.append(cid)
+                edge_count = len(self._graph._outgoing.get(cid, []))
+                degree = edge_count
+                if isinstance(concept, Concept):
+                    degree += concept.ref_count()
+
+                score = strategy.score_for_retention(concept, now, degree)
+
+                if score < self.config.retention_threshold:
+                    to_remove.append(cid)
+                elif score < self.config.compression_threshold:
+                    if strategy.should_compress(concept, now, degree):
+                        to_compress.append(cid)
 
             # Remove
             for cid in to_remove:
@@ -338,6 +389,8 @@ class ATL(MemoryLayer):
                 if isinstance(mem, CompressedSemantic):
                     self._compressed_count -= 1
                 self._remove_concept(cid)
+                if self._scn:
+                    self._scn.unregister(cid)
                 removed += 1
 
             # Compress
@@ -405,8 +458,8 @@ class ATL(MemoryLayer):
                 concept.reinforce(source_episode_id)
             return concept.id, False
 
-        # Create new concept
-        concept = SemanticMemory(
+        # Create new Concept (extends SemanticMemory with memory_refs)
+        concept = Concept(
             id=str(uuid4()),
             timestamp=time.time(),
             name=name,
@@ -455,6 +508,68 @@ class ATL(MemoryLayer):
     def semantics(self) -> Semantics:
         """Access the typed relationship manager."""
         return self._semantics
+
+    # ------------------------------------------------------------------
+    # Capacity management
+    # ------------------------------------------------------------------
+
+    def _get_memory_strategy(self) -> Any:
+        """Get the configured memory strategy, wrapped with SCN if available.
+
+        ATL uses a 30-day access window (vs Hippocampus's 7-day) and
+        1-week compression age. Concepts decay slower than episodes.
+        """
+        from maxim.memory.strategies import (
+            AccessBasedStrategy,
+            TemporalAwareStrategy,
+        )
+
+        base = AccessBasedStrategy(
+            max_age_without_access=self.config.max_age_without_access,
+            compression_age=7 * 86400,
+        )
+
+        if self._scn is not None:
+            strategy = TemporalAwareStrategy(self._scn, base_strategy=base)
+            strategy.prepare()
+            return strategy
+        return base
+
+    def _evict_one(self) -> None:
+        """Evict the lowest-scored concept to make room.
+
+        Uses _get_memory_strategy() for consistent scoring with
+        consolidate(). Must be called with write lock held.
+        """
+        import heapq
+
+        strategy = self._get_memory_strategy()
+
+        now = time.time()
+        scored: list[tuple[float, str]] = []
+
+        for cid, concept in self._concepts.items():
+            edge_count = len(self._graph._outgoing.get(cid, []))
+            degree = edge_count
+            if isinstance(concept, Concept):
+                degree += concept.ref_count()
+            score = strategy.score_for_retention(concept, now, degree)
+            heapq.heappush(scored, (score, cid))
+
+        if scored:
+            _, evict_id = heapq.heappop(scored)
+            mem = self._concepts.get(evict_id)
+            if isinstance(mem, CompressedSemantic):
+                self._compressed_count -= 1
+            self._remove_concept(evict_id)
+            if self._scn:
+                self._scn.unregister(evict_id)
+            logger.debug(
+                "ATL capacity eviction: removed %s (at %d/%d)",
+                evict_id[:8],
+                len(self._concepts),
+                self.config.max_concepts,
+            )
 
     # ------------------------------------------------------------------
     # Internal helpers

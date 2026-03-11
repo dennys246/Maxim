@@ -973,6 +973,9 @@ class MemoryAgent(Agent, AgentOutputMixin):
                     "write_shared_output",
                 ])
 
+            det_objects = self._extract_detected_objects(recent)
+            det_people = self._extract_detected_people(recent)
+
             context = StructuredContext(
                 timestamp=time.time(),
                 current_percept=current,
@@ -982,8 +985,8 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 recent_percepts=recent[-self._context_window :],
                 recent_outcomes=list(self._recent_outcomes),
                 relevant_memories=self._get_relevant_memories(current),
-                detected_objects=self._extract_detected_objects(recent),
-                detected_people=self._extract_detected_people(recent),
+                detected_objects=det_objects,
+                detected_people=det_people,
                 detected_speech=self._extract_speech(recent),
                 recent_logs=self._abstraction.get_recent(n=15),
                 goal_history=self._abstraction.get_by_event("goal_proposed", n=5),
@@ -994,6 +997,9 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 active_pattern_count=self._active_pattern_count,
                 statistical_suggestions=self._statistical_suggestions,
                 knowledge_context=self._build_knowledge_context(),
+                concept_context=self._build_concept_context(
+                    det_objects, det_people,
+                ),
                 root_goal=self.ROOT_GOAL,
                 working_notes=self._read_working_notes(),
                 workspace_files=self._scan_workspace_files(),
@@ -1124,6 +1130,34 @@ class MemoryAgent(Agent, AgentOutputMixin):
         # 3. Rank by relevance, cap at 8 entries total
         entries.sort(key=lambda e: e.get("relevance", 0), reverse=True)
         return entries[:8]
+
+    def _build_concept_context(
+        self,
+        det_objects: list[dict],
+        det_people: list[dict],
+    ) -> list[dict]:
+        """Build concept context from current percept via ConceptContextBuilder.
+
+        Extracts label strings from detection dicts and delegates to
+        MemoryHub.build_concept_context().
+        """
+        if self._memory_hub is None:
+            return []
+        # Extract label strings from detection dicts
+        object_labels = [
+            d.get("label", d.get("class_name", ""))
+            for d in det_objects
+            if d.get("label") or d.get("class_name")
+        ]
+        people_labels = [
+            d.get("label", d.get("class_name", "person"))
+            for d in det_people
+        ]
+        return self._memory_hub.build_concept_context(
+            detected_objects=object_labels,
+            detected_people=people_labels,
+            active_goal=self._active_goal_description,
+        )
 
     def set_active_goal(self, goal_id: str | None, description: str | None = None) -> None:
         """Set the currently active goal."""

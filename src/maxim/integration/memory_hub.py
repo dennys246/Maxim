@@ -127,6 +127,12 @@ class MemoryHub:
     _cross_layer: "CrossLayerGraph | None" = None
     _promoter: "SemanticPromoter | None" = None
 
+    # Concept extraction, grounding, context, and pattern completion (wired in _wire_multi_layer)
+    _concept_extractor: Any = None
+    _concept_grounder: Any = None
+    _concept_context_builder: Any = None
+    _pattern_completer: Any = None
+
     # Long-horizon planning (optional)
     _plan_manager: Any = None
 
@@ -193,6 +199,65 @@ class MemoryHub:
                 atl=self.atl,
                 sources=sources,
                 cross_layer=self._cross_layer,
+            )
+
+        # Wire ConceptExtractor for percept-to-concept extraction
+        if self.atl is not None and self._cross_layer is not None:
+            from maxim.memory.concept_extractor import ConceptExtractor
+
+            self._concept_extractor = ConceptExtractor(
+                atl=self.atl,
+                cross_layer=self._cross_layer,
+                scn=self.scn,
+            )
+            # Register as capture callback on Hippocampus
+            self.hippocampus.register_capture_callback(
+                self._concept_extractor.on_memory_captured
+            )
+            # Register for deletion cleanup
+            self.hippocampus.register_deletion_callback(
+                self._concept_extractor.on_memory_deleted
+            )
+            # Register for compression cleanup
+            self.hippocampus.register_compression_callback(
+                self._concept_extractor.on_memory_compressed
+            )
+            # Rebuild reverse index from persisted ATL state
+            self._concept_extractor.rebuild_reverse_index()
+
+        # Wire ConceptGrounder for AG numerical grounding of concepts
+        if (
+            self.atl is not None
+            and self.angular_gyrus is not None
+            and self._cross_layer is not None
+        ):
+            from maxim.math.ips import IPS
+            from maxim.memory.concept_grounder import ConceptGrounder
+
+            self._concept_grounder = ConceptGrounder(
+                atl=self.atl,
+                angular_gyrus=self.angular_gyrus,
+                ips=IPS(),
+                cross_layer=self._cross_layer,
+            )
+
+        # Wire ConceptContextBuilder for concept-aware recall
+        if self.atl is not None:
+            from maxim.memory.concept_context import ConceptContextBuilder
+
+            self._concept_context_builder = ConceptContextBuilder(
+                atl=self.atl,
+                layers=layers,
+                concept_grounder=self._concept_grounder,
+            )
+
+        # Wire PatternCompleter for graph-chaining pattern completion
+        if self.atl is not None:
+            from maxim.memory.pattern_completer import PatternCompleter
+
+            self._pattern_completer = PatternCompleter(
+                atl=self.atl,
+                layers=layers,
             )
 
         logger.info(
@@ -473,6 +538,14 @@ class MemoryHub:
                 results.update({f"ag_{k}": v for k, v in ag_results.items()})
             except Exception as e:
                 logger.warning("AG consolidation failed: %s", e)
+
+        # Flush and shutdown ConceptExtractor before saving
+        if self._concept_extractor is not None:
+            try:
+                self._concept_extractor.flush(timeout=5.0)
+                self._concept_extractor.shutdown()
+            except Exception as e:
+                logger.warning("ConceptExtractor shutdown failed: %s", e)
 
         # Save ATL state
         if self.atl is not None:
@@ -1127,6 +1200,37 @@ class MemoryHub:
                 logger.warning("FP rate lookup failed: %s", e)
 
         return 0.0
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Concept Context
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def build_concept_context(
+        self,
+        detected_objects: list[str] | None = None,
+        detected_people: list[str] | None = None,
+        active_goal: str | None = None,
+        limit: int = 5,
+        budget_ms: float | None = None,
+    ) -> list[dict]:
+        """Build concept context entries for the current percept.
+
+        Delegates to ConceptContextBuilder if available. Returns empty list
+        if ATL or ConceptContextBuilder is not wired.
+        """
+        if self._concept_context_builder is None:
+            return []
+        try:
+            return self._concept_context_builder.build(
+                detected_objects=detected_objects,
+                detected_people=detected_people,
+                active_goal=active_goal,
+                limit=limit,
+                budget_ms=budget_ms,
+            )
+        except Exception as e:
+            logger.warning("Concept context build failed: %s", e)
+            return []
 
     # ─────────────────────────────────────────────────────────────────────────
     # Bridge Properties

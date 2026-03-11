@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any
@@ -255,6 +256,100 @@ class SemanticMemory(MemoryRecord):
 
 
 @dataclass
+class Concept(SemanticMemory):
+    """A semantic concept with cross-layer memory references.
+
+    Extends SemanticMemory with explicit tracking of which memories across
+    all layers reference this concept. This is the ATL's core unit —
+    the bridge between percepts and memories.
+
+    Inherits from SemanticMemory: name, definition, category, properties,
+    provenance, source_episode_ids, confidence, reinforcement_count,
+    embedding_text, and all MemoryRecord fields.
+    """
+
+    # Cross-layer references: layer_name -> ordered dict of memory_ids.
+    # Uses dict[str, None] as an ordered set (Python 3.7+ dicts preserve
+    # insertion order) so FIFO pruning evicts the truly oldest ref.
+    memory_refs: dict[str, dict[str, None]] = field(
+        default_factory=lambda: defaultdict(dict)
+    )
+
+    # Maximum refs tracked per layer. When exceeded, the oldest ref
+    # (first inserted) is pruned.
+    MAX_REFS_PER_LAYER: int = 200
+
+    def add_ref(self, layer_name: str, memory_id: str) -> None:
+        """Register a memory that references this concept.
+
+        If the ref set for this layer exceeds MAX_REFS_PER_LAYER, the
+        oldest ref is pruned (FIFO via dict insertion order).
+        """
+        refs = self.memory_refs[layer_name]
+        refs[memory_id] = None
+        if len(refs) > self.MAX_REFS_PER_LAYER:
+            oldest = next(iter(refs))
+            del refs[oldest]
+        self.touch()
+
+    def remove_ref(self, layer_name: str, memory_id: str) -> None:
+        """Unregister a memory reference (e.g., when memory is deleted or compressed)."""
+        self.memory_refs.get(layer_name, {}).pop(memory_id, None)
+
+    def ref_count(self, layer_name: str | None = None) -> int:
+        """Count references, optionally filtered by layer."""
+        if layer_name:
+            return len(self.memory_refs.get(layer_name, {}))
+        return sum(len(ids) for ids in self.memory_refs.values())
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize Concept, converting ordered dicts to sorted lists for JSON."""
+        data = super().to_dict()
+        data["_concept"] = True
+        data["memory_refs"] = {
+            layer: sorted(ids.keys())
+            for layer, ids in self.memory_refs.items()
+            if ids
+        }
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Concept:
+        """Deserialize Concept, converting lists back to ordered dicts."""
+        prov_str = data.get("provenance", "EPISODIC_CONSOLIDATION")
+        try:
+            provenance = ConceptProvenance[prov_str]
+        except KeyError:
+            provenance = ConceptProvenance.EPISODIC_CONSOLIDATION
+
+        raw_refs = data.get("memory_refs", {})
+        memory_refs: dict[str, dict[str, None]] = defaultdict(dict)
+        for layer, ids in raw_refs.items():
+            memory_refs[layer] = {mid: None for mid in ids}
+
+        return cls(
+            id=data["id"],
+            timestamp=data["timestamp"],
+            created_at=data.get("created_at", data["timestamp"]),
+            accessed_at=data.get("accessed_at", data["timestamp"]),
+            access_count=data.get("access_count", 1),
+            long_term=data.get("long_term", False),
+            consolidated_at=data.get("consolidated_at"),
+            name=data.get("name", ""),
+            definition=data.get("definition", ""),
+            category=data.get("category", ""),
+            properties=data.get("properties", {}),
+            provenance=provenance,
+            source_episode_ids=data.get("source_episode_ids", []),
+            source_document=data.get("source_document"),
+            confidence=data.get("confidence", 0.5),
+            reinforcement_count=data.get("reinforcement_count", 1),
+            embedding_text=data.get("embedding_text", ""),
+            memory_refs=memory_refs,
+        )
+
+
+@dataclass
 class CompressedSemantic(CompressedRecord):
     """Lightweight compressed form of a semantic memory (~100 bytes).
 
@@ -358,6 +453,7 @@ class CompressedSemantic(CompressedRecord):
 
 
 __all__ = [
+    "Concept",
     "ConceptProvenance",
     "CompressedSemantic",
     "RelationshipRegistry",

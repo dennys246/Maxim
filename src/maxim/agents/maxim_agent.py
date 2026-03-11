@@ -198,6 +198,11 @@ class MaximAgent(Agent):
             svc.nac = getattr(memory_hub, "_nac", None)
             svc.statistician = self.statistician
 
+        # Wire PatternCompleter for concept graph-chaining predictions
+        pattern_completer = getattr(memory_hub, "_pattern_completer", None)
+        if pattern_completer is not None:
+            self.memory.set_pattern_completion_fn(pattern_completer.complete)
+
         # Wire NAc to ExecAgent for contemplation outcome learning
         nac = getattr(memory_hub, "_nac", None)
         if nac is not None:

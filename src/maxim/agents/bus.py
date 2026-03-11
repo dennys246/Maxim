@@ -402,6 +402,11 @@ class StructuredContext:
     #              "source_layer", "provenance", "relationships": [...]}
     knowledge_context: list[dict] = field(default_factory=list)
 
+    # Concept context (from ConceptContextBuilder — ATL concepts + AG stats)
+    # Each entry: {"name", "category", "confidence", "episode_count",
+    #              "relationships": [...], "properties": {...}}
+    concept_context: list[dict] = field(default_factory=list)
+
     # Root goal reminder
     root_goal: str = "Understand reality and help people."
 
@@ -829,6 +834,60 @@ class DependencyGraph(Generic[T]):
 
         return True
 
+    def update_edge(
+        self,
+        source: str,
+        target: str,
+        edge_type: EdgeType,
+        weight: float | None = None,
+        metadata_updates: dict[str, Any] | None = None,
+    ) -> bool:
+        """Update an existing edge's weight and/or metadata in-place.
+
+        Finds the first edge matching (source, target, edge_type) and applies
+        the requested updates. Returns True if the edge was found and updated.
+        """
+        with self._lock:
+            for edge in self._outgoing.get(source, []):
+                if edge.target == target and edge.edge_type == edge_type:
+                    if weight is not None:
+                        edge.weight = weight
+                    if metadata_updates:
+                        edge.metadata.update(metadata_updates)
+                    return True
+        return False
+
+    def find_edge(
+        self,
+        source: str,
+        target: str,
+        edge_type: EdgeType | None = None,
+        metadata_match: dict[str, Any] | None = None,
+    ) -> Edge | None:
+        """Find an edge matching the given criteria.
+
+        Args:
+            source: Source node ID.
+            target: Target node ID.
+            edge_type: Filter by edge type (None = any).
+            metadata_match: Filter by metadata key-value pairs (None = any).
+
+        Returns the first matching Edge, or None.
+        """
+        with self._lock:
+            for edge in self._outgoing.get(source, []):
+                if edge.target != target:
+                    continue
+                if edge_type is not None and edge.edge_type != edge_type:
+                    continue
+                if metadata_match:
+                    if not all(
+                        edge.metadata.get(k) == v for k, v in metadata_match.items()
+                    ):
+                        continue
+                return edge
+        return None
+
     def add_bidirectional(
         self,
         node_a: str,
@@ -1041,6 +1100,26 @@ class DependencyGraph(Generic[T]):
                 "nodes": list(self._nodes.keys()),
                 "edges": edges,
             }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DependencyGraph":
+        """Deserialize graph from persistence."""
+        graph: DependencyGraph = cls()
+        for node_id in data.get("nodes", []):
+            graph.add_node(node_id, node_id)
+        for edge_data in data.get("edges", []):
+            try:
+                edge_type = EdgeType[edge_data["type"]]
+            except KeyError:
+                edge_type = EdgeType.ASSOCIATES
+            graph.add_edge(
+                source=edge_data["source"],
+                target=edge_data["target"],
+                edge_type=edge_type,
+                weight=edge_data.get("weight", 1.0),
+                metadata=edge_data.get("metadata", {}),
+            )
+        return graph
 
 
 # ─────────────────────────────────────────────────────────────────────────────

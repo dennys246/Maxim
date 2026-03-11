@@ -66,6 +66,18 @@ class MemoryLayer(ABC):
         ...
 
     @abstractmethod
+    def recall_by_ids(
+        self,
+        record_ids: list[str],
+    ) -> "list[MemoryRecord | CompressedRecord]":
+        """Bulk-load records by ID. Skips missing IDs.
+
+        More efficient than iterating get() in a loop — single lock
+        acquisition for the entire batch.
+        """
+        ...
+
+    @abstractmethod
     def recall_associated(
         self,
         seed_ids: list[str],
