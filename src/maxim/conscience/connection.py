@@ -395,8 +395,224 @@ class ReachyConnection:
         self._woke_up = False
 
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ConnectionMixin — extracted from selfy.py for compartmentalization
+# ─────────────────────────────────────────────────────────────────────────────
+
+import cv2
+
+
+class ConnectionMixin:
+    """Mixin providing connection management methods for the Maxim class.
+
+    Handles CV2 resource release, media cleanup, connection failure tracking,
+    and soft reconnection logic. Self-contained reconnection state machine.
+    """
+
+    def _release_cv2(self) -> None:
+        try:
+            cv2.destroyAllWindows()
+            cv2.waitKey(1)
+        except Exception:
+            pass
+
+    def _release_media(self) -> None:
+        mini = getattr(self, "mini", None)
+        if mini is None:
+            return
+
+        try:
+            mini.media.close()
+        except Exception as e:
+            warn("Failed to close media: %s", e, logger=getattr(self, "log", None))
+
+        self._release_cv2()
+
+    def _reset_connection_failures(self) -> None:
+        for state in self._connection_failures.values():
+            try:
+                state["count"] = 0
+                state["last_ts"] = 0.0
+            except Exception:
+                continue
+
+    def _note_connection_failure(self, kind: str, error: object) -> None:
+        if not is_connection_error(error):
+            if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                try:
+                    self.log.debug("Ignoring non-connection error (%s): %s", kind, error)
+                except Exception:
+                    pass
+            return
+        stop_event = getattr(self, "_live_stop_event", None)
+        if stop_event is not None and stop_event.is_set():
+            if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                try:
+                    self.log.debug("Ignoring connection failure during shutdown (%s): %s", kind, error)
+                except Exception:
+                    pass
+            return
+        requested_mode = str(getattr(self, "requested_mode", "") or "").strip().lower()
+        if requested_mode:
+            if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                try:
+                    self.log.debug(
+                        "Ignoring connection failure during mode switch (%s -> %s): %s",
+                        str(getattr(self, "mode", "") or "").strip().lower(),
+                        requested_mode,
+                        error,
+                    )
+                except Exception:
+                    pass
+            return
+
+        state = self._connection_failures.get(kind)
+        if not isinstance(state, dict):
+            state = {"count": 0, "last_ts": 0.0}
+            self._connection_failures[kind] = state
+
+        now = time.time()
+        last_ts = float(state.get("last_ts") or 0.0)
+        if now - last_ts > float(getattr(self, "_reconnect_window_s", 5.0) or 5.0):
+            state["count"] = 0
+
+        state["count"] = int(state.get("count", 0) or 0) + 1
+        state["last_ts"] = now
+
+        threshold = int(self._reconnect_thresholds.get(kind, 3) or 3)
+        if int(getattr(self, "verbosity", 0) or 0) >= 2:
+            try:
+                self.log.debug(
+                    "Connection failure (%s): count=%d threshold=%d window_s=%.1f error=%s",
+                    kind,
+                    int(state["count"]),
+                    threshold,
+                    float(getattr(self, "_reconnect_window_s", 5.0) or 5.0),
+                    error,
+                )
+            except Exception:
+                pass
+        if state["count"] >= threshold:
+            self._soft_reconnect(reason=f"{kind}_connection_failed", error=error)
+
+    def _soft_reconnect(self, *, reason: str, error: object | None = None) -> bool:
+        if getattr(self, "_closed", False):
+            return False
+        stop_event = getattr(self, "_live_stop_event", None)
+        if stop_event is not None and stop_event.is_set():
+            return False
+
+        now = time.time()
+        last_ts = float(getattr(self, "_last_reconnect_ts", 0.0) or 0.0)
+        cooldown_s = float(getattr(self, "_reconnect_cooldown_s", 20.0) or 20.0)
+        if now - last_ts < cooldown_s:
+            if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                try:
+                    remaining = max(0.0, cooldown_s - (now - last_ts))
+                    self.log.debug(
+                        "Soft reconnect suppressed (cooldown %.1fs remaining): %s",
+                        remaining,
+                        reason,
+                    )
+                except Exception:
+                    pass
+            return False
+        if not self._reconnect_lock.acquire(blocking=False):
+            if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                try:
+                    self.log.debug("Soft reconnect suppressed (lock busy): %s", reason)
+                except Exception:
+                    pass
+            return False
+
+        self._last_reconnect_ts = now
+        try:
+            if int(getattr(self, "verbosity", 0) or 0) >= 2:
+                try:
+                    self.log.debug("Soft reconnect begin: %s", reason)
+                except Exception:
+                    pass
+            warn(
+                "Soft reconnect requested (%s): %s",
+                reason,
+                error if error is not None else "unknown error",
+                logger=self.log,
+            )
+
+            old_mini = getattr(self, "mini", None)
+            if old_mini is not None:
+                try:
+                    old_mini.stop_recording()
+                except Exception:
+                    pass
+
+                try:
+                    media = getattr(old_mini, "media", None)
+                    if media is not None:
+                        media_lock = getattr(self, "_media_lock", None)
+                        if media_lock is not None:
+                            with media_lock:
+                                media.close()
+                        else:
+                            media.close()
+                except Exception as e:
+                    warn("Failed to close media during reconnect: %s", e, logger=self.log)
+
+                for attr in ("disconnect", "close", "shutdown"):
+                    fn = getattr(old_mini, attr, None)
+                    if callable(fn):
+                        try:
+                            fn()
+                        except Exception:
+                            pass
+
+            # Use the RobotController's reconnect method
+            if self._robot is None:
+                warn("Soft reconnect failed (no robot controller)", logger=self.log)
+                return False
+
+            # For simulation mode, just reset state
+            if self._simulation:
+                self.log.info("Simulation mode - skipping reconnect")
+                return True
+
+            # Attempt reconnection via the controller
+            if not self._robot.reconnect(timeout=30.0, max_attempts=1):
+                warn("Soft reconnect failed (controller reconnect failed)", logger=self.log)
+                return False
+
+            try:
+                self._robot.start_recording()
+            except Exception as e:
+                warn("Failed to start recording after reconnect: %s", e, logger=self.log)
+
+            if getattr(self, "_woke_up", False):
+                mode = str(getattr(self, "mode", "") or "").strip().lower()
+                if mode != "sleep":
+                    try:
+                        self._robot.wake_up()
+                    except Exception as e:
+                        warn("Failed to wake Reachy after reconnect: %s", e, logger=self.log)
+
+            motor_queue = getattr(self, "_motor_queue", None)
+            if motor_queue is not None:
+                try:
+                    while True:
+                        motor_queue.get_nowait()
+                except queue.Empty:
+                    pass
+
+            self._reset_connection_failures()
+            self.log.info("Soft reconnect complete.")
+            return True
+        finally:
+            self._reconnect_lock.release()
+
+
 __all__ = [
     "ConnectionConfig",
+    "ConnectionMixin",
     "FailureState",
     "FailureTracker",
     "ReachyConnection",
