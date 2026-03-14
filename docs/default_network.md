@@ -44,18 +44,28 @@ The main coordinator that orchestrates all DN components.
 
 ```python
 from maxim.default_network import DefaultNetwork, DefaultNetworkConfig
+from maxim.default_network.arbiter import ArbiterConfig
+from maxim.default_network.gate import GateConfig, AdaptiveThresholdConfig
 
 config = DefaultNetworkConfig(
-    # Gate thresholds
-    novelty_threshold=0.5,
-    salience_threshold=0.6,
+    enabled=True,
+    update_hz=30.0,
+    auto_release_timeout=5.0,       # Max inhibition duration before auto-release
+    publish_actions=True,
+    fear_gate_enabled=True,
 
-    # Arbiter settings
-    switch_hysteresis=0.15,
+    # Sub-component configs
+    arbiter=ArbiterConfig(),
+    gate=GateConfig(),
+    adaptive_threshold=AdaptiveThresholdConfig(),
 
-    # Update rates
-    attention_update_hz=10.0,
-    behavior_update_hz=30.0,
+    # Feature flags
+    gaze_salience_enabled=True,
+    idle_exploration_enabled=True,
+    spatial_map_enabled=True,
+    bounds_learning_enabled=True,
+    attention_network_enabled=True,
+    salience_network_enabled=True,
 )
 
 dn = DefaultNetwork(config)
@@ -90,39 +100,50 @@ The gate uses adaptive thresholds that learn from experience:
 from maxim.default_network import ThalamicGate, GateConfig, AdaptiveThresholdConfig
 
 gate_config = GateConfig(
-    base_novelty_threshold=0.5,
-    base_salience_threshold=0.6,
-    adaptation_rate=0.1,
+    novelty_threshold=0.7,
+    salience_threshold=0.6,
+    anomaly_threshold=0.7,
+    safety_velocity_threshold=200.0,    # pixels/frame for rapid approach
+    max_recent_percepts=100,
+    adaptive=True,                       # Enable adaptive thresholding
 )
 
 adaptive_config = AdaptiveThresholdConfig(
-    min_novelty=0.3,
-    max_novelty=0.9,
-    min_salience=0.3,
-    max_salience=0.9,
-    adapt_interval_seconds=60.0,
+    base_novelty_threshold=0.7,
+    base_salience_threshold=0.6,
+    min_threshold=0.3,
+    max_threshold=0.95,
+    adaptation_rate=0.1,
+    escalation_rate_target=0.05,         # Target 5% escalation rate
+    window_seconds=60.0,
+    adaptation_interval=5.0,             # How often to adapt
     persist_path="data/util/adaptive_thresholds.json",
+    auto_save_interval=60.0,
 )
 
-gate = ThalamicGate(gate_config, adaptive_config)
+gate = ThalamicGate(gate_config, adaptive_config=adaptive_config)
 ```
 
 ### Filtering
 
 ```python
-# Filter a percept
-result = gate.filter(
-    percept=detection,
-    novelty_score=0.7,
-    salience_score=0.8,
-)
+# Evaluate a percept for escalation
+result = gate.evaluate(percept)
 
-if result.should_escalate:
+if result.escalated:
+    # Create filtered percept for the deliberative layer
+    filtered = gate.create_filtered_percept(percept, result)
     # Send to LLM for deliberation
-    agent.process(result.percept)
+    agent.process(filtered)
 else:
-    # Handle reactively in DN
-    dn.handle_locally(result.percept)
+    # Handle reactively in DN (reason will be "routine")
+    dn.handle_locally(percept)
+
+# Set active goal for relevance matching
+gate.set_active_goal("find the red cup")
+
+# Force escalation for specific tracks
+gate.add_attention_lock(track_id=42)
 ```
 
 ---
@@ -137,9 +158,9 @@ Selects the winning behavior with hysteresis to prevent rapid switching.
 from maxim.default_network import PriorityArbiter, ArbiterConfig
 
 config = ArbiterConfig(
-    switch_threshold=0.15,      # Minimum advantage to switch
-    decay_rate=0.95,            # Per-frame decay
-    history_weight=0.3,         # Weight of recent history
+    hysteresis_bonus=0.1,       # Priority bonus for current behavior to prevent rapid switching
+    min_switch_interval=0.3,    # Minimum seconds between behavior switches
+    score_threshold=0.1,        # Minimum effective score to act
 )
 
 arbiter = PriorityArbiter(config)
@@ -149,12 +170,21 @@ arbiter = PriorityArbiter(config)
 
 ```python
 # Get proposals from all behaviors
-proposals = [b.propose(state) for b in behaviors]
+proposals = [b.evaluate(detections, state) for b in behaviors]
+proposals = [p for p in proposals if p is not None]
 
-# Arbiter selects winner
-winner = arbiter.arbitrate(proposals)
+# Arbiter selects winner (applies hysteresis + cooldown)
+winner = arbiter.select(proposals)
 
-# Winner persists until outcompeted by switch_threshold
+if winner:
+    execute_action(winner)
+
+# Force a behavior switch (bypasses cooldown)
+arbiter.force_switch("startle")
+
+# Check stability
+print(f"Current: {arbiter.current_behavior}")
+print(f"Stability: {arbiter.behavior_stability:.2f}")
 ```
 
 ---
@@ -167,60 +197,76 @@ Reactive behavior modules that propose actions based on current state.
 
 | Behavior | Priority | Trigger |
 |----------|----------|---------|
-| `StartleResponse` | 100 | Sudden large motion |
-| `SocialAttention` | 80 | Face/person detected |
-| `OrientingResponse` | 70 | Novel object appears |
-| `MotionTracking` | 60 | Moving object detected |
-| `IdleScan` | 30 | No interesting stimuli |
-| `Microsaccades` | 20 | During fixation |
-| `ReturnToCenter` | 10 | Been looking away too long |
+| `StartleResponse` | 0.95 | Sudden peripheral appearance |
+| `SocialAttention` | 0.9 | Face/person detected |
+| `OrientingResponse` | 0.8 | Novel object appears |
+| `MotionTracking` | 0.7 | Moving object detected |
+| `TurnAround` | 0.3 | Head at yaw limit with interesting edge detection |
+| `IdleScan` | 0.2 | No interesting stimuli after timeout |
+| `ReturnToCenter` | 0.2 | Head drifted beyond threshold |
+| `Microsaccades` | 0.1 | During prolonged fixation |
 
 ### Behavior Interface
 
 ```python
-from maxim.default_network import Behavior, BehaviorState
+from maxim.default_network import Behavior, BehaviorState, ActionProposal
 
 class CustomBehavior(Behavior):
     name = "custom"
-    priority = 50
+    base_priority = 0.5
+    cooldown_seconds = 0.5
 
-    def update(self, state: BehaviorState) -> None:
-        """Update internal state based on current perception."""
-        self._activation = self._compute_activation(state)
-
-    def propose(self, state: BehaviorState) -> ActionProposal | None:
-        """Propose an action if activated."""
-        if self._activation < self.activation_threshold:
+    def evaluate(
+        self,
+        detections: list[dict],
+        state: BehaviorState,
+    ) -> ActionProposal | None:
+        """Evaluate detections and propose an action if triggered."""
+        if not self.can_activate():
             return None
 
-        return ActionProposal(
-            behavior=self.name,
-            priority=self.priority * self._activation,
-            target_position=(target_yaw, target_pitch),
-            duration=0.3,
+        # Analyze detections and state...
+        return self._create_proposal(
+            action_type="look_at",
+            target=(target_u, target_v),
+            priority_scale=1.0,
+            confidence=0.8,
         )
 ```
 
 ### Behavior Configuration
 
 ```yaml
-# data/util/dn_config.yaml
-behaviors:
-  orienting:
-    enabled: true
-    activation_threshold: 0.4
-    priority: 70
-
-  social:
-    enabled: true
-    activation_threshold: 0.3
-    priority: 80
-    face_boost: 1.5
-
-  idle_scan:
-    enabled: true
-    interval_seconds: 3.0
-    scan_range: 45.0
+# data/util/default_network.yaml
+default_network:
+  enabled: true
+  update_hz: 30.0
+  behaviors:
+    orienting:
+      enabled: true
+      priority: 0.8
+      novelty_threshold: 1.2
+      min_confidence: 0.4
+      cooldown_seconds: 0.5
+    social:
+      enabled: true
+      priority: 0.9
+      prefer_faces: true
+      tracking_hysteresis: 0.1
+    turn_around:
+      enabled: true
+      priority: 0.3
+      yaw_threshold: 0.85
+      edge_threshold: 0.15
+      turn_angle: 90.0
+      cooldown_seconds: 10.0
+  arbiter:
+    hysteresis_bonus: 0.1
+    min_switch_interval: 0.3
+  gate:
+    novelty_threshold: 0.7
+    salience_threshold: 0.6
+    adaptive: true
 ```
 
 ---
@@ -235,10 +281,12 @@ Quickly orients to novel stimuli:
 from maxim.default_network import OrientingResponse
 
 orienting = OrientingResponse(
-    activation_threshold=0.4,
-    novelty_weight=0.6,
-    salience_weight=0.4,
+    novelty_tracker=novelty_tracker,
+    novelty_threshold=1.2,
+    min_confidence=0.4,
 )
+orienting.base_priority = 0.8
+orienting.cooldown_seconds = 0.5
 ```
 
 ### SocialAttention
@@ -249,25 +297,50 @@ Prioritizes faces and people:
 from maxim.default_network import SocialAttention
 
 social = SocialAttention(
-    face_priority=1.5,    # Boost for faces
-    person_priority=1.2,  # Boost for people
-    gaze_duration=2.0,    # How long to maintain contact
+    prefer_faces=True,
+    tracking_hysteresis=0.1,
 )
+social.base_priority = 0.9
+social.cooldown_seconds = 0.2
 ```
 
 ### StartleResponse
 
-Rapid response to sudden stimuli:
+Rapid response to sudden peripheral appearances:
 
 ```python
 from maxim.default_network import StartleResponse
 
 startle = StartleResponse(
-    motion_threshold=50.0,   # Pixels/frame to trigger
-    cooldown_seconds=1.0,    # Min time between startles
-    response_magnitude=0.8,  # Movement intensity
+    peripheral_threshold=0.7,
+    appearance_window=0.3,
+    min_confidence=0.5,
+    frame_size=(640, 480),
 )
+startle.base_priority = 0.95
+startle.cooldown_seconds = 2.0
 ```
+
+### TurnAround
+
+Rotates the body when the head is at its yaw limit and there is something interesting beyond what the head can see:
+
+```python
+from maxim.default_network.behaviors.turn_around import TurnAround
+
+turn = TurnAround(
+    yaw_threshold=0.85,       # Trigger at 85% of yaw limit
+    edge_threshold=0.15,      # Detection within 15% of frame edge
+    turn_angle=90.0,          # Degrees to rotate body
+    base_duration=5.0,        # Seconds for the turn
+    duration_jitter=1.0,      # Random +/- seconds for natural feel
+    max_yaw=55.0,             # Maximum yaw angle (workspace limit)
+    image_width=640,
+)
+turn.cooldown_seconds = 10.0  # Don't turn too frequently
+```
+
+The turn is slow and deliberate (5 +/- 1 seconds) to appear natural. Only horizontal yaw limits trigger this behavior -- pitch limits do not, since body rotation is around the vertical axis.
 
 ### IdleScan
 
@@ -277,10 +350,10 @@ Exploratory scanning when nothing is interesting:
 from maxim.default_network import IdleScan
 
 idle = IdleScan(
-    scan_interval=3.0,    # Seconds between scans
-    scan_range=45.0,      # Degrees to scan
-    prefer_unexplored=True,
+    idle_timeout=5.0,     # Seconds before scanning starts
 )
+idle.base_priority = 0.2
+idle.cooldown_seconds = 0.5
 ```
 
 ---

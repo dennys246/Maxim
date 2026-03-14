@@ -32,20 +32,17 @@ from maxim.salience import SalienceNetwork, SalienceConfig
 
 config = SalienceConfig(
     # Object tracking
-    max_tracked_objects=50,
-    object_timeout=5.0,       # Seconds before object "forgotten"
-    iou_threshold=0.5,        # IoU for object matching
+    max_tracked_objects=100,          # Max objects before LRU eviction
+    min_confidence=0.3,              # Minimum detection confidence to track
 
-    # Salience weights
-    confidence_weight=0.3,    # Detection confidence
-    novelty_weight=0.25,      # Novelty score
-    size_weight=0.15,         # Object size
-    motion_weight=0.2,        # Movement amount
-    interest_weight=0.1,      # Goal relevance
+    # Salience decay (time-based, not weight-based)
+    novelty_decay_seconds=30.0,      # Time for novelty to decay to ~37%
+    recency_decay_seconds=5.0,       # Time for recency salience to decay
 
-    # Novelty
-    novelty_decay=0.95,       # Per-frame novelty decay
-    habituation_rate=0.1,     # How fast objects become "normal"
+    # Interest matching
+    interest_labels={"person", "face"},  # Labels that get boosted salience
+    interest_boost=1.5,              # Multiplier for interest-matched objects
+    min_salience_threshold=0.2,      # Minimum salience to consider important
 )
 
 network = SalienceNetwork(config)
@@ -58,122 +55,135 @@ Each detected object is tracked:
 ```python
 @dataclass
 class TrackedObject:
-    object_id: str            # Unique identifier
-    class_name: str           # "person", "cup", etc.
-    bbox: tuple[int, int, int, int]  # x1, y1, x2, y2
+    track_id: Any             # Unique tracking identifier
+    class_id: int             # Object class ID
+    label: str                # "person", "cup", etc.
     confidence: float         # Detection confidence
-    last_seen: float          # Timestamp
-
-    # Salience components
-    salience: float           # Combined salience score
-    novelty: float            # How novel (0=habituated, 1=new)
-    interest: float           # Goal relevance
-    motion: float             # Movement amount
+    first_seen: float         # Timestamp of first detection
+    last_seen: float          # Timestamp of last detection
+    times_seen: int           # Number of observations
+    position_u: float         # Bbox center x
+    position_v: float         # Bbox center y
+    bbox_w: float             # Bounding box width
+    bbox_h: float             # Bounding box height
+    interest_matched: bool    # Whether label matches interest_labels
 ```
 
 ### Usage
 
 ```python
-# Update with detections
-tracked = network.update(
+# Update with detections (bbox format: x, y, w, h)
+network.update_from_detections(
     detections=[
-        {"bbox": (100, 50, 200, 150), "class": "person", "confidence": 0.9},
-        {"bbox": (300, 200, 350, 280), "class": "cup", "confidence": 0.7},
+        {"track_id": 1, "class_id": 0, "label": "person",
+         "bbox": (100, 50, 100, 100), "confidence": 0.9},
+        {"track_id": 2, "class_id": 41, "label": "cup",
+         "bbox": (300, 200, 50, 80), "confidence": 0.7},
     ],
-    current_time=time.time(),
+    timestamp=time.time(),
 )
 
-# Get most salient object
-if tracked:
-    top = max(tracked, key=lambda o: o.salience)
-    print(f"Most salient: {top.class_name} ({top.salience:.2f})")
+# Get most salient objects
+top = network.get_top_salient(n=5)
+if top:
+    best = top[0]
+    print(f"Most salient: {best['label']} ({best['salience']:.2f})")
 
-# Query by class
-people = network.get_objects_by_class("person")
+# Query with filters
+people = network.query(labels={"person"})
 
-# Get object by ID
-obj = network.get_object("obj_123")
+# Get salience for a specific track ID
+salience = network.get_salience(track_id=1)
+
+# Get context string for LLM consumption
+context = network.to_context_str()
 ```
 
 ### Interest Matching
 
-Boost salience for goal-relevant objects:
+Interest matching is label-based, configured via `SalienceConfig.interest_labels`:
 
 ```python
-# Set current interests (from goal system)
-network.set_interests({
-    "person": 1.0,     # High interest in people
-    "phone": 0.8,      # Looking for phone
-    "cup": 0.2,        # Low interest
-})
+# Configure interest labels at construction time
+config = SalienceConfig(
+    interest_labels={"person", "face", "phone"},  # Labels to boost
+    interest_boost=1.5,                           # Salience multiplier
+)
+network = SalienceNetwork(config)
 
-# Objects matching interests get boosted salience
-# A phone will have higher salience than a cup with same novelty
+# Objects with matching labels automatically get boosted salience
+# A "person" detection will have salience multiplied by interest_boost
+# Query only interest-matched objects:
+interest_objs = network.query(interest_only=True)
 ```
 
 ### Novelty Decay
 
-Objects become less novel over time (habituation):
+Novelty decays exponentially based on time since first seen (not per-frame):
 
 ```python
-# First sighting: novelty = 1.0
-obj = network.get_object("obj_123")
-print(f"Novelty: {obj.novelty:.2f}")  # 1.0
+# Novelty for unknown objects = 1.0
+print(network.get_novelty(999))  # 1.0 (never seen)
 
-# After repeated observations
-# Novelty decays: 1.0 → 0.9 → 0.81 → ...
-network.update(...)
-obj = network.get_object("obj_123")
-print(f"Novelty: {obj.novelty:.2f}")  # 0.7
+# After detection, novelty decays over novelty_decay_seconds
+# Formula: exp(-time_known / novelty_decay_seconds)
+# With default 30s decay: after 30s novelty ~= 0.37, after 60s ~= 0.14
+novelty = network.get_novelty(track_id=1)
 ```
 
 ---
 
 ## ThreadSafeNoveltyTracker
 
-Thread-safe wrapper for novelty scoring across multiple threads.
+Thread-safe wrapper around the underlying `NoveltyTracker` (from `maxim.inference.segment_vision`).
+This is **not** a standalone tracker -- it delegates all novelty logic to a `NoveltyTracker`
+instance and adds `threading.Lock`-based synchronization for safe concurrent access from
+the perception thread, Default Network thread, etc.
 
 ### Usage
 
 ```python
+from maxim.inference.segment_vision import NoveltyTracker
 from maxim.salience import ThreadSafeNoveltyTracker
 
-tracker = ThreadSafeNoveltyTracker()
+# Wrap an existing tracker, or let it create one internally
+tracker = ThreadSafeNoveltyTracker(NoveltyTracker())
 
-# Record observation (thread-safe)
-novelty = tracker.observe("person")  # First time: high novelty
+# Get novelty for a track_id (thread-safe)
+novelty = tracker.get_novelty(track_id=42)
 
-# Get current novelty for class
-novelty = tracker.get_novelty("person")
+# Mark a track_id as seen
+tracker.update(track_id=42)
 
-# Reset novelty for a class (object left and returned)
-tracker.reset("person")
+# Class-aware update (drives class-level habituation)
+tracker.update_with_class(track_id=42, class_id=0)
+
+# Class-level novelty (rare categories score higher)
+class_nov = tracker.get_class_novelty(class_id=0)
+
+# Batch operations (single lock acquisition)
+tracker.update_batch([1, 2, 3])
+scores = tracker.get_novelty_batch([1, 2, 3])
+
+# Focus management (resets novelty to max, starts slow decay)
+tracker.focus(track_id=42)
+
+# Atomic get-and-focus
+novelty = tracker.focus_and_get_novelty(track_id=42)
+
+# Sensitization modulation callback
+tracker.set_modulation_lookup(lambda class_id: 1.2)
 ```
 
-### Implementation
+### Key Properties
 
 ```python
-class ThreadSafeNoveltyTracker:
-    """Thread-safe novelty tracking per object class."""
-
-    def __init__(
-        self,
-        habituation_rate: float = 0.1,
-        recovery_rate: float = 0.01,
-    ):
-        self._observations: dict[str, int] = {}
-        self._lock = threading.RLock()
-
-    def observe(self, object_class: str) -> float:
-        """Record observation, return current novelty."""
-        with self._lock:
-            count = self._observations.get(object_class, 0) + 1
-            self._observations[object_class] = count
-            return self._compute_novelty(count)
-
-    def _compute_novelty(self, observation_count: int) -> float:
-        """Novelty decays with repeated observations."""
-        return math.exp(-self._habituation_rate * observation_count)
+tracker.focus_decay_seconds   # Time for novelty to decay while focused (default 10s)
+tracker.recovery_seconds      # Time for novelty to recover when not focused (default 20s)
+tracker.max_novelty           # Score for never-seen objects (default 2.0)
+tracker.min_novelty           # Floor for frequently-focused objects (default 0.5)
+tracker.sensitization_ceiling # Max multiplier for sensitized classes (default 1.5)
+tracker.tracked_count         # Number of track IDs currently tracked
 ```
 
 ---
@@ -188,14 +198,12 @@ Tracks object motion for salience boosting.
 from maxim.salience import MovementDetector, MovementConfig
 
 config = MovementConfig(
-    # Motion thresholds (pixels/frame)
-    min_motion=2.0,           # Ignore tiny movements
-    significant_motion=10.0,  # Moderate motion
-    rapid_motion=30.0,        # Fast motion (high salience)
-
-    # Temporal filtering
-    smoothing_window=3,       # Frames to average
-    motion_decay=0.9,         # Per-frame decay
+    velocity_normalization=50.0,   # Pixels/frame for max score (1.0)
+    decay_seconds=0.5,             # How fast score decays when stopped
+    min_movement_threshold=3.0,    # Ignore movements below this (pixels)
+    max_entries=200,               # Max tracked objects before cleanup
+    peripheral_boost=0.3,          # Extra salience for peripheral motion
+    peripheral_threshold=0.6,      # Fraction from center = peripheral
 )
 
 detector = MovementDetector(config)
@@ -204,22 +212,27 @@ detector = MovementDetector(config)
 ### Usage
 
 ```python
-# Update with current detections
-motion_scores = detector.update(
+# Update with detections (needs track_id and bbox_xyxy or bbox)
+scores = detector.update(
     detections=[
-        {"object_id": "obj_1", "center": (150, 100)},
-        {"object_id": "obj_2", "center": (320, 240)},
+        {"track_id": 1, "bbox_xyxy": (100, 50, 200, 150)},
+        {"track_id": 2, "bbox_xyxy": (300, 200, 350, 280)},
     ],
+    frame_center=(320, 240),  # Optional, defaults to frame center
 )
+# scores: {1: 0.3, 2: 0.3}  (new objects start at 0.3)
 
-# Get motion for specific object
-motion = detector.get_motion("obj_1")
-print(f"Motion: {motion:.2f} pixels/frame")
+# Get movement score for a specific track ID
+score = detector.get_movement_score(track_id=1)
+print(f"Movement: {score:.2f}")
 
-# Get moving objects
-moving = detector.get_moving_objects(threshold=5.0)
-for obj_id, motion in moving:
-    print(f"{obj_id}: {motion:.2f}")
+# Get top movers (track_id, score) sorted by score
+top = detector.get_top_movers(n=5)
+for track_id, score in top:
+    print(f"{track_id}: {score:.2f}")
+
+# Set frame dimensions for peripheral calculations
+detector.set_frame_size(1280, 720)
 ```
 
 ---
@@ -236,15 +249,15 @@ salience_network = SalienceNetwork(config)
 salience_map = SalienceMap(map_config)
 
 # Update salience network with detections
-tracked = salience_network.update(detections)
+salience_network.update_from_detections(detections)
 
-# Feed into spatial salience map
-for obj in tracked:
-    row, col = map_bbox_to_grid(obj.bbox)
+# Feed top salient objects into spatial salience map
+for obj in salience_network.get_top_salient(n=10):
+    row, col = map_position_to_grid(obj["position"])
     salience_map.add_salience(
         row=row,
         col=col,
-        amount=obj.salience,
+        amount=obj["salience"],
         source="object",
     )
 ```

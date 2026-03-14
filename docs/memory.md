@@ -50,9 +50,11 @@ hippo = Hippocampus(config)
 
 # Capture a perception
 perception = Perception(
-    timestamp=time.time(),
-    modality="vision",
-    content={"objects": ["person", "book"], "confidence": 0.95},
+    observations={"scene": "office", "confidence": 0.95},
+    cli_input=None,
+    transcript=None,
+    detected_objects=["person", "book"],
+    detected_people=["alice"],
     salience=0.8,
     novelty=0.6,
 )
@@ -77,16 +79,20 @@ memory = hippo.get(memory_id)
 # Similarity-based recall (perception overlap)
 similar = hippo.recall_similar(
     perception=current_perception,
-    limit=10,
-    threshold=0.5,
+    limit=5,
+    include_compressed=True,
 )
 
 # Associative recall (spreading activation through graph)
 associated = hippo.recall_associated(
-    memory_id=memory_id,
-    max_depth=3,
+    seed_ids=[memory_id],
+    limit=10,
     decay=0.5,
+    max_depth=3,
+    threshold=0.05,
+    include_compressed=True,
 )
+# Returns list of (memory, activation_score) tuples sorted by score
 ```
 
 ### Configuration
@@ -95,6 +101,7 @@ associated = hippo.recall_associated(
 @dataclass
 class HippocampusConfig:
     max_nodes: int = 10_000
+    state_store_max_entries: int = 1000
     persistence_path: str | None = None
     indexed_keys: frozenset[str] = frozenset({"goal", "tool", "object", "person", "success", "mode"})
 
@@ -104,10 +111,26 @@ class HippocampusConfig:
     compression_age: float = 24 * 3600             # 1 day
     retention_threshold: float = 0.3
     compression_threshold: float = 0.6
+    memory_strategy: str = "access_based"
 
-    # Long-term memory
+    # Long-term memory consolidation
+    consolidate_during_sleep: bool = True
+    max_consolidation_candidates: int = 500
     immediate_promotion_salience: float = 0.95
     immediate_promotion_novelty: float = 0.95
+    long_term_retention_boost: float = 2.0
+    auto_save_after_sleep: bool = True
+
+    # Associative graph
+    enable_associative_graph: bool = True
+    association_limit: int = 5
+    association_threshold: float = 0.5
+    spreading_activation_decay: float = 0.5
+    spreading_activation_max_depth: int = 3
+    spreading_activation_threshold: float = 0.05
+
+    # Async capture
+    capture_queue_size: int = 100
 ```
 
 ---
@@ -223,15 +246,25 @@ Old memories are compressed to save space:
 
 ```python
 @dataclass
-class CompressedMemory:
-    """Compact representation of old memories."""
-    memory_id: str
-    original_type: str           # "perception", "action", etc.
-    timestamp: float
-    summary_embedding: list[float]  # Semantic embedding
-    key_facts: dict[str, Any]    # Preserved important fields
-    access_count: int
-    last_accessed: float
+class CompressedMemory(CompressedRecord):
+    """Lightweight summary of an old episodic memory.
+
+    Inherits from CompressedRecord (→ MemoryRecord): id, timestamp,
+    created_at, accessed_at, access_count, long_term, consolidated_at,
+    edge_count, touch().
+    """
+    run_id: str = ""
+
+    # Essential decision data (for queries)
+    goal: str | None = None
+    tool_name: str = ""
+    success: bool = False
+
+    # Minimal perception summary
+    had_user_input: bool = False
+    object_count: int = 0
+    novelty: float = 0.5
+    salience: float = 0.5
 ```
 
 ---
@@ -245,12 +278,21 @@ from maxim.memory import StateStore
 
 store = StateStore(max_entries=1000)
 
-# Cache state
+# Store a state snapshot and get its hash reference
 state = {"position": (45, 10), "objects": ["book", "pen"]}
-store.set("current_view", state)
+state_ref = store.store(state)  # Returns 16-char SHA-256 hash, e.g. "a1b2c3d4e5f67890"
 
-# Retrieve
-cached = store.get("current_view")
+# Retrieve by hash reference
+cached = store.get(state_ref)  # Returns the dict, or None if evicted
+
+# Duplicate states share a single entry (content-addressed)
+same_ref = store.store(state)  # same hash as before
+
+# Other methods
+store.contains(state_ref)  # bool
+len(store)                 # number of cached entries
+store.stats()              # {"entries": ..., "max_entries": ..., "utilization": ...}
+store.clear()              # drop all entries
 ```
 
 ---
@@ -266,7 +308,7 @@ lock = RWLock()
 
 # Multiple readers
 with lock.read_lock():
-    memories = hippo.query(goal="example")
+    memories = hippo.recall(goal="example")
 
 # Exclusive writer
 with lock.write_lock():

@@ -36,15 +36,15 @@ import time
 # From current time
 sig = TemporalSignature.from_timestamp(time.time())
 
-# From datetime
-from datetime import datetime
-sig = TemporalSignature.from_datetime(datetime.now())
+# From current time (convenience)
+sig = TemporalSignature.now()
 
-# Access components
-print(f"Hour: {sig.hour}")        # 0-23
-print(f"Day of week: {sig.day}")  # 0=Monday, 6=Sunday
-print(f"Week of month: {sig.week}")  # 0-3
-print(f"Month: {sig.month}")      # 0-11
+# Access components (all normalized to 0.0-1.0 phase values)
+print(f"Circadian phase: {sig.circadian_phase}")  # 0.0-1.0 (midnight=0, noon=0.5)
+print(f"Weekly phase: {sig.weekly_phase}")         # 0.0-1.0 (Monday 00:00=0)
+print(f"Monthly phase: {sig.monthly_phase}")       # 0.0-1.0 (1st=0, ~15th=0.5)
+print(f"Annual phase: {sig.annual_phase}")         # 0.0-1.0 (Jan 1=0, July 1≈0.5)
+print(f"Timestamp: {sig.timestamp}")               # Unix timestamp (absolute reference)
 ```
 
 ### Comparing Signatures
@@ -52,17 +52,20 @@ print(f"Month: {sig.month}")      # 0-11
 ```python
 from maxim.time import TemporalSignature, circular_distance
 
-sig1 = TemporalSignature(hour=23, day=0, week=0, month=0)
-sig2 = TemporalSignature(hour=1, day=0, week=0, month=0)
+sig1 = TemporalSignature.from_timestamp(ts1)
+sig2 = TemporalSignature.from_timestamp(ts2)
 
-# Circular distance handles wrap-around
-# 23:00 to 01:00 is 2 hours, not 22 hours
-distance = circular_distance(sig1.hour, sig2.hour, period=24)
-print(f"Hour distance: {distance}")  # 2
+# Circular distance handles wrap-around on 0.0-1.0 phase values
+# e.g., phase 0.95 is close to phase 0.05 (distance = 0.1, not 0.9)
+distance = circular_distance(sig1.circadian_phase, sig2.circadian_phase)
+print(f"Circadian distance: {distance}")  # 0.0-0.5
 
-# Full signature similarity
+# Full signature similarity (weighted across all four phases)
 similarity = sig1.similarity(sig2)
 print(f"Similarity: {similarity:.2f}")
+
+# Custom weights: (circadian, weekly, monthly, annual)
+similarity = sig1.similarity(sig2, weights=(2.0, 1.0, 0.5, 0.5))
 ```
 
 ### Binning
@@ -131,16 +134,19 @@ evening_memories = scn.query_hour(18)  # 6pm memories
 
 # Query by day of week
 monday_memories = scn.query_day(0)    # Monday
-weekend_memories = scn.query_days([5, 6])  # Sat+Sun
+saturday_memories = scn.query_day(5)  # Saturday
 
 # Query by week of month
-first_week = scn.query_week(0)
+first_week = scn.query_week_of_month(0)
 
 # Query by month
-summer_memories = scn.query_months([5, 6, 7])  # Jun-Aug
+june_memories = scn.query_month(5)  # June (0=Jan, 11=Dec)
 
-# Combined queries
+# Combined queries (set intersection via BoundedBin & operator)
 tuesday_mornings = scn.query_hour(9) & scn.query_day(1)
+
+# Or use query_intersection for multi-criteria matching
+tuesday_mornings = scn.query_intersection(hour=9, day=1)
 ```
 
 ### Pattern Detection
@@ -149,17 +155,17 @@ Find recurring temporal patterns:
 
 ```python
 # Find rhythmic patterns
+# Returns dict mapping rhythm type to list of (bin_id, count) tuples
 patterns = scn.find_rhythmic_patterns(min_occurrences=5)
 
-for pattern in patterns:
-    print(f"Pattern: {pattern.description}")
-    print(f"  Frequency: {pattern.frequency}")
-    print(f"  Memory IDs: {pattern.memory_ids[:5]}...")
+for rhythm_type, bins in patterns.items():
+    for bin_id, count in bins:
+        print(f"  {rhythm_type} bin {bin_id}: {count} occurrences")
 
 # Example output:
-# Pattern: Morning routine (8-9am weekdays)
-#   Frequency: 23 occurrences
-#   Memory IDs: ['mem_1', 'mem_5', 'mem_12', ...]
+#   circadian bin 9: 23 occurrences    (9am)
+#   circadian bin 17: 18 occurrences   (5pm)
+#   weekly bin 0: 12 occurrences       (Monday)
 ```
 
 ### Temporal Priors
@@ -167,12 +173,10 @@ for pattern in patterns:
 Cold start handling with temporal priors:
 
 ```python
-# Register priors for expected patterns
-scn.add_prior("work_hours", hours=range(9, 18), days=range(0, 5))
-scn.add_prior("sleep_hours", hours=list(range(22, 24)) + list(range(0, 7)))
-
-# Query with prior boosting
-memories = scn.query_with_priors("work_hours")
+# Register priors for expected patterns (one hour bin at a time)
+scn.add_temporal_prior("morning_greeting", hour_bin=8)
+scn.add_temporal_prior("morning_greeting", hour_bin=9)
+scn.add_temporal_prior("evening_wind_down", hour_bin=21)
 ```
 
 ---
@@ -265,15 +269,16 @@ For 10,000 memories:
 
 ```python
 # Get current temporal context
-current_sig = TemporalSignature.from_timestamp(time.time())
+current_sig = TemporalSignature.now()
 
-# Find similar times from history
-similar_times = scn.query_hour(current_sig.hour)
+# Find similar times from history (using bin index from phase)
+hour_bin, day_bin, week_bin, month_bin = current_sig.to_bins()
+similar_times = scn.query_hour(hour_bin)
 recent_actions = [hippo.get(mid) for mid in similar_times]
 
 # Use for context-aware behavior
-if current_sig.hour in range(22, 24) or current_sig.hour in range(0, 7):
-    # Night behavior: quieter, slower movements
+if current_sig.circadian_phase > 0.917 or current_sig.circadian_phase < 0.292:
+    # Night behavior (roughly 10pm-7am): quieter, slower movements
     ...
 ```
 
@@ -281,22 +286,31 @@ if current_sig.hour in range(22, 24) or current_sig.hour in range(0, 7):
 
 ```python
 # What typically happens at this time?
-patterns = scn.find_patterns_at(current_sig)
+# Use query_similar_time to find memories near a given temporal signature
+similar_memories = scn.query_similar_time(current_sig, tolerance=1)
 
-for pattern in patterns:
-    print(f"Expected: {pattern.typical_action}")
-    print(f"Confidence: {pattern.confidence:.2f}")
+for mid in similar_memories:
+    memory = hippo.get(mid)
+    print(f"Similar time activity: {memory}")
 ```
 
 ### Temporal Anomaly Detection
 
 ```python
 # Is current activity unusual for this time?
-expected_memories = scn.query_temporal(current_sig)
-expected_types = Counter(m.type for m in expected_memories)
+# Use the oscillator-based anomaly score (if oscillator is enabled)
+anomaly = scn.temporal_anomaly_score(current_sig)
+if anomaly is not None and anomaly > 0.7:
+    hour_bin, _, _, _ = current_sig.to_bins()
+    print(f"Unusual activity for hour bin {hour_bin}")
+
+# Or check bin populations manually
+expected_memories = scn.query_similar_time(current_sig, tolerance=1)
+expected_types = Counter(hippo.get(mid).type for mid in expected_memories)
 
 if current_action_type not in expected_types:
-    print(f"Unusual activity for {current_sig.hour}:00")
+    hour_bin, _, _, _ = current_sig.to_bins()
+    print(f"Unusual activity for hour {hour_bin}:00")
 ```
 
 ---

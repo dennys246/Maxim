@@ -17,7 +17,7 @@ Bridges serve as integration points that:
 |--------|-------------------|---------|
 | `SpatialMemoryBridge` | Hippocampus ↔ SpatialMap ↔ AttentionNetwork | Spatial memory integration |
 | `SalienceMemoryBridge` | Hippocampus ↔ EC ↔ SalienceNetwork | Salience-based memory |
-| `PlanHistoryBridge` | Hippocampus ↔ NAc | Plan template retrieval |
+| `PlanHistoryBridge` | Hippocampus ↔ NAc ↔ EC | Plan template retrieval |
 | `EscalationLearningBridge` | Hippocampus ↔ SCN/NAc | Learned escalation thresholds |
 | `FearCircuitBridge` | Hippocampus ↔ NAc ↔ EC | Learned risk patterns |
 | `PainCircuitBridge` | PainDetector ↔ NAc | Movement pain learning |
@@ -37,25 +37,43 @@ from maxim.bridges import SpatialMemoryBridge
 bridge = SpatialMemoryBridge(
     hippocampus=hippo,
     spatial_map=spatial_map,
-    attention_network=attention,
+    ec=ec,
+    attention=attention,  # optional
 )
 
-# When gazing at a location
-bridge.record_gaze(yaw=45.0, pitch=10.0, objects=["book", "cup"])
+# On session start, restore priors from memory
+restored = bridge.on_session_start()
 
-# Query memories at location
-memories = bridge.query_location(yaw=45.0, pitch=10.0, radius=10.0)
+# Boost attention for current goal
+boosts = bridge.boost_attention_for_goal("find mug")
+for position, boost in boosts:
+    attention.apply_boost(position, boost)
 
-# Get spatially-relevant memories for current view
-relevant = bridge.get_relevant_for_view(current_fov=(30, 20, 60, 40))
+# Get most likely positions for an object class
+positions = bridge.get_likely_positions("mug", top_k=5)
+# Returns list of (grid_u, grid_v, probability)
+
+# Record successful find
+bridge.record_success(
+    object_class="mug",
+    position=(320, 240),
+    goal="find mug",
+)
+
+# Record failed search
+bridge.record_failure(object_class="mug", position=(100, 100))
+
+# Add cold-start prior
+bridge.add_location_prior("mug", "center", probability=0.5)
 ```
 
 ### Features
 
-- Records object locations in memory
-- Retrieves memories by spatial proximity
-- Updates attention based on memory-rich locations
-- Persists spatial indices
+- Location priors: Learn where object classes typically appear
+- Attention boosting: Direct attention to historically successful positions
+- Memory enrichment: Record spatial context with episodic memories
+- Associative recall: Expands spatial coverage via Hippocampus associative graph
+- Health tracking: Auto-disables after repeated errors
 
 ---
 
@@ -68,34 +86,41 @@ from maxim.bridges import SalienceMemoryBridge
 
 bridge = SalienceMemoryBridge(
     hippocampus=hippo,
-    salience_network=salience,
-    similarity_threshold=0.7,
+    ec=ec,
+    salience_network=salience_network,
 )
 
-# Enrich salience with memory context
-bridge.enrich_salience(detections)
+# On session start, restore interaction history
+bridge.on_session_start()
 
-# Store salient observations
-bridge.record_salient_observation(
-    object_class="person",
-    salience=0.9,
-    context={"location": (45, 10)},
+# Enrich salience scores with interaction history
+enriched = bridge.enrich_salience(
+    detections=[{"label": "mug", "salience": 0.5}],
+    goal="find the mug",
 )
+# enriched[0]["salience"] might be 0.75 if mug has positive history
 
-# Query similar past observations
-similar = bridge.query_similar_observations(
-    object_class="person",
-    context=current_context,
+# Get interaction history for an object class
+record = bridge.get_interaction_history("mug")
+
+# Get success rate for an object class
+rate = bridge.get_success_rate("mug")  # Returns 0-1 (0.5 if no history)
+
+# Record an interaction outcome
+bridge.record_interaction(
+    object_class="mug",
+    success=True,
+    goal="find the mug",
 )
 ```
 
 ### Features
 
-- Boosts salience for memory-recognized objects
-- Stores high-salience observations
-- Semantic similarity queries (Phase 4: neural embeddings for "cup" ≈ "mug")
-- Novelty adjustment based on memory
-- Async embedding for non-blocking memory capture
+- Interaction history: Track success/failure with object classes
+- Salience boosting: Increase salience for objects with positive history
+- Goal-aware salience: Boost objects relevant to current goal
+- Associative recall: Enriches history from Hippocampus associative graph
+- Health tracking: Auto-disables after repeated errors
 
 ---
 
@@ -109,24 +134,33 @@ from maxim.bridges import PlanHistoryBridge, PlanTemplate
 bridge = PlanHistoryBridge(
     hippocampus=hippo,
     nac=nac,
+    ec=ec,
 )
 
-# Query for similar plans
-templates = bridge.get_templates_for_goal(
-    goal="find_object",
-    context={"target": "book"},
-)
+# Find templates for current goal
+templates = bridge.get_plan_templates("find the mug")
 
 for template in templates:
-    print(f"Plan: {template.steps}")
-    print(f"Success rate: {template.success_rate:.2f}")
+    print(f"Goal: {template.goal}")
+    print(f"Tools: {template.tool_sequence}")
+    rate = template.success_count / (template.success_count + template.failure_count)
+    print(f"Success rate: {rate:.1%}")
 
-# Record completed plan
+# Predict success for a potential plan
+prediction = bridge.get_predicted_success(
+    goal="find mug",
+    tool_sequence=["look_around", "grasp"],
+)
+
+# Get historical success rate for a tool
+rate, sample_count = bridge.get_tool_success_rate("look_around")
+
+# Record outcome after execution
 bridge.record_plan_outcome(
-    goal="find_object",
-    steps=["scan_room", "approach", "pick_up"],
-    outcome="success",
-    duration=45.0,
+    goal="find mug",
+    tool_sequence=["look_around", "grasp"],
+    success=True,
+    execution_time_ms=1500,
 )
 ```
 
@@ -135,12 +169,14 @@ bridge.record_plan_outcome(
 ```python
 @dataclass
 class PlanTemplate:
+    memory_id: str
     goal: str
-    steps: list[str]
-    success_rate: float
-    avg_duration: float
-    context_match: float
-    memory_ids: list[str]
+    tool_sequence: list[str]
+    success_count: int
+    failure_count: int
+    avg_execution_time_ms: float
+    last_used: float
+    similarity: float  # Similarity to current goal
 ```
 
 ---
@@ -156,45 +192,64 @@ bridge = EscalationLearningBridge(
     hippocampus=hippo,
     scn=scn,
     nac=nac,
-    persist_path="data/util/escalation_learning.json",
 )
+# persist_path defaults to "data/util/escalation_learning.json"
+# auto_save_interval defaults to 60.0 seconds
 
 # Query learned threshold for current context
 threshold = bridge.get_threshold(
-    goal_type="exploration",
-    temporal_context=current_temporal_sig,
+    goal="find mug",
+    novelty=0.6,
+    salience=0.7,
+)
+
+# Or use the convenience method
+should, reason = bridge.should_escalate(
+    goal="find mug",
+    novelty=0.6,
+    salience=0.7,
 )
 
 # Record escalation outcome
-bridge.record_escalation(
-    goal_type="exploration",
+bridge.record_outcome(
+    goal="find mug",
     escalated=True,
-    outcome="helpful",  # Was escalation useful?
-    context={"novelty": 0.8},
+    success=True,  # Was escalation useful?
+    novelty=0.6,
+    salience=0.7,
 )
 ```
 
 ### Features
 
-- Learns goal-specific escalation thresholds
-- Temporal context awareness (time of day, etc.)
-- Persists learned thresholds
-- Adapts based on escalation outcomes
+- Per-goal thresholds: Different thresholds for different goal types (search, navigation, manipulation, etc.)
+- Temporal adjustment: SCN-aware thresholds that vary by time of day
+- Outcome learning: Lower thresholds after escalation helped, raise after unnecessary
+- Associative enrichment: Queries Hippocampus associative graph via `seed_memory_ids`
+- Persists learned thresholds with auto-save
 
 ### Persistence
 
 ```json
 {
   "version": 1,
-  "saved_at": "2024-02-06T12:00:00Z",
+  "saved_at": 1707220800.0,
   "thresholds": {
-    "exploration": {
-      "base": 0.6,
-      "temporal_adjustments": {
-        "morning": -0.1,
-        "evening": 0.05
-      }
+    "search:-1": {
+      "goal_type": "search",
+      "hour_bin": -1,
+      "base_threshold": 0.65,
+      "adjustment": -0.1,
+      "samples": 12,
+      "successes": 8,
+      "last_updated": 1707220800.0
     }
+  },
+  "records": [],
+  "config": {
+    "default_novelty_threshold": 0.7,
+    "default_salience_threshold": 0.6,
+    "learning_rate": 0.1
   }
 }
 ```
@@ -203,56 +258,69 @@ bridge.record_escalation(
 
 ## FearCircuitBridge
 
-Connects the FearAgent to learned risk patterns in NAc.
+Memory-informed safety assessment. Learns from historical outcomes to improve risk assessment accuracy.
 
 ```python
 from maxim.bridges import FearCircuitBridge
 
 bridge = FearCircuitBridge(
-    fear_agent=fear_agent,
-    nac=nac,
     hippocampus=hippo,
-    persist_path="data/util/fear_learning.json",
+    nac=nac,
+    ec=ec,
+)
+# persist_path defaults to "data/util/fear_learning.json"
+# auto_save_interval defaults to 60.0 seconds
+
+# Get learned risk adjustment (-0.3 to +0.3)
+adjustment = bridge.get_risk_adjustment(
+    category="code_execution",
+    pattern="subprocess",
+    context="trusted_source",
 )
 
-# Query risk for action
-risk = bridge.predict_risk(
-    action_type="movement",
-    action_signature="look_at:dy=90",
-    context={"current_position": (0, 0)},
+# Determine if action should be blocked (memory-informed)
+should_block, reason = bridge.should_block(
+    category="code_execution",
+    severity="medium",
+    pattern="subprocess",
 )
-
-if risk.level > 0.5:
-    print(f"High risk: {risk.reason}")
 
 # Record outcome after action
 bridge.record_outcome(
-    action_type="movement",
-    action_signature="look_at:dy=90",
-    outcome="safe",  # or "harmful"
+    category="code_execution",
+    pattern="subprocess",
+    was_blocked=True,
+    actual_harm=False,  # Was a false positive
+    severity="medium",
+    action_type="code_review",
 )
+
+# Analysis
+fp_rate = bridge.get_false_positive_rate("code_execution")
+patterns = bridge.get_patterns_to_review(fp_threshold=0.5)
 ```
 
 ### Features
 
-- Learns action-risk associations
-- Integrates with FearAgent review
-- Queries similar past experiences
-- Persists learned risk patterns
+- Learns risk adjustments from false positive / true positive outcomes
+- Integrates with NAc causal inference for harm probability
+- Associative graph enrichment via `seed_memory_ids` in `get_risk_adjustment()`
+- Persists learned risk patterns with auto-save
+- Category-level and pattern-level statistics
 
-### Risk Prediction Flow
+### Risk Assessment Flow
 
 ```
 Action Request
       ↓
-FearCircuitBridge.predict_risk()
-      ├── NAc.predict() (learned patterns)
-      ├── Hippocampus.query() (similar episodes)
-      └── HarmRegistry.predict() (predictive harm)
+FearCircuitBridge.should_block()
+      ├── get_risk_adjustment() (learned patterns + associative graph)
+      ├── NAc.predict_outcome() (causal inference)
+      └── Severity scoring with learned adjustment
       ↓
-Combined Risk Assessment
+Combined Risk Score (base + adjustment * nac_factor)
       ↓
-FearAgent.review_action()
+Block if score >= 0.65
 ```
 
 ---
@@ -262,29 +330,60 @@ FearAgent.review_action()
 Connects pain detection to NAc for movement learning.
 
 ```python
-from maxim.bridges.pain_bridge import PainCircuitBridge
+from maxim.bridges.pain_bridge import PainCircuitBridge, PainBridgeConfig
+
+config = PainBridgeConfig(
+    enable_learning=True,
+    enable_predictive_harm=True,       # Physics-based prediction
+    enable_joint_limit_prediction=True, # Joint limit prediction
+    angular_velocity_threshold=100.0,   # deg/sec
+    yaw_limit=45.0,
+    pitch_limit=30.0,
+)
 
 bridge = PainCircuitBridge(
     nac=nac,
     pain_detector=pain_detector,
+    config=config,  # optional, defaults are sensible
 )
 
-# Record action start
-bridge.record_action_start(
+# Record action start (returns event_id)
+event_id = bridge.record_action_start(
     action_signature="look_at:dy=90:dp=30",
     context={"position": (0, 0)},
+    target_yaw=90.0,
+    target_pitch=30.0,
 )
 
 # Pain detector fires automatically during movement
-# Bridge handles the learning
+# Bridge handles the learning via _on_pain() callback
 
-# Predict if action will cause pain
+# Record successful completion (positive feedback to NAc)
+bridge.record_action_complete(success=True)
+
+# Two-tier prediction before next similar movement
 should_gate, reason = bridge.should_gate_action(
-    action_signature="look_at:dy=85",
+    action_signature="look_at:dy=85:dp=5",
+    duration=0.3,
 )
-
 if should_gate:
-    print(f"Predicted pain: {reason}")
+    print(f"Movement gated: {reason}")
+
+# Get combined pain risk score (0-1)
+risk = bridge.get_pain_risk("look_at:dy=85:dp=5")
+```
+
+### Two-Tier Prediction
+
+```
+1. Predictive harm (Tier 1): Physics-based, zero latency
+   → MovementHarmPredictor (velocity analysis)
+   → JointLimitHarmPredictor (workspace bounds)
+
+2. Learned prediction (Tier 2): NAc-based
+   → Queries causal links from past pain events
+
+should_gate_action() checks both tiers.
 ```
 
 ### Learning Flow
@@ -308,25 +407,42 @@ if should_gate:
 Connects energy tracking to NAc for cost-aware decisions.
 
 ```python
-from maxim.bridges.energy_bridge import EnergyCircuitBridge
+from maxim.bridges.energy_bridge import EnergyCircuitBridge, EnergyBridgeConfig
+
+config = EnergyBridgeConfig(
+    enable_learning=True,
+    high_energy_valence_threshold=3.0,  # > 3 = NEGATIVE
+    low_energy_valence_threshold=0.5,   # < 0.5 = POSITIVE
+)
 
 bridge = EnergyCircuitBridge(
-    energy_registry=get_global_registry(),
     nac=nac,
+    registry=energy_registry,
+    config=config,  # optional
 )
 
-# Record action energy cost
-bridge.record_action_energy(
-    action_type="llm",
+# Track actual energy for an action
+event_id = bridge.record_action_start(
     action_signature="large_generation",
-    energy_cost=1500.0,
+    action_type="llm",
+)
+# ... action executes, energy signals accumulate ...
+total_energy = bridge.record_action_end(event_id)
+
+# Predict energy cost before execution
+predicted = bridge.predict_energy(
+    action_signature="large_generation",
+    action_type="llm",
 )
 
-# Predict energy cost for action
-predicted_cost = bridge.predict_energy_cost(
-    action_type="llm",
+# Check if action should be gated due to high energy
+should_gate, reason = bridge.should_gate_action(
     action_signature="large_generation",
+    action_type="llm",
 )
+
+# Get energy context string for LLM prompts
+context = bridge.get_energy_context_for_llm()
 ```
 
 ---

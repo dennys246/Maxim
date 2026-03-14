@@ -101,8 +101,16 @@ If a component cannot be tested in isolation, the architecture is violated.
 - `src/maxim/cli.py`: primary CLI entrypoint (`maxim` console script).
 - `scripts/main.py`: legacy checkout entrypoint (delegates to `maxim.cli`).
 - `src/configs/`: version-controlled config templates and notes.
-- `src/maxim/conscience/selfy.py`: `Maxim` orchestrator (capture loop, lifecycle, logging, key responses).
+- `src/maxim/conscience/selfy.py`: `Maxim` orchestrator class, composed from six mixins:
+  - `connection.py` (`ConnectionMixin`): Reachy SDK connection lifecycle
+  - `vision_stream.py` (`VisionStreamMixin`): vision capture and segmentation pipeline
+  - `agentic_runtime.py` (`AgenticRuntimeMixin`): agentic runtime bootstrap and lifecycle
+  - `movement.py` (`MovementMixin`): motor command helpers
+  - `input_handlers.py` (`InputHandlerMixin`): CLI/keyboard/voice input routing
+  - `media_loop.py` (`MediaLoopMixin`): video/audio recording and display loop
+  - `workers.py`: module-level worker functions (video writer, audio writer, transcription)
 - `src/maxim/agents/`: agent interfaces + implementations (reasoning/intent, no side effects).
+  - Extracted modules (re-exported from `llm_worker.py` for backward compatibility): `llm_types.py`, `llm_context.py`, `prompt_budgeter.py`, `llm_fallback.py`, `prompt_builder.py`.
 - `src/maxim/planning/`: planning + policy + decision engine (agentic action selection).
   - `plan_dashboard.py`: Bus-driven `ACTIVE_PLAN.md` writer for workspace visibility.
   - `plan_logger.py`: Append-only `history.md` plan event log with async write queue.
@@ -117,7 +125,7 @@ If a component cannot be tested in isolation, the architecture is violated.
 - `src/maxim/evaluation/`: lightweight evaluators/metrics for tools, plans, and agent intents.
 - `src/maxim/runtime/`: agentic runtime loop + bootstrap wiring (decision engine → executor → tools).
 - `src/maxim/inference/`: observation/control functions (vision target selection, motor control, etc.).
-- `src/maxim/models/vision/`: perception models (YOLO segmentation/pose).
+- `src/maxim/models/vision/`: perception models (Vision engine: RTMDet-m + RTMPose-m by default, YOLOv8 optional via `[yolo]` extra).
 - `src/maxim/models/movement/`: MotorCortex model (ConvNeXt-Tiny head-movement prediction).
 - `src/maxim/models/audio/`: Whisper wrapper (transcription backend).
 - `src/maxim/models/language/`: optional local LLM routing (transcript → agentic action).
@@ -270,7 +278,7 @@ Four biologically-inspired systems collaborate to give Maxim memory, temporal aw
 | **SalienceMemoryBridge** | Hippocampus ↔ SalienceNetwork | Pure novelty/recency | Interaction history boosts |
 | **PlanHistoryBridge** | Hippocampus ↔ NAc | Plans from scratch | Successful template retrieval |
 | **EscalationLearningBridge** | Hippocampus ↔ SCN/NAc | Fixed thresholds | Per-goal, per-time learned thresholds |
-| **FearCircuitBridge** | Hippocampus ↔ NAc ↔ EC | No learned risk patterns | Memory-informed risk assessment |
+| **FearCircuitBridge** | Hippocampus ↔ FearAgent ↔ NAc | No learned risk patterns | Memory-informed risk assessment (also queries EC via associative graph for contextual history) |
 | **PainCircuitBridge** | PainDetector ↔ NAc | No movement-pain learning | Learned action→pain associations |
 | **EnergyCircuitBridge** | EnergyRegistry ↔ NAc | No energy cost awareness | Learned action→energy associations |
 | **CommunicationBridge** | Comms ↔ Hippocampus | No communication context | Communication-aware memory |
@@ -288,7 +296,7 @@ Not every loop is captured - only "interesting" ones:
 
 ### Sleep Consolidation
 
-A periodic process (call `hippocampus.sleep()` or `hub.on_session_end()`) manages memory:
+A periodic process (call `hippocampus.sleep()` or `hub.on_session_end()`) manages memory. Note: `sleep()` is the top-level method that handles compression, removal, and preservation; it internally calls `consolidate()` for long-term promotion. `consolidate()` can also be called standalone to promote specific memories without running full sleep consolidation:
 1. **Long-Term Promotion**: Important memories marked for preservation
 2. **Compression**: Old EpisodicMemory → CompressedMemory (reduces ~2.5KB → ~200 bytes)
 3. **Removal**: Memories not accessed in 1 week (configurable) are removed

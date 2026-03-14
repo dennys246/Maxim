@@ -40,7 +40,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 
 | Document | Description |
 |----------|-------------|
-| [Communication](communication.md) | SMS/Voice via Twilio, webhook setup, Cloudflare Tunnel |
+| Communication | SMS/Voice via Twilio, webhook setup, Cloudflare Tunnel (doc not yet written; see `src/maxim/comms/`) |
 
 ### Planning & Workspace
 
@@ -109,7 +109,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 ```
 Camera Frame
      ↓
-YOLO Detection → SalienceNetwork → ThalamicGate
+Vision Detection → SalienceNetwork → ThalamicGate
      ↓                                  ↓
 AttentionNetwork                   Escalate?
      ↓                                  ↓
@@ -158,7 +158,7 @@ src/maxim/
 ├── agents/          → AGENTS.md
 ├── attention/       → attention.md
 ├── bridges/         → bridges.md
-├── comms/           → communication.md
+├── comms/           → (SMS/Voice communication; doc not yet written)
 ├── conscience/      → ARCHITECTURE.md (conscience section)
 ├── data/            → (camera/audio data utilities)
 ├── decisions/       → decisions.md (+ significance.py: learnable heuristics)

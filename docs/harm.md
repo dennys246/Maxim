@@ -51,6 +51,9 @@ class HarmCategory(Enum):
     AUDIO_DISTORTION = "audio_distortion"        # Audio quality issues
     # Task/Goal
     TOOL_FAILURE = "tool_failure"                # Tool execution failure
+    GOAL_UNREACHABLE = "goal_unreachable"        # Goal cannot be achieved
+    # Generic
+    UNKNOWN = "unknown"
 ```
 
 ---
@@ -64,9 +67,17 @@ Represents a predicted harm outcome:
 class HarmPrediction:
     category: HarmCategory
     intensity: float       # 0.0-1.0 severity
-    reason: str           # Human-readable explanation
-    confidence: float     # How confident is this prediction
-    suggested_mitigation: str | None  # How to reduce risk
+    confidence: float      # 0.0-1.0 confidence in prediction
+    reason: str            # Human-readable explanation
+    source: str            # Which predictor generated this
+    action_type: str = ""  # The action type that was evaluated
+    action_params: dict = field(default_factory=dict)
+    mitigation: str = ""   # Suggested mitigation action
+    metadata: dict = field(default_factory=dict)
+
+    # Computed properties:
+    # risk_score -> intensity * confidence
+    # should_gate -> risk_score >= 0.3
 ```
 
 ---
@@ -97,22 +108,27 @@ registry = get_global_registry()
 ### Predicting Harm
 
 ```python
-# Query before executing action
-prediction = registry.predict_harm(
+# Get worst (highest risk) prediction for an action
+prediction = registry.predict_worst(
     action_type="movement",
     action_params={
         "action_signature": "look_at:dy=90:dp=30",
         "duration": 0.2,
-        "current_position": (0, 0),
-        "target_position": (90, 30),
     },
 )
 
-if prediction.intensity > 0.5:
+if prediction and prediction.intensity > 0.5:
     print(f"High risk: {prediction.reason}")
-    print(f"Mitigation: {prediction.suggested_mitigation}")
+    print(f"Mitigation: {prediction.mitigation}")
 
     # Decide whether to proceed, modify, or abort
+
+# Quick gating check
+should_gate, reason = registry.should_gate(
+    action_type="movement",
+    action_params={...},
+    threshold=0.3,
+)
 ```
 
 ### Aggregated Predictions
@@ -123,15 +139,16 @@ When multiple predictors fire:
 from maxim.harm import AggregatedHarmPrediction
 
 # All predictions from all registered predictors
-all_predictions = registry.predict_all_harm(
+result = registry.predict_all(
     action_type="movement",
     action_params={...},
 )
 
 # Aggregated result
-print(f"Max intensity: {all_predictions.max_intensity}")
-print(f"Categories: {all_predictions.categories}")
-print(f"Should gate: {all_predictions.should_gate}")
+print(f"Max intensity: {result.max_intensity}")
+print(f"Max risk score: {result.max_risk_score}")
+print(f"Should gate: {result.should_gate}")
+print(f"Reasons: {result.reasons}")
 ```
 
 ---
@@ -146,17 +163,11 @@ Predicts harm from movement velocity and acceleration.
 from maxim.harm import MovementHarmPredictor, MovementHarmConfig
 
 config = MovementHarmConfig(
-    # Velocity thresholds (degrees/second)
-    safe_velocity=50.0,
-    warning_velocity=100.0,
-    dangerous_velocity=200.0,
-
-    # Acceleration thresholds (degrees/second²)
-    safe_acceleration=100.0,
-    warning_acceleration=300.0,
-
-    # Duration factors
-    min_safe_duration=0.2,  # seconds
+    angular_velocity_threshold=100.0,       # deg/sec
+    translation_velocity_threshold=50.0,    # mm/sec
+    default_duration=0.3,                   # seconds
+    intensity_scale_factor=0.005,           # excess velocity -> intensity
+    confidence_base=0.8,                    # high confidence in physics-based prediction
 )
 
 predictor = MovementHarmPredictor(config)
@@ -165,21 +176,24 @@ predictor = MovementHarmPredictor(config)
 ### Prediction Logic
 
 ```python
-# Given: look_at(dy=90) in 0.2 seconds
-# Velocity = 90 / 0.2 = 450 deg/sec (DANGEROUS)
+# Given: look_at(dy=90, dp=30) in 0.2 seconds
+# Angular delta = sqrt(90^2 + 30^2) ~ 95 deg
+# Velocity = 95 / 0.2 = 474 deg/sec (exceeds 100 threshold)
 
 prediction = predictor.predict(
+    action_type="movement",
     action_params={
-        "target_delta": 90,
+        "action_signature": "look_at:dy=90:dp=30",
         "duration": 0.2,
-    }
+    },
 )
 
 # Returns: HarmPrediction(
-#   category=PHYSICAL_DAMAGE,
-#   intensity=0.85,
-#   reason="Velocity 450 deg/s exceeds safe limit (200)",
-#   suggested_mitigation="Increase duration to 0.9 seconds"
+#   category=MOVEMENT_VELOCITY,
+#   intensity=min(1.0, (474-100)*0.005) = 1.0,
+#   reason="Expected angular velocity 474 deg/s exceeds threshold 100 deg/s ...",
+#   source="movement",
+#   mitigation="Increase duration to 1.05s for safe velocity"
 # )
 ```
 
@@ -195,34 +209,52 @@ Predicts harm from approaching joint position limits.
 from maxim.harm import JointLimitHarmPredictor, JointLimitConfig
 
 config = JointLimitConfig(
-    # Joint limits (degrees)
-    yaw_limits=(-90.0, 90.0),
-    pitch_limits=(-45.0, 45.0),
-    roll_limits=(-30.0, 30.0),
+    # Joint limits (degrees, conservative defaults)
+    yaw_limit=45.0,
+    pitch_limit_up=30.0,
+    pitch_limit_down=-30.0,
+    y_limit=20.0,             # mm
+    z_limit_up=20.0,          # mm
+    z_limit_down=-20.0,       # mm
 
-    # Warning margins
-    soft_limit_margin=10.0,   # Warning zone
-    hard_limit_margin=5.0,    # Danger zone
+    # Risk thresholds (fraction of limit)
+    warning_threshold=0.7,    # 70% of limit = warning
+    danger_threshold=0.9,     # 90% of limit = danger
+
+    # Learning integration
+    use_learned_bounds=True,
+
+    # Confidence
+    confidence_base=0.75,
 )
 
 predictor = JointLimitHarmPredictor(config)
+
+# With WorkspaceBoundsLearner for learned limits
+predictor = JointLimitHarmPredictor(
+    config=config,
+    bounds_learner=workspace_bounds_learner,
+)
 ```
 
 ### Prediction Logic
 
 ```python
-# Given: target_yaw = 85 (close to limit of 90)
+# Given: target_yaw = 42 (93% of 45 limit -> danger zone)
 prediction = predictor.predict(
+    action_type="movement",
     action_params={
-        "target_position": (85, 0, 0),  # yaw, pitch, roll
-    }
+        "target_yaw": 42.0,
+        "target_pitch": 25.0,
+    },
 )
 
 # Returns: HarmPrediction(
-#   category=PHYSICAL_DAMAGE,
-#   intensity=0.6,
-#   reason="Target yaw 85° is within 5° of limit (90°)",
-#   suggested_mitigation="Target yaw 80° instead"
+#   category=JOINT_LIMIT,
+#   intensity=0.79,
+#   reason="Movement near joint limits: yaw 42.0° at 93% of limit",
+#   source="joint_limit",
+#   mitigation="Reduce movement to yaw=31.5°, pitch=18.8°"
 # )
 ```
 
@@ -238,21 +270,28 @@ from maxim.harm import HarmPredictor, HarmPrediction, HarmCategory
 class SpeechHarmPredictor(HarmPredictor):
     """Predicts harm from speech actions."""
 
-    action_type = "speech"
+    name = "speech"
+    categories = {HarmCategory.USER_FRUSTRATION}
 
     def __init__(self, max_volume: float = 0.8):
         self.max_volume = max_volume
 
-    def predict(self, action_params: dict) -> HarmPrediction | None:
+    def predict(self, action_type: str, action_params: dict,
+                context: dict | None = None) -> HarmPrediction | None:
+        if action_type != "speech":
+            return None
         volume = action_params.get("volume", 0.5)
 
         if volume > self.max_volume:
             return HarmPrediction(
-                category=HarmCategory.SOCIAL_HARM,
+                category=HarmCategory.USER_FRUSTRATION,
                 intensity=(volume - self.max_volume) / (1.0 - self.max_volume),
-                reason=f"Volume {volume:.1f} may be too loud",
                 confidence=0.7,
-                suggested_mitigation=f"Reduce volume to {self.max_volume}",
+                reason=f"Volume {volume:.1f} may be too loud",
+                source=self.name,
+                action_type=action_type,
+                action_params=action_params,
+                mitigation=f"Reduce volume to {self.max_volume}",
             )
 
         return None
@@ -275,14 +314,17 @@ from maxim.agents import FearAgent
 def review_action(self, action_type, action_params):
     # Query harm predictors
     harm_registry = get_global_registry()
-    prediction = harm_registry.predict_harm(action_type, action_params)
+    should_gate, reason = harm_registry.should_gate(
+        action_type, action_params, threshold=0.3,
+    )
 
-    if prediction and prediction.intensity > 0.5:
-        # Add to review findings
+    if should_gate:
+        # Get detailed prediction for review
+        prediction = harm_registry.predict_worst(action_type, action_params)
         findings.append(Finding(
-            category=DangerCategory.PHYSICAL_DAMAGE,
+            category=prediction.category,
             description=prediction.reason,
-            severity=RiskLevel.from_intensity(prediction.intensity),
+            severity=prediction.intensity,
         ))
 
     return ReviewResult(...)
@@ -295,7 +337,7 @@ def review_action(self, action_type, action_params):
 ```
 Action Request
       ↓
-HarmRegistry.predict_harm()
+HarmRegistry.predict_all()
       ↓
 ┌─────────────────────────────────┐
 │  MovementHarmPredictor          │
@@ -333,7 +375,7 @@ Both systems work together:
 | Biological | Maxim Equivalent |
 |------------|------------------|
 | Nociceptors (prospective) | HarmPredictor |
-| Pain anticipation | predict_harm() |
+| Pain anticipation | predict_all() / predict_worst() |
 | Withdrawal reflex | Action gating |
 | Learned avoidance | NAc integration |
 

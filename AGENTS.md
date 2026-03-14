@@ -25,7 +25,8 @@ When multiple systems share the same functional role, they **must** use the same
 
 | Operation | Canonical Name | DO NOT use |
 |-----------|---------------|------------|
-| Compress/decay/remove stale records | `consolidate()` | `sleep()`, `cleanup()`, `gc()` |
+| Full sleep-cycle management (compress + remove + preserve) | `sleep()` | `cleanup()`, `gc()` |
+| Promote important memories to long-term | `consolidate()` | `promote()`, `commit()` |
 | Store a new record | `capture()` / `store()` | `add()`, `insert()`, `create()` |
 | Retrieve by ID | `get()` | `fetch()`, `find_by_id()` |
 | Query by filters | `recall()` | `search()`, `query()`, `find()` |
@@ -172,7 +173,7 @@ Bridges connect the memory system to external perception/decision/action systems
 | **SalienceMemoryBridge** | Hippocampus ↔ SalienceNetwork | Interaction history boosts | - |
 | **PlanHistoryBridge** | Hippocampus ↔ NAc | Successful plan template retrieval | - |
 | **EscalationLearningBridge** | Hippocampus ↔ SCN/NAc | Learned escalation thresholds | `escalation_learning.json` |
-| **FearCircuitBridge** | FearAgent ↔ NAc ↔ EC | Memory-informed risk assessment | `fear_learning.json` |
+| **FearCircuitBridge** | Hippocampus ↔ FearAgent ↔ NAc (+ EC via associative graph) | Memory-informed risk assessment | `fear_learning.json` |
 | **PainCircuitBridge** | PainDetector ↔ NAc | Learns action→pain associations | *(via NAc persistence)* |
 | **EnergyCircuitBridge** | EnergyRegistry ↔ NAc | Learns action→energy associations | - |
 | **CommunicationBridge** | Comms ↔ Hippocampus | Communication-aware memory | - |
@@ -201,7 +202,7 @@ Only "interesting" loops are captured:
 
 ### Consolidation
 
-A periodic process (call `hippocampus.consolidate()` or `hub.on_session_end()`) manages memory:
+A periodic process (call `hippocampus.sleep()` or `hub.on_session_end()`) manages memory. `sleep()` is the top-level method that runs compression, removal, and preservation, and internally calls `consolidate()` for long-term promotion. `consolidate()` can also be called standalone to promote specific memories without full sleep processing:
 1. **Long-Term Promotion**: Important memories marked for preservation
 2. **Compression**: Old EpisodicMemory → CompressedMemory
 3. **Removal**: Stale memories not accessed in 1 week (configurable)

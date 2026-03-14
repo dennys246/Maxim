@@ -2,6 +2,20 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-03-13: Conscience mixin decomposition and agents/ module extraction
+
+Decision:
+- `src/maxim/conscience/selfy.py` `Maxim` class decomposed into six mixins: `ConnectionMixin` (connection.py), `VisionStreamMixin` (vision_stream.py), `AgenticRuntimeMixin` (agentic_runtime.py), `MovementMixin` (movement.py), `InputHandlerMixin` (input_handlers.py), `MediaLoopMixin` (media_loop.py). Module-level worker functions live in `workers.py`.
+- `src/maxim/agents/llm_worker.py` split into focused modules: `llm_types.py` (request/response dataclasses), `llm_context.py` (context building), `prompt_budgeter.py` (token budget management), `llm_fallback.py` (fallback behaviors), `prompt_builder.py` (prompt construction). All are re-exported from `llm_worker.py` for backward compatibility.
+
+Reason:
+- `selfy.py` had grown too large; decomposition improves readability and allows independent testing of each concern.
+- `llm_worker.py` mixed data types, context logic, and worker thread code; extraction clarifies responsibilities.
+
+Tradeoffs:
+- More files to navigate, but each is focused and independently testable.
+- Re-exports preserve all existing import paths.
+
 ## 2026-03-08: Contemplation loop for local chain-of-thought in ExecAgent
 
 Decision:
@@ -49,7 +63,7 @@ Reason:
 - Align the primary agent name with the agentic implementation.
 - Keep agents action-free and centralize SDK control in tools.
 - Avoid running the agentic loop without accelerator support.
-- Feed YOLO detections into the agentic perception loop without blocking control.
+- Feed vision detections into the agentic perception loop without blocking control.
 - Reduce the risk of transcript-triggered arbitrary file execution.
 
 Tradeoffs:
@@ -157,10 +171,12 @@ Reason:
 Tradeoffs:
 - Requires stable re-export modules to preserve import paths during refactors.
 
-## 2026-01-02: Vision via YOLOv8 (segmentation + pose)
+## 2026-01-02: Vision via pluggable engine (RTMDet-m default, YOLOv8 optional)
 Reason:
 - Fast, general-purpose perception for “person/object of interest” detection.
 - Pose keypoints enable eye/face target refinement when available.
+- RTMDet-m + RTMPose-m (ONNX Runtime, Apache 2.0) is the default engine; YOLOv8 is available via `pip install “maxim[yolo]”` (AGPL-3.0).
+- Vision engine registry in `src/maxim/models/vision/registry.py` maps names (“rtm”, “yolo”) to engine implementations.
 
 Tradeoffs:
 - Heavier runtime dependency; performance depends on hardware.
@@ -257,7 +273,7 @@ Tradeoffs:
 ## 2026-01-05: CLI model selection flags
 Decision:
 - `--language-model <profile>` overrides the LLM profile for the run (prints available profiles on unknown).
-- `--segmentation-model <name>` selects the vision segmenter (default: `YOLO8`; prints available models on unknown).
+- `--segmentation-model <name>` selects the vision engine (default: `rtm`; options: `rtm`, `yolo`; prints available models on unknown).
 
 Reason:
 - Make per-run experimentation easier without editing JSON/env vars.
@@ -384,7 +400,7 @@ Reason:
 
 ## 2026-01-03: Store trained models under `data/models/`
 Decision:
-- Default model artifacts (MotorCortex checkpoints/history, YOLO weights) live under `data/models/`.
+- Default model artifacts (MotorCortex checkpoints/history, vision engine weights) live under `data/models/`.
 
 Reason:
 - Keep model artifacts separate from run outputs under `data/`.
@@ -411,11 +427,14 @@ Reason:
 
 The system has two parallel control paths:
 
-1. **`live()` loop** (`src/maxim/conscience/selfy.py`):
-   - Hardware I/O: frame capture, audio capture, video/audio writing
-   - Media recording: saves MP4/WAV files for training data
+1. **`live()` loop** (`src/maxim/conscience/selfy.py`, decomposed into mixins):
+   - Hardware I/O: frame capture, audio capture, video/audio writing (`MediaLoopMixin`, `workers.py`)
+   - Connection lifecycle (`ConnectionMixin`)
+   - Vision capture and segmentation (`VisionStreamMixin`)
+   - Agentic runtime bootstrap (`AgenticRuntimeMixin`)
+   - Motor command helpers (`MovementMixin`)
+   - CLI/keyboard/voice input routing (`InputHandlerMixin`)
    - Transcription pipeline: spawns Whisper process for speech-to-text
-   - CLI/keyboard listeners: user input handling
    - Observation functions: `passive_observation()` / `motor_cortex_control()`
    - Display: shows annotated frames via OpenCV
 
@@ -479,7 +498,7 @@ The system has two parallel control paths:
 
 ```
 CaptureManager (agentic runtime)
-    ↓ direct frame capture + YOLO segmentation
+    ↓ direct frame capture + vision engine segmentation (RTMEngine default)
     ↓ callback notification
 PerceptionAgent._on_captured_frame()
     ↓
@@ -500,7 +519,7 @@ live() display loop (parallel)
 
 1. **CaptureManager** (`src/maxim/runtime/capture.py`):
    - Unified capture for frame and audio data
-   - Direct YOLO segmentation in capture thread
+   - Direct vision engine segmentation in capture thread (RTMEngine by default)
    - Callback-based notification to PerceptionAgent
    - Bypasses JSONL intermediary for lower latency
 
@@ -544,7 +563,7 @@ Added `TrackTargetTool` to enable the agentic system to actively move the head t
 
 **Flow:**
 ```
-CaptureManager → YOLO detections
+CaptureManager → vision detections (RTMEngine default)
     ↓
 ExecAgent sees detected_objects/detected_people in StructuredContext
     ↓
@@ -607,7 +626,7 @@ EVENT_VERBOSITY = {
 
 **CLI Arguments:**
 - `--agentic-verbosity {0,1,2,3}`: Set agentic logging verbosity (default: 1)
-- `--agentic-console`: Print agentic events to console in real-time
+- `--no-agentic-console`: Disable agentic event output to console (enabled by default)
 
 **Environment Variables:**
 - `MAXIM_AGENTIC_VERBOSITY`: Default verbosity level (0-3)

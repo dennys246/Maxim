@@ -31,6 +31,7 @@ from maxim.energy import EnergyType
 class EnergyType(Enum):
     LLM_TOKENS = "llm_tokens"           # Token-based energy (input + output)
     LLM_LATENCY = "llm_latency"         # Time waiting for LLM response
+    LLM_COST = "llm_cost"               # USD-normalized cost signal
     COMPUTE_TIME = "compute_time"       # General CPU/GPU compute time
     MOTOR_COMMAND = "motor_command"     # Energy to execute movement
     MOTOR_CURRENT = "motor_current"    # Actual motor current draw
@@ -68,51 +69,52 @@ registry = get_global_registry()
 ### Recording Energy
 
 ```python
-# Record LLM usage
-registry.record_llm_usage(
+# Record LLM usage via the LLMEnergyTracker
+llm_tracker = registry.get_tracker("llm")
+signal = llm_tracker.record(
     input_tokens=500,
     output_tokens=150,
-    model="mistral-7b",
+    model="claude-3-haiku",
     latency_ms=1200,
 )
 
-# Record movement
-registry.record_movement(
-    joint="yaw",
-    delta_degrees=45.0,
-    duration_ms=300,
-    velocity=150.0,
+# Record movement via the MovementEnergyTracker
+move_tracker = registry.get_tracker("movement")
+signal = move_tracker.record(
+    delta_yaw=45.0,
+    delta_pitch=10.0,
+    duration_s=0.3,
+    movement_type="head",
 )
 
-# Record generic energy signal
+# Record a generic energy signal directly
 from maxim.energy import EnergySignal, EnergyType
 
 signal = EnergySignal(
-    energy_type=EnergyType.NETWORK,
-    amount=1024,  # bytes
-    source="http_fetch",
-    context={"url": "https://example.com"},
+    energy_type=EnergyType.VISION_INFERENCE,
+    amount=2.5,
+    source="vision",
+    context={"model": "rtmdet"},
 )
-registry.record(signal)
+registry.record_signal(signal)
 ```
 
 ### Querying Energy
 
 ```python
-# Get summary of all energy usage
-summary = registry.get_summary()
-print(f"LLM energy: {summary['llm']['total_energy']:.2f}")
-print(f"Movement energy: {summary['movement']['total_energy']:.2f}")
+# Get summary of all energy usage (per-tracker stats + budgets)
+summary = registry.get_summary(window_seconds=60.0)
+print(f"LLM energy: {summary['trackers']['llm']['total_energy']:.2f}")
+print(f"Movement energy: {summary['trackers']['movement']['total_energy']:.2f}")
 
-# Get recent signals
-signals = registry.get_recent_signals(
-    energy_type=EnergyType.LLM,
-    since_seconds=60,
-)
+# Check budget state
+if registry.is_low_energy("llm"):
+    print("Low LLM budget - consider using smaller model")
 
-# Get total by type
-llm_total = registry.get_total(EnergyType.LLM)
-movement_total = registry.get_total(EnergyType.MOVEMENT)
+# Get tracker-specific stats
+llm_tracker = registry.get_tracker("llm")
+llm_stats = llm_tracker.get_llm_stats()
+print(f"Total tokens: {llm_stats['total_tokens']}")
 ```
 
 ---
@@ -127,19 +129,24 @@ Tracks language model inference costs.
 from maxim.energy import LLMEnergyTracker, LLMEnergyConfig
 
 config = LLMEnergyConfig(
-    # Energy per token (model-specific)
-    input_token_cost=1.0,
-    output_token_cost=3.0,
+    # Energy per token (relative energy units)
+    input_token_cost=0.001,       # 1000 input tokens = 1 energy
+    output_token_cost=0.003,      # 333 output tokens = 1 energy
 
-    # Latency costs
-    latency_cost_per_ms=0.01,
+    # Latency cost (opportunity cost of waiting)
+    latency_cost_per_second=0.1,  # 10 seconds = 1 energy
 
-    # Model-specific multipliers
-    model_costs={
-        "smollm-1.7b": 0.5,
-        "mistral-7b": 1.0,
-        "llama3-8b": 1.2,
+    # Model-specific energy multipliers (larger = more energy)
+    model_multipliers={
+        "claude-3-haiku": 0.5,
+        "claude-3-sonnet": 1.0,
+        "claude-3-opus": 2.0,
+        "gpt-4o-mini": 0.4,
+        "local": 0.2,
     },
+
+    # Default multiplier for unknown models
+    default_multiplier=1.0,
 )
 
 tracker = LLMEnergyTracker(config)
@@ -148,20 +155,26 @@ tracker = LLMEnergyTracker(config)
 ### Usage
 
 ```python
-# Record inference
-energy = tracker.record_inference(
+# Record an LLM call
+signal = tracker.record(
     input_tokens=500,
     output_tokens=150,
-    model="mistral-7b",
+    model="claude-3-haiku",
     latency_ms=1200,
+    context={"prompt_type": "planning"},
 )
 
-print(f"Inference cost: {energy:.2f}")
+print(f"Inference cost: {signal.amount:.2f}")
 
-# Get cumulative stats
-stats = tracker.get_stats()
+# Get LLM-specific stats
+stats = tracker.get_llm_stats()
 print(f"Total tokens: {stats['total_tokens']}")
-print(f"Total inferences: {stats['inference_count']}")
+print(f"Call count: {stats['call_count']}")
+print(f"Avg latency: {stats['avg_latency_ms']:.1f}ms")
+
+# Check token budget
+budget = tracker.get_token_budget_status(budget_tokens=100000)
+print(f"Token budget used: {budget['percentage']:.1f}%")
 ```
 
 ---
@@ -176,18 +189,21 @@ Tracks motor activity energy consumption.
 from maxim.energy import MovementEnergyTracker, MovementEnergyConfig
 
 config = MovementEnergyConfig(
-    # Base cost per degree of movement
-    cost_per_degree=1.0,
+    # Distance costs
+    angular_energy_per_degree=0.02,      # 50 degrees = 1 energy
+    translation_energy_per_mm=0.05,      # 20 mm = 1 energy
 
-    # Velocity multiplier (faster = more energy)
-    velocity_multiplier=0.5,
+    # Speed affects energy (faster = more expensive)
+    speed_multiplier_base=1.0,           # Baseline for normal speed
+    fast_speed_threshold=100.0,          # deg/sec threshold for "fast"
+    fast_speed_multiplier=1.5,           # Multiplier when above threshold
 
-    # Joint-specific costs
-    joint_costs={
-        "yaw": 1.0,
-        "pitch": 1.2,
-        "roll": 0.8,
-    },
+    # Duration cost (motor hold time)
+    duration_cost_per_second=0.1,        # Holding position has cost
+
+    # Component multipliers
+    antenna_energy_multiplier=0.3,       # Antennas are lighter
+    body_rotation_multiplier=2.0,        # Body rotation is heavier
 )
 
 tracker = MovementEnergyTracker(config)
@@ -196,17 +212,25 @@ tracker = MovementEnergyTracker(config)
 ### Usage
 
 ```python
-# Record movement
-energy = tracker.record_movement(
-    joint="yaw",
-    delta_degrees=45.0,
-    duration_ms=300,
-    velocity=150.0,
+# Record a head movement
+signal = tracker.record_head_movement(
+    delta_yaw=45.0,
+    delta_pitch=10.0,
+    duration_s=0.5,
 )
 
+# Record from an action signature
+signal = tracker.record_from_signature(
+    "look_at:dy=90:dp=30",
+    duration_s=0.3,
+)
+
+# Record body rotation (turn_around)
+signal = tracker.record_body_rotation(angle=90.0, duration_s=5.0)
+
 # Get movement stats
-stats = tracker.get_stats()
-print(f"Total degrees moved: {stats['total_degrees']}")
+stats = tracker.get_movement_stats()
+print(f"Total angular distance: {stats['total_angular_distance']}°")
 print(f"Movement count: {stats['movement_count']}")
 ```
 
@@ -221,13 +245,15 @@ from maxim.energy import EnergySignal, EnergyType
 import time
 
 signal = EnergySignal(
-    energy_type=EnergyType.LLM,
-    amount=750.0,              # Energy units
+    energy_type=EnergyType.LLM_TOKENS,
+    amount=3.5,                # Normalized energy units
     timestamp=time.time(),
-    source="llm_agent",        # What produced this
+    source="llm",              # What produced this
+    duration_ms=1200.0,        # How long the activity took
     context={                  # Optional metadata
-        "model": "mistral-7b",
-        "tokens": 500,
+        "model": "claude-3-haiku",
+        "input_tokens": 500,
+        "output_tokens": 150,
     },
 )
 ```
@@ -239,7 +265,10 @@ signal = EnergySignal(
 Create custom energy trackers for new resource types:
 
 ```python
-from maxim.energy import EnergyTracker, EnergyConfig, EnergyType
+from dataclasses import dataclass
+from maxim.energy import EnergyTracker, EnergyConfig, EnergySignal, EnergyType
+from typing import Any
+import time
 
 @dataclass
 class AudioEnergyConfig(EnergyConfig):
@@ -248,26 +277,31 @@ class AudioEnergyConfig(EnergyConfig):
     stt_multiplier: float = 1.5
 
 class AudioEnergyTracker(EnergyTracker):
-    energy_type = EnergyType.AUDIO
+    name = "audio"
+    energy_types = {EnergyType.AUDIO_PROCESSING}
 
     def __init__(self, config: AudioEnergyConfig | None = None):
-        self.config = config or AudioEnergyConfig()
-        self._total = 0.0
+        super().__init__(config or AudioEnergyConfig())
+        self._audio_config = config or AudioEnergyConfig()
 
-    def record_synthesis(self, duration_seconds: float) -> float:
-        energy = duration_seconds * self.config.cost_per_second
-        energy *= self.config.tts_multiplier
-        self._total += energy
-        return energy
+    def record(self, duration_seconds: float = 0.0,
+               mode: str = "tts", **kwargs: Any) -> EnergySignal:
+        energy = duration_seconds * self._audio_config.cost_per_second
+        if mode == "tts":
+            energy *= self._audio_config.tts_multiplier
+        else:
+            energy *= self._audio_config.stt_multiplier
 
-    def record_transcription(self, duration_seconds: float) -> float:
-        energy = duration_seconds * self.config.cost_per_second
-        energy *= self.config.stt_multiplier
-        self._total += energy
-        return energy
-
-    def get_total(self) -> float:
-        return self._total
+        signal = EnergySignal(
+            energy_type=EnergyType.AUDIO_PROCESSING,
+            amount=energy,
+            timestamp=time.time(),
+            source=self.name,
+            duration_ms=duration_seconds * 1000,
+            context={"mode": mode},
+        )
+        self._record_signal(signal)
+        return signal
 ```
 
 ---
@@ -282,9 +316,10 @@ from maxim.energy import get_global_registry
 
 # After high-cost operation
 registry = get_global_registry()
-energy = registry.record_llm_usage(...)
+llm_tracker = registry.get_tracker("llm")
+signal = llm_tracker.record(input_tokens=500, output_tokens=150, model="claude-3-haiku")
 
-if energy > threshold:
+if signal.amount > threshold:
     # Record as negative outcome for learning
     nac.observe(
         event_type="llm",
@@ -298,33 +333,31 @@ if energy > threshold:
 
 ## Energy Budgeting
 
-Implement energy budgets for constrained operation:
+The `EnergyBudget` dataclass (in `signal.py`) tracks available energy per domain with passive regeneration:
 
 ```python
-class EnergyBudget:
-    def __init__(self, max_energy: float):
-        self.max_energy = max_energy
-        self.current = 0.0
+from maxim.energy.signal import EnergyBudget, EnergyType
 
-    def can_afford(self, estimated_cost: float) -> bool:
-        return self.current + estimated_cost <= self.max_energy
+budget = EnergyBudget(
+    domain=EnergyType.LLM_TOKENS,
+    total_capacity=1000.0,
+    current_level=1000.0,
+    recharge_rate=10.0,      # Energy recovered per second
+)
 
-    def record(self, actual_cost: float) -> None:
-        self.current += actual_cost
-
-    def reset(self) -> None:
-        self.current = 0.0
-
-# Usage
-budget = EnergyBudget(max_energy=10000)
-
-if budget.can_afford(estimated_llm_cost):
+# Attempt to spend energy (returns False if insufficient)
+if budget.spend(estimated_cost):
     result = llm.generate(prompt)
-    budget.record(actual_cost)
 else:
-    # Use cheaper alternative
     result = fallback_response()
+
+# Check budget state
+print(f"Energy: {budget.percentage:.1f}%")
+print(f"Low: {budget.is_low}")        # True if < 25%
+print(f"Critical: {budget.is_critical}")  # True if < 10%
 ```
+
+The `EnergyRegistry` manages per-domain budgets automatically via `EnergyRegistryConfig.budget_configs`.
 
 ---
 
@@ -334,13 +367,19 @@ Query energy state for monitoring:
 
 ```python
 # Get all energy stats
-summary = registry.get_summary()
+summary = registry.get_summary(window_seconds=60.0)
 
-for energy_type, stats in summary.items():
-    print(f"{energy_type}:")
+print(f"Uptime: {summary['uptime_seconds']}s")
+print(f"Total signals: {summary['total_signals']}")
+print(f"Total window energy: {summary['total_window_energy']:.2f}")
+
+for tracker_name, stats in summary["trackers"].items():
+    print(f"{tracker_name}:")
     print(f"  Total: {stats['total_energy']:.2f}")
-    print(f"  Recent (1min): {stats['recent_energy']:.2f}")
-    print(f"  Peak: {stats['peak_energy']:.2f}")
+    print(f"  Rate: {stats['rate_per_second']:.4f}/s")
+
+for domain, budget in summary["budgets"].items():
+    print(f"{domain} budget: {budget['percentage']:.1f}% remaining")
 ```
 
 ---

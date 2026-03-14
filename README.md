@@ -26,7 +26,7 @@ Maxim provides:
 | **Harm Prediction** | Zero-latency prediction of harmful outcomes before execution |
 | **Contemplation** | Local chain-of-thought: multi-pass critique+refine for complex plans |
 | **Energy Tracking** | Resource expenditure monitoring for tokens, compute, and movement |
-| **SMS/Voice Comms** | Send and receive texts/calls via Twilio ([setup guide](docs/communication.md)) |
+| **SMS/Voice Comms** | Send and receive texts/calls via Twilio (see `src/maxim/comms/`) |
 
 ---
 
@@ -288,7 +288,7 @@ maxim [OPTIONS]
 | `--language-model` | LLM profile name | None |
 | `--prompt-profile` | Prompt optimization profile | `standard` |
 | `--interactive` | Enable terminal prompt | True |
-| `--memory-path` | Memory persistence path | `~/memory/memories.json` |
+| `--memory-path` | Memory persistence path | `{home_dir}/memory/memories.json` |
 | `--reset` | Reset memory on startup | False |
 | `--epochs` | Stop after N cycles | None (infinite) |
 | `--comms` | Enable SMS/Voice communication | False |
@@ -450,19 +450,47 @@ from maxim.planning import *
 
 ```
 Maxim/
-├── src/maxim/           # Main package
-│   ├── agents/          # Agent implementations
-│   ├── planning/        # Planning, decision engine, and policy
-│   ├── tools/           # Tool implementations
-│   ├── modes/           # Operating modes
-│   ├── models/          # ML models (vision, audio, language)
-│   └── runtime/         # Agentic orchestration
-├── data/                # Runtime data and configs
-│   ├── prompts/         # LLM prompts
-│   ├── models/          # Downloaded model weights
-│   └── util/            # Configuration files
-├── scripts/             # Utility scripts
-└── tests/               # Test suite
+├── src/maxim/              # Main package
+│   ├── agents/             # Agent implementations + extracted LLM modules
+│   │                       #   (llm_types, llm_context, prompt_budgeter,
+│   │                       #    llm_fallback, prompt_builder)
+│   ├── attention/          # Spatial attention and gaze control
+│   ├── bridges/            # Cross-system integration bridges
+│   ├── comms/              # SMS/Voice communication (Twilio)
+│   ├── conscience/         # Reachy orchestration (Maxim class + mixins:
+│   │                       #   connection, vision_stream, agentic_runtime,
+│   │                       #   movement, input_handlers, media_loop, workers)
+│   ├── data/               # Camera/audio data utilities
+│   ├── decisions/          # NAc causal inference, significance heuristics
+│   ├── default_network/    # Reactive behavior layer, thalamic gating
+│   ├── energy/             # Resource expenditure tracking
+│   ├── environment/        # World observation (no side effects)
+│   ├── evaluation/         # Lightweight evaluators/metrics
+│   ├── hardware/           # Reachy hardware + simulation backends
+│   ├── harm/               # Predictive harm detection
+│   ├── inference/          # Observation/control functions
+│   ├── integration/        # MemoryHub coordinator
+│   ├── math/               # IPS, AngularGyrus, linalg
+│   ├── memory/             # Hippocampus, consolidation, context index
+│   ├── models/             # ML models (vision, audio, language, movement)
+│   ├── modes/              # Operating mode definitions and strategies
+│   ├── motion/             # Motion presets and actions
+│   ├── planning/           # Planning, decision engine, and policy
+│   ├── proprioception/     # Movement tracking and pain detection
+│   ├── runtime/            # Agentic orchestration
+│   ├── salience/           # Object-level salience and novelty
+│   ├── similarity/         # EC similarity + semantic embeddings
+│   ├── spatial/            # Spatial map and location priors
+│   ├── time/               # SCN temporal indexing
+│   ├── tools/              # Tool implementations (side effects)
+│   ├── training/           # Training pipelines
+│   └── utils/              # Config, logging, plotting, filesystem helpers
+├── data/                   # Runtime data and configs
+│   ├── prompts/            # LLM prompts
+│   ├── models/             # Downloaded model weights
+│   └── util/               # Configuration files
+├── scripts/                # Utility scripts
+└── tests/                  # Test suite
 ```
 
 ---
