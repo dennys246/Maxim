@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from maxim.memory.strategies import MemoryStrategy
     from maxim.time.scn import SCN
 
-from maxim.agents.bus import DependencyGraph, Edge, EdgeType
+from maxim.agents.bus import DependencyGraph, EdgeType
 from maxim.memory.layer import MemoryLayer
 from maxim.memory.rwlock import RWLock
 from maxim.memory.state_store import StateStore
@@ -1108,7 +1108,7 @@ class Hippocampus(MemoryLayer):
                     try:
                         self.load(backup_path)
                         logger.info("Restored from backup: %s", backup_path)
-                        return True, f"Restored from backup (original corrupt)"
+                        return True, "Restored from backup (original corrupt)"
                     except Exception as be:
                         logger.error("Backup also corrupt: %s", be)
 
@@ -1661,7 +1661,6 @@ class Hippocampus(MemoryLayer):
         Returns:
             Dict with counts: {"compressed": N, "removed": M, "preserved": P, "promoted": Q}
         """
-        from maxim.memory.strategies import MemoryStrategy
 
         with self._rwlock.write():
             return self._sleep(strategy)

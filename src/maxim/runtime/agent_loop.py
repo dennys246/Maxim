@@ -621,7 +621,7 @@ def run_agentic_loop(
         # Check for voice input injected from the transcription thread
         # Voice input only gets forwarded when agentic mode is enabled (wake word was said)
         voice_input = state.data.pop("pending_voice_input", None)
-        voice_transcript = state.data.pop("pending_voice_transcript", None)
+        state.data.pop("pending_voice_transcript", None)
         is_agentic_voice_input = False
 
         # Use voice input if no CLI input (CLI takes priority)
@@ -674,7 +674,7 @@ def run_agentic_loop(
                         output = getattr(result, "output", None)
                         if success:
                             confirmed_success = True
-                            print(f"✅ Action executed successfully")
+                            print("✅ Action executed successfully")
                             if output:
                                 if isinstance(output, dict):
                                     print(f"   Result: {output}")
@@ -1873,10 +1873,10 @@ def run_agentic_loop(
 
                     # Format the action for display
                     print("\n" + "=" * 60)
-                    print(f"⚠️  ACTION REQUIRES CONFIRMATION")
+                    print("⚠️  ACTION REQUIRES CONFIRMATION")
                     print("=" * 60)
                     print(f"Tool: {tool_name}")
-                    print(f"Parameters:")
+                    print("Parameters:")
                     for key, value in params.items():
                         # Truncate long values for display
                         display_value = str(value)

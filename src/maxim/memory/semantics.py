@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from maxim.agents.bus import DependencyGraph, Edge, EdgeType
+from maxim.agents.bus import DependencyGraph, EdgeType
 from maxim.memory.semantic_types import (
     RelationshipRegistry,
     SemanticRelationship,

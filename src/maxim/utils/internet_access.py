@@ -85,7 +85,7 @@ def _redact_hostname(hostname: str) -> str:
     # For hostnames, preserve TLD and last domain part
     parts = hostname.split(".")
     if len(parts) <= 2:
-        return f"***." + ".".join(parts[-1:]) if parts else "***"
+        return "***." + ".".join(parts[-1:]) if parts else "***"
     return "***." + ".".join(parts[-2:])
 
 

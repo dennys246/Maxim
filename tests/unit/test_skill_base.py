@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from maxim.skills.base import Skill, SkillConfig, SkillResult, SkillState
+from maxim.skills.base import Skill, SkillResult, SkillState
 
 
 # --- Concrete test implementation ---

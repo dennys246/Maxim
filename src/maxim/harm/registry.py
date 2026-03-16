@@ -12,7 +12,6 @@ from typing import Any
 
 from maxim.harm.predictor import (
     AggregatedHarmPrediction,
-    HarmCategory,
     HarmPrediction,
     HarmPredictor,
 )

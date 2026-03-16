@@ -112,7 +112,7 @@ def diagnose_reachy(host: str) -> int:
     Returns:
         Exit code (0 = all tests passed, 1 = some tests failed)
     """
-    print_header(f"Reachy Mini Connection Diagnostics")
+    print_header("Reachy Mini Connection Diagnostics")
     print_info(f"Target: {host}")
     print_info(f"Time: {subprocess.run(['date'], capture_output=True, text=True).stdout.strip()}")
 

@@ -15,8 +15,7 @@ import json
 import logging
 import os
 import time
-from collections import defaultdict
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 

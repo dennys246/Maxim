@@ -137,7 +137,7 @@ class ReadFileTool(Tool):
                 if not in_allowed:
                     return ToolResult(
                         success=False,
-                        error=f"Path must be within allowed directories",
+                        error="Path must be within allowed directories",
                     )
         except PathValidationError as e:
             return ToolResult(success=False, error=str(e))
@@ -483,7 +483,7 @@ class GlobTool(Tool):
                 return ToolResult(success=False, error=f"Base path does not exist: {base}")
 
             # Perform glob search
-            full_pattern = str(base / pattern)
+            str(base / pattern)
             matches = []
 
             for match in Path(base).glob(pattern):
@@ -665,7 +665,7 @@ class BashTool(Tool):
         # Check dangerous patterns
         for pattern in self.DANGEROUS_PATTERNS:
             if re.search(pattern, command):
-                return False, f"Command contains dangerous pattern"
+                return False, "Command contains dangerous pattern"
 
         return True, ""
 

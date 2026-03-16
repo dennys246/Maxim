@@ -18,7 +18,6 @@ class TestNAcConvergence:
 
     def test_consistent_positive_increases_prediction(self, nac, valence_positive):
         """Consistent positive outcomes increase predicted value."""
-        initial_value = 0.5
 
         # Observe consistently positive outcomes
         for i in range(20):

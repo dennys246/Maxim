@@ -13,10 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.hardware.capabilities import (
     REACHY_MINI_CAPABILITIES,
-    MotionCapability,
-    RobotCapabilities,
     RobotConnectionState,
-    StreamCapability,
 )
 from maxim.hardware.controller import MotionTarget, PixelTarget, RobotController
 from maxim.hardware.reachy.streams import ReachyAudioStream, ReachyVideoStream

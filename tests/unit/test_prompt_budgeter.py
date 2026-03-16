@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import threading
-import time
 
-import pytest
 
 from maxim.agents.llm_worker import (
     PromptBudgeter,
@@ -354,7 +352,7 @@ class TestReasoningCarryover:
         def reader():
             for _ in range(50):
                 try:
-                    text = rc.get_prompt_text()
+                    rc.get_prompt_text()
                     _ = len(rc)
                 except Exception as e:
                     errors.append(f"read error: {e}")

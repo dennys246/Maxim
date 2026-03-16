@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import random
-import time
 from typing import TYPE_CHECKING
 
 from maxim.default_network.behaviors.base import Behavior, BehaviorState

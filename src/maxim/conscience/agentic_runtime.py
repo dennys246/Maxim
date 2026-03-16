@@ -12,7 +12,6 @@ import os
 import threading
 import time
 import uuid
-from typing import Any, Optional
 
 from maxim.utils.gpu_compat import is_gpu_available
 from maxim.utils.logging import warn

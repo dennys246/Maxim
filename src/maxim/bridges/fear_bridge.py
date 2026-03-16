@@ -18,13 +18,11 @@ import json
 import logging
 import os
 import time
-from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from maxim.agents.fear_agent import DangerCategory, RiskLevel
     from maxim.decisions.nac import NAc
     from maxim.memory.hippocampus import Hippocampus
     from maxim.similarity.ec import EntorhinalCortex

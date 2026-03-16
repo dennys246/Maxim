@@ -19,11 +19,11 @@ import logging
 import os
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 from uuid import uuid4
 
-from maxim.agents.bus import DependencyGraph, EdgeType
+from maxim.agents.bus import DependencyGraph
 from maxim.memory.layer import MemoryLayer
 from maxim.memory.rwlock import RWLock
 from maxim.memory.semantic_types import (

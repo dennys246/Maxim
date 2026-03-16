@@ -6,9 +6,8 @@ import logging
 import queue
 import threading
 import time
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
-import pytest
 
 from maxim.conscience.workers import (
     IK_FAILURE_THRESHOLD,

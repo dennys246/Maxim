@@ -133,7 +133,7 @@ class ConsolidationOrchestrator:
             if event_sig and self.nac is not None:
                 links = self.nac.get_links_for_event(event_sig)
                 obs_delta = sum(
-                    getattr(l, "observation_count", 0) for l in links
+                    getattr(link, "observation_count", 0) for link in links
                 ) - sidecar.get("nac_obs_at_staging", 0)
                 nac_corroboration = sigmoid(obs_delta / 5.0)
         except Exception:

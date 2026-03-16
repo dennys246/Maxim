@@ -12,7 +12,6 @@ Tests cover:
 from __future__ import annotations
 
 import time
-from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -202,7 +201,7 @@ class TestContextEntryFormat:
 
     def test_ranked_by_confidence(self, builder, atl):
         c1 = _make_concept(atl, "mug", "object")
-        c2 = _make_concept(atl, "chair", "object")
+        _make_concept(atl, "chair", "object")
 
         # Reinforce mug to increase confidence
         for _ in range(5):

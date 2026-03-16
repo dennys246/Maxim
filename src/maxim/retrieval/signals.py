@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from maxim.memory.hippocampus import Hippocampus
+    pass
 
 
 @dataclass(frozen=True)

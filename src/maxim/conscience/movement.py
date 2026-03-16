@@ -7,18 +7,13 @@ methods that are mixed into the main Selfy class.
 from __future__ import annotations
 
 import math
-import os
 import time
 import uuid
-import logging
-from typing import Any, Optional
+from typing import Optional
 
 import numpy as np
 
 from maxim.motion.movement import (
-    load_actions,
-    load_movement_thresholds,
-    load_poses,
     move_antenna,
     move_head,
 )
@@ -407,7 +402,6 @@ class MovementMixin:
         Returns:
             Clamped (x, y, z, roll, pitch, yaw) tuple.
         """
-        import math
 
         # Get limits (learned or hardcoded)
         limits = self._get_workspace_limits()
@@ -1087,8 +1081,6 @@ class MovementMixin:
             duration: Time for the rotation in seconds (default 5.0).
             recenter_head: If True, return head toward center during rotation.
         """
-        import math
-        import numpy as np
 
         self.log.info(
             "turn_around: rotating body %.0f° over %.1fs (recenter_head=%s)",

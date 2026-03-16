@@ -379,7 +379,6 @@ class RobotRegistry:
         Returns:
             Dict mapping robot_id to success status.
         """
-        from maxim.hardware.controller import MotionTarget
 
         results = {}
         with self._robots_lock:
@@ -410,7 +409,6 @@ class RobotRegistry:
         Returns:
             Dict mapping robot_id to success status.
         """
-        from maxim.hardware.controller import PixelTarget
 
         results = {}
         with self._robots_lock:

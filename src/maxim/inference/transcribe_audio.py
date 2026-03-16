@@ -616,8 +616,6 @@ def watch_and_transcribe(
 
     # Initialize Whisper model with fallback to CPU
     transcriber = None
-    actual_device = device
-    actual_compute = compute_type
 
     try:
         transcriber = WhisperTranscriber(
@@ -633,14 +631,12 @@ def watch_and_transcribe(
             log.info("Falling back to CPU with float32...")
             try:
                 os.environ["CUDA_VISIBLE_DEVICES"] = ""
-                actual_device = "cpu"
-                actual_compute = "float32"
                 transcriber = WhisperTranscriber(
                     model_size_or_path=model_size_or_path,
                     device="cpu",
                     compute_type="float32",
                 )
-                log.info(f"✅ Whisper initialized on CPU with float32 (fallback)")
+                log.info("✅ Whisper initialized on CPU with float32 (fallback)")
             except Exception as e2:
                 warn(f"Failed to initialize Whisper on CPU fallback: {e2}", logger=log)
                 return

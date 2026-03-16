@@ -10,7 +10,6 @@ Tests the extensible retrieval architecture including:
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch
 
 import pytest
 
@@ -213,7 +212,7 @@ class TestTemporalReferenceSignal:
         result = signal.extract("What did we discuss yesterday morning?")
 
         # Should find the yesterday memory
-        memory_ids = {r.memory_id for r in result}
+        {r.memory_id for r in result}
         # If dateparser isn't available, fallback regex handles "yesterday"
         # Either way, we should get some result if the parsing works
         assert len(result) >= 0  # At minimum, no crash
@@ -641,7 +640,7 @@ class TestIntegrationOrchestratorWithSCN:
         )
 
         # Query for "now" equivalent
-        results = orchestrator.retrieve("What just happened?")
+        orchestrator.retrieve("What just happened?")
 
         # Should find the memory (since "just" implies recent)
         # Note: This depends on dateparser parsing "just" as recent

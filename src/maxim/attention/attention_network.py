@@ -17,7 +17,7 @@ import random
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Iterator
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,6 @@ try:
     import numpy as np
     HAS_NUMPY = True
 except ImportError:
-    import array
     HAS_NUMPY = False
 
 
@@ -556,7 +555,6 @@ class AttentionNetwork:
     def clear(self) -> None:
         """Clear all attention data."""
         with self._lock:
-            n = self.config.grid_size
             if HAS_NUMPY:
                 self._visit_count.fill(0)
                 self._success_count.fill(0)

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from maxim.harm import HarmRegistry, MovementHarmPredictor, JointLimitHarmPredictor

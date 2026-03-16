@@ -147,7 +147,7 @@ class LLMAgent(Agent):
             return self._llm_config
 
         # Load base config (reads from files/env)
-        base_cfg = load_llm_config()
+        load_llm_config()
 
         # Determine model path
         model_path = self._agent_config.model_path

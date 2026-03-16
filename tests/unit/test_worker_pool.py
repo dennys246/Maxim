@@ -8,7 +8,6 @@ import time
 import pytest
 
 from maxim.runtime.worker_pool import (
-    DEFAULT_LANES,
     DependencyGate,
     DependencySpec,
     Job,
@@ -72,7 +71,7 @@ class TestJobRegistry:
         job = Job(job_id="j1", fn=lambda: None, lane="infer")
         reg.register(job)
 
-        resolved = threading.Event()
+        threading.Event()
 
         def completer():
             time.sleep(0.1)

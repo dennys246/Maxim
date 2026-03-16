@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import threading
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 

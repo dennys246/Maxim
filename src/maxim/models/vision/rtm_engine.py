@@ -14,7 +14,6 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any
 
 import cv2
 import numpy as np

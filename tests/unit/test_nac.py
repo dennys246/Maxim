@@ -6,7 +6,6 @@ prediction, and persistence.
 
 from __future__ import annotations
 
-import pytest
 
 
 class TestNAcObservation:

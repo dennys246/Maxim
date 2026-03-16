@@ -8,12 +8,9 @@ with legacy internal-thread mode.
 from __future__ import annotations
 
 import time
-import threading
 from dataclasses import dataclass, field
 from typing import Any
-from unittest.mock import MagicMock
 
-import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────────────

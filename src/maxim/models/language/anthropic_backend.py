@@ -275,7 +275,6 @@ class _AnthropicBackend:
 
         text_blocks: list[str] = []
         tool_calls: list[dict[str, Any]] = []
-        thinking_text: str = ""
 
         for block in getattr(resp, "content", []) or []:
             block_type = getattr(block, "type", "")
@@ -290,7 +289,7 @@ class _AnthropicBackend:
                     "input": getattr(block, "input", {}),
                 })
             elif block_type == "thinking":
-                thinking_text = str(getattr(block, "thinking", "") or "")
+                str(getattr(block, "thinking", "") or "")
 
         content = "\n".join(text_blocks).strip()
 

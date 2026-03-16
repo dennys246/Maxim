@@ -182,7 +182,7 @@ class SalienceNetwork:
                 pos_u = bbox[0] + bbox[2] / 2 if len(bbox) >= 4 else 0
                 pos_v = bbox[1] + bbox[3] / 2 if len(bbox) >= 4 else 0
 
-                is_interest = label.lower() in {l.lower() for l in self.config.interest_labels}
+                is_interest = label.lower() in {lbl.lower() for lbl in self.config.interest_labels}
 
                 seen_ids.add(track_id)
                 self._total_detections += 1
@@ -481,7 +481,7 @@ class SalienceNetwork:
                         continue
                     if confidence < min_confidence:
                         continue
-                    if labels is not None and label.lower() not in {l.lower() for l in labels}:
+                    if labels is not None and label.lower() not in {lbl.lower() for lbl in labels}:
                         continue
                     if interest_only and not interest:
                         continue
@@ -508,7 +508,7 @@ class SalienceNetwork:
                         continue
                     if obj.confidence < min_confidence:
                         continue
-                    if labels is not None and obj.label.lower() not in {l.lower() for l in labels}:
+                    if labels is not None and obj.label.lower() not in {lbl.lower() for lbl in labels}:
                         continue
                     if interest_only and not obj.interest_matched:
                         continue
@@ -535,7 +535,7 @@ class SalienceNetwork:
 
         Returns a human-readable summary of salient objects.
         """
-        now = time.time()
+        time.time()
 
         with self._lock:
             lines = ["[SALIENCE STATE]"]

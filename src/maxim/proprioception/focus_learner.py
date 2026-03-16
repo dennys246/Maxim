@@ -32,7 +32,7 @@ import json
 import logging
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -353,7 +353,7 @@ class FocusLearner:
             # Actual: target is at err_u
 
             # Expected remaining error after a perfect gain-dampened move:
-            expected_remaining = cmd_u * (1.0 - gain_used)
+            cmd_u * (1.0 - gain_used)
 
             # If actual == expected, gain is calibrated correctly
             # If actual > expected (same sign as cmd), we undershot -> need more gain

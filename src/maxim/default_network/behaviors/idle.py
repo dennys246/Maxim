@@ -414,7 +414,7 @@ class ReturnToCenter(Behavior):
             x, y, z, roll, pitch, yaw = self._head_position_6d
         elif self._head_position is not None:
             yaw, pitch = self._head_position
-            x, y, z, roll = 0.0, 0.0, 0.0, 0.0
+            _x, y, z, _roll = 0.0, 0.0, 0.0, 0.0
         else:
             return None
 

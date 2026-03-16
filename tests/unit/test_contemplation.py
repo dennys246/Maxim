@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -689,7 +689,6 @@ class TestContemplationLogBounding:
         """Verify the log doesn't grow unbounded (tested via _propose_goal logic)."""
         agent = _make_exec_agent()
         # Simulate 210 entries
-        import time as _time
         for i in range(210):
             agent._contemplation_log[f"g{i}"] = {
                 "contemplated": False, "refined": False, "timestamp": float(i),

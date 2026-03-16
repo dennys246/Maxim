@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
-from maxim.energy.signal import EnergySignal, EnergyType
+from maxim.energy.signal import EnergySignal
 from maxim.energy.registry import EnergyRegistry
 
 if TYPE_CHECKING:
@@ -166,7 +166,6 @@ class EnergyCircuitBridge:
 
         # Report to NAc
         if self._nac and self.config.enable_learning:
-            from maxim.decisions.causal_link import Valence as ValenceEnum
 
             self._nac.record_outcome(
                 event_type=pending.action_type,

@@ -6,7 +6,6 @@ import logging
 import threading
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from maxim.conscience.agentic_runtime import AgenticRuntimeMixin
 

@@ -237,7 +237,7 @@ def render_loss_svg(
         # Higher loss near the top; lower loss near the bottom.
         return padding + (float(max_loss - loss) / float(max_loss - min_loss)) * inner_h
 
-    poly = " ".join(f"{x_of(s):.2f},{y_of(l):.2f}" for s, l in points)
+    poly = " ".join(f"{x_of(s):.2f},{y_of(loss):.2f}" for s, loss in points)
 
     last_step, last_loss = points[-1]
     last_x = x_of(last_step)

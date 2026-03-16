@@ -24,7 +24,7 @@ import queue
 import threading
 import time as _time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from maxim.memory.semantic_types import Concept, ConceptProvenance
 from maxim.memory.text import normalize_tokens
@@ -32,7 +32,7 @@ from maxim.memory.types import EpisodicMemory, MemoryRecord
 
 if TYPE_CHECKING:
     from maxim.memory.atl import ATL
-    from maxim.memory.cross_layer import CrossLayerEdgeType, CrossLayerGraph
+    from maxim.memory.cross_layer import CrossLayerGraph
     from maxim.time.scn import SCN
 
 logger = logging.getLogger(__name__)
