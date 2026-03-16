@@ -16,11 +16,11 @@ import logging
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from maxim.agents.bus import AgentBus, ProposedGoal, StructuredContext
+    from maxim.agents.bus import AgentBus
 
 logger = logging.getLogger(__name__)
 

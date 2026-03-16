@@ -138,6 +138,20 @@ filterwarnings = [
     "ignore::PendingDeprecationWarning",
 ]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Linting Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = [
+    "E402",  # Deferred/lazy imports are intentional throughout the codebase
+    "E501",  # Line length handled by line-length setting above
+]
+
 [tool.coverage.run]
 source = ["src/maxim"]
 omit = [

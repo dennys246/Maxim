@@ -21,7 +21,6 @@ from maxim.memory.atl import ATL, ATLConfig
 from maxim.memory.semantic_types import (
     CompressedSemantic,
     Concept,
-    SemanticMemory,
 )
 
 
@@ -101,7 +100,7 @@ class TestATLCapacityEviction:
 
     def test_eviction_removes_lowest_scored(self, small_atl):
         """Eviction removes the concept with the lowest retention score."""
-        now = time.time()
+        time.time()
 
         # Create concepts with varying access patterns
         # Recently accessed concepts should score higher

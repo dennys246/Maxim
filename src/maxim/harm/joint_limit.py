@@ -11,7 +11,6 @@ but physically cannot reach it.
 from __future__ import annotations
 
 import logging
-import math
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any

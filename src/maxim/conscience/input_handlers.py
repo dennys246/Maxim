@@ -8,11 +8,9 @@ Maxim class so that ``self.`` references resolve against the full instance.
 from __future__ import annotations
 
 import json
-import queue
 import threading
 import time
 import uuid
-from typing import Any, Optional
 
 from maxim.utils.response_config import normalize_trigger_text, normalize_transcript_text
 from maxim.utils.logging import warn

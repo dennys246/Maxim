@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import threading
-import time
 
-import pytest
 
 
 class TestThreadRegistry:
@@ -102,7 +100,7 @@ class TestThreadRegistry:
         thread.start()
 
         # Stop with short timeout
-        failed = registry.stop_all(timeout=2.0)
+        registry.stop_all(timeout=2.0)
 
         # Should have stopped
         assert len(registry) == 0

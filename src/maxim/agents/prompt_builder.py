@@ -16,8 +16,6 @@ from typing import TYPE_CHECKING, Any
 from maxim.agents.autonomy import AutonomyLevel
 from maxim.agents.llm_context import _load_foundational_context
 from maxim.agents.llm_fallback import (
-    evaluate_simple_arithmetic,
-    evaluate_unary_math,
     generate_simple_answer,
     ReasoningCarryover,
 )
@@ -31,7 +29,7 @@ from maxim.agents.prompt_budgeter import (
     _truncate_reasoning_carryover,
     _truncate_tool_guidance,
 )
-from maxim.utils.coding_guidelines import build_coding_context, is_file_search_request
+from maxim.utils.coding_guidelines import build_coding_context
 
 if TYPE_CHECKING:
     pass

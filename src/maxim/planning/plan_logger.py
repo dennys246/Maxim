@@ -12,10 +12,8 @@ from __future__ import annotations
 import logging
 import os
 import queue
-import shutil
 import threading
 import time
-from typing import Any
 
 from maxim.agents.bus import (
     AgentBus,
@@ -86,7 +84,7 @@ class PlanLogger:
         )
 
     def _on_phase_completed(self, event: PhaseCompleted) -> None:
-        total = self._plan_phases.get(event.plan_id, "?")
+        self._plan_phases.get(event.plan_id, "?")
         status = "success" if event.success else f"failed: {event.error or 'unknown'}"
         summary = event.result_summary or ""
         suffix = f" → {summary}" if summary else ""

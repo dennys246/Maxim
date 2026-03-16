@@ -150,10 +150,10 @@ class TestEscalationGoalSensitivity:
                 salience=0.4,
             )
 
-        threshold_nav = escalation_bridge.get_threshold(
+        escalation_bridge.get_threshold(
             goal="navigate to bedroom", novelty=0.5, salience=0.5
         )
-        threshold_look = escalation_bridge.get_threshold(
+        escalation_bridge.get_threshold(
             goal="observe surroundings", novelty=0.5, salience=0.5
         )
 
@@ -168,7 +168,6 @@ class TestEscalationBounds:
 
     def test_adjustment_respects_max(self, escalation_bridge):
         """Adjustment never exceeds max_adjustment."""
-        max_adj = escalation_bridge.max_adjustment
 
         # Extreme case: many successful escalations
         for _ in range(100):
@@ -181,9 +180,8 @@ class TestEscalationBounds:
             )
 
         # Check adjustment is bounded
-        key = ("search", -1)  # search is goal classification for "bounded_test"
         # Need to check the actual threshold adjustment
-        stats = escalation_bridge.stats()
+        escalation_bridge.stats()
         # The adjustment should be within bounds
 
 

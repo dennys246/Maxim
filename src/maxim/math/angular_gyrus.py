@@ -25,20 +25,17 @@ import logging
 import math
 import statistics
 import time
-import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
-from maxim.agents.bus import DependencyGraph, EdgeType
+from maxim.agents.bus import DependencyGraph
 from maxim.math.ips import IPS
 from maxim.memory.layer import MemoryLayer
 from maxim.math.math_types import CompressedMathMemory, MathMemory
 from maxim.math.types import (
     AnalysisResult,
     ExactResult,
-    MagnitudeCategory,
     MathCategory,
-    NumberSystem,
 )
 from maxim.memory.rwlock import RWLock
 

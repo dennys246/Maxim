@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import os
 
-import pytest
 
 from maxim.utils.filesystem_policy import scan_cwd_tree
 

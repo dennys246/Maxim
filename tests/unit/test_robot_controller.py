@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
 
 from maxim.hardware import (
     MotionTarget,
     PixelTarget,
-    RobotCapabilities,
     RobotConnectionState,
     RobotState,
 )

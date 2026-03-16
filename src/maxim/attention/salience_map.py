@@ -14,9 +14,8 @@ from __future__ import annotations
 
 import logging
 import math
-import random
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -162,7 +161,7 @@ class SalienceMap:
         """Precompute center bias values for all cells."""
         cx = self.config.grid_width / 2
         cy = self.config.grid_height / 2
-        max_dist = math.sqrt(cx * cx + cy * cy)
+        math.sqrt(cx * cx + cy * cy)
 
         for row in range(self.config.grid_height):
             for col in range(self.config.grid_width):

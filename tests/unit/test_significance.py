@@ -6,7 +6,6 @@ RPE normalization, and persistence.
 
 from __future__ import annotations
 
-import json
 from unittest.mock import Mock
 
 import pytest
@@ -297,7 +296,7 @@ class TestSignificanceWeightLearnerUtility:
         assert weight_learner.detect_stuck() is False
 
     def test_restart_from_scratch_reinitializes(self, weight_learner):
-        old_weights = {n: w.weight for n, w in weight_learner.weights.items()}
+        {n: w.weight for n, w in weight_learner.weights.items()}
         weight_learner.restart_from_scratch()
         # Weights should still sum to 1
         total = sum(w.weight for w in weight_learner.weights.values())

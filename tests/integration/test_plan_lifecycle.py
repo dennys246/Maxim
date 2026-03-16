@@ -7,11 +7,9 @@ compatibility with plan_manager=None.
 
 from __future__ import annotations
 
-import json
 import os
 import time
 
-import pytest
 
 from maxim.agents.bus import (
     AgentBus,
@@ -654,7 +652,7 @@ class TestBackwardCompatibility:
 
         # Report tool result
         agent.report_tool_result(
-            tool_call_id=f"tc-g-1",
+            tool_call_id="tc-g-1",
             tool_name="test_tool",
             success=True,
             result="done",
@@ -666,7 +664,6 @@ class TestBackwardCompatibility:
 
     def test_plan_progress_none_when_no_active_plan(self, tmp_path):
         """PlanProgressContext is None when no plan is active."""
-        from maxim.agents.bus import PlanProgressContext
 
         bus = AgentBus()
         mgr = make_plan_manager(tmp_path, bus=bus)
@@ -677,10 +674,10 @@ class TestBackwardCompatibility:
     def test_goal_agent_with_plan_manager_delegates_completion(self, tmp_path):
         """When plan_manager is attached, goal completion calls advance_phase."""
         from maxim.agents.agentic_goal_agent import AgenticGoalAgent
-        from maxim.agents.bus import ProposedGoal, GoalCompleted
+        from maxim.agents.bus import ProposedGoal
 
         bus = AgentBus()
-        collector = EventCollector(bus)
+        EventCollector(bus)
         mgr = make_plan_manager(tmp_path, bus=bus)
 
         # Create a plan so there's something to advance

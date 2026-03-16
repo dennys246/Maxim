@@ -7,7 +7,7 @@ Provides callbacks for notifying agents of state changes.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
 from maxim.modes.definitions import (

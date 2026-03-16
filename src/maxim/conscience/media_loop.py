@@ -1,22 +1,19 @@
 from __future__ import annotations
-import json
 import multiprocessing as mp
 import os
 import queue
 import threading
 import time
-import uuid
 import wave
-from typing import Any, Optional
+from typing import Optional
 import cv2
 import numpy as np
 from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.data_management import CLIInputLogger, TrainingSampleLogger, build_home
 from maxim.utils.logging import configure_logging, log_swallowed_exception, warn
-from maxim.utils.queueing import put_latest
 from maxim.data.camera.display import prepare_display, show_photo
 from maxim.inference.observation import display_detections, passive_observation
-from maxim.utils.gpu_compat import detect_blackwell, is_gpu_available
+from maxim.utils.gpu_compat import detect_blackwell
 
 _gpu_state = detect_blackwell()
 _original_cuda_devices = _gpu_state.original_cuda_devices
@@ -308,7 +305,6 @@ class MediaLoopMixin:
 
         # Import worker functions from workers module
         from maxim.conscience.workers import (
-            IKWarningHandler,
             motor_worker,
             frame_capture_worker,
             audio_capture_worker,

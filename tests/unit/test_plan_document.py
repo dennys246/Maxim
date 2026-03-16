@@ -6,12 +6,10 @@ import json
 import os
 import time
 
-import pytest
 
 from maxim.agents.bus import FailureStrategy, SubGoal, SubGoalStatus
 from maxim.planning.plan_document import (
     DepthExtension,
-    LongHorizonConfig,
     Phase,
     PhaseEnergyBudget,
     PhaseStatus,

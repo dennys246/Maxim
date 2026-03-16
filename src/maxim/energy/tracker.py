@@ -12,7 +12,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from maxim.energy.signal import EnergySignal, EnergyType

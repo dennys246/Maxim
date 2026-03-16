@@ -7,7 +7,6 @@ when users request scripts or files in various languages/technologies.
 from __future__ import annotations
 
 import re
-from typing import Any
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Language Detection Keywords

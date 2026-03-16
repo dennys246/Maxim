@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -116,7 +115,7 @@ class TestIoUTracker:
     def test_reset_clears_state(self):
         tracker = IoUTracker()
         boxes = np.array([[10, 10, 50, 50]], dtype=np.float32)
-        ids1 = tracker.update(boxes, np.array([0.9]), np.array([0]))
+        tracker.update(boxes, np.array([0.9]), np.array([0]))
 
         tracker.reset()
 

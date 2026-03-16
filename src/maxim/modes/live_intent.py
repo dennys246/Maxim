@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    pass
+    from maxim.modes.definitions import ModeDefinition
 
 logger = logging.getLogger(__name__)
 

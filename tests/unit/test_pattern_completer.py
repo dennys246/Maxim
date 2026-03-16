@@ -33,7 +33,6 @@ from maxim.memory.types import (
     MathContextEntry,
     Outcome,
     Perception,
-    PredictedOutcome,
 )
 
 

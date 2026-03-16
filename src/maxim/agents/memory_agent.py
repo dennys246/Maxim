@@ -38,7 +38,6 @@ from maxim.memory.types import (
     Context,
     Decision,
     EpisodicMemory,
-    MathContextEntry,
     Outcome,
     Perception,
     PredictedOutcome,

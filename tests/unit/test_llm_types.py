@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 from unittest.mock import MagicMock
 
-import pytest
 
 from maxim.agents.autonomy import AutonomyLevel
 from maxim.agents.llm_types import LLMProposal, LLMRequest, ModeInfo, StrategyInfo

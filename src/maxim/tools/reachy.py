@@ -12,7 +12,7 @@ from maxim.utils.logging import warn
 from maxim.utils.structured_logging import log_agentic
 
 if TYPE_CHECKING:
-    from maxim.hardware import RobotController, RobotRegistry
+    from maxim.hardware import RobotController
 
 
 def _get_robot_from_registry(

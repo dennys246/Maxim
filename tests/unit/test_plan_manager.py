@@ -7,7 +7,6 @@ import os
 import time
 from unittest.mock import Mock
 
-import pytest
 
 from maxim.agents.bus import (
     AgentBus,
@@ -24,7 +23,6 @@ from maxim.agents.bus import (
 from maxim.planning.plan_document import (
     LongHorizonConfig,
     Phase,
-    PhaseEnergyBudget,
     PhaseStatus,
     PlanDocument,
     PlanEnergyBudget,

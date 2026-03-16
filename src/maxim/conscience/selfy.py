@@ -1,5 +1,4 @@
 import os
-import queue
 import threading
 
 # CRITICAL: Set multiprocessing start method to 'spawn' BEFORE any other imports.
@@ -15,13 +14,11 @@ except RuntimeError:
     pass  # Already set, ignore
 
 # Detect Blackwell GPU and disable GStreamer/WebRTC BEFORE any other imports.
-from maxim.utils.gpu_compat import detect_blackwell, is_connection_error, is_gpu_available
+from maxim.utils.gpu_compat import detect_blackwell
 from maxim.utils.thread_manager import ThreadRegistry
 from maxim.utils.response_config import (
     load_key_responses,
     load_phrase_responses,
-    normalize_trigger_text,
-    normalize_transcript_text,
 )
 from maxim.modes.state_manager import StateManager
 
@@ -29,28 +26,22 @@ _gpu_state = detect_blackwell()
 _blackwell_detected = _gpu_state.blackwell_detected
 _original_cuda_devices = _gpu_state.original_cuda_devices
 
-import json, uuid
-import re
-import time, atexit, cv2
+import json
+import time
+import atexit
 import logging
-import wave
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
-from maxim.motion.movement import load_actions, load_movement_thresholds, load_poses, move_antenna, move_head
-from maxim.utils.audio import resample_audio, to_int16
-from maxim.utils.data_management import CLIInputLogger, TrainingSampleLogger, VisionEventLogger, build_home
+from maxim.motion.movement import load_actions, load_movement_thresholds, load_poses
+from maxim.utils.data_management import CLIInputLogger, VisionEventLogger
 from maxim.utils.logging import configure_logging, log_swallowed_exception, warn
 from maxim.utils.plotting import preflight_matplotlib_fonts, preload_matplotlib_fonts
-from maxim.utils.queueing import put_latest
 
-from maxim.data.camera.display import prepare_display, show_photo
 from maxim.inference.observation import (
     DEFAULT_CLASS_WEIGHTS,
     NoveltyTracker,
-    display_detections,
-    passive_observation,
 )
 from maxim.models.vision.registry import build_segmentation_model
 

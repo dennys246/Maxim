@@ -307,7 +307,7 @@ class WebCache:
                     entries = json.load(f)
 
             # Check if entry already exists
-            key = self._url_key(entry.url)
+            self._url_key(entry.url)
             entries = [e for e in entries if e.get("content_hash") != entry.content_hash]
 
             # Add new entry

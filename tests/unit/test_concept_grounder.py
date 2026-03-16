@@ -19,7 +19,6 @@ import pytest
 
 from maxim.math.angular_gyrus import AngularGyrus, AngularGyrusConfig
 from maxim.math.ips import IPS
-from maxim.math.math_types import MathMemory
 from maxim.memory.atl import ATL, ATLConfig
 from maxim.memory.concept_grounder import ConceptGrounder
 from maxim.memory.cross_layer import CrossLayerGraph

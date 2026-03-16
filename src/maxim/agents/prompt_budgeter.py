@@ -189,12 +189,12 @@ def _truncate_tool_guidance(content: str, max_tokens: int, counter: Any) -> str:
     """Remove Example lines, then indented detail lines."""
     lines = content.split("\n")
     # First pass: remove lines containing "Example" or "e.g."
-    filtered = [l for l in lines if "Example" not in l and "e.g." not in l]
+    filtered = [line for line in lines if "Example" not in line and "e.g." not in line]
     candidate = "\n".join(filtered)
     if counter.count_tokens(candidate) <= max_tokens:
         return candidate
     # Second pass: remove indented detail lines (4+ spaces or tab)
-    filtered = [l for l in filtered if not l.startswith("    ") and not l.startswith("\t")]
+    filtered = [line for line in filtered if not line.startswith("    ") and not line.startswith("\t")]
     return "\n".join(filtered)
 
 

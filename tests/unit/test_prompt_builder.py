@@ -138,7 +138,7 @@ class TestBuildToolsSection:
     def test_lists_tools_sorted(self):
         result = build_tools_section(self._make_request())
         lines = result.split("\n")
-        tool_lines = [l for l in lines if l.startswith("- ")]
+        tool_lines = [line for line in lines if line.startswith("- ")]
         assert tool_lines[0].startswith("- internet_search")
         assert tool_lines[1].startswith("- respond")
 

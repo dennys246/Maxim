@@ -21,7 +21,7 @@ Brain mapping:
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, ClassVar
 
 TWO_PI: float = 2.0 * math.pi

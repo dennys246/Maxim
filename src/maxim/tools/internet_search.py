@@ -579,9 +579,9 @@ class InternetAccessTool(Tool):
             # Use default implementation
             from maxim.utils.internet_access import set_internet_access
 
-            state = set_internet_access(enabled, source="tool")
+            set_internet_access(enabled, source="tool")
         else:
-            state = self._set_internet_access(enabled, source="tool")
+            self._set_internet_access(enabled, source="tool")
 
         return ToolResult(
             success=True,

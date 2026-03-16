@@ -6,7 +6,6 @@ import logging
 import queue
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from maxim.conscience.media_loop import MediaLoopMixin
 
@@ -158,7 +157,7 @@ class TestSleep:
         media.audio = False
         media.mode = "active"
 
-        with patch.object(media, "live") as mock_live:
+        with patch.object(media, "live"):
             media.sleep("/tmp/test_home", parallel=False, run_id="test-run")
 
         assert media.audio is True

@@ -18,9 +18,8 @@ import math
 import os
 import queue
 import threading
-import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 

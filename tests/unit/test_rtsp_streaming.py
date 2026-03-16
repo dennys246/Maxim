@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import shutil
-from typing import Any
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
 
-from maxim.skills.base import SkillResult, SkillState
+from maxim.skills.base import SkillState
 from maxim.skills.rtsp_streaming import RTSPStreamingConfig, RTSPStreamingSkill
 
 

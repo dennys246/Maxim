@@ -6,11 +6,9 @@ import pytest
 
 from maxim.hardware import (
     MotionTarget,
-    PixelTarget,
     RobotConfig,
     RobotRegistry,
     RobotsConfig,
-    load_robots_config,
 )
 from maxim.hardware.simulation import SimulatedController
 

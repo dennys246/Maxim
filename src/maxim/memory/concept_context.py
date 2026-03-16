@@ -21,7 +21,6 @@ from maxim.memory.semantic_types import Concept
 from maxim.memory.text import normalize_tokens
 
 if TYPE_CHECKING:
-    from maxim.math.math_types import MathMemory
     from maxim.memory.atl import ATL
     from maxim.memory.concept_grounder import ConceptGrounder
     from maxim.memory.layer import MemoryLayer

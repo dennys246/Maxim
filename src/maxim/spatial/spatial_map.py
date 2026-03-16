@@ -21,7 +21,7 @@ import random
 import threading
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Iterator
 
 logger = logging.getLogger(__name__)
@@ -537,7 +537,7 @@ class SpatialMap:
             else:
                 # Return all recent memories
                 results = []
-                now = time.time()
+                time.time()
                 max_age = max_age_seconds or self.config.memory_decay_seconds
 
                 for grid_u in range(self._grid_size):

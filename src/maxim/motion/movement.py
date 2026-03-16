@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import math, json
+import math
+import json
 import numpy as np
 from pathlib import Path
 from typing import Any

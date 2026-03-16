@@ -271,7 +271,6 @@ class WorkingMemoryEntry(Generic[T]):
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize wrapper + record for persistence."""
-        from maxim.memory.types import PredictedOutcome as _PO  # noqa: F811
 
         return {
             "record_type": type(self.record).__name__,

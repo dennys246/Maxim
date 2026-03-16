@@ -457,7 +457,7 @@ def summarize_file_structure(path: str, max_chars: int = 500) -> str:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             content = f.read(50000)  # Cap read at 50KB
     except OSError:
-        return f"(unreadable)"
+        return "(unreadable)"
 
     filename = os.path.basename(path)
     size = len(content)

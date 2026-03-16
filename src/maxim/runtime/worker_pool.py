@@ -177,7 +177,7 @@ class JobRegistry:
         Returns count of pruned jobs. _completed_ids is preserved so
         dependency waits on GC'd jobs still resolve correctly.
         """
-        cutoff = time.time() - max_age_s
+        time.time() - max_age_s
         pruned = 0
         with self._lock:
             to_remove = []

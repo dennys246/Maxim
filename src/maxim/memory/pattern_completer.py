@@ -17,7 +17,7 @@ Wired into MemoryAgent via set_pattern_completion_fn(completer.complete).
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from maxim.memory.semantic_types import Concept
 from maxim.memory.text import normalize_tokens

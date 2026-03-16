@@ -34,7 +34,6 @@ from maxim.agents.bus import (
     AgentBus,
     AnalysisSuggestion,
     GoalCompleted,
-    Percept,
     StatisticalInsight,
     StatisticalSummary,
     ToolResult,
@@ -43,7 +42,6 @@ from maxim.math.ips import IPS
 from maxim.math.math_types import MathMemory
 from maxim.math.types import (
     MathCategory,
-    PatternType,
     RandomnessResult,
     TrendDirection,
 )

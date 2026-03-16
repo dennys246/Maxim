@@ -18,7 +18,6 @@ This module defines:
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -165,7 +164,6 @@ class SemanticPromoter:
 
         Returns concept_id if promoted, None otherwise.
         """
-        from maxim.memory.cross_layer import CrossLayerEdgeType
         from maxim.memory.semantic_types import ConceptProvenance
 
         try:

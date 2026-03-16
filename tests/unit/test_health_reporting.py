@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
-import threading
 import time
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
 

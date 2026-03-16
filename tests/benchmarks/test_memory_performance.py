@@ -610,7 +610,7 @@ def run_all_benchmarks() -> list[BenchmarkResult]:
                 results.append(result)
                 print(f"  {result}")
             else:
-                print(f"  SKIPPED (dependencies not available)")
+                print("  SKIPPED (dependencies not available)")
         except Exception as e:
             print(f"  ERROR: {e}")
         print()

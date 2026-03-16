@@ -837,7 +837,7 @@ If no goal needed: {"goal_description": null, "priority": "IDLE"}
         if nac is not None and tool_name != "unknown":
             try:
                 links = nac.get_links_for_event(tool_name)
-                nac_obs = sum(getattr(l, "observation_count", 0) for l in links)
+                nac_obs = sum(getattr(link, "observation_count", 0) for link in links)
             except Exception:
                 pass
 

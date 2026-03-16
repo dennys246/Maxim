@@ -325,7 +325,7 @@ def download_vision(
                 # Find the .onnx file inside
                 onnx_files = [n for n in zf.namelist() if n.endswith(".onnx")]
                 if not onnx_files:
-                    print(f"  No .onnx file found in archive")
+                    print("  No .onnx file found in archive")
                     return False
                 for onnx_name in onnx_files:
                     dest = models_dir / model_info["filename"]
@@ -367,7 +367,7 @@ def list_models() -> None:
         print()
 
     print("\n=== Available Vision Models ===")
-    print(f"(Default: all)\n")
+    print("(Default: all)\n")
 
     for name, info in VISION_MODELS.items():
         print(f"  {name}")
@@ -473,7 +473,7 @@ def enable_llm_config(
             json.dump(config, f, indent=2)
 
         print(f"Updated {config_path}:")
-        print(f"  enabled: true")
+        print("  enabled: true")
         print(f"  profile: {model_name}")
         return True
 

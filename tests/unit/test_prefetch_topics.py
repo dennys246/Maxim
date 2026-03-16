@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import textwrap
 
-import pytest
 
 from maxim.runtime.prefetch import (
     CandidateFile,
