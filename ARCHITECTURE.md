@@ -59,6 +59,12 @@ Paths refer to the `src/maxim/` package layout.
   - `llm_tracker.py`: Token-based LLM energy (input/output tokens, latency, model multipliers).
   - `movement_tracker.py`: Physics-based movement energy estimation.
   - `registry.py`: EnergyRegistry with domain budgets and aggregation.
+- `src/maxim/skills/`: owns composable capabilities (Skills) and operational profiles (Protocols). Skills are atomic, reusable units with explicit lifecycle states (IDLE → ACTIVE → FAILED). Protocols compose skills with workspace bounds, LLM context injection, and voice/CLI activation phrases. ProtocolRegistry manages lifecycle, tool registration, and workspace constraint composition. Must **not** do decision making or goal reasoning — protocols are activated by the agentic runtime, voice phrases, or tools.
+  - `base.py`: Skill ABC, SkillState enum, SkillResult dataclass.
+  - `protocol.py`: Protocol ABC, WorkspaceBounds, activation sequence with precondition checks and failure recovery.
+  - `registry.py`: ProtocolRegistry — register/activate/deactivate protocols, manage tool registration, compose workspace bounds.
+  - `rtsp_streaming.py`: RTSPStreamingSkill — streams camera as RTSP via ffmpeg.
+  - `protocols/shredder_segmenter.py`: ShredderSegmenterProtocol — RTSP streaming with gaze constraints for ski recording.
 - `src/maxim/bridges/`: owns cross-system integration between memory and external systems.
   - `spatial_bridge.py`: Location priors from historical object positions.
   - `salience_bridge.py`: Interaction history boosts for salience scoring.

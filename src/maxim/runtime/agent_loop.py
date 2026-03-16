@@ -358,6 +358,7 @@ def run_agentic_loop(
     target_hz: float = 30.0,  # Target loop frequency
     context_pool_config: dict[str, Any] | None = None,  # Context pool configuration
     use_tool_prompting: bool = True,  # Enable tool-aware LLM prompts
+    protocol_registry: Any | None = None,  # ProtocolRegistry for dynamic skills
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -451,13 +452,14 @@ def run_agentic_loop(
     # Track agent states
     agent_states: list[dict[str, Any]] = []
 
-    # Get available tools from executor registry
-    all_tools: set[str] = set()
-    if hasattr(executor, "registry") and hasattr(executor.registry, "list"):
-        try:
-            all_tools = set(executor.registry.list())
-        except Exception:
-            pass
+    # Live read from tool registry — picks up dynamically registered tools
+    def _get_all_tools() -> set[str]:
+        if hasattr(executor, "registry") and hasattr(executor.registry, "list"):
+            try:
+                return set(executor.registry.list())
+            except Exception:
+                pass
+        return set()
 
     # Loop timing
     target_period = 1.0 / target_hz
@@ -2214,7 +2216,8 @@ def run_agentic_loop(
                             )
 
                             # Get available tools for exploration
-                            exploration_tools = exploration_mode_def.get_available_tools(all_tools) if all_tools else set()
+                            _tools = _get_all_tools()
+                            exploration_tools = exploration_mode_def.get_available_tools(_tools) if _tools else set()
 
                             mode_info = ModeInfo(
                                 name="exploration",
@@ -2263,8 +2266,9 @@ def run_agentic_loop(
                             # Get mode definition for tool access
                             mode_def = get_mode(mode_name)
                             available_tools_for_mode = set()
-                            if mode_def and all_tools:
-                                available_tools_for_mode = mode_def.get_available_tools(all_tools)
+                            _tools = _get_all_tools()
+                            if mode_def and _tools:
+                                available_tools_for_mode = mode_def.get_available_tools(_tools)
 
                             mode_info = ModeInfo(
                                 name=mode_name,
@@ -2292,14 +2296,28 @@ def run_agentic_loop(
                                 context.cli_inputs = new_inputs[-1:] if new_inputs else []
 
                         # Get available tools for this mode
-                        available_tools = mode_info.get_available_tools(all_tools)
+                        available_tools = mode_info.get_available_tools(_get_all_tools())
 
                         # Get full tool info for prompt (description, params, example)
-                        tool_descriptions = {
-                            name: TOOL_DESCRIPTIONS.get(name, {})
-                            for name in available_tools
-                            if name in TOOL_DESCRIPTIONS
-                        }
+                        tool_descriptions = {}
+                        for name in available_tools:
+                            if name in TOOL_DESCRIPTIONS:
+                                tool_descriptions[name] = TOOL_DESCRIPTIONS[name]
+                            else:
+                                # Dynamic tool (from skill/protocol) — build from Tool instance
+                                try:
+                                    tool = executor.registry.get(name)
+                                    tool_descriptions[name] = {
+                                        "description": tool.description,
+                                        "params": {
+                                            k: f"({v[0].__name__}, default={v[1]!r})" if isinstance(v, tuple) else v.__name__
+                                            for k, v in getattr(tool, "input_schema", {}).items()
+                                        },
+                                        "example": None,
+                                        "followup_type": None,
+                                    }
+                                except (KeyError, Exception):
+                                    pass
 
                         # Get context pool text
                         context_pool_text = context_pool.get_context_text(
@@ -2323,6 +2341,11 @@ def run_agentic_loop(
                             # Clear after use
                             pending_prefetch = None
 
+                        # Get protocol context (re-injected fresh each submission)
+                        _protocol_context = ""
+                        if protocol_registry is not None:
+                            _protocol_context = protocol_registry.get_context_for_llm()
+
                         submitted = llm_worker.submit_context(
                             context=context,
                             mode=mode_info,
@@ -2344,6 +2367,7 @@ def run_agentic_loop(
                             skip_exploration=skip_exploration,
                             current_strategy=state.data.get("current_strategy", ""),
                             is_sleeping=is_sleeping,
+                            protocol_context=_protocol_context,
                         )
                         last_llm_submit_time = now
                         # Log submission for both user input and followups

@@ -220,6 +220,53 @@ class AgenticRuntimeMixin:
         executor = build_executor(registry)
         evaluators = build_evaluators()
 
+        # --- Protocol system ---
+        try:
+            from maxim.skills.registry import ProtocolRegistry
+            from maxim.skills.tools import RunProtocolTool, StopProtocolTool, ListProtocolsTool
+
+            self._protocol_registry = ProtocolRegistry(
+                maxim=self,
+                tool_registry=registry,
+            )
+
+            # Register built-in protocols
+            try:
+                from maxim.skills.protocols.shredder_segmenter import ShredderSegmenterProtocol
+                duration_env = os.getenv("SHREDDER_DURATION_MINUTES", "0")
+                try:
+                    duration_min = float(duration_env)
+                except ValueError:
+                    duration_min = 0.0
+                interval_env = os.getenv("SHREDDER_HEALTH_INTERVAL", "30")
+                try:
+                    health_interval = float(interval_env)
+                except ValueError:
+                    health_interval = 30.0
+                self._protocol_registry.register(ShredderSegmenterProtocol(
+                    shredder_api_url=os.getenv("SHREDDER_API_URL"),
+                    shredder_license_id=os.getenv("SHREDDER_LICENSE_ID"),
+                    shredder_api_key=os.getenv("SHREDDER_API_KEY"),
+                    shredder_site_id=os.getenv("SHREDDER_SITE_ID"),
+                    duration_minutes=duration_min,
+                    health_endpoint_url=os.getenv("SHREDDER_HEALTH_URL", ""),
+                    health_interval_seconds=health_interval,
+                ))
+            except Exception as e:
+                warn("ShredderSegmenterProtocol not available: %s", e, logger=self.log)
+
+            # Register protocol management tools
+            registry.register(RunProtocolTool(self._protocol_registry))
+            registry.register(StopProtocolTool(self._protocol_registry))
+            registry.register(ListProtocolsTool(self._protocol_registry))
+
+            # Register activation + stop phrases for all protocols (permanent)
+            for proto in self._protocol_registry._protocols.values():
+                self._protocol_registry._register_phrases(proto.name, proto)
+
+        except Exception as e:
+            warn("Failed to initialize protocol system: %s", e, logger=self.log)
+
         run_id = getattr(self, "run_id", None) or time.strftime("%Y-%m-%d_%H%M%S")
 
         # Build allowed tools set based on policy (uses allow_internet from above)
@@ -387,6 +434,7 @@ class AgenticRuntimeMixin:
                     on_step=_on_step,
                     idle_sleep_s=0.1,
                     target_hz=10.0,  # 10 Hz for responsive CLI handling
+                    protocol_registry=self._protocol_registry,
                 )
             except Exception as e:
                 warn("Agentic runtime loop failed: %s", e, logger=self.log)
@@ -520,6 +568,12 @@ class AgenticRuntimeMixin:
                         thread.join(timeout=0.5)
             except Exception as e:
                 self.log.warning("Failed to force-terminate thread '%s': %s", name, e)
+
+        # Deactivate all protocols before cleanup
+        if hasattr(self, "_protocol_registry") and self._protocol_registry is not None:
+            for proto in list(self._protocol_registry._active.values()):
+                self._protocol_registry.deactivate(proto.name)
+            self._protocol_registry = None
 
         # Phase 4: Cleanup references
         self._agentic_thread = None

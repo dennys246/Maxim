@@ -550,3 +550,25 @@ class InputHandlerMixin:
         }
 
         self._log_event(record, flush=True)
+
+    # --- Thread-safe phrase registration (R5) ---
+
+    def _register_phrase_response(self, phrase: str, spec: dict) -> None:
+        """Thread-safe runtime addition of a phrase response.
+
+        Uses copy-on-write: creates a new dict and atomically swaps the
+        reference (GIL-safe). The transcript listener thread's in-progress
+        iteration continues on the old dict; next iteration picks up the new one.
+        """
+        from maxim.utils.response_config import _compile_phrase_pattern, normalize_trigger_text
+
+        # Pre-compile pattern and normalized form
+        if "_pattern" not in spec:
+            spec["_pattern"] = _compile_phrase_pattern(phrase)
+        if "_normalized" not in spec:
+            spec["_normalized"] = normalize_trigger_text(phrase)
+
+        # Atomic copy-on-write swap
+        new = dict(self.phrase_responses)
+        new[phrase] = spec
+        self.phrase_responses = new  # atomic reference swap under GIL

@@ -48,6 +48,13 @@ Comprehensive documentation for Maxim's systems and subsystems.
 |----------|-------------|
 | [ARCHITECTURE.md](../ARCHITECTURE.md#workspace-maxim_workspace) | Workspace structure, working notes, plan dashboard |
 
+### Skills & Protocols
+
+| Document | Description |
+|----------|-------------|
+| [Skills](skills.md) | Composable capabilities, protocols, lifecycle, workspace constraints |
+| [MediaMTX](mediaMTX.md) | RTSP relay: auto-start, network topology, deployment scenarios |
+
 ### Integration
 
 | Document | Description |
@@ -181,6 +188,7 @@ src/maxim/
 ├── runtime/         → ARCHITECTURE.md (runtime section)
 ├── salience/        → salience.md
 ├── similarity/      → semantic_similarity_analysis.md (Phase 4 implemented)
+├── skills/          → skills.md (Skills & Protocols: composition, lifecycle, workspace bounds)
 ├── spatial/         → bridges.md (SpatialMemoryBridge)
 ├── time/            → time.md (+ BoundedBin, significance-based eviction)
 ├── tools/           → ARCHITECTURE.md (tools section)

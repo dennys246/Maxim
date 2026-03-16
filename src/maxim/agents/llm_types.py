@@ -142,6 +142,9 @@ class LLMRequest:
     prefetch_context: str = field(default="", compare=False)
     skip_exploration: bool = field(default=False, compare=False)
 
+    # Active protocol context (re-injected each submission, never summarized)
+    protocol_context: str = field(default="", compare=False)
+
     def __post_init__(self):
         # Sort by negative priority (higher priority first), then by timestamp
         self.sort_index = (-self.priority, self.timestamp)
