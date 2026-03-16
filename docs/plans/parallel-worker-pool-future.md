@@ -1,8 +1,9 @@
 # Parallel Worker Pool — Remaining Work
 
-> **Status:** Core infrastructure (Phase 1-3) is fully implemented and tested in
-> `src/maxim/runtime/worker_pool.py`. The `infer` lane is wired into `LLMWorker`.
-> This document tracks the remaining phases.
+> **Status:** Core infrastructure (Phases 1-3) fully implemented in
+> `src/maxim/runtime/worker_pool.py`. Phase 4 (review/record lanes for ATL
+> concept memory) implemented in ConceptGrounder. This document tracks the
+> one remaining phase.
 
 ---
 
@@ -13,34 +14,10 @@
 - `LaneConfig`, `Lane` with priority queue + monotonic tiebreaker + gate-watcher threads
 - `WorkerPool` with start/stop/submit/wait_for/cancel_lane/cancel_all/status
 - `LLMWorker` integration: infer lane + infer_net lane for cloud providers
-- Comprehensive unit tests in `tests/unit/test_worker_pool.py` and `test_llm_worker_pool.py`
-
-All issues from the original plan (#1-#18) were addressed during implementation.
-
----
-
-## Phase 4: Review + Record Lane Integration — ATL Concept Memory
-
-> **Concrete workload identified.** See full plan:
-> [worker-pool-concept-memory-integration.md](worker-pool-concept-memory-integration.md)
-
-The review and record lanes will serve the ATL concept memory pipeline:
-
-- **Review lane:** ConceptGrounder relationship modulation (Jaccard co-occurrence
-  scoring) and quantification analysis — read-heavy computation currently blocking
-  the 50ms recall budget.
-- **Record lane:** Applying computed changes — ATL edge updates, AG MathMemory
-  stores, CrossLayerGraph QUANTIFIES edges, concept ref updates.
-
-This moves graph-heavy analysis off the synchronous recall path, freeing the
-50ms budget for loading episodes and collecting context (10+ concepts per call
-instead of 2-3).
-
-**Other potential review/record consumers (future):**
-- Post-action plan phase evaluation
-- Safety/guardrail checking on LLM outputs
-- Async telemetry/metrics persistence
-- Deferred media I/O (screenshots, audio clips)
+- **Phase 4:** ConceptGrounder wired to review/record lanes with dedup cooldown,
+  fallback to sync when no pool available. See `worker-pool-concept-memory-integration.md`.
+- Comprehensive unit tests in `tests/unit/test_worker_pool.py`,
+  `test_llm_worker_pool.py`, and `test_concept_grounder_async.py`
 
 ---
 
