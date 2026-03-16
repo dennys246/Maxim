@@ -122,7 +122,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
         self.log.info("Connecting to Reachy Mini '%s'...", self.name)
         self._connect_kwargs = {
             "robot_name": self.name,
-            "localhost_only": False,
+            "connection_mode": "network",
             "spawn_daemon": False,
             "use_sim": False,
             "timeout": float(timeout),

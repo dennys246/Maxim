@@ -28,7 +28,8 @@ class ConnectionConfig:
     robot_name: str = "reachy_mini"
     timeout: float = 30.0
     media_backend: str = "default"
-    localhost_only: bool = False
+    localhost_only: bool = False  # Deprecated: use connection_mode instead
+    connection_mode: str = "network"  # "auto", "localhost_only", or "network"
     spawn_daemon: bool = False
     use_sim: bool = False
 
@@ -185,7 +186,7 @@ class ReachyConnection:
 
         self._mini = ReachyMini(
             robot_name=self.config.robot_name,
-            localhost_only=self.config.localhost_only,
+            connection_mode=self.config.connection_mode,
             spawn_daemon=self.config.spawn_daemon,
             use_sim=self.config.use_sim,
             timeout=self.config.timeout,
@@ -340,7 +341,7 @@ class ReachyConnection:
 
                 self._mini = ReachyMini(
                     robot_name=self.config.robot_name,
-                    localhost_only=self.config.localhost_only,
+                    connection_mode=self.config.connection_mode,
                     spawn_daemon=self.config.spawn_daemon,
                     use_sim=self.config.use_sim,
                     timeout=self.config.timeout,

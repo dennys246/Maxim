@@ -34,7 +34,7 @@ except Exception as e:
 robot_name = os.environ.get("MAXIM_ROBOT_NAME", "reachy_mini")
 
 try:
-    mini = ReachyMini(robot_name=robot_name, localhost_only=False, spawn_daemon=False, use_sim=False, timeout=5.0)
+    mini = ReachyMini(robot_name=robot_name, connection_mode="network", spawn_daemon=False, use_sim=False, timeout=5.0)
 except Exception as e:
     msg = f"[basic_move] {'FAIL' if require_robot else 'SKIP'}: could not connect to Reachy Mini '{robot_name}': {e}"
     print(msg)

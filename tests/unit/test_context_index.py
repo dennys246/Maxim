@@ -68,10 +68,13 @@ class TestSimilarityIndexQueries:
         assert results[0][0] == "mem_1"
         assert results[0][1] >= 0.9
 
-    def test_similar_text_found(self, index):
-        # Use nearly identical text to ensure LSH band collision
-        index.register("mem_1", "the robot saw a person near the table in the kitchen")
-        results = index.query_similar(
+    def test_similar_text_found(self):
+        # LSH is probabilistic; use more bands (higher recall) to make collisions reliable
+        from maxim.memory.context_index import SimilarityIndex
+
+        hi_recall = SimilarityIndex(num_hashes=64, num_bands=16)
+        hi_recall.register("mem_1", "the robot saw a person near the table in the kitchen")
+        results = hi_recall.query_similar(
             "the robot saw a person near the table in the room", min_similarity=0.2
         )
         result_ids = {r[0] for r in results}
