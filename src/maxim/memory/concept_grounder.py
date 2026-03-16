@@ -12,8 +12,10 @@ approximate assessment; AG handles precise analysis when needed.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections import defaultdict
+from functools import partial
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -25,6 +27,7 @@ if TYPE_CHECKING:
     from maxim.math.ips import IPS
     from maxim.memory.atl import ATL
     from maxim.memory.cross_layer import CrossLayerGraph
+    from maxim.runtime.worker_pool import WorkerPool
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,9 @@ class ConceptGrounder:
     # edge weight [0, 1]. 2.0 means Jaccard >= 0.5 saturates at weight 1.0.
     JACCARD_WEIGHT_SCALE: float = 2.0
 
+    # Dedup cooldown: don't re-review a concept within this window
+    REVIEW_COOLDOWN_S: float = 2.0
+
     def __init__(
         self,
         atl: ATL,
@@ -54,6 +60,7 @@ class ConceptGrounder:
         cross_layer: CrossLayerGraph,
         cache_ttl: float = 300.0,
         jaccard_weight_scale: float | None = None,
+        worker_pool: WorkerPool | None = None,
     ) -> None:
         self._atl = atl
         self._ag = angular_gyrus
@@ -64,6 +71,11 @@ class ConceptGrounder:
             self.JACCARD_WEIGHT_SCALE = jaccard_weight_scale
         # concept_id -> (timestamp, stats_dict)
         self._stats_cache: dict[str, tuple[float, dict]] = {}
+        # WorkerPool for async relationship modulation + quantification
+        self._pool = worker_pool
+        # Dedup tracking: concept_id -> last enqueue monotonic time
+        self._pending_reviews: dict[str, float] = {}
+        self._pending_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Public API
@@ -104,13 +116,226 @@ class ConceptGrounder:
         stats["_ref_count"] = concept.ref_count("hippocampus")
         self._stats_cache[concept.id] = (time.time(), stats)
 
-        # Update relationship confidence based on numerical evidence
-        self._modulate_relationships(concept)
-
-        # Store AG MathMemory with QUANTIFIES edge if significant
-        self._store_quantifications(concept, stats)
+        # Enqueue heavy work to background lanes if pool available
+        if self._pool is not None:
+            self._enqueue_background_work(concept.id, stats)
+        else:
+            # Fallback: sync (preserves existing behavior without pool)
+            self._modulate_relationships(concept)
+            self._store_quantifications(concept, stats)
 
         return stats
+
+    # ------------------------------------------------------------------
+    # Background async pipeline (review → record lanes)
+    # ------------------------------------------------------------------
+
+    def _enqueue_background_work(self, concept_id: str, stats: dict[str, Any]) -> None:
+        """Submit relationship modulation + quantification to review lane.
+
+        Includes dedup cooldown to avoid re-reviewing the same concept
+        within REVIEW_COOLDOWN_S seconds.
+        """
+        with self._pending_lock:
+            last = self._pending_reviews.get(concept_id, 0.0)
+            if time.monotonic() - last < self.REVIEW_COOLDOWN_S:
+                return  # Already enqueued recently
+            self._pending_reviews[concept_id] = time.monotonic()
+
+        try:
+            self._pool.submit(
+                lane="review",
+                job_id=f"concept-review-{concept_id}-{time.monotonic_ns()}",
+                fn=partial(self._review_concept, concept_id, dict(stats)),
+                priority=5,
+            )
+        except Exception as e:
+            logger.debug("Failed to enqueue concept review for %s: %s", concept_id, e)
+            # Clear pending flag so next call can retry
+            with self._pending_lock:
+                self._pending_reviews.pop(concept_id, None)
+
+    def _review_concept(self, concept_id: str, stats: dict[str, Any], prefetched: Any = None) -> None:
+        """REVIEW LANE: Compute relationship changes + quantification proposals.
+
+        Read-heavy, no writes. Hands off proposed changes to record lane.
+        """
+        # Clear pending flag after execution starts
+        with self._pending_lock:
+            self._pending_reviews.pop(concept_id, None)
+
+        concept = self._atl.get(concept_id)
+        if concept is None or not isinstance(concept, Concept):
+            return  # Concept evicted between enqueue and execution
+
+        # Compute proposed relationship edge updates (read-heavy)
+        edge_updates = self._compute_relationship_updates(concept)
+
+        # Compute quantification proposals (pure computation on stats)
+        quant_proposals = self._compute_quantification_proposals(concept, stats)
+
+        if not edge_updates and not quant_proposals:
+            return
+
+        # Hand off writes to record lane
+        try:
+            self._pool.submit(
+                lane="record",
+                job_id=f"concept-record-{concept_id}-{time.monotonic_ns()}",
+                fn=partial(self._apply_updates, concept_id, edge_updates, quant_proposals),
+                priority=7,
+            )
+        except Exception as e:
+            logger.debug("Failed to enqueue concept record for %s: %s", concept_id, e)
+
+    def _compute_relationship_updates(
+        self, concept: Concept
+    ) -> list[tuple[str, str, str, float | None, float | None]]:
+        """Compute proposed edge changes from Jaccard co-occurrence.
+
+        Returns list of (source_id, target_id, rel_type, weight_or_None, confidence_delta_or_None).
+        """
+        relationships = self._atl.find_by_relationship(concept.id, direction="both", limit=50)
+        if not relationships:
+            return []
+
+        concept_refs = set(concept.memory_refs.get("hippocampus", {}))
+        updates: list[tuple[str, str, str, float | None, float | None]] = []
+
+        for other_id, rel in relationships:
+            other = self._atl.get(other_id)
+            if not isinstance(other, Concept):
+                continue
+
+            other_refs = set(other.memory_refs.get("hippocampus", {}))
+            shared = len(concept_refs & other_refs)
+            union = len(concept_refs | other_refs)
+
+            if union < 3:
+                continue
+
+            jaccard = shared / union
+
+            if jaccard > 0.3 and shared >= 3:
+                updates.append((
+                    concept.id, other_id, rel.relationship_type,
+                    min(1.0, jaccard * self.JACCARD_WEIGHT_SCALE),
+                    0.05,
+                ))
+            elif jaccard < 0.05 and union >= 10:
+                updates.append((
+                    concept.id, other_id, rel.relationship_type,
+                    None,
+                    -0.1,
+                ))
+
+        return updates
+
+    def _compute_quantification_proposals(
+        self, concept: Concept, stats: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Compute proposed AG quantification records.
+
+        Returns list of proposal dicts with field_name, concept info, and stats.
+        """
+        proposals: list[dict[str, Any]] = []
+        for field_name, field_stats in stats.items():
+            if field_name.startswith("_"):
+                continue
+            n = field_stats.get("n", 0)
+            if n < 5:
+                continue
+            proposals.append({
+                "field_name": field_name,
+                "concept_name": concept.name,
+                "concept_id": concept.id,
+                "mean": field_stats["mean"],
+                "n": n,
+            })
+        return proposals
+
+    def _apply_updates(
+        self,
+        concept_id: str,
+        edge_updates: list[tuple[str, str, str, float | None, float | None]],
+        quant_proposals: list[dict[str, Any]],
+        prefetched: Any = None,
+    ) -> None:
+        """RECORD LANE: Apply computed changes under write locks.
+
+        Handles edge updates and AG quantification storage.
+        """
+        concept = self._atl.get(concept_id)
+        if concept is None or not isinstance(concept, Concept):
+            return  # Concept evicted
+
+        # Apply edge updates
+        for source_id, target_id, rel_type, weight, confidence_delta in edge_updates:
+            try:
+                kwargs: dict[str, Any] = {}
+                if weight is not None:
+                    kwargs["weight"] = weight
+                if confidence_delta is not None:
+                    kwargs["confidence_delta"] = confidence_delta
+                self._atl.semantics.update_edge(source_id, target_id, rel_type, **kwargs)
+            except Exception as e:
+                logger.debug("Failed to update edge %s→%s: %s", source_id, target_id, e)
+
+        # Apply quantification proposals
+        for proposal in quant_proposals:
+            try:
+                self._store_single_quantification(concept, proposal)
+            except Exception as e:
+                logger.debug("Failed to store quantification for %s: %s", proposal.get("field_name"), e)
+
+    def _store_single_quantification(self, concept: Concept, proposal: dict[str, Any]) -> None:
+        """Store a single AG MathMemory record from a quantification proposal."""
+        from maxim.math.math_types import MathCategory, MathMemory
+        from maxim.memory.cross_layer import CrossLayerEdgeType
+
+        field_name = proposal["field_name"]
+        concept_name = proposal["concept_name"]
+        mean = proposal["mean"]
+        n = proposal["n"]
+
+        existing_name = f"{concept_name}:{field_name}"
+        existing = self._ag.recall(limit=1, name=existing_name)
+
+        if existing:
+            record = existing[0]
+            if isinstance(record, MathMemory):
+                record.verbal = f"{concept_name} {field_name}: mean={mean:.2f} (n={n})"
+                record.observation_count = n
+                record.confidence = min(0.9, 0.3 + 0.05 * n)
+                record.touch()
+        else:
+            record = MathMemory(
+                id=str(uuid4()),
+                timestamp=time.time(),
+                name=existing_name,
+                category=MathCategory.PATTERN,
+                domain="concept_property",
+                verbal=f"{concept_name} {field_name}: mean={mean:.2f} (n={n})",
+                code="",
+                inputs=[concept_name],
+                outputs=[field_name],
+                source="derived",
+                confidence=min(0.9, 0.3 + 0.05 * n),
+                observation_count=n,
+            )
+            record_id = self._ag.store(record)
+
+            self._cross_layer.add_edge(
+                source_layer="angular_gyrus",
+                source_id=record_id,
+                target_layer="atl",
+                target_id=concept.id,
+                edge_type=CrossLayerEdgeType.QUANTIFIES,
+                weight=1.0,
+                metadata={"field": field_name},
+            )
+
+            concept.add_ref("angular_gyrus", record_id)
 
     # ------------------------------------------------------------------
     # Numeric extraction

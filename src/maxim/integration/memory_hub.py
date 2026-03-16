@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from maxim.memory.cross_layer import CrossLayerGraph
     from maxim.memory.hippocampus import Hippocampus
     from maxim.memory.semantic_promoter import PromotionSource, SemanticPromoter
+    from maxim.runtime.worker_pool import WorkerPool
     from maxim.salience.salience_network import SalienceNetwork
     from maxim.similarity.ec import EntorhinalCortex
     from maxim.spatial.spatial_map import SpatialMap
@@ -132,6 +133,9 @@ class MemoryHub:
     _concept_grounder: Any = None
     _concept_context_builder: Any = None
     _pattern_completer: Any = None
+
+    # WorkerPool for background concept memory processing (optional)
+    worker_pool: "WorkerPool | None" = None
 
     # Long-horizon planning (optional)
     _plan_manager: Any = None
@@ -239,6 +243,7 @@ class MemoryHub:
                 angular_gyrus=self.angular_gyrus,
                 ips=IPS(),
                 cross_layer=self._cross_layer,
+                worker_pool=self.worker_pool,
             )
 
         # Wire ConceptContextBuilder for concept-aware recall
