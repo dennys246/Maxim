@@ -24,6 +24,7 @@ import queue
 import threading
 import time as _time
 from collections import defaultdict
+from functools import partial
 from typing import TYPE_CHECKING
 
 from maxim.memory.semantic_types import Concept, ConceptProvenance
@@ -33,6 +34,7 @@ from maxim.memory.types import EpisodicMemory, MemoryRecord
 if TYPE_CHECKING:
     from maxim.memory.atl import ATL
     from maxim.memory.cross_layer import CrossLayerGraph
+    from maxim.runtime.worker_pool import WorkerPool
     from maxim.time.scn import SCN
 
 logger = logging.getLogger(__name__)
@@ -57,10 +59,12 @@ class ConceptExtractor:
         cross_layer: CrossLayerGraph,
         scn: SCN | None = None,
         queue_size: int = 200,
+        worker_pool: WorkerPool | None = None,
     ) -> None:
         self._atl = atl
         self._cross_layer = cross_layer
         self._scn = scn
+        self._pool = worker_pool
 
         # Reverse index for O(1) cleanup on memory deletion
         self._reverse_index: dict[str, set[str]] = defaultdict(set)
@@ -152,7 +156,19 @@ class ConceptExtractor:
                 self._reverse_index[memory_id].add(cid)
 
         # Form inline relationships between co-occurring concepts
-        self._form_inline_relationships(concept_ids)
+        if self._pool is not None and len(concept_ids) >= 2:
+            try:
+                self._pool.submit(
+                    lane="review",
+                    job_id=f"rel-formation-{memory_id}-{_time.monotonic_ns()}",
+                    fn=partial(self._form_inline_relationships, list(concept_ids)),
+                    priority=8,  # Lower priority than concept grounding reviews
+                )
+            except Exception as e:
+                logger.debug("Failed to enqueue relationship formation: %s", e)
+                self._form_inline_relationships(concept_ids)
+        else:
+            self._form_inline_relationships(concept_ids)
 
     # ------------------------------------------------------------------
     # Concept registration

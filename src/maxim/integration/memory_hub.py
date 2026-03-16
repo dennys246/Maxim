@@ -213,6 +213,7 @@ class MemoryHub:
                 atl=self.atl,
                 cross_layer=self._cross_layer,
                 scn=self.scn,
+                worker_pool=self.worker_pool,
             )
             # Register as capture callback on Hippocampus
             self.hippocampus.register_capture_callback(
