@@ -261,10 +261,14 @@ class MovementMixin:
             # SANITY CHECK: The head physically cannot rotate more than ±55° relative
             # to the body. If calculated yaw exceeds this, clamp it to prevent bad behavior.
             # Previous ±90° threshold was too permissive and allowed invalid values through.
-            HEAD_YAW_PHYSICAL_LIMIT = 55.0
+            # Use workspace limits (respects protocol overrides)
+            limits = self._get_workspace_limits()
+            HEAD_YAW_PHYSICAL_LIMIT = limits.get("yaw", 55.0)
+            HEAD_PITCH_PHYSICAL_LIMIT = limits.get("pitch", 35.0)
+            HEAD_ROLL_PHYSICAL_LIMIT = limits.get("roll", 35.0)
+
             if abs(yaw_deg) > HEAD_YAW_PHYSICAL_LIMIT:
                 old_yaw = float(getattr(self, "yaw", 0.0) or 0.0)
-                # Clamp to physical limit (preserving direction)
                 clamped_yaw = max(-HEAD_YAW_PHYSICAL_LIMIT, min(HEAD_YAW_PHYSICAL_LIMIT, yaw_deg))
                 self.log.warning(
                     "Sync: clamping invalid yaw=%.1f -> %.1f (world=%.1f - body=%.1f, old=%.1f)",
@@ -272,9 +276,6 @@ class MovementMixin:
                 )
                 yaw_deg = clamped_yaw
 
-            # SANITY CHECK: The head physically cannot pitch more than ±35° relative
-            # to the body. Clamp to prevent invalid values from causing issues.
-            HEAD_PITCH_PHYSICAL_LIMIT = 35.0
             if abs(pitch_deg) > HEAD_PITCH_PHYSICAL_LIMIT:
                 old_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
                 clamped_pitch = max(-HEAD_PITCH_PHYSICAL_LIMIT, min(HEAD_PITCH_PHYSICAL_LIMIT, pitch_deg))
@@ -284,8 +285,6 @@ class MovementMixin:
                 )
                 pitch_deg = clamped_pitch
 
-            # SANITY CHECK: Roll also limited to ±35° physical limit
-            HEAD_ROLL_PHYSICAL_LIMIT = 35.0
             if abs(roll_deg) > HEAD_ROLL_PHYSICAL_LIMIT:
                 old_roll = float(getattr(self, "roll", 0.0) or 0.0)
                 clamped_roll = max(-HEAD_ROLL_PHYSICAL_LIMIT, min(HEAD_ROLL_PHYSICAL_LIMIT, roll_deg))
@@ -348,30 +347,18 @@ class MovementMixin:
             self.log.warning("Failed to sync head position: %s", e)
             return False
 
+    # Protocol workspace override — set by ProtocolRegistry, read by
+    # _get_workspace_limits(). Can only tighten, never widen limits.
+    _workspace_limit_override: dict[str, float] | None = None
+
     def _get_workspace_limits(self) -> dict[str, float]:
-        """Get workspace limits, preferring learned bounds over hardcoded.
+        """Get workspace limits: protocol override > learned bounds > hardcoded.
 
         Returns:
             Dict with x, y, z, roll, pitch, yaw limits (all positive values).
         """
-        # Try to get learned bounds from bounds_learner
-        bounds_learner = None
-        default_network = getattr(self, "_default_network", None)
-        if default_network is not None:
-            bounds_learner = getattr(default_network, "_bounds_learner", None)
-
-        if bounds_learner is not None:
-            return {
-                "x": bounds_learner.get_bound("x"),
-                "y": bounds_learner.get_bound("y"),
-                "z": bounds_learner.get_bound("z"),
-                "roll": bounds_learner.get_bound("roll"),
-                "pitch": bounds_learner.get_bound("pitch"),
-                "yaw": bounds_learner.get_bound("yaw"),
-            }
-
-        # Fallback to hardcoded limits
-        return {
+        # 1. Start with hardcoded defaults
+        limits = {
             "x": self._SAFE_X_LIMIT,
             "y": self._SAFE_Y_LIMIT,
             "z": self._SAFE_Z_LIMIT,
@@ -379,6 +366,23 @@ class MovementMixin:
             "pitch": self._SAFE_PITCH_LIMIT,
             "yaw": self._SAFE_YAW_LIMIT,
         }
+
+        # 2. Override with learned bounds if available
+        default_network = getattr(self, "_default_network", None)
+        if default_network is not None:
+            bounds_learner = getattr(default_network, "_bounds_learner", None)
+            if bounds_learner is not None:
+                for axis in limits:
+                    limits[axis] = bounds_learner.get_bound(axis)
+
+        # 3. Apply protocol override (can only tighten, never widen)
+        override = self._workspace_limit_override
+        if override is not None:
+            for axis, val in override.items():
+                if val is not None:
+                    limits[axis] = min(limits[axis], val)
+
+        return limits
 
     def _clamp_to_workspace_6d(
         self,

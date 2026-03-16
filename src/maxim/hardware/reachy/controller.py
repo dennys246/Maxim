@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import socket
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -73,6 +74,29 @@ class ReachyMiniController(RobotController):
     # Connection Management
     # ─────────────────────────────────────────────────────────────────────────
 
+    def _resolve_mdns(self, timeout: float = 5.0) -> str | None:
+        """Pre-resolve the robot's mDNS hostname to an IP address.
+
+        Args:
+            timeout: DNS resolution timeout in seconds.
+
+        Returns:
+            Resolved IP address string, or None if resolution failed.
+        """
+        mdns_name = self._robot_name.replace("_", "-") + ".local"
+        try:
+            old_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(timeout)
+            try:
+                ip = socket.gethostbyname(mdns_name)
+                logger.info("mDNS resolved %s -> %s", mdns_name, ip)
+                return ip
+            finally:
+                socket.setdefaulttimeout(old_timeout)
+        except socket.gaierror:
+            logger.warning("mDNS resolution failed for %s", mdns_name)
+            return None
+
     def connect(self, timeout: float = 30.0) -> bool:
         """Connect to the Reachy Mini.
 
@@ -87,10 +111,19 @@ class ReachyMiniController(RobotController):
         try:
             from reachy_mini import ReachyMini
 
+            # Pre-resolve mDNS to verify the robot is reachable
+            resolved_ip = self._resolve_mdns(timeout=min(timeout, 5.0))
+            if resolved_ip is None:
+                logger.warning(
+                    "Could not resolve %s via mDNS, falling back to SDK discovery",
+                    self._robot_name,
+                )
+
             logger.info("Connecting to Reachy Mini: %s", self._robot_name)
 
             self._mini = ReachyMini(
                 robot_name=self._robot_name,
+                connection_mode="network",
                 media_backend=self._media_backend,
                 timeout=timeout,
             )

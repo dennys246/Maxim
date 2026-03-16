@@ -737,6 +737,11 @@ class PromptBuilder:
                           SectionPriority.IMPORTANT, truncatable=True, min_tokens=30,
                           truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter))
 
+        if request.protocol_context:
+            budgeter.add("active_protocols",
+                          "=== Active Protocols ===\n" + request.protocol_context,
+                          SectionPriority.IMPORTANT)
+
         carryover_text = self._reasoning_carryover.get_prompt_text()
         if carryover_text:
             budgeter.add("reasoning_carryover", carryover_text, SectionPriority.IMPORTANT,

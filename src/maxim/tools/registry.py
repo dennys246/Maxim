@@ -20,5 +20,9 @@ class ToolRegistry:
             raise KeyError(f"Tool not registered: {name}")
         return self._tools[name]
 
+    def deregister(self, name: str) -> bool:
+        """Remove a tool by name. Returns True if found and removed."""
+        return self._tools.pop(name, None) is not None
+
     def list(self) -> list[str]:
         return list(self._tools.keys())

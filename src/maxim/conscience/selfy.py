@@ -306,6 +306,8 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
         self._agentic_thread: threading.Thread | None = None
         self._agentic_agent = None
         self._agentic_state = None
+        self._protocol_registry = None  # Set by _start_agentic_runtime
+        self._workspace_limit_override: dict[str, float] | None = None  # Set by ProtocolRegistry
         self._cli_logger: CLIInputLogger | None = None
         self._vision_event_logger: VisionEventLogger | None = None
         self._vision_event_thread: threading.Thread | None = None
@@ -319,6 +321,22 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
         self.motor_history: list[dict] = []
 
         atexit.register(self.shutdown)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Protocol dispatch (called by phrase_responses)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _protocol_activate(self, name: str) -> None:
+        """Called by phrase_responses to activate a protocol."""
+        if self._protocol_registry is not None:
+            result = self._protocol_registry.activate(name)
+            self.log.info("Protocol activation: %s", result)
+
+    def _protocol_deactivate(self, name: str) -> None:
+        """Called by phrase_responses to deactivate a protocol."""
+        if self._protocol_registry is not None:
+            result = self._protocol_registry.deactivate(name)
+            self.log.info("Protocol deactivation: %s", result)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Hardware Properties (backward compatibility + abstraction)

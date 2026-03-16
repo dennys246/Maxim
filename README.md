@@ -26,6 +26,7 @@ Maxim provides:
 | **Harm Prediction** | Zero-latency prediction of harmful outcomes before execution |
 | **Contemplation** | Local chain-of-thought: multi-pass critique+refine for complex plans |
 | **Energy Tracking** | Resource expenditure monitoring for tokens, compute, and movement |
+| **Skills & Protocols** | Composable capabilities with lifecycle states, workspace constraints, and voice activation |
 | **SMS/Voice Comms** | Send and receive texts/calls via Twilio (see `src/maxim/comms/`) |
 
 ---
@@ -103,6 +104,7 @@ Agents → Planning → Decision Engine → Runtime → Executor → Tools → E
 | `src/maxim/proprioception/` | Movement tracking and pain detection |
 | `src/maxim/harm/` | Predictive harm detection (velocity, joint limits) |
 | `src/maxim/energy/` | Resource expenditure tracking (tokens, compute, movement) |
+| `src/maxim/skills/` | Composable skills and protocols (see [docs/skills.md](docs/skills.md)) |
 | `src/maxim/bridges/` | Cross-system integration (pain, energy, memory) |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design rules.

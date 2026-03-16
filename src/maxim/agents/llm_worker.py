@@ -577,6 +577,7 @@ class LLMWorker:
         skip_exploration: bool = False,
         current_strategy: str = "",
         is_sleeping: bool = False,
+        protocol_context: str = "",
     ) -> bool:
         """
         Submit context for LLM processing (non-blocking).
@@ -623,6 +624,7 @@ class LLMWorker:
             skip_exploration=skip_exploration,
             current_strategy=current_strategy,
             is_sleeping=is_sleeping,
+            protocol_context=protocol_context,
         )
 
         if self._pool is not None:

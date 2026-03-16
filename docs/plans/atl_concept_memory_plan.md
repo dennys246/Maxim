@@ -2108,6 +2108,7 @@ memory_agent.set_pattern_completion_fn(pattern_completer.complete)
 | A5a. recall_by_ids() prerequisite | Small (~20 lines) | **IMPLEMENTED.** Added to MemoryLayer ABC, Hippocampus, AngularGyrus, and ATL. | None |
 | A5b. PatternCompleter | Medium (~150 lines) | Standalone class, CompressedMemory handling, normalize_tokens(), memory_refs intersection, recency-sorted episode selection | A2, A3, A5a, unified memory system |
 | A6. Memory lifecycle docs | Small | Document how layers form, connect, and are managed long-term (`docs/memory-layer-lifecycle.md` or guide page update) | A1b-A5b |
+| A7. Bio-skill integration | Medium (~250 lines) | Markdown skill definitions with bio system calls, ConceptExtractor processes skill sequences, skills-as-memories via memory_refs, PatternCompleter uses past skill executions for prediction | A2, A3, A4, A5b, Skills & Protocols system |
 
 **A0** is a prerequisite — without `update_edge()`, neither inline
 reinforcement nor AG modulation can work.
@@ -2183,6 +2184,352 @@ The Concept/ATL hub is designed to accommodate future memory types:
 
 Each new memory type adds a new `memory_refs` layer and new relationship
 types, but the Concept class and ATL graph need no structural changes.
+
+---
+
+## Phase A7: Bio-Skill Integration
+
+> **Prerequisite:** A2 (ConceptExtractor), A3 (ConceptGrounder), A4
+> (ConceptContextBuilder), A5b (PatternCompleter), and the Skills &
+> Protocols system (`docs/plans/skills_and_protocols.md`).
+>
+> The Skills & Protocols plan ships with `bio_dependencies()` on the
+> Skill ABC and `_resolve_bio_systems()` in Protocol — this provides
+> the foundational wiring. Phase A7 builds the deeper integration on
+> top of that interface.
+
+### A7.1 Markdown Skill Definitions
+
+**File:** `src/maxim/skills/definitions/` (new directory)
+
+Skills can be defined as markdown documents with YAML frontmatter and
+structured step sequences that reference bio system calls. These are
+parsed at startup and registered as executable skill instances.
+
+```markdown
+---
+name: slope_observation
+type: bio_skill
+bio: [hippocampus, atl, ips]
+triggers: ["observe the slope", "watch the run"]
+workspace_bounds:
+  yaw: 30.0
+  pitch: 20.0
+---
+
+## Steps
+
+1. **recall_concepts** — Query ATL for concepts related to current
+   task description. Write matches to `context.relevant_concepts`.
+
+2. **statistical_baseline** — Ask IPS to compute motion variance
+   from recent frames. Write to `context.motion_stats`.
+
+3. **episodic_check** — Recall hippocampus episodes where motion
+   stats were similar. If past episodes are flagged, boost salience.
+
+4. **activate_skill** — Start RTSPStreamingSkill with bounds from
+   workspace_bounds above.
+```
+
+**Parser:** `src/maxim/skills/definition_parser.py`
+
+```python
+"""Parse markdown skill definitions into executable BioSkill instances.
+
+Loads .md files from a definitions directory, parses YAML frontmatter
+for metadata (name, bio dependencies, triggers, bounds), and extracts
+structured steps. Steps reference bio system operations by convention:
+
+  - recall_concepts → ATL.recall_similar()
+  - episodic_check → Hippocampus.recall_associated()
+  - statistical_baseline → IPS computation
+  - activate_skill → delegate to named Skill class
+
+The parsed definition becomes a BioSkill instance that can be composed
+into protocols like any other Skill.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+__all__ = ["SkillDefinition", "parse_skill_definition", "load_definitions"]
+
+
+@dataclass
+class SkillStep:
+    """A single step in a markdown skill definition."""
+    name: str                    # e.g., "recall_concepts"
+    description: str             # human-readable description
+    operation: str               # resolved bio system operation
+    context_writes: list[str]    # blackboard keys this step writes
+    context_reads: list[str]     # blackboard keys this step reads
+
+
+@dataclass
+class SkillDefinition:
+    """Parsed markdown skill definition."""
+    name: str
+    bio_deps: list[str]
+    triggers: list[str]
+    workspace_bounds: dict[str, float] | None
+    steps: list[SkillStep]
+    raw_markdown: str            # original for LLM context
+
+
+def parse_skill_definition(path: Path) -> SkillDefinition:
+    """Parse a single .md skill definition file."""
+    ...  # YAML frontmatter + step extraction
+
+
+def load_definitions(directory: Path) -> list[SkillDefinition]:
+    """Load all .md skill definitions from a directory."""
+    ...
+```
+
+### A7.2 BioSkill — Executable Wrapper
+
+**File:** `src/maxim/skills/bio_skill.py`
+
+Wraps a `SkillDefinition` into a `Skill` subclass that executes steps
+against live bio system references.
+
+```python
+"""BioSkill — a Skill driven by a markdown definition + bio systems.
+
+Each step in the definition maps to a bio system operation:
+
+  Step Name             → Bio System Call
+  ─────────────────────────────────────────────
+  recall_concepts       → atl.recall_similar(query, top_k)
+  episodic_check        → hippocampus.recall_associated(query)
+  statistical_baseline  → ips.compute(data)  (via StatisticianAgent)
+  concept_ground        → ConceptGrounder.ground(concept)
+  pattern_complete      → PatternCompleter.complete(concept)
+  activate_skill        → delegate to named Skill class
+
+Results from each step are written to the shared protocol blackboard
+(context dict), making them available to downstream steps and skills.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from maxim.skills.base import Skill, SkillConfig, SkillState, SkillResult
+
+__all__ = ["BioSkill"]
+
+
+class BioSkill(Skill):
+    """A skill whose behavior is defined by a markdown document."""
+
+    def __init__(self, definition: SkillDefinition):
+        self._definition = definition
+        self._state = SkillState.IDLE
+        self._last_result: SkillResult | None = None
+        self._bio: dict[str, Any] = {}
+
+    @property
+    def name(self) -> str:
+        return self._definition.name
+
+    @property
+    def description(self) -> str:
+        return f"Bio-skill: {self._definition.name} ({len(self._definition.steps)} steps)"
+
+    def bio_dependencies(self) -> list[str]:
+        return self._definition.bio_deps
+
+    def tools(self) -> list:
+        return []  # Bio skills are passive — no LLM tools
+
+    def can_activate(self, maxim: Any) -> tuple[bool, str]:
+        # Check that all required bio systems are available
+        missing = [d for d in self._definition.bio_deps
+                   if d not in getattr(self, "_bio", {})]
+        if missing:
+            return False, f"Missing bio systems: {missing}"
+        return True, ""
+
+    def activate(self, maxim: Any, context: dict[str, Any] | None = None) -> SkillResult:
+        self._state = SkillState.ACTIVATING
+        ctx = context or {}
+
+        for step in self._definition.steps:
+            try:
+                self._execute_step(step, ctx)
+            except Exception as e:
+                self._state = SkillState.FAILED
+                self._last_result = SkillResult(
+                    state=SkillState.FAILED,
+                    message=f"Step '{step.name}' failed",
+                    error=str(e),
+                )
+                return self._last_result
+
+        self._state = SkillState.ACTIVE
+        self._last_result = SkillResult(
+            state=SkillState.ACTIVE,
+            message=f"Completed {len(self._definition.steps)} steps",
+        )
+        return self._last_result
+
+    def deactivate(self) -> SkillResult:
+        self._state = SkillState.IDLE
+        self._last_result = SkillResult(state=SkillState.IDLE, message="Deactivated")
+        return self._last_result
+
+    def _execute_step(self, step: SkillStep, context: dict[str, Any]) -> None:
+        """Execute a single step against the bio systems.
+
+        Maps step names to bio system calls. Results are written to
+        the shared context dict for downstream steps/skills.
+        """
+        if step.operation == "recall_concepts":
+            atl = self._bio["atl"]
+            query = context.get("task_description", "")
+            results = atl.recall_similar(query, top_k=5)
+            context[step.context_writes[0]] = results
+
+        elif step.operation == "episodic_check":
+            hippo = self._bio["hippocampus"]
+            query = context.get("task_description", "")
+            episodes = hippo.recall_associated(query, max_depth=2)
+            context[step.context_writes[0]] = episodes
+
+        elif step.operation == "statistical_baseline":
+            ips = self._bio["ips"]
+            # IPS computation details depend on what data is available
+            context[step.context_writes[0]] = ips.compute_stats(context)
+
+        elif step.operation == "activate_skill":
+            pass  # Delegate to protocol's skill activation
+        else:
+            raise ValueError(f"Unknown step operation: {step.operation}")
+
+    def context_for_llm(self) -> str:
+        """Include the raw markdown definition for LLM understanding."""
+        if self.state == SkillState.ACTIVE:
+            return (
+                f"Bio-skill '{self.name}' active.\n"
+                f"Definition:\n{self._definition.raw_markdown}"
+            )
+        return super().context_for_llm()
+```
+
+### A7.3 Skills as Memories
+
+When a BioSkill executes, its execution becomes a memory that feeds back
+into the bio systems:
+
+**ConceptExtractor integration (extends A2):**
+
+```python
+# In ConceptExtractor._process_item(), after existing concept extraction:
+
+# If the memory contains skill execution metadata, create/update
+# a concept for the skill itself
+skill_name = memory.metadata.get("skill_name")
+if skill_name:
+    concept = self._atl.find_or_create(
+        f"skill:{skill_name}",
+        category="skill_execution",
+    )
+    concept.add_ref("hippocampus", memory.id)
+    # Link skill concept to other concepts extracted from this memory
+    for other_concept in extracted_concepts:
+        self._atl.update_edge(
+            concept.id, other_concept.id,
+            edge_type="EXECUTES_WITH",
+            weight=0.5,
+        )
+```
+
+**PatternCompleter integration (extends A5b):**
+
+```python
+# In PatternCompleter.complete(), when searching for patterns:
+
+# Find skill execution concepts related to the current context
+skill_concepts = [c for c in matching_concepts
+                  if c.category == "skill_execution"]
+
+for sc in skill_concepts:
+    # Get all past episodes where this skill was executed
+    episodes = self._recall_by_ids("hippocampus", sc.memory_refs.get("hippocampus", {}))
+    # Extract outcomes from past executions
+    for ep in episodes:
+        outcome = ep.metadata.get("skill_outcome")
+        if outcome:
+            predictions.append(PredictedOutcome(
+                prediction=f"Skill '{sc.name}' previously: {outcome}",
+                confidence=sc.access_count / max_access_count,
+                source_concept=sc.name,
+            ))
+```
+
+**What this enables:**
+
+The system learns from past skill executions:
+- "Last time slope_observation ran in heavy snow, motion_variance was 0.8
+  and recording quality was poor" → ATL concept with episodic refs
+- "slope_observation + high brightness → better results with tighter
+  pitch constraints" → AG-grounded stats on the skill concept
+- "This skill sequence typically takes 45s to activate" → IPS temporal
+  stats linked to the skill concept
+
+### A7.4 Concept-Driven Skill Discovery
+
+**ConceptContextBuilder integration (extends A4):**
+
+When building context for the LLM, include relevant skill definitions
+based on concept matching:
+
+```python
+# In ConceptContextBuilder.build(), after existing concept recall:
+
+# Find skill definitions whose bio dependencies match available concepts
+if skill_definitions:  # loaded from markdown at startup
+    for defn in skill_definitions:
+        relevance = sum(
+            1 for trigger in defn.triggers
+            if any(c.name in trigger for c in matching_concepts)
+        )
+        if relevance > 0:
+            context.available_skills.append({
+                "name": defn.name,
+                "relevance": relevance,
+                "triggers": defn.triggers,
+                "past_success_rate": _get_skill_success_rate(defn.name),
+            })
+```
+
+This gives the LLM SayCan-style affordance information: "here are skills
+relevant to your current task, ranked by concept relevance and past
+success rate."
+
+### A7.5 Implementation Order
+
+| Step | What | Dependencies | Effort |
+|------|------|-------------|--------|
+| A7.1 | SkillDefinition parser + directory loader | Skills & Protocols system | Small (~80 lines) |
+| A7.2 | BioSkill executable wrapper | A7.1, bio_dependencies() interface | Medium (~150 lines) |
+| A7.3 | ConceptExtractor skill-memory integration | A2, A7.2 | Small (~40 lines, extends existing) |
+| A7.4 | PatternCompleter skill-prediction integration | A5b, A7.3 | Small (~40 lines, extends existing) |
+| A7.5 | ConceptContextBuilder skill-discovery | A4, A7.1 | Small (~30 lines, extends existing) |
+
+**Total:** ~340 lines production + ~300 lines tests.
+
+**Implementation order:** A7.1 → A7.2 → A7.3 → A7.4 → A7.5
+
+A7.1 and A7.2 can be built as soon as the Skills & Protocols system is
+implemented. A7.3-A7.5 require their respective ATL phases (A2, A4, A5b)
+to land first — they extend those components rather than replacing them.
 
 ---
 
