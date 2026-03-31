@@ -26,6 +26,7 @@ Maxim provides:
 | **Harm Prediction** | Zero-latency prediction of harmful outcomes before execution |
 | **Contemplation** | Local chain-of-thought: multi-pass critique+refine for complex plans |
 | **Energy Tracking** | Resource expenditure monitoring for tokens, compute, and movement |
+| **Coding Tools** | Edit files, search code, run tests, git diff/commit — with structured error reporting |
 | **Skills & Protocols** | Composable capabilities with lifecycle states, workspace constraints, and voice activation |
 | **SMS/Voice Comms** | Send and receive texts/calls via Twilio (see `src/maxim/comms/`) |
 
@@ -296,6 +297,7 @@ maxim [OPTIONS]
 | `--comms` | Enable SMS/Voice communication | False |
 | `--clear-memory` | Clear persistent memory and exit | None |
 | `--clear-cache` | Clear Python bytecode cache | False |
+| `--audit-architecture` | Audit codebase for architecture rule violations and exit | - |
 
 ### Clearing Persistent Memory
 

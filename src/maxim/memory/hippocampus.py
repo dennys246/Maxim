@@ -251,6 +251,25 @@ class Hippocampus(MemoryLayer):
         self._capture_stop = threading.Event()
 
     # ─────────────────────────────────────────────────────────────────────────
+    # Factory class methods
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @classmethod
+    def from_config(
+        cls, config: HippocampusConfig, persistence_path: str | None = None
+    ) -> "Hippocampus":
+        """Create hippocampus from config, auto-loading saved state if path exists."""
+        instance = cls(config=config)
+        if persistence_path and os.path.exists(persistence_path):
+            instance.load(persistence_path)
+        return instance
+
+    @classmethod
+    def empty(cls, config: HippocampusConfig | None = None) -> "Hippocampus":
+        """Create empty hippocampus with no saved state."""
+        return cls(config=config or HippocampusConfig())
+
+    # ─────────────────────────────────────────────────────────────────────────
     # SCN Integration
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -701,9 +720,8 @@ class Hippocampus(MemoryLayer):
         Returns:
             List of matching memories (EpisodicMemory or CompressedMemory), most recent first.
         """
-        with self._rwlock.write():  # Write for stats update
-            self._stats["queries"] = self._stats.get("queries", 0) + 1
-
+        # Phase 1: Read lock for scanning (allows concurrent readers)
+        with self._rwlock.read():
             # Build index filters
             index_filters: dict[str, Any] = {}
             if goal is not None:
@@ -733,33 +751,46 @@ class Hippocampus(MemoryLayer):
 
                     # Early exit if no matches
                     if not candidates:
-                        return []
+                        early_exit = True
+                        break
+                else:
+                    early_exit = False
             else:
+                early_exit = False
                 # No filters - all memories are candidates
                 candidates = set(self._memories.keys())
 
-            # Filter by time range and collect results
-            results: list[EpisodicMemory | CompressedMemory] = []
-            for memory_id in candidates:
-                memory = self._memories.get(memory_id)
-                if memory is None:
-                    continue
+            if early_exit:
+                results: list[EpisodicMemory | CompressedMemory] = []
+            else:
+                # Filter by time range and collect results
+                results = []
+                for memory_id in candidates:  # type: ignore[union-attr]
+                    memory = self._memories.get(memory_id)
+                    if memory is None:
+                        continue
 
-                # Skip compressed if not wanted
-                if not include_compressed and isinstance(memory, CompressedMemory):
-                    continue
+                    # Skip compressed if not wanted
+                    if not include_compressed and isinstance(memory, CompressedMemory):
+                        continue
 
-                # Time filters
-                if time_after is not None and memory.timestamp < time_after:
-                    continue
-                if time_before is not None and memory.timestamp > time_before:
-                    continue
+                    # Time filters
+                    if time_after is not None and memory.timestamp < time_after:
+                        continue
+                    if time_before is not None and memory.timestamp > time_before:
+                        continue
 
-                results.append(memory)
+                    results.append(memory)
 
-            # Sort by timestamp (most recent first) and limit
-            results.sort(key=lambda m: m.timestamp, reverse=True)
-            return results[:limit]
+                # Sort by timestamp (most recent first) and limit
+                results.sort(key=lambda m: m.timestamp, reverse=True)
+                results = results[:limit]
+
+        # Phase 2: Brief write lock for stats update only
+        with self._rwlock.write():
+            self._stats["queries"] = self._stats.get("queries", 0) + 1
+
+        return results
 
     def recall_similar(
         self,
@@ -780,9 +811,8 @@ class Hippocampus(MemoryLayer):
         Returns:
             List of similar memories, most similar first.
         """
-        with self._rwlock.write():  # Write for stats
-            self._stats["queries"] = self._stats.get("queries", 0) + 1
-
+        # Phase 1: Read lock for scanning (allows concurrent readers)
+        with self._rwlock.read():
             scores: dict[str, float] = defaultdict(float)
 
             # Score by overlapping detected objects
@@ -817,7 +847,11 @@ class Hippocampus(MemoryLayer):
                         continue
                     results.append(memory)
 
-            return results
+        # Phase 2: Brief write lock for stats update only
+        with self._rwlock.write():
+            self._stats["queries"] = self._stats.get("queries", 0) + 1
+
+        return results
 
     def recall_associated(
         self,
@@ -1018,46 +1052,47 @@ class Hippocampus(MemoryLayer):
         if version not in ("1.0", "2.0", "3.0"):
             raise ValueError(f"Unsupported hippocampus version: {version}")
 
+        # Parse OUTSIDE write lock — if from_dict() raises, existing data is preserved
+        temp_memories: dict[str, EpisodicMemory | CompressedMemory] = {}
+        temp_compressed_count = 0
+        for m_data in payload.get("memories", []):
+            if m_data.get("_compressed", False):
+                memory = CompressedMemory.from_dict(m_data)
+                temp_memories[memory.id] = memory
+                temp_compressed_count += 1
+            else:
+                memory = EpisodicMemory.from_dict(m_data)
+                temp_memories[memory.id] = memory
+
+        # Build context index and reverse index from payload
+        temp_context_index: defaultdict[str, set[str]] = defaultdict(
+            set,
+            {k: set(v) for k, v in payload.get("context_index", {}).items()},
+        )
+        temp_memory_contexts: defaultdict[str, set[str]] = defaultdict(set)
+        for index_key, memory_ids in temp_context_index.items():
+            for memory_id in memory_ids:
+                temp_memory_contexts[memory_id].add(index_key)
+
+        temp_stats = payload.get("stats", {})
+
+        # Restore compressed count from payload if available
+        if "compressed_count" in payload:
+            temp_compressed_count = payload["compressed_count"]
+
+        # Build associative graph
+        temp_graph = DependencyGraph()
+        graph_data = payload.get("associative_graph")
+
+        # All parsing succeeded — atomically swap inside the write lock
         with self._rwlock.write():
-            # Clear existing data
             self._memories.clear()
-            self._context_index.clear()
-            self._memory_contexts.clear()
-            self._compressed_count = 0
-
-            # Load memories (detect compressed vs full)
-            for m_data in payload.get("memories", []):
-                if m_data.get("_compressed", False):
-                    # CompressedMemory
-                    memory = CompressedMemory.from_dict(m_data)
-                    self._memories[memory.id] = memory
-                    self._compressed_count += 1
-                else:
-                    # Full EpisodicMemory
-                    memory = EpisodicMemory.from_dict(m_data)
-                    self._memories[memory.id] = memory
-
-            # Load index
-            self._context_index = defaultdict(
-                set,
-                {k: set(v) for k, v in payload.get("context_index", {}).items()},
-            )
-
-            # Rebuild reverse index
-            for index_key, memory_ids in self._context_index.items():
-                for memory_id in memory_ids:
-                    self._memory_contexts[memory_id].add(index_key)
-
-            # Load stats
-            self._stats = payload.get("stats", {})
-
-            # Restore compressed count from payload if available
-            if "compressed_count" in payload:
-                self._compressed_count = payload["compressed_count"]
-
-            # Restore associative graph (v3.0+)
-            self._graph = DependencyGraph()
-            graph_data = payload.get("associative_graph")
+            self._memories.update(temp_memories)
+            self._compressed_count = temp_compressed_count
+            self._context_index = temp_context_index
+            self._memory_contexts = temp_memory_contexts
+            self._stats = temp_stats
+            self._graph = temp_graph
             if graph_data:
                 self._restore_graph(graph_data)
 

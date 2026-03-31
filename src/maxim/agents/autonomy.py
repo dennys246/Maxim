@@ -244,6 +244,15 @@ class RuntimeContext:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+@dataclass(frozen=True)
+class PermissionDenial:
+    """First-class denial record — inspectable and loggable."""
+
+    tool_name: str
+    reason: str
+    rule: str  # "forbidden_tool", "forbidden_prefix", "forbidden_category", "autonomy_level"
+
+
 @dataclass
 class SupervisionPolicy:
     """Defines what the agent can do autonomously in SUPERVISED mode."""
@@ -263,6 +272,10 @@ class SupervisionPolicy:
     max_actions_per_minute: int = 10
     requires_confirmation: set[str] = field(default_factory=set)  # Tool names
 
+    # Deny-prefix and deny-category rules
+    forbidden_prefixes: tuple[str, ...] = ()
+    forbidden_categories: frozenset[str] = frozenset()
+
     # Escalation triggers
     escalate_on_repeated_failure: int = 3
     escalate_on_novel_situation: bool = True
@@ -277,6 +290,16 @@ class SupervisionPolicy:
     ) -> tuple[bool, str | None]:
         """Check if action can be executed autonomously."""
         tool_name = str(action.get("tool_name", "") or "")
+
+        # Check forbidden prefixes
+        for prefix in self.forbidden_prefixes:
+            if tool_name.startswith(prefix):
+                return False, f"Tool '{tool_name}' blocked by prefix rule: {prefix}"
+
+        # Check forbidden categories
+        tool_category = str(action.get("category", "") or "")
+        if tool_category and tool_category in self.forbidden_categories:
+            return False, f"Tool '{tool_name}' blocked by category: {tool_category}"
 
         if tool_name in self.forbidden_tools:
             return False, f"Tool '{tool_name}' is forbidden"
@@ -536,6 +559,8 @@ class AutonomyController:
         "glob",             # File pattern search
         "read_file",        # Read file contents
         "list_directory",   # List directory contents
+        "search_code",      # Regex search file contents (read-only)
+        "git_diff",         # Show git differences (read-only)
         "respond",          # Send text response to user
     })
 

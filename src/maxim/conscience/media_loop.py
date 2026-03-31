@@ -134,7 +134,8 @@ class MediaLoopMixin:
             effective_wake_up = False
         if str(getattr(self, "requested_mode", "") or "").strip().lower() == "sleep":
             effective_wake_up = False
-        self.awaken(vision=bool(vision), motor=bool(motor), audio=bool(self.audio), wake_up=effective_wake_up)
+        if self._robot is not None:
+            self.awaken(vision=bool(vision), motor=bool(motor), audio=bool(self.audio), wake_up=effective_wake_up)
         if vision and self.verbose:
             # Keep OpenCV GUI calls on a dedicated process main thread (safer on Linux/WSL).
             prepare_display()

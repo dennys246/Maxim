@@ -33,6 +33,7 @@ from maxim.harm.predictor import (
 from maxim.harm.registry import HarmRegistry, get_global_registry
 from maxim.harm.movement import MovementHarmPredictor, MovementHarmConfig
 from maxim.harm.joint_limit import JointLimitHarmPredictor, JointLimitConfig
+from maxim.harm.tool_predictor import ToolHarmPredictor
 
 __all__ = [
     # Core types
@@ -49,4 +50,6 @@ __all__ = [
     # Concrete predictors - Joint limits
     "JointLimitHarmPredictor",
     "JointLimitConfig",
+    # Concrete predictors - Tool failure
+    "ToolHarmPredictor",
 ]

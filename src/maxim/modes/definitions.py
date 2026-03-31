@@ -1015,6 +1015,17 @@ CRITICAL RULES:
         "example": {"tool_name": "write_file", "params": {"path": ".maxim_workspace/hello.py", "content": "print('Hello world')", "overwrite": True}},
         "followup_type": None,  # Terminal action
     },
+    "edit_file": {
+        "description": "Replace specific text in a file. Read the file first to see current contents. Use old_text/new_text for stable anchoring across multi-step edits.",
+        "params": {
+            "path": "Path to the file",
+            "old_text": "Exact text to find and replace",
+            "new_text": "Text to replace it with",
+            "expected_count": "(Optional, default 1) Number of expected replacements",
+        },
+        "example": {"tool_name": "edit_file", "params": {"path": "src/main.py", "old_text": "def old_name(", "new_text": "def new_name("}},
+        "followup_type": "process",
+    },
     "list_directory": {
         "description": "List files and directories in a path. For workspace contents, use '.maxim_workspace/'",
         "params": {"path": "Directory path to list (workspace: '.maxim_workspace/')"},
@@ -1108,6 +1119,48 @@ EXAMPLES:
         },
         "example": {"tool_name": "glob", "params": {"pattern": ".maxim_workspace/**/*.py"}},
         "followup_type": "process",  # LLM should process results for analysis or next action
+    },
+    "search_code": {
+        "description": "Search file contents with regex support. Returns matching lines with surrounding context.",
+        "params": {
+            "pattern": "Regex pattern to search for",
+            "path": "(Optional, default '.') Directory to search",
+            "file_pattern": "(Optional) Glob filter for files (e.g., '*.py')",
+            "max_results": "(Optional, default 20) Maximum results to return",
+            "context_lines": "(Optional, default 3) Lines of context around each match",
+        },
+        "example": {"tool_name": "search_code", "params": {"pattern": "def parse_.*", "file_pattern": "*.py"}},
+        "followup_type": "process",
+    },
+    "run_tests": {
+        "description": "Run test suite and return results. Parses output for pass/fail counts.",
+        "params": {
+            "command": "(Optional, default 'python -m pytest') Test command",
+            "test_path": "(Optional) Specific test file or directory",
+            "timeout": "(Optional, default 120) Timeout in seconds",
+        },
+        "example": {"tool_name": "run_tests", "params": {"test_path": "tests/unit/test_parser.py"}},
+        "followup_type": "process",
+    },
+    "git_diff": {
+        "description": "Show git differences. Use this to review changes before committing.",
+        "params": {
+            "ref1": "(Optional, default 'HEAD') First reference",
+            "ref2": "(Optional) Second reference, defaults to working tree",
+            "path": "(Optional) Specific file to diff",
+        },
+        "example": {"tool_name": "git_diff", "params": {"ref1": "HEAD~1"}},
+        "followup_type": "process",
+    },
+    "git_commit": {
+        "description": "Commit staged changes. Always review with git_diff first.",
+        "params": {
+            "message": "Commit message (required)",
+            "files": "(Optional) List of file paths to stage",
+            "dry_run": "(Optional, default false) Preview commit without writing",
+        },
+        "example": {"tool_name": "git_commit", "params": {"message": "Fix parser bug", "dry_run": True}},
+        "followup_type": "process",
     },
     "bash": {
         "description": """Execute shell commands. USE THIS for system operations, running scripts, and command-line tasks.

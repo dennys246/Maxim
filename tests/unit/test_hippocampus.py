@@ -6,6 +6,7 @@ and sleep consolidation.
 
 from __future__ import annotations
 
+import threading
 import time
 
 
@@ -550,3 +551,129 @@ class TestAsyncCapture:
         # Can restart
         hipp.start_capture_worker()
         hipp.stop_capture_worker()
+
+
+class TestRecallLockSplit:
+    """Test PERF-3: recall_similar / recall lock split (read phase + brief write phase)."""
+
+    def test_recall_similar_increments_query_stats(self, hippocampus):
+        """recall_similar() still increments _stats['queries'] after the lock split."""
+        from maxim.memory.types import Action, Context, Decision, Outcome, Perception
+
+        # Capture a memory so there is something to scan
+        hippocampus.capture(
+            perception=Perception(
+                observations={}, detected_objects=["cup"], detected_people=[],
+                salience=0.5, novelty=0.5,
+            ),
+            context=Context(active_goal="test", active_mode="explore"),
+            decision=Decision(intent={}, reasoning="", confidence=0.5),
+            action=Action(tool_name="look", tool_params={}),
+            outcome=Outcome(success=True, result={}),
+        )
+
+        queries_before = hippocampus._stats.get("queries", 0)
+
+        query = Perception(
+            observations={}, detected_objects=["cup"], detected_people=[],
+            salience=0.5, novelty=0.5,
+        )
+        hippocampus.recall_similar(query)
+
+        assert hippocampus._stats["queries"] == queries_before + 1
+
+    def test_concurrent_recall_similar_no_deadlock(self, hippocampus):
+        """Two threads calling recall_similar() concurrently both complete (no deadlock)."""
+        from maxim.memory.types import Action, Context, Decision, Outcome, Perception
+
+        # Populate with a few memories
+        for obj in ("cup", "plate", "fork"):
+            hippocampus.capture(
+                perception=Perception(
+                    observations={}, detected_objects=[obj], detected_people=[],
+                    salience=0.5, novelty=0.5,
+                ),
+                context=Context(active_goal="test", active_mode="explore"),
+                decision=Decision(intent={}, reasoning="", confidence=0.5),
+                action=Action(tool_name="look", tool_params={}),
+                outcome=Outcome(success=True, result={}),
+            )
+
+        query = Perception(
+            observations={}, detected_objects=["cup"], detected_people=[],
+            salience=0.5, novelty=0.5,
+        )
+
+        results = [None, None]
+        errors = [None, None]
+
+        def _recall(idx):
+            try:
+                results[idx] = hippocampus.recall_similar(query)
+            except Exception as exc:
+                errors[idx] = exc
+
+        t0 = threading.Thread(target=_recall, args=(0,))
+        t1 = threading.Thread(target=_recall, args=(1,))
+        t0.start()
+        t1.start()
+        t0.join(timeout=5.0)
+        t1.join(timeout=5.0)
+
+        # Neither thread should still be alive (would indicate deadlock)
+        assert not t0.is_alive(), "Thread 0 deadlocked"
+        assert not t1.is_alive(), "Thread 1 deadlocked"
+        assert errors[0] is None, f"Thread 0 raised: {errors[0]}"
+        assert errors[1] is None, f"Thread 1 raised: {errors[1]}"
+        # Both should have returned results
+        assert results[0] is not None
+        assert results[1] is not None
+
+    def test_recall_by_filters_increments_query_stats(self, hippocampus, complete_memory_args):
+        """recall() (filter-based) still increments _stats['queries'] after the lock split."""
+        hippocampus.capture(**complete_memory_args)
+
+        queries_before = hippocampus._stats.get("queries", 0)
+
+        hippocampus.recall(goal="find mug")
+
+        assert hippocampus._stats["queries"] == queries_before + 1
+
+
+class TestHippocampusFactory:
+    """Test Phase 5 factory class methods."""
+
+    def test_empty_creates_fresh(self):
+        """Hippocampus.empty() creates instance with no memories."""
+        from maxim.memory.hippocampus import Hippocampus
+
+        hippo = Hippocampus.empty()
+        assert len(hippo._memories) == 0
+
+    def test_empty_with_config(self):
+        """Hippocampus.empty(config) uses provided config."""
+        from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+
+        config = HippocampusConfig(max_nodes=500)
+        hippo = Hippocampus.empty(config)
+        assert hippo.config.max_nodes == 500
+
+    def test_from_config_no_file(self):
+        """from_config with nonexistent path creates empty hippocampus."""
+        from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+
+        config = HippocampusConfig()
+        hippo = Hippocampus.from_config(config, persistence_path="/nonexistent/path.json")
+        assert len(hippo._memories) == 0
+
+    def test_from_config_with_file(self, tmp_path):
+        """from_config auto-loads saved state."""
+        from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+
+        config = HippocampusConfig()
+        hippo1 = Hippocampus.empty(config)
+        path = str(tmp_path / "hippo.json")
+        hippo1.save(path)
+
+        hippo2 = Hippocampus.from_config(config, persistence_path=path)
+        assert hippo2 is not None

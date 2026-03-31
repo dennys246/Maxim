@@ -24,6 +24,7 @@ from maxim.runtime.concurrent_executor import (
     partition_for_concurrency,
 )
 from maxim.runtime.executor import Executor
+from maxim.runtime.monitor_registry import MonitorRegistry, SignalMonitor
 from maxim.runtime.preemption import (
     ExecutionSnapshot,
     ExecutionTracker,
@@ -52,6 +53,7 @@ __all__ = [
     "ExecutionTracker",
     "Executor",
     "GoalDiscarded",
+    "MonitorRegistry",
     "PreemptionCircuit",
     "PreemptionCleared",
     "PreemptionEvent",
@@ -61,6 +63,7 @@ __all__ = [
     "ReversalType",
     "RobotState",
     "RuntimeState",
+    "SignalMonitor",
     "SkillMatcher",
     "SkillPrompt",
     "SourceConfig",

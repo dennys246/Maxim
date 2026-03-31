@@ -4,8 +4,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from maxim.agents.bus import ToolErrorKind
 
-@dataclass(slots=True)
+
+@dataclass(slots=True, frozen=True)
 class ToolOutput:
     """Raw output from a single tool execution.
 
@@ -17,6 +19,7 @@ class ToolOutput:
     success: bool
     output: Any = None
     error: str | None = None
+    error_kind: ToolErrorKind | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -28,6 +31,7 @@ class Tool(ABC):
     name: str
     description: str = ""
     input_schema: dict[str, Any] = {}
+    timeout: float = 30.0  # per-tool timeout declaration (seconds)
 
     def __init__(self) -> None:
         if not getattr(self, "name", ""):

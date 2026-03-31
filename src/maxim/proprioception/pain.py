@@ -7,6 +7,8 @@ are exceeded, enabling learning to avoid harmful movement patterns.
 from __future__ import annotations
 
 import logging
+import math
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -26,6 +28,10 @@ class PainType(Enum):
     SUSTAINED_STRAIN = "sustained_strain"  # Prolonged near-limit position
     EXCESSIVE_ACCELERATION = "excessive_acceleration"  # Too rapid speed change
     MOVEMENT_FAILURE = "movement_failure"  # Commanded but didn't reach target
+    TOOL_FAILURE = "tool_failure"
+    TOOL_TIMEOUT = "tool_timeout"
+    TOOL_INVALID_INPUT = "tool_invalid_input"
+    TOOL_SUSTAINED = "tool_sustained"
 
 
 @dataclass
@@ -73,9 +79,9 @@ class PainSignal:
     pain_type: PainType
     intensity: float  # 0-1 scale (0 = threshold, 1 = severe)
     timestamp: float
-    angular_velocity: float  # The velocity that triggered this
-    translation_velocity: float
-    direction_reversals: int
+    angular_velocity: float = 0.0  # The velocity that triggered this
+    translation_velocity: float = 0.0
+    direction_reversals: int = 0
     context: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -125,6 +131,7 @@ class PainDetector:
             movement_tracker: Optional pre-existing tracker. Creates one if None.
         """
         self.config = config or PainConfig()
+        self._lock = threading.Lock()
 
         # Create tracker if not provided
         if movement_tracker is None:
@@ -408,9 +415,10 @@ class PainDetector:
 
     def _emit_pain(self, signal: PainSignal) -> PainSignal:
         """Emit a pain signal and update tracking."""
-        self._last_pain_time[signal.pain_type] = signal.timestamp
-        self._total_pain_signals += 1
-        self._pain_counts[signal.pain_type] += 1
+        with self._lock:
+            self._last_pain_time[signal.pain_type] = signal.timestamp
+            self._total_pain_signals += 1
+            self._pain_counts[signal.pain_type] = self._pain_counts.get(signal.pain_type, 0) + 1
 
         # Log at WARNING for high intensity pain, INFO for moderate
         log_msg = (
@@ -430,7 +438,7 @@ class PainDetector:
         else:
             logger.info(log_msg, *log_args)
 
-        # Notify callbacks
+        # Notify callbacks (outside lock)
         for callback in self._callbacks:
             try:
                 callback(signal)
@@ -451,6 +459,91 @@ class PainDetector:
         """Remove a previously registered callback."""
         if callback in self._callbacks:
             self._callbacks.remove(callback)
+
+    def record_tool_error(
+        self,
+        tool_name: str,
+        error: str,
+        error_kind: "ToolErrorKind",
+        context: dict[str, Any] | None = None,
+    ) -> PainSignal | None:
+        """Record a tool error as a pain signal.
+
+        Args:
+            tool_name: Name of the tool that failed.
+            error: Error message.
+            error_kind: Classification of the error.
+            context: Optional additional context.
+
+        Returns:
+            PainSignal if emitted (not in cooldown), None otherwise.
+        """
+        from maxim.agents.bus import ToolErrorKind
+
+        pain_type = {
+            ToolErrorKind.TIMEOUT: PainType.TOOL_TIMEOUT,
+            ToolErrorKind.INVALID_INPUT: PainType.TOOL_INVALID_INPUT,
+        }.get(error_kind, PainType.TOOL_FAILURE)
+
+        now = time.time()
+        if now - self._last_pain_time.get(pain_type, 0) < self.config.pain_cooldown_seconds:
+            return None
+
+        # Escalating intensity based on repeated failures
+        key = f"tool:{tool_name}"
+        if not hasattr(self, "_tool_pain_counts"):
+            self._tool_pain_counts: dict[str, int] = {}
+        self._tool_pain_counts[key] = self._tool_pain_counts.get(key, 0) + 1
+        count = self._tool_pain_counts[key]
+        intensity = min(1.0, 0.3 + 0.17 * math.log(max(1, count)))
+
+        signal = PainSignal(
+            pain_type=pain_type,
+            intensity=intensity,
+            timestamp=now,
+            context={
+                "tool_name": tool_name,
+                "error": error,
+                "error_kind": error_kind.value,
+                **(context or {}),
+            },
+        )
+        self._emit_pain(signal)
+        return signal
+
+    def record_tool_running(
+        self,
+        tool_name: str,
+        elapsed: float,
+        expected: float,
+    ) -> PainSignal | None:
+        """Record a tool running longer than expected as sustained pain.
+
+        Args:
+            tool_name: Name of the long-running tool.
+            elapsed: Seconds elapsed so far.
+            expected: Expected duration in seconds.
+
+        Returns:
+            PainSignal if the tool is over its expected time, None otherwise.
+        """
+        ratio = elapsed / expected if expected > 0 else elapsed / 30.0
+        if ratio < 1.0:
+            return None
+        intensity = min(1.0, 0.3 * ratio)
+        signal = PainSignal(
+            pain_type=PainType.TOOL_SUSTAINED,
+            intensity=intensity,
+            timestamp=time.time(),
+            context={
+                "tool_name": tool_name,
+                "elapsed": elapsed,
+                "expected": expected,
+                "ratio": ratio,
+            },
+        )
+        self._emit_pain(signal)
+        return signal
 
     def get_stats(self) -> dict[str, Any]:
         """Get pain detection statistics."""

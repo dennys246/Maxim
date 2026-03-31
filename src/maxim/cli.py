@@ -271,6 +271,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "nac, scn, hippo, pain. Can specify multiple comma-separated types."
         ),
     )
+    parser.add_argument(
+        "--audit-architecture",
+        action="store_true",
+        help="Audit codebase for architecture rule violations and exit.",
+    )
     return parser
 
 
@@ -643,6 +648,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         total = len(results)
         print(f"Cleared {cleared}/{total} memory file(s).")
         return 0  # Exit after clearing
+
+    # Architecture audit if requested
+    if getattr(args, "audit_architecture", False):
+        from maxim.utils.audit import audit_architecture
+        violations = audit_architecture()
+        if violations:
+            print(f"Found {len(violations)} architecture violations:")
+            for v in violations:
+                print(f"  {v.file}:{v.line} — {v.rule} (imports {v.imported_module})")
+            sys.exit(1)
+        else:
+            print("No architecture violations found.")
+            sys.exit(0)
 
     build_home(args.home_dir)
     mode = str(getattr(args, "mode", "exploration")).strip().lower()

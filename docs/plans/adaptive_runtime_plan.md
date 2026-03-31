@@ -1,6 +1,6 @@
 # Adaptive Runtime Plan
 
-> **Status:** Not started. Pre-requisite: claw-code upgrade (items 1-10).
+> **Status:** Phase 1 complete. Pre-requisite: claw-code upgrade (items 1-10).
 >
 > **Includes:** Multi-LLM scaling (merged from `multi-llm-scaling.md`)
 > as Phase 5c — per-lane model assignment with CPU+GPU coexistence.
@@ -311,6 +311,8 @@ def build_tool_registry(*, capabilities: RuntimeCapabilities, ...):
     return registry
 ```
 
+**Note:** The claw-code upgrade added EditFileTool, CodeSearchTool, RunTestsTool, GitDiffTool, GitCommitTool to bootstrap.py using the existing `maxim=None` pattern. Phase 3b refactoring must update these registrations to use `capabilities` instead.
+
 ### Phase 4: Runtime Capability Changes
 
 **Goal:** Adapt when things connect or disconnect mid-session.
@@ -466,6 +468,8 @@ def build_lane_model_config(caps: RuntimeCapabilities) -> dict[str, LaneModelCon
             ),
         }
 ```
+
+**Memory warning:** Loading 2 LLM models simultaneously (GPU + CPU) may exhaust system RAM even if VRAM is managed. Monitor total memory usage during dual-model operation. Consider lazy unloading of CPU model when not actively processing review jobs.
 
 ##### LaneConfig changes
 
@@ -655,10 +659,10 @@ backend_manager = LaneBackendManager(lane_configs)
 
 | Phase | Item | Effort | Impact | Notes |
 |-------|------|--------|--------|-------|
-| **1** | `RuntimeCapabilities` dataclass + detection | Small | High | Foundation for everything |
-| **1** | Remove RuntimeError on no robot (selfy.py:228) | Small | Critical | Unblocks headless mode |
-| **1** | Guard 3 unguarded crash sites | Small | Critical | media_loop:137, agentic_runtime:94, live() routing |
-| **1** | Headless media loop alternative | Medium | High | Event-driven loop for no-robot |
+| **1** | `RuntimeCapabilities` dataclass + detection | Small | High | **DONE** — Foundation for everything |
+| **1** | Remove RuntimeError on no robot (selfy.py:228) | Small | Critical | **DONE** — Unblocks headless mode |
+| **1** | Guard 3 unguarded crash sites | Small | Critical | **DONE** — media_loop:137, agentic_runtime:94, live() routing |
+| **1** | Headless media loop alternative | Medium | High | **NOT DONE** — _run_headless_loop() described but not implemented. live() still requires robot for media capture. |
 | **2** | Adaptive target_hz | Small | Medium | 30Hz→2Hz based on capabilities |
 | **2** | Conditional DefaultNetwork init | Small | Medium | Skip if no motors |
 | **2** | Conditional CaptureManager init | Small | Medium | Skip if no camera |
@@ -673,11 +677,15 @@ backend_manager = LaneBackendManager(lane_configs)
 | **5c.5** | `LaneMetrics` + enriched status() | Small | Medium | Per-lane observability |
 | **5c.6** | Env var / llm.json config support | Small | Medium | MAXIM_INFER_PROFILE etc. |
 
+**Phase 1: MOSTLY COMPLETE** — RuntimeCapabilities, RuntimeError removal, and 3 crash site guards implemented. Headless media loop (_run_headless_loop) NOT yet implemented — live() still requires robot for media capture. This is the priority gap to close before Phase 2.
+
 ### Phase 6: Smoke Tests
 
 **Goal:** Validate the headless path end-to-end. One regression test per capability configuration prevents future changes from silently re-breaking headless mode.
 
 **New file:** `tests/integration/test_headless_smoke.py`
+
+**Note:** These tests reference functions not yet implemented (`detect_capabilities()`, `_compute_target_hz()`, `_run_headless_loop()`). Implement the functions first, then the tests. Write tests incrementally as each phase completes, not all at the end.
 
 These tests run WITHOUT a robot, WITHOUT a GPU requirement, and WITHOUT network. They validate that Maxim boots, runs tools, learns, and shuts down cleanly in every degraded configuration.
 
@@ -891,9 +899,9 @@ class TestCapabilityTransitions:
 
 | Plan | Relationship | Conflicts? |
 |------|-------------|-----------|
-| [claw-code-upgrade-plan.md](claw-code-upgrade-plan.md) | Coding tools, cognitive pain, session persistence — all robot-agnostic by design | None — but adaptive Phase 1 should precede claw-code Phase 2 |
+| ~~claw-code upgrade~~ | **IMPLEMENTED** — coding tools, cognitive pain, session persistence. Documented in ARCHITECTURE.md/DECISIONS.md. | None |
 | [safe_freezing_plan.md](safe_freezing_plan.md) | Frozen configs — orthogonal to runtime adaptation | None |
-| ~~multi-llm-scaling.md~~ | **MERGED** into this plan as Phase 5c | N/A — delete original |
+| ~~multi-llm-scaling.md~~ | **MERGED** into this plan as Phase 5c, original deleted | N/A |
 | [provenance_plan.md](provenance_plan.md) | Decision tracing — **IMPLEMENTED**, orthogonal | None |
 | ~~bio-skill-integration.md~~ (ATL A7) | Bio-skill integration — **IMPLEMENTED**, bio systems are robot-agnostic | None |
 

@@ -27,7 +27,7 @@ Paths refer to the `src/maxim/` package layout.
 - `src/maxim/planning/`: owns plan generation/refinement; must **not** execute actions, select final actions, or mutate state.
 - `src/maxim/planning/decision_engine.py`: owns action selection/arbitration/control flow; must **not** generate plans, execute tools, store memory, or inspect environment internals.
 - `src/maxim/planning/policy.py`: owns constraints/guardrails/safety rules; must **not** perform planning, execution, or goal reasoning.
-- `src/maxim/tools/`: owns side effects (I/O, network, filesystem, APIs); must **not** do control flow, reasoning, or decision making.
+- `src/maxim/tools/`: owns side effects (I/O, network, filesystem, APIs); must **not** do control flow, reasoning, or decision making. Tools have a `timeout` class variable for per-tool execution limits. Coding tools: `EditFileTool` (text-anchor edits), `CodeSearchTool` (regex search), `RunTestsTool` (structured test results), `GitDiffTool`, `GitCommitTool`.
 - `src/maxim/environment/`: owns observation of the world; must **not** perform side effects or execute tools.
 - `src/maxim/memory/`: owns storage/retrieval/compression/forgetting; must **not** do decision making or action selection.
   - `hippocampus.py`: Associative memory graph storing complete agentic loops with selective capture, compression, and sleep-based consolidation.
@@ -38,7 +38,7 @@ Paths refer to the `src/maxim/` package layout.
 - `src/maxim/time/`: owns temporal indexing and rhythm tracking.
   - `scn.py`: Suprachiasmatic Nucleus - temporal bin indexing for circadian/weekly/monthly patterns. BoundedBin for capacity-managed bins with significance-based eviction.
   - `temporal_signature.py`: Phase-based temporal fingerprinting.
-- `src/maxim/decisions/`: owns causal inference and prediction.
+- `src/maxim/decisions/`: owns causal inference and prediction. Includes `StopReason` enum (10 loop termination reasons) and `ToolErrorKind` enum (7 error classifications on `ToolOutput`) for structured error vocabulary. `CodingReplanContext` captures structured test/build failures for test-driven replanning. Context compaction uses a sliding window with first-turn pinning for long-horizon plans.
   - `nac.py`: Nucleus Accumbens - learns event→outcome relationships via temporal difference learning.
   - `significance.py`: SignificanceWeightLearner - learnable heuristics for memory staging (RPE, novelty, user interaction, etc.).
 - `src/maxim/similarity/`: owns multi-modal similarity queries.
@@ -75,7 +75,7 @@ Paths refer to the `src/maxim/` package layout.
 - `src/maxim/integration/`: owns central coordination.
   - `memory_hub.py`: MemoryHub coordinates all bridges and manages session lifecycle.
 - `src/maxim/state/` (reserved): owns authoritative runtime truth; must **not** contain long-term storage logic or planning.
-- `src/maxim/runtime/`: owns agentic orchestration/main execution loop; must **not** do domain reasoning.
+- `src/maxim/runtime/`: owns agentic orchestration/main execution loop; must **not** do domain reasoning. Includes `MonitorRegistry`/`SignalMonitor` for centralized watchdog monitoring, `RuntimeCapabilities` for hardware detection and graceful degradation (headless mode without robot), `AgentSession` for session persistence (save/load with Percept serialization), and `StreamEvent`/`on_event` callback for fine-grained streaming events from the agent loop.
 - `src/maxim/conscience/`: owns robot orchestration/main loop (Reachy capture/inference/control); must **not** do agentic decision making.
 
 ### Absolute Separation Rules
@@ -286,6 +286,7 @@ Four biologically-inspired systems collaborate to give Maxim memory, temporal aw
 | **EscalationLearningBridge** | Hippocampus ↔ SCN/NAc | Fixed thresholds | Per-goal, per-time learned thresholds |
 | **FearCircuitBridge** | Hippocampus ↔ FearAgent ↔ NAc | No learned risk patterns | Memory-informed risk assessment (also queries EC via associative graph for contextual history) |
 | **PainCircuitBridge** | PainDetector ↔ NAc | No movement-pain learning | Learned action→pain associations |
+| **ToolPainBridge** | Tool errors ↔ NAc ↔ FearAgent | No tool-failure learning | Cognitive pain from tool errors via Rescorla-Wagner |
 | **EnergyCircuitBridge** | EnergyRegistry ↔ NAc | No energy cost awareness | Learned action→energy associations |
 | **CommunicationBridge** | Comms ↔ Hippocampus | No communication context | Communication-aware memory |
 | **MathBridge** | AngularGyrus ↔ Hippocampus | No math pattern learning | Learned math patterns promoted to AG |
@@ -384,6 +385,12 @@ Position Updates → MovementTracker → PainDetector → PainCircuitBridge → 
 - `DIRECTION_THRASHING`: Rapid back-and-forth reversals
 - `EXCESSIVE_ACCELERATION`: Sudden speed changes
 - `SUSTAINED_STRAIN`: Prolonged near-limit positions
+- `TOOL_FAILURE`: Tool execution returned an error
+- `TOOL_TIMEOUT`: Tool exceeded its execution timeout
+- `TOOL_INVALID_INPUT`: Tool received malformed parameters
+- `TOOL_SUSTAINED`: Repeated failures from the same tool
+
+ToolPainBridge routes tool errors through PainDetector → NAc, creating cognitive pain signals that the FearAgent uses to learn which tools fail in which contexts.
 
 ### Integration with FearAgent
 
@@ -556,6 +563,10 @@ _propose_goal()
 ```
 
 Config: `data/util/llm.json` → `contemplation` key. See [AGENTS.md](AGENTS.md#contemplation-system-execagent-local-chain-of-thought) for full documentation.
+
+## Architecture Audit
+
+The `--audit-architecture` CLI flag runs an AST-based import validator that checks all source files against the layer dependency rules above. It reports any reverse imports (e.g., tools importing from agents) and exits with a non-zero code on violations. Useful for CI and pre-commit validation.
 
 ## Invariants
 - Control loop must not perform heavy disk I/O.

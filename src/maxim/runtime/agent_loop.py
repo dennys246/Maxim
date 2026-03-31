@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 # Import LLMProposal for runtime use (multi-step action creation)
 from maxim.agents.llm_worker import LLMProposal
+from maxim.agents.bus import StreamEvent
 
 # Import Hippocampus and MemoryHub for episodic memory (optional)
 try:
@@ -156,6 +157,7 @@ def run_agent_loop(
     run_id: str | None = None,
     stop_event: Any | None = None,
     on_step: Any | None = None,
+    on_event: Any | None = None,     # Fine-grained streaming callback
     break_on_no_intent: bool = False,
     idle_sleep_s: float = 0.25,
     persist_every_n_steps: int = 10,
@@ -321,7 +323,7 @@ def run_agent_loop(
 
         try:
             state.steps_taken += 1
-        except Exception:
+        except AttributeError:
             pass
 
         # Persist state periodically based on persist_every_n_steps setting
@@ -353,6 +355,7 @@ def run_agentic_loop(
     run_id: str | None = None,
     stop_event: Any | None = None,
     on_step: Any | None = None,
+    on_event: Any | None = None,     # Fine-grained streaming callback
     idle_sleep_s: float = 0.05,  # Fast loop for responsiveness
     persist_every_n_steps: int = 10,
     target_hz: float = 30.0,  # Target loop frequency
@@ -457,7 +460,7 @@ def run_agentic_loop(
         if hasattr(executor, "registry") and hasattr(executor.registry, "list"):
             try:
                 return set(executor.registry.list())
-            except Exception:
+            except (KeyError, AttributeError):
                 pass
         return set()
 
@@ -565,7 +568,7 @@ def run_agentic_loop(
             if stop_event is not None and hasattr(stop_event, "is_set") and stop_event.is_set():
                 log_agentic("agent_loop", "shutdown", {"reason": "stop_event"})
                 break
-        except Exception:
+        except (AttributeError, RuntimeError):
             pass
 
         # Check for shutdown mode - break immediately to stop LLM worker promptly
@@ -1080,6 +1083,11 @@ def run_agentic_loop(
                     )
                     new_proposal = None
             if new_proposal:
+                if callable(on_event):
+                    try:
+                        on_event(StreamEvent("inference_end", {"has_proposal": True}))
+                    except Exception:
+                        pass
                 if new_proposal.action:
                     tool_name = new_proposal.action.get("tool_name", "unknown")
                     logger.info("LLM proposal received: tool=%s, confidence=%.2f",
@@ -1211,10 +1219,22 @@ def run_agentic_loop(
 
                             if can_execute:
                                 try:
+                                    if callable(on_event):
+                                        try:
+                                            on_event(StreamEvent("tool_start", {"tool_name": action["tool_name"]}))
+                                        except Exception:
+                                            pass
+
                                     result = executor.execute(action)
 
                                     # Log tool execution
                                     success = getattr(result, "success", True)
+
+                                    if callable(on_event):
+                                        try:
+                                            on_event(StreamEvent("tool_end", {"tool_name": action["tool_name"], "success": success}))
+                                        except Exception:
+                                            pass
                                     log_agentic(
                                         "agent_loop",
                                         "tool_called",
@@ -2346,6 +2366,12 @@ def run_agentic_loop(
                         if protocol_registry is not None:
                             _protocol_context = protocol_registry.get_context_for_llm()
 
+                        if callable(on_event):
+                            try:
+                                on_event(StreamEvent("inference_start", {}))
+                            except Exception:
+                                pass
+
                         submitted = llm_worker.submit_context(
                             context=context,
                             mode=mode_info,
@@ -2409,7 +2435,7 @@ def run_agentic_loop(
                     "pending_proposal": pending_proposal is not None,
                 })
         except Exception:
-            pass
+            logger.debug("on_step callback failed", exc_info=True)
 
         # ─────────────────────────────────────────────────────────────────
         # 8. INCREMENT STEP COUNTER AND PERSIST

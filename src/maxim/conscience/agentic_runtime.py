@@ -31,6 +31,8 @@ class AgenticRuntimeMixin:
         if existing is not None and getattr(existing, "is_alive", lambda: False)():
             return
 
+        _t_boot = time.time()
+
         # Allow CPU-only operation (e.g., when CUDA is hidden for Blackwell GPUs)
         # Note: llama_cpp backend has native Metal support on macOS, so skip this fallback
         # when using llama_cpp - it will use Metal GPU acceleration automatically
@@ -84,12 +86,14 @@ class AgenticRuntimeMixin:
             warn("Agentic runtime unavailable: %s", e, logger=self.log)
             return
 
+        self.log.info("Bootstrap: config + imports (%.1fms)", (time.time() - _t_boot) * 1000)
+
         stop_event = threading.Event()
         self._agentic_stop_event = stop_event
 
         # Phase 3: Initialize CaptureManager for direct frame access
         capture_manager = None
-        if use_capture_manager:
+        if use_capture_manager and hasattr(self, '_capabilities') and self._capabilities.has_vision:
             try:
                 capture_manager = CaptureManager(
                     maxim=self,
@@ -101,6 +105,7 @@ class AgenticRuntimeMixin:
                 warn("Failed to create CaptureManager: %s (falling back to JSONL)", e, logger=self.log)
                 capture_manager = None
 
+        _t_mem = time.time()
         agent = MaximAgent(
             interests=list(getattr(self, "interests", []) or []),
             data_folder=str(getattr(self, "home_dir", "data") or "data"),
@@ -178,6 +183,8 @@ class AgenticRuntimeMixin:
         except Exception as e:
             warn("Failed to create MemoryHub: %s", e, logger=self.log)
             memory_hub = None
+
+        self.log.info("Bootstrap: memory systems initialized (%.1fms)", (time.time() - _t_mem) * 1000)
 
         # Create NumericalWorkspace for agent math operations
         try:
@@ -298,6 +305,7 @@ class AgenticRuntimeMixin:
             except Exception as e:
                 warn("Failed to build comms stack: %s", e, logger=self.log)
 
+        _t_tools = time.time()
         registry = build_tool_registry(
             maxim=self,
             response_output=response_output,
@@ -324,6 +332,8 @@ class AgenticRuntimeMixin:
                     self.log.debug("MathTool registered")
             except Exception as e:
                 warn("Failed to register MathTool: %s", e, logger=self.log)
+
+        self.log.info("Bootstrap: tool registry built (%.1fms)", (time.time() - _t_tools) * 1000)
 
         # --- Provenance system ---
         self._provenance_collector = None
@@ -447,6 +457,7 @@ class AgenticRuntimeMixin:
         )
 
         # Create LLM worker for handling user questions
+        _t_llm = time.time()
         llm_worker = None
         try:
             from maxim.models.language.router import LLMRouter, load_llm_config
@@ -471,6 +482,7 @@ class AgenticRuntimeMixin:
             llm_worker = None
 
         self._llm_worker = llm_worker
+        self.log.info("Bootstrap: LLM worker ready (%.1fms)", (time.time() - _t_llm) * 1000)
 
         # Wire communication gateway if available
         if gateway is not None:
@@ -611,6 +623,8 @@ class AgenticRuntimeMixin:
                         llm_worker.stop()
                     except Exception:
                         pass
+
+        self.log.info("Bootstrap: total startup (%.1fms)", (time.time() - _t_boot) * 1000)
 
         t = threading.Thread(target=_worker, name="maxim.agentic", daemon=True)
         self._agentic_thread = t

@@ -15,7 +15,10 @@ from maxim.planning.planning import TaskPlanner
 from maxim.planning.policy import DefaultPolicy
 from maxim.runtime.executor import Executor
 from maxim.runtime.state import RuntimeState
+from maxim.tools.code_tools import CodeSearchTool, RunTestsTool
+from maxim.tools.git_tools import GitDiffTool, GitCommitTool
 from maxim.tools.filesystem import (
+    EditFileTool,
     ExecuteFileTool,
     ReadFileTool,
     WriteFileTool,
@@ -100,9 +103,14 @@ def build_tool_registry(
     # Register filesystem tools with mode-based containment
     registry.register(ReadFileTool(allowed_dirs=allowed_dirs))
     registry.register(WriteFileTool(allowed_dirs=allowed_dirs))
+    registry.register(EditFileTool(allowed_dirs=allowed_dirs))
     registry.register(ExecuteFileTool(allowed_dirs=allowed_dirs))
     registry.register(GlobTool(allowed_dirs=allowed_dirs))
     registry.register(BashTool(allowed_dirs=allowed_dirs))
+    registry.register(CodeSearchTool(allowed_dirs=allowed_dirs))
+    registry.register(RunTestsTool())
+    registry.register(GitDiffTool())
+    registry.register(GitCommitTool())
 
     # Register directory change tool (only enabled for active/singularity modes)
     registry.register(RequestDirectoryChangeTool(

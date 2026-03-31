@@ -6,6 +6,7 @@ from maxim.planning.base import Planner, Policy
 from maxim.planning.constraints import ConstraintSet, ConstraintViolation
 from maxim.planning.decision_engine import DecisionEngine
 from maxim.planning.plan_document import (
+    CodingReplanContext,
     DepthExtension,
     LongHorizonConfig,
     Phase,
@@ -25,6 +26,7 @@ from maxim.planning.planning import TaskPlanner
 from maxim.planning.policy import DefaultPolicy
 
 __all__ = [
+    "CodingReplanContext",
     "ConstraintSet",
     "ConstraintViolation",
     "DecisionEngine",

@@ -21,6 +21,7 @@ from maxim.utils.response_config import (
     load_phrase_responses,
 )
 from maxim.modes.state_manager import StateManager
+from maxim.runtime.capabilities import RuntimeCapabilities
 
 _gpu_state = detect_blackwell()
 _blackwell_detected = _gpu_state.blackwell_detected
@@ -202,6 +203,9 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
             log_swallowed_exception(e, operation="load_head_max_step")
             self._head_max_step = {}
 
+        # Runtime capabilities — updated after robot connection attempt.
+        self._capabilities = RuntimeCapabilities()
+
         # Connect to robot using hardware abstraction layer.
         # Supports both real Reachy Mini hardware and simulation mode.
         robot_type = "simulated" if self._simulation else "reachy_mini"
@@ -225,24 +229,31 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
         )
 
         if self._robot is None:
-            raise RuntimeError(f"Failed to connect to robot: {effective_robot_id}")
+            self.log.warning("No robot connected — running in headless mode")
+        else:
+            self._capabilities.has_robot = True
+            self._capabilities.has_motor = True
+            self._capabilities.has_vision = True
+            self._capabilities.has_audio = True
+            self._capabilities.robot_type = robot_type
 
         # On Blackwell GPUs, don't start recording - it will crash in GStreamer
         self._recording_started = False
-        if not _blackwell_detected and not self._simulation:
-            self.log.info("Connected. Starting recording...")
-            try:
+        if self._robot is not None:
+            if not _blackwell_detected and not self._simulation:
+                self.log.info("Connected. Starting recording...")
+                try:
+                    self._robot.start_recording()
+                    self._recording_started = True
+                except Exception as e:
+                    self.log.warning("Failed to start recording: %s", e)
+            elif self._simulation:
+                # Simulation always starts recording
                 self._robot.start_recording()
                 self._recording_started = True
-            except Exception as e:
-                self.log.warning("Failed to start recording: %s", e)
-        elif self._simulation:
-            # Simulation always starts recording
-            self._robot.start_recording()
-            self._recording_started = True
-            self.log.info("Connected to simulated robot.")
-        else:
-            self.log.info("Connected. (Recording disabled for Blackwell GPU compatibility)")
+                self.log.info("Connected to simulated robot.")
+            else:
+                self.log.info("Connected. (Recording disabled for Blackwell GPU compatibility)")
 
         self.x = 0.01
         self.y = 0.01

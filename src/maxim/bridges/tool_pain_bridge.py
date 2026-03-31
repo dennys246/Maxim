@@ -1,0 +1,148 @@
+"""Bridges tool errors to NAc for causal learning."""
+
+from __future__ import annotations
+
+import logging
+import threading
+from typing import Any
+
+from maxim.decisions.causal_link import Valence
+from maxim.decisions.nac import NAc
+from maxim.proprioception.pain import PainDetector, PainSignal, PainType
+
+logger = logging.getLogger(__name__)
+
+
+class ToolPainBridge:
+    """Connects tool execution outcomes to NAc causal learning.
+
+    Learning flow:
+    1. Tool is about to execute -> record_tool_start(tool_name, invocation_id)
+    2. Tool completes successfully -> record_tool_complete(..., success=True)
+    3. Tool fails -> PainDetector emits pain -> _on_pain() records NEGATIVE outcome
+    4. Future calls: should_gate_tool() queries NAc before execution
+
+    Example:
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector)
+
+        sig = bridge.record_tool_start("web_search", "inv-1")
+        # ... tool executes ...
+        bridge.record_tool_complete("web_search", "inv-1", success=True)
+
+        # Before next call
+        should_gate, reason = bridge.should_gate_tool("web_search")
+    """
+
+    def __init__(self, nac: NAc, pain_detector: PainDetector) -> None:
+        self._nac = nac
+        self._lock = threading.Lock()
+        self._pending_tools: dict[tuple[str, str], str] = {}
+        pain_detector.add_pain_callback(self._on_pain)
+
+    def record_tool_start(
+        self,
+        tool_name: str,
+        invocation_id: str,
+        context: dict[str, Any] | None = None,
+    ) -> str:
+        """Record that a tool invocation is starting.
+
+        Args:
+            tool_name: Name of the tool being executed.
+            invocation_id: Unique ID for this invocation.
+            context: Optional context about the invocation.
+
+        Returns:
+            Event signature for tracking.
+        """
+        event_signature = f"tool:{tool_name}"
+        self._nac.record_event(
+            event_type="tool",
+            event_signature=event_signature,
+            context=context,
+        )
+        with self._lock:
+            self._pending_tools[(tool_name, invocation_id)] = event_signature
+        return event_signature
+
+    def record_tool_complete(
+        self,
+        tool_name: str,
+        invocation_id: str,
+        success: bool,
+    ) -> None:
+        """Record that a tool invocation completed.
+
+        Args:
+            tool_name: Name of the tool.
+            invocation_id: Unique ID for this invocation.
+            success: Whether the tool succeeded.
+        """
+        with self._lock:
+            event_signature = self._pending_tools.pop(
+                (tool_name, invocation_id), None
+            )
+        if event_signature and success:
+            self._nac.record_outcome(
+                event_type="tool",
+                event_id=event_signature,
+                outcome_valence=Valence.POSITIVE,
+            )
+
+    def _on_pain(self, signal: PainSignal) -> None:
+        """Handle pain signals from tool failures."""
+        if signal.pain_type not in (
+            PainType.TOOL_FAILURE,
+            PainType.TOOL_TIMEOUT,
+            PainType.TOOL_INVALID_INPUT,
+        ):
+            return
+        tool_name = signal.context.get("tool_name", "")
+        invocation_id = signal.context.get("invocation_id", "")
+        with self._lock:
+            event_signature = self._pending_tools.pop(
+                (tool_name, invocation_id), None
+            )
+        if event_signature:
+            self._nac.record_outcome(
+                event_type="tool",
+                event_id=event_signature,
+                outcome_valence=Valence.NEGATIVE,
+                context=signal.context,
+            )
+
+    def should_gate_tool(
+        self,
+        tool_name: str,
+        context: dict[str, Any] | None = None,
+    ) -> tuple[bool, str]:
+        """Check if a tool should be gated due to predicted failure.
+
+        Args:
+            tool_name: Name of the tool to check.
+            context: Optional context for the prediction.
+
+        Returns:
+            Tuple of (should_gate, reason).
+        """
+        event_signature = f"tool:{tool_name}"
+        prediction = self._nac.predict(
+            event_type="tool",
+            event_signature=event_signature,
+            context=context,
+        )
+        if prediction is None:
+            return False, ""
+        if (
+            prediction.predicted_valence == Valence.NEGATIVE
+            and prediction.confidence >= 0.4
+        ):
+            return True, (
+                f"NAc predicts '{tool_name}' will fail "
+                f"(value={prediction.predicted_value:.2f}, "
+                f"confidence={prediction.confidence:.2f})"
+            )
+        return False, ""
+
+
+__all__ = ["ToolPainBridge"]
