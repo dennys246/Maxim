@@ -77,6 +77,9 @@ class ConceptGrounder:
         self._pending_reviews: dict[str, float] = {}
         self._pending_lock = threading.Lock()
 
+        # Provenance collector (wired by MaximAgent.wire_provenance)
+        self._collector: Any = None
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -111,6 +114,17 @@ class ConceptGrounder:
             return {}
 
         stats = self._compute_stats(concept, numerics)
+
+        # Log grounding activity (P3e — Tier 2)
+        if self._collector and self._collector.verbosity >= 1:
+            from maxim.provenance.types import PipelineStage, ProvenanceRef
+            prop_count = sum(1 for v in stats.values() if isinstance(v, dict))
+            self._collector.log_activity(
+                PipelineStage.ENRICHMENT, "concept_grounder",
+                f"Grounded atl:{concept.id[:8]} ({concept.name}) "
+                f"with {prop_count} AG properties",
+                sources=[ProvenanceRef("atl", concept.id, concept.name)],
+            )
 
         # Cache results
         stats["_ref_count"] = concept.ref_count("hippocampus")

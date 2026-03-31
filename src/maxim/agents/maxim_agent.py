@@ -194,8 +194,8 @@ class MaximAgent(Agent):
         # Wire PlanManager services for rich replan context
         if hasattr(self, "_plan_manager") and self._plan_manager:
             svc = self._plan_manager._services
-            svc.hippocampus = getattr(memory_hub, "_hippocampus", None)
-            svc.nac = getattr(memory_hub, "_nac", None)
+            svc.hippocampus = getattr(memory_hub, "hippocampus", None)
+            svc.nac = getattr(memory_hub, "nac", None)
             svc.statistician = self.statistician
 
         # Wire PatternCompleter for concept graph-chaining predictions
@@ -204,7 +204,7 @@ class MaximAgent(Agent):
             self.memory.set_pattern_completion_fn(pattern_completer.complete)
 
         # Wire NAc to ExecAgent for contemplation outcome learning
-        nac = getattr(memory_hub, "_nac", None)
+        nac = getattr(memory_hub, "nac", None)
         if nac is not None:
             self.exec_agent.wire_nac(nac)
 
@@ -234,6 +234,28 @@ class MaximAgent(Agent):
                 scn=scn,
                 weights_path=weights_path,
             )
+
+    def wire_provenance(self, collector: Any) -> None:
+        """Wire ProvenanceCollector for decision tracing.
+
+        Follows wire_memory_hub() pattern. Reaches into MemoryHub to
+        wire Hippocampus, ConceptExtractor, ConceptGrounder, NAc for
+        Tier 2 (background activity) recording.
+        """
+        self._collector = collector
+        self.memory._collector = collector
+
+        # Wire to MemoryHub internals for Tier 2 (activity log)
+        hub = getattr(self.memory, "_memory_hub", None)
+        if hub is not None:
+            hub._collector = collector
+            hub.hippocampus._collector = collector
+            if hub._concept_extractor:
+                hub._concept_extractor._collector = collector
+            if hub._concept_grounder:
+                hub._concept_grounder._collector = collector
+            if hub.nac:
+                hub.nac._collector = collector
 
     def on_start(self, **kwargs: Any) -> None:
         """Start all component agents."""

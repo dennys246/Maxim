@@ -228,6 +228,9 @@ class Hippocampus(MemoryLayer):
         # Compression callbacks for subsystem cleanup (e.g., ConceptExtractor ref removal)
         self._on_memory_compressed: list[Callable[[str], None]] = []
 
+        # Provenance collector (wired by MaximAgent.wire_provenance)
+        self._collector: Any = None
+
         # Consolidation candidates queue (memories to evaluate for long-term promotion)
         self._consolidation_candidates: list[str] = []
 
@@ -1663,7 +1666,19 @@ class Hippocampus(MemoryLayer):
         """
 
         with self._rwlock.write():
-            return self._sleep(strategy)
+            results = self._sleep(strategy)
+
+        # Log consolidation activity OUTSIDE rwlock (P3f — Tier 2)
+        if hasattr(self, "_collector") and self._collector and \
+           self._collector.verbosity >= 1:
+            from maxim.provenance.types import PipelineStage
+            self._collector.log_activity(
+                PipelineStage.CONSOLIDATION, "hippocampus",
+                f"Promoted {results['promoted']}, compressed {results['compressed']}, "
+                f"removed {results['removed']}",
+            )
+
+        return results
 
     def _sleep(
         self,

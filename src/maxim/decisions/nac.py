@@ -78,6 +78,9 @@ class NAc:
         # Primary storage: event_signature → list of CausalLinks
         self._links: dict[str, list[CausalLink]] = {}
 
+        # Provenance collector (wired by MaximAgent.wire_provenance)
+        self._collector: Any = None
+
         # Index by outcome for reverse lookups
         self._outcome_index: dict[str, set[str]] = {}  # outcome_sig → link_ids
 
@@ -323,6 +326,19 @@ class NAc:
             self._total_observations += 1
 
         self._enforce_limits()
+
+        # Log causal learning activity (P3g — Tier 2)
+        if hasattr(self, "_collector") and self._collector and \
+           self._collector.verbosity >= 1:
+            from maxim.provenance.types import PipelineStage, ProvenanceRef
+            for link in updated_links:
+                self._collector.log_activity(
+                    PipelineStage.LEARNING, "nac",
+                    f"Causal: {link.event_signature} → {link.outcome_signature} "
+                    f"(V={link.predicted_value:.2f}, n={link.observation_count})",
+                    sources=[ProvenanceRef("nac", link.id, link.event_signature)],
+                )
+
         return updated_links
 
     def observe(

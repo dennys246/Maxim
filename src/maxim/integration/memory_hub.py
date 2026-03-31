@@ -583,6 +583,13 @@ class MemoryHub:
             except Exception as e:
                 logger.warning("PlanManager session end failed: %s", e)
 
+        # Flush provenance data and write session summary
+        if hasattr(self, "_collector") and self._collector:
+            try:
+                self._collector.on_session_end()
+            except Exception as e:
+                logger.warning("Provenance session end failed: %s", e)
+
         self._session_active = False
         session_duration = time.time() - self._session_start_time
         results["session_duration_seconds"] = session_duration

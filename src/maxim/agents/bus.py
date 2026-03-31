@@ -418,6 +418,9 @@ class StructuredContext:
     # Plan progress (from PlanManager when a long-horizon plan is active)
     plan_progress: PlanProgressContext | None = None
 
+    # Provenance: compact trace markdown for LLM context (P7)
+    provenance_context: str = ""
+
 
 @dataclass
 class PlanProgressContext:
