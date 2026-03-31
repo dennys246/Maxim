@@ -54,7 +54,7 @@ class PhaseStatus(Enum):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@dataclass
+@dataclass(frozen=True)
 class LongHorizonConfig:
     """Configuration for the long-horizon planning system."""
 
@@ -72,6 +72,9 @@ class LongHorizonConfig:
     enable_modules: bool = True
     module_promotion_threshold: int = 5
     module_promotion_nac_confidence: float = 0.7
+
+    # Conversation compaction
+    compact_after_turns: int = 12
 
     # Soft preemption
     enable_soft_preemption: bool = True
@@ -200,6 +203,33 @@ class DepthExtension:
 
 
 @dataclass
+class CodingReplanContext:
+    """Structured context from coding tool failures for richer replanning."""
+
+    test_failures: list[dict[str, Any]] = field(default_factory=list)
+    build_errors: list[dict[str, Any]] = field(default_factory=list)
+    lint_errors: list[dict[str, Any]] = field(default_factory=list)
+    files_modified: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "test_failures": self.test_failures,
+            "build_errors": self.build_errors,
+            "lint_errors": self.lint_errors,
+            "files_modified": self.files_modified,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CodingReplanContext:
+        return cls(
+            test_failures=data.get("test_failures", []),
+            build_errors=data.get("build_errors", []),
+            lint_errors=data.get("lint_errors", []),
+            files_modified=data.get("files_modified", []),
+        )
+
+
+@dataclass
 class ReplanContext:
     """Everything the LLM needs to re-decompose after a phase failure."""
 
@@ -233,6 +263,9 @@ class ReplanContext:
     # Statistical context
     tool_success_rates: dict[str, float] = field(default_factory=dict)
     pattern_warnings: list[str] = field(default_factory=list)
+
+    # Coding-specific failure context
+    coding_context: CodingReplanContext | None = None
 
     def to_llm_prompt_section(self) -> str:
         """Format as a structured prompt section for the LLM."""
@@ -289,6 +322,32 @@ class ReplanContext:
             for pw in self.pattern_warnings:
                 sections.append(f"  - {pw}")
 
+        if self.coding_context:
+            cc = self.coding_context
+            if cc.test_failures:
+                sections.append("\n### Test Failures:")
+                for tf in cc.test_failures:
+                    cmd = tf.get("command", "unknown")
+                    rc = tf.get("returncode", "?")
+                    err = tf.get("error", "")
+                    sections.append(f"  - `{cmd}` (exit {rc}): {err[:300]}")
+            if cc.build_errors:
+                sections.append("\n### Build Errors:")
+                for be in cc.build_errors:
+                    cmd = be.get("command", "unknown")
+                    err = be.get("error", "")
+                    sections.append(f"  - `{cmd}`: {err[:300]}")
+            if cc.lint_errors:
+                sections.append("\n### Lint Errors:")
+                for le in cc.lint_errors:
+                    cmd = le.get("command", "unknown")
+                    err = le.get("error", "")
+                    sections.append(f"  - `{cmd}`: {err[:300]}")
+            if cc.files_modified:
+                sections.append("\n### Files Modified This Attempt:")
+                for fm in cc.files_modified:
+                    sections.append(f"  - {fm}")
+
         sections.append(
             "\n### Instructions:\n"
             "Re-decompose the FAILED phase using a DIFFERENT approach.\n"
@@ -322,6 +381,9 @@ class ReplanContext:
             "alternative_approaches": self.alternative_approaches,
             "tool_success_rates": self.tool_success_rates,
             "pattern_warnings": self.pattern_warnings,
+            "coding_context": (
+                self.coding_context.to_dict() if self.coding_context else None
+            ),
         }
 
     @classmethod
@@ -353,6 +415,10 @@ class ReplanContext:
             alternative_approaches=data.get("alternative_approaches", []),
             tool_success_rates=data.get("tool_success_rates", {}),
             pattern_warnings=data.get("pattern_warnings", []),
+            coding_context=(
+                CodingReplanContext.from_dict(data["coding_context"])
+                if data.get("coding_context") else None
+            ),
         )
 
 

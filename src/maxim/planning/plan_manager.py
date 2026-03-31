@@ -25,6 +25,7 @@ from maxim.agents.bus import (
     SubGoalStatus,
 )
 from maxim.planning.plan_document import (
+    CodingReplanContext,
     LongHorizonConfig,
     Phase,
     PhaseStatus,
@@ -37,6 +38,47 @@ from maxim.planning.plan_document import (
 )
 
 logger = logging.getLogger(__name__)
+
+_CODING_TOOL_NAMES = {"run_tests", "lint_code", "type_check", "run_build"}
+
+
+def _extract_coding_context(phase: Phase) -> CodingReplanContext | None:
+    """Extract structured coding errors from phase sub-goal results."""
+    context = CodingReplanContext()
+    has_coding_data = False
+
+    for sg in phase.sub_goals:
+        if sg.result is None:
+            continue
+
+        result = sg.result if isinstance(sg.result, dict) else {}
+        tool_name = result.get("tool_name", "") or sg.tool_name or ""
+        metadata = result.get("metadata", {}) if isinstance(sg.result, dict) else {}
+
+        if sg.status == SubGoalStatus.FAILED and tool_name in _CODING_TOOL_NAMES:
+            entry = {
+                "command": metadata.get("command", ""),
+                "returncode": metadata.get("returncode"),
+                "error": (
+                    result.get("error", "")
+                    if isinstance(sg.result, dict)
+                    else str(sg.result)
+                ),
+            }
+            if tool_name == "run_tests":
+                context.test_failures.append(entry)
+            elif tool_name == "run_build":
+                context.build_errors.append(entry)
+            elif tool_name in ("lint_code", "type_check"):
+                context.lint_errors.append(entry)
+            has_coding_data = True
+
+        elif tool_name in ("edit_file", "write_file"):
+            path = result.get("path", "") if isinstance(sg.result, dict) else ""
+            if path:
+                context.files_modified.append(path)
+
+    return context if has_coding_data else None
 
 
 @dataclass
@@ -483,6 +525,9 @@ class PlanManager:
             except Exception:
                 pass
 
+        # Extract coding-specific context if available
+        coding_context = _extract_coding_context(phase)
+
         return ReplanContext(
             failed_phase=phase,
             failure_reason=error,
@@ -522,6 +567,7 @@ class PlanManager:
             alternative_approaches=alternative_approaches,
             tool_success_rates=tool_success_rates,
             pattern_warnings=[],
+            coding_context=coding_context,
         )
 
     # ── Session Lifecycle ────────────────────────────────────────────────

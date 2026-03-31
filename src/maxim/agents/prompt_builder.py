@@ -23,6 +23,7 @@ from maxim.agents.llm_types import LLMRequest, ModeInfo
 from maxim.agents.prompt_budgeter import (
     PromptBudgeter,
     SectionPriority,
+    _compact_conversation,
     _truncate_context_pool,
     _truncate_conversation,
     _truncate_manifest,
@@ -726,7 +727,8 @@ class PromptBuilder:
             budgeter.add("budget_context", budget_context, SectionPriority.NICE_TO_HAVE)
 
         if request.conversation_history_text:
-            budgeter.add("conversation", "=== Conversation History ===\n" + request.conversation_history_text,
+            conv_text = _compact_conversation(request.conversation_history_text, 12)
+            budgeter.add("conversation", "=== Conversation History ===\n" + conv_text,
                           SectionPriority.IMPORTANT, truncatable=True, min_tokens=50,
                           truncate_fn=lambda c, m: _truncate_conversation(c, m, counter))
 
@@ -834,6 +836,8 @@ class PromptBuilder:
 
         prompt_text, dropped = budgeter.build()
         if dropped:
+            notice = f"[Context note: omitted due to token budget: {', '.join(dropped)}]"
+            prompt_text = notice + "\n\n" + prompt_text
             logger.info("Prompt budget: dropped %d sections for %s (n_ctx=%d, reserve=%d)",
                         len(dropped), mode.name, self._n_ctx, response_reserve)
 

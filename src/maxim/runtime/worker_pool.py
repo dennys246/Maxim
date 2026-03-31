@@ -93,6 +93,7 @@ class JobRegistry:
         self._results: dict[str, Any] = {}
         self._errors: dict[str, Exception] = {}
         self._lanes: dict[str, str] = {}  # job_id -> lane name
+        self._timestamps: dict[str, float] = {}
         self._completed_ids: set[str] = set()  # survives prune() for dep safety
 
     def register(self, job: Job) -> None:
@@ -101,6 +102,7 @@ class JobRegistry:
             self._jobs[job.job_id] = JobStatus.PENDING
             self._events[job.job_id] = threading.Event()
             self._lanes[job.job_id] = job.lane
+            self._timestamps[job.job_id] = job.created_at
 
     def mark_running(self, job_id: str) -> None:
         """Mark a job as currently executing."""
@@ -168,6 +170,7 @@ class JobRegistry:
                     del self._jobs[job_id]
                     self._events.pop(job_id, None)
                     self._lanes.pop(job_id, None)
+                    self._timestamps.pop(job_id, None)
                     return Job(job_id=job_id, fn=None, lane=lane, result=result)
         return None
 
@@ -177,22 +180,24 @@ class JobRegistry:
         Returns count of pruned jobs. _completed_ids is preserved so
         dependency waits on GC'd jobs still resolve correctly.
         """
-        time.time() - max_age_s
+        deadline = time.time() - max_age_s
         pruned = 0
         with self._lock:
             to_remove = []
             for job_id, status in self._jobs.items():
                 if status in (JobStatus.COMPLETED, JobStatus.FAILED):
-                    event = self._events.get(job_id)
-                    # Only prune if the event is set (all waiters notified)
-                    if event and event.is_set():
-                        to_remove.append(job_id)
+                    if self._timestamps.get(job_id, time.time()) < deadline:
+                        event = self._events.get(job_id)
+                        # Only prune if the event is set (all waiters notified)
+                        if event and event.is_set():
+                            to_remove.append(job_id)
             for job_id in to_remove:
                 del self._jobs[job_id]
                 self._events.pop(job_id, None)
                 self._results.pop(job_id, None)
                 self._errors.pop(job_id, None)
                 self._lanes.pop(job_id, None)
+                self._timestamps.pop(job_id, None)
                 pruned += 1
         return pruned
 

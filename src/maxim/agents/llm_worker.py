@@ -211,16 +211,16 @@ class LLMWorker:
         return max_workers
 
     def retry_with_timeout(self, request: LLMRequest, timeout_s: float) -> bool:
-        """Resubmit a request with a temporarily increased timeout.
+        """Resubmit a request with a per-request timeout override.
 
         Used when the user asks for more processing time after a timeout.
-        The timeout increases permanently (ratchets up) since this model
-        is consistently slow.
+        The override applies only to this request and does not affect
+        the worker's default timeout for other requests.
 
         Returns True if queued, False if queue full.
         """
         old_timeout = self._llm_timeout
-        self._llm_timeout = timeout_s
+        request.timeout_override = timeout_s
         # Refresh timestamp so staleness checks don't drop it
         request.timestamp = time.time()
         request.sort_index = (-request.priority, request.timestamp)
@@ -333,6 +333,7 @@ class LLMWorker:
         tools: list[dict[str, Any]] | None = None,
         thinking: dict[str, Any] | None = None,
         stream: bool = False,
+        timeout_override: float | None = None,
     ) -> dict[str, Any] | None:
         """Call LLM with timeout to allow graceful shutdown.
 
@@ -360,7 +361,7 @@ class LLMWorker:
                 stream=stream,
             )
             # Wait with timeout, checking stop_event periodically
-            timeout_remaining = self._llm_timeout
+            timeout_remaining = timeout_override or self._llm_timeout
             poll_interval = 0.5
             while timeout_remaining > 0:
                 if self._stop_event.is_set():
@@ -662,6 +663,9 @@ class LLMWorker:
                 return True
             except queue.Full:
                 self._requests_dropped += 1
+                logger.warning("LLM request dropped (queue full): %s (total dropped: %d)",
+                               request.request_id if hasattr(request, 'request_id') else 'unknown',
+                               self._requests_dropped)
                 return False
         else:
             # Legacy: internal priority queue
@@ -670,6 +674,9 @@ class LLMWorker:
                 return True
             except queue.Full:
                 self._requests_dropped += 1
+                logger.warning("LLM request dropped (queue full): %s (total dropped: %d)",
+                               request.request_id if hasattr(request, 'request_id') else 'unknown',
+                               self._requests_dropped)
                 return False
 
     def get_latest_proposal(self) -> LLMProposal | None:
@@ -833,6 +840,7 @@ class LLMWorker:
                         max_tokens=max_tokens,
                         provider_hint=provider_hint,
                         request_context=request_context,
+                        timeout_override=request.timeout_override,
                     )
             else:
                 response = self._call_llm_with_timeout(
@@ -841,6 +849,7 @@ class LLMWorker:
                     max_tokens=max_tokens,
                     provider_hint=provider_hint,
                     request_context=request_context,
+                    timeout_override=request.timeout_override,
                 )
 
             # Check for timeout -- ask user if they want to wait longer

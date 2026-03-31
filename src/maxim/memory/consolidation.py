@@ -78,7 +78,7 @@ class ConsolidationOrchestrator:
                     and sidecar.get("significance_score", 0)
                     >= self.immediate_promotion_threshold
                 ):
-                    sidecar["wave_scores"].append(sidecar["significance_score"])
+                    sidecar.setdefault("wave_scores", []).append(sidecar["significance_score"])
                     self._promote(sidecar)
                     os.remove(path)
                     stats["promoted"] += 1
@@ -86,7 +86,7 @@ class ConsolidationOrchestrator:
 
                 sidecar["sleep_cycles_seen"] = sidecar.get("sleep_cycles_seen", 0) + 1
                 wave_score = self._compute_wave_score(sidecar)
-                sidecar["wave_scores"].append(wave_score)
+                sidecar.setdefault("wave_scores", []).append(wave_score)
 
                 # Path-dependent threshold
                 threshold = (
@@ -234,7 +234,7 @@ class ConsolidationOrchestrator:
                     "people": percept.get("people", []),
                 },
                 state={
-                    "salience": sidecar.get("wave_scores", [0.5])[-1],
+                    "salience": (sidecar.get("wave_scores") or [0.5])[-1],
                     "novelty": sidecar.get("heuristic_scores", {}).get("novelty", 0.5),
                 },
                 intent={"goal": sidecar.get("active_goal", "")},
@@ -264,7 +264,7 @@ class ConsolidationOrchestrator:
                     monthly_phase=temporal.get("monthly_phase", 0),
                     annual_phase=temporal.get("annual_phase", 0),
                 )
-                wave_scores = sidecar.get("wave_scores", [0.5])
+                wave_scores = sidecar.get("wave_scores") or [0.5]
                 self.scn.register(
                     memory.id, sig, significance=wave_scores[-1]
                 )

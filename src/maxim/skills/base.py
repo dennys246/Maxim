@@ -49,7 +49,7 @@ class SkillState(Enum):
     DEACTIVATING = "deactivating"
 
 
-@dataclass
+@dataclass(frozen=True)
 class SkillResult:
     """Structured feedback from skill lifecycle transitions.
 

@@ -248,7 +248,6 @@ class TestLLMWorkerPoolMode:
             )
 
             assert worker.retry_with_timeout(request, timeout_s=120.0) is True
-            assert worker._llm_timeout == 120.0
 
             # Should produce a proposal
             proposal = None
@@ -480,3 +479,95 @@ class TestLLMWorkerPriority:
         finally:
             worker.stop()
             pool.stop()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tests: BUG-4 — Per-request timeout (no global mutation)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestLLMPerRequestTimeout:
+    """Verify retry_with_timeout sets per-request override without mutating global timeout."""
+
+    def test_default_timeout_unchanged(self):
+        """LLMWorker._llm_timeout equals the configured default after construction."""
+        from maxim.agents.llm_worker import LLMWorker
+
+        worker = LLMWorker(llm=FakeLLM(), llm_timeout_s=45.0)
+        assert worker._llm_timeout == 45.0
+
+    def test_retry_does_not_mutate_global_timeout(self):
+        """retry_with_timeout does NOT change worker._llm_timeout."""
+        from maxim.agents.llm_worker import LLMWorker, LLMRequest
+        from maxim.agents.autonomy import AutonomyLevel
+
+        original_timeout = 60.0
+        worker = LLMWorker(llm=FakeLLM(), stale_threshold_s=30.0, llm_timeout_s=original_timeout)
+        worker.start()
+        try:
+            request = LLMRequest(
+                request_id="req-timeout",
+                context=FakeContext(cli_inputs=["maxim hello"]),
+                mode=_make_mode_info(),
+                autonomy_level=AutonomyLevel.SUPERVISED,
+                strategies=_make_strategies(),
+                internet_access=False,
+                internet_policy_summary="",
+                triggering_input="maxim hello",
+                use_tool_prompting=True,
+                available_tools={"respond"},
+                tool_descriptions={"respond": "Send a message"},
+            )
+
+            worker.retry_with_timeout(request, timeout_s=120.0)
+
+            # Global timeout must still be the original value
+            assert worker._llm_timeout == original_timeout
+        finally:
+            worker.stop()
+
+    def test_timeout_override_set_on_request(self):
+        """After retry_with_timeout, request.timeout_override holds the override value."""
+        from maxim.agents.llm_worker import LLMWorker, LLMRequest
+        from maxim.agents.autonomy import AutonomyLevel
+
+        worker = LLMWorker(llm=FakeLLM(), stale_threshold_s=30.0)
+        worker.start()
+        try:
+            request = LLMRequest(
+                request_id="req-override",
+                context=FakeContext(cli_inputs=["maxim hello"]),
+                mode=_make_mode_info(),
+                autonomy_level=AutonomyLevel.SUPERVISED,
+                strategies=_make_strategies(),
+                internet_access=False,
+                internet_policy_summary="",
+                triggering_input="maxim hello",
+                use_tool_prompting=True,
+                available_tools={"respond"},
+                tool_descriptions={"respond": "Send a message"},
+            )
+
+            worker.retry_with_timeout(request, timeout_s=120.0)
+
+            assert request.timeout_override == 120.0
+        finally:
+            worker.stop()
+
+    def test_llm_request_default_timeout_override_is_none(self):
+        """LLMRequest.timeout_override defaults to None."""
+        from maxim.agents.llm_worker import LLMRequest
+        from maxim.agents.autonomy import AutonomyLevel
+
+        request = LLMRequest(
+            request_id="req-default",
+            context=FakeContext(cli_inputs=["maxim hello"]),
+            mode=_make_mode_info(),
+            autonomy_level=AutonomyLevel.SUPERVISED,
+            strategies=_make_strategies(),
+            internet_access=False,
+            internet_policy_summary="",
+            triggering_input="maxim hello",
+        )
+
+        assert request.timeout_override is None

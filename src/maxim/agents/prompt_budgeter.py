@@ -153,6 +153,39 @@ class PromptBudgeter:
 # ── Truncation Helpers ──────────────────────────────────────────────────────
 
 
+def _compact_conversation(content: str, max_turns: int) -> str:
+    """Pre-pass: hard-cap conversation history to last N turns, always keeping the first turn."""
+    lines = content.split("\n")
+    turn_starts = []
+    for i, line in enumerate(lines):
+        if line.startswith("User:") or line.startswith("Maxim:"):
+            turn_starts.append(i)
+
+    if len(turn_starts) <= max_turns:
+        return content
+
+    # Always keep first turn + last (max_turns - 1) turns
+    keep_starts = [turn_starts[0]]  # First turn always pinned
+    remaining = max_turns - 1
+    if remaining > 0:
+        keep_starts.extend(turn_starts[-remaining:])
+
+    # Build compacted content
+    keep_set = set(keep_starts)
+    result_lines = []
+    current_kept = False
+    for i, line in enumerate(lines):
+        if i in keep_set:
+            current_kept = True
+        elif line.startswith("User:") or line.startswith("Maxim:"):
+            current_kept = i in keep_set
+
+        if current_kept:
+            result_lines.append(line)
+
+    return "\n".join(result_lines)
+
+
 def _truncate_conversation(content: str, max_tokens: int, counter: Any) -> str:
     """Drop oldest User+Maxim turn pairs from the front."""
     lines = content.split("\n")

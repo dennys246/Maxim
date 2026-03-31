@@ -573,6 +573,96 @@ class TestSCNBoundedBinIntegration:
 # ── SCN ↔ Consolidation Integration ─────────────────────────────────────────
 
 
+class TestWaveScoresSafety:
+    """BUG-2: wave_scores key may be missing, empty, or None.
+
+    Exercises the setdefault() fix on lines 81/89 (run_wave) and
+    the ``or [0.5]`` fallback on lines 237/267 (_promote).
+    """
+
+    def test_run_wave_missing_wave_scores_key(self, orchestrator, staging_dir):
+        """Sidecar with no 'wave_scores' key must not crash run_wave()."""
+        sidecar = _make_sidecar(significance=0.90)
+        del sidecar["wave_scores"]
+        _write_sidecar(staging_dir, "no_key.json", sidecar)
+
+        stats = orchestrator.run_wave()
+        # High significance → immediate promotion; must not KeyError
+        assert stats["promoted"] == 1
+        assert stats["errors"] == 0
+
+    def test_run_wave_missing_wave_scores_low_sig(self, orchestrator, staging_dir):
+        """Low-significance sidecar missing wave_scores survives without error."""
+        sidecar = _make_sidecar(significance=0.1, sleep_cycles=0)
+        del sidecar["wave_scores"]
+        _write_sidecar(staging_dir, "low.json", sidecar)
+
+        stats = orchestrator.run_wave()
+        assert stats["errors"] == 0
+        assert stats["survived"] + stats["expired"] + stats["promoted"] == 1
+
+    def test_promote_empty_wave_scores(self, orchestrator, mock_hippocampus):
+        """Empty wave_scores list must not IndexError in _promote()."""
+        sidecar = _make_sidecar()
+        sidecar["wave_scores"] = []
+        # Should use fallback [0.5][-1] → 0.5
+        orchestrator._promote(sidecar)
+        mock_hippocampus.capture_from_loop.assert_called_once()
+        call_kwargs = mock_hippocampus.capture_from_loop.call_args
+        state = call_kwargs[1]["state"] if "state" in (call_kwargs[1] or {}) else call_kwargs[0][1]
+        assert state["salience"] == 0.5
+
+    def test_promote_none_wave_scores(self, orchestrator, mock_hippocampus):
+        """wave_scores=None must not crash; fallback to 0.5."""
+        sidecar = _make_sidecar()
+        sidecar["wave_scores"] = None
+        orchestrator._promote(sidecar)
+        mock_hippocampus.capture_from_loop.assert_called_once()
+        call_kwargs = mock_hippocampus.capture_from_loop.call_args
+        state = call_kwargs[1]["state"] if "state" in (call_kwargs[1] or {}) else call_kwargs[0][1]
+        assert state["salience"] == 0.5
+
+    def test_promote_normal_wave_scores_preserved(self, orchestrator, mock_hippocampus):
+        """Normal wave_scores=[0.6, 0.7] uses last value (0.7)."""
+        sidecar = _make_sidecar()
+        sidecar["wave_scores"] = [0.6, 0.7]
+        orchestrator._promote(sidecar)
+        mock_hippocampus.capture_from_loop.assert_called_once()
+        call_kwargs = mock_hippocampus.capture_from_loop.call_args
+        state = call_kwargs[1]["state"] if "state" in (call_kwargs[1] or {}) else call_kwargs[0][1]
+        assert state["salience"] == 0.7
+
+    def test_scn_register_empty_wave_scores(self, orchestrator, mock_scn):
+        """SCN registration with empty wave_scores uses 0.5 fallback."""
+        sidecar = _make_sidecar()
+        sidecar["wave_scores"] = []
+        sidecar["temporal"] = {
+            "circadian_phase": 0.375,
+            "weekly_phase": 0.0,
+            "monthly_phase": 0.25,
+            "annual_phase": 0.0,
+        }
+        orchestrator._promote(sidecar)
+        mock_scn.register.assert_called_once()
+        _, kwargs = mock_scn.register.call_args
+        assert kwargs["significance"] == 0.5
+
+    def test_scn_register_none_wave_scores(self, orchestrator, mock_scn):
+        """SCN registration with None wave_scores uses 0.5 fallback."""
+        sidecar = _make_sidecar()
+        sidecar["wave_scores"] = None
+        sidecar["temporal"] = {
+            "circadian_phase": 0.375,
+            "weekly_phase": 0.0,
+            "monthly_phase": 0.25,
+            "annual_phase": 0.0,
+        }
+        orchestrator._promote(sidecar)
+        mock_scn.register.assert_called_once()
+        _, kwargs = mock_scn.register.call_args
+        assert kwargs["significance"] == 0.5
+
+
 class TestSCNConsolidationIntegration:
     """Test how SCN integrates with the consolidation pipeline.
 

@@ -142,6 +142,9 @@ class LLMRequest:
     prefetch_context: str = field(default="", compare=False)
     skip_exploration: bool = field(default=False, compare=False)
 
+    # Per-request timeout override (seconds); None means use worker default
+    timeout_override: float | None = field(default=None, compare=False)
+
     # Active protocol context (re-injected each submission, never summarized)
     protocol_context: str = field(default="", compare=False)
 
@@ -150,7 +153,7 @@ class LLMRequest:
         self.sort_index = (-self.priority, self.timestamp)
 
 
-@dataclass
+@dataclass(frozen=True)
 class LLMProposal:
     """Result from LLM processing."""
 

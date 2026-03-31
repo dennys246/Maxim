@@ -107,6 +107,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return bool(default)
 
 from .base import Tool, ToolResult
+from maxim.agents.bus import ToolErrorKind
 
 class ReadFileTool(Tool):
     name = "read_file"
@@ -314,6 +315,7 @@ class WriteFileTool(Tool):
 class ExecuteFileTool(Tool):
     name = "execute_file"
     description = "Execute a file using the appropriate interpreter based on file extension."
+    timeout: float = 10.0  # scripts get a shorter default than general tools
     input_schema = {
         "path": str,
         "timeout": (float, 10.0),  # optional seconds
@@ -347,7 +349,7 @@ class ExecuteFileTool(Tool):
                 )
 
             raw_path = kwargs["path"]
-            timeout = kwargs.get("timeout", 10)
+            timeout = kwargs.get("timeout", self.timeout)
 
             # Sanitize and validate the path
             try:
@@ -422,6 +424,112 @@ class ExecuteFileTool(Tool):
 
         except subprocess.TimeoutExpired:
             return ToolResult(success=False, error="Execution timed out")
+        except Exception as e:
+            return ToolResult(success=False, error=str(e))
+
+
+class EditFileTool(Tool):
+    """Replace specific text in a file."""
+    name = "edit_file"
+    description = "Replace specific text in a file. Read the file first to see current contents."
+    input_schema = {
+        "path": str,
+        "old_text": str,
+        "new_text": str,
+        "expected_count": (int, 1),
+    }
+
+    # Reuse WriteFileTool's safety lists
+    FORBIDDEN_PATHS = WriteFileTool.FORBIDDEN_PATHS
+    FORBIDDEN_EXTENSIONS = WriteFileTool.FORBIDDEN_EXTENSIONS
+
+    def __init__(self, allowed_dirs: list[str] | None = None) -> None:
+        super().__init__()
+        self._allowed_dirs = [os.path.realpath(d) for d in allowed_dirs] if allowed_dirs else None
+
+    def _is_path_allowed(self, path: Path) -> tuple[bool, str]:
+        """Check if path is safe to write to (mirrors WriteFileTool)."""
+        real_path = os.path.realpath(str(path))
+
+        for forbidden in self.FORBIDDEN_PATHS:
+            if real_path.startswith(forbidden + os.sep) or real_path == forbidden:
+                return False, f"Writing to {forbidden} is not allowed"
+
+        suffix = path.suffix.lower()
+        if suffix in self.FORBIDDEN_EXTENSIONS:
+            return False, f"Writing files with extension {suffix} is not allowed"
+
+        if self._allowed_dirs:
+            in_allowed = False
+            for allowed in self._allowed_dirs:
+                if real_path.startswith(allowed + os.sep) or real_path == allowed:
+                    in_allowed = True
+                    break
+            if not in_allowed:
+                return False, f"Path must be within allowed directories: {self._allowed_dirs}"
+
+        return True, ""
+
+    def execute(self, **kwargs) -> ToolResult:
+        try:
+            raw_path = kwargs["path"]
+            old_text = kwargs["old_text"]
+            new_text = kwargs["new_text"]
+            expected = kwargs.get("expected_count", 1)
+
+            try:
+                validated_path = sanitize_path(raw_path)
+            except PathValidationError as e:
+                return ToolResult(success=False, error=str(e))
+
+            path = Path(validated_path)
+
+            allowed, reason = self._is_path_allowed(path)
+            if not allowed:
+                return ToolResult(success=False, error=reason)
+
+            try:
+                content = path.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                return ToolResult(
+                    success=False,
+                    error=f"File not found: {path}",
+                    error_kind=ToolErrorKind.FILE_NOT_FOUND,
+                )
+            except PermissionError:
+                return ToolResult(
+                    success=False,
+                    error=f"Permission denied: {path}",
+                    error_kind=ToolErrorKind.PERMISSION_DENIED,
+                )
+
+            count = content.count(old_text)
+            if count == 0:
+                lines = content.splitlines()
+                near_matches = [
+                    f"  line {i+1}: {line.strip()}"
+                    for i, line in enumerate(lines)
+                    if old_text[:20] in line or old_text[-20:] in line
+                ]
+                hint = "\nNear matches:\n" + "\n".join(near_matches[:5]) if near_matches else ""
+                return ToolResult(
+                    success=False,
+                    error=f"old_text not found in file.{hint}",
+                    error_kind=ToolErrorKind.INVALID_INPUT,
+                )
+            if count != expected:
+                lines = content.splitlines()
+                match_lines = [i + 1 for i, line in enumerate(lines) if old_text in line]
+                return ToolResult(
+                    success=False,
+                    error=f"Expected {expected} occurrences, found {count} at lines {match_lines}.",
+                    error_kind=ToolErrorKind.VALIDATION,
+                )
+
+            new_content = content.replace(old_text, new_text, expected)
+            path.write_text(new_content, encoding="utf-8")
+            return ToolResult(success=True, output=f"Replaced {count} occurrence(s)")
+
         except Exception as e:
             return ToolResult(success=False, error=str(e))
 
@@ -681,7 +789,7 @@ class BashTool(Tool):
             if not command:
                 return ToolResult(success=False, error="Missing required parameter: command")
 
-            timeout = float(kwargs.get("timeout", 30.0) or 30.0)
+            timeout = float(kwargs.get("timeout", self.timeout) or self.timeout)
             cwd = kwargs.get("cwd")
 
             # Validate working directory if specified

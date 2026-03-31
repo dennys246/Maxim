@@ -304,6 +304,15 @@ class MemoryAgent(Agent, AgentOutputMixin):
         self._bus.subscribe(GoalAccepted, self._on_goal_accepted)
         self._bus.subscribe(StatisticalSummary, self._on_statistical_summary)
 
+    # ── Factory class methods ─────────────────────────────────────────────
+
+    @classmethod
+    def standalone(cls, config: dict[str, Any] | None = None) -> "MemoryAgent":
+        """Create standalone MemoryAgent without external wiring."""
+        bus = AgentBus()
+        kwargs = dict(config or {})
+        return cls(bus, **kwargs)
+
     # ── Wiring ────────────────────────────────────────────────────────────
 
     def connect_hippocampus(self, hippocampus: Any) -> None:

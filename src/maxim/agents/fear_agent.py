@@ -14,8 +14,9 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from maxim.models.language.router import LLMRouter
     from maxim.bridges.pain_bridge import PainCircuitBridge
+    from maxim.bridges.tool_pain_bridge import ToolPainBridge
+    from maxim.models.language.router import LLMRouter
 
 logger = logging.getLogger(__name__)
 
@@ -277,6 +278,25 @@ class FearAgent:
                             severity=RiskLevel.MEDIUM,
                         )
                     )
+
+        # Check for predicted tool failure via ToolPainBridge
+        if (
+            hasattr(self, "_tool_pain_bridge")
+            and self._tool_pain_bridge is not None
+            and action_type == "tool_call"
+        ):
+            tool_name = action_params.get("tool_name", "")
+            should_gate, reason = self._tool_pain_bridge.should_gate_tool(
+                tool_name, context=action_params
+            )
+            if should_gate:
+                findings.append(
+                    Finding(
+                        category=DangerCategory.RESOURCE_EXHAUSTION,
+                        description=f"Predicted tool failure: {reason}",
+                        severity=RiskLevel.MEDIUM,
+                    )
+                )
 
         risk = self._calculate_risk(findings)
         allow = self._should_allow(findings, risk)

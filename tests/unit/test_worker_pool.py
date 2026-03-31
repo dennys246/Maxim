@@ -145,6 +145,104 @@ class TestJobRegistry:
         # But completed_ids survives
         assert "j1" in reg._completed_ids
 
+    def test_prune_age_based_young_jobs_survive(self):
+        """Completed jobs younger than max_age_s are NOT pruned."""
+        reg = JobRegistry()
+        job = Job(job_id="j1", fn=lambda: None, lane="infer")
+        reg.register(job)
+        reg.mark_completed("j1", result="ok")
+
+        # Job was just created (ms ago); max_age_s=60 means only prune jobs >60s old
+        pruned = reg.prune(max_age_s=60)
+        assert pruned == 0
+        assert reg.get_status("j1") == JobStatus.COMPLETED
+        assert reg.get_result("j1") == "ok"
+
+    def test_prune_age_based_old_vs_young(self):
+        """Only jobs older than max_age_s are pruned; younger ones survive."""
+        reg = JobRegistry()
+
+        # Create an "old" job with a timestamp 100s in the past
+        old_job = Job(job_id="old", fn=lambda: None, lane="infer",
+                      created_at=time.time() - 100)
+        reg.register(old_job)
+        reg.mark_completed("old", result="old_val")
+
+        # Create a "young" job with current timestamp
+        young_job = Job(job_id="young", fn=lambda: None, lane="infer")
+        reg.register(young_job)
+        reg.mark_completed("young", result="young_val")
+
+        # Prune with max_age_s=50 — only the old job (100s old) should be pruned
+        pruned = reg.prune(max_age_s=50)
+        assert pruned == 1
+        assert reg.get_status("old") is None
+        assert reg.get_status("young") == JobStatus.COMPLETED
+        assert reg.get_result("young") == "young_val"
+
+    def test_prune_max_age_zero_prunes_immediately(self):
+        """max_age_s=0 prunes all completed jobs regardless of age."""
+        reg = JobRegistry()
+        job = Job(job_id="j1", fn=lambda: None, lane="infer")
+        reg.register(job)
+        reg.mark_completed("j1", result="ok")
+
+        pruned = reg.prune(max_age_s=0)
+        assert pruned == 1
+        assert reg.get_status("j1") is None
+
+    def test_prune_large_max_age_preserves_all(self):
+        """max_age_s=9999 preserves all recently completed jobs."""
+        reg = JobRegistry()
+        for i in range(5):
+            job = Job(job_id=f"j{i}", fn=lambda: None, lane="infer")
+            reg.register(job)
+            reg.mark_completed(f"j{i}", result=i)
+
+        pruned = reg.prune(max_age_s=9999)
+        assert pruned == 0
+        for i in range(5):
+            assert reg.get_status(f"j{i}") == JobStatus.COMPLETED
+
+    def test_prune_cleans_up_timestamps(self):
+        """After pruning, _timestamps dict does not retain entries for pruned jobs."""
+        reg = JobRegistry()
+        old_job = Job(job_id="j1", fn=lambda: None, lane="infer",
+                      created_at=time.time() - 100)
+        reg.register(old_job)
+        reg.mark_completed("j1", result="ok")
+
+        assert "j1" in reg._timestamps
+        reg.prune(max_age_s=0)
+        assert "j1" not in reg._timestamps
+
+    def test_prune_no_timestamp_memory_leak(self):
+        """Pruning many jobs leaves no stale entries in _timestamps."""
+        reg = JobRegistry()
+        for i in range(10):
+            job = Job(job_id=f"j{i}", fn=lambda: None, lane="infer",
+                      created_at=time.time() - 200)
+            reg.register(job)
+            reg.mark_completed(f"j{i}", result=i)
+
+        assert len(reg._timestamps) == 10
+        pruned = reg.prune(max_age_s=0)
+        assert pruned == 10
+        assert len(reg._timestamps) == 0
+
+    def test_pop_completed_cleans_up_timestamp(self):
+        """pop_completed removes the timestamp entry for the popped job."""
+        reg = JobRegistry()
+        job = Job(job_id="j1", fn=lambda: None, lane="infer")
+        reg.register(job)
+        reg.mark_completed("j1", result="val")
+
+        assert "j1" in reg._timestamps
+        popped = reg.pop_completed("infer")
+        assert popped is not None
+        assert popped.job_id == "j1"
+        assert "j1" not in reg._timestamps
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DependencyGate

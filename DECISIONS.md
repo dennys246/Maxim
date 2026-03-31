@@ -2,6 +2,29 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-03-31 — Claw-Code Upgrade: Cognitive Pain, Coding Tools, Session Persistence
+
+Adopted patterns from the claw-code Python port of Claude Code to improve Maxim's
+coding assistant capabilities and architectural robustness:
+
+- **Cognitive pain system** (#15): Tool errors routed through PainDetector → NAc → FearAgent.
+  NAc learns which tools fail in which contexts via Rescorla-Wagner. ToolPainBridge,
+  ToolHarmPredictor, MonitorRegistry created.
+- **Coding tools** (#11a-d): EditFileTool (text-anchor edits), CodeSearchTool (regex search),
+  RunTestsTool (structured test results), GitDiffTool, GitCommitTool.
+- **Structured error vocabulary** (#9): StopReason (10 loop termination reasons),
+  ToolErrorKind (7 error classifications) on ToolOutput.
+- **Frozen value dataclasses** (#2): ToolOutput, LLMProposal, SkillResult, LongHorizonConfig.
+- **Session persistence** (#8): AgentSession with save/load, Percept serialization.
+- **Context compaction** (#10): Sliding window with first-turn pinning for long-horizon plans.
+- **Test-driven replan** (#12): CodingReplanContext with structured test/build failures.
+- **Streaming events** (#5): StreamEvent + on_event callback for fine-grained loop events.
+- **Permission extensions** (#3): SupervisionPolicy gains forbidden_prefixes, forbidden_categories.
+- **Architecture audit** (#1): AST-based import validator, --audit-architecture CLI flag.
+- **RuntimeCapabilities** (adaptive): Headless mode without robot, graceful degradation.
+- **Bugfixes**: wave_scores crash, worker_pool prune, hippocampus atomic load, LLM timeout
+  mutation, bare except:pass, recall_similar lock split, tool execution timeout.
+
 ## 2026-03-13: Conscience mixin decomposition and agents/ module extraction
 
 Decision:

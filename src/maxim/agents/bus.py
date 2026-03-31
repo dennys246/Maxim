@@ -11,7 +11,7 @@ import math as _math
 import threading
 import time
 from collections import defaultdict, deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum, auto
 from typing import Any, Callable, Generic, TypeVar
 
@@ -79,6 +79,33 @@ class EdgeType(Enum):
     CAUSES = auto()  # A caused B (temporal/causal link)
 
 
+class StopReason(Enum):
+    """Why an agent loop terminated."""
+
+    COMPLETED = "completed"
+    MODE_SHUTDOWN = "mode_shutdown"
+    MAX_TURNS = "max_turns"
+    TOKEN_BUDGET = "token_budget"
+    ENERGY_BUDGET = "energy_budget"
+    USER_INTERRUPT = "user_interrupt"
+    PLAN_FAILED = "plan_failed"
+    NO_INTENT = "no_intent"
+    LLM_TIMEOUT = "llm_timeout"
+    SAFETY_GATE = "safety_gate"
+
+
+class ToolErrorKind(Enum):
+    """Classification of tool execution errors."""
+
+    FILE_NOT_FOUND = "file_not_found"
+    PERMISSION_DENIED = "permission_denied"
+    SYNTAX_ERROR = "syntax_error"
+    TIMEOUT = "timeout"
+    INVALID_INPUT = "invalid_input"
+    EXTERNAL_FAILURE = "external_failure"
+    VALIDATION = "validation"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Data Classes - Perception
 # ─────────────────────────────────────────────────────────────────────────────
@@ -117,6 +144,27 @@ class Percept:
     # Raw data for downstream
     raw_transcript_text: str | None = None
     maxim_runtime: dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for session persistence. Omits large/internal fields."""
+        return {
+            "timestamp": self.timestamp,
+            "source": self.source,
+            "detections": self.detections,
+            "transcript_chunk": self.transcript_chunk,
+            "cli_input": self.cli_input,
+            "salience": self.salience,
+            "novelty": self.novelty,
+            "has_voice_command": self.has_voice_command,
+            "has_maxim_keyword": self.has_maxim_keyword,
+            "hard_override": self.hard_override,
+            "content": self.content,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Percept":
+        valid_fields = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in valid_fields})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -706,6 +754,25 @@ class PlanReplanRequested:
     failed_phase_id: str
     reason: str
     replan_context: Any = None  # ReplanContext (Any to avoid circular import)
+    timestamp: float = field(default_factory=time.time)
+
+
+@dataclass
+class LoopTerminated:
+    """Published when agentic loop stops."""
+
+    run_id: str
+    stop_reason: StopReason
+    steps_taken: int
+    timestamp: float = field(default_factory=time.time)
+
+
+@dataclass(frozen=True)
+class StreamEvent:
+    """Fine-grained event for real-time streaming."""
+
+    kind: str  # "inference_start", "inference_end", "tool_start", "tool_end", "decision", "error"
+    payload: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
 
