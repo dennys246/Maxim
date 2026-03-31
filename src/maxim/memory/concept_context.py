@@ -51,6 +51,7 @@ class ConceptContextBuilder:
         self._atl = atl
         self._layers = layers  # "hippocampus" -> Hippocampus, "angular_gyrus" -> AG, etc.
         self._concept_grounder = concept_grounder
+        self._skill_registry: list[Any] = []
 
     def build(
         self,
@@ -142,6 +143,7 @@ class ConceptContextBuilder:
                 }
 
             entry: dict[str, Any] = {
+                "id": concept.id,
                 "name": concept.name,
                 "category": concept.category,
                 "confidence": concept.confidence,
@@ -222,11 +224,82 @@ class ConceptContextBuilder:
             other = self._atl.get(other_id)
             if other:
                 summaries.append({
+                    "id": other.id,
                     "type": rel.relationship_type,
                     "target": other.name,
                     "confidence": rel.confidence,
                 })
         return summaries
+
+    # ------------------------------------------------------------------
+    # Skill discovery (A7.5)
+    # ------------------------------------------------------------------
+
+    def set_skill_registry(self, registry: list[Any]) -> None:
+        """Set skill registry for concept-driven skill discovery."""
+        self._skill_registry = registry
+
+    def rank_available_skills(
+        self, matched_concepts: list[Concept],
+    ) -> list[dict]:
+        """Rank skills by concept co-occurrence in the ATL relationship graph.
+
+        Uses EXECUTES_WITH edges created by ConceptExtractor (A7.2) to find
+        which skill concepts are linked to the currently matched concepts.
+        No triggers attribute needed — the ATL graph IS the trigger system.
+
+        Returns list of dicts:
+        [{"name": "patrol", "relevance": 3, "past_success_rate": 0.82,
+          "skill_concept_id": "abc...",
+          "matching_concepts": [{"id": "def...", "name": "person"}, ...]}]
+        """
+        if not self._skill_registry:
+            return []
+
+        # Get all skill concepts from ATL
+        skill_concepts = self._atl.recall(
+            limit=50, category="skill_execution",
+        )
+        if not skill_concepts:
+            return []
+
+        # Build set of currently matched concept IDs
+        matched_ids = {c.id for c in matched_concepts}
+        matched_lookup = {c.id: c for c in matched_concepts}
+
+        # For each skill concept, count EXECUTES_WITH edges to matched concepts
+        ranked: list[dict] = []
+        skill_names = {s.name for s in self._skill_registry}
+
+        for sc in skill_concepts:
+            if not isinstance(sc, Concept):
+                continue
+            if not sc.name.startswith("skill:"):
+                continue
+            skill_name = sc.name[len("skill:"):]
+            if skill_name not in skill_names:
+                continue
+
+            # Find co-occurring concepts via relationship graph
+            rels = self._atl.find_by_relationship(
+                sc.id, rel_type="EXECUTES_WITH", direction="outgoing", limit=50,
+            )
+            matching = []
+            for other_id, _rel in rels:
+                if other_id in matched_ids:
+                    other = matched_lookup[other_id]
+                    matching.append({"id": other_id, "name": other.name})
+
+            if matching:
+                ranked.append({
+                    "name": skill_name,
+                    "relevance": len(matching),
+                    "past_success_rate": sc.confidence,
+                    "skill_concept_id": sc.id,
+                    "matching_concepts": matching,
+                })
+
+        return sorted(ranked, key=lambda x: x["relevance"], reverse=True)
 
 
 __all__ = ["ConceptContextBuilder"]

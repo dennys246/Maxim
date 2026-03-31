@@ -34,7 +34,7 @@ class SkillPrompt:
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     """Compute cosine similarity between two vectors."""
-    if len(a) != len(b) or not a:
+    if len(a) != len(b) or len(a) == 0:
         return 0.0
     dot = sum(x * y for x, y in zip(a, b))
     norm_a = sum(x * x for x in a) ** 0.5

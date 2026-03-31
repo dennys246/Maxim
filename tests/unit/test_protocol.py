@@ -102,8 +102,13 @@ def mock_maxim():
     m = Mock()
     m.mini = Mock()
     m.log = Mock()
-    m._hippocampus = Mock()
     m._nac = Mock()
+    # MemoryHub is how bio systems are resolved now
+    m._memory_hub = Mock()
+    m._memory_hub.hippocampus = Mock()
+    m._memory_hub.atl = Mock()
+    m._memory_hub.angular_gyrus = Mock()
+    m._memory_hub.scn = Mock()
     return m
 
 
@@ -244,11 +249,11 @@ class TestBioSystemResolution:
 
         proto.on_activate(mock_maxim)
 
-        assert skill._bio["hippocampus"] is mock_maxim._hippocampus
+        assert skill._bio["hippocampus"] is mock_maxim._memory_hub.hippocampus
         assert skill._bio["nac"] is mock_maxim._nac
 
     def test_missing_bio_system_is_none(self, mock_maxim):
-        del mock_maxim._hippocampus  # Remove it
+        del mock_maxim._memory_hub  # Remove hub
         skill = StubSkill("bio_skill", deps=["hippocampus"])
         proto = SimpleProtocol(skills=[skill])
 

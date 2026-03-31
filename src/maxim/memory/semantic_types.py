@@ -74,6 +74,8 @@ class RelationshipRegistry:
             ("PROPERTY_OF", "Property attribution", False),
             ("RELATED_TO", "Generic association", True),
             ("ASSOCIATES", "Associative link", True),
+            ("EXECUTES_WITH", "Skill executes in context of this concept", False),
+            ("ALIAS_OF", "Compound alias referencing component concepts", False),
         ]
         for name, desc, symmetric in base:
             self._types[name] = {
@@ -185,6 +187,7 @@ class SemanticMemory(MemoryRecord):
     def to_context_dict(self) -> dict[str, Any]:
         """Format semantic memory for LLM context."""
         return {
+            "id": self.id,
             "type": "semantic",
             "name": self.name,
             "category": self.category,
@@ -377,6 +380,7 @@ class CompressedSemantic(CompressedRecord):
     def to_context_dict(self) -> dict[str, Any]:
         """Format compressed semantic memory for LLM context."""
         return {
+            "id": self.id,
             "type": "compressed_semantic",
             "name": self.name,
             "category": self.category,

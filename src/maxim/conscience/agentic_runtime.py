@@ -132,6 +132,94 @@ class AgenticRuntimeMixin:
         except Exception as e:
             warn("Failed to create NAc: %s", e, logger=self.log)
 
+        # Create MemoryHub — central coordinator for bio-memory subsystems
+        memory_hub = None
+        try:
+            from maxim.integration.memory_hub import MemoryHub
+            from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+            from maxim.memory.atl import ATL, ATLConfig
+            from maxim.math.angular_gyrus import AngularGyrus, AngularGyrusConfig
+            from maxim.similarity.ec import EntorhinalCortex
+            from maxim.time.scn import SCN
+
+            data_dir = str(getattr(self, "home_dir", "data") or "data")
+
+            hippocampus = Hippocampus(HippocampusConfig(
+                persistence_path=f"{data_dir}/memory/hippocampus.json",
+            ))
+            scn = SCN()
+            ec = EntorhinalCortex()
+            atl = ATL(ATLConfig(
+                persistence_path=f"{data_dir}/memory/atl.json",
+            ))
+            angular_gyrus = AngularGyrus(AngularGyrusConfig(
+                persistence_path=f"{data_dir}/memory/angular_gyrus.json",
+            ))
+
+            # Use the already-created nac if available; otherwise create one
+            # (NAc is re-imported here in case the earlier try block failed)
+            hub_nac = nac
+            if hub_nac is None:
+                from maxim.decisions.nac import NAc as _NAc
+                hub_nac = _NAc()
+
+            memory_hub = MemoryHub(
+                hippocampus=hippocampus,
+                scn=scn,
+                nac=hub_nac,
+                ec=ec,
+                atl=atl,
+                angular_gyrus=angular_gyrus,
+            )
+
+            agent.wire_memory_hub(memory_hub)
+            self._memory_hub = memory_hub
+            self.log.info("MemoryHub created and wired")
+        except Exception as e:
+            warn("Failed to create MemoryHub: %s", e, logger=self.log)
+            memory_hub = None
+
+        # Create NumericalWorkspace for agent math operations
+        try:
+            from maxim.math.ips import IPS
+            from maxim.math.workspace import NumericalWorkspace
+
+            ips = IPS()
+            numerical_workspace = NumericalWorkspace(ips=ips)
+            self._numerical_workspace = numerical_workspace
+            self.log.debug("NumericalWorkspace created")
+        except Exception as e:
+            warn("Failed to create NumericalWorkspace: %s", e, logger=self.log)
+            numerical_workspace = None
+
+        # Create SkillMatcher for semantic skill prompt matching
+        try:
+            from maxim.runtime.skill_matcher import SkillMatcher
+
+            data_dir = str(getattr(self, "home_dir", "data") or "data")
+            skills_dir = os.path.join(data_dir, "skills")
+            agent_skills_dir = os.path.join(data_dir, "agent_skills")
+
+            # Use EC's neural embedder if available
+            embedder = None
+            if memory_hub is not None:
+                ec_obj = getattr(memory_hub, "ec", None)
+                if ec_obj is not None:
+                    embedder = getattr(ec_obj, "_neural_embedder", None)
+
+            self._skill_matcher = SkillMatcher(
+                skills_dir=skills_dir,
+                agent_skills_dir=agent_skills_dir,
+                embedder=embedder,
+                memory_hub=memory_hub,
+            )
+            self.log.debug(
+                "SkillMatcher created (embedder=%s)",
+                "enabled" if embedder else "disabled",
+            )
+        except Exception as e:
+            warn("Failed to create SkillMatcher: %s", e, logger=self.log)
+
         # Propagate exploration mode context if set by CLI
         if bool(getattr(self, "_exploration_mode", False)):
             state.data["exploration_mode"] = True
@@ -219,6 +307,53 @@ class AgenticRuntimeMixin:
         executor = build_executor(registry)
         evaluators = build_evaluators()
 
+        # Register MathTool if NumericalWorkspace and AngularGyrus are available
+        if numerical_workspace is not None and memory_hub is not None:
+            try:
+                from maxim.tools.math_tool import MathTool
+
+                math_ips = numerical_workspace._ips
+                math_ag = getattr(memory_hub, "angular_gyrus", None)
+                if math_ag is not None:
+                    math_tool = MathTool(
+                        ips=math_ips,
+                        angular_gyrus=math_ag,
+                        workspace=numerical_workspace,
+                    )
+                    registry.register(math_tool)
+                    self.log.debug("MathTool registered")
+            except Exception as e:
+                warn("Failed to register MathTool: %s", e, logger=self.log)
+
+        # --- Provenance system ---
+        self._provenance_collector = None
+        try:
+            from maxim.provenance.collector import ProvenanceCollector
+            from maxim.provenance.types import ProvenanceVerbosity
+
+            prov_verbosity = int(os.getenv(
+                "MAXIM_PROVENANCE_VERBOSITY",
+                str(getattr(self, "provenance_verbosity", 1)),
+            ))
+            verbosity = ProvenanceVerbosity(min(prov_verbosity, 2))
+            collector = ProvenanceCollector(verbosity=verbosity)
+
+            prov_persist = os.getenv("MAXIM_PROVENANCE_PERSIST", "1") != "0"
+            if prov_persist:
+                from maxim.provenance.store import ProvenanceStore
+                data_dir = str(getattr(self, "home_dir", "data") or "data")
+                collector._store = ProvenanceStore(
+                    base_dir=os.path.join(data_dir, "provenance"),
+                )
+
+            agent.wire_provenance(collector)
+            self._provenance_collector = collector
+
+            from maxim.tools.explain import ExplainTool
+            registry.register(ExplainTool(collector))
+        except Exception as e:
+            warn("Failed to initialize provenance system: %s", e, logger=self.log)
+
         # --- Protocol system ---
         try:
             from maxim.skills.registry import ProtocolRegistry
@@ -263,6 +398,14 @@ class AgenticRuntimeMixin:
             for proto in self._protocol_registry._protocols.values():
                 self._protocol_registry._register_phrases(proto.name, proto)
 
+            # Wire ProtocolRegistry to MemoryAgent for skill name injection (A7.1)
+            agent.memory._protocol_registry = self._protocol_registry
+
+            # Wire skill registry to ConceptContextBuilder for discovery (A7.5)
+            if memory_hub and memory_hub._concept_context_builder:
+                skills = self._protocol_registry.all_skills()
+                memory_hub._concept_context_builder.set_skill_registry(skills)
+
         except Exception as e:
             warn("Failed to initialize protocol system: %s", e, logger=self.log)
 
@@ -278,6 +421,7 @@ class AgenticRuntimeMixin:
             "speak",
             "respond",
             "list_directory",
+            "math",
         }
 
         # Add internet tools if allowed
@@ -364,6 +508,27 @@ class AgenticRuntimeMixin:
             warn("Failed to build DefaultNetwork: %s", e, logger=self.log)
             default_network = None
 
+        # Wire MemoryHub bridges to DefaultNetwork subsystems
+        if memory_hub is not None and default_network is not None:
+            try:
+                memory_hub.connect(
+                    spatial=getattr(default_network, "_spatial_map", None),
+                    attention=getattr(default_network, "_attention_network", None),
+                    salience=getattr(default_network, "_salience_network", None),
+                    fear_agent=fear_agent,
+                    novelty_tracker=getattr(default_network, "_novelty_tracker", None),
+                )
+                self.log.info("MemoryHub bridges connected to DefaultNetwork")
+            except Exception as e:
+                warn("Failed to connect MemoryHub bridges: %s", e, logger=self.log)
+        elif memory_hub is not None:
+            # DN not available but we can still create core bridges (planning, escalation, fear)
+            try:
+                memory_hub.connect(fear_agent=fear_agent)
+                self.log.info("MemoryHub core bridges connected (no DefaultNetwork)")
+            except Exception as e:
+                warn("Failed to connect MemoryHub core bridges: %s", e, logger=self.log)
+
         # Start capture manager or fall back to vision event stream
         if capture_manager is not None:
             try:
@@ -426,6 +591,8 @@ class AgenticRuntimeMixin:
                     autonomy_controller=autonomy_controller,
                     llm_worker=llm_worker,
                     default_network=default_network,
+                    hippocampus=memory_hub.hippocampus if memory_hub else None,
+                    memory_hub=memory_hub,
                     evaluators=evaluators,
                     max_steps=0,  # Unlimited
                     run_id=run_id,
@@ -597,8 +764,28 @@ class AgenticRuntimeMixin:
         self._default_network = None
         self._capture_manager = None
 
+        # Clean up MemoryHub reference
+        # (session end + consolidation handled by agent_loop.py on_session_end)
+        hub = getattr(self, "_memory_hub", None)
+        if hub is not None:
+            # Shut down concept extractor worker thread if running
+            extractor = getattr(hub, "_concept_extractor", None)
+            if extractor is not None:
+                try:
+                    extractor.shutdown()
+                except Exception:
+                    pass
+        self._memory_hub = None
+
+        # Clear provenance collector reference
+        self._provenance_collector = None
+
         # Clear FearAgent reference
         self._fear_agent = None
+
+        # Clear NumericalWorkspace and SkillMatcher references
+        self._numerical_workspace = None
+        self._skill_matcher = None
 
         self._stop_vision_event_stream(timeout=2.0)
 

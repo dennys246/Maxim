@@ -293,6 +293,7 @@ class CompressedMemory(CompressedRecord):
     def to_context_dict(self) -> dict[str, Any]:
         """Format compressed memory for LLM context."""
         return {
+            "id": self.id,
             "type": "compressed_episodic",
             "goal": self.goal,
             "tool": self.tool_name,
@@ -415,6 +416,7 @@ class EpisodicMemory(MemoryRecord):
     def to_context_dict(self) -> dict[str, Any]:
         """Format episodic memory for LLM context."""
         return {
+            "id": self.id,
             "type": "episodic",
             "detected_objects": self.perception.detected_objects,
             "detected_people": self.perception.detected_people,

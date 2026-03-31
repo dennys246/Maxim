@@ -125,6 +125,16 @@ class ProtocolRegistry:
     def get_available(self) -> list[str]:
         return list(self._protocols.keys())
 
+    def all_skills(self) -> list:
+        """Return flat list of all skills across all registered protocols."""
+        skills = []
+        for protocol in self._protocols.values():
+            try:
+                skills.extend(protocol.skills())
+            except Exception:
+                pass
+        return skills
+
     def get_context_for_llm(self) -> str:
         """Aggregate LLM context from all active protocols."""
         if not self._active:

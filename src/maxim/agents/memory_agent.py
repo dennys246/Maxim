@@ -290,6 +290,9 @@ class MemoryAgent(Agent, AgentOutputMixin):
         # Optional MemoryHub for multi-layer knowledge queries
         self._memory_hub = memory_hub
 
+        # Provenance collector (wired by MaximAgent.wire_provenance)
+        self._collector: Any = None
+
         # Workspace path for reading working notes
         self._workspace_path = workspace_path
 
@@ -324,6 +327,10 @@ class MemoryAgent(Agent, AgentOutputMixin):
         Pattern completion hook is invoked if wired.
         """
         from maxim.agents.bus import MemoryTier
+
+        # Begin provenance trace for this cycle
+        if self._collector:
+            self._collector.begin_trace(run_id)
 
         now = time.time()
 
@@ -361,6 +368,15 @@ class MemoryAgent(Agent, AgentOutputMixin):
             # Decision, Action, Outcome left as defaults (empty)
         )
 
+        # Inject active skill name from protocol context (A7.1)
+        protocol_registry = getattr(self, "_protocol_registry", None)
+        if protocol_registry is not None:
+            for proto in protocol_registry.get_active():
+                skill_name = proto._context.get("_active_skill_name")
+                if skill_name:
+                    episodic.perception.observations["_skill_name"] = skill_name
+                    break
+
         salience = self._compute_memory_salience(percept)
         decay_rate = 0.05 if percept.has_maxim_keyword else 0.1
 
@@ -385,6 +401,20 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
         self._forming_pool[run_id] = entry
 
+        # Record pattern completion predictions (P3a)
+        if self._collector and self._collector.verbosity >= 1:
+            if entry.predicted_outcomes:
+                from maxim.provenance.types import PipelineStage, ProvenanceRef
+                refs = [
+                    ProvenanceRef("hippocampus", p.source_episode_id,
+                                  f"{p.tool} (success={p.success})", p.confidence)
+                    for p in entry.predicted_outcomes if p.source_episode_id
+                ]
+                self._collector.record(
+                    run_id, PipelineStage.RECALL, "pattern_completer",
+                    f"{len(refs)} predicted outcomes", sources=refs,
+                )
+
         # Also capture via Hippocampus
         content = {
             "source": percept.source,
@@ -408,6 +438,20 @@ class MemoryAgent(Agent, AgentOutputMixin):
         assert isinstance(entry.record, EpisodicMemory)
         entry.record.decision = decision
         entry.invalidate_keywords()
+
+        # Record decision provenance (P3b)
+        if self._collector and self._collector.verbosity >= 1:
+            from maxim.provenance.types import PipelineStage
+            action_name = decision.intent.get("action", "none") if decision.intent else "none"
+            metadata: dict[str, Any] = {"reasoning": decision.reasoning}
+            if self._collector.verbosity >= 2:
+                metadata["alternatives"] = decision.alternatives_considered or []
+            self._collector.record(
+                run_id, PipelineStage.DECISION, "memory_agent",
+                f"Action: {action_name} (confidence: {decision.confidence:.2f})",
+                confidence=decision.confidence,
+                **metadata,
+            )
 
     def _update_forming_action(self, run_id: str, action: Action) -> None:
         """Fill in the action on a FORMING episodic memory."""
@@ -435,6 +479,17 @@ class MemoryAgent(Agent, AgentOutputMixin):
         entry.record.outcome = outcome
         entry.tier = MemoryTier.WORKING
         entry.invalidate_keywords()
+
+        # Record outcome provenance (P3c) then complete trace
+        if self._collector and self._collector.verbosity >= 1:
+            from maxim.provenance.types import PipelineStage
+            duration = entry.record.action.execution_time_ms
+            self._collector.record(
+                run_id, PipelineStage.OUTCOME, "memory_agent",
+                f"Success={outcome.success}, duration={duration:.0f}ms",
+            )
+        if self._collector:
+            self._collector.complete_trace(run_id)
 
     def _flush_working_to_captured(self) -> None:
         """Transition WORKING entries in the pool — remove from forming pool.
@@ -1022,6 +1077,20 @@ class MemoryAgent(Agent, AgentOutputMixin):
                     self._write_context(context_dict, share=True)
                 except Exception as e:
                     log_swallowed_exception(e, operation="write_context")
+
+            # Inject provenance context (P7)
+            if self._collector and self._collector.verbosity >= 1:
+                try:
+                    from maxim.provenance.render import render_trace
+                    from maxim.provenance.types import ProvenanceVerbosity
+                    recent = self._collector.recent_traces(limit=3)
+                    if recent:
+                        context.provenance_context = "\n".join(
+                            render_trace(t, verbosity=ProvenanceVerbosity.COMPACT)
+                            for t in recent
+                        )
+                except Exception as e:
+                    log_swallowed_exception(e, operation="provenance_context")
 
             return context
 

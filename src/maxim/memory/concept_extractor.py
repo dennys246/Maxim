@@ -25,7 +25,7 @@ import threading
 import time as _time
 from collections import defaultdict
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from maxim.memory.semantic_types import Concept, ConceptProvenance
 from maxim.memory.text import normalize_tokens
@@ -65,6 +65,9 @@ class ConceptExtractor:
         self._cross_layer = cross_layer
         self._scn = scn
         self._pool = worker_pool
+
+        # Provenance collector (wired by MaximAgent.wire_provenance)
+        self._collector: Any = None
 
         # Reverse index for O(1) cleanup on memory deletion
         self._reverse_index: dict[str, set[str]] = defaultdict(set)
@@ -154,6 +157,32 @@ class ConceptExtractor:
             if cid:
                 concept_ids.append((cid, name, category))
                 self._reverse_index[memory_id].add(cid)
+
+        # Skill auto-association (A7.2): register a skill concept if active
+        skill_name = record.perception.observations.get("_skill_name")
+        if skill_name:
+            skill_cid = self._register_concept(
+                name=f"skill:{skill_name}",
+                category="skill_execution",
+                memory_id=memory_id,
+                record=record,
+            )
+            if skill_cid:
+                concept_ids.append((skill_cid, f"skill:{skill_name}", "skill_execution"))
+                self._reverse_index[memory_id].add(skill_cid)
+
+        # Log concept extraction activity (P3d — Tier 2)
+        if self._collector and self._collector.verbosity >= 1:
+            from maxim.provenance.types import PipelineStage, ProvenanceRef
+            refs = [
+                ProvenanceRef("atl", cid, f"{name} ({cat})")
+                for cid, name, cat in concept_ids
+            ]
+            self._collector.log_activity(
+                PipelineStage.FORMATION, "concept_extractor",
+                f"Extracted {len(refs)} concepts from hpc:{memory_id[:8]}",
+                sources=refs,
+            )
 
         # Form inline relationships between co-occurring concepts
         if self._pool is not None and len(concept_ids) >= 2:
@@ -278,6 +307,21 @@ class ConceptExtractor:
                         weight=0.3,
                         confidence=0.3,
                     )
+                    # Phrase-level alias for new relationships (A7.3)
+                    compound = f"{name_a} {name_b}"
+                    alias_id, alias_created = self._atl.find_or_create(
+                        name=compound,
+                        category="compound_alias",
+                        definition=f"Co-occurring: {name_a} + {name_b}",
+                        provenance=ConceptProvenance.EPISODIC_CONSOLIDATION,
+                    )
+                    if alias_created:
+                        self._atl.define_relationship(
+                            alias_id, cid_a, "ALIAS_OF", weight=0.8,
+                        )
+                        self._atl.define_relationship(
+                            alias_id, cid_b, "ALIAS_OF", weight=0.8,
+                        )
                 formed += 1
 
     @staticmethod
@@ -297,6 +341,8 @@ class ConceptExtractor:
             return "HAS_PART"
         elif cat_a == cat_b == "object":
             return "RELATED_TO"
+        elif "skill_execution" in cats:
+            return "EXECUTES_WITH"
         else:
             return "ASSOCIATES"
 

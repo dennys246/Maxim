@@ -69,6 +69,24 @@ class PatternCompleter:
         if not concepts:
             return []
 
+        # 1b. Discover skill concepts via EXECUTES_WITH edges (A7.4b)
+        if self._atl is not None:
+            try:
+                skill_concepts = self._atl.recall(
+                    limit=10, category="skill_execution",
+                )
+                episode_concept_ids = {c.id for c in concepts}
+                for sc in skill_concepts:
+                    if isinstance(sc, Concept):
+                        rels = self._atl.find_by_relationship(
+                            sc.id, rel_type="EXECUTES_WITH",
+                            direction="outgoing", limit=20,
+                        )
+                        if any(oid in episode_concept_ids for oid, _ in rels):
+                            concepts.append(sc)
+            except Exception as e:
+                logger.debug("Skill concept discovery failed: %s", e)
+
         # 2. Collect episode IDs from concept refs (deduplicated)
         hippocampus = self._layers.get("hippocampus")
         if not hippocampus:

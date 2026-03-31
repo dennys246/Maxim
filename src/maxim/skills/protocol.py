@@ -168,6 +168,7 @@ class Protocol(ABC):
             result = skill.activate(maxim, context=self._context)
             if result.ok:
                 self._active_skills.append(skill)
+                self._context["_active_skill_name"] = skill.name
             else:
                 action = self.on_skill_failed(skill, result)
                 if action == "abort":
@@ -245,21 +246,45 @@ class Protocol(ABC):
     def _resolve_bio_systems(self, maxim: Any) -> dict[str, Any]:
         """Discover available biological subsystems on the Maxim instance.
 
+        Resolves via MemoryHub (stored as _memory_hub on Maxim by
+        agentic_runtime.py) for hippocampus, atl, angular_gyrus, scn.
+        NAc is stored directly on Maxim as _nac.
+        IPS is stateless and instantiated on demand.
+
         Returns a dict mapping system name to live instance.
         """
         systems: dict[str, Any] = {}
-        bio_attrs = {
-            "hippocampus": "_hippocampus",
-            "atl": "_atl",
-            "ips": "_ips",
-            "angular_gyrus": "_angular_gyrus",
-            "nac": "_nac",
-            "scn": "_scn",
-        }
-        for name, attr in bio_attrs.items():
-            obj = getattr(maxim, attr, None)
-            if obj is not None:
-                systems[name] = obj
+
+        # Resolve via MemoryHub (created in agentic_runtime.py)
+        hub = getattr(maxim, "_memory_hub", None)
+        if hub is not None:
+            # Wrap hub in BioContext facade for skill-friendly access
+            from maxim.skills.bio_context import BioContext
+            systems["memory_hub"] = BioContext(hub)
+            # Individual systems from hub (public attributes)
+            hub_attrs = {
+                "hippocampus": "hippocampus",
+                "atl": "atl",
+                "angular_gyrus": "angular_gyrus",
+                "scn": "scn",
+            }
+            for name, attr in hub_attrs.items():
+                obj = getattr(hub, attr, None)
+                if obj is not None:
+                    systems[name] = obj
+
+        # NAc stored directly on Maxim (agentic_runtime.py:130)
+        nac = getattr(maxim, "_nac", None)
+        if nac is not None:
+            systems["nac"] = nac
+
+        # IPS is stateless — instantiate on demand
+        try:
+            from maxim.math.ips import IPS
+            systems["ips"] = IPS()
+        except ImportError:
+            pass
+
         return systems
 
     def __init__(self) -> None:
