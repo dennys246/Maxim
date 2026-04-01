@@ -1291,6 +1291,12 @@ def run_agentic_loop(
 
                                     # Capture episodic memory to Hippocampus (async — fire-and-forget)
                                     if hippocampus is not None:
+                                        # Boost salience for surprising outcomes (high RPE)
+                                        if hasattr(executor, "get_last_rpe"):
+                                            rpe = executor.get_last_rpe()
+                                            if rpe > 0.0 and isinstance(observation, dict):
+                                                current_salience = observation.get("salience", 0.5)
+                                                observation["salience"] = min(1.0, current_salience + rpe * 0.5)
                                         try:
                                             hippocampus.capture_from_loop_async(
                                                 observation=observation if isinstance(observation, dict) else {},
@@ -1785,6 +1791,12 @@ def run_agentic_loop(
 
                     # Capture episodic memory to Hippocampus (async — fire-and-forget)
                     if hippocampus is not None:
+                        # Boost salience for surprising outcomes (high RPE)
+                        if hasattr(executor, "get_last_rpe"):
+                            rpe = executor.get_last_rpe()
+                            if rpe > 0.0 and isinstance(observation, dict):
+                                current_salience = observation.get("salience", 0.5)
+                                observation["salience"] = min(1.0, current_salience + rpe * 0.5)
                         try:
                             hippocampus.capture_from_loop_async(
                                 observation=observation if isinstance(observation, dict) else {},

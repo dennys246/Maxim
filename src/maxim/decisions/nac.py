@@ -35,6 +35,7 @@ class NACConfig:
     temporal_window_seconds: float = 300.0  # Max time between event and outcome
     enable_hippocampus_queries: bool = True  # Query Hippocampus for similar episodes
     base_learning_rate: float = 0.2  # Rescorla-Wagner base learning rate
+    use_ec_similarity: bool = False  # Phase 3 flag, default OFF
 
 
 class NAc:
@@ -72,11 +73,14 @@ class NAc:
             print(f"Confidence: {prediction.confidence:.2f}")
     """
 
-    def __init__(self, config: NACConfig | None = None):
+    def __init__(self, config: NACConfig | None = None, ec: Any = None):
         self.config = config or NACConfig()
 
         # Primary storage: event_signature → list of CausalLinks
         self._links: dict[str, list[CausalLink]] = {}
+
+        # EC reference for causal pattern similarity registration (Phase 2)
+        self._ec = ec
 
         # Provenance collector (wired by MaximAgent.wire_provenance)
         self._collector: Any = None
@@ -302,6 +306,9 @@ class NAc:
                 existing_link.update_prediction_rw(
                     outcome_valence, learning_rate=self.config.base_learning_rate
                 )
+                # Register established causal patterns in EC similarity space
+                if self._ec is not None and existing_link.observation_count >= 3:
+                    self._register_causal_in_ec(existing_link)
                 updated_links.append(existing_link)
             else:
                 new_link = CausalLink(
@@ -433,6 +440,43 @@ class NAc:
         """
         context = context or {}
         event_links = self._links.get(event_signature, [])
+
+        # Phase 3: augment with EC-similar causal patterns
+        if self._ec is not None and self.config.use_ec_similarity:
+            try:
+                from maxim.similarity.signature import SituationSignature
+
+                sig = SituationSignature(
+                    structural_hash=hash(event_signature),
+                    temporal_hash=(0, 0, 0, 0),
+                    tool_name=(
+                        event_signature.split(":")[-1]
+                        if ":" in event_signature
+                        else event_signature
+                    ),
+                    outcome_type="",
+                    mode="",
+                    goal_keywords=tuple(
+                        (context or {}).get("goal", "").split()[:3]
+                    ),
+                    context_hash=(
+                        hash(frozenset(sorted((context or {}).items())))
+                        if context
+                        else 0
+                    ),
+                    semantic_hash=(),
+                )
+                similar = self._ec.find_similar(sig, k=10, min_similarity=0.5)
+                existing_ids = {id(l) for l in event_links}
+                for causal_id, score in similar:
+                    if causal_id.startswith("causal:"):
+                        link_id = causal_id[7:]
+                        link = self._get_link_by_id(link_id)
+                        if link and id(link) not in existing_ids:
+                            event_links = list(event_links) + [link]
+                            existing_ids.add(id(link))
+            except Exception:
+                pass  # EC query is best-effort
 
         if not event_links:
             # Check priors
@@ -619,6 +663,55 @@ class NAc:
     # MAINTENANCE
     # ─────────────────────────────────────────────────────────────────────────
 
+    def _get_link_by_id(self, link_id: str) -> CausalLink | None:
+        """Find a CausalLink by its ID across all event signatures."""
+        for links in self._links.values():
+            for link in links:
+                if link.id == link_id:
+                    return link
+        return None
+
+    def _register_causal_in_ec(self, link: CausalLink) -> None:
+        """Register an established causal pattern in EC for similarity queries."""
+        try:
+            from maxim.similarity.signature import SituationSignature
+
+            sig = SituationSignature(
+                structural_hash=hash(
+                    f"{link.event_signature}:{link.outcome_signature}"
+                ),
+                temporal_hash=(0, 0, 0, 0),
+                tool_name=(
+                    link.event_signature.split(":")[-1]
+                    if ":" in link.event_signature
+                    else link.event_signature
+                ),
+                outcome_type=link.outcome_valence.value,
+                mode="",
+                goal_keywords=(
+                    tuple(link.event_context.get("goal", "").split()[:3])
+                    if link.event_context.get("goal")
+                    else ()
+                ),
+                context_hash=(
+                    hash(frozenset(sorted(link.event_context.items())))
+                    if link.event_context
+                    else 0
+                ),
+                semantic_hash=(),
+            )
+            self._ec.register(f"causal:{link.id}", sig)
+        except Exception:
+            pass  # EC registration is best-effort
+
+    def _deregister_causal_from_ec(self, link_id: str) -> None:
+        """Remove a causal pattern from EC when link is evicted."""
+        if self._ec is not None:
+            try:
+                self._ec.remove_signature(f"causal:{link_id}")
+            except Exception:
+                pass
+
     def _enforce_limits(self) -> None:
         """Enforce max_links limit by removing lowest-confidence links."""
         total_links = sum(len(links) for links in self._links.values())
@@ -639,6 +732,8 @@ class NAc:
         to_remove = total_links - self.config.max_links
         for event_sig, link in all_links[:to_remove]:
             self._links[event_sig].remove(link)
+            # Clean up EC registration
+            self._deregister_causal_from_ec(link.id)
             # Clean up outcome index
             for outcome_sig, link_ids in list(self._outcome_index.items()):
                 link_ids.discard(link.id)

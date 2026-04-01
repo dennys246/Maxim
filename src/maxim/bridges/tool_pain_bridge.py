@@ -16,6 +16,7 @@ from maxim.decisions.nac import NAc
 from maxim.proprioception.pain import PainDetector, PainSignal, PainType
 
 if TYPE_CHECKING:
+    from maxim.memory.hippocampus import Hippocampus
     from maxim.time.scn import SCN
 
 logger = logging.getLogger(__name__)
@@ -50,9 +51,11 @@ class ToolPainBridge:
         nac: NAc,
         pain_detector: PainDetector,
         scn: SCN | None = None,
+        hippocampus: Hippocampus | None = None,
     ) -> None:
         self._nac = nac
         self._scn = scn
+        self._hippocampus = hippocampus
         self._lock = threading.Lock()
         self._pending_tools: dict[tuple[str, str], str] = {}
         self._last_rpe: float = 0.0  # Most recent RPE magnitude (for salience)
@@ -113,6 +116,7 @@ class ToolPainBridge:
             )
             rpe = max((l.last_rpe or 0.0 for l in links), default=0.0) if links else 0.0
             self._last_rpe = rpe
+            self._create_causal_edges(links)
 
             # Register positive temporal signal with SCN
             if self._scn is not None:
@@ -153,6 +157,7 @@ class ToolPainBridge:
             )
             rpe = max((l.last_rpe or 0.0 for l in links), default=0.0) if links else 0.0
             self._last_rpe = rpe
+            self._create_causal_edges(links)
 
             # Register temporal context with SCN
             if self._scn is not None:
@@ -166,6 +171,35 @@ class ToolPainBridge:
                     )
                 except Exception:
                     pass  # SCN registration is best-effort
+
+    def _create_causal_edges(self, links: list) -> None:
+        """Create CAUSES edges for surprising outcomes (RPE > 0.3).
+
+        Connects older episodes in each link's memory_ids to the newest
+        episode, threading a causal chain through the hippocampus graph.
+        """
+        if not self._hippocampus or not links:
+            return
+        from maxim.agents.bus import EdgeType
+
+        for link in links:
+            if (link.last_rpe or 0.0) < 0.3:
+                continue
+            mem_ids = link.memory_ids
+            if len(mem_ids) < 2:
+                continue
+            # Connect older episodes to the newest via CAUSES
+            newest = mem_ids[-1]
+            for older_id in mem_ids[-5:-1]:
+                try:
+                    self._hippocampus.graph.add_edge(
+                        source=older_id,
+                        target=newest,
+                        edge_type=EdgeType.CAUSES,
+                        weight=link.confidence,
+                    )
+                except Exception:
+                    pass
 
     def should_gate_tool(
         self,
