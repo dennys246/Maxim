@@ -444,3 +444,93 @@ class TestExecutorRunningTool:
 
         # After execution, should be None
         assert executor.get_running_tool() is None
+
+
+# ---------------------------------------------------------------------------
+# 14. ToolPainBridge SCN registration on tool pain
+# ---------------------------------------------------------------------------
+
+
+class TestToolPainBridgeSCNOnPain:
+    """SCN should be notified when a tool pain signal is received."""
+
+    def test_scn_register_called_on_tool_pain(self) -> None:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        scn = MagicMock()
+        config = PainConfig(pain_cooldown_seconds=0.0)
+        detector = PainDetector(config=config)
+
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector, scn=scn)
+        bridge.record_tool_start("flaky_api", "inv-10")
+
+        signal = PainSignal(
+            pain_type=PainType.TOOL_FAILURE,
+            intensity=0.7,
+            timestamp=time.time(),
+            context={"tool_name": "flaky_api", "invocation_id": "inv-10"},
+        )
+        bridge._on_pain(signal)
+
+        scn.register.assert_called_once()
+        call_args = scn.register.call_args
+        assert call_args[0][0] == "tool:flaky_api"  # event_signature
+        assert call_args[1]["significance"] == 0.7  # matches signal intensity
+
+    def test_scn_not_called_when_none(self) -> None:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        config = PainConfig(pain_cooldown_seconds=0.0)
+        detector = PainDetector(config=config)
+
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector)  # no scn
+        bridge.record_tool_start("flaky_api", "inv-11")
+
+        signal = PainSignal(
+            pain_type=PainType.TOOL_FAILURE,
+            intensity=0.7,
+            timestamp=time.time(),
+            context={"tool_name": "flaky_api", "invocation_id": "inv-11"},
+        )
+        bridge._on_pain(signal)
+        # No error raised — SCN path is skipped gracefully
+
+
+# ---------------------------------------------------------------------------
+# 15. ToolPainBridge SCN registration on tool success
+# ---------------------------------------------------------------------------
+
+
+class TestToolPainBridgeSCNOnSuccess:
+    """SCN should be notified with mild significance on tool success."""
+
+    def test_scn_register_called_on_success(self) -> None:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        scn = MagicMock()
+        detector = PainDetector()
+
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector, scn=scn)
+        bridge.record_tool_start("web_search", "inv-20")
+        bridge.record_tool_complete("web_search", "inv-20", success=True)
+
+        scn.register.assert_called_once()
+        call_args = scn.register.call_args
+        assert call_args[0][0] == "tool:web_search"
+        assert call_args[1]["significance"] == 0.3  # mild positive
+
+    def test_scn_not_called_on_failure_complete(self) -> None:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        scn = MagicMock()
+        detector = PainDetector()
+
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector, scn=scn)
+        bridge.record_tool_start("bad_tool", "inv-21")
+        bridge.record_tool_complete("bad_tool", "inv-21", success=False)
+
+        scn.register.assert_not_called()
