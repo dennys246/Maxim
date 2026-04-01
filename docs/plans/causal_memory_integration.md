@@ -23,7 +23,7 @@ Wire NAc's causal learning into EC's similarity space and hippocampus's associat
 
 2. **CAUSES edges never created.** `EdgeType.CAUSES` exists in the enum (bus.py:77). `spreading_activation()` already traverses it (hippocampus.py). But NO code path creates CAUSES edges. The graph only has ASSOCIATES edges (from `_form_associations()` during capture).
 
-3. **NAc context similarity is naive.** `_context_similarity()` (nac.py) does key-by-key exact matching. EC's LSH + semantic embeddings would provide much richer similarity for causal pattern matching.
+3. **NAc context similarity is partial.** `predict()` already scores links by `confidence * (0.5 + 0.5 * context_similarity)` (nac.py:471), but `_context_similarity()` is key-by-key exact matching. EC's LSH + semantic embeddings would provide much richer similarity. EC results can be appended to the `event_links` list before the existing scoring logic — predict() will rank them naturally.
 
 4. **CausalLink.memory_ids is a weak backlink.** CausalLinks store memory IDs that contributed to the link, but the hippocampal graph has no edge FROM those memories TO the causal outcome. You can go CausalLink → memory_ids → episodes, but you can't go episode → spreading_activation → related causal outcomes.
 
@@ -45,111 +45,141 @@ The flow mirrors dopaminergic signaling: NAc detects surprise (RPE), hippocampus
 
 ## Implementation
 
+### Design: NAc as the Trigger Point
+
+The NAc computes RPE on every `record_outcome()` call. This is the natural trigger for all downstream memory operations — the RPE magnitude determines what gets wired:
+
+```
+NAc.record_outcome() → CausalLink updated → RPE computed
+    │
+    ├─ RPE > 0.3 (surprising) ──► Create CAUSES edge in hippocampus graph
+    │                            ► Register causal pattern in EC
+    │                            ► Boost hippocampus capture salience
+    │
+    └─ RPE ≤ 0.3 (routine) ────► Update predicted_value only (existing behavior)
+                                 ► No graph edge, no EC registration
+```
+
+NAc already returns the updated CausalLinks (with `last_rpe` set) from `record_outcome()`. The calling bridge (ToolPainBridge) has access to hippocampus and EC through its constructor params. All wiring flows from NAc's surprise signal.
+
 ### Phase 1: Create CAUSES Edges in Hippocampus Graph
 
-When NAc records an outcome and the CausalLink references hippocampal episodes, create CAUSES edges between the event episode and the outcome episode.
+When NAc records a surprising outcome (RPE > 0.3), create CAUSES edges between event episodes and the outcome episode in the hippocampal graph.
 
-**Where:** In `ToolPainBridge` (or a new `CausalGraphBridge`), after `nac.record_outcome()` returns updated links:
+**CORRECTION:** `_form_associations()` in hippocampus.py does NOT call EC — it uses hippocampus's own `_recall_similar_unlocked()`. CAUSES edge creation is a new code path, not extending `_form_associations()`.
+
+**Where:** In `ToolPainBridge`, after `nac.record_outcome()` returns updated links. ToolPainBridge gets a new optional `hippocampus` parameter:
 
 ```python
+class ToolPainBridge:
+    def __init__(self, nac, pain_detector, scn=None, hippocampus=None):
+        # ... existing ...
+        self._hippocampus = hippocampus
+
 def _create_causal_edges(self, links: list[CausalLink], outcome_memory_id: str | None):
-    """Create CAUSES edges from event episodes to outcome episode."""
+    """Create CAUSES edges from event episodes to outcome episode.
+    Only for surprising outcomes (RPE > 0.3)."""
     if not outcome_memory_id or not self._hippocampus:
         return
     for link in links:
-        for event_mem_id in link.memory_ids[-5:]:  # Last 5 contributing episodes
+        if (link.last_rpe or 0.0) < 0.3:
+            continue  # Skip routine outcomes
+        for event_mem_id in link.memory_ids[-5:]:
             if event_mem_id != outcome_memory_id:
-                self._hippocampus.graph.add_edge(
-                    source=event_mem_id,
-                    target=outcome_memory_id,
-                    edge_type=EdgeType.CAUSES,
-                    weight=link.confidence,  # Strong causal links get stronger edges
-                )
+                try:
+                    self._hippocampus.graph.add_edge(
+                        source=event_mem_id,
+                        target=outcome_memory_id,
+                        edge_type=EdgeType.CAUSES,
+                        weight=link.confidence,
+                    )
+                except Exception:
+                    pass  # Memory may have been evicted
 ```
 
-**Effect:** `spreading_activation()` already traverses CAUSES edges — now it finds them. Recalling an event episode activates related outcome episodes through causal chains.
+Call `_create_causal_edges()` from both `record_tool_complete()` (success path) and `_on_pain()` (failure path), after NAc outcome recording.
 
-**Integration point:** ToolPainBridge needs an optional `hippocampus` parameter (like it already has `nac` and `scn`). Wire in MemoryHub or agentic_runtime.
+**Effect:** `spreading_activation()` already traverses CAUSES edges (verified: bus.py:1138 checks `EdgeType.ASSOCIATES` and `EdgeType.CAUSES`). Now it finds them. Recalling an event episode activates related outcome episodes through causal chains.
 
 ### Phase 2: Register Causal Links in EC Similarity Space
 
-Index CausalLinks in EC so "find similar causal patterns" works. A causal link IS a situation signature — it has tool_name, context, outcome, temporal context.
+Index established CausalLinks in EC so "find similar causal patterns" works. Only register links with `observation_count >= 3` (not one-off events).
 
-**Where:** In NAc after creating/updating a CausalLink, register it with EC:
+**Where:** In NAc, after creating/updating a CausalLink in `record_outcome_full()`. NAc gets a new optional `ec` parameter:
 
 ```python
-# In NAc.record_outcome_full(), after link is created/updated:
-if self._ec is not None:
+class NAc:
+    def __init__(self, config=None, ec=None):
+        # ... existing ...
+        self._ec = ec
+
+# In record_outcome_full(), after link is created/updated:
+if self._ec is not None and link.observation_count >= 3:
     sig = SituationSignature(
         structural_hash=hash(f"{link.event_signature}:{link.outcome_signature}"),
-        temporal_hash=self._scn.current_bins() if self._scn else (0, 0, 0, 0),
+        temporal_hash=(0, 0, 0, 0),  # SCN bins if available
         tool_name=link.event_signature.split(":")[-1] if ":" in link.event_signature else "",
         outcome_type=link.outcome_valence.value,
         mode="",
         goal_keywords=tuple(link.event_context.get("goal", "").split()[:3]),
-        context_hash=hash(frozenset(link.event_context.items())),
+        context_hash=hash(frozenset(sorted(link.event_context.items()))),
         semantic_hash=(),
     )
     self._ec.register(f"causal:{link.id}", sig)
 ```
 
-**Effect:** EC can now answer "find causal patterns similar to this tool execution." This enables:
-- "What happened last time I ran tests in a directory like this?"
-- "What tools tend to fail in contexts similar to the current one?"
-- "What causal chains led to success when the goal was similar?"
+**Deregistration:** When a CausalLink's confidence drops below 0.1 or it's evicted, remove from EC:
+```python
+if self._ec is not None:
+    self._ec.remove_signature(f"causal:{link.id}")
+```
 
-**Integration point:** NAc needs an optional `ec` parameter. Currently NAc has no EC reference. Add it in MemoryHub wiring.
+**Effect:** EC can now answer "find causal patterns similar to this tool execution."
 
 ### Phase 3: EC-Enhanced Causal Prediction
 
-Replace NAc's naive `_context_similarity()` with EC's LSH + semantic similarity for causal link retrieval. When predicting an outcome, first query EC for similar causal situations, then score with NAc's Rescorla-Wagner values.
+Augment NAc's `predict()` with EC similarity results. The existing predict() already scores links by `confidence * (0.5 + 0.5 * context_similarity)` (nac.py:471). EC results can be appended to `event_links` before this scoring — predict() ranks them naturally.
 
-**Where:** In `NAc.predict()`:
+**Where:** In `NAc.predict()`, before the existing scoring logic:
 
 ```python
 def predict(self, event_type, event_signature, context=None):
-    # Current: only looks up _links[event_signature] (exact match)
-    local_links = self._links.get(event_signature, [])
+    event_links = self._links.get(event_signature, [])
     
-    # NEW: also query EC for similar causal patterns
-    if self._ec is not None:
-        sig = self._build_signature(event_signature, context)
+    # NEW: augment with EC-similar causal patterns (gated by config)
+    if self._ec is not None and self._config.use_ec_similarity:
+        sig = self._build_causal_signature(event_signature, context)
         similar = self._ec.find_similar(sig, k=10, min_similarity=0.5)
         for causal_id, score in similar:
             if causal_id.startswith("causal:"):
-                link_id = causal_id[7:]  # Strip "causal:" prefix
+                link_id = causal_id[7:]
                 link = self._get_link_by_id(link_id)
-                if link and link not in local_links:
-                    local_links.append(link)  # Include similar causal patterns
+                if link and link not in event_links:
+                    event_links.append(link)
     
-    # Score and return best prediction (existing logic)
+    # Existing scoring logic handles ranking (line 458+)
     ...
 ```
 
-**Effect:** NAc prediction becomes context-aware through EC's similarity engine. "internet_search on restricted network" finds causal links from past restricted network situations, even if the exact event_signature differs slightly.
+**Config flag:** Add `use_ec_similarity: bool = False` to `NACConfig`. Defaults to OFF until Phases 1-2 are validated. This makes Phase 3 independently deployable and reversible.
 
-**Caution:** This changes prediction behavior. Roll out incrementally — start with EC results as a secondary signal (weight 0.3) alongside exact matches (weight 1.0), then tune.
+**Caution:** EC results may surface causal links with different event_signatures but similar contexts. The existing context_similarity scoring (line 471) handles ranking — high context_match links score higher. Start with `use_ec_similarity=False` and enable after observing Phase 1-2 behavior.
 
-### Phase 4: RPE-Driven Capture with Causal Context
+### Phase 4: RPE-Driven Capture Salience
 
-Close the loop: when the agent loop calls `hippocampus.capture_from_loop_async()`, boost the perception's salience by the RPE magnitude from `executor.get_last_rpe()`.
+Close the loop: boost hippocampus capture salience by RPE magnitude so surprising outcomes form stronger memories.
 
-**Where:** In `agent_loop.py`, where `capture_from_loop_async` is called (lines 1293-1305):
+**Where:** In `agent_loop.py`, before `capture_from_loop_async` is called (lines 1293-1305). The observation dict already supports `salience` (hippocampus.py:469 reads `observation.get("salience", 0.5)`):
 
 ```python
 # After tool execution, before capture:
 rpe = executor.get_last_rpe()
 if rpe > 0.0:
-    # Boost salience for surprising outcomes
-    observation["_rpe_salience_boost"] = min(1.0, rpe)
-    
-# In capture_from_loop / capture_from_loop_async:
-salience = observation.get("salience", 0.0)
-rpe_boost = observation.get("_rpe_salience_boost", 0.0)
-effective_salience = min(1.0, salience + rpe_boost * 0.5)  # RPE contributes up to +0.5
+    current_salience = observation.get("salience", 0.5)
+    observation["salience"] = min(1.0, current_salience + rpe * 0.5)  # RPE boosts up to +0.5
 ```
 
-**Effect:** Surprising tool outcomes (high RPE) produce high-salience memories that get promoted to long-term storage. Routine outcomes stay low-salience and may be evicted during consolidation.
+**Effect:** Surprising tool outcomes (high RPE) produce high-salience memories that hit the 0.7 threshold for consolidation candidates or 0.95 for immediate long-term promotion. Routine outcomes keep their original salience.
 
 ---
 
@@ -183,7 +213,11 @@ class ToolPainBridge:
 class NAc:
     def __init__(self, config=None, ec=None):
         # ... existing ...
-        self._ec = ec  # NEW: for causal link indexing + similarity queries
+        self._ec = ec  # NEW: for causal link indexing (Phase 2) + similarity queries (Phase 3)
+
+class NACConfig:
+    # ... existing fields ...
+    use_ec_similarity: bool = False  # NEW: Phase 3 flag, default OFF
 ```
 
 ### MemoryHub wiring (agentic_runtime.py)
@@ -214,13 +248,15 @@ tool_pain_bridge = ToolPainBridge(
 
 ## Risks
 
-1. **CAUSES edge proliferation.** If every tool execution creates a CAUSES edge, the graph could grow large. Mitigate: only create CAUSES edges when RPE > 0.3 (surprising outcomes). Routine outcomes don't need causal edges.
+1. **CAUSES edge proliferation.** Mitigated: only create CAUSES edges when `last_rpe > 0.3` (Phase 1 code guards this). Routine outcomes (low RPE) don't create edges.
 
-2. **EC index bloat.** Registering every CausalLink in EC adds entries. Mitigate: only register links with observation_count >= 3 (established patterns, not one-off events).
+2. **EC index bloat.** Mitigated: only register links with `observation_count >= 3` (Phase 2 code guards this). One-off events don't clutter EC.
 
-3. **Prediction behavior change (Phase 3).** EC-enhanced prediction could surface unexpected causal links. Mitigate: start with low weight (0.3) for EC-sourced links vs 1.0 for exact matches. Tune based on prediction accuracy.
+3. **Prediction behavior change (Phase 3).** Mitigated: `NACConfig.use_ec_similarity` defaults to `False`. Must be explicitly enabled after Phases 1-2 are validated. Existing scoring logic (context_similarity weighting) handles ranking naturally.
 
-4. **Circular activation.** CAUSES edges + ASSOCIATES edges could create activation loops (A associates B, B causes C, C associates A). Mitigate: spreading_activation already has max_depth=3 and decay=0.5, which bounds activation naturally.
+4. **Circular activation.** CAUSES + ASSOCIATES edges could create loops (A associates B, B causes C, C associates A). Mitigated: spreading_activation already bounds with max_depth=3 and decay=0.5.
+
+5. **Stale EC entries.** If a CausalLink is evicted or confidence drops, EC must deregister it. Mitigated: Phase 2 includes deregistration logic on confidence < 0.1.
 
 ---
 
