@@ -245,6 +245,8 @@ def frame_capture_worker(
 
     min_period = 1.0 / float(getattr(maxim, "video_fps", 20.0) or 20.0)
     last_ts = 0.0
+    if maxim.mini is None:
+        return  # No robot — nothing to capture
     while not stop_event.is_set():
         frame = None
         try:
@@ -291,8 +293,8 @@ def audio_capture_worker(
 ) -> None:
     """Capture audio samples from hardware, resample, and enqueue for saving."""
 
-    if not maxim.audio or audio_save_queue is None:
-        return
+    if not maxim.audio or audio_save_queue is None or maxim.mini is None:
+        return  # No robot or no audio — nothing to capture
 
     while not stop_event.is_set():
         sample = None
