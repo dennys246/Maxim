@@ -444,3 +444,273 @@ class TestExecutorRunningTool:
 
         # After execution, should be None
         assert executor.get_running_tool() is None
+
+
+# ---------------------------------------------------------------------------
+# 14. ToolPainBridge SCN registration on tool pain
+# ---------------------------------------------------------------------------
+
+
+class TestToolPainBridgeSCNOnPain:
+    """SCN should be notified when a tool pain signal is received."""
+
+    def test_scn_register_called_on_tool_pain(self) -> None:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        scn = MagicMock()
+        config = PainConfig(pain_cooldown_seconds=0.0)
+        detector = PainDetector(config=config)
+
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector, scn=scn)
+        bridge.record_tool_start("flaky_api", "inv-10")
+
+        signal = PainSignal(
+            pain_type=PainType.TOOL_FAILURE,
+            intensity=0.7,
+            timestamp=time.time(),
+            context={"tool_name": "flaky_api", "invocation_id": "inv-10"},
+        )
+        bridge._on_pain(signal)
+
+        scn.register.assert_called_once()
+        call_args = scn.register.call_args
+        assert call_args[0][0] == "tool:flaky_api"  # event_signature
+        assert call_args[1]["significance"] == 0.7  # matches signal intensity
+
+    def test_scn_not_called_when_none(self) -> None:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        config = PainConfig(pain_cooldown_seconds=0.0)
+        detector = PainDetector(config=config)
+
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector)  # no scn
+        bridge.record_tool_start("flaky_api", "inv-11")
+
+        signal = PainSignal(
+            pain_type=PainType.TOOL_FAILURE,
+            intensity=0.7,
+            timestamp=time.time(),
+            context={"tool_name": "flaky_api", "invocation_id": "inv-11"},
+        )
+        bridge._on_pain(signal)
+        # No error raised — SCN path is skipped gracefully
+
+
+# ---------------------------------------------------------------------------
+# 15. ToolPainBridge SCN registration on tool success
+# ---------------------------------------------------------------------------
+
+
+class TestToolPainBridgeSCNOnSuccess:
+    """SCN should be notified with mild significance on tool success."""
+
+    def test_scn_register_called_on_success(self) -> None:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        scn = MagicMock()
+        detector = PainDetector()
+
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector, scn=scn)
+        bridge.record_tool_start("web_search", "inv-20")
+        bridge.record_tool_complete("web_search", "inv-20", success=True)
+
+        scn.register.assert_called_once()
+        call_args = scn.register.call_args
+        assert call_args[0][0] == "tool:web_search"
+        assert call_args[1]["significance"] == 0.3  # mild positive
+
+    def test_scn_not_called_on_failure_complete(self) -> None:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        scn = MagicMock()
+        detector = PainDetector()
+
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector, scn=scn)
+        bridge.record_tool_start("bad_tool", "inv-21")
+        bridge.record_tool_complete("bad_tool", "inv-21", success=False)
+
+        scn.register.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 16. CausalLink stores last_rpe after update_prediction_rw
+# ---------------------------------------------------------------------------
+
+
+class TestCausalLinkLastRPE:
+    """update_prediction_rw should populate last_rpe with abs(error)."""
+
+    def _make_link(self, predicted_value: float = 0.5) -> CausalLink:
+        return CausalLink(
+            id="test-link",
+            event_type="tool",
+            event_signature="tool:test",
+            event_context={},
+            outcome_type="result",
+            outcome_signature="result:test",
+            outcome_valence=Valence.NEUTRAL,
+            temporal_delta=TemporalDelta(observed_deltas=(1.0,)),
+            predicted_value=predicted_value,
+        )
+
+    def test_last_rpe_none_initially(self) -> None:
+        link = self._make_link()
+        assert link.last_rpe is None
+
+    def test_last_rpe_set_on_surprising_positive(self) -> None:
+        link = self._make_link(predicted_value=0.2)
+        error = link.update_prediction_rw(Valence.POSITIVE)
+        # actual_reward=1.0, predicted=0.2 => error=0.8
+        assert link.last_rpe == pytest.approx(abs(error))
+        assert link.last_rpe == pytest.approx(0.8)
+
+    def test_last_rpe_set_on_surprising_negative(self) -> None:
+        link = self._make_link(predicted_value=0.9)
+        error = link.update_prediction_rw(Valence.NEGATIVE)
+        # actual_reward=0.0, predicted=0.9 => error=-0.9
+        assert link.last_rpe == pytest.approx(0.9)
+        assert error == pytest.approx(-0.9)
+
+    def test_last_rpe_low_on_expected_outcome(self) -> None:
+        link = self._make_link(predicted_value=0.95)
+        link.update_prediction_rw(Valence.POSITIVE)
+        # actual_reward=1.0, predicted=0.95 => |error|=0.05
+        assert link.last_rpe == pytest.approx(0.05)
+
+    def test_last_rpe_persists_in_serialization(self) -> None:
+        link = self._make_link(predicted_value=0.3)
+        link.update_prediction_rw(Valence.POSITIVE)
+        data = link.to_dict()
+        restored = CausalLink.from_dict(data)
+        assert restored.last_rpe == pytest.approx(link.last_rpe)
+
+
+# ---------------------------------------------------------------------------
+# 17. ToolPainBridge exposes RPE on success
+# ---------------------------------------------------------------------------
+
+
+class TestToolPainBridgeRPEOnSuccess:
+    """record_tool_complete should return RPE magnitude from NAc links."""
+
+    def test_returns_rpe_from_links(self) -> None:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+        from maxim.decisions.nac import NAc
+
+        nac = NAc()
+        detector = PainDetector()
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector)
+
+        # First observation establishes a link
+        bridge.record_tool_start("search", "inv-a")
+        bridge.record_tool_complete("search", "inv-a", success=True)
+
+        # Second observation — the link now has a predicted_value near 0.5-1.0,
+        # so a POSITIVE outcome should produce a measurable RPE
+        bridge.record_tool_start("search", "inv-b")
+        rpe = bridge.record_tool_complete("search", "inv-b", success=True)
+        assert isinstance(rpe, float)
+        # RPE should also be stored on the bridge
+        assert bridge._last_rpe == rpe
+
+    def test_returns_zero_when_no_pending(self) -> None:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        detector = PainDetector()
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector)
+
+        rpe = bridge.record_tool_complete("unknown", "inv-x", success=True)
+        assert rpe == 0.0
+
+
+# ---------------------------------------------------------------------------
+# 18. ToolPainBridge stores RPE on pain
+# ---------------------------------------------------------------------------
+
+
+class TestToolPainBridgeRPEOnPain:
+    """_on_pain should update _last_rpe from NAc links."""
+
+    def test_last_rpe_updated_on_pain(self) -> None:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        # Use a real NAc so RPE is actually computed
+        from maxim.decisions.nac import NAc
+
+        nac = NAc()
+        config = PainConfig(pain_cooldown_seconds=0.0)
+        detector = PainDetector(config=config)
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector)
+
+        # Establish a link with a POSITIVE observation first
+        bridge.record_tool_start("flaky", "inv-1")
+        bridge.record_tool_complete("flaky", "inv-1", success=True)
+
+        # Now trigger pain (NEGATIVE outcome) — should produce high RPE
+        bridge.record_tool_start("flaky", "inv-2")
+        signal = PainSignal(
+            pain_type=PainType.TOOL_FAILURE,
+            intensity=0.8,
+            timestamp=time.time(),
+            context={"tool_name": "flaky", "invocation_id": "inv-2"},
+        )
+        bridge._on_pain(signal)
+
+        # RPE should be non-zero (surprising negative after positive history)
+        assert bridge._last_rpe > 0.0
+
+
+# ---------------------------------------------------------------------------
+# 19. Executor get_last_rpe
+# ---------------------------------------------------------------------------
+
+
+class TestExecutorGetLastRPE:
+    """Executor.get_last_rpe should reflect the bridge's most recent RPE."""
+
+    def test_returns_zero_without_bridge(self) -> None:
+        from maxim.runtime.executor import Executor
+        from maxim.tools.registry import ToolRegistry
+
+        executor = Executor(tool_registry=ToolRegistry())
+        assert executor.get_last_rpe() == 0.0
+
+    def test_returns_rpe_after_tool_execution(self) -> None:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+        from maxim.decisions.nac import NAc
+        from maxim.runtime.executor import Executor
+        from maxim.tools.base import Tool, ToolOutput
+        from maxim.tools.registry import ToolRegistry
+
+        nac = NAc()
+        detector = PainDetector()
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector)
+
+        class OkTool(Tool):
+            name = "ok"
+            description = "Always succeeds"
+            input_schema: dict[str, Any] = {}
+
+            def execute(self, **kwargs: Any) -> ToolOutput:
+                return ToolOutput(success=True, output="ok")
+
+        registry = ToolRegistry()
+        registry.register(OkTool())
+        executor = Executor(
+            tool_registry=registry,
+            pain_detector=detector,
+            tool_pain_bridge=bridge,
+        )
+
+        # First call establishes the link
+        executor.execute({"tool_name": "ok", "params": {}})
+        # Second call updates RPE
+        executor.execute({"tool_name": "ok", "params": {}})
+        rpe = executor.get_last_rpe()
+        assert isinstance(rpe, float)
+        assert rpe >= 0.0

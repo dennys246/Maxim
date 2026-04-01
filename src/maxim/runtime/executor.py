@@ -104,6 +104,17 @@ class Executor:
                 },
             )
 
+    def get_last_rpe(self) -> float:
+        """Get RPE magnitude from the most recent tool execution.
+
+        Returns the Rescorla-Wagner prediction error from NAc, which
+        reflects how surprising the tool outcome was.  High RPE signals
+        that hippocampus should boost salience for this memory.
+        """
+        if self._tool_pain_bridge is not None:
+            return self._tool_pain_bridge._last_rpe
+        return 0.0
+
     def get_running_tool(self) -> tuple[str, float, str] | None:
         """Get the currently running tool info.
 

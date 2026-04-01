@@ -164,6 +164,9 @@ class CausalLink:
     # Context sensitivity (same event, different context → different outcome)
     context_factors: dict[str, float] = field(default_factory=dict)
 
+    # Most recent Rescorla-Wagner prediction error magnitude (set by update_prediction_rw)
+    last_rpe: float | None = None
+
     def record_observation(
         self,
         delta_seconds: float,
@@ -245,6 +248,7 @@ class CausalLink:
 
         # Rescorla-Wagner: ΔV = α × (R - V)
         error = actual_reward - self.predicted_value
+        self.last_rpe = abs(error)  # Store magnitude for salience signalling
         delta_v = alpha * error
         new_prediction = self.predicted_value + delta_v
 
@@ -281,6 +285,7 @@ class CausalLink:
             "last_observed": self.last_observed,
             "memory_ids": self.memory_ids,
             "context_factors": self.context_factors,
+            "last_rpe": self.last_rpe,
         }
 
     @classmethod
@@ -302,6 +307,7 @@ class CausalLink:
             last_observed=data.get("last_observed", time.time()),
             memory_ids=data.get("memory_ids", []),
             context_factors=data.get("context_factors", {}),
+            last_rpe=data.get("last_rpe"),
         )
 
 
