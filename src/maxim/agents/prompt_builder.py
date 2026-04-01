@@ -772,10 +772,10 @@ class PromptBuilder:
         if guidelines_text:
             coding_context = build_coding_context(guidelines_text, include_sandbox_reminder=True, max_guidelines=2)
             if coding_context:
-                budgeter.add("coding_guidelines", coding_context, SectionPriority.NICE_TO_HAVE)
+                budgeter.add("coding_guidelines", coding_context, SectionPriority.IMPORTANT)
 
         # ── NICE_TO_HAVE sections ──
-        budgeter.add("foundational", _load_foundational_context(), SectionPriority.NICE_TO_HAVE)
+        budgeter.add("foundational", _load_foundational_context(), SectionPriority.IMPORTANT)
         if mode.context_prompt:
             budgeter.add("mode_context", mode.context_prompt, SectionPriority.NICE_TO_HAVE)
 
@@ -812,7 +812,50 @@ class PromptBuilder:
                 success = "succeeded" if outcome.get("success") else "failed"
                 result = outcome.get("result", "")[:50] if outcome.get("result") else ""
                 outcome_lines.append(f"- {tool}: {success}" + (f" ({result})" if result else ""))
-            budgeter.add("recent_outcomes", "\n".join(outcome_lines), SectionPriority.NICE_TO_HAVE)
+            budgeter.add("recent_outcomes", "\n".join(outcome_lines), SectionPriority.IMPORTANT)
+
+        # ── Memory recall sections (from Hippocampus + ATL) ──
+        if context.relevant_memories:
+            mem_lines = ["=== Relevant Memories ==="]
+            for mem in context.relevant_memories[:8]:
+                content = mem.get("content", {})
+                source = mem.get("source", "episodic")
+                salience = mem.get("salience", 0.0)
+                parts = []
+                if content.get("goal"):
+                    parts.append(f"goal: {content['goal']}")
+                if content.get("action"):
+                    parts.append(f"action: {content['action']}")
+                if content.get("success") is not None:
+                    parts.append("succeeded" if content["success"] else "failed")
+                if content.get("transcript"):
+                    parts.append(f'"{content["transcript"][:80]}"')
+                summary = ", ".join(parts) if parts else str(content)[:80]
+                mem_lines.append(f"- [{source}, salience={salience:.2f}] {summary}")
+                # Include predictions if available
+                if mem.get("predictions"):
+                    for pred in mem["predictions"][:2]:
+                        pred_tool = pred.get("tool", "?")
+                        pred_success = pred.get("success", "?")
+                        pred_conf = pred.get("confidence", 0)
+                        mem_lines.append(f"  prediction: {pred_tool} (success={pred_success}, confidence={pred_conf:.2f})")
+            budgeter.add("relevant_memories", "\n".join(mem_lines),
+                          SectionPriority.IMPORTANT, truncatable=True, min_tokens=50,
+                          truncate_fn=lambda c, m: "\n".join(c.split("\n")[:max(2, m // 20)]))
+
+        if context.concept_context:
+            concept_lines = ["=== Active Concepts ==="]
+            for concept in context.concept_context[:5]:
+                name = concept.get("name", "?")
+                category = concept.get("category", "?")
+                confidence = concept.get("confidence", 0)
+                episodes = concept.get("episode_count", 0)
+                concept_lines.append(f"- {name} ({category}, confidence={confidence:.2f}, episodes={episodes})")
+                for rel in concept.get("relationships", [])[:2]:
+                    concept_lines.append(f"  → {rel.get('type', '?')} {rel.get('target', '?')}")
+            budgeter.add("concept_context", "\n".join(concept_lines),
+                          SectionPriority.IMPORTANT, truncatable=True, min_tokens=30,
+                          truncate_fn=lambda c, m: "\n".join(c.split("\n")[:max(2, m // 15)]))
 
         if context.statistical_context and context.active_pattern_count > 0:
             stat_lines = [

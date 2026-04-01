@@ -974,7 +974,29 @@ class _LlamaCppBackend:
 
             model_path = str(self.cfg.model_path or "").strip()
             if not model_path or not os.path.exists(model_path):
-                warn("LLM model_path not found: %s", model_path)
+                # Auto-download if model is in the registry
+                profile = str(self.cfg.profile or self.cfg.model_base or "").strip()
+                if profile:
+                    try:
+                        from maxim.models.download import download_llm, LLM_MODELS
+                        if profile in LLM_MODELS:
+                            logger.info("Model not found at %s — downloading %s...", model_path, profile)
+                            if download_llm(profile):
+                                logger.info("Download complete: %s", profile)
+                            else:
+                                warn("Auto-download failed for %s", profile)
+                                return False
+                        else:
+                            warn("LLM model_path not found and no download available: %s", model_path)
+                            return False
+                    except Exception as e:
+                        warn("Auto-download failed: %s", e)
+                        return False
+                else:
+                    warn("LLM model_path not found: %s", model_path)
+                    return False
+            if not os.path.exists(model_path):
+                warn("LLM model_path still not found after download: %s", model_path)
                 return False
 
             try:
