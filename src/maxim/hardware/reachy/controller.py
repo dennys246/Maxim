@@ -108,13 +108,17 @@ class ReachyMiniController(RobotController):
         try:
             from reachy_mini import ReachyMini
 
-            # Pre-resolve mDNS to verify the robot is reachable
+            # Pre-resolve mDNS to verify the robot is reachable.
+            # If mDNS fails, the robot is not on the network — skip the
+            # expensive SDK connection attempt (saves ~25s on headless startup).
             resolved_ip = self._resolve_mdns(timeout=min(timeout, 5.0))
             if resolved_ip is None:
                 logger.warning(
-                    "Could not resolve %s via mDNS, falling back to SDK discovery",
+                    "Could not resolve %s via mDNS — robot not reachable, skipping SDK connection",
                     self._robot_name,
                 )
+                self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
+                return False
 
             logger.info("Connecting to Reachy Mini: %s", self._robot_name)
 

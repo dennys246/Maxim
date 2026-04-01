@@ -211,7 +211,10 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
         robot_type = "simulated" if self._simulation else "reachy_mini"
         effective_robot_id = self._robot_id or self.name
 
-        self.log.info("Connecting to robot '%s' (type=%s)...", effective_robot_id, robot_type)
+        # Allow env var to override timeout for faster headless startup
+        effective_timeout = float(os.environ.get("MAXIM_ROBOT_TIMEOUT", str(timeout)))
+
+        self.log.info("Connecting to Reachy Mini '%s'...", effective_robot_id)
 
         # Use the global registry to connect
         self._robot = _robot_registry.connect_robot(
@@ -224,7 +227,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
                 "video_resolution": (640, 480),
                 "simulate_delays": False,
             },
-            timeout=timeout,
+            timeout=effective_timeout,
             set_primary=True,
         )
 

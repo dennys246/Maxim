@@ -499,11 +499,14 @@ class AgenticRuntimeMixin:
         except Exception as e:
             warn("Failed to create FearAgent: %s", e, logger=self.log)
 
-        # Build Default Network for reactive behaviors
+        # Build Default Network for reactive behaviors (skip when headless)
         default_network = None
+        has_robot = hasattr(self, '_capabilities') and self._capabilities.has_robot
+        if not has_robot:
+            self.log.info("Headless mode: skipping DefaultNetwork (no robot)")
         try:
             default_network = build_default_network(
-                maxim=self,
+                maxim=self if has_robot else None,
                 bus=agent_bus,
                 fear_agent=fear_agent,
                 nac=nac,

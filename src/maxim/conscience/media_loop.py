@@ -164,7 +164,7 @@ class MediaLoopMixin:
 
         audio_input_rate = None
         audio_output_rate = None
-        if self.audio:
+        if self.audio and self.mini is not None:
             try:
                 audio_input_rate = int(self.mini.media.get_input_audio_samplerate())
                 audio_output_rate = int(self.mini.media.get_output_audio_samplerate())
@@ -173,7 +173,7 @@ class MediaLoopMixin:
 
         transcribe_process = None
         transcribe_shutdown_file = None
-        if self.audio and parallel:
+        if self.audio and parallel and self._robot is not None:
             os.makedirs(chunk_dir, exist_ok=True)
             try:
                 from maxim.data.audio._file_based_transcription import watch_and_transcribe
@@ -329,13 +329,14 @@ class MediaLoopMixin:
             threads.append(transcript_thread)
             transcript_thread.start()
 
+        has_robot = self._robot is not None
         if parallel:
-            if vision:
+            if vision and has_robot:
                 threads.append(threading.Thread(target=frame_capture_worker, args=(stop_event, media_lock, self, frame_save_queue, frame_obs_queue), name="maxim.capture.video", daemon=True))
                 threads.append(threading.Thread(target=video_writer_worker, args=(stop_event, self, frame_save_queue, video_path), name="maxim.write.video", daemon=True))
-            if motor:
+            if motor and has_robot:
                 threads.append(threading.Thread(target=motor_worker, args=(motor_queue, stop_event, self), name="maxim.motor", daemon=True))
-            if self.audio:
+            if self.audio and has_robot:
                 threads.append(threading.Thread(target=audio_capture_worker, args=(stop_event, media_lock, self, audio_save_queue, audio_input_rate, audio_output_rate), name="maxim.capture.audio", daemon=True))
                 threads.append(threading.Thread(target=audio_writer_worker, args=(stop_event, self, audio_save_queue, audio_path, chunk_dir, audio_input_rate, audio_output_rate, transcribe_process), name="maxim.write.audio", daemon=True))
 
@@ -345,8 +346,11 @@ class MediaLoopMixin:
                 t.start()
 
         try:
-            if not vision:
-                self.log.info("Audio-only mode: recording until Ctrl+C.")
+            if not vision or not has_robot:
+                if has_robot:
+                    self.log.info("Audio-only mode: recording until Ctrl+C.")
+                else:
+                    self.log.info("Headless mode: agentic loop active, no media capture.")
                 while not stop_event.is_set():
                     time.sleep(0.25)
             else:
@@ -675,6 +679,8 @@ class MediaLoopMixin:
 
     def look(self, save_file = None, show = True, release = False):
         # Grab frame from reachy mini camera
+        if self.mini is None:
+            return None
         frame = None
         try:
             try:
@@ -716,6 +722,8 @@ class MediaLoopMixin:
 
     def listen(self, save_file: Optional[str] = None):
         # Grab audio samples from Reachy Mini microphone.
+        if self.mini is None:
+            return None
         try:
             sample = self.mini.media.get_audio_sample()
         except Exception as e:

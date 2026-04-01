@@ -148,8 +148,8 @@ class TestControllerConnect:
             assert call_kwargs["connection_mode"] == "network"
 
     @patch("maxim.hardware.reachy.controller.ReachyMiniController._resolve_mdns")
-    def test_connect_proceeds_when_mdns_fails(self, mock_mdns):
-        """connect() still attempts SDK connection when mDNS fails."""
+    def test_connect_skips_sdk_when_mdns_fails(self, mock_mdns):
+        """connect() returns False immediately when mDNS fails (no SDK attempt)."""
         mock_mdns.return_value = None
         ctrl = self._make_controller()
 
@@ -162,7 +162,9 @@ class TestControllerConnect:
 
             result = ctrl.connect(timeout=5.0)
 
-        assert result is True
+        assert result is False
+        # SDK should NOT have been called since mDNS failed
+        mock_sdk_module.ReachyMini.assert_not_called()
 
     def test_connect_returns_false_on_import_error(self):
         """connect() returns False when reachy-mini SDK is not installed."""
