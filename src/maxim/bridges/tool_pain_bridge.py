@@ -55,6 +55,7 @@ class ToolPainBridge:
         self._scn = scn
         self._lock = threading.Lock()
         self._pending_tools: dict[tuple[str, str], str] = {}
+        self._last_rpe: float = 0.0  # Most recent RPE magnitude (for salience)
         pain_detector.add_pain_callback(self._on_pain)
 
     def record_tool_start(
@@ -88,24 +89,30 @@ class ToolPainBridge:
         tool_name: str,
         invocation_id: str,
         success: bool,
-    ) -> None:
+    ) -> float:
         """Record that a tool invocation completed.
 
         Args:
             tool_name: Name of the tool.
             invocation_id: Unique ID for this invocation.
             success: Whether the tool succeeded.
+
+        Returns:
+            RPE magnitude from NAc Rescorla-Wagner update (0.0 if no links).
+            High values indicate surprising outcomes useful for memory salience.
         """
         with self._lock:
             event_signature = self._pending_tools.pop(
                 (tool_name, invocation_id), None
             )
         if event_signature and success:
-            self._nac.record_outcome(
+            links = self._nac.record_outcome(
                 event_type="tool",
                 event_id=event_signature,
                 outcome_valence=Valence.POSITIVE,
             )
+            rpe = max((l.last_rpe or 0.0 for l in links), default=0.0) if links else 0.0
+            self._last_rpe = rpe
 
             # Register positive temporal signal with SCN
             if self._scn is not None:
@@ -119,6 +126,9 @@ class ToolPainBridge:
                     )
                 except Exception:
                     pass  # SCN registration is best-effort
+
+            return rpe
+        return 0.0
 
     def _on_pain(self, signal: PainSignal) -> None:
         """Handle pain signals from tool failures."""
@@ -135,12 +145,14 @@ class ToolPainBridge:
                 (tool_name, invocation_id), None
             )
         if event_signature:
-            self._nac.record_outcome(
+            links = self._nac.record_outcome(
                 event_type="tool",
                 event_id=event_signature,
                 outcome_valence=Valence.NEGATIVE,
                 context=signal.context,
             )
+            rpe = max((l.last_rpe or 0.0 for l in links), default=0.0) if links else 0.0
+            self._last_rpe = rpe
 
             # Register temporal context with SCN
             if self._scn is not None:

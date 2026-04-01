@@ -317,6 +317,12 @@ class NAc:
                     confidence=0.5,
                     memory_ids=[memory_id] if memory_id else [],
                 )
+                # Bootstrap RPE on first observation so callers
+                # can gauge surprise even for novel events.
+                new_link.update_prediction_rw(
+                    outcome_valence,
+                    learning_rate=self.config.base_learning_rate,
+                )
                 event_links.append(new_link)
                 updated_links.append(new_link)
 
