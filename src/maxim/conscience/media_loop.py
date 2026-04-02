@@ -351,8 +351,7 @@ class MediaLoopMixin:
                     self.log.info("Audio-only mode: recording until Ctrl+C.")
                 else:
                     self.log.info("Headless mode: agentic loop active, no media capture.")
-                while not stop_event.is_set():
-                    time.sleep(0.25)
+                self._run_headless_loop(stop_event)
             else:
                 while True:
                     if stop_event.is_set():
@@ -581,6 +580,25 @@ class MediaLoopMixin:
             wake_up=False,
             run_id=run_id,
         )
+
+    def _run_headless_loop(self, stop_event: threading.Event) -> None:
+        """Event-driven loop for headless mode (no media capture).
+
+        Replaces the tight frame-capture loop with a slow poll that:
+        - Processes gateway events (incoming SMS, webhooks) if comms enabled
+        - Keeps the main thread alive while the agentic thread runs
+        - Uses 0.5s sleep (not 30Hz polling) to minimize CPU usage
+        """
+        gateway = getattr(self, "_gateway", None)
+        while not stop_event.is_set():
+            # Poll gateway for incoming messages (SMS, webhook, etc.)
+            if gateway is not None:
+                try:
+                    gateway.poll()
+                except Exception as e:
+                    log_swallowed_exception(e, operation="gateway_poll")
+            # Sleep until next poll (event-driven, not frame-rate-driven)
+            stop_event.wait(timeout=0.5)
 
     def _enqueue_motor(self, fn, *args, **kwargs):
         q = getattr(self, "_motor_queue", None)

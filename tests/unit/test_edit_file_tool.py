@@ -124,3 +124,141 @@ class TestEditFileTool:
         assert "allowed directories" in result.error
         # File should be unchanged
         assert target.read_text(encoding="utf-8") == "secret data\n"
+
+
+class TestEditFileToolContextDisambiguation:
+    """Tests for context_before / context_after disambiguation."""
+
+    def _make_file(self, tmp_path: Path, content: str) -> tuple[EditFileTool, Path]:
+        target = tmp_path / "ambiguous.py"
+        target.write_text(content, encoding="utf-8")
+        return EditFileTool(allowed_dirs=[str(tmp_path)]), target
+
+    def test_context_before_disambiguates(self, tmp_path: Path) -> None:
+        """context_before selects the correct occurrence."""
+        content = "def foo():\n    return None\n\ndef bar():\n    return None\n"
+        tool, target = self._make_file(tmp_path, content)
+
+        result = tool.execute(
+            path=str(target),
+            old_text="return None",
+            new_text="return 42",
+            context_before="def bar():\n    ",
+        )
+
+        assert result.success is True
+        new_content = target.read_text(encoding="utf-8")
+        assert new_content.count("return 42") == 1
+        assert "def bar():\n    return 42" in new_content
+        # foo's return None should be unchanged
+        assert "def foo():\n    return None" in new_content
+
+    def test_context_after_disambiguates(self, tmp_path: Path) -> None:
+        """context_after selects the correct occurrence."""
+        content = "return None\nx = 1\nreturn None\ny = 2\n"
+        tool, target = self._make_file(tmp_path, content)
+
+        result = tool.execute(
+            path=str(target),
+            old_text="return None",
+            new_text="return 0",
+            context_after="\ny = 2",
+        )
+
+        assert result.success is True
+        new_content = target.read_text(encoding="utf-8")
+        assert new_content.count("return 0") == 1
+        assert new_content.count("return None") == 1  # First one unchanged
+
+    def test_both_context_before_and_after(self, tmp_path: Path) -> None:
+        """Both context_before and context_after for precise targeting."""
+        content = "A\nreturn None\nB\nC\nreturn None\nD\nE\nreturn None\nF\n"
+        tool, target = self._make_file(tmp_path, content)
+
+        result = tool.execute(
+            path=str(target),
+            old_text="return None",
+            new_text="return 99",
+            context_before="C\n",
+            context_after="\nD",
+        )
+
+        assert result.success is True
+        new_content = target.read_text(encoding="utf-8")
+        assert new_content.count("return 99") == 1
+        assert new_content.count("return None") == 2  # Other two unchanged
+
+    def test_context_no_match(self, tmp_path: Path) -> None:
+        """Context pattern doesn't match but old_text exists."""
+        content = "def foo():\n    return None\n"
+        tool, target = self._make_file(tmp_path, content)
+
+        result = tool.execute(
+            path=str(target),
+            old_text="return None",
+            new_text="return 0",
+            context_before="def bar():\n    ",  # Wrong context
+        )
+
+        assert result.success is False
+        assert "not with the given context" in result.error
+
+    def test_context_old_text_not_found(self, tmp_path: Path) -> None:
+        """old_text itself doesn't exist."""
+        content = "x = 1\ny = 2\n"
+        tool, target = self._make_file(tmp_path, content)
+
+        result = tool.execute(
+            path=str(target),
+            old_text="return None",
+            new_text="return 0",
+            context_before="x = 1\n",
+        )
+
+        assert result.success is False
+        assert "not found" in result.error
+
+    def test_context_still_ambiguous(self, tmp_path: Path) -> None:
+        """Context doesn't uniquely identify — still multiple matches."""
+        content = "if True:\n    return None\nif True:\n    return None\n"
+        tool, target = self._make_file(tmp_path, content)
+
+        result = tool.execute(
+            path=str(target),
+            old_text="return None",
+            new_text="return 0",
+            context_before="if True:\n    ",
+        )
+
+        assert result.success is False
+        assert "still matches" in result.error
+
+    def test_multiple_match_suggests_context(self, tmp_path: Path) -> None:
+        """When multiple matches found, error suggests context_before."""
+        content = "def foo():\n    return None\ndef bar():\n    return None\n"
+        tool, target = self._make_file(tmp_path, content)
+
+        result = tool.execute(
+            path=str(target),
+            old_text="return None",
+            new_text="return 0",
+        )
+
+        assert result.success is False
+        assert "context_before" in result.error
+
+    def test_context_preserves_surrounding_text(self, tmp_path: Path) -> None:
+        """Only old_text is replaced; context_before/after are preserved."""
+        content = "BEFORE_return None_AFTER\n"
+        tool, target = self._make_file(tmp_path, content)
+
+        result = tool.execute(
+            path=str(target),
+            old_text="return None",
+            new_text="return 42",
+            context_before="BEFORE_",
+            context_after="_AFTER",
+        )
+
+        assert result.success is True
+        assert target.read_text(encoding="utf-8") == "BEFORE_return 42_AFTER\n"

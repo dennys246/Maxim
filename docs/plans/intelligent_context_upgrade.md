@@ -226,7 +226,7 @@ if dropped:
 
 1. **Part 3 (dropped context notice)** — **DONE**
 2. **Part 1 v1 (EditFileTool with rich errors)** — **DONE**
-3. **Part 1 v2-v4 (context_before/after)** — NEXT: add params after observing v1 retry rates
+3. **Part 1 v2 (context_before/after params)** — **DONE** — context_before/context_after params added to EditFileTool with auto-suggest on ambiguous matches. v3-v4 (prompt tuning, auto-suggest refinement) pending observation.
 4. **Part 2 v1 (always pin turn 1)** — **DONE**
 5. **Part 2 v2-v4 (LLM-driven pinning)** — add after observing v1 contradiction rates
 
