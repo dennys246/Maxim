@@ -1,6 +1,7 @@
 """Reachy Mini connection management with automatic reconnection.
 
-Handles robot connection lifecycle, failure tracking, and graceful reconnection.
+Handles robot connection lifecycle, failure tracking, graceful reconnection,
+and runtime capability degradation/restoration via ConnectionState callbacks.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import queue
 import threading
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.utils.gpu_compat import is_connection_error
@@ -19,6 +21,15 @@ if TYPE_CHECKING:
     pass  # ReachyMini imported dynamically
 
 logger = logging.getLogger(__name__)
+
+
+class ConnectionState(Enum):
+    """Robot connection lifecycle states."""
+    DISCONNECTED = "disconnected"
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    RECONNECTING = "reconnecting"
+    ERROR = "error"
 
 
 @dataclass
@@ -155,6 +166,35 @@ class ReachyConnection:
         # Callbacks
         self._on_reconnect: list[Callable[[], None]] = []
 
+        # Connection state machine
+        self._state = ConnectionState.DISCONNECTED
+        self._state_callbacks: list[Callable[[ConnectionState, ConnectionState], None]] = []
+
+    @property
+    def state(self) -> ConnectionState:
+        """Current connection state."""
+        return self._state
+
+    def add_state_callback(self, cb: Callable[[ConnectionState, ConnectionState], None]) -> None:
+        """Register a callback for connection state changes.
+
+        Args:
+            cb: Called with (old_state, new_state) on every transition.
+        """
+        self._state_callbacks.append(cb)
+
+    def _set_state(self, new_state: ConnectionState) -> None:
+        """Transition to a new connection state, notifying all callbacks."""
+        old = self._state
+        if old == new_state:
+            return
+        self._state = new_state
+        for cb in self._state_callbacks:
+            try:
+                cb(old, new_state)
+            except Exception as e:
+                self._log.debug("State callback error: %s", e)
+
     @property
     def mini(self) -> Any:
         """The current ReachyMini instance."""
@@ -184,14 +224,20 @@ class ReachyConnection:
         """
         from reachy_mini import ReachyMini
 
-        self._mini = ReachyMini(
-            robot_name=self.config.robot_name,
-            connection_mode=self.config.connection_mode,
-            spawn_daemon=self.config.spawn_daemon,
-            use_sim=self.config.use_sim,
-            timeout=self.config.timeout,
-            media_backend=self.config.media_backend,
-        )
+        self._set_state(ConnectionState.CONNECTING)
+
+        try:
+            self._mini = ReachyMini(
+                robot_name=self.config.robot_name,
+                connection_mode=self.config.connection_mode,
+                spawn_daemon=self.config.spawn_daemon,
+                use_sim=self.config.use_sim,
+                timeout=self.config.timeout,
+                media_backend=self.config.media_backend,
+            )
+        except Exception:
+            self._set_state(ConnectionState.ERROR)
+            raise
 
         if start_recording:
             try:
@@ -199,6 +245,7 @@ class ReachyConnection:
             except Exception as e:
                 self._log.warning("Failed to start recording: %s", e)
 
+        self._set_state(ConnectionState.CONNECTED)
         return self._mini
 
     def disconnect(self) -> None:
@@ -234,6 +281,7 @@ class ReachyConnection:
                     pass
 
         self._mini = None
+        self._set_state(ConnectionState.DISCONNECTED)
 
     def note_failure(
         self,
@@ -300,6 +348,7 @@ class ReachyConnection:
             return False
 
         self._last_reconnect_ts = now
+        self._set_state(ConnectionState.RECONNECTING)
         try:
             warn(
                 "Reconnecting (%s): %s",
@@ -349,6 +398,7 @@ class ReachyConnection:
                 )
             except Exception as e:
                 warn("Reconnect failed: %s", e, logger=self._log)
+                self._set_state(ConnectionState.ERROR)
                 return False
 
             try:
@@ -381,6 +431,7 @@ class ReachyConnection:
                 except Exception:
                     pass
 
+            self._set_state(ConnectionState.CONNECTED)
             self._log.info("Reconnect complete.")
             return True
 
@@ -497,6 +548,39 @@ class ConnectionMixin:
         if state["count"] >= threshold:
             self._soft_reconnect(reason=f"{kind}_connection_failed", error=error)
 
+    def _degrade_capabilities(self) -> None:
+        """Mark robot capabilities as unavailable during connection outage.
+
+        Called when reconnection fails.  The existing capability gates
+        (CaptureManager, DefaultNetwork, tool registry, _compute_target_hz)
+        will automatically adapt to headless behavior.
+        """
+        caps = getattr(self, "_capabilities", None)
+        if caps is None:
+            return
+        caps.has_robot = False
+        caps.has_motor = False
+        caps.has_vision = False
+        caps.has_audio = False
+        try:
+            self.log.warning("Capabilities degraded — robot unavailable")
+        except Exception:
+            pass
+
+    def _restore_capabilities(self) -> None:
+        """Restore robot capabilities after successful reconnection."""
+        caps = getattr(self, "_capabilities", None)
+        if caps is None:
+            return
+        caps.has_robot = True
+        caps.has_motor = True
+        caps.has_vision = True
+        caps.has_audio = True
+        try:
+            self.log.info("Capabilities restored — robot reconnected")
+        except Exception:
+            pass
+
     def _soft_reconnect(self, *, reason: str, error: object | None = None) -> bool:
         if getattr(self, "_closed", False):
             return False
@@ -571,6 +655,7 @@ class ConnectionMixin:
             # Use the RobotController's reconnect method
             if self._robot is None:
                 warn("Soft reconnect failed (no robot controller)", logger=self.log)
+                self._degrade_capabilities()
                 return False
 
             # For simulation mode, just reset state
@@ -581,6 +666,7 @@ class ConnectionMixin:
             # Attempt reconnection via the controller
             if not self._robot.reconnect(timeout=30.0, max_attempts=1):
                 warn("Soft reconnect failed (controller reconnect failed)", logger=self.log)
+                self._degrade_capabilities()
                 return False
 
             try:
@@ -605,6 +691,7 @@ class ConnectionMixin:
                     pass
 
             self._reset_connection_failures()
+            self._restore_capabilities()
             self.log.info("Soft reconnect complete.")
             return True
         finally:
@@ -614,6 +701,7 @@ class ConnectionMixin:
 __all__ = [
     "ConnectionConfig",
     "ConnectionMixin",
+    "ConnectionState",
     "FailureState",
     "FailureTracker",
     "ReachyConnection",

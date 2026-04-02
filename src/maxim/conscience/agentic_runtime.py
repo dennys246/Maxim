@@ -17,6 +17,20 @@ from maxim.utils.gpu_compat import is_gpu_available
 from maxim.utils.logging import warn
 
 
+def _compute_target_hz(capabilities) -> float:
+    """Adapt agentic loop frequency to available hardware.
+
+    Motor control needs real-time updates (30 Hz).
+    Vision processing without motors runs at 10 Hz.
+    Headless mode uses 2 Hz — LLM inference cycles, event-driven.
+    """
+    if getattr(capabilities, "has_motor", False):
+        return 30.0
+    if getattr(capabilities, "has_vision", False):
+        return 10.0
+    return 2.0
+
+
 class AgenticRuntimeMixin:
     """Mixin providing agentic runtime lifecycle management for the Maxim class."""
 
@@ -317,8 +331,10 @@ class AgenticRuntimeMixin:
                 warn("Failed to build comms stack: %s", e, logger=self.log)
 
         _t_tools = time.time()
+        # Pass maxim=None when headless so robot tools get no-op stubs
+        _maxim_for_tools = self if (hasattr(self, '_capabilities') and self._capabilities.has_robot) else None
         registry = build_tool_registry(
-            maxim=self,
+            maxim=_maxim_for_tools,
             response_output=response_output,
             internet_policy_getter=internet_policy_getter,
             gateway=gateway,
@@ -625,7 +641,7 @@ class AgenticRuntimeMixin:
                     stop_event=stop_event,
                     on_step=_on_step,
                     idle_sleep_s=0.1,
-                    target_hz=10.0,  # 10 Hz for responsive CLI handling
+                    target_hz=_compute_target_hz(self._capabilities) if hasattr(self, '_capabilities') else 10.0,
                     protocol_registry=self._protocol_registry,
                 )
             except Exception as e:

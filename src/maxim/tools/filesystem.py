@@ -429,14 +429,23 @@ class ExecuteFileTool(Tool):
 
 
 class EditFileTool(Tool):
-    """Replace specific text in a file."""
+    """Replace specific text in a file.
+
+    When old_text matches multiple locations, use context_before and/or
+    context_after to disambiguate which occurrence to replace.
+    """
     name = "edit_file"
-    description = "Replace specific text in a file. Read the file first to see current contents."
+    description = (
+        "Replace specific text in a file. Read the file first to see current contents. "
+        "If old_text matches multiple locations, use context_before/context_after to disambiguate."
+    )
     input_schema = {
         "path": str,
         "old_text": str,
         "new_text": str,
         "expected_count": (int, 1),
+        "context_before": (str, None),  # Text that must appear immediately before old_text
+        "context_after": (str, None),   # Text that must appear immediately after old_text
     }
 
     # Reuse WriteFileTool's safety lists
@@ -476,6 +485,8 @@ class EditFileTool(Tool):
             old_text = kwargs["old_text"]
             new_text = kwargs["new_text"]
             expected = kwargs.get("expected_count", 1)
+            context_before = kwargs.get("context_before")
+            context_after = kwargs.get("context_after")
 
             try:
                 validated_path = sanitize_path(raw_path)
@@ -503,6 +514,15 @@ class EditFileTool(Tool):
                     error_kind=ToolErrorKind.PERMISSION_DENIED,
                 )
 
+            # Context-aware disambiguation: when context_before or context_after
+            # is provided, search for the full pattern and replace only old_text.
+            if context_before is not None or context_after is not None:
+                return self._replace_with_context(
+                    content, path, old_text, new_text,
+                    context_before or "", context_after or "",
+                )
+
+            # Standard path: exact match without context
             count = content.count(old_text)
             if count == 0:
                 lines = content.splitlines()
@@ -520,9 +540,21 @@ class EditFileTool(Tool):
             if count != expected:
                 lines = content.splitlines()
                 match_lines = [i + 1 for i, line in enumerate(lines) if old_text in line]
+                # Auto-suggest context when multiple matches found
+                suggestions = self._suggest_context(content, old_text, match_lines)
+                suggestion_hint = ""
+                if suggestions:
+                    suggestion_hint = (
+                        "\nUse context_before/context_after to disambiguate. Suggestions:"
+                    )
+                    for s in suggestions[:3]:
+                        suggestion_hint += (
+                            f"\n  line {s['line']}: "
+                            f'context_before="{s["before"]}"'
+                        )
                 return ToolResult(
                     success=False,
-                    error=f"Expected {expected} occurrences, found {count} at lines {match_lines}.",
+                    error=f"Expected {expected} occurrences, found {count} at lines {match_lines}.{suggestion_hint}",
                     error_kind=ToolErrorKind.VALIDATION,
                 )
 
@@ -532,6 +564,69 @@ class EditFileTool(Tool):
 
         except Exception as e:
             return ToolResult(success=False, error=str(e))
+
+    def _replace_with_context(
+        self,
+        content: str,
+        path: Path,
+        old_text: str,
+        new_text: str,
+        context_before: str,
+        context_after: str,
+    ) -> ToolResult:
+        """Replace old_text at the location uniquely identified by surrounding context."""
+        full_pattern = context_before + old_text + context_after
+        count = content.count(full_pattern)
+
+        if count == 0:
+            # Try without context to give helpful error
+            bare_count = content.count(old_text)
+            if bare_count == 0:
+                return ToolResult(
+                    success=False,
+                    error="old_text not found in file (with or without context).",
+                    error_kind=ToolErrorKind.INVALID_INPUT,
+                )
+            return ToolResult(
+                success=False,
+                error=(
+                    f"old_text found {bare_count} time(s) but not with the given context. "
+                    f"Check that context_before/context_after match the exact surrounding text."
+                ),
+                error_kind=ToolErrorKind.INVALID_INPUT,
+            )
+
+        if count > 1:
+            return ToolResult(
+                success=False,
+                error=f"Context pattern still matches {count} locations. Provide more specific context.",
+                error_kind=ToolErrorKind.VALIDATION,
+            )
+
+        # Unique match — replace only the old_text within the full pattern
+        replacement = context_before + new_text + context_after
+        new_content = content.replace(full_pattern, replacement, 1)
+        path.write_text(new_content, encoding="utf-8")
+        return ToolResult(success=True, output="Replaced 1 occurrence (context-disambiguated)")
+
+    @staticmethod
+    def _suggest_context(content: str, old_text: str, match_lines: list[int]) -> list[dict]:
+        """Generate context suggestions for ambiguous matches."""
+        lines = content.splitlines()
+        suggestions = []
+        for line_num in match_lines[:5]:
+            idx = line_num - 1
+            # Use the preceding line as context_before suggestion
+            if idx > 0:
+                prev_line = lines[idx - 1].rstrip()
+                # Truncate long lines
+                if len(prev_line) > 60:
+                    prev_line = prev_line[:60] + "..."
+                suggestions.append({
+                    "line": line_num,
+                    "before": prev_line + "\n",
+                })
+        return suggestions
 
 
 class GlobTool(Tool):
