@@ -63,7 +63,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class DefaultNetworkConfig:
     """Configuration for the Default Network.
 

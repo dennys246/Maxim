@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from maxim.planning.adaptive_planner import AdaptivePlanner, PlanCandidate, PlanningContext
+from maxim.planning.adaptive_policy import AdaptivePolicy
 from maxim.planning.base import Planner, Policy
 from maxim.planning.constraints import ConstraintSet, ConstraintViolation
 from maxim.planning.decision_engine import DecisionEngine
@@ -26,6 +28,8 @@ from maxim.planning.planning import TaskPlanner
 from maxim.planning.policy import DefaultPolicy
 
 __all__ = [
+    "AdaptivePlanner",
+    "AdaptivePolicy",
     "CodingReplanContext",
     "ConstraintSet",
     "ConstraintViolation",
@@ -36,6 +40,7 @@ __all__ = [
     "Phase",
     "PhaseEnergyBudget",
     "PhaseStatus",
+    "PlanCandidate",
     "PlanDashboard",
     "PlanDocument",
     "PlanEnergyBudget",
@@ -44,6 +49,7 @@ __all__ = [
     "PlanServices",
     "PlanStatus",
     "Planner",
+    "PlanningContext",
     "Policy",
     "ReplanContext",
     "ReplanRecord",

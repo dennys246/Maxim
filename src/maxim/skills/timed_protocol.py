@@ -25,7 +25,7 @@ __all__ = ["TimedProtocolSkill", "TimedProtocolConfig"]
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class TimedProtocolConfig(SkillConfig):
     """Configuration for the timed protocol skill."""
     duration_minutes: float = 60.0  # Default: 1 hour

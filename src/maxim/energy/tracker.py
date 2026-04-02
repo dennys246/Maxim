@@ -20,7 +20,7 @@ from maxim.energy.signal import EnergySignal, EnergyType
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class EnergyConfig:
     """Base configuration for energy trackers.
 

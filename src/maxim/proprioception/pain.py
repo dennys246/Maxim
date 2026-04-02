@@ -34,7 +34,7 @@ class PainType(Enum):
     TOOL_SUSTAINED = "tool_sustained"
 
 
-@dataclass
+@dataclass(frozen=True)
 class PainConfig:
     """Configuration for pain detection thresholds.
 

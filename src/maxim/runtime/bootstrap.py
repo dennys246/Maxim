@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.environment.filesystem_env import FileSystemEnv
 from maxim.evaluation.agent_eval import AgentEvaluator
@@ -268,8 +268,43 @@ def build_executor(tool_registry: ToolRegistry) -> Executor:
     return Executor(tool_registry)
 
 
-def build_decision_engine() -> DecisionEngine:
-    return DecisionEngine(TaskPlanner(), DefaultPolicy(), constraints=[ConstraintSet()])
+def build_decision_engine(
+    *,
+    nac: "NAc | None" = None,
+    hippocampus: Any = None,
+    ec: Any = None,
+    atl: Any = None,
+    concept_context_builder: Any = None,
+    retrieval_orchestrator: Any = None,
+    llm: Any = None,
+) -> DecisionEngine:
+    """Build a DecisionEngine with the best available planner and policy.
+
+    When memory systems are provided, uses AdaptivePlanner (deep memory
+    integration) and AdaptivePolicy (6-dimension scoring).  Falls back to
+    TaskPlanner + DefaultPolicy when no memory systems are available.
+    """
+    has_memory = any(x is not None for x in (nac, hippocampus, ec))
+
+    if has_memory:
+        from maxim.planning.adaptive_planner import AdaptivePlanner
+        from maxim.planning.adaptive_policy import AdaptivePolicy
+
+        planner: Any = AdaptivePlanner(
+            nac=nac,
+            hippocampus=hippocampus,
+            ec=ec,
+            atl=atl,
+            concept_context_builder=concept_context_builder,
+            retrieval_orchestrator=retrieval_orchestrator,
+            llm=llm,
+        )
+        policy: Any = AdaptivePolicy(nac=nac)
+    else:
+        planner = TaskPlanner()
+        policy = DefaultPolicy()
+
+    return DecisionEngine(planner, policy, constraints=[ConstraintSet()])
 
 
 def build_environment(*, root: str | None = None) -> FileSystemEnv:

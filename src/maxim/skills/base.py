@@ -73,7 +73,7 @@ class SkillResult:
         return self.state in (SkillState.ACTIVE, SkillState.IDLE)
 
 
-@dataclass
+@dataclass(frozen=True)
 class SkillConfig:
     """Base config for skills. Subclass for skill-specific settings."""
     pass

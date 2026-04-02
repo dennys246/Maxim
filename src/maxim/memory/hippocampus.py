@@ -44,7 +44,7 @@ from maxim.memory.types import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class HippocampusConfig:
     """Configuration for the Hippocampus."""
 

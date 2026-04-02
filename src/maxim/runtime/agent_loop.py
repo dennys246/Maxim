@@ -144,6 +144,44 @@ def _persist_state_json(state: Any, path: str, *, meta: dict[str, Any]) -> None:
         warn("Failed to persist runtime state: %s", e)
 
 
+def _get_failure_strategy(intent: dict, action: dict) -> str:
+    """Extract failure strategy from intent/action metadata."""
+    if isinstance(intent, dict):
+        strategy = intent.get("on_failure", "")
+        if strategy:
+            return str(strategy).lower()
+        sub_goals = intent.get("sub_goals", [])
+        for sg in sub_goals:
+            if isinstance(sg, dict) and sg.get("tool_name") == action.get("tool_name"):
+                return str(sg.get("on_failure", "")).lower()
+    return ""
+
+
+def _get_plan_depth(decision: dict) -> int:
+    """Extract current plan depth from decision metadata."""
+    plan = decision.get("plan")
+    if hasattr(plan, "depth"):
+        return plan.depth
+    return 0
+
+
+def _build_replan_context(intent: dict, action: dict, result: Any, state: Any):
+    """Build a ReplanContext from failure information."""
+    from maxim.planning.plan_document import ReplanContext
+
+    return ReplanContext(
+        failed_phase=str(intent.get("goal", "")),
+        failure_reason=str(getattr(result, "error", "unknown")),
+        failure_type=str(getattr(result, "error_kind", "unknown")),
+        attempted_sub_goals=[str(action.get("tool_name", ""))],
+        attempted_tools=[str(action.get("tool_name", ""))],
+        completed_phases=[],
+        preserved_results={},
+        remaining_phases=[],
+        energy_remaining={},
+    )
+
+
 def run_agent_loop(
     agent: Any,
     environment: Any,
@@ -188,70 +226,84 @@ def run_agent_loop(
         except Exception:
             pass
 
-        observation = environment.observe()
-        state.update(observation)
+        # ── Consume pending replan candidate from previous failure ──
+        # If the previous iteration triggered ADaPT decomposition, the replan
+        # candidate bypasses propose_intent/decide and executes directly.
+        _replan = None
+        if hasattr(state, "data") and isinstance(state.data, dict):
+            _replan = state.data.pop("_replan_candidate", None)
 
-        # Extract and record CLI input if present
-        cli_input = None
-        if hasattr(observation, "get"):
-            cli_input = observation.get("cli_input")
-        elif hasattr(observation, "cli_input"):
-            cli_input = getattr(observation, "cli_input", None)
+        if _replan is not None and hasattr(_replan, "actions") and _replan.actions:
+            decision = {"action": _replan.actions[0], "plan": _replan, "score": 1.0}
+            goal = state.data.get("_replan_goal", "replan")
+            state.data.pop("_replan_goal", None)
+            intent = {"goal": goal, "source": "replan"}
+        else:
+            # ── Normal path: observe → propose intent → decide ──
+            observation = environment.observe()
+            state.update(observation)
 
-        if cli_input:
-            cli_text = str(cli_input).strip()
-            state.data["pending_user_input"] = cli_text
-            state.data["pending_user_input_time"] = time.time()
-            # Record in memory so it appears in context
-            if hasattr(memory, "record_command"):
-                try:
-                    memory.record_command(cli_text)
-                except Exception as e:
-                    log_swallowed_exception(e, operation="record_command", context={"text_len": len(cli_text)})
+            # Extract and record CLI input if present
+            cli_input = None
+            if hasattr(observation, "get"):
+                cli_input = observation.get("cli_input")
+            elif hasattr(observation, "cli_input"):
+                cli_input = getattr(observation, "cli_input", None)
 
-        intent = None
-        try:
-            if hasattr(agent, "propose_intent"):
-                intent = agent.propose_intent(state, memory)
-            elif hasattr(agent, "decide"):
-                # Legacy fallback: treat `decide()` as a goal provider.
-                out = agent.decide(state, memory)
-                if isinstance(out, dict):
-                    intent = out
-                elif isinstance(out, str) and out:
-                    intent = {"goal": out, "confidence": 1.0}
-        except Exception as e:
-            warn("Agent propose_intent/decide failed: %s", e)
+            if cli_input:
+                cli_text = str(cli_input).strip()
+                state.data["pending_user_input"] = cli_text
+                state.data["pending_user_input_time"] = time.time()
+                # Record in memory so it appears in context
+                if hasattr(memory, "record_command"):
+                    try:
+                        memory.record_command(cli_text)
+                    except Exception as e:
+                        log_swallowed_exception(e, operation="record_command", context={"text_len": len(cli_text)})
+
             intent = None
-
-        if not isinstance(intent, dict) or not intent:
-            if break_on_no_intent:
-                break
             try:
-                time.sleep(float(idle_sleep_s))
-            except Exception:
-                pass
-            continue
+                if hasattr(agent, "propose_intent"):
+                    intent = agent.propose_intent(state, memory)
+                elif hasattr(agent, "decide"):
+                    # Legacy fallback: treat `decide()` as a goal provider.
+                    out = agent.decide(state, memory)
+                    if isinstance(out, dict):
+                        intent = out
+                    elif isinstance(out, str) and out:
+                        intent = {"goal": out, "confidence": 1.0}
+            except Exception as e:
+                warn("Agent propose_intent/decide failed: %s", e)
+                intent = None
 
-        goal = intent.get("goal") or intent.get("intent")
-        if goal is None:
-            if break_on_no_intent:
-                break
-            try:
-                time.sleep(float(idle_sleep_s))
-            except Exception:
-                pass
-            continue
+            if not isinstance(intent, dict) or not intent:
+                if break_on_no_intent:
+                    break
+                try:
+                    time.sleep(float(idle_sleep_s))
+                except Exception:
+                    pass
+                continue
 
-        decision = decision_engine.decide(goal, state, memory)
-        if not isinstance(decision, dict) or not decision.get("action"):
-            if break_on_no_intent:
-                break
-            try:
-                time.sleep(float(idle_sleep_s))
-            except Exception:
-                pass
-            continue
+            goal = intent.get("goal") or intent.get("intent")
+            if goal is None:
+                if break_on_no_intent:
+                    break
+                try:
+                    time.sleep(float(idle_sleep_s))
+                except Exception:
+                    pass
+                continue
+
+            decision = decision_engine.decide(goal, state, memory)
+            if not isinstance(decision, dict) or not decision.get("action"):
+                if break_on_no_intent:
+                    break
+                try:
+                    time.sleep(float(idle_sleep_s))
+                except Exception:
+                    pass
+                continue
 
         action = decision["action"]
         if not isinstance(action, dict):
@@ -320,6 +372,31 @@ def run_agent_loop(
                 state.mark_failure(getattr(result, "error", None))
             except Exception as e:
                 log_swallowed_exception(e, operation="mark_failure")
+
+            # ── ADaPT replan: decompose failed goal at depth+1 ──
+            failure_strategy = _get_failure_strategy(intent, action)
+            if failure_strategy == "replan" and hasattr(decision_engine, "planner"):
+                planner = decision_engine.planner
+                if hasattr(planner, "decompose"):
+                    current_depth = _get_plan_depth(decision)
+                    replan_ctx = _build_replan_context(intent, action, result, state)
+                    try:
+                        redecomposed = planner.decompose(
+                            failed_goal={"description": str(goal), "tool_name": action.get("tool_name")},
+                            replan_ctx=replan_ctx,
+                            depth=current_depth,
+                        )
+                        if redecomposed is not None:
+                            state.data["_replan_candidate"] = redecomposed
+                            state.data["_replan_goal"] = str(goal)
+                            if callable(on_event):
+                                on_event({
+                                    "type": "replan",
+                                    "depth": current_depth + 1,
+                                    "sub_actions": len(redecomposed.actions),
+                                })
+                    except Exception as e:
+                        log_swallowed_exception(e, operation="adaptive_replan")
 
         try:
             state.steps_taken += 1

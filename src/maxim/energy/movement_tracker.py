@@ -27,7 +27,7 @@ from maxim.energy.tracker import EnergyConfig, EnergyTracker
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class MovementEnergyConfig(EnergyConfig):
     """Configuration for movement energy tracking.
 

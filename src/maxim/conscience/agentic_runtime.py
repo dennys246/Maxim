@@ -239,7 +239,18 @@ class AgenticRuntimeMixin:
                 state.data["maxim_runtime"]["mode"] = "exploration"
 
         memory = build_memory()
-        decision_engine = build_decision_engine()
+
+        # Wire memory systems into the decision engine for adaptive planning.
+        # When memory_hub is available, AdaptivePlanner queries all subsystems
+        # (EC, NAc, Hippocampus, ConceptContextBuilder) before proposing plans.
+        _de_kwargs: dict = {}
+        if memory_hub is not None:
+            _de_kwargs["nac"] = getattr(memory_hub, "nac", None)
+            _de_kwargs["hippocampus"] = getattr(memory_hub, "hippocampus", None)
+            _de_kwargs["ec"] = getattr(memory_hub, "ec", None)
+            _de_kwargs["atl"] = getattr(memory_hub, "atl", None)
+            _de_kwargs["concept_context_builder"] = getattr(memory_hub, "_concept_context_builder", None)
+        decision_engine = build_decision_engine(**_de_kwargs)
 
         # Set up ResponseOutput for LLM responses
         from pathlib import Path

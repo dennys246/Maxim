@@ -29,7 +29,7 @@ except ImportError:
     HAS_NUMPY = False
 
 
-@dataclass
+@dataclass(frozen=True)
 class AttentionConfig:
     """Configuration for AttentionNetwork.
 
