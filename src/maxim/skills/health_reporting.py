@@ -29,7 +29,7 @@ __all__ = ["HealthReportingSkill", "HealthReportingConfig"]
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class HealthReportingConfig(SkillConfig):
     """Configuration for health reporting."""
     endpoint_url: str = ""            # HTTP POST target (required)

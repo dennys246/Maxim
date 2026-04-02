@@ -24,7 +24,7 @@ from maxim.memory.semantic_promoter import PromotionCandidate
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class NACConfig:
     """Configuration for Nucleus Accumbens."""
 

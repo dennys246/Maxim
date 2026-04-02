@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["RTSPBridge", "RTSPBridgeConfig"]
 
 
-@dataclass
+@dataclass(frozen=True)
 class RTSPBridgeConfig:
     """Configuration for the RTSP bridge."""
     rtsp_url: str = "rtsp://localhost:8554/reachy"

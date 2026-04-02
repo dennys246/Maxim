@@ -20,7 +20,7 @@ from maxim.tools.base import Tool, ToolOutput
 __all__ = ["RTSPStreamingSkill", "RTSPStreamingConfig"]
 
 
-@dataclass
+@dataclass(frozen=True)
 class RTSPStreamingConfig(SkillConfig):
     """Configuration for the RTSP streaming skill."""
     rtsp_url: str = "rtsp://localhost:8554/reachy"
@@ -180,11 +180,12 @@ class _StartStreamTool(Tool):
                 success=True,
                 output=f"Already streaming to {self._skill._config.rtsp_url}",
             )
-        # Re-activate with updated config
+        # Re-activate with updated config (frozen dataclass — use replace)
+        import dataclasses as _dc
+
         url = kwargs.get("rtsp_url", self._skill._config.rtsp_url)
         fps = int(kwargs.get("fps", self._skill._config.fps))
-        self._skill._config.rtsp_url = url
-        self._skill._config.fps = fps
+        self._skill._config = _dc.replace(self._skill._config, rtsp_url=url, fps=fps)
         if self._skill._maxim is None:
             return ToolOutput(
                 success=False,

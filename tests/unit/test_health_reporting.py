@@ -227,8 +227,9 @@ class TestHealthReportingFailureDetection:
     def test_transitions_to_failed_after_10(self, mock_urlopen, config, mock_maxim):
         """10 consecutive failures in the report loop should trigger FAILED state."""
         # Use very fast interval so we hit 10 failures quickly
-        config.interval_seconds = 0.02
-        skill = HealthReportingSkill(config)
+        import dataclasses
+        fast_config = dataclasses.replace(config, interval_seconds=0.02)
+        skill = HealthReportingSkill(fast_config)
         mock_maxim._protocol_registry._active = {}
         skill.activate(mock_maxim, {})
         time.sleep(0.8)  # Enough time for 10+ iterations at 0.02s each

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@dataclass
+@dataclass(frozen=True)
 class ContextPoolConfig:
     """Configuration for the context pool."""
 

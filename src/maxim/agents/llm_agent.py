@@ -22,7 +22,7 @@ from maxim.models.language.router import (
 from maxim.utils.logging import warn
 
 
-@dataclass
+@dataclass(frozen=True)
 class LLMAgentConfig:
     """Configuration for LLMAgent with sensible defaults."""
 
@@ -345,13 +345,18 @@ class LLMAgent(Agent):
             if self._backend is not None and self._backend is not LLMAgent._INIT_FAILED:
                 self._backend.unload()
 
-            # Update config
+            # Update config (frozen dataclass — use replace)
+            import dataclasses as _dc
+
+            replacements: dict[str, Any] = {}
             if profile:
-                self._agent_config.profile = profile
+                replacements["profile"] = profile
             if quantization:
-                self._agent_config.quantization = quantization
+                replacements["quantization"] = quantization
             if model_path:
-                self._agent_config.model_path = model_path
+                replacements["model_path"] = model_path
+            if replacements:
+                self._agent_config = _dc.replace(self._agent_config, **replacements)
 
             # Reset for re-initialization
             self._backend = None

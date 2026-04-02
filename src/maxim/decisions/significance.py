@@ -100,7 +100,7 @@ BASELINE_HEURISTICS = [
 ]
 
 
-@dataclass
+@dataclass(frozen=True)
 class SignificanceConfig:
     """Configuration for the significance evaluation system."""
 

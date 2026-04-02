@@ -28,7 +28,7 @@ except ImportError:
     HAS_NUMPY = False
 
 
-@dataclass
+@dataclass(frozen=True)
 class SalienceConfig:
     """Configuration for SalienceNetwork.
 
