@@ -75,6 +75,15 @@ maxim [OPTIONS]
 |------|------|---------|-------------|
 | `--comms` | bool | `False` | Enable Twilio SMS/Voice |
 
+## Simulation
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--sim` | str | None | Simulation mode. No argument for interactive REPL, or path to a YAML scenario file or directory |
+| `--generate-simulation` | str | None | Generate a YAML scenario from a natural language description |
+| `-o` | str | None | Output file path for `--generate-simulation` |
+| `--sim-report` | str | None | Write structured simulation results to a JSON file |
+
 ## Maintenance
 
 | Flag | Type | Default | Description |
@@ -109,6 +118,24 @@ maxim --mode exploration --explore "kitchen objects" --exploration-duration 300
 
 ```bash
 maxim --mode agentic --verbosity 2 --agentic-verbosity 3
+```
+
+### Interactive simulation
+
+```bash
+maxim --sim
+```
+
+### Run a YAML scenario
+
+```bash
+maxim --sim scenarios/malware_with_pain.yaml --sim-report results.json
+```
+
+### Generate a scenario from natural language
+
+```bash
+maxim --generate-simulation "fork bomb attempt while a person enters the room" -o scenarios/fork_bomb.yaml
 ```
 
 ### Reset all learned state

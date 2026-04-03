@@ -1,13 +1,14 @@
 # Maxim
 
-A robotics framework for orchestrating Reachy Mini with multi-level goal decomposition, local LLM inference, and adaptive planning.
+A hardware-agnostic cognitive framework with multi-level goal decomposition, local LLM inference, and adaptive planning. Works headless, with percept simulation, or connected to a Reachy Mini robot.
 
 ## Overview
 
 Maxim provides:
-- **Robotic control** via Pollen Robotics' Reachy Mini SDK (vision, audio, motor control)
+- **Hardware-agnostic runtime** -- works headless, with simulation, or connected to Reachy Mini
 - **Agent runtime** with recursive goal decomposition and reflection loops
 - **Local LLM inference** via llama.cpp, with optional cloud backends (opt-in)
+- **Percept simulation** -- interactive REPL or scripted YAML scenarios for testing without hardware
 - **Multi-modal perception** using pluggable vision engines (RTMDet/RTMPose default, YOLO optional) and Whisper transcription
 - **Low-compute optimization** with prompt profiles for CPU-only and GPU systems
 
@@ -33,6 +34,7 @@ Maxim provides:
 | **Adaptive Runtime** | Capability detection at startup; graceful degradation to headless mode; adaptive loop frequency (30Hz motor → 2Hz headless) |
 | **Skills & Protocols** | Composable capabilities with lifecycle states, workspace constraints, and voice activation |
 | **SMS/Voice Comms** | Send and receive texts/calls via Twilio (see `src/maxim/comms/`) |
+| **Percept Simulation** | Interactive REPL (`maxim --sim`) or scripted YAML scenarios with bio-subsystem tracing, FearGatedExecutor safety review, and sandboxed filesystem |
 | **Thread Safety** | All 16 config dataclasses frozen for immutability; mutation via `dataclasses.replace()` |
 
 ---
@@ -41,9 +43,9 @@ Maxim provides:
 
 ### Prerequisites
 
-1. **Reachy Mini** on the same LAN/Wi-Fi (Zenoh peer discovery)
-2. **Python 3.12+** with virtual environment
-3. Follow Pollen Robotics' [SDK installation guide](https://github.com/pollen-robotics/reachy_mini/blob/develop/docs/SDK/installation.md)
+1. **Python 3.12+** with virtual environment
+2. **Reachy Mini** on the same LAN/Wi-Fi (optional -- headless and simulation modes work without a robot)
+3. For robot mode: follow Pollen Robotics' [SDK installation guide](https://github.com/pollen-robotics/reachy_mini/blob/develop/docs/SDK/installation.md)
 
 ### Installation
 
@@ -64,11 +66,11 @@ pip install -e '.[llm]'
 ### Running Maxim
 
 ```bash
-# Default exploration mode (legacy)
-maxim
-
-# Full agent runtime with LLM
+# Full agent runtime with LLM (headless, no robot needed)
 maxim --mode agentic --language-model mistral-7b
+
+# Interactive simulation mode
+maxim --sim
 
 # Specify prompt profile for low-compute systems
 maxim --mode agentic --prompt-profile minimal
@@ -277,6 +279,43 @@ export MAXIM_LLM_QUANTIZATION=Q4_K_M
 
 ---
 
+## Simulation & Testing
+
+Maxim's simulation framework lets you test the full agentic pipeline without any hardware attached. Every bio-subsystem -- hippocampus, NAc, FearAgent, pain detection -- runs its real code; only the source of sensory input changes.
+
+### Interactive Mode
+
+```bash
+maxim --sim
+```
+
+Launches an interactive REPL. Boot once, type scenarios in natural language, and the LLM generates percepts that run through the full pipeline. Supports conversational follow-ups with contextual continuation. Bio-subsystem traces (PERCEPT, HIPPOCAMPUS, NAc, FEAR, PAIN, MOTOR, EXEC) are displayed in real time.
+
+### YAML Scenarios
+
+```bash
+# Single scenario
+maxim --sim scenarios/malware_with_pain.yaml
+
+# All scenarios in a directory
+maxim --sim scenarios/
+```
+
+### Natural Language Generation
+
+```bash
+maxim --generate-simulation "user asks robot to pick up a cup but the gripper causes pain" -o scenarios/gripper.yaml
+```
+
+### Safety in Simulation
+
+- FearGatedExecutor reviews ALL tool calls, independent of DefaultNetwork or robot connection
+- Sandbox CWD per run (`data/sim_sandbox/`), auto-cleaned
+- Supervised autonomy by default
+- JSONL logs persisted for future analysis
+
+---
+
 ## CLI Reference
 
 ### Main Command
@@ -302,6 +341,10 @@ maxim [OPTIONS]
 | `--comms` | Enable SMS/Voice communication | False |
 | `--clear-memory` | Clear persistent memory and exit | None |
 | `--clear-cache` | Clear Python bytecode cache | False |
+| `--sim` | Simulation mode: no arg for interactive REPL, or path to YAML file/directory | None |
+| `--generate-simulation` | Generate YAML scenario from natural language description | None |
+| `--sim-report` | Write structured simulation results to JSON file | None |
+| `-o` | Output path for generated scenario file | None |
 | `--audit-architecture` | Audit codebase for architecture rule violations and exit | - |
 
 ### Clearing Persistent Memory
