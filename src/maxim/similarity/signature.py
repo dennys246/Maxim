@@ -157,13 +157,13 @@ class SituationSignature:
             goal_keywords=goal_keywords,
         )
 
-    def hamming_distance(self, other: SituationSignature) -> int:
+    def _hamming_distance(self, other: SituationSignature) -> int:
         """Compute Hamming distance between semantic hashes."""
         if len(self.semantic_hash) != len(other.semantic_hash):
             return len(self.semantic_hash)  # Max distance
         return sum(a != b for a, b in zip(self.semantic_hash, other.semantic_hash))
 
-    def structural_match(self, other: SituationSignature) -> bool:
+    def _structural_match(self, other: SituationSignature) -> bool:
         """Check if structural hashes match exactly."""
         return self.structural_hash == other.structural_hash
 
@@ -183,7 +183,7 @@ class SituationSignature:
 
         return total_dist
 
-    def context_match(self, other: SituationSignature) -> bool:
+    def _context_match(self, other: SituationSignature) -> bool:
         """Check if context hashes match exactly."""
         return self.context_hash == other.context_hash
 
@@ -199,20 +199,20 @@ class SituationSignature:
         """Compute weighted composite similarity (0.0-1.0)."""
         # Semantic similarity (from LSH hamming)
         if self.semantic_hash and other.semantic_hash:
-            hamming = self.hamming_distance(other)
+            hamming = self._hamming_distance(other)
             semantic_sim = 1.0 - (hamming / max(1, len(self.semantic_hash)))
         else:
             semantic_sim = 0.5  # Neutral when no semantic hash
 
         # Structural similarity (exact match bonus)
-        structural_sim = 1.0 if self.structural_match(other) else 0.0
+        structural_sim = 1.0 if self._structural_match(other) else 0.0
 
         # Temporal similarity (inverse distance)
         temporal_dist = self.temporal_distance(other)
         temporal_sim = 1.0 - temporal_dist
 
         # Context similarity
-        context_sim = 1.0 if self.context_match(other) else 0.0
+        context_sim = 1.0 if self._context_match(other) else 0.0
 
         # Keyword overlap
         keyword_sim = self.keyword_overlap(other)

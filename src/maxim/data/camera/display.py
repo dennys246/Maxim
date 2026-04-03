@@ -20,16 +20,7 @@ _DISPLAY_LOCK = threading.Lock()
 _IMSHOW_MODE = None
 
 
-def _env_flag(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return bool(default)
-    value = str(raw).strip().lower()
-    if value in ("1", "true", "t", "yes", "y", "on"):
-        return True
-    if value in ("0", "false", "f", "no", "n", "off"):
-        return False
-    return bool(default)
+from maxim.utils.gpu_compat import env_flag as _env_flag
 
 
 def _imshow_mode() -> str:

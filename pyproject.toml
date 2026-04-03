@@ -30,9 +30,6 @@ dependencies = [
     "scipy==1.15.3",
     "tensorflow==2.20.0",
     "keras==3.13.0",
-    "h5py==3.15.1",
-    "protobuf>=3.20.3,<6.0.0",
-    "matplotlib==3.10.8",
     "llama-cpp-python==0.3.8",
     "ddgs>=6.0.0",  # Web search capability (renamed from duckduckgo-search)
     "pyyaml>=6.0",  # YAML parsing for percept simulation scenarios

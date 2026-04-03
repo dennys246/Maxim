@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 class ScenarioRunner:
     """Run a scenario YAML and validate expectations.
 
+    Not thread-safe: concurrent calls to run() will clobber shared state.
+
     Example:
         runner = ScenarioRunner(Path("scenarios/malware_with_pain.yaml"))
         result = runner.run(hippocampus=hippo)

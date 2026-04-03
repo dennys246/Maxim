@@ -72,8 +72,4 @@ class RuntimeState:
         self.last_error = str(error) if error is not None else None
 
     def is_done(self) -> bool:
-        if self.done:
-            return True
-        if int(self.max_steps) > 0 and int(self.steps_taken) >= int(self.max_steps):
-            return True
-        return False
+        return self.done

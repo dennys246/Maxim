@@ -607,16 +607,6 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
     # Core Lifecycle Methods
     # ─────────────────────────────────────────────────────────────────────────
 
-    def learn(self):
-        return
-
-    def journal(self):
-        entry = {
-            "date": time.time(),
-            "epoch": self.current_epoch,
-        }
-        return entry
-
     def _ensure_segmenter(self, *, force: bool = False, model_name: str | None = None) -> None:
         if not force and getattr(self, "segmenter", None) is not None:
             return

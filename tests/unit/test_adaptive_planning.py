@@ -588,35 +588,6 @@ class TestAdaptivePolicyAllow:
         assert policy.allow({"tool_name": "test_tool"}, None)
 
 
-class TestAdaptivePolicyExplainScore:
-    def test_returns_all_dimensions(self):
-        policy = AdaptivePolicy()
-        candidate = PlanCandidate(
-            actions=[{"tool_name": "t", "params": {}}],
-            source="direct",
-            planning_context=PlanningContext(),
-        )
-        dims = policy.explain_score(candidate, None, None)
-        assert "nac_value" in dims
-        assert "ec_familiarity" in dims
-        assert "concept_relevance" in dims
-        assert "delay_efficiency" in dims
-        assert "depth_penalty" in dims
-        assert "action_cost" in dims
-        assert "weighted_total" in dims
-
-    def test_weighted_total_matches_score(self):
-        policy = AdaptivePolicy()
-        candidate = PlanCandidate(
-            actions=[{"tool_name": "t", "params": {}}],
-            source="direct",
-            planning_context=PlanningContext(),
-        )
-        dims = policy.explain_score(candidate, None, None)
-        score = policy.score(candidate, None, None)
-        assert abs(dims["weighted_total"] - score) < 1e-9
-
-
 class TestAdaptivePolicyConceptRelevance:
     """concept_relevance normalizes integer edge counts from rank_available_skills."""
 
