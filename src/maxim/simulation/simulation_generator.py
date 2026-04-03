@@ -97,6 +97,33 @@ OUTPUT FORMAT (JSON):
 }"""
 
 
+# Cached generator agent — avoids reloading the model every call
+_generator_agent = None
+_generator_profile = None
+
+
+def warm_generator(llm_profile: str | None = None) -> None:
+    """Pre-load the scenario generator LLM.
+
+    Call during startup to avoid cold-load latency on first generation.
+    """
+    global _generator_agent, _generator_profile
+    from maxim.agents.llm_agent import LLMAgent
+
+    if _generator_agent is None or _generator_profile != llm_profile:
+        logger.info("Pre-loading simulation generator LLM (profile=%s)...", llm_profile)
+        _generator_agent = LLMAgent(
+            profile=llm_profile,
+            system_prompt=SYSTEM_PROMPT,
+            temperature=0.1,
+            max_tokens=4096,
+        )
+        _generator_profile = llm_profile
+        # Trigger lazy model load
+        _generator_agent._get_backend()
+        logger.info("Simulation generator LLM ready")
+
+
 def generate_scenario(
     description: str,
     output_path: Path | None = None,
@@ -112,18 +139,22 @@ def generate_scenario(
     Returns:
         The generated YAML string.
     """
+    global _generator_agent, _generator_profile
     import json
 
     from maxim.agents.llm_agent import LLMAgent
 
-    agent = LLMAgent(
-        profile=llm_profile,
-        system_prompt=SYSTEM_PROMPT,
-        temperature=0.1,  # Low temp for structured output
-        max_tokens=4096,
-    )
+    # Reuse cached agent (same profile) to avoid reloading the model
+    if _generator_agent is None or _generator_profile != llm_profile:
+        _generator_agent = LLMAgent(
+            profile=llm_profile,
+            system_prompt=SYSTEM_PROMPT,
+            temperature=0.1,
+            max_tokens=4096,
+        )
+        _generator_profile = llm_profile
 
-    raw = agent.generate(
+    raw = _generator_agent.generate(
         f"Generate a test scenario for:\n\n{description}",
         max_tokens=4096,
     )
@@ -134,7 +165,7 @@ def generate_scenario(
     if result is None:
         # Retry with stronger instruction
         logger.warning("First generation attempt failed, retrying...")
-        raw = agent.generate(
+        raw = _generator_agent.generate(
             f"Return ONLY a JSON object (no other text) for this scenario:\n\n{description}",
             max_tokens=4096,
         )

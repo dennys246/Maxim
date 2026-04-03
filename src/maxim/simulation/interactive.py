@@ -98,13 +98,18 @@ def run_interactive_sim(
         disable_sim_logging,
         sim_log,
     )
-    from maxim.simulation.simulation_generator import generate_scenario, _extract_json
+    from maxim.simulation.simulation_generator import generate_scenario, warm_generator, _extract_json
     from maxim.simulation.sinks import RecordingSink
     from maxim.runtime.agent_loop import run_agentic_loop
 
     if sim_workspace is None:
         sim_workspace = Path("data/sim_sandbox")
     sim_workspace.mkdir(parents=True, exist_ok=True)
+
+    # Pre-load the generator and continuation LLMs so first input is fast
+    print("  Pre-loading simulation generator...")
+    warm_generator(llm_profile)
+    print("  Generator ready.")
 
     print("\n  Interactive Simulation Mode")
     print("  Type a scenario description or follow-up input.")
