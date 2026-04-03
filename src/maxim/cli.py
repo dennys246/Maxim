@@ -789,8 +789,36 @@ def main(argv: Sequence[str] | None = None) -> int:
                     agentic_agent.exec_agent._ensure_llm()
                     llm_router = agentic_agent.exec_agent._ensure_router()
                 if llm_router is not None:
+                    # Check model file exists before warming up
+                    model_path = str(getattr(llm_router.cfg, "model_path", "")).strip()
+                    if model_path and not os.path.exists(model_path):
+                        logger.info("Model not found at %s — attempting download...", model_path)
+                        try:
+                            from maxim.models.download import download_llm, LLM_MODELS
+                            profile = str(getattr(llm_router.cfg, "profile", "") or getattr(llm_router.cfg, "model_base", "")).strip()
+                            if profile and profile in LLM_MODELS:
+                                print(f"  Downloading LLM model: {profile}...")
+                                if download_llm(profile):
+                                    print(f"  Download complete: {profile}")
+                                else:
+                                    print(f"  Download failed. Run: ./scripts/download_models.sh --llm --enable")
+                            else:
+                                print(f"  Model not found. Run: ./scripts/download_models.sh --llm --enable")
+                        except Exception as e:
+                            print(f"  Auto-download failed: {e}")
+                            print(f"  Run: ./scripts/download_models.sh --llm --enable")
+
                     if hasattr(llm_router, "warmup"):
                         llm_router.warmup()
+                    # In simulation mode, wait for LLM to be fully loaded before starting
+                    if sim_source is not None and hasattr(llm_router, "wait_ready"):
+                        logger.info("Waiting for LLM to load (simulation mode)...")
+                        if llm_router.wait_ready(timeout=120.0):
+                            logger.info("LLM ready")
+                        else:
+                            logger.warning("LLM failed to load — simulation will use fallback responses")
+                            print("  WARNING: LLM failed to load. Simulation will not produce real responses.")
+                            print("  Ensure model is downloaded: ./scripts/download_models.sh --llm --enable")
                     logger.info("LLM router initialized: %s", llm_router)
                     llm_worker = LLMWorker(
                         llm_router,
