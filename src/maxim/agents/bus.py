@@ -7,6 +7,7 @@ for decoupled communication.
 from __future__ import annotations
 
 import hashlib
+import logging
 import math as _math
 import threading
 import time
@@ -14,6 +15,8 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field, fields
 from enum import Enum, auto
 from typing import Any, Callable, Generic, TypeVar
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -1221,9 +1224,21 @@ class AgentBus:
 
         for handler in handlers:
             try:
+                _t0 = time.monotonic()
                 handler(message)
-            except Exception:
-                pass  # Handlers should not block the bus
+                _elapsed = time.monotonic() - _t0
+                if _elapsed > 0.05:  # 50ms
+                    logger.warning(
+                        "Slow bus handler: %s took %.1fms for %s",
+                        getattr(handler, "__qualname__", repr(handler)),
+                        _elapsed * 1000,
+                        type(message).__name__,
+                    )
+            except Exception as e:
+                logger.debug(
+                    "Bus handler %s raised: %s",
+                    getattr(handler, "__qualname__", repr(handler)), e,
+                )
 
     def clear(self) -> None:
         """Clear all subscriptions."""
