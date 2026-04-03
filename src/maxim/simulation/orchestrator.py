@@ -138,9 +138,9 @@ def start_simulation_mode(
     aut_state = RuntimeState()
     aut_state.data["mode"] = "active"
     aut_memory = build_memory()
-    aut_registry = build_tool_registry(allowed_dirs=[str(sim_tmpdir)])
-    aut_decision_engine = build_decision_engine(memory=aut_memory)
-    aut_agent = MaximAgent(bus=None)
+    aut_registry = build_tool_registry(operational_mode="active")
+    aut_decision_engine = build_decision_engine()
+    aut_agent = MaximAgent()
 
     aut_autonomy = AutonomyController(
         initial_level=AutonomyLevel.SUPERVISED,
@@ -168,7 +168,7 @@ def start_simulation_mode(
     orch_state.data["mode"] = "active"
     orch_state.data["strategy"] = persona
     orch_memory = build_memory()
-    orch_decision_engine = build_decision_engine(memory=orch_memory)
+    orch_decision_engine = build_decision_engine()
 
     # Phase 3: Orchestrator memory (hippocampus + NAc) for cross-session learning
     orch_hippocampus = None
@@ -191,10 +191,10 @@ def start_simulation_mode(
         logger.info("Orchestrator memory wired (hippocampus + NAc)")
     except Exception as e:
         logger.debug("Orchestrator memory not available: %s", e)
-    orch_agent = MaximAgent(bus=None)
+    orch_agent = MaximAgent()
 
     # Register simulation tools with orchestrator
-    orch_registry = build_tool_registry(allowed_dirs=[str(sim_tmpdir)])
+    orch_registry = build_tool_registry(operational_mode="active")
     orch_registry.register(SendMessageTool(bridge=bridge))
     orch_registry.register(ObserveActionsTool(bridge=bridge))
     orch_registry.register(CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal))
