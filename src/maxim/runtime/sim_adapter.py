@@ -80,16 +80,16 @@ class SimulationAdapter:
             return False
 
         if self._grace_deadline is None:
-            self._grace_deadline = time.time() + 60.0
+            self._grace_deadline = time.time() + 180.0
             self._grace_action_count = 0 if self.action_sink is None else len(self.action_sink.actions)
-            log_agentic("agent_loop", "percept_source_exhausted", {"grace_seconds": 60})
+            log_agentic("agent_loop", "percept_source_exhausted", {"grace_seconds": 180})
 
         # Tighten grace if new actions appeared
         if (self.action_sink is not None
                 and len(self.action_sink.actions) > self._grace_action_count
                 and pending_proposal is None):
             self._grace_action_count = len(self.action_sink.actions)
-            self._grace_deadline = min(self._grace_deadline, time.time() + 5.0)
+            self._grace_deadline = min(self._grace_deadline, time.time() + 15.0)
             log_agentic("agent_loop", "grace_tightened",
                         {"actions": len(self.action_sink.actions)})
 
