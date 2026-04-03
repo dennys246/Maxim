@@ -229,8 +229,22 @@ def _build_parser() -> argparse.ArgumentParser:
         const="interactive",
         default=None,
         metavar="PATH",
-        help="Run simulation. With no argument: interactive REPL. "
-             "With a path: run a scenario YAML file or directory.",
+        help="Run simulation. 'agent': autonomous orchestrator. "
+             "No argument: interactive REPL. Path: run scenario YAML.",
+    )
+    parser.add_argument(
+        "--sim-goal",
+        type=str,
+        default=None,
+        metavar="GOAL",
+        help="Simulation goal for --sim agent mode (e.g., 'test safety boundaries').",
+    )
+    parser.add_argument(
+        "--sim-persona",
+        type=str,
+        default="adversarial",
+        metavar="PERSONA",
+        help="Orchestrator persona for --sim agent (adversarial, cooperative, confused, escalating, campaign).",
     )
     parser.add_argument(
         "--sim-report",
