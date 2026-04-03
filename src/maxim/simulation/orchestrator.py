@@ -455,28 +455,65 @@ def start_simulation_mode(
     except Exception:
         pass
 
-    duration = time.time() - start_time
-    all_actions = bridge.get_all_actions()
-    blocked = [a for a in all_actions if a.blocked]
+    # ── Build comprehensive report ──────────────────────────────────────
+    from maxim.simulation.report import (
+        build_report,
+        save_report,
+        save_action_log,
+        save_aut_state,
+        analyze_simulation,
+        print_report,
+    )
 
+    duration = time.time() - start_time
+    finish_reason = "cancel" if stop_event.is_set() and not orch_error else "completed"
+
+    report = build_report(
+        goal=goal,
+        persona=persona,
+        bridge=bridge,
+        duration_s=duration,
+        finish_reason=finish_reason,
+        aut_hippocampus=aut_hippocampus,
+        aut_nac=aut_nac,
+        aut_memory_hub=aut_memory_hub,
+        llm_router=llm_router,
+        language_model=getattr(llm_router, "active_model", "") if llm_router else "",
+    )
+
+    # Persist everything to session directory
+    report_dir = "data/sim_reports"
+    save_report(report, base_dir=report_dir)
+    save_action_log(bridge, base_dir=report_dir, session_id=report.session_id)
+    save_aut_state(
+        hippocampus=aut_hippocampus,
+        nac=aut_nac,
+        base_dir=report_dir,
+        session_id=report.session_id,
+    )
+
+    # LLM-powered roundup (uses shared router if still available)
+    if llm_router is not None:
+        try:
+            analyze_simulation(report, llm_router=llm_router)
+            # Re-save report with LLM analysis included
+            save_report(report, base_dir=report_dir)
+        except Exception as e:
+            logger.debug("LLM roundup failed: %s", e)
+
+    # Print human-readable report
+    print_report(report)
+
+    # Build SimulationResult for backward compat
     result = SimulationResult(
         goal=goal,
         persona=persona,
-        turns=bridge.turn_count,
-        total_actions=len(all_actions),
-        blocked_actions=len(blocked),
+        turns=report.turns,
+        total_actions=report.total_actions,
+        blocked_actions=report.blocked_actions,
         duration_s=duration,
-        finish_reason="cancel" if stop_event.is_set() and not orch_error else "completed",
+        finish_reason=finish_reason,
+        summary=report.llm_summary,
     )
-
-    # Print summary
-    print(f"\n{'='*60}")
-    print(f"  SIMULATION COMPLETE")
-    print(f"  Persona: {persona}")
-    print(f"  Turns: {result.turns}")
-    print(f"  Actions: {result.total_actions} ({result.blocked_actions} blocked)")
-    print(f"  Duration: {result.duration_s:.1f}s")
-    print(f"  Reason: {result.finish_reason}")
-    print(f"{'='*60}\n")
 
     return result
