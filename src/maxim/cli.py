@@ -477,7 +477,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             else:
                 scenario_files = [sim_path]
 
-        if not scenario_files:
+        if not scenario_files and not _sim_interactive:
             print(f"No scenario files found at {sim_path}")
             sys.exit(1)
 
@@ -491,41 +491,38 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         # Create a temporary sandbox directory within the workspace
         # All filesystem operations are confined here, destroyed after the run
-        import tempfile
-        sim_workspace = Path(getattr(args, "home_dir", "data")) / "sim_sandbox"
-        sim_workspace.mkdir(parents=True, exist_ok=True)
-        sim_tmpdir = Path(tempfile.mkdtemp(
-            prefix=f"sim_{time.strftime('%Y%m%d_%H%M%S')}_",
-            dir=str(sim_workspace),
-        ))
-        # Override CWD so filesystem policy restricts to this sandbox
-        args._sim_original_cwd = os.getcwd()
-        os.chdir(str(sim_tmpdir))
-        print(f"  Simulation sandbox: {sim_tmpdir}")
+        if not _sim_interactive:
+            # Single/batch scenario mode: set up sandbox and load scenario
+            import tempfile
+            sim_workspace = Path(getattr(args, "home_dir", "data")) / "sim_sandbox"
+            sim_workspace.mkdir(parents=True, exist_ok=True)
+            sim_tmpdir = Path(tempfile.mkdtemp(
+                prefix=f"sim_{time.strftime('%Y%m%d_%H%M%S')}_",
+                dir=str(sim_workspace),
+            ))
+            args._sim_original_cwd = os.getcwd()
+            os.chdir(str(sim_tmpdir))
+            print(f"  Simulation sandbox: {sim_tmpdir}")
 
-        all_results = []
-        any_failed = False
+            all_results = []
+            any_failed = False
 
-        # Enable simulation verbosity with log persistence
-        from maxim.simulation.sim_logger import enable_sim_logging, disable_sim_logging
+            from maxim.simulation.sim_logger import enable_sim_logging, disable_sim_logging
+            sim_log_path = str(sim_workspace / f"sim_log_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
+            enable_sim_logging(log_path=sim_log_path)
 
-        # Save log OUTSIDE the sandbox (in sim_sandbox/ parent, not the temp dir)
-        sim_log_path = str(sim_workspace / f"sim_log_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
-        enable_sim_logging(log_path=sim_log_path)
+            for scenario_file in scenario_files:
+                print(f"\nRunning scenario: {scenario_file.name}")
+                print(f"  Loading full agentic pipeline (autonomy={args.autonomy})...")
 
-        for scenario_file in scenario_files:
-            print(f"\nRunning scenario: {scenario_file.name}")
-            print(f"  Loading full agentic pipeline (autonomy={args.autonomy})...")
+                source = ScenarioSource(scenario_file)
+                sink = RecordingSink()
 
-            source = ScenarioSource(scenario_file)
-            sink = RecordingSink()
-
-            # Store for the agentic block to pick up
-            args._sim_source = source
-            args._sim_sink = sink
-            args._sim_scenario_file = scenario_file
-            args._sim_tmpdir = sim_tmpdir
-            break  # Process one scenario, let the main loop handle it
+                args._sim_source = source
+                args._sim_sink = sink
+                args._sim_scenario_file = scenario_file
+                args._sim_tmpdir = sim_tmpdir
+                break  # Process one scenario, let the main loop handle it
 
         # Fall through to the main loop with mode="agentic"
         # The agentic block will detect args._sim_source and wire it in
