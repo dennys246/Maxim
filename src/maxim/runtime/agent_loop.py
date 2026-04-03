@@ -567,25 +567,22 @@ def run_agentic_loop(
                 percept_source._grace_deadline = time.time() + 60.0
                 log_agentic("agent_loop", "percept_source_exhausted",
                             {"grace_seconds": 60})
-            # End grace early if LLM has responded and no more work pending
-            _has_pending = pending_proposal is not None
+            # End grace early if actions were executed (LLM responded)
             if not hasattr(percept_source, "_grace_action_count"):
-                percept_source._grace_action_count = 0
-                percept_source._grace_saw_response = False
-            # Track if any LLM response arrived during grace
-            if llm_worker and llm_worker.get_latest_proposal() is not None:
-                percept_source._grace_saw_response = True
-            # If LLM responded and action was executed, end grace early
-            if (percept_source._grace_saw_response
-                    and not _has_pending
-                    and action_sink is not None
-                    and len(action_sink.actions) > percept_source._grace_action_count):
+                percept_source._grace_action_count = 0 if action_sink is None else len(action_sink.actions)
+            if (action_sink is not None
+                    and len(action_sink.actions) > percept_source._grace_action_count
+                    and pending_proposal is None):
+                # New actions recorded since grace started — LLM responded
                 percept_source._grace_action_count = len(action_sink.actions)
-                # Give 5 more seconds for any follow-up actions
+                # Tighten deadline to 5 more seconds for any follow-up
                 percept_source._grace_deadline = min(
                     percept_source._grace_deadline,
                     time.time() + 5.0,
                 )
+                sim_log_msg = f"Grace tightened: {len(action_sink.actions)} action(s), 5s remaining"
+                log_agentic("agent_loop", "grace_tightened",
+                            {"actions": len(action_sink.actions)})
             if time.time() >= percept_source._grace_deadline:
                 log_agentic("agent_loop", "shutdown",
                             {"reason": "percept_source_grace_expired"})
