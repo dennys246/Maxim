@@ -142,6 +142,14 @@ def route_pain_percept(percept: Percept, pain_bus: PainBus) -> bool:
         },
     )
     pain_bus.publish(signal)
+
+    # Simulation verbosity
+    try:
+        from maxim.simulation.sim_logger import sim_pain
+        sim_pain(signal.pain_type.value, signal.intensity, **signal.context)
+    except Exception:
+        pass
+
     return True
 
 

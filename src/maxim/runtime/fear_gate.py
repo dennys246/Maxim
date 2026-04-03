@@ -91,6 +91,14 @@ class FearGatedExecutor:
                 review.risk.value,
                 len(review.findings),
             )
+
+            # Simulation verbosity
+            try:
+                from maxim.simulation.sim_logger import sim_fear
+                sim_fear(tool_name, allowed=False, reason=reason)
+            except Exception:
+                pass
+
             return ToolOutput(
                 success=False,
                 error=f"BLOCKED by FearAgent: {reason}",
@@ -119,8 +127,25 @@ class FearGatedExecutor:
                     metadata={"fear_agent_blocked": True, "risk": code_review.risk.value},
                 )
 
+        # Simulation verbosity — log approval
+        try:
+            from maxim.simulation.sim_logger import sim_fear
+            sim_fear(tool_name, allowed=True)
+        except Exception:
+            pass
+
         # FearAgent approved — forward to real executor
-        return self._executor.execute(action)
+        result = self._executor.execute(action)
+
+        # Simulation verbosity — log execution result
+        try:
+            from maxim.simulation.sim_logger import sim_action
+            summary = str(result.output)[:80] if result.output else (result.error or "")[:80]
+            sim_action(tool_name, result.success, summary)
+        except Exception:
+            pass
+
+        return result
 
     def get_stats(self) -> dict[str, int]:
         """Return FearGate statistics."""

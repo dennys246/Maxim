@@ -182,6 +182,19 @@ class ScenarioSource:
             at_value,
         )
 
+        # Simulation verbosity logging
+        from maxim.simulation.sim_logger import sim_percept
+
+        summary = raw.get("cli_input") or raw.get("transcript_chunk") or raw.get("content") or "signal"
+        if len(str(summary)) > 80:
+            summary = str(summary)[:77] + "..."
+        sim_percept(
+            source=raw.get("source", "cli"),
+            summary=str(summary),
+            step=self._current_step,
+            salience=raw.get("salience", 0),
+        )
+
         return percept
 
     def advance_step(self) -> None:

@@ -436,6 +436,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Cleared {cleared}/{total} memory file(s).")
         return 0  # Exit after clearing
 
+    # Scenario generation if requested
+    gen_description = getattr(args, "generate_simulation", None)
+    if gen_description is not None:
+        from pathlib import Path
+        from maxim.simulation.simulation_generator import generate_scenario
+
+        output_path = getattr(args, "output", None)
+        output = Path(output_path) if output_path else None
+        llm_profile = str(getattr(args, "language_model", "") or "").strip() or None
+
+        try:
+            yaml_str = generate_scenario(gen_description, output_path=output, llm_profile=llm_profile)
+            if output is None:
+                print(yaml_str)
+        except Exception as e:
+            print(f"Error generating scenario: {e}")
+            sys.exit(1)
+        sys.exit(0)
+
     # Simulation mode if requested — runs full agentic pipeline with fake percepts
     sim_path = getattr(args, "sim", None)
     if sim_path is not None:
@@ -480,6 +499,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         all_results = []
         any_failed = False
+
+        # Enable simulation verbosity with log persistence
+        from maxim.simulation.sim_logger import enable_sim_logging, disable_sim_logging
+
+        # Save log OUTSIDE the sandbox (in sim_sandbox/ parent, not the temp dir)
+        sim_log_path = str(sim_workspace / f"sim_log_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
+        enable_sim_logging(log_path=sim_log_path)
 
         for scenario_file in scenario_files:
             print(f"\nRunning scenario: {scenario_file.name}")
@@ -838,7 +864,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                             _json.dump(report, f, indent=2)
                         print(f"Report written to {report_path}")
 
-                    # Clean up simulation sandbox
+                    # Save sim log and disable logging
+                    saved_log = disable_sim_logging()
+                    if saved_log:
+                        print(f"  Simulation log saved: {saved_log}")
+
+                    # Clean up simulation sandbox (but preserve the log)
                     sim_tmpdir = getattr(args, "_sim_tmpdir", None)
                     if sim_tmpdir is not None:
                         import shutil

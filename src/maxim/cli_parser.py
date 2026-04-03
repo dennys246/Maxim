@@ -241,4 +241,20 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Record all percepts during a live session to data/sessions/ for replay.",
     )
+    parser.add_argument(
+        "--generate-simulation",
+        type=str,
+        default=None,
+        metavar="DESCRIPTION",
+        help='Generate a simulation scenario YAML from a natural language description. '
+             'Example: --generate-simulation "user asks robot to pick up a cup"',
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Output path for --generate-scenario (default: stdout).",
+    )
     return parser
