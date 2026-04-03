@@ -2606,7 +2606,9 @@ def run_agentic_loop(
             logger.debug(f"Failed to save hippocampus: {e}")
 
     # End MemoryHub session (runs sleep consolidation and bridge cleanup)
-    if memory_hub_enabled and memory_hub is not None:
+    # Skip session_end in simulation mode — it runs consolidation which
+    # can block for a long time and we'll start a new turn immediately
+    if memory_hub_enabled and memory_hub is not None and percept_source is None:
         try:
             session_stats = memory_hub.on_session_end()
             log_agentic(
@@ -2618,8 +2620,8 @@ def run_agentic_loop(
         except Exception as e:
             logger.debug(f"Failed to end MemoryHub session: {e}")
 
-    # Stop Default Network if running
-    if dn_enabled and default_network is not None:
+    # Stop Default Network if running (skip in sim — no DN)
+    if dn_enabled and default_network is not None and percept_source is None:
         try:
             default_network.stop()
             log_agentic("default_network", "shutdown", {"status": "stopped"}, level="INFO")

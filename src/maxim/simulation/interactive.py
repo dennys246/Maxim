@@ -304,7 +304,15 @@ def run_interactive_sim(
             except Exception:
                 pass
 
-        # End of conversation
+        # End of conversation — run consolidation now
+        if memory_hub is not None:
+            try:
+                print("  Consolidating memories...")
+                session_stats = memory_hub.on_session_end()
+                sim_log("PIPELINE", f"Session ended: {session_stats}")
+            except Exception as e:
+                logger.debug("Failed to end MemoryHub session: %s", e)
+
         _save_full_transcript(transcript_path, all_percepts, description)
         _print_summary(total_sink)
         print(f"  Transcript: {transcript_path}")
