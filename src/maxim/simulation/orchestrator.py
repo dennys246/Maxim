@@ -120,7 +120,7 @@ def start_simulation_mode(
     orchestrator_source = ConversationalSource()
 
     # ── Ensure agent runtime directories exist ─────────────────────────
-    Path("data/agents/MaximAgent/runtime").mkdir(parents=True, exist_ok=True)
+    os.makedirs(os.path.join("data", "agents", "MaximAgent", "runtime"), exist_ok=True)
 
     # ── Simulation sandbox ───────────────────────────────────────────────
     sim_workspace = Path("data") / "sim_sandbox"
