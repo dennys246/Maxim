@@ -679,6 +679,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                         bus=agentic_agent._bus,
                     )
 
+                # Build MemoryHub with Hippocampus for episodic memory
+                _cli_memory_hub = None
+                _cli_hippocampus = None
+                try:
+                    from maxim.integration.memory_hub import MemoryHub
+                    from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+
+                    _cli_hippocampus = Hippocampus(config=HippocampusConfig(
+                        persistence_path=memory_path,
+                    ))
+                    _cli_memory_hub = MemoryHub(hippocampus=_cli_hippocampus)
+                    agentic_agent.wire_memory_hub(_cli_memory_hub)
+                    logger.info("MemoryHub + Hippocampus wired to MaximAgent")
+                except Exception as e:
+                    logger.warning("Failed to create MemoryHub: %s", e)
+
                 registry = build_tool_registry(
                     response_output=response_output,
                     internet_policy_getter=internet_policy_getter,
@@ -754,13 +770,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                         duration_seconds=autonomy_duration,
                     )
 
-                # Set up LLM worker
+                # Set up LLM worker — LLM lives inside ExecAgent, not MaximAgent
                 llm_worker = None
-                if hasattr(agentic_agent, "_llm") and agentic_agent._llm is not None:
-                    # Start warming up the LLM in background (reduces first-request latency)
-                    if hasattr(agentic_agent._llm, "warmup"):
-                        agentic_agent._llm.warmup()
-                    llm_router = agentic_agent._llm
+                llm_router = None
+                # Trigger lazy LLM + router init via ExecAgent
+                if hasattr(agentic_agent, "exec_agent"):
+                    agentic_agent.exec_agent._ensure_llm()
+                    llm_router = agentic_agent.exec_agent._ensure_router()
+                if llm_router is not None:
+                    if hasattr(llm_router, "warmup"):
+                        llm_router.warmup()
+                    logger.info("LLM router initialized: %s", llm_router)
                     llm_worker = LLMWorker(
                         llm_router,
                         n_ctx=getattr(llm_router, 'n_ctx', 4096),
@@ -803,20 +823,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                         create_pain_memory_subscriber,
                     )
 
-                    # Get hippocampus from agent's memory hub
-                    _sim_hippo = None
-                    _sim_hub = getattr(getattr(agentic_agent, "memory", None), "_memory_hub", None)
-                    if _sim_hub is not None:
-                        _sim_hippo = getattr(_sim_hub, "hippocampus", None)
-
                     _sim_pain_bus = SimPainBus()
-                    if _sim_hippo is not None:
-                        _sim_pain_bus.subscribe(create_pain_memory_subscriber(_sim_hippo))
+                    if _cli_hippocampus is not None:
+                        _sim_pain_bus.subscribe(create_pain_memory_subscriber(_cli_hippocampus))
                         logger.info("Sim PainBus wired to hippocampus for pain memory capture")
 
-                    # Store for agent loop's pain routing
                     args._sim_pain_bus = _sim_pain_bus
-                    args._sim_hippo = _sim_hippo
+                    args._sim_hippo = _cli_hippocampus
 
                 try:
                     run_agentic_loop(
@@ -828,6 +841,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         executor,
                         autonomy_controller=autonomy_controller,
                         llm_worker=llm_worker,
+                        hippocampus=_cli_hippocampus,
+                        memory_hub=_cli_memory_hub,
                         evaluators=evaluators,
                         max_steps=epochs_value,
                         run_id=run_id,
