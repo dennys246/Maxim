@@ -34,75 +34,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PLANNING MODE APPROVAL DETECTION
-# ─────────────────────────────────────────────────────────────────────────────
-# Keywords for approval detection (case-insensitive)
-_APPROVAL_YES = frozenset({
-    "yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "approve",
-    "approved", "go", "go ahead", "do it", "proceed", "execute", "run",
-    "confirm", "confirmed", "accept", "accepted", "sounds good", "looks good",
-    "that works", "perfect", "great", "good", "fine", "correct", "right",
-})
-
-_APPROVAL_NO = frozenset({
-    "no", "n", "nope", "nah", "stop", "cancel", "abort", "reject",
-    "rejected", "deny", "denied", "don't", "dont", "do not", "never",
-    "negative", "wrong", "incorrect", "bad", "not that",
-})
-
-
-def detect_approval_intent(text: str) -> tuple[str, str | None]:
-    """
-    Detect user intent from text: approval, rejection, or modification.
-
-    Returns:
-        Tuple of (intent, modification_text):
-        - ("approve", None) - user approved the plan
-        - ("reject", None) - user rejected the plan
-        - ("modify", "new instructions") - user wants to modify the plan
-        - ("unknown", None) - could not determine intent
-    """
-    if not text:
-        return ("unknown", None)
-
-    text_lower = text.lower().strip()
-    text_words = set(text_lower.split())
-
-    # Check for exact match or word-level match for approval
-    if text_lower in _APPROVAL_YES or text_words & _APPROVAL_YES:
-        # But make sure it's not a modification (has other content)
-        # Short responses like "yes" are approval, but "yes but change X" is modify
-        if len(text_lower) < 20 or text_lower in _APPROVAL_YES:
-            return ("approve", None)
-
-    # Check for rejection
-    if text_lower in _APPROVAL_NO or text_words & _APPROVAL_NO:
-        if len(text_lower) < 20 or text_lower in _APPROVAL_NO:
-            return ("reject", None)
-
-    # Check for modification indicators
-    modify_indicators = [
-        "but", "instead", "change", "modify", "update", "different",
-        "actually", "rather", "how about", "what if", "can you",
-        "could you", "would you", "please", "also", "add", "remove",
-    ]
-    for indicator in modify_indicators:
-        if indicator in text_lower:
-            return ("modify", text)
-
-    # If text is short and starts with approval/rejection word
-    first_word = text_words.pop() if text_words else ""
-    if first_word in _APPROVAL_YES:
-        return ("approve", None)
-    if first_word in _APPROVAL_NO:
-        return ("reject", None)
-
-    # Default: treat longer unknown text as modification request
-    if len(text_lower) > 10:
-        return ("modify", text)
-
-    return ("unknown", None)
+from maxim.runtime.approval import detect_approval_intent, _APPROVAL_YES, _APPROVAL_NO
 
 
 def _safe_agent_name(agent: Any) -> str:
@@ -123,63 +55,12 @@ def _safe_agent_name(agent: Any) -> str:
     return name.strip("._-") or "agent"
 
 
-def _persist_state_json(state: Any, path: str, *, meta: dict[str, Any]) -> None:
-    try:
-        if hasattr(state, "save_json") and callable(getattr(state, "save_json")):
-            try:
-                state.save_json(path, meta=meta)
-            except TypeError:
-                state.save_json(path)
-            return
-        if hasattr(state, "snapshot") and callable(getattr(state, "snapshot")):
-            snap = state.snapshot()
-        else:
-            snap = {"state": repr(state)}
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        tmp = f"{path}.tmp"
-        with open(tmp, "w", encoding="utf-8") as fp:
-            json.dump({"saved_at": time.time(), **meta, **snap}, fp, indent=2, default=str)
-        os.replace(tmp, path)
-    except Exception as e:
-        warn("Failed to persist runtime state: %s", e)
-
-
-def _get_failure_strategy(intent: dict, action: dict) -> str:
-    """Extract failure strategy from intent/action metadata."""
-    if isinstance(intent, dict):
-        strategy = intent.get("on_failure", "")
-        if strategy:
-            return str(strategy).lower()
-        sub_goals = intent.get("sub_goals", [])
-        for sg in sub_goals:
-            if isinstance(sg, dict) and sg.get("tool_name") == action.get("tool_name"):
-                return str(sg.get("on_failure", "")).lower()
-    return ""
-
-
-def _get_plan_depth(decision: dict) -> int:
-    """Extract current plan depth from decision metadata."""
-    plan = decision.get("plan")
-    if hasattr(plan, "depth"):
-        return plan.depth
-    return 0
-
-
-def _build_replan_context(intent: dict, action: dict, result: Any, state: Any):
-    """Build a ReplanContext from failure information."""
-    from maxim.planning.plan_document import ReplanContext
-
-    return ReplanContext(
-        failed_phase=str(intent.get("goal", "")),
-        failure_reason=str(getattr(result, "error", "unknown")),
-        failure_type=str(getattr(result, "error_kind", "unknown")),
-        attempted_sub_goals=[str(action.get("tool_name", ""))],
-        attempted_tools=[str(action.get("tool_name", ""))],
-        completed_phases=[],
-        preserved_results={},
-        remaining_phases=[],
-        energy_remaining={},
-    )
+from maxim.runtime.loop_state import (
+    _persist_state_json,
+    _get_failure_strategy,
+    _get_plan_depth,
+    _build_replan_context,
+)
 
 
 def run_agent_loop(
