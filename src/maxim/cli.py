@@ -473,11 +473,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             goal = getattr(args, "sim_goal", None) or "test the agent's capabilities"
             persona = getattr(args, "sim_persona", "adversarial")
             sim_debug = bool(getattr(args, "sim_debug", False))
+            resume_sim = getattr(args, "resume_sim", None)
 
             result = start_simulation_mode(
                 goal=goal,
                 persona=persona,
                 sim_debug=sim_debug,
+                resume_session=resume_sim,
             )
             sys.exit(0 if result.finish_reason != "error" else 1)
 

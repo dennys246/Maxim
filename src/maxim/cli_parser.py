@@ -244,7 +244,15 @@ def _build_parser() -> argparse.ArgumentParser:
         type=str,
         default="adversarial",
         metavar="PERSONA",
-        help="Orchestrator persona for --sim agent (adversarial, cooperative, confused, escalating, campaign).",
+        help="Orchestrator persona for --sim agent (adversarial, cooperative, confused, escalating, campaign, refinement).",
+    )
+    parser.add_argument(
+        "--resume-sim",
+        type=str,
+        default=None,
+        metavar="SESSION_ID",
+        help="Resume a previous simulation session by ID (from data/sim_reports/). "
+             "Restores AUT memory state and provides previous findings as context.",
     )
     parser.add_argument(
         "--sim-report",
