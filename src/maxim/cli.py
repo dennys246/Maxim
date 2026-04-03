@@ -456,28 +456,43 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"No scenario files found at {sim_path}")
             sys.exit(1)
 
-        # Force agentic mode for simulation
+        # Force agentic mode with supervised autonomy for simulation
         args.mode = "agentic"
+        if not getattr(args, "autonomy", None) or args.autonomy == "planning":
+            args.autonomy = "supervised"  # Let agent attempt actions; FearAgent + policy gate
         # Use a reasonable step limit so scenarios don't run forever
         if not getattr(args, "epochs", None):
             args.epochs = 200
+
+        # Create a temporary sandbox directory within the workspace
+        # All filesystem operations are confined here, destroyed after the run
+        import tempfile
+        sim_workspace = Path(getattr(args, "home_dir", "data")) / "sim_sandbox"
+        sim_workspace.mkdir(parents=True, exist_ok=True)
+        sim_tmpdir = Path(tempfile.mkdtemp(
+            prefix=f"sim_{time.strftime('%Y%m%d_%H%M%S')}_",
+            dir=str(sim_workspace),
+        ))
+        # Override CWD so filesystem policy restricts to this sandbox
+        args._sim_original_cwd = os.getcwd()
+        os.chdir(str(sim_tmpdir))
+        print(f"  Simulation sandbox: {sim_tmpdir}")
 
         all_results = []
         any_failed = False
 
         for scenario_file in scenario_files:
             print(f"\nRunning scenario: {scenario_file.name}")
-            print(f"  Loading full agentic pipeline...")
+            print(f"  Loading full agentic pipeline (autonomy={args.autonomy})...")
 
             source = ScenarioSource(scenario_file)
             sink = RecordingSink()
 
-            # The actual agentic bootstrap happens in the main loop below
-            # by setting mode = "agentic" and passing source/sink via state
-            # Store them so the agentic block can pick them up
+            # Store for the agentic block to pick up
             args._sim_source = source
             args._sim_sink = sink
             args._sim_scenario_file = scenario_file
+            args._sim_tmpdir = sim_tmpdir
             break  # Process one scenario, let the main loop handle it
 
         # Fall through to the main loop with mode="agentic"
@@ -811,6 +826,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                         with open(report_path, "w") as f:
                             _json.dump(report, f, indent=2)
                         print(f"Report written to {report_path}")
+
+                    # Clean up simulation sandbox
+                    sim_tmpdir = getattr(args, "_sim_tmpdir", None)
+                    if sim_tmpdir is not None:
+                        import shutil
+                        original_cwd = getattr(args, "_sim_original_cwd", "/")
+                        os.chdir(original_cwd)
+                        try:
+                            shutil.rmtree(str(sim_tmpdir))
+                            print(f"  Sandbox cleaned up: {sim_tmpdir}")
+                        except Exception as e:
+                            print(f"  Warning: failed to clean sandbox: {e}")
 
                     return 0 if passed else 1
 
