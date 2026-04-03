@@ -659,6 +659,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     gateway=gateway,
                 )
                 executor = build_executor(registry)
+
+                # Wrap executor with FearAgent safety gating (independent of DefaultNetwork)
+                from maxim.agents.fear_agent import FearAgent
+                from maxim.runtime.fear_gate import FearGatedExecutor
+
+                fear_agent = FearAgent(
+                    llm=agentic_agent._llm if hasattr(agentic_agent, "_llm") else None,
+                )
+                executor = FearGatedExecutor(executor, fear_agent)
+                logger.info("FearGatedExecutor active — all tool calls reviewed by FearAgent")
+
                 decision_engine = build_decision_engine()
                 env = ReachyEnv(data_dir=args.home_dir)
                 state = build_state(max_steps=epochs_value)
