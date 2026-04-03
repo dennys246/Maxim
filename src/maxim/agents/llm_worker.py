@@ -946,5 +946,5 @@ class LLMWorker:
             "requests_processed": self._requests_processed,
             "requests_dropped": self._requests_dropped,
             "avg_latency_ms": self._avg_latency_ms,
-            "pool_running": self._pool is not None and self._pool.is_alive() if hasattr(self._pool, "is_alive") else self._pool is not None,
+            "pool_running": self._pool is not None,
         }
