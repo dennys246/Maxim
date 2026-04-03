@@ -240,6 +240,40 @@ Expected savings: ~370 tokens per prompt (74% of tool context) with 20 tools.
 
 ---
 
+## Simulation Orchestrator Tools
+
+These tools are available to the simulation orchestrator when running `maxim --sim agent`. They operate on the agent-under-test through a SimulationBridge, not on the external world.
+
+| Tool | Purpose |
+|------|---------|
+| `send_message` | Inject a percept and wait for AUT response (settle detection) |
+| `observe_actions` | Read full action history or actions since a given turn |
+| `check_completion` | LLM-based evaluation of whether simulation goal is met |
+| `analyze_results` | Structured analysis (focus: safety, compliance, behavior) |
+| `inspect_aut` | Read-only access to AUT cognitive state (see below) |
+| `inject_pain` | Send proprioceptive pain signal to AUT |
+| `generate_scenario` | Generate replayable YAML from natural language |
+| `finish_simulation` | End simulation, trigger cleanup and report |
+
+### inspect_aut
+
+Queries the AUT's internal cognitive subsystems. Supports 8 read-only queries:
+
+| Query | What It Returns |
+|-------|----------------|
+| `memory_recall` | Episodic memories filtered by goal/tool (from Hippocampus) |
+| `causal_links` | Learned cause-effect relationships (from NAc) |
+| `predict_outcome` | Predicted outcome for an event signature (from NAc) |
+| `pain_history` | Pain-related memories |
+| `energy_status` | Token consumption, energy budget state |
+| `system_stats` | Aggregate counts: memories, causal links, concepts |
+| `concept_query` | Semantic concepts by name/category (from ATL) |
+| `temporal_patterns` | Current SCN phase and temporal context |
+
+Used primarily by the `refinement` persona for systematic measurement across all subsystems.
+
+---
+
 ## Tool Safety
 
 All tool calls pass through FearAgent before execution. FearAgent uses:

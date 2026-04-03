@@ -268,6 +268,29 @@ Thread 3 (stdin):         routes /cancel, /new, /persona, free text to orchestra
       <h4 class="text-indigo-400 font-semibold mb-1">LLM Sharing</h4>
       <p class="text-slate-300 text-sm">Both agents share a single LLM backend. The orchestrator and AUT take turns naturally (inject &rarr; wait &rarr; respond &rarr; analyze), so inference serializes without contention.</p>
     </div>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">AUT Inspection</h3>
+    <p class="text-slate-300">The orchestrator has an <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">inspect_aut</code> tool for read-only access to the AUT's cognitive state. Supports 8 queries: <code class="bg-slate-950 px-1 rounded text-xs">memory_recall</code>, <code class="bg-slate-950 px-1 rounded text-xs">causal_links</code>, <code class="bg-slate-950 px-1 rounded text-xs">predict_outcome</code>, <code class="bg-slate-950 px-1 rounded text-xs">pain_history</code>, <code class="bg-slate-950 px-1 rounded text-xs">energy_status</code>, <code class="bg-slate-950 px-1 rounded text-xs">system_stats</code>, <code class="bg-slate-950 px-1 rounded text-xs">concept_query</code>, <code class="bg-slate-950 px-1 rounded text-xs">temporal_patterns</code>. Used primarily by the <code class="bg-slate-950 px-1 rounded text-xs">refinement</code> persona for systematic measurement.</p>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Resuming a Previous Session</h3>
+    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300">maxim --sim agent --goal "continue testing" --resume-sim 20260403_142315</div>
+    <p class="text-slate-300 mt-2">Restores the AUT's memory and causal links from the previous run. The orchestrator receives previous findings as context &mdash; what was tested, what issues were found, and what to focus on next. Supports fuzzy prefix matching (<code class="bg-slate-950 px-1 rounded text-xs">--resume-sim 20260403</code>).</p>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Response Policy (Auto-Approval)</h3>
+    <p class="text-slate-300">In simulation mode, the AUT auto-approves confirmation prompts, plan approvals, and timeout retries by default. This prevents deadlocks from missing stdin. Four policies: <strong class="text-white">auto_approve</strong> (default), <strong class="text-white">auto_reject</strong> (test refusals), <strong class="text-white">delayed</strong> (test timeouts), <strong class="text-white">ask_orchestrator</strong> (full confirmation testing).</p>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Session Reports</h3>
+    <p class="text-slate-300">Every simulation run saves a complete report to <code class="bg-slate-950 px-1 rounded text-xs">data/sim_reports/{session_id}/</code>:</p>
+    <ul class="text-slate-300 text-sm space-y-1 list-disc pl-5 mt-1">
+      <li><code class="text-indigo-400">report.json</code> &mdash; Metrics, tool usage, AUT cognitive state, cost, LLM analysis</li>
+      <li><code class="text-indigo-400">actions.jsonl</code> &mdash; Every action record for post-hoc analysis</li>
+      <li><code class="text-indigo-400">aut_hippocampus.json</code> &mdash; AUT's episodic memories</li>
+      <li><code class="text-indigo-400">aut_nac.json</code> &mdash; AUT's causal links learned</li>
+    </ul>
+    <p class="text-slate-300 text-sm mt-2">An LLM-powered roundup runs at session end, adding a summary, issues found, and recommendations to the report.</p>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Cost Ceiling</h3>
+    <p class="text-slate-300">Cloud API costs are capped at <strong class="text-white">$5.00 per session</strong> by default. Once hit, all further LLM requests are hard-rejected. Configure via <code class="bg-slate-950 px-1 rounded text-xs">max_session_cost</code> in <code class="bg-slate-950 px-1 rounded text-xs">llm.json</code> routing policy. Additional soft limits apply per-request ($0.50), hourly ($1.00), daily ($10.00), and monthly ($100.00) &mdash; these downgrade models rather than blocking.</p>
   </section>
 
   <!-- 3. Running YAML Scenarios -->

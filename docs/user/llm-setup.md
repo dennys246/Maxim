@@ -144,7 +144,7 @@ Add a profile to `data/util/llm.json`:
 }
 ```
 
-### Cost Tracking
+### Cost Tracking & Enforcement
 
 All cloud API calls are automatically tracked in `data/util/cost_state.json` with:
 - Per-model pricing (input, output, cached tokens)
@@ -153,6 +153,33 @@ All cloud API calls are automatically tracked in `data/util/cost_state.json` wit
 - Per-provider breakdowns
 
 Use the `energy_status` introspection tool or `inspect_aut(energy_status)` in simulation mode to check token usage and budget projections in real time.
+
+### Cost Limits
+
+The router enforces budget limits at multiple levels:
+
+| Limit | Default | Behavior When Hit |
+|-------|---------|-------------------|
+| Per-request | $0.50 | Skips expensive provider, tries cheaper |
+| Hourly | $1.00 | Downgrades model (Opus -> Sonnet -> Haiku) |
+| Daily | $10.00 | Downgrades model, falls back to local |
+| Monthly | $100.00 | Downgrades model, falls back to local |
+| **Session ceiling** | **$5.00** | **Hard reject -- ALL requests blocked** |
+
+The session ceiling is the only hard stop. All other limits degrade gracefully (cheaper model or local fallback). Configure in `data/util/llm.json`:
+
+```json
+{
+  "routing": {
+    "max_session_cost": 20.00,
+    "max_cost_per_hour": 5.00,
+    "max_cost_per_day": 50.00,
+    "fallback_on_budget_exceeded": "local"
+  }
+}
+```
+
+Set `fallback_on_budget_exceeded` to `"reject"` for hard enforcement on all limits (not just the session ceiling).
 
 ## Configuration File
 

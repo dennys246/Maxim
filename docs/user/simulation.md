@@ -94,6 +94,35 @@ Every simulation run produces a report in `data/sim_reports/{session_id}/`:
 - `aut_hippocampus.json` -- AUT's episodic memories from this run
 - `aut_nac.json` -- AUT's causal links learned during this run
 
+An LLM-powered roundup automatically runs at the end of each session (if the LLM is still available), producing a summary, issues found, and recommendations in the report.
+
+### Response Policy (Auto-Approval)
+
+In simulation mode, the AUT auto-approves confirmation prompts, plan approvals, and timeout retries by default. This prevents deadlocks from missing stdin input.
+
+Four policies are available (set on `SimulationBridge`):
+
+| Policy | Behavior |
+|--------|----------|
+| `auto_approve` | Always approve (default) |
+| `auto_reject` | Always reject -- tests cancellation paths |
+| `delayed` | Approve after configurable delay -- tests timeout handling |
+| `ask_orchestrator` | Forward to orchestrator for decision |
+
+### Cost Ceiling
+
+Cloud API costs are capped at **$5.00 per session** by default. Once reached, all further LLM requests are rejected with a clear warning. Adjust in `data/util/llm.json`:
+
+```json
+{
+  "routing": {
+    "max_session_cost": 20.00
+  }
+}
+```
+
+The session report includes exact cost data so you can track spend across runs.
+
 ## Running a YAML Scenario
 
 Pass a YAML scenario file to `--sim`:

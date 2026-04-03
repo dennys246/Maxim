@@ -12,8 +12,10 @@ src/maxim/simulation/
     scenario_source.py         # ScenarioSource (YAML loader + emitter)
     bridge.py                  # SimulationBridge (ConversationalSource + RecordingSink + send_and_wait)
     orchestrator.py            # start_simulation_mode() lifecycle, 3-thread orchestrator
-    tools.py                   # Orchestrator tools (send_message, observe_actions, check_completion, ...)
-    personas.py                # 5 personas (adversarial, cooperative, confused, escalating, campaign)
+    tools.py                   # Orchestrator tools (send_message, observe_actions, inspect_aut, ...)
+    personas.py                # 6 personas (adversarial, cooperative, confused, escalating, campaign, refinement)
+    response_policy.py         # ResponsePolicy (auto-approve/reject/delayed/ask-orchestrator)
+    report.py                  # SimulationReport builder, persistence, LLM roundup
     interactive.py             # Conversational REPL (rewired for multi-turn)
     runner.py                  # ScenarioRunner (standalone executor)
     validation.py              # Expectation checking + ScenarioResult
@@ -244,3 +246,51 @@ Saved logs can be used for:
 - Regression comparison between runs
 
 Wired into: ScenarioSource (percept emission), FearGatedExecutor (allow/block/execute), PainBus (pain routing).
+
+## ResponsePolicy
+
+Defined in `response_policy.py`. Configures how the AUT resolves blocking prompts (confirmation, plan approval, timeout retry) during simulation — preventing deadlocks from missing stdin input.
+
+Four policies:
+
+| Policy | Behavior | Use Case |
+|--------|----------|----------|
+| `AUTO_APPROVE` | Always yes (default) | Fast sim runs, no blocking |
+| `AUTO_REJECT` | Always no | Test refusal/cancellation paths |
+| `DELAYED` | Approve after N seconds | Test timeout handling |
+| `ASK_ORCHESTRATOR` | Defer to orchestrator | Full confirmation-flow testing |
+
+The bridge holds the policy (`SimulationBridge.response_policy`). The agent loop checks `sim.resolve_confirmation()`, `sim.resolve_plan_approval()`, and `sim.resolve_timeout_retry()` at each blocking point. Production mode (`NullSimulationAdapter`) returns `None` — wait for real user.
+
+## SimulationReport
+
+Defined in `report.py`. Built after every simulation run in the orchestrator cleanup phase.
+
+**What it captures:**
+- Session metadata (goal, persona, model, timing)
+- Full action summary (tool usage, success rates, blocked actions)
+- AUT cognitive state (hippocampus memory count, NAc causal links, top links by confidence)
+- Cost data (session USD, input/output tokens)
+- LLM roundup (summary, issues found, recommendations)
+
+**What it persists** to `data/sim_reports/{session_id}/`:
+- `report.json` — full report including LLM analysis
+- `actions.jsonl` — every ActionRecord for post-hoc analysis
+- `aut_hippocampus.json` — AUT's episodic memories from this run
+- `aut_nac.json` — AUT's causal links learned during this run
+
+**LLM roundup** (`analyze_simulation()`): Sends report data to the LLM for a structured analysis returning `{summary, issues, recommendations}`. Re-saved into report.json after analysis completes.
+
+## InspectAUTTool
+
+Defined in `tools.py`. Gives the orchestrator read-only access to the AUT's cognitive subsystems. Registered with AUT's Hippocampus, NAc, MemoryHub, and EnergyRegistry references.
+
+Supported queries: `memory_recall`, `causal_links`, `predict_outcome`, `pain_history`, `energy_status`, `system_stats`, `concept_query`, `temporal_patterns`.
+
+Used primarily by the `refinement` persona for systematic measurement.
+
+## Session Cost Ceiling
+
+The `LLMRouter` enforces a hard session cost ceiling (`max_session_cost`, default $5.00). Once cumulative spend for the session reaches this limit, ALL further LLM requests are rejected. This prevents runaway cloud costs during simulation.
+
+Configurable via `llm.json` routing policy or `router.set_session_cost_limit()` at runtime. The orchestrator's `report.json` includes exact session cost for post-run analysis.

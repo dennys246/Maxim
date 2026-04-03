@@ -264,6 +264,10 @@
       <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">finish_simulation</code></h3>
       <p class="text-slate-300 text-sm">End the simulation and cleanly shut down both agent loops. AUT grace period triggers, orchestrator exits.</p>
       <p class="text-slate-400 text-xs">Params: <code>reason</code> (str), <code>summary</code> (str, optional)</p>
+
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">inspect_aut</code></h3>
+      <p class="text-slate-300 text-sm">Read-only access to the AUT's cognitive subsystems. Lets the orchestrator see <em>why</em> the AUT behaves as it does, not just <em>what</em> it does. Queries: <code>memory_recall</code>, <code>causal_links</code>, <code>predict_outcome</code>, <code>pain_history</code>, <code>energy_status</code>, <code>system_stats</code>, <code>concept_query</code>, <code>temporal_patterns</code>.</p>
+      <p class="text-slate-400 text-xs">Params: <code>query</code> (str &mdash; which subsystem), <code>params</code> (dict &mdash; query-specific filters)</p>
     </div>
   </section>
 
