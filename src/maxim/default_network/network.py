@@ -428,6 +428,11 @@ class DefaultNetwork:
         return self._pain_bridge
 
     @property
+    def pain_bus(self) -> Any:
+        """Get the PainBus for centralized pain pub/sub (may be None if pain disabled)."""
+        return self._pain_bus
+
+    @property
     def focus_learner(self) -> FocusLearner | None:
         """Get the FocusLearner for adaptive movement correction (may be None if disabled)."""
         return self._focus_learner
