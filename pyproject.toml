@@ -8,13 +8,13 @@ version = "0.1.0"
 description = "Agentic robotics framework for Reachy Mini with recursive planning and local LLM inference"
 readme = "README.md"
 requires-python = ">=3.12"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 keywords = ["robotics", "reachy", "llm", "agentic", "planning", "embodied-ai"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Robotics",
@@ -35,6 +35,7 @@ dependencies = [
     "matplotlib==3.10.8",
     "llama-cpp-python==0.3.8",
     "ddgs>=6.0.0",  # Web search capability (renamed from duckduckgo-search)
+    "pyyaml>=6.0",  # YAML parsing for percept simulation scenarios
 ]
 
 [project.optional-dependencies]
@@ -65,7 +66,7 @@ llm-openai = [
 tts = [
     "piper-tts>=1.2.0",
 ]
-# YOLOv8 vision backend (AGPL-3.0 — NOT included in core to keep MIT clean)
+# YOLOv8 vision backend (AGPL-3.0 — NOT included in core to keep Apache-2.0 clean)
 yolo = [
     "ultralytics==8.3.248",
     "lap==0.5.12",

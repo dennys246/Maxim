@@ -320,6 +320,8 @@ def run_agentic_loop(
     context_pool_config: dict[str, Any] | None = None,  # Context pool configuration
     use_tool_prompting: bool = True,  # Enable tool-aware LLM prompts
     protocol_registry: Any | None = None,  # ProtocolRegistry for dynamic skills
+    percept_source: Any | None = None,  # PerceptSource for simulation
+    action_sink: Any | None = None,  # ActionSink for recording tool outputs
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -355,6 +357,12 @@ def run_agentic_loop(
 
     if evaluators is None:
         evaluators = []
+
+    # Wrap executor with instrumentation if action_sink is provided
+    if action_sink is not None:
+        from maxim.simulation.instrumented_executor import InstrumentedExecutor
+
+        executor = InstrumentedExecutor(executor, action_sink)
 
     if not run_id:
         run_id = time.strftime("%Y-%m-%d_%H%M%S")
@@ -544,10 +552,43 @@ def run_agentic_loop(
             time.sleep(idle_sleep_s)
             continue
 
+
+        # 0.5 CHECK PERCEPT SOURCE EXHAUSTION (simulation mode)
+        if percept_source is not None and percept_source.is_exhausted():
+            log_agentic("agent_loop", "shutdown", {"reason": "percept_source_exhausted"})
+            break
+
         # ─────────────────────────────────────────────────────────────────
         # 1. PERCEPTION (fast, always runs)
         # ─────��───────────────────────────────────────────────────────────
-        observation = environment.observe()
+        if percept_source is not None:
+            # Simulation mode: get percept from source instead of environment
+            sim_percept = percept_source.next_percept()
+            if sim_percept is not None:
+                # Route pain percepts through PainBus
+                if sim_percept.source == "proprioception" and sim_percept.content == "pain_signal":
+                    try:
+                        from maxim.proprioception.pain_bus import route_pain_percept
+                        dn = default_network
+                        pain_bus = getattr(dn, "pain_bus", None) if dn else None
+                        if pain_bus is not None:
+                            route_pain_percept(sim_percept, pain_bus)
+                    except Exception:
+                        pass
+                # Convert percept to observation dict for state.update()
+                observation = {
+                    "source": sim_percept.source,
+                    "transcript": sim_percept.transcript_chunk,
+                    "cli_input": sim_percept.cli_input,
+                    "hard_override": sim_percept.hard_override,
+                    "raw_transcript_text": sim_percept.raw_transcript_text,
+                }
+            else:
+                observation = {}
+            if hasattr(percept_source, "advance_step"):
+                percept_source.advance_step()
+        else:
+            observation = environment.observe()
         state.update(observation)
 
         # Ensure maxim_runtime contains mode from state.data for MemoryAgent

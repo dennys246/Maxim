@@ -690,8 +690,65 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                     results.append(mem)
             return results
 
+    def search_by_content(
+        self, query: str, limit: int = 20
+    ) -> list[EpisodicMemory | CompressedMemory]:
+        """Search memories by text content across all fields.
 
+        Searches perception.observations, outcome.result, and
+        decision.reasoning for the query string (case-insensitive).
 
+        Args:
+            query: Text to search for.
+            limit: Maximum number of results.
+
+        Returns:
+            Matching memories, most recent first.
+        """
+        if not query:
+            return []
+
+        query_lower = query.lower()
+        results: list[EpisodicMemory | CompressedMemory] = []
+
+        with self._rwlock.read():
+            for memory in self._memories.values():
+                if self._memory_matches_query(memory, query_lower):
+                    results.append(memory)
+
+            results.sort(key=lambda m: m.timestamp, reverse=True)
+            return results[:limit]
+
+    @staticmethod
+    def _memory_matches_query(memory: Any, query_lower: str) -> bool:
+        """Check if a memory's text content matches the query."""
+        # Check perception observations
+        perception = getattr(memory, "perception", None)
+        if perception is not None:
+            obs = getattr(perception, "observations", {})
+            if obs and query_lower in str(obs).lower():
+                return True
+
+        # Check outcome result
+        outcome = getattr(memory, "outcome", None)
+        if outcome is not None:
+            result = getattr(outcome, "result", None)
+            if result and query_lower in str(result).lower():
+                return True
+
+        # Check decision reasoning
+        decision = getattr(memory, "decision", None)
+        if decision is not None:
+            reasoning = getattr(decision, "reasoning", None)
+            if reasoning and query_lower in reasoning.lower():
+                return True
+
+        # Check compressed summary
+        summary = getattr(memory, "summary", None)
+        if summary and query_lower in summary.lower():
+            return True
+
+        return False
 
 
 
