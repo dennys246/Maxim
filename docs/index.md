@@ -192,7 +192,6 @@ src/maxim/
 ├── spatial/         → bridges.md (SpatialMemoryBridge)
 ├── time/            → time.md (+ BoundedBin, significance-based eviction)
 ├── tools/           → ARCHITECTURE.md (tools section)
-├── training/        → (training pipelines)
 └── utils/           → (config, logging, plotting, filesystem helpers)
 ```
 

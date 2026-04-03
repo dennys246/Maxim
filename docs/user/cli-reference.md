@@ -35,7 +35,7 @@ maxim [OPTIONS]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--language-model` | str | None | LLM profile: `smollm-1.7b`, `mistral-7b`, `phi3-mini`, `llama3-8b`, `qwen2-7b` |
-| `--prompt-profile` | str | `standard` | Prompt optimization: `minimal`, `standard`, `rich` |
+| `--prompt-profile` | str | `standard` | Prompt optimization (legacy; per-mode config in `llm.json` preferred) |
 | `--tts` | bool | `False` | Enable text-to-speech |
 | `--tts-model` | str | `en_US-lessac-medium` | TTS voice model |
 

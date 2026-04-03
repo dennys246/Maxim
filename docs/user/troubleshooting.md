@@ -27,7 +27,7 @@ maxim --mode agentic --agentic-verbosity 3
 |-------|----------|
 | "Model not found" | Run `./scripts/download_models.sh --llm --enable` |
 | Out of memory | Use `smollm-1.7b` or lower quantization (`Q3_K_M`) |
-| Slow inference | Use `--prompt-profile minimal` |
+| Slow inference | Use smaller model (`smollm-1.7b`) or lower quantization |
 | Gibberish output | Check `prompt_style` matches model in `data/util/llm.json` |
 | No LLM response | Ensure `MAXIM_LLM_ENABLED=1` or `enabled: true` in llm.json |
 
@@ -50,10 +50,10 @@ maxim --mode agentic --agentic-verbosity 3
 ### System Issues
 | Issue | Solution |
 |-------|----------|
-| Matplotlib crash | `rm -rf ~/.cache/matplotlib && fc-cache -f` |
+| Matplotlib crash | `rm -rf ~/.cache/matplotlib && fc-cache -f` (matplotlib is optional — `pip install matplotlib` if needed) |
 | Import errors | Ensure you're in the virtual environment |
 | Permission denied | Check filesystem policy, try `--autonomy planning` |
-| High memory usage | Use `--prompt-profile minimal`, smaller LLM model |
+| High memory usage | Use smaller LLM model (`smollm-1.7b`) or lower quantization |
 | Bytecode issues | `maxim --clear-cache` |
 
 ## Resetting State
