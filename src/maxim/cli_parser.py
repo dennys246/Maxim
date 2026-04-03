@@ -245,6 +245,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Record all percepts during a live session to data/sessions/ for replay.",
     )
     parser.add_argument(
+        "--sim-debug",
+        action="store_true",
+        help="Show all simulation traces including internal pipeline polling (noisy).",
+    )
+    parser.add_argument(
         "--generate-simulation",
         type=str,
         default=None,

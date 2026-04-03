@@ -92,6 +92,7 @@ def run_interactive_sim(
     pain_bus: Any = None,
     llm_profile: str | None = None,
     sim_workspace: Path | None = None,
+    debug: bool = False,
 ) -> None:
     """Run the interactive simulation REPL with LLM-generated continuations."""
     from maxim.simulation.scenario_source import ScenarioSource, ScenarioDefinition
@@ -129,7 +130,7 @@ def run_interactive_sim(
         transcript_path = (sim_workspace / f"conversation_{conversation_count:03d}.yaml").resolve()
         log_path = str(sim_workspace / f"sim_log_conv_{conversation_count:03d}.jsonl")
 
-        enable_sim_logging(log_path=log_path)
+        enable_sim_logging(log_path=log_path, debug=debug)
         sim_log("PIPELINE", f"Conversation {conversation_count} started")
 
         # Conversation state

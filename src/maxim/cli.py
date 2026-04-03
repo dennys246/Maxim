@@ -509,7 +509,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             from maxim.simulation.sim_logger import enable_sim_logging, disable_sim_logging
             sim_log_path = str(sim_workspace / f"sim_log_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
-            enable_sim_logging(log_path=sim_log_path)
+            enable_sim_logging(log_path=sim_log_path, debug=bool(getattr(args, "sim_debug", False)))
 
             for scenario_file in scenario_files:
                 print(f"\nRunning scenario: {scenario_file.name}")
@@ -887,6 +887,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             pain_bus=_sim_pain_bus,
                             llm_profile=llm_profile,
                             sim_workspace=Path(getattr(args, "home_dir", "data")) / "sim_sandbox",
+                            debug=bool(getattr(args, "sim_debug", False)),
                         )
                     finally:
                         if llm_worker:
