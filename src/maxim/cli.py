@@ -731,7 +731,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
                 decision_engine = build_decision_engine()
                 env = ReachyEnv(data_dir=args.home_dir)
-                state = build_state(max_steps=epochs_value)
+                # In simulation mode, don't limit state steps (grace period handles termination)
+                _state_max = 0 if getattr(args, "sim", None) is not None else epochs_value
+                state = build_state(max_steps=_state_max)
                 memory = build_memory()
                 evaluators = build_evaluators()
 
