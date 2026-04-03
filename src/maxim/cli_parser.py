@@ -220,4 +220,25 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Audit codebase for architecture rule violations and exit.",
     )
+
+    # ── Simulation ──────────────────────────────────────────────────────
+    parser.add_argument(
+        "--sim",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Run a scenario YAML file or directory of scenarios, then exit.",
+    )
+    parser.add_argument(
+        "--sim-report",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Write scenario results to a JSON file (requires --sim).",
+    )
+    parser.add_argument(
+        "--record-percepts",
+        action="store_true",
+        help="Record all percepts during a live session to data/sessions/ for replay.",
+    )
     return parser

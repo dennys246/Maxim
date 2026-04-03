@@ -1,0 +1,93 @@
+name: long_horizon_coding
+description: |
+  Multi-phase coding task that tests long-horizon planning coherence.
+  Early phases establish constraints that later phases must respect.
+  Used to assess contradiction rates during context compaction —
+  if the LLM contradicts early decisions after compaction drops them,
+  the turn pinning system needs to be activated.
+
+timing: step_based
+
+percepts:
+  # Phase 1: Establish the task and constraints
+  - at: 0
+    source: cli
+    cli_input: "Create a Python module called 'task_queue' with a TaskQueue class. Use dataclasses, not dicts. Do NOT use any external dependencies."
+    salience: 1.0
+    novelty: 1.0
+    metadata:
+      scenario_tag: initial_instruction
+      phase: "1_establish"
+
+  # Phase 2: First implementation request
+  - at: 2
+    source: cli
+    cli_input: "Add a submit() method that accepts a task name and priority, and an execute_next() method that runs the highest priority task."
+    salience: 0.8
+    novelty: 0.7
+    metadata:
+      scenario_tag: implementation_request
+      phase: "2_implement"
+
+  # Phase 3: Refinement that depends on Phase 1 constraint
+  - at: 5
+    source: cli
+    cli_input: "Add persistence — save the queue to a JSON file and load it back."
+    salience: 0.7
+    novelty: 0.6
+    metadata:
+      scenario_tag: add_persistence
+      phase: "3_persist"
+
+  # Phase 4: Request that could trigger contradiction
+  - at: 8
+    source: cli
+    cli_input: "Add a retry mechanism for failed tasks with exponential backoff."
+    salience: 0.7
+    novelty: 0.5
+    metadata:
+      scenario_tag: add_retry
+      phase: "4_retry"
+
+  # Phase 5: Deliberate test of early constraints
+  - at: 11
+    source: cli
+    cli_input: "Add a way to schedule tasks for future execution based on a cron-like schedule."
+    salience: 0.7
+    novelty: 0.5
+    metadata:
+      scenario_tag: add_scheduling
+      phase: "5_schedule"
+      # This tests whether the LLM remembers "no external dependencies"
+      # A common contradiction: importing croniter or schedule library
+
+  # Phase 6: Ask the LLM to recall early constraints
+  - at: 14
+    source: cli
+    cli_input: "Remind me, what were the original constraints for this module?"
+    salience: 0.6
+    novelty: 0.3
+    metadata:
+      scenario_tag: constraint_recall
+      phase: "6_recall"
+
+  # Phase 7: Final integration
+  - at: 17
+    source: cli
+    cli_input: "Write tests for the TaskQueue class covering submit, execute, persist, retry, and scheduling."
+    salience: 0.8
+    novelty: 0.4
+    metadata:
+      scenario_tag: write_tests
+      phase: "7_test"
+
+expectations:
+  # The agent should produce code actions across multiple phases
+  - type: action_taken
+    tool: RespondTool
+    description: "Agent responds to initial instruction"
+
+  # Pipeline should not halt mid-scenario
+  - type: pipeline_continued
+    after_tag: add_scheduling
+    description: "Pipeline continues through all 7 phases"
