@@ -599,6 +599,7 @@ class AgenticRuntimeMixin:
                     stale_threshold_s=5.0,
                     n_ctx=llm_router.n_ctx,
                     token_counter=llm_router.get_token_counter(),
+                    tool_index=tool_index,
                 )
                 llm_worker.start()
                 self.log.info("LLM worker started for user responses")
@@ -741,6 +742,25 @@ class AgenticRuntimeMixin:
                 "voice_agentic_enabled": bool(getattr(self, "_voice_agentic_enabled", False)),
             }
             self._log_event(record)
+
+            # Learned tool index: record surfaced-but-unused decay signal
+            if tool_index is not None and action and goal:
+                tool_name = action.get("tool_name", "")
+                goal_text = str(goal)
+                # surfaced_tools comes from the LLMRequest (set by prompt builder)
+                surfaced = []
+                if decision and isinstance(decision, dict):
+                    plan = decision.get("plan")
+                    if hasattr(plan, "planning_context") and plan.planning_context:
+                        surfaced = getattr(plan.planning_context, "_surfaced_tools", [])
+                # Also check state for surfaced tools from last prompt build
+                if not surfaced:
+                    surfaced = state.data.pop("_surfaced_tools", [])
+                if surfaced and tool_name and goal_text:
+                    try:
+                        tool_index.record_surfaced_but_unused(goal_text, surfaced, tool_name)
+                    except Exception:
+                        pass
 
         def _worker() -> None:
             try:

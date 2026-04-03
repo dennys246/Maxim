@@ -1,6 +1,6 @@
 # Learned Tool Index Plan
 
-> **Status:** Phases 1, 2, 4 complete (core index, ToolPainBridge hooks, persistence). Phase 3 (prompt integration via PromptBudgeter) pending — requires wiring `build_tool_context()` into the prompt builder.
+> **Status:** Complete (all phases implemented). Phases 1-4 landed on `refactor/tool-learning` branch.
 
 Keyword-weighted hashtable that surfaces relevant tools preferentially in LLM prompts. Auto-extracted keywords bootstrap the index at startup; NAc outcome signals continuously refine weights and discover new keyword associations so the index learns which words actually predict which tools.
 
