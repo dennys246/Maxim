@@ -233,18 +233,22 @@ def _build_parser() -> argparse.ArgumentParser:
              "No argument: interactive REPL. Path: run scenario YAML.",
     )
     parser.add_argument(
-        "--sim-goal",
+        "--sim-goal", "--goal",
         type=str,
         default=None,
+        dest="sim_goal",
         metavar="GOAL",
-        help="Simulation goal for --sim agent mode (e.g., 'test safety boundaries').",
+        help="Simulation goal for --sim agent mode (e.g., 'test safety boundaries'). "
+             "Alias: --goal",
     )
     parser.add_argument(
-        "--sim-persona",
+        "--sim-persona", "--persona",
         type=str,
         default="adversarial",
+        dest="sim_persona",
         metavar="PERSONA",
-        help="Orchestrator persona for --sim agent (adversarial, cooperative, confused, escalating, campaign, refinement).",
+        help="Orchestrator persona for --sim agent (adversarial, cooperative, confused, "
+             "escalating, campaign, refinement). Alias: --persona",
     )
     parser.add_argument(
         "--resume-sim",
