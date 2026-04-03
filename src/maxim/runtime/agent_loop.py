@@ -1116,6 +1116,17 @@ def run_agentic_loop(
         if llm_worker:
             new_proposal = llm_worker.get_latest_proposal()
             if new_proposal:
+                # Trace for debugging
+                try:
+                    from maxim.simulation.sim_logger import sim_log
+                    _p_action = new_proposal.action
+                    _p_tool = _p_action.get("tool_name") if isinstance(_p_action, dict) else None
+                    _p_reason = (new_proposal.reasoning or "")[:40]
+                    _p_err = new_proposal.error
+                    sim_log("EXEC", f"Proposal received: tool={_p_tool}, reasoning={_p_reason}, error={_p_err}")
+                except Exception:
+                    pass
+
                 # Staleness guard: discard proposals older than LLM timeout + margin
                 proposal_age = time.time() - new_proposal.timestamp
                 if proposal_age > 35.0:
@@ -1123,11 +1134,21 @@ def run_agentic_loop(
                         "Skipping stale LLM proposal (age=%.1fs, request_id=%s)",
                         proposal_age, new_proposal.request_id,
                     )
+                    try:
+                        from maxim.simulation.sim_logger import sim_log
+                        sim_log("EXEC", f"DROPPED: stale proposal (age={proposal_age:.1f}s)")
+                    except Exception:
+                        pass
                     new_proposal = None
             # In simulation mode, skip fallback proposals — wait for real LLM
             if new_proposal and percept_source is not None:
                 if getattr(new_proposal, "reasoning", "") == "llm_fallback":
                     logger.info("Sim mode: skipping fallback proposal, waiting for real LLM")
+                    try:
+                        from maxim.simulation.sim_logger import sim_log
+                        sim_log("EXEC", "DROPPED: fallback proposal (sim mode)")
+                    except Exception:
+                        pass
                     new_proposal = None
             if new_proposal:
                 if callable(on_event):
@@ -1184,6 +1205,11 @@ def run_agentic_loop(
                     state.data.pop("pending_user_input_time", None)
                     state.data.pop("pending_user_input_source", None)
                     logger.warning("LLM proposal error: %s", new_proposal.error)
+                    try:
+                        from maxim.simulation.sim_logger import sim_log
+                        sim_log("EXEC", f"DROPPED: proposal error — {new_proposal.error}")
+                    except Exception:
+                        pass
                     log_agentic(
                         "agent_loop",
                         "error",

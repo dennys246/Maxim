@@ -165,6 +165,8 @@ def run_interactive_sim(
             continue
 
         # Run initial scenario
+        print("  Running through agent pipeline...")
+        sim_log("PIPELINE", "Running initial scenario turn")
         _run_scenario_turn(
             transcript_path, agentic_agent, env, state, memory,
             decision_engine, executor,
@@ -180,6 +182,7 @@ def run_interactive_sim(
         )
 
         # Show what Maxim did
+        sim_log("PIPELINE", f"Initial turn complete ({len(total_sink.actions)} actions)")
         _show_turn_results(total_sink, from_index=0)
 
         # Record what happened

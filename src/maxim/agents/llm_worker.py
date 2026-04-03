@@ -911,6 +911,15 @@ class LLMWorker:
                 mode_name=request.mode.name if request.mode else "unknown",
             )
 
+            # Trace for simulation debugging
+            try:
+                from maxim.simulation.sim_logger import sim_log
+                _action = response.get("action") if isinstance(response, dict) else None
+                _tool = _action.get("tool_name") if isinstance(_action, dict) else None
+                sim_log("EXEC", f"LLM raw response parsed: tool={_tool}, type={type(response).__name__}")
+            except Exception:
+                pass
+
             if not response or not isinstance(response, dict):
                 # LLM failed - generate a fallback response for the user
                 fallback = self._generate_llm_fallback(request)
