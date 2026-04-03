@@ -1117,7 +1117,7 @@ def run_agentic_loop(
             new_proposal = llm_worker.get_latest_proposal()
             # During grace period, trace every poll to see if proposals arrive
             _in_grace = percept_source is not None and hasattr(percept_source, "_grace_deadline")
-            if _in_grace and step_num % 5 == 0:
+            if _in_grace and step_num % 50 == 0:
                 try:
                     from maxim.simulation.sim_logger import sim_log
                     _remaining = percept_source._grace_deadline - time.time()
