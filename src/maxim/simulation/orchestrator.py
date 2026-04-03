@@ -379,6 +379,18 @@ def start_simulation_mode(
 
     # ── Run orchestrator loop (blocks until done or /cancel) ─────────────
     orch_error: list[Exception] = []
+    # ── Orchestrator event callback (spinner for LLM thinking) ─────────
+    from maxim.simulation.spinner import Spinner
+    orch_spinner = Spinner()
+
+    def _on_orch_event(event: dict) -> None:
+        event_type = event.get("type", "") if isinstance(event, dict) else ""
+        if event_type == "llm_submit":
+            orch_spinner.start("Orchestrator thinking...")
+        elif event_type == "llm_proposal":
+            tool = event.get("tool_name", "")
+            orch_spinner.stop(f"Orchestrator decided: {tool}" if tool else None)
+
     try:
         run_agentic_loop(
             orch_agent,
@@ -393,6 +405,7 @@ def start_simulation_mode(
             memory_hub=orch_memory_hub,
             max_steps=0,  # unlimited — stops via FinishSimulationTool or /cancel
             stop_event=stop_event,
+            on_event=_on_orch_event,
             target_hz=2.0,
             percept_source=orchestrator_source,
         )
