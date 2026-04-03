@@ -7,8 +7,6 @@ os.environ.setdefault('TF_FORCE_GPU_ALLOW_GROWTH', 'true')
 
 import keras
 
-import math
-
 from maxim.utils import config
 
 class LayerScale(keras.layers.Layer):
