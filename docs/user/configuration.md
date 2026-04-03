@@ -11,7 +11,7 @@ Maxim is configured through three mechanisms: CLI flags, environment variables, 
 | `MAXIM_LLM_ENABLED` | Enable LLM inference (1/true) | 0 |
 | `MAXIM_LLM_PROFILE` | Model profile name | None |
 | `MAXIM_LLM_QUANTIZATION` | Quantization level (Q3_K_M, Q4_K_M, Q5_K_M, Q8_0) | Q4_K_M |
-| `MAXIM_PROMPT_PROFILE` | Prompt optimization (minimal/standard/rich) | standard |
+| `MAXIM_PROMPT_PROFILE` | Prompt optimization (legacy; per-mode config in llm.json is preferred) | standard |
 | `MAXIM_ROBOT_NAME` | Robot identifier | reachy_mini |
 | `MAXIM_COMMS_ENABLED` | Enable SMS/Voice (1/true) | 0 |
 | `MAXIM_WHISPER_COMPUTE_TYPE` | Whisper compute type (int8/float16/float32) | int8 |
@@ -89,7 +89,6 @@ data/
 ├── audio/          -- WAV recordings
 ├── videos/         -- MP4 recordings
 ├── transcript/     -- JSONL transcripts with timestamps
-├── training/       -- Trainable motor samples (user-labeled)
 ├── memory/         -- Episodic memories (persistent)
 ├── logs/           -- Run logs
 ├── plans/

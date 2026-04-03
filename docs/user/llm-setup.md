@@ -49,19 +49,21 @@ Set the quantization level with an environment variable:
 export MAXIM_LLM_QUANTIZATION=Q4_K_M
 ```
 
-### Prompt Profiles
+### Per-Mode Response Configuration
 
-Prompt profiles let you optimize LLM usage for your hardware. They control how aggressively Maxim uses the language model during planning and reasoning.
+LLM context windows and response lengths adapt automatically to the current operational mode. Configuration lives in `data/util/llm.json` under `mode_response_config`:
 
-| Profile | Max Plan Depth | Max LLM Calls | Parallel Workers | Hardware |
-|---------|---------------|---------------|-----------------|----------|
-| `minimal` | 2 | 8 | None | CPU-only, low RAM |
-| `standard` | 5 | 20 | 4 | GPU or fast CPU |
-| `rich` | 7 | 50 | 8 | High-end GPU |
+| Mode | Response Tokens | Context Window | Format |
+|------|----------------|----------------|--------|
+| sleep | 64 | 256 | minimal |
+| observe | 128 | 512 | minimal |
+| exploration | 256 | 1,024 | brief |
+| live / train | 512 | 2,048 | conversational |
+| active-assistance | 768 | 2,048 | detailed |
+| reflection | 1,024 | 3,072 | detailed |
+| research | 2,048 | 4,096 | academic |
 
-```bash
-maxim --mode agentic --prompt-profile minimal
-```
+Lower modes save tokens and latency; higher modes give the LLM more room to reason. The mode is set via `--mode` or switches automatically based on context.
 
 ## Cloud Backends (Optional)
 
@@ -162,5 +164,5 @@ result = agent.generate_json("Extract name and age from: 'John is 25'")
 |-------|----------|
 | Model not found | Run `./scripts/download_models.sh --llm --enable` |
 | Out of memory | Use a smaller model or lower quantization level |
-| Slow inference | Use `--prompt-profile minimal`, or switch to `smollm-1.7b` |
+| Slow inference | Use smaller model (`smollm-1.7b`) or lower quantization (`Q3_K_M`) |
 | Gibberish output | Check that `prompt_style` matches the model family in `llm.json` |
