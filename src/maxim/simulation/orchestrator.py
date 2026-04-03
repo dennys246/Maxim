@@ -43,7 +43,7 @@ def start_simulation_mode(
     goal: str,
     persona: str = "adversarial",
     max_turns: int = 50,
-    response_timeout: float = 30.0,
+    response_timeout: float = 120.0,
     sim_debug: bool = False,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.

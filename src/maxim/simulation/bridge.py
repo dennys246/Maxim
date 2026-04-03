@@ -16,6 +16,7 @@ import time
 from typing import Any
 
 from maxim.simulation.conversational_source import ConversationalSource
+from maxim.simulation.response_policy import ResponsePolicy, auto_approve
 from maxim.simulation.sinks import ActionRecord, RecordingSink
 from maxim.simulation.spinner import Spinner
 
@@ -40,12 +41,14 @@ class SimulationBridge:
 
     def __init__(
         self,
-        response_timeout: float = 30.0,
-        settle_s: float = 2.0,
+        response_timeout: float = 120.0,
+        settle_s: float = 3.0,
         stop_event: threading.Event | None = None,
+        response_policy: ResponsePolicy | None = None,
     ) -> None:
         self.percept_source = ConversationalSource()
         self.action_sink = RecordingSink()
+        self.response_policy = response_policy or auto_approve()
         self._response_timeout = response_timeout
         self._settle_s = settle_s
         self._stop_event = stop_event
