@@ -53,38 +53,41 @@ Simulation Agent (independent)     Multi-LLM Scaling
 ## 1. Simulation Agent
 
 > **Status:** Not started. No blockers — ready to implement.
-> **Effort:** ~1,500 LOC across 2 phases
+> **Effort:** ~1,200 LOC across 4 phases
 > **Design:** [simulation_agent_plan.md](simulation_agent_plan.md)
 
-Replace fixed YAML percept sequences with an LLM-driven adversary/collaborator that adapts to Maxim's responses in real time.
+A second Maxim instance (the orchestrator) drives the agent-under-test through the full agentic pipeline — task decomposition, tool chaining, memory, and planning. The orchestrator's tools operate on the AUT via a `SimulationBridge` (ConversationalSource + RecordingSink). User stays in simulation mode until `/cancel` or `/new`.
 
-### Phase 1: SimulationAgent Framework (~1,000 LOC)
+### Phase 1: Bridge + Core Tools (~400 LOC)
 
-- `SimulationAgent` class — wraps LLM with persona system prompts
-- `DynamicPerceptSource` — implements existing `PerceptSource` protocol, calls SimulationAgent per turn
-- `CompletionDetector` — goal achieved / max turns / stalemate / safety violation
-- 4 personas: adversarial, cooperative, confused, escalating
-- CLI: `maxim --sim agent --persona adversarial --goal "..."`
+- `SimulationBridge` — bidirectional channel wrapping existing ConversationalSource + RecordingSink
+- `InjectPerceptTool`, `ObserveActionsTool`, `WaitForResponseTool` — orchestrator's tools
+- `CheckCompletionTool` — LLM-based evaluation of whether simulation goal is met
+- CLI: `maxim --sim agent --goal "..." --persona adversarial`
 
-### Phase 2: Simulation as Agentic Tools (~500 LOC)
+### Phase 2: Full Agentic Integration (~300 LOC)
 
-- `RunSimulationTool` — agent runs scenario YAML to verify behavior before acting
-- `GenerateSimulationTool` — agent generates + runs simulations from descriptions
-- `SimulationReflectionTool` — analyze past simulation logs for patterns
-- Sleep/dream integration: review sim logs during consolidation, generate edge cases
+- 5 persona definitions as Strategy objects (adversarial, cooperative, confused, escalating, campaign)
+- `AnalyzeResultsTool`, `GenerateScenarioTool` (reuses existing SimulationGenerator)
+- User commands: `/cancel`, `/new`, `/status`, `/report`
+- Multi-simulation sessions: orchestrator plans campaigns, decomposes into sub-probes
 
-### Prerequisites (all met)
+### Phase 3: Learning + Persistence (~300 LOC)
 
-- PerceptSource protocol, ActionSink, RecordingSink, ScenarioSource
-- FearGatedExecutor for safety gating
-- LLMRouter.wait_ready() for model readiness
-- Simulation logging framework
+- Orchestrator hippocampus persists across sessions
+- NAc causal learning from simulation outcomes
+- Cross-session: "Last time we tested X, result was Y"
+
+### Phase 4: Advanced (~200 LOC)
+
+- Self-generating test suites
+- Regression testing (re-run past simulations after code changes)
 
 ### Cleanup to absorb before starting
 
-- **#3 Double LLM load** — SimulationAgent needs its own LLM instance; fix the current double-load pattern first so the sim generator shares the main backend rather than duplicating it
-- **#6 Batch scenario break** — fix the `break` in cli.py so `--sim scenarios/` processes all files, which the sim agent will need for batch testing
-- **#11 Missing sim tests** — write unit tests for sim modules before adding more sim code on top
+- **#3 Double LLM load** — orchestrator and AUT each need an LLM instance; fix the current pattern first
+- **#6 Batch scenario break** — needed for regression testing in Phase 4
+- **#11 Missing sim tests** — write unit tests for sim modules before adding more code on top
 
 ---
 
