@@ -18,124 +18,30 @@ Workflow:
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import os
 import re
 import subprocess
-import threading
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# ── Extracted modules (backward-compatible re-exports) ──────────────────────
+from maxim.runtime.file_patterns import (  # noqa: F401
+    CREATE_KEYWORDS,
+    FILE_PATTERNS,
+    MODIFY_KEYWORDS,
+    FileReference,
+    detect_file_intent,
+    detect_file_references,
+)
+from maxim.runtime.fetch_cache import (  # noqa: F401
+    CacheEntry,
+    ResultCache,
+    get_result_cache,
+)
+
 logger = logging.getLogger(__name__)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# File Reference Detection
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Patterns to detect file references in user input (pre-compiled for performance)
-FILE_PATTERNS = [
-    # Explicit file extensions
-    re.compile(r"(\b\w+\.py\b)", re.IGNORECASE),  # Python files
-    re.compile(r"(\b\w+\.js\b)", re.IGNORECASE),  # JavaScript
-    re.compile(r"(\b\w+\.ts\b)", re.IGNORECASE),  # TypeScript
-    re.compile(r"(\b\w+\.json\b)", re.IGNORECASE),  # JSON
-    re.compile(r"(\b\w+\.yaml\b)", re.IGNORECASE),  # YAML
-    re.compile(r"(\b\w+\.yml\b)", re.IGNORECASE),  # YAML alt
-    re.compile(r"(\b\w+\.md\b)", re.IGNORECASE),  # Markdown
-    re.compile(r"(\b\w+\.txt\b)", re.IGNORECASE),  # Text
-    re.compile(r"(\b\w+\.sh\b)", re.IGNORECASE),  # Shell scripts
-    re.compile(r"(\b\w+\.css\b)", re.IGNORECASE),  # CSS
-    re.compile(r"(\b\w+\.html\b)", re.IGNORECASE),  # HTML
-    # Path patterns
-    re.compile(r"(src/[\w/]+\.?\w*)", re.IGNORECASE),  # src/ paths
-    re.compile(r"(lib/[\w/]+\.?\w*)", re.IGNORECASE),  # lib/ paths
-    re.compile(r"(tests?/[\w/]+\.?\w*)", re.IGNORECASE),  # test(s)/ paths
-    re.compile(r"(config/[\w/]+\.?\w*)", re.IGNORECASE),  # config/ paths
-]
-
-# Keywords indicating file modification intent
-MODIFY_KEYWORDS = frozenset({
-    "update", "modify", "change", "edit", "fix", "add to", "append",
-    "remove from", "delete from", "refactor", "improve", "enhance",
-})
-
-# Keywords indicating new file creation
-CREATE_KEYWORDS = frozenset({
-    "create", "new", "make", "write", "generate", "build",
-})
-
-
-@dataclass
-class FileReference:
-    """A detected file reference from user input."""
-
-    pattern: str  # The matched pattern (e.g., "hello.py")
-    is_path: bool  # Whether it looks like a full path
-    intent: str  # "modify", "create", or "unknown"
-    confidence: float  # How confident we are in this detection
-
-
-def detect_file_references(text: str) -> list[FileReference]:
-    """Detect file references in user input.
-
-    Returns list of FileReference objects sorted by confidence.
-    """
-    refs: list[FileReference] = []
-    text_lower = text.lower()
-
-    # Detect modification vs creation intent
-    has_modify_intent = any(kw in text_lower for kw in MODIFY_KEYWORDS)
-    has_create_intent = any(kw in text_lower for kw in CREATE_KEYWORDS)
-
-    if has_create_intent and not has_modify_intent:
-        intent = "create"
-    elif has_modify_intent:
-        intent = "modify"
-    else:
-        intent = "unknown"
-
-    seen = set()
-    for compiled_pattern in FILE_PATTERNS:
-        for match in compiled_pattern.finditer(text):  # Use pre-compiled pattern
-            file_ref = match.group(1)
-            if file_ref.lower() in seen:
-                continue
-            seen.add(file_ref.lower())
-
-            is_path = "/" in file_ref
-            confidence = 0.9 if is_path else 0.7
-
-            refs.append(FileReference(
-                pattern=file_ref,
-                is_path=is_path,
-                intent=intent,
-                confidence=confidence,
-            ))
-
-    # Sort by confidence descending
-    refs.sort(key=lambda r: -r.confidence)
-    return refs
-
-
-def detect_file_intent(text: str) -> str:
-    """Detect whether user wants to create or modify a file.
-
-    Returns: "create", "modify", or "unknown"
-    """
-    text_lower = text.lower()
-
-    has_modify = any(kw in text_lower for kw in MODIFY_KEYWORDS)
-    has_create = any(kw in text_lower for kw in CREATE_KEYWORDS)
-
-    if has_create and not has_modify:
-        return "create"
-    elif has_modify:
-        return "modify"
-    return "unknown"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -729,157 +635,6 @@ def discover_and_read_files(
                     break
 
     return contents
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Result Caching
-# ─────────────────────────────────────────────────────────────────────────────
-
-@dataclass
-class CacheEntry:
-    """A cached result with TTL and validation."""
-
-    result: Any
-    timestamp: float
-    file_mtime: float | None = None  # For file reads, track mtime
-    ttl_seconds: float = 30.0
-
-
-class ResultCache:
-    """Cache for tool results with TTL and file mtime validation."""
-
-    def __init__(self, default_ttl: float = 30.0, max_entries: int = 100):
-        self._cache: dict[str, CacheEntry] = {}
-        self._lock = threading.Lock()
-        self._default_ttl = default_ttl
-        self._max_entries = max_entries
-
-    def _make_key(self, tool_name: str, params: dict[str, Any]) -> str:
-        """Create a cache key from tool name and params."""
-        # Sort params for consistent keys
-        sorted_params = sorted(params.items())
-        param_str = str(sorted_params)
-        return f"{tool_name}:{hashlib.md5(param_str.encode()).hexdigest()}"
-
-    def get(self, tool_name: str, params: dict[str, Any]) -> Any | None:
-        """Get a cached result if valid.
-
-        Returns None if not cached or expired.
-        """
-        key = self._make_key(tool_name, params)
-
-        with self._lock:
-            entry = self._cache.get(key)
-            if entry is None:
-                return None
-
-            # Check TTL
-            age = time.time() - entry.timestamp
-            if age > entry.ttl_seconds:
-                del self._cache[key]
-                return None
-
-            # For file reads, check mtime
-            if entry.file_mtime is not None:
-                path = params.get("path")
-                if path:
-                    try:
-                        current_mtime = os.path.getmtime(path)
-                        if current_mtime != entry.file_mtime:
-                            del self._cache[key]
-                            return None
-                    except OSError:
-                        del self._cache[key]
-                        return None
-
-            return entry.result
-
-    def put(
-        self,
-        tool_name: str,
-        params: dict[str, Any],
-        result: Any,
-        ttl: float | None = None,
-    ) -> None:
-        """Cache a result."""
-        key = self._make_key(tool_name, params)
-
-        # Get file mtime if this is a file read
-        file_mtime = None
-        if tool_name == "read_file":
-            path = params.get("path")
-            if path:
-                try:
-                    file_mtime = os.path.getmtime(path)
-                except OSError:
-                    pass
-
-        with self._lock:
-            # Evict old entries if at capacity
-            if len(self._cache) >= self._max_entries:
-                # Remove oldest entries
-                sorted_entries = sorted(
-                    self._cache.items(),
-                    key=lambda x: x[1].timestamp,
-                )
-                for old_key, _ in sorted_entries[:self._max_entries // 4]:
-                    del self._cache[old_key]
-
-            self._cache[key] = CacheEntry(
-                result=result,
-                timestamp=time.time(),
-                file_mtime=file_mtime,
-                ttl_seconds=ttl or self._default_ttl,
-            )
-
-    def invalidate(self, tool_name: str | None = None, path: str | None = None) -> int:
-        """Invalidate cache entries.
-
-        Args:
-            tool_name: If provided, invalidate entries for this tool
-            path: If provided, invalidate entries containing this path
-
-        Returns: Number of entries invalidated
-        """
-        with self._lock:
-            to_remove = []
-            for key, entry in self._cache.items():
-                if tool_name and key.startswith(f"{tool_name}:"):
-                    to_remove.append(key)
-                elif path:
-                    # Check if result contains this path
-                    result_str = str(entry.result)
-                    if path in result_str:
-                        to_remove.append(key)
-
-            for key in to_remove:
-                del self._cache[key]
-
-            return len(to_remove)
-
-    def clear(self) -> None:
-        """Clear all cached entries."""
-        with self._lock:
-            self._cache.clear()
-
-    @property
-    def stats(self) -> dict[str, Any]:
-        """Get cache statistics."""
-        with self._lock:
-            return {
-                "entries": len(self._cache),
-                "max_entries": self._max_entries,
-                "default_ttl": self._default_ttl,
-            }
-
-
-# Global cache instance
-_result_cache = ResultCache()
-
-
-def get_result_cache() -> ResultCache:
-    """Get the global result cache."""
-    return _result_cache
 
 
 # ─────────────────────────────────────────────────────────────────────────────
