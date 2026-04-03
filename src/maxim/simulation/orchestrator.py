@@ -595,32 +595,35 @@ def start_simulation_mode(
             target_hz=2.0,
             percept_source=orchestrator_source,
         )
+    except KeyboardInterrupt:
+        print("\n\n  Simulation interrupted (Ctrl+C)")
     except Exception as e:
         orch_error.append(e)
         logger.error("Orchestrator loop failed: %s", e)
-
-    # ── Cleanup ──────────────────────────────────────────────────────────
-    bridge._spinner.stop()
-    stop_event.set()
-    bridge.finish()
-    orchestrator_source.finish()
+    finally:
+        # Always clean up, even on interrupt
+        bridge._spinner.stop()
+    # ── Shutdown everything (safe even after KeyboardInterrupt) ────────
+    try:
+        stop_event.set()
+        bridge.finish()
+        orchestrator_source.finish()
+    except Exception:
+        pass
 
     # Wait for AUT to exit
-    aut_thread.join(timeout=10.0)
-    if aut_thread.is_alive():
-        logger.warning("AUT thread did not stop in time")
+    try:
+        aut_thread.join(timeout=5.0)
+    except Exception:
+        pass
 
     # Stop LLM workers
-    if aut_llm_worker:
-        try:
-            aut_llm_worker.stop()
-        except Exception:
-            pass
-    if orch_llm_worker:
-        try:
-            orch_llm_worker.stop()
-        except Exception:
-            pass
+    for worker in (aut_llm_worker, orch_llm_worker):
+        if worker:
+            try:
+                worker.stop()
+            except Exception:
+                pass
 
     # Persist orchestrator memory (Phase 3: cross-session learning)
     if orch_hippocampus is not None:
