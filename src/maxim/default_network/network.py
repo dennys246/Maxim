@@ -196,7 +196,8 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             bus: AgentBus for publishing messages.
             behaviors: List of behavior modules. If None, uses defaults.
             config: Network configuration.
-            fear_agent: FearAgent for action gating.
+            fear_agent: FearAgent for movement gating within DN. For tool
+                call gating, use FearGatedExecutor (independent of DN).
             novelty_tracker: Shared novelty tracker. If None, creates new one.
             nac: NAc instance for causal learning (used by pain detection).
         """

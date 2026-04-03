@@ -13,6 +13,11 @@ src/maxim/simulation/
     runner.py                  # ScenarioRunner (standalone executor)
     validation.py              # Expectation checking + ScenarioResult
     instrumented_executor.py   # InstrumentedExecutor wrapper
+    simulation_generator.py    # LLM-powered natural language → YAML generation
+    sim_logger.py              # Bio-subsystem tracing + JSONL persistence
+
+src/maxim/runtime/
+    fear_gate.py               # FearGatedExecutor (independent of DefaultNetwork)
 ```
 
 ## PerceptSource Protocol
@@ -165,3 +170,39 @@ def search_by_content(self, query: str, limit: int = 20) -> list[EpisodicMemory 
 ```
 
 Performs substring search across all text fields of stored memories. Returns up to `limit` matches. This is the mechanism by which `memory_formed` expectations verify that a percept (e.g., a pain signal) was successfully captured as an episodic memory.
+
+## FearGatedExecutor
+
+`src/maxim/runtime/fear_gate.py` wraps any Executor with FearAgent safety review. This operates **independently of DefaultNetwork**, ensuring tool calls are safety-gated in all modes (robot, headless, simulation).
+
+Two-tier review:
+1. **Action review**: classifies tool as `shell_exec`, `file_write`, `network_request`, or `tool_call` and runs through `FearAgent.review_action()`.
+2. **Code review**: extracts code content from bash commands, file writes, and edit operations, then scans via `FearAgent.review_code()`.
+
+DefaultNetwork retains its own FearAgent for motor/movement gating (`dn_movement` actions with pain bridge integration). FearGatedExecutor handles tool safety; DN handles motor safety.
+
+## Simulation Generator
+
+`src/maxim/simulation/simulation_generator.py` converts natural language descriptions to YAML scenarios using the local LLM.
+
+Uses `LLMAgent` with a specialized system prompt that teaches the model about percept types, source fields, expectation types, and timing modes. Robust JSON extraction handles LLM output with preamble/postamble text.
+
+CLI: `maxim --generate-simulation "description" -o output.yaml`
+
+## Simulation Logger
+
+`src/maxim/simulation/sim_logger.py` provides bio-inspired subsystem tracing during simulation runs.
+
+Subsystem labels: `PERCEPT`, `HIPPOCAMPUS`, `NAc`, `FEAR`, `PAIN`, `MOTOR`, `SALIENCE`, `SCN`.
+
+Features:
+- Color-coded terminal output with elapsed timestamps
+- JSONL persistence to `data/sim_sandbox/sim_log_*.jsonl`
+- In-memory record accumulation via `get_sim_records()`
+
+Saved logs can be used for:
+- System refinement and debugging
+- Input to sleep mode's dream function for offline pattern analysis
+- Regression comparison between runs
+
+Wired into: ScenarioSource (percept emission), FearGatedExecutor (allow/block/execute), PainBus (pain routing).

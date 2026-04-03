@@ -516,15 +516,22 @@ class AgenticRuntimeMixin:
             agent.wire_communication(gateway=gateway, nac=nac)
             self.log.info("Communication gateway wired")
 
-        # Create FearAgent for safety gating
+        # Create FearAgent for safety gating (both DN movement and tool calls)
         fear_agent = None
         try:
             from maxim.agents.fear_agent import FearAgent
-            fear_agent = FearAgent(llm=None)  # No LLM needed for basic safety checks
+            from maxim.runtime.fear_gate import FearGatedExecutor
+
+            # Use LLM router if available for deeper code analysis
+            llm_for_fear = getattr(agent, "_llm", None)
+            fear_agent = FearAgent(llm=llm_for_fear)
             self._fear_agent = fear_agent
-            self.log.debug("FearAgent created for DN safety gating")
+
+            # Wrap executor with FearAgent gating (independent of DefaultNetwork)
+            executor = FearGatedExecutor(executor, fear_agent)
+            self.log.info("FearGatedExecutor active — all tool calls reviewed by FearAgent")
         except Exception as e:
-            warn("Failed to create FearAgent: %s", e, logger=self.log)
+            warn("Failed to create FearAgent/FearGatedExecutor: %s", e, logger=self.log)
 
         # Build Default Network for reactive behaviors (skip when headless)
         default_network = None
