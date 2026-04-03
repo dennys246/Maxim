@@ -567,6 +567,25 @@ def run_agentic_loop(
                 percept_source._grace_deadline = time.time() + 60.0
                 log_agentic("agent_loop", "percept_source_exhausted",
                             {"grace_seconds": 60})
+            # End grace early if LLM has responded and no more work pending
+            _has_pending = pending_proposal is not None
+            if not hasattr(percept_source, "_grace_action_count"):
+                percept_source._grace_action_count = 0
+                percept_source._grace_saw_response = False
+            # Track if any LLM response arrived during grace
+            if llm_worker and llm_worker.get_latest_proposal() is not None:
+                percept_source._grace_saw_response = True
+            # If LLM responded and action was executed, end grace early
+            if (percept_source._grace_saw_response
+                    and not _has_pending
+                    and action_sink is not None
+                    and len(action_sink.actions) > percept_source._grace_action_count):
+                percept_source._grace_action_count = len(action_sink.actions)
+                # Give 5 more seconds for any follow-up actions
+                percept_source._grace_deadline = min(
+                    percept_source._grace_deadline,
+                    time.time() + 5.0,
+                )
             if time.time() >= percept_source._grace_deadline:
                 log_agentic("agent_loop", "shutdown",
                             {"reason": "percept_source_grace_expired"})
@@ -593,10 +612,18 @@ def run_agentic_loop(
                     except Exception:
                         pass
                 # Convert percept to observation dict for state.update()
+                # Treat transcript input as cli_input so the agent loop
+                # forwards it to the LLM (the loop only checks cli_input)
+                _sim_cli = sim_percept.cli_input
+                if not _sim_cli and sim_percept.transcript_chunk:
+                    _sim_cli = sim_percept.transcript_chunk
+                if not _sim_cli and sim_percept.content:
+                    _sim_cli = sim_percept.content
+
                 observation = {
                     "source": sim_percept.source,
                     "transcript": sim_percept.transcript_chunk,
-                    "cli_input": sim_percept.cli_input,
+                    "cli_input": _sim_cli,
                     "hard_override": sim_percept.hard_override,
                     "raw_transcript_text": sim_percept.raw_transcript_text,
                 }
