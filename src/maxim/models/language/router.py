@@ -100,6 +100,7 @@ class LLMRouter:
         self._backend: Any | None = None
         self._backends: dict[str, Any] = {}
         self._backend_lock = threading.Lock()
+        self._inference_lock = threading.Lock()  # Serializes inference calls (llama-cpp not thread-safe)
         self._ready_event = threading.Event()  # Set when warmup completes
         self._warmup_failed = False
         self._providers = self._normalize_providers(self.cfg)
@@ -542,6 +543,31 @@ class LLMRouter:
             )
             return "", None
 
+        # Serialize inference — llama-cpp is not thread-safe for concurrent
+        # calls on the same model.  In simulation mode two LLMWorkers share
+        # one router; without this lock the second call segfaults.
+        with self._inference_lock:
+            return self._complete_text_locked(
+                system, user,
+                temperature=temperature, max_tokens=max_tokens,
+                provider_hint=provider_hint, request_context=request_context,
+                tools=tools, thinking=thinking, stream=stream,
+            )
+
+    def _complete_text_locked(
+        self,
+        system: str,
+        user: str,
+        *,
+        temperature: float,
+        max_tokens: int,
+        provider_hint: str | None = None,
+        request_context: dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        thinking: dict[str, Any] | None = None,
+        stream: bool = False,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Actual inference — called under _inference_lock."""
         prompt_tokens = self._estimate_prompt_tokens(system, user)
         now = time.time()
 
