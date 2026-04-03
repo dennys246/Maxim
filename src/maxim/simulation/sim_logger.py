@@ -66,8 +66,12 @@ def enable_sim_logging(use_color: bool = True, log_path: str | None = None) -> N
 
     if log_path:
         import os
-        os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
-        _log_file = open(log_path, "w")
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
+            _log_file = open(log_path, "w")
+        except Exception as e:
+            logging.getLogger(__name__).warning("Failed to open sim log file %s: %s", log_path, e)
+            _log_file = None
 
     sim_log("PIPELINE", "Simulation logging enabled")
 

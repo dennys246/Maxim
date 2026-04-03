@@ -214,7 +214,11 @@ def _clean_expectations(expectations: list[dict]) -> list[dict]:
     cleaned = []
 
     for exp in expectations:
-        if "type" not in exp or exp["type"] not in valid_types:
+        if "type" not in exp:
+            logger.warning("Generated expectation missing 'type' field, dropping: %s", exp)
+            continue
+        if exp["type"] not in valid_types:
+            logger.warning("Generated expectation has unknown type %r, dropping", exp["type"])
             continue
         exp.setdefault("description", exp["type"])
         cleaned.append(exp)

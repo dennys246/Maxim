@@ -617,7 +617,9 @@ def run_agentic_loop(
                 _sim_cli = sim_percept.cli_input
                 if not _sim_cli and sim_percept.transcript_chunk:
                     _sim_cli = sim_percept.transcript_chunk
-                if not _sim_cli and sim_percept.content:
+                # Only treat content as user input for non-proprioception sources
+                # (proprioception content like "pain_signal" is a body signal, not text)
+                if not _sim_cli and sim_percept.content and sim_percept.source != "proprioception":
                     _sim_cli = sim_percept.content
 
                 observation = {
