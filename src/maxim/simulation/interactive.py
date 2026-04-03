@@ -179,6 +179,9 @@ def run_interactive_sim(
             turn=turn,
         )
 
+        # Show what Maxim did
+        _show_turn_results(total_sink, from_index=0)
+
         # Record what happened
         try:
             with open(transcript_path) as f:
@@ -278,6 +281,8 @@ def run_interactive_sim(
                 turn=turn,
             )
 
+            # Show what Maxim did this turn
+            _show_turn_results(total_sink, from_index=len(all_actions))
             all_actions.extend(_summarize_actions(total_sink, from_index=len(all_actions)))
             turn += 1
 
@@ -349,6 +354,11 @@ def _run_scenario_turn(
             pass
 
 
+# Cached generator agent — avoids reloading the model every continuation
+_continuation_agent = None
+_continuation_profile = None
+
+
 def _generate_continuation(
     user_input: str,
     prior_percepts: list[dict],
@@ -356,31 +366,35 @@ def _generate_continuation(
     llm_profile: str | None,
 ) -> list[dict] | None:
     """Use the LLM to generate contextual follow-up percepts."""
+    global _continuation_agent, _continuation_profile
     from maxim.agents.llm_agent import LLMAgent
     from maxim.simulation.simulation_generator import _extract_json, _clean_percepts
 
     # Build context for the generator
-    context = f"PRIOR SCENARIO PERCEPTS:\n"
+    context = "PRIOR SCENARIO PERCEPTS:\n"
     for p in prior_percepts[-10:]:  # Last 10 percepts for context
         src = p.get("source", "?")
         text = p.get("cli_input") or p.get("transcript_chunk") or p.get("content") or ""
         context += f"  [{src}] {text}\n"
 
-    context += f"\nMAXIM'S RESPONSES:\n"
+    context += "\nMAXIM'S RESPONSES:\n"
     for a in prior_actions[-5:]:  # Last 5 actions for context
         context += f"  {a}\n"
 
     context += f"\nNEW USER INPUT:\n  {user_input}\n"
-    context += f"\nGenerate follow-up percepts for this continuation."
+    context += "\nGenerate follow-up percepts for this continuation."
 
-    agent = LLMAgent(
-        profile=llm_profile,
-        system_prompt=CONTINUATION_PROMPT,
-        temperature=0.2,
-        max_tokens=1024,
-    )
+    # Reuse cached agent (same profile) to avoid reloading the model
+    if _continuation_agent is None or _continuation_profile != llm_profile:
+        _continuation_agent = LLMAgent(
+            profile=llm_profile,
+            system_prompt=CONTINUATION_PROMPT,
+            temperature=0.2,
+            max_tokens=1024,
+        )
+        _continuation_profile = llm_profile
 
-    raw = agent.generate(context, max_tokens=1024)
+    raw = _continuation_agent.generate(context, max_tokens=1024)
     result = _extract_json(raw)
 
     if result and "percepts" in result:
@@ -421,6 +435,25 @@ def _save_full_transcript(path: Path, percepts: list[dict], description: str) ->
         path.write_text(yaml.dump(scenario, default_flow_style=False, sort_keys=False))
     except Exception:
         pass
+
+
+def _show_turn_results(sink: Any, from_index: int = 0) -> None:
+    """Show what Maxim did during this turn."""
+    new_actions = sink.actions[from_index:]
+    if not new_actions:
+        print("  (No actions this turn — LLM may still be processing)")
+        return
+    for a in new_actions:
+        tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
+        name = a.tool_name
+        preview = ""
+        if a.result_output and isinstance(a.result_output, dict):
+            msg = a.result_output.get("message", "")
+            if msg:
+                preview = f": {str(msg)[:70]}"
+        elif a.block_reason:
+            preview = f": {str(a.block_reason)[:70]}"
+        print(f"  {tag} {name}{preview}")
 
 
 def _print_summary(sink: Any) -> None:
