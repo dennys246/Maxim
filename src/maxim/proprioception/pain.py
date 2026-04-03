@@ -33,6 +33,12 @@ class PainType(Enum):
     TOOL_INVALID_INPUT = "tool_invalid_input"
     TOOL_SUSTAINED = "tool_sustained"
 
+    # Non-motor sources (via PainBus)
+    RESOURCE_EXHAUSTION = "resource_exhaustion"  # Energy budget depleted
+    COGNITIVE_OVERLOAD = "cognitive_overload"  # Repeated failures, context loss
+    EXTERNAL_SIGNAL = "external_signal"  # From percept/simulation/other robot
+    SAFETY_VIOLATION = "safety_violation"  # FearAgent-detected threat
+
 
 @dataclass(frozen=True)
 class PainConfig:
@@ -123,15 +129,21 @@ class PainDetector:
         self,
         config: PainConfig | None = None,
         movement_tracker: "MovementTracker | None" = None,
+        pain_bus: Any | None = None,
     ) -> None:
         """Initialize the pain detector.
 
         Args:
             config: Pain detection configuration. Uses defaults if None.
             movement_tracker: Optional pre-existing tracker. Creates one if None.
+            pain_bus: Optional PainBus for centralized pain dispatch. When
+                provided, _emit_pain() publishes to the bus instead of
+                invoking internal callbacks. Consumers should subscribe to
+                the bus directly rather than using add_pain_callback().
         """
         self.config = config or PainConfig()
         self._lock = threading.Lock()
+        self._pain_bus = pain_bus
 
         # Create tracker if not provided
         if movement_tracker is None:
@@ -144,7 +156,7 @@ class PainDetector:
         # Cooldown tracking
         self._last_pain_time: dict[PainType, float] = {}
 
-        # Callbacks for pain events
+        # Callbacks for pain events (legacy — prefer pain_bus.subscribe())
         self._callbacks: list[Callable[[PainSignal], None]] = []
 
         # Pending movement tracking for failure detection
@@ -414,7 +426,11 @@ class PainDetector:
         return (now - last_time) >= self.config.pain_cooldown_seconds
 
     def _emit_pain(self, signal: PainSignal) -> PainSignal:
-        """Emit a pain signal and update tracking."""
+        """Emit a pain signal and update tracking.
+
+        If a PainBus is configured, publishes to the bus (which notifies
+        all bus subscribers). Otherwise falls back to internal callbacks.
+        """
         with self._lock:
             self._last_pain_time[signal.pain_type] = signal.timestamp
             self._total_pain_signals += 1
@@ -438,21 +454,33 @@ class PainDetector:
         else:
             logger.info(log_msg, *log_args)
 
-        # Notify callbacks (outside lock)
-        for callback in self._callbacks:
-            try:
-                callback(signal)
-            except Exception as e:
-                logger.warning("Pain callback error: %s", e)
+        # Dispatch: prefer PainBus, fall back to internal callbacks
+        if self._pain_bus is not None:
+            self._pain_bus.publish(signal)
+        else:
+            for callback in self._callbacks:
+                try:
+                    callback(signal)
+                except Exception as e:
+                    logger.warning("Pain callback error: %s", e)
 
         return signal
 
     def add_pain_callback(self, callback: Callable[[PainSignal], None]) -> None:
         """Register a callback for pain events.
 
+        When a PainBus is configured, prefer pain_bus.subscribe() instead.
+        This method still works but callbacks registered here are only
+        invoked when no PainBus is present (fallback path).
+
         Args:
             callback: Function to call when pain is detected.
         """
+        if self._pain_bus is not None:
+            logger.debug(
+                "add_pain_callback called with PainBus active; "
+                "consider using pain_bus.subscribe() instead"
+            )
         self._callbacks.append(callback)
 
     def remove_pain_callback(self, callback: Callable[[PainSignal], None]) -> None:

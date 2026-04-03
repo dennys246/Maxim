@@ -58,10 +58,11 @@ class ToolPainBridge:
     def __init__(
         self,
         nac: NAc,
-        pain_detector: PainDetector,
+        pain_detector: PainDetector | None = None,
         scn: SCN | None = None,
         hippocampus: Hippocampus | None = None,
         llm: Any = None,
+        pain_bus: Any | None = None,
     ) -> None:
         self._nac = nac
         self._scn = scn
@@ -71,7 +72,11 @@ class ToolPainBridge:
         self._pending_tools: dict[tuple[str, str], str] = {}
         self._last_rpe: float = 0.0  # Most recent RPE magnitude (for salience)
         self._last_reflection_time: dict[str, float] = {}  # tool_name → timestamp
-        pain_detector.add_pain_callback(self._on_pain)
+        # Subscribe to pain signals via bus (preferred) or detector (legacy)
+        if pain_bus is not None:
+            pain_bus.subscribe(self._on_pain)
+        elif pain_detector is not None:
+            pain_detector.add_pain_callback(self._on_pain)
 
     def record_tool_start(
         self,
