@@ -10,7 +10,7 @@ Master roadmap for Maxim development. Consolidates all active plans into a singl
 
 | Plan | Status | Next step |
 |------|--------|-----------|
-| Agentic Loop Modularization | **Not started** | Phase 0 ready (bug fix + helpers) |
+| Agentic Loop Modularization | **Complete** | All phases on `refactor/loop-modularization-phase0` |
 | Repo Cleanup | **~85% done** | Remaining items are opportunistic |
 | Intelligent Context Upgrade | **~90% done** | Observe v2 before adding LLM-driven pinning |
 | File Splitting | **Not started** | Do when modifying target files |

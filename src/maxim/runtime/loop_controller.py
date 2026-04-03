@@ -19,6 +19,7 @@ from maxim.agents.llm_worker import LLMProposal
 from maxim.agents.bus import StreamEvent
 from maxim.runtime.agent_loop import _record_outcome, _safe_agent_name
 from maxim.runtime.loop_state import _persist_state_json
+from maxim.runtime.dn_controller import DefaultNetworkController
 from maxim.runtime.loop_types import (
     ActionFollowup,
     PendingConfirmation,
@@ -130,8 +131,8 @@ class LoopController:
         self.memory_hub_enabled = memory_hub is not None
 
         # ── Default Network ──────────────────────────────────────────────
-        self.dn_enabled = default_network is not None
-        self._dn_last_mode: str | None = None
+        self.dn_ctrl = DefaultNetworkController(default_network)
+        self.dn_enabled = self.dn_ctrl.enabled
 
     # ── Typed state helpers ──────────────────────────────────────────────
 
@@ -516,35 +517,5 @@ class LoopController:
     # ── Phase: Configure Default Network for mode ────────────────────────
 
     def configure_dn_for_mode(self, mode_name: str) -> None:
-        """Configure DN based on current mode settings."""
-        if not self.dn_enabled or self.default_network is None:
-            return
-        if mode_name == self._dn_last_mode:
-            return
-
-        from maxim.modes.definitions import get_mode
-        mode_def = get_mode(mode_name)
-        if mode_def is None:
-            return
-
-        dn_config = mode_def.default_network
-
-        if not dn_config.enabled:
-            if self.default_network.is_running:
-                self.default_network.stop()
-                log_agentic("default_network", "dn_inhibited", {"reason": "mode_disabled", "mode": mode_name})
-        else:
-            if not self.default_network.is_running:
-                self.default_network.start()
-                log_agentic("default_network", "dn_released", {"reason": "mode_enabled", "mode": mode_name})
-
-            self.default_network.clear_behavior_overrides()
-            for behavior_name, modifier in dn_config.behavior_priority_modifiers.items():
-                self.default_network.boost_behavior(behavior_name, modifier)
-
-            if hasattr(self.default_network, 'gate') and hasattr(self.default_network.gate, '_adaptive'):
-                if self.default_network.gate._adaptive:
-                    self.default_network.gate._adaptive._novelty_threshold = dn_config.escalation_threshold
-                    self.default_network.gate._adaptive._salience_threshold = dn_config.escalation_threshold
-
-        self._dn_last_mode = mode_name
+        """Delegate to DefaultNetworkController."""
+        self.dn_ctrl.configure_for_mode(mode_name)
