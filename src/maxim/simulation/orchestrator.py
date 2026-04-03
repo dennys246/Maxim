@@ -151,12 +151,20 @@ def start_simulation_mode(
     aut_decision_engine = build_decision_engine()
     aut_agent = MaximAgent()
 
+    # AUT runs AUTONOMOUS — no human confirmation prompts.
+    # FearGatedExecutor still blocks dangerous actions; the orchestrator
+    # observes blocks via action_sink.  SUPERVISED would deadlock because
+    # stdin is captured by the orchestrator's reader thread.
     aut_autonomy = AutonomyController(
-        initial_level=AutonomyLevel.SUPERVISED,
+        initial_level=AutonomyLevel.AUTONOMOUS,
         supervision_policy=SupervisionPolicy(
-            allowed_tools={"respond", "speak", "read_file", "list_directory"},
+            allowed_tools={
+                "respond", "speak", "read_file", "list_directory",
+                "write_file", "edit_file", "glob", "code_search",
+                "bash", "execute_file", "run_tests",
+            },
             forbidden_tools=set(),
-            min_confidence_autonomous=0.7,
+            min_confidence_autonomous=0.3,
         ),
     )
 
