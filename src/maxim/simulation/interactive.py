@@ -191,6 +191,7 @@ def run_interactive_sim(
         # Show what Maxim did
         sim_log("PIPELINE", f"Initial turn complete ({len(total_sink.actions)} actions)")
         _show_turn_results(total_sink, from_index=0)
+        print("\n  Ready for follow-up. Type your next input below.")
 
         # Record what happened
         try:
@@ -295,6 +296,7 @@ def run_interactive_sim(
             _show_turn_results(total_sink, from_index=len(all_actions))
             all_actions.extend(_summarize_actions(total_sink, from_index=len(all_actions)))
             turn += 1
+            print("\n  Ready for follow-up. Type your next input below.")
 
             # Clean up turn file
             try:
