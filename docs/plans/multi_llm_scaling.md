@@ -1,6 +1,6 @@
 # Multi-LLM Scaling Plan
 
-> **Status:** Not started. Depends on RuntimeCapabilities (implemented) and WorkerPool lane system (implemented).
+> **Status:** Not started. Depends on RuntimeCapabilities (implemented), WorkerPool lane system (implemented), and shared LLMRouter pattern (implemented via Agentic Loop Modularization — #3 double-LLM fix).
 >
 > **Scope:** Local multi-model inference, remote model serving via home server + Cloudflare tunnel, dynamic backend spawning, and peer-to-peer inference mesh across Maxim instances.
 

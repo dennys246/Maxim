@@ -465,6 +465,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         from maxim.simulation.sinks import RecordingSink
         from maxim.simulation.validation import ScenarioResult, validate_expectations
 
+        # Check for agent mode (autonomous orchestrator)
+        _sim_agent = str(sim_path).strip().lower() == "agent"
+        if _sim_agent:
+            from maxim.simulation.orchestrator import start_simulation_mode
+
+            goal = getattr(args, "sim_goal", None) or "test the agent's capabilities"
+            persona = getattr(args, "sim_persona", "adversarial")
+            sim_debug = bool(getattr(args, "sim_debug", False))
+
+            result = start_simulation_mode(
+                goal=goal,
+                persona=persona,
+                sim_debug=sim_debug,
+            )
+            sys.exit(0 if result.finish_reason != "error" else 1)
+
         # Check for interactive mode
         _sim_interactive = str(sim_path).strip().lower() == "interactive"
 

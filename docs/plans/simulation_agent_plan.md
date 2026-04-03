@@ -108,9 +108,16 @@ CLI main()
 
 **How /cancel works:** Sets `stop_event` on both agent loops. Both loops check `stop_event.is_set()` at the top of each iteration and break. The main stdin thread also breaks out of its read loop. Clean shutdown, no orphaned threads.
 
+**How SimulationAdapter helps:** Both agent loops call `run_agentic_loop` with a `percept_source`. The loop automatically wraps it in a `SimulationAdapter` (implemented in the modularization). This gives both loops:
+- `sim.next_observation()` — percept polling with pain routing
+- `sim.check_exhaustion()` — grace period management
+- `sim.should_skip_fallback_proposal()` — wait for real LLM, not fallbacks
+
+When `FinishSimulationTool` calls `bridge.finish()` and `orchestrator_source.finish()`, both `SimulationAdapter` instances detect exhaustion via their grace periods and exit cleanly. No custom shutdown logic needed.
+
 **Thread safety:** `ConversationalSource` uses a `threading.Lock` for its queue. `RecordingSink` uses a `threading.Lock` for its action list. All bridge operations are already thread-safe. No new synchronization needed.
 
-**AUT idle behavior:** When the orchestrator is thinking (LLM inference, planning), the AUT's loop spins with no percepts. `ConversationalSource.next_percept()` returns `None`, the loop continues at target Hz with empty observations. Bounded by the loop's `time.sleep()` for frequency control (2 Hz headless = 500ms sleep per iteration). `is_exhausted()` returns `False` (because `finish()` hasn't been called), so the grace period never triggers.
+**AUT idle behavior:** When the orchestrator is thinking (LLM inference, planning), the AUT's loop spins with no percepts. `SimulationAdapter.next_observation()` returns `{}`, the loop continues at target Hz with empty observations. Bounded by the loop's `time.sleep()` for frequency control (2 Hz headless = 500ms sleep per iteration). `is_exhausted()` returns `False` (because `finish()` hasn't been called), so the grace period never triggers.
 
 ---
 
@@ -381,18 +388,23 @@ def start_simulation_mode(
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
-    1. Create shared stop_event (or use provided)
+    1. Create shared stop_event and LLMRouter (or use provided)
     2. Create SimulationBridge(stop_event=stop_event) and orchestrator_source
     3. Build AUT pipeline (standard tools, FearGatedExecutor, memory)
+       - run_agentic_loop wraps bridge.percept_source in SimulationAdapter automatically
+       - LoopController manages AUT's transient state
     4. Build orchestrator pipeline (sim tools, persona strategy)
-       - Tools needing LLM receive llm_router
+       - Same run_agentic_loop, wraps orchestrator_source in SimulationAdapter
+       - Tools needing LLM receive shared llm_router
        - FinishSimulationTool receives bridge + orchestrator_source
     5. Start AUT thread (run_agentic_loop with bridge.percept_source)
     6. Start stdin reader thread (routes commands to orchestrator_source)
     7. Inject goal into orchestrator_source
     8. Run orchestrator loop (blocks until FinishSimulationTool or /cancel)
-    9. Clean up: ensure bridge.finish() called, join AUT thread
-    10. Return results
+       - FinishSimulationTool calls finish() on both sources
+       - SimulationAdapter.check_exhaustion() handles grace periods
+    9. Clean up: join AUT thread, persist results
+    10. Return SimulationResult
     """
 ```
 
@@ -445,7 +457,7 @@ aut_llm_worker = LLMWorker(llm=llm_router, ...)
 # No second LLMWorker needed — tools are synchronous
 ```
 
-This sidesteps the double-load problem entirely. The orchestrator doesn't need its own LLMWorker because its tools execute synchronously within the orchestrator's tool execution phase. The LLMRouter handles one request at a time (its internal lock serializes access).
+This builds on the double-LLM fix from the modularization (which established the shared LLMRouter pattern). The orchestrator doesn't need its own LLMWorker because its tools execute synchronously within the orchestrator's tool execution phase. The LLMRouter handles one request at a time (its internal lock serializes access).
 
 ---
 
@@ -582,12 +594,15 @@ All met:
 - Tool registration system — registry + bootstrap (implemented)
 - Strategy/Mode system — persona configuration (implemented)
 
-Fix before starting:
-- **#3 Double LLM load** — fix the current pattern before adding shared backend support (blocks Phase 1)
-- **#6 Batch scenario break** — needed for regression testing in Phase 4 (does NOT block Phases 1-3)
+Additionally implemented (by Agentic Loop Modularization):
+- `SimulationAdapter` — wraps percept_source/action_sink with grace period logic (used by AUT AND orchestrator loops automatically)
+- `LoopController` — typed transient state, extracted phase methods
+- `DefaultNetworkController` — DN lifecycle isolated from loop
+- `@resilient` decorator — structured error handling
+- **#3 Double LLM load** — fixed (shared LLMRouter pattern established)
 
-Optional but recommended before Phase 2:
-- **Loop Modularization Phase 4** (SimulationAdapter) — cleaner AUT integration point, but not a hard blocker since Phase 1 uses the existing `percept_source`/`action_sink` interface directly
+Remaining before starting:
+- **#6 Batch scenario break** — needed for regression testing in Phase 4 (does NOT block Phases 1-3)
 
 ---
 
