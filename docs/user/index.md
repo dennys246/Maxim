@@ -19,6 +19,8 @@ Documentation for users of Maxim — a robotics framework for Reachy Mini with l
 - [Vision & Audio](vision-audio.md) — Camera, Whisper, VAD, voice commands
 - [Memory](memory-user-guide.md) — What persists, lifecycle, clearing
 - [Safety](safety.md) — Autonomy levels, FearAgent, pain detection, harm prediction
+- [Simulation Guide](simulation.md) — Running and recording simulated scenarios
+- [Writing Scenarios](writing-scenarios.md) — Authoring YAML test scenarios
 
 ## Setup & Support
 

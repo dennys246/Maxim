@@ -436,6 +436,53 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Cleared {cleared}/{total} memory file(s).")
         return 0  # Exit after clearing
 
+    # Simulation mode if requested — runs full agentic pipeline with fake percepts
+    sim_path = getattr(args, "sim", None)
+    if sim_path is not None:
+        import json as _json
+        from pathlib import Path
+
+        from maxim.simulation.scenario_source import ScenarioSource
+        from maxim.simulation.sinks import RecordingSink
+        from maxim.simulation.validation import ScenarioResult, validate_expectations
+
+        sim_path = Path(sim_path)
+        if sim_path.is_dir():
+            scenario_files = sorted(sim_path.glob("*.yaml")) + sorted(sim_path.glob("*.yml"))
+        else:
+            scenario_files = [sim_path]
+
+        if not scenario_files:
+            print(f"No scenario files found at {sim_path}")
+            sys.exit(1)
+
+        # Force agentic mode for simulation
+        args.mode = "agentic"
+        # Use a reasonable step limit so scenarios don't run forever
+        if not getattr(args, "epochs", None):
+            args.epochs = 200
+
+        all_results = []
+        any_failed = False
+
+        for scenario_file in scenario_files:
+            print(f"\nRunning scenario: {scenario_file.name}")
+            print(f"  Loading full agentic pipeline...")
+
+            source = ScenarioSource(scenario_file)
+            sink = RecordingSink()
+
+            # The actual agentic bootstrap happens in the main loop below
+            # by setting mode = "agentic" and passing source/sink via state
+            # Store them so the agentic block can pick them up
+            args._sim_source = source
+            args._sim_sink = sink
+            args._sim_scenario_file = scenario_file
+            break  # Process one scenario, let the main loop handle it
+
+        # Fall through to the main loop with mode="agentic"
+        # The agentic block will detect args._sim_source and wire it in
+
     # Architecture audit if requested
     if getattr(args, "audit_architecture", False):
         from maxim.utils.audit import audit_architecture
@@ -692,6 +739,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     gateway is not None,
                 )
 
+                # Check for simulation mode — wire percept_source and action_sink
+                sim_source = getattr(args, "_sim_source", None)
+                sim_sink = getattr(args, "_sim_sink", None)
+
                 try:
                     run_agentic_loop(
                         agentic_agent,
@@ -705,10 +756,64 @@ def main(argv: Sequence[str] | None = None) -> int:
                         evaluators=evaluators,
                         max_steps=epochs_value,
                         run_id=run_id,
+                        percept_source=sim_source,
+                        action_sink=sim_sink,
                     )
                 finally:
                     if llm_worker:
                         llm_worker.stop()
+
+                # If simulation mode, validate expectations and report
+                if sim_source is not None and sim_sink is not None:
+                    import json as _json
+                    from maxim.simulation.validation import validate_expectations
+
+                    scenario_file = getattr(args, "_sim_scenario_file", None)
+                    hippo = agentic_agent._hippocampus if hasattr(agentic_agent, "_hippocampus") else None
+
+                    results = validate_expectations(
+                        expectations=sim_source.expectations,
+                        sink=sim_sink,
+                        hippocampus=hippo,
+                        emitted_tags=sim_source.emitted_tags,
+                    )
+
+                    passed = all(r.passed for r in results)
+                    scenario_name = sim_source.definition.name
+
+                    print(f"\n{'PASS' if passed else 'FAIL'}: {scenario_name}")
+                    for r in results:
+                        status = "PASS" if r.passed else "FAIL"
+                        desc = r.expectation.description or r.expectation.type
+                        print(f"  [{status}] {desc}")
+                        if not r.passed and r.detail:
+                            print(f"         {r.detail}")
+                    print(f"\nActions recorded: {len(sim_sink.actions)}")
+                    for a in sim_sink.actions[:20]:
+                        tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
+                        print(f"  {tag} {a.tool_name}")
+
+                    report_path = getattr(args, "sim_report", None)
+                    if report_path:
+                        report = {
+                            "scenario": scenario_name,
+                            "passed": passed,
+                            "action_count": len(sim_sink.actions),
+                            "expectations_met": [
+                                r.expectation.description or r.expectation.type
+                                for r in results if r.passed
+                            ],
+                            "expectations_failed": [
+                                f"{r.expectation.description or r.expectation.type}: {r.detail}"
+                                for r in results if not r.passed
+                            ],
+                        }
+                        with open(report_path, "w") as f:
+                            _json.dump(report, f, indent=2)
+                        print(f"Report written to {report_path}")
+
+                    return 0 if passed else 1
+
                 return 0
 
             # ─────────────────────────────────────────────────────────────────
