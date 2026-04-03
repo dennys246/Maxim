@@ -391,6 +391,64 @@ class AgenticRuntimeMixin:
         except Exception as e:
             warn("Failed to initialize provenance system: %s", e, logger=self.log)
 
+        # --- Introspection tools ---
+        # Expose biological subsystems as read-only LLM-callable tools
+        try:
+            from maxim.tools.introspection import (
+                MemoryRecallTool, PredictOutcomeTool, CausalLinksTool,
+                PainHistoryTool, TemporalPatternsTool, EnergyStatusTool,
+                ConceptQueryTool, SceneSummaryTool, SimilaritySearchTool,
+                SystemStatsTool,
+            )
+
+            if memory_hub is not None:
+                registry.register(MemoryRecallTool(hippocampus=memory_hub.hippocampus))
+                registry.register(SimilaritySearchTool(ec=memory_hub.ec))
+                registry.register(TemporalPatternsTool(scn=memory_hub.scn))
+                if memory_hub.atl is not None:
+                    registry.register(ConceptQueryTool(atl=memory_hub.atl))
+
+            if nac is not None:
+                registry.register(PredictOutcomeTool(nac=nac))
+                registry.register(CausalLinksTool(nac=nac))
+
+            pain_detector = getattr(self, "_pain_detector", None)
+            fear_agent = locals().get("fear_agent")
+            if pain_detector is not None or fear_agent is not None:
+                registry.register(PainHistoryTool(
+                    pain_detector=pain_detector,
+                    fear_agent=fear_agent,
+                ))
+
+            energy_tracker = getattr(self, "_energy_tracker", None)
+            if energy_tracker is not None:
+                registry.register(EnergyStatusTool(energy_tracker=energy_tracker))
+
+            # Scene tools only when vision subsystems available
+            if default_network is not None:
+                _salience = getattr(default_network, "_salience_network", None)
+                _attention = getattr(default_network, "_attention_network", None)
+                if _salience is not None or _attention is not None:
+                    registry.register(SceneSummaryTool(
+                        salience_network=_salience,
+                        attention_network=_attention,
+                    ))
+
+            # System stats always available (works with whatever subsystems exist)
+            registry.register(SystemStatsTool(
+                hippocampus=memory_hub.hippocampus if memory_hub else None,
+                nac=nac,
+                ec=memory_hub.ec if memory_hub else None,
+                atl=memory_hub.atl if memory_hub else None,
+                energy_tracker=energy_tracker,
+                pain_detector=pain_detector,
+                significance_learner=getattr(self, "_significance_learner", None),
+            ))
+
+            self.log.info("Introspection tools registered")
+        except Exception as e:
+            warn("Failed to register introspection tools: %s", e, logger=self.log)
+
         # --- Protocol system ---
         try:
             from maxim.skills.registry import ProtocolRegistry
