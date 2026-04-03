@@ -422,6 +422,9 @@ def run_agentic_loop(
     # Track agent states
     agent_states: list[dict[str, Any]] = []
 
+    # Track tools surfaced in last LLM prompt (for learned index decay signal)
+    last_surfaced_tools: list[str] = []
+
     # Live read from tool registry — picks up dynamically registered tools
     def _get_all_tools() -> set[str]:
         if hasattr(executor, "registry") and hasattr(executor.registry, "list"):
@@ -558,13 +561,13 @@ def run_agentic_loop(
         # After all percepts are emitted, keep the loop running for a grace
         # period so the LLM can finish processing and propose actions.
         if percept_source is not None and percept_source.is_exhausted():
-            if not hasattr(percept_source, "_grace_remaining"):
-                # Grace period: 50 iterations for LLM to respond
-                percept_source._grace_remaining = 50
+            if not hasattr(percept_source, "_grace_deadline"):
+                # Grace period: 60 seconds for LLM to respond
+                # (CPU inference can take 10-30s per request)
+                percept_source._grace_deadline = time.time() + 60.0
                 log_agentic("agent_loop", "percept_source_exhausted",
-                            {"grace_steps": 50})
-            percept_source._grace_remaining -= 1
-            if percept_source._grace_remaining <= 0:
+                            {"grace_seconds": 60})
+            if time.time() >= percept_source._grace_deadline:
                 log_agentic("agent_loop", "shutdown",
                             {"reason": "percept_source_grace_expired"})
                 break
@@ -1095,6 +1098,11 @@ def run_agentic_loop(
                         proposal_age, new_proposal.request_id,
                     )
                     new_proposal = None
+            # In simulation mode, skip fallback proposals — wait for real LLM
+            if new_proposal and percept_source is not None:
+                if getattr(new_proposal, "reasoning", "") == "llm_fallback":
+                    logger.info("Sim mode: skipping fallback proposal, waiting for real LLM")
+                    new_proposal = None
             if new_proposal:
                 if callable(on_event):
                     try:
@@ -1118,6 +1126,13 @@ def run_agentic_loop(
                         },
                     )
                     pending_proposal = new_proposal
+                    # Record surfaced-but-unused signal for learned tool index
+                    _bridge = getattr(executor, "_tool_pain_bridge", None)
+                    _tidx = getattr(_bridge, "_tool_index", None) if _bridge else None
+                    if _tidx and last_surfaced_tools:
+                        _goal = state.data.get("active_goal", "") or ""
+                        if _goal:
+                            _tidx.record_surfaced_but_unused(_goal, last_surfaced_tools, tool_name)
                     # Clear pending user input now that LLM has responded
                     state.data.pop("pending_user_input", None)
                     state.data.pop("pending_user_input_time", None)
@@ -2342,6 +2357,7 @@ def run_agentic_loop(
 
                         # Get available tools for this mode
                         available_tools = mode_info.get_available_tools(_get_all_tools())
+                        last_surfaced_tools = list(available_tools)
 
                         # Get full tool info for prompt (description, params, example)
                         tool_descriptions = {}
