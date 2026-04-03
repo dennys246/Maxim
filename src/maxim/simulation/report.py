@@ -125,18 +125,21 @@ def build_report(
         except Exception:
             pass
 
-    # Cost data
+    # Cost data — prefer session_cost (exact) over window stats (approximate)
     cost_usd = 0.0
     input_tokens = 0
     output_tokens = 0
     if llm_router is not None:
         try:
+            # Session cost is the exact amount spent during this run
+            cost_usd = getattr(llm_router, "session_cost", 0.0)
             tracker = getattr(llm_router, "_cost_tracker", None)
             if tracker:
-                stats = tracker.get_window_stats(3600)  # Last hour
-                cost_usd = stats.get("total_cost", 0.0)
+                stats = tracker.get_window_stats(3600)
                 input_tokens = stats.get("total_input_tokens", 0)
                 output_tokens = stats.get("total_output_tokens", 0)
+                if cost_usd <= 0:
+                    cost_usd = stats.get("total_cost", 0.0)
         except Exception:
             pass
 

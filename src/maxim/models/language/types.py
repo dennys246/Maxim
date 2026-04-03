@@ -40,6 +40,7 @@ class RoutingPolicy:
     max_cost_per_hour: float = 1.00
     max_cost_per_day: float = 10.00
     max_cost_per_month: float = 100.00
+    max_session_cost: float = 5.00  # Hard ceiling — rejects ALL requests when hit
     cost_warning_threshold: float = 0.80
     cost_critical_threshold: float = 0.95
 
