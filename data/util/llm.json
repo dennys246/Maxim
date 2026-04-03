@@ -3,7 +3,7 @@
   "profile": "mistral-7b-instruct-v0.2",
   "max_tokens": 1024,
   "temperature": 0.0,
-  "quantization": "int4",
+  "quantization": "Q4_K_M",
   "prompts_dir": "data/prompts",
   "profiles": {
     "phi-3-mini-4k-instruct": {

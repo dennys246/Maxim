@@ -57,19 +57,6 @@ class AdaptivePolicy(Policy):
             + self._w_cost * dims["action_cost"]
         )
 
-    def explain_score(self, plan: Any, state: Any, memory: Any) -> dict[str, float]:
-        """Return per-dimension score breakdown for debugging/provenance."""
-        dims = self._compute_dimensions(plan)
-        dims["weighted_total"] = (
-            self._w_nac * dims["nac_value"]
-            + self._w_familiarity * dims["ec_familiarity"]
-            + self._w_concept * dims["concept_relevance"]
-            + self._w_delay * dims["delay_efficiency"]
-            + self._w_depth * dims["depth_penalty"]
-            + self._w_cost * dims["action_cost"]
-        )
-        return dims
-
     # ── Hard constraints ──────────────────────────────────────
 
     def allow(self, action: Any, state: Any) -> bool:

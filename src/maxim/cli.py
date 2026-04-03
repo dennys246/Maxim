@@ -501,19 +501,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                 dir=str(sim_workspace),
             ))
             args._sim_original_cwd = os.getcwd()
+            import atexit
+            atexit.register(lambda cwd=args._sim_original_cwd: os.chdir(cwd))
             os.chdir(str(sim_tmpdir))
-            print(f"  Simulation sandbox: {sim_tmpdir}")
+            _sim_debug = bool(getattr(args, "sim_debug", False))
+            if _sim_debug:
+                print(f"  Simulation sandbox: {sim_tmpdir}")
 
             all_results = []
             any_failed = False
 
             from maxim.simulation.sim_logger import enable_sim_logging, disable_sim_logging
             sim_log_path = str(sim_workspace / f"sim_log_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
-            enable_sim_logging(log_path=sim_log_path, debug=bool(getattr(args, "sim_debug", False)))
+            enable_sim_logging(log_path=sim_log_path, debug=_sim_debug)
 
             for scenario_file in scenario_files:
-                print(f"\nRunning scenario: {scenario_file.name}")
-                print(f"  Loading full agentic pipeline (autonomy={args.autonomy})...")
+                if _sim_debug:
+                    print(f"\nRunning scenario: {scenario_file.name}")
+                    print(f"  Loading full agentic pipeline (autonomy={args.autonomy})...")
 
                 source = ScenarioSource(scenario_file)
                 sink = RecordingSink()

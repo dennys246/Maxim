@@ -289,10 +289,6 @@ class Microsaccades(Behavior):
             delta=(dx, dy),
         )
 
-    def note_movement(self) -> None:
-        """Note that a movement occurred, resetting fixation timer."""
-        self._fixation_start = time.time()
-
     def reset(self) -> None:
         """Reset state."""
         super().reset()

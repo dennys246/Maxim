@@ -24,9 +24,12 @@ from maxim.simulation.validation import validate_expectations
 # ── ScenarioSource tests ─────────────────────────────────────────────────
 
 
+_SCENARIOS_DIR = Path(__file__).resolve().parent.parent.parent / "scenarios"
+
+
 class TestScenarioSource:
     def test_load_malware_scenario(self):
-        path = Path("scenarios/malware_with_pain.yaml")
+        path = _SCENARIOS_DIR / "malware_with_pain.yaml"
         if not path.exists():
             pytest.skip("Scenario file not found")
         defn = load_scenario(path)
@@ -36,7 +39,7 @@ class TestScenarioSource:
         assert len(defn.expectations) == 4
 
     def test_load_long_horizon_scenario(self):
-        path = Path("scenarios/long_horizon_coding.yaml")
+        path = _SCENARIOS_DIR / "long_horizon_coding.yaml"
         if not path.exists():
             pytest.skip("Scenario file not found")
         defn = load_scenario(path)
@@ -45,7 +48,7 @@ class TestScenarioSource:
         assert len(defn.expectations) == 2
 
     def test_step_based_emission(self):
-        path = Path("scenarios/malware_with_pain.yaml")
+        path = _SCENARIOS_DIR / "malware_with_pain.yaml"
         if not path.exists():
             pytest.skip("Scenario file not found")
         source = ScenarioSource(path)
@@ -85,7 +88,7 @@ class TestScenarioSource:
         assert source.is_exhausted()
 
     def test_capabilities_derived(self):
-        path = Path("scenarios/malware_with_pain.yaml")
+        path = _SCENARIOS_DIR / "malware_with_pain.yaml"
         if not path.exists():
             pytest.skip("Scenario file not found")
         source = ScenarioSource(path)
@@ -94,7 +97,7 @@ class TestScenarioSource:
         assert "proprioception" in caps
 
     def test_emitted_tags(self):
-        path = Path("scenarios/malware_with_pain.yaml")
+        path = _SCENARIOS_DIR / "malware_with_pain.yaml"
         if not path.exists():
             pytest.skip("Scenario file not found")
         source = ScenarioSource(path)

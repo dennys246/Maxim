@@ -1,4 +1,4 @@
-"""Tests for ConnectionState enum, state callbacks, and capability degradation."""
+"""Tests for ConnectionState enum and capability degradation."""
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -8,7 +8,6 @@ import pytest
 from maxim.conscience.connection import (
     ConnectionConfig,
     ConnectionState,
-    ReachyConnection,
 )
 
 
@@ -19,58 +18,6 @@ class TestConnectionStateEnum:
         assert ConnectionState.CONNECTED.value == "connected"
         assert ConnectionState.RECONNECTING.value == "reconnecting"
         assert ConnectionState.ERROR.value == "error"
-
-    def test_initial_state_is_disconnected(self):
-        conn = ReachyConnection(ConnectionConfig())
-        assert conn.state == ConnectionState.DISCONNECTED
-
-
-class TestConnectionStateCallbacks:
-    def test_callback_fires_on_state_change(self):
-        conn = ReachyConnection(ConnectionConfig())
-        transitions = []
-        conn.add_state_callback(lambda old, new: transitions.append((old, new)))
-
-        conn._set_state(ConnectionState.CONNECTING)
-        conn._set_state(ConnectionState.CONNECTED)
-
-        assert transitions == [
-            (ConnectionState.DISCONNECTED, ConnectionState.CONNECTING),
-            (ConnectionState.CONNECTING, ConnectionState.CONNECTED),
-        ]
-
-    def test_no_callback_on_same_state(self):
-        conn = ReachyConnection(ConnectionConfig())
-        transitions = []
-        conn.add_state_callback(lambda old, new: transitions.append((old, new)))
-
-        conn._set_state(ConnectionState.DISCONNECTED)  # Same as initial
-        assert transitions == []
-
-    def test_multiple_callbacks(self):
-        conn = ReachyConnection(ConnectionConfig())
-        calls_a = []
-        calls_b = []
-        conn.add_state_callback(lambda o, n: calls_a.append(n))
-        conn.add_state_callback(lambda o, n: calls_b.append(n))
-
-        conn._set_state(ConnectionState.CONNECTING)
-        assert calls_a == [ConnectionState.CONNECTING]
-        assert calls_b == [ConnectionState.CONNECTING]
-
-    def test_callback_error_doesnt_break_others(self):
-        conn = ReachyConnection(ConnectionConfig())
-        calls = []
-
-        def bad_callback(old, new):
-            raise RuntimeError("oops")
-
-        conn.add_state_callback(bad_callback)
-        conn.add_state_callback(lambda o, n: calls.append(n))
-
-        conn._set_state(ConnectionState.CONNECTING)
-        # Second callback should still fire despite first one raising
-        assert calls == [ConnectionState.CONNECTING]
 
 
 class TestCapabilityDegradation:

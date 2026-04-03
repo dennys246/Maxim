@@ -109,17 +109,10 @@ def _search_with_ddg_package(
 
     Returns None if package is not available, otherwise returns results list.
     """
-    # Try the new 'ddgs' package first (renamed from duckduckgo_search)
-    DDGS = None
     try:
         from ddgs import DDGS
-        logger.debug("Using ddgs package")
     except ImportError:
-        try:
-            from duckduckgo_search import DDGS
-            logger.debug("Using duckduckgo_search package (deprecated)")
-        except ImportError:
-            return None  # Neither package installed
+        return None  # Package not installed
 
     results: list[dict[str, str]] = []
     try:

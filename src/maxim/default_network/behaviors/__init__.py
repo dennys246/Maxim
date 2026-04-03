@@ -30,6 +30,7 @@ from maxim.default_network.behaviors.idle import (
     ReturnToCenter,
 )
 from maxim.default_network.behaviors.startle import StartleResponse
+from maxim.default_network.behaviors.turn_around import TurnAround
 
 __all__ = [
     # Base
@@ -43,6 +44,7 @@ __all__ = [
     "ReturnToCenter",
     "SocialAttention",
     "StartleResponse",
+    "TurnAround",
 ]
 
 

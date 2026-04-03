@@ -105,7 +105,7 @@ def run_agent_loop(
             if stop_event is not None and hasattr(stop_event, "is_set") and stop_event.is_set():
                 break
         except Exception:
-            pass
+            logger.debug("stop_event check failed", exc_info=True)
 
         # ── Consume pending replan candidate from previous failure ──
         # If the previous iteration triggered ADaPT decomposition, the replan
@@ -163,7 +163,7 @@ def run_agent_loop(
                 try:
                     time.sleep(float(idle_sleep_s))
                 except Exception:
-                    pass
+                    logger.debug("idle_sleep failed", exc_info=True)
                 continue
 
             goal = intent.get("goal") or intent.get("intent")
@@ -173,7 +173,7 @@ def run_agent_loop(
                 try:
                     time.sleep(float(idle_sleep_s))
                 except Exception:
-                    pass
+                    logger.debug("idle_sleep failed", exc_info=True)
                 continue
 
             decision = decision_engine.decide(goal, state, memory)
@@ -183,7 +183,7 @@ def run_agent_loop(
                 try:
                     time.sleep(float(idle_sleep_s))
                 except Exception:
-                    pass
+                    logger.debug("idle_sleep failed", exc_info=True)
                 continue
 
         action = decision["action"]
@@ -194,7 +194,7 @@ def run_agent_loop(
             try:
                 time.sleep(float(idle_sleep_s))
             except Exception:
-                pass
+                logger.debug("idle_sleep failed", exc_info=True)
             continue
 
         ctx = {
