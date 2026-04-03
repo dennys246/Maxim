@@ -34,15 +34,14 @@ class RuntimeState:
         }
 
     def save_json(self, path: str, *, meta: dict[str, Any] | None = None) -> None:
-        dir_path = os.path.dirname(path) or "."
-        abs_dir = os.path.abspath(dir_path)
-        os.makedirs(abs_dir, exist_ok=True)
         abs_path = os.path.abspath(path)
+        abs_dir = os.path.dirname(abs_path)
+        os.makedirs(abs_dir, exist_ok=True)
         payload: dict[str, Any] = {"saved_at": time.time(), **self.snapshot()}
         if meta:
             payload.update(meta)
 
-        tmp = f"{abs_path}.tmp"
+        tmp = abs_path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fp:
             json.dump(payload, fp, indent=2, default=str)
         os.replace(tmp, abs_path)

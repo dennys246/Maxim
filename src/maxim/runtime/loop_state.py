@@ -26,8 +26,8 @@ def _persist_state_json(state: Any, path: str, *, meta: dict[str, Any]) -> None:
         with open(tmp, "w", encoding="utf-8") as fp:
             json.dump({"saved_at": time.time(), **meta, **snap}, fp, indent=2, default=str)
         os.replace(tmp, abs_path)
-    except Exception as e:
-        warn("Failed to persist runtime state: %s", e)
+    except Exception:
+        pass  # Non-critical: state persistence is best-effort
 
 
 def _get_failure_strategy(intent: dict, action: dict) -> str:
