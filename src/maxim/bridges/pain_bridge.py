@@ -95,13 +95,17 @@ class PainCircuitBridge:
         nac: "NAc",
         pain_detector: "PainDetector",
         config: PainBridgeConfig | None = None,
+        pain_bus: Any | None = None,
     ) -> None:
         """Initialize the pain circuit bridge.
 
         Args:
             nac: The NAc instance for causal learning.
-            pain_detector: The pain detector instance.
+            pain_detector: The pain detector instance (kept for movement tracking).
             config: Optional configuration.
+            pain_bus: Optional PainBus for pain signal subscription. When
+                provided, subscribes to the bus instead of using
+                pain_detector.add_pain_callback().
         """
         self._nac = nac
         self._detector = pain_detector
@@ -121,8 +125,11 @@ class PainCircuitBridge:
         self._learned_gates = 0
         self._gated_actions = 0
 
-        # Register pain callback
-        self._detector.add_pain_callback(self._on_pain)
+        # Subscribe to pain signals via bus (preferred) or detector (legacy)
+        if pain_bus is not None:
+            pain_bus.subscribe(self._on_pain)
+        else:
+            self._detector.add_pain_callback(self._on_pain)
 
         # Initialize predictive harm system
         self._harm_registry: HarmRegistry | None = None

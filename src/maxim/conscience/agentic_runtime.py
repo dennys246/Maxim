@@ -571,6 +571,20 @@ class AgenticRuntimeMixin:
             except Exception as e:
                 warn("Failed to connect MemoryHub core bridges: %s", e, logger=self.log)
 
+        # Wire PainBus → Hippocampus for direct episodic pain memory capture
+        if (
+            default_network is not None
+            and getattr(default_network, "pain_bus", None) is not None
+            and memory_hub is not None
+            and memory_hub.hippocampus is not None
+        ):
+            from maxim.proprioception.pain_bus import create_pain_memory_subscriber
+
+            default_network.pain_bus.subscribe(
+                create_pain_memory_subscriber(memory_hub.hippocampus)
+            )
+            self.log.info("PainBus → Hippocampus subscriber wired for pain memory capture")
+
         # Start capture manager or fall back to vision event stream
         if capture_manager is not None:
             try:

@@ -280,18 +280,23 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
 
         # Initialize PainCircuitBridge for aversive learning
         self._pain_bridge: PainCircuitBridge | None = None
+        self._pain_bus = None
         if self._config.pain_detection_enabled and nac is not None:
+            from maxim.proprioception.pain_bus import PainBus
+
             pain_config = PainConfig(
                 angular_velocity_pain=self._config.pain_angular_velocity_threshold,
                 translation_velocity_pain=self._config.pain_translation_velocity_threshold,
             )
-            pain_detector = PainDetector(config=pain_config)
+            self._pain_bus = PainBus()
+            pain_detector = PainDetector(config=pain_config, pain_bus=self._pain_bus)
             self._pain_bridge = PainCircuitBridge(
                 nac=nac,
                 pain_detector=pain_detector,
                 config=PainBridgeConfig(
                     prediction_threshold=self._config.pain_prediction_threshold,
                 ),
+                pain_bus=self._pain_bus,
             )
             # Connect bounds learner for joint limit prediction
             if self._bounds_learner is not None:
@@ -423,6 +428,11 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
     def pain_bridge(self) -> PainCircuitBridge | None:
         """Get the PainCircuitBridge for pain detection/learning (may be None if disabled)."""
         return self._pain_bridge
+
+    @property
+    def pain_bus(self) -> Any:
+        """Get the PainBus for centralized pain pub/sub (may be None if pain disabled)."""
+        return self._pain_bus
 
     @property
     def focus_learner(self) -> FocusLearner | None:
