@@ -26,11 +26,13 @@ from maxim.attention import SceneContextDetector, SceneContextConfig
 from maxim.default_network.behaviors.base import Behavior, BehaviorState
 from maxim.default_network.behaviors.idle import ReturnToCenter
 from maxim.default_network.behaviors.turn_around import TurnAround
+from maxim.default_network.gaze_manager import GazeManagerMixin
 from maxim.default_network.gate import (
     AdaptiveThresholdConfig,
     GateConfig,
     ThalamicGate,
 )
+from maxim.default_network.inhibition import InhibitionMixin
 from maxim.attention import GazeHistory, GazeHistoryConfig
 from maxim.default_network.messages import (
     ActionProposal,
@@ -155,7 +157,7 @@ class DefaultNetworkConfig:
     focus_learner: FocusLearnerConfig = field(default_factory=FocusLearnerConfig)
 
 
-class DefaultNetwork:
+class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
     """Reactive behavior layer that generates actions from raw perception.
 
     The DefaultNetwork continuously processes YOLO detections and generates
@@ -495,57 +497,8 @@ class DefaultNetwork:
 
         logger.info("DefaultNetwork stopped")
 
-    def inhibit(self, duration: float | None = None) -> None:
-        """Suppress all DN output for duration.
-
-        Args:
-            duration: Seconds to inhibit. None = until release() called.
-                Max duration is auto_release_timeout from config.
-        """
-        self._inhibited = True
-        if duration:
-            effective_duration = min(duration, self._config.auto_release_timeout)
-            self._inhibit_until = time.time() + effective_duration
-        else:
-            self._inhibit_until = time.time() + self._config.auto_release_timeout
-
-        logger.debug("DefaultNetwork inhibited for %.1fs", duration or self._config.auto_release_timeout)
-
-    def release(self) -> None:
-        """Release inhibition."""
-        self._inhibited = False
-        self._inhibit_until = 0.0
-        logger.debug("DefaultNetwork released")
-
-    def boost_behavior(self, name: str, modifier: float) -> None:
-        """Temporarily boost/suppress a specific behavior's priority.
-
-        Args:
-            name: Behavior name.
-            modifier: Priority multiplier (>1 = boost, <1 = suppress).
-        """
-        self._behavior_overrides[name] = modifier
-
-    def clear_behavior_overrides(self) -> None:
-        """Clear all behavior priority overrides."""
-        self._behavior_overrides.clear()
-
-    def set_interests(self, class_ids: frozenset[int]) -> None:
-        """Set interest class IDs for priority escalation.
-
-        Args:
-            class_ids: Set of COCO class IDs to prioritize.
-        """
-        self._interests = class_ids
-        self._gate.set_interests(class_ids)
-
-    def set_active_goal(self, goal: str | None) -> None:
-        """Set active goal for relevance matching.
-
-        Args:
-            goal: Goal description or None.
-        """
-        self._gate.set_active_goal(goal)
+    # inhibit, release, boost_behavior, clear_behavior_overrides,
+    # set_interests, set_active_goal  →  InhibitionMixin
 
     def on_percept(self, percept: "Percept") -> None:
         """Handler for incoming percepts from AgentBus.
@@ -720,206 +673,10 @@ class DefaultNetwork:
 
         return "\n".join(lines)
 
-    def look_opposite(self, duration: float | None = None) -> bool:
-        """Look at the opposite side of the current view.
-
-        Useful for exploration when the agent wants to see what's behind them
-        or check the other side of the scene.
-
-        Args:
-            duration: Movement duration in seconds. If None, uses dynamic calculation.
-
-        Returns:
-            True if movement was executed, False if blocked or no current position.
-        """
-        current = self._gaze_history.get_current_position()
-        if current is None:
-            logger.debug("look_opposite: no current position")
-            return False
-
-        target = compute_opposite_position(
-            current,
-            self._config.movement.image_width,
-            self._config.movement.image_height,
-        )
-
-        # Check reachability
-        if self._config.reachability_check_enabled:
-            reachability = 1.0
-            if self._attention_network is not None:
-                reachability = self._attention_network.get_reachability(target)
-            elif self._spatial_map is not None:
-                reachability = self._spatial_map.get_reachability(target)
-
-            if reachability < self._config.min_reachability_threshold:
-                logger.debug("look_opposite: target unreachable (%.2f)", reachability)
-                return False
-
-        # Compute duration if not specified
-        if duration is None:
-            duration = compute_dynamic_duration(
-                current,
-                target,
-                self._config.movement,
-                add_jitter=True,
-            )
-
-        # Execute movement
-        try:
-            if hasattr(self._maxim, 'look_at_image'):
-                self._maxim.look_at_image(target[0], target[1], duration=duration)
-                self._gaze_history.record_gaze(target)
-
-                if self._attention_network is not None:
-                    self._attention_network.record_gaze(target, success=True)
-                if self._spatial_map is not None:
-                    self._spatial_map.record_movement(target, success=True)
-
-                logger.debug("look_opposite: moved to (%.0f, %.0f)", target[0], target[1])
-                return True
-        except Exception as e:
-            error_msg = str(e).lower()
-            if "collision" in error_msg or "ik" in error_msg or "not achievable" in error_msg:
-                if self._attention_network is not None:
-                    self._attention_network.record_gaze(target, success=False)
-                if self._spatial_map is not None:
-                    self._spatial_map.record_movement(target, success=False)
-            logger.warning("look_opposite failed: %s", e)
-
-        return False
-
-    def get_opposite_position(self) -> tuple[float, float] | None:
-        """Get the opposite position from current gaze without moving.
-
-        Useful for LLMs to know where the opposite side is.
-
-        Returns:
-            (u, v) coordinates of opposite position, or None if no current position.
-        """
-        current = self._gaze_history.get_current_position()
-        if current is None:
-            return None
-
-        return compute_opposite_position(
-            current,
-            self._config.movement.image_width,
-            self._config.movement.image_height,
-        )
-
-    def get_salience_target(
-        self,
-        mode: str = "peak",
-        temperature: float = 1.0,
-    ) -> tuple[float, float] | None:
-        """Get a gaze target from the unified salience map.
-
-        This provides access to the salience map's target selection for
-        behaviors or LLM-directed gaze control.
-
-        Args:
-            mode: "peak" for most salient, "sample" for probabilistic.
-            temperature: Sampling temperature (only for mode="sample").
-                Higher = more random, Lower = more deterministic.
-
-        Returns:
-            (x, y) pixel coordinates, or None if salience map is disabled.
-        """
-        if self._salience_map_unified is None:
-            return None
-
-        if mode == "peak":
-            return self._salience_map_unified.get_peak_target()
-        elif mode == "sample":
-            return self._salience_map_unified.sample_target(temperature=temperature)
-        else:
-            logger.warning("Unknown salience target mode: %s", mode)
-            return self._salience_map_unified.get_peak_target()
-
-    def get_salience_info(self, position: tuple[float, float]) -> dict[str, float] | None:
-        """Get detailed salience breakdown for a position.
-
-        Useful for understanding why certain positions are salient.
-
-        Args:
-            position: (x, y) pixel coordinates.
-
-        Returns:
-            Dict with component salience values, or None if map is disabled.
-        """
-        if self._salience_map_unified is None:
-            return None
-
-        return self._salience_map_unified.get_cell_info(position)
-
-    def get_gaze_command(
-        self,
-        force_target: tuple[float, float] | None = None,
-    ) -> GazeCommand | None:
-        """Get a gaze command from the saccade-fixate controller.
-
-        This provides human-like gaze dynamics by:
-        1. Suggesting rapid saccades to salient targets
-        2. Holding fixations for variable durations (200-800ms)
-        3. Slow exploration when nothing is interesting
-
-        Args:
-            force_target: Force a saccade to this target if provided.
-
-        Returns:
-            GazeCommand if movement should occur, None to hold position.
-        """
-        if self._gaze_controller is None:
-            return None
-
-        current = self._gaze_history.get_current_position()
-        return self._gaze_controller.update(
-            current_gaze=current,
-            force_target=force_target,
-        )
-
-    def is_scene_scanning(self) -> bool:
-        """Check if currently in scene scanning mode after a scene change.
-
-        Returns:
-            True if in rapid scan mode, False otherwise.
-        """
-        if self._scene_context is None:
-            return False
-        return self._scene_context.is_scanning()
-
-    def get_scene_age(self) -> float:
-        """Get time since the last significant scene change.
-
-        Returns:
-            Seconds since scene changed, or inf if never changed.
-        """
-        if self._scene_context is None:
-            return float('inf')
-        return self._scene_context.get_scene_age()
-
-    def force_scene_scan(self) -> None:
-        """Force the system into scene scanning mode.
-
-        Use when the robot has turned around or entered a new area.
-        """
-        if self._scene_context is not None:
-            self._scene_context.force_scene_change()
-            # Reset idle timer to trigger exploration
-            self._last_interesting_time = 0.0
-            self._next_exploration_time = time.time()
-            logger.info("Forced scene scan triggered")
-
-    def _schedule_next_exploration(self) -> float:
-        """Schedule the next idle exploration at a random future time.
-
-        Returns:
-            Timestamp when next exploration should occur.
-        """
-        delay = random.uniform(
-            self._config.idle_exploration_min_seconds,
-            self._config.idle_exploration_max_seconds,
-        )
-        return time.time() + delay
+    # look_opposite, get_opposite_position, get_salience_target,
+    # get_salience_info, get_gaze_command, is_scene_scanning,
+    # get_scene_age, force_scene_scan, _schedule_next_exploration
+    #   →  GazeManagerMixin
 
     def _update_head_position_for_behaviors(self) -> None:
         """Update behaviors that need current head position.
@@ -995,86 +752,15 @@ class DefaultNetwork:
                 except Exception as e:
                     logger.debug("Failed to update TurnAround position: %s", e)
 
-    def _has_interesting_content(self, detections: list[dict]) -> bool:
-        """Check if any detections are interesting enough to reset idle timer.
-
-        A detection is interesting if:
-        - It's a person (class_id=0) - people are always interesting
-        - It's in the interest set, OR
-        - It has high novelty (not seen recently)
-
-        Args:
-            detections: List of detection dicts.
-
-        Returns:
-            True if at least one detection is interesting.
-        """
-        if not detections:
-            return False
-
-        # COCO class ID for person
-        PERSON_CLASS_ID = 0
-
-        for det in detections:
-            class_id = det.get("class_id")
-
-            # People are always interesting (social priority)
-            if class_id == PERSON_CLASS_ID:
-                return True
-
-            # Check if in interests
-            if class_id is not None and class_id in self._interests:
-                return True
-
-            # Check novelty (with class-level modulation)
-            track_id = det.get("track_id")
-            if track_id is not None:
-                novelty = self._novelty_tracker.get_novelty(track_id, class_id=class_id)
-                if novelty >= self._config.idle_novelty_threshold:
-                    return True
-
-        return False
-
-    def _generate_exploration_target(self) -> tuple[float, float]:
-        """Generate a safe target position for idle exploration.
-
-        Uses the spatial map if available to select from known-reachable
-        positions or conservatively-safe unexplored positions.
-
-        Returns:
-            (u, v) pixel coordinates for the target.
-        """
-        # Use spatial map for smart target selection if available
-        if self._spatial_map is not None:
-            target = self._spatial_map.get_safe_exploration_target(
-                avoid_current=True,
-                prefer_unexplored=True,
-                prefer_interesting=True,
-            )
-            if target:
-                return target
-
-        # Fallback to random position in safe range
-        u_min, u_max = self._config.idle_exploration_range
-        v_min, v_max = self._config.idle_exploration_range
-
-        u = random.uniform(u_min, u_max)
-        v = random.uniform(v_min, v_max)
-
-        # Convert to pixel coordinates (assuming 640x480 resolution)
-        pixel_u = u * 640
-        pixel_v = v * 480
-
-        return (pixel_u, pixel_v)
+    # _has_interesting_content, _generate_exploration_target  →  GazeManagerMixin
 
     def _run_loop(self) -> None:
         """Main processing loop."""
         while self._running:
             start = time.perf_counter()
 
-            # Check auto-release of inhibition
-            if self._inhibited and time.time() > self._inhibit_until:
-                self.release()
+            # Check auto-release of inhibition (InhibitionMixin)
+            self._check_auto_release()
 
             if not self._inhibited:
                 self._process_tick()
