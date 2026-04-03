@@ -480,58 +480,122 @@ if tool_index is not None:
         tool_index.record_surfaced_but_unused(goal_text, surfaced, used_tool)
 ```
 
-### Phase 3: Prompt Integration
+### Phase 3: Prompt Integration (Remaining Work)
 
-The prompt builder uses tool scores to partition tools into priority tiers:
+Wire the learned index into the prompt building pipeline. Five sub-steps identified from code audit:
+
+#### 3a. Split tool section by priority in prompt builder
+
+**File:** `agents/prompt_builder.py`, method `_build_tool_aware_prompt()`, line ~701
+
+Currently all tools are added as one CRITICAL section. Replace with:
 
 ```python
-def build_tool_context(
-    tool_index: LearnedToolIndex,
-    tool_registry: ToolRegistry,
-    goal_text: str,
-) -> tuple[str, list[str]]:
-    """Build tool context for LLM prompt with learned relevance.
+if self._tool_index is not None:
+    goal_text = question_text  # Already extracted on line 669
+    relevant, background = self._tool_index.get_relevant_tools(goal_text)
+    request.surfaced_tools = relevant
 
-    Returns (prompt_section, surfaced_tool_names).
-    surfaced_tool_names is passed back through the decision pipeline
-    for the unused-decay signal.
-    """
-    relevant, background = tool_index.get_relevant_tools(goal_text)
+    relevant_section = build_tools_section_filtered(request, relevant, mode_name)
+    budgeter.add("tools", relevant_section, SectionPriority.CRITICAL,
+                  truncatable=True, min_tokens=50,
+                  truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter))
 
-    parts = []
-
-    # CRITICAL: Full schema for relevant tools
-    if relevant:
-        parts.append("## Available Tools (relevant to current goal)")
-        for name in relevant:
-            tool = tool_registry.get(name)
-            if tool:
-                parts.append(f"\n### {tool.name}")
-                parts.append(f"{tool.description}")
-                if hasattr(tool, "input_schema"):
-                    parts.append(f"Parameters: {tool.input_schema}")
-
-    # NICE_TO_HAVE: Name-only list for background tools
     if background:
-        parts.append(f"\nOther tools available: {', '.join(background)}")
-
-    return "\n".join(parts), relevant
+        bg_section = f"Other tools available: {', '.join(background)}"
+        budgeter.add("tools_background", bg_section, SectionPriority.NICE_TO_HAVE)
+else:
+    # Fallback: existing behavior
+    budgeter.add("tools", build_tools_section(request, mode_name=mode_name),
+                  SectionPriority.CRITICAL, truncatable=True, min_tokens=50,
+                  truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter))
 ```
 
-### Phase 4: Persistence + Session Lifecycle
+#### 3b. New filtered tool formatter
+
+**File:** `agents/prompt_builder.py`, new function after `build_tools_section()` (line ~177)
 
 ```python
-# At startup (in agentic_runtime.py):
+def build_tools_section_filtered(
+    request: LLMRequest, tool_names: list[str], mode_name: str = "passive",
+) -> str:
+    """Build tools section for only the specified tool names."""
+    lines = ["=== Available Tools ==="]
+    for tool_name in sorted(tool_names):
+        tool_info = request.tool_descriptions.get(tool_name, {})
+        if isinstance(tool_info, dict) and tool_info:
+            desc = tool_info.get("description", "")
+            params = tool_info.get("params", {})
+            lines.append(f"- {tool_name}: {desc}")
+            if params:
+                for p_name, p_info in params.items():
+                    required = "(required)" if p_info.get("required") else ""
+                    lines.append(f"    {p_name}: {p_info.get('type', '?')} {required}")
+    return "\n".join(lines)
+```
+
+#### 3c. Add surfaced_tools field to LLMRequest
+
+**File:** `agents/llm_types.py`, class `LLMRequest` (line ~108)
+
+```python
+surfaced_tools: list[str] = field(default_factory=list)
+```
+
+#### 3d. Pass tool_index through LLMWorker to PromptBuilder
+
+**Files:** `agents/prompt_builder.py` (`__init__`), `agents/llm_worker.py` (`__init__`), `conscience/agentic_runtime.py` (LLMWorker creation)
+
+```python
+# prompt_builder.py:
+class PromptBuilder:
+    def __init__(self, ..., tool_index=None):
+        self._tool_index = tool_index
+
+# llm_worker.py:
+class LLMWorker:
+    def __init__(self, ..., tool_index=None):
+        self._tool_index = tool_index
+        self._prompt_builder = PromptBuilder(..., tool_index=tool_index)
+
+# agentic_runtime.py (where LLMWorker is created):
+llm_worker = LLMWorker(..., tool_index=tool_index)
+```
+
+#### 3e. Surfaced-but-unused decay signal in agent loop
+
+**File:** `runtime/agent_loop.py`, in on_step callback after tool execution
+
+```python
+if tool_index is not None:
+    goal_text = str(intent.get("goal", ""))
+    used_tool = action.get("tool_name", "")
+    surfaced = decision.get("surfaced_tools", [])
+    if surfaced and used_tool and goal_text:
+        tool_index.record_surfaced_but_unused(goal_text, surfaced, used_tool)
+```
+
+#### Integration map
+
+| Step | File | What changes |
+|------|------|-------------|
+| 3a | prompt_builder.py:~701 | Split tool section into CRITICAL (relevant) + NICE_TO_HAVE (background) |
+| 3b | prompt_builder.py:~177 | New `build_tools_section_filtered()` function |
+| 3c | llm_types.py:~108 | Add `surfaced_tools` field to `LLMRequest` |
+| 3d | prompt_builder.py, llm_worker.py, agentic_runtime.py | Pass `tool_index` through the chain |
+| 3e | agent_loop.py | Call `record_surfaced_but_unused()` in on_step callback |
+
+### Phase 4: Persistence + Session Lifecycle — IMPLEMENTED
+
+```python
+# At startup (in agentic_runtime.py) — DONE:
 tool_index = LearnedToolIndex()
 for tool in registry.all_tools():
     tool_index.register_tool(tool)
 tool_index.load(f"{data_dir}/memory/tool_index.json")
 
-# At shutdown (in _stop_agentic_runtime):
+# At shutdown (in _stop_agentic_runtime) — DONE:
 tool_index.save(f"{data_dir}/memory/tool_index.json")
-
-# Periodic auto-save (every 60s, alongside hippocampus auto-save):
-# Same atomic tmp+replace pattern used by Hippocampus and NAc.
 ```
 
 ---
