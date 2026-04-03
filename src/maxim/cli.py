@@ -814,7 +814,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if hasattr(llm_router, "warmup"):
                         llm_router.warmup()
                     # In simulation mode, wait for LLM to be fully loaded before starting
-                    if sim_source is not None and hasattr(llm_router, "wait_ready"):
+                    _is_sim = getattr(args, "sim", None) is not None
+                    if _is_sim and hasattr(llm_router, "wait_ready"):
                         logger.info("Waiting for LLM to load (simulation mode)...")
                         if llm_router.wait_ready(timeout=120.0):
                             logger.info("LLM ready")
