@@ -342,6 +342,48 @@ class AgenticRuntimeMixin:
         executor = build_executor(registry)
         evaluators = build_evaluators()
 
+        # --- Learned Tool Index ---
+        # Keyword-weighted hashtable for tool relevance scoring in prompts.
+        # Created after registry so all tools can be registered.
+        tool_index = None
+        try:
+            from maxim.tools.learned_index import LearnedToolIndex
+
+            tool_index = LearnedToolIndex()
+            for tool in registry.list():
+                tool_obj = registry.get(tool) if isinstance(tool, str) else tool
+                if tool_obj is not None:
+                    tool_index.register_tool(tool_obj)
+            data_dir = str(getattr(self, "home_dir", "data") or "data")
+            tool_index.load(f"{data_dir}/memory/tool_index.json")
+            self._tool_index = tool_index
+            self.log.debug("LearnedToolIndex: %s", tool_index.stats())
+        except Exception as e:
+            warn("Failed to create LearnedToolIndex: %s", e, logger=self.log)
+
+        # --- ToolPainBridge ---
+        # Wire NAc causal learning + keyword index to tool outcomes.
+        tool_pain_bridge = None
+        try:
+            from maxim.bridges.tool_pain_bridge import ToolPainBridge
+            from maxim.proprioception.pain import PainDetector as _PD
+
+            pain_detector = getattr(self, "_pain_detector", None)
+            if nac is not None:
+                tool_pain_bridge = ToolPainBridge(
+                    nac=nac,
+                    pain_detector=pain_detector,
+                    scn=memory_hub.scn if memory_hub else None,
+                    hippocampus=memory_hub.hippocampus if memory_hub else None,
+                    tool_index=tool_index,
+                )
+                # Attach to executor for tool start/complete tracking
+                executor._tool_pain_bridge = tool_pain_bridge
+                self._tool_pain_bridge = tool_pain_bridge
+                self.log.debug("ToolPainBridge wired to executor (with tool index)")
+        except Exception as e:
+            warn("Failed to create ToolPainBridge: %s", e, logger=self.log)
+
         # Register MathTool if NumericalWorkspace and AngularGyrus are available
         if numerical_workspace is not None and memory_hub is not None:
             try:
@@ -899,6 +941,17 @@ class AgenticRuntimeMixin:
                 except Exception:
                     pass
         self._memory_hub = None
+
+        # Persist learned tool index
+        tool_index = getattr(self, "_tool_index", None)
+        if tool_index is not None:
+            try:
+                data_dir = str(getattr(self, "home_dir", "data") or "data")
+                tool_index.save(f"{data_dir}/memory/tool_index.json")
+            except Exception as e:
+                warn("Failed to save tool index: %s", e, logger=self.log)
+        self._tool_index = None
+        self._tool_pain_bridge = None
 
         # Clear provenance collector reference
         self._provenance_collector = None
