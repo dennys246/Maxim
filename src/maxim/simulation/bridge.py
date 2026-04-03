@@ -129,6 +129,9 @@ class SimulationBridge:
         else:
             self._spinner.stop(f"Turn {self._turn_count}: timed out ({elapsed:.1f}s)")
 
+        # Start spinner for orchestrator thinking phase (between turns)
+        self._spinner.start("Orchestrator planning next probe...")
+
         return {
             "turn": self._turn_count,
             "response": response_text,
@@ -159,4 +162,5 @@ class SimulationBridge:
 
     def finish(self) -> None:
         """Signal simulation complete. AUT's ConversationalSource is_exhausted() becomes True."""
+        self._spinner.stop()
         self.percept_source.finish()

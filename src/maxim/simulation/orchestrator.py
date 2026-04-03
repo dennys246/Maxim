@@ -39,12 +39,94 @@ class SimulationResult:
     summary: str = ""
 
 
+def _load_resume_context(session_id: str) -> dict[str, Any] | None:
+    """Load a previous session's report and action log for resumption."""
+    report_path = Path("data/sim_reports") / session_id / "report.json"
+    if not report_path.exists():
+        # Try fuzzy match — session_id might be a prefix
+        reports_dir = Path("data/sim_reports")
+        if reports_dir.exists():
+            matches = sorted(
+                [d for d in reports_dir.iterdir() if d.is_dir() and d.name.startswith(session_id)],
+                reverse=True,
+            )
+            if matches:
+                report_path = matches[0] / "report.json"
+
+    if not report_path.exists():
+        logger.warning("Resume session not found: %s", session_id)
+        return None
+
+    try:
+        with open(str(report_path), "r", encoding="utf-8") as f:
+            report_data = json.load(f)
+        logger.info("Loaded previous session: %s", report_path.parent.name)
+        return report_data
+    except Exception as e:
+        logger.warning("Failed to load resume session: %s", e)
+        return None
+
+
+def _build_resume_prompt(report_data: dict[str, Any], goal: str, persona: str) -> str:
+    """Build a context-rich prompt for resuming a previous simulation."""
+    prev_goal = report_data.get("goal", "unknown")
+    prev_persona = report_data.get("persona", "unknown")
+    prev_turns = report_data.get("turns", 0)
+    prev_actions = report_data.get("total_actions", 0)
+    prev_blocked = report_data.get("blocked_actions", 0)
+    prev_summary = report_data.get("llm_summary", "")
+    prev_issues = report_data.get("llm_issues_found", [])
+    prev_recommendations = report_data.get("llm_recommendations", [])
+    prev_tool_usage = report_data.get("tool_usage", {})
+
+    lines = [
+        f"SIMULATION GOAL: {goal}",
+        "",
+        f"You are RESUMING a previous simulation session.",
+        f"You are the simulation orchestrator with the '{persona}' persona.",
+        "",
+        f"## Previous Session Summary",
+        f"Goal: {prev_goal}",
+        f"Persona: {prev_persona}",
+        f"Completed {prev_turns} turns, {prev_actions} actions ({prev_blocked} blocked)",
+    ]
+
+    if prev_summary:
+        lines.append(f"Summary: {prev_summary}")
+
+    if prev_issues:
+        lines.append("Issues found:")
+        for issue in prev_issues[:5]:
+            lines.append(f"  - {issue}")
+
+    if prev_recommendations:
+        lines.append("Recommendations:")
+        for rec in prev_recommendations[:5]:
+            lines.append(f"  - {rec}")
+
+    if prev_tool_usage:
+        lines.append("Tool usage:")
+        for tool, count in sorted(prev_tool_usage.items(), key=lambda x: -x[1])[:10]:
+            lines.append(f"  {tool}: {count}")
+
+    lines.append("")
+    lines.append(
+        "Continue the simulation from where it left off. "
+        "Build on the previous findings — don't repeat probes that already worked. "
+        "Focus on areas the previous session identified as needing more testing. "
+        "Use send_message to continue probing the agent."
+    )
+
+    return "\n".join(lines)
+
+
 def start_simulation_mode(
     goal: str,
     persona: str = "adversarial",
     max_turns: int = 50,
     response_timeout: float = 120.0,
     sim_debug: bool = False,
+    resume_session: str | None = None,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -182,6 +264,26 @@ def start_simulation_mode(
         aut_nac = NAc()
         aut_memory_hub = MemoryHub(hippocampus=aut_hippocampus, nac=aut_nac)
         aut_agent.wire_memory_hub(aut_memory_hub)
+
+        # Restore AUT state from previous session if resuming
+        if resume_session:
+            prev_dir = Path("data/sim_reports") / resume_session
+            hippo_path = prev_dir / "aut_hippocampus.json"
+            nac_path = prev_dir / "aut_nac.json"
+            if hippo_path.exists():
+                try:
+                    aut_hippocampus.load(str(hippo_path))
+                    logger.info("Restored AUT hippocampus from %s (%d memories)", hippo_path, len(aut_hippocampus))
+                except Exception as e:
+                    logger.debug("Failed to restore AUT hippocampus: %s", e)
+            if nac_path.exists():
+                try:
+                    aut_nac.load(str(nac_path))
+                    nac_links = sum(len(v) for v in aut_nac._links.values())
+                    logger.info("Restored AUT NAc from %s (%d links)", nac_path, nac_links)
+                except Exception as e:
+                    logger.debug("Failed to restore AUT NAc: %s", e)
+
         logger.info("AUT memory wired (hippocampus + NAc)")
     except Exception as e:
         logger.debug("AUT memory not available: %s", e)
@@ -306,15 +408,33 @@ def start_simulation_mode(
     aut_thread = threading.Thread(target=_aut_worker, name="sim.aut", daemon=True)
     aut_thread.start()
 
-    # ── Inject initial goal into orchestrator ────────────────────────────
-    orchestrator_source.inject_cli(
-        f"SIMULATION GOAL: {goal}\n\n"
-        f"You are the simulation orchestrator with the '{persona}' persona. "
-        f"Use your tools to probe the agent under test. "
-        f"Start by sending your first message with send_message.",
-        salience=1.0,
-        novelty=1.0,
-    )
+    # ── Inject initial goal (or resume context) into orchestrator ────────
+    if resume_session:
+        resume_data = _load_resume_context(resume_session)
+        if resume_data:
+            resume_prompt = _build_resume_prompt(resume_data, goal, persona)
+            orchestrator_source.inject_cli(resume_prompt, salience=1.0, novelty=1.0)
+            print(f"  Resuming session: {resume_session}")
+            print(f"  Previous turns: {resume_data.get('turns', '?')}, "
+                  f"actions: {resume_data.get('total_actions', '?')}")
+        else:
+            # Fallback to fresh start if session not found
+            logger.warning("Resume session '%s' not found, starting fresh", resume_session)
+            orchestrator_source.inject_cli(
+                f"SIMULATION GOAL: {goal}\n\n"
+                f"You are the simulation orchestrator with the '{persona}' persona. "
+                f"Use your tools to probe the agent under test. "
+                f"Start by sending your first message with send_message.",
+                salience=1.0, novelty=1.0,
+            )
+    else:
+        orchestrator_source.inject_cli(
+            f"SIMULATION GOAL: {goal}\n\n"
+            f"You are the simulation orchestrator with the '{persona}' persona. "
+            f"Use your tools to probe the agent under test. "
+            f"Start by sending your first message with send_message.",
+            salience=1.0, novelty=1.0,
+        )
 
     # ── Start stdin reader thread ────────────────────────────────────────
     def _stdin_reader() -> None:
@@ -379,21 +499,11 @@ def start_simulation_mode(
 
     # ── Run orchestrator loop (blocks until done or /cancel) ─────────────
     orch_error: list[Exception] = []
-    # ── Orchestrator step callback (spinner for LLM thinking) ──────────
-    from maxim.simulation.spinner import Spinner
-    orch_spinner = Spinner()
-    _orch_spinner_active = [False]  # mutable flag for closure
-    _last_orch_turn = [bridge.turn_count]
-
-    def _on_orch_step(step_info: dict) -> None:
-        current_turns = bridge.turn_count
-        if current_turns > _last_orch_turn[0]:
-            # A turn just completed — spinner was stopped by bridge
-            _last_orch_turn[0] = current_turns
-            _orch_spinner_active[0] = False
-        if not _orch_spinner_active[0]:
-            orch_spinner.start("Orchestrator planning next probe...")
-            _orch_spinner_active[0] = True
+    # ── Orchestrator spinner (between turns) ────────────────────────────
+    # The bridge spinner shows progress during send_and_wait(). Between
+    # turns, show "Orchestrator planning..." using the bridge's spinner
+    # so there's only one spinner managing the terminal line.
+    bridge._spinner.start("Orchestrator planning first probe...")
 
     try:
         run_agentic_loop(
@@ -409,7 +519,6 @@ def start_simulation_mode(
             memory_hub=orch_memory_hub,
             max_steps=0,  # unlimited — stops via FinishSimulationTool or /cancel
             stop_event=stop_event,
-            on_step=_on_orch_step,
             target_hz=2.0,
             percept_source=orchestrator_source,
         )
@@ -418,7 +527,7 @@ def start_simulation_mode(
         logger.error("Orchestrator loop failed: %s", e)
 
     # ── Cleanup ──────────────────────────────────────────────────────────
-    orch_spinner.stop()
+    bridge._spinner.stop()
     stop_event.set()
     bridge.finish()
     orchestrator_source.finish()

@@ -55,11 +55,13 @@ class Spinner:
 
     def _spin(self) -> None:
         idx = 0
+        start = time.time()
         while not self._stop_event.is_set():
             with self._lock:
                 msg = self._message
             frame = _FRAMES[idx % len(_FRAMES)]
-            sys.stderr.write(f"\r\033[K  {frame} {msg}")
+            elapsed = int(time.time() - start)
+            sys.stderr.write(f"\r\033[K  {frame} {msg} ({elapsed}s)")
             sys.stderr.flush()
             idx += 1
             self._stop_event.wait(0.1)
