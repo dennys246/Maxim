@@ -34,7 +34,6 @@ class SendMessageTool(Tool):
     )
     input_schema = {
         "text": str,
-        "timeout": (float, 30.0),
     }
 
     def __init__(self, bridge: Any) -> None:
@@ -46,8 +45,9 @@ class SendMessageTool(Tool):
         if not text:
             return ToolOutput(success=False, error="text is required")
 
-        timeout = float(kwargs.get("timeout", 30.0))
-        result = self._bridge.send_and_wait(text, timeout=timeout)
+        # Don't use LLM-requested timeout — it often guesses 30s which is
+        # too short for local models. Let the bridge's default (120s) apply.
+        result = self._bridge.send_and_wait(text)
 
         # Format actions for LLM readability
         action_summaries = []
