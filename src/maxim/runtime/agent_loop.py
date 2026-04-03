@@ -1115,6 +1115,13 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         if llm_worker:
             new_proposal = llm_worker.get_latest_proposal()
+            # Periodic trace in sim mode to confirm loop is still polling
+            if percept_source is not None and step_num % 100 == 0:
+                try:
+                    from maxim.simulation.sim_logger import sim_log
+                    sim_log("PIPELINE", f"Loop step {step_num}, proposal={'YES' if new_proposal else 'none'}, actions={len(action_sink.actions) if action_sink else '?'}")
+                except Exception:
+                    pass
             if new_proposal:
                 # Trace for debugging
                 try:

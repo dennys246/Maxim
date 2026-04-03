@@ -116,9 +116,16 @@ class JobRegistry:
             self._jobs[job_id] = JobStatus.COMPLETED
             self._results[job_id] = result
             self._completed_ids.add(job_id)
+            lane = self._lanes.get(job_id, "?")
             event = self._events.get(job_id)
         if event:
             event.set()
+        # Sim trace
+        try:
+            from maxim.simulation.sim_logger import sim_log
+            sim_log("PIPELINE", f"WorkerPool job completed: {job_id[:20]} (lane={lane}, has_result={result is not None})")
+        except Exception:
+            pass
 
     def mark_failed(self, job_id: str, error: Exception) -> None:
         """Mark a job as failed and wake any waiters."""
