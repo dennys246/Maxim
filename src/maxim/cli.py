@@ -795,6 +795,29 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sim_source = getattr(args, "_sim_source", None)
                 sim_sink = getattr(args, "_sim_sink", None)
 
+                # In sim mode, create a PainBus for headless pain routing
+                # (DefaultNetwork may not exist, so we need our own)
+                if sim_source is not None:
+                    from maxim.proprioception.pain_bus import (
+                        PainBus as SimPainBus,
+                        create_pain_memory_subscriber,
+                    )
+
+                    # Get hippocampus from agent's memory hub
+                    _sim_hippo = None
+                    _sim_hub = getattr(getattr(agentic_agent, "memory", None), "_memory_hub", None)
+                    if _sim_hub is not None:
+                        _sim_hippo = getattr(_sim_hub, "hippocampus", None)
+
+                    _sim_pain_bus = SimPainBus()
+                    if _sim_hippo is not None:
+                        _sim_pain_bus.subscribe(create_pain_memory_subscriber(_sim_hippo))
+                        logger.info("Sim PainBus wired to hippocampus for pain memory capture")
+
+                    # Store for agent loop's pain routing
+                    args._sim_pain_bus = _sim_pain_bus
+                    args._sim_hippo = _sim_hippo
+
                 try:
                     run_agentic_loop(
                         agentic_agent,
@@ -810,6 +833,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         run_id=run_id,
                         percept_source=sim_source,
                         action_sink=sim_sink,
+                        pain_bus=getattr(args, "_sim_pain_bus", None),
                     )
                 finally:
                     if llm_worker:
@@ -821,7 +845,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     from maxim.simulation.validation import validate_expectations
 
                     scenario_file = getattr(args, "_sim_scenario_file", None)
-                    hippo = agentic_agent._hippocampus if hasattr(agentic_agent, "_hippocampus") else None
+                    hippo = getattr(args, "_sim_hippo", None)
 
                     results = validate_expectations(
                         expectations=sim_source.expectations,

@@ -322,6 +322,7 @@ def run_agentic_loop(
     protocol_registry: Any | None = None,  # ProtocolRegistry for dynamic skills
     percept_source: Any | None = None,  # PerceptSource for simulation
     action_sink: Any | None = None,  # ActionSink for recording tool outputs
+    pain_bus: Any | None = None,  # PainBus for simulation pain routing
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -554,9 +555,19 @@ def run_agentic_loop(
 
 
         # 0.5 CHECK PERCEPT SOURCE EXHAUSTION (simulation mode)
+        # After all percepts are emitted, keep the loop running for a grace
+        # period so the LLM can finish processing and propose actions.
         if percept_source is not None and percept_source.is_exhausted():
-            log_agentic("agent_loop", "shutdown", {"reason": "percept_source_exhausted"})
-            break
+            if not hasattr(percept_source, "_grace_remaining"):
+                # Grace period: 50 iterations for LLM to respond
+                percept_source._grace_remaining = 50
+                log_agentic("agent_loop", "percept_source_exhausted",
+                            {"grace_steps": 50})
+            percept_source._grace_remaining -= 1
+            if percept_source._grace_remaining <= 0:
+                log_agentic("agent_loop", "shutdown",
+                            {"reason": "percept_source_grace_expired"})
+                break
 
         # ─────────────────────────────────────────────────────────────────
         # 1. PERCEPTION (fast, always runs)
@@ -569,10 +580,13 @@ def run_agentic_loop(
                 if sim_percept.source == "proprioception" and sim_percept.content == "pain_signal":
                     try:
                         from maxim.proprioception.pain_bus import route_pain_percept
-                        dn = default_network
-                        pain_bus = getattr(dn, "pain_bus", None) if dn else None
-                        if pain_bus is not None:
-                            route_pain_percept(sim_percept, pain_bus)
+                        # Use direct pain_bus param (sim mode) or DN's bus (robot mode)
+                        _pb = pain_bus
+                        if _pb is None:
+                            dn = default_network
+                            _pb = getattr(dn, "pain_bus", None) if dn else None
+                        if _pb is not None:
+                            route_pain_percept(sim_percept, _pb)
                     except Exception:
                         pass
                 # Convert percept to observation dict for state.update()
