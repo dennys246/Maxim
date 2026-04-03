@@ -110,8 +110,17 @@ def start_simulation_mode(
         stop_event=stop_event,
     )
 
+    # ── Wait for LLM to be ready (avoid cold-start stale drops) ────────
+    if llm_router is not None:
+        logger.info("Waiting for LLM model to load...")
+        llm_router.wait_ready(timeout=120.0)
+        logger.info("LLM ready")
+
     # ── Orchestrator percept source (receives goal + user commands) ──────
     orchestrator_source = ConversationalSource()
+
+    # ── Ensure agent runtime directories exist ─────────────────────────
+    Path("data/agents/MaximAgent/runtime").mkdir(parents=True, exist_ok=True)
 
     # ── Simulation sandbox ───────────────────────────────────────────────
     sim_workspace = Path("data") / "sim_sandbox"
@@ -156,7 +165,7 @@ def start_simulation_mode(
     if llm_router is not None:
         aut_llm_worker = LLMWorker(
             llm=llm_router,
-            stale_threshold_s=5.0,
+            stale_threshold_s=30.0,  # Higher than default: shared LLM may be busy
             n_ctx=llm_router.n_ctx,
             token_counter=llm_router.get_token_counter(),
         )
@@ -220,7 +229,7 @@ def start_simulation_mode(
     if llm_router is not None:
         orch_llm_worker = LLMWorker(
             llm=llm_router,
-            stale_threshold_s=10.0,
+            stale_threshold_s=60.0,  # High threshold: orchestrator waits for shared LLM
             n_ctx=llm_router.n_ctx,
             token_counter=llm_router.get_token_counter(),
         )
@@ -253,7 +262,7 @@ def start_simulation_mode(
                 aut_executor,
                 autonomy_controller=aut_autonomy,
                 llm_worker=aut_llm_worker,
-                max_steps=max_turns * 10,  # generous bound
+                max_steps=0,  # unlimited — AUT stops when bridge.finish() is called
                 stop_event=stop_event,
                 target_hz=2.0,
                 percept_source=bridge.percept_source,
@@ -351,7 +360,7 @@ def start_simulation_mode(
             llm_worker=orch_llm_worker,
             hippocampus=orch_hippocampus,
             memory_hub=orch_memory_hub,
-            max_steps=max_turns,
+            max_steps=0,  # unlimited — stops via FinishSimulationTool or /cancel
             stop_event=stop_event,
             target_hz=2.0,
             percept_source=orchestrator_source,
