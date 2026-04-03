@@ -97,6 +97,78 @@ maxim --sim agent --persona adversarial,cooperative,confused --goal "ask the rob
 
 ---
 
+## Phase 2: Simulation as Agentic Tools
+
+Expose simulation capabilities as tools the agent can call during normal operation. This enables self-testing, safety verification before action, and reflective learning.
+
+### SimulationTools
+
+#### RunSimulationTool
+The agent can run a scenario YAML to verify behavior before taking action:
+```python
+class RunSimulationTool(Tool):
+    """Run a percept simulation scenario and return results."""
+    name = "run_simulation"
+    # Params: scenario_path or inline scenario description
+    # Returns: ScenarioResult (pass/fail, expectations, actions)
+```
+
+Use cases:
+- "Before I commit this code, let me simulate a test run"
+- "Let me verify this action is safe by simulating it first"
+- ExecAgent proposes a risky tool call → runs simulation to predict outcome → decides whether to proceed
+
+#### GenerateSimulationTool
+The agent can generate and run a simulation from a description:
+```python
+class GenerateSimulationTool(Tool):
+    """Generate a simulation from natural language and run it."""
+    name = "generate_simulation"
+    # Params: description (natural language), persona (optional)
+    # Returns: generated YAML + ScenarioResult
+```
+
+Use cases:
+- "What would happen if a user asked me to delete files?"
+- Agent self-generates adversarial test cases to probe its own safety
+- Sleep mode dream function generates simulations from memories
+
+#### SimulationReflectionTool
+The agent can analyze past simulation logs for patterns:
+```python
+class SimulationReflectionTool(Tool):
+    """Analyze past simulation logs for patterns and insights."""
+    name = "reflect_on_simulations"
+    # Params: time_range, filter_by (passed/failed/persona)
+    # Returns: summary of patterns, common failure modes, suggestions
+```
+
+Use cases:
+- Sleep mode reviews past simulation logs for recurring failures
+- Agent identifies its own weak spots and proposes improvements
+- Connects to NAc causal learning — simulation outcomes feed reward signals
+
+### Safety considerations
+
+- SimulationTools run in their own sandbox (nested sandbox within main sandbox)
+- Agent can only simulate — cannot use simulation results to bypass FearAgent
+- Max simulation depth: 1 (agent can't run simulations that run simulations)
+- Token budget for simulation tools is capped separately from main reasoning
+- All simulation tool calls logged via sim_logger for auditability
+
+### Integration with sleep/dream mode
+
+Simulation logs persisted to `data/sim_sandbox/sim_log_*.jsonl` are available to sleep mode's dream function. During consolidation:
+1. Dream function reviews recent simulation logs
+2. Identifies patterns (e.g., "I consistently fail at X")
+3. Generates new simulation scenarios to test edge cases
+4. Results feed back into NAc causal learning
+5. Memory consolidation incorporates simulation insights
+
+This creates a self-improving loop: simulate → learn → sleep → dream → simulate better.
+
+---
+
 ## Implementation order
 
 | Step | What | Size |
@@ -106,9 +178,11 @@ maxim --sim agent --persona adversarial,cooperative,confused --goal "ask the rob
 | 3 | CompletionDetector (goal/stalemate/max turns) | ~100 lines |
 | 4 | Wire into interactive REPL and --sim agent CLI | ~100 lines |
 | 5 | 4 persona definitions (adversarial, cooperative, confused, escalating) | ~100 lines |
-| 6 | Tests | ~150 lines |
+| 6 | RunSimulationTool + GenerateSimulationTool | ~200 lines |
+| 7 | SimulationReflectionTool + sleep/dream integration hooks | ~150 lines |
+| 8 | Tests | ~200 lines |
 
-**Total: ~800 lines**
+**Total: ~1200 lines**
 
 ## Dependencies
 
@@ -116,3 +190,4 @@ maxim --sim agent --persona adversarial,cooperative,confused --goal "ask the rob
 - FearGatedExecutor (implemented)
 - LLMRouter.wait_ready() (implemented)
 - Multi-LLM scaling (optional — enhances but not required)
+- Sleep mode consolidation (for dream integration — can be deferred)
