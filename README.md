@@ -15,9 +15,10 @@ Maxim provides:
 
 | Feature | Description |
 |---------|-------------|
-| **Recursive Planning** | Multi-level goal decomposition with dynamic re-planning |
+| **Adaptive Planning** | ADaPT + Reflexion hybrid: direct execution first, recursive decomposition on failure. `AdaptivePlanner` queries 5 memory systems before proposing plans |
+| **Multi-Signal Scoring** | `AdaptivePolicy` scores plans across 6 dimensions: NAc value, EC familiarity, concept relevance, delay efficiency, depth penalty, action cost |
 | **Parallel Execution** | Independent sub-goals run concurrently with thread pools |
-| **Reflection Loops** | Post-execution evaluation with adaptive course correction |
+| **Reflection Loops** | Surprising failures (RPE > 0.3) generate verbal self-critiques stored as episodic memories for future recall via spreading activation |
 | **Prompt Profiles** | `minimal`, `standard`, `rich` profiles for different hardware |
 | **Checkpointing** | Persist and resume goal trees across restarts |
 | **FearAgent** | Safety review for sensitive operations before execution |
@@ -26,9 +27,13 @@ Maxim provides:
 | **Harm Prediction** | Zero-latency prediction of harmful outcomes before execution |
 | **Contemplation** | Local chain-of-thought: multi-pass critique+refine for complex plans |
 | **Energy Tracking** | Resource expenditure monitoring for tokens, compute, and movement |
-| **Coding Tools** | Edit files, search code, run tests, git diff/commit — with structured error reporting |
+| **Introspection Tools** | 10 read-only tools exposing biological subsystems to the LLM: memory recall, causal prediction, pain/fear history, temporal patterns, concepts, scene summary, energy status |
+| **Learned Tool Index** | Keyword-weighted hashtable learns which tools match which goals; saves ~74% of tool-context tokens per prompt |
+| **Coding Tools** | Edit files (with context disambiguation), search code, run tests, git diff/commit — with structured error reporting |
+| **Adaptive Runtime** | Capability detection at startup; graceful degradation to headless mode; adaptive loop frequency (30Hz motor → 2Hz headless) |
 | **Skills & Protocols** | Composable capabilities with lifecycle states, workspace constraints, and voice activation |
 | **SMS/Voice Comms** | Send and receive texts/calls via Twilio (see `src/maxim/comms/`) |
+| **Thread Safety** | All 16 config dataclasses frozen for immutability; mutation via `dataclasses.replace()` |
 
 ---
 

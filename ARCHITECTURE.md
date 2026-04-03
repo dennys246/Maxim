@@ -25,9 +25,13 @@ Paths refer to the `src/maxim/` package layout.
 
 - `src/maxim/agents/`: owns goals, role-specific reasoning, intent generation, and contemplation (local chain-of-thought for plan quality); must **not** execute tools, mutate state, or inspect environments.
 - `src/maxim/planning/`: owns plan generation/refinement; must **not** execute actions, select final actions, or mutate state.
-- `src/maxim/planning/decision_engine.py`: owns action selection/arbitration/control flow; must **not** generate plans, execute tools, store memory, or inspect environment internals.
+  - `adaptive_planner.py`: ADaPT-style lazy planner with deep memory integration. Queries EC (situational similarity), NAc (causal prediction), Hippocampus (spreading activation), ConceptContextBuilder (semantic context + skill discovery), and RetrievalOrchestrator (multi-signal fusion) before proposing plans. Decomposes goals via LLM only on failure or when memory signals caution. Includes `PlanCandidate` and `PlanningContext` dataclasses.
+  - `adaptive_policy.py`: 6-dimension scoring policy. Scores plans by NAc value, EC familiarity, concept relevance, delay efficiency, depth penalty, and action cost. Includes `explain_score()` for provenance.
+- `src/maxim/planning/decision_engine.py`: owns action selection/arbitration/control flow; must **not** generate plans, execute tools, store memory, or inspect environment internals. Supports both `PlanCandidate` (from `AdaptivePlanner`) and raw `list[dict]` plans (from `TaskPlanner`).
 - `src/maxim/planning/policy.py`: owns constraints/guardrails/safety rules; must **not** perform planning, execution, or goal reasoning.
-- `src/maxim/tools/`: owns side effects (I/O, network, filesystem, APIs); must **not** do control flow, reasoning, or decision making. Tools have a `timeout` class variable for per-tool execution limits. Coding tools: `EditFileTool` (text-anchor edits), `CodeSearchTool` (regex search), `RunTestsTool` (structured test results), `GitDiffTool`, `GitCommitTool`.
+- `src/maxim/tools/`: owns side effects (I/O, network, filesystem, APIs); must **not** do control flow, reasoning, or decision making. Tools have a `timeout` class variable for per-tool execution limits. Coding tools: `EditFileTool` (text-anchor edits with `context_before`/`context_after` disambiguation), `CodeSearchTool` (regex search), `RunTestsTool` (structured test results), `GitDiffTool`, `GitCommitTool`.
+  - `introspection.py`: 10 read-only tools exposing biological subsystems to the LLM: `memory_recall` (hippocampus with spreading activation), `predict_outcome` (NAc causal predictions), `causal_links` (cause-effect inspection), `pain_history` (pain signals + fear gate check), `temporal_patterns` (SCN circadian discovery), `energy_status` (resource consumption), `concept_query` (ATL semantic knowledge), `scene_summary` (salience + attention), `similarity_search` (EC multi-modal matching), `system_stats` (aggregate health check).
+  - `learned_index.py`: `LearnedToolIndex` — keyword-weighted hashtable for tool relevance scoring. Auto-extracts keywords from tool metadata; learns from execution outcomes via Rescorla-Wagner updates. Keyword discovery on success, surfaced-but-unused decay on rejection. Persisted across sessions. Integrated into `PromptBuilder` to partition tools into CRITICAL (full schema) vs NICE_TO_HAVE (name only) prompt sections.
 - `src/maxim/environment/`: owns observation of the world; must **not** perform side effects or execute tools.
 - `src/maxim/memory/`: owns storage/retrieval/compression/forgetting; must **not** do decision making or action selection.
   - `hippocampus.py`: Associative memory graph storing complete agentic loops with selective capture, compression, and sleep-based consolidation.
@@ -38,7 +42,7 @@ Paths refer to the `src/maxim/` package layout.
 - `src/maxim/time/`: owns temporal indexing and rhythm tracking.
   - `scn.py`: Suprachiasmatic Nucleus - temporal bin indexing for circadian/weekly/monthly patterns. BoundedBin for capacity-managed bins with significance-based eviction.
   - `temporal_signature.py`: Phase-based temporal fingerprinting.
-- `src/maxim/decisions/`: owns causal inference and prediction. Includes `StopReason` enum (10 loop termination reasons) and `ToolErrorKind` enum (7 error classifications on `ToolOutput`) for structured error vocabulary. `CodingReplanContext` captures structured test/build failures for test-driven replanning. Context compaction uses a sliding window with first-turn pinning for long-horizon plans.
+- `src/maxim/decisions/`: owns causal inference and prediction. Includes `StopReason` enum (10 loop termination reasons) and `ToolErrorKind` enum (7 error classifications on `ToolOutput`) for structured error vocabulary. `CodingReplanContext` captures structured test/build failures for test-driven replanning. Context compaction uses a sliding window with first-turn pinning for long-horizon plans. All config dataclasses are `frozen=True` for thread safety (16 configs frozen including `HippocampusConfig`, `NACConfig`, `DefaultNetworkConfig`, `PainConfig`, `LLMAgentConfig`, etc.). Mutation sites use `dataclasses.replace()`.
   - `nac.py`: Nucleus Accumbens - learns event→outcome relationships via temporal difference learning.
   - `significance.py`: SignificanceWeightLearner - learnable heuristics for memory staging (RPE, novelty, user interaction, etc.).
 - `src/maxim/similarity/`: owns multi-modal similarity queries.
@@ -72,11 +76,12 @@ Paths refer to the `src/maxim/` package layout.
   - `escalation_bridge.py`: Learned thresholds for when to escalate to human.
   - `pain_bridge.py`: Connects pain detection to NAc for causal learning of aversive patterns.
   - `energy_bridge.py`: Connects energy tracking to NAc for learning action→energy associations.
+  - `tool_pain_bridge.py`: Routes tool errors → NAc + SCN, creates CAUSES edges in hippocampus for surprising outcomes (RPE > 0.3), generates Reflexion-style verbal self-critiques stored as episodic memories, and updates `LearnedToolIndex` keyword weights.
 - `src/maxim/integration/`: owns central coordination.
   - `memory_hub.py`: MemoryHub coordinates all bridges and manages session lifecycle.
 - `src/maxim/state/` (reserved): owns authoritative runtime truth; must **not** contain long-term storage logic or planning.
-- `src/maxim/runtime/`: owns agentic orchestration/main execution loop; must **not** do domain reasoning. Includes `MonitorRegistry`/`SignalMonitor` for centralized watchdog monitoring, `RuntimeCapabilities` for hardware detection and graceful degradation (headless mode without robot), `AgentSession` for session persistence (save/load with Percept serialization), and `StreamEvent`/`on_event` callback for fine-grained streaming events from the agent loop.
-- `src/maxim/conscience/`: owns robot orchestration/main loop (Reachy capture/inference/control); must **not** do agentic decision making.
+- `src/maxim/runtime/`: owns agentic orchestration/main execution loop; must **not** do domain reasoning. Includes `MonitorRegistry`/`SignalMonitor` for centralized watchdog monitoring, `RuntimeCapabilities` for hardware detection and graceful degradation (headless mode without robot), `AgentSession` for session persistence (save/load with Percept serialization), and `StreamEvent`/`on_event` callback for fine-grained streaming events from the agent loop. ADaPT-style replan loop: `FailureStrategy.REPLAN` triggers `planner.decompose()` at depth+1.
+- `src/maxim/conscience/`: owns robot orchestration/main loop (Reachy capture/inference/control); must **not** do agentic decision making. `ConnectionState` enum with callback system for runtime capability degradation/restoration on robot disconnect/reconnect. `_run_headless_loop()` for event-driven operation without media capture.
 
 ### Absolute Separation Rules
 - Agents never call tools directly.
