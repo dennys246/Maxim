@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}Tools &amp; Introspection — Maxim Docs | Agentic Robotics Framework{% endblock %}
+
+{% block meta_description %}Complete guide to Maxim's tool system: how the LLM agent interacts with the world and introspects on its own biological subsystems. Memory recall, causal prediction, pain awareness, temporal patterns, and more.{% endblock %}
+
+{% block meta_keywords %}Maxim tools, LLM tools, agent introspection, memory recall, causal prediction, pain detection, temporal patterns, biological self-awareness, embodied AI tools{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Tools & Introspection — How Maxim's Agent Interacts with the World and Itself",
+  "description": "Complete guide to Maxim's tool system: action tools for robot control and filesystem, plus introspection tools for biological self-awareness.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/tools",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["tools", "introspection", "memory recall", "causal prediction", "biological self-awareness"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Tools", "item": "https://www.dennyschaedig.com/maxim/tools" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Tools &amp; Introspection</h1>
+    <p class="text-indigo-400 font-medium">How the Agent Acts and Reflects</p>
+  </header>
+
+  <p class="text-slate-300 leading-relaxed">Tools are the only way Maxim's LLM agent performs side effects. Every tool call passes through the FearAgent for safety review before execution. But tools aren't just for acting on the world &mdash; Maxim also has <strong class="text-white">introspection tools</strong> that let the agent query its own biological subsystems: memories, causal predictions, pain history, temporal patterns, and energy state.</p>
+
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
+    <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+      <li><a href="#action-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Action Tools (Side Effects)</a></li>
+      <li><a href="#introspection" class="text-indigo-400 hover:text-indigo-300 no-underline">Introspection Tools (Self-Awareness)</a></li>
+      <li><a href="#memory-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Memory: Episodic Recall &amp; Similarity</a></li>
+      <li><a href="#causal-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Causal: Prediction &amp; Learned Links</a></li>
+      <li><a href="#pain-fear" class="text-indigo-400 hover:text-indigo-300 no-underline">Pain &amp; Fear: Aversive Self-Awareness</a></li>
+      <li><a href="#temporal" class="text-indigo-400 hover:text-indigo-300 no-underline">Temporal: Circadian Patterns</a></li>
+      <li><a href="#semantic" class="text-indigo-400 hover:text-indigo-300 no-underline">Semantic: Concepts &amp; Relationships</a></li>
+      <li><a href="#scene-energy" class="text-indigo-400 hover:text-indigo-300 no-underline">Scene &amp; Energy: Perception and Budget</a></li>
+      <li><a href="#tool-safety" class="text-indigo-400 hover:text-indigo-300 no-underline">Tool Safety</a></li>
+    </ol>
+  </div>
+
+  <!-- ── Action Tools ──────────────────────────────────────── -->
+  <section id="action-tools" class="space-y-4 pt-4">
+    <h2 class="text-2xl font-bold text-white">Action Tools</h2>
+    <p class="text-slate-300 leading-relaxed">These tools let the agent interact with the world &mdash; moving the robot, reading files, executing code, and communicating with humans.</p>
+
+    <div class="grid gap-3 md:grid-cols-2">
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <h4 class="text-white font-semibold">Robot Control</h4>
+        <p class="text-sm text-slate-400 mt-1"><code class="text-indigo-400">move</code> <code class="text-indigo-400">track_target</code> <code class="text-indigo-400">focus_interests</code> <code class="text-indigo-400">novelty_track</code></p>
+        <p class="text-xs text-slate-500 mt-1">Head movement, object tracking, interest-driven attention. No-op stubs in headless mode.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <h4 class="text-white font-semibold">Filesystem</h4>
+        <p class="text-sm text-slate-400 mt-1"><code class="text-indigo-400">read_file</code> <code class="text-indigo-400">write_file</code> <code class="text-indigo-400">edit_file</code> <code class="text-indigo-400">glob</code> <code class="text-indigo-400">bash</code></p>
+        <p class="text-xs text-slate-500 mt-1">Sandboxed by mode (passive/active/singularity). edit_file supports context_before/context_after disambiguation.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <h4 class="text-white font-semibold">Code &amp; Git</h4>
+        <p class="text-sm text-slate-400 mt-1"><code class="text-indigo-400">search_code</code> <code class="text-indigo-400">run_tests</code> <code class="text-indigo-400">git_diff</code> <code class="text-indigo-400">git_commit</code></p>
+        <p class="text-xs text-slate-500 mt-1">Regex code search, pytest execution with structured results, git operations.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <h4 class="text-white font-semibold">Communication</h4>
+        <p class="text-sm text-slate-400 mt-1"><code class="text-indigo-400">respond</code> <code class="text-indigo-400">speak</code> <code class="text-indigo-400">send_message</code> <code class="text-indigo-400">call_user</code></p>
+        <p class="text-xs text-slate-500 mt-1">Console output, TTS, SMS/voice via Twilio gateway.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Introspection Overview ──────────────────────────── -->
+  <section id="introspection" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">Introspection Tools</h2>
+    <p class="text-slate-300 leading-relaxed">These are <strong class="text-white">read-only</strong> tools that let the LLM query its own biological subsystems. They give the agent self-awareness &mdash; the ability to ask "what do I remember?", "what will happen if I do this?", "have I been hurt by this before?", and "how much energy have I used?"</p>
+
+    <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-5 space-y-2">
+      <h4 class="text-indigo-400 font-semibold">Design Principles</h4>
+      <ul class="text-sm text-slate-300 space-y-1 list-disc pl-5">
+        <li><strong class="text-white">Read-only.</strong> No introspection tool modifies agent state.</li>
+        <li><strong class="text-white">Bounded output.</strong> All tools accept a <code class="text-indigo-400">limit</code> parameter to control context cost.</li>
+        <li><strong class="text-white">Graceful degradation.</strong> In headless mode, vision tools return <code class="text-indigo-400">{"available": false}</code> instead of crashing.</li>
+        <li><strong class="text-white">Formatted for LLM.</strong> Returns structured dicts the LLM can reason about, not raw data dumps.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── Memory Tools ──────────────────────────────────── -->
+  <section id="memory-tools" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">Memory: Episodic Recall &amp; Similarity</h2>
+    <p class="text-slate-300 leading-relaxed">The hippocampus stores every agentic loop as an episodic memory (perceive &rarr; decide &rarr; act &rarr; evaluate). The entorhinal cortex (EC) indexes them for multi-modal similarity search. These tools let the LLM explore both.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">memory_recall</code></h3>
+      <p class="text-slate-300 text-sm">Search episodic memories. Filter by goal, tool, success/failure, detected objects, people, mode, or time range. Use <code class="text-indigo-400">expand=true</code> to find associated memories via spreading activation through ASSOCIATES and CAUSES edges.</p>
+      <div class="text-xs text-slate-500 font-mono bg-slate-900 rounded p-3">
+        Parameters: query, tool_name, success, object, person, mode, time_after, time_before, expand, limit
+      </div>
+      <p class="text-xs text-slate-500"><strong>Biological analog:</strong> Hippocampal recall with spreading activation through the associative memory graph. ASSOCIATES edges form during memory capture (perceptual overlap). CAUSES edges form when NAc detects surprising outcomes (RPE &gt; 0.3).</p>
+    </div>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">similarity_search</code></h3>
+      <p class="text-slate-300 text-sm">Find situations similar to a past experience using the EC's LSH approximate nearest neighbor. Multi-modal matching: structural hash, temporal bins, semantic embedding, and context match.</p>
+      <div class="text-xs text-slate-500 font-mono bg-slate-900 rounded p-3">
+        Parameters: tool_name, memory_id, context, limit
+      </div>
+      <p class="text-xs text-slate-500"><strong>Biological analog:</strong> The entorhinal cortex is the gateway to the hippocampus. It transforms multi-modal input into a common similarity space for fast pattern matching.</p>
+    </div>
+  </section>
+
+  <!-- ── Causal Tools ──────────────────────────────────── -->
+  <section id="causal-tools" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">Causal: Prediction &amp; Learned Links</h2>
+    <p class="text-slate-300 leading-relaxed">The nucleus accumbens (NAc) learns cause-effect relationships via Rescorla-Wagner learning. Every tool execution updates a causal link with a prediction error (RPE). These tools let the LLM consult this learned model before acting.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">predict_outcome</code></h3>
+      <p class="text-slate-300 text-sm">Ask the NAc what will happen if you execute a tool. Returns the predicted value (0=bad, 1=good), expected outcome valence, expected delay with confidence interval, and all possible outcomes.</p>
+      <div class="text-xs text-slate-500 font-mono bg-slate-900 rounded p-3">
+        Parameters: tool_name (required), context, include_all_outcomes
+      </div>
+      <p class="text-xs text-slate-500"><strong>Biological analog:</strong> Dopaminergic prediction in the mesolimbic pathway. The NAc computes reward prediction error (RPE) &mdash; the difference between expected and actual outcomes &mdash; to learn which actions lead to which results in which contexts.</p>
+    </div>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">causal_links</code></h3>
+      <p class="text-slate-300 text-sm">Inspect the raw cause-effect database. Query by event signature, outcome signature, contributing memory ID, or valence filter. See confidence, observation count, temporal delay distributions, and which memories informed each link.</p>
+      <div class="text-xs text-slate-500 font-mono bg-slate-900 rounded p-3">
+        Parameters: event, outcome, memory_id, valence, limit
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Pain & Fear ──────────────────────────────────── -->
+  <section id="pain-fear" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">Pain &amp; Fear: Aversive Self-Awareness</h2>
+    <p class="text-slate-300 leading-relaxed">The PainDetector converts tool errors and movement failures into escalating pain signals. The FearAgent gates actions before execution. Together they implement an aversive learning system that teaches the agent what to avoid.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">pain_history</code></h3>
+      <p class="text-slate-300 text-sm">Check pain signal statistics and optionally test whether the FearAgent would block a specific action. Shows counts by pain type (tool failure, timeout, movement error, direction thrashing).</p>
+      <div class="text-xs text-slate-500 font-mono bg-slate-900 rounded p-3">
+        Parameters: check_action, action_params, limit
+      </div>
+      <p class="text-xs text-slate-500"><strong>Biological analog:</strong> Nociception (pain detection) and the amygdala (fear conditioning). Repeated tool failures increase pain intensity, driving NAc learning and FearAgent gating &mdash; like how repeated burns teach you to avoid the stove.</p>
+    </div>
+  </section>
+
+  <!-- ── Temporal ──────────────────────────────────────── -->
+  <section id="temporal" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">Temporal: Circadian Patterns</h2>
+    <p class="text-slate-300 leading-relaxed">The SCN (suprachiasmatic nucleus) bins every memory by hour-of-day, day-of-week, week-of-month, and month. This lets the agent discover rhythmic patterns in its own activity.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">temporal_patterns</code></h3>
+      <p class="text-slate-300 text-sm">Find memories from specific times of day or days of week. Use <code class="text-indigo-400">discover_rhythms=true</code> to find recurring patterns &mdash; for example, that API failures cluster during peak hours.</p>
+      <div class="text-xs text-slate-500 font-mono bg-slate-900 rounded p-3">
+        Parameters: hour (0-23), day (0=Mon, 6=Sun), discover_rhythms, limit
+      </div>
+      <p class="text-xs text-slate-500"><strong>Biological analog:</strong> The SCN in the hypothalamus is the body's master clock. It synchronizes circadian rhythms by tracking environmental time cues. Maxim's SCN enables temporal pattern learning across sessions.</p>
+    </div>
+  </section>
+
+  <!-- ── Semantic ──────────────────────────────────────── -->
+  <section id="semantic" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">Semantic: Concepts &amp; Relationships</h2>
+    <p class="text-slate-300 leading-relaxed">The anterior temporal lobe (ATL) stores semantic concepts with typed relationships (IS_A, PART_OF, CAUSES, EXECUTES_WITH). The LLM can query this knowledge base to ground its reasoning.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">concept_query</code></h3>
+      <p class="text-slate-300 text-sm">Search concepts by name or category. Explore typed relationships between concepts. Discover which skills are associated with which objects via EXECUTES_WITH edges.</p>
+      <div class="text-xs text-slate-500 font-mono bg-slate-900 rounded p-3">
+        Parameters: name, category, concept_id, relationship_type, limit
+      </div>
+      <p class="text-xs text-slate-500"><strong>Biological analog:</strong> The ATL is the brain's semantic hub. Patients with ATL damage lose category-level knowledge ("what IS a cup?") while retaining episodic memories ("I drank from one yesterday"). Maxim's ATL captures these generalizations across episodes.</p>
+    </div>
+  </section>
+
+  <!-- ── Scene & Energy ──────────────────────────────────── -->
+  <section id="scene-energy" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">Scene &amp; Energy: Perception and Budget</h2>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">scene_summary</code></h3>
+      <p class="text-slate-300 text-sm">Get the current visual scene: most salient objects with novelty scores, current gaze focus, dwell time, and suggested next attention target. Only available when vision is active (not in headless mode).</p>
+      <div class="text-xs text-slate-500 font-mono bg-slate-900 rounded p-3">
+        Parameters: top_n, include_attention
+      </div>
+    </div>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">energy_status</code></h3>
+      <p class="text-slate-300 text-sm">Check computational resource consumption: token usage, inference costs, and energy rate over a configurable time window.</p>
+      <div class="text-xs text-slate-500 font-mono bg-slate-900 rounded p-3">
+        Parameters: window_seconds
+      </div>
+    </div>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">system_stats</code></h3>
+      <p class="text-slate-300 text-sm">Aggregate health check across all subsystems in one call. Returns hippocampus memory counts, NAc causal link counts, EC signature counts, ATL concept counts, energy totals, pain signal counts, and significance learner weights.</p>
+      <div class="text-xs text-slate-500 font-mono bg-slate-900 rounded p-3">
+        Parameters: none
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Safety ──────────────────────────────────────────── -->
+  <section id="tool-safety" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">Tool Safety</h2>
+    <p class="text-slate-300 leading-relaxed">Every tool call passes through the FearAgent before execution. FearAgent uses:</p>
+    <ol class="text-slate-300 list-decimal pl-5 space-y-1">
+      <li><strong class="text-white">Deterministic pattern matching</strong> &mdash; regex for known dangerous patterns (shell injection, path traversal, etc.)</li>
+      <li><strong class="text-white">LLM review</strong> (if available) &mdash; nuanced safety assessment for ambiguous cases</li>
+      <li><strong class="text-white">NAc prediction</strong> &mdash; the AdaptivePolicy blocks actions with very high-confidence negative predictions (confidence &gt; 0.85, value &lt; 0.1)</li>
+    </ol>
+    <p class="text-slate-300 leading-relaxed mt-2">Introspection tools bypass FearAgent since they're read-only &mdash; they can't cause harm. The agent can freely query its own memories, predictions, and pain history without safety gating.</p>
+  </section>
+
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/technical-deepdive" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Technical Deep Dive</span>
+      </a>
+      <a href="/maxim/operating-modes" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Operating Modes</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/tools" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline font-semibold text-indigo-400">Tools &amp; Introspection</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
