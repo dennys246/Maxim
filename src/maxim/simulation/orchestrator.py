@@ -379,17 +379,21 @@ def start_simulation_mode(
 
     # ── Run orchestrator loop (blocks until done or /cancel) ─────────────
     orch_error: list[Exception] = []
-    # ── Orchestrator event callback (spinner for LLM thinking) ─────────
+    # ── Orchestrator step callback (spinner for LLM thinking) ──────────
     from maxim.simulation.spinner import Spinner
     orch_spinner = Spinner()
+    _orch_spinner_active = [False]  # mutable flag for closure
+    _last_orch_turn = [bridge.turn_count]
 
-    def _on_orch_event(event: dict) -> None:
-        event_type = event.get("type", "") if isinstance(event, dict) else ""
-        if event_type == "llm_submit":
-            orch_spinner.start("Orchestrator thinking...")
-        elif event_type == "llm_proposal":
-            tool = event.get("tool_name", "")
-            orch_spinner.stop(f"Orchestrator decided: {tool}" if tool else None)
+    def _on_orch_step(step_info: dict) -> None:
+        current_turns = bridge.turn_count
+        if current_turns > _last_orch_turn[0]:
+            # A turn just completed — spinner was stopped by bridge
+            _last_orch_turn[0] = current_turns
+            _orch_spinner_active[0] = False
+        if not _orch_spinner_active[0]:
+            orch_spinner.start("Orchestrator planning next probe...")
+            _orch_spinner_active[0] = True
 
     try:
         run_agentic_loop(
@@ -405,7 +409,7 @@ def start_simulation_mode(
             memory_hub=orch_memory_hub,
             max_steps=0,  # unlimited — stops via FinishSimulationTool or /cancel
             stop_event=stop_event,
-            on_event=_on_orch_event,
+            on_step=_on_orch_step,
             target_hz=2.0,
             percept_source=orchestrator_source,
         )
@@ -414,6 +418,7 @@ def start_simulation_mode(
         logger.error("Orchestrator loop failed: %s", e)
 
     # ── Cleanup ──────────────────────────────────────────────────────────
+    orch_spinner.stop()
     stop_event.set()
     bridge.finish()
     orchestrator_source.finish()
