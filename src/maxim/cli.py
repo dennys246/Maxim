@@ -465,11 +465,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         from maxim.simulation.sinks import RecordingSink
         from maxim.simulation.validation import ScenarioResult, validate_expectations
 
-        sim_path = Path(sim_path).resolve()  # Resolve to absolute before CWD change
-        if sim_path.is_dir():
-            scenario_files = sorted(sim_path.glob("*.yaml")) + sorted(sim_path.glob("*.yml"))
+        # Check for interactive mode
+        _sim_interactive = str(sim_path).strip().lower() == "interactive"
+
+        if _sim_interactive:
+            scenario_files = []  # No files — interactive REPL handles everything
         else:
-            scenario_files = [sim_path]
+            sim_path = Path(sim_path).resolve()  # Resolve to absolute before CWD change
+            if sim_path.is_dir():
+                scenario_files = sorted(sim_path.glob("*.yaml")) + sorted(sim_path.glob("*.yml"))
+            else:
+                scenario_files = [sim_path]
 
         if not scenario_files:
             print(f"No scenario files found at {sim_path}")
@@ -849,6 +855,40 @@ def main(argv: Sequence[str] | None = None) -> int:
                     internet_enabled,
                     gateway is not None,
                 )
+
+                # Check for interactive simulation REPL
+                if getattr(args, "sim", None) is not None and str(getattr(args, "sim", "")).strip().lower() == "interactive":
+                    from maxim.simulation.interactive import run_interactive_sim
+                    from maxim.proprioception.pain_bus import (
+                        PainBus as SimPainBus,
+                        create_pain_memory_subscriber,
+                    )
+
+                    _sim_pain_bus = SimPainBus()
+                    if _cli_hippocampus is not None:
+                        _sim_pain_bus.subscribe(create_pain_memory_subscriber(_cli_hippocampus))
+
+                    try:
+                        run_interactive_sim(
+                            agentic_agent,
+                            env,
+                            state,
+                            memory,
+                            decision_engine,
+                            executor,
+                            autonomy_controller=autonomy_controller,
+                            llm_worker=llm_worker,
+                            hippocampus=_cli_hippocampus,
+                            memory_hub=_cli_memory_hub,
+                            evaluators=evaluators,
+                            pain_bus=_sim_pain_bus,
+                            llm_profile=llm_profile,
+                            sim_workspace=Path(getattr(args, "home_dir", "data")) / "sim_sandbox",
+                        )
+                    finally:
+                        if llm_worker:
+                            llm_worker.stop()
+                    return 0
 
                 # Check for simulation mode — wire percept_source and action_sink
                 sim_source = getattr(args, "_sim_source", None)
