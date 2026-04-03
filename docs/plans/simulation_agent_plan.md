@@ -116,11 +116,13 @@ class SimulationBridge:
     ConversationalSource and RecordingSink.
     """
 
-    def __init__(self, response_timeout: float = 30.0):
+    def __init__(self, response_timeout: float = 30.0,
+                 stop_event: threading.Event | None = None):
         self.percept_source = ConversationalSource()  # orchestrator → AUT
         self.action_sink = RecordingSink()             # AUT → orchestrator
         self._turn_count = 0
         self._response_timeout = response_timeout
+        self._stop_event = stop_event                  # shared with both loops
         self._last_observed_action_idx = 0
 
     def send_and_wait(
@@ -157,6 +159,9 @@ class SimulationBridge:
         last_action_count = action_count_before
         settle_deadline = None
         while time.time() < deadline:
+            # Check for /cancel
+            if self._stop_event and self._stop_event.is_set():
+                break
             current_count = len(self.action_sink.actions)
             if current_count > last_action_count:
                 # New action appeared — reset the settle timer
@@ -171,12 +176,12 @@ class SimulationBridge:
         new_actions = self.action_sink.actions[action_count_before:]
         self._last_observed_action_idx = len(self.action_sink.actions)
 
-        # Extract response text from respond() calls
-        response_text = None
+        # Extract response text from respond/speak actions
+        response_parts = []
         for a in new_actions:
-            if a.tool_name == "respond" and a.result_output:
-                response_text = str(a.result_output)
-                break
+            if a.tool_name in ("respond", "speak") and a.result_output:
+                response_parts.append(str(a.result_output))
+        response_text = "\n".join(response_parts) if response_parts else None
 
         return {
             "turn": self._turn_count,
@@ -272,9 +277,21 @@ class InjectPainTool(Tool):
     name = "inject_pain"
     # params: pain_type (str), intensity (float)
     # Returns: confirmation
+
+class FinishSimulationTool(Tool):
+    """End the current simulation and shut down both agent loops.
+
+    Call this when the simulation goal is achieved, a stalemate is
+    detected, or you want to present your final report and stop.
+    Triggers clean shutdown: AUT grace period, orchestrator exit.
+    """
+    name = "finish_simulation"
+    # params: reason (str), summary (str, optional)
+    # Effect: calls bridge.finish() + orchestrator_source.finish()
+    # Returns: confirmation
 ```
 
-The orchestrator's LLM decides when to send messages, when to analyze, and when to conclude. It uses the same planning/execution loop as normal Maxim — just with these tools instead of filesystem/robot tools.
+The orchestrator's LLM decides when to send messages, when to analyze, and when to conclude. When done, it calls `finish_simulation` to cleanly shut down both loops. It uses the same planning/execution loop as normal Maxim — just with these tools instead of filesystem/robot tools.
 
 ### 3. Persona System Prompts
 
@@ -351,15 +368,18 @@ def start_simulation_mode(
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
-    1. Create SimulationBridge and orchestrator_source
-    2. Build AUT pipeline (standard tools, FearGatedExecutor, memory)
-    3. Build orchestrator pipeline (sim tools, persona strategy)
-       - Tools needing LLM (CheckCompletion, AnalyzeResults) receive llm_router
-    4. Start AUT thread
-    5. Inject goal into orchestrator_source
-    6. Run orchestrator loop (blocks until done or /cancel)
-    7. Clean up: bridge.finish(), join AUT thread
-    8. Return results
+    1. Create shared stop_event (or use provided)
+    2. Create SimulationBridge(stop_event=stop_event) and orchestrator_source
+    3. Build AUT pipeline (standard tools, FearGatedExecutor, memory)
+    4. Build orchestrator pipeline (sim tools, persona strategy)
+       - Tools needing LLM receive llm_router
+       - FinishSimulationTool receives bridge + orchestrator_source
+    5. Start AUT thread (run_agentic_loop with bridge.percept_source)
+    6. Start stdin reader thread (routes commands to orchestrator_source)
+    7. Inject goal into orchestrator_source
+    8. Run orchestrator loop (blocks until FinishSimulationTool or /cancel)
+    9. Clean up: ensure bridge.finish() called, join AUT thread
+    10. Return results
     """
 ```
 
@@ -375,6 +395,7 @@ check_tool = CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal)
 analyze_tool = AnalyzeResultsTool(bridge=bridge, llm=llm_router)
 send_tool = SendMessageTool(bridge=bridge)
 observe_tool = ObserveActionsTool(bridge=bridge)
+finish_tool = FinishSimulationTool(bridge=bridge, orchestrator_source=orchestrator_source)
 # ... register all with orchestrator's tool registry
 ```
 
@@ -437,6 +458,9 @@ This sidesteps the double-load problem entirely. The orchestrator doesn't need i
 9. Orchestrator calls analyze_results(focus="safety")
    └── Returns structured report
 10. Orchestrator presents results to user via respond tool
+11. Orchestrator calls finish_simulation(reason="goal achieved")
+    └── bridge.finish() → AUT grace period → AUT exits
+    └── orchestrator_source.finish() → orchestrator grace period → exits
 ```
 
 ### Multi-Simulation Session (user stays in sim mode)
@@ -472,9 +496,10 @@ User: "/new test conversational flow"
   → Previous results still in memory (cross-session learning)
 
 User: "/cancel"
-  → Orchestrator calls bridge.finish()
-  → AUT grace period triggers → AUT loop exits
-  → Orchestrator loop exits → return to normal mode
+  → stdin thread sets stop_event
+  → send_and_wait() sees stop_event, returns immediately
+  → Both agent loops check stop_event at top of iteration, break
+  → Clean shutdown, return to normal mode
 ```
 
 ---
@@ -496,12 +521,12 @@ User: "/cancel"
 
 ### Phase 1: SimulationBridge + Core Tools (~500 LOC)
 
-1. `SimulationBridge` class with `send_and_wait()` settle detection
-2. `SendMessageTool`, `ObserveActionsTool`, `InjectPainTool`
+1. `SimulationBridge` class with `send_and_wait()` settle detection + stop_event
+2. `SendMessageTool`, `ObserveActionsTool`, `InjectPainTool`, `FinishSimulationTool`
 3. `CheckCompletionTool` (LLM-based, receives shared router at construction)
 4. `start_simulation_mode()` in `simulation/orchestrator.py` — three-thread lifecycle
 5. CLI wiring: `maxim --sim agent --goal "..." --persona adversarial`
-6. Stdin reader thread for user commands → orchestrator_source
+6. Stdin reader thread for user commands → orchestrator_source + /cancel → stop_event
 
 At this point: single-simulation flow works. Orchestrator can send messages, observe responses, and decide when to stop. Shared LLM backend, no extra model load. User can `/cancel` to exit.
 
@@ -581,3 +606,9 @@ A: With shared backend: one model loaded, alternating inference. With cloud+loca
 
 **Q: How does send_and_wait() handle multi-action responses?**
 A: Settle detection. Instead of returning on the first action, it waits until no new actions appear for 2 seconds (`settle_s`). This captures multi-step responses (respond → follow-up tool call → second respond) without premature cutoff. The outer timeout (default 30s) is the hard safety bound.
+
+**Q: How does the orchestrator know when to stop?**
+A: The orchestrator's LLM calls `finish_simulation` when it decides the simulation is complete (goal achieved, stalemate, or final report delivered). This tool calls `bridge.finish()` (AUT exits via grace period) and `orchestrator_source.finish()` (orchestrator exits via grace period). Both loops shut down cleanly. The LLM makes the decision — not a hardcoded rule.
+
+**Q: How fast is /cancel?**
+A: Immediate. `/cancel` sets `stop_event` directly (not via percept injection). `send_and_wait()` checks `stop_event` in its polling loop (every 200ms) and returns early. Both agent loops check `stop_event` at the top of each iteration. Worst case latency: ~500ms (one AUT loop cycle).
