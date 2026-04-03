@@ -47,9 +47,17 @@ _sim_start: float = 0.0
 _use_color = True
 _log_file = None
 _log_records: list[dict[str, Any]] = []
+_debug_mode = False
+
+# Subsystems that only print in debug mode (always persisted to JSONL log)
+_DEBUG_ONLY_SUBSYSTEMS = {"PIPELINE"}
 
 
-def enable_sim_logging(use_color: bool = True, log_path: str | None = None) -> None:
+def enable_sim_logging(
+    use_color: bool = True,
+    log_path: str | None = None,
+    debug: bool = False,
+) -> None:
     """Enable simulation verbosity mode.
 
     Args:
@@ -57,17 +65,25 @@ def enable_sim_logging(use_color: bool = True, log_path: str | None = None) -> N
         log_path: Path to save JSONL log file for future reference.
             Saved logs can be used for system refinement and as input
             to sleep mode's dream function for offline analysis.
+        debug: If True, show all subsystem traces including PIPELINE
+            internal polling. If False (default), PIPELINE traces are
+            silenced from terminal but still persisted to the JSONL log.
     """
-    global _sim_active, _sim_start, _use_color, _log_file, _log_records
+    global _sim_active, _sim_start, _use_color, _log_file, _log_records, _debug_mode
     _sim_active = True
     _sim_start = time.time()
     _log_records = []
+    _debug_mode = debug
     _use_color = use_color and hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
     if log_path:
         import os
-        os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
-        _log_file = open(log_path, "w")
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
+            _log_file = open(log_path, "w")
+        except Exception as e:
+            logging.getLogger(__name__).warning("Failed to open sim log file %s: %s", log_path, e)
+            _log_file = None
 
     sim_log("PIPELINE", "Simulation logging enabled")
 
@@ -112,7 +128,7 @@ def sim_log(subsystem: str, message: str, data: dict[str, Any] | None = None) ->
     elapsed = time.time() - _sim_start
     timestamp = f"{elapsed:7.2f}s"
 
-    # Persist structured record
+    # Always persist structured record (JSONL log + in-memory)
     record = {
         "t": round(elapsed, 3),
         "subsystem": subsystem,
@@ -126,7 +142,10 @@ def sim_log(subsystem: str, message: str, data: dict[str, Any] | None = None) ->
         _log_file.write(json.dumps(record) + "\n")
         _log_file.flush()
 
-    # Terminal output
+    # Terminal output — skip debug-only subsystems unless debug mode
+    if subsystem in _DEBUG_ONLY_SUBSYSTEMS and not _debug_mode:
+        return
+
     if _use_color:
         color = _COLORS.get(subsystem, "")
         label = f"{color}[{subsystem:12s}]{_RESET}"

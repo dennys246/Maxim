@@ -352,6 +352,18 @@ class NAc:
                     sources=[ProvenanceRef("nac", link.id, link.event_signature)],
                 )
 
+        # Simulation verbosity
+        for link in updated_links:
+            try:
+                from maxim.simulation.sim_logger import sim_log
+                sim_log(
+                    "NAc",
+                    f"Causal link: {link.event_signature} -> {link.outcome_valence.value} "
+                    f"(RPE={link.last_rpe:.2f}, confidence={link.confidence:.2f})",
+                )
+            except Exception:
+                pass
+
         return updated_links
 
     def observe(

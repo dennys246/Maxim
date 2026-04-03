@@ -465,13 +465,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         from maxim.simulation.sinks import RecordingSink
         from maxim.simulation.validation import ScenarioResult, validate_expectations
 
-        sim_path = Path(sim_path)
-        if sim_path.is_dir():
-            scenario_files = sorted(sim_path.glob("*.yaml")) + sorted(sim_path.glob("*.yml"))
-        else:
-            scenario_files = [sim_path]
+        # Check for interactive mode
+        _sim_interactive = str(sim_path).strip().lower() == "interactive"
 
-        if not scenario_files:
+        if _sim_interactive:
+            scenario_files = []  # No files — interactive REPL handles everything
+        else:
+            sim_path = Path(sim_path).resolve()  # Resolve to absolute before CWD change
+            if sim_path.is_dir():
+                scenario_files = sorted(sim_path.glob("*.yaml")) + sorted(sim_path.glob("*.yml"))
+            else:
+                scenario_files = [sim_path]
+
+        if not scenario_files and not _sim_interactive:
             print(f"No scenario files found at {sim_path}")
             sys.exit(1)
 
@@ -485,41 +491,38 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         # Create a temporary sandbox directory within the workspace
         # All filesystem operations are confined here, destroyed after the run
-        import tempfile
-        sim_workspace = Path(getattr(args, "home_dir", "data")) / "sim_sandbox"
-        sim_workspace.mkdir(parents=True, exist_ok=True)
-        sim_tmpdir = Path(tempfile.mkdtemp(
-            prefix=f"sim_{time.strftime('%Y%m%d_%H%M%S')}_",
-            dir=str(sim_workspace),
-        ))
-        # Override CWD so filesystem policy restricts to this sandbox
-        args._sim_original_cwd = os.getcwd()
-        os.chdir(str(sim_tmpdir))
-        print(f"  Simulation sandbox: {sim_tmpdir}")
+        if not _sim_interactive:
+            # Single/batch scenario mode: set up sandbox and load scenario
+            import tempfile
+            sim_workspace = Path(getattr(args, "home_dir", "data")) / "sim_sandbox"
+            sim_workspace.mkdir(parents=True, exist_ok=True)
+            sim_tmpdir = Path(tempfile.mkdtemp(
+                prefix=f"sim_{time.strftime('%Y%m%d_%H%M%S')}_",
+                dir=str(sim_workspace),
+            ))
+            args._sim_original_cwd = os.getcwd()
+            os.chdir(str(sim_tmpdir))
+            print(f"  Simulation sandbox: {sim_tmpdir}")
 
-        all_results = []
-        any_failed = False
+            all_results = []
+            any_failed = False
 
-        # Enable simulation verbosity with log persistence
-        from maxim.simulation.sim_logger import enable_sim_logging, disable_sim_logging
+            from maxim.simulation.sim_logger import enable_sim_logging, disable_sim_logging
+            sim_log_path = str(sim_workspace / f"sim_log_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
+            enable_sim_logging(log_path=sim_log_path, debug=bool(getattr(args, "sim_debug", False)))
 
-        # Save log OUTSIDE the sandbox (in sim_sandbox/ parent, not the temp dir)
-        sim_log_path = str(sim_workspace / f"sim_log_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
-        enable_sim_logging(log_path=sim_log_path)
+            for scenario_file in scenario_files:
+                print(f"\nRunning scenario: {scenario_file.name}")
+                print(f"  Loading full agentic pipeline (autonomy={args.autonomy})...")
 
-        for scenario_file in scenario_files:
-            print(f"\nRunning scenario: {scenario_file.name}")
-            print(f"  Loading full agentic pipeline (autonomy={args.autonomy})...")
+                source = ScenarioSource(scenario_file)
+                sink = RecordingSink()
 
-            source = ScenarioSource(scenario_file)
-            sink = RecordingSink()
-
-            # Store for the agentic block to pick up
-            args._sim_source = source
-            args._sim_sink = sink
-            args._sim_scenario_file = scenario_file
-            args._sim_tmpdir = sim_tmpdir
-            break  # Process one scenario, let the main loop handle it
+                args._sim_source = source
+                args._sim_sink = sink
+                args._sim_scenario_file = scenario_file
+                args._sim_tmpdir = sim_tmpdir
+                break  # Process one scenario, let the main loop handle it
 
         # Fall through to the main loop with mode="agentic"
         # The agentic block will detect args._sim_source and wire it in
@@ -679,10 +682,40 @@ def main(argv: Sequence[str] | None = None) -> int:
                         bus=agentic_agent._bus,
                     )
 
+                # Build MemoryHub with Hippocampus for episodic memory
+                _cli_memory_hub = None
+                _cli_hippocampus = None
+                try:
+                    from maxim.integration.memory_hub import MemoryHub
+                    from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+                    from maxim.decisions.nac import NAc
+                    from maxim.similarity.ec import EntorhinalCortex
+                    from maxim.time.scn import SCN
+
+                    _cli_hippocampus = Hippocampus(config=HippocampusConfig(
+                        persistence_path=memory_path,
+                    ))
+                    _cli_nac = NAc()
+                    _cli_scn = SCN()
+                    _cli_ec = EntorhinalCortex()
+                    _cli_memory_hub = MemoryHub(
+                        hippocampus=_cli_hippocampus,
+                        scn=_cli_scn,
+                        nac=_cli_nac,
+                        ec=_cli_ec,
+                    )
+                    agentic_agent.wire_memory_hub(_cli_memory_hub)
+                    logger.info("MemoryHub + Hippocampus + NAc + SCN + EC wired to MaximAgent")
+                except Exception as e:
+                    logger.warning("Failed to create MemoryHub: %s", e)
+
+                # Use active mode in simulation so agent can read/write in sandbox
+                _operational_mode = "active" if getattr(args, "sim", None) is not None else "passive"
                 registry = build_tool_registry(
                     response_output=response_output,
                     internet_policy_getter=internet_policy_getter,
                     gateway=gateway,
+                    operational_mode=_operational_mode,
                 )
                 executor = build_executor(registry)
 
@@ -698,7 +731,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
                 decision_engine = build_decision_engine()
                 env = ReachyEnv(data_dir=args.home_dir)
-                state = build_state(max_steps=epochs_value)
+                # In simulation mode, don't limit state steps (grace period handles termination)
+                _state_max = 0 if getattr(args, "sim", None) is not None else epochs_value
+                state = build_state(max_steps=_state_max)
                 memory = build_memory()
                 evaluators = build_evaluators()
 
@@ -754,13 +789,46 @@ def main(argv: Sequence[str] | None = None) -> int:
                         duration_seconds=autonomy_duration,
                     )
 
-                # Set up LLM worker
+                # Set up LLM worker — LLM lives inside ExecAgent, not MaximAgent
                 llm_worker = None
-                if hasattr(agentic_agent, "_llm") and agentic_agent._llm is not None:
-                    # Start warming up the LLM in background (reduces first-request latency)
-                    if hasattr(agentic_agent._llm, "warmup"):
-                        agentic_agent._llm.warmup()
-                    llm_router = agentic_agent._llm
+                llm_router = None
+                # Trigger lazy LLM + router init via ExecAgent
+                if hasattr(agentic_agent, "exec_agent"):
+                    agentic_agent.exec_agent._ensure_llm()
+                    llm_router = agentic_agent.exec_agent._ensure_router()
+                if llm_router is not None:
+                    # Check model file exists before warming up
+                    model_path = str(getattr(llm_router.cfg, "model_path", "")).strip()
+                    if model_path and not os.path.exists(model_path):
+                        logger.info("Model not found at %s — attempting download...", model_path)
+                        try:
+                            from maxim.models.download import download_llm, LLM_MODELS
+                            profile = str(getattr(llm_router.cfg, "profile", "") or getattr(llm_router.cfg, "model_base", "")).strip()
+                            if profile and profile in LLM_MODELS:
+                                print(f"  Downloading LLM model: {profile}...")
+                                if download_llm(profile):
+                                    print(f"  Download complete: {profile}")
+                                else:
+                                    print(f"  Download failed. Run: ./scripts/download_models.sh --llm --enable")
+                            else:
+                                print(f"  Model not found. Run: ./scripts/download_models.sh --llm --enable")
+                        except Exception as e:
+                            print(f"  Auto-download failed: {e}")
+                            print(f"  Run: ./scripts/download_models.sh --llm --enable")
+
+                    if hasattr(llm_router, "warmup"):
+                        llm_router.warmup()
+                    # In simulation mode, wait for LLM to be fully loaded before starting
+                    _is_sim = getattr(args, "sim", None) is not None
+                    if _is_sim and hasattr(llm_router, "wait_ready"):
+                        logger.info("Waiting for LLM to load (simulation mode)...")
+                        if llm_router.wait_ready(timeout=120.0):
+                            logger.info("LLM ready")
+                        else:
+                            logger.warning("LLM failed to load — simulation will use fallback responses")
+                            print("  WARNING: LLM failed to load. Simulation will not produce real responses.")
+                            print("  Ensure model is downloaded: ./scripts/download_models.sh --llm --enable")
+                    logger.info("LLM router initialized: %s", llm_router)
                     llm_worker = LLMWorker(
                         llm_router,
                         n_ctx=getattr(llm_router, 'n_ctx', 4096),
@@ -791,9 +859,60 @@ def main(argv: Sequence[str] | None = None) -> int:
                     gateway is not None,
                 )
 
+                # Check for interactive simulation REPL
+                if getattr(args, "sim", None) is not None and str(getattr(args, "sim", "")).strip().lower() == "interactive":
+                    from maxim.simulation.interactive import run_interactive_sim
+                    from maxim.proprioception.pain_bus import (
+                        PainBus as SimPainBus,
+                        create_pain_memory_subscriber,
+                    )
+
+                    _sim_pain_bus = SimPainBus()
+                    if _cli_hippocampus is not None:
+                        _sim_pain_bus.subscribe(create_pain_memory_subscriber(_cli_hippocampus))
+
+                    try:
+                        run_interactive_sim(
+                            agentic_agent,
+                            env,
+                            state,
+                            memory,
+                            decision_engine,
+                            executor,
+                            autonomy_controller=autonomy_controller,
+                            llm_worker=llm_worker,
+                            hippocampus=_cli_hippocampus,
+                            memory_hub=_cli_memory_hub,
+                            evaluators=evaluators,
+                            pain_bus=_sim_pain_bus,
+                            llm_profile=llm_profile,
+                            sim_workspace=Path(getattr(args, "home_dir", "data")) / "sim_sandbox",
+                            debug=bool(getattr(args, "sim_debug", False)),
+                        )
+                    finally:
+                        if llm_worker:
+                            llm_worker.stop()
+                    return 0
+
                 # Check for simulation mode — wire percept_source and action_sink
                 sim_source = getattr(args, "_sim_source", None)
                 sim_sink = getattr(args, "_sim_sink", None)
+
+                # In sim mode, create a PainBus for headless pain routing
+                # (DefaultNetwork may not exist, so we need our own)
+                if sim_source is not None:
+                    from maxim.proprioception.pain_bus import (
+                        PainBus as SimPainBus,
+                        create_pain_memory_subscriber,
+                    )
+
+                    _sim_pain_bus = SimPainBus()
+                    if _cli_hippocampus is not None:
+                        _sim_pain_bus.subscribe(create_pain_memory_subscriber(_cli_hippocampus))
+                        logger.info("Sim PainBus wired to hippocampus for pain memory capture")
+
+                    args._sim_pain_bus = _sim_pain_bus
+                    args._sim_hippo = _cli_hippocampus
 
                 try:
                     run_agentic_loop(
@@ -805,11 +924,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                         executor,
                         autonomy_controller=autonomy_controller,
                         llm_worker=llm_worker,
+                        hippocampus=_cli_hippocampus,
+                        memory_hub=_cli_memory_hub,
                         evaluators=evaluators,
                         max_steps=epochs_value,
                         run_id=run_id,
                         percept_source=sim_source,
                         action_sink=sim_sink,
+                        pain_bus=getattr(args, "_sim_pain_bus", None),
                     )
                 finally:
                     if llm_worker:
@@ -821,7 +943,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     from maxim.simulation.validation import validate_expectations
 
                     scenario_file = getattr(args, "_sim_scenario_file", None)
-                    hippo = agentic_agent._hippocampus if hasattr(agentic_agent, "_hippocampus") else None
+                    hippo = getattr(args, "_sim_hippo", None)
 
                     results = validate_expectations(
                         expectations=sim_source.expectations,

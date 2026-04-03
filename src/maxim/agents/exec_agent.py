@@ -141,7 +141,7 @@ class ExecAgent(Agent):
                     quantization=self._quantization,
                     system_prompt=self._system_prompt,
                     temperature=0.3,
-                    max_tokens=512,
+                    max_tokens=1024,
                 )
                 self._llm = ChatLLMAgent(config=config)
             except Exception as e:

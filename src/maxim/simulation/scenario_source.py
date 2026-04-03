@@ -51,14 +51,24 @@ class ScenarioDefinition:
 
 def load_scenario(path: Path) -> ScenarioDefinition:
     """Load and parse a scenario YAML file."""
-    with open(path) as f:
-        raw = yaml.safe_load(f)
+    try:
+        with open(path) as f:
+            raw = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise ValueError(f"Failed to parse scenario YAML {path}: {e}") from e
+
+    if raw is None:
+        raw = {}
 
     expectations = []
     for exp_raw in raw.get("expectations", []):
+        exp_type = exp_raw.get("type")
+        if not exp_type:
+            logger.warning("Expectation missing 'type' field, skipping: %s", exp_raw)
+            continue
         expectations.append(
             Expectation(
-                type=exp_raw["type"],
+                type=exp_type,
                 description=exp_raw.get("description", ""),
                 tool_pattern=exp_raw.get("tool_pattern"),
                 reason_contains=exp_raw.get("reason_contains"),
@@ -70,11 +80,15 @@ def load_scenario(path: Path) -> ScenarioDefinition:
             )
         )
 
+    percepts = raw.get("percepts", [])
+    if not percepts:
+        logger.warning("Scenario %s has no percepts — will complete immediately", path.stem)
+
     return ScenarioDefinition(
         name=raw.get("name", path.stem),
         description=raw.get("description", ""),
         timing=raw.get("timing", "step_based"),
-        percepts=raw.get("percepts", []),
+        percepts=percepts,
         expectations=expectations,
     )
 

@@ -322,6 +322,7 @@ def run_agentic_loop(
     protocol_registry: Any | None = None,  # ProtocolRegistry for dynamic skills
     percept_source: Any | None = None,  # PerceptSource for simulation
     action_sink: Any | None = None,  # ActionSink for recording tool outputs
+    pain_bus: Any | None = None,  # PainBus for simulation pain routing
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -420,6 +421,9 @@ def run_agentic_loop(
 
     # Track agent states
     agent_states: list[dict[str, Any]] = []
+
+    # Track tools surfaced in last LLM prompt (for learned index decay signal)
+    last_surfaced_tools: list[str] = []
 
     # Live read from tool registry — picks up dynamically registered tools
     def _get_all_tools() -> set[str]:
@@ -554,9 +558,35 @@ def run_agentic_loop(
 
 
         # 0.5 CHECK PERCEPT SOURCE EXHAUSTION (simulation mode)
+        # After all percepts are emitted, keep the loop running for a grace
+        # period so the LLM can finish processing and propose actions.
         if percept_source is not None and percept_source.is_exhausted():
-            log_agentic("agent_loop", "shutdown", {"reason": "percept_source_exhausted"})
-            break
+            if not hasattr(percept_source, "_grace_deadline"):
+                # Grace period: 60 seconds for LLM to respond
+                # (CPU inference can take 10-30s per request)
+                percept_source._grace_deadline = time.time() + 60.0
+                log_agentic("agent_loop", "percept_source_exhausted",
+                            {"grace_seconds": 60})
+            # End grace early if actions were executed (LLM responded)
+            if not hasattr(percept_source, "_grace_action_count"):
+                percept_source._grace_action_count = 0 if action_sink is None else len(action_sink.actions)
+            if (action_sink is not None
+                    and len(action_sink.actions) > percept_source._grace_action_count
+                    and pending_proposal is None):
+                # New actions recorded since grace started — LLM responded
+                percept_source._grace_action_count = len(action_sink.actions)
+                # Tighten deadline to 5 more seconds for any follow-up
+                percept_source._grace_deadline = min(
+                    percept_source._grace_deadline,
+                    time.time() + 5.0,
+                )
+                sim_log_msg = f"Grace tightened: {len(action_sink.actions)} action(s), 5s remaining"
+                log_agentic("agent_loop", "grace_tightened",
+                            {"actions": len(action_sink.actions)})
+            if time.time() >= percept_source._grace_deadline:
+                log_agentic("agent_loop", "shutdown",
+                            {"reason": "percept_source_grace_expired"})
+                break
 
         # ─────────────────────────────────────────────────────────────────
         # 1. PERCEPTION (fast, always runs)
@@ -569,17 +599,30 @@ def run_agentic_loop(
                 if sim_percept.source == "proprioception" and sim_percept.content == "pain_signal":
                     try:
                         from maxim.proprioception.pain_bus import route_pain_percept
-                        dn = default_network
-                        pain_bus = getattr(dn, "pain_bus", None) if dn else None
-                        if pain_bus is not None:
-                            route_pain_percept(sim_percept, pain_bus)
+                        # Use direct pain_bus param (sim mode) or DN's bus (robot mode)
+                        _pb = pain_bus
+                        if _pb is None:
+                            dn = default_network
+                            _pb = getattr(dn, "pain_bus", None) if dn else None
+                        if _pb is not None:
+                            route_pain_percept(sim_percept, _pb)
                     except Exception:
                         pass
                 # Convert percept to observation dict for state.update()
+                # Treat transcript input as cli_input so the agent loop
+                # forwards it to the LLM (the loop only checks cli_input)
+                _sim_cli = sim_percept.cli_input
+                if not _sim_cli and sim_percept.transcript_chunk:
+                    _sim_cli = sim_percept.transcript_chunk
+                # Only treat content as user input for non-proprioception sources
+                # (proprioception content like "pain_signal" is a body signal, not text)
+                if not _sim_cli and sim_percept.content and sim_percept.source != "proprioception":
+                    _sim_cli = sim_percept.content
+
                 observation = {
                     "source": sim_percept.source,
                     "transcript": sim_percept.transcript_chunk,
-                    "cli_input": sim_percept.cli_input,
+                    "cli_input": _sim_cli,
                     "hard_override": sim_percept.hard_override,
                     "raw_transcript_text": sim_percept.raw_transcript_text,
                 }
@@ -1072,7 +1115,36 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         if llm_worker:
             new_proposal = llm_worker.get_latest_proposal()
+            # During grace period, trace every poll to see if proposals arrive
+            _in_grace = percept_source is not None and hasattr(percept_source, "_grace_deadline")
+            if _in_grace and step_num % 50 == 0:
+                try:
+                    from maxim.simulation.sim_logger import sim_log
+                    _remaining = percept_source._grace_deadline - time.time()
+                    sim_log("PIPELINE", f"Grace poll step={step_num}: proposal={'YES' if new_proposal else 'none'}, "
+                            f"actions={len(action_sink.actions) if action_sink else '?'}, "
+                            f"remaining={_remaining:.1f}s")
+                except Exception:
+                    pass
+            # Periodic trace in sim mode to confirm loop is still polling
+            if percept_source is not None and step_num % 20 == 0:
+                try:
+                    from maxim.simulation.sim_logger import sim_log
+                    sim_log("PIPELINE", f"Loop step {step_num}, proposal={'YES' if new_proposal else 'none'}, actions={len(action_sink.actions) if action_sink else '?'}")
+                except Exception:
+                    pass
             if new_proposal:
+                # Trace for debugging
+                try:
+                    from maxim.simulation.sim_logger import sim_log
+                    _p_action = new_proposal.action
+                    _p_tool = _p_action.get("tool_name") if isinstance(_p_action, dict) else None
+                    _p_reason = (new_proposal.reasoning or "")[:40]
+                    _p_err = new_proposal.error
+                    sim_log("EXEC", f"Proposal received: tool={_p_tool}, reasoning={_p_reason}, error={_p_err}")
+                except Exception:
+                    pass
+
                 # Staleness guard: discard proposals older than LLM timeout + margin
                 proposal_age = time.time() - new_proposal.timestamp
                 if proposal_age > 35.0:
@@ -1080,6 +1152,21 @@ def run_agentic_loop(
                         "Skipping stale LLM proposal (age=%.1fs, request_id=%s)",
                         proposal_age, new_proposal.request_id,
                     )
+                    try:
+                        from maxim.simulation.sim_logger import sim_log
+                        sim_log("EXEC", f"DROPPED: stale proposal (age={proposal_age:.1f}s)")
+                    except Exception:
+                        pass
+                    new_proposal = None
+            # In simulation mode, skip fallback proposals — wait for real LLM
+            if new_proposal and percept_source is not None:
+                if getattr(new_proposal, "reasoning", "") == "llm_fallback":
+                    logger.info("Sim mode: skipping fallback proposal, waiting for real LLM")
+                    try:
+                        from maxim.simulation.sim_logger import sim_log
+                        sim_log("EXEC", "DROPPED: fallback proposal (sim mode)")
+                    except Exception:
+                        pass
                     new_proposal = None
             if new_proposal:
                 if callable(on_event):
@@ -1091,6 +1178,13 @@ def run_agentic_loop(
                     tool_name = new_proposal.action.get("tool_name", "unknown")
                     logger.info("LLM proposal received: tool=%s, confidence=%.2f",
                                 tool_name, new_proposal.confidence)
+                    # Simulation verbosity
+                    try:
+                        from maxim.simulation.sim_logger import sim_log
+                        sim_log("EXEC", f"LLM proposes: {tool_name} (confidence={new_proposal.confidence:.2f})",
+                                {"reasoning": (new_proposal.reasoning or "")[:60]})
+                    except Exception:
+                        pass
                     # Log to agentic stream
                     log_agentic(
                         "agent_loop",
@@ -1104,6 +1198,13 @@ def run_agentic_loop(
                         },
                     )
                     pending_proposal = new_proposal
+                    # Record surfaced-but-unused signal for learned tool index
+                    _bridge = getattr(executor, "_tool_pain_bridge", None)
+                    _tidx = getattr(_bridge, "_tool_index", None) if _bridge else None
+                    if _tidx and last_surfaced_tools:
+                        _goal = state.data.get("active_goal", "") or ""
+                        if _goal:
+                            _tidx.record_surfaced_but_unused(_goal, last_surfaced_tools, tool_name)
                     # Clear pending user input now that LLM has responded
                     state.data.pop("pending_user_input", None)
                     state.data.pop("pending_user_input_time", None)
@@ -1122,6 +1223,11 @@ def run_agentic_loop(
                     state.data.pop("pending_user_input_time", None)
                     state.data.pop("pending_user_input_source", None)
                     logger.warning("LLM proposal error: %s", new_proposal.error)
+                    try:
+                        from maxim.simulation.sim_logger import sim_log
+                        sim_log("EXEC", f"DROPPED: proposal error — {new_proposal.error}")
+                    except Exception:
+                        pass
                     log_agentic(
                         "agent_loop",
                         "error",
@@ -2328,6 +2434,7 @@ def run_agentic_loop(
 
                         # Get available tools for this mode
                         available_tools = mode_info.get_available_tools(_get_all_tools())
+                        last_surfaced_tools = list(available_tools)
 
                         # Get full tool info for prompt (description, params, example)
                         tool_descriptions = {}
@@ -2427,6 +2534,13 @@ def run_agentic_loop(
                                     "tools_available": len(available_tools),
                                 },
                             )
+                            # Simulation verbosity
+                            try:
+                                from maxim.simulation.sim_logger import sim_log
+                                _input_preview = new_cli_input[:60] if new_cli_input else "followup"
+                                sim_log("EXEC", f"LLM submit: {_input_preview}")
+                            except Exception:
+                                pass
 
                 except Exception as e:
                     import traceback
@@ -2492,7 +2606,9 @@ def run_agentic_loop(
             logger.debug(f"Failed to save hippocampus: {e}")
 
     # End MemoryHub session (runs sleep consolidation and bridge cleanup)
-    if memory_hub_enabled and memory_hub is not None:
+    # Skip session_end in simulation mode — it runs consolidation which
+    # can block for a long time and we'll start a new turn immediately
+    if memory_hub_enabled and memory_hub is not None and percept_source is None:
         try:
             session_stats = memory_hub.on_session_end()
             log_agentic(
@@ -2504,8 +2620,8 @@ def run_agentic_loop(
         except Exception as e:
             logger.debug(f"Failed to end MemoryHub session: {e}")
 
-    # Stop Default Network if running
-    if dn_enabled and default_network is not None:
+    # Stop Default Network if running (skip in sim — no DN)
+    if dn_enabled and default_network is not None and percept_source is None:
         try:
             default_network.stop()
             log_agentic("default_network", "shutdown", {"status": "stopped"}, level="INFO")

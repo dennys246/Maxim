@@ -107,6 +107,7 @@ class LLMRequest:
     # Tool information for tool-aware prompts
     available_tools: set[str] = field(default_factory=set, compare=False)
     tool_descriptions: dict[str, str] = field(default_factory=dict, compare=False)
+    surfaced_tools: list[str] = field(default_factory=list, compare=False)  # Tools shown in prompt (for learned index decay signal)
 
     # Context pool summary for accumulated observations
     context_pool_text: str = field(default="", compare=False)

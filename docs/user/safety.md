@@ -58,6 +58,19 @@ In `strict_mode`, anything flagged as suspicious is blocked outright. In normal 
 
 ---
 
+## FearGatedExecutor
+
+In addition to FearAgent's per-call review, a dedicated `FearGatedExecutor` wraps the tool execution layer to ensure that every tool call in every mode -- robot, headless, or simulation -- is safety-gated. This operates **independently of DefaultNetwork**, so it applies even when no robot is connected.
+
+FearGatedExecutor performs a two-tier review on every tool call:
+
+1. **Action review** -- classifies the tool call (shell execution, file write, network request, generic tool) and runs it through FearAgent's pattern matcher and LLM reviewer.
+2. **Code review** -- for bash commands, file writes, and edit operations, extracts the code content and scans it for dangerous patterns via `FearAgent.review_code()`.
+
+DefaultNetwork retains its own FearAgent instance for motor and movement safety. FearGatedExecutor handles tool safety; DefaultNetwork handles motor safety. The two are independent layers in the safety stack.
+
+---
+
 ## Pain Detection
 
 The proprioceptive system continuously monitors the robot's physical state for aversive movement patterns:
@@ -169,12 +182,13 @@ The safety stack, from outermost to innermost:
 
 1. **Autonomy level** -- Controls whether the agent can act at all without asking.
 2. **FearAgent** -- Reviews every tool call for danger patterns.
-3. **Filesystem policy** -- Restricts which paths can be read, written, or executed.
-4. **Internet policy** -- Blocks network access unless explicitly enabled.
-5. **Predictive harm detection** -- Blocks unsafe movements before they reach hardware.
-6. **Pain detection** -- Monitors the robot during movement and intervenes in real time.
-7. **Workspace bounds** -- Limits the robot to regions it has safely explored.
-8. **Energy budgets** -- Caps resource consumption to prevent runaway behavior.
-9. **Escalation** -- Hands control back to you when confidence is low.
+3. **FearGatedExecutor** -- Independent executor wrapper ensuring tool safety in all modes (robot, headless, simulation).
+4. **Filesystem policy** -- Restricts which paths can be read, written, or executed.
+5. **Internet policy** -- Blocks network access unless explicitly enabled.
+6. **Predictive harm detection** -- Blocks unsafe movements before they reach hardware.
+7. **Pain detection** -- Monitors the robot during movement and intervenes in real time.
+8. **Workspace bounds** -- Limits the robot to regions it has safely explored.
+9. **Energy budgets** -- Caps resource consumption to prevent runaway behavior.
+10. **Escalation** -- Hands control back to you when confidence is low.
 
 These layers are independent. Disabling or resetting one does not affect the others.

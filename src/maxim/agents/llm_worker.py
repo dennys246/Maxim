@@ -126,12 +126,14 @@ class LLMWorker:
         n_ctx: int = 4096,
         token_counter: Any | None = None,
         pool: "WorkerPool | None" = None,
+        tool_index: Any = None,
     ):
         self._llm = llm
         self._stale_threshold = stale_threshold_s
         self._llm_timeout = llm_timeout_s
         self._energy_tracker = energy_tracker
         self._n_ctx = n_ctx
+        self._tool_index = tool_index
         self._token_counter = token_counter or CharEstimateCounter()
         self._reasoning_carryover = ReasoningCarryover(max_entries=5)
         self._cost_energy_scale = _load_cost_bridge_config().get("cost_energy_scale", 100.0)
@@ -179,6 +181,7 @@ class LLMWorker:
             reasoning_carryover=self._reasoning_carryover,
             n_ctx=self._n_ctx,
             token_counter=self._token_counter,
+            tool_index=self._tool_index,
         )
 
     def record_outcome(
@@ -907,6 +910,15 @@ class LLMWorker:
                 lane=request.lane or "infer",
                 mode_name=request.mode.name if request.mode else "unknown",
             )
+
+            # Trace for simulation debugging
+            try:
+                from maxim.simulation.sim_logger import sim_log
+                _action = response.get("action") if isinstance(response, dict) else None
+                _tool = _action.get("tool_name") if isinstance(_action, dict) else None
+                sim_log("EXEC", f"LLM raw response parsed: tool={_tool}, type={type(response).__name__}")
+            except Exception:
+                pass
 
             if not response or not isinstance(response, dict):
                 # LLM failed - generate a fallback response for the user

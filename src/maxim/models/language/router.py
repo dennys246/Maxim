@@ -616,6 +616,8 @@ class LLMRouter:
         self._backend: Any | None = None
         self._backends: dict[str, Any] = {}
         self._backend_lock = threading.Lock()
+        self._ready_event = threading.Event()  # Set when warmup completes
+        self._warmup_failed = False
         self._providers = self._normalize_providers(self.cfg)
         self._provider_states: dict[str, ProviderState] = {
             key: ProviderState() for key in self._providers.keys()
@@ -1244,12 +1246,14 @@ class LLMRouter:
             start_time = time.time()
             log_agentic("llm_router", "startup", {"status": "loading", "model": str(getattr(self.cfg, "model_path", ""))[-50:]})
             backend = self._get_backend()
+            success = False
             if backend is not None and hasattr(backend, "warmup"):
                 info("Warming up LLM backend...")
                 if backend.warmup():
                     elapsed = time.time() - start_time
                     info("LLM model loaded and ready")
                     log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
+                    success = True
                 else:
                     warn("LLM warmup failed")
                     log_agentic("llm_router", "error", {"context": "warmup", "error": "warmup returned false"}, level="WARNING")
@@ -1266,13 +1270,42 @@ class LLMRouter:
                     elapsed = time.time() - start_time
                     info("LLM model loaded and ready")
                     log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
+                    success = True
                 except Exception as e:
                     warn("LLM warmup failed: %s", e)
                     log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
+            self._warmup_failed = not success
+            self._ready_event.set()
 
         thread = threading.Thread(target=_warmup_thread, daemon=True, name="LLMWarmup")
         thread.start()
         return True
+
+    def wait_ready(self, timeout: float = 120.0) -> bool:
+        """Block until the LLM is loaded and ready, or timeout expires.
+
+        Call after warmup() to ensure the model is available before
+        submitting requests. In robot mode you typically don't call this
+        (warmup is async, fallback handles the gap). In simulation mode
+        or multi-LLM setups, call this to guarantee readiness.
+
+        Args:
+            timeout: Maximum seconds to wait. Default 120s for large models on CPU.
+
+        Returns:
+            True if LLM is ready, False if warmup failed or timed out.
+        """
+        if not self.enabled():
+            return False
+        if self._ready_event.wait(timeout=timeout):
+            return not self._warmup_failed
+        warn("LLM wait_ready timed out after %.1fs", timeout)
+        return False
+
+    @property
+    def is_ready(self) -> bool:
+        """Check if the LLM has finished loading (non-blocking)."""
+        return self._ready_event.is_set() and not self._warmup_failed
 
     def _get_backend(self) -> Any | None:
         # Fast path: already initialized

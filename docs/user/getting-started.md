@@ -2,7 +2,7 @@
 
 ## What is Maxim?
 
-Maxim is a robotics framework for the Reachy Mini robot by Pollen Robotics. It runs local LLM inference for autonomous decision-making, multi-modal perception (vision, audio, proprioception), biologically-inspired memory systems, and layered safety controls. All processing runs on-device or on your local network -- no cloud dependency required.
+Maxim is a hardware-agnostic cognitive framework. It runs local LLM inference for autonomous decision-making, multi-modal perception (vision, audio, proprioception), biologically-inspired memory systems, and layered safety controls. All processing runs on-device or on your local network -- no cloud dependency required. You do not need a robot to get started -- Maxim works in headless mode, with percept simulation, or connected to a Reachy Mini robot by Pollen Robotics.
 
 ## Prerequisites
 
@@ -63,6 +63,18 @@ maxim --mode agentic --language-model smollm-1.7b
 
 This starts the full agent loop without attempting a robot connection. Useful for testing LLM reasoning, planning, and coding tools on your development machine.
 
+### Simulation Mode
+
+```bash
+# Interactive REPL -- type scenarios, get bio-subsystem traces
+maxim --sim
+
+# Run a specific YAML scenario
+maxim --sim scenarios/malware_with_pain.yaml
+```
+
+Simulation runs the full agentic pipeline with percepts injected from YAML files or generated conversationally. Every subsystem runs its real code -- only the source of sensory input changes. See the [Simulation Guide](simulation.md) for details.
+
 ### With Reachy Mini
 
 SSH into the robot, stop the default daemon, then start Maxim's custom daemon:
@@ -101,6 +113,7 @@ maxim --mode agentic --language-model smollm-1.7b --verbosity 2
 
 ## Next Steps
 
+- **Simulation Guide** -- testing without hardware using interactive mode or YAML scenarios
 - **Modes Guide** -- choosing the right mode for your use case
 - **CLI Reference** -- all available flags and options
 - **Configuration** -- customizing behavior, thresholds, and safety limits

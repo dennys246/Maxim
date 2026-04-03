@@ -438,6 +438,18 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             memory.outcome.success,
         )
 
+        # Simulation verbosity
+        try:
+            from maxim.simulation.sim_logger import sim_memory
+            sim_memory(
+                f"Captured: {memory.action.tool_name or 'observation'} "
+                f"(salience={memory.perception.salience:.2f})",
+                goal=memory.context.active_goal,
+                success=memory.outcome.success,
+            )
+        except Exception:
+            pass
+
         # Notify capture callbacks (e.g., for semantic embedding)
         for callback in self._on_memory_captured:
             try:

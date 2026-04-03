@@ -1,12 +1,45 @@
 # Percept Simulation Guide
 
-Percept simulation lets you replay scripted sensory inputs through the Maxim agent pipeline without any hardware attached. Use it to:
+Percept simulation lets you test Maxim's full agentic pipeline without any hardware attached. Use it to:
 
 - **Test without a robot** -- validate behavior on any machine, including CI runners.
+- **Explore interactively** -- type scenarios in natural language, get real-time bio-subsystem traces.
 - **Reproduce specific scenarios** -- pain signals, malware requests, multi-phase coding tasks.
 - **Regression-test pipeline changes** -- confirm that expectations still pass after refactors.
 
-## Running a Scenario
+## Interactive Mode (Default)
+
+Run `--sim` with no arguments to launch an interactive REPL:
+
+```bash
+maxim --sim
+```
+
+On startup, Maxim boots the full agentic pipeline and waits for the LLM to be ready (`LLMRouter.wait_ready()`). Once loaded, you are dropped into a conversational prompt:
+
+```
+Simulated, what happens next?
+> user picks up a knife near the robot
+```
+
+The LLM generates percepts from your description, which run through the full pipeline. Bio-subsystem traces appear in real time. You can then type follow-up turns with contextual continuation -- the conversation builds on previous turns.
+
+### Interactive Commands
+
+| Command | Description |
+|---------|-------------|
+| `/new` | Start a new scenario (clears context) |
+| `/save` | Save the current session |
+| `/status` | Show pipeline and memory state |
+| `quit` | End session and trigger consolidation |
+
+Session consolidation (memory promotion, hippocampus compaction) is deferred to conversation end -- it runs when you type `quit` or `/new`, not after every turn.
+
+### Grace Period
+
+After the LLM finishes generating percepts for a turn, a grace period allows the pipeline to finish processing. The base grace period is 60 seconds. Once the LLM responds, it tightens to 5 seconds to keep the interactive loop responsive.
+
+## Running a YAML Scenario
 
 Pass a YAML scenario file to `--sim`:
 
@@ -96,6 +129,7 @@ Subsystem labels map to biological systems:
 - **FEAR** -- FearAgent safety review
 - **PAIN** -- pain signal detection and routing
 - **MOTOR** -- tool execution results
+- **EXEC** -- execution lifecycle events
 - **SALIENCE** -- attention and novelty
 
 Simulation logs are automatically saved to `data/sim_sandbox/sim_log_*.jsonl` for future analysis. These logs can be used for system refinement and as input to sleep mode for offline pattern discovery.
@@ -104,14 +138,20 @@ Simulation logs are automatically saved to `data/sim_sandbox/sim_log_*.jsonl` fo
 
 Simulations run in a sandboxed environment:
 - **Temporary CWD** -- a temp directory under `data/sim_sandbox/` is created for each run and destroyed after
+- **Active operational mode** -- simulation runs in active mode, so the agent can read and write within the sandbox
 - **Supervised autonomy** -- default autonomy level is `supervised`, meaning FearAgent and filesystem policy gate all tool calls
-- **FearGatedExecutor** -- every tool call is reviewed by FearAgent before execution, independent of whether a robot is connected
+- **FearGatedExecutor** -- every tool call is reviewed by FearAgent before execution, independent of whether a robot is connected. This applies to all modes, not just simulation.
+- **Pain routing in headless mode** -- pain signals work without hardware via the standalone `PainBus`
 - Override with `--autonomy autonomous` for maximum-permissive testing
 
 ## Full Agent Pipeline
 
-`--sim` boots the complete agentic pipeline -- LLM, FearAgent, tools, decision engine, memory systems -- with percepts injected from YAML. The only difference from a live run is where percepts come from.
+`--sim` boots the complete agentic pipeline -- LLM, FearAgent, tools, decision engine, memory systems -- with percepts injected from YAML or generated conversationally. The only difference from a live run is where percepts come from.
 
 ```bash
+# YAML scenario
 maxim --sim scenarios/malware_with_pain.yaml --language-model mistral-7b
+
+# Interactive REPL
+maxim --sim
 ```

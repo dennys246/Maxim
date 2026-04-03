@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from typing import Any
 
 from maxim.utils.logging import warn
+
+logger = logging.getLogger(__name__)
 
 
 class _LlamaCppBackend:

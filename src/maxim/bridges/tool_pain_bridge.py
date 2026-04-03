@@ -63,15 +63,18 @@ class ToolPainBridge:
         hippocampus: Hippocampus | None = None,
         llm: Any = None,
         pain_bus: Any | None = None,
+        tool_index: Any = None,
     ) -> None:
         self._nac = nac
         self._scn = scn
         self._hippocampus = hippocampus
         self._llm = llm
+        self._tool_index = tool_index  # LearnedToolIndex for keyword weight updates
         self._lock = threading.Lock()
         self._pending_tools: dict[tuple[str, str], str] = {}
-        self._last_rpe: float = 0.0  # Most recent RPE magnitude (for salience)
-        self._last_reflection_time: dict[str, float] = {}  # tool_name → timestamp
+        self._pending_contexts: dict[tuple[str, str], dict[str, Any]] = {}  # (tool, inv_id) → context
+        self._last_rpe: float = 0.0
+        self._last_reflection_time: dict[str, float] = {}
         # Subscribe to pain signals via bus (preferred) or detector (legacy)
         if pain_bus is not None:
             pain_bus.subscribe(self._on_pain)
@@ -102,6 +105,8 @@ class ToolPainBridge:
         )
         with self._lock:
             self._pending_tools[(tool_name, invocation_id)] = event_signature
+            if context:
+                self._pending_contexts[(tool_name, invocation_id)] = context
         return event_signature
 
     def record_tool_complete(
@@ -125,6 +130,9 @@ class ToolPainBridge:
             event_signature = self._pending_tools.pop(
                 (tool_name, invocation_id), None
             )
+            tool_context = self._pending_contexts.pop(
+                (tool_name, invocation_id), None
+            )
         if event_signature and success:
             links = self._nac.record_outcome(
                 event_type="tool",
@@ -134,6 +142,12 @@ class ToolPainBridge:
             rpe = max((l.last_rpe or 0.0 for l in links), default=0.0) if links else 0.0
             self._last_rpe = rpe
             self._create_causal_edges(links)
+
+            # Update learned tool index keyword weights
+            if self._tool_index is not None and tool_context:
+                goal_text = tool_context.get("goal", "")
+                if goal_text:
+                    self._tool_index.record_outcome(goal_text, tool_name, success=True)
 
             # Register positive temporal signal with SCN
             if self._scn is not None:
@@ -163,6 +177,9 @@ class ToolPainBridge:
         invocation_id = signal.context.get("invocation_id", "")
         with self._lock:
             event_signature = self._pending_tools.pop(
+                (tool_name, invocation_id), None
+            )
+            tool_context = self._pending_contexts.pop(
                 (tool_name, invocation_id), None
             )
         if event_signature:

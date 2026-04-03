@@ -177,6 +177,36 @@ def build_tools_section(request: LLMRequest, mode_name: str = "passive") -> str:
     return result
 
 
+def build_tools_section_filtered(
+    request: LLMRequest,
+    tool_names: list[str],
+    mode_name: str = "passive",
+) -> str:
+    """Build tools section for only the specified tool names (relevant subset)."""
+    lines = ["=== Available Tools ==="]
+    for tool_name in sorted(tool_names):
+        tool_info = request.tool_descriptions.get(tool_name, {})
+        if isinstance(tool_info, dict) and tool_info:
+            desc = tool_info.get("description", "")
+            params = tool_info.get("params", {})
+            example = tool_info.get("example", {})
+            lines.append(f"- {tool_name}: {desc}")
+            if params:
+                param_strs = [f"{k}={v}" for k, v in params.items()]
+                lines.append(f"    REQUIRED params: {', '.join(param_strs)}")
+            if example:
+                lines.append(f"    Example: {_json.dumps(example)}")
+        elif isinstance(tool_info, str) and tool_info:
+            lines.append(f"- {tool_name}: {tool_info}")
+        else:
+            lines.append(f"- {tool_name}")
+
+    result = "\n".join(lines)
+    if mode_name == "singularity":
+        result = result.replace(".maxim_workspace/", "")
+    return result
+
+
 def scan_workspace_entries(workspace_path: str) -> list[str]:
     """Scan .maxim_workspace/ and return formatted file entries."""
     import os
@@ -523,10 +553,12 @@ class PromptBuilder:
         reasoning_carryover: ReasoningCarryover,
         n_ctx: int,
         token_counter: Any,
+        tool_index: Any = None,
     ) -> None:
         self._llm = llm
         self._reasoning_carryover = reasoning_carryover
         self._n_ctx = n_ctx
+        self._tool_index = tool_index
         self._token_counter = token_counter
 
     def build_prompt(self, request: LLMRequest) -> str:
@@ -698,9 +730,21 @@ class PromptBuilder:
         if request.pending_modification:
             budgeter.add("modification", build_modification_section(request.pending_modification), SectionPriority.CRITICAL)
         budgeter.add("identity", build_identity_section(mode, request, date_str, time_str), SectionPriority.CRITICAL)
-        budgeter.add("tools", build_tools_section(request, mode_name=mode_name), SectionPriority.CRITICAL,
-                      truncatable=True, min_tokens=50,
-                      truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter))
+        # Tool section: split by learned relevance when index available
+        if self._tool_index is not None:
+            relevant, background = self._tool_index.get_relevant_tools(question_text)
+            request.surfaced_tools = relevant
+            relevant_section = build_tools_section_filtered(request, relevant, mode_name)
+            budgeter.add("tools", relevant_section, SectionPriority.CRITICAL,
+                          truncatable=True, min_tokens=50,
+                          truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter))
+            if background:
+                bg_section = f"Other tools available: {', '.join(sorted(background))}"
+                budgeter.add("tools_background", bg_section, SectionPriority.NICE_TO_HAVE)
+        else:
+            budgeter.add("tools", build_tools_section(request, mode_name=mode_name), SectionPriority.CRITICAL,
+                          truncatable=True, min_tokens=50,
+                          truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter))
 
         workspace_manifest = build_workspace_manifest(mode_name=mode_name, cwd=effective_cwd)
         if workspace_manifest:

@@ -7,9 +7,10 @@ Internal documentation for the `src/maxim/simulation/` module.
 ```
 src/maxim/simulation/
     __init__.py
-    sources.py                 # PerceptSource protocol
+    sources.py                 # PerceptSource protocol + ConversationalSource
     sinks.py                   # ActionSink protocol + RecordingSink
     scenario_source.py         # ScenarioSource (YAML loader + emitter)
+    interactive.py             # Conversational REPL (rewired for multi-turn)
     runner.py                  # ScenarioRunner (standalone executor)
     validation.py              # Expectation checking + ScenarioResult
     instrumented_executor.py   # InstrumentedExecutor wrapper
@@ -44,6 +45,26 @@ Key semantics:
 - `capabilities` tells the pipeline which subsystems to activate (e.g., `{"vision", "cli"}`).
 
 To implement a new source, create a class satisfying this protocol and pass it as the `percept_source` parameter to `run_agentic_loop()`.
+
+## ConversationalSource
+
+Defined in `sources.py`. A `PerceptSource` implementation for the interactive REPL mode (`maxim --sim` with no arguments). Unlike `ScenarioSource`, which replays a finite YAML file, `ConversationalSource` generates percepts from user input via the LLM:
+
+1. User types a natural-language scenario description.
+2. The LLM generates structured percepts from the description.
+3. Percepts are fed through the normal pipeline with full bio-subsystem tracing.
+4. After the pipeline processes the turn, the user is prompted again: "Simulated, what happens next?"
+
+`is_exhausted()` returns `False` -- conversational sources are infinite until the user types `quit` or `/new`.
+
+## interactive.py
+
+The interactive simulation module (`interactive.py`) has been rewritten around conversational multi-turn interaction rather than per-scenario execution. Key design points:
+
+- **Single boot**: the pipeline boots once and stays running across multiple turns.
+- **Contextual continuation**: each turn builds on the conversation history.
+- **Commands**: `/new` (reset context), `/save` (persist session), `/status` (show state), `quit` (end).
+- **Session consolidation**: memory promotion and hippocampus compaction are deferred to conversation end (`quit` or `/new`), not triggered after each turn. This avoids expensive consolidation work between rapid interactive turns.
 
 ## ActionSink Protocol and RecordingSink
 
@@ -90,11 +111,19 @@ def run_agentic_loop(
 
 When `percept_source` is provided, the loop replaces the normal `environment.observe()` call:
 
-1. **Exhaustion check** (step 0.5): if `percept_source.is_exhausted()` is `True`, the loop breaks.
+1. **Exhaustion check** (step 0.5): if `percept_source.is_exhausted()` is `True`, the loop breaks. Note: for `ConversationalSource`, `is_exhausted()` is always `False`; termination is driven by `state.is_done()` or `max_steps`.
 2. **Percept fetch** (step 1): calls `percept_source.next_percept()` instead of `environment.observe()`.
-3. **Pain routing**: if the percept has `source == "proprioception"` and `content == "pain_signal"`, it calls `route_pain_percept(percept, pain_bus)`.
+3. **Pain routing**: if the percept has `source == "proprioception"` and `content == "pain_signal"`, it calls `route_pain_percept(percept, pain_bus)`. Pain routing works in headless mode via the standalone `PainBus`.
 4. **Observation dict conversion**: the percept's fields are mapped into the observation dict that the rest of the pipeline consumes (`cli_input`, `transcript_chunk`, `detections`, etc.).
 5. **Step advance**: calls `percept_source.advance_step()` (if available) once per iteration.
+
+### Grace Period
+
+After a finite percept source (YAML scenario) is exhausted, a 60-second grace period allows the pipeline to finish processing pending work. Once the LLM produces a response, the grace period tightens to 5 seconds to avoid unnecessary waiting. This prevents premature termination of scenarios where LLM inference takes variable time.
+
+### LLMRouter.wait_ready()
+
+`LLMRouter.wait_ready()` is called at simulation startup to ensure the language model is fully loaded before percepts begin flowing. The companion `LLMRouter.is_ready` property can be polled if non-blocking startup is needed.
 
 ## Pain Routing
 
@@ -179,7 +208,11 @@ Two-tier review:
 1. **Action review**: classifies tool as `shell_exec`, `file_write`, `network_request`, or `tool_call` and runs through `FearAgent.review_action()`.
 2. **Code review**: extracts code content from bash commands, file writes, and edit operations, then scans via `FearAgent.review_code()`.
 
-DefaultNetwork retains its own FearAgent for motor/movement gating (`dn_movement` actions with pain bridge integration). FearGatedExecutor handles tool safety; DN handles motor safety.
+FearGatedExecutor reviews ALL tool calls in ALL modes -- robot, headless, and simulation. This is independent of DefaultNetwork. DefaultNetwork retains its own FearAgent for motor/movement gating (`dn_movement` actions with pain bridge integration). FearGatedExecutor handles tool safety; DN handles motor safety.
+
+## Session Consolidation in Simulation
+
+In simulation mode, session consolidation (memory promotion, hippocampus compaction) is **not** run after each percept turn. Instead, consolidation is deferred to conversation end -- triggered when the user types `quit` or `/new` in interactive mode, or after the last scenario finishes in batch mode. This avoids expensive consolidation overhead between rapid interactive turns while still ensuring memories are properly promoted before the session exits.
 
 ## Simulation Generator
 

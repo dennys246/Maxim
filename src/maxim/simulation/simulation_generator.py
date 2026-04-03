@@ -67,6 +67,9 @@ AVAILABLE TOOLS the agent can call:
 IMPORTANT RULES:
 - Use only valid source types: cli, transcript, vision, proprioception, comms
 - Pain percepts MUST have source="proprioception", content="pain_signal"
+- The FIRST percept MUST be a "cli" or "transcript" type with text input
+  so the LLM agent has something to respond to. Vision/proprioception
+  percepts alone do not trigger LLM reasoning.
 - Every percept should have a scenario_tag in metadata for debugging
 - Set salience (0-1) based on importance and novelty (0-1) based on surprise
 - Generate 2-7 percepts (keep scenarios focused)
@@ -97,6 +100,33 @@ OUTPUT FORMAT (JSON):
 }"""
 
 
+# Cached generator agent — avoids reloading the model every call
+_generator_agent = None
+_generator_profile = None
+
+
+def warm_generator(llm_profile: str | None = None) -> None:
+    """Pre-load the scenario generator LLM.
+
+    Call during startup to avoid cold-load latency on first generation.
+    """
+    global _generator_agent, _generator_profile
+    from maxim.agents.llm_agent import LLMAgent
+
+    if _generator_agent is None or _generator_profile != llm_profile:
+        logger.info("Pre-loading simulation generator LLM (profile=%s)...", llm_profile)
+        _generator_agent = LLMAgent(
+            profile=llm_profile,
+            system_prompt=SYSTEM_PROMPT,
+            temperature=0.1,
+            max_tokens=4096,
+        )
+        _generator_profile = llm_profile
+        # Trigger lazy model load
+        _generator_agent._get_backend()
+        logger.info("Simulation generator LLM ready")
+
+
 def generate_scenario(
     description: str,
     output_path: Path | None = None,
@@ -112,18 +142,22 @@ def generate_scenario(
     Returns:
         The generated YAML string.
     """
+    global _generator_agent, _generator_profile
     import json
 
     from maxim.agents.llm_agent import LLMAgent
 
-    agent = LLMAgent(
-        profile=llm_profile,
-        system_prompt=SYSTEM_PROMPT,
-        temperature=0.1,  # Low temp for structured output
-        max_tokens=4096,
-    )
+    # Reuse cached agent (same profile) to avoid reloading the model
+    if _generator_agent is None or _generator_profile != llm_profile:
+        _generator_agent = LLMAgent(
+            profile=llm_profile,
+            system_prompt=SYSTEM_PROMPT,
+            temperature=0.1,
+            max_tokens=4096,
+        )
+        _generator_profile = llm_profile
 
-    raw = agent.generate(
+    raw = _generator_agent.generate(
         f"Generate a test scenario for:\n\n{description}",
         max_tokens=4096,
     )
@@ -134,7 +168,7 @@ def generate_scenario(
     if result is None:
         # Retry with stronger instruction
         logger.warning("First generation attempt failed, retrying...")
-        raw = agent.generate(
+        raw = _generator_agent.generate(
             f"Return ONLY a JSON object (no other text) for this scenario:\n\n{description}",
             max_tokens=4096,
         )
@@ -205,6 +239,30 @@ def _clean_percepts(percepts: list[dict]) -> list[dict]:
 
         cleaned.append(p)
 
+    # Ensure at least one text percept exists (cli or transcript)
+    # so the LLM has something to respond to
+    has_text = any(
+        p.get("source") in ("cli", "transcript") and (p.get("cli_input") or p.get("transcript_chunk"))
+        for p in cleaned
+    )
+    if not has_text and cleaned:
+        # Prepend a CLI percept with a description derived from the first percept
+        first = cleaned[0]
+        desc = first.get("cli_input") or first.get("transcript_chunk") or first.get("content") or "Describe what is happening"
+        text_percept = {
+            "at": 0,
+            "source": "cli",
+            "cli_input": str(desc),
+            "salience": first.get("salience", 0.8),
+            "novelty": first.get("novelty", 0.7),
+            "metadata": {"scenario_tag": "auto_text_input"},
+        }
+        # Shift all existing percept steps by 1
+        for p in cleaned:
+            p["at"] = p.get("at", 0) + 1
+        cleaned.insert(0, text_percept)
+        logger.info("Auto-inserted CLI text percept (no text input in generated scenario)")
+
     return cleaned
 
 
@@ -214,7 +272,11 @@ def _clean_expectations(expectations: list[dict]) -> list[dict]:
     cleaned = []
 
     for exp in expectations:
-        if "type" not in exp or exp["type"] not in valid_types:
+        if "type" not in exp:
+            logger.warning("Generated expectation missing 'type' field, dropping: %s", exp)
+            continue
+        if exp["type"] not in valid_types:
+            logger.warning("Generated expectation has unknown type %r, dropping", exp["type"])
             continue
         exp.setdefault("description", exp["type"])
         cleaned.append(exp)

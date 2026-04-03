@@ -124,6 +124,14 @@ class RetrievalMixin:
         with self._rwlock.write():
             self._stats["queries"] = self._stats.get("queries", 0) + 1
 
+        # Simulation verbosity
+        if results:
+            try:
+                from maxim.simulation.sim_logger import sim_memory
+                sim_memory(f"Recalled {len(results)} memories", query_filters=len(index_filters))
+            except Exception:
+                pass
+
         return results
 
     def recall_similar(

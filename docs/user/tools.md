@@ -226,12 +226,27 @@ Aggregate health summary of all biological subsystems in one query. Returns stat
 
 ---
 
+## Learned Tool Index
+
+With 20+ tools registered, the full tool registry wastes hundreds of prompt tokens on irrelevant tool schemas. The **LearnedToolIndex** is a keyword-weighted hashtable that learns which tools match which goals:
+
+- **Auto-extraction:** Keywords extracted from tool name, description, and parameter names at startup
+- **Learned keywords:** Successful tool executions discover new keyword associations from goal text (e.g., "mug" → GrabTool after successful grab of a mug)
+- **Scoring:** Goal text tokenized and matched against index. Matched tools get full schemas (CRITICAL priority), unmatched get name-only listing (NICE_TO_HAVE, dropped first under token pressure)
+- **Learning signals:** Success strengthens keywords. Surfaced-but-unused decays keywords. Failure does NOT weaken (failure ≠ wrong tool choice)
+- **Persistence:** Weights saved to `data/memory/tool_index.json` across sessions
+
+Expected savings: ~370 tokens per prompt (74% of tool context) with 20 tools.
+
+---
+
 ## Tool Safety
 
 All tool calls pass through FearAgent before execution. FearAgent uses:
 
 1. **Deterministic pattern matching** -- regex for known dangerous patterns.
 2. **LLM review** (if available) -- nuanced safety assessment for ambiguous cases.
-3. **Configurable strictness levels** -- tunable per deployment.
+3. **NAc prediction** -- AdaptivePolicy blocks actions with very high-confidence negative predictions (confidence > 0.85, value < 0.1).
+4. **Configurable strictness levels** -- tunable per deployment.
 
-Tools with side effects (filesystem writes, bash commands, git commits) receive extra scrutiny. The agent can be restricted via the `--autonomy` flag.
+Tools with side effects (filesystem writes, bash commands, git commits) receive extra scrutiny. Introspection tools bypass FearAgent since they're read-only. The agent can be restricted via the `--autonomy` flag.

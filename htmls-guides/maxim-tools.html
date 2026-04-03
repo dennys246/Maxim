@@ -59,6 +59,7 @@
       <li><a href="#temporal" class="text-indigo-400 hover:text-indigo-300 no-underline">Temporal: Circadian Patterns</a></li>
       <li><a href="#semantic" class="text-indigo-400 hover:text-indigo-300 no-underline">Semantic: Concepts &amp; Relationships</a></li>
       <li><a href="#scene-energy" class="text-indigo-400 hover:text-indigo-300 no-underline">Scene &amp; Energy: Perception and Budget</a></li>
+      <li><a href="#learned-index" class="text-indigo-400 hover:text-indigo-300 no-underline">Learned Tool Index</a></li>
       <li><a href="#tool-safety" class="text-indigo-400 hover:text-indigo-300 no-underline">Tool Safety</a></li>
     </ol>
   </div>
@@ -226,6 +227,22 @@
       <div class="text-xs text-slate-500 font-mono bg-slate-900 rounded p-3">
         Parameters: none
       </div>
+    </div>
+  </section>
+
+  <!-- ── Learned Tool Index ──────────────────────────────── -->
+  <section id="learned-index" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">Learned Tool Index</h2>
+    <p class="text-slate-300 leading-relaxed">With 20+ tools, dumping every schema into the LLM prompt wastes hundreds of tokens. The <strong class="text-white">LearnedToolIndex</strong> is a keyword-weighted hashtable that learns which tools are relevant to which goals, saving ~74% of tool-context tokens per prompt.</p>
+
+    <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-5 space-y-2">
+      <h4 class="text-indigo-400 font-semibold">How it works</h4>
+      <ol class="text-sm text-slate-300 space-y-1 list-decimal pl-5">
+        <li><strong class="text-white">Auto-extraction:</strong> Keywords extracted from each tool's name, description, and parameters at startup.</li>
+        <li><strong class="text-white">Scoring:</strong> Goal text is tokenized and matched against the index. Matched tools get full schemas (CRITICAL priority), unmatched get name-only (NICE_TO_HAVE, dropped under token pressure).</li>
+        <li><strong class="text-white">Learning:</strong> On tool success, matched keyword weights strengthen and new keywords are discovered from goal text. On tool surfaced-but-unused, keyword weights decay. Failure does NOT weaken keywords (tool failure &ne; wrong tool).</li>
+        <li><strong class="text-white">Persistence:</strong> Learned weights saved across sessions to <code class="text-indigo-400">data/memory/tool_index.json</code>.</li>
+      </ol>
     </div>
   </section>
 
