@@ -1115,6 +1115,17 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         if llm_worker:
             new_proposal = llm_worker.get_latest_proposal()
+            # During grace period, trace every poll to see if proposals arrive
+            _in_grace = percept_source is not None and hasattr(percept_source, "_grace_deadline")
+            if _in_grace and step_num % 5 == 0:
+                try:
+                    from maxim.simulation.sim_logger import sim_log
+                    _remaining = percept_source._grace_deadline - time.time()
+                    sim_log("PIPELINE", f"Grace poll step={step_num}: proposal={'YES' if new_proposal else 'none'}, "
+                            f"actions={len(action_sink.actions) if action_sink else '?'}, "
+                            f"remaining={_remaining:.1f}s")
+                except Exception:
+                    pass
             # Periodic trace in sim mode to confirm loop is still polling
             if percept_source is not None and step_num % 20 == 0:
                 try:
