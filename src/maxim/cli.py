@@ -465,7 +465,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         from maxim.simulation.sinks import RecordingSink
         from maxim.simulation.validation import ScenarioResult, validate_expectations
 
-        sim_path = Path(sim_path)
+        sim_path = Path(sim_path).resolve()  # Resolve to absolute before CWD change
         if sim_path.is_dir():
             scenario_files = sorted(sim_path.glob("*.yaml")) + sorted(sim_path.glob("*.yml"))
         else:
