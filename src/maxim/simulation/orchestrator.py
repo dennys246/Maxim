@@ -301,7 +301,7 @@ def start_simulation_mode(
     # ── Build orchestrator pipeline ──────────────────────────────────────
     orch_env = FileSystemEnv(str(sim_tmpdir))
     orch_state = RuntimeState()
-    orch_state.data["mode"] = "singularity"  # No tool restrictions — orchestrator needs all sim tools
+    orch_state.data["mode"] = "active"  # Mode doesn't matter — tools are restricted by autonomy policy
     orch_state.data["strategy"] = persona
     orch_memory = build_memory()
     orch_decision_engine = build_decision_engine()
@@ -329,8 +329,12 @@ def start_simulation_mode(
         logger.debug("Orchestrator memory not available: %s", e)
     orch_agent = MaximAgent()
 
-    # Register simulation tools with orchestrator
-    orch_registry = build_tool_registry(operational_mode="active")
+    # Build a MINIMAL tool registry with ONLY simulation tools.
+    # Using build_tool_registry() adds filesystem/bash/code tools that
+    # confuse the LLM — it picks familiar tools (glob, bash) instead of
+    # simulation tools (send_message). A bare registry forces correct behavior.
+    from maxim.tools.registry import ToolRegistry
+    orch_registry = ToolRegistry()
     orch_registry.register(SendMessageTool(bridge=bridge))
     orch_registry.register(ObserveActionsTool(bridge=bridge))
     orch_registry.register(CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal))
