@@ -169,43 +169,21 @@ Action selection happens in exactly one place: `DecisionEngine.decide()`
 
 ---
 
-## Prompt Profiles
+## Per-Mode Response Configuration
 
-Optimize for your hardware with prompt profiles:
+LLM context windows and response lengths adapt automatically to the current operational mode. Configuration lives in `data/util/llm.json` under `mode_response_config`:
 
-| Profile | Max Depth | LLM Calls | Parallel | Use Case |
-|---------|-----------|-----------|----------|----------|
-| `minimal` | 2 | 8 | No | CPU-only, low RAM |
-| `standard` | 5 | 20 | Yes (4 workers) | GPU or fast CPU |
-| `rich` | 7 | 50 | Yes (8 workers) | High-end GPU |
+| Mode | Response Tokens | Context Window | Format |
+|------|----------------|----------------|--------|
+| sleep | 64 | 256 | minimal |
+| observe | 128 | 512 | minimal |
+| exploration | 256 | 1,024 | brief |
+| live / train | 512 | 2,048 | conversational |
+| active-assistance | 768 | 2,048 | detailed |
+| reflection | 1,024 | 3,072 | detailed |
+| research | 2,048 | 4,096 | academic |
 
-```bash
-# Set via CLI
-maxim --prompt-profile minimal
-
-# Or environment variable
-export MAXIM_PROMPT_PROFILE=minimal
-```
-
-### Profile Features
-
-**Minimal Profile**:
-- Shallow decomposition (max 2 levels)
-- Reflection only on failure
-- No parallel execution
-- Fast retry backoff
-
-**Standard Profile**:
-- Balanced depth (5 levels)
-- Parallel sibling execution
-- Exponential retry backoff
-- Reflection on failures
-
-**Rich Profile**:
-- Deep decomposition (7 levels)
-- Always reflect
-- Plan validation enabled
-- Maximum parallelism
+Lower modes save tokens and latency; higher modes give the LLM more room to reason. The mode is set via CLI (`--mode`) or switches automatically based on context.
 
 ---
 
