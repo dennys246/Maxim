@@ -685,13 +685,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                 try:
                     from maxim.integration.memory_hub import MemoryHub
                     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+                    from maxim.decisions.nac import NAc
+                    from maxim.similarity.ec import EntorhinalCortex
+                    from maxim.time.scn import SCN
 
                     _cli_hippocampus = Hippocampus(config=HippocampusConfig(
                         persistence_path=memory_path,
                     ))
-                    _cli_memory_hub = MemoryHub(hippocampus=_cli_hippocampus)
+                    _cli_nac = NAc()
+                    _cli_scn = SCN()
+                    _cli_ec = EntorhinalCortex()
+                    _cli_memory_hub = MemoryHub(
+                        hippocampus=_cli_hippocampus,
+                        scn=_cli_scn,
+                        nac=_cli_nac,
+                        ec=_cli_ec,
+                    )
                     agentic_agent.wire_memory_hub(_cli_memory_hub)
-                    logger.info("MemoryHub + Hippocampus wired to MaximAgent")
+                    logger.info("MemoryHub + Hippocampus + NAc + SCN + EC wired to MaximAgent")
                 except Exception as e:
                     logger.warning("Failed to create MemoryHub: %s", e)
 
