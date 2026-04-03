@@ -67,6 +67,8 @@ Return ONLY valid JSON with this format:
 
 RULES:
 - Generate 1-3 percepts (keep it focused)
+- The FIRST percept MUST be "cli" or "transcript" with text input
+  so the LLM agent has something to respond to
 - Use step_based timing starting at 0
 - Set salience/novelty appropriately for the context
 - Include scenario_tags in metadata

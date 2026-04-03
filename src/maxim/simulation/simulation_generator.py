@@ -67,6 +67,9 @@ AVAILABLE TOOLS the agent can call:
 IMPORTANT RULES:
 - Use only valid source types: cli, transcript, vision, proprioception, comms
 - Pain percepts MUST have source="proprioception", content="pain_signal"
+- The FIRST percept MUST be a "cli" or "transcript" type with text input
+  so the LLM agent has something to respond to. Vision/proprioception
+  percepts alone do not trigger LLM reasoning.
 - Every percept should have a scenario_tag in metadata for debugging
 - Set salience (0-1) based on importance and novelty (0-1) based on surprise
 - Generate 2-7 percepts (keep scenarios focused)
@@ -235,6 +238,30 @@ def _clean_percepts(percepts: list[dict]) -> list[dict]:
             p["metadata"].setdefault("intensity", 0.5)
 
         cleaned.append(p)
+
+    # Ensure at least one text percept exists (cli or transcript)
+    # so the LLM has something to respond to
+    has_text = any(
+        p.get("source") in ("cli", "transcript") and (p.get("cli_input") or p.get("transcript_chunk"))
+        for p in cleaned
+    )
+    if not has_text and cleaned:
+        # Prepend a CLI percept with a description derived from the first percept
+        first = cleaned[0]
+        desc = first.get("cli_input") or first.get("transcript_chunk") or first.get("content") or "Describe what is happening"
+        text_percept = {
+            "at": 0,
+            "source": "cli",
+            "cli_input": str(desc),
+            "salience": first.get("salience", 0.8),
+            "novelty": first.get("novelty", 0.7),
+            "metadata": {"scenario_tag": "auto_text_input"},
+        }
+        # Shift all existing percept steps by 1
+        for p in cleaned:
+            p["at"] = p.get("at", 0) + 1
+        cleaned.insert(0, text_percept)
+        logger.info("Auto-inserted CLI text percept (no text input in generated scenario)")
 
     return cleaned
 
