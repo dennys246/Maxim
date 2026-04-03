@@ -8,7 +8,6 @@ os.environ.setdefault('TF_FORCE_GPU_ALLOW_GROWTH', 'true')
 import keras
 
 from maxim.utils import config
-from maxim.training import losses
 
 class LayerScale(keras.layers.Layer):
     def __init__(self, init_value: float = 1e-6, **kwargs):
@@ -163,7 +162,11 @@ class MotorCortex(keras.Model):
         return keras.optimizers.Adam(learning_rate = self.config.learning_rate, beta_1 = self.config.beta_1, beta_2 = self.config.beta_2)
     
     def get_loss(self, eye_center_coordinates, actual_coordinates):
-        return losses.euclidian_distance(eye_center_coordinates, actual_coordinates)
+        import tensorflow as tf
+        p1_t = tf.cast(eye_center_coordinates, tf.float32)
+        p2_t = tf.cast(actual_coordinates, tf.float32)
+        diff = p2_t - p1_t
+        return tf.sqrt(tf.reduce_sum(tf.square(diff), axis=-1) + 1e-9)
     
 def load_motor_model(checkpoint_path, cfg = None):
     if cfg is None:

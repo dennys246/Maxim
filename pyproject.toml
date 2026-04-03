@@ -21,24 +21,27 @@ classifiers = [
 ]
 dependencies = [
     "reachy-mini[gstreamer]==1.2.6",
-    "faster-whisper==1.1.1",
-    "ctranslate2==4.6.2",
-    "onnxruntime==1.20.1",
+    "faster-whisper>=1.1.1",
+    "ctranslate2>=4.6.0",
+    "onnxruntime>=1.20,<2.0",
     "av>=14.0.0",
-    "numpy==2.2.5",
-    "opencv-python==4.12.0.88",
-    "scipy==1.15.3",
-    "tensorflow==2.20.0",
-    "keras==3.13.0",
-    "llama-cpp-python==0.3.8",
-    "ddgs>=6.0.0",  # Web search capability (renamed from duckduckgo-search)
-    "pyyaml>=6.0",  # YAML parsing for percept simulation scenarios
+    "numpy>=2.2,<3.0",
+    "opencv-python>=4.12,<5.0",
+    "scipy>=1.15,<2.0",
+    "llama-cpp-python>=0.3.8",
+    "ddgs>=6.0.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
+# Training support (MotorCortex model training)
+training = [
+    "tensorflow>=2.20,<3.0",
+    "keras>=3.13,<4.0",
+]
 # llama.cpp backend (CPU/GPU via llama-cpp-python)
 llm-llama = [
-    "llama-cpp-python==0.3.8",
+    "llama-cpp-python>=0.3.8",
 ]
 # PyTorch/Transformers backend (for Blackwell GPU support)
 llm-torch = [
@@ -51,7 +54,7 @@ llm-torch = [
 ]
 # Legacy alias
 llm = [
-    "llama-cpp-python==0.3.8",
+    "llama-cpp-python>=0.3.8",
 ]
 llm-anthropic = [
     "anthropic>=0.40.0",

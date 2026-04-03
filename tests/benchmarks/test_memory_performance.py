@@ -18,6 +18,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, "src")
 
@@ -104,7 +106,8 @@ def run_benchmark(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def benchmark_hippocampus_capture() -> BenchmarkResult:
+@pytest.mark.slow
+def test_benchmark_hippocampus_capture() -> BenchmarkResult:
     """Benchmark Hippocampus capture at 30Hz.
 
     Target: >30 ops/s with <33ms p99 latency
@@ -156,7 +159,8 @@ def benchmark_hippocampus_capture() -> BenchmarkResult:
     )
 
 
-def benchmark_hippocampus_recall() -> BenchmarkResult:
+@pytest.mark.slow
+def test_benchmark_hippocampus_recall() -> BenchmarkResult:
     """Benchmark Hippocampus recall.
 
     Target: >100 ops/s (recall should be fast)
@@ -207,7 +211,8 @@ def benchmark_hippocampus_recall() -> BenchmarkResult:
     )
 
 
-def benchmark_hippocampus_sleep() -> BenchmarkResult:
+@pytest.mark.slow
+def test_benchmark_hippocampus_sleep() -> BenchmarkResult:
     """Benchmark sleep consolidation.
 
     Target: <5 seconds for 1000 memories
@@ -258,7 +263,8 @@ def benchmark_hippocampus_sleep() -> BenchmarkResult:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def benchmark_ec_register() -> BenchmarkResult:
+@pytest.mark.slow
+def test_benchmark_ec_register() -> BenchmarkResult:
     """Benchmark EC registration.
 
     Target: >100 ops/s (registration happens with capture)
@@ -295,7 +301,8 @@ def benchmark_ec_register() -> BenchmarkResult:
     )
 
 
-def benchmark_ec_find_similar() -> BenchmarkResult:
+@pytest.mark.slow
+def test_benchmark_ec_find_similar() -> BenchmarkResult:
     """Benchmark EC similarity queries.
 
     Target: >50 ops/s (queries should be fast with LSH)
@@ -346,7 +353,8 @@ def benchmark_ec_find_similar() -> BenchmarkResult:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def benchmark_memory_hub_session_start() -> BenchmarkResult:
+@pytest.mark.slow
+def test_benchmark_memory_hub_session_start() -> BenchmarkResult:
     """Benchmark MemoryHub session start.
 
     Target: <2 seconds (cold start is acceptable)
@@ -379,7 +387,8 @@ def benchmark_memory_hub_session_start() -> BenchmarkResult:
     return result
 
 
-def benchmark_memory_hub_plan_outcome() -> BenchmarkResult:
+@pytest.mark.slow
+def test_benchmark_memory_hub_plan_outcome() -> BenchmarkResult:
     """Benchmark MemoryHub plan outcome recording.
 
     Target: >100 ops/s (should be fast, non-blocking)
@@ -423,7 +432,8 @@ def benchmark_memory_hub_plan_outcome() -> BenchmarkResult:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def benchmark_semantic_hash() -> BenchmarkResult | None:
+@pytest.mark.slow
+def test_benchmark_semantic_hash() -> BenchmarkResult | None:
     """Benchmark semantic hashing (fallback implementation).
 
     Target: >100 ops/s (fallback should be fast)
@@ -459,7 +469,8 @@ def benchmark_semantic_hash() -> BenchmarkResult | None:
     )
 
 
-def benchmark_neural_semantic_hash() -> BenchmarkResult | None:
+@pytest.mark.slow
+def test_benchmark_neural_semantic_hash() -> BenchmarkResult | None:
     """Benchmark neural semantic hashing (requires sentence-transformers).
 
     Target: >30 ops/s on GPU, >10 ops/s on CPU
@@ -591,15 +602,15 @@ def run_all_benchmarks() -> list[BenchmarkResult]:
 
     # Core benchmarks
     benchmarks = [
-        ("Hippocampus Capture (30Hz target)", benchmark_hippocampus_capture),
-        ("Hippocampus Recall", benchmark_hippocampus_recall),
-        ("Hippocampus Sleep", benchmark_hippocampus_sleep),
-        ("EC Register", benchmark_ec_register),
-        ("EC Find Similar", benchmark_ec_find_similar),
-        ("MemoryHub Session Start", benchmark_memory_hub_session_start),
-        ("MemoryHub Plan Outcome", benchmark_memory_hub_plan_outcome),
-        ("Semantic Hash (Fallback)", benchmark_semantic_hash),
-        ("Neural Semantic Hash", benchmark_neural_semantic_hash),
+        ("Hippocampus Capture (30Hz target)", test_benchmark_hippocampus_capture),
+        ("Hippocampus Recall", test_benchmark_hippocampus_recall),
+        ("Hippocampus Sleep", test_benchmark_hippocampus_sleep),
+        ("EC Register", test_benchmark_ec_register),
+        ("EC Find Similar", test_benchmark_ec_find_similar),
+        ("MemoryHub Session Start", test_benchmark_memory_hub_session_start),
+        ("MemoryHub Plan Outcome", test_benchmark_memory_hub_plan_outcome),
+        ("Semantic Hash (Fallback)", test_benchmark_semantic_hash),
+        ("Neural Semantic Hash", test_benchmark_neural_semantic_hash),
     ]
 
     for name, benchmark_fn in benchmarks:

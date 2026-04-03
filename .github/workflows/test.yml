@@ -1,0 +1,64 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgstreamer1.0-dev gstreamer1.0-plugins-base
+
+      - name: Install package and test dependencies
+        run: |
+          pip install pytest pytest-cov pytest-xdist
+          # Install without deps first (reachy-mini requires robot hardware SDK),
+          # then install available deps separately
+          pip install --no-deps -e .
+          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml || echo "Some optional deps unavailable on CI"
+
+      - name: Run unit tests
+        run: python -m pytest tests/unit/ -x -q -m "not slow" --tb=short
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check all Python files parse
+        run: |
+          python -c "
+          import ast, sys, pathlib
+          errors = []
+          for p in pathlib.Path('src/maxim').rglob('*.py'):
+              try:
+                  ast.parse(p.read_text())
+              except SyntaxError as e:
+                  errors.append(f'{p}: {e}')
+          if errors:
+              print('\n'.join(errors))
+              sys.exit(1)
+          print(f'All {len(list(pathlib.Path(\"src/maxim\").rglob(\"*.py\")))} files parse OK')
+          "
