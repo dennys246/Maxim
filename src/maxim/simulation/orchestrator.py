@@ -314,7 +314,7 @@ def start_simulation_mode(
     # ── Build orchestrator pipeline ──────────────────────────────────────
     orch_env = FileSystemEnv(str(sim_tmpdir))
     orch_state = RuntimeState()
-    orch_state.data["mode"] = "active"  # Mode doesn't matter — tools are restricted by autonomy policy
+    orch_state.data["mode"] = "singularity"  # No allowed_tools filter — all registered tools visible
     orch_state.data["strategy"] = persona
     orch_memory = build_memory()
     orch_decision_engine = build_decision_engine()
@@ -588,8 +588,11 @@ def start_simulation_mode(
             orch_executor,
             autonomy_controller=orch_autonomy,
             llm_worker=orch_llm_worker,
-            hippocampus=orch_hippocampus,
-            memory_hub=orch_memory_hub,
+            # NOTE: orchestrator hippocampus disabled for now — it captures
+            # every tool call as an episodic memory, which is noisy.
+            # Re-enable when cross-session learning (Phase 3) is tuned.
+            # hippocampus=orch_hippocampus,
+            # memory_hub=orch_memory_hub,
             max_steps=0,  # unlimited — stops via FinishSimulationTool or /cancel
             stop_event=stop_event,
             target_hz=2.0,
