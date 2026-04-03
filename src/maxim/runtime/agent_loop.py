@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import logging
 import os
 import re
@@ -61,6 +62,49 @@ from maxim.runtime.loop_state import (
     _get_plan_depth,
     _build_replan_context,
 )
+
+
+def _record_outcome(
+    *,
+    tool_name: str,
+    success: bool,
+    result_summary: str | None,
+    error: str | None,
+    reasoning: str,
+    recent_outcomes: list[dict[str, Any]],
+    max_recent: int,
+    llm_worker: Any | None,
+    context_pool: Any,
+) -> None:
+    """Record a tool outcome to all three sinks (Phase 0.1 consolidation).
+
+    Appends to recent_outcomes, records reasoning carryover on llm_worker,
+    and adds to context_pool.  Previously copy-pasted in ~10 locations.
+    """
+    recent_outcomes.append({
+        "tool": tool_name,
+        "success": success,
+        "result": result_summary,
+        "error": error,
+        "timestamp": time.time(),
+    })
+    if len(recent_outcomes) > max_recent:
+        recent_outcomes.pop(0)
+
+    if llm_worker is not None:
+        llm_worker.record_outcome(
+            tool_name=tool_name,
+            reasoning=reasoning,
+            success=success,
+            result_summary=(result_summary or "")[:200],
+        )
+
+    context_pool.add_outcome(
+        tool_name=tool_name,
+        success=success,
+        result_summary=result_summary,
+        error=error,
+    )
 
 
 def run_agent_loop(
@@ -413,7 +457,9 @@ def run_agentic_loop(
     pending_plan_proposal: LLMProposal | None = None
 
     # Track processed CLI inputs to avoid duplicate submissions
-    processed_cli_inputs: set[str] = set()
+    # Use deque (not set) so eviction is FIFO when the buffer is full.
+    # set.pop() removes an arbitrary element, which caused a correctness bug.
+    processed_cli_inputs: collections.deque[str] = collections.deque(maxlen=20)
 
     # Track recent outcomes for learning
     recent_outcomes: list[dict[str, Any]] = []
@@ -730,31 +776,16 @@ def run_agentic_loop(
 
                         # Record outcome so LLM sees the result and can follow up
                         confirmed_result_str = str(output)[:3000] if output is not None else None
-                        recent_outcomes.append({
-                            "tool": tool_name,
-                            "success": success,
-                            "result": confirmed_result_str,
-                            "error": error_msg,
-                            "timestamp": time.time(),
-                        })
-                        if len(recent_outcomes) > max_recent_outcomes:
-                            recent_outcomes.pop(0)
-
-                        # Record reasoning carryover for the LLM
-                        if llm_worker is not None:
-                            llm_worker.record_outcome(
-                                tool_name=tool_name,
-                                reasoning=reasoning or "",
-                                success=success,
-                                result_summary=(confirmed_result_str or "")[:200],
-                            )
-
-                        # Add to context pool so conversation history includes it
-                        context_pool.add_outcome(
+                        _record_outcome(
                             tool_name=tool_name,
                             success=success,
                             result_summary=confirmed_result_str,
                             error=error_msg,
+                            reasoning=reasoning or "",
+                            recent_outcomes=recent_outcomes,
+                            max_recent=max_recent_outcomes,
+                            llm_worker=llm_worker,
+                            context_pool=context_pool,
                         )
 
                     except Exception as e:
@@ -812,27 +843,16 @@ def run_agentic_loop(
                     print("❌ Action cancelled by user")
 
                     # Record rejection so LLM knows and doesn't re-propose
-                    recent_outcomes.append({
-                        "tool": tool_name,
-                        "success": False,
-                        "result": None,
-                        "error": "User rejected this action",
-                        "timestamp": time.time(),
-                    })
-                    if len(recent_outcomes) > max_recent_outcomes:
-                        recent_outcomes.pop(0)
-                    if llm_worker is not None:
-                        llm_worker.record_outcome(
-                            tool_name=tool_name,
-                            reasoning=reasoning,
-                            success=False,
-                            result_summary="User rejected this action",
-                        )
-                    context_pool.add_outcome(
+                    _record_outcome(
                         tool_name=tool_name,
                         success=False,
                         result_summary=None,
                         error="User rejected this action",
+                        reasoning=reasoning,
+                        recent_outcomes=recent_outcomes,
+                        max_recent=max_recent_outcomes,
+                        llm_worker=llm_worker,
+                        context_pool=context_pool,
                     )
 
                     # Clear ALL input sources to prevent "no" from being processed again
@@ -1011,27 +1031,16 @@ def run_agentic_loop(
                     log_agentic("agent_loop", "plan_rejected", {"tool": rejected_tool})
 
                     # Record rejection so LLM knows its plan was rejected
-                    recent_outcomes.append({
-                        "tool": rejected_tool,
-                        "success": False,
-                        "result": None,
-                        "error": "User rejected the proposed plan",
-                        "timestamp": time.time(),
-                    })
-                    if len(recent_outcomes) > max_recent_outcomes:
-                        recent_outcomes.pop(0)
-                    if llm_worker is not None:
-                        llm_worker.record_outcome(
-                            tool_name=rejected_tool,
-                            reasoning=pending_plan_proposal.reasoning or "",
-                            success=False,
-                            result_summary="User rejected the proposed plan",
-                        )
-                    context_pool.add_outcome(
+                    _record_outcome(
                         tool_name=rejected_tool,
                         success=False,
                         result_summary=None,
                         error="User rejected the proposed plan",
+                        reasoning=pending_plan_proposal.reasoning or "",
+                        recent_outcomes=recent_outcomes,
+                        max_recent=max_recent_outcomes,
+                        llm_worker=llm_worker,
+                        context_pool=context_pool,
                     )
 
                     pending_plan_proposal = None
@@ -1425,32 +1434,16 @@ def run_agentic_loop(
                                     logger.debug(f"Agent fallback action failed: {e}")
 
                                     # Track exception in recent_outcomes for LLM learning
-                                    outcome = {
-                                        "tool": action["tool_name"],
-                                        "success": False,
-                                        "result": None,
-                                        "error": str(e),
-                                        "timestamp": time.time(),
-                                    }
-                                    recent_outcomes.append(outcome)
-                                    if len(recent_outcomes) > max_recent_outcomes:
-                                        recent_outcomes.pop(0)
-
-                                    # Record reasoning carryover
-                                    if llm_worker is not None and pending_proposal is not None:
-                                        llm_worker.record_outcome(
-                                            tool_name=action.get("tool_name", "unknown"),
-                                            reasoning=getattr(pending_proposal, "reasoning", ""),
-                                            success=False,
-                                            result_summary=str(e)[:200],
-                                        )
-
-                                    # Add to context pool
-                                    context_pool.add_outcome(
+                                    _record_outcome(
                                         tool_name=action["tool_name"],
                                         success=False,
                                         result_summary=None,
                                         error=str(e),
+                                        reasoning=getattr(pending_proposal, "reasoning", "") if pending_proposal else "",
+                                        recent_outcomes=recent_outcomes,
+                                        max_recent=max_recent_outcomes,
+                                        llm_worker=llm_worker,
+                                        context_pool=context_pool,
                                     )
                             else:
                                 # Log rejected action
@@ -1551,27 +1544,16 @@ def run_agentic_loop(
 
                 # Record individual outcomes so LLM has structured history
                 for pr in parallel_results:
-                    recent_outcomes.append({
-                        "tool": pr["tool"],
-                        "success": pr["success"],
-                        "result": pr.get("result"),
-                        "error": pr.get("error"),
-                        "timestamp": time.time(),
-                    })
-                    if len(recent_outcomes) > max_recent_outcomes:
-                        recent_outcomes.pop(0)
-                    context_pool.add_outcome(
+                    _record_outcome(
                         tool_name=pr["tool"],
                         success=pr["success"],
                         result_summary=pr.get("result"),
                         error=pr.get("error"),
-                    )
-                if llm_worker is not None and pending_proposal is not None:
-                    llm_worker.record_outcome(
-                        tool_name="batched_exploration",
-                        reasoning=getattr(pending_proposal, "reasoning", ""),
-                        success=all_succeeded,
-                        result_summary=f"{len(parallel_results)} actions, {sum(1 for p in parallel_results if p['success'])} succeeded",
+                        reasoning=getattr(pending_proposal, "reasoning", "") if pending_proposal else "",
+                        recent_outcomes=recent_outcomes,
+                        max_recent=max_recent_outcomes,
+                        llm_worker=llm_worker,
+                        context_pool=context_pool,
                     )
 
                 # Combine results into a followup for the next LLM call
@@ -1801,32 +1783,16 @@ def run_agentic_loop(
                     else:
                         result_str = None
 
-                    outcome = {
-                        "tool": tool_name,
-                        "success": success,
-                        "result": result_str,
-                        "error": getattr(result, "error", None),
-                        "timestamp": time.time(),
-                    }
-                    recent_outcomes.append(outcome)
-                    if len(recent_outcomes) > max_recent_outcomes:
-                        recent_outcomes.pop(0)
-
-                    # Record reasoning carryover
-                    if llm_worker is not None and pending_proposal is not None:
-                        llm_worker.record_outcome(
-                            tool_name=tool_name or "unknown",
-                            reasoning=getattr(pending_proposal, "reasoning", ""),
-                            success=success,
-                            result_summary=(result_str or "")[:200],
-                        )
-
-                    # Add to context pool
-                    context_pool.add_outcome(
+                    _record_outcome(
                         tool_name=tool_name or "unknown",
                         success=success,
                         result_summary=result_str,
                         error=getattr(result, "error", None),
+                        reasoning=getattr(pending_proposal, "reasoning", "") if pending_proposal else "",
+                        recent_outcomes=recent_outcomes,
+                        max_recent=max_recent_outcomes,
+                        llm_worker=llm_worker,
+                        context_pool=context_pool,
                     )
 
                     # Record plan outcome in MemoryHub for learning
@@ -1944,32 +1910,16 @@ def run_agentic_loop(
                     )
 
                     # Track exception in recent_outcomes for LLM learning
-                    outcome = {
-                        "tool": action.get("tool_name"),
-                        "success": False,
-                        "result": None,
-                        "error": str(e),
-                        "timestamp": time.time(),
-                    }
-                    recent_outcomes.append(outcome)
-                    if len(recent_outcomes) > max_recent_outcomes:
-                        recent_outcomes.pop(0)
-
-                    # Record reasoning carryover
-                    if llm_worker is not None and pending_proposal is not None:
-                        llm_worker.record_outcome(
-                            tool_name=action.get("tool_name", "unknown"),
-                            reasoning=getattr(pending_proposal, "reasoning", ""),
-                            success=False,
-                            result_summary=str(e)[:200],
-                        )
-
-                    # Add to context pool so LLM can learn from failures
-                    context_pool.add_outcome(
+                    _record_outcome(
                         tool_name=action.get("tool_name", "unknown"),
                         success=False,
                         result_summary=None,
                         error=str(e),
+                        reasoning=getattr(pending_proposal, "reasoning", "") if pending_proposal else "",
+                        recent_outcomes=recent_outcomes,
+                        max_recent=max_recent_outcomes,
+                        llm_worker=llm_worker,
+                        context_pool=context_pool,
                     )
 
                     # Mark failure in state
@@ -2043,27 +1993,16 @@ def run_agentic_loop(
                     )
                     # Record rejection so LLM knows not to re-propose
                     rejection_msg = f"Rejected by autonomy: {reason}"
-                    recent_outcomes.append({
-                        "tool": action.get("tool_name", "unknown"),
-                        "success": False,
-                        "result": None,
-                        "error": rejection_msg,
-                        "timestamp": time.time(),
-                    })
-                    if len(recent_outcomes) > max_recent_outcomes:
-                        recent_outcomes.pop(0)
-                    if llm_worker is not None:
-                        llm_worker.record_outcome(
-                            tool_name=action.get("tool_name", "unknown"),
-                            reasoning=pending_proposal.reasoning or "",
-                            success=False,
-                            result_summary=rejection_msg[:200],
-                        )
-                    context_pool.add_outcome(
+                    _record_outcome(
                         tool_name=action.get("tool_name", "unknown"),
                         success=False,
                         result_summary=None,
                         error=rejection_msg,
+                        reasoning=pending_proposal.reasoning or "",
+                        recent_outcomes=recent_outcomes,
+                        max_recent=max_recent_outcomes,
+                        llm_worker=llm_worker,
+                        context_pool=context_pool,
                     )
                     logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
                 pending_proposal = None
@@ -2093,27 +2032,16 @@ def run_agentic_loop(
 
                         # Record outcome so LLM sees the result
                         result_str = str(output)[:3000] if output is not None else None
-                        recent_outcomes.append({
-                            "tool": tool_name,
-                            "success": success,
-                            "result": result_str,
-                            "error": error_msg,
-                            "timestamp": time.time(),
-                        })
-                        if len(recent_outcomes) > max_recent_outcomes:
-                            recent_outcomes.pop(0)
-                        if llm_worker is not None:
-                            llm_worker.record_outcome(
-                                tool_name=tool_name,
-                                reasoning=proposal.reasoning or "",
-                                success=success,
-                                result_summary=(result_str or "")[:200],
-                            )
-                        context_pool.add_outcome(
+                        _record_outcome(
                             tool_name=tool_name,
                             success=success,
                             result_summary=result_str,
                             error=error_msg,
+                            reasoning=proposal.reasoning or "",
+                            recent_outcomes=recent_outcomes,
+                            max_recent=max_recent_outcomes,
+                            llm_worker=llm_worker,
+                            context_pool=context_pool,
                         )
 
                         # Queue follow-up so LLM can continue
@@ -2132,21 +2060,17 @@ def run_agentic_loop(
 
                     except Exception as e:
                         logger.error(f"Approved action failed: {e}")
-                        # Record failure so LLM knows
-                        recent_outcomes.append({
-                            "tool": tool_name,
-                            "success": False,
-                            "result": None,
-                            "error": str(e),
-                            "timestamp": time.time(),
-                        })
-                        if len(recent_outcomes) > max_recent_outcomes:
-                            recent_outcomes.pop(0)
-                        context_pool.add_outcome(
+                        # Record failure so LLM knows (also fixes missing llm_worker call)
+                        _record_outcome(
                             tool_name=tool_name,
                             success=False,
                             result_summary=None,
                             error=str(e),
+                            reasoning=proposal.reasoning or "",
+                            recent_outcomes=recent_outcomes,
+                            max_recent=max_recent_outcomes,
+                            llm_worker=llm_worker,
+                            context_pool=context_pool,
                         )
 
         # ─────────────────────────────────────────────────────────────────
@@ -2156,6 +2080,9 @@ def run_agentic_loop(
         if llm_worker and pending_proposal is None:
             now = time.time()
             if now - last_llm_submit_time > llm_submit_interval:
+                # Cache tool registry snapshot for this submission (avoids 3 redundant traversals)
+                _all_tools = _get_all_tools()
+
                 # Build context for LLM
                 try:
                     context = None
@@ -2235,14 +2162,14 @@ def run_agentic_loop(
                                         # Skip LLM for known commands (handled by Selfy)
                                         if cli_lower in SKIP_LLM_COMMANDS:
                                             logger.info("Skipping LLM for command: %s", cli_input)
-                                            processed_cli_inputs.add(cli_input)
+                                            processed_cli_inputs.append(cli_input)
                                             continue
                                         new_cli_input = cli_input
                                         has_meaningful_input = True
                                         break
                                     else:
                                         # Mark voice inputs without wake word as processed
-                                        processed_cli_inputs.add(cli_input)
+                                        processed_cli_inputs.append(cli_input)
 
                         # Check for speech with maxim keyword
                         if context.detected_speech:
@@ -2321,11 +2248,9 @@ def run_agentic_loop(
                             context = None
 
                     # Mark new CLI input as processed to prevent duplicate submissions
+                    # deque(maxlen=20) auto-evicts oldest on overflow — no manual check needed
                     if new_cli_input:
-                        processed_cli_inputs.add(new_cli_input)
-                        # Keep only last 20 processed inputs to prevent memory growth
-                        if len(processed_cli_inputs) > 20:
-                            processed_cli_inputs.pop()
+                        processed_cli_inputs.append(new_cli_input)
 
                     if context:
                         # Get mode info
@@ -2353,8 +2278,7 @@ def run_agentic_loop(
                             )
 
                             # Get available tools for exploration
-                            _tools = _get_all_tools()
-                            exploration_tools = exploration_mode_def.get_available_tools(_tools) if _tools else set()
+                            exploration_tools = exploration_mode_def.get_available_tools(_all_tools) if _all_tools else set()
 
                             mode_info = ModeInfo(
                                 name="exploration",
@@ -2403,9 +2327,8 @@ def run_agentic_loop(
                             # Get mode definition for tool access
                             mode_def = get_mode(mode_name)
                             available_tools_for_mode = set()
-                            _tools = _get_all_tools()
-                            if mode_def and _tools:
-                                available_tools_for_mode = mode_def.get_available_tools(_tools)
+                            if mode_def and _all_tools:
+                                available_tools_for_mode = mode_def.get_available_tools(_all_tools)
 
                             mode_info = ModeInfo(
                                 name=mode_name,
@@ -2433,7 +2356,7 @@ def run_agentic_loop(
                                 context.cli_inputs = new_inputs[-1:] if new_inputs else []
 
                         # Get available tools for this mode
-                        available_tools = mode_info.get_available_tools(_get_all_tools())
+                        available_tools = mode_info.get_available_tools(_all_tools)
                         last_surfaced_tools = list(available_tools)
 
                         # Get full tool info for prompt (description, params, example)

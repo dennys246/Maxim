@@ -74,6 +74,8 @@ class ExecAgent(Agent):
         quantization: str = "Q4_K_M",
         system_prompt: str | None = None,
         rate_limit_hz: float = 2.0,
+        shared_router: LLMRouter | None = None,
+        shared_llm_worker: LLMWorker | None = None,
     ) -> None:
         super().__init__(name=name, enabled=enabled)
         self._bus = bus
@@ -84,12 +86,14 @@ class ExecAgent(Agent):
             prompt = get_agent_prompt(self.agent_name)
             self._system_prompt = prompt or self.SYSTEM_PROMPT
 
-        # LLM config
+        # LLM config — prefer shared instances from agentic_runtime to avoid
+        # loading a second model backend (cleanup #3: double LLM load fix).
         self._llm: ChatLLMAgent | None = None
         self._llm_profile = llm_profile
         self._quantization = quantization
-        self._router: LLMRouter | None = None
-        self._llm_worker: LLMWorker | None = None
+        self._router: LLMRouter | None = shared_router
+        self._llm_worker: LLMWorker | None = shared_llm_worker
+        self._owns_llm_worker = shared_llm_worker is None  # Only stop if we created it
 
         # Rate limiting
         self._min_interval = 1.0 / rate_limit_hz
@@ -190,6 +194,7 @@ class ExecAgent(Agent):
             )
             llm_worker.start()
             self._llm_worker = llm_worker
+            self._owns_llm_worker = True
         except Exception as e:
             warn("ExecAgent: Failed to init LLMWorker: %s", e)
             return None
@@ -1438,7 +1443,7 @@ Based on this context, what goal should be proposed?"""
         self._bus.unsubscribe(Percept, self._on_percept)
         self._bus.unsubscribe(FilteredPercept, self._on_filtered_percept)
         self._bus.unsubscribe(GoalCompleted, self._on_goal_completed)
-        if self._llm_worker:
+        if self._llm_worker and self._owns_llm_worker:
             self._llm_worker.stop()
             self._llm_worker = None
         if self._llm:

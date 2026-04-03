@@ -1,6 +1,19 @@
 # Simulation Agent Plan
 
-> **Status:** Not started. All prerequisites met.
+> **Status:** Not started. All infrastructure prerequisites implemented; orchestrator layer is new work.
+>
+> **Already implemented** (not part of this plan's scope):
+> - `ConversationalSource` — thread-safe percept injection (queue-based, REPL-ready)
+> - `RecordingSink` + `InstrumentedExecutor` — action capture with query methods
+> - `ScenarioSource` + `ScenarioRunner` — YAML scenario execution + validation (4 expectation types)
+> - `PerceptSource` / `ActionSink` protocols — clean interfaces for agent_loop integration
+> - `interactive.py` with `run_interactive_sim()` — multi-turn REPL with LLM continuation
+> - `simulation_generator.py` — LLM → YAML scenario generation
+> - `sim_logger.py` — structured bio-subsystem tracing (ANSI + JSONL)
+> - Agent loop integration (`percept_source`, `action_sink`, `pain_bus` params)
+>
+> **What this plan adds:** The orchestrator-as-agent layer — a second Maxim instance
+> that drives the AUT through its own agentic loop with simulation-specific tools.
 
 ## Vision
 
@@ -570,8 +583,11 @@ All met:
 - Strategy/Mode system — persona configuration (implemented)
 
 Fix before starting:
-- **#3 Double LLM load** — fix the current pattern before adding shared backend support
-- **#6 Batch scenario break** — needed for regression testing in Phase 4
+- **#3 Double LLM load** — fix the current pattern before adding shared backend support (blocks Phase 1)
+- **#6 Batch scenario break** — needed for regression testing in Phase 4 (does NOT block Phases 1-3)
+
+Optional but recommended before Phase 2:
+- **Loop Modularization Phase 4** (SimulationAdapter) — cleaner AUT integration point, but not a hard blocker since Phase 1 uses the existing `percept_source`/`action_sink` interface directly
 
 ---
 

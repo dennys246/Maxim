@@ -612,6 +612,16 @@ class AgenticRuntimeMixin:
         self._llm_worker = llm_worker
         self.log.info("Bootstrap: LLM worker ready (%.1fms)", (time.time() - _t_llm) * 1000)
 
+        # Share LLM backend with ExecAgent to avoid loading a second model
+        # (cleanup #3: double LLM load fix)
+        if llm_worker is not None and hasattr(agent, "exec_agent"):
+            exec_agent = agent.exec_agent
+            if exec_agent._router is None:
+                exec_agent._router = llm_router
+            if exec_agent._llm_worker is None:
+                exec_agent._llm_worker = llm_worker
+                exec_agent._owns_llm_worker = False
+
         # Wire communication gateway if available
         if gateway is not None:
             agent.wire_communication(gateway=gateway, nac=nac)
