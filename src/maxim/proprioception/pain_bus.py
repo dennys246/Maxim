@@ -205,4 +205,14 @@ def create_pain_memory_subscriber(
             ),
         )
 
+        # Simulation verbosity
+        try:
+            from maxim.simulation.sim_logger import sim_memory
+            sim_memory(
+                f"Pain memory captured: {signal.pain_type.value} "
+                f"(intensity={signal.intensity:.2f})",
+            )
+        except Exception:
+            pass
+
     return _on_pain

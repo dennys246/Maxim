@@ -1113,6 +1113,13 @@ def run_agentic_loop(
                     tool_name = new_proposal.action.get("tool_name", "unknown")
                     logger.info("LLM proposal received: tool=%s, confidence=%.2f",
                                 tool_name, new_proposal.confidence)
+                    # Simulation verbosity
+                    try:
+                        from maxim.simulation.sim_logger import sim_log
+                        sim_log("EXEC", f"LLM proposes: {tool_name} (confidence={new_proposal.confidence:.2f})",
+                                {"reasoning": (new_proposal.reasoning or "")[:60]})
+                    except Exception:
+                        pass
                     # Log to agentic stream
                     log_agentic(
                         "agent_loop",
@@ -2457,6 +2464,13 @@ def run_agentic_loop(
                                     "tools_available": len(available_tools),
                                 },
                             )
+                            # Simulation verbosity
+                            try:
+                                from maxim.simulation.sim_logger import sim_log
+                                _input_preview = new_cli_input[:60] if new_cli_input else "followup"
+                                sim_log("EXEC", f"LLM submit: {_input_preview}")
+                            except Exception:
+                                pass
 
                 except Exception as e:
                     import traceback

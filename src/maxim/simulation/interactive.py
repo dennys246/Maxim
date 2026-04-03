@@ -92,7 +92,7 @@ def run_interactive_sim(
             # Generate scenario from description
             print("  Generating scenario...")
             try:
-                scenario_path = sim_workspace / f"interactive_{run_count:03d}.yaml"
+                scenario_path = (sim_workspace / f"interactive_{run_count:03d}.yaml").resolve()
                 generate_scenario(
                     description,
                     output_path=scenario_path,
