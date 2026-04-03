@@ -606,7 +606,9 @@ def start_simulation_mode(
     finally:
         # Always clean up, even on interrupt
         bridge._spinner.stop()
+
     # ── Shutdown everything (safe even after KeyboardInterrupt) ────────
+    print("  Shutting down agent loops...")
     try:
         stop_event.set()
         bridge.finish()
@@ -614,13 +616,15 @@ def start_simulation_mode(
     except Exception:
         pass
 
-    # Wait for AUT to exit
+    print("  Waiting for AUT to finish...")
     try:
         aut_thread.join(timeout=5.0)
+        if aut_thread.is_alive():
+            print("  AUT thread did not stop in time (continuing anyway)")
     except Exception:
         pass
 
-    # Stop LLM workers
+    print("  Stopping LLM workers...")
     for worker in (aut_llm_worker, orch_llm_worker):
         if worker:
             try:
@@ -631,8 +635,9 @@ def start_simulation_mode(
     # Persist orchestrator memory (Phase 3: cross-session learning)
     if orch_hippocampus is not None:
         try:
+            mem_count = len(orch_hippocampus)
+            print(f"  Saving orchestrator memory ({mem_count} memories)...")
             orch_hippocampus.save()
-            logger.info("Orchestrator hippocampus saved")
         except Exception as e:
             logger.debug("Failed to save orchestrator hippocampus: %s", e)
 
@@ -656,6 +661,7 @@ def start_simulation_mode(
     duration = time.time() - start_time
     finish_reason = "cancel" if stop_event.is_set() and not orch_error else "completed"
 
+    print("  Building simulation report...")
     report = build_report(
         goal=goal,
         persona=persona,
@@ -671,8 +677,17 @@ def start_simulation_mode(
 
     # Persist everything to session directory
     report_dir = "data/sim_reports"
+    print(f"  Saving report to data/sim_reports/{report.session_id}/...")
     save_report(report, base_dir=report_dir)
+
+    action_count = len(bridge.get_all_actions())
+    print(f"  Saving action log ({action_count} records)...")
     save_action_log(bridge, base_dir=report_dir, session_id=report.session_id)
+
+    if aut_hippocampus is not None or aut_nac is not None:
+        aut_mem = len(aut_hippocampus) if aut_hippocampus else 0
+        aut_links = sum(len(v) for v in aut_nac._links.values()) if aut_nac else 0
+        print(f"  Saving AUT state ({aut_mem} memories, {aut_links} causal links)...")
     save_aut_state(
         hippocampus=aut_hippocampus,
         nac=aut_nac,
@@ -681,13 +696,15 @@ def start_simulation_mode(
     )
 
     # LLM-powered roundup (uses shared router if still available)
-    if llm_router is not None:
+    if llm_router is not None and not getattr(llm_router, "session_cost_exceeded", False):
         try:
+            print("  Running LLM analysis roundup...")
             analyze_simulation(report, llm_router=llm_router)
-            # Re-save report with LLM analysis included
             save_report(report, base_dir=report_dir)
         except Exception as e:
             logger.debug("LLM roundup failed: %s", e)
+    elif llm_router is not None:
+        print("  Skipping LLM roundup (session cost ceiling reached)")
 
     # Print human-readable report
     print_report(report)
