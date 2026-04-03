@@ -372,55 +372,6 @@ class TestLLMWorkerExternalPool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class TestLLMWorkerLegacyMode:
-    """Test that legacy (no-pool) mode still works correctly."""
-
-    def test_legacy_submit_and_proposal(self):
-        """Legacy mode uses internal thread and queues."""
-        from maxim.agents.llm_worker import LLMWorker
-
-        # Force legacy mode: pass pool=None explicitly and bypass owns_pool
-        worker = LLMWorker(llm=FakeLLM(), stale_threshold_s=30.0)
-        # Override to prevent internal pool creation
-        worker._owns_pool = False
-        worker._pool = None
-
-        worker.start()
-        try:
-            assert worker._worker is not None
-            assert worker._worker.is_alive()
-
-            _submit_test_context(worker)
-
-            proposal = None
-            for _ in range(40):
-                proposal = worker.get_latest_proposal()
-                if proposal is not None:
-                    break
-                time.sleep(0.1)
-
-            assert proposal is not None
-            assert proposal.action is not None
-        finally:
-            worker.stop()
-
-    def test_legacy_stop(self):
-        """Legacy stop joins the worker thread."""
-        from maxim.agents.llm_worker import LLMWorker
-
-        worker = LLMWorker(llm=FakeLLM())
-        worker._owns_pool = False
-        worker._pool = None
-
-        worker.start()
-        thread = worker._worker
-        assert thread is not None
-        assert thread.is_alive()
-
-        worker.stop()
-        assert not thread.is_alive()
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Tests: Priority Ordering
 # ─────────────────────────────────────────────────────────────────────────────

@@ -5,15 +5,14 @@ from __future__ import annotations
 import threading
 
 
-from maxim.agents.llm_worker import (
+from maxim.agents.prompt_budgeter import (
     PromptBudgeter,
-    ReasoningCarryover,
-    ReasoningEntry,
     SectionPriority,
     _truncate_context_pool,
     _truncate_conversation,
     _truncate_reasoning_carryover,
 )
+from maxim.agents.llm_fallback import ReasoningCarryover, ReasoningEntry
 from maxim.models.language.router import (
     CharEstimateCounter,
     LlamaCppTokenCounter,
@@ -378,7 +377,7 @@ class TestReasoningCarryover:
 class TestModeAwareManifest:
     def test_workspace_manifest_passive_mode(self, tmp_path):
         """Passive mode shows workspace files and CWD read-only context."""
-        from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.prompt_builder import build_workspace_manifest
 
         # Create a workspace inside tmp_path
         ws = tmp_path / ".maxim_workspace"
@@ -387,33 +386,33 @@ class TestModeAwareManifest:
         # Add a CWD file so CWD context section appears
         (tmp_path / "app.py").write_text("import os")
 
-        result = LLMWorker._build_workspace_manifest(mode_name="passive", cwd=str(tmp_path))
+        result = build_workspace_manifest(mode_name="passive", cwd=str(tmp_path))
         assert "EXISTING WORKSPACE" in result
         assert "hello.py" in result
         assert "proposed as plans" in result
 
     def test_workspace_manifest_active_mode(self, tmp_path):
         """Active mode shows workspace + CWD with 'requires approval' note."""
-        from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.prompt_builder import build_workspace_manifest
 
         ws = tmp_path / ".maxim_workspace"
         ws.mkdir()
         (ws / "draft.py").write_text("x = 1")
         (tmp_path / "main.py").write_text("print('main')")
 
-        result = LLMWorker._build_workspace_manifest(mode_name="active", cwd=str(tmp_path))
+        result = build_workspace_manifest(mode_name="active", cwd=str(tmp_path))
         assert "EXISTING WORKSPACE" in result
         assert "requires approval" in result
 
     def test_workspace_manifest_singularity_mode(self, tmp_path):
         """Singularity mode shows full CWD tree with full access language."""
-        from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.prompt_builder import build_workspace_manifest
 
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "main.py").write_text("print('main')")
         (tmp_path / "README.md").write_text("# Project")
 
-        result = LLMWorker._build_workspace_manifest(mode_name="singularity", cwd=str(tmp_path))
+        result = build_workspace_manifest(mode_name="singularity", cwd=str(tmp_path))
         assert "PROJECT DIRECTORY" in result
         assert "FULL read/write" in result
         assert ".maxim_workspace" not in result or "scratch" in result
@@ -421,21 +420,21 @@ class TestModeAwareManifest:
 
     def test_workspace_manifest_singularity_plan_hint(self, tmp_path):
         """Singularity with many files triggers PLAN FIRST hint."""
-        from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.prompt_builder import build_workspace_manifest
 
         for i in range(6):
             (tmp_path / f"file{i}.py").write_text(f"# file {i}")
 
-        result = LLMWorker._build_workspace_manifest(mode_name="singularity", cwd=str(tmp_path))
+        result = build_workspace_manifest(mode_name="singularity", cwd=str(tmp_path))
         assert "PLAN FIRST" in result
 
     def test_workspace_manifest_empty_workspace(self, tmp_path):
         """Empty workspace returns CWD context only for active mode."""
-        from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.prompt_builder import build_workspace_manifest
 
         (tmp_path / "app.py").write_text("import os")
 
-        result = LLMWorker._build_workspace_manifest(mode_name="active", cwd=str(tmp_path))
+        result = build_workspace_manifest(mode_name="active", cwd=str(tmp_path))
         assert "CWD Context" in result
         assert "EXISTING WORKSPACE" not in result
 
@@ -443,40 +442,40 @@ class TestModeAwareManifest:
 class TestModeAwareGuidance:
     def test_tool_guidance_core_passive(self):
         """Passive mode requires .maxim_workspace/ prefix."""
-        from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.prompt_builder import build_tool_guidance_core
 
-        result = LLMWorker._build_tool_guidance_core(mode_name="passive")
+        result = build_tool_guidance_core(mode_name="passive")
         assert ".maxim_workspace/" in result
         assert "proposed as plans" in result
 
     def test_tool_guidance_core_active(self):
         """Active mode requires .maxim_workspace/ prefix but allows CWD reads."""
-        from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.prompt_builder import build_tool_guidance_core
 
-        result = LLMWorker._build_tool_guidance_core(mode_name="active")
+        result = build_tool_guidance_core(mode_name="active")
         assert ".maxim_workspace/" in result
         assert "requires approval" in result
 
     def test_tool_guidance_core_singularity(self):
         """Singularity mode allows writing any file, no prefix restriction."""
-        from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.prompt_builder import build_tool_guidance_core
 
-        result = LLMWorker._build_tool_guidance_core(mode_name="singularity")
+        result = build_tool_guidance_core(mode_name="singularity")
         assert ".maxim_workspace/" not in result
         assert "ANY file" in result
 
     def test_tool_guidance_extended_singularity(self):
         """Singularity extended guidance mentions full project access."""
-        from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.prompt_builder import build_tool_guidance_extended
 
-        result = LLMWorker._build_tool_guidance_extended(mode_name="singularity")
+        result = build_tool_guidance_extended(mode_name="singularity")
         assert "full read/write" in result
 
     def test_tool_guidance_extended_passive(self):
         """Passive extended guidance only mentions workspace subdirs."""
-        from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.prompt_builder import build_tool_guidance_extended
 
-        result = LLMWorker._build_tool_guidance_extended(mode_name="passive")
+        result = build_tool_guidance_extended(mode_name="passive")
         assert "full read/write" not in result
         assert "drafts/" in result
 
@@ -484,7 +483,7 @@ class TestModeAwareGuidance:
 class TestTruncateManifest:
     def test_truncate_manifest_removes_entries(self):
         """_truncate_manifest removes file entries while keeping headers."""
-        from maxim.agents.llm_worker import _truncate_manifest
+        from maxim.agents.prompt_budgeter import _truncate_manifest
 
         counter = _ExactCounter()
         content = (
