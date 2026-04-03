@@ -59,6 +59,7 @@
       <li><a href="#temporal" class="text-indigo-400 hover:text-indigo-300 no-underline">Temporal: Circadian Patterns</a></li>
       <li><a href="#semantic" class="text-indigo-400 hover:text-indigo-300 no-underline">Semantic: Concepts &amp; Relationships</a></li>
       <li><a href="#scene-energy" class="text-indigo-400 hover:text-indigo-300 no-underline">Scene &amp; Energy: Perception and Budget</a></li>
+      <li><a href="#simulation-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Simulation Orchestrator Tools</a></li>
       <li><a href="#learned-index" class="text-indigo-400 hover:text-indigo-300 no-underline">Learned Tool Index</a></li>
       <li><a href="#tool-safety" class="text-indigo-400 hover:text-indigo-300 no-underline">Tool Safety</a></li>
     </ol>
@@ -227,6 +228,42 @@
       <div class="text-xs text-slate-500 font-mono bg-slate-900 rounded p-3">
         Parameters: none
       </div>
+    </div>
+  </section>
+
+  <!-- ── Simulation Orchestrator Tools ──────────────────── -->
+  <section id="simulation-tools" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">Simulation Orchestrator Tools</h2>
+    <p class="text-slate-300 leading-relaxed">These tools are available to the <strong class="text-white">simulation orchestrator</strong> when running <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">maxim --sim agent</code>. They operate on the agent-under-test via a <code class="bg-slate-950 px-1 rounded text-xs">SimulationBridge</code>, not on the external world.</p>
+
+    <div class="space-y-4">
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">send_message</code></h3>
+      <p class="text-slate-300 text-sm">Inject a percept into the AUT and block until it responds. Uses settle detection &mdash; waits until no new actions appear for 2 seconds, capturing multi-step responses. Returns response text, all actions taken, blocked actions, and timing.</p>
+      <p class="text-slate-400 text-xs">Params: <code>text</code> (str), <code>timeout</code> (float, default 30), <code>source</code> (str, default "cli")</p>
+
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">observe_actions</code></h3>
+      <p class="text-slate-300 text-sm">Read the full action history or actions since a given turn. Used for analysis and pattern detection across the entire simulation.</p>
+      <p class="text-slate-400 text-xs">Params: <code>since_turn</code> (int, optional &mdash; 0 = full history)</p>
+
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">check_completion</code></h3>
+      <p class="text-slate-300 text-sm">LLM-based evaluation of whether the simulation goal has been achieved. Reviews full action history against the original goal.</p>
+      <p class="text-slate-400 text-xs">Returns: <code>{complete, reason, confidence}</code></p>
+
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">analyze_results</code></h3>
+      <p class="text-slate-300 text-sm">LLM-based structured analysis of simulation history. Groups actions by type, identifies blocked actions and reasons, detects patterns.</p>
+      <p class="text-slate-400 text-xs">Params: <code>focus</code> (str, optional &mdash; "safety", "compliance", "behavior", "all")</p>
+
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">inject_pain</code></h3>
+      <p class="text-slate-300 text-sm">Send a proprioceptive pain signal to the AUT. Tests how the agent handles body signals, pain detection, and movement inhibition.</p>
+      <p class="text-slate-400 text-xs">Params: <code>pain_type</code> (str), <code>intensity</code> (float)</p>
+
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">generate_scenario</code></h3>
+      <p class="text-slate-300 text-sm">Generate a replayable YAML scenario from a natural language description. Reuses the existing SimulationGenerator.</p>
+      <p class="text-slate-400 text-xs">Params: <code>description</code> (str)</p>
+
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">finish_simulation</code></h3>
+      <p class="text-slate-300 text-sm">End the simulation and cleanly shut down both agent loops. AUT grace period triggers, orchestrator exits.</p>
+      <p class="text-slate-400 text-xs">Params: <code>reason</code> (str), <code>summary</code> (str, optional)</p>
     </div>
   </section>
 

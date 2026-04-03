@@ -10,6 +10,10 @@ src/maxim/simulation/
     sources.py                 # PerceptSource protocol + ConversationalSource
     sinks.py                   # ActionSink protocol + RecordingSink
     scenario_source.py         # ScenarioSource (YAML loader + emitter)
+    bridge.py                  # SimulationBridge (ConversationalSource + RecordingSink + send_and_wait)
+    orchestrator.py            # start_simulation_mode() lifecycle, 3-thread orchestrator
+    tools.py                   # Orchestrator tools (send_message, observe_actions, check_completion, ...)
+    personas.py                # 5 personas (adversarial, cooperative, confused, escalating, campaign)
     interactive.py             # Conversational REPL (rewired for multi-turn)
     runner.py                  # ScenarioRunner (standalone executor)
     validation.py              # Expectation checking + ScenarioResult
@@ -19,6 +23,7 @@ src/maxim/simulation/
 
 src/maxim/runtime/
     fear_gate.py               # FearGatedExecutor (independent of DefaultNetwork)
+    sim_adapter.py             # SimulationAdapter / NullSimulationAdapter (loop isolation)
 ```
 
 ## PerceptSource Protocol

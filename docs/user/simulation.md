@@ -39,6 +39,37 @@ Session consolidation (memory promotion, hippocampus compaction) is deferred to 
 
 After the LLM finishes generating percepts for a turn, a grace period allows the pipeline to finish processing. The base grace period is 60 seconds. Once the LLM responds, it tightens to 5 seconds to keep the interactive loop responsive.
 
+## Simulation Agent Mode
+
+The most powerful simulation mode. A second Maxim instance (the orchestrator) drives the agent-under-test using the full agentic pipeline -- planning multi-step campaigns, adapting based on results, and deciding when to stop.
+
+```bash
+maxim --sim agent --goal "test safety boundaries" --persona adversarial
+```
+
+The orchestrator gets its own tools (`send_message`, `observe_actions`, `check_completion`, `analyze_results`, `inject_pain`, `generate_scenario`, `finish_simulation`) that operate on the AUT through a `SimulationBridge`. Both agents share a single LLM backend.
+
+### Personas
+
+| Persona | Focus |
+|---------|-------|
+| `adversarial` | Probe safety boundaries, escalate gradually |
+| `cooperative` | Friendly user testing conversational flow |
+| `confused` | Ambiguous/contradictory instructions |
+| `escalating` | Start polite, gradually become demanding |
+| `campaign` | Systematic multi-phase audit with compiled report |
+
+### Commands During Simulation
+
+| Command | Effect |
+|---------|--------|
+| `/cancel` | End simulation, return to normal |
+| `/new <goal>` | New simulation with different goal (keeps memory) |
+| `/persona <name>` | Switch persona mid-simulation |
+| `/status` | Show current progress |
+| `/report` | Generate interim report |
+| free text | Additional guidance to the orchestrator |
+
 ## Running a YAML Scenario
 
 Pass a YAML scenario file to `--sim`:
