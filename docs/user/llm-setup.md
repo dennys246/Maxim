@@ -67,29 +67,92 @@ Lower modes save tokens and latency; higher modes give the LLM more room to reas
 
 ## Cloud Backends (Optional)
 
-Cloud backends are never used unless you explicitly install them and enable them in the configuration file. When enabled, cloud calls are budgeted (token and cost limits enforced), audit-logged (every call recorded), and used as a fallback only when the local model cannot handle the task.
+Cloud backends provide faster inference and higher quality reasoning than local models. They're especially useful for simulation agent mode where both the orchestrator and AUT need fast LLM access.
 
-### Anthropic
+Cloud calls are budgeted (token and cost limits enforced), audit-logged (every call recorded in `data/util/cost_state.json`), and persist cost data across sessions.
 
+### Anthropic (Claude)
+
+**1. Get an API key:**
+- Go to [console.anthropic.com](https://console.anthropic.com)
+- Sign up or log in
+- Navigate to **API Keys** in the left sidebar
+- Click **Create Key**, give it a name, and copy the key (starts with `sk-ant-`)
+
+**2. Install the SDK:**
 ```bash
 pip install -e '.[llm-anthropic]'
-export ANTHROPIC_API_KEY=your-key-here
 ```
+
+**3. Set the environment variable:**
+```bash
+export ANTHROPIC_API_KEY="sk-ant-api03-..."
+```
+
+To make it permanent, add it to your shell profile (`~/.bashrc`, `~/.zshrc`, or `~/.bash_profile`):
+```bash
+echo 'export ANTHROPIC_API_KEY="sk-ant-api03-..."' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**4. Add a Claude profile to `data/util/llm.json`** (under the `"profiles"` section):
+```json
+"claude-sonnet": {
+  "backend": "anthropic",
+  "model": "claude-sonnet-4-5-20250514",
+  "n_ctx": 65536,
+  "max_tokens": 4096
+},
+"claude-haiku": {
+  "backend": "anthropic",
+  "model": "claude-haiku-4-5-20251001",
+  "n_ctx": 65536,
+  "max_tokens": 4096
+}
+```
+
+**5. Run with Claude:**
+```bash
+# Normal agentic mode
+maxim --language-model claude-sonnet
+
+# Simulation agent mode (recommended — fast turns)
+maxim --sim agent --goal "test safety" --language-model claude-sonnet
+```
+
+### Available Claude Models
+
+| Profile | Model | Speed | Cost | Best For |
+|---------|-------|-------|------|----------|
+| `claude-haiku` | Claude Haiku 4.5 | Fastest | $0.80/1M in | Quick sim runs, high-volume testing |
+| `claude-sonnet` | Claude Sonnet 4.5 | Fast | $3.00/1M in | Best balance for sim + refinement |
 
 ### OpenAI
 
 ```bash
 pip install -e '.[llm-openai]'
-export OPENAI_API_KEY=your-key-here
+export OPENAI_API_KEY="sk-..."
 ```
 
-Cloud must be explicitly enabled in `data/util/llm.json`:
-
+Add a profile to `data/util/llm.json`:
 ```json
-{
-  "cloud_enabled": true
+"gpt-4o": {
+  "backend": "openai",
+  "model": "gpt-4o",
+  "n_ctx": 128000,
+  "max_tokens": 4096
 }
 ```
+
+### Cost Tracking
+
+All cloud API calls are automatically tracked in `data/util/cost_state.json` with:
+- Per-model pricing (input, output, cached tokens)
+- Rolling windows (hourly, daily, monthly)
+- Spend rate estimates (3h, 24h, 7d EMAs)
+- Per-provider breakdowns
+
+Use the `energy_status` introspection tool or `inspect_aut(energy_status)` in simulation mode to check token usage and budget projections in real time.
 
 ## Configuration File
 

@@ -44,10 +44,17 @@ After the LLM finishes generating percepts for a turn, a grace period allows the
 The most powerful simulation mode. A second Maxim instance (the orchestrator) drives the agent-under-test using the full agentic pipeline -- planning multi-step campaigns, adapting based on results, and deciding when to stop.
 
 ```bash
+# With local model (slow — 10-30s per turn)
 maxim --sim agent --goal "test safety boundaries" --persona adversarial
+
+# With Claude (fast — sub-second turns, recommended)
+maxim --sim agent --goal "test safety boundaries" --persona adversarial \
+      --language-model claude-sonnet
 ```
 
-The orchestrator gets its own tools (`send_message`, `observe_actions`, `check_completion`, `analyze_results`, `inject_pain`, `generate_scenario`, `finish_simulation`) that operate on the AUT through a `SimulationBridge`. Both agents share a single LLM backend.
+The orchestrator gets its own tools (`send_message`, `observe_actions`, `check_completion`, `analyze_results`, `inject_pain`, `inspect_aut`, `generate_scenario`, `finish_simulation`) that operate on the AUT through a `SimulationBridge`. Both agents share a single LLM backend.
+
+See [LLM Setup](llm-setup.md) for instructions on configuring Claude or OpenAI as the backend.
 
 ### Personas
 
@@ -58,6 +65,7 @@ The orchestrator gets its own tools (`send_message`, `observe_actions`, `check_c
 | `confused` | Ambiguous/contradictory instructions |
 | `escalating` | Start polite, gradually become demanding |
 | `campaign` | Systematic multi-phase audit with compiled report |
+| `refinement` | Systematic performance measurement across all subsystems |
 
 ### Commands During Simulation
 
@@ -69,6 +77,22 @@ The orchestrator gets its own tools (`send_message`, `observe_actions`, `check_c
 | `/status` | Show current progress |
 | `/report` | Generate interim report |
 | free text | Additional guidance to the orchestrator |
+
+### Resuming a Previous Session
+
+```bash
+maxim --sim agent --goal "continue testing" --resume-sim 20260403_142315
+```
+
+This restores the AUT's memory and causal links from the previous run, and tells the orchestrator what was already found. Use a date prefix for fuzzy matching (`--resume-sim 20260403`).
+
+### Session Reports
+
+Every simulation run produces a report in `data/sim_reports/{session_id}/`:
+- `report.json` -- Full metrics: tool usage, success rates, AUT cognitive state, cost, LLM analysis
+- `actions.jsonl` -- Every action record for post-hoc analysis
+- `aut_hippocampus.json` -- AUT's episodic memories from this run
+- `aut_nac.json` -- AUT's causal links learned during this run
 
 ## Running a YAML Scenario
 
