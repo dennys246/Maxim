@@ -164,6 +164,7 @@ def start_simulation_mode(
         InspectAUTTool,
         ObserveActionsTool,
         SendMessageTool,
+        SimRespondTool,
     )
 
     start_time = time.time()
@@ -249,6 +250,18 @@ def start_simulation_mode(
             min_confidence_autonomous=0.3,
         ),
     )
+
+    # Build AUT's energy tracking (wired to LLMWorker for real token data)
+    aut_energy_registry = None
+    try:
+        from maxim.energy.registry import EnergyRegistry
+        from maxim.energy.llm_tracker import LLMEnergyTracker
+
+        aut_energy_registry = EnergyRegistry()
+        aut_energy_registry.register(LLMEnergyTracker())
+        logger.info("AUT energy tracking enabled")
+    except Exception as e:
+        logger.debug("AUT energy tracking not available: %s", e)
 
     # Build AUT's memory subsystems (enables inspect_aut tool for refinement)
     aut_hippocampus = None
@@ -341,10 +354,12 @@ def start_simulation_mode(
     orch_registry.register(AnalyzeResultsTool(bridge=bridge, llm=llm_router))
     orch_registry.register(InjectPainTool(bridge=bridge))
     orch_registry.register(FinishSimulationTool(bridge=bridge, orchestrator_source=orchestrator_source))
+    orch_registry.register(SimRespondTool())  # Catch respond → redirect to send_message
     orch_registry.register(InspectAUTTool(
         hippocampus=aut_hippocampus,
         nac=aut_nac,
         memory_hub=aut_memory_hub,
+        energy_registry=aut_energy_registry,
     ))
 
     # Register simulation tools in TOOL_DESCRIPTIONS so the agent loop

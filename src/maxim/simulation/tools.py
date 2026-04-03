@@ -541,6 +541,29 @@ class InspectAUTTool(Tool):
             return {"available": True, "error": "SCN query failed"}
 
 
+class SimRespondTool(Tool):
+    """Catch-all for when the LLM tries to use 'respond' instead of sim tools.
+
+    Returns an error message redirecting to send_message. This prevents
+    stalling when the LLM narrates instead of acting.
+    """
+
+    name = "respond"
+    description = "Do NOT use this tool. Use send_message instead to talk to the agent under test."
+    input_schema = {
+        "message": (str, ""),
+    }
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def execute(self, **kwargs: Any) -> ToolOutput:
+        return ToolOutput(
+            success=False,
+            error="respond is not available in simulation mode. Use send_message to interact with the agent under test.",
+        )
+
+
 class FinishSimulationTool(Tool):
     """End the current simulation and shut down both agent loops.
 
