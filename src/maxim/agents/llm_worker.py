@@ -139,35 +139,24 @@ class LLMWorker:
         self._cost_energy_scale = _load_cost_bridge_config().get("cost_energy_scale", 100.0)
         self._provider_semaphores: dict[str, threading.Semaphore] = {}
 
-        if hasattr(self._llm, "cloud_allowed") and self._llm.cloud_allowed():
-            if hasattr(self._llm, "get_provider_configs"):
-                providers = self._llm.get_provider_configs()
-                try:
-                    max_ctx = max(
-                        int(cfg.get("n_ctx", self._n_ctx) or self._n_ctx)
-                        for cfg in providers.values()
-                    )
-                    self._n_ctx = max(self._n_ctx, max_ctx)
-                except Exception:
-                    pass
+        if self._has_cloud_providers():
+            providers = self._llm.get_provider_configs()
+            try:
+                max_ctx = max(
+                    int(cfg.get("n_ctx", self._n_ctx) or self._n_ctx)
+                    for cfg in providers.values()
+                )
+                self._n_ctx = max(self._n_ctx, max_ctx)
+            except Exception:
+                pass
 
-        # WorkerPool integration: infer lane replaces internal threading
+        # WorkerPool integration
         self._pool: WorkerPool | None = pool
         self._owns_pool = pool is None  # create internal pool in start()
 
-        # Legacy queues (used when no pool is provided)
-        self._request_queue: queue.PriorityQueue[tuple[int, LLMRequest | None]] = (
-            queue.PriorityQueue(maxsize=max_queue_size)
-        )
-        self._proposal_queue: queue.Queue[LLMProposal] = queue.Queue()
-        self._latest_proposal: LLMProposal | None = None
-        self._proposal_lock = threading.Lock()
-
-        # Worker thread (legacy, unused when pool is active)
         self._stop_event = threading.Event()
-        self._worker: threading.Thread | None = None
 
-        # Thread pool for timeout-wrapped LLM calls (used in both modes)
+        # Thread pool for timeout-wrapped LLM calls
         self._llm_executor: concurrent.futures.ThreadPoolExecutor | None = None
 
         # Metrics
@@ -183,6 +172,34 @@ class LLMWorker:
             token_counter=self._token_counter,
             tool_index=self._tool_index,
         )
+
+    def _has_cloud_providers(self) -> bool:
+        """Check if the LLM router has cloud providers configured and allowed."""
+        return (
+            hasattr(self._llm, "cloud_allowed")
+            and self._llm.cloud_allowed()
+            and hasattr(self._llm, "get_provider_configs")
+        )
+
+    def _get_provider_hint(
+        self, system: str, user: str, temperature: float, max_tokens: int,
+    ) -> tuple[str | None, bool]:
+        """Preview which provider would handle a request.
+
+        Returns (provider_name, is_cloud) or (None, False) on failure.
+        """
+        if not hasattr(self._llm, "preview_provider"):
+            return None, False
+        try:
+            preview = self._llm.preview_provider(
+                system=system, user=user,
+                temperature=temperature, max_tokens=max_tokens,
+            )
+            if isinstance(preview, dict):
+                return preview.get("provider"), bool(preview.get("is_cloud"))
+        except Exception:
+            pass
+        return None, False
 
     def record_outcome(
         self,
@@ -248,17 +265,9 @@ class LLMWorker:
             except queue.Full:
                 self._requests_dropped += 1
                 return False
-        else:
-            # Legacy
-            try:
-                self._request_queue.put_nowait((-request.priority, request))
-                return True
-            except queue.Full:
-                self._requests_dropped += 1
-                return False
 
     def start(self) -> None:
-        """Start the worker thread (or infer lane via WorkerPool)."""
+        """Start the LLM worker via WorkerPool."""
         self._stop_event.clear()
 
         # Initialize provider semaphores for concurrency control
@@ -270,7 +279,7 @@ class LLMWorker:
                 max_workers=1, thread_name_prefix="LLMCall"
             )
 
-        # WorkerPool mode: use infer lane instead of manual thread
+        # Create internal WorkerPool if none was provided
         if self._owns_pool:
             from maxim.runtime.worker_pool import LaneConfig, WorkerPool
 
@@ -282,40 +291,17 @@ class LLMWorker:
 
         if self._pool is not None:
             self._pool.start()
-            logger.info("LLM worker started (WorkerPool infer lane)")
-        else:
-            # Legacy: start internal worker thread
-            if self._worker is None or not self._worker.is_alive():
-                self._worker = threading.Thread(
-                    target=self._worker_loop,
-                    daemon=True,
-                    name="LLMWorker",
-                )
-                self._worker.start()
-                logger.info("LLM worker thread started (legacy)")
+        logger.info("LLM worker started")
 
     def stop(self) -> None:
-        """Stop the worker thread (or infer lane via WorkerPool)."""
+        """Stop the LLM worker."""
         self._stop_event.set()
 
-        # Stop WorkerPool if we own it
         if self._pool is not None and self._owns_pool:
             self._pool.stop()
-            logger.info("LLM worker stopped (WorkerPool infer lane)")
-        elif self._pool is None:
-            # Legacy: unblock the queue with poison pill
-            try:
-                self._request_queue.put_nowait((0, None))
-            except queue.Full:
-                pass
-            if self._worker:
-                self._worker.join(timeout=2.0)
-                if self._worker.is_alive():
-                    logger.warning("LLM worker thread did not stop in time")
-                else:
-                    logger.info("LLM worker thread stopped (legacy)")
+        logger.info("LLM worker stopped")
 
-        # Always shutdown the LLM executor
+        # Shutdown the LLM executor
         if self._llm_executor is not None:
             try:
                 self._llm_executor.shutdown(wait=False, cancel_futures=True)
@@ -491,20 +477,9 @@ class LLMWorker:
         provider_semaphore = None
         is_cloud = False
 
-        if hasattr(self._llm, "preview_provider"):
-            try:
-                preview = self._llm.preview_provider(
-                    system=system,
-                    user=user,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-                if isinstance(preview, dict):
-                    provider_hint = preview.get("provider")
-                    is_cloud = bool(preview.get("is_cloud"))
-            except Exception:
-                provider_hint = None
-                is_cloud = False
+        provider_hint, is_cloud = self._get_provider_hint(
+            system, user, temperature, max_tokens,
+        )
 
         lane_name = lane or ("infer_net" if is_cloud else "infer")
         if provider_hint and provider_hint in self._provider_semaphores:
@@ -633,13 +608,11 @@ class LLMWorker:
 
         if self._pool is not None:
             lane = "infer"
-            if hasattr(self._llm, "cloud_allowed") and self._llm.cloud_allowed():
-                if hasattr(self._llm, "get_provider_configs"):
-                    providers = self._llm.get_provider_configs()
-                    for cfg in providers.values():
-                        if _is_cloud_provider_type(cfg.get("type", "")):
-                            lane = "infer_net"
-                            break
+            if self._has_cloud_providers():
+                for cfg in self._llm.get_provider_configs().values():
+                    if _is_cloud_provider_type(cfg.get("type", "")):
+                        lane = "infer_net"
+                        break
             request.lane = lane
             # WorkerPool mode: wrap _process_request in a job
             def _infer_job(prefetched=None):
@@ -670,17 +643,6 @@ class LLMWorker:
                                request.request_id if hasattr(request, 'request_id') else 'unknown',
                                self._requests_dropped)
                 return False
-        else:
-            # Legacy: internal priority queue
-            try:
-                self._request_queue.put_nowait((-priority, request))
-                return True
-            except queue.Full:
-                self._requests_dropped += 1
-                logger.warning("LLM request dropped (queue full): %s (total dropped: %d)",
-                               request.request_id if hasattr(request, 'request_id') else 'unknown',
-                               self._requests_dropped)
-                return False
 
     def get_latest_proposal(self) -> LLMProposal | None:
         """
@@ -689,73 +651,24 @@ class LLMWorker:
         Main loop calls this each iteration to check for LLM output.
         Returns None if no proposal available.
         """
-        if self._pool is not None:
-            # WorkerPool mode: poll completed infer jobs
-            completed = self._pool.get_completed("infer")
-            if completed is not None and completed.result is not None:
-                return completed.result  # LLMProposal
+        if self._pool is None:
             return None
-        else:
-            # Legacy: consume-once latest proposal
-            with self._proposal_lock:
-                proposal = self._latest_proposal
-                self._latest_proposal = None
-                return proposal
+        completed = self._pool.get_completed("infer")
+        if completed is not None and completed.result is not None:
+            return completed.result
+        return None
 
     def get_all_proposals(self) -> list[LLMProposal]:
         """Get all pending proposals (non-blocking)."""
-        if self._pool is not None:
-            # Drain all completed infer jobs
-            proposals = []
-            while True:
-                completed = self._pool.get_completed("infer")
-                if completed is None or completed.result is None:
-                    break
-                proposals.append(completed.result)
-            return proposals
-        else:
-            # Legacy: drain proposal queue
-            proposals = []
-            while True:
-                try:
-                    proposals.append(self._proposal_queue.get_nowait())
-                except queue.Empty:
-                    break
-            return proposals
-
-    def _worker_loop(self) -> None:
-        """Background worker that processes LLM requests."""
-        while not self._stop_event.is_set():
-            try:
-                # Block waiting for request (with timeout for stop check)
-                try:
-                    _, request = self._request_queue.get(timeout=0.5)
-                except queue.Empty:
-                    continue
-
-                if request is None:  # Poison pill
-                    break
-
-                # Check if request is stale
-                age = time.time() - request.timestamp
-                if age > self._stale_threshold:
-                    self._requests_dropped += 1
-                    logger.debug(f"Dropped stale LLM request (age={age:.2f}s)")
-                    continue
-
-                # Process the request
-                proposal = self._process_request(request)
-
-                # Store result
-                with self._proposal_lock:
-                    self._latest_proposal = proposal
-                self._proposal_queue.put(proposal)
-
-                self._requests_processed += 1
-
-            except Exception as e:
-                # Log but don't crash the worker
-                logger.error(f"LLMWorker error: {e}")
+        if self._pool is None:
+            return []
+        proposals = []
+        while True:
+            completed = self._pool.get_completed("infer")
+            if completed is None or completed.result is None:
+                break
+            proposals.append(completed.result)
+        return proposals
 
     def _process_request(self, request: LLMRequest) -> LLMProposal:
         """Process a single LLM request."""
@@ -815,18 +728,12 @@ class LLMWorker:
 
             # Use mode-specific max tokens for dynamic response length
             max_tokens = request.mode.max_response_tokens
-            provider_hint = None
+            provider_hint, _ = self._get_provider_hint(
+                "", prompt, 0.3, max_tokens,
+            )
             provider_semaphore = None
-            if hasattr(self._llm, "preview_provider"):
-                preview = self._llm.preview_provider(
-                    system="",
-                    user=prompt,
-                    temperature=0.3,
-                    max_tokens=max_tokens,
-                )
-                provider_hint = preview.get("provider")
-                if provider_hint and provider_hint in self._provider_semaphores:
-                    provider_semaphore = self._provider_semaphores[provider_hint]
+            if provider_hint and provider_hint in self._provider_semaphores:
+                provider_semaphore = self._provider_semaphores[provider_hint]
 
             request_context = {
                 "request_id": request.request_id,
@@ -1000,12 +907,6 @@ class LLMWorker:
         """Delegate to module-level generate_llm_fallback()."""
         return generate_llm_fallback(request)
 
-    def _generate_simple_answer(
-        self, question: str, date_str: str, time_str: str
-    ) -> str | None:
-        """Delegate to module-level generate_simple_answer()."""
-        return generate_simple_answer(question, date_str, time_str)
-
     # ── Delegation to PromptBuilder ──────────────────────────────────────
 
     def _build_prompt(self, request: LLMRequest) -> str:
@@ -1031,98 +932,6 @@ class LLMWorker:
     ) -> str:
         return self._prompt_builder._build_tool_aware_prompt(request, question_text, date_str, time_str)
 
-    # ── Static method wrappers for backward compatibility ────────────────
-
-    @staticmethod
-    def _build_planning_banner(autonomy_level: AutonomyLevel) -> str:
-        return build_planning_banner(autonomy_level)
-
-    @staticmethod
-    def _build_modification_section(mod: dict[str, Any]) -> str:
-        return build_modification_section(mod)
-
-    @staticmethod
-    def _build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, time_str: str) -> str:
-        return build_identity_section(mode, request, date_str, time_str)
-
-    @staticmethod
-    def _build_datetime_section(date_str: str, time_str: str) -> str:
-        return build_datetime_section(date_str, time_str)
-
-    @staticmethod
-    def _build_tools_section(request: LLMRequest, mode_name: str = "passive") -> str:
-        return build_tools_section(request, mode_name=mode_name)
-
-    @staticmethod
-    def _scan_workspace_entries(workspace_path: str) -> list[str]:
-        return scan_workspace_entries(workspace_path)
-
-    @staticmethod
-    def _build_workspace_manifest(mode_name: str = "passive", cwd: str | None = None) -> str:
-        return build_workspace_manifest(mode_name=mode_name, cwd=cwd)
-
-    @staticmethod
-    def _build_tool_guidance_core(mode_name: str = "passive") -> str:
-        return build_tool_guidance_core(mode_name=mode_name)
-
-    @staticmethod
-    def _build_tool_guidance_extended(mode_name: str = "passive") -> str:
-        return build_tool_guidance_extended(mode_name=mode_name)
-
-    @staticmethod
-    def _build_observation_section(percept: Any) -> str:
-        return build_observation_section(percept)
-
-    @staticmethod
-    def _build_instructions_section(request: LLMRequest) -> str:
-        return build_instructions_section(request)
-
-    @staticmethod
-    def _is_realtime_request(question_text: str) -> bool:
-        return is_realtime_request(question_text)
-
-    @staticmethod
-    def _compute_budget_tier(policy: Any, totals: dict[str, float]) -> str:
-        return compute_budget_tier(policy, totals)
-
-    @staticmethod
-    def _format_usd(value: float | None) -> str:
-        return format_usd(value)
-
-    @staticmethod
-    def _format_spend_rate(rate: Any, min_samples: int) -> str:
-        return format_spend_rate(rate, min_samples)
-
-    @staticmethod
-    def _estimate_hours_until_limit(
-        remaining: float | None,
-        preferred: Any,
-        fallback_first: Any,
-        min_samples: int,
-        fallback_second: Any | None = None,
-    ) -> tuple[str, str]:
-        return estimate_hours_until_limit(remaining, preferred, fallback_first, min_samples, fallback_second)
-
-    @staticmethod
-    def _cost_energy_divergence(policy: Any, totals: dict[str, float]) -> str:
-        return cost_energy_divergence(policy, totals)
-
-    @staticmethod
-    def _matches_phrase(text: str, phrase: str) -> bool:
-        return matches_phrase(text, phrase)
-
-    @staticmethod
-    def _normalize_phrases(value: Any, default: list[str]) -> list[str]:
-        return normalize_phrases(value, default)
-
-    @staticmethod
-    def _evaluate_simple_arithmetic(text: str) -> str | None:
-        return evaluate_simple_arithmetic(text)
-
-    @staticmethod
-    def _evaluate_unary_math(text: str) -> str | None:
-        return evaluate_unary_math(text)
-
     # ── Metrics ──────────────────────────────────────────────────────────
 
     def _update_avg_latency(self, latency_ms: float) -> None:
@@ -1137,6 +946,5 @@ class LLMWorker:
             "requests_processed": self._requests_processed,
             "requests_dropped": self._requests_dropped,
             "avg_latency_ms": self._avg_latency_ms,
-            "queue_size": self._request_queue.qsize(),
-            "is_running": self._worker is not None and self._worker.is_alive(),
+            "pool_running": self._pool is not None,
         }
