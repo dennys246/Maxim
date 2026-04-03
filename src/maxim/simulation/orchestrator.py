@@ -213,14 +213,13 @@ def start_simulation_mode(
         dir=str(sim_workspace),
     ))
 
-    # Enable sim logging
-    if sim_debug:
-        try:
-            from maxim.simulation.sim_logger import enable_sim_logging
-            log_path = str(sim_workspace / f"sim_agent_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
-            enable_sim_logging(log_path=log_path, debug=True)
-        except Exception:
-            pass
+    # Enable sim logging (always persist to JSONL; terminal traces if --sim-debug)
+    try:
+        from maxim.simulation.sim_logger import enable_sim_logging
+        log_path = str(sim_workspace / f"sim_agent_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
+        enable_sim_logging(log_path=log_path, debug=sim_debug)
+    except Exception:
+        pass
 
     # ── Build AUT pipeline ───────────────────────────────────────────────
     from maxim.environment.filesystem_env import FileSystemEnv
@@ -343,6 +342,42 @@ def start_simulation_mode(
         nac=aut_nac,
         memory_hub=aut_memory_hub,
     ))
+
+    # Register simulation tools in TOOL_DESCRIPTIONS so the agent loop
+    # knows to trigger followup LLM calls after tool execution.
+    # Without this, the loop doesn't submit new context after send_message
+    # completes, causing the orchestrator to idle indefinitely.
+    from maxim.modes.definitions import TOOL_DESCRIPTIONS
+    TOOL_DESCRIPTIONS.update({
+        "send_message": {
+            "description": "Send a message to the agent under test",
+            "followup_type": "process",  # LLM processes the tool result
+        },
+        "observe_actions": {
+            "description": "Read the action history",
+            "followup_type": "process",
+        },
+        "check_completion": {
+            "description": "Check if simulation goal is achieved",
+            "followup_type": "process",
+        },
+        "analyze_results": {
+            "description": "Analyze simulation patterns",
+            "followup_type": "process",
+        },
+        "inspect_aut": {
+            "description": "Inspect AUT internal state",
+            "followup_type": "process",
+        },
+        "finish_simulation": {
+            "description": "End the simulation",
+            "followup_type": None,
+        },
+        "inject_pain": {
+            "description": "Send pain signal to AUT",
+            "followup_type": "process",
+        },
+    })
 
     orch_autonomy = AutonomyController(
         initial_level=AutonomyLevel.AUTONOMOUS,
