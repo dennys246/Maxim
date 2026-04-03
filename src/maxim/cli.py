@@ -709,10 +709,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 except Exception as e:
                     logger.warning("Failed to create MemoryHub: %s", e)
 
+                # Use active mode in simulation so agent can read/write in sandbox
+                _operational_mode = "active" if getattr(args, "sim", None) is not None else "passive"
                 registry = build_tool_registry(
                     response_output=response_output,
                     internet_policy_getter=internet_policy_getter,
                     gateway=gateway,
+                    operational_mode=_operational_mode,
                 )
                 executor = build_executor(registry)
 
