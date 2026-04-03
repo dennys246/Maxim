@@ -58,34 +58,46 @@ By running the simulation agent through the full agentic pipeline, all of this c
 
 ## Threading Model
 
-Two concurrent `run_agentic_loop` instances, connected by a `SimulationBridge`:
+Three threads, two agent loops, connected by a `SimulationBridge`:
 
 ```
 CLI main()
   │
   ├── Create SimulationBridge
+  ├── Create orchestrator_source (ConversationalSource for user → orchestrator)
   ├── Build AUT agent pipeline (tools, memory, executor, etc.)
-  ├── Build orchestrator agent pipeline (sim tools, memory, etc.)
+  ├── Build orchestrator agent pipeline (sim tools, memory, LLM-dependent tools get llm_router)
   │
-  ├── Thread: AUT run_agentic_loop(
-  │       percept_source=bridge.percept_source,   # ConversationalSource
-  │       action_sink=bridge.action_sink,          # RecordingSink
+  ├── Thread 1 (AUT): run_agentic_loop(
+  │       percept_source=bridge.percept_source,   # fed by orchestrator's tools
+  │       action_sink=bridge.action_sink,          # read by orchestrator's tools
   │   )
-  │   └── Runs continuously, idles when no percepts in queue
+  │   └── Idles when no percepts, processes when orchestrator injects
   │
-  └── Main: Orchestrator run_agentic_loop(
-          tools=[SendMessageTool, ObserveActionsTool, ...],
-          # Orchestrator's tools call bridge methods, which are thread-safe
-      )
-      └── Runs continuously, uses tools to drive AUT
-          └── On /cancel: orchestrator calls bridge.finish()
-              └── AUT sees is_exhausted()=True → grace period → exit
-              └── Orchestrator loop exits normally
+  ├── Thread 2 (Orchestrator): run_agentic_loop(
+  │       percept_source=orchestrator_source,      # fed by stdin thread
+  │       tools=[SendMessageTool, ObserveActionsTool, ...],
+  │   )
+  │   └── Receives goal as first percept, user commands as subsequent percepts
+  │       └── On completion: calls bridge.finish() → AUT grace period → exit
+  │
+  └── Main thread (stdin): reads user input
+          ├── "/cancel" → sets stop_event on both loops
+          ├── "/new <goal>" → injects new goal percept into orchestrator_source
+          ├── "/persona <name>" → injects persona switch into orchestrator_source
+          ├── "/status", "/report" → injects as orchestrator percept
+          └── free text → injects as guidance percept into orchestrator_source
 ```
+
+**How the orchestrator gets its goal:** The CLI injects the initial goal text (from `--goal` flag) as the first percept into `orchestrator_source`. The orchestrator's agent loop receives it as a CLI input, processes it through the normal intent → plan → execute flow, and starts calling simulation tools.
+
+**How user commands reach the orchestrator:** The main thread reads stdin in a loop. Commands like `/new`, `/status`, and free text are injected into `orchestrator_source` as percepts. The orchestrator processes them like any other input — the LLM sees the new text and adapts (e.g., "/new test conversational flow" triggers re-planning with a new goal).
+
+**How /cancel works:** Sets `stop_event` on both agent loops. Both loops check `stop_event.is_set()` at the top of each iteration and break. The main stdin thread also breaks out of its read loop. Clean shutdown, no orphaned threads.
 
 **Thread safety:** `ConversationalSource` uses a `threading.Lock` for its queue. `RecordingSink` uses a `threading.Lock` for its action list. All bridge operations are already thread-safe. No new synchronization needed.
 
-**AUT idle behavior:** When the orchestrator is thinking (LLM inference, planning), the AUT's loop spins with no percepts. `ConversationalSource.next_percept()` returns `None`, the loop continues at target Hz with empty observations. This wastes some CPU but is bounded by the loop's `time.sleep()` for frequency control (2 Hz headless = 500ms sleep per iteration). Acceptable for simulation.
+**AUT idle behavior:** When the orchestrator is thinking (LLM inference, planning), the AUT's loop spins with no percepts. `ConversationalSource.next_percept()` returns `None`, the loop continues at target Hz with empty observations. Bounded by the loop's `time.sleep()` for frequency control (2 Hz headless = 500ms sleep per iteration). `is_exhausted()` returns `False` (because `finish()` hasn't been called), so the grace period never triggers.
 
 ---
 
@@ -114,10 +126,13 @@ class SimulationBridge:
     def send_and_wait(
         self, text: str, *, timeout: float | None = None,
         source: str = "cli", salience: float = 0.8, novelty: float = 0.7,
+        settle_s: float = 2.0,
     ) -> dict:
         """Inject a percept and block until the AUT responds or timeout.
 
         This is the primary tool interface — one call = one simulation turn.
+        Uses settle detection: waits until the AUT produces no new actions
+        for `settle_s` seconds, so multi-action responses are captured fully.
 
         Returns:
             {
@@ -134,14 +149,21 @@ class SimulationBridge:
         self.percept_source.inject_cli(text, salience=salience, novelty=novelty)
         self._turn_count += 1
 
-        # Poll for AUT response (new actions appearing in sink)
+        # Poll for AUT response with settle detection:
+        # wait until no new actions appear for settle_s seconds.
+        # This captures multi-action responses (e.g., respond + follow-up tool).
         timeout_s = timeout or self._response_timeout
         deadline = time.time() + timeout_s
+        last_action_count = action_count_before
+        settle_deadline = None
         while time.time() < deadline:
-            current_actions = self.action_sink.actions
-            if len(current_actions) > action_count_before:
-                # AUT responded — wait a beat for follow-up actions
-                time.sleep(0.5)
+            current_count = len(self.action_sink.actions)
+            if current_count > last_action_count:
+                # New action appeared — reset the settle timer
+                last_action_count = current_count
+                settle_deadline = time.time() + settle_s
+            elif settle_deadline and time.time() >= settle_deadline:
+                # No new actions for settle_s seconds — AUT has settled
                 break
             time.sleep(0.2)
 
@@ -315,28 +337,48 @@ SIMULATION_PERSONAS = {
 }
 ```
 
-### 4. SimulationProtocol — lifecycle management
+### 4. Simulation Lifecycle — `start_simulation_mode()`
+
+Lifecycle is managed by a function, not a Protocol class. The Protocol abstraction doesn't add value here — simulation mode is activated by CLI flags, not voice commands, and needs to manage three threads and two agent pipelines which is beyond Protocol's skill-composition model.
 
 ```python
-class SimulationProtocol(Protocol):
-    """Protocol that activates simulation mode."""
+def start_simulation_mode(
+    goal: str,
+    persona: str = "adversarial",
+    llm_router: LLMRouter,
+    max_turns: int = 50,
+    stop_event: threading.Event | None = None,
+) -> SimulationResult:
+    """Boot simulation mode: AUT + orchestrator + stdin reader.
 
-    name = "simulation"
-    description = "Run autonomous simulations against Maxim"
-
-    def __init__(self, bridge: SimulationBridge, persona: str = "adversarial",
-                 goal: str = "", max_turns: int = 50):
-        self._bridge = bridge
-        self._persona = persona
-        self._goal = goal
-        self._max_turns = max_turns
-
-    def skills(self) -> list[Skill]:
-        return []  # Tools are registered directly
-
-    def phrases(self) -> list[str]:
-        return ["run simulation", "start simulation", "simulate"]
+    1. Create SimulationBridge and orchestrator_source
+    2. Build AUT pipeline (standard tools, FearGatedExecutor, memory)
+    3. Build orchestrator pipeline (sim tools, persona strategy)
+       - Tools needing LLM (CheckCompletion, AnalyzeResults) receive llm_router
+    4. Start AUT thread
+    5. Inject goal into orchestrator_source
+    6. Run orchestrator loop (blocks until done or /cancel)
+    7. Clean up: bridge.finish(), join AUT thread
+    8. Return results
+    """
 ```
+
+This lives in `simulation/orchestrator.py` and is called from `cli.py` when `--sim agent` is specified.
+
+### 5. Tool LLM Access
+
+Tools that need LLM reasoning (`CheckCompletionTool`, `AnalyzeResultsTool`) receive the shared `LLMRouter` at construction time:
+
+```python
+# During orchestrator bootstrap
+check_tool = CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal)
+analyze_tool = AnalyzeResultsTool(bridge=bridge, llm=llm_router)
+send_tool = SendMessageTool(bridge=bridge)
+observe_tool = ObserveActionsTool(bridge=bridge)
+# ... register all with orchestrator's tool registry
+```
+
+These tools call `llm_router.generate_json()` synchronously during execution. Since the orchestrator's LLM inference is already complete by the time a tool executes (inference happens in the LLMWorker, tool execution happens after the proposal arrives), there's no contention with the orchestrator's own LLM calls. The AUT might be using the router during `send_and_wait()` polling, but that's expected — the router serializes access via its internal lock.
 
 ---
 
@@ -452,22 +494,23 @@ User: "/cancel"
 
 ## Implementation Plan
 
-### Phase 1: SimulationBridge + Core Tools (~400 LOC)
+### Phase 1: SimulationBridge + Core Tools (~500 LOC)
 
-1. `SimulationBridge` class with `send_and_wait()` atomic turns
+1. `SimulationBridge` class with `send_and_wait()` settle detection
 2. `SendMessageTool`, `ObserveActionsTool`, `InjectPainTool`
-3. `CheckCompletionTool` (LLM-based, calls shared router directly)
-4. CLI wiring: `maxim --sim agent --goal "..." --persona adversarial`
-5. Threading: AUT in background thread, orchestrator in main thread
+3. `CheckCompletionTool` (LLM-based, receives shared router at construction)
+4. `start_simulation_mode()` in `simulation/orchestrator.py` — three-thread lifecycle
+5. CLI wiring: `maxim --sim agent --goal "..." --persona adversarial`
+6. Stdin reader thread for user commands → orchestrator_source
 
-At this point: single-simulation flow works. Orchestrator can send messages, observe responses, and decide when to stop. Shared LLM backend, no extra model load.
+At this point: single-simulation flow works. Orchestrator can send messages, observe responses, and decide when to stop. Shared LLM backend, no extra model load. User can `/cancel` to exit.
 
 ### Phase 2: Full Agentic Integration (~300 LOC)
 
-6. Persona definitions as Strategy objects
-7. `AnalyzeResultsTool` with structured output
-8. `GenerateScenarioTool` (reuse existing SimulationGenerator)
-9. User commands: `/cancel`, `/new`, `/status`, `/report`
+7. Persona definitions as Strategy objects
+8. `AnalyzeResultsTool` with structured output (receives shared router)
+9. `GenerateScenarioTool` (reuse existing SimulationGenerator)
+10. User commands: `/new`, `/persona`, `/status`, `/report` (routed via stdin thread)
 
 At this point: multi-simulation sessions work. User stays in sim mode, orchestrator uses full planning to run campaigns.
 
@@ -524,8 +567,17 @@ A: On a single GPU, two llama-cpp instances won't fit in VRAM. Sharing the LLMRo
 **Q: What about the AUT spinning idle while the orchestrator thinks?**
 A: The AUT's agent loop runs at target Hz (2 Hz headless). When `ConversationalSource.next_percept()` returns `None`, the loop sleeps 500ms and continues — no CPU burn. The `is_exhausted()` check returns `False` (because `finish()` hasn't been called), so the grace period never triggers. The AUT just idles normally.
 
+**Q: How does the orchestrator receive its goal and user commands?**
+A: Via its own `ConversationalSource` (`orchestrator_source`). The CLI injects the `--goal` text as the first percept. A stdin reader thread injects subsequent user commands (`/new`, `/status`, free text) as percepts. The orchestrator processes them through its normal agent loop — the LLM sees new text and adapts.
+
+**Q: Why three threads instead of two?**
+A: The stdin reader must be a separate thread because `input()` blocks. If we put it in the orchestrator thread, the orchestrator couldn't run its agent loop while waiting for user input. If we put it in the main thread, we couldn't start the orchestrator's loop. Three threads is the natural decomposition: one for each blocking operation (stdin read, AUT loop, orchestrator loop).
+
 **Q: Can the orchestrator use cloud/larger models while AUT uses local?**
 A: Yes. Configure the orchestrator's tools to call a cloud LLMRouter (or direct API client) while the AUT uses the local LLMRouter. This is the strongest testing setup — a smarter adversary probing the actual model you're deploying.
 
 **Q: What about resource usage?**
 A: With shared backend: one model loaded, alternating inference. With cloud+local: one local model + API calls. With CPU+GPU: two small models. The orchestrator's non-LLM overhead (bridge, tools, memory) is negligible.
+
+**Q: How does send_and_wait() handle multi-action responses?**
+A: Settle detection. Instead of returning on the first action, it waits until no new actions appear for 2 seconds (`settle_s`). This captures multi-step responses (respond → follow-up tool call → second respond) without premature cutoff. The outer timeout (default 30s) is the hard safety bound.
