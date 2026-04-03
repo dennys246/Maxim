@@ -10,7 +10,6 @@ Master roadmap for Maxim development. Consolidates all active plans into a singl
 
 | Plan | Status | Next step |
 |------|--------|-----------|
-| Agentic Loop Modularization | **Complete** | All phases on `refactor/loop-modularization-phase0` |
 | Repo Cleanup | **~85% done** | Remaining items are opportunistic |
 | Intelligent Context Upgrade | **~90% done** | Observe v2 before adding LLM-driven pinning |
 | File Splitting | **Not started** | Do when modifying target files |
@@ -18,19 +17,20 @@ Master roadmap for Maxim development. Consolidates all active plans into a singl
 | Multi-LLM Scaling | **Not started** | Phases 1-3 ready (local multi-model) |
 | Agent Mesh | **Not started** | Blocked on Multi-LLM Phases 1-3 |
 
+### Completed Plans
+
+| Plan | Branch | What it delivered |
+|------|--------|-------------------|
+| Agentic Loop Modularization | `refactor/loop-modularization-phase0` | LoopController, SimulationAdapter, DefaultNetworkController, @resilient, typed state, bus safety, double-LLM fix |
+
 ---
 
 ## Dependency Graph
 
 ```
-Agentic Loop Modularization (new)
-    ├── Phase 0: Extract helpers + fix bug ◄── start here (safe, no behavior change)
-    ├── Phase 1: Type the state bag
-    ├── Phase 2: Extract phase methods ◄── critical path
-    ├── Phases 3-5: Consolidate loops, isolate sim, fix followup
-    └── Phases 6-9: Freeze context, error handling, bus safety, DN decoupling
+Agentic Loop Modularization (COMPLETE)
         │
-        ├── Phase 4 (isolate sim) ────► Simulation Agent Phase 2 (cleaner integration)
+        └── SimulationAdapter ────► Simulation Agent Phase 2 (cleaner integration)
         │
 Repo Cleanup (done)
     │
@@ -40,7 +40,7 @@ Intelligent Context (done)
     │
 File Splitting (opportunistic)
     ├── Split router.py ──────────► Multi-LLM Scaling Phase 3 (cleaner backend mgmt)
-    ├── Split agent_loop.py ──────► Superseded by Loop Modularization Phase 2
+    ├── Split agent_loop.py ──────► Done (Loop Modularization)
     │
 Simulation Agent (independent)     Multi-LLM Scaling
     ├── Phase 1: SimulationAgent       ├── Phases 1-3: Local multi-model
@@ -60,42 +60,7 @@ Simulation Agent (independent)     Multi-LLM Scaling
 
 ---
 
-## 1. Agentic Loop Modularization
-
-> **Status:** Not started. Phase 0 ready (safe, no behavior change).
-> **Effort:** ~1,500 LOC refactoring across 10 phases
-> **Design:** [agentic_loop_modularization_plan.md](agentic_loop_modularization_plan.md)
-
-Refactor `run_agentic_loop()` from a 2,300-line monolithic function into a testable `LoopController` class. Fixes a correctness bug (`set.pop()` evicting arbitrary elements), eliminates 7x outcome-recording duplication, types the state bag, isolates simulation concerns, and improves error handling and bus safety.
-
-### Phase 0: Extract helpers + fix bug (start here)
-- `_record_outcome()` helper (consolidate 7 copy-pasted blocks)
-- Fix `processed_cli_inputs` from `set` to `deque(maxlen=20)` (correctness bug)
-- `_execute_and_record()` helper (unify agent fallback and LLM proposal paths)
-- Cache `_get_all_tools()` per iteration
-
-### Phases 1-2: Type state + extract phase methods (critical path)
-- `LoopState` dataclass replaces stringly-typed `state.data["pending_*"]` keys
-- `LoopController` class with `observe()`, `parse_input()`, `check_proposals()`, `execute_proposal()`, `submit_to_llm()` etc.
-- Main loop body drops from ~2,300 lines to ~40 lines
-
-### Phases 3-5: Consolidate, isolate, improve (independent)
-- Phase 3: Make `run_agent_loop` a thin wrapper over `LoopController(sync_mode=True)`
-- Phase 4: `SimulationAdapter` / `NullSimulationAdapter` replaces ~20 inline `if percept_source` guards
-- Phase 5: `ActionFollowup` dataclass, first-class followup in LLMRequest, true parallel execution
-
-### Phases 6-9: Polish (independent)
-- Phase 6: `StructuredContext` frozen dataclass with builder pattern
-- Phase 7: Error severity tiers + `@resilient` decorator replacing blanket `except: pass`
-- Phase 8: Bus handler timeout warnings + optional async delivery for slow subscribers
-- Phase 9: `DefaultNetworkController` extracts DN lifecycle from loop body
-
-### Relationship to File Splitting plan
-This supersedes the "Split agent_loop.py" item from the File Splitting plan. The modularization achieves the same goal (smaller, testable units) with a cleaner class-based approach.
-
----
-
-## 2. Simulation Agent
+## 1. Simulation Agent
 
 > **Status:** Not started. No blockers — ready to implement.
 > **Effort:** ~1,200 LOC across 4 phases
@@ -136,7 +101,7 @@ A second Maxim instance (the orchestrator) drives the agent-under-test through t
 
 ---
 
-## 3. Multi-LLM Scaling
+## 2. Multi-LLM Scaling
 
 > **Status:** Not started. Phases 1-3 ready (local multi-model).
 > **Effort:** ~2,000 LOC across 9 phases
@@ -183,7 +148,7 @@ Turn any machine into a node in a distributed inference mesh. Local → peer →
 
 ---
 
-## 4. Agent Mesh
+## 3. Agent Mesh
 
 > **Status:** Not started. Blocked on Multi-LLM Phases 1-3.
 > **Effort:** ~3,000 LOC across 8 phases
@@ -228,7 +193,7 @@ Cooperative peer-to-peer network of sovereign Maxim instances. Each agent owns i
 
 ---
 
-## 5. Intelligent Context Upgrade (nearly complete)
+## 4. Intelligent Context Upgrade (nearly complete)
 
 > **Status:** ~90% done. Remaining work is observation-gated.
 > **Design:** [intelligent_context_upgrade.md](intelligent_context_upgrade.md)
@@ -248,7 +213,7 @@ No action needed until you accumulate data from long-horizon coding sessions.
 
 ---
 
-## 6. File Splitting (opportunistic)
+## 5. File Splitting (opportunistic)
 
 > **Status:** Planned. Do when modifying target files, not as standalone work.
 > **Design:** [file_splitting_plan.md](file_splitting_plan.md)
@@ -263,7 +228,7 @@ No action needed until you accumulate data from long-horizon coding sessions.
 
 ---
 
-## 7. Remaining Cleanup (opportunistic)
+## 6. Remaining Cleanup (opportunistic)
 
 > **Status:** ~85% complete. No dedicated sessions needed.
 
