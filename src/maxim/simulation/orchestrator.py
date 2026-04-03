@@ -79,6 +79,7 @@ def start_simulation_mode(
         CheckCompletionTool,
         FinishSimulationTool,
         InjectPainTool,
+        InspectAUTTool,
         ObserveActionsTool,
         SendMessageTool,
     )
@@ -168,6 +169,23 @@ def start_simulation_mode(
         ),
     )
 
+    # Build AUT's memory subsystems (enables inspect_aut tool for refinement)
+    aut_hippocampus = None
+    aut_nac = None
+    aut_memory_hub = None
+    try:
+        from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+        from maxim.decisions.nac import NAc
+        from maxim.integration.memory_hub import MemoryHub
+
+        aut_hippocampus = Hippocampus(config=HippocampusConfig())
+        aut_nac = NAc()
+        aut_memory_hub = MemoryHub(hippocampus=aut_hippocampus, nac=aut_nac)
+        aut_agent.wire_memory_hub(aut_memory_hub)
+        logger.info("AUT memory wired (hippocampus + NAc)")
+    except Exception as e:
+        logger.debug("AUT memory not available: %s", e)
+
     # Build AUT's LLM worker (shares the router)
     aut_llm_worker: LLMWorker | None = None
     if llm_router is not None:
@@ -218,6 +236,11 @@ def start_simulation_mode(
     orch_registry.register(AnalyzeResultsTool(bridge=bridge, llm=llm_router))
     orch_registry.register(InjectPainTool(bridge=bridge))
     orch_registry.register(FinishSimulationTool(bridge=bridge, orchestrator_source=orchestrator_source))
+    orch_registry.register(InspectAUTTool(
+        hippocampus=aut_hippocampus,
+        nac=aut_nac,
+        memory_hub=aut_memory_hub,
+    ))
 
     orch_autonomy = AutonomyController(
         initial_level=AutonomyLevel.AUTONOMOUS,
@@ -225,7 +248,7 @@ def start_simulation_mode(
             allowed_tools={
                 "send_message", "observe_actions", "check_completion",
                 "analyze_results", "inject_pain", "finish_simulation",
-                "generate_scenario", "respond",
+                "generate_scenario", "inspect_aut", "respond",
             },
             forbidden_tools=set(),
             min_confidence_autonomous=0.3,

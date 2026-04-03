@@ -36,6 +36,8 @@ class Expectation:
     min_tier: str | None = None
     # pipeline_continued fields
     after_tag: str | None = None
+    # metric expectation fields (realtime refinement)
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

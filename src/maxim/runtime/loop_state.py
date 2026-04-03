@@ -20,11 +20,12 @@ def _persist_state_json(state: Any, path: str, *, meta: dict[str, Any]) -> None:
             snap = state.snapshot()
         else:
             snap = {"state": repr(state)}
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        tmp = f"{path}.tmp"
+        abs_path = os.path.abspath(path)
+        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        tmp = f"{abs_path}.tmp"
         with open(tmp, "w", encoding="utf-8") as fp:
             json.dump({"saved_at": time.time(), **meta, **snap}, fp, indent=2, default=str)
-        os.replace(tmp, path)
+        os.replace(tmp, abs_path)
     except Exception as e:
         warn("Failed to persist runtime state: %s", e)
 
