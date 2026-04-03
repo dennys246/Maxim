@@ -208,18 +208,33 @@ Phases 1-2 are independent. Phase 3 depends on Phase 1. Phase 4 depends on Phase
 
 ## Verified API Signatures (from code audit)
 
+> **Note:** Line numbers verified as of 2026-04-02. The modularization plan (Phase 1C) proposes splitting `router.py` into 5 files. After that split, `_LlamaCppBackend` moves to `llama_backend.py`, token counters move to `token_counter.py`, etc. **This plan must be sequenced AFTER modularization Phase 1C**, and these references updated to the post-split module structure.
+
 | Method | File:Line | Notes |
 |--------|-----------|-------|
 | `LaneConfig` | worker_pool.py:72 | Currently has: name, max_workers, queue_size, requires_gpu |
-| `DEFAULT_LANES` | worker_pool.py:421 | infer (gpu), review, record |
+| `DEFAULT_LANES` | worker_pool.py:426 | infer (gpu), review, record |
 | `WorkerPool.submit()` | worker_pool.py:479 | Takes lane name, job_id, fn, priority, deps |
 | `WorkerPool.status()` | worker_pool.py:519 | Returns queue_size, max_workers per lane |
-| `LLMRouter.__init__()` | router.py:1091 | Takes LLMConfig, manages multi-backend cache |
-| `LLMConfig.n_gpu_layers` | router.py:370 | int, default -1 (all on GPU) |
-| `_LlamaCppBackend._ensure()` | router.py:951 | Sets n_gpu_layers on Llama() init |
+| `LLMRouter.__init__()` | router.py:1102 | Takes LLMConfig, manages multi-backend cache |
+| `LLMConfig.n_gpu_layers` | router.py:363 | int, default -1 (all on GPU) |
+| `_LlamaCppBackend._ensure()` | router.py:960 | Sets n_gpu_layers on Llama() init (post-split: `llama_backend.py`) |
 | `_PyTorchTransformersBackend._ensure()` | transformers_backend.py:224 | Device detection + model.to(device) |
 | `load_llm_config()` | router.py:444 | Profile-based config loading |
-| `BUILTIN_PROFILES` | router.py:82 | Includes smollm-1.7b-instruct (tiny) |
+| `BUILTIN_PROFILES` | router.py:81 | Includes smollm-1.7b-instruct (tiny) |
+
+---
+
+## Dependencies
+
+**Modularization conflict:** The modularization plan (Phase 1C) splits `router.py` into 5 files:
+- `_LlamaCppBackend` → `models/language/llama_backend.py`
+- Token counters → `models/language/token_counter.py`
+- Prompt formats → `models/language/prompt_formats.py`
+- JSON parsing → `models/language/json_parser.py`
+- `LLMConfig`, `LLMRouter`, profiles → `models/language/router.py` (reduced)
+
+**Sequencing:** Implement this plan AFTER modularization Phase 1C completes. The `LaneBackendManager` (Phase 3) imports from `llama_backend.py` and `router.py` — these must be in their post-split locations. Update import paths at implementation time.
 
 ---
 

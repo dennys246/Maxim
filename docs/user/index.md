@@ -1,0 +1,34 @@
+# Maxim User Guide
+
+Documentation for users of Maxim — a robotics framework for Reachy Mini with local LLM inference, multi-modal perception, and adaptive planning.
+
+## Start Here
+
+- [Getting Started](getting-started.md) — Installation, first run, prerequisites
+
+## Core Guides
+
+- [Modes Guide](modes-guide.md) — Choosing the right operating mode
+- [CLI Reference](cli-reference.md) — All command-line flags
+- [Configuration](configuration.md) — Environment variables, config files, outputs
+- [Tools Reference](tools.md) — What the agent can do (40+ tools)
+
+## Subsystems
+
+- [LLM Setup](llm-setup.md) — Local models, cloud backends, tuning
+- [Vision & Audio](vision-audio.md) — Camera, Whisper, VAD, voice commands
+- [Memory](memory-user-guide.md) — What persists, lifecycle, clearing
+- [Safety](safety.md) — Autonomy levels, FearAgent, pain detection, harm prediction
+
+## Setup & Support
+
+- [Robot Setup](robot-setup.md) — Reachy Mini connection, daemon, diagnostics
+- [Troubleshooting](troubleshooting.md) — Common issues and fixes
+
+## Developer Documentation
+
+For internal architecture and design decisions, see:
+
+- [Architecture](../../ARCHITECTURE.md)
+- [Design Decisions](../../DECISIONS.md)
+- [Internal Docs](../index.md)
