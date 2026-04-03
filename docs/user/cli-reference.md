@@ -79,7 +79,11 @@ maxim [OPTIONS]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--sim` | str | None | Simulation mode. No argument for interactive REPL, or path to a YAML scenario file or directory |
+| `--sim` | str | None | Simulation mode: `agent` (autonomous orchestrator), `interactive` (REPL), or path to YAML scenario |
+| `--sim-goal` | str | None | Goal for `--sim agent` mode (e.g., `"test safety boundaries"`) |
+| `--sim-persona` | str | `adversarial` | Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement` |
+| `--resume-sim` | str | None | Resume a previous simulation session by ID or date prefix |
+| `--sim-debug` | bool | `False` | Show all simulation traces including internal pipeline polling |
 | `--generate-simulation` | str | None | Generate a YAML scenario from a natural language description |
 | `-o` | str | None | Output file path for `--generate-simulation` |
 | `--sim-report` | str | None | Write structured simulation results to a JSON file |
