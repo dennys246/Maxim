@@ -345,7 +345,7 @@ def _run_scenario_turn(
 
         run_agentic_loop(
             agent, env, state, memory, decision_engine, executor,
-            max_steps=200,
+            max_steps=0,  # Unlimited — stopped by grace period or stop_event
             run_id=f"sim_turn_{turn:03d}",
             stop_event=stop,
             percept_source=source,
