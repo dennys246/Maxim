@@ -1133,28 +1133,36 @@ def run_agentic_loop(
             # PLANNING MODE: Check if this proposal requires user approval
             # ───────────────────────────────────────────────────────────────
             if getattr(pending_proposal, "requires_approval", False) and pending_proposal.plan_text:
-                # Store proposal for approval and show plan to user
-                logger.info("Proposal requires approval, showing plan to user")
-                log_agentic(
-                    "agent_loop",
-                    "plan_awaiting_approval",
-                    {
-                        "tool": action.get("tool_name"),
-                        "plan_preview": pending_proposal.plan_text[:100] if pending_proposal.plan_text else None,
-                    },
-                )
+                # In sim mode, auto-resolve plan approval via response policy
+                sim_plan_response = sim.resolve_plan_approval(pending_proposal.plan_text)
+                if sim_plan_response is not None:
+                    sim.log("PIPELINE", f"Auto-resolved plan approval: {sim_plan_response}")
+                    if sim_plan_response.lower() in ("yes", "y"):
+                        # Auto-approved — skip the approval flow, proceed to execution
+                        logger.info("Sim mode: plan auto-approved, executing")
+                    else:
+                        # Auto-rejected
+                        logger.info("Sim mode: plan auto-rejected")
+                        pending_proposal = None
+                        continue
+                else:
+                    # Production mode: store and wait for real user
+                    logger.info("Proposal requires approval, showing plan to user")
+                    log_agentic(
+                        "agent_loop",
+                        "plan_awaiting_approval",
+                        {
+                            "tool": action.get("tool_name"),
+                            "plan_preview": pending_proposal.plan_text[:100] if pending_proposal.plan_text else None,
+                        },
+                    )
 
-                # Store plan text in state so it can be displayed to user
-                # The CLI/UI can read this and display it
-                state.data["pending_plan_text"] = pending_proposal.plan_text
-                state.data["pending_plan_tool"] = action.get("tool_name")
+                    state.data["pending_plan_text"] = pending_proposal.plan_text
+                    state.data["pending_plan_tool"] = action.get("tool_name")
 
-                # Store in pending_plan_proposal for approval flow
-                pending_plan_proposal = pending_proposal
-                pending_proposal = None
-
-                # Don't execute - wait for approval
-                continue
+                    pending_plan_proposal = pending_proposal
+                    pending_proposal = None
+                    continue
 
             logger.info("Executing LLM proposal: tool=%s, confidence=%.2f",
                         action.get("tool_name"), confidence)
@@ -1238,10 +1246,21 @@ def run_agentic_loop(
 
                     # If this was a timeout retry prompt, store state for user response
                     if action.get("_timeout_retry") and success:
-                        state.data["pending_timeout_retry"] = {
-                            "original_request": action.get("_original_request"),
-                            "timeout_s": action.get("_timeout_s", 60.0),
-                        }
+                        timeout_s = action.get("_timeout_s", 60.0)
+                        # In sim mode, auto-resolve instead of blocking
+                        sim_timeout_response = sim.resolve_timeout_retry(timeout_s)
+                        if sim_timeout_response is not None:
+                            sim.log("PIPELINE", f"Auto-resolved timeout retry: {sim_timeout_response}")
+                            state.data["pending_timeout_retry"] = {
+                                "original_request": action.get("_original_request"),
+                                "timeout_s": timeout_s,
+                            }
+                            state.data["pending_cli_input"] = sim_timeout_response
+                        else:
+                            state.data["pending_timeout_retry"] = {
+                                "original_request": action.get("_original_request"),
+                                "timeout_s": timeout_s,
+                            }
 
                     # Invalidate cache for write operations to ensure fresh reads
                     tool_name = action.get("tool_name", "")
@@ -1493,33 +1512,40 @@ def run_agentic_loop(
                 # Check if this is a confirmation request (not a hard rejection)
                 # Autonomy controller may say "requires approval" or "requires confirmation"
                 if reason and ("requires confirmation" in reason.lower() or "requires approval" in reason.lower()):
-                    # Store pending confirmation in state for CLI handler to detect
                     tool_name = action.get("tool_name", "unknown")
                     params = action.get("params", {})
 
-                    # Format the action for display
-                    print("\n" + "=" * 60)
-                    print("⚠️  ACTION REQUIRES CONFIRMATION")
-                    print("=" * 60)
-                    print(f"Tool: {tool_name}")
-                    print("Parameters:")
-                    for key, value in params.items():
-                        # Truncate long values for display
-                        display_value = str(value)
-                        if len(display_value) > 200:
-                            display_value = display_value[:200] + "..."
-                        print(f"  {key}: {display_value}")
-                    print(f"Reasoning: {pending_proposal.reasoning}")
-                    print("=" * 60)
-                    print("Type 'yes' or 'no' to confirm/reject:")
-
-                    # Store pending confirmation for CLI input handler
-                    state.data["pending_confirmation"] = {
+                    confirmation_data = {
                         "action": action,
                         "reasoning": pending_proposal.reasoning,
                         "confidence": confidence,
                         "tool_name": tool_name,
                     }
+
+                    # In sim mode, auto-resolve via response policy instead of blocking
+                    sim_response = sim.resolve_confirmation(confirmation_data)
+                    if sim_response is not None:
+                        # Inject the response as if the user typed it
+                        sim.log("PIPELINE", f"Auto-resolved confirmation for {tool_name}: {sim_response}")
+                        state.data["pending_confirmation"] = confirmation_data
+                        state.data["pending_cli_input"] = sim_response
+                    else:
+                        # Production mode: print prompt and wait for real user
+                        print("\n" + "=" * 60)
+                        print("⚠️  ACTION REQUIRES CONFIRMATION")
+                        print("=" * 60)
+                        print(f"Tool: {tool_name}")
+                        print("Parameters:")
+                        for key, value in params.items():
+                            display_value = str(value)
+                            if len(display_value) > 200:
+                                display_value = display_value[:200] + "..."
+                            print(f"  {key}: {display_value}")
+                        print(f"Reasoning: {pending_proposal.reasoning}")
+                        print("=" * 60)
+                        print("Type 'yes' or 'no' to confirm/reject:")
+
+                        state.data["pending_confirmation"] = confirmation_data
                     # Don't clear pending_proposal yet - we need to wait for response
                 else:
                     # Hard rejection - tool not allowed
