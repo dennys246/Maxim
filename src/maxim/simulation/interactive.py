@@ -143,9 +143,22 @@ def run_interactive_sim(
             break
 
         # Generate initial scenario
+        sim_log("PIPELINE", f"Generating initial scenario from: {description[:60]}")
         print("  Generating scenario...")
         try:
-            generate_scenario(description, output_path=transcript_path, llm_profile=llm_profile)
+            yaml_str = generate_scenario(description, output_path=transcript_path, llm_profile=llm_profile)
+            # Show the generated percepts
+            try:
+                generated = yaml.safe_load(yaml_str) or {}
+                for p in generated.get("percepts", []):
+                    src = p.get("source", "?")
+                    text = p.get("cli_input") or p.get("transcript_chunk") or p.get("content") or "signal"
+                    print(f"    [{src}] {str(text)[:70]}")
+                exps = generated.get("expectations", [])
+                if exps:
+                    print(f"    ({len(exps)} expectation(s))")
+            except Exception:
+                pass
         except Exception as e:
             print(f"  Failed to generate scenario: {e}")
             disable_sim_logging()
@@ -212,6 +225,7 @@ def run_interactive_sim(
                 continue
 
             # Generate continuation percepts with context
+            sim_log("PIPELINE", f"Generating continuation from: {user_input[:60]}")
             print("  Generating continuation...")
             new_percepts = _generate_continuation(
                 user_input, all_percepts, all_actions, llm_profile
@@ -219,6 +233,7 @@ def run_interactive_sim(
 
             if not new_percepts:
                 # Fallback: just inject the raw text as a CLI percept
+                print("    (Generator returned no percepts, using raw input)")
                 new_percepts = [{
                     "at": 0,
                     "source": "cli",
@@ -227,6 +242,12 @@ def run_interactive_sim(
                     "novelty": 0.5,
                     "metadata": {"scenario_tag": f"followup_{turn}"},
                 }]
+
+            # Show what was generated
+            for p in new_percepts:
+                src = p.get("source", "?")
+                text = p.get("cli_input") or p.get("transcript_chunk") or p.get("content") or "signal"
+                print(f"    [{src}] {str(text)[:70]}")
 
             # Append to conversation history
             all_percepts.extend(new_percepts)

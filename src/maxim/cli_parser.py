@@ -225,9 +225,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sim",
         type=str,
+        nargs="?",
+        const="interactive",
         default=None,
         metavar="PATH",
-        help="Run a scenario YAML file or directory of scenarios, then exit.",
+        help="Run simulation. With no argument: interactive REPL. "
+             "With a path: run a scenario YAML file or directory.",
     )
     parser.add_argument(
         "--sim-report",
