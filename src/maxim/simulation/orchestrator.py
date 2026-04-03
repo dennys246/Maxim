@@ -203,7 +203,7 @@ def start_simulation_mode(
     orch_registry.register(FinishSimulationTool(bridge=bridge, orchestrator_source=orchestrator_source))
 
     orch_autonomy = AutonomyController(
-        initial_level=AutonomyLevel.FULL_AUTO,
+        initial_level=AutonomyLevel.AUTONOMOUS,
         supervision_policy=SupervisionPolicy(
             allowed_tools={
                 "send_message", "observe_actions", "check_completion",
