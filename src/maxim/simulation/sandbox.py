@@ -630,10 +630,16 @@ class DockerSandbox(SandboxEnvironment):
         self._runner.exec(
             self._handle, create_cmd, user="root", timeout=10.0,
         )
+        # Make workspace world-writable (sticky bit) rather than chown.
+        # The workspace is a host bind-mount; chowning changes ownership
+        # on the HOST side, which breaks host-side writes when the host
+        # process runs as a different UID than the container's maxim
+        # user (common in CI where runners use uid 1001). chmod 1777
+        # lets both host and container users read/write while still
+        # protecting other users' files via the sticky bit.
         self._runner.exec(
             self._handle,
-            f"chown -R {_CONTAINER_USER_UID}:{_CONTAINER_USER_GID} "
-            f"{_CONTAINER_WORKSPACE}",
+            f"chmod 1777 {_CONTAINER_WORKSPACE}",
             user="root", timeout=5.0,
         )
 
