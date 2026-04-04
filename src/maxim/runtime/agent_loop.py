@@ -531,8 +531,34 @@ def run_agentic_loop(
         except Exception as e:
             logger.debug("Failed to start hippocampus capture worker: %s", e)
 
+    # Diagnostic heartbeat: log once per agent on first iteration + every
+    # ~10s thereafter so we can see if a loop is alive but stuck. Silent
+    # unless sim mode is active.
+    _last_heartbeat_time = [0.0]
+    _loop_name = _safe_agent_name(agent)
+
     for step_num in step_iter:
         loop_start = time.time()
+
+        # Loop-alive heartbeat in sim mode — shows which loops are
+        # iterating and their current state. Fires at most every 10s.
+        if sim.is_sim_mode:
+            if step_num == 0:
+                sim.log(
+                    "PIPELINE",
+                    f"Agent loop started: {_loop_name} target_hz={target_hz} "
+                    f"llm_worker={'YES' if llm_worker else 'no'}"
+                )
+                _last_heartbeat_time[0] = loop_start
+            elif loop_start - _last_heartbeat_time[0] >= 10.0:
+                _hb_state = (
+                    f"pending_proposal={'yes' if pending_proposal else 'no'} "
+                    f"pending_plan={'yes' if pending_plan_proposal else 'no'} "
+                    f"autonomy={autonomy_controller.current_level.value} "
+                    f"paused={autonomy_controller.is_paused}"
+                )
+                sim.log("PIPELINE", f"Heartbeat step={step_num} {_hb_state}")
+                _last_heartbeat_time[0] = loop_start
 
         # Log loop iteration (DEBUG level - only shown at verbosity 3)
         log_agentic(
@@ -740,6 +766,19 @@ def run_agentic_loop(
             # Sim-mode periodic traces
             if sim.is_sim_mode and step_num % 20 == 0:
                 sim.log("PIPELINE", f"Loop step {step_num}, proposal={'YES' if new_proposal else 'none'}")
+            # Fire a trace the FIRST time a proposal is pulled so we
+            # can tie the llm_worker's "LLMProposal built" log to the
+            # agent loop actually consuming it.
+            if sim.is_sim_mode and new_proposal is not None:
+                _tool_name = (
+                    new_proposal.action.get("tool_name")
+                    if isinstance(new_proposal.action, dict) else None
+                )
+                sim.log(
+                    "EXEC",
+                    f"Proposal consumed by {_loop_name}: tool={_tool_name} "
+                    f"age={time.time() - new_proposal.timestamp:.2f}s",
+                )
             if new_proposal:
                 sim.log("EXEC", f"Proposal received: tool={new_proposal.action.get('tool_name') if isinstance(new_proposal.action, dict) else None}")
 
@@ -1245,11 +1284,23 @@ def run_agentic_loop(
                 try:
                     exec_start = time.time()
                     logger.info("Starting tool execution: %s", action.get("tool_name"))
+                    if sim.is_sim_mode:
+                        sim.log(
+                            "EXEC",
+                            f"Executing: {action.get('tool_name')} "
+                            f"by {_loop_name} params={list((action.get('params') or {}).keys())}"
+                        )
                     result = executor.execute(action)
                     exec_elapsed = time.time() - exec_start
                     success = getattr(result, "success", True)
                     logger.info("Tool execution completed in %.2fs: %s, success=%s",
                                 exec_elapsed, action.get("tool_name"), success)
+                    if sim.is_sim_mode:
+                        sim.log(
+                            "EXEC",
+                            f"Completed: {action.get('tool_name')} "
+                            f"success={success} elapsed={exec_elapsed:.2f}s"
+                        )
 
                     # Auto-recover: write_file failed because file exists → retry with overwrite
                     if (
