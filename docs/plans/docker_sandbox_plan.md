@@ -11,6 +11,20 @@ Falls back to tmpdir with an explicit user warning when Docker isn't available.
 
 ---
 
+## Known Gap in Current tmpdir Sandbox
+
+The current tmpdir-based sandbox has a **bash CWD gap** that Docker will close:
+
+**Problem:** When the AUT's LLM calls `bash` without specifying a `cwd` parameter, the subprocess inherits the **Maxim process's CWD** (the user's repo directory) instead of the sandbox tmpdir. This means a bash command like `rm -rf ./some_file` or `touch malicious.sh` would execute in the host repo directory if FearAgent approves it.
+
+**Current defenses:** FearAgent is the last line of defense for bash — it catches `rm -rf`, disk writes, fork bombs, and other dangerous patterns. FilesystemPolicy's FORBIDDEN_PATHS also blocks `/etc`, `/home`, `/bin`, etc. regardless of CWD.
+
+**Why Docker fixes it:** Container-based isolation means bash literally cannot see the host filesystem — there is no escape through CWD manipulation, symlinks, or path traversal. The container's `/workspace` is the only writable location, and it's a mounted volume that cannot reach outside itself.
+
+**Interim mitigation (pre-Docker):** Patch BashTool to default `cwd` to the first `allowed_dir` when unspecified. This closes the gap for the tmpdir sandbox without waiting for Docker.
+
+---
+
 ## Why Docker Over tmpdir
 
 | Concern | tmpdir (current) | Docker (proposed) |
