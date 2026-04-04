@@ -655,6 +655,36 @@ def start_simulation_mode(
     except Exception as e:
         logger.warning("Failed to wire ToolPainBridge for AUT: %s", e)
 
+    # Wrap with PainInterceptor (Layer 2 — consequence pain after execute)
+    # and AnticipatoryPainExecutor (Layer 1 — perceived pain before execute).
+    # Together: perceived pain predicts, consequence pain confirms, NAc learns.
+    aut_perceived_pain_assessor: Any = None
+    try:
+        from maxim.proprioception.perceived_pain import PerceivedPainAssessor
+        from maxim.runtime.pain_interceptor import (
+            AnticipatoryPainExecutor,
+            PainInterceptorExecutor,
+        )
+        aut_executor = PainInterceptorExecutor(
+            aut_executor, pain_bus=aut_pain_bus,
+        )
+        aut_perceived_pain_assessor = PerceivedPainAssessor(
+            nac=aut_nac, pain_bus=aut_pain_bus,
+        )
+        aut_executor = AnticipatoryPainExecutor(
+            aut_executor, assessor=aut_perceived_pain_assessor,
+        )
+        # Also wire percept-level anxiety: the AUT feels anticipatory
+        # pain when it RECEIVES a message containing sensitive paths,
+        # not just when it tries to act on them.
+        bridge.percept_anxiety_hook = aut_perceived_pain_assessor.assess_text
+        logger.info(
+            "AUT pain layers wired: action-anticipation (L1) + "
+            "consequence (L2) + percept-anxiety (L1b)"
+        )
+    except Exception as e:
+        logger.warning("Failed to wire pain-layer executors: %s", e)
+
     # Wrap AUT executor with FearGatedExecutor for safety review.
     # NOTE: this MUST come after ToolPainBridge wiring so the bridge
     # lives on the inner executor where record_tool_start/complete
@@ -997,7 +1027,8 @@ def start_simulation_mode(
         aut_memory_hub=aut_memory_hub,
         llm_router=llm_router,
         language_model=(
-            getattr(llm_router, "model_name", "")
+            getattr(llm_router, "last_used_model", "")
+            or getattr(llm_router, "model_name", "")
             or getattr(llm_router, "active_model", "")
         ) if llm_router else "",
         llm_finish_context=llm_finish,

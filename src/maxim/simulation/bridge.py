@@ -60,6 +60,11 @@ class SimulationBridge:
         # the orchestrator can distinguish "LLM called finish with
         # status=failed" from a user /cancel or a crash.
         self.finish_context: dict[str, Any] = {}
+        # Optional percept-anxiety hook: a callable invoked with each
+        # outgoing text BEFORE injection. Orchestrator wires this to the
+        # AUT's PerceivedPainAssessor.assess_text so the AUT feels
+        # anticipatory pain from threatening message content.
+        self.percept_anxiety_hook: Any = None
 
     def send_and_wait(
         self,
@@ -101,6 +106,14 @@ class SimulationBridge:
         except Exception:
             pass
         self._spinner.start(f"Turn {self._turn_count + 1}: Sending to AUT — \"{short_text}\"")
+        # Fire percept-level anxiety (Layer 1b) BEFORE the percept reaches
+        # the AUT, so the anticipation signal is already in the AUT's
+        # memory when it reasons about the message.
+        if self.percept_anxiety_hook is not None:
+            try:
+                self.percept_anxiety_hook(text)
+            except Exception as e:
+                logger.debug("percept_anxiety_hook failed: %s", e)
         self.percept_source.inject_cli(text, salience=salience, novelty=novelty)
         self._turn_count += 1
 
