@@ -257,13 +257,38 @@ def start_simulation_mode(
             permissions=sandbox_perms,
         )
         sandbox_root = sim_sandbox.workspace_root
+        # Report the ACTUAL backend selected (auto may have fallen
+        # through to tmpdir if Docker wasn't reachable).
+        from maxim.simulation.sandbox import DockerSandbox, TmpdirSandbox
+        inner = getattr(sim_sandbox, "_sandbox", sim_sandbox)
+        if isinstance(inner, DockerSandbox):
+            actual_backend = f"docker ({sandbox_image})"
+        elif isinstance(inner, TmpdirSandbox):
+            actual_backend = "tmpdir"
+        else:
+            actual_backend = type(inner).__name__
+        # Visible one-liner to stderr so the user sees it regardless
+        # of log level. Also logs at INFO for sim_logger capture.
+        requested = sandbox_backend
+        if requested == "auto" and "tmpdir" in actual_backend:
+            print(
+                f"  ⚠  Sandbox: Docker unavailable — falling back to tmpdir "
+                f"(reduced isolation). Install/start Docker Desktop for "
+                f"full container isolation.",
+                file=sys.stderr, flush=True,
+            )
+        else:
+            print(
+                f"  ✓  Sandbox: {actual_backend}",
+                file=sys.stderr, flush=True,
+            )
         if not no_sim_env:
             logger.info(
-                "Simulation sandbox: %s (backend=%s, with pain-triggering files)",
-                sandbox_root, sandbox_backend,
+                "Simulation sandbox: %s (requested=%s, actual=%s, with pain-triggering files)",
+                sandbox_root, requested, actual_backend,
             )
     except Exception as e:
-        logger.debug("Sandbox creation failed: %s", e)
+        logger.warning("Sandbox creation failed: %s", e)
 
     # ── Build AUT pipeline ───────────────────────────────────────────────
     from maxim.environment.filesystem_env import FileSystemEnv
