@@ -102,6 +102,11 @@ class AgentIdentity:
     capabilities: dict[str, Any]           # Serialized RuntimeCapabilities
     available_tools: list[str]             # Tool names from ToolRegistry
     available_skills: list[str]            # Skill names from ProtocolRegistry
+    embodiment_summary: dict[str, Any] | None = None   # Optional: EmbodimentCapability
+                                                       # {name, modalities, affordances,
+                                                       #  hardware_backed: bool}
+                                                       # Populated when Embodiment Core ships;
+                                                       # peers can query "who has body with grasp?"
 
     # Learned knowledge summary (NOT the full data — just statistics)
     episodic_memory_count: int             # How many episodes in hippocampus
@@ -603,12 +608,8 @@ These are straightforward — all fields are primitives, enums (serialize as str
 | Phase 4 (knowledge sharing) | Causal Memory (NAc links) | CausalLinks are the primary shared knowledge type |
 | Phase 4 (reflection sharing) | Decision Engine Phase 4 (reflections) | Reflections from peers imported as episodic memories |
 | Phase 1 (AgentIdentity) | Adaptive Runtime (RuntimeCapabilities) | Identity includes serialized capabilities |
-| Phase 1+ (capabilities) | Imagined Embodiment (EmbodimentCapability) | Agents advertise their embodiment: modalities, affordances, hardware-backed vs. imagined |
-| Phase 5 (task delegation) | Imagined Embodiment (AffordanceInvocation) | Delegated goals can target affordances on peer embodiments; sovereign refusal still applies |
-| Phase 4 (knowledge sharing) | Imagined Embodiment (NAc transfer) | CausalLinks shared between agents gated by embodiment-spec similarity; links trained on matching bodies carry higher transfer weight |
-| Phase 4 (user model) | Imagined Embodiment (user_default) | Co-present agents share the user's embodiment spec; patience/engagement/frustration are joint theory-of-mind state |
-| Federation (new) | Imagined Embodiment (federated bodies) | Multiple agents can contribute components to one logical body — arm from A, cameras from B, voice from C; naturally fault-tolerant |
-| Future | Imagined Embodiment (distributed construction) | Decompositional embodiment construction tools can fan out across mesh peers, leveraging Multi-LLM diversity for parallel spec generation |
+| Phase 1 (AgentIdentity) | Embodiment Core (EmbodimentCapability) | `AgentIdentity.embodiment_summary` advertises body: modalities, affordances, hardware-backed vs. imagined. Populated when Embodiment Core ships. |
+| Future (not scheduled) | Embodiment — federation, affordance delegation, NAc transfer | Cross-agent affordance invocation, federated bodies (components from multiple peers), CausalLink transfer gated by spec similarity. Tracked in `future_plans.md`. |
 
 ---
 

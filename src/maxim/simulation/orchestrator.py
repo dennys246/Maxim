@@ -228,7 +228,9 @@ def start_simulation_mode(
     persona: str = "adversarial",
     max_turns: int = 50,
     response_timeout: float = 120.0,
-    sim_debug: bool = False,
+    debug: bool = False,
+    # Deprecated alias kept for backward compat with older callers.
+    sim_debug: bool | None = None,
     resume_session: str | None = None,
     continuous: bool = False,
     no_sim_env: bool = False,
@@ -245,11 +247,18 @@ def start_simulation_mode(
         persona: Orchestrator persona name (adversarial, cooperative, etc.)
         max_turns: Maximum simulation turns before auto-finish
         response_timeout: Default timeout for send_and_wait()
-        sim_debug: Enable verbose simulation logging
+        debug: Enable verbose debug tracing (pipeline polling, loop
+            heartbeats, lane activity).
+        sim_debug: Deprecated alias for ``debug``. Kept so older scripts
+            still work — prefer ``debug`` in new code.
 
     Returns:
         SimulationResult with session summary
     """
+    # Merge legacy sim_debug alias into canonical `debug` flag.
+    if sim_debug is not None and not debug:
+        debug = bool(sim_debug)
+
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
     from maxim.agents.llm_worker import LLMWorker
     from maxim.agents.maxim_agent import MaximAgent
@@ -324,11 +333,11 @@ def start_simulation_mode(
         dir=str(sim_workspace),
     ))
 
-    # Enable sim logging (always persist to JSONL; terminal traces if --sim-debug)
+    # Enable sim logging (always persist to JSONL; terminal traces if --debug)
     try:
         from maxim.simulation.sim_logger import enable_sim_logging
         log_path = str(sim_workspace / f"sim_agent_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
-        enable_sim_logging(log_path=log_path, debug=sim_debug)
+        enable_sim_logging(log_path=log_path, debug=debug)
     except Exception:
         pass
 

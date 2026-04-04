@@ -166,9 +166,27 @@ Once multi-model is running (Phases 1-3):
 
 ---
 
+## Future: User-State Sweep Parameters (folded from embodiment plan)
+
+The original embodiment plan included a "user embodiment" phase with deterministic patience/engagement tracking. That concept folds naturally here: rather than building a separate user-modeling subsystem, extend the `refinement` (and `sweep`) persona probes to vary simulated user state as a parameter.
+
+**Conceptual additions (not implementation plans):**
+
+- Sweep parameter: `user_patience ∈ {0.9, 0.5, 0.2}` — vary in the orchestrator's send_message pattern (short/curt vs. thankful vs. frustrated phrasing)
+- Sweep parameter: `user_engagement_drift` — long silences vs. rapid follow-ups
+- Observations via `inspect_aut(memory_recall)` — does the AUT pick up on user-state signals and adapt?
+- Sweep parameter: `user_context` — driving/cooking/focused (changes available attention for responses)
+
+**No new subsystem.** These are orchestrator prompt-level variations, measured via existing introspection tools. Theory-of-mind emerges (or doesn't) from whether the AUT's NAc learns to associate user phrasing patterns with downstream outcomes.
+
+If this proves useful and a first-class user model becomes warranted, it gets its own plan.
+
+---
+
 ## What This Plan Does NOT Include
 
 - Web dashboard (nice-to-have, not needed — reports from `finish_simulation` suffice)
 - Automated tuning (human reviews reports and makes judgment calls)
 - LLM-driven pinning implementation (Part 2 v2 — implement when contradiction data accumulates)
 - Per-lane metrics infrastructure (blocked on Multi-LLM Phase 8)
+- First-class user modeling subsystem (deferred until user-state sweep parameters prove insufficient)

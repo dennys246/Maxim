@@ -15,6 +15,8 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Multi-LLM Scaling | **Not started** | All prereqs done — Phase 1 (LaneConfig model fields) ready to start |
 | Agent Mesh | **Not started** | Blocked on Multi-LLM Phase 7 + Research Protocol Phase 0 |
 | Realtime Refinement | **Core done** | InspectAUTTool, 8 personas, 3 metric expectations, baseline scenario. Per-lane LLM metrics deferred to Multi-LLM Phase 8 |
+| Embodiment Core | **Not started** | Phase 0 MVP + ATL grounding (~400 LOC) is the gate; Cerebellum + structured failures follow. Designed and scoped. |
+| Embodiment Hardware Adapter | **Not started** | Blocked on Embodiment Core MVP. 1-sprint adapter (~300 LOC) wrapping RobotController. |
 | Wave A Stabilization | **Done** | Circular import + bounded queues + atomic-write hardening + silent-except cleanup |
 | Wave B Refinement Harness | **Done** | YAML `params` loader + `response_latency_ms` expectation + refinement_baseline.yaml + 9 new tests |
 
@@ -197,3 +199,26 @@ Not a build phase — a practice that starts once there's data to observe.
 | 6 | Multi-LLM Phases 4-7 | Remote server, tunnel, peer discovery |
 | 7 | Agent Mesh Phases 2+ | Network primitives (local primitives proven by Wave 2) |
 | 8 | Realtime Refinement | Tune everything with accumulated data |
+
+### Wave 4: Embodiment
+
+| Step | What | Why |
+|------|------|-----|
+| 9 | Embodiment Core Phase 0 (MVP gate) | ATL-grounded LLM percepts; validate σ reduction + NAc convergence |
+| 10 | Embodiment Core Phases 1-2 | Cerebellum forward models + structured composable failures |
+| 11 | Embodiment Hardware Adapter | HardwareBackend wrapping RobotController (1 sprint, ~300 LOC) |
+
+---
+
+## Research Directions (Not Scheduled)
+
+Tracked for future consideration. Not committed to any timeline.
+
+- **ATL Self-Extension through Mechanism Discovery.** LLM proposes new concept categories or mechanisms, simulation exercises them, NAc learns whether they produce useful predictions, EC/Hippocampus recalls successful mechanisms. Genuinely novel, but requires separating signal from simulation noise. Deserves its own plan if pursued.
+- **Federated Embodiments.** Multiple agents contribute components to one logical body (arm from A, cameras from B, voice from C). Naturally fault-tolerant distributed embodiment.
+- **Cross-Agent Affordance Delegation.** Sovereign delegation of affordance invocations between mesh peers, with embodiment-gated FearAgent review.
+- **NAc Causal Link Transfer.** Transfer learned causal links between agents, gated by embodiment-spec similarity.
+- **Uncertainty-as-Pain.** High-variance Cerebellum models could fire pain from prediction uncertainty itself (biologically plausible — unfamiliar motion feels risky). Deferred because it risks suppressing exploration.
+- **Curriculum Embodiment Learning.** Graduate an agent through progressively complex bodies; measure cross-embodiment transfer.
+- **Bio-Multimodal Sensors.** Olfaction, taste, audition, vestibular, interoception beyond basic proprioception/vision/nociception.
+- **Distributed Embodiment Construction.** LLM-driven composition tools that fan out across mesh peers for parallel spec generation.
