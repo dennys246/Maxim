@@ -17,6 +17,56 @@ from maxim.tools.base import Tool, ToolOutput
 logger = logging.getLogger(__name__)
 
 
+class SimToolRegistry:
+    """Tool registry that redirects unknown tool calls instead of raising KeyError.
+
+    When the LLM proposes a tool that doesn't exist (e.g., 'bash', 'glob'),
+    this registry returns a FallbackRedirectTool that tells the LLM to use
+    send_message instead. This prevents silent failures and stalls.
+    """
+
+    def __init__(self) -> None:
+        self._tools: dict[str, Tool] = {}
+        self._redirect = _FallbackRedirectTool()
+
+    def register(self, tool: Tool) -> None:
+        self._tools[tool.name] = tool
+
+    def get(self, name: str) -> Tool:
+        if name in self._tools:
+            return self._tools[name]
+        # Return redirect instead of raising KeyError
+        return self._redirect
+
+    def deregister(self, name: str) -> bool:
+        return self._tools.pop(name, None) is not None
+
+    def list(self) -> list[str]:
+        return list(self._tools.keys())
+
+
+class _FallbackRedirectTool(Tool):
+    """Returned for any unknown tool name — redirects to send_message."""
+
+    name = "_fallback_redirect"
+    description = "Redirect for unknown tools"
+    input_schema = {}
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def execute(self, **kwargs: Any) -> ToolOutput:
+        return ToolOutput(
+            success=False,
+            error=(
+                "This tool does not exist. You can ONLY use: send_message, "
+                "spawn_sub_simulation, extend_simulation, observe_actions, "
+                "check_completion, analyze_results, inject_pain, inspect_aut, "
+                "finish_simulation. Use send_message to interact with the agent."
+            ),
+        )
+
+
 class SendMessageTool(Tool):
     """Send a message to the agent under test and wait for its response.
 

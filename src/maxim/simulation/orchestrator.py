@@ -349,8 +349,8 @@ def start_simulation_mode(
     # Using build_tool_registry() adds filesystem/bash/code tools that
     # confuse the LLM — it picks familiar tools (glob, bash) instead of
     # simulation tools (send_message). A bare registry forces correct behavior.
-    from maxim.tools.registry import ToolRegistry
-    orch_registry = ToolRegistry()
+    from maxim.simulation.tools import SimToolRegistry
+    orch_registry = SimToolRegistry()
     spawn_tool = SpawnSubSimulationTool(
         llm_router=llm_router, stop_event=stop_event,
         parent_bridge=bridge, sim_tmpdir=str(sim_tmpdir),
@@ -609,7 +609,7 @@ def start_simulation_mode(
 
     def _stall_detector() -> None:
         """Monitor for stalls and inject diagnostic nudge percepts."""
-        stall_threshold_s = 90.0  # No new turn for 90s = stalled
+        stall_threshold_s = 60.0  # No new turn for 60s = stalled
         while not stop_event.is_set():
             stop_event.wait(15.0)  # Check every 15s
             if stop_event.is_set():
