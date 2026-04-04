@@ -23,7 +23,7 @@ The current tmpdir-based sandbox has a **bash CWD gap** that Docker will close:
 
 **Why Docker fixes it:** Container-based isolation means bash literally cannot see the host filesystem — there is no escape through CWD manipulation, symlinks, or path traversal. The container's `/workspace` is the only writable location, and it's a mounted volume that cannot reach outside itself.
 
-**Interim mitigation (pre-Docker):** Patch BashTool to default `cwd` to the first `allowed_dir` when unspecified. This closes the gap for the tmpdir sandbox without waiting for Docker.
+**Interim mitigation (SHIPPED):** BashTool now defaults `cwd` to the first `allowed_dir` when unspecified. Closes the gap for the tmpdir sandbox without waiting for Docker. See `src/maxim/tools/filesystem.py` `BashTool.execute()`. Docker Phase B will still provide true container-level isolation beyond CWD defaults (process, network, resource isolation).
 
 ---
 

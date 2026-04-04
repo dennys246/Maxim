@@ -231,7 +231,7 @@ Every session produces a report at `data/sim_reports/{session_id}/` with:
 - **Sandbox is tmpdir-based** — not a container or VM. Sufficient for LLM-generated code review, not for running untrusted binaries.
 - **Network tools are not sandboxed** — `--no-internet` is the only defense against exfiltration via HTTP tools.
 - **TOCTOU races possible** — `allowed_dirs` uses `realpath` at check time; a symlink changed between check and use could escape. Mitigated in practice by FearAgent reviewing each call independently.
-- **Bash CWD gap** — when `bash` is called without a `cwd` parameter, the subprocess inherits the Maxim process's CWD (the user's repo directory) instead of the sandbox tmpdir. FearAgent is the last line of defense for dangerous commands (`rm -rf`, disk writes, fork bombs). Docker sandbox will close this gap by making the host filesystem unreachable. See [docker_sandbox_plan.md](docs/plans/docker_sandbox_plan.md).
+- **Bash CWD gap (mitigated)** — `BashTool` now defaults `cwd` to the first `allowed_dir` when unspecified, so bash commands in simulation run inside the sandbox tmpdir rather than inheriting the Maxim process's CWD. FearAgent still reviews all bash commands for dangerous patterns. Full container-level isolation (process, network, resource) remains pending on Docker Phase B — see [docker_sandbox_plan.md](docs/plans/docker_sandbox_plan.md).
 - **Autonomy overrides** — users can set `--autonomy autonomous` which removes confirmation prompts. FearGatedExecutor still runs, but the user has deliberately widened the trust boundary.
 
 ## Secure Defaults
