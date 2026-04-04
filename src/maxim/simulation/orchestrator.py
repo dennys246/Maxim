@@ -645,6 +645,27 @@ def start_simulation_mode(
     except Exception as e:
         logger.warning("Failed to wire FearGatedExecutor for AUT: %s", e)
 
+    # Wire NAc causal learning to tool outcomes. Without this, NAc
+    # never sees event→outcome pairs and causal_links stays at 0.
+    # Mirrors the production wiring in conscience/agentic_runtime.py.
+    try:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+        if aut_nac is not None:
+            aut_tool_pain_bridge = ToolPainBridge(
+                nac=aut_nac,
+                pain_detector=None,
+                scn=aut_memory_hub.scn if aut_memory_hub else None,
+                hippocampus=aut_hippocampus,
+                tool_index=None,
+            )
+            # ToolPainBridge reads _tool_pain_bridge from the executor
+            # on each execute() call — so wrapping with FearGatedExecutor
+            # means we attach to the outer (wrapping) executor.
+            aut_executor._tool_pain_bridge = aut_tool_pain_bridge
+            logger.info("AUT ToolPainBridge wired — NAc will learn tool outcomes")
+    except Exception as e:
+        logger.warning("Failed to wire ToolPainBridge for AUT: %s", e)
+
     # ── Print simulation banner ──────────────────────────────────────────
     print(f"\n{'='*60}")
     print(f"  SIMULATION MODE — {persona.upper()} persona")
@@ -971,7 +992,10 @@ def start_simulation_mode(
         aut_nac=aut_nac,
         aut_memory_hub=aut_memory_hub,
         llm_router=llm_router,
-        language_model=getattr(llm_router, "active_model", "") if llm_router else "",
+        language_model=(
+            getattr(llm_router, "model_name", "")
+            or getattr(llm_router, "active_model", "")
+        ) if llm_router else "",
         llm_finish_context=llm_finish,
     )
 

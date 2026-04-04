@@ -131,23 +131,25 @@ def build_report(
         except Exception:
             pass
 
-    # Cost data — prefer session_cost (exact) over window stats (approximate)
+    # Cost data — session_cost is exact USD, session token counts
+    # are summed by CostTracker.record() during this process lifetime.
     cost_usd = 0.0
     input_tokens = 0
     output_tokens = 0
     if llm_router is not None:
         try:
-            # Session cost is the exact amount spent during this run
             cost_usd = getattr(llm_router, "session_cost", 0.0)
             tracker = getattr(llm_router, "_cost_tracker", None)
-            if tracker:
-                stats = tracker.get_window_stats(3600)
-                input_tokens = stats.get("total_input_tokens", 0)
-                output_tokens = stats.get("total_output_tokens", 0)
-                if cost_usd <= 0:
-                    cost_usd = stats.get("total_cost", 0.0)
-        except Exception:
-            pass
+            if tracker and hasattr(tracker, "get_session_tokens"):
+                tokens = tracker.get_session_tokens()
+                input_tokens = int(tokens.get("input_tokens", 0))
+                output_tokens = int(tokens.get("output_tokens", 0))
+            if cost_usd <= 0 and tracker is not None:
+                # Fall back to hourly window total if session_cost not tracked
+                totals = tracker.get_totals() if hasattr(tracker, "get_totals") else {}
+                cost_usd = float(totals.get("hourly", 0.0))
+        except Exception as e:
+            logger.debug("cost/token lookup failed: %s", e)
 
     ctx = llm_finish_context or {}
     return SimulationReport(
