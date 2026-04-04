@@ -927,7 +927,29 @@ def start_simulation_mode(
     )
 
     duration = time.time() - start_time
-    finish_reason = "cancel" if stop_event.is_set() and not orch_error else "completed"
+    # Priority order for finish_reason:
+    #   1. LLM called finish_simulation with explicit status
+    #   2. Orchestrator crashed (error)
+    #   3. User cancelled via stop_event
+    #   4. Loops exited normally (completed)
+    llm_finish = bridge.finish_context if bridge.finish_context else None
+    finish_summary_override: str | None = None
+    if orch_error:
+        finish_reason = "error"
+    elif llm_finish and llm_finish.get("status"):
+        finish_reason = llm_finish["status"]
+        # Remember the LLM's explanation so it can flow into the report
+        finish_summary_override = llm_finish.get("summary") or llm_finish.get("reason")
+    elif stop_event.is_set():
+        finish_reason = "cancel"
+    else:
+        finish_reason = "completed"
+
+    if llm_finish:
+        logger.info(
+            "LLM-initiated finish: status=%s reason=%s",
+            llm_finish.get("status"), llm_finish.get("reason"),
+        )
 
     print("  Building simulation report...")
     report = build_report(
@@ -941,6 +963,7 @@ def start_simulation_mode(
         aut_memory_hub=aut_memory_hub,
         llm_router=llm_router,
         language_model=getattr(llm_router, "active_model", "") if llm_router else "",
+        llm_finish_context=llm_finish,
     )
 
     # Persist everything to session directory

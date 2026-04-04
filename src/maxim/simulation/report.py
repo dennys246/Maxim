@@ -57,6 +57,11 @@ class SimulationReport:
     llm_issues_found: list[str] = field(default_factory=list)
     llm_recommendations: list[str] = field(default_factory=list)
 
+    # LLM-initiated finish (set when orchestrator calls finish_simulation)
+    llm_finish_status: str = ""
+    llm_finish_reason: str = ""
+    llm_finish_summary: str = ""
+
 
 def build_report(
     *,
@@ -70,6 +75,7 @@ def build_report(
     aut_memory_hub: Any | None = None,
     llm_router: Any | None = None,
     language_model: str = "",
+    llm_finish_context: dict[str, Any] | None = None,
 ) -> SimulationReport:
     """Build a SimulationReport from all available data sinks."""
     session_id = time.strftime("%Y%m%d_%H%M%S")
@@ -143,6 +149,7 @@ def build_report(
         except Exception:
             pass
 
+    ctx = llm_finish_context or {}
     return SimulationReport(
         session_id=session_id,
         timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -163,6 +170,9 @@ def build_report(
         cost_usd=round(cost_usd, 4),
         total_input_tokens=input_tokens,
         total_output_tokens=output_tokens,
+        llm_finish_status=str(ctx.get("status", "")),
+        llm_finish_reason=str(ctx.get("reason", "")),
+        llm_finish_summary=str(ctx.get("summary", "")),
     )
 
 
@@ -338,6 +348,14 @@ def print_report(report: SimulationReport) -> None:
     print(f"  Model: {report.language_model}")
     print(f"  Duration: {report.duration_s}s | Turns: {report.turns}")
     print(f"  Finish: {report.finish_reason}")
+    if report.llm_finish_status:
+        print(f"  Orchestrator-initiated status: {report.llm_finish_status}")
+        if report.llm_finish_reason:
+            print(f"    Reason: {report.llm_finish_reason}")
+        if report.llm_finish_summary:
+            # Indent multi-line summaries
+            indented = "\n      ".join(report.llm_finish_summary.splitlines())
+            print(f"    Summary:\n      {indented}")
     print(f"  Actions: {report.total_actions} ({report.blocked_actions} blocked)")
     print(f"  AUT Memories: {report.aut_memories_formed} | Causal Links: {report.aut_causal_links}")
     if report.cost_usd > 0:

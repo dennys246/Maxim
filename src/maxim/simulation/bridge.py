@@ -56,6 +56,10 @@ class SimulationBridge:
         self._turn_count = 0
         self._last_observed_action_idx = 0
         self._spinner = Spinner(prefix=spinner_prefix)
+        # Early-termination context written by FinishSimulationTool so
+        # the orchestrator can distinguish "LLM called finish with
+        # status=failed" from a user /cancel or a crash.
+        self.finish_context: dict[str, Any] = {}
 
     def send_and_wait(
         self,
