@@ -302,4 +302,24 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Output path for --generate-scenario (default: stdout).",
     )
+    # ── Last run ────────────────────────────────────────────────────────
+    parser.add_argument(
+        "--last",
+        nargs="?",
+        const=1,
+        type=int,
+        default=None,
+        metavar="N",
+        help="Re-run a recent invocation. --last (most recent), --last 2 (second most recent), etc. Up to 5 saved.",
+    )
+    parser.add_argument(
+        "--show-last",
+        action="store_true",
+        help="Show the last saved invocation and exit.",
+    )
+    parser.add_argument(
+        "--clear-last",
+        action="store_true",
+        help="Clear the saved last invocation and exit.",
+    )
     return parser

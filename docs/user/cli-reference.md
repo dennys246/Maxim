@@ -97,6 +97,9 @@ maxim [OPTIONS]
 | `--clear-cache` | bool | `False` | Clear Python bytecode cache |
 | `--clear-memory` | str | None | Clear persistent memory. Types: `focus`, `bounds`, `escalation`, `fear`, `threshold`, `nac`, `scn`, `hippo`, `pain`, `semantic`, `all` |
 | `--audit-architecture` | bool | `False` | Check for architecture violations and exit |
+| `--last` | int | None | Re-run a recent invocation: `--last` (most recent), `--last 2` (second most recent). Up to 5 saved |
+| `--show-last` | bool | `False` | Show all saved invocations and exit |
+| `--clear-last` | bool | `False` | Clear saved invocations and exit |
 
 ---
 
@@ -142,6 +145,14 @@ maxim --sim scenarios/malware_with_pain.yaml --sim-report results.json
 
 ```bash
 maxim --generate-simulation "fork bomb attempt while a person enters the room" -o scenarios/fork_bomb.yaml
+```
+
+### Re-run last simulation
+
+```bash
+maxim --last          # Most recent invocation
+maxim --last 2        # Second most recent
+maxim --show-last     # Show all saved runs
 ```
 
 ### Reset all learned state
