@@ -597,6 +597,39 @@ def start_simulation_mode(
     stdin_thread = threading.Thread(target=_stdin_reader, name="sim.stdin", daemon=True)
     stdin_thread.start()
 
+    # ── Stall detector: nudges orchestrator when it idles too long ───────
+    _last_turn_count = [0]
+    _last_activity_time = [time.time()]
+
+    def _stall_detector() -> None:
+        """Monitor for stalls and inject nudge percepts."""
+        stall_threshold_s = 90.0  # No new turn for 90s = stalled
+        while not stop_event.is_set():
+            stop_event.wait(15.0)  # Check every 15s
+            if stop_event.is_set():
+                break
+            current_turns = bridge.turn_count
+            if current_turns > _last_turn_count[0]:
+                # Progress — reset timer
+                _last_turn_count[0] = current_turns
+                _last_activity_time[0] = time.time()
+            elif time.time() - _last_activity_time[0] > stall_threshold_s:
+                # Stalled — nudge the orchestrator
+                import sys
+                sys.stderr.write("\r\033[K  ⚠ Stall detected — nudging orchestrator\n")
+                sys.stderr.flush()
+                orchestrator_source.inject_cli(
+                    "SYSTEM: You appear to be stalled. Your last tool call may have failed. "
+                    "Use send_message to send your next probe to the agent under test. "
+                    "Do NOT use tools that don't exist — only use the tools listed in your instructions.",
+                    salience=1.0,
+                    novelty=1.0,
+                )
+                _last_activity_time[0] = time.time()  # Reset to avoid spam
+
+    stall_thread = threading.Thread(target=_stall_detector, name="sim.stall", daemon=True)
+    stall_thread.start()
+
     # ── Run orchestrator loop (blocks until done or /cancel) ─────────────
     orch_error: list[Exception] = []
     # ── Orchestrator spinner (between turns) ────────────────────────────
