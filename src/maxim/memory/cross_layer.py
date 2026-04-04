@@ -219,11 +219,8 @@ class CrossLayerGraph:
         if path is None:
             return
 
-        data = self.to_dict()
-        tmp_path = path + ".tmp"
-        with open(tmp_path, "w") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp_path, path)
+        from maxim.utils.atomic_io import atomic_write_json
+        atomic_write_json(path, self.to_dict(), default=None)
 
     def load(self, path: str | None = None) -> None:
         """Restore cross-layer graph from JSON."""

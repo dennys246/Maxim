@@ -84,14 +84,14 @@ MAXIM_PROVENANCE_VERBOSITY=1     # 0=off, 1=compact, 2=verbose
 ## Testing
 
 ```bash
-# Full suite (skip pre-existing circular import failure)
+# Full suite (one pre-existing logic failure in test_record_plan_outcome)
 python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
 
 # Specific test file
 python -m pytest tests/unit/test_simulation_agent.py -v
 ```
 
-Known pre-existing failure: `tests/integration/test_memory_hub.py::TestPlanningBridge::test_record_plan_outcome` (circular import in NAc, not related to recent changes).
+Known pre-existing failure: `tests/integration/test_memory_hub.py::TestPlanningBridge::test_record_plan_outcome` — `record_plan_outcome` doesn't currently drive NAc's observation counter (the assertion `nac.stats()["total_observations"] > 0` fails). Not a blocker for the rest of the suite. (The NAc circular import that previously masked this was fixed in Wave A stabilization.)
 
 ## Simulation Reports
 

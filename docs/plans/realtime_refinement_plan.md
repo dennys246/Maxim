@@ -1,6 +1,6 @@
 # Realtime Refinement Plan
 
-> **Status:** Not started. Three implementation items (~170 LOC), then ongoing practice.
+> **Status:** ~90% done. `InspectAUTTool` + 10 introspection tools are implemented and wired. Remaining: 6th "refinement" persona + metric-expectation types (~50 LOC).
 
 ## Vision
 

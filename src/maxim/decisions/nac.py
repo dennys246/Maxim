@@ -11,7 +11,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from maxim.decisions.causal_link import (
     CausalLink,
@@ -19,7 +19,9 @@ from maxim.decisions.causal_link import (
     TemporalDelta,
     Valence,
 )
-from maxim.memory.semantic_promoter import PromotionCandidate
+
+if TYPE_CHECKING:
+    from maxim.memory.semantic_promoter import PromotionCandidate
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,7 @@ class NACConfig:
     decay_interval_hours: float = 24.0  # How often to decay unused links
     context_similarity_threshold: float = 0.5  # Min context match for retrieval
     temporal_window_seconds: float = 300.0  # Max time between event and outcome
+    max_pending_events: int = 100  # Hard cap on awaiting-outcome event buffer
     enable_hippocampus_queries: bool = True  # Query Hippocampus for similar episodes
     base_learning_rate: float = 0.2  # Rescorla-Wagner base learning rate
     use_ec_similarity: bool = False  # Phase 3 flag, default OFF
@@ -172,7 +175,17 @@ class NAc:
         Returns:
             Event ID for later outcome attribution.
         """
+        now = time.time()
         event_id = f"{event_signature}:{time.time_ns()}"
+
+        # Age-prune stale events (no outcome ever arrived within 2× the
+        # temporal window) so the buffer doesn't leak in failure-heavy runs.
+        stale_cutoff = now - (self.config.temporal_window_seconds * 2)
+        if self._pending_events and self._pending_events[0]["timestamp"] < stale_cutoff:
+            self._pending_events = [
+                e for e in self._pending_events if e["timestamp"] >= stale_cutoff
+            ]
+
         self._pending_events.append(
             {
                 "id": event_id,
@@ -180,13 +193,13 @@ class NAc:
                 "signature": event_signature,
                 "context": context or {},
                 "memory_id": memory_id,
-                "timestamp": time.time(),
+                "timestamp": now,
             }
         )
 
-        # Limit pending events
-        if len(self._pending_events) > 100:
-            self._pending_events = self._pending_events[-100:]
+        # Hard cap in case of pathological bursts (keep most recent).
+        if len(self._pending_events) > self.config.max_pending_events:
+            self._pending_events = self._pending_events[-self.config.max_pending_events:]
 
         return event_id
 
@@ -633,13 +646,17 @@ class NAc:
         self,
         min_confidence: float = 0.6,
         min_observations: int = 3,
-    ) -> list[PromotionCandidate]:
+    ) -> list["PromotionCandidate"]:
         """Scan all CausalLinks for promotion-worthy patterns.
 
         Implements PromotionSource protocol for the SemanticPromoter.
         Returns high-confidence positive causal links as candidates
         for ATL semantic memory promotion.
         """
+        # Lazy import to break the circular dependency with maxim.memory
+        # (NAc → memory.semantic_promoter → memory.__init__ → ... → nac).
+        from maxim.memory.semantic_promoter import PromotionCandidate
+
         candidates: list[PromotionCandidate] = []
         for event_sig, links in self._links.items():
             for link in links:

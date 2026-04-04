@@ -35,6 +35,7 @@ from maxim.memory.semantic_types import (
     SemanticRelationship,
 )
 from maxim.memory.semantics import Semantics
+from maxim.utils.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -303,10 +304,7 @@ class ATL(MemoryLayer):
                 "compressed_count": self._compressed_count,
             }
 
-        tmp_path = path + ".tmp"
-        with open(tmp_path, "w") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp_path, path)
+        atomic_write_json(path, data, default=None)
         logger.debug("ATL saved to %s (%d concepts)", path, len(self._concepts))
 
     def load(self, path: str | None = None) -> None:

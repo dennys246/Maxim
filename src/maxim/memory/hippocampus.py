@@ -18,7 +18,7 @@ import os
 import queue
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Iterator
 from uuid import uuid4
@@ -235,7 +235,11 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         self._collector: Any = None
 
         # Consolidation candidates queue (memories to evaluate for long-term promotion)
-        self._consolidation_candidates: list[str] = []
+        # Bounded deque: oldest candidates are evicted when full so new memories
+        # always get a chance at promotion instead of being silently dropped.
+        self._consolidation_candidates: deque[str] = deque(
+            maxlen=self.config.max_consolidation_candidates
+        )
 
         # Track compressed vs full memory counts
         self._compressed_count: int = 0

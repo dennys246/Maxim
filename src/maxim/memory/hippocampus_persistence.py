@@ -17,6 +17,7 @@ from maxim.memory.types import (
     CompressedMemory,
     EpisodicMemory,
 )
+from maxim.utils.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +59,7 @@ class PersistenceMixin:
                 "associative_graph": graph_data,
             }
 
-        # Write atomically
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        tmp_path = f"{path}.tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, default=str)
-        os.replace(tmp_path, path)
+        atomic_write_json(path, payload)
 
         logger.info("Saved hippocampus to %s (%d memories)", path, len(memories_data))
 

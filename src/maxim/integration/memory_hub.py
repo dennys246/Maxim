@@ -553,6 +553,22 @@ class MemoryHub:
             except Exception as e:
                 logger.warning("ConceptExtractor shutdown failed: %s", e)
 
+        # Defensive shutdown for grounder/completer (no-op today — they share
+        # the LLMWorker's pool and own no threads — but future background
+        # work shouldn't leak if someone adds threads here).
+        for name, component in (
+            ("ConceptGrounder", self._concept_grounder),
+            ("PatternCompleter", self._pattern_completer),
+        ):
+            if component is None:
+                continue
+            shutdown_fn = getattr(component, "shutdown", None)
+            if callable(shutdown_fn):
+                try:
+                    shutdown_fn()
+                except Exception as e:
+                    logger.warning("%s shutdown failed: %s", name, e)
+
         # Save ATL state
         if self.atl is not None:
             try:

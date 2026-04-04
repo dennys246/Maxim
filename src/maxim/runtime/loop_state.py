@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 import os
 import time
 from typing import Any
 
+from maxim.utils.atomic_io import atomic_write_json
 from maxim.utils.logging import warn
 
 
@@ -21,11 +21,7 @@ def _persist_state_json(state: Any, path: str, *, meta: dict[str, Any]) -> None:
         else:
             snap = {"state": repr(state)}
         abs_path = os.path.abspath(path)
-        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
-        tmp = f"{abs_path}.tmp"
-        with open(tmp, "w", encoding="utf-8") as fp:
-            json.dump({"saved_at": time.time(), **meta, **snap}, fp, indent=2, default=str)
-        os.replace(tmp, abs_path)
+        atomic_write_json(abs_path, {"saved_at": time.time(), **meta, **snap})
     except Exception:
         pass  # Non-critical: state persistence is best-effort
 
