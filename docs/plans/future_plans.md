@@ -19,6 +19,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 
 | Plan | What it delivered |
 |------|-------------------|
+| Simulation Decomposition | spawn_sub_simulation, extend_simulation, infinite persona, --continuous flag |
 | Repo Cleanup (~90%) | Dead code removed, CI added, deps slimmed, version pins relaxed |
 | Agentic Loop Modularization | LoopController, SimulationAdapter, DefaultNetworkController, @resilient, typed state |
 | Simulation Agent (Phases 1-3) | SimulationBridge, 7 tools, 5 personas, orchestrator lifecycle, CLI wiring |

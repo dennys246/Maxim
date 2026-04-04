@@ -257,6 +257,14 @@
       <p class="text-slate-300 text-sm">Send a proprioceptive pain signal to the AUT. Tests how the agent handles body signals, pain detection, and movement inhibition.</p>
       <p class="text-slate-400 text-xs">Params: <code>pain_type</code> (str), <code>intensity</code> (float)</p>
 
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">spawn_sub_simulation</code></h3>
+      <p class="text-slate-300 text-sm">Run an isolated sub-simulation with a fresh AUT. The sub-agent starts clean with no memory. Use for independent measurements. Sub-agent stays alive for <code>extend_simulation</code> follow-ups.</p>
+      <p class="text-slate-400 text-xs">Params: <code>goal</code> (str)</p>
+
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">extend_simulation</code></h3>
+      <p class="text-slate-300 text-sm">Continue the current simulation with a new objective. The agent keeps its conversation history. If a sub-simulation is active, extends that; otherwise extends the main simulation.</p>
+      <p class="text-slate-400 text-xs">Params: <code>goal</code> (str)</p>
+
       <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">generate_scenario</code></h3>
       <p class="text-slate-300 text-sm">Generate a replayable YAML scenario from a natural language description. Reuses the existing SimulationGenerator.</p>
       <p class="text-slate-400 text-xs">Params: <code>description</code> (str)</p>

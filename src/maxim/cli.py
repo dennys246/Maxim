@@ -496,6 +496,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 persona=persona,
                 sim_debug=sim_debug,
                 resume_session=resume_sim,
+                continuous=bool(getattr(args, "continuous", False)),
             )
             sys.exit(0 if result.finish_reason != "error" else 1)
 

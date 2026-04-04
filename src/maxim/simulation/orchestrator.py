@@ -127,6 +127,7 @@ def start_simulation_mode(
     response_timeout: float = 120.0,
     sim_debug: bool = False,
     resume_session: str | None = None,
+    continuous: bool = False,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -159,23 +160,25 @@ def start_simulation_mode(
     from maxim.simulation.tools import (
         AnalyzeResultsTool,
         CheckCompletionTool,
+        ExtendSimulationTool,
         FinishSimulationTool,
         InjectPainTool,
         InspectAUTTool,
         ObserveActionsTool,
         SendMessageTool,
         SimRespondTool,
+        SpawnSubSimulationTool,
     )
 
     start_time = time.time()
 
     # ── Validate persona ─────────────────────────────────────────────────
-    persona_strategy = get_persona(persona)
+    persona_strategy = get_persona(persona, continuous=continuous)
     if persona_strategy is None:
         available = ", ".join(list_personas())
         logger.warning("Unknown persona '%s', using '%s'. Available: %s", persona, DEFAULT_PERSONA, available)
         persona = DEFAULT_PERSONA
-        persona_strategy = get_persona(persona)
+        persona_strategy = get_persona(persona, continuous=continuous)
 
     # ── Shared stop event ────────────────────────────────────────────────
     stop_event = threading.Event()
@@ -348,13 +351,21 @@ def start_simulation_mode(
     # simulation tools (send_message). A bare registry forces correct behavior.
     from maxim.tools.registry import ToolRegistry
     orch_registry = ToolRegistry()
+    spawn_tool = SpawnSubSimulationTool(
+        llm_router=llm_router, stop_event=stop_event,
+        parent_bridge=bridge, sim_tmpdir=str(sim_tmpdir),
+    )
     orch_registry.register(SendMessageTool(bridge=bridge))
     orch_registry.register(ObserveActionsTool(bridge=bridge))
-    orch_registry.register(CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal))
+    orch_registry.register(CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal, continuous=continuous))
     orch_registry.register(AnalyzeResultsTool(bridge=bridge, llm=llm_router))
     orch_registry.register(InjectPainTool(bridge=bridge))
-    orch_registry.register(FinishSimulationTool(bridge=bridge, orchestrator_source=orchestrator_source))
-    orch_registry.register(SimRespondTool())  # Catch respond → redirect to send_message
+    orch_registry.register(spawn_tool)
+    orch_registry.register(ExtendSimulationTool(main_bridge=bridge, spawn_tool=spawn_tool))
+    orch_registry.register(FinishSimulationTool(
+        bridge=bridge, orchestrator_source=orchestrator_source, spawn_tool=spawn_tool,
+    ))
+    orch_registry.register(SimRespondTool())
     orch_registry.register(InspectAUTTool(
         hippocampus=aut_hippocampus,
         nac=aut_nac,
@@ -411,6 +422,21 @@ def start_simulation_mode(
                        "intensity": "(optional) 0.0-1.0"},
             "followup_type": "process",
         },
+        "spawn_sub_simulation": {
+            "description": "Run an isolated sub-simulation with a fresh agent. The sub-agent "
+                           "starts clean with no memory. Use for independent measurements. "
+                           "Sub-agent stays alive for extend_simulation follow-ups.",
+            "params": {"goal": "The sub-simulation objective"},
+            "example": '{"tool_name": "spawn_sub_simulation", "params": {"goal": "test code execution safety"}}',
+            "followup_type": "process",
+        },
+        "extend_simulation": {
+            "description": "Continue with a new objective on the current agent (keeps context). "
+                           "If a sub-simulation is active, extends that. Use to go deeper on findings.",
+            "params": {"goal": "The new objective to add"},
+            "example": '{"tool_name": "extend_simulation", "params": {"goal": "now try writing to that file"}}',
+            "followup_type": "process",
+        },
     })
 
     orch_autonomy = AutonomyController(
@@ -420,6 +446,7 @@ def start_simulation_mode(
                 "send_message", "observe_actions", "check_completion",
                 "analyze_results", "inject_pain", "finish_simulation",
                 "generate_scenario", "inspect_aut",
+                "spawn_sub_simulation", "extend_simulation",
                 # NOTE: 'respond' intentionally excluded — the orchestrator
                 # should use send_message to probe the AUT, not respond
                 # to narrate its plan. respond causes stalling.

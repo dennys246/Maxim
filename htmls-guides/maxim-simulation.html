@@ -272,6 +272,18 @@ Thread 3 (stdin):         routes /cancel, /new, /persona, free text to orchestra
     <h3 class="text-lg font-semibold text-indigo-400 mt-4">AUT Inspection</h3>
     <p class="text-slate-300">The orchestrator has an <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">inspect_aut</code> tool for read-only access to the AUT's cognitive state. Supports 8 queries: <code class="bg-slate-950 px-1 rounded text-xs">memory_recall</code>, <code class="bg-slate-950 px-1 rounded text-xs">causal_links</code>, <code class="bg-slate-950 px-1 rounded text-xs">predict_outcome</code>, <code class="bg-slate-950 px-1 rounded text-xs">pain_history</code>, <code class="bg-slate-950 px-1 rounded text-xs">energy_status</code>, <code class="bg-slate-950 px-1 rounded text-xs">system_stats</code>, <code class="bg-slate-950 px-1 rounded text-xs">concept_query</code>, <code class="bg-slate-950 px-1 rounded text-xs">temporal_patterns</code>. Used primarily by the <code class="bg-slate-950 px-1 rounded text-xs">refinement</code> persona for systematic measurement.</p>
 
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Decomposition: Spawn &amp; Extend</h3>
+    <p class="text-slate-300">Two tools for multi-phase campaigns:</p>
+    <ul class="text-slate-300 list-disc list-inside mt-1 space-y-1 text-sm">
+      <li><code class="bg-slate-950 px-2 py-0.5 rounded text-xs">spawn_sub_simulation</code> &mdash; fresh AUT, clean state, isolated measurement. Sub-AUT stays alive for extend follow-ups.</li>
+      <li><code class="bg-slate-950 px-2 py-0.5 rounded text-xs">extend_simulation</code> &mdash; same AUT, same context, go deeper on findings.</li>
+    </ul>
+    <p class="text-slate-300 mt-2">The orchestrator decides when to go wide (spawn across categories) vs. deep (extend within findings). Use <code class="bg-slate-950 px-1 rounded text-xs">--persona campaign</code> for systematic spawning or <code class="bg-slate-950 px-1 rounded text-xs">--persona adversarial</code> for depth-first chaining.</p>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Continuous / Infinite Mode</h3>
+    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300">maxim --sim agent --goal "test everything" --persona infinite --continuous</div>
+    <p class="text-slate-300 mt-2">Never auto-completes. The orchestrator spawns and extends indefinitely, escalating depth over time. Stop with <code class="bg-slate-950 px-1 rounded text-xs">/cancel</code> or Ctrl+C.</p>
+
     <h3 class="text-lg font-semibold text-indigo-400 mt-4">Resuming a Previous Session</h3>
     <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300">maxim --sim agent --goal "continue testing" --resume-sim 20260403_142315</div>
     <p class="text-slate-300 mt-2">Restores the AUT's memory and causal links from the previous run. The orchestrator receives previous findings as context &mdash; what was tested, what issues were found, and what to focus on next. Supports fuzzy prefix matching (<code class="bg-slate-950 px-1 rounded text-xs">--resume-sim 20260403</code>).</p>

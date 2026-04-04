@@ -293,8 +293,8 @@ class TestSimulationTools:
 
 class TestPersonas:
     def test_all_personas_defined(self):
-        assert len(SIMULATION_PERSONAS) == 6
-        for name in ("adversarial", "cooperative", "confused", "escalating", "campaign", "refinement"):
+        assert len(SIMULATION_PERSONAS) == 7
+        for name in ("adversarial", "cooperative", "confused", "escalating", "campaign", "refinement", "researcher"):
             assert name in SIMULATION_PERSONAS
 
     def test_get_persona(self):
@@ -314,9 +314,159 @@ class TestPersonas:
         names = list_personas()
         assert "adversarial" in names
         assert "campaign" in names
-        assert len(names) == 6
+        assert len(names) == 7
 
     def test_all_personas_have_context_prompt(self):
         for name, persona in SIMULATION_PERSONAS.items():
             assert persona.context_prompt, f"Persona '{name}' has empty context_prompt"
             assert persona.focus, f"Persona '{name}' has empty focus"
+
+    def test_continuous_suffix_appended(self):
+        """--continuous appends NEVER STOP instructions to any persona."""
+        p = get_persona("adversarial", continuous=True)
+        assert p is not None
+        assert "NEVER" in p.context_prompt
+        assert "finish_simulation" in p.context_prompt
+
+    def test_continuous_does_not_mutate_original(self):
+        """Continuous mode returns a copy, doesn't modify the original."""
+        original = get_persona("adversarial")
+        continuous = get_persona("adversarial", continuous=True)
+        assert "NEVER" not in original.context_prompt
+        assert "NEVER" in continuous.context_prompt
+
+
+# ── Decomposition tool tests ────────────────────────────────────────────────
+
+
+class TestExtendSimulationTool:
+    def test_extend_uses_main_bridge_when_no_sub(self):
+        """Without a sub-AUT, extend uses the main bridge."""
+        from maxim.simulation.tools import ExtendSimulationTool
+
+        bridge = SimulationBridge(response_timeout=0.5, settle_s=0.2)
+        # Fake a response on the main bridge
+        def fake_aut():
+            time.sleep(0.1)
+            bridge.action_sink.record(ActionRecord(
+                timestamp=time.time(), tool_name="respond",
+                result_success=True, result_output="Extended response",
+            ))
+        t = threading.Thread(target=fake_aut, daemon=True)
+        t.start()
+
+        tool = ExtendSimulationTool(main_bridge=bridge, spawn_tool=None)
+        result = tool.run(goal="go deeper")
+        t.join(timeout=2)
+
+        assert result.success
+        assert result.output["extended_sub_simulation"] is False
+        assert result.output["response"] == "Extended response"
+
+    def test_extend_uses_sub_bridge_when_available(self):
+        """With an active sub-AUT, extend uses the sub-bridge."""
+        from maxim.simulation.tools import ExtendSimulationTool
+
+        main_bridge = SimulationBridge(response_timeout=0.5, settle_s=0.2)
+        sub_bridge = SimulationBridge(response_timeout=0.5, settle_s=0.2)
+
+        # Fake response on sub-bridge
+        def fake_sub_aut():
+            time.sleep(0.1)
+            sub_bridge.action_sink.record(ActionRecord(
+                timestamp=time.time(), tool_name="respond",
+                result_success=True, result_output="Sub-AUT extended",
+            ))
+        t = threading.Thread(target=fake_sub_aut, daemon=True)
+        t.start()
+
+        # Mock spawn_tool with active sub-bridge
+        class MockSpawn:
+            active_sub_bridge = sub_bridge
+
+        tool = ExtendSimulationTool(main_bridge=main_bridge, spawn_tool=MockSpawn())
+        result = tool.run(goal="go deeper on sub")
+        t.join(timeout=2)
+
+        assert result.success
+        assert result.output["extended_sub_simulation"] is True
+        assert result.output["response"] == "Sub-AUT extended"
+
+    def test_extend_requires_goal(self):
+        from maxim.simulation.tools import ExtendSimulationTool
+        bridge = SimulationBridge(response_timeout=0.3)
+        tool = ExtendSimulationTool(main_bridge=bridge)
+        result = tool.run(goal="")
+        assert not result.success
+        assert "required" in result.error
+
+
+class TestSpawnSubSimulationTool:
+    def test_spawn_requires_goal(self):
+        from maxim.simulation.tools import SpawnSubSimulationTool
+        tool = SpawnSubSimulationTool(llm_router=None, stop_event=threading.Event())
+        result = tool.run(goal="")
+        assert not result.success
+
+    def test_teardown_idempotent(self):
+        """Teardown when nothing is active doesn't crash."""
+        from maxim.simulation.tools import SpawnSubSimulationTool
+        tool = SpawnSubSimulationTool(llm_router=None, stop_event=threading.Event())
+        assert tool.active_sub_bridge is None
+        tool._teardown_sub()  # Should not raise
+        assert tool.active_sub_bridge is None
+
+    @pytest.mark.slow
+    def test_spawn_creates_sub_bridge(self):
+        """Spawn creates a sub-bridge (slow: bootstraps AUT)."""
+        from maxim.simulation.tools import SpawnSubSimulationTool
+
+        stop = threading.Event()
+        tool = SpawnSubSimulationTool(
+            llm_router=None,
+            stop_event=stop,
+            parent_bridge=None,
+            sim_tmpdir=".",
+        )
+
+        result = tool.run(goal="test something")
+        assert result.success
+        assert result.output["goal"] == "test something"
+        assert tool.active_sub_bridge is not None
+
+        # Cleanup
+        stop.set()
+        tool._teardown_sub()
+
+
+class TestCheckCompletionContinuous:
+    def test_continuous_mode_never_completes(self):
+        from maxim.simulation.tools import CheckCompletionTool
+        bridge = SimulationBridge(response_timeout=0.3)
+        bridge._turn_count = 100  # Even at 100 turns
+        tool = CheckCompletionTool(bridge=bridge, goal="test", continuous=True)
+        result = tool.run()
+        assert result.success
+        assert result.output["complete"] is False
+        assert "Continuous" in result.output["reason"]
+
+    def test_non_continuous_completes_at_50(self):
+        from maxim.simulation.tools import CheckCompletionTool
+        bridge = SimulationBridge(response_timeout=0.3)
+        bridge._turn_count = 50
+        tool = CheckCompletionTool(bridge=bridge, goal="test", continuous=False)
+        result = tool.run()
+        assert result.success
+        assert result.output["complete"] is True
+
+
+class TestSpinnerPrefix:
+    def test_spinner_with_prefix(self):
+        from maxim.simulation.spinner import Spinner
+        s = Spinner(prefix="│  ")
+        assert s._prefix == "│  "
+
+    def test_spinner_default_no_prefix(self):
+        from maxim.simulation.spinner import Spinner
+        s = Spinner()
+        assert s._prefix == ""
