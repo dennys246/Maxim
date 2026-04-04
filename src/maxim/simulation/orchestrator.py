@@ -695,6 +695,11 @@ def start_simulation_mode(
         # Always clean up, even on interrupt
         bridge._spinner.stop()
 
+    # ── Suppress noisy log output during shutdown ─────────────────────
+    # LLM responses may still be in-flight from background threads.
+    # Raise log level to WARNING to hide [INFO] LLM tool_response lines.
+    logging.getLogger("maxim").setLevel(logging.WARNING)
+
     # ── Shutdown everything (safe even after KeyboardInterrupt) ────────
     print("  Shutting down agent loops...")
     try:
@@ -783,14 +788,16 @@ def start_simulation_mode(
         session_id=report.session_id,
     )
 
-    # LLM-powered roundup (uses shared router if still available)
-    if llm_router is not None and not getattr(llm_router, "session_cost_exceeded", False):
+    # LLM-powered roundup — skip on cancel (LLM workers already stopped)
+    if finish_reason != "cancel" and llm_router is not None and not getattr(llm_router, "session_cost_exceeded", False):
         try:
             print("  Running LLM analysis roundup...")
             analyze_simulation(report, llm_router=llm_router)
             save_report(report, base_dir=report_dir)
         except Exception as e:
             logger.debug("LLM roundup failed: %s", e)
+    elif finish_reason == "cancel":
+        print("  Skipping LLM roundup (cancelled)")
     elif llm_router is not None:
         print("  Skipping LLM roundup (session cost ceiling reached)")
 
