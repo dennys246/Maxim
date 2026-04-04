@@ -229,6 +229,15 @@ def start_simulation_mode(
     except Exception:
         pass
 
+    # Build AUT's PainBus EARLY so the sandbox can route pain percepts
+    # through it. Hippocampus is subscribed later, once it exists.
+    aut_pain_bus = None
+    try:
+        from maxim.proprioception.pain_bus import PainBus
+        aut_pain_bus = PainBus()
+    except Exception as e:
+        logger.debug("AUT PainBus creation deferred: %s", e)
+
     # ── Simulation sandbox (created early so tools can be confined to it) ──
     sim_sandbox = None
     sandbox_root = None
@@ -391,16 +400,15 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("AUT memory not available: %s", e)
 
-    # Build AUT's PainBus for routing pain percepts to memory
-    aut_pain_bus = None
+    # Subscribe AUT PainBus to hippocampus (bus itself was created earlier
+    # so the sandbox could route pain percepts through it).
     try:
-        from maxim.proprioception.pain_bus import PainBus, create_pain_memory_subscriber
-        aut_pain_bus = PainBus()
-        if aut_hippocampus is not None:
+        from maxim.proprioception.pain_bus import create_pain_memory_subscriber
+        if aut_pain_bus is not None and aut_hippocampus is not None:
             aut_pain_bus.subscribe(create_pain_memory_subscriber(aut_hippocampus))
-        logger.info("AUT PainBus wired")
+            logger.info("AUT PainBus wired")
     except Exception as e:
-        logger.debug("AUT PainBus not available: %s", e)
+        logger.debug("AUT PainBus subscription failed: %s", e)
 
     # Build AUT's LLM worker (shares the router)
     aut_llm_worker: LLMWorker | None = None
