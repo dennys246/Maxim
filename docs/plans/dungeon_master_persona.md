@@ -129,17 +129,32 @@ campaign:
 
 **Attributes modify dice rolls** — encounter `dice` blocks reference attribute mods: `{ roll: 1d20+str, dc: 15 }` pulls from the rolling character's STR modifier.
 
-**NPC registry (in-memory, flushed to report):**
+**Runtime character state.** `Character` (schema) defines *who someone is at start* — stats, ability list, inventory manifest, backstory. `CharacterState` is the runtime wrapper that tracks *what's happened since*: current HP, ability uses, inventory deltas, status effects, relationships with other characters. Both the PC and every NPC get a `CharacterState` instance. DM runtime owns them all; they're the single source of truth for resolution during encounters.
+
 ```python
-{
-  "marta": {
-    "attitude": "wary",  # mutable, can shift via encounter outcomes
-    "met": True,
-    "last_seen_encounter": "tavern_meet",
-    "relationship_delta": 0.0,
-  }
-}
+@dataclass
+class CharacterState:
+    base: Character                       # immutable ref to YAML definition
+    hp_current: int
+    hp_max: int
+    ability_uses: dict[str, int]          # { "divine_smite": 2_remaining, "lay_on_hands": 12_pool_left }
+    inventory_current: Inventory          # deltas applied to base.inventory
+    status_effects: list[StatusEffect]    # per-encounter; cleared on encounter end unless persistent
+    relationships: dict[str, float]       # char_id -> delta in [-1, 1]
+    conditions: set[str]                  # {"unconscious", "dead", "fleeing"}
+    met_characters: set[str]              # who this character has encountered
+    last_seen_encounter: str | None
 ```
+
+**DM runtime exposes `CharacterState` mutation through tools:**
+- `apply_damage(char_id, amount)` — HP reduction, auto-sets unconscious at 0
+- `consume_ability(char_id, ability_name)` — decrements use counter, rejects if exhausted
+- `modify_inventory(char_id, add=[], remove=[])` — loot gained/consumed
+- `apply_status(char_id, effect, duration)` — temporary effects (blessed, poisoned)
+- `adjust_relationship(char_id, other_char_id, delta)` — relationship tracking
+- `reset_encounter_state(char_id)` — clears per-encounter-only status effects
+
+**State flushed to `report.json`** at campaign end as `character_states: { char_id: CharacterState }`, giving the rollup a full picture of who survived, who lost what, who became friends with whom.
 
 **AUT choice classification** — AUT responds in natural language or tool calls. DM needs to map the response to one of the encounter's declared choices. MVP uses simple keyword matching + LLM fallback (a one-shot classification prompt if keywords don't match). This is the fuzziest part of the MVP; expect iteration.
 
@@ -147,10 +162,12 @@ campaign:
 
 **New files:**
 - `src/maxim/simulation/campaign_schema.py` (~160) — `Campaign`, `Act`, `Encounter`, `Character` (shared by PC and NPC), `Attributes`, `Ability`, `Inventory`, `DiceCheck` dataclasses + YAML loader + hard-fail validator + attribute-modified dice resolver
-- `src/maxim/simulation/dm_runtime.py` (~200) — campaign state, NPC registry, choice classifier, branch resolver, seeded RNG (`random.Random(seed)`)
-- `src/maxim/simulation/tools_dm.py` (~60) — minimal DM tools callable by the persona: `advance_encounter`, `record_choice`, `roll_dice`, `get_campaign_state`
+- `src/maxim/simulation/character_state.py` (~150) — `CharacterState` dataclass + `StatusEffect` + mutation methods (apply_damage, consume_ability, modify_inventory, apply_status, adjust_relationship, reset_encounter_state) + serialization
+- `src/maxim/simulation/dm_runtime.py` (~250) — campaign state, `CharacterState` registry (PC + all NPCs), choice classifier, branch resolver, seeded RNG, attribute-modified dice resolver pulling from `CharacterState`
+- `src/maxim/simulation/tools_dm.py` (~100) — DM tools: `advance_encounter`, `record_choice`, `roll_dice`, `get_campaign_state`, `apply_damage`, `consume_ability`, `modify_inventory`, `apply_status`, `adjust_relationship`, `inspect_character`
 - `tests/unit/test_campaign_schema.py` (~80) — round-trip, dangling branch detection, NPC ref validation
 - `tests/unit/test_dm_runtime.py` (~100) — state transitions, dice determinism under seed, branch selection
+- `tests/unit/test_character_state.py` (~80) — HP/death, ability exhaustion, inventory deltas, status effect lifecycle, relationship tracking, serialization round-trip
 - `scenarios/campaign_examples/heist_v1.yaml` — the example above, hand-authored
 
 **Modified files:**
@@ -186,24 +203,29 @@ campaign:
 
 | Plan | Relationship |
 |------|-------------|
-| [Dungeon Master Extensions](dungeon_master_extensions.md) | **Follow-on plan** — architect persona, encounter library, adaptive difficulty, sub-sim isolation, true RNG. Layered onto MVP, not prerequisites. |
-| [Interactive Simulation Prompts](interactive_sim_prompts.md) | Independent. Needed if/when architect persona ships (DM Extensions Phase 1). |
-| [Simulation Entity Naming](sim_entity_naming.md) | Independent. Readability win; not required for MVP (single AUT). |
-| **Simulation Decomposition** (done) | DM uses `send_message` + `finish_simulation` from that plan. No sub-sim dependency in MVP. |
-| **Realtime Refinement** (core done) | Independent in MVP. Extensions plan consumes `InspectAUTTool` for adaptive difficulty. |
+| **Embodiment Core** (not started) | **Prerequisite.** Establishes canonical body-state + pain/proprioception patterns that `CharacterState` inherits. Narrative damage uses the same `PainDetector` pathway as physical damage. |
+| **Multi-LLM Scaling** (not started) | **Prerequisite.** Per-lane model assignment for classification / dialogue / reasoning. |
+| **Agent Mesh** (blocked) | **Prerequisite.** Unlocks multi-AUT party mode — the civilization-scale version of DM. |
+| [Dungeon Master Extensions](dungeon_master_extensions.md) | **Follow-on plan** — architect persona, encounter library, adaptive difficulty, sub-sim isolation, true RNG, living-character relationship graph. Layered onto MVP. |
+| [DM Choice Classifier Spike](dm_choice_classifier_spike.md) | **Gating spike** — validates ATL+NAc classification before committing to MVP. |
+| [Interactive Simulation Prompts](interactive_sim_prompts.md) | Needed for DM Extensions architect persona. |
+| [Simulation Entity Naming](sim_entity_naming.md) | Optional readability win. |
+| **Simulation Decomposition** (done) | DM uses `send_message` + `finish_simulation` from that plan. |
+| **Realtime Refinement** (core done) | Extensions plan consumes `InspectAUTTool` for adaptive difficulty. |
 | **Research Protocol** (not started) | Independent. |
-| **Agent Mesh** (blocked) | Independent. Long-term: multi-AUT parties in DM sims. |
-| **Multi-LLM Scaling** (not started) | Independent, synergistic for choice classification (cheap model). |
 | **Docker Sandbox** (Phase B done) | Independent. DM campaigns with filesystem actions still benefit from sandbox. |
 
 ## When to Implement
 
-**Deferred until Multi-LLM Scaling + Agent Mesh land.** DM is self-contained and could ship today, but holding it back has strategic value:
+**Deferred until Multi-LLM Scaling, Agent Mesh, AND Embodiment Core land.** DM is self-contained and could ship today, but each prereq strengthens the bio-system stress-test thesis:
 
 - **Multi-LLM Scaling** lets architect/classification/DM-orchestrator run on different lanes (cheap model for choice classification, stronger model for NPC dialogue composition, strongest for adaptive difficulty reasoning). Critical for cost at campaign scale.
 - **Agent Mesh** unlocks **multi-AUT party mode** — multiple bio-stacks experiencing the same campaign from different perspectives, with inter-party communication via mesh primitives. This is where DM goes from "test persona" to "bio-system stress test at civilization scale."
+- **Embodiment Core** establishes the canonical "AUT inhabits a body with state and constraints" patterns — body-state abstraction, damage signals through `PainDetector`, proprioceptive feedback, Cerebellum forward models. DM's `CharacterState` should **mirror/reuse these patterns** rather than inventing parallel abstractions. A D&D character taking damage should flow through the same pain pathway a robot collision does; the bio-stack shouldn't know the difference. This is exactly the "experience it as a human would" thesis, applied consistently.
 
 **Prereq spike to run before committing to DM work:** [DM Choice Classifier Spike](dm_choice_classifier_spike.md) — validates that AUT free-text responses can be mapped to campaign choices using existing ATL concept similarity + NAc causal scoring, not a from-scratch classifier.
+
+**Architectural commitment:** once Embodiment Core ships, DM's `CharacterState` will align with whatever body-state primitives Embodiment establishes. Damage events flow through the shared `PainDetector` pathway; ability exhaustion emits proprioceptive signals identical in shape to physical fatigue; status effects propagate through the same salience/attention mechanisms Embodiment uses. This keeps the bio-stack's response to narrative events architecturally identical to its response to physical events.
 
 **Recommended sequence (once unblocked):**
 1. Choice classifier spike (~half day) — validate ATL/NAc path works
@@ -219,13 +241,16 @@ campaign:
 
 ## File Inventory
 
-**New files (~600 LOC):**
+**New files (~840 LOC):**
 - `src/maxim/simulation/campaign_schema.py` (~160)
-- `src/maxim/simulation/dm_runtime.py` (~200)
-- `src/maxim/simulation/tools_dm.py` (~60)
+- `src/maxim/simulation/character_state.py` (~150)
+- `src/maxim/simulation/dm_runtime.py` (~250)
+- `src/maxim/simulation/tools_dm.py` (~100)
 - `tests/unit/test_campaign_schema.py` (~80)
+- `tests/unit/test_character_state.py` (~80)
 - `tests/unit/test_dm_runtime.py` (~100)
 - `scenarios/campaign_examples/heist_v1.yaml`
+- `scenarios/campaign_examples/mystery_v1.yaml`
 
 **Modified files:**
 - `src/maxim/simulation/personas.py` — add `dungeon_master` persona

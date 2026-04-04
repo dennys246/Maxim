@@ -2,7 +2,7 @@
 
 > **Status:** Not started. MVP-first — validates core loop before committing to further phases.
 > **Depends on:** ATL semantic memory (exists), PainBus (exists), Hippocampus (exists), NAc (exists), ToolPainBridge (exists), PerceptSource protocol (exists), LLMRouter (exists), EnergySignal (exists).
-> **Related plans:** `embodiment_hardware_adapter_plan.md` (follow-up, after this ships), `realtime_refinement_plan.md` (reuses metric patterns), `agent_mesh.md` (adds EmbodimentCapability bullet).
+> **Related plans:** `embodiment_hardware_adapter_plan.md` (follow-up, after this ships), `realtime_refinement_plan.md` (reuses metric patterns), `agent_mesh.md` (adds EmbodimentCapability bullet), `dungeon_master_persona.md` (downstream consumer — DM's `CharacterState` mirrors body-state primitives established here so narrative damage flows through the same `PainDetector`/proprioception pathway as physical damage).
 
 ---
 
