@@ -295,19 +295,55 @@ These are interesting but not validated by current needs.
 
 ---
 
-## Honest Open Questions (Unresolved)
+## Open Questions — Resolved
 
-These are things I still don't have good answers for:
+These started as open questions and were resolved through design discussion. Recorded here for traceability.
 
-1. **Does ATL have enough machinery for body concepts?** Phase 1 might discover ATL needs extension. If it's significant, that becomes blocking work on ATL itself.
+### 1. ATL extensions for body concepts
 
-2. **Will the Cerebellum's action-param-bucket key generalize?** If angular motion needs fine-grained buckets (every 5°), model count explodes. Coarse buckets lose predictive power. This is an empirical tuning problem.
+**Decision:** start with hand-written extensions. Add a `body_part` concept category manually in Phase 1 (joint ranges, torque curves, pain calibration as semantic concepts). Ship the core embodiment loop with fixed ATL schema.
 
-3. **What's the LLM fallback cost ceiling?** If Cerebellum never gets confident enough, we're paying LLM costs forever. Need a monitoring dashboard + threshold alerts.
+**Future work (separate plan):** **ATL Self-Extension through Mechanism Discovery.** The LLM proposes new concept categories or mechanisms, simulation exercises them, NAc learns whether the new mechanism produces useful predictions, EC/Hippocampus recalls successful mechanisms. This is a genuinely novel research direction but has its own risks (signal vs. noise attribution, false-positive learning from confounded simulations). Should be a dedicated plan, not coupled to embodiment. Tracking separately.
 
-4. **How do we validate LLM-generated percepts are internally consistent?** A sensor reading at t+1 that contradicts t (joint angle "teleports") breaks the Cerebellum's learning. Need a sanity check layer: bound changes by max rate-of-change per sensor.
+### 2. Cerebellum bucket granularity
 
-5. **Does imagined pain really produce the same NAc learning as real pain?** MVP success criteria checks this loosely (σ < 0.2, ≥3 causal links). A rigorous answer requires comparing with hardware-backed pain on same action sequence.
+**Decision:** highly specific (param, action) buckets. Do not try to generalize across param-action combinations at the cerebellum level. Biological cerebellum has massive specialization for exactly this reason.
+
+**Generalization happens at ATL, not cerebellum:** ATL clusters specific (param, action) → outcome observations into concepts ("fast-elbow-flex" spans multiple buckets with shared qualitative properties). Clean separation of responsibilities:
+- **Cerebellum:** specific, deterministic, fast. One predictor per (component, affordance, param_bucket).
+- **ATL:** general, symbolic, slow. Concepts that span multiple cerebellum models.
+
+When the cerebellum has no model for the current bucket, it can fall back to ATL's general concept prediction before calling the LLM.
+
+### 3. LLM fallback cost ceiling
+
+**Decision:** EnergySignal-based budgeting with Rescorla-Wagner-learned costs.
+
+- Each LLM fallback emits an `EnergySignal` with token count, latency, and cost.
+- Per-context budgets (not global): "novel action percept generation" and "failure narration" have separate learned costs.
+- R-W updates the expected cost per context bucket from actual observations.
+- When cumulative energy spent on LLM fallbacks exceeds a budget, cancel the current action and replan (consistent with how Maxim handles other resource exhaustion).
+- Budget can itself be learned: initial guess → updated from observed actual costs → eventually converges.
+
+This reuses existing EnergySignal infrastructure and the same R-W engine used by NAc. No new plumbing.
+
+### 4. Percept consistency validation
+
+**Decision:** dynamically adjusted rate-of-change bounds per sensor, not fixed limits.
+
+- Each sensor has an `expected_rate_of_change` vital metric that tracks the body's current state.
+- Bounds widen with observed wear, injury, or malfunction — a damaged joint moves slower, so its rate-of-change bound drops.
+- Bounds are informative, not prescriptive: they shape what we *expect*, not what we *allow*. Anomalies beyond bounds are still recorded (and often treated as novelty signals or pain triggers) — they just indicate "unexpected state change, investigate."
+- The Cerebellum uses these bounds to gate training: if an observation falls wildly outside expected bounds, reduce its learning weight (don't overfit to a sensor glitch).
+
+### 5. Validating imagined pain learning
+
+**Decision:** forced bounds-violation scenarios as regression tests.
+
+- Standard test scenario: push embodiment beyond a bound → pain fires → assert NAc learns (action → pain) link with confidence > 0.5 within N repetitions.
+- Run on every commit touching embodiment or NAc code. Protects against silent breakage in the cognitive learning loop.
+- Provides concrete convergence-speed metrics we can track over time.
+- Future: compare convergence speed of imagined vs. replay-backed (recorded-from-real-hardware) pain on identical action sequences. If they match, imagined embodiment is a valid training substrate for hardware transfer.
 
 ---
 
