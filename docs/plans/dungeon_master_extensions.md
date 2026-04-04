@@ -39,27 +39,42 @@ MVP tells us which extensions matter. Don't commit to a sequence upfront. After 
 
 ---
 
-## Extension B — Interactive Adventure Architect Persona (~350 LOC)
+## Extension B — Interactive Adventure Architect Persona (~500 LOC)
 
-**Motivation:** hand-authoring campaign YAML is the primary MVP friction. An architect persona interviews the user and generates campaigns.
+**Motivation:** hand-authoring campaign YAML — especially character sheets and NPC rosters — is the primary MVP friction. An architect persona interviews the user and generates campaigns, including player character and NPC creation.
 
 **Depends on:** [Interactive Simulation Prompts](interactive_sim_prompts.md) (the `ask_user` tool)
 
 **Depends on:** Extension A (library) — architect composes from library; without it the architect is generating from scratch every time, which was the whole problem.
 
-**Design:**
-- `adventure_architect` persona with ~8-question interview budget
-- Interview phases: theme → scope → constraints → draft → refine
-- Architect calls `browse_encounters`, `emit_campaign`
-- Validator hard-fails; architect iterates to repair
-- Output written to `scenarios/generated/{session}_{slug}.yaml`
-- User-reviewed: architect proposes, user approves via `ask_user` before finalizing
+**Design:** architect runs a multi-phase interview (~12-question budget) with a dedicated **character creation sub-flow**:
+
+**Phase 1 — Player Character Creation (user's own character):**
+1. `ask_user`: "What's your character's name?"
+2. `ask_user`: "Race? (human | elf | dwarf | halfling | half-elf | other-describe)"
+3. `ask_user`: "Class archetype? (warrior | spellcaster | rogue | diplomat | custom-describe)"
+4. Architect proposes attribute array based on class archetype (STR/DEX/CON/INT/WIS/CHA), shows draft, `ask_user`: "Accept | redistribute | reroll"
+5. Architect proposes class-appropriate abilities/spells (3–5 options), `ask_user`: "Which do you want? Pick any subset or describe custom"
+6. Architect proposes starting inventory (weapons, armor, items), `ask_user`: "Accept | swap-items | add-custom"
+7. `ask_user`: "One-line backstory? (or 'generate' to let architect draft one)"
+8. Architect emits draft `player_character` block → `ask_user`: "Approve | revise-attributes | revise-abilities | restart"
+
+**Phase 2 — NPC Creation (optional, user-driven):**
+9. `ask_user`: "Any specific NPCs you want in the campaign? (list names and one-line descriptions, or 'architect-generates' to let architect invent them)"
+10. For each user-described NPC: architect generates full character block (attributes, abilities, inventory, dialogue hooks) matching the description, shows draft, `ask_user`: "Approve | revise"
+11. Architect fills remaining NPC slots (campaign needs N NPCs based on encounter roster) by generating generic-but-fitting characters from the campaign tone
+
+**Phase 3 — Campaign Structure (existing flow):**
+12. Theme → scope → encounter composition via `browse_encounters` → validation → `emit_campaign`
+
+**The character-creation flow uses the same shared `Character` schema** as MVP, so generated PCs and NPCs drop directly into campaign YAML without translation.
 
 **New files:**
 - Entry in `src/maxim/simulation/personas.py` for `adventure_architect`
-- `src/maxim/simulation/tools_dm.py` — add `emit_campaign`, `browse_encounters`, `propose_draft`
+- `src/maxim/simulation/tools_dm.py` — add `emit_campaign`, `browse_encounters`, `propose_draft`, `propose_character`, `propose_npc_from_description`
+- `src/maxim/simulation/character_templates.py` (~120) — class archetypes (warrior/spellcaster/rogue/diplomat) with attribute arrays, ability pools, starting inventory; NPC role templates (tavern_keeper, guard, merchant, noble, bandit) for architect-generated NPCs
 
-**Ship gate:** architect produces a campaign in <5 minutes of user interview that runs end-to-end without manual edits.
+**Ship gate:** architect produces a campaign + fully-statted PC + 3+ NPCs in <8 minutes of user interview that runs end-to-end without manual edits.
 
 ---
 
