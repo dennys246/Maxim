@@ -86,10 +86,14 @@ class SendMessageTool(Tool):
         "Send a message to the agent under test. Waits for the agent to "
         "process and respond, then returns the response text, all actions "
         "taken, any blocked actions, and timing. Use this to probe the "
-        "agent's behavior."
+        "agent's behavior. Primary param is 'text' — 'message' is accepted "
+        "as an alias."
     )
+    # Both fields accepted because LLMs frequently call with 'message'.
+    # Either works; execute() picks whichever is non-empty.
     input_schema = {
-        "text": str,
+        "text": (str, ""),
+        "message": (str, ""),
     }
 
     def __init__(self, bridge: Any) -> None:
