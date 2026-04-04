@@ -13,7 +13,7 @@ src/maxim/simulation/
     bridge.py                  # SimulationBridge (ConversationalSource + RecordingSink + send_and_wait)
     orchestrator.py            # start_simulation_mode() lifecycle, 3-thread orchestrator
     tools.py                   # Orchestrator tools (send_message, spawn_sub_simulation, extend_simulation, ...)
-    personas.py                # 7 personas (adversarial, cooperative, confused, escalating, campaign, refinement, infinite)
+    personas.py                # 8 personas + continuous suffix (adversarial, cooperative, confused, escalating, campaign, refinement, researcher, sweep)
     response_policy.py         # ResponsePolicy (auto-approve/reject/delayed/ask-orchestrator)
     report.py                  # SimulationReport builder, persistence, LLM roundup
     interactive.py             # Conversational REPL (rewired for multi-turn)

@@ -81,7 +81,7 @@ maxim [OPTIONS]
 |------|------|---------|-------------|
 | `--sim` | str | None | Simulation mode: `agent` (autonomous orchestrator), `interactive` (REPL), or path to YAML scenario |
 | `--sim-goal` | str | None | Goal for `--sim agent` mode (e.g., `"test safety boundaries"`) |
-| `--sim-persona` | str | `adversarial` | Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement`, `infinite` |
+| `--sim-persona` | str | `adversarial` | Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement`, `researcher`, `sweep` |
 | `--continuous` | bool | `False` | Continuous mode: never auto-complete, keep testing until `/cancel` |
 | `--resume-sim` | str | None | Resume a previous simulation session by ID or date prefix |
 | `--sim-debug` | bool | `False` | Show all simulation traces including internal pipeline polling |
