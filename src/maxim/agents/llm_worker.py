@@ -644,30 +644,39 @@ class LLMWorker:
                                self._requests_dropped)
                 return False
 
+    # Lanes the LLM worker may dispatch to. Cloud-backed requests
+    # (Anthropic, OpenAI) are sent to ``infer_net``; local GPU-backed
+    # requests go to ``infer``. Poll both so proposals aren't stranded.
+    _INFER_LANES = ("infer", "infer_net")
+
     def get_latest_proposal(self) -> LLMProposal | None:
         """
         Get the most recent proposal (non-blocking).
 
         Main loop calls this each iteration to check for LLM output.
-        Returns None if no proposal available.
+        Returns None if no proposal available. Polls every infer lane
+        since cloud-backed requests land on ``infer_net`` while local
+        GPU requests land on ``infer``.
         """
         if self._pool is None:
             return None
-        completed = self._pool.get_completed("infer")
-        if completed is not None and completed.result is not None:
-            return completed.result
+        for lane in self._INFER_LANES:
+            completed = self._pool.get_completed(lane)
+            if completed is not None and completed.result is not None:
+                return completed.result
         return None
 
     def get_all_proposals(self) -> list[LLMProposal]:
-        """Get all pending proposals (non-blocking)."""
+        """Get all pending proposals (non-blocking) across infer lanes."""
         if self._pool is None:
             return []
         proposals = []
-        while True:
-            completed = self._pool.get_completed("infer")
-            if completed is None or completed.result is None:
-                break
-            proposals.append(completed.result)
+        for lane in self._INFER_LANES:
+            while True:
+                completed = self._pool.get_completed(lane)
+                if completed is None or completed.result is None:
+                    break
+                proposals.append(completed.result)
         return proposals
 
     def _process_request(self, request: LLMRequest) -> LLMProposal:
@@ -871,7 +880,7 @@ class LLMWorker:
             plan_text = response.pop("_plan_text", None)
             requires_approval = response.pop("_requires_approval", False)
 
-            return LLMProposal(
+            proposal = LLMProposal(
                 request_id=request.request_id,
                 action=response.get("action"),
                 reasoning=response.get("reasoning", ""),
@@ -886,8 +895,20 @@ class LLMWorker:
                 plan_text=plan_text,
                 requires_approval=requires_approval,
             )
+            try:
+                from maxim.simulation.sim_logger import sim_log
+                _tool = proposal.action.get("tool_name") if isinstance(proposal.action, dict) else None
+                sim_log("EXEC", f"LLMProposal built: tool={_tool}, action_is_dict={isinstance(proposal.action, dict)}, req_id={request.request_id[:20]}")
+            except Exception:
+                pass
+            return proposal
 
         except Exception as e:
+            try:
+                from maxim.simulation.sim_logger import sim_log
+                sim_log("EXEC", f"LLMProposal EXCEPTION: {type(e).__name__}: {str(e)[:100]}")
+            except Exception:
+                pass
             latency_ms = (time.time() - start_time) * 1000
             return LLMProposal(
                 request_id=request.request_id,
