@@ -254,7 +254,6 @@ def start_simulation_mode(
     # The AUT's BashTool checks MAXIM_ALLOW_BASH env var; without it, every
     # bash call fails with "BashTool disabled" even though autonomy allows it.
     # Simulation mode is sandboxed (tmpdir + FearGatedExecutor), so bash is safe.
-    import os
     os.environ.setdefault("MAXIM_ALLOW_BASH", "1")
 
     # Constrain AUT filesystem tools to sandbox tmpdir (if available)
