@@ -339,9 +339,8 @@ class ConsolidationMixin:
         Called during capture() for memories that might be promotable but
         don't meet immediate promotion criteria.
         """
-        # Bounded queue to prevent unbounded growth
-        if len(self._consolidation_candidates) < self.config.max_consolidation_candidates:
-            self._consolidation_candidates.append(memory_id)
+        # Deque has maxlen — append always succeeds and oldest is rotated out.
+        self._consolidation_candidates.append(memory_id)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Temporal Clustering (SCN-integrated consolidation)

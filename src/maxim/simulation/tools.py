@@ -827,9 +827,17 @@ class SpawnSubSimulationTool(Tool):
         sub_state = RuntimeState()
         sub_state.data["mode"] = "active"
         sub_memory = build_memory()
+        # Give sub-AUT a ResponseOutput so RespondTool is registered
+        sub_response_output = None
+        try:
+            from maxim.utils.response_output import ResponseOutput
+            sub_response_output = ResponseOutput(sandbox_path=self._sim_tmpdir)
+        except Exception:
+            pass
         sub_registry = build_tool_registry(
             operational_mode="active",
             allowed_dirs_override=self._sandbox_dirs,
+            response_output=sub_response_output,
         )
         sub_engine = build_decision_engine()
         sub_agent = MaximAgent()

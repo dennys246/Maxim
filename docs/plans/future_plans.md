@@ -2,7 +2,7 @@
 
 Master roadmap for Maxim development. Individual plan files remain as detailed design references.
 
-**Last updated:** 2026-04-03
+**Last updated:** 2026-04-04
 
 ---
 
@@ -14,7 +14,8 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Research Protocol | **Not started** | Local mesh proving ground (3 agents) |
 | Multi-LLM Scaling | **Not started** | Phases 1-3 ready (router modularization done) |
 | Agent Mesh | **Not started** | Phases 1a-1b built by Research Protocol |
-| Realtime Refinement | **Not started** | After running sim agent + multi-LLM |
+| Realtime Refinement | **~90% done** | InspectAUTTool + 10 introspection tools live; needs refinement persona + metric types |
+| Wave A Stabilization | **Done** | Circular import + bounded queues + atomic-write hardening + silent-except cleanup |
 
 ### Completed Plans
 
@@ -26,6 +27,8 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Simulation Agent (Phases 1-3) | SimulationBridge, 10 tools, 8 personas, orchestrator lifecycle, CLI wiring |
 | Intelligent Context Upgrade (~90%) | Edit disambiguation, turn pinning v1, dropped context notice |
 | LLMWorker Cleanup (Track B) | Removed legacy dual-mode, pass-through statics, fixed feature detection |
+| Router Modularization | router.py split into config.py, types.py, token_counter.py, prompt_formats.py, json_parser.py (router down to 1,268 LOC) |
+| Wave A Stabilization | NAc circular import fix, bounded `_consolidation_candidates` + `_pending_events`, `atomic_io` util with fsync, silent-except audit in agent_loop, defensive shutdown for concept subsystems |
 
 ---
 
@@ -33,34 +36,35 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 
 ```
 Completed:
-  Repo Cleanup, Loop Modularization, Simulation Agent, LLMWorker Cleanup
+  Repo Cleanup, Loop Modularization, Simulation Agent, LLMWorker Cleanup,
+  Router Modularization, Wave A Stabilization
 
 Next:
-  Router Modularization ──► Multi-LLM Scaling Phases 1-3
-                               ├── Phases 4-6: Remote + tunnel + auto-spawn
-                               └── Phase 7: PeerRegistry ──► Agent Mesh
+  Multi-LLM Scaling Phases 1-3
+     ├── Phases 4-6: Remote + tunnel + auto-spawn
+     └── Phase 7: PeerRegistry ──► Agent Mesh
+
+  Research Protocol (independent track — local mesh proving ground)
 
 Ongoing:
-  Realtime Refinement (observation-driven, after sim agent + multi-LLM are live)
+  Realtime Refinement (observation-driven; just needs 6th persona + metric types)
 ```
 
 ---
 
-## 1. Router Modularization
+## 1. Router Modularization — DONE
 
-> **Status:** Not started. Prerequisite for Multi-LLM Phase 3.
-> **Effort:** ~1-2 hours
+> **Status:** Complete. router.py reduced to 1,268 LOC.
 > **Design:** [router_modularization_plan.md](router_modularization_plan.md)
 
-Split `router.py` (1,721 LOC) into focused modules before adding multi-LLM code:
-
-| New file | LOC | Contents |
-|----------|-----|----------|
-| `config.py` | ~400 | LLMConfig, load_llm_config, profiles, quantization |
-| `types.py` | ~80 | LLMResponse, RoutingPolicy, ProviderState |
-| `router.py` | ~1,120 | LLMRouter class (stays, reduced) |
-
-Re-exports in router.py preserve backward compat. Backends already split (llama_backend.py, openai_backend.py, transformers_backend.py).
+`src/maxim/models/language/` now contains:
+- `config.py` — LLMConfig, load_llm_config, profiles, quantization
+- `types.py` — LLMResponse, RoutingPolicy, ProviderState
+- `token_counter.py` — token counting helpers
+- `prompt_formats.py` — format-specific prompt building
+- `json_parser.py` — response JSON extraction
+- `router.py` — LLMRouter class
+- `cost_tracker.py`, backends (anthropic/llama/openai/transformers)
 
 ---
 

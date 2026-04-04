@@ -761,8 +761,8 @@ def run_agentic_loop(
                 if callable(on_event):
                     try:
                         on_event(StreamEvent("inference_end", {"has_proposal": True}))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log_swallowed_exception(e, operation="on_event:inference_end")
                 if new_proposal.action:
                     tool_name = new_proposal.action.get("tool_name", "unknown")
                     logger.info("LLM proposal received: tool=%s, confidence=%.2f",
@@ -906,8 +906,8 @@ def run_agentic_loop(
                                     if callable(on_event):
                                         try:
                                             on_event(StreamEvent("tool_start", {"tool_name": action["tool_name"]}))
-                                        except Exception:
-                                            pass
+                                        except Exception as e:
+                                            log_swallowed_exception(e, operation="on_event:tool_start")
 
                                     result = executor.execute(action)
 
@@ -917,8 +917,8 @@ def run_agentic_loop(
                                     if callable(on_event):
                                         try:
                                             on_event(StreamEvent("tool_end", {"tool_name": action["tool_name"], "success": success}))
-                                        except Exception:
-                                            pass
+                                        except Exception as e:
+                                            log_swallowed_exception(e, operation="on_event:tool_end")
                                     log_agentic(
                                         "agent_loop",
                                         "tool_called",
@@ -956,8 +956,8 @@ def run_agentic_loop(
                                         followup = environment.step(result)
                                         if followup:
                                             state.update(followup)
-                                    except Exception:
-                                        pass
+                                    except Exception as e:
+                                        log_swallowed_exception(e, operation="environment.step_followup")
 
                                     # Store in memory
                                     try:
@@ -970,8 +970,8 @@ def run_agentic_loop(
                                             },
                                             metadata={"type": "agent_action"},
                                         )
-                                    except Exception:
-                                        pass
+                                    except Exception as e:
+                                        log_swallowed_exception(e, operation="memory.store_raw")
 
                                     # Capture episodic memory to Hippocampus (async — fire-and-forget)
                                     if hippocampus is not None:
@@ -1432,8 +1432,8 @@ def run_agentic_loop(
                         followup = environment.step(result)
                         if followup:
                             state.update(followup)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log_swallowed_exception(e, operation="environment.step_followup")
 
                     # Store in memory
                     try:
@@ -1446,8 +1446,8 @@ def run_agentic_loop(
                             },
                             metadata={"type": "action_execution"},
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log_swallowed_exception(e, operation="memory.store_raw")
 
                     # Capture episodic memory to Hippocampus (async — fire-and-forget)
                     if hippocampus is not None:
@@ -1483,8 +1483,8 @@ def run_agentic_loop(
                         )
                         try:
                             state.mark_failure(getattr(result, "error", None))
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            log_swallowed_exception(e, operation="state.mark_failure")
 
                 except Exception as e:
                     logger.error(f"Action execution failed: {e}")
@@ -1514,8 +1514,8 @@ def run_agentic_loop(
                     # Mark failure in state
                     try:
                         state.mark_failure(str(e))
-                    except Exception:
-                        pass
+                    except Exception as mf_err:
+                        log_swallowed_exception(mf_err, operation="state.mark_failure_exc")
 
                 pending_proposal = None
 
@@ -2024,8 +2024,8 @@ def run_agentic_loop(
                         if callable(on_event):
                             try:
                                 on_event(StreamEvent("inference_start", {}))
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                log_swallowed_exception(e, operation="on_event:inference_start")
 
                         submitted = llm_worker.submit_context(
                             context=context,
@@ -2098,8 +2098,8 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         try:
             state.steps_taken += 1
-        except Exception:
-            pass
+        except Exception as e:
+            log_swallowed_exception(e, operation="state.steps_taken_increment")
 
         if persist_every_n_steps > 0 and state.steps_taken % persist_every_n_steps == 0:
             _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})

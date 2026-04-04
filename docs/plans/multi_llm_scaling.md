@@ -1,6 +1,6 @@
 # Multi-LLM Scaling Plan
 
-> **Status:** Not started. Depends on RuntimeCapabilities (implemented), WorkerPool lane system (implemented), and shared LLMRouter pattern (implemented via Agentic Loop Modularization — #3 double-LLM fix).
+> **Status:** Not started — but all prerequisites are complete. Depends on RuntimeCapabilities (implemented), WorkerPool lane system (implemented), shared LLMRouter pattern (implemented via Agentic Loop Modularization), and **Router Modularization (done — router.py split into config/types/token_counter/prompt_formats/json_parser modules)**. Ready to begin Phase 1.
 >
 > **Scope:** Local multi-model inference, remote model serving via home server + Cloudflare tunnel, dynamic backend spawning, and peer-to-peer inference mesh across Maxim instances.
 
