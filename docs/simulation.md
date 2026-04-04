@@ -12,8 +12,8 @@ src/maxim/simulation/
     scenario_source.py         # ScenarioSource (YAML loader + emitter)
     bridge.py                  # SimulationBridge (ConversationalSource + RecordingSink + send_and_wait)
     orchestrator.py            # start_simulation_mode() lifecycle, 3-thread orchestrator
-    tools.py                   # Orchestrator tools (send_message, observe_actions, inspect_aut, ...)
-    personas.py                # 6 personas (adversarial, cooperative, confused, escalating, campaign, refinement)
+    tools.py                   # Orchestrator tools (send_message, spawn_sub_simulation, extend_simulation, ...)
+    personas.py                # 7 personas (adversarial, cooperative, confused, escalating, campaign, refinement, infinite)
     response_policy.py         # ResponsePolicy (auto-approve/reject/delayed/ask-orchestrator)
     report.py                  # SimulationReport builder, persistence, LLM roundup
     interactive.py             # Conversational REPL (rewired for multi-turn)

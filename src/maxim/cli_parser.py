@@ -251,6 +251,12 @@ def _build_parser() -> argparse.ArgumentParser:
              "escalating, campaign, refinement). Alias: --persona",
     )
     parser.add_argument(
+        "--continuous",
+        action="store_true",
+        help="Continuous simulation mode: never auto-complete, keep testing until /cancel. "
+             "Best with --persona infinite.",
+    )
+    parser.add_argument(
         "--resume-sim",
         type=str,
         default=None,

@@ -45,6 +45,7 @@ class SimulationBridge:
         settle_s: float = 3.0,
         stop_event: threading.Event | None = None,
         response_policy: ResponsePolicy | None = None,
+        spinner_prefix: str = "",
     ) -> None:
         self.percept_source = ConversationalSource()
         self.action_sink = RecordingSink()
@@ -54,7 +55,7 @@ class SimulationBridge:
         self._stop_event = stop_event
         self._turn_count = 0
         self._last_observed_action_idx = 0
-        self._spinner = Spinner()
+        self._spinner = Spinner(prefix=spinner_prefix)
 
     def send_and_wait(
         self,

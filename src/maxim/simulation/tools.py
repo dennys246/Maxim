@@ -135,11 +135,13 @@ class CheckCompletionTool(Tool):
     )
     input_schema = {}
 
-    def __init__(self, bridge: Any, llm: Any = None, goal: str = "") -> None:
+    def __init__(self, bridge: Any, llm: Any = None, goal: str = "",
+                 continuous: bool = False) -> None:
         super().__init__()
         self._bridge = bridge
         self._llm = llm
         self._goal = goal
+        self._continuous = continuous
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         actions = self._bridge.get_all_actions()
@@ -159,8 +161,12 @@ class CheckCompletionTool(Tool):
             "goal": self._goal,
         }
 
-        # Simple heuristic completion checks
-        if turn_count == 0:
+        # Continuous mode: never auto-complete
+        if self._continuous:
+            assessment["complete"] = False
+            assessment["reason"] = "Continuous mode — keep testing (user will /cancel when done)"
+            assessment["confidence"] = 0.0
+        elif turn_count == 0:
             assessment["complete"] = False
             assessment["reason"] = "No turns completed yet"
             assessment["confidence"] = 0.0
@@ -169,7 +175,6 @@ class CheckCompletionTool(Tool):
             assessment["reason"] = "Max turns reached"
             assessment["confidence"] = 0.8
         else:
-            # Leave completion decision to the orchestrator LLM
             assessment["complete"] = False
             assessment["reason"] = "In progress — review actions and decide"
             assessment["confidence"] = 0.0
@@ -564,6 +569,269 @@ class SimRespondTool(Tool):
         )
 
 
+class ExtendSimulationTool(Tool):
+    """Add a new goal to the current simulation without resetting.
+
+    Injects a new objective into the ongoing conversation. The AUT retains
+    all context from previous turns. Use when a finding warrants deeper
+    investigation. If a sub-AUT is alive (from spawn_sub_simulation), the
+    extension goes to that sub-AUT; otherwise it goes to the main AUT.
+    """
+
+    name = "extend_simulation"
+    description = (
+        "Continue the current simulation with a new objective. The agent "
+        "keeps its conversation history. Use when you discover something "
+        "worth probing deeper. If a sub-simulation is active, extends that; "
+        "otherwise extends the main simulation."
+    )
+    input_schema = {
+        "goal": str,
+    }
+
+    def __init__(self, main_bridge: Any, spawn_tool: Any = None) -> None:
+        super().__init__()
+        self._main_bridge = main_bridge
+        self._spawn_tool = spawn_tool
+
+    def execute(self, **kwargs: Any) -> ToolOutput:
+        goal = kwargs.get("goal", "")
+        if not goal:
+            return ToolOutput(success=False, error="goal is required")
+
+        # Use sub-bridge if a sub-AUT is alive, otherwise main bridge
+        bridge = self._main_bridge
+        is_sub = False
+        if self._spawn_tool and getattr(self._spawn_tool, "active_sub_bridge", None):
+            bridge = self._spawn_tool.active_sub_bridge
+            is_sub = True
+
+        result = bridge.send_and_wait(f"New objective: {goal}")
+
+        action_summaries = []
+        for a in result["actions"]:
+            summary: dict[str, Any] = {"tool": a.tool_name, "success": a.result_success}
+            if a.blocked:
+                summary["blocked"] = True
+                summary["reason"] = a.block_reason
+            if a.result_output:
+                output_str = str(a.result_output)
+                summary["output"] = output_str[:500] if len(output_str) > 500 else output_str
+            action_summaries.append(summary)
+
+        return ToolOutput(success=True, output={
+            "goal": goal,
+            "extended_sub_simulation": is_sub,
+            "turn": result["turn"],
+            "response": result["response"],
+            "actions": action_summaries,
+            "blocked_count": len(result["blocked"]),
+            "timed_out": result["timed_out"],
+            "duration_ms": round(result["duration_ms"]),
+        })
+
+
+class SpawnSubSimulationTool(Tool):
+    """Run an isolated sub-simulation with a fresh AUT.
+
+    Spawns a new AUT instance, sends the goal, waits for a response, and
+    returns a structured sub-report. The sub-AUT stays alive for potential
+    extend_simulation follow-ups (lazy cleanup). The next spawn call tears
+    down the previous sub-AUT.
+    """
+
+    name = "spawn_sub_simulation"
+    description = (
+        "Run an isolated sub-simulation with a fresh agent. The sub-agent "
+        "starts with no memory of previous interactions. Use for independent "
+        "measurements. The sub-agent stays alive for extend_simulation follow-ups."
+    )
+    input_schema = {
+        "goal": str,
+    }
+
+    def __init__(self, llm_router: Any, stop_event: Any = None,
+                 parent_bridge: Any = None, sim_tmpdir: str = ".") -> None:
+        super().__init__()
+        self._llm_router = llm_router
+        self._stop_event = stop_event
+        self._parent_bridge = parent_bridge
+        self._sim_tmpdir = sim_tmpdir
+        # Active sub-simulation state (lazy cleanup)
+        self.active_sub_bridge: Any = None
+        self._sub_worker: Any = None
+        self._sub_thread: Any = None
+
+    def _teardown_sub(self) -> None:
+        """Tear down the current sub-AUT if one exists."""
+        if self.active_sub_bridge is not None:
+            try:
+                self.active_sub_bridge.finish()
+            except Exception:
+                pass
+        if self._sub_worker is not None:
+            try:
+                self._sub_worker.stop()
+            except Exception:
+                pass
+        if self._sub_thread is not None:
+            try:
+                self._sub_thread.join(timeout=5.0)
+            except Exception:
+                pass
+        self.active_sub_bridge = None
+        self._sub_worker = None
+        self._sub_thread = None
+
+    def execute(self, **kwargs: Any) -> ToolOutput:
+        import sys
+        import threading
+        goal = kwargs.get("goal", "")
+        if not goal:
+            return ToolOutput(success=False, error="goal is required")
+
+        # Tear down previous sub-AUT if one exists
+        self._teardown_sub()
+
+        # Stop parent spinner, show sub-sim banner
+        if self._parent_bridge:
+            self._parent_bridge._spinner.stop()
+        short_goal = goal[:60] + ("..." if len(goal) > 60 else "")
+        sys.stderr.write(f"\n  ┌─ Sub-simulation: \"{short_goal}\"\n")
+        sys.stderr.flush()
+
+        start = time.time()
+        try:
+            sub_report = self._run_sub_simulation(goal)
+        except Exception as e:
+            sub_report = {
+                "goal": goal, "error": str(e), "turns": 0,
+                "total_actions": 0, "blocked_actions": 0,
+                "response": None, "actions": [], "timed_out": False,
+            }
+
+        elapsed = time.time() - start
+
+        # Print sub-sim result and restart parent spinner
+        blocked = sub_report.get("blocked_actions", 0)
+        actions = sub_report.get("total_actions", 0)
+        status = "✓" if blocked == 0 else f"({blocked} blocked)"
+        sys.stderr.write(f"  └─ Sub-simulation complete: {actions} action(s) {status} ({elapsed:.1f}s)\n\n")
+        sys.stderr.flush()
+        if self._parent_bridge:
+            self._parent_bridge._spinner.start("Orchestrator planning next probe...")
+
+        sub_report["duration_s"] = round(elapsed, 1)
+        return ToolOutput(success=True, output=sub_report)
+
+    def _run_sub_simulation(self, goal: str) -> dict[str, Any]:
+        """Bootstrap a fresh AUT and run one turn."""
+        import threading
+        from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
+        from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.maxim_agent import MaximAgent
+        from maxim.environment.filesystem_env import FileSystemEnv
+        from maxim.runtime.agent_loop import run_agentic_loop
+        from maxim.runtime.bootstrap import (
+            build_decision_engine,
+            build_executor,
+            build_memory,
+            build_tool_registry,
+        )
+        from maxim.runtime.state import RuntimeState
+        from maxim.simulation.bridge import SimulationBridge
+
+        # Fresh AUT pipeline
+        sub_bridge = SimulationBridge(
+            response_timeout=120.0,
+            stop_event=self._stop_event,
+            spinner_prefix="│  ",
+        )
+        sub_env = FileSystemEnv(self._sim_tmpdir)
+        sub_state = RuntimeState()
+        sub_state.data["mode"] = "active"
+        sub_memory = build_memory()
+        sub_registry = build_tool_registry(operational_mode="active")
+        sub_engine = build_decision_engine()
+        sub_agent = MaximAgent()
+        sub_autonomy = AutonomyController(
+            initial_level=AutonomyLevel.AUTONOMOUS,
+            supervision_policy=SupervisionPolicy(
+                allowed_tools={
+                    "respond", "speak", "read_file", "list_directory",
+                    "write_file", "edit_file", "glob", "code_search",
+                    "bash", "execute_file", "run_tests",
+                },
+                forbidden_tools=set(),
+                min_confidence_autonomous=0.3,
+            ),
+        )
+        sub_executor = build_executor(sub_registry)
+
+        # Sub-AUT LLM worker (shares router)
+        sub_worker = None
+        if self._llm_router is not None:
+            sub_worker = LLMWorker(
+                llm=self._llm_router,
+                stale_threshold_s=30.0,
+                n_ctx=self._llm_router.n_ctx,
+                token_counter=self._llm_router.get_token_counter(),
+            )
+            sub_worker.start()
+
+        # Start sub-AUT thread
+        sub_error: list[Exception] = []
+
+        def _sub_aut():
+            try:
+                run_agentic_loop(
+                    sub_agent, sub_env, sub_state, sub_memory,
+                    sub_engine, sub_executor,
+                    autonomy_controller=sub_autonomy,
+                    llm_worker=sub_worker,
+                    max_steps=0,
+                    stop_event=self._stop_event,
+                    target_hz=2.0,
+                    percept_source=sub_bridge.percept_source,
+                    action_sink=sub_bridge.action_sink,
+                )
+            except Exception as e:
+                sub_error.append(e)
+
+        sub_thread = threading.Thread(target=_sub_aut, name="sim.sub_aut", daemon=True)
+        sub_thread.start()
+
+        # Send the goal and wait for response
+        result = sub_bridge.send_and_wait(goal)
+
+        # Store for extend_simulation (lazy cleanup)
+        self.active_sub_bridge = sub_bridge
+        self._sub_worker = sub_worker
+        self._sub_thread = sub_thread
+
+        # Build sub-report
+        action_summaries = []
+        for a in result["actions"]:
+            summary: dict[str, Any] = {"tool": a.tool_name, "success": a.result_success}
+            if a.blocked:
+                summary["blocked"] = True
+                summary["reason"] = a.block_reason
+            if a.result_output:
+                output_str = str(a.result_output)
+                summary["output"] = output_str[:500] if len(output_str) > 500 else output_str
+            action_summaries.append(summary)
+
+        return {
+            "goal": goal,
+            "turn": result["turn"],
+            "response": result["response"],
+            "actions": action_summaries,
+            "total_actions": len(result["actions"]),
+            "blocked_actions": len(result["blocked"]),
+            "timed_out": result["timed_out"],
+        }
+
+
 class FinishSimulationTool(Tool):
     """End the current simulation and shut down both agent loops.
 
@@ -583,16 +851,22 @@ class FinishSimulationTool(Tool):
         "summary": (str, ""),
     }
 
-    def __init__(self, bridge: Any, orchestrator_source: Any = None) -> None:
+    def __init__(self, bridge: Any, orchestrator_source: Any = None,
+                 spawn_tool: Any = None) -> None:
         super().__init__()
         self._bridge = bridge
         self._orchestrator_source = orchestrator_source
+        self._spawn_tool = spawn_tool
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         reason = kwargs.get("reason", "completed")
         summary = kwargs.get("summary", "")
 
         logger.info("Simulation finishing: %s", reason)
+
+        # Tear down any active sub-AUT
+        if self._spawn_tool:
+            self._spawn_tool._teardown_sub()
 
         # Signal AUT to stop (grace period handles cleanup)
         self._bridge.finish()

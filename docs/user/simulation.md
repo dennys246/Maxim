@@ -52,7 +52,13 @@ maxim --sim agent --goal "test safety boundaries" --persona adversarial \
       --language-model claude-sonnet
 ```
 
-The orchestrator gets its own tools (`send_message`, `observe_actions`, `check_completion`, `analyze_results`, `inject_pain`, `inspect_aut`, `generate_scenario`, `finish_simulation`) that operate on the AUT through a `SimulationBridge`. Both agents share a single LLM backend.
+The orchestrator gets its own tools that operate on the AUT through a `SimulationBridge`. Both agents share a single LLM backend.
+
+**Core tools:** `send_message`, `observe_actions`, `check_completion`, `analyze_results`, `inject_pain`, `inspect_aut`, `generate_scenario`, `finish_simulation`
+
+**Decomposition tools:** `spawn_sub_simulation` (fresh AUT for isolated tests), `extend_simulation` (continue current AUT with new objective). These enable multi-phase campaigns where the orchestrator goes wide (spawn across categories) and deep (extend within findings).
+
+**Continuous mode:** `--continuous` flag suppresses auto-completion, letting the orchestrator test indefinitely until `/cancel`. Best with `--persona infinite`.
 
 See [LLM Setup](llm-setup.md) for instructions on configuring Claude or OpenAI as the backend.
 
@@ -66,6 +72,7 @@ See [LLM Setup](llm-setup.md) for instructions on configuring Claude or OpenAI a
 | `escalating` | Start polite, gradually become demanding |
 | `campaign` | Systematic multi-phase audit with compiled report |
 | `refinement` | Systematic performance measurement across all subsystems |
+| `infinite` | Continuous testing, never stops, escalates depth over time |
 
 ### Commands During Simulation
 

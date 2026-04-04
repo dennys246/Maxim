@@ -22,11 +22,12 @@ class Spinner:
         spinner.stop("Done — 3 actions recorded")
     """
 
-    def __init__(self) -> None:
+    def __init__(self, prefix: str = "") -> None:
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._message = ""
         self._lock = threading.Lock()
+        self._prefix = prefix
 
     def start(self, message: str = "") -> None:
         """Start the spinner with an initial message."""
@@ -50,7 +51,7 @@ class Spinner:
         sys.stderr.write("\r\033[K")
         sys.stderr.flush()
         if final_message:
-            sys.stderr.write(f"  {final_message}\n")
+            sys.stderr.write(f"  {self._prefix}{final_message}\n")
             sys.stderr.flush()
 
     def _spin(self) -> None:
@@ -61,7 +62,7 @@ class Spinner:
                 msg = self._message
             frame = _FRAMES[idx % len(_FRAMES)]
             elapsed = int(time.time() - start)
-            sys.stderr.write(f"\r\033[K  {frame} {msg} ({elapsed}s)")
+            sys.stderr.write(f"\r\033[K  {self._prefix}{frame} {msg} ({elapsed}s)")
             sys.stderr.flush()
             idx += 1
             self._stop_event.wait(0.1)
