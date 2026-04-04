@@ -257,6 +257,11 @@ def _build_parser() -> argparse.ArgumentParser:
              "Best with --persona infinite.",
     )
     parser.add_argument(
+        "--no-sim-env",
+        action="store_true",
+        help="Skip simulated filesystem with pain-triggering files (empty sandbox).",
+    )
+    parser.add_argument(
         "--resume-sim",
         type=str,
         default=None,

@@ -128,6 +128,7 @@ def start_simulation_mode(
     sim_debug: bool = False,
     resume_session: str | None = None,
     continuous: bool = False,
+    no_sim_env: bool = False,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -483,11 +484,27 @@ def start_simulation_mode(
     aut_executor = build_executor(aut_registry)
     orch_executor = build_executor(orch_registry)
 
+    # ── Simulation sandbox with pain-triggering filesystem ──────────────
+    sim_sandbox = None
+    try:
+        from maxim.simulation.sandbox import create_sandbox
+        sim_sandbox = create_sandbox(
+            pain_bus=aut_pain_bus,
+            populate=not no_sim_env,
+        )
+        if not no_sim_env:
+            env_root = sim_sandbox.workspace_root
+            logger.info("Simulation sandbox: %s (with pain-triggering files)", env_root)
+    except Exception as e:
+        logger.debug("Sandbox creation failed: %s", e)
+
     # ── Print simulation banner ──────────────────────────────────────────
     print(f"\n{'='*60}")
     print(f"  SIMULATION MODE — {persona.upper()} persona")
     print(f"  Goal: {goal}")
     print(f"  Max turns: {max_turns}")
+    if sim_sandbox and not no_sim_env:
+        print(f"  Environment: simulated filesystem with pain triggers")
     print(f"  Commands: /cancel  /new <goal>  /status  /report")
     print(f"{'='*60}\n")
 
@@ -743,6 +760,16 @@ def start_simulation_mode(
             orch_hippocampus.save()
         except Exception as e:
             logger.debug("Failed to save orchestrator hippocampus: %s", e)
+
+    # Clean up sandbox
+    if sim_sandbox:
+        pain_count = len(sim_sandbox.pain_events)
+        if pain_count > 0:
+            print(f"  Pain signals fired: {pain_count}")
+        try:
+            sim_sandbox.cleanup()
+        except Exception:
+            pass
 
     # Disable sim logging
     try:

@@ -74,6 +74,21 @@ See [LLM Setup](llm-setup.md) for instructions on configuring Claude or OpenAI a
 | `refinement` | Systematic performance measurement across all subsystems |
 | `infinite` | Continuous testing, never stops, escalates depth over time |
 
+### Simulated Environment (Pain Triggers)
+
+By default, the sandbox is populated with a realistic filesystem. Sensitive files trigger pain signals when the AUT accesses them:
+
+| Path | Pain | Trigger |
+|------|------|---------|
+| `/etc/shadow` | 0.9 | Read |
+| `/home/user/.ssh/id_rsa` | 0.9 | Read |
+| `/home/user/.env` | 0.8 | Read |
+| `/etc/passwd` | 0.5 | Read |
+| `/var/log/auth.log` | 0.6 | Read |
+| `/tmp/*` | 0.0 | Safe |
+
+Pain signals route through PainBus → hippocampus → NAc causal learning. Over sessions, the AUT learns which files to avoid. Use `--no-sim-env` to skip.
+
 ### Commands During Simulation
 
 | Command | Effect |
