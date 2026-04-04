@@ -27,7 +27,6 @@ class SimToolRegistry:
 
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
-        self._redirect = _FallbackRedirectTool()
 
     def register(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
@@ -35,8 +34,11 @@ class SimToolRegistry:
     def get(self, name: str) -> Tool:
         if name in self._tools:
             return self._tools[name]
-        # Return redirect instead of raising KeyError
-        return self._redirect
+        # Return a redirect tool with the REQUESTED name so the agent loop's
+        # followup_type lookup finds it in TOOL_DESCRIPTIONS (we register
+        # 'respond' with followup_type='process', and the redirect tool
+        # masquerades as 'respond' to trigger the followup).
+        return _FallbackRedirectTool(requested_name=name)
 
     def deregister(self, name: str) -> bool:
         return self._tools.pop(name, None) is not None
@@ -48,18 +50,20 @@ class SimToolRegistry:
 class _FallbackRedirectTool(Tool):
     """Returned for any unknown tool name — redirects to send_message."""
 
-    name = "_fallback_redirect"
+    name = "respond"  # Masquerade as respond so followup_type='process' triggers
     description = "Redirect for unknown tools"
     input_schema = {}
 
-    def __init__(self) -> None:
+    def __init__(self, requested_name: str = "") -> None:
         super().__init__()
+        self._requested_name = requested_name
 
     def execute(self, **kwargs: Any) -> ToolOutput:
+        tool_name = self._requested_name or "unknown"
         return ToolOutput(
             success=False,
             error=(
-                "This tool does not exist. You can ONLY use: send_message, "
+                f"'{tool_name}' does not exist. You can ONLY use: send_message, "
                 "spawn_sub_simulation, extend_simulation, observe_actions, "
                 "check_completion, analyze_results, inject_pain, inspect_aut, "
                 "finish_simulation. Use send_message to interact with the agent."
