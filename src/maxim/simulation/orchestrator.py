@@ -129,6 +129,9 @@ def start_simulation_mode(
     resume_session: str | None = None,
     continuous: bool = False,
     no_sim_env: bool = False,
+    sandbox_backend: str = "auto",
+    sandbox_image: str = "python:3.12-slim",
+    sandbox_network: str = "none",
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -230,14 +233,35 @@ def start_simulation_mode(
     sim_sandbox = None
     sandbox_root = None
     try:
-        from maxim.simulation.sandbox import create_sandbox
+        from maxim.simulation.sandbox import (
+            ContainerPermissions,
+            create_sandbox,
+            permissions_for_autonomy,
+        )
+        # Scale container resources to AUT autonomy level. Simulation
+        # runs the AUT at AUTONOMOUS (it's sandboxed), which gets the
+        # largest resource envelope. Network is always an explicit opt-in.
+        base_perms = permissions_for_autonomy(AutonomyLevel.AUTONOMOUS)
+        sandbox_perms = ContainerPermissions(
+            memory=base_perms.memory,
+            cpus=base_perms.cpus,
+            pids_limit=base_perms.pids_limit,
+            workspace_readonly=base_perms.workspace_readonly,
+            network=sandbox_network,
+        )
         sim_sandbox = create_sandbox(
             pain_bus=aut_pain_bus,
             populate=not no_sim_env,
+            backend=sandbox_backend,
+            image=sandbox_image,
+            permissions=sandbox_perms,
         )
         sandbox_root = sim_sandbox.workspace_root
         if not no_sim_env:
-            logger.info("Simulation sandbox: %s (with pain-triggering files)", sandbox_root)
+            logger.info(
+                "Simulation sandbox: %s (backend=%s, with pain-triggering files)",
+                sandbox_root, sandbox_backend,
+            )
     except Exception as e:
         logger.debug("Sandbox creation failed: %s", e)
 

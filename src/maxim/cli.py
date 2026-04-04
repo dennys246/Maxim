@@ -540,6 +540,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 resume_session=resume_sim,
                 continuous=bool(getattr(args, "continuous", False)),
                 no_sim_env=bool(getattr(args, "no_sim_env", False)),
+                sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+                sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
+                sandbox_network=getattr(args, "sandbox_network", "none"),
             )
             sys.exit(0 if result.finish_reason != "error" else 1)
 

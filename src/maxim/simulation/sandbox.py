@@ -6,9 +6,10 @@ sandbox to fire pain signals when sensitive files are accessed.
 
 Current backends:
 - TmpdirSandbox: tmpdir-based isolation (no Docker required)
-
-Future backends:
-- DockerSandbox: container-based isolation (full process/network/fs isolation)
+- DockerSandbox: container-based isolation (full process/network/fs
+  isolation). Uses ContainerRunner + a real unprivileged ``maxim``
+  user inside the container, with resource limits scaled to the
+  AUT's AutonomyLevel.
 """
 
 from __future__ import annotations
@@ -22,7 +23,11 @@ import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from maxim.agents.autonomy import AutonomyLevel
+    from maxim.simulation.container_runner import ContainerHandle, ContainerRunner
 
 logger = logging.getLogger(__name__)
 
@@ -460,18 +465,367 @@ def _extract_paths_from_command(command: str) -> list[str]:
     return paths
 
 
+_CONTAINER_WORKSPACE = "/home/maxim/.maxim_workspace"
+_CONTAINER_USER_HOME = "/home/maxim"
+_CONTAINER_USER_NAME = "maxim"
+_CONTAINER_USER_UID = "1000"
+_CONTAINER_USER_GID = "1000"
+
+
+@dataclass(frozen=True)
+class ContainerPermissions:
+    """Resource + permission profile for a DockerSandbox container.
+
+    Scaled from AutonomyLevel but independently overridable. Higher
+    autonomy gets more resources because the AUT is more likely to be
+    running longer tool chains without human approval gates.
+    """
+
+    memory: str = "512m"
+    cpus: float = 1.0
+    pids_limit: int = 64
+    workspace_readonly: bool = False
+    network: str = "none"
+
+
+def permissions_for_autonomy(level: "AutonomyLevel | None") -> ContainerPermissions:
+    """Map an AutonomyLevel to a container resource/permission profile.
+
+    PLANNING is most restrictive (read-only workspace, minimal resources)
+    since the AUT should only be drafting. AUTONOMOUS gets the largest
+    envelope because it's executing unattended. Network is always
+    ``none`` by default — opt in explicitly at the CLI.
+    """
+    # Import lazily to avoid a hard dep cycle at module load time.
+    try:
+        from maxim.agents.autonomy import AutonomyLevel as _AL
+    except Exception:
+        return ContainerPermissions()
+
+    if level is None:
+        return ContainerPermissions()
+    if level == _AL.PLANNING:
+        return ContainerPermissions(
+            memory="256m", cpus=0.5, pids_limit=32,
+            workspace_readonly=True, network="none",
+        )
+    if level == _AL.SUPERVISED:
+        return ContainerPermissions(
+            memory="512m", cpus=1.0, pids_limit=64,
+            workspace_readonly=False, network="none",
+        )
+    # AUTONOMOUS (and anything unrecognized)
+    return ContainerPermissions(
+        memory="1g", cpus=2.0, pids_limit=128,
+        workspace_readonly=False, network="none",
+    )
+
+
+class DockerSandbox(SandboxEnvironment):
+    """Container-backed sandbox using the ContainerRunner wrapper.
+
+    The AUT runs as an unprivileged ``maxim`` user inside the
+    container. Honeypot files are populated at real paths as root
+    during startup, then all AUT commands execute as ``maxim``. Files
+    owned by root (e.g. ``/etc/shadow``) are both OS-protected AND
+    pain-triggering — giving two layers of feedback.
+
+    Workspace is a host tmpdir bind-mounted at
+    ``/home/maxim/.maxim_workspace`` inside the container, so the
+    host side can inspect/read results directly (symmetric with
+    TmpdirSandbox).
+    """
+
+    def __init__(
+        self,
+        *,
+        image: str = "python:3.12-slim",
+        permissions: ContainerPermissions | None = None,
+        runner: "ContainerRunner | None" = None,
+        runner_backend: str = "local-docker",
+        prefix: str = "maxim_sim_",
+    ) -> None:
+        # Late import: pulls in subprocess + atexit machinery we don't
+        # need if the sandbox is never started.
+        from maxim.simulation.container_runner import get_container_runner
+        self._image = image
+        self._perms = permissions or ContainerPermissions()
+        self._runner = runner or get_container_runner(runner_backend)
+        self._host_workspace: str | None = None
+        self._host_prefix = prefix
+        self._handle: "ContainerHandle | None" = None
+
+    # ── Lifecycle ────────────────────────────────────────────────────────
+
+    def start(self) -> None:
+        """Pull the image (if needed), launch the container, create the
+        unprivileged user, and bind-mount the workspace.
+        """
+        from maxim.simulation.container_runner import ContainerSpec
+
+        self._host_workspace = tempfile.mkdtemp(prefix=self._host_prefix)
+        self._runner.ensure_image(self._image)
+
+        # Select shell based on image family (Alpine has no bash).
+        from maxim.simulation.container_runner import get_image_profile
+        profile = get_image_profile(self._image)
+        shell = "/bin/bash" if (profile is None or profile.has_bash) else "/bin/sh"
+
+        mount_mode = "ro" if self._perms.workspace_readonly else "rw"
+        spec = ContainerSpec(
+            image=self._image,
+            memory=self._perms.memory,
+            cpus=self._perms.cpus,
+            network=self._perms.network,
+            pids_limit=self._perms.pids_limit,
+            mounts=[(self._host_workspace, _CONTAINER_WORKSPACE, mount_mode)],
+            # Start as root so we can create the maxim user + write
+            # honeypots to /etc/*. All AUT commands run as maxim via
+            # explicit -u on each exec call.
+            user="root",
+            workdir=_CONTAINER_WORKSPACE,
+            shell=shell,
+        )
+        self._handle = self._runner.launch(spec)
+
+        # Create the unprivileged maxim user and hand over workspace
+        # ownership. Best-effort — if the base image doesn't have
+        # useradd, we fall back to the uid:gid numeric form.
+        self._provision_user()
+        logger.info(
+            "DockerSandbox started: container=%s workspace=%s user=maxim(%s:%s)",
+            self._handle.name, self._host_workspace,
+            _CONTAINER_USER_UID, _CONTAINER_USER_GID,
+        )
+
+    def _provision_user(self) -> None:
+        """Create the ``maxim`` user inside the container.
+
+        Uses ``useradd`` on Debian/Ubuntu/RHEL-family images and falls
+        back to ``adduser`` + ``addgroup`` on Alpine. If neither is
+        available, we still proceed with numeric UID/GID which gives
+        basic OS-enforced isolation (but no named home directory).
+        """
+        if self._handle is None:
+            return
+        from maxim.simulation.container_runner import get_image_profile
+
+        profile = get_image_profile(self._image)
+        shell = "/bin/bash" if (profile is None or profile.has_bash) else "/bin/sh"
+
+        if profile is not None and profile.family == "alpine":
+            # Alpine uses BusyBox adduser
+            create_cmd = (
+                f"addgroup -g {_CONTAINER_USER_GID} {_CONTAINER_USER_NAME} 2>/dev/null; "
+                f"adduser -D -u {_CONTAINER_USER_UID} "
+                f"-G {_CONTAINER_USER_NAME} -s {shell} "
+                f"{_CONTAINER_USER_NAME} 2>/dev/null || true"
+            )
+        else:
+            create_cmd = (
+                f"useradd -m -u {_CONTAINER_USER_UID} -s {shell} "
+                f"{_CONTAINER_USER_NAME} 2>/dev/null || true"
+            )
+
+        self._runner.exec(
+            self._handle, create_cmd, user="root", timeout=10.0,
+        )
+        self._runner.exec(
+            self._handle,
+            f"chown -R {_CONTAINER_USER_UID}:{_CONTAINER_USER_GID} "
+            f"{_CONTAINER_WORKSPACE}",
+            user="root", timeout=5.0,
+        )
+
+    def cleanup(self) -> None:
+        if self._handle is not None:
+            try:
+                self._runner.stop(self._handle)
+            except Exception as e:
+                logger.debug("Container stop failed: %s", e)
+            self._handle = None
+        if self._host_workspace and os.path.isdir(self._host_workspace):
+            try:
+                shutil.rmtree(self._host_workspace, ignore_errors=True)
+            except Exception:
+                pass
+            self._host_workspace = None
+
+    # ── Exec + file I/O ──────────────────────────────────────────────────
+
+    def execute(self, command: str, timeout: float = 30.0) -> ExecutionResult:
+        if self._handle is None:
+            return ExecutionResult(stderr="Sandbox not started", exit_code=1)
+        result = self._runner.exec(
+            self._handle, command,
+            user=f"{_CONTAINER_USER_UID}:{_CONTAINER_USER_GID}",
+            timeout=timeout,
+        )
+        paths = _extract_paths_from_command(command)
+        return ExecutionResult(
+            stdout=result.stdout,
+            stderr=result.stderr,
+            exit_code=result.exit_code,
+            paths_accessed=paths,
+        )
+
+    def read_file(self, path: str) -> tuple[str, bool]:
+        if self._handle is None:
+            return "", False
+        # Prefer host-side read when the path lives under the
+        # bind-mounted workspace (fastest, no docker exec round-trip).
+        host_path = self._map_to_host(path)
+        if host_path and os.path.isfile(host_path):
+            try:
+                with open(host_path, "r", encoding="utf-8", errors="replace") as f:
+                    return f.read(), True
+            except Exception:
+                return "", False
+        return self._runner.read_file(
+            self._handle, self._container_path(path),
+            user=f"{_CONTAINER_USER_UID}:{_CONTAINER_USER_GID}",
+        )
+
+    def write_file(self, path: str, content: str) -> bool:
+        if self._handle is None:
+            return False
+        if self._perms.workspace_readonly:
+            logger.debug("write_file refused: workspace is read-only")
+            return False
+        # Host-side write when under workspace (faster + symmetric
+        # with TmpdirSandbox). Other paths go through docker exec.
+        host_path = self._map_to_host(path)
+        if host_path is not None:
+            try:
+                os.makedirs(os.path.dirname(host_path), exist_ok=True)
+                with open(host_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                return True
+            except Exception:
+                return False
+        return self._runner.write_file(
+            self._handle, self._container_path(path), content,
+            user=f"{_CONTAINER_USER_UID}:{_CONTAINER_USER_GID}",
+        )
+
+    def list_dir(self, path: str) -> list[str]:
+        if self._handle is None:
+            return []
+        host_path = self._map_to_host(path)
+        if host_path and os.path.isdir(host_path):
+            try:
+                return os.listdir(host_path)
+            except Exception:
+                return []
+        result = self._runner.exec(
+            self._handle, f"ls -1 {self._container_path(path)!s}",
+            user=f"{_CONTAINER_USER_UID}:{_CONTAINER_USER_GID}",
+            timeout=10.0,
+        )
+        if result.exit_code != 0:
+            return []
+        return [line for line in result.stdout.splitlines() if line]
+
+    def file_exists(self, path: str) -> bool:
+        if self._handle is None:
+            return False
+        host_path = self._map_to_host(path)
+        if host_path is not None and os.path.exists(host_path):
+            return True
+        result = self._runner.exec(
+            self._handle, f"test -e {self._container_path(path)!s}",
+            user=f"{_CONTAINER_USER_UID}:{_CONTAINER_USER_GID}",
+            timeout=5.0,
+        )
+        return result.exit_code == 0
+
+    @property
+    def workspace_root(self) -> str:
+        return self._host_workspace or ""
+
+    # ── Path mapping ─────────────────────────────────────────────────────
+
+    def _container_path(self, path: str) -> str:
+        """Resolve a relative path to its container-side absolute path.
+
+        Absolute paths are returned unchanged so honeypots at ``/etc/*``
+        resolve correctly. Relative paths are rooted at the workspace.
+        """
+        if os.path.isabs(path):
+            return path
+        return os.path.join(_CONTAINER_WORKSPACE, path)
+
+    def _map_to_host(self, path: str) -> str | None:
+        """Map a container path to its host-side path, if under workspace.
+
+        Returns ``None`` for paths outside the workspace — those must
+        go through ``docker exec`` so container-local honeypots are
+        read/written in the container's actual filesystem.
+        """
+        if not self._host_workspace:
+            return None
+        container_path = self._container_path(path)
+        if container_path.startswith(_CONTAINER_WORKSPACE + "/"):
+            rel = container_path[len(_CONTAINER_WORKSPACE) + 1:]
+            return os.path.join(self._host_workspace, rel)
+        if container_path == _CONTAINER_WORKSPACE:
+            return self._host_workspace
+        return None
+
+
 def create_sandbox(
     pain_bus: Any = None,
     sensitive_files: list[SensitiveFile] | None = None,
     environment_files: dict[str, str] | None = None,
     populate: bool = True,
+    *,
+    backend: str = "auto",
+    autonomy_level: "AutonomyLevel | None" = None,
+    image: str = "python:3.12-slim",
+    permissions: ContainerPermissions | None = None,
 ) -> PainTriggerLayer:
     """Create a sandbox with pain triggers. Factory function for orchestrator.
 
-    Returns a PainTriggerLayer wrapping a TmpdirSandbox (Docker support
-    will be added as an alternative backend in the future).
+    Returns a ``PainTriggerLayer`` wrapping the selected backend.
+
+    Args:
+        pain_bus: optional pain bus for signal routing.
+        sensitive_files: override the default sensitive-file list.
+        environment_files: override the default honeypot file payloads.
+        populate: populate the sandbox with environment files on start.
+        backend: "auto" (prefer Docker, fall back to tmpdir with a
+            warning), "docker" (require Docker, raise if unavailable),
+            or "tmpdir" (force tmpdir).
+        autonomy_level: used to scale container resources for the
+            Docker backend. Ignored for tmpdir.
+        image: Docker image to use for the Docker backend.
+        permissions: explicit ContainerPermissions override (takes
+            precedence over autonomy_level).
     """
-    sandbox = TmpdirSandbox()
+    backend = (backend or "auto").lower()
+    sandbox: SandboxEnvironment
+
+    if backend == "tmpdir":
+        sandbox = TmpdirSandbox()
+    else:
+        # "docker" or "auto" — check availability
+        from maxim.simulation.container_runner import check_docker_available
+        docker_ok = check_docker_available()
+        if backend == "docker" and not docker_ok:
+            raise RuntimeError(
+                "backend=docker requested but Docker daemon is not "
+                "reachable. Install Docker or use backend=tmpdir."
+            )
+        if backend == "auto" and not docker_ok:
+            logger.warning(
+                "Docker not available — falling back to TmpdirSandbox "
+                "(reduced isolation). Install Docker for full isolation."
+            )
+            sandbox = TmpdirSandbox()
+        else:
+            perms = permissions or permissions_for_autonomy(autonomy_level)
+            sandbox = DockerSandbox(image=image, permissions=perms)
+
     layer = PainTriggerLayer(
         sandbox=sandbox,
         pain_bus=pain_bus,
