@@ -417,9 +417,51 @@ def _clear_memory(memory_types: str, home_dir: str = "data") -> dict[str, bool]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from maxim.utils.last_run import (
+        should_save, save_last_run, load_last_run, load_all_runs,
+        clear_last_run, format_all_runs, format_last_run,
+    )
+
+    raw_argv = list(argv) if argv is not None else sys.argv[1:]
+
+    # Handle --last, --show-last, --clear-last before full parse
+    if "--show-last" in raw_argv:
+        print(format_all_runs())
+        return 0
+    if "--clear-last" in raw_argv:
+        if clear_last_run():
+            print("  Saved runs cleared.")
+        else:
+            print("  No saved runs to clear.")
+        return 0
+    if "--last" in raw_argv:
+        # Parse just --last N
+        idx_pos = raw_argv.index("--last")
+        n = 1
+        if idx_pos + 1 < len(raw_argv):
+            try:
+                n = int(raw_argv[idx_pos + 1])
+            except ValueError:
+                pass
+        last = load_last_run(n)
+        if last is None:
+            runs = load_all_runs()
+            if not runs:
+                print("  No saved runs. Run a simulation first.")
+            else:
+                print(f"  No run at index {n}. Available:")
+                print(format_all_runs())
+            return 1
+        print(f"  Re-running: {last['command']}")
+        raw_argv = last["args"]
+
     parser = _build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    args = parser.parse_args(raw_argv)
     _normalize_args(args)
+
+    # Save this invocation if it's meaningful
+    if should_save(raw_argv):
+        save_last_run(raw_argv)
 
     # Clear Python cache if requested
     if bool(getattr(args, "clear_cache", False)):
