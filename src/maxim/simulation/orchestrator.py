@@ -303,6 +303,17 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("AUT memory not available: %s", e)
 
+    # Build AUT's PainBus for routing pain percepts to memory
+    aut_pain_bus = None
+    try:
+        from maxim.proprioception.pain_bus import PainBus, create_pain_memory_subscriber
+        aut_pain_bus = PainBus()
+        if aut_hippocampus is not None:
+            aut_pain_bus.subscribe(create_pain_memory_subscriber(aut_hippocampus))
+        logger.info("AUT PainBus wired")
+    except Exception as e:
+        logger.debug("AUT PainBus not available: %s", e)
+
     # Build AUT's LLM worker (shares the router)
     aut_llm_worker: LLMWorker | None = None
     if llm_router is not None:
@@ -494,11 +505,14 @@ def start_simulation_mode(
                 aut_executor,
                 autonomy_controller=aut_autonomy,
                 llm_worker=aut_llm_worker,
+                hippocampus=aut_hippocampus,
+                memory_hub=aut_memory_hub,
                 max_steps=0,  # unlimited — AUT stops when bridge.finish() is called
                 stop_event=stop_event,
                 target_hz=2.0,
                 percept_source=bridge.percept_source,
                 action_sink=bridge.action_sink,
+                pain_bus=aut_pain_bus,
             )
         except Exception as e:
             aut_error.append(e)
