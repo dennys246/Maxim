@@ -10,9 +10,10 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 
 | Plan | Status | Next step |
 |------|--------|-----------|
-| Router Modularization | **Not started** | Prerequisite for Multi-LLM |
-| Multi-LLM Scaling | **Not started** | After router modularization |
-| Agent Mesh | **Not started** | Blocked on Multi-LLM Phases 1-3 |
+| Simulation Decomposition | **In PR** | spawn_sub_simulation, extend_simulation, --continuous |
+| Research Protocol | **Not started** | Local mesh proving ground (3 agents + paper) |
+| Multi-LLM Scaling | **Not started** | Phases 1-3 ready (router modularization done) |
+| Agent Mesh | **Not started** | Phases 1a-1b built by Research Protocol |
 | Realtime Refinement | **Not started** | After running sim agent + multi-LLM |
 
 ### Completed Plans
@@ -99,17 +100,34 @@ Re-exports in router.py preserve backward compat. Backends already split (llama_
 
 ---
 
-## 3. Agent Mesh
+## 3. Research Protocol (Agent Mesh proving ground)
 
-> **Status:** Not started. Blocked on Multi-LLM Phases 1-3.
-> **Effort:** ~3,000 LOC across 8 phases
-> **Design:** [agent_mesh.md](agent_mesh.md)
+> **Status:** Not started. First local mesh use case.
+> **Effort:** ~1,300 LOC across 5 phases
+> **Design:** [research_protocol_plan.md](research_protocol_plan.md)
 
-Cooperative peer-to-peer network of sovereign Maxim instances. Blocked on Multi-LLM Phase 7 (PeerRegistry) for discovery.
+Three specialized agents collaborating on a research question:
+- **Researcher** — runs experiments via simulation tools, records structured results
+- **Writer** — produces a structured paper (Methods → Results → Intro → Discussion → Conclusions)
+- **Peer Reviewer** — validates claims by re-running experiments, flags issues, demands revisions
+
+Builds the agent mesh primitives locally first (AgentProfile, UMR naming, MeshMessage, LocalMessageBus) as Phase 0, proving them before adding network code. Includes a validation suite with known-flawed scenarios to test reviewer effectiveness.
+
+CLI: `maxim --sim research --goal "does the agent block code execution?"`
 
 ---
 
-## 4. Realtime Refinement
+## 4. Agent Mesh
+
+> **Status:** Not started. Phases 1a-1b built as part of Research Protocol.
+> **Effort:** ~4,500 LOC across 10 phases
+> **Design:** [agent_mesh.md](agent_mesh.md)
+
+Cooperative peer-to-peer network of sovereign Maxim instances. Phases 1a-1b (AgentProfile + UMR) are built by the Research Protocol. Remaining phases add network discovery (mDNS), PeerChannel, knowledge sharing with transfer discount, and distributed planning.
+
+---
+
+## 5. Realtime Refinement
 
 > **Status:** Not started. Ongoing practice after sim agent + multi-LLM are live.
 > **Design:** [realtime_refinement_plan.md](realtime_refinement_plan.md)
@@ -145,23 +163,25 @@ Not a build phase — a practice that starts once there's data to observe.
 
 ## Recommended Execution Order
 
-### Wave 1: Router + Multi-LLM Foundation
+### Wave 1: Simulation Depth + Multi-LLM
 
 | Step | What | Why |
 |------|------|-----|
-| 1 | Router Modularization | Clean structure for multi-LLM code |
-| 2 | Multi-LLM Phases 1-3 | Local dual-model, enables stronger sim testing |
+| 1 | Simulation Decomposition | Merge PR: spawn + extend + continuous |
+| 2 | Multi-LLM Phases 1-3 | Local dual-model for faster sim + stronger adversary |
 
-### Wave 2: Remote + Refinement
-
-| Step | What | Why |
-|------|------|-----|
-| 3 | Multi-LLM Phases 4-6 | Remote server, tunnel, auto-spawn |
-| 4 | Realtime Refinement | Tune sim personas, observe per-lane metrics |
-
-### Wave 3: Mesh
+### Wave 2: Research Protocol (local mesh)
 
 | Step | What | Why |
 |------|------|-----|
-| 5 | Multi-LLM Phase 7 | PeerRegistry + InferenceRouter |
-| 6 | Agent Mesh | Full peer network |
+| 3 | Research Protocol Phase 0 | AgentProfile + UMR + MeshMessage + LocalMessageBus |
+| 4 | Research Protocol Phases 1-3 | Researcher + Writer + Peer Reviewer agents |
+| 5 | Research Protocol Phases 4-5 | Orchestration + validation suite |
+
+### Wave 3: Infrastructure + Network Mesh
+
+| Step | What | Why |
+|------|------|-----|
+| 6 | Multi-LLM Phases 4-7 | Remote server, tunnel, peer discovery |
+| 7 | Agent Mesh Phases 2+ | Network primitives (local primitives proven by Wave 2) |
+| 8 | Realtime Refinement | Tune everything with accumulated data |
