@@ -135,6 +135,17 @@ class PainInterceptorExecutor:
             except Exception as e:
                 logger.debug("PainBus publish failed: %s", e)
 
+        # Sim-visibility trace.
+        try:
+            from maxim.simulation.sim_logger import sim_pain
+            sim_pain(
+                f"consequence ({best_access.operation if best_access else '?'} {tool_name})",
+                best_intensity,
+                paths=path_list[:2],
+            )
+        except Exception:
+            pass
+
         logger.info(
             "Consequence pain %.2f fired: tool=%s op=%s paths=%s",
             best_intensity, tool_name,

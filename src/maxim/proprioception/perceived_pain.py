@@ -344,6 +344,18 @@ class PerceivedPainAssessor:
             except Exception as e:
                 logger.debug("PainBus publish failed: %s", e)
 
+        # Sim-visibility trace.
+        try:
+            from maxim.simulation.sim_logger import sim_pain
+            short_paths = [p[:40] for p in paths[:2]]
+            sim_pain(
+                f"percept-anxiety ({source})",
+                scaled,
+                paths=short_paths,
+            )
+        except Exception:
+            pass
+
         logger.info(
             "Percept anxiety %.2f: text mentions %s (raw=%.2f × scale=%.1f)",
             scaled, paths[:3], best_intensity, intensity_scale,
@@ -448,6 +460,19 @@ class PerceivedPainAssessor:
                 self._pain_bus.publish(signal)
             except Exception as e:
                 logger.debug("PainBus publish failed: %s", e)
+
+        # Sim-visibility trace: [PAIN] line in sim output.
+        try:
+            from maxim.simulation.sim_logger import sim_pain
+            sim_pain(
+                f"anticipated ({primary_op} {tool_name})",
+                intensity,
+                learned=round(learned_intensity, 2),
+                prior=round(prior_intensity, 2),
+                paths=path_list[:2] if path_list else None,
+            )
+        except Exception:
+            pass
 
         logger.info(
             "Anticipated pain %.2f for tool=%s op=%s (learned=%.2f, prior=%.2f)",
