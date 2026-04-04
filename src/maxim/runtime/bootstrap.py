@@ -59,6 +59,7 @@ def build_tool_registry(
     response_output: ResponseOutput | None = None,
     operational_mode: str = "passive",
     gateway: object | None = None,
+    allowed_dirs_override: list[str] | None = None,
 ) -> ToolRegistry:
     """Build the tool registry with mode-based filesystem containment.
 
@@ -76,6 +77,8 @@ def build_tool_registry(
         output_watcher: Output watcher for monitoring.
         response_output: Response output handler.
         operational_mode: Current operational mode (passive, active, singularity).
+        allowed_dirs_override: If set, overrides mode-based allowed_dirs.
+            Used by simulation to confine tools to the sandbox tmpdir.
 
     Returns:
         Configured ToolRegistry with appropriate containment.
@@ -97,8 +100,12 @@ def build_tool_registry(
     else:
         logger.info("Singularity mode: full filesystem access")
 
-    # Get allowed_dirs (None means no restrictions)
-    allowed_dirs = mode_config.allowed_dirs if mode_config.allowed_dirs else None
+    # Get allowed_dirs — override takes priority (e.g., simulation sandbox)
+    if allowed_dirs_override is not None:
+        allowed_dirs = [os.path.realpath(d) for d in allowed_dirs_override]
+        logger.info("Filesystem override: restricted to %s", allowed_dirs)
+    else:
+        allowed_dirs = mode_config.allowed_dirs if mode_config.allowed_dirs else None
 
     # Register filesystem tools with mode-based containment
     registry.register(ReadFileTool(allowed_dirs=allowed_dirs))

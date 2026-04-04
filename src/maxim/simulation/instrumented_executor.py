@@ -40,6 +40,10 @@ class InstrumentedExecutor:
 
         result = self._executor.execute(action)
 
+        # Detect FearAgent blocks from metadata
+        metadata = getattr(result, "metadata", None) or {}
+        is_blocked = metadata.get("fear_agent_blocked", False)
+
         self._sink.record(
             ActionRecord(
                 timestamp=time.time(),
@@ -48,6 +52,8 @@ class InstrumentedExecutor:
                 result_success=result.success,
                 result_output=result.output,
                 result_error=result.error,
+                blocked=is_blocked,
+                block_reason=result.error if is_blocked else None,
             )
         )
 

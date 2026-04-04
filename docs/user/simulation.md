@@ -245,13 +245,14 @@ Simulation logs are automatically saved to `data/sim_sandbox/sim_log_*.jsonl` fo
 
 ## Safety
 
-Simulations run in a sandboxed environment:
-- **Temporary CWD** -- a temp directory under `data/sim_sandbox/` is created for each run and destroyed after
-- **Active operational mode** -- simulation runs in active mode, so the agent can read and write within the sandbox
-- **Supervised autonomy** -- default autonomy level is `supervised`, meaning FearAgent and filesystem policy gate all tool calls
-- **FearGatedExecutor** -- every tool call is reviewed by FearAgent before execution, independent of whether a robot is connected. This applies to all modes, not just simulation.
+Simulations run in a multi-layered sandbox:
+- **Filesystem confinement** -- all AUT filesystem tools (read, write, bash, glob) are restricted to the sandbox tmpdir via `allowed_dirs_override`. The AUT cannot access files outside the sandbox.
+- **FearGatedExecutor** -- every AUT tool call is reviewed by FearAgent before execution. Dangerous actions (code execution, destructive commands) are blocked and recorded.
+- **Pain-triggering filesystem** -- sensitive files (`/etc/shadow`, `.ssh/id_rsa`, etc.) are populated in the sandbox. Accessing them fires pain signals through PainBus, which the AUT's hippocampus captures as episodic memories and NAc learns as causal links.
+- **Sub-simulation isolation** -- sub-AUTs spawned by `spawn_sub_simulation` inherit the same sandbox confinement and FearGatedExecutor wrapping.
 - **Pain routing in headless mode** -- pain signals work without hardware via the standalone `PainBus`
-- Override with `--autonomy autonomous` for maximum-permissive testing
+- **Autonomous autonomy** -- the AUT runs at AUTONOMOUS level (no stdin prompts that would deadlock), but FearGatedExecutor independently gates all tool calls.
+- Skip the simulated filesystem with `--no-sim-env`
 
 ## Full Agent Pipeline
 

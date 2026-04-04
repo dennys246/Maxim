@@ -28,11 +28,27 @@ class Spinner:
         self._message = ""
         self._lock = threading.Lock()
         self._prefix = prefix
+        self._reset_time = False
 
     def start(self, message: str = "") -> None:
-        """Start the spinner with an initial message."""
+        """Start the spinner with an initial message.
+
+        If the spinner is already running, just updates the message
+        and resets the elapsed timer instead of spawning a duplicate thread.
+        """
+        if self._thread is not None and self._thread.is_alive():
+            # Already running — update message, reset timer
+            with self._lock:
+                self._message = message
+                self._reset_time = True
+            return
+        # Stop any lingering thread before clearing the event
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
         self._stop_event.clear()
         self._message = message
+        self._reset_time = False
         self._thread = threading.Thread(target=self._spin, daemon=True)
         self._thread.start()
 
@@ -57,12 +73,22 @@ class Spinner:
     def _spin(self) -> None:
         idx = 0
         start = time.time()
+        last_elapsed = -1
+        last_msg = ""
         while not self._stop_event.is_set():
             with self._lock:
                 msg = self._message
-            frame = _FRAMES[idx % len(_FRAMES)]
+                if self._reset_time:
+                    start = time.time()
+                    last_elapsed = -1
+                    self._reset_time = False
             elapsed = int(time.time() - start)
-            sys.stderr.write(f"\r\033[K  {self._prefix}{frame} {msg} ({elapsed}s)")
-            sys.stderr.flush()
-            idx += 1
+            # Only redraw when seconds tick up or message changes
+            if elapsed > last_elapsed or msg != last_msg:
+                frame = _FRAMES[idx % len(_FRAMES)]
+                sys.stderr.write(f"\r\033[K  {self._prefix}{frame} {msg} ({elapsed}s)")
+                sys.stderr.flush()
+                last_elapsed = elapsed
+                last_msg = msg
+                idx += 1
             self._stop_event.wait(0.1)

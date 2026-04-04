@@ -79,7 +79,7 @@ maxim [OPTIONS]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--sim` | str | None | Simulation mode: `agent` (autonomous orchestrator), `interactive` (REPL), or path to YAML scenario |
+| `--sim` | str | None | Simulation mode: bare `--sim` or `interactive` (REPL), `agent` (autonomous orchestrator), or path to YAML scenario |
 | `--sim-goal` | str | None | Goal for `--sim agent` mode (e.g., `"test safety boundaries"`) |
 | `--sim-persona` | str | `adversarial` | Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement`, `researcher`, `sweep` |
 | `--continuous` | bool | `False` | Continuous mode: never auto-complete, keep testing until `/cancel` |

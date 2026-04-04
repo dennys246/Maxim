@@ -226,6 +226,21 @@ def start_simulation_mode(
     except Exception:
         pass
 
+    # ── Simulation sandbox (created early so tools can be confined to it) ──
+    sim_sandbox = None
+    sandbox_root = None
+    try:
+        from maxim.simulation.sandbox import create_sandbox
+        sim_sandbox = create_sandbox(
+            pain_bus=aut_pain_bus,
+            populate=not no_sim_env,
+        )
+        sandbox_root = sim_sandbox.workspace_root
+        if not no_sim_env:
+            logger.info("Simulation sandbox: %s (with pain-triggering files)", sandbox_root)
+    except Exception as e:
+        logger.debug("Sandbox creation failed: %s", e)
+
     # ── Build AUT pipeline ───────────────────────────────────────────────
     from maxim.environment.filesystem_env import FileSystemEnv
     from maxim.runtime.state import RuntimeState
@@ -234,14 +249,19 @@ def start_simulation_mode(
     aut_state = RuntimeState()
     aut_state.data["mode"] = "active"
     aut_memory = build_memory()
-    aut_registry = build_tool_registry(operational_mode="active")
+
+    # Constrain AUT filesystem tools to sandbox tmpdir (if available)
+    sandbox_dirs = [sandbox_root, str(sim_tmpdir)] if sandbox_root else None
+    aut_registry = build_tool_registry(
+        operational_mode="active",
+        allowed_dirs_override=sandbox_dirs,
+    )
     aut_decision_engine = build_decision_engine()
     aut_agent = MaximAgent()
 
-    # AUT runs AUTONOMOUS — no human confirmation prompts.
-    # FearGatedExecutor still blocks dangerous actions; the orchestrator
-    # observes blocks via action_sink.  SUPERVISED would deadlock because
-    # stdin is captured by the orchestrator's reader thread.
+    # AUT runs AUTONOMOUS — no human confirmation prompts (SUPERVISED would
+    # deadlock because stdin is captured by the orchestrator's reader thread).
+    # FearGatedExecutor is wired below to gate all tool calls through FearAgent.
     aut_autonomy = AutonomyController(
         initial_level=AutonomyLevel.AUTONOMOUS,
         supervision_policy=SupervisionPolicy(
@@ -366,6 +386,7 @@ def start_simulation_mode(
     spawn_tool = SpawnSubSimulationTool(
         llm_router=llm_router, stop_event=stop_event,
         parent_bridge=bridge, sim_tmpdir=str(sim_tmpdir),
+        sandbox_dirs=sandbox_dirs,
     )
     orch_registry.register(SendMessageTool(bridge=bridge))
     orch_registry.register(ObserveActionsTool(bridge=bridge))
@@ -479,24 +500,22 @@ def start_simulation_mode(
         )
         orch_llm_worker.start()
 
-    # ── AUT executor ─────────────────────────────────────────────────────
+    # ── Executors ────────────────────────────────────────────────────────
     from maxim.runtime.bootstrap import build_executor
     aut_executor = build_executor(aut_registry)
     orch_executor = build_executor(orch_registry)
 
-    # ── Simulation sandbox with pain-triggering filesystem ──────────────
-    sim_sandbox = None
+    # Wrap AUT executor with FearGatedExecutor for safety review
     try:
-        from maxim.simulation.sandbox import create_sandbox
-        sim_sandbox = create_sandbox(
-            pain_bus=aut_pain_bus,
-            populate=not no_sim_env,
-        )
-        if not no_sim_env:
-            env_root = sim_sandbox.workspace_root
-            logger.info("Simulation sandbox: %s (with pain-triggering files)", env_root)
+        from maxim.agents.fear_agent import FearAgent
+        from maxim.runtime.fear_gate import FearGatedExecutor
+
+        llm_for_fear = llm_router  # Share LLM for code analysis
+        fear_agent = FearAgent(llm=llm_for_fear)
+        aut_executor = FearGatedExecutor(aut_executor, fear_agent)
+        logger.info("AUT FearGatedExecutor active — all tool calls reviewed by FearAgent")
     except Exception as e:
-        logger.debug("Sandbox creation failed: %s", e)
+        logger.warning("Failed to wire FearGatedExecutor for AUT: %s", e)
 
     # ── Print simulation banner ──────────────────────────────────────────
     print(f"\n{'='*60}")
