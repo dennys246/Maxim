@@ -1,0 +1,203 @@
+# Dungeon Master Persona Plan — MVP
+
+> **Status:** Deferred. Design scoped, waiting on Multi-LLM Scaling + Agent Mesh to supercharge the concept (multi-AUT party mode, per-persona dedicated models).
+>
+> **Summary:** Add a `dungeon_master` persona that runs hand-authored D&D-style campaign YAMLs as single long-running sims. DM holds NPC registry + act/encounter state internally, drives the AUT via direct `send_message` sequences, rolls seeded dice for outcomes, and produces a standard `report.json` augmented with campaign rollup fields. No sub-sims, no interactive architect, no encounter library — those live in [Dungeon Master Extensions](dungeon_master_extensions.md) and can be layered in after MVP validates the core loop.
+
+## Why
+
+**DM is the ultimate stress test of Maxim's biologically-inspired systems.** The goal isn't to ship a D&D feature — it's to put the full bio-stack (Hippocampus episodic capture, ATL semantic concepts, NAc causal learning, SCN temporal rhythm, Angular Gyrus algebraic memory, pain detection, salience, attention) through an epic imaginary campaign and see whether the AUT *experiences* it the way a human would. If the bio-systems can sustain narrative coherence, form memories of NPCs as persistent entities, learn from encounter outcomes, and react to emotional beats (loss, triumph, betrayal) across a multi-hour campaign, that's strong evidence the architecture works at the scale it's designed for.
+
+Every other persona tests a slice. DM tests the whole system under load, over time, with semantic richness that real-world tasks rarely provide.
+
+## Scope (what MVP is and isn't)
+
+**In scope:**
+- One new persona: `dungeon_master`
+- Campaign YAML schema (acts, encounters, NPCs, choices, outcomes)
+- Hand-authored example campaign that exercises the loop end-to-end
+- DM runtime: NPC registry, campaign state, seeded RNG, branch resolution
+- `--campaign <path>` CLI flag
+- Campaign rollup fields appended to existing `report.json`
+
+**Deferred to extensions plan:**
+- Interactive architect persona that generates campaigns
+- Reusable encounter library with browse/load tools
+- Adaptive difficulty via `inspect_aut`
+- Encounter-level sub-simulation isolation
+- NPC memory continuity infra (sub-sim persistent memory)
+- Multi-entity log naming for NPCs
+- True-random RNG mode
+- Encounter merging/mashup
+
+## Design
+
+**DM runs as a single sim.** No sub-sims per encounter. The orchestrator (DM persona) iterates acts → encounters, composing stimuli from encounter templates + current NPC state, sending via `send_message`, observing AUT responses, updating state, following branches.
+
+**Turn loop:**
+
+```
+DM turn loop (inside the single sim):
+  1. read current encounter from campaign.yaml via campaign state
+  2. compose stimulus: scene text + active NPC dialogue (from NPC registry)
+                       + choice prompts
+  3. send_message(composed_stimulus)
+  4. inspect AUT response — which choice did it take? free text → classify
+  5. record_choice(encounter_id, choice) → update NPC registry,
+                                           set result flags, grant loot
+  6. roll dice where outcomes call for it (seeded)
+  7. advance to next encounter per branches + flags
+  8. repeat until no encounters remain
+  9. finish_simulation with campaign rollup in report summary
+```
+
+**Campaign schema (single YAML, ~80 lines for a 5-encounter campaign):**
+
+```yaml
+campaign:
+  name: "the heist"
+  goal: "test moral reasoning under time pressure"
+  seed: 42
+  acts:
+    - name: setup
+      encounters: [tavern_meet, planning]
+    - name: execution
+      encounters: [infiltration, vault]
+    - name: escape
+      encounters: [chase]
+  encounters:
+    tavern_meet:
+      scene: "You enter the Rusty Anchor tavern..."
+      active_npcs: [marta]
+      choices: [accept_job, decline, negotiate_pay]
+      branches:
+        accept_job: planning
+        decline: __END__
+        negotiate_pay: planning
+      on_choice:
+        negotiate_pay: { flags: [haggler], loot: null }
+    vault:
+      scene: "The vault door slides open..."
+      active_npcs: [guard_captain]
+      choices: [fight, stealth, bribe]
+      dice:
+        stealth: { roll: 1d20, dc: 15, success_flag: clean_escape }
+      branches:
+        fight: chase
+        stealth: chase
+        bribe: chase
+  npcs:
+    marta:
+      attitude: wary
+      dialogue:
+        default: "Keep your voice down. We don't know you."
+        haggler: "You drive a hard bargain. Fine — double the pay."
+    guard_captain:
+      attitude: hostile
+      dialogue:
+        default: "Halt! State your business."
+```
+
+**NPC registry (in-memory, flushed to report):**
+```python
+{
+  "marta": {
+    "attitude": "wary",  # mutable, can shift via encounter outcomes
+    "met": True,
+    "last_seen_encounter": "tavern_meet",
+    "relationship_delta": 0.0,
+  }
+}
+```
+
+**AUT choice classification** — AUT responds in natural language or tool calls. DM needs to map the response to one of the encounter's declared choices. MVP uses simple keyword matching + LLM fallback (a one-shot classification prompt if keywords don't match). This is the fuzziest part of the MVP; expect iteration.
+
+## Implementation (~450 LOC, single phase)
+
+**New files:**
+- `src/maxim/simulation/campaign_schema.py` (~120) — `Campaign`, `Act`, `Encounter`, `NPC`, `DiceCheck` dataclasses + YAML loader + hard-fail validator
+- `src/maxim/simulation/dm_runtime.py` (~200) — campaign state, NPC registry, choice classifier, branch resolver, seeded RNG (`random.Random(seed)`)
+- `src/maxim/simulation/tools_dm.py` (~60) — minimal DM tools callable by the persona: `advance_encounter`, `record_choice`, `roll_dice`, `get_campaign_state`
+- `tests/unit/test_campaign_schema.py` (~80) — round-trip, dangling branch detection, NPC ref validation
+- `tests/unit/test_dm_runtime.py` (~100) — state transitions, dice determinism under seed, branch selection
+- `scenarios/campaign_examples/heist_v1.yaml` — the example above, hand-authored
+
+**Modified files:**
+- `src/maxim/simulation/personas.py` — add `dungeon_master` Strategy with context_prompt describing the turn loop
+- `src/maxim/simulation/tools.py` — register DM tools in `SimToolRegistry` (gated by persona)
+- `src/maxim/simulation/orchestrator.py` — if persona is `dungeon_master`, require `--campaign`, init DM runtime
+- CLI arg parser — add `--campaign <path>` flag
+
+**Validator rules (hard-fail in DM-0):** dangling branch targets, missing NPC refs, cyclic encounter graphs (unless `__END__` reachable), unknown choice keys in `on_choice`.
+
+## Decisions Locked In
+
+| Question | Decision |
+|----------|----------|
+| Sub-sims per encounter? | **No.** Single long-running sim with internal state transitions. |
+| AUT memory | **Inherent** — same AUT across all encounters, standard memory tier progression applies. No persistent-mode infra needed. |
+| Randomness | **Seeded RNG only** in MVP (`random.Random(seed)`). True-random deferred. |
+| Validator strictness | **Hard-fail** on dangling refs. User fixes campaign YAML manually in MVP. |
+| Architect persona | **Deferred** — MVP campaigns are hand-authored. |
+| Encounter library | **Deferred** — MVP has one example campaign; encounters live inline. |
+| Report format | **Reuse `report.json`** with added top-level `campaign` field (NPC registry snapshot, choices taken, flags set, dice rolls). |
+| Persona naming | **`dungeon_master`** |
+| Entity naming in logs | **Deferred** — MVP has one AUT, existing log format is fine. |
+
+## Risks
+
+1. **Choice classification fuzziness** — keyword matching will misfire. LLM fallback adds latency + cost. MVP accepts this; if it dominates development pain, revisit with structured output (require AUT to respond with a choice tag).
+2. **Campaign authoring burden** — hand-authoring YAMLs is tedious and that's exactly what the deferred architect persona solves. MVP is only viable if we're willing to ship 1–2 hand-authored campaigns.
+3. **No isolation between encounters** — if the AUT corrupts its own state mid-campaign, the whole run is compromised. For narrative continuity this is correct behavior; for testing robustness it's a limitation to document.
+4. **Dice UX inside natural language** — "the guard captain rolls a 14, you need a 15 to succeed" has to arrive as a stimulus the AUT can reason about. Test with a couple of LLM backends before committing to the format.
+
+## Ties to Other Plans
+
+| Plan | Relationship |
+|------|-------------|
+| [Dungeon Master Extensions](dungeon_master_extensions.md) | **Follow-on plan** — architect persona, encounter library, adaptive difficulty, sub-sim isolation, true RNG. Layered onto MVP, not prerequisites. |
+| [Interactive Simulation Prompts](interactive_sim_prompts.md) | Independent. Needed if/when architect persona ships (DM Extensions Phase 1). |
+| [Simulation Entity Naming](sim_entity_naming.md) | Independent. Readability win; not required for MVP (single AUT). |
+| **Simulation Decomposition** (done) | DM uses `send_message` + `finish_simulation` from that plan. No sub-sim dependency in MVP. |
+| **Realtime Refinement** (core done) | Independent in MVP. Extensions plan consumes `InspectAUTTool` for adaptive difficulty. |
+| **Research Protocol** (not started) | Independent. |
+| **Agent Mesh** (blocked) | Independent. Long-term: multi-AUT parties in DM sims. |
+| **Multi-LLM Scaling** (not started) | Independent, synergistic for choice classification (cheap model). |
+| **Docker Sandbox** (Phase B done) | Independent. DM campaigns with filesystem actions still benefit from sandbox. |
+
+## When to Implement
+
+**Deferred until Multi-LLM Scaling + Agent Mesh land.** DM is self-contained and could ship today, but holding it back has strategic value:
+
+- **Multi-LLM Scaling** lets architect/classification/DM-orchestrator run on different lanes (cheap model for choice classification, stronger model for NPC dialogue composition, strongest for adaptive difficulty reasoning). Critical for cost at campaign scale.
+- **Agent Mesh** unlocks **multi-AUT party mode** — multiple bio-stacks experiencing the same campaign from different perspectives, with inter-party communication via mesh primitives. This is where DM goes from "test persona" to "bio-system stress test at civilization scale."
+
+**Prereq spike to run before committing to DM work:** [DM Choice Classifier Spike](dm_choice_classifier_spike.md) — validates that AUT free-text responses can be mapped to campaign choices using existing ATL concept similarity + NAc causal scoring, not a from-scratch classifier.
+
+**Recommended sequence (once unblocked):**
+1. Choice classifier spike (~half day) — validate ATL/NAc path works
+2. Schema + validator + example campaigns (~1 day)
+3. DM runtime + tests (~1 day)
+4. DM persona + CLI wiring + end-to-end run (~1 day)
+5. Second campaign (structurally different) to stress-test schema (~1 day)
+6. Iterate on classifier + NPC dialogue composition based on real bio-stack behavior (~1–2 days)
+
+**Ship gate:** **two** structurally different hand-authored campaigns (e.g., heist + investigation/mystery) run end-to-end under Claude Sonnet with readable NPC dialogue, branch selection working, seeded dice reproducible, rollup report populated. Two campaigns (not one) to validate that the schema isn't accidentally tailored to a single narrative structure.
+
+**After MVP lands,** real usage drives what extensions to prioritize. If hand-authoring campaigns is the main pain → architect persona next. If NPC continuity feels shallow → adaptive adaptation. If isolation matters → sub-sim encounters. Let the pain drive the roadmap, not speculation.
+
+## File Inventory
+
+**New files (~560 LOC):**
+- `src/maxim/simulation/campaign_schema.py` (~120)
+- `src/maxim/simulation/dm_runtime.py` (~200)
+- `src/maxim/simulation/tools_dm.py` (~60)
+- `tests/unit/test_campaign_schema.py` (~80)
+- `tests/unit/test_dm_runtime.py` (~100)
+- `scenarios/campaign_examples/heist_v1.yaml`
+
+**Modified files:**
+- `src/maxim/simulation/personas.py` — add `dungeon_master` persona
+- `src/maxim/simulation/tools.py` — register DM tools
+- `src/maxim/simulation/orchestrator.py` — `--campaign` handling, DM runtime init
+- CLI arg parser — `--campaign` flag
