@@ -250,6 +250,13 @@ def start_simulation_mode(
     aut_state.data["mode"] = "active"
     aut_memory = build_memory()
 
+    # Enable bash for the AUT in simulation mode.
+    # The AUT's BashTool checks MAXIM_ALLOW_BASH env var; without it, every
+    # bash call fails with "BashTool disabled" even though autonomy allows it.
+    # Simulation mode is sandboxed (tmpdir + FearGatedExecutor), so bash is safe.
+    import os
+    os.environ.setdefault("MAXIM_ALLOW_BASH", "1")
+
     # Constrain AUT filesystem tools to sandbox tmpdir (if available)
     sandbox_dirs = [sandbox_root, str(sim_tmpdir)] if sandbox_root else None
     aut_registry = build_tool_registry(

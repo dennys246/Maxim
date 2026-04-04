@@ -125,8 +125,17 @@ def sim_log(subsystem: str, message: str, data: dict[str, Any] | None = None) ->
     if not _sim_active:
         return
 
+    import threading
     elapsed = time.time() - _sim_start
     timestamp = f"{elapsed:7.2f}s"
+    # Tag with thread role so AUT vs orchestrator logs are distinguishable
+    thread_name = threading.current_thread().name
+    if "aut" in thread_name.lower() or "Thread-" in thread_name:
+        thread_tag = "[AUT]"
+    elif "Main" in thread_name:
+        thread_tag = "[ORCH]"
+    else:
+        thread_tag = ""
 
     # Always persist structured record (JSONL log + in-memory)
     record = {
@@ -152,7 +161,7 @@ def sim_log(subsystem: str, message: str, data: dict[str, Any] | None = None) ->
     else:
         label = f"[{subsystem:12s}]"
 
-    line = f"  {timestamp} {label} {message}"
+    line = f"  {timestamp} {label}{(' ' + thread_tag) if thread_tag else ''} {message}"
 
     if data:
         # Format key data inline (compact)

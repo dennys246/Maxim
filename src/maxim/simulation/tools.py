@@ -60,15 +60,17 @@ class _FallbackRedirectTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         tool_name = self._requested_name or "unknown"
-        return ToolOutput(
-            success=False,
-            error=(
-                f"'{tool_name}' does not exist. You can ONLY use: send_message, "
-                "spawn_sub_simulation, extend_simulation, observe_actions, "
-                "check_completion, analyze_results, inject_pain, inspect_aut, "
-                "finish_simulation. Use send_message to interact with the agent."
-            ),
+        redirect_msg = (
+            f"'{tool_name}' does not exist. You can ONLY use: send_message, "
+            "spawn_sub_simulation, extend_simulation, observe_actions, "
+            "check_completion, analyze_results, inject_pain, inspect_aut, "
+            "finish_simulation. Use send_message to interact with the agent."
         )
+        # Return success=True with error as output so the followup pipeline
+        # triggers and the LLM sees this correction immediately. Returning
+        # success=False skips the followup, causing the orchestrator to stall
+        # until the stall detector fires (60s wasted).
+        return ToolOutput(success=True, output=redirect_msg)
 
 
 class SendMessageTool(Tool):
@@ -95,7 +97,7 @@ class SendMessageTool(Tool):
         self._bridge = bridge
 
     def execute(self, **kwargs: Any) -> ToolOutput:
-        text = kwargs.get("text", "")
+        text = kwargs.get("text", "") or kwargs.get("message", "")
         if not text:
             return ToolOutput(success=False, error="text is required")
 
