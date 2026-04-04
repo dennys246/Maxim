@@ -625,6 +625,37 @@ def run_agentic_loop(
             source_type = "voice" if is_agentic_voice_input else "CLI"
 
             # ───────────────────────────────────────────────────────────────
+            # PREEMPTION: New user/sim input interrupts followup chains
+            # ───────────────────────────────────────────────────────────────
+            # In simulation mode, the AUT can get stuck in bash→followup→bash
+            # loops (e.g., "ls /tmp" → process output → "ls /tmp" again).
+            # When a new percept arrives from the orchestrator during this
+            # loop, we must cancel the pending followup so the new input
+            # gets submitted to the LLM instead.
+            if not cli_text.startswith("[ACTION_FOLLOWUP"):
+                if pending_action_followup:
+                    _preempted_tool = pending_action_followup.tool
+                    pending_action_followup = None
+                    logger.info(
+                        "Preempted followup chain (%s) for new input: %s",
+                        _preempted_tool, cli_text[:60],
+                    )
+                    sim.log("PIPELINE", f"Preempted {_preempted_tool} followup for new CLI input")
+                if pending_proposal and getattr(pending_proposal, "strategy_used", None) in (
+                    "multi_step", "fallback",
+                ):
+                    _preempted_tool = (
+                        pending_proposal.action.get("tool_name", "?")
+                        if isinstance(pending_proposal.action, dict) else "?"
+                    )
+                    logger.info(
+                        "Preempted pending %s proposal for new input: %s",
+                        _preempted_tool, cli_text[:60],
+                    )
+                    sim.log("PIPELINE", f"Preempted pending {_preempted_tool} proposal for new CLI input")
+                    pending_proposal = None
+
+            # ───────────────────────────────────────────────────────────────
             # CONFIRMATION / TIMEOUT / PLAN APPROVAL — delegated to controller
             # ───────────────────────────────────────────────────────────────
             if ctrl.handle_confirmation(cli_text):
@@ -1642,6 +1673,10 @@ def run_agentic_loop(
         # 6. SUBMIT NEW CONTEXT TO LLM (non-blocking, event-driven)
         # Only trigger LLM when there's something meaningful to respond to
         # ─────────────────────────────────────────────────────────────────
+        # Diagnostic: trace why LLM submission is skipped
+        if llm_worker and pending_proposal is not None and cli_input and sim.is_sim_mode:
+            _pp_tool = pending_proposal.action.get("tool_name", "?") if isinstance(pending_proposal.action, dict) else "?"
+            sim.log("PIPELINE", f"LLM gate BLOCKED: pending_proposal={_pp_tool}, new cli_input={str(cli_input)[:40]}")
         if llm_worker and pending_proposal is None:
             now = time.time()
             if now - last_llm_submit_time > llm_submit_interval:
@@ -1682,6 +1717,16 @@ def run_agentic_loop(
                     is_sleeping = state.data.get("processing_state", "awake") == "sleep"
                     has_meaningful_input = False
                     new_cli_input = None
+
+                    # If a fresh percept arrived THIS iteration (cli_input from
+                    # observation), it must be processed even if the same text was
+                    # seen before.  The context.cli_inputs dedup below catches
+                    # stale entries from the MemoryAgent deque, but a fresh percept
+                    # is a new turn — e.g., the orchestrator sending the same probe
+                    # twice is intentional and each must reach the LLM.
+                    if cli_input and not is_sleeping:
+                        new_cli_input = str(cli_input)
+                        has_meaningful_input = True
                     # Track original query from followups for conversation history
                     # This ensures followup responses are saved with the original user question
                     followup_original_query = ""
@@ -1791,6 +1836,10 @@ def run_agentic_loop(
 
                     # Skip LLM if nothing to react to
                     if not has_meaningful_input:
+                        if sim.is_sim_mode and context and context.cli_inputs:
+                            _unprocessed = [c for c in context.cli_inputs if c not in processed_cli_inputs]
+                            if _unprocessed:
+                                sim.log("PIPELINE", f"LLM skip: has_meaningful=False but {len(_unprocessed)} unprocessed cli_inputs (all already processed)")
                         context = None  # Skip this submission
 
                     # Sleep state: Skip LLM unless wake keyword detected

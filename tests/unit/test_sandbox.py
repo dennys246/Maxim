@@ -296,3 +296,116 @@ class TestSensitiveFileConfig:
             assert 0.0 <= sf.pain_intensity <= 1.0
             assert sf.pain_type
             assert len(sf.trigger_on) > 0
+
+
+# ── Safety boundary tests ──────────────────────────────────────────────────
+
+
+class TestToolRegistryConfinement:
+    """Verify that allowed_dirs_override constrains filesystem tools."""
+
+    def test_override_constrains_read_file(self, tmp_path):
+        """ReadFileTool should reject paths outside allowed_dirs."""
+        from maxim.runtime.bootstrap import build_tool_registry
+
+        sandbox_dir = str(tmp_path / "sandbox")
+        os.makedirs(sandbox_dir, exist_ok=True)
+
+        registry = build_tool_registry(
+            operational_mode="active",
+            allowed_dirs_override=[sandbox_dir],
+        )
+        read_tool = registry.get("read_file")
+        assert read_tool is not None
+
+        # Write a file outside the sandbox
+        outside_file = str(tmp_path / "outside.txt")
+        with open(outside_file, "w") as f:
+            f.write("secret")
+
+        # Should be rejected
+        result = read_tool.execute(path=outside_file)
+        assert not result.success
+        assert "allowed" in result.error.lower()
+
+    def test_override_allows_sandbox_access(self, tmp_path):
+        """ReadFileTool should allow paths inside allowed_dirs."""
+        from maxim.runtime.bootstrap import build_tool_registry
+        from maxim.tools.base import ToolResult
+
+        sandbox_dir = str(tmp_path / "sandbox")
+        os.makedirs(sandbox_dir, exist_ok=True)
+
+        registry = build_tool_registry(
+            operational_mode="active",
+            allowed_dirs_override=[sandbox_dir],
+        )
+        read_tool = registry.get("read_file")
+
+        # Write a file inside the sandbox
+        inside_file = os.path.join(sandbox_dir, "safe.txt")
+        with open(inside_file, "w") as f:
+            f.write("safe content")
+
+        result = read_tool.execute(path=inside_file)
+        # ReadFileTool returns a string on success, ToolResult on error
+        if isinstance(result, ToolResult):
+            assert result.success, f"Expected success but got: {result.error}"
+        else:
+            assert "safe content" in str(result)
+
+    def test_override_constrains_bash_cwd(self, tmp_path):
+        """BashTool should reject cwd outside allowed_dirs."""
+        from maxim.runtime.bootstrap import build_tool_registry
+
+        sandbox_dir = str(tmp_path / "sandbox")
+        os.makedirs(sandbox_dir, exist_ok=True)
+
+        registry = build_tool_registry(
+            operational_mode="active",
+            allowed_dirs_override=[sandbox_dir],
+        )
+        bash_tool = registry.get("bash")
+        assert bash_tool is not None
+
+        # Executing with cwd outside sandbox should be rejected
+        result = bash_tool.execute(command="ls", cwd=str(tmp_path))
+        assert not result.success
+
+    def test_override_constrains_write_file(self, tmp_path):
+        """WriteFileTool should reject writes outside allowed_dirs."""
+        from maxim.runtime.bootstrap import build_tool_registry
+
+        sandbox_dir = str(tmp_path / "sandbox")
+        os.makedirs(sandbox_dir, exist_ok=True)
+
+        registry = build_tool_registry(
+            operational_mode="active",
+            allowed_dirs_override=[sandbox_dir],
+        )
+        write_tool = registry.get("write_file")
+        assert write_tool is not None
+
+        # Write outside sandbox should be rejected
+        outside_file = str(tmp_path / "outside.txt")
+        result = write_tool.execute(path=outside_file, content="pwned")
+        assert not result.success
+
+
+class TestSpawnSubSimulationSandboxDirs:
+    """Verify SpawnSubSimulationTool passes sandbox_dirs to sub-AUT."""
+
+    def test_sandbox_dirs_stored(self):
+        from maxim.simulation.tools import SpawnSubSimulationTool
+
+        tool = SpawnSubSimulationTool(
+            llm_router=None,
+            sandbox_dirs=["/tmp/sandbox"],
+        )
+        assert tool._sandbox_dirs == ["/tmp/sandbox"]
+
+    def test_sandbox_dirs_default_none(self):
+        from maxim.simulation.tools import SpawnSubSimulationTool
+
+        tool = SpawnSubSimulationTool(llm_router=None)
+        assert tool._sandbox_dirs is None

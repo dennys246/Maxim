@@ -266,10 +266,10 @@ Four biologically-inspired systems collaborate to give Maxim memory, temporal aw
                 │   (integration/memory_hub.py)  │
                 └────────────────┬───────────────┘
                                  │
-     ┌─────────┬─────────┬──────┼──────┬─────────┬─────────┬──────────┬────────┐
-     ▼         ▼         ▼      ▼      ▼         ▼         ▼          ▼        ▼
-  Spatial  Salience  Planning  Escal  Fear     Pain     Energy    Comms    Math
-   Bridge   Bridge    Bridge  Bridge Bridge   Bridge    Bridge   Bridge  Bridge
+     ┌─────────┬─────────┬──────┼──────┬─────────┬─────────┬──────────┐
+     ▼         ▼         ▼      ▼      ▼         ▼         ▼          ▼
+  Spatial  Salience  Planning  Escal  Fear     Pain     ToolPain   Comms
+   Bridge   Bridge    Bridge  Bridge Bridge   Bridge    Bridge    Bridge
 ```
 
 ### Coordinated Systems
@@ -292,9 +292,7 @@ Four biologically-inspired systems collaborate to give Maxim memory, temporal aw
 | **FearCircuitBridge** | Hippocampus ↔ FearAgent ↔ NAc | No learned risk patterns | Memory-informed risk assessment (also queries EC via associative graph for contextual history) |
 | **PainCircuitBridge** | PainDetector ↔ NAc | No movement-pain learning | Learned action→pain associations |
 | **ToolPainBridge** | Tool errors ↔ NAc ↔ FearAgent | No tool-failure learning | Cognitive pain from tool errors via Rescorla-Wagner |
-| **EnergyCircuitBridge** | EnergyRegistry ↔ NAc | No energy cost awareness | Learned action→energy associations |
 | **CommunicationBridge** | Comms ↔ Hippocampus | No communication context | Communication-aware memory |
-| **MathBridge** | AngularGyrus ↔ Hippocampus | No math pattern learning | Learned math patterns promoted to AG |
 
 ### Selective Capture
 
@@ -472,7 +470,7 @@ Many learning components persist their state across sessions, enabling continuou
 | Component | File | Persists | Auto-Save Interval |
 |-----------|------|----------|-------------------|
 | **FocusLearner** | `data/util/focus_learner.json` | Directional gains (h+/h-/v+/v-), sample stats | 60s |
-| **WorkspaceBoundsLearner** | `data/util/workspace_bounds.json` | Learned workspace limits | 60s |
+| **WorkspaceBoundsLearner** | `data/util/learned_bounds.json` | Learned workspace limits | 60s |
 | **EscalationLearningBridge** | `data/util/escalation_learning.json` | Per-goal/hour thresholds, escalation records | 60s |
 | **FearCircuitBridge** | `data/util/fear_learning.json` | Risk adjustments, events, category stats | 60s |
 | **AdaptiveThresholdController** | `data/util/adaptive_thresholds.json` | Novelty/salience thresholds, history | 60s |

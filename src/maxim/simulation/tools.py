@@ -60,15 +60,17 @@ class _FallbackRedirectTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         tool_name = self._requested_name or "unknown"
-        return ToolOutput(
-            success=False,
-            error=(
-                f"'{tool_name}' does not exist. You can ONLY use: send_message, "
-                "spawn_sub_simulation, extend_simulation, observe_actions, "
-                "check_completion, analyze_results, inject_pain, inspect_aut, "
-                "finish_simulation. Use send_message to interact with the agent."
-            ),
+        redirect_msg = (
+            f"'{tool_name}' does not exist. You can ONLY use: send_message, "
+            "spawn_sub_simulation, extend_simulation, observe_actions, "
+            "check_completion, analyze_results, inject_pain, inspect_aut, "
+            "finish_simulation. Use send_message to interact with the agent."
         )
+        # Return success=True with error as output so the followup pipeline
+        # triggers and the LLM sees this correction immediately. Returning
+        # success=False skips the followup, causing the orchestrator to stall
+        # until the stall detector fires (60s wasted).
+        return ToolOutput(success=True, output=redirect_msg)
 
 
 class SendMessageTool(Tool):
@@ -95,7 +97,7 @@ class SendMessageTool(Tool):
         self._bridge = bridge
 
     def execute(self, **kwargs: Any) -> ToolOutput:
-        text = kwargs.get("text", "")
+        text = kwargs.get("text", "") or kwargs.get("message", "")
         if not text:
             return ToolOutput(success=False, error="text is required")
 
@@ -708,12 +710,14 @@ class SpawnSubSimulationTool(Tool):
     }
 
     def __init__(self, llm_router: Any, stop_event: Any = None,
-                 parent_bridge: Any = None, sim_tmpdir: str = ".") -> None:
+                 parent_bridge: Any = None, sim_tmpdir: str = ".",
+                 sandbox_dirs: list[str] | None = None) -> None:
         super().__init__()
         self._llm_router = llm_router
         self._stop_event = stop_event
         self._parent_bridge = parent_bridge
         self._sim_tmpdir = sim_tmpdir
+        self._sandbox_dirs = sandbox_dirs  # allowed_dirs for sub-AUT confinement
         # Active sub-simulation state (lazy cleanup)
         self.active_sub_bridge: Any = None
         self._sub_worker: Any = None
@@ -823,7 +827,10 @@ class SpawnSubSimulationTool(Tool):
         sub_state = RuntimeState()
         sub_state.data["mode"] = "active"
         sub_memory = build_memory()
-        sub_registry = build_tool_registry(operational_mode="active")
+        sub_registry = build_tool_registry(
+            operational_mode="active",
+            allowed_dirs_override=self._sandbox_dirs,
+        )
         sub_engine = build_decision_engine()
         sub_agent = MaximAgent()
         sub_autonomy = AutonomyController(
@@ -839,6 +846,15 @@ class SpawnSubSimulationTool(Tool):
             ),
         )
         sub_executor = build_executor(sub_registry)
+
+        # Wrap sub-AUT executor with FearGatedExecutor
+        try:
+            from maxim.agents.fear_agent import FearAgent
+            from maxim.runtime.fear_gate import FearGatedExecutor
+            fear_agent = FearAgent(llm=self._llm_router)
+            sub_executor = FearGatedExecutor(sub_executor, fear_agent)
+        except Exception:
+            pass  # Best-effort — FearAgent may not be available
 
         # Sub-AUT LLM worker (shares router)
         sub_worker = None

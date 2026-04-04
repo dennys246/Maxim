@@ -212,7 +212,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Clear persistent memory and exit. "
             "Types: all (default), focus, bounds, escalation, fear, threshold, "
-            "nac, scn, hippo, pain. Can specify multiple comma-separated types."
+            "nac, scn, hippo, pain, semantic. Can specify multiple comma-separated types."
         ),
     )
     parser.add_argument(

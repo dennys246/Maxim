@@ -80,7 +80,7 @@ Simulation runs the full agentic pipeline with percepts injected from YAML files
 SSH into the robot, stop the default daemon, then start Maxim's custom daemon:
 
 ```bash
-ssh reachy@<robot-ip>
+ssh pollen@<robot-ip>
 sudo systemctl stop reachy-sdk-server
 ```
 

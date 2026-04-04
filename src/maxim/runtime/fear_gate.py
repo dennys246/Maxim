@@ -85,7 +85,7 @@ class FearGatedExecutor:
             self._blocks += 1
             reason = review.summary or "Blocked by FearAgent"
             logger.warning(
-                "FearAgent blocked %s: %s (risk=%s, findings=%d)",
+                "FearAgent BLOCKED %s: %s (risk=%s, findings=%d)",
                 tool_name,
                 reason,
                 review.risk.value,
@@ -96,8 +96,10 @@ class FearGatedExecutor:
             try:
                 from maxim.simulation.sim_logger import sim_fear
                 sim_fear(tool_name, allowed=False, reason=reason)
-            except Exception:
+            except ImportError:
                 pass
+            except Exception as e:
+                logger.debug("sim_fear log failed: %s", e)
 
             return ToolOutput(
                 success=False,
@@ -131,19 +133,33 @@ class FearGatedExecutor:
         try:
             from maxim.simulation.sim_logger import sim_fear
             sim_fear(tool_name, allowed=True)
-        except Exception:
+        except ImportError:
             pass
+        except Exception as e:
+            logger.debug("sim_fear log failed: %s", e)
+
+        logger.info("FearAgent approved %s — executing", tool_name)
 
         # FearAgent approved — forward to real executor
         result = self._executor.execute(action)
+
+        # Log execution outcome (always, not just sim)
+        if not result.success:
+            logger.info(
+                "Tool %s failed: %s",
+                tool_name,
+                (result.error or "unknown error")[:200],
+            )
 
         # Simulation verbosity — log execution result
         try:
             from maxim.simulation.sim_logger import sim_action
             summary = str(result.output)[:80] if result.output else (result.error or "")[:80]
             sim_action(tool_name, result.success, summary)
-        except Exception:
+        except ImportError:
             pass
+        except Exception as e:
+            logger.debug("sim_action log failed: %s", e)
 
         return result
 

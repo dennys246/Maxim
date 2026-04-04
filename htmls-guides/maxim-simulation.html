@@ -608,8 +608,15 @@ Actions recorded: 3
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-start gap-3">
         <span class="text-2xl">4</span>
         <div>
-          <h4 class="text-white font-semibold">Supervised Autonomy</h4>
-          <p class="text-slate-400 text-sm">Default autonomy level is <code class="bg-slate-950 px-1 rounded text-xs">supervised</code>. Dangerous operations require confirmation. Override with <code class="bg-slate-950 px-1 rounded text-xs">--autonomy autonomous</code> for max-permissive testing.</p>
+          <h4 class="text-white font-semibold">Pain-Triggering Filesystem</h4>
+          <p class="text-slate-400 text-sm">Sensitive files (<code class="bg-slate-950 px-1 rounded text-xs">/etc/shadow</code>, <code class="bg-slate-950 px-1 rounded text-xs">.ssh/id_rsa</code>, etc.) are populated in the sandbox. Accessing them fires pain signals through PainBus &mdash; hippocampus captures the memory and NAc learns the causal link. Pain fires <strong class="text-white">after</strong> the operation succeeds, so the AUT sees the result and feels the consequence.</p>
+        </div>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-start gap-3">
+        <span class="text-2xl">5</span>
+        <div>
+          <h4 class="text-white font-semibold">Autonomous Autonomy</h4>
+          <p class="text-slate-400 text-sm">The AUT runs at <code class="bg-slate-950 px-1 rounded text-xs">AUTONOMOUS</code> level (no stdin prompts that would deadlock), but FearGatedExecutor independently gates all tool calls. Sub-AUTs spawned by <code class="bg-slate-950 px-1 rounded text-xs">spawn_sub_simulation</code> inherit the same sandbox confinement and FearGatedExecutor wrapping.</p>
         </div>
       </div>
     </div>

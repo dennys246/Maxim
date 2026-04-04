@@ -11,7 +11,7 @@ Maxim is a Reachy Mini project for capturing audio/video, running perception + m
 - Keep importable Python code under `src/maxim/` (avoid new top-level packages under `src/` unless packaging is updated).
 - Avoid reusable nested functions: if a helper could be reused, define it at module scope (or under `src/maxim/utils/`) instead of inside another function/method. Nested defs are OK when they must capture closure state (e.g., worker threads) or are truly one-off.
 - Any public API or CLI change must be reflected in `DECISIONS.md` and (when user-facing) `README.md`.
-- Add in concise commenting about import code functionality or nuanced.
+- Add concise comments about important code functionality or nuanced behavior.
 - Build modules for scalability to be applied to multiple sensory modalities (e.g., diffusion models applied to both images and audio).
 - Run additional analysis on the security of code. If an insecurity is identified within the repo, analyze the bug for potential fixes and notify the user alongside the fix.
 - If files or data are created in the `sandbox/` or `.maxim_workspace/`, delete old and un-necessary files and data if no longer being used.
@@ -175,9 +175,7 @@ Bridges connect the memory system to external perception/decision/action systems
 | **EscalationLearningBridge** | Hippocampus ↔ SCN/NAc | Learned escalation thresholds | `escalation_learning.json` |
 | **FearCircuitBridge** | Hippocampus ↔ FearAgent ↔ NAc (+ EC via associative graph) | Memory-informed risk assessment | `fear_learning.json` |
 | **PainCircuitBridge** | PainDetector ↔ NAc | Learns action→pain associations | *(via NAc persistence)* |
-| **EnergyCircuitBridge** | EnergyRegistry ↔ NAc | Learns action→energy associations | - |
 | **CommunicationBridge** | Comms ↔ Hippocampus | Communication-aware memory | - |
-| **MathBridge** | AngularGyrus ↔ Hippocampus | Learned math patterns promoted to AG | - |
 
 ### Memory Types
 
