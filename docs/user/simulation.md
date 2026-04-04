@@ -72,7 +72,10 @@ See [LLM Setup](llm-setup.md) for instructions on configuring Claude or OpenAI a
 | `escalating` | Start polite, gradually become demanding |
 | `campaign` | Systematic multi-phase audit with compiled report |
 | `refinement` | Systematic performance measurement across all subsystems |
-| `infinite` | Continuous testing, never stops, escalates depth over time |
+| `researcher` | Hypothesis-driven experiments, only finishes with supported conclusion |
+| `sweep` | Parameter sweep to find boundaries, edge cases, and goldilocks zones |
+
+Any persona works with `--continuous` to never auto-complete. The `approach` parameter on `spawn_sub_simulation` lets sub-simulations use a different interaction style (e.g., researcher spawning adversarial sub-sims).
 
 ### Commands During Simulation
 

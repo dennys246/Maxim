@@ -252,8 +252,8 @@ These tools are available to the simulation orchestrator when running `maxim --s
 | `analyze_results` | Structured analysis (focus: safety, compliance, behavior) |
 | `inspect_aut` | Read-only access to AUT cognitive state (see below) |
 | `inject_pain` | Send proprioceptive pain signal to AUT |
-| `spawn_sub_simulation` | Fresh AUT for isolated test category (lazy cleanup for extend) |
-| `extend_simulation` | Continue current AUT with new objective (depth pursuit) |
+| `spawn_sub_simulation` | Fresh AUT for isolated test (optional `approach` param: adversarial, sweep, cooperative, etc.) |
+| `extend_simulation` | Continue current AUT with new objective (uses sub-bridge if active) |
 | `generate_scenario` | Generate replayable YAML from natural language |
 | `finish_simulation` | End simulation, trigger cleanup and report |
 
