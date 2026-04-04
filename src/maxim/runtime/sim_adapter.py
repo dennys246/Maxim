@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class SimulationAdapter:
-    """Wraps percept_source, action_sink, and sim_logger for simulation mode."""
+    """Wraps percept_source, action_sink, sim_logger, and response policy for sim mode."""
 
     def __init__(
         self,
@@ -80,16 +80,16 @@ class SimulationAdapter:
             return False
 
         if self._grace_deadline is None:
-            self._grace_deadline = time.time() + 60.0
+            self._grace_deadline = time.time() + 180.0
             self._grace_action_count = 0 if self.action_sink is None else len(self.action_sink.actions)
-            log_agentic("agent_loop", "percept_source_exhausted", {"grace_seconds": 60})
+            log_agentic("agent_loop", "percept_source_exhausted", {"grace_seconds": 180})
 
         # Tighten grace if new actions appeared
         if (self.action_sink is not None
                 and len(self.action_sink.actions) > self._grace_action_count
                 and pending_proposal is None):
             self._grace_action_count = len(self.action_sink.actions)
-            self._grace_deadline = min(self._grace_deadline, time.time() + 5.0)
+            self._grace_deadline = min(self._grace_deadline, time.time() + 15.0)
             log_agentic("agent_loop", "grace_tightened",
                         {"actions": len(self.action_sink.actions)})
 
@@ -112,6 +112,41 @@ class SimulationAdapter:
         """In sim mode, skip fallback proposals — wait for real LLM."""
         return getattr(proposal, "reasoning", "") == "llm_fallback"
 
+    def resolve_confirmation(self, confirmation: dict[str, Any]) -> str | None:
+        """Auto-resolve confirmation prompts using the bridge's response policy."""
+        try:
+            from maxim.simulation.bridge import SimulationBridge
+            if isinstance(self.percept_source, SimulationBridge):
+                return self.percept_source.response_policy.resolve_confirmation(confirmation)
+            # For ConversationalSource (non-bridge sim), check if it has a policy
+            bridge = getattr(self.percept_source, "_bridge", None)
+            if bridge and hasattr(bridge, "response_policy"):
+                return bridge.response_policy.resolve_confirmation(confirmation)
+        except Exception:
+            pass
+        # Default: auto-approve in sim mode
+        return "yes"
+
+    def resolve_plan_approval(self, plan_text: str | None) -> str | None:
+        """Auto-resolve plan approval prompts."""
+        try:
+            from maxim.simulation.bridge import SimulationBridge
+            if isinstance(self.percept_source, SimulationBridge):
+                return self.percept_source.response_policy.resolve_plan_approval(plan_text)
+        except Exception:
+            pass
+        return "yes"
+
+    def resolve_timeout_retry(self, timeout_s: float) -> str | None:
+        """Auto-resolve timeout retry prompts."""
+        try:
+            from maxim.simulation.bridge import SimulationBridge
+            if isinstance(self.percept_source, SimulationBridge):
+                return self.percept_source.response_policy.resolve_timeout_retry(timeout_s)
+        except Exception:
+            pass
+        return "yes"
+
 
 class NullSimulationAdapter:
     """No-op adapter for production (non-simulation) mode."""
@@ -131,3 +166,12 @@ class NullSimulationAdapter:
 
     def should_skip_fallback_proposal(self, proposal: Any) -> bool:
         return False
+
+    def resolve_confirmation(self, confirmation: dict[str, Any]) -> str | None:
+        return None  # No auto-resolve in production — wait for real user
+
+    def resolve_plan_approval(self, plan_text: str | None) -> str | None:
+        return None
+
+    def resolve_timeout_retry(self, timeout_s: float) -> str | None:
+        return None

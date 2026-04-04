@@ -100,6 +100,7 @@ class LLMRouter:
         self._backend: Any | None = None
         self._backends: dict[str, Any] = {}
         self._backend_lock = threading.Lock()
+        self._inference_lock = threading.Lock()  # Serializes inference calls (llama-cpp not thread-safe)
         self._ready_event = threading.Event()  # Set when warmup completes
         self._warmup_failed = False
         self._providers = self._normalize_providers(self.cfg)
@@ -113,6 +114,8 @@ class LLMRouter:
         )
         self._audit_logger = CloudAuditLogger()
         self._cloud_allowed, self._cloud_block_reason = self._validate_cloud_config()
+        self._session_cost: float = 0.0  # Accumulates cost for hard ceiling check
+        self._session_cost_exceeded = False  # Once True, all requests rejected
         try:
             import atexit
             atexit.register(self._cost_tracker.flush)
@@ -121,6 +124,25 @@ class LLMRouter:
 
     def enabled(self) -> bool:
         return bool(getattr(self.cfg, "enabled", False))
+
+    @property
+    def session_cost(self) -> float:
+        """Current session cost in USD."""
+        return self._session_cost
+
+    @property
+    def session_cost_exceeded(self) -> bool:
+        """Whether the hard session ceiling has been hit."""
+        return self._session_cost_exceeded
+
+    def reset_session_cost(self) -> None:
+        """Reset session cost accumulator (e.g., between simulation runs)."""
+        self._session_cost = 0.0
+        self._session_cost_exceeded = False
+
+    def set_session_cost_limit(self, limit: float) -> None:
+        """Override the session cost ceiling at runtime."""
+        self._routing_policy.max_session_cost = limit
 
     @property
     def n_ctx(self) -> int:
@@ -182,6 +204,7 @@ class LLMRouter:
             max_cost_per_hour=float(data.get("max_cost_per_hour", 1.00) or 0.0),
             max_cost_per_day=float(data.get("max_cost_per_day", 10.00) or 0.0),
             max_cost_per_month=float(data.get("max_cost_per_month", 100.00) or 0.0),
+            max_session_cost=float(data.get("max_session_cost", 5.00) or 0.0),
             cost_warning_threshold=float(data.get("cost_warning_threshold", 0.80) or 0.0),
             cost_critical_threshold=float(data.get("cost_critical_threshold", 0.95) or 0.0),
         )
@@ -506,6 +529,45 @@ class LLMRouter:
         if not self.enabled():
             return "", None
 
+        # Hard session cost ceiling — once exceeded, ALL requests rejected
+        policy = self._routing_policy
+        if policy.max_session_cost > 0 and self._session_cost_exceeded:
+            return "", None
+        if policy.max_session_cost > 0 and self._session_cost >= policy.max_session_cost:
+            self._session_cost_exceeded = True
+            warn(
+                "Session cost ceiling reached ($%.2f >= $%.2f). "
+                "All further LLM requests will be rejected. "
+                "Increase max_session_cost in routing policy or llm.json to raise the limit.",
+                self._session_cost, policy.max_session_cost,
+            )
+            return "", None
+
+        # Serialize inference — llama-cpp is not thread-safe for concurrent
+        # calls on the same model.  In simulation mode two LLMWorkers share
+        # one router; without this lock the second call segfaults.
+        with self._inference_lock:
+            return self._complete_text_locked(
+                system, user,
+                temperature=temperature, max_tokens=max_tokens,
+                provider_hint=provider_hint, request_context=request_context,
+                tools=tools, thinking=thinking, stream=stream,
+            )
+
+    def _complete_text_locked(
+        self,
+        system: str,
+        user: str,
+        *,
+        temperature: float,
+        max_tokens: int,
+        provider_hint: str | None = None,
+        request_context: dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        thinking: dict[str, Any] | None = None,
+        stream: bool = False,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Actual inference — called under _inference_lock."""
         prompt_tokens = self._estimate_prompt_tokens(system, user)
         now = time.time()
 
@@ -617,6 +679,7 @@ class LLMRouter:
                             except Exception:
                                 cost_usd = 0.0
                             usage["cost_usd"] = cost_usd
+                            self._session_cost += cost_usd
 
                             if redaction_result is None:
                                 redaction_result = RedactionResult(

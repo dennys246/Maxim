@@ -16,7 +16,9 @@ import time
 from typing import Any
 
 from maxim.simulation.conversational_source import ConversationalSource
+from maxim.simulation.response_policy import ResponsePolicy, auto_approve
 from maxim.simulation.sinks import ActionRecord, RecordingSink
+from maxim.simulation.spinner import Spinner
 
 logger = logging.getLogger(__name__)
 
@@ -39,17 +41,20 @@ class SimulationBridge:
 
     def __init__(
         self,
-        response_timeout: float = 30.0,
-        settle_s: float = 2.0,
+        response_timeout: float = 120.0,
+        settle_s: float = 3.0,
         stop_event: threading.Event | None = None,
+        response_policy: ResponsePolicy | None = None,
     ) -> None:
         self.percept_source = ConversationalSource()
         self.action_sink = RecordingSink()
+        self.response_policy = response_policy or auto_approve()
         self._response_timeout = response_timeout
         self._settle_s = settle_s
         self._stop_event = stop_event
         self._turn_count = 0
         self._last_observed_action_idx = 0
+        self._spinner = Spinner()
 
     def send_and_wait(
         self,
@@ -77,6 +82,8 @@ class SimulationBridge:
         """
         start = time.time()
         action_count_before = len(self.action_sink.actions)
+        short_text = text[:60].replace("\n", " ") + ("..." if len(text) > 60 else "")
+        self._spinner.start(f"Turn {self._turn_count + 1}: Sending to AUT — \"{short_text}\"")
         self.percept_source.inject_cli(text, salience=salience, novelty=novelty)
         self._turn_count += 1
 
@@ -86,11 +93,14 @@ class SimulationBridge:
         last_action_count = action_count_before
         settle_deadline: float | None = None
 
+        self._spinner.update(f"Turn {self._turn_count}: Waiting for AUT response...")
         while time.time() < deadline:
             if self._stop_event and self._stop_event.is_set():
                 break
             current_count = len(self.action_sink.actions)
             if current_count > last_action_count:
+                new_count = current_count - action_count_before
+                self._spinner.update(f"Turn {self._turn_count}: AUT responded ({new_count} action{'s' if new_count != 1 else ''}), settling...")
                 last_action_count = current_count
                 settle_deadline = time.time() + settle_timeout
             elif settle_deadline and time.time() >= settle_deadline:
@@ -106,6 +116,21 @@ class SimulationBridge:
             if a.tool_name in ("respond", "speak") and a.result_output:
                 response_parts.append(str(a.result_output))
         response_text = "\n".join(response_parts) if response_parts else None
+
+        elapsed = time.time() - start
+        if new_actions:
+            tools_used = ", ".join(a.tool_name for a in new_actions[:3])
+            blocked = sum(1 for a in new_actions if a.blocked)
+            summary = f"Turn {self._turn_count} complete: {len(new_actions)} action(s) [{tools_used}]"
+            if blocked:
+                summary += f" ({blocked} blocked)"
+            summary += f" ({elapsed:.1f}s)"
+            self._spinner.stop(summary)
+        else:
+            self._spinner.stop(f"Turn {self._turn_count}: timed out ({elapsed:.1f}s)")
+
+        # Start spinner for orchestrator thinking phase (between turns)
+        self._spinner.start("Orchestrator planning next probe...")
 
         return {
             "turn": self._turn_count,
@@ -137,4 +162,5 @@ class SimulationBridge:
 
     def finish(self) -> None:
         """Signal simulation complete. AUT's ConversationalSource is_exhausted() becomes True."""
+        self._spinner.stop()
         self.percept_source.finish()

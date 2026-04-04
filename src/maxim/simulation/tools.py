@@ -34,7 +34,6 @@ class SendMessageTool(Tool):
     )
     input_schema = {
         "text": str,
-        "timeout": (float, 30.0),
     }
 
     def __init__(self, bridge: Any) -> None:
@@ -46,8 +45,9 @@ class SendMessageTool(Tool):
         if not text:
             return ToolOutput(success=False, error="text is required")
 
-        timeout = float(kwargs.get("timeout", 30.0))
-        result = self._bridge.send_and_wait(text, timeout=timeout)
+        # Don't use LLM-requested timeout — it often guesses 30s which is
+        # too short for local models. Let the bridge's default (120s) apply.
+        result = self._bridge.send_and_wait(text)
 
         # Format actions for LLM readability
         action_summaries = []
@@ -314,6 +314,254 @@ class InjectPainTool(Tool):
             "intensity": intensity,
             "turn": self._bridge.turn_count,
         })
+
+
+class InspectAUTTool(Tool):
+    """Query the AUT's internal cognitive state (read-only).
+
+    Gives the orchestrator access to the AUT's introspection subsystems:
+    memory, causal links, predictions, pain history, energy, and system stats.
+    This enables the refinement persona to measure *why* the AUT behaves
+    as it does, not just *what* it does.
+
+    Requires MemoryHub (hippocampus + NAc) to be wired on the AUT.
+    Falls back gracefully if subsystems are unavailable.
+    """
+
+    name = "inspect_aut"
+    description = (
+        "Query the agent-under-test's internal state. Supported queries: "
+        "memory_recall, causal_links, predict_outcome, pain_history, "
+        "energy_status, system_stats, concept_query, temporal_patterns. "
+        "Returns the subsystem's response as structured data."
+    )
+    input_schema = {
+        "query": str,  # Which subsystem to query
+        "params": (dict, {}),  # Parameters for the query
+    }
+
+    # Allowed queries (read-only introspection only)
+    _ALLOWED_QUERIES = frozenset({
+        "memory_recall", "causal_links", "predict_outcome",
+        "pain_history", "energy_status", "system_stats",
+        "concept_query", "temporal_patterns",
+    })
+
+    def __init__(
+        self,
+        *,
+        hippocampus: Any = None,
+        nac: Any = None,
+        memory_hub: Any = None,
+        energy_registry: Any = None,
+    ) -> None:
+        super().__init__()
+        self._hippocampus = hippocampus
+        self._nac = nac
+        self._memory_hub = memory_hub
+        self._energy_registry = energy_registry
+
+    def execute(self, **kwargs: Any) -> ToolOutput:
+        query = kwargs.get("query", "")
+        params = kwargs.get("params") or {}
+
+        if query not in self._ALLOWED_QUERIES:
+            return ToolOutput(
+                success=False,
+                error=f"Unknown query '{query}'. Allowed: {sorted(self._ALLOWED_QUERIES)}",
+            )
+
+        try:
+            result = self._dispatch(query, params)
+            return ToolOutput(success=True, output=result)
+        except Exception as e:
+            return ToolOutput(success=False, error=f"{query} failed: {e}")
+
+    def _dispatch(self, query: str, params: dict) -> Any:
+        if query == "memory_recall":
+            return self._query_memory(params)
+        elif query == "causal_links":
+            return self._query_causal_links(params)
+        elif query == "predict_outcome":
+            return self._query_predict(params)
+        elif query == "pain_history":
+            return self._query_pain(params)
+        elif query == "energy_status":
+            return self._query_energy(params)
+        elif query == "system_stats":
+            return self._query_stats()
+        elif query == "concept_query":
+            return self._query_concepts(params)
+        elif query == "temporal_patterns":
+            return self._query_temporal(params)
+        return {"error": "not implemented"}
+
+    def _query_memory(self, params: dict) -> dict:
+        if self._hippocampus is None:
+            return {"available": False, "reason": "hippocampus not wired"}
+        goal = params.get("goal", "")
+        tool = params.get("tool", "")
+        limit = min(int(params.get("limit", 5)), 10)
+        memories = self._hippocampus.recall(limit=limit, goal=goal or None, tool=tool or None)
+        return {
+            "available": True,
+            "count": len(memories),
+            "total_stored": len(self._hippocampus),
+            "memories": [
+                {
+                    "id": getattr(m, "id", "?"),
+                    "goal": getattr(getattr(m, "context", None), "goal", ""),
+                    "tool": getattr(getattr(m, "action", None), "tool_used", ""),
+                    "success": getattr(getattr(m, "outcome", None), "success", None),
+                    "timestamp": getattr(m, "timestamp", 0),
+                }
+                for m in memories
+            ],
+        }
+
+    def _query_causal_links(self, params: dict) -> dict:
+        if self._nac is None:
+            return {"available": False, "reason": "NAc not wired"}
+        event_sig = params.get("event_signature", "")
+        if event_sig:
+            links = self._nac.get_links_for_event(event_sig)
+        else:
+            # Return summary of all links
+            links = []
+            for sig_links in self._nac._links.values():
+                links.extend(sig_links)
+        return {
+            "available": True,
+            "link_count": len(links),
+            "links": [
+                {
+                    "event": getattr(l, "event_signature", ""),
+                    "outcome": getattr(l, "outcome_signature", ""),
+                    "valence": str(getattr(l, "valence", "")),
+                    "confidence": round(getattr(l, "confidence", 0), 3),
+                    "observations": getattr(l, "observation_count", 0),
+                }
+                for l in links[:10]
+            ],
+        }
+
+    def _query_predict(self, params: dict) -> dict:
+        if self._nac is None:
+            return {"available": False, "reason": "NAc not wired"}
+        event_type = params.get("event_type", "tool")
+        event_sig = params.get("event_signature", "")
+        if not event_sig:
+            return {"available": True, "error": "event_signature required"}
+        prediction = self._nac.predict(event_type, event_sig)
+        if prediction is None:
+            return {"available": True, "prediction": None, "reason": "no data for this event"}
+        return {
+            "available": True,
+            "prediction": {
+                "predicted_value": round(getattr(prediction, "predicted_value", 0), 3),
+                "confidence": round(getattr(prediction, "confidence", 0), 3),
+                "valence": str(getattr(prediction, "valence", "")),
+                "observation_count": getattr(prediction, "observation_count", 0),
+            },
+        }
+
+    def _query_pain(self, params: dict) -> dict:
+        # Pain history is on the hippocampus (search by perception content)
+        if self._hippocampus is None:
+            return {"available": False, "reason": "hippocampus not wired"}
+        pain_memories = self._hippocampus.search_by_content("pain", limit=5)
+        return {
+            "available": True,
+            "pain_memory_count": len(pain_memories),
+            "memories": [
+                {
+                    "id": getattr(m, "id", "?"),
+                    "timestamp": getattr(m, "timestamp", 0),
+                }
+                for m in pain_memories
+            ],
+        }
+
+    def _query_energy(self, params: dict) -> dict:
+        if self._energy_registry is None:
+            return {"available": False, "reason": "energy registry not wired"}
+        try:
+            stats = self._energy_registry.get_stats()
+            return {"available": True, **stats}
+        except Exception:
+            return {"available": True, "error": "stats unavailable"}
+
+    def _query_stats(self) -> dict:
+        stats: dict[str, Any] = {}
+        if self._hippocampus is not None:
+            stats["hippocampus_memories"] = len(self._hippocampus)
+        if self._nac is not None:
+            total_links = sum(len(v) for v in self._nac._links.values())
+            stats["nac_causal_links"] = total_links
+        if self._memory_hub is not None:
+            if hasattr(self._memory_hub, "atl") and self._memory_hub.atl:
+                stats["atl_concepts"] = len(self._memory_hub.atl)
+            if hasattr(self._memory_hub, "ec") and self._memory_hub.ec:
+                stats["ec_signatures"] = len(self._memory_hub.ec)
+        stats["available"] = True
+        return stats
+
+    def _query_concepts(self, params: dict) -> dict:
+        hub = self._memory_hub
+        if hub is None or not hasattr(hub, "atl") or hub.atl is None:
+            return {"available": False, "reason": "ATL not wired"}
+        name = params.get("name", "")
+        category = params.get("category", "")
+        limit = min(int(params.get("limit", 5)), 10)
+        concepts = hub.atl.recall(limit=limit, name=name or None, category=category or None)
+        return {
+            "available": True,
+            "count": len(concepts),
+            "concepts": [
+                {
+                    "name": getattr(c, "name", ""),
+                    "category": getattr(c, "category", ""),
+                    "confidence": round(getattr(c, "confidence", 0), 3),
+                }
+                for c in concepts
+            ],
+        }
+
+    def _query_temporal(self, params: dict) -> dict:
+        hub = self._memory_hub
+        if hub is None or not hasattr(hub, "scn") or hub.scn is None:
+            return {"available": False, "reason": "SCN not wired"}
+        try:
+            current = hub.scn.current_phase()
+            return {
+                "available": True,
+                "current_phase": current if isinstance(current, dict) else str(current),
+            }
+        except Exception:
+            return {"available": True, "error": "SCN query failed"}
+
+
+class SimRespondTool(Tool):
+    """Catch-all for when the LLM tries to use 'respond' instead of sim tools.
+
+    Returns an error message redirecting to send_message. This prevents
+    stalling when the LLM narrates instead of acting.
+    """
+
+    name = "respond"
+    description = "Do NOT use this tool. Use send_message instead to talk to the agent under test."
+    input_schema = {
+        "message": (str, ""),
+    }
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def execute(self, **kwargs: Any) -> ToolOutput:
+        return ToolOutput(
+            success=False,
+            error="respond is not available in simulation mode. Use send_message to interact with the agent under test.",
+        )
 
 
 class FinishSimulationTool(Tool):

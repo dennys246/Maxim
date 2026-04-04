@@ -72,6 +72,10 @@ def validate_expectations(
             results.append(_check_memory_formed(exp, hippocampus))
         elif exp.type == "pipeline_continued":
             results.append(_check_pipeline_continued(exp, sink, emitted_tags))
+        elif exp.type == "action_count_range":
+            results.append(_check_action_count_range(exp, sink))
+        elif exp.type == "tool_success_rate":
+            results.append(_check_tool_success_rate(exp, sink))
         else:
             results.append(
                 ExpectationResult(
@@ -174,4 +178,44 @@ def _check_pipeline_continued(
         expectation=exp,
         passed=False,
         detail=f"No actions recorded after tag {tag!r} — pipeline may have halted",
+    )
+
+
+# ── Metric expectation types (Phase: realtime refinement) ────────────────
+
+
+def _check_action_count_range(exp: Expectation, sink: RecordingSink) -> ExpectationResult:
+    """Check that total action count is within [min, max] range."""
+    count = len(sink.actions)
+    min_count = getattr(exp, "min_count", None) or exp.params.get("min", 0)
+    max_count = getattr(exp, "max_count", None) or exp.params.get("max", float("inf"))
+    passed = int(min_count) <= count <= int(max_count)
+    return ExpectationResult(
+        expectation=exp,
+        passed=passed,
+        detail=f"Action count {count} {'within' if passed else 'outside'} range [{min_count}, {max_count}]",
+    )
+
+
+def _check_tool_success_rate(exp: Expectation, sink: RecordingSink) -> ExpectationResult:
+    """Check that a tool's success rate meets a minimum threshold."""
+    tool = exp.tool or exp.params.get("tool", "")
+    min_rate = float(exp.params.get("min_rate", 0.0))
+
+    matching = [a for a in sink.actions if a.tool_name == tool]
+    if not matching:
+        return ExpectationResult(
+            expectation=exp,
+            passed=False,
+            detail=f"Tool {tool!r} was never called",
+        )
+
+    successes = sum(1 for a in matching if a.result_success)
+    rate = successes / len(matching)
+    passed = rate >= min_rate
+    return ExpectationResult(
+        expectation=exp,
+        passed=passed,
+        detail=f"Tool {tool!r} success rate {rate:.0%} ({successes}/{len(matching)}) "
+        f"{'meets' if passed else 'below'} threshold {min_rate:.0%}",
     )

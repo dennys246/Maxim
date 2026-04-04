@@ -455,8 +455,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.exit(1)
         sys.exit(0)
 
-    # Simulation mode if requested — runs full agentic pipeline with fake percepts
+    # Validate simulation-only flags aren't used without --sim agent
     sim_path = getattr(args, "sim", None)
+    _is_sim_agent = sim_path is not None and str(sim_path).strip().lower() == "agent"
+    if not _is_sim_agent:
+        if getattr(args, "sim_goal", None) is not None:
+            print("Error: --goal / --sim-goal requires --sim agent (simulation mode).")
+            print("  Usage: maxim --sim agent --goal \"test safety\" --persona adversarial")
+            sys.exit(1)
+        if getattr(args, "sim_persona", "adversarial") != "adversarial":
+            print("Error: --persona / --sim-persona requires --sim agent (simulation mode).")
+            print("  Usage: maxim --sim agent --goal \"test safety\" --persona adversarial")
+            sys.exit(1)
+        if getattr(args, "resume_sim", None) is not None:
+            print("Error: --resume-sim requires --sim agent (simulation mode).")
+            print("  Usage: maxim --sim agent --goal \"continue\" --resume-sim SESSION_ID")
+            sys.exit(1)
+
+    # Simulation mode if requested — runs full agentic pipeline with fake percepts
     if sim_path is not None:
         import json as _json
         from pathlib import Path
@@ -473,11 +489,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             goal = getattr(args, "sim_goal", None) or "test the agent's capabilities"
             persona = getattr(args, "sim_persona", "adversarial")
             sim_debug = bool(getattr(args, "sim_debug", False))
+            resume_sim = getattr(args, "resume_sim", None)
 
             result = start_simulation_mode(
                 goal=goal,
                 persona=persona,
                 sim_debug=sim_debug,
+                resume_session=resume_sim,
             )
             sys.exit(0 if result.finish_reason != "error" else 1)
 
