@@ -10,8 +10,8 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 
 | Plan | Status | Next step |
 |------|--------|-----------|
-| Simulation Decomposition | **In PR** | spawn_sub_simulation, extend_simulation, --continuous |
-| Research Protocol | **Not started** | Local mesh proving ground (3 agents + paper) |
+| Docker Sandbox | **Not started** | Independent — can implement anytime |
+| Research Protocol | **Not started** | Local mesh proving ground (3 agents) |
 | Multi-LLM Scaling | **Not started** | Phases 1-3 ready (router modularization done) |
 | Agent Mesh | **Not started** | Phases 1a-1b built by Research Protocol |
 | Realtime Refinement | **Not started** | After running sim agent + multi-LLM |

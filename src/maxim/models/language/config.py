@@ -253,12 +253,35 @@ def build_model_path(
     quantization: str = DEFAULT_QUANTIZATION,
     models_dir: str = "data/models/LLM",
 ) -> str:
-    """Build the model path from base name and quantization level."""
+    """Build the model path from base name and quantization level.
+
+    Tries the canonical path first, then falls back to case-insensitive
+    search in the models directory. This handles mismatches between
+    profile model_base casing and downloader output filenames.
+    """
     quant = str(quantization or DEFAULT_QUANTIZATION).strip().upper().replace("-", "_")
     if quant not in QUANTIZATION_LEVELS:
         quant = DEFAULT_QUANTIZATION
     base = str(model_base or "").strip()
-    return os.path.join(models_dir, f"{base}.{quant}.gguf")
+    canonical = os.path.join(models_dir, f"{base}.{quant}.gguf")
+
+    # If canonical path exists, use it
+    if os.path.isfile(canonical):
+        return canonical
+
+    # Case-insensitive fallback: scan the directory for a match
+    try:
+        target = f"{base}.{quant}.gguf".lower()
+        # Also try with hyphens instead of dots for quantization
+        target_alt = f"{base}-{quant.lower()}.gguf".lower()
+        for filename in os.listdir(models_dir):
+            if filename.lower() == target or filename.lower() == target_alt:
+                return os.path.join(models_dir, filename)
+    except OSError:
+        pass
+
+    # No match found — return canonical (caller handles missing file)
+    return canonical
 
 
 # ─────────────────────────────────────────────────────────────────────────────

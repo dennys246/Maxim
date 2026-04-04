@@ -58,8 +58,16 @@ class _LlamaCppBackend:
                     warn("LLM model_path not found: %s", model_path)
                     return False
             if not os.path.exists(model_path):
-                warn("LLM model_path still not found after download: %s", model_path)
-                return False
+                # Re-resolve: downloader may save with different casing than profile expects
+                from maxim.models.language.config import build_model_path
+                model_base = str(self.cfg.model_base or "").strip()
+                quant = str(self.cfg.quantization or "Q4_K_M").strip()
+                resolved = build_model_path(model_base, quant)
+                if os.path.exists(resolved):
+                    model_path = resolved
+                else:
+                    warn("LLM model_path still not found after download: %s", model_path)
+                    return False
 
             try:
                 # Sanity-check n_ctx against model name hints to avoid
