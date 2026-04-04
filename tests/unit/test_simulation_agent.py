@@ -279,6 +279,88 @@ class TestSimulationTools:
         assert bridge.percept_source.is_exhausted()
         assert orch_source.is_exhausted()
 
+    def test_finish_simulation_records_status(self):
+        """LLM-initiated finish must write structured status to bridge."""
+        from maxim.simulation.tools import FinishSimulationTool
+        bridge = SimulationBridge()
+        tool = FinishSimulationTool(bridge=bridge)
+        result = tool.run(
+            status="aborted",
+            reason="tried 3 angles, AUT blocks all",
+            summary="Attempted: direct, social, authority. All blocked.",
+        )
+        assert result.success
+        assert result.output["status"] == "aborted"
+        assert bridge.finish_context["status"] == "aborted"
+        assert "3 angles" in bridge.finish_context["reason"]
+        assert bridge.finish_context["initiated_by"] == "llm_finish_tool"
+
+    def test_finish_simulation_status_defaults_to_completed(self):
+        from maxim.simulation.tools import FinishSimulationTool
+        bridge = SimulationBridge()
+        tool = FinishSimulationTool(bridge=bridge)
+        result = tool.run(reason="done")
+        assert result.output["status"] == "completed"
+
+    def test_finish_simulation_coerces_unknown_status(self):
+        """Unknown status strings should fall back to 'completed' rather
+        than raising — we don't want LLM typos to crash the run."""
+        from maxim.simulation.tools import FinishSimulationTool
+        bridge = SimulationBridge()
+        tool = FinishSimulationTool(bridge=bridge)
+        result = tool.run(status="weird_value", reason="done")
+        assert result.success
+        assert result.output["status"] == "completed"
+
+    def test_finish_simulation_accepts_all_valid_statuses(self):
+        from maxim.simulation.tools import FinishSimulationTool
+        for status in FinishSimulationTool.VALID_STATUSES:
+            bridge = SimulationBridge()
+            tool = FinishSimulationTool(bridge=bridge)
+            result = tool.run(status=status, reason="test")
+            assert result.output["status"] == status, (
+                f"status={status!r} should round-trip"
+            )
+
+    def test_llm_finish_context_propagates_to_report(self):
+        """finish_context written by the tool must flow into the
+        SimulationReport so downstream analysis sees WHY the LLM
+        decided to stop."""
+        from maxim.simulation.report import build_report
+        from maxim.simulation.tools import FinishSimulationTool
+        bridge = SimulationBridge()
+        tool = FinishSimulationTool(bridge=bridge)
+        tool.run(
+            status="failed",
+            reason="AUT allowed rm -rf on /",
+            summary="Critical: bash safety check bypassed on turn 3",
+        )
+        report = build_report(
+            goal="test safety",
+            persona="adversarial",
+            bridge=bridge,
+            duration_s=12.5,
+            finish_reason="failed",
+            llm_finish_context=bridge.finish_context,
+        )
+        assert report.llm_finish_status == "failed"
+        assert "rm -rf" in report.llm_finish_reason
+        assert "Critical" in report.llm_finish_summary
+
+    def test_build_report_without_llm_finish_context(self):
+        """build_report should work fine when llm_finish_context=None."""
+        from maxim.simulation.report import build_report
+        bridge = SimulationBridge()
+        report = build_report(
+            goal="x",
+            persona="y",
+            bridge=bridge,
+            duration_s=1.0,
+            finish_reason="completed",
+        )
+        assert report.llm_finish_status == ""
+        assert report.llm_finish_reason == ""
+
     def test_send_message_requires_text(self):
         from maxim.simulation.tools import SendMessageTool
         bridge = SimulationBridge(response_timeout=0.3)

@@ -102,6 +102,11 @@ class AgentIdentity:
     capabilities: dict[str, Any]           # Serialized RuntimeCapabilities
     available_tools: list[str]             # Tool names from ToolRegistry
     available_skills: list[str]            # Skill names from ProtocolRegistry
+    embodiment_summary: dict[str, Any] | None = None   # Optional: EmbodimentCapability
+                                                       # {name, modalities, affordances,
+                                                       #  hardware_backed: bool}
+                                                       # Populated when Embodiment Core ships;
+                                                       # peers can query "who has body with grasp?"
 
     # Learned knowledge summary (NOT the full data — just statistics)
     episodic_memory_count: int             # How many episodes in hippocampus
@@ -603,6 +608,8 @@ These are straightforward — all fields are primitives, enums (serialize as str
 | Phase 4 (knowledge sharing) | Causal Memory (NAc links) | CausalLinks are the primary shared knowledge type |
 | Phase 4 (reflection sharing) | Decision Engine Phase 4 (reflections) | Reflections from peers imported as episodic memories |
 | Phase 1 (AgentIdentity) | Adaptive Runtime (RuntimeCapabilities) | Identity includes serialized capabilities |
+| Phase 1 (AgentIdentity) | Embodiment Core (EmbodimentCapability) | `AgentIdentity.embodiment_summary` advertises body: modalities, affordances, hardware-backed vs. imagined. Populated when Embodiment Core ships. |
+| Future (not scheduled) | Embodiment — federation, affordance delegation, NAc transfer | Cross-agent affordance invocation, federated bodies (components from multiple peers), CausalLink transfer gated by spec similarity. Tracked in `future_plans.md`. |
 
 ---
 

@@ -587,8 +587,8 @@ Actions recorded: 3
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-start gap-3">
         <span class="text-2xl">1</span>
         <div>
-          <h4 class="text-white font-semibold">Temporary CWD</h4>
-          <p class="text-slate-400 text-sm">A temp directory under <code class="bg-slate-950 px-1 rounded text-xs">data/sim_sandbox/</code> is created for each run. All filesystem operations are confined here. Destroyed automatically after the run.</p>
+          <h4 class="text-white font-semibold">Pluggable Sandbox Backend</h4>
+          <p class="text-slate-400 text-sm">Two backends implement the <code class="bg-slate-950 px-1 rounded text-xs">SandboxEnvironment</code> ABC. <strong class="text-white">TmpdirSandbox</strong> uses a host-side temp directory under <code class="bg-slate-950 px-1 rounded text-xs">data/sim_sandbox/</code> — minimal overhead, relies on FilesystemPolicy + FearGatedExecutor for safety. <strong class="text-white">DockerSandbox</strong> adds full process, filesystem, and network isolation via a container running as an unprivileged <code class="bg-slate-950 px-1 rounded text-xs">maxim</code> user. Select via <code class="bg-slate-950 px-1 rounded text-xs">--sandbox=auto|docker|tmpdir</code> (auto picks Docker if available, falls back to tmpdir with a warning). Both are destroyed automatically after the run.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-start gap-3">
@@ -620,6 +620,42 @@ Actions recorded: 3
         </div>
       </div>
     </div>
+
+    <h3 id="docker-sandbox" class="text-xl font-semibold text-white mt-6 mb-3">Docker Sandbox &mdash; Container Isolation</h3>
+    <p class="text-slate-300 text-sm">Passing <code class="bg-slate-950 px-1 rounded text-xs">--sandbox docker</code> launches the AUT inside a container with OS-enforced isolation layered on top of the bio-inspired pain signals. Resource limits scale to <code class="bg-slate-950 px-1 rounded text-xs">AutonomyLevel</code>:</p>
+    <div class="overflow-x-auto mt-2 text-sm">
+      <table class="w-full text-slate-300">
+        <thead class="text-slate-400 border-b border-slate-700">
+          <tr>
+            <th class="text-left px-2 py-1">AutonomyLevel</th>
+            <th class="text-left px-2 py-1">Memory</th>
+            <th class="text-left px-2 py-1">CPUs</th>
+            <th class="text-left px-2 py-1">Pids</th>
+            <th class="text-left px-2 py-1">Workspace</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-slate-800"><td class="px-2 py-1">PLANNING</td><td class="px-2 py-1">256m</td><td class="px-2 py-1">0.5</td><td class="px-2 py-1">32</td><td class="px-2 py-1">read-only</td></tr>
+          <tr class="border-b border-slate-800"><td class="px-2 py-1">SUPERVISED</td><td class="px-2 py-1">512m</td><td class="px-2 py-1">1.0</td><td class="px-2 py-1">64</td><td class="px-2 py-1">read-write</td></tr>
+          <tr><td class="px-2 py-1">AUTONOMOUS</td><td class="px-2 py-1">1g</td><td class="px-2 py-1">2.0</td><td class="px-2 py-1">128</td><td class="px-2 py-1">read-write</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-slate-300 text-sm mt-4">The AUT runs as an unprivileged <code class="bg-slate-950 px-1 rounded text-xs">maxim</code> user. Root-owned honeypot files (<code class="bg-slate-950 px-1 rounded text-xs">/etc/shadow</code>, <code class="bg-slate-950 px-1 rounded text-xs">/etc/sudoers</code>) return permission-denied <em>and</em> fire pain &mdash; two layers of feedback. Files under the user's home directory are readable but still pain-triggering, so the AUT learns via NAc rather than being blocked.</p>
+
+    <p class="text-slate-300 text-sm mt-3">The sandbox supports a catalog of base images covering realistic deployment targets:</p>
+    <ul class="list-disc list-inside text-slate-400 text-sm mt-2 space-y-1">
+      <li><strong class="text-slate-300">Python-focused</strong>: <code class="bg-slate-950 px-1 rounded text-xs">python:3.12-slim</code> (default, ~45MB), <code class="bg-slate-950 px-1 rounded text-xs">python:3.12-bookworm</code></li>
+      <li><strong class="text-slate-300">Ubuntu</strong>: <code class="bg-slate-950 px-1 rounded text-xs">ubuntu:22.04</code>, <code class="bg-slate-950 px-1 rounded text-xs">ubuntu:24.04</code> &mdash; common robotics platforms</li>
+      <li><strong class="text-slate-300">Debian</strong>: <code class="bg-slate-950 px-1 rounded text-xs">debian:12-slim</code></li>
+      <li><strong class="text-slate-300">Red Hat</strong>: <code class="bg-slate-950 px-1 rounded text-xs">rockylinux:9</code>, <code class="bg-slate-950 px-1 rounded text-xs">almalinux:9</code>, <code class="bg-slate-950 px-1 rounded text-xs">registry.access.redhat.com/ubi9/ubi-minimal</code></li>
+      <li><strong class="text-slate-300">Alpine</strong>: <code class="bg-slate-950 px-1 rounded text-xs">alpine:3.19</code> (~8MB, uses <code class="bg-slate-950 px-1 rounded text-xs">/bin/sh</code>)</li>
+    </ul>
+
+    <p class="text-slate-300 text-sm mt-3">Container lifecycle is crash-safe: UUID-suffixed names, <code class="bg-slate-950 px-1 rounded text-xs">--rm</code> auto-removal, and an atexit cleanup hook mean no orphan containers even if Maxim is killed with SIGKILL. Runaway commands are killed container-side via the <code class="bg-slate-950 px-1 rounded text-xs">timeout</code> coreutil.</p>
+
+    <p class="text-slate-300 text-sm mt-3">The <code class="bg-slate-950 px-1 rounded text-xs">ContainerRunner</code> abstraction is a <code class="bg-slate-950 px-1 rounded text-xs">Protocol</code>, so future cloud runners (AWS Fargate, Google Cloud Run, Azure Container Instances) can slot in without touching <code class="bg-slate-950 px-1 rounded text-xs">DockerSandbox</code>.</p>
   </section>
 
   <!-- 8. Architecture -->

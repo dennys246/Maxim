@@ -262,6 +262,36 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip simulated filesystem with pain-triggering files (empty sandbox).",
     )
     parser.add_argument(
+        "--sandbox",
+        dest="sandbox_backend",
+        type=str,
+        default="auto",
+        choices=["auto", "docker", "tmpdir"],
+        help="Sandbox backend for simulation tool execution. "
+             "'auto' (default) uses Docker if available, else tmpdir with a "
+             "warning. 'docker' requires Docker. 'tmpdir' forces host-based "
+             "tmpdir isolation.",
+    )
+    parser.add_argument(
+        "--sandbox-image",
+        type=str,
+        default="python:3.12-slim",
+        metavar="IMAGE",
+        help="Docker image for the sandbox container. Defaults to "
+             "python:3.12-slim. Catalog includes ubuntu:22.04, ubuntu:24.04, "
+             "debian:12-slim, rockylinux:9, almalinux:9, alpine:3.19, "
+             "and the RHEL UBI9 minimal image.",
+    )
+    parser.add_argument(
+        "--sandbox-network",
+        type=str,
+        default="none",
+        choices=["none", "bridge", "host"],
+        help="Container network mode. 'none' (default) isolates the "
+             "container from the network; 'bridge' enables outbound "
+             "traffic; 'host' shares the host network stack.",
+    )
+    parser.add_argument(
         "--resume-sim",
         type=str,
         default=None,
@@ -282,9 +312,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Record all percepts during a live session to data/sessions/ for replay.",
     )
     parser.add_argument(
+        "--debug",
         "--sim-debug",
+        dest="debug",
         action="store_true",
-        help="Show all simulation traces including internal pipeline polling (noisy).",
+        help="Enable verbose debug tracing (simulation pipeline polling, "
+             "loop heartbeats, lane activity). Noisy. Alias: --sim-debug.",
     )
     parser.add_argument(
         "--generate-simulation",

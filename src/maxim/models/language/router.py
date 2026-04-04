@@ -116,6 +116,11 @@ class LLMRouter:
         self._cloud_allowed, self._cloud_block_reason = self._validate_cloud_config()
         self._session_cost: float = 0.0  # Accumulates cost for hard ceiling check
         self._session_cost_exceeded = False  # Once True, all requests rejected
+        # Track last successfully-used model across providers. ``model_name``
+        # returns the config's default; ``last_used_model`` returns what
+        # actually ran (important when the router spans local + cloud backends).
+        self._last_used_model: str = ""
+        self._last_used_provider: str = ""
         try:
             import atexit
             atexit.register(self._cost_tracker.flush)
@@ -151,8 +156,24 @@ class LLMRouter:
 
     @property
     def model_name(self) -> str:
-        """Return the configured model name (if any)."""
+        """Return the configured default model name (if any)."""
         return str(getattr(self.cfg, "model", "") or "")
+
+    @property
+    def last_used_model(self) -> str:
+        """Return the model name that most recently served a request.
+
+        When the router routes across multiple providers (local GPU,
+        Anthropic, OpenAI, etc.), ``model_name`` returns only the
+        config default — which is misleading in reports. This property
+        reflects what actually executed.
+        """
+        return self._last_used_model or self.model_name
+
+    @property
+    def last_used_provider(self) -> str:
+        """Return the provider key that most recently served a request."""
+        return self._last_used_provider
 
     def get_token_counter(self) -> TokenCounter:
         """Return a token counter that lazily upgrades to the real tokenizer.
@@ -465,7 +486,7 @@ class LLMRouter:
 
         return filtered, budget_tier, totals
 
-    def _note_provider_success(self, provider_key: str) -> None:
+    def _note_provider_success(self, provider_key: str, model: str = "") -> None:
         state = self._provider_states.get(provider_key)
         if state is None:
             return
@@ -473,6 +494,9 @@ class LLMRouter:
         state.backoff_until = 0.0
         state.last_error = ""
         state.last_success = time.time()
+        self._last_used_provider = provider_key
+        if model:
+            self._last_used_model = model
 
     def _note_provider_failure(self, provider_key: str, error: str) -> None:
         state = self._provider_states.get(provider_key)
@@ -635,7 +659,7 @@ class LLMRouter:
                         stop=stop,
                     )
                     if text:
-                        self._note_provider_success(provider_key)
+                        self._note_provider_success(provider_key, model=model_override or model)
                         return text, None
                 else:
                     if hasattr(backend, "complete_with_usage"):
@@ -656,7 +680,10 @@ class LLMRouter:
                             kwargs["stream"] = True
                         resp = backend.complete_with_usage(**kwargs)
                         if isinstance(resp, LLMResponse) and resp.content:
-                            self._note_provider_success(provider_key)
+                            self._note_provider_success(
+                                provider_key,
+                                model=resp.model or model_override or model,
+                            )
                             usage = {
                                 "input_tokens": resp.input_tokens,
                                 "output_tokens": resp.output_tokens,
@@ -706,7 +733,7 @@ class LLMRouter:
                         stop=tuple(getattr(self.cfg, "stop", ("</s>",))),
                     )
                     if text:
-                        self._note_provider_success(provider_key)
+                        self._note_provider_success(provider_key, model=model_override or model)
                         return text, None
             except Exception as e:
                 warn("LLM complete failed (%s): %s", provider_key, e)

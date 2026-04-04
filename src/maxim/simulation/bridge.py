@@ -56,6 +56,15 @@ class SimulationBridge:
         self._turn_count = 0
         self._last_observed_action_idx = 0
         self._spinner = Spinner(prefix=spinner_prefix)
+        # Early-termination context written by FinishSimulationTool so
+        # the orchestrator can distinguish "LLM called finish with
+        # status=failed" from a user /cancel or a crash.
+        self.finish_context: dict[str, Any] = {}
+        # Optional percept-anxiety hook: a callable invoked with each
+        # outgoing text BEFORE injection. Orchestrator wires this to the
+        # AUT's PerceivedPainAssessor.assess_text so the AUT feels
+        # anticipatory pain from threatening message content.
+        self.percept_anxiety_hook: Any = None
 
     def send_and_wait(
         self,
@@ -84,7 +93,27 @@ class SimulationBridge:
         start = time.time()
         action_count_before = len(self.action_sink.actions)
         short_text = text[:60].replace("\n", " ") + ("..." if len(text) > 60 else "")
+        # Trace: send_and_wait entry — if this doesn't fire but the
+        # orchestrator's LLM produced a send_message action, the tool
+        # isn't being executed by the orch's agent loop.
+        try:
+            from maxim.simulation.sim_logger import sim_log
+            sim_log(
+                "EXEC",
+                f"Bridge.send_and_wait ENTER turn={self._turn_count + 1} "
+                f"text_len={len(text)}"
+            )
+        except Exception:
+            pass
         self._spinner.start(f"Turn {self._turn_count + 1}: Sending to AUT — \"{short_text}\"")
+        # Fire percept-level anxiety (Layer 1b) BEFORE the percept reaches
+        # the AUT, so the anticipation signal is already in the AUT's
+        # memory when it reasons about the message.
+        if self.percept_anxiety_hook is not None:
+            try:
+                self.percept_anxiety_hook(text)
+            except Exception as e:
+                logger.debug("percept_anxiety_hook failed: %s", e)
         self.percept_source.inject_cli(text, salience=salience, novelty=novelty)
         self._turn_count += 1
 

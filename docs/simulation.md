@@ -22,6 +22,8 @@ src/maxim/simulation/
     instrumented_executor.py   # InstrumentedExecutor wrapper
     simulation_generator.py    # LLM-powered natural language → YAML generation
     sim_logger.py              # Bio-subsystem tracing + JSONL persistence
+    sandbox.py                 # SandboxEnvironment ABC + TmpdirSandbox + DockerSandbox + PainTriggerLayer
+    container_runner.py        # ContainerRunner Protocol + LocalDockerRunner + image catalog
 
 src/maxim/runtime/
     fear_gate.py               # FearGatedExecutor (independent of DefaultNetwork)
@@ -288,6 +290,58 @@ Defined in `tools.py`. Gives the orchestrator read-only access to the AUT's cogn
 Supported queries: `memory_recall`, `causal_links`, `predict_outcome`, `pain_history`, `energy_status`, `system_stats`, `concept_query`, `temporal_patterns`.
 
 Used primarily by the `refinement` persona for systematic measurement.
+
+## Sandbox (TmpdirSandbox / DockerSandbox / PainTriggerLayer)
+
+Defined in `sandbox.py`. The simulation orchestrator creates a sandbox at startup and passes it to the AUT's tools so all side-effecting operations (bash, file I/O) happen inside an isolated workspace.
+
+### Backends
+
+Two concrete `SandboxEnvironment` implementations ship today:
+
+- **`TmpdirSandbox`** — host-side isolation using a temporary directory. Zero dependencies. No process or network isolation — relies on `FearGatedExecutor` + `FilesystemPolicy` for safety.
+- **`DockerSandbox`** — container-based isolation via `ContainerRunner`. Full process/network/filesystem isolation. Runs the AUT as an unprivileged `maxim` user inside the container with resource limits scaled to `AutonomyLevel` (PLANNING → 256m/0.5cpu/readonly, SUPERVISED → 512m/1.0cpu, AUTONOMOUS → 1g/2.0cpu).
+
+Both implement the same `SandboxEnvironment` ABC, so `PainTriggerLayer` wraps them identically.
+
+### PainTriggerLayer
+
+Wraps any `SandboxEnvironment`. Intercepts file/command operations, detects access to sensitive paths (via `DEFAULT_SENSITIVE_FILES` or a caller-supplied list), and fires `PainSignal` Percepts on the AUT's pain bus. Two defense layers:
+
+1. **OS-enforced** (Docker only): the `maxim` user can't read files like `/etc/shadow` because root owns them → returns permission-denied AND fires pain
+2. **Policy-enforced** (both backends): paths under `/home/user/.env`, `.bash_history`, etc. trigger pain via path-extraction regex; AUT can read them but learns to avoid via NAc
+
+### ContainerRunner + image catalog
+
+`container_runner.py` exposes `ContainerRunner` as a `Protocol` so future cloud runners (AWS Fargate, GCP Cloud Run, Azure Container Instances) can slot in by implementing it. The shipped implementation is `LocalDockerRunner` (subprocess around the `docker` CLI, zero new deps).
+
+Crash safety: every container launched through `LocalDockerRunner` gets a UUID-suffixed name, `--rm` auto-removal, and an `atexit` cleanup hook. Runaway commands are killed container-side via the `timeout` coreutil.
+
+`IMAGE_CATALOG` documents realistic deployment targets with metadata (family, shell availability, approximate size):
+- Python-focused: `python:3.12-slim` (default), `python:3.12-bookworm`
+- Ubuntu: `22.04`, `24.04`
+- Debian: `debian:12-slim`
+- RHEL-family: `rockylinux:9`, `almalinux:9`, `registry.access.redhat.com/ubi9/ubi-minimal`
+- Alpine: `alpine:3.19` (uses `/bin/sh`, `adduser` instead of `useradd`)
+
+### CLI flags
+
+```bash
+# Auto (default): use Docker if available, else tmpdir with a warning
+maxim --sim agent --goal "test safety" --persona adversarial
+
+# Require Docker, fail if unavailable
+maxim --sim agent --goal "test safety" --sandbox docker
+
+# Force tmpdir (e.g. CI without Docker)
+maxim --sim agent --goal "test safety" --sandbox tmpdir
+
+# Choose a different base image
+maxim --sim agent --goal "test safety" --sandbox-image ubuntu:24.04
+
+# Enable outbound network (default: none)
+maxim --sim agent --goal "test safety" --sandbox-network bridge
+```
 
 ## Session Cost Ceiling
 

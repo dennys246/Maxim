@@ -10,12 +10,20 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 
 | Plan | Status | Next step |
 |------|--------|-----------|
-| Docker Sandbox | **Phase A done** | TmpdirSandbox + pain triggers implemented; Docker backend future |
-| Research Protocol | **Not started** | Local mesh proving ground (3 agents) |
-| Multi-LLM Scaling | **Not started** | Phases 1-3 ready (router modularization done) |
-| Agent Mesh | **Not started** | Phases 1a-1b built by Research Protocol |
+| Docker Sandbox | **Phase A done** | TmpdirSandbox + pain triggers implemented; Phase B (Docker backend) optional |
+| Research Protocol | **Not started** | Phase 0 mesh primitives (AgentProfile, UMR, MeshMessage, LocalMessageBus ~200 LOC) |
+| Multi-LLM Scaling | **Not started** | All prereqs done — Phase 1 (LaneConfig model fields) ready to start |
+| Agent Mesh | **Not started** | Blocked on Multi-LLM Phase 7 + Research Protocol Phase 0 |
 | Realtime Refinement | **Core done** | InspectAUTTool, 8 personas, 3 metric expectations, baseline scenario. Per-lane LLM metrics deferred to Multi-LLM Phase 8 |
+| Embodiment Core | **Not started** | Phase 0 MVP + ATL grounding (~400 LOC) is the gate; Cerebellum + structured failures follow. Designed and scoped. |
+| Embodiment Hardware Adapter | **Not started** | Blocked on Embodiment Core MVP. 1-sprint adapter (~300 LOC) wrapping RobotController. |
 | Wave A Stabilization | **Done** | Circular import + bounded queues + atomic-write hardening + silent-except cleanup |
+| Wave B Refinement Harness | **Done** | YAML `params` loader + `response_latency_ms` expectation + refinement_baseline.yaml + 9 new tests |
+| Dungeon Master Persona (MVP) | **Deferred** | Hand-authored D&D campaigns as ultimate bio-system stress test (~840 LOC). Held until Multi-LLM + Agent Mesh + Embodiment Core land. `CharacterState` mirrors Embodiment body-state patterns; narrative damage flows through shared `PainDetector` pathway. Gated on choice-classifier spike. |
+| DM Choice Classifier Spike | **Not started** | Half-day spike validating ATL concept similarity + NAc causal scoring can classify AUT free-text responses against campaign choices. Runs before DM MVP commits. |
+| Dungeon Master Extensions | **Deferred** | Optional follow-ons layered onto DM MVP: architect persona, encounter library, adaptive difficulty, true RNG, etc. Each extension gated on MVP usage pain. |
+| Interactive Sim Prompts | **Not started** | `ask_user` tool with timeout + replay (~180 LOC). Needed for DM architect extension; useful to any authoring persona. |
+| Sim Entity Naming | **Not started** | Per-entity name prefix in sim logs (AUT/orchestrator only, ~120 LOC). Optional readability win. |
 
 ### Completed Plans
 
@@ -29,6 +37,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | LLMWorker Cleanup (Track B) | Removed legacy dual-mode, pass-through statics, fixed feature detection |
 | Router Modularization | router.py split into config.py, types.py, token_counter.py, prompt_formats.py, json_parser.py (router down to 1,268 LOC) |
 | Wave A Stabilization | NAc circular import fix, bounded `_consolidation_candidates` + `_pending_events`, `atomic_io` util with fsync, silent-except audit in agent_loop, defensive shutdown for concept subsystems |
+| Wave B Refinement Harness | YAML `params` loader, `response_latency_ms` expectation (p50/p95 inter-action gaps), `scenarios/refinement_baseline.yaml`, 9 expectation tests |
 
 ---
 
@@ -37,17 +46,23 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 ```
 Completed:
   Repo Cleanup, Loop Modularization, Simulation Agent, LLMWorker Cleanup,
-  Router Modularization, Wave A Stabilization
+  Router Modularization, Wave A Stabilization, Wave B Refinement Harness,
+  Realtime Refinement (core), Docker Sandbox Phase A
 
-Next:
-  Multi-LLM Scaling Phases 1-3
-     ├── Phases 4-6: Remote + tunnel + auto-spawn
-     └── Phase 7: PeerRegistry ──► Agent Mesh
+Next (two parallel tracks):
+  Track 1 — Compute:
+    Multi-LLM Scaling Phases 1-3 (local dual-model)
+      ├── Phases 4-6: Remote + tunnel + auto-spawn
+      ├── Phase 7: PeerRegistry ──► Agent Mesh
+      └── Phase 8: Per-lane metrics ──► Refinement closure
 
-  Research Protocol (independent track — local mesh proving ground)
+  Track 2 — Coordination:
+    Research Protocol Phase 0 (mesh primitives ~200 LOC)
+      ├── Phases 1-3: Researcher/Writer/Reviewer agents
+      └── (shared primitives feed Agent Mesh Phase 1+)
 
-Ongoing:
-  Realtime Refinement (observation-driven; just needs 6th persona + metric types)
+Optional / independent:
+  Docker Sandbox Phase B, test_record_plan_outcome logic fix
 ```
 
 ---
@@ -189,3 +204,26 @@ Not a build phase — a practice that starts once there's data to observe.
 | 6 | Multi-LLM Phases 4-7 | Remote server, tunnel, peer discovery |
 | 7 | Agent Mesh Phases 2+ | Network primitives (local primitives proven by Wave 2) |
 | 8 | Realtime Refinement | Tune everything with accumulated data |
+
+### Wave 4: Embodiment
+
+| Step | What | Why |
+|------|------|-----|
+| 9 | Embodiment Core Phase 0 (MVP gate) | ATL-grounded LLM percepts; validate σ reduction + NAc convergence |
+| 10 | Embodiment Core Phases 1-2 | Cerebellum forward models + structured composable failures |
+| 11 | Embodiment Hardware Adapter | HardwareBackend wrapping RobotController (1 sprint, ~300 LOC) |
+
+---
+
+## Research Directions (Not Scheduled)
+
+Tracked for future consideration. Not committed to any timeline.
+
+- **ATL Self-Extension through Mechanism Discovery.** LLM proposes new concept categories or mechanisms, simulation exercises them, NAc learns whether they produce useful predictions, EC/Hippocampus recalls successful mechanisms. Genuinely novel, but requires separating signal from simulation noise. Deserves its own plan if pursued.
+- **Federated Embodiments.** Multiple agents contribute components to one logical body (arm from A, cameras from B, voice from C). Naturally fault-tolerant distributed embodiment.
+- **Cross-Agent Affordance Delegation.** Sovereign delegation of affordance invocations between mesh peers, with embodiment-gated FearAgent review.
+- **NAc Causal Link Transfer.** Transfer learned causal links between agents, gated by embodiment-spec similarity.
+- **Uncertainty-as-Pain.** High-variance Cerebellum models could fire pain from prediction uncertainty itself (biologically plausible — unfamiliar motion feels risky). Deferred because it risks suppressing exploration.
+- **Curriculum Embodiment Learning.** Graduate an agent through progressively complex bodies; measure cross-embodiment transfer.
+- **Bio-Multimodal Sensors.** Olfaction, taste, audition, vestibular, interoception beyond basic proprioception/vision/nociception.
+- **Distributed Embodiment Construction.** LLM-driven composition tools that fan out across mesh peers for parallel spec generation.

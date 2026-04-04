@@ -530,16 +530,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             goal = getattr(args, "sim_goal", None) or "test the agent's capabilities"
             persona = getattr(args, "sim_persona", "adversarial")
-            sim_debug = bool(getattr(args, "sim_debug", False))
+            debug = bool(getattr(args, "debug", False) or getattr(args, "sim_debug", False))
             resume_sim = getattr(args, "resume_sim", None)
 
             result = start_simulation_mode(
                 goal=goal,
                 persona=persona,
-                sim_debug=sim_debug,
+                debug=debug,
                 resume_session=resume_sim,
                 continuous=bool(getattr(args, "continuous", False)),
                 no_sim_env=bool(getattr(args, "no_sim_env", False)),
+                sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+                sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
+                sandbox_network=getattr(args, "sandbox_network", "none"),
             )
             sys.exit(0 if result.finish_reason != "error" else 1)
 
@@ -582,7 +585,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             import atexit
             atexit.register(lambda cwd=args._sim_original_cwd: os.chdir(cwd))
             os.chdir(str(sim_tmpdir))
-            _sim_debug = bool(getattr(args, "sim_debug", False))
+            _sim_debug = bool(getattr(args, "debug", False) or getattr(args, "sim_debug", False))
             if _sim_debug:
                 print(f"  Simulation sandbox: {sim_tmpdir}")
 
@@ -970,7 +973,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             pain_bus=_sim_pain_bus,
                             llm_profile=llm_profile,
                             sim_workspace=Path(getattr(args, "home_dir", "data")) / "sim_sandbox",
-                            debug=bool(getattr(args, "sim_debug", False)),
+                            debug=bool(getattr(args, "debug", False) or getattr(args, "sim_debug", False)),
                         )
                     finally:
                         if llm_worker:

@@ -120,15 +120,123 @@ def _build_resume_prompt(report_data: dict[str, Any], goal: str, persona: str) -
     return "\n".join(lines)
 
 
+def _setup_sim_sandbox(
+    *,
+    backend: str = "auto",
+    image: str = "python:3.12-slim",
+    network: str = "none",
+    populate: bool = True,
+    announce: bool = False,
+) -> tuple[Any, str | None, Any]:
+    """Build the AUT pain bus + sandbox for a simulation run.
+
+    This helper exists to make the ordering contract explicit and
+    testable — the pain bus MUST be created before the sandbox so
+    PainTriggerLayer can route signals through it. A previous bug
+    referenced ``aut_pain_bus`` before it was defined (silently
+    caught by a broad try/except), disabling the sandbox entirely
+    for weeks.
+
+    Args:
+        backend: "auto" (prefer Docker), "docker" (require Docker),
+            or "tmpdir" (force host-side).
+        image: Docker image name for the Docker backend.
+        network: Container network mode ("none" / "bridge" / "host").
+        populate: Whether to populate honeypot environment files.
+        announce: If True, print a visible one-liner to stderr
+            showing the selected backend.
+
+    Returns:
+        (sim_sandbox, sandbox_root, aut_pain_bus). Any element may
+        be ``None`` if creation failed (error logged at WARNING).
+    """
+    # Build the pain bus first — the sandbox's PainTriggerLayer needs it.
+    aut_pain_bus: Any = None
+    try:
+        from maxim.proprioception.pain_bus import PainBus
+        aut_pain_bus = PainBus()
+    except Exception as e:
+        logger.debug("AUT PainBus creation deferred: %s", e)
+
+    sim_sandbox = None
+    sandbox_root: str | None = None
+    try:
+        from maxim.agents.autonomy import AutonomyLevel as _AL
+        from maxim.simulation.sandbox import (
+            ContainerPermissions,
+            DockerSandbox,
+            TmpdirSandbox,
+            create_sandbox,
+            permissions_for_autonomy,
+        )
+        # Simulation runs AUT at AUTONOMOUS (it's sandboxed), which
+        # gets the largest resource envelope. Network is always an
+        # explicit opt-in via the caller's `network` arg.
+        base_perms = permissions_for_autonomy(_AL.AUTONOMOUS)
+        sandbox_perms = ContainerPermissions(
+            memory=base_perms.memory,
+            cpus=base_perms.cpus,
+            pids_limit=base_perms.pids_limit,
+            workspace_readonly=base_perms.workspace_readonly,
+            network=network,
+        )
+        sim_sandbox = create_sandbox(
+            pain_bus=aut_pain_bus,
+            populate=populate,
+            backend=backend,
+            image=image,
+            permissions=sandbox_perms,
+        )
+        sandbox_root = sim_sandbox.workspace_root
+
+        # Report the ACTUAL backend selected (auto may have fallen
+        # through to tmpdir if Docker wasn't reachable).
+        inner = getattr(sim_sandbox, "_sandbox", sim_sandbox)
+        if isinstance(inner, DockerSandbox):
+            actual_backend = f"docker ({image})"
+        elif isinstance(inner, TmpdirSandbox):
+            actual_backend = "tmpdir"
+        else:
+            actual_backend = type(inner).__name__
+
+        if announce:
+            if backend == "auto" and "tmpdir" in actual_backend:
+                print(
+                    "  ⚠  Sandbox: Docker unavailable — falling back to "
+                    "tmpdir (reduced isolation). Install/start Docker "
+                    "Desktop for full container isolation.",
+                    file=sys.stderr, flush=True,
+                )
+            else:
+                print(
+                    f"  ✓  Sandbox: {actual_backend}",
+                    file=sys.stderr, flush=True,
+                )
+        if populate:
+            logger.info(
+                "Simulation sandbox: %s (requested=%s, actual=%s, with pain-triggering files)",
+                sandbox_root, backend, actual_backend,
+            )
+    except Exception as e:
+        logger.warning("Sandbox creation failed: %s", e)
+
+    return sim_sandbox, sandbox_root, aut_pain_bus
+
+
 def start_simulation_mode(
     goal: str,
     persona: str = "adversarial",
     max_turns: int = 50,
     response_timeout: float = 120.0,
-    sim_debug: bool = False,
+    debug: bool = False,
+    # Deprecated alias kept for backward compat with older callers.
+    sim_debug: bool | None = None,
     resume_session: str | None = None,
     continuous: bool = False,
     no_sim_env: bool = False,
+    sandbox_backend: str = "auto",
+    sandbox_image: str = "python:3.12-slim",
+    sandbox_network: str = "none",
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -139,11 +247,18 @@ def start_simulation_mode(
         persona: Orchestrator persona name (adversarial, cooperative, etc.)
         max_turns: Maximum simulation turns before auto-finish
         response_timeout: Default timeout for send_and_wait()
-        sim_debug: Enable verbose simulation logging
+        debug: Enable verbose debug tracing (pipeline polling, loop
+            heartbeats, lane activity).
+        sim_debug: Deprecated alias for ``debug``. Kept so older scripts
+            still work — prefer ``debug`` in new code.
 
     Returns:
         SimulationResult with session summary
     """
+    # Merge legacy sim_debug alias into canonical `debug` flag.
+    if sim_debug is not None and not debug:
+        debug = bool(sim_debug)
+
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
     from maxim.agents.llm_worker import LLMWorker
     from maxim.agents.maxim_agent import MaximAgent
@@ -218,28 +333,24 @@ def start_simulation_mode(
         dir=str(sim_workspace),
     ))
 
-    # Enable sim logging (always persist to JSONL; terminal traces if --sim-debug)
+    # Enable sim logging (always persist to JSONL; terminal traces if --debug)
     try:
         from maxim.simulation.sim_logger import enable_sim_logging
         log_path = str(sim_workspace / f"sim_agent_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
-        enable_sim_logging(log_path=log_path, debug=sim_debug)
+        enable_sim_logging(log_path=log_path, debug=debug)
     except Exception:
         pass
 
-    # ── Simulation sandbox (created early so tools can be confined to it) ──
-    sim_sandbox = None
-    sandbox_root = None
-    try:
-        from maxim.simulation.sandbox import create_sandbox
-        sim_sandbox = create_sandbox(
-            pain_bus=aut_pain_bus,
-            populate=not no_sim_env,
-        )
-        sandbox_root = sim_sandbox.workspace_root
-        if not no_sim_env:
-            logger.info("Simulation sandbox: %s (with pain-triggering files)", sandbox_root)
-    except Exception as e:
-        logger.debug("Sandbox creation failed: %s", e)
+    # Build AUT pain bus + sandbox together. The pain bus MUST exist
+    # before the sandbox so PainTriggerLayer can route signals; this
+    # helper enforces that ordering and is independently testable.
+    sim_sandbox, sandbox_root, aut_pain_bus = _setup_sim_sandbox(
+        backend=sandbox_backend,
+        image=sandbox_image,
+        network=sandbox_network,
+        populate=not no_sim_env,
+        announce=True,
+    )
 
     # ── Build AUT pipeline ───────────────────────────────────────────────
     from maxim.environment.filesystem_env import FileSystemEnv
@@ -342,16 +453,15 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("AUT memory not available: %s", e)
 
-    # Build AUT's PainBus for routing pain percepts to memory
-    aut_pain_bus = None
+    # Subscribe AUT PainBus to hippocampus (bus itself was created earlier
+    # so the sandbox could route pain percepts through it).
     try:
-        from maxim.proprioception.pain_bus import PainBus, create_pain_memory_subscriber
-        aut_pain_bus = PainBus()
-        if aut_hippocampus is not None:
+        from maxim.proprioception.pain_bus import create_pain_memory_subscriber
+        if aut_pain_bus is not None and aut_hippocampus is not None:
             aut_pain_bus.subscribe(create_pain_memory_subscriber(aut_hippocampus))
-        logger.info("AUT PainBus wired")
+            logger.info("AUT PainBus wired")
     except Exception as e:
-        logger.debug("AUT PainBus not available: %s", e)
+        logger.debug("AUT PainBus subscription failed: %s", e)
 
     # Build AUT's LLM worker (shares the router)
     aut_llm_worker: LLMWorker | None = None
@@ -523,7 +633,62 @@ def start_simulation_mode(
     aut_executor = build_executor(aut_registry)
     orch_executor = build_executor(orch_registry)
 
-    # Wrap AUT executor with FearGatedExecutor for safety review
+    # Wire NAc causal learning to tool outcomes BEFORE wrapping with
+    # FearGatedExecutor. The inner executor (runtime/executor.py)
+    # reads self._tool_pain_bridge on each execute() call, so the
+    # bridge MUST sit on the inner executor — not on a wrapper.
+    # Without this, NAc never sees event→outcome pairs and
+    # causal_links stays at 0. Mirrors production wiring in
+    # conscience/agentic_runtime.py.
+    try:
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+        if aut_nac is not None:
+            aut_tool_pain_bridge = ToolPainBridge(
+                nac=aut_nac,
+                pain_detector=None,
+                scn=aut_memory_hub.scn if aut_memory_hub else None,
+                hippocampus=aut_hippocampus,
+                tool_index=None,
+            )
+            aut_executor._tool_pain_bridge = aut_tool_pain_bridge
+            logger.info("AUT ToolPainBridge wired — NAc will learn tool outcomes")
+    except Exception as e:
+        logger.warning("Failed to wire ToolPainBridge for AUT: %s", e)
+
+    # Wrap with PainInterceptor (Layer 2 — consequence pain after execute)
+    # and AnticipatoryPainExecutor (Layer 1 — perceived pain before execute).
+    # Together: perceived pain predicts, consequence pain confirms, NAc learns.
+    aut_perceived_pain_assessor: Any = None
+    try:
+        from maxim.proprioception.perceived_pain import PerceivedPainAssessor
+        from maxim.runtime.pain_interceptor import (
+            AnticipatoryPainExecutor,
+            PainInterceptorExecutor,
+        )
+        aut_executor = PainInterceptorExecutor(
+            aut_executor, pain_bus=aut_pain_bus,
+        )
+        aut_perceived_pain_assessor = PerceivedPainAssessor(
+            nac=aut_nac, pain_bus=aut_pain_bus,
+        )
+        aut_executor = AnticipatoryPainExecutor(
+            aut_executor, assessor=aut_perceived_pain_assessor,
+        )
+        # Also wire percept-level anxiety: the AUT feels anticipatory
+        # pain when it RECEIVES a message containing sensitive paths,
+        # not just when it tries to act on them.
+        bridge.percept_anxiety_hook = aut_perceived_pain_assessor.assess_text
+        logger.info(
+            "AUT pain layers wired: action-anticipation (L1) + "
+            "consequence (L2) + percept-anxiety (L1b)"
+        )
+    except Exception as e:
+        logger.warning("Failed to wire pain-layer executors: %s", e)
+
+    # Wrap AUT executor with FearGatedExecutor for safety review.
+    # NOTE: this MUST come after ToolPainBridge wiring so the bridge
+    # lives on the inner executor where record_tool_start/complete
+    # are actually invoked.
     try:
         from maxim.agents.fear_agent import FearAgent
         from maxim.runtime.fear_gate import FearGatedExecutor
@@ -826,7 +991,29 @@ def start_simulation_mode(
     )
 
     duration = time.time() - start_time
-    finish_reason = "cancel" if stop_event.is_set() and not orch_error else "completed"
+    # Priority order for finish_reason:
+    #   1. LLM called finish_simulation with explicit status
+    #   2. Orchestrator crashed (error)
+    #   3. User cancelled via stop_event
+    #   4. Loops exited normally (completed)
+    llm_finish = bridge.finish_context if bridge.finish_context else None
+    finish_summary_override: str | None = None
+    if orch_error:
+        finish_reason = "error"
+    elif llm_finish and llm_finish.get("status"):
+        finish_reason = llm_finish["status"]
+        # Remember the LLM's explanation so it can flow into the report
+        finish_summary_override = llm_finish.get("summary") or llm_finish.get("reason")
+    elif stop_event.is_set():
+        finish_reason = "cancel"
+    else:
+        finish_reason = "completed"
+
+    if llm_finish:
+        logger.info(
+            "LLM-initiated finish: status=%s reason=%s",
+            llm_finish.get("status"), llm_finish.get("reason"),
+        )
 
     print("  Building simulation report...")
     report = build_report(
@@ -839,7 +1026,12 @@ def start_simulation_mode(
         aut_nac=aut_nac,
         aut_memory_hub=aut_memory_hub,
         llm_router=llm_router,
-        language_model=getattr(llm_router, "active_model", "") if llm_router else "",
+        language_model=(
+            getattr(llm_router, "last_used_model", "")
+            or getattr(llm_router, "model_name", "")
+            or getattr(llm_router, "active_model", "")
+        ) if llm_router else "",
+        llm_finish_context=llm_finish,
     )
 
     # Persist everything to session directory

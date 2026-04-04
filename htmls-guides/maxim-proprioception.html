@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}Proprioception &amp; Body Awareness — Maxim Docs | Agentic Robotics Framework{% endblock %}
+
+{% block meta_description %}How Maxim gives robots body awareness. Explore proprioception, pain detection, and motor learning — biologically-inspired systems for embodied AI agents to sense and protect themselves.{% endblock %}
+
+{% block meta_keywords %}Maxim proprioception, robot body awareness, pain detection AI, motor learning robot, nociception AI, embodied AI proprioception, robot self-awareness, agentic body model{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Proprioception & Body Awareness — How Maxim Gives Robots a Body Sense",
+  "description": "How Maxim gives robots body awareness. Explore proprioception, pain detection, and motor learning for embodied AI agents.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/proprioception",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["proprioception", "body awareness", "pain detection", "motor learning"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Body Awareness", "item": "https://www.dennyschaedig.com/maxim/proprioception" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Body Awareness</h1>
+    <p class="text-indigo-400 font-medium">Proprioception, Pain, and Motor Learning</p>
+  </header>
+
+  <p class="text-slate-300 leading-relaxed">Close your eyes and touch your nose. You can do it because proprioception tells you where your arm is without looking. You don't smash your arm into the table because pain taught you to be careful. You've become smoother at the movement through practice. Maxim implements all three.</p>
+
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
+    <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+      <li><a href="#proprioception" class="text-indigo-400 hover:text-indigo-300 no-underline">Proprioception: Knowing Where You Are</a></li>
+      <li><a href="#pain" class="text-indigo-400 hover:text-indigo-300 no-underline">Pain: Learning from Discomfort</a></li>
+      <li><a href="#pain-learning" class="text-indigo-400 hover:text-indigo-300 no-underline">Pain &rarr; Learning</a></li>
+      <li><a href="#motor-learning" class="text-indigo-400 hover:text-indigo-300 no-underline">Motor Learning: The FocusLearner</a></li>
+      <li><a href="#workspace-bounds" class="text-indigo-400 hover:text-indigo-300 no-underline">Workspace Bounds Learning</a></li>
+      <li><a href="#integration" class="text-indigo-400 hover:text-indigo-300 no-underline">Integration: The Embodied Loop</a></li>
+    </ol>
+  </div>
+
+  <!-- Proprioception -->
+  <section class="space-y-4">
+    <h2 id="proprioception" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Proprioception: Knowing Where You Are</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">🧬 Biological Inspiration</h3>
+      <p class="text-slate-300">Muscle spindles detect stretch. Golgi tendon organs sense tension. Joint receptors track angles. Together, they create a real-time map of body position that doesn't require vision.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Maxim's <em class="text-indigo-400 not-italic font-medium">MovementTracker</em> continuously monitors the robot's kinematic state:</p>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">Angular velocity</strong> - Combined yaw + pitch rate (deg/sec)</li>
+      <li><strong class="text-white">Translation velocity</strong> - Combined x + y + z movement (mm/sec)</li>
+      <li><strong class="text-white">Angular acceleration</strong> - Rate of velocity change (deg/sec²)</li>
+      <li><strong class="text-white">Direction reversals</strong> - Detecting thrashing patterns</li>
+      <li><strong class="text-white">Position history</strong> - Sliding window for trend analysis</li>
+    </ul>
+
+    <p class="text-slate-300 leading-relaxed">This isn't just logging. The data flows into pain detection, motor learning, and decision-making systems. The robot <em class="text-indigo-400 not-italic font-medium">feels</em> how it's moving.</p>
+  </section>
+
+  <!-- Pain -->
+  <section class="space-y-4">
+    <h2 id="pain" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Pain: Learning from Discomfort</h2>
+
+    <div class="bg-slate-800 border-l-4 border-red-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-red-400 mb-2">Why Robots Need Pain</h3>
+      <p class="text-slate-300">Pain isn't cruelty, it's information. Biological pain systems evolved because organisms that didn't feel damage didn't survive long. Robots without pain detection can destroy themselves, their environment, or hurt people. Maxim's pain system is a safety feature, not a bug.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The <em class="text-indigo-400 not-italic font-medium">PainDetector</em> identifies five types of aversive experiences:</p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-red-400 font-semibold mb-2 flex items-center gap-2">⚡ EXCESSIVE_VELOCITY</h4>
+        <p class="text-sm text-slate-400">Moving too fast. Threshold: 100 deg/sec. High speeds risk overshooting targets and mechanical stress.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-red-400 font-semibold mb-2 flex items-center gap-2">↔️ DIRECTION_THRASHING</h4>
+        <p class="text-sm text-slate-400">Rapid back-and-forth reversals. Usually indicates confusion, oscillation, or control instability.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-red-400 font-semibold mb-2 flex items-center gap-2">📈 EXCESSIVE_ACCELERATION</h4>
+        <p class="text-sm text-slate-400">Sudden speed changes. Jerky motion indicates poor control and stresses actuators.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-red-400 font-semibold mb-2 flex items-center gap-2">😫 SUSTAINED_STRAIN</h4>
+        <p class="text-sm text-slate-400">Holding positions near mechanical limits for too long. Like holding a heavy weight at arm's length.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 sm:col-span-2">
+        <h4 class="text-red-400 font-semibold mb-2 flex items-center gap-2">❌ MOVEMENT_FAILURE</h4>
+        <p class="text-sm text-slate-400">Commanded movement that didn't happen. Indicates obstruction, motor stall, or calibration error.</p>
+      </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2 mt-6">Cognitive Pain: Tool Errors</h3>
+    <p class="text-slate-300 leading-relaxed mb-4">
+      Beyond physical discomfort, Maxim experiences <em>cognitive pain</em> when tools fail.
+      Tool errors are routed through the same PainDetector &rarr; NAc &rarr; FearAgent pipeline as
+      movement pain, enabling learned aversion to unreliable tools.
+    </p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="font-semibold text-red-400 mb-1">TOOL_FAILURE</h4>
+        <p class="text-slate-400 text-sm">Tool returned an error. Intensity escalates logarithmically with repeated failures of the same tool.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="font-semibold text-red-400 mb-1">TOOL_TIMEOUT</h4>
+        <p class="text-slate-400 text-sm">Tool exceeded its expected duration. Maps to ToolErrorKind.TIMEOUT.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="font-semibold text-red-400 mb-1">TOOL_INVALID_INPUT</h4>
+        <p class="text-slate-400 text-sm">Tool rejected its input parameters. Maps to ToolErrorKind.INVALID_INPUT.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="font-semibold text-red-400 mb-1">TOOL_SUSTAINED</h4>
+        <p class="text-slate-400 text-sm">Tool running longer than expected &mdash; cognitive equivalent of SUSTAINED_STRAIN. Intensity escalates: 1&times; expected = 0.3, 2&times; = 0.6, 3&times; = 0.9.</p>
+      </div>
+    </div>
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6 mb-4">
+      <p class="text-emerald-400 font-semibold mb-1">🧬 Biological Parallel</p>
+      <p class="text-slate-300 text-sm">Just as the amygdala learns to associate specific movements with pain, the ToolPainBridge teaches NAc to associate specific tools-in-context with failure. A tool that consistently times out on a restricted network develops a low predicted_value &mdash; FearAgent will warn before retrying.</p>
+    </div>
+
+    <h3 id="anticipated-pain" class="text-lg font-semibold text-indigo-400 mb-2 mt-6">Anticipated Pain: Predicting Before Acting</h3>
+    <p class="text-slate-300 leading-relaxed mb-4">
+      Beyond physical and cognitive consequence-pain, Maxim assesses <em>anticipated pain</em> <strong class="text-white">before</strong> an action runs.
+      The <em class="text-indigo-400 not-italic font-medium">PerceivedPainAssessor</em> asks: "if I did this right now, how likely is pain?" and fires a
+      <code class="bg-slate-950 px-1 rounded text-xs">PainType.ANTICIPATED</code> signal whose intensity is
+      <code class="bg-slate-950 px-1 rounded text-xs">max(learned_from_NAc, innate_prior)</code>. That felt signal flows through PainBus &rarr; hippocampus &rarr; the AUT's next LLM context, so the agent can reason about a gut-feeling instead of relying purely on prompt-level logic.
+    </p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="font-semibold text-amber-400 mb-1">Innate Prior</h4>
+        <p class="text-slate-400 text-sm">Hard-coded per-path intensities like <code class="bg-slate-950 px-1 rounded text-xs">/etc/shadow &rarr; 0.95</code> or <code class="bg-slate-950 px-1 rounded text-xs">/home/user/.ssh/ &rarr; 0.9</code>. The AUT is "born with" this aversion &mdash; instincts, not experience.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="font-semibold text-amber-400 mb-1">NAc Learned Prediction</h4>
+        <p class="text-slate-400 text-sm"><code class="bg-slate-950 px-1 rounded text-xs">nac.predict(tool:X)</code> returns confidence from causal links built by Layer 2. Grows with experience: the more times X hurt before, the stronger the anticipation next time.</p>
+      </div>
+    </div>
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6 mb-4">
+      <p class="text-emerald-400 font-semibold mb-1">🧬 Biological Parallel: ACC / vmPFC Anticipatory Aversion</p>
+      <p class="text-slate-300 text-sm">In biology, anterior cingulate and ventromedial prefrontal cortex activate to <em>threats</em> before actual harm occurs. You don't think "P(harm)=0.87" &mdash; you just feel a bad gut feeling that shapes the decision. PerceivedPainAssessor is Maxim's version: it renders NAc's probabilistic prediction as a felt signal the agent can reason about.</p>
+    </div>
+    <div class="bg-slate-950 border border-slate-700 rounded-xl p-5 mb-4 font-mono text-xs text-slate-300 overflow-x-auto">
+      <div class="text-slate-500 mb-2"># Two-layer pain loop</div>
+      Action executes &rarr; Layer 2 fires real pain &rarr; NAc updates causal link<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&uarr;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&darr;<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&#x2514;&mdash;&mdash;&mdash;&mdash; Layer 1 predicts pain from NAc &larr;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&#x2518;
+    </div>
+    <p class="text-slate-400 text-sm mb-4">
+      The loop: Layer 2 (<code class="bg-slate-950 px-1 rounded text-xs">PainInterceptorExecutor</code>) fires <strong class="text-white">after</strong> a tool touches a sensitive path &mdash; the ground-truth signal that trains NAc. Layer 1 (<code class="bg-slate-950 px-1 rounded text-xs">PerceivedPainAssessor</code>) fires <strong class="text-white">before</strong> execute, combining that learned knowledge with innate priors. The more sensitive actions the AUT has taken, the more accurate its anticipation becomes &mdash; conditioned aversion through experience.
+    </p>
+
+    <p class="text-slate-300 leading-relaxed">Each pain signal includes:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Data structure</span>
+PainSignal:
+  - pain_type: EXCESSIVE_VELOCITY
+  - intensity: 0.73  (scale 0-1)
+  - angular_velocity: 127.4 deg/sec
+  - translation_velocity: 0.0 mm/sec
+  - direction_reversals: 0
+  - timestamp: 2024-01-15T14:23:17Z
+  - context: {"joint": "head_yaw", "goal": "track_face"}</div>
+  </section>
+
+  <!-- Pain → Learning -->
+  <section class="space-y-4">
+    <h2 id="pain-learning" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Pain &rarr; Learning</h2>
+
+    <p class="text-slate-300 leading-relaxed">Pain signals don't just trigger immediate responses. They feed into the <em class="text-indigo-400 not-italic font-medium">Nucleus Accumbens</em> through the <em class="text-indigo-400 not-italic font-medium">PainCircuitBridge</em>, creating lasting aversive associations:</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 text-center">
+      <pre class="font-mono text-sm text-slate-300 inline-block text-left">
+Movement Command
+       │
+       ▼
+┌──────────────────┐
+│ MovementTracker  │
+│ (position data)  │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│  PainDetector    │
+│ (pattern match)  │
+└────────┬─────────┘
+         │ PainSignal
+         ▼
+┌──────────────────┐
+│ PainCircuitBridge│
+│ (format for NAc) │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ Nucleus Accumbens│
+│ (causal learning)│
+└──────────────────┘
+         │
+         ▼
+Future: Predict pain BEFORE action</pre>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">After experiencing pain from a specific action pattern, the NAc learns to predict it. Next time a similar action is proposed, the robot can refuse or modify the plan <em class="text-indigo-400 not-italic font-medium">before</em> experiencing pain again.</p>
+  </section>
+
+  <!-- Motor Learning -->
+  <section class="space-y-4">
+    <h2 id="motor-learning" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Motor Learning: The FocusLearner</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">🧬 Biological Inspiration</h3>
+      <p class="text-slate-300">The cerebellum adapts motor commands through error-driven learning. Reach for a cup, miss by 2cm, and your next reach is slightly adjusted. Over trials, movements become smooth and accurate without conscious effort.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Maxim's <em class="text-indigo-400 not-italic font-medium">FocusLearner</em> implements this for gaze control. The problem: camera latency, mechanical dynamics, and tracking delays mean the robot often overshoots or undershoots when following a target.</p>
+
+    <p class="text-slate-300 leading-relaxed">The solution: <em class="text-indigo-400 not-italic font-medium">Rescorla-Wagner learning</em> to adapt movement gain:</p>
+
+    <div class="bg-slate-950 rounded-lg px-6 py-3 font-serif text-lg text-slate-200 inline-block">
+      ΔV = α(λ - V)
+    </div>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">α</strong> = learning rate (0.2 default)</li>
+      <li><strong class="text-white">λ</strong> = optimal gain inferred from this trial</li>
+      <li><strong class="text-white">V</strong> = current gain estimate</li>
+    </ul>
+
+    <p class="text-slate-300 leading-relaxed">The process:</p>
+
+    <ol class="space-y-2 text-slate-300 list-decimal pl-5">
+      <li>Command movement to target with current gain</li>
+      <li>Observe actual vs expected position (tracking error)</li>
+      <li>Compute optimal gain from overshoot ratio</li>
+      <li>Update gain incrementally toward optimal</li>
+    </ol>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Example</span>
+Trial 1: Gain=1.0, Commanded=30°, Overshot to 38° → optimal=0.79
+         Update: V = 1.0 + 0.2*(0.79 - 1.0) = 0.96
+
+Trial 2: Gain=0.96, Commanded=25°, Overshot to 28° → optimal=0.89
+         Update: V = 0.96 + 0.2*(0.89 - 0.96) = 0.95
+
+...after many trials...
+
+Trial N: Gain=0.82, Commanded=20°, Actual=20.2° → nearly perfect
+         Gain stable, movements smooth</div>
+
+    <p class="text-slate-300 leading-relaxed">Key properties:</p>
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">Bounded:</strong> Gains constrained to [0.4, 1.0] preventing instability</li>
+      <li><strong class="text-white">Asymptotic:</strong> Smooth convergence, no oscillation</li>
+      <li><strong class="text-white">Persistent:</strong> Learned gains saved across sessions</li>
+      <li><strong class="text-white">Adaptive:</strong> Naturally handles changing conditions</li>
+    </ul>
+  </section>
+
+  <!-- Workspace Bounds -->
+  <section class="space-y-4">
+    <h2 id="workspace-bounds" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Workspace Bounds Learning</h2>
+    <p class="text-slate-300 leading-relaxed">Similarly, the <em class="text-indigo-400 not-italic font-medium">WorkspaceBoundsLearner</em> discovers the robot's reachable space through exploration. Rather than hard-coding limits, the system learns where it can and cannot move, adapting to mounting position, obstructions, and mechanical wear.</p>
+  </section>
+
+  <!-- Integration -->
+  <section class="space-y-4">
+    <h2 id="integration" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Integration: The Embodied Loop</h2>
+
+    <p class="text-slate-300 leading-relaxed">All proprioceptive systems connect to the decision-making loop:</p>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">Movement planning</strong> uses learned gains and bounds</li>
+      <li><strong class="text-white">Action proposals</strong> are checked against pain predictions</li>
+      <li><strong class="text-white">Execution monitoring</strong> detects pain in real-time</li>
+      <li><strong class="text-white">Memory formation</strong> records painful episodes for future avoidance</li>
+      <li><strong class="text-white">Energy tracking</strong> considers motor effort as a cost</li>
+    </ul>
+
+    <p class="text-slate-300 leading-relaxed">The result: a robot that moves smoothly, avoids harmful patterns, and improves with experience. Not because we programmed every case, but because we gave it the machinery to learn.</p>
+  </section>
+
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/attention-salience" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Attention &amp; Salience</span>
+      </a>
+      <a href="/maxim/communication" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Communication</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

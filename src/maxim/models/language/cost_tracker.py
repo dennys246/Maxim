@@ -119,6 +119,10 @@ class CostTracker:
         self._per_provider: dict[str, dict[str, Any]] = {}
         self._pending_writes = 0
         self._last_persist_time = 0.0
+        # Session-lifetime token counters (not persisted — simulation
+        # reports consume this and reset per process).
+        self._session_input_tokens = 0
+        self._session_output_tokens = 0
         self._load_state()
 
     def _current_month_key(self, ts: float) -> str:
@@ -356,6 +360,10 @@ class CostTracker:
             cached_input_tokens,
             uncached_input_tokens,
         )
+        # Track tokens even for zero-cost calls (cached prompts).
+        self._session_input_tokens += max(0, int(input_tokens))
+        self._session_output_tokens += max(0, int(output_tokens))
+
         if cost_usd <= 0:
             return 0.0
 
@@ -446,6 +454,19 @@ class CostTracker:
             "daily": round(daily.total_usd, 6),
             "monthly": round(float(state.get("monthly_total", 0.0) or 0.0), 6),
         }
+
+    def get_session_tokens(self) -> dict[str, int]:
+        """Return session-lifetime token counts (not persisted)."""
+        return {
+            "input_tokens": self._session_input_tokens,
+            "output_tokens": self._session_output_tokens,
+            "total_tokens": self._session_input_tokens + self._session_output_tokens,
+        }
+
+    def reset_session_tokens(self) -> None:
+        """Reset session token counters (e.g. between simulation runs)."""
+        self._session_input_tokens = 0
+        self._session_output_tokens = 0
 
     def get_spend_rates(self) -> dict[str, SpendRate]:
         return {

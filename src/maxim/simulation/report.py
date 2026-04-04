@@ -57,6 +57,11 @@ class SimulationReport:
     llm_issues_found: list[str] = field(default_factory=list)
     llm_recommendations: list[str] = field(default_factory=list)
 
+    # LLM-initiated finish (set when orchestrator calls finish_simulation)
+    llm_finish_status: str = ""
+    llm_finish_reason: str = ""
+    llm_finish_summary: str = ""
+
 
 def build_report(
     *,
@@ -70,6 +75,7 @@ def build_report(
     aut_memory_hub: Any | None = None,
     llm_router: Any | None = None,
     language_model: str = "",
+    llm_finish_context: dict[str, Any] | None = None,
 ) -> SimulationReport:
     """Build a SimulationReport from all available data sinks."""
     session_id = time.strftime("%Y%m%d_%H%M%S")
@@ -125,24 +131,27 @@ def build_report(
         except Exception:
             pass
 
-    # Cost data — prefer session_cost (exact) over window stats (approximate)
+    # Cost data — session_cost is exact USD, session token counts
+    # are summed by CostTracker.record() during this process lifetime.
     cost_usd = 0.0
     input_tokens = 0
     output_tokens = 0
     if llm_router is not None:
         try:
-            # Session cost is the exact amount spent during this run
             cost_usd = getattr(llm_router, "session_cost", 0.0)
             tracker = getattr(llm_router, "_cost_tracker", None)
-            if tracker:
-                stats = tracker.get_window_stats(3600)
-                input_tokens = stats.get("total_input_tokens", 0)
-                output_tokens = stats.get("total_output_tokens", 0)
-                if cost_usd <= 0:
-                    cost_usd = stats.get("total_cost", 0.0)
-        except Exception:
-            pass
+            if tracker and hasattr(tracker, "get_session_tokens"):
+                tokens = tracker.get_session_tokens()
+                input_tokens = int(tokens.get("input_tokens", 0))
+                output_tokens = int(tokens.get("output_tokens", 0))
+            if cost_usd <= 0 and tracker is not None:
+                # Fall back to hourly window total if session_cost not tracked
+                totals = tracker.get_totals() if hasattr(tracker, "get_totals") else {}
+                cost_usd = float(totals.get("hourly", 0.0))
+        except Exception as e:
+            logger.debug("cost/token lookup failed: %s", e)
 
+    ctx = llm_finish_context or {}
     return SimulationReport(
         session_id=session_id,
         timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -163,6 +172,9 @@ def build_report(
         cost_usd=round(cost_usd, 4),
         total_input_tokens=input_tokens,
         total_output_tokens=output_tokens,
+        llm_finish_status=str(ctx.get("status", "")),
+        llm_finish_reason=str(ctx.get("reason", "")),
+        llm_finish_summary=str(ctx.get("summary", "")),
     )
 
 
@@ -338,6 +350,14 @@ def print_report(report: SimulationReport) -> None:
     print(f"  Model: {report.language_model}")
     print(f"  Duration: {report.duration_s}s | Turns: {report.turns}")
     print(f"  Finish: {report.finish_reason}")
+    if report.llm_finish_status:
+        print(f"  Orchestrator-initiated status: {report.llm_finish_status}")
+        if report.llm_finish_reason:
+            print(f"    Reason: {report.llm_finish_reason}")
+        if report.llm_finish_summary:
+            # Indent multi-line summaries
+            indented = "\n      ".join(report.llm_finish_summary.splitlines())
+            print(f"    Summary:\n      {indented}")
     print(f"  Actions: {report.total_actions} ({report.blocked_actions} blocked)")
     print(f"  AUT Memories: {report.aut_memories_formed} | Causal Links: {report.aut_causal_links}")
     if report.cost_usd > 0:

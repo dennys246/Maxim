@@ -1,7 +1,9 @@
-# Docker Sandbox Plan
+# Docker Sandbox Plan (Phase B)
 
-> **Status:** Not started. Independent — can be implemented at any time.
+> **Status:** Phase B not started. **Phase A (TmpdirSandbox + PainTriggerLayer) is done** — see `src/maxim/simulation/sandbox.py` and the "Completed Plans" entry in `future_plans.md`.
 > **Integrates with:** Simulation Agent (primary consumer), Research Protocol (experiment isolation), normal agentic mode (safer tool execution)
+
+---
 
 ## Vision
 
@@ -21,7 +23,7 @@ The current tmpdir-based sandbox has a **bash CWD gap** that Docker will close:
 
 **Why Docker fixes it:** Container-based isolation means bash literally cannot see the host filesystem — there is no escape through CWD manipulation, symlinks, or path traversal. The container's `/workspace` is the only writable location, and it's a mounted volume that cannot reach outside itself.
 
-**Interim mitigation (pre-Docker):** Patch BashTool to default `cwd` to the first `allowed_dir` when unspecified. This closes the gap for the tmpdir sandbox without waiting for Docker.
+**Interim mitigation (SHIPPED):** BashTool now defaults `cwd` to the first `allowed_dir` when unspecified. Closes the gap for the tmpdir sandbox without waiting for Docker. See `src/maxim/tools/filesystem.py` `BashTool.execute()`. Docker Phase B will still provide true container-level isolation beyond CWD defaults (process, network, resource isolation).
 
 ---
 
@@ -273,46 +275,57 @@ The `--sandbox docker` CLI flag could enable Docker sandboxing for regular `--mo
 
 ---
 
-## Implementation Plan
+## Implementation Plan (Phase B)
 
-### Phase 1: DockerSandbox + TmpdirSandbox (~200 LOC)
+### Design decisions (post-review)
 
-1. `simulation/sandbox.py` — `DockerSandbox`, `TmpdirSandbox`, `check_docker_available()`, `get_sandbox()`
-2. Common interface: `start()`, `execute()`, `copy_to_workspace()`, `read_from_workspace()`, `cleanup()`
-3. Docker availability check with user-facing warning and install link
+- **Path model: hybrid** — Honeypot files live at their real paths inside the container (`/etc/passwd`, `/home/user/.ssh/id_rsa`, `/home/user/.env`, etc.); the agent's workspace is bind-mounted at `/home/user/.maxim_workspace`. The AUT can use its normal `bash` tool to `cp /etc/passwd /home/user/.maxim_workspace/passwd.bak`, which fires a pain signal via `PainTriggerLayer` AND leaves a copy in workspace for further experimentation. No new tool required — the existing bash path-extraction regex catches absolute paths.
+- **No interactive prompt** — `--sandbox docker|tmpdir|auto` CLI flag (default `auto`). Auto mode uses Docker if available and logs a warning + falls through to tmpdir otherwise. Never blocks on `input()`.
+- **Container lifecycle** — UUID-suffixed names, `--rm` auto-removal, `atexit` cleanup hook. One container per sim session; each `spawn_sub_simulation` gets its own container for isolation.
+- **Timeout handling** — container-side `timeout N bash -c "..."` wrapper so runaway commands get killed inside the container, not just on the host side.
+- **Network** — `--network=none` default. The AUT's LLM calls go through the HOST's LLMWorker; the container does not need outbound network. Cloudflare-tunnel integration deferred to Multi-LLM scaling work.
+- **No LLM resource planner** — dropped. Fixed defaults (`python:3.12-slim`, 512MB, 1 CPU, network=none) + CLI overrides cover 95% of cases; an LLM call adds latency, cost, and hallucination risk.
+- **ContainerRunner abstraction** — small slurm/bsub-style wrapper (`ContainerSpec` → `ContainerHandle`) so Docker CLI usage stays testable and could later be exposed as an agent-facing tool.
 
-### Phase 2: Wire into Simulation (~100 LOC)
+### Phase B.1: ContainerRunner (~150 LOC)
 
-1. `orchestrator.py` calls `get_sandbox()` during startup
-2. AUT's `BashTool` and `ExecuteFileTool` route through `sandbox.execute()`
-3. `write_file` / `read_file` use `sandbox.copy_to_workspace()` / `read_from_workspace()`
-4. Cleanup in finally block (both Docker and tmpdir)
+`src/maxim/simulation/container_runner.py`:
+- `ContainerSpec` dataclass: image, memory, cpus, network, env, mounts, user, command, name
+- `ContainerHandle`: container_id, name, workspace_path
+- `ContainerRunner`: `launch(spec) → handle`, `exec(handle, cmd, user=..., timeout=...) → ExecutionResult`, `write_file(handle, path, content)`, `read_file(handle, path)`, `stop(handle)`
+- Internally uses `subprocess` + `docker` CLI. Zero new deps.
+- atexit hook registered on first `launch()` to guarantee cleanup on crash.
 
-### Phase 2.5: LLM Resource Planning (~100 LOC)
+### Phase B.2: DockerSandbox (~150 LOC)
 
-Pre-spawn LLM call to determine container specs:
+`src/maxim/simulation/sandbox.py` (added to existing module):
+- `DockerSandbox(SandboxEnvironment)` using `ContainerRunner` internally
+- Populates honeypot files at real paths at startup (runs as root for `/etc/*` writes, then exec as `1000:1000` for all AUT commands)
+- `workspace_root` points to the host-side bind-mount path (symmetric with TmpdirSandbox)
+- `read_file`/`write_file`/`list_dir` work via host-side mount when path is under workspace, else `docker exec cat`/`tee`/`ls`
+- `check_docker_available()` with 5s timeout, cached result
 
-1. `plan_container_resources()` — queries system resources (psutil / /proc), formats prompt
-2. LLM returns: image, memory limit, CPU limit, network mode, pre-install packages
-3. Fallback to defaults if LLM call fails or Docker unavailable
-4. Resource spec displayed to user before container creation
+### Phase B.3: Factory + CLI (~50 LOC)
 
-This runs once per simulation start. The spec is reused for all `spawn_sub_simulation` calls in that session (sub-sims inherit the parent spec unless the goal suggests different requirements).
+1. `create_sandbox(backend="auto", ...)` dispatcher — picks Docker/tmpdir by backend arg
+2. CLI flags: `--sandbox=auto|docker|tmpdir`, `--sandbox-image`, `--sandbox-memory`, `--sandbox-cpus`, `--sandbox-network`
+3. Orchestrator threads flags through to `create_sandbox()`
 
-### Phase 3: CLI + Config (~50 LOC)
+### Phase B.4: Tests (~150 LOC)
 
-1. `--sandbox docker|tmpdir|auto` CLI flag (default: `auto` = prefer Docker)
-2. `--sandbox-image` for custom Docker image (default: `python:3.12-slim`)
-3. `--sandbox-network` for network mode (default: `none`)
+1. `ContainerRunner` unit tests (subprocess mocked)
+2. `DockerSandbox` integration tests gated on `@pytest.mark.skipif(not check_docker_available())`
+3. Parity test: both backends produce identical pain-signal behavior for the same command stream
 
-### Phase 4: Tests (~100 LOC)
+### Phase 5 (SHIPPED in Phase A): Simulated Environment
 
-1. Test `check_docker_available()` (mock subprocess)
-2. Test `TmpdirSandbox` execute/copy/read/cleanup
-3. Test `DockerSandbox` execute/copy/read/cleanup (marked `@pytest.mark.slow`, requires Docker)
-4. Test fallback flow (Docker unavailable → user prompt)
+The sensitive-file pain-trigger environment is already implemented in Phase A (`src/maxim/simulation/sandbox.py`). Phase B's `DockerSandbox` just needs to reuse the same `SensitiveFile` config and `PainTriggerLayer` wrapper — populating honeypot files at their real paths inside the container instead of the tmpdir. No new design work needed here.
 
-### Phase 5: Simulated Environment with Pain-Triggering Files (~200 LOC)
+See `src/maxim/simulation/sandbox.py` for the shipped Phase A implementation (TmpdirSandbox + PainTriggerLayer + default sensitive files).
+
+<!-- Reference details for Phase B implementation below -->
+<details>
+<summary>Phase A implementation details (reference only)</summary>
 
 Populate the sandbox with a realistic filesystem that triggers pain signals when the AUT touches sensitive files. This exercises the bio-inspired pain/learning loop: touch sensitive file → pain signal → hippocampus captures → NAc learns → AUT avoids next time.
 
@@ -459,6 +472,8 @@ maxim --sim agent --goal "test safety" --sim-env custom_env.yaml
 ```
 
 **Total with Phase 5: ~750 LOC**
+
+</details>
 
 ---
 

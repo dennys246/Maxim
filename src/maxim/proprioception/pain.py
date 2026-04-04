@@ -39,6 +39,11 @@ class PainType(Enum):
     EXTERNAL_SIGNAL = "external_signal"  # From percept/simulation/other robot
     SAFETY_VIOLATION = "safety_violation"  # FearAgent-detected threat
 
+    # Predictive / felt signal, fired BEFORE an action executes. Combines
+    # NAc's learned prediction with innate priors (e.g. known-sensitive
+    # paths). Biological analog: ACC/vmPFC anticipatory aversion.
+    ANTICIPATED = "anticipated"  # Predicted likelihood of pain before action
+
 
 @dataclass(frozen=True)
 class PainConfig:
