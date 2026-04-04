@@ -443,18 +443,14 @@ def start_simulation_mode(
         },
     })
 
+    # Autonomy: allow ALL tools through to the executor.
+    # SimToolRegistry handles unknown tools by returning an error+redirect,
+    # which triggers a followup LLM call. If we filter at the autonomy level,
+    # unknown tools get silently dropped and the orchestrator stalls.
     orch_autonomy = AutonomyController(
         initial_level=AutonomyLevel.AUTONOMOUS,
         supervision_policy=SupervisionPolicy(
-            allowed_tools={
-                "send_message", "observe_actions", "check_completion",
-                "analyze_results", "inject_pain", "finish_simulation",
-                "generate_scenario", "inspect_aut",
-                "spawn_sub_simulation", "extend_simulation",
-                # NOTE: 'respond' intentionally excluded — the orchestrator
-                # should use send_message to probe the AUT, not respond
-                # to narrate its plan. respond causes stalling.
-            },
+            allowed_tools=set(),  # Empty = allow all (SimToolRegistry redirects unknowns)
             forbidden_tools=set(),
             min_confidence_autonomous=0.3,
         ),
