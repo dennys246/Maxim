@@ -44,26 +44,91 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 ## Dependency Graph
 
 ```
-Completed:
-  Repo Cleanup, Loop Modularization, Simulation Agent, LLMWorker Cleanup,
-  Router Modularization, Wave A Stabilization, Wave B Refinement Harness,
-  Realtime Refinement (core), Docker Sandbox Phase A
+                    ┌─────────────────────────────────┐
+                    │    Research Protocol Phase 0    │ (~200 LOC, unblocks half of Agent Mesh)
+                    └──────────────┬──────────────────┘
+                                   ↓
+     ┌─────────────────────┐    ┌──┴──────────────────┐
+     │  Multi-LLM P1-3     │    │  Research Protocol  │
+     │  (local dual-model) │    │  Phases 1-3         │
+     └──────────┬──────────┘    └─────────────────────┘
+                ↓
+     ┌──────────┴──────────┐
+     │  Multi-LLM P4-6     │
+     │  (remote/tunnel)    │
+     └──────────┬──────────┘
+                ↓
+     ┌──────────┴──────────┐      ┌──────────────────────┐
+     │  Multi-LLM P7       │──┬──►│  Agent Mesh P1+      │
+     │  (PeerRegistry)     │  │   │                      │
+     └──────────┬──────────┘  │   └──────────────────────┘
+                ↓             │
+     ┌──────────┴──────────┐  │   ┌──────────────────────┐
+     │  Multi-LLM P8       │  │   │  Embodiment Core     │ (parallel track, independent)
+     │  (per-lane metrics) │  │   │  Phase 0 MVP         │
+     └──────────┬──────────┘  │   └──────────┬───────────┘
+                ↓             │              ↓
+     [Refinement closure]     │   ┌──────────┴───────────┐
+                              │   │  Embodiment Core     │
+                              │   │  (further phases)    │
+                              │   └──────────┬───────────┘
+                              │              ↓
+                              │   ┌──────────┴───────────┐
+                              │   │  Hardware Adapter    │
+                              │   └──────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────────┐
+                    │  DM prerequisites   │
+                    │  all satisfied      │
+                    └──────────┬──────────┘
+                               ↓
+              ┌────────────────┴──────────────────┐
+              │  DM Choice Classifier Spike       │
+              └────────────────┬──────────────────┘
+                               ↓
+              ┌────────────────┴──────────────────┐
+              │  DM MVP → DM Extensions (demand)  │
+              └───────────────────────────────────┘
 
-Next (two parallel tracks):
-  Track 1 — Compute:
-    Multi-LLM Scaling Phases 1-3 (local dual-model)
-      ├── Phases 4-6: Remote + tunnel + auto-spawn
-      ├── Phase 7: PeerRegistry ──► Agent Mesh
-      └── Phase 8: Per-lane metrics ──► Refinement closure
-
-  Track 2 — Coordination:
-    Research Protocol Phase 0 (mesh primitives ~200 LOC)
-      ├── Phases 1-3: Researcher/Writer/Reviewer agents
-      └── (shared primitives feed Agent Mesh Phase 1+)
-
-Optional / independent:
-  Docker Sandbox Phase B, test_record_plan_outcome logic fix
+Optional / independent (ship when demand surfaces):
+  Interactive Sim Prompts, Sim Entity Naming, test_record_plan_outcome fix
 ```
+
+---
+
+## Implementation Sequence (solo-work ordering)
+
+Reassess after each phase — this is a recommended order, not a rigid commitment.
+
+| # | Work | LOC | Rationale |
+|---|------|-----|-----------|
+| 1 | **Embodiment Core Phase 0 MVP** | ~400 | No upstream deps, standalone-valuable, establishes body-state primitives that DM/Mesh inherit |
+| 2 | **Research Protocol Phase 0** | ~200 | Tiny, unblocks Agent Mesh; shared mesh primitives |
+| 3 | **Multi-LLM Phases 1-3** | ~500 | Local dual-model routing; bottleneck for compute scaling |
+| 4 | **Embodiment Core remaining phases** | per plan | Cerebellum forward models, structured failures |
+| 5 | **Multi-LLM Phases 4-6** | per plan | Remote LLM, tunnel, auto-spawn |
+| 6 | **Research Protocol Phases 1-3** | per plan | Researcher/Writer/Reviewer agents |
+| 7 | **Multi-LLM Phase 7 + Agent Mesh Phase 1+** | per plans | Mesh lands (consumes RP + Multi-LLM P7) |
+| 8 | **Multi-LLM Phase 8** | per plan | Per-lane metrics, closes Refinement |
+| 9 | **Embodiment Hardware Adapter** | ~300 | Wraps RobotController for hardware |
+| 10 | **Interactive Sim Prompts** | ~180 | Ship when DM architect or other consumer surfaces |
+| 11 | **Sim Entity Naming** | ~120 | Ship when multi-entity log output becomes painful |
+| 12 | **DM Choice Classifier Spike** | ~150 scratch | Validates ATL+NAc classification path |
+| 13 | **DM MVP** | ~840 | Capstone bio-system stress test |
+| 14 | **DM Extensions** | per-extension | Demand-driven, never speculative |
+
+**Why this order:**
+- Finishes architectural foundations before layering features
+- Embodiment Core before DM so DM's `CharacterState` inherits established body-state patterns
+- Research Protocol Phase 0 early because it's tiny and unblocks mesh
+- Multi-LLM drives the critical path for compute scaling
+- DM comes last as the capstone that validates everything below it
+
+**Parallelism opportunities (if capacity allows):**
+- Embodiment track (1, 4, 9) is fully independent from scaling/coordination tracks
+- Research Protocol (2, 6) can run in parallel to Multi-LLM (3, 5, 7, 8)
+- Optional plans (10, 11) ship opportunistically whenever pain surfaces
 
 ---
 
