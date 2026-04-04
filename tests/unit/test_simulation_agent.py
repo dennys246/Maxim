@@ -293,8 +293,8 @@ class TestSimulationTools:
 
 class TestPersonas:
     def test_all_personas_defined(self):
-        assert len(SIMULATION_PERSONAS) == 7
-        for name in ("adversarial", "cooperative", "confused", "escalating", "campaign", "refinement", "infinite"):
+        assert len(SIMULATION_PERSONAS) == 6
+        for name in ("adversarial", "cooperative", "confused", "escalating", "campaign", "refinement"):
             assert name in SIMULATION_PERSONAS
 
     def test_get_persona(self):
@@ -314,18 +314,26 @@ class TestPersonas:
         names = list_personas()
         assert "adversarial" in names
         assert "campaign" in names
-        assert len(names) == 7
+        assert len(names) == 6
 
     def test_all_personas_have_context_prompt(self):
         for name, persona in SIMULATION_PERSONAS.items():
             assert persona.context_prompt, f"Persona '{name}' has empty context_prompt"
             assert persona.focus, f"Persona '{name}' has empty focus"
 
-    def test_infinite_persona_never_finishes(self):
-        p = get_persona("infinite")
+    def test_continuous_suffix_appended(self):
+        """--continuous appends NEVER STOP instructions to any persona."""
+        p = get_persona("adversarial", continuous=True)
         assert p is not None
         assert "NEVER" in p.context_prompt
         assert "finish_simulation" in p.context_prompt
+
+    def test_continuous_does_not_mutate_original(self):
+        """Continuous mode returns a copy, doesn't modify the original."""
+        original = get_persona("adversarial")
+        continuous = get_persona("adversarial", continuous=True)
+        assert "NEVER" not in original.context_prompt
+        assert "NEVER" in continuous.context_prompt
 
 
 # ── Decomposition tool tests ────────────────────────────────────────────────

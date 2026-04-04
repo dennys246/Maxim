@@ -173,12 +173,12 @@ def start_simulation_mode(
     start_time = time.time()
 
     # ── Validate persona ─────────────────────────────────────────────────
-    persona_strategy = get_persona(persona)
+    persona_strategy = get_persona(persona, continuous=continuous)
     if persona_strategy is None:
         available = ", ".join(list_personas())
         logger.warning("Unknown persona '%s', using '%s'. Available: %s", persona, DEFAULT_PERSONA, available)
         persona = DEFAULT_PERSONA
-        persona_strategy = get_persona(persona)
+        persona_strategy = get_persona(persona, continuous=continuous)
 
     # ── Shared stop event ────────────────────────────────────────────────
     stop_event = threading.Event()
