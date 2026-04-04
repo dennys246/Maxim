@@ -51,13 +51,27 @@ DM turn loop (inside the single sim):
   9. finish_simulation with campaign rollup in report summary
 ```
 
-**Campaign schema (single YAML, ~80 lines for a 5-encounter campaign):**
+**Campaign schema (single YAML, ~120 lines for a 5-encounter campaign):**
 
 ```yaml
 campaign:
   name: "the heist"
   goal: "test moral reasoning under time pressure"
   seed: 42
+  player_character:
+    name: "Derek the Great"
+    race: "human"
+    class: "paladin"
+    level: 3
+    attributes: { str: 16, dex: 12, con: 14, int: 10, wis: 13, cha: 15 }
+    abilities:
+      - { name: "divine_smite", type: "spell", cost: "spell_slot_1", effect: "+2d8 radiant" }
+      - { name: "lay_on_hands", type: "ability", cost: "pool", pool: 15 }
+    inventory:
+      weapons: [{ name: "longsword", damage: "1d8", attr_mod: "str" }]
+      armor: [{ name: "chain_mail", ac: 16 }]
+      items: [holy_symbol, healer_kit]
+    backstory: "Former temple guard; quit after witnessing corruption."
   acts:
     - name: setup
       encounters: [tavern_meet, planning]
@@ -89,14 +103,31 @@ campaign:
   npcs:
     marta:
       attitude: wary
+      race: "half-elf"
+      role: "fence"
+      attributes: { str: 10, dex: 14, con: 11, int: 15, wis: 13, cha: 16 }
+      abilities:
+        - { name: "read_lies", type: "skill", attr_mod: "wis" }
+      inventory: { weapons: [dagger], items: [lockpicks] }
       dialogue:
         default: "Keep your voice down. We don't know you."
         haggler: "You drive a hard bargain. Fine — double the pay."
     guard_captain:
       attitude: hostile
+      race: "human"
+      role: "elite_guard"
+      attributes: { str: 15, dex: 13, con: 14, int: 10, wis: 11, cha: 12 }
+      abilities: []
+      inventory: { weapons: [halberd], armor: [plate_mail] }
       dialogue:
         default: "Halt! State your business."
 ```
+
+**PC and NPCs share the same character schema** — both have attributes, abilities, inventory. This makes NPCs first-class characters (not just dialogue puppets) and lets them participate in dice checks, combat resolution, and ability contests on equal footing with the PC.
+
+**Character sheet injected at campaign start** as a high-salience turn-0 stimulus: *"You are Derek the Great, a human paladin..."* This seeds AUT identity for the whole campaign, gives the bio-stack something concrete to form memories around, and establishes the action space (AUT can only attempt things its character can plausibly do).
+
+**Attributes modify dice rolls** — encounter `dice` blocks reference attribute mods: `{ roll: 1d20+str, dc: 15 }` pulls from the rolling character's STR modifier.
 
 **NPC registry (in-memory, flushed to report):**
 ```python
@@ -115,7 +146,7 @@ campaign:
 ## Implementation (~450 LOC, single phase)
 
 **New files:**
-- `src/maxim/simulation/campaign_schema.py` (~120) — `Campaign`, `Act`, `Encounter`, `NPC`, `DiceCheck` dataclasses + YAML loader + hard-fail validator
+- `src/maxim/simulation/campaign_schema.py` (~160) — `Campaign`, `Act`, `Encounter`, `Character` (shared by PC and NPC), `Attributes`, `Ability`, `Inventory`, `DiceCheck` dataclasses + YAML loader + hard-fail validator + attribute-modified dice resolver
 - `src/maxim/simulation/dm_runtime.py` (~200) — campaign state, NPC registry, choice classifier, branch resolver, seeded RNG (`random.Random(seed)`)
 - `src/maxim/simulation/tools_dm.py` (~60) — minimal DM tools callable by the persona: `advance_encounter`, `record_choice`, `roll_dice`, `get_campaign_state`
 - `tests/unit/test_campaign_schema.py` (~80) — round-trip, dangling branch detection, NPC ref validation
@@ -188,8 +219,8 @@ campaign:
 
 ## File Inventory
 
-**New files (~560 LOC):**
-- `src/maxim/simulation/campaign_schema.py` (~120)
+**New files (~600 LOC):**
+- `src/maxim/simulation/campaign_schema.py` (~160)
 - `src/maxim/simulation/dm_runtime.py` (~200)
 - `src/maxim/simulation/tools_dm.py` (~60)
 - `tests/unit/test_campaign_schema.py` (~80)
