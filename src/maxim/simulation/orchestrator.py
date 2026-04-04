@@ -788,16 +788,14 @@ def start_simulation_mode(
         session_id=report.session_id,
     )
 
-    # LLM-powered roundup — skip on cancel (LLM workers already stopped)
-    if finish_reason != "cancel" and llm_router is not None and not getattr(llm_router, "session_cost_exceeded", False):
+    # LLM-powered roundup (log noise suppressed by WARNING level above)
+    if llm_router is not None and not getattr(llm_router, "session_cost_exceeded", False):
         try:
             print("  Running LLM analysis roundup...")
             analyze_simulation(report, llm_router=llm_router)
             save_report(report, base_dir=report_dir)
         except Exception as e:
-            logger.debug("LLM roundup failed: %s", e)
-    elif finish_reason == "cancel":
-        print("  Skipping LLM roundup (cancelled)")
+            print("  LLM roundup skipped (model unavailable after shutdown)")
     elif llm_router is not None:
         print("  Skipping LLM roundup (session cost ceiling reached)")
 
