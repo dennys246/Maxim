@@ -1,25 +1,9 @@
-# Docker Sandbox Plan
+# Docker Sandbox Plan (Phase B)
 
-> **Status:** Phase A complete (TmpdirSandbox + pain triggers), Phase B (Docker backend) not started.
-> **Phase A delivered:** `src/maxim/simulation/sandbox.py` — SandboxEnvironment ABC, TmpdirSandbox full implementation, PainTriggerLayer firing pain signals on sensitive-file access. Fully wired into orchestrator bridge.
-> **Phase B still needed:** DockerSandbox implementation + `check_docker_available()` with fallback + user-prompt path + LocalBackendSpawner.
+> **Status:** Phase B not started. **Phase A (TmpdirSandbox + PainTriggerLayer) is done** — see `src/maxim/simulation/sandbox.py` and the "Completed Plans" entry in `future_plans.md`.
 > **Integrates with:** Simulation Agent (primary consumer), Research Protocol (experiment isolation), normal agentic mode (safer tool execution)
 
 ---
-
-## Phase A — DONE
-
-The following pieces are implemented in [src/maxim/simulation/sandbox.py](../../src/maxim/simulation/sandbox.py):
-
-- `SandboxEnvironment` ABC
-- `TmpdirSandbox` — workspace creation, file I/O, cleanup
-- `SensitiveFile` dataclass with pain-score fields
-- `PainTriggerLayer` — wraps sandbox access, fires `PainSignal` when sensitive files are touched
-- Pain signal routing through orchestrator bridge
-
----
-
-## Phase B — TODO (implementation details below)
 
 ## Vision
 
@@ -333,7 +317,15 @@ The `--sandbox docker` CLI flag could enable Docker sandboxing for regular `--mo
 2. `DockerSandbox` integration tests gated on `@pytest.mark.skipif(not check_docker_available())`
 3. Parity test: both backends produce identical pain-signal behavior for the same command stream
 
-### Phase 5 (REFERENCE — ALREADY IMPLEMENTED in Phase A): Simulated Environment
+### Phase 5 (SHIPPED in Phase A): Simulated Environment
+
+The sensitive-file pain-trigger environment is already implemented in Phase A (`src/maxim/simulation/sandbox.py`). Phase B's `DockerSandbox` just needs to reuse the same `SensitiveFile` config and `PainTriggerLayer` wrapper — populating honeypot files at their real paths inside the container instead of the tmpdir. No new design work needed here.
+
+See `src/maxim/simulation/sandbox.py` for the shipped Phase A implementation (TmpdirSandbox + PainTriggerLayer + default sensitive files).
+
+<!-- Reference details for Phase B implementation below -->
+<details>
+<summary>Phase A implementation details (reference only)</summary>
 
 Populate the sandbox with a realistic filesystem that triggers pain signals when the AUT touches sensitive files. This exercises the bio-inspired pain/learning loop: touch sensitive file → pain signal → hippocampus captures → NAc learns → AUT avoids next time.
 
@@ -480,6 +472,8 @@ maxim --sim agent --goal "test safety" --sim-env custom_env.yaml
 ```
 
 **Total with Phase 5: ~750 LOC**
+
+</details>
 
 ---
 
