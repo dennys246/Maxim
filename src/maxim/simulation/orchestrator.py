@@ -120,6 +120,109 @@ def _build_resume_prompt(report_data: dict[str, Any], goal: str, persona: str) -
     return "\n".join(lines)
 
 
+def _setup_sim_sandbox(
+    *,
+    backend: str = "auto",
+    image: str = "python:3.12-slim",
+    network: str = "none",
+    populate: bool = True,
+    announce: bool = False,
+) -> tuple[Any, str | None, Any]:
+    """Build the AUT pain bus + sandbox for a simulation run.
+
+    This helper exists to make the ordering contract explicit and
+    testable — the pain bus MUST be created before the sandbox so
+    PainTriggerLayer can route signals through it. A previous bug
+    referenced ``aut_pain_bus`` before it was defined (silently
+    caught by a broad try/except), disabling the sandbox entirely
+    for weeks.
+
+    Args:
+        backend: "auto" (prefer Docker), "docker" (require Docker),
+            or "tmpdir" (force host-side).
+        image: Docker image name for the Docker backend.
+        network: Container network mode ("none" / "bridge" / "host").
+        populate: Whether to populate honeypot environment files.
+        announce: If True, print a visible one-liner to stderr
+            showing the selected backend.
+
+    Returns:
+        (sim_sandbox, sandbox_root, aut_pain_bus). Any element may
+        be ``None`` if creation failed (error logged at WARNING).
+    """
+    # Build the pain bus first — the sandbox's PainTriggerLayer needs it.
+    aut_pain_bus: Any = None
+    try:
+        from maxim.proprioception.pain_bus import PainBus
+        aut_pain_bus = PainBus()
+    except Exception as e:
+        logger.debug("AUT PainBus creation deferred: %s", e)
+
+    sim_sandbox = None
+    sandbox_root: str | None = None
+    try:
+        from maxim.agents.autonomy import AutonomyLevel as _AL
+        from maxim.simulation.sandbox import (
+            ContainerPermissions,
+            DockerSandbox,
+            TmpdirSandbox,
+            create_sandbox,
+            permissions_for_autonomy,
+        )
+        # Simulation runs AUT at AUTONOMOUS (it's sandboxed), which
+        # gets the largest resource envelope. Network is always an
+        # explicit opt-in via the caller's `network` arg.
+        base_perms = permissions_for_autonomy(_AL.AUTONOMOUS)
+        sandbox_perms = ContainerPermissions(
+            memory=base_perms.memory,
+            cpus=base_perms.cpus,
+            pids_limit=base_perms.pids_limit,
+            workspace_readonly=base_perms.workspace_readonly,
+            network=network,
+        )
+        sim_sandbox = create_sandbox(
+            pain_bus=aut_pain_bus,
+            populate=populate,
+            backend=backend,
+            image=image,
+            permissions=sandbox_perms,
+        )
+        sandbox_root = sim_sandbox.workspace_root
+
+        # Report the ACTUAL backend selected (auto may have fallen
+        # through to tmpdir if Docker wasn't reachable).
+        inner = getattr(sim_sandbox, "_sandbox", sim_sandbox)
+        if isinstance(inner, DockerSandbox):
+            actual_backend = f"docker ({image})"
+        elif isinstance(inner, TmpdirSandbox):
+            actual_backend = "tmpdir"
+        else:
+            actual_backend = type(inner).__name__
+
+        if announce:
+            if backend == "auto" and "tmpdir" in actual_backend:
+                print(
+                    "  ⚠  Sandbox: Docker unavailable — falling back to "
+                    "tmpdir (reduced isolation). Install/start Docker "
+                    "Desktop for full container isolation.",
+                    file=sys.stderr, flush=True,
+                )
+            else:
+                print(
+                    f"  ✓  Sandbox: {actual_backend}",
+                    file=sys.stderr, flush=True,
+                )
+        if populate:
+            logger.info(
+                "Simulation sandbox: %s (requested=%s, actual=%s, with pain-triggering files)",
+                sandbox_root, backend, actual_backend,
+            )
+    except Exception as e:
+        logger.warning("Sandbox creation failed: %s", e)
+
+    return sim_sandbox, sandbox_root, aut_pain_bus
+
+
 def start_simulation_mode(
     goal: str,
     persona: str = "adversarial",
@@ -229,75 +332,16 @@ def start_simulation_mode(
     except Exception:
         pass
 
-    # Build AUT's PainBus EARLY so the sandbox can route pain percepts
-    # through it. Hippocampus is subscribed later, once it exists.
-    aut_pain_bus = None
-    try:
-        from maxim.proprioception.pain_bus import PainBus
-        aut_pain_bus = PainBus()
-    except Exception as e:
-        logger.debug("AUT PainBus creation deferred: %s", e)
-
-    # ── Simulation sandbox (created early so tools can be confined to it) ──
-    sim_sandbox = None
-    sandbox_root = None
-    try:
-        from maxim.simulation.sandbox import (
-            ContainerPermissions,
-            create_sandbox,
-            permissions_for_autonomy,
-        )
-        # Scale container resources to AUT autonomy level. Simulation
-        # runs the AUT at AUTONOMOUS (it's sandboxed), which gets the
-        # largest resource envelope. Network is always an explicit opt-in.
-        base_perms = permissions_for_autonomy(AutonomyLevel.AUTONOMOUS)
-        sandbox_perms = ContainerPermissions(
-            memory=base_perms.memory,
-            cpus=base_perms.cpus,
-            pids_limit=base_perms.pids_limit,
-            workspace_readonly=base_perms.workspace_readonly,
-            network=sandbox_network,
-        )
-        sim_sandbox = create_sandbox(
-            pain_bus=aut_pain_bus,
-            populate=not no_sim_env,
-            backend=sandbox_backend,
-            image=sandbox_image,
-            permissions=sandbox_perms,
-        )
-        sandbox_root = sim_sandbox.workspace_root
-        # Report the ACTUAL backend selected (auto may have fallen
-        # through to tmpdir if Docker wasn't reachable).
-        from maxim.simulation.sandbox import DockerSandbox, TmpdirSandbox
-        inner = getattr(sim_sandbox, "_sandbox", sim_sandbox)
-        if isinstance(inner, DockerSandbox):
-            actual_backend = f"docker ({sandbox_image})"
-        elif isinstance(inner, TmpdirSandbox):
-            actual_backend = "tmpdir"
-        else:
-            actual_backend = type(inner).__name__
-        # Visible one-liner to stderr so the user sees it regardless
-        # of log level. Also logs at INFO for sim_logger capture.
-        requested = sandbox_backend
-        if requested == "auto" and "tmpdir" in actual_backend:
-            print(
-                f"  ⚠  Sandbox: Docker unavailable — falling back to tmpdir "
-                f"(reduced isolation). Install/start Docker Desktop for "
-                f"full container isolation.",
-                file=sys.stderr, flush=True,
-            )
-        else:
-            print(
-                f"  ✓  Sandbox: {actual_backend}",
-                file=sys.stderr, flush=True,
-            )
-        if not no_sim_env:
-            logger.info(
-                "Simulation sandbox: %s (requested=%s, actual=%s, with pain-triggering files)",
-                sandbox_root, requested, actual_backend,
-            )
-    except Exception as e:
-        logger.warning("Sandbox creation failed: %s", e)
+    # Build AUT pain bus + sandbox together. The pain bus MUST exist
+    # before the sandbox so PainTriggerLayer can route signals; this
+    # helper enforces that ordering and is independently testable.
+    sim_sandbox, sandbox_root, aut_pain_bus = _setup_sim_sandbox(
+        backend=sandbox_backend,
+        image=sandbox_image,
+        network=sandbox_network,
+        populate=not no_sim_env,
+        announce=True,
+    )
 
     # ── Build AUT pipeline ───────────────────────────────────────────────
     from maxim.environment.filesystem_env import FileSystemEnv

@@ -148,6 +148,17 @@ class TestPermissionsForAutonomy:
 
 
 class TestCheckDockerAvailable:
+    """These tests refresh the docker-available cache with mocked
+    subprocess, which would leak into later tests. The ``_restore_cache``
+    fixture puts a real probe result back after each test."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_cache(self):
+        yield
+        # Re-probe with real subprocess so later tests aren't
+        # stuck with a mocked False/True value.
+        check_docker_available(refresh=True)
+
     def test_not_available_when_docker_missing(self):
         # FileNotFoundError when `docker` binary isn't installed
         with patch("subprocess.run", side_effect=FileNotFoundError):
