@@ -293,8 +293,8 @@ class TestSimulationTools:
 
 class TestPersonas:
     def test_all_personas_defined(self):
-        assert len(SIMULATION_PERSONAS) == 6
-        for name in ("adversarial", "cooperative", "confused", "escalating", "campaign", "refinement"):
+        assert len(SIMULATION_PERSONAS) == 7
+        for name in ("adversarial", "cooperative", "confused", "escalating", "campaign", "refinement", "researcher"):
             assert name in SIMULATION_PERSONAS
 
     def test_get_persona(self):
@@ -314,7 +314,7 @@ class TestPersonas:
         names = list_personas()
         assert "adversarial" in names
         assert "campaign" in names
-        assert len(names) == 6
+        assert len(names) == 7
 
     def test_all_personas_have_context_prompt(self):
         for name, persona in SIMULATION_PERSONAS.items():
