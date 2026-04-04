@@ -191,7 +191,7 @@ Edit `data/util/llm.json` for fine-grained control over LLM behavior:
   "profile": "mistral-7b-instruct-v0.2",
   "max_tokens": 512,
   "temperature": 0.0,
-  "quantization": "int4"
+  "quantization": "Q4_K_M"
 }
 ```
 

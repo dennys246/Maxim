@@ -51,7 +51,7 @@ src/maxim/
   time/             # SCN temporal rhythm indexing
   comms/            # Communication gateway (Twilio SMS/voice)
   integration/      # MemoryHub cross-system coordinator
-  bridges/          # 9 cross-system integration bridges
+  bridges/          # 8 cross-system integration bridges
 
 docs/               # Internal architecture docs
 docs/user/          # User-facing guides

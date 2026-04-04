@@ -145,7 +145,7 @@ The robot responds to voice commands prefixed with a wake word. Recognized wake 
 | "Maxim" | Wake up / activate agentic mode |
 | "Maxim shutdown" | Clean shutdown |
 | "Maxim sleep" | Switch to sleep mode |
-| "Maxim observe" | Switch to reflection mode |
+| "Maxim observe" | Switch strategy to observe |
 | "center" | Center the robot's gaze (available in agentic mode) |
 
 Custom voice commands can be added by editing `data/util/phrase_responses.json`.

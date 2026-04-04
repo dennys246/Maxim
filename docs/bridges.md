@@ -315,7 +315,7 @@ Action Request
       ↓
 FearCircuitBridge.should_block()
       ├── get_risk_adjustment() (learned patterns + associative graph)
-      ├── NAc.predict_outcome() (causal inference)
+      ├── NAc.predict() (causal inference)
       └── Severity scoring with learned adjustment
       ↓
 Combined Risk Score (base + adjustment * nac_factor)
