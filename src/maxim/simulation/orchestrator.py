@@ -258,9 +258,21 @@ def start_simulation_mode(
 
     # Constrain AUT filesystem tools to sandbox tmpdir (if available)
     sandbox_dirs = [sandbox_root, str(sim_tmpdir)] if sandbox_root else None
+
+    # Give the AUT a ResponseOutput so RespondTool is registered.
+    # Without it, LLM timeout fallbacks (which generate respond actions)
+    # fail with "Tool not registered: respond".
+    aut_response_output = None
+    try:
+        from maxim.utils.response_output import ResponseOutput
+        aut_response_output = ResponseOutput(sandbox_path=str(sim_tmpdir))
+    except Exception as e:
+        logger.debug("Failed to create ResponseOutput for AUT: %s", e)
+
     aut_registry = build_tool_registry(
         operational_mode="active",
         allowed_dirs_override=sandbox_dirs,
+        response_output=aut_response_output,
     )
     aut_decision_engine = build_decision_engine()
     aut_agent = MaximAgent()
