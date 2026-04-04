@@ -14,7 +14,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Research Protocol | **Not started** | Local mesh proving ground (3 agents) |
 | Multi-LLM Scaling | **Not started** | Phases 1-3 ready (router modularization done) |
 | Agent Mesh | **Not started** | Phases 1a-1b built by Research Protocol |
-| Realtime Refinement | **~90% done** | InspectAUTTool + 10 introspection tools live; needs refinement persona + metric types |
+| Realtime Refinement | **Core done** | InspectAUTTool, 8 personas, 3 metric expectations, baseline scenario. Per-lane LLM metrics deferred to Multi-LLM Phase 8 |
 | Wave A Stabilization | **Done** | Circular import + bounded queues + atomic-write hardening + silent-except cleanup |
 
 ### Completed Plans

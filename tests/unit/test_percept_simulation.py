@@ -47,6 +47,20 @@ class TestScenarioSource:
         assert len(defn.percepts) == 7
         assert len(defn.expectations) == 2
 
+    def test_load_refinement_baseline_scenario(self):
+        path = _SCENARIOS_DIR / "refinement_baseline.yaml"
+        if not path.exists():
+            pytest.skip("Scenario file not found")
+        defn = load_scenario(path)
+        assert defn.name == "refinement_baseline"
+        # Params should be absorbed for the metric expectations
+        count_range = next(e for e in defn.expectations if e.type == "action_count_range")
+        assert count_range.params["min"] == 3
+        assert count_range.params["max"] == 25
+        latency = next(e for e in defn.expectations if e.type == "response_latency_ms")
+        assert latency.params["p50_max_ms"] == 5000
+        assert latency.params["p95_max_ms"] == 15000
+
     def test_step_based_emission(self):
         path = _SCENARIOS_DIR / "malware_with_pain.yaml"
         if not path.exists():
@@ -226,6 +240,97 @@ class TestValidation:
         exp = Expectation(type="pipeline_continued", after_tag="test_tag")
         results = validate_expectations([exp], sink, emitted_tags={"test_tag"})
         assert results[0].passed
+
+    # ── Metric expectations (refinement harness) ─────────────────────────
+
+    def test_action_count_range_passes(self):
+        sink = RecordingSink()
+        for _ in range(5):
+            sink.record(ActionRecord(timestamp=time.time(), tool_name="RespondTool", result_success=True))
+        exp = Expectation(type="action_count_range", params={"min": 3, "max": 10})
+        results = validate_expectations([exp], sink)
+        assert results[0].passed
+        assert "within" in results[0].detail
+
+    def test_action_count_range_fails_too_few(self):
+        sink = RecordingSink()
+        sink.record(ActionRecord(timestamp=time.time(), tool_name="RespondTool", result_success=True))
+        exp = Expectation(type="action_count_range", params={"min": 3, "max": 10})
+        results = validate_expectations([exp], sink)
+        assert not results[0].passed
+        assert "outside" in results[0].detail
+
+    def test_tool_success_rate_passes(self):
+        sink = RecordingSink()
+        for success in (True, True, True, False):  # 75%
+            sink.record(ActionRecord(timestamp=time.time(), tool_name="RespondTool", result_success=success))
+        exp = Expectation(type="tool_success_rate", tool="RespondTool", params={"min_rate": 0.7})
+        results = validate_expectations([exp], sink)
+        assert results[0].passed
+
+    def test_tool_success_rate_fails_below_threshold(self):
+        sink = RecordingSink()
+        for success in (True, False, False, False):  # 25%
+            sink.record(ActionRecord(timestamp=time.time(), tool_name="RespondTool", result_success=success))
+        exp = Expectation(type="tool_success_rate", tool="RespondTool", params={"min_rate": 0.8})
+        results = validate_expectations([exp], sink)
+        assert not results[0].passed
+        assert "below threshold" in results[0].detail
+
+    def test_tool_success_rate_fails_tool_never_called(self):
+        sink = RecordingSink()
+        exp = Expectation(type="tool_success_rate", tool="MissingTool", params={"min_rate": 0.5})
+        results = validate_expectations([exp], sink)
+        assert not results[0].passed
+        assert "never called" in results[0].detail
+
+    def test_response_latency_ms_passes(self):
+        sink = RecordingSink()
+        base = 1000.0
+        # 4 actions @ 100ms apart → p50 and p95 both == 100ms
+        for i in range(4):
+            sink.record(ActionRecord(timestamp=base + i * 0.1, tool_name="RespondTool", result_success=True))
+        exp = Expectation(
+            type="response_latency_ms",
+            params={"p50_max_ms": 200, "p95_max_ms": 200, "min_samples": 2},
+        )
+        results = validate_expectations([exp], sink)
+        assert results[0].passed
+        assert "Latency OK" in results[0].detail
+
+    def test_response_latency_ms_fails_p95(self):
+        sink = RecordingSink()
+        base = 1000.0
+        # Introduce one slow gap: 100ms, 100ms, 5000ms
+        for ts in (base, base + 0.1, base + 0.2, base + 5.2):
+            sink.record(ActionRecord(timestamp=ts, tool_name="RespondTool", result_success=True))
+        exp = Expectation(
+            type="response_latency_ms",
+            params={"p95_max_ms": 1000, "min_samples": 2},
+        )
+        results = validate_expectations([exp], sink)
+        assert not results[0].passed
+        assert "p95" in results[0].detail
+
+    def test_response_latency_ms_insufficient_samples(self):
+        sink = RecordingSink()
+        sink.record(ActionRecord(timestamp=time.time(), tool_name="RespondTool", result_success=True))
+        exp = Expectation(
+            type="response_latency_ms",
+            params={"p50_max_ms": 1000, "min_samples": 3},
+        )
+        results = validate_expectations([exp], sink)
+        assert not results[0].passed
+        assert "need >= 3" in results[0].detail
+
+    def test_response_latency_ms_no_thresholds(self):
+        sink = RecordingSink()
+        for i in range(3):
+            sink.record(ActionRecord(timestamp=time.time() + i, tool_name="RespondTool", result_success=True))
+        exp = Expectation(type="response_latency_ms", params={})
+        results = validate_expectations([exp], sink)
+        assert not results[0].passed
+        assert "No thresholds" in results[0].detail
 
 
 # ── Pain routing integration ─────────────────────────────────────────────

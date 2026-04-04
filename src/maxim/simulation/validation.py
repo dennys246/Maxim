@@ -76,6 +76,8 @@ def validate_expectations(
             results.append(_check_action_count_range(exp, sink))
         elif exp.type == "tool_success_rate":
             results.append(_check_tool_success_rate(exp, sink))
+        elif exp.type == "response_latency_ms":
+            results.append(_check_response_latency_ms(exp, sink))
         else:
             results.append(
                 ExpectationResult(
@@ -219,3 +221,66 @@ def _check_tool_success_rate(exp: Expectation, sink: RecordingSink) -> Expectati
         detail=f"Tool {tool!r} success rate {rate:.0%} ({successes}/{len(matching)}) "
         f"{'meets' if passed else 'below'} threshold {min_rate:.0%}",
     )
+
+
+def _check_response_latency_ms(exp: Expectation, sink: RecordingSink) -> ExpectationResult:
+    """Check inter-action latency percentiles against thresholds.
+
+    Computes the gap between consecutive action timestamps (in milliseconds)
+    and compares p50 / p95 against the configured caps. This is a proxy for
+    per-action response latency — it's the actual wall-clock gap between the
+    pipeline producing one tool call and the next.
+
+    Params:
+        p50_max_ms: optional float — p50 must be <= this
+        p95_max_ms: optional float — p95 must be <= this
+        min_samples: optional int (default 2) — skip check if fewer actions
+    """
+    actions = sink.actions
+    min_samples = int(exp.params.get("min_samples", 2))
+    if len(actions) < min_samples:
+        return ExpectationResult(
+            expectation=exp,
+            passed=False,
+            detail=f"Only {len(actions)} action(s) recorded; need >= {min_samples} for latency",
+        )
+
+    # Inter-action gaps in ms
+    gaps_ms = [
+        (actions[i].timestamp - actions[i - 1].timestamp) * 1000.0
+        for i in range(1, len(actions))
+    ]
+    gaps_ms.sort()
+
+    def _percentile(p: float) -> float:
+        if not gaps_ms:
+            return 0.0
+        idx = min(len(gaps_ms) - 1, int(round(p * (len(gaps_ms) - 1))))
+        return gaps_ms[idx]
+
+    p50 = _percentile(0.50)
+    p95 = _percentile(0.95)
+
+    p50_cap = exp.params.get("p50_max_ms")
+    p95_cap = exp.params.get("p95_max_ms")
+
+    failures = []
+    if p50_cap is not None and p50 > float(p50_cap):
+        failures.append(f"p50={p50:.0f}ms > {float(p50_cap):.0f}ms")
+    if p95_cap is not None and p95 > float(p95_cap):
+        failures.append(f"p95={p95:.0f}ms > {float(p95_cap):.0f}ms")
+
+    if p50_cap is None and p95_cap is None:
+        return ExpectationResult(
+            expectation=exp,
+            passed=False,
+            detail="No thresholds set (provide p50_max_ms and/or p95_max_ms)",
+        )
+
+    passed = not failures
+    if passed:
+        detail = f"Latency OK (p50={p50:.0f}ms, p95={p95:.0f}ms, n={len(gaps_ms)})"
+    else:
+        detail = "; ".join(failures) + f" (n={len(gaps_ms)})"
+
+    return ExpectationResult(expectation=exp, passed=passed, detail=detail)
