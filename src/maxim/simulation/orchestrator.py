@@ -633,21 +633,13 @@ def start_simulation_mode(
     aut_executor = build_executor(aut_registry)
     orch_executor = build_executor(orch_registry)
 
-    # Wrap AUT executor with FearGatedExecutor for safety review
-    try:
-        from maxim.agents.fear_agent import FearAgent
-        from maxim.runtime.fear_gate import FearGatedExecutor
-
-        llm_for_fear = llm_router  # Share LLM for code analysis
-        fear_agent = FearAgent(llm=llm_for_fear)
-        aut_executor = FearGatedExecutor(aut_executor, fear_agent)
-        logger.info("AUT FearGatedExecutor active — all tool calls reviewed by FearAgent")
-    except Exception as e:
-        logger.warning("Failed to wire FearGatedExecutor for AUT: %s", e)
-
-    # Wire NAc causal learning to tool outcomes. Without this, NAc
-    # never sees event→outcome pairs and causal_links stays at 0.
-    # Mirrors the production wiring in conscience/agentic_runtime.py.
+    # Wire NAc causal learning to tool outcomes BEFORE wrapping with
+    # FearGatedExecutor. The inner executor (runtime/executor.py)
+    # reads self._tool_pain_bridge on each execute() call, so the
+    # bridge MUST sit on the inner executor — not on a wrapper.
+    # Without this, NAc never sees event→outcome pairs and
+    # causal_links stays at 0. Mirrors production wiring in
+    # conscience/agentic_runtime.py.
     try:
         from maxim.bridges.tool_pain_bridge import ToolPainBridge
         if aut_nac is not None:
@@ -658,13 +650,25 @@ def start_simulation_mode(
                 hippocampus=aut_hippocampus,
                 tool_index=None,
             )
-            # ToolPainBridge reads _tool_pain_bridge from the executor
-            # on each execute() call — so wrapping with FearGatedExecutor
-            # means we attach to the outer (wrapping) executor.
             aut_executor._tool_pain_bridge = aut_tool_pain_bridge
             logger.info("AUT ToolPainBridge wired — NAc will learn tool outcomes")
     except Exception as e:
         logger.warning("Failed to wire ToolPainBridge for AUT: %s", e)
+
+    # Wrap AUT executor with FearGatedExecutor for safety review.
+    # NOTE: this MUST come after ToolPainBridge wiring so the bridge
+    # lives on the inner executor where record_tool_start/complete
+    # are actually invoked.
+    try:
+        from maxim.agents.fear_agent import FearAgent
+        from maxim.runtime.fear_gate import FearGatedExecutor
+
+        llm_for_fear = llm_router  # Share LLM for code analysis
+        fear_agent = FearAgent(llm=llm_for_fear)
+        aut_executor = FearGatedExecutor(aut_executor, fear_agent)
+        logger.info("AUT FearGatedExecutor active — all tool calls reviewed by FearAgent")
+    except Exception as e:
+        logger.warning("Failed to wire FearGatedExecutor for AUT: %s", e)
 
     # ── Print simulation banner ──────────────────────────────────────────
     print(f"\n{'='*60}")
