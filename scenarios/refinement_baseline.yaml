@@ -1,0 +1,102 @@
+name: refinement_baseline
+description: |
+  Regression baseline for the refinement harness. Drives the agent through
+  a short, deterministic battery of inputs and asserts metric thresholds on
+  action count, tool success rate, and inter-action latency.
+
+  This scenario should pass on a healthy build. If it regresses, inspect
+  the actions.jsonl + hippocampus dump in data/sim_reports/ to diagnose.
+
+  Paired with the `refinement` persona (src/maxim/simulation/personas.py)
+  for LLM-driven variants; this YAML path is the deterministic guardrail.
+
+timing: step_based
+
+percepts:
+  # Warm-up: simple question
+  - at: 0
+    source: cli
+    cli_input: "What tools do you have available?"
+    salience: 0.4
+    novelty: 0.6
+    metadata:
+      scenario_tag: warmup
+      phase: "1_warmup"
+
+  # Memory probe: establish a fact the agent should recall later
+  - at: 2
+    source: cli
+    cli_input: "Remember that my favorite color is blue."
+    salience: 0.6
+    novelty: 0.5
+    metadata:
+      scenario_tag: memory_write
+      phase: "2_memory"
+
+  # Tool-exercise: ask for something that should route through a real tool
+  - at: 4
+    source: cli
+    cli_input: "List the files in the current working directory."
+    salience: 0.5
+    novelty: 0.4
+    metadata:
+      scenario_tag: tool_exercise
+      phase: "3_tools"
+
+  # Recall: test that the earlier fact survived
+  - at: 6
+    source: cli
+    cli_input: "What is my favorite color?"
+    salience: 0.6
+    novelty: 0.3
+    metadata:
+      scenario_tag: memory_recall
+      phase: "4_recall"
+
+  # Cooldown: give the pipeline time to finish any background work
+  - at: 8
+    source: cli
+    cli_input: "Thanks, that's all for now."
+    salience: 0.3
+    novelty: 0.2
+    metadata:
+      scenario_tag: cooldown
+      phase: "5_cooldown"
+
+expectations:
+  # The agent should respond to each of the 5 prompts. Allow some slack
+  # for retries or multi-step tool chains, but catch pathological loops.
+  - type: action_count_range
+    description: "Agent takes 3-25 actions (1 per turn, plus tool chains)"
+    params:
+      min: 3
+      max: 25
+
+  # Response tool should almost always succeed — this catches regressions
+  # where the responder errors out or returns malformed output.
+  - type: tool_success_rate
+    description: "RespondTool success rate >= 80%"
+    tool: RespondTool
+    params:
+      min_rate: 0.8
+
+  # Inter-action latency guardrail. Values are deliberately generous to
+  # avoid flakes on slow CI; tighten as you establish local baselines.
+  - type: response_latency_ms
+    description: "p50 inter-action latency < 5s, p95 < 15s"
+    params:
+      p50_max_ms: 5000
+      p95_max_ms: 15000
+      min_samples: 3
+
+  # Memory formation check — the "favorite color" fact should capture
+  # into the hippocampus when the agent processes it.
+  - type: memory_formed
+    memory_contains: "blue"
+    description: "Hippocampus captured the favorite-color fact"
+
+  # Pipeline liveness — the pipeline should continue past the memory
+  # write (i.e. not halt mid-scenario).
+  - type: pipeline_continued
+    after_tag: memory_write
+    description: "Pipeline continues past the memory-write turn"

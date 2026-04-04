@@ -68,6 +68,19 @@ def load_scenario(path: Path) -> ScenarioDefinition:
         if not exp_type:
             logger.warning("Expectation missing 'type' field, skipping: %s", exp_raw)
             continue
+        # Metric expectations (action_count_range, tool_success_rate,
+        # response_latency_ms) carry their thresholds in a `params` dict
+        # so the Expectation schema stays stable as new metrics are added.
+        # For YAML ergonomics, we also auto-absorb any unknown top-level
+        # keys into params.
+        known_keys = {
+            "type", "description", "tool_pattern", "reason_contains",
+            "tool", "output_matches", "memory_contains", "min_tier",
+            "after_tag", "params",
+        }
+        extra_params = {k: v for k, v in exp_raw.items() if k not in known_keys}
+        params = {**(exp_raw.get("params") or {}), **extra_params}
+
         expectations.append(
             Expectation(
                 type=exp_type,
@@ -79,6 +92,7 @@ def load_scenario(path: Path) -> ScenarioDefinition:
                 memory_contains=exp_raw.get("memory_contains"),
                 min_tier=exp_raw.get("min_tier"),
                 after_tag=exp_raw.get("after_tag"),
+                params=params,
             )
         )
 

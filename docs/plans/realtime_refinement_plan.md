@@ -1,6 +1,8 @@
 # Realtime Refinement Plan
 
-> **Status:** ~90% done. `InspectAUTTool` + 10 introspection tools are implemented and wired. Remaining: 6th "refinement" persona + metric-expectation types (~50 LOC).
+> **Status:** Core complete. `InspectAUTTool` + 10 introspection tools wired; `refinement` persona live (plus `researcher` and `sweep`); metric expectation types (`action_count_range`, `tool_success_rate`, `response_latency_ms`) implemented with YAML loader support; `scenarios/refinement_baseline.yaml` provides a deterministic regression baseline.
+>
+> **Outstanding (deferred):** per-lane LLM metrics (blocked on Multi-LLM Phase 8), LLM-driven turn pinning, aggregate metrics for edit disambiguation.
 
 ## Vision
 
@@ -17,7 +19,9 @@ The key insight: the orchestrator already plans, adapts, and learns. Give it rea
 | Provenance traces (Tier 1 + 2) | Ready | ExplainTool, session JSONL |
 | 10 introspection tools | Ready | memory_recall, causal_links, predict_outcome, pain_history, temporal_patterns, concept_query, similarity_search, scene_summary, energy_status, system_stats |
 | Simulation agent + 7 tools | Ready | send_message, observe_actions, check_completion, analyze_results, inject_pain, generate_scenario, finish_simulation |
-| 5 personas | Ready | adversarial, cooperative, confused, escalating, campaign |
+| 8 personas | Ready | adversarial, cooperative, confused, escalating, campaign, refinement, researcher, sweep |
+| Metric expectation types | Ready | action_count_range, tool_success_rate, response_latency_ms (validation.py) |
+| Refinement baseline scenario | Ready | scenarios/refinement_baseline.yaml |
 | NAc causal learning | Ready | predict_outcome, causal_links introspection |
 | LLM cost/token tracking | Ready | CostTracker (USD), LLMEnergyTracker (tokens) |
 | Bio-subsystem tracing | Ready | sim_logger JSONL + terminal output |
