@@ -342,6 +342,17 @@ def build_primary_router(
     from maxim.runtime.lane_models import apply_lane_env_overrides, build_lane_model_config
     from maxim.runtime.worker_pool import DEFAULT_LANES
 
+    # Peer-config auto-load: if ~/.config/maxim/peer.yml exists and env vars
+    # aren't already set, populate them from the file. Set by
+    # `maxim peer connect`. Env wins over file for per-session overrides.
+    try:
+        from maxim.peer.config import apply_peer_config_to_env, read_peer_config
+        peer_cfg = read_peer_config()
+        if peer_cfg is not None:
+            apply_peer_config_to_env(peer_cfg)
+    except Exception:
+        pass
+
     if capabilities is None:
         has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
         capabilities = RuntimeCapabilities(
@@ -569,13 +580,18 @@ def _maybe_auto_spawn_server(
         n_gpu_layers=infer_cfg.n_gpu_layers,
         api_key=api_key,
     )
+    try:
+        timeout_s = float(os.environ.get("MAXIM_AUTO_SPAWN_TIMEOUT_S", "120.0"))
+    except ValueError:
+        timeout_s = 120.0
     if logger is not None:
         auth_note = " (auth=on)" if api_key else ""
         logger.info(
-            "Auto-spawning llama-cpp-server (model=%s port=%d host=%s role=%s)%s",
-            Path(model_path).name, port, role_decision.bind_host, role_decision.role, auth_note,
+            "Auto-spawning llama-cpp-server (model=%s port=%d host=%s role=%s timeout=%ds)%s",
+            Path(model_path).name, port, role_decision.bind_host, role_decision.role,
+            int(timeout_s), auth_note,
         )
-    url = spawner.start()
+    url = spawner.start(timeout_s=timeout_s)
     if url is None:
         if logger is not None:
             logger.warning("Auto-spawn failed; falling back to in-process inference")
@@ -591,7 +607,57 @@ def _maybe_auto_spawn_server(
         remote_model=infer_cfg.model_profile,
         remote_api_key=infer_api_key,
     )
+
+    # Leader mode: also auto-spawn the cloudflared daemon alongside the LLM
+    # server, so `maxim` on the leader brings up the full stack in one
+    # command. No-op when daemon is already running (systemd service, etc.).
+    if role_decision.role == "leader":
+        _maybe_auto_spawn_tunnel_daemon(logger)
     return out
+
+
+def _maybe_auto_spawn_tunnel_daemon(logger: Any | None) -> None:
+    """Spawn the cloudflared tunnel daemon if leader mode + config + no daemon running.
+
+    Opt out with MAXIM_AUTO_SPAWN_TUNNEL=0.
+    """
+    if os.environ.get("MAXIM_AUTO_SPAWN_TUNNEL", "").strip().lower() in (
+        "0", "false", "f", "no", "n", "off",
+    ):
+        return
+    try:
+        from maxim.tunnel.daemon_spawner import (
+            TunnelDaemonSpawner,
+            cloudflared_already_running,
+            resolve_config_path,
+        )
+    except Exception:
+        return
+    if cloudflared_already_running():
+        if logger is not None:
+            logger.info(
+                "Cloudflared daemon already running — skipping auto-spawn "
+                "(managed elsewhere, e.g. systemd service)"
+            )
+        return
+    config_path = resolve_config_path()
+    if config_path is None:
+        if logger is not None:
+            logger.debug(
+                "Tunnel auto-spawn skipped: no ~/.cloudflared/config.yml or "
+                "/etc/cloudflared/config.yml found."
+            )
+        return
+    spawner = TunnelDaemonSpawner(config_path=config_path)
+    if logger is not None:
+        logger.info("Auto-spawning cloudflared tunnel daemon (config=%s)", config_path)
+    if not spawner.start():
+        if logger is not None:
+            logger.warning(
+                "Cloudflared daemon auto-spawn failed — tunnel will not be active "
+                "until you start it manually: cloudflared --config %s tunnel run",
+                config_path,
+            )
 
 
 def _print_lane_banner(manager: "LaneBackendManager") -> None:

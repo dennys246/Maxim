@@ -29,7 +29,12 @@ from maxim.utils.gpu_compat import get_original_cuda_devices
 
 DEFAULT_PORT = 8100
 DEFAULT_N_CTX = 8192
-READINESS_TIMEOUT_S = 60.0
+# 120s default — llama-cpp-server loads the model BEFORE binding HTTP, so
+# health-check can't succeed until VRAM is populated. 60s is sometimes too
+# tight on machines where the parent Maxim process is simultaneously
+# initializing TF/PyTorch CUDA contexts, competing for GPU + disk.
+# Override with MAXIM_AUTO_SPAWN_TIMEOUT_S.
+READINESS_TIMEOUT_S = 120.0
 READINESS_POLL_INTERVAL_S = 0.5
 
 
