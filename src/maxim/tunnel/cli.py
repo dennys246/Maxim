@@ -1,0 +1,412 @@
+"""`maxim tunnel` subcommand handler.
+
+Three actions:
+  setup   — guided interactive setup: login, create tunnel, DNS route, write config.yml
+  status  — show what's currently configured
+  start   — launch cloudflared tunnel run as a foreground process (optional)
+"""
+from __future__ import annotations
+
+import subprocess
+import sys
+from collections.abc import Sequence
+
+from maxim.tunnel.cloudflared import (
+    CloudflaredNotInstalled,
+    cloudflared_version,
+    find_cloudflared,
+    find_tunnel_credentials,
+    install_hint,
+    require_cloudflared,
+    run_tunnel_create,
+    run_tunnel_login,
+    run_tunnel_route_dns,
+)
+from maxim.tunnel.config import (
+    CONFIG_PATH,
+    TunnelConfig,
+    config_exists,
+    read_config_summary,
+    write_config_yml,
+)
+from maxim.tunnel.keys import (
+    ENV_VAR,
+    ensure_key,
+    format_all_snippets,
+    key_exists,
+    key_file_path,
+    read_key,
+    rotate_key,
+    truncate_for_display,
+)
+
+
+USAGE = """\
+Usage: maxim tunnel <action> [options]
+
+Actions:
+  setup        Guided interactive tunnel setup (login, create, DNS, config.yml)
+  status       Show current tunnel configuration
+  start        Run cloudflared tunnel daemon in the foreground
+  key show     Print the current Maxim API key
+  key rotate   Generate a new API key (invalidates peers)
+  key export   Print copy-paste shell snippets for peers to set the key
+
+Once `setup` completes, subsequent `maxim` runs auto-detect ~/.cloudflared/config.yml
+and promote this machine to leader mode. Peers can point at your tunnel URL using
+the API key from `key export`.
+"""
+
+
+DEFAULT_TUNNEL_NAME = "maxim-llm"
+DEFAULT_LOCAL_PORT = 8100
+
+
+def run_tunnel_subcommand(argv: Sequence[str]) -> int:
+    if not argv or argv[0] in ("-h", "--help"):
+        print(USAGE)
+        return 0 if argv else 2
+    action = argv[0]
+    if action == "setup":
+        return _cmd_setup()
+    if action == "status":
+        return _cmd_status()
+    if action == "start":
+        return _cmd_start(list(argv[1:]))
+    if action == "key":
+        return _cmd_key(list(argv[1:]))
+    print(f"Unknown action: {action}\n\n{USAGE}", file=sys.stderr)
+    return 2
+
+
+# ─── setup ────────────────────────────────────────────────────────────────
+
+def _cmd_setup() -> int:
+    print("─" * 62)
+    print("  Maxim tunnel setup — guided cloudflared configuration")
+    print("─" * 62)
+    print()
+
+    # 1. Binary check
+    cloudflared = find_cloudflared()
+    if cloudflared is None:
+        print("✗ cloudflared binary not found on PATH.")
+        print()
+        print("Install it first:")
+        print(install_hint())
+        print()
+        print("Then re-run `maxim tunnel setup`.")
+        return 1
+    version = cloudflared_version() or "(unknown version)"
+    print(f"✓ cloudflared found: {cloudflared} — {version}")
+    print()
+
+    # 2. Existing config check
+    if config_exists():
+        existing = read_config_summary() or {}
+        print(f"! {CONFIG_PATH} already exists:")
+        for k, v in existing.items():
+            print(f"    {k}: {v}")
+        print()
+        answer = _prompt("Overwrite existing config? [y/N]: ", default="n").strip().lower()
+        if answer not in ("y", "yes"):
+            print("Aborted. Nothing changed.")
+            return 1
+        print()
+
+    # 3. Cloudflare auth
+    print("Step 1/4 — Authenticate with Cloudflare (browser opens)")
+    print("  cloudflared will print a URL; click 'Authorize' on the domain you want to use.")
+    print()
+    _prompt("Press Enter to continue (or Ctrl+C to abort)...", default="")
+    print()
+    exit_code = run_tunnel_login()
+    if exit_code != 0:
+        print(f"✗ cloudflared tunnel login failed (exit code {exit_code}).")
+        return 1
+    print("✓ Cloudflare authenticated.")
+    print()
+
+    # 4. Create tunnel
+    tunnel_name = _prompt(
+        f"Step 2/4 — Tunnel name [{DEFAULT_TUNNEL_NAME}]: ",
+        default=DEFAULT_TUNNEL_NAME,
+    ).strip() or DEFAULT_TUNNEL_NAME
+    print()
+    print(f"Creating tunnel '{tunnel_name}'...")
+    code, output = run_tunnel_create(tunnel_name)
+    if code != 0:
+        # Common case: tunnel already exists. Tell user but continue.
+        if "already exists" in output.lower() or "tunnel with name" in output.lower():
+            print(f"! Tunnel '{tunnel_name}' already exists — reusing it.")
+        else:
+            print(f"✗ Failed to create tunnel:\n{output}")
+            return 1
+    else:
+        print(f"✓ Tunnel '{tunnel_name}' created.")
+    print()
+
+    # Locate the credentials file
+    cred_file = find_tunnel_credentials(tunnel_name)
+    if cred_file is None:
+        print(
+            f"✗ Could not locate credentials file for '{tunnel_name}' in ~/.cloudflared/.\n"
+            f"  Run `cloudflared tunnel list` to inspect, then re-run `maxim tunnel setup`."
+        )
+        return 1
+    print(f"✓ Found credentials: {cred_file}")
+    print()
+
+    # Extract tunnel UUID from credentials filename
+    tunnel_id = cred_file.stem
+
+    # 5. DNS route
+    hostname = _prompt(
+        "Step 3/4 — Hostname (e.g. maxim.yourdomain.com): ",
+        default="",
+    ).strip()
+    if not hostname:
+        print("✗ Hostname required. Aborted.")
+        return 1
+    print()
+    print(f"Routing DNS: {hostname} → tunnel '{tunnel_name}'...")
+    code, output = run_tunnel_route_dns(tunnel_name, hostname)
+    if code != 0:
+        # Could be already-routed; surface the output but continue
+        if "already exists" in output.lower() or "already resolves" in output.lower():
+            print(f"! DNS route for {hostname} already exists — reusing it.")
+        else:
+            print(f"✗ DNS route failed:\n{output}")
+            print("  (If you need to change an existing route, use the Cloudflare dashboard.)")
+            return 1
+    else:
+        print(f"✓ DNS routed: {hostname}")
+    print()
+
+    # 6. Choose local port + write config
+    port_raw = _prompt(
+        f"Step 4/4 — Local server port [{DEFAULT_LOCAL_PORT}]: ",
+        default=str(DEFAULT_LOCAL_PORT),
+    ).strip() or str(DEFAULT_LOCAL_PORT)
+    try:
+        port = int(port_raw)
+    except ValueError:
+        port = DEFAULT_LOCAL_PORT
+    print()
+
+    cfg = TunnelConfig(
+        tunnel_id=tunnel_id,
+        credentials_file=str(cred_file),
+        hostname=hostname,
+        local_service=f"http://localhost:{port}",
+    )
+    try:
+        path = write_config_yml(cfg, overwrite=True)
+    except OSError as e:
+        print(f"✗ Failed to write config: {e}")
+        return 1
+    print(f"✓ Wrote {path}")
+    print()
+
+    # 7. Generate API key if not present
+    key = ensure_key()
+    print(f"✓ API key ready at {key_file_path()}")
+    print(f"  {truncate_for_display(key)}")
+    print()
+
+    # 8. Summary
+    print("─" * 62)
+    print("  Setup complete")
+    print("─" * 62)
+    print(f"  Tunnel:    {tunnel_name} ({tunnel_id})")
+    print(f"  Hostname:  https://{hostname}")
+    print(f"  Local:     http://localhost:{port}")
+    print(f"  API key:   {truncate_for_display(key)}")
+    print()
+    print("Next steps:")
+    print("  1. Test the tunnel in the foreground first:")
+    print(f"       cloudflared tunnel run {tunnel_name}")
+    print("     (leave it running; Ctrl+C to stop)")
+    print()
+    print("     Once that works, install as a system service (runs on boot):")
+    print(f"       sudo cloudflared --config {CONFIG_PATH} service install")
+    print("       # NOTE: --config is required because sudo changes HOME to /root,")
+    print("       #       so cloudflared can't find the config at ~/.cloudflared/config.yml")
+    print()
+    print("  2. Start Maxim normally — leader mode auto-detects the config + API key:")
+    print("       maxim")
+    print()
+    print("  3. Share the API key with peers via a secure channel, then:")
+    print("       maxim tunnel key export     # on this machine — shows copy-paste snippets")
+    print()
+    print(f"  4. On each peer:")
+    print(f"       export MAXIM_LANE_INFER_REMOTE_URL=https://{hostname}/v1")
+    print(f'       export {ENV_VAR}="<key-shared-securely>"')
+    print("       export MAXIM_MAX_CLOUD_LANES=1")
+    print("       maxim")
+    print("─" * 62)
+    return 0
+
+
+# ─── status ───────────────────────────────────────────────────────────────
+
+def _cmd_status() -> int:
+    print("─" * 62)
+    print("  Maxim tunnel status")
+    print("─" * 62)
+
+    cloudflared = find_cloudflared()
+    if cloudflared is None:
+        print("  cloudflared: ✗ not installed")
+        print()
+        print("  Install:")
+        print("  " + install_hint().replace("\n", "\n  "))
+        return 1
+    version = cloudflared_version() or "(unknown)"
+    print(f"  cloudflared: ✓ {cloudflared} — {version}")
+
+    summary = read_config_summary()
+    if summary is None:
+        print(f"  config.yml:  ✗ not found at {CONFIG_PATH}")
+        print()
+        print("  Run: maxim tunnel setup")
+        return 1
+    print(f"  config.yml:  ✓ {CONFIG_PATH}")
+    for k, v in summary.items():
+        print(f"    {k}: {v}")
+
+    # Check if the tunnel daemon is running by looking for cloudflared processes.
+    daemon_running = _is_daemon_running()
+    print(f"  daemon:      {'✓ running' if daemon_running else '✗ not running'}")
+    if not daemon_running:
+        print()
+        tunnel_id = summary.get("tunnel", "")
+        hint_name = tunnel_id or "<tunnel-name>"
+        print(f"  Start with:  cloudflared tunnel run {hint_name}")
+        print(f"  Or install:  sudo cloudflared --config {CONFIG_PATH} service install")
+    print("─" * 62)
+    return 0
+
+
+def _is_daemon_running() -> bool:
+    """Best-effort check: look for a cloudflared process with 'tunnel run'."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-af", "cloudflared.*tunnel.*run"],
+            capture_output=True, text=True, timeout=2.0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+# ─── start ────────────────────────────────────────────────────────────────
+
+def _cmd_start(extra_args: list[str]) -> int:
+    """Run `cloudflared tunnel run` in the foreground.
+
+    Useful for testing before installing as a service. Inherits stdout/stderr
+    so the user sees connection logs directly.
+    """
+    summary = read_config_summary()
+    if summary is None:
+        print("✗ No tunnel configured. Run `maxim tunnel setup` first.", file=sys.stderr)
+        return 1
+    try:
+        cloudflared = require_cloudflared()
+    except CloudflaredNotInstalled as e:
+        print(f"✗ {e}", file=sys.stderr)
+        return 1
+    # Use the tunnel UUID from config.yml as the identifier
+    tunnel_id = summary.get("tunnel", "")
+    if not tunnel_id:
+        print("✗ config.yml missing 'tunnel:' field.", file=sys.stderr)
+        return 1
+    print(f"Starting cloudflared tunnel: {tunnel_id}")
+    print("(Ctrl+C to stop)")
+    print()
+    cmd = [cloudflared, "tunnel", "run", tunnel_id] + extra_args
+    try:
+        return subprocess.call(cmd)
+    except KeyboardInterrupt:
+        print("\nStopped.")
+        return 0
+
+
+# ─── key ──────────────────────────────────────────────────────────────────
+
+def _cmd_key(subargs: list[str]) -> int:
+    if not subargs:
+        print("Usage: maxim tunnel key <show|rotate|export>", file=sys.stderr)
+        return 2
+    action = subargs[0]
+    if action == "show":
+        return _cmd_key_show()
+    if action == "rotate":
+        return _cmd_key_rotate()
+    if action == "export":
+        return _cmd_key_export()
+    print(f"Unknown key action: {action}", file=sys.stderr)
+    return 2
+
+
+def _cmd_key_show() -> int:
+    key = read_key()
+    if key is None:
+        print(f"No API key set. File: {key_file_path()}")
+        print("Run: maxim tunnel key rotate")
+        return 1
+    print(f"Key file:   {key_file_path()}")
+    print(f"Key:        {key}")
+    print(f"Truncated:  {truncate_for_display(key)}")
+    print()
+    print("Share with peers via a secure channel (Signal, encrypted email, etc.)")
+    print("They'll set it with: maxim tunnel key export")
+    return 0
+
+
+def _cmd_key_rotate() -> int:
+    had_key = key_exists()
+    old_display = truncate_for_display(read_key() or "")
+    key = rotate_key()
+    print(f"✓ Generated new API key: {truncate_for_display(key)}")
+    print(f"  Saved to: {key_file_path()}")
+    if had_key:
+        print()
+        print(f"⚠ Previous key ({old_display}) is now invalid.")
+        print("  Peers using the old key will get 401 errors until you share the new one.")
+        print("  Restart `maxim` on the leader machine to pick up the new key.")
+    print()
+    print("Run `maxim tunnel key export` for peer setup snippets.")
+    return 0
+
+
+def _cmd_key_export() -> int:
+    key = read_key()
+    if key is None:
+        print("No API key set. Run: maxim tunnel key rotate")
+        return 1
+    print("─" * 62)
+    print("  Share the snippet below matching your shell / OS.")
+    print("─" * 62)
+    print()
+    print(format_all_snippets(key))
+    print()
+    print("─" * 62)
+    print("  After setting the env var, the peer can connect:")
+    print("    maxim")
+    print("─" * 62)
+    return 0
+
+
+# ─── helpers ──────────────────────────────────────────────────────────────
+
+def _prompt(msg: str, *, default: str) -> str:
+    try:
+        answer = input(msg)
+    except EOFError:
+        return default
+    return answer if answer else default
+
+
+__all__ = ["run_tunnel_subcommand"]
