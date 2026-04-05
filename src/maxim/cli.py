@@ -450,6 +450,17 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
 
+    # Subcommand dispatch — intercepts positional subcommands before argparse.
+    if raw_argv and raw_argv[0] == "tunnel":
+        from maxim.tunnel import run_tunnel_subcommand
+        return run_tunnel_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "doctor":
+        from maxim.doctor import run_doctor_subcommand
+        return run_doctor_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "peer":
+        from maxim.doctor import run_peer_subcommand
+        return run_peer_subcommand(raw_argv[1:])
+
     # Handle --last, --show-last, --clear-last before full parse
     if "--show-last" in raw_argv:
         print(format_all_runs())
