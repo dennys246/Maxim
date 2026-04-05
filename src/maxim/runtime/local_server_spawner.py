@@ -21,6 +21,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 from pathlib import Path
 from typing import Any
 
@@ -190,13 +191,21 @@ class LocalServerSpawner:
         return False
 
     def _health_check(self) -> bool:
+        """Probe /v1/models. When --api_key is set, llama-cpp-server requires
+        Bearer auth on this endpoint too, so we send our token. A 401 also
+        counts as 'server up' since it proves the HTTP listener is live
+        (just rejected the key, which would be a separate bug)."""
         try:
             import urllib.request
-            with urllib.request.urlopen(  # noqa: S310 - local server only
-                f"http://127.0.0.1:{self._port}/v1/models",
-                timeout=1.0,
-            ) as resp:
+            req = urllib.request.Request(f"http://127.0.0.1:{self._port}/v1/models")
+            if self._api_key:
+                req.add_header("Authorization", f"Bearer {self._api_key}")
+            with urllib.request.urlopen(req, timeout=1.0) as resp:  # noqa: S310
                 return resp.status == 200
+        except urllib.error.HTTPError as e:
+            # 401 = server up + listening, just rejected key. Counts as "ready":
+            # the spawner only needs to know the HTTP listener is alive.
+            return e.code == 401
         except Exception:
             return False
 
