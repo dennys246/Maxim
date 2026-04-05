@@ -57,10 +57,19 @@ def detect_blackwell() -> GPUCompatState:
                     "CUDA_VISIBLE_DEVICES", "0"
                 )
 
-                # CRITICAL: Force CPU-only mode to avoid GStreamer/GLib segfaults
-                os.environ["CUDA_VISIBLE_DEVICES"] = ""
+                # GStreamer/GLib segfaults on Blackwell when CUDA is enabled in the
+                # media pipeline. These two flags neutralize the GStreamer side.
                 os.environ.setdefault("REACHY_MEDIA_BACKEND", "default")
                 os.environ.setdefault("GST_CUDA_NO_CUDA", "1")
+
+                # Default: keep CUDA visible for LLM backends (the GStreamer guards
+                # above handle the media-pipeline crash). Opt out with
+                # MAXIM_BLACKWELL_HIDE_CUDA=1 to run fully CPU-only.
+                hide_cuda = os.environ.get(
+                    "MAXIM_BLACKWELL_HIDE_CUDA", ""
+                ).strip().lower() in ("1", "true", "t", "yes", "y", "on")
+                if hide_cuda:
+                    os.environ["CUDA_VISIBLE_DEVICES"] = ""
     except Exception:
         pass  # nvidia-smi not found, no NVIDIA GPU
 
