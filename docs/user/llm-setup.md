@@ -479,6 +479,26 @@ Runs four checks:
 
 Uses `MAXIM_LANE_INFER_REMOTE_API_KEY` from env if `--key` isn't passed. Exit code 0 = fully working, 1 = any failure.
 
+#### Interpreting peer-test failures
+
+| Result | What it means | Where to fix |
+|---|---|---|
+| `URL has no host` | Missing scheme (no `https://`) or malformed URL | Prepend `https://`; don't paste angle-bracketed placeholders (`<hostname>`) literally — zsh will parse them as redirection syntax |
+| `DNS fails` | Hostname doesn't resolve | Verify the tunnel DNS record on the leader's Cloudflare dashboard; confirm the exact hostname with `maxim tunnel status` on the leader |
+| `SSL: CERTIFICATE_VERIFY_FAILED` | You're reaching a different server than you think — wrong hostname, parked domain, or a stale tunnel with an expired cert | Re-verify the hostname on the leader; don't bypass TLS verification |
+| `HTTP 401` | Reached the leader; key rejected | Re-copy the key from `maxim tunnel key export` on the leader; if uncertain, rotate with `maxim tunnel key rotate` and export again |
+| `HTTP 403` | Request blocked before reaching the model — either the leader's auth layer or a Cloudflare Access / WAF policy in front of the tunnel | Check Cloudflare Zero Trust → Access → Applications for a policy on the tunnel hostname, and verify the leader's key. See diagnostic below |
+| `HTTP 502` | Cloudflare reached the tunnel edge but the origin didn't answer — leader process isn't running, or cloudflared can't reach the local server | On the leader: confirm `MAXIM_ROLE=leader maxim` is running and `cloudflared` is connected (`maxim tunnel status` should show an active tunnel) |
+
+**Diagnosing 401 vs 403 vs 502:** run `curl -v -H "Authorization: Bearer <key>" https://<hostname>/v1/models` and look at the response headers:
+
+- Headers contain only `server: cloudflare` + `cf-ray` with a small body → Cloudflare edge is answering (403 = Access/WAF block, 502 = tunnel origin unreachable, 521/522 = origin down/timeout). The request never reached your server.
+- Headers come from your actual backend (e.g., `server: uvicorn`, `llama-cpp-server`) → the leader itself is responding. A 401/403 here means the key is wrong or the server's auth middleware rejected it.
+
+**Don't** use `--skip-test` to paper over a failing connection test. The test is what catches wrong hostnames, wrong keys, and misconfigured tunnels *before* they get written into a config file that persists across sessions. `--skip-test` is for deliberately pre-staging a config for a leader that isn't online yet — not for auth failures.
+
+**Don't** disable TLS verification or ignore cert errors to "make it work." An invalid cert almost always means you're reaching the wrong host; fix the hostname instead.
+
 ### `maxim tunnel` — guided Cloudflare tunnel setup
 
 Maxim ships a `maxim tunnel` subcommand that wraps cloudflared's CLI. Once

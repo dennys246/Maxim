@@ -8,6 +8,37 @@ Everything here is optional expansion — `maxim doctor` is already useful at v1
 
 ---
 
+## Peer-side diagnostics (~100–200 LOC)
+
+Today `maxim doctor` assumes the invoking machine *is* or *wants to be* the leader — every check (LAN bind, tunnel config, API key) advises how to expose this box. When a user runs Maxim as a **peer** pointed at a remote leader, doctor's output is misleading: it flags missing tunnel config and an absent API key as warnings, when really the peer just needs to consume a remote URL.
+
+Add a peer-mode path so `maxim doctor` diagnoses *either* role correctly.
+
+**Detection — what role is this box playing?**
+- `MAXIM_ROLE=peer` env var (explicit)
+- `MAXIM_LANE_INFER_REMOTE_URL` set and pointing at a non-local host (implicit)
+- Otherwise fall through to current behavior (solo / leader)
+
+**Peer-mode checks** (replace the "Role & Access" + "Tunnel" + "API key" sections when role=peer):
+- **Remote URL reachability** — resolve DNS, TCP-connect, hit `/v1/models`, report latency. Reuse `_peer_test` logic from [src/maxim/doctor/cli.py:153](src/maxim/doctor/cli.py#L153).
+- **API key set on peer** — `MAXIM_LANE_INFER_API_KEY` (or equivalent) present? If leader requires auth and peer has no key, fail loud with the fix: "Run `maxim tunnel key export` on the leader and paste the snippet here."
+- **Auth smoke** — send a real completion with the configured key, confirm 200. If 401, key mismatch.
+- **Model availability** — does the remote `/v1/models` advertise the model the peer expects to use? Catches the case where the leader swapped models.
+- **Clock skew** (optional) — if auth is time-sensitive (future HMAC keys), flag > 30s drift.
+- **Latency budget warning** — if round-trip p50 > 200ms, nudge that real-time lanes may struggle (reference the [multi_llm_scaling.md latency baseline](multi_llm_scaling.md#latency-baseline-2026-04-04)).
+
+**Fix hints** should point at the **leader** machine, not this one:
+- "Ask the leader to run `maxim tunnel key rotate` then `maxim tunnel key export`"
+- "On the leader, verify `MAXIM_ROLE=leader maxim` is running and `maxim doctor` passes"
+
+**`maxim doctor --as peer <url>`** — one-shot peer check from a machine that isn't configured yet (expands today's `maxim peer test` with the full check-list formatting + retry loop).
+
+**`maxim doctor --as leader`** / **`--as solo`** — explicit role override for the ambiguous cases (e.g., a machine that's *both* a leader and runs its own agent loop).
+
+Keep the existing `maxim peer test <url>` as the minimal one-command path — the new `--as peer` mode is a superset that runs in the full doctor formatting with retry support.
+
+---
+
 ## Near-term quick wins (each ~50–150 LOC)
 
 Small, self-contained checks that add immediate diagnostic value.

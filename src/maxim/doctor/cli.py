@@ -179,7 +179,12 @@ def _peer_test(base_url: str, *, key: str | None, model: str | None) -> int:
         return 1
 
     # 2-3. HTTPS handshake + /v1/models
-    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    # NOTE: Cloudflare's default bot-protection WAF rules block the
+    # `Python-urllib/*` User-Agent with a 403. Send a neutral UA so the
+    # request looks like any other HTTP client — matches curl behavior.
+    headers = {"User-Agent": "maxim-peer-test/1.0"}
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
     models_url = f"{base_url}/models"
     try:
         req = urllib.request.Request(models_url, headers=headers)

@@ -106,6 +106,19 @@ def _cmd_connect(argv: list[str]) -> int:
     if not key:
         print("✗ API key required.", file=sys.stderr)
         return 1
+    # API keys are used as HTTP Bearer tokens — headers must be latin-1 encodable.
+    # Catches accidental paste of decorative output (e.g. "✓ key: sk-..." lines).
+    try:
+        key.encode("latin-1")
+    except UnicodeEncodeError:
+        print(
+            "✗ API key contains non-ASCII characters — likely pasted from\n"
+            "  decorative output (e.g. a line starting with ✓). Paste only the\n"
+            "  key string itself, or re-run `maxim tunnel key export` on the\n"
+            "  leader and copy the value after `=`.",
+            file=sys.stderr,
+        )
+        return 1
 
     is_cloud = _is_public_url(url)
 
