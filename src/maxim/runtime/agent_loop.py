@@ -1447,13 +1447,24 @@ def run_agentic_loop(
                         except Exception as e:
                             logger.debug(f"Failed to record plan outcome: {e}")
 
-                    # If this tool has a followup_type and succeeded, trigger a follow-up LLM cycle
+                    # If this tool has a followup_type, trigger a follow-up LLM cycle.
                     # The followup_type determines how the LLM should handle the results:
                     #   "process" - LLM processes results for next action (coding agent)
                     #   "respond" - LLM synthesizes results into user response
                     #   "engage"  - LLM responds AND offers proactive follow-ups
+                    # "process" followups fire even on failure so the LLM can
+                    # learn from the error and retry with a different tool
+                    # (e.g. sim orchestrator's catch-all 'respond' rejects →
+                    # LLM should immediately re-think, not stall for 60s).
                     # Note: Use 'is not None' to handle empty lists [] which are falsy but still valid output
-                    if followup_type and success and output is not None:
+                    should_followup = (
+                        followup_type
+                        and (
+                            (success and output is not None)
+                            or followup_type == "process"
+                        )
+                    )
+                    if should_followup:
                         triggering_input = getattr(pending_proposal, "triggering_input", "")
                         pending_action_followup = ActionFollowup(
                             tool=tool_name,
@@ -1695,7 +1706,14 @@ def run_agentic_loop(
                         from maxim.modes.definitions import get_tool_followup_type
                         current_mode = state.data.get("mode", "live")
                         followup_type = get_tool_followup_type(tool_name, current_mode)
-                        if followup_type and success and output is not None:
+                        should_followup = (
+                            followup_type
+                            and (
+                                (success and output is not None)
+                                or followup_type == "process"
+                            )
+                        )
+                        if should_followup:
                             pending_action_followup = ActionFollowup(
                                 tool=tool_name,
                                 result=result_str,
