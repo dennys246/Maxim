@@ -21,7 +21,7 @@ from maxim.utils.response_config import (
     load_phrase_responses,
 )
 from maxim.modes.state_manager import StateManager
-from maxim.runtime.capabilities import RuntimeCapabilities
+from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
 
 _gpu_state = detect_blackwell()
 _blackwell_detected = _gpu_state.blackwell_detected
@@ -205,6 +205,11 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
 
         # Runtime capabilities — updated after robot connection attempt.
         self._capabilities = RuntimeCapabilities()
+        _has_gpu, _gpu_type, _vram_gb, _ram_gb = detect_compute_resources()
+        self._capabilities.has_gpu = _has_gpu
+        self._capabilities.gpu_type = _gpu_type
+        self._capabilities.vram_gb = _vram_gb
+        self._capabilities.ram_gb = _ram_gb
 
         # Connect to robot using hardware abstraction layer.
         # Supports both real Reachy Mini hardware and simulation mode.

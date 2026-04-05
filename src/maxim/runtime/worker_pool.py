@@ -76,6 +76,16 @@ class LaneConfig:
     max_workers: int
     queue_size: int = 10
     requires_gpu: bool = False
+    # Per-lane LLM backend assignment (None = share the global backend, current behavior).
+    # These fields are read by LaneBackendManager (multi-LLM Phase 3); the WorkerPool
+    # itself ignores them.
+    model_profile: str | None = None
+    device: str = "auto"  # "gpu" | "cpu" | "auto"
+    n_gpu_layers: int = -1  # -1 = all on GPU, 0 = CPU only
+    # Remote backend via OpenAI-compatible API (model server, Cloudflare tunnel, peer).
+    remote_url: str | None = None
+    remote_api_key: str | None = None
+    remote_model: str | None = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

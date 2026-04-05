@@ -263,6 +263,7 @@ def start_simulation_mode(
     from maxim.agents.llm_worker import LLMWorker
     from maxim.agents.maxim_agent import MaximAgent
     from maxim.models.language.router import LLMRouter, load_llm_config
+    from maxim.runtime.lane_backends import build_primary_router
     from maxim.runtime.agent_loop import run_agentic_loop
     from maxim.runtime.bootstrap import (
         build_decision_engine,
@@ -300,10 +301,15 @@ def start_simulation_mode(
     stop_event = threading.Event()
 
     # ── Shared LLM router (single model, alternating inference) ──────────
-    llm_config = load_llm_config()
-    llm_router: LLMRouter | None = None
-    if llm_config.enabled:
-        llm_router = LLMRouter(llm_config)
+    # Routed through the multi-LLM factory so sim respects per-lane assignments
+    # (capability-driven profiles, env overrides, remote URLs, safety gates).
+    llm_router, _lane_manager = build_primary_router(logger=logger)
+    if llm_router is None:
+        # Factory returned nothing → fall back to the default global config path.
+        llm_config = load_llm_config()
+        if llm_config.enabled:
+            llm_router = LLMRouter(llm_config)
+    if llm_router is not None:
         llm_router.warmup()
         logger.info("Shared LLM router initialized")
 

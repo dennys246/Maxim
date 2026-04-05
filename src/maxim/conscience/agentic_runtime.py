@@ -586,12 +586,25 @@ class AgenticRuntimeMixin:
         # Create LLM worker for handling user questions
         _t_llm = time.time()
         llm_worker = None
+        lane_backend_manager = None
         try:
             from maxim.models.language.router import LLMRouter, load_llm_config
+            from maxim.runtime.lane_backends import build_primary_router
 
-            llm_config = load_llm_config()
-            if llm_config.enabled:
-                llm_router = LLMRouter(llm_config)
+            # Build infer-lane LLM via the shared multi-LLM factory. Handles
+            # capability-driven profile selection (Phase 2), env overrides
+            # (Phase 4), and gate enforcement (Phase 3+4). One place owns this.
+            caps = getattr(self, "_capabilities", None)
+            llm_router, lane_backend_manager = build_primary_router(
+                capabilities=caps,
+                logger=self.log,
+            )
+            if llm_router is None:
+                llm_config = load_llm_config()
+                if llm_config.enabled:
+                    llm_router = LLMRouter(llm_config)
+
+            if llm_router is not None and llm_router.enabled():
                 # Start warming up the LLM in background (reduces first-request latency)
                 llm_router.warmup()
                 llm_worker = LLMWorker(
@@ -610,6 +623,7 @@ class AgenticRuntimeMixin:
             llm_worker = None
 
         self._llm_worker = llm_worker
+        self._lane_backend_manager = lane_backend_manager
         self.log.info("Bootstrap: LLM worker ready (%.1fms)", (time.time() - _t_llm) * 1000)
 
         # Share LLM backend with ExecAgent to avoid loading a second model
