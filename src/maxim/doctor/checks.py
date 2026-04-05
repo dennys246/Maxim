@@ -112,8 +112,10 @@ def check_lan_access(info: PlatformInfo, port: int = 8100) -> CheckResult:
     prints what the user needs to do to make the server LAN-reachable, with
     their actual IPs filled in.
     """
-    import os
-    leader = os.environ.get("MAXIM_ROLE", "").lower() == "leader"
+    from maxim.runtime.leader_mode import detect_role
+    # Use resolved role (respects both MAXIM_ROLE env var and implicit
+    # cloudflared-config detection), not just the raw env var.
+    leader = detect_role().is_leader
 
     if info.runtime == "wsl2":
         wsl_ip = detect_wsl_ip() or "<wsl-ip>"

@@ -591,7 +591,57 @@ def _maybe_auto_spawn_server(
         remote_model=infer_cfg.model_profile,
         remote_api_key=infer_api_key,
     )
+
+    # Leader mode: also auto-spawn the cloudflared daemon alongside the LLM
+    # server, so `maxim` on the leader brings up the full stack in one
+    # command. No-op when daemon is already running (systemd service, etc.).
+    if role_decision.role == "leader":
+        _maybe_auto_spawn_tunnel_daemon(logger)
     return out
+
+
+def _maybe_auto_spawn_tunnel_daemon(logger: Any | None) -> None:
+    """Spawn the cloudflared tunnel daemon if leader mode + config + no daemon running.
+
+    Opt out with MAXIM_AUTO_SPAWN_TUNNEL=0.
+    """
+    if os.environ.get("MAXIM_AUTO_SPAWN_TUNNEL", "").strip().lower() in (
+        "0", "false", "f", "no", "n", "off",
+    ):
+        return
+    try:
+        from maxim.tunnel.daemon_spawner import (
+            TunnelDaemonSpawner,
+            cloudflared_already_running,
+            resolve_config_path,
+        )
+    except Exception:
+        return
+    if cloudflared_already_running():
+        if logger is not None:
+            logger.info(
+                "Cloudflared daemon already running — skipping auto-spawn "
+                "(managed elsewhere, e.g. systemd service)"
+            )
+        return
+    config_path = resolve_config_path()
+    if config_path is None:
+        if logger is not None:
+            logger.debug(
+                "Tunnel auto-spawn skipped: no ~/.cloudflared/config.yml or "
+                "/etc/cloudflared/config.yml found."
+            )
+        return
+    spawner = TunnelDaemonSpawner(config_path=config_path)
+    if logger is not None:
+        logger.info("Auto-spawning cloudflared tunnel daemon (config=%s)", config_path)
+    if not spawner.start():
+        if logger is not None:
+            logger.warning(
+                "Cloudflared daemon auto-spawn failed — tunnel will not be active "
+                "until you start it manually: cloudflared --config %s tunnel run",
+                config_path,
+            )
 
 
 def _print_lane_banner(manager: "LaneBackendManager") -> None:

@@ -91,6 +91,13 @@ class TestServerCheck:
 
 
 class TestLanAccessPlatformSpecific:
+    @pytest.fixture(autouse=True)
+    def _isolate_cloudflared_config(self):
+        """LAN access check now uses detect_role() which inspects cloudflared
+        config presence. Isolate tests from the host's actual config file."""
+        with patch("maxim.runtime.leader_mode._cloudflared_config_exists", return_value=None):
+            yield
+
     def test_wsl2_shows_netsh_fix(self, monkeypatch):
         monkeypatch.delenv("MAXIM_ROLE", raising=False)
         from maxim.doctor.checks import check_lan_access
