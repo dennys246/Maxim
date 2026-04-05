@@ -47,7 +47,8 @@ Usage: maxim tunnel <action> [options]
 Actions:
   setup        Guided interactive tunnel setup (login, create, DNS, config.yml)
   status       Show current tunnel configuration
-  start        Run cloudflared tunnel daemon in the foreground
+  start        Run cloudflared tunnel daemon in the foreground (--force to
+               bypass the duplicate-instance check)
   tail         Stream cloudflared + llama-cpp-server logs (debug)
   key show     Print the current Maxim API key
   key rotate   Generate a new API key (invalidates peers)
@@ -309,7 +310,12 @@ def _cmd_start(extra_args: list[str]) -> int:
     """Run `cloudflared tunnel run` in the foreground.
 
     Useful for testing before installing as a service. Inherits stdout/stderr
-    so the user sees connection logs directly.
+    so the user sees connection logs directly. Refuses to start if another
+    cloudflared process is already running (systemd service OR another
+    foreground invocation) — duplicate tunnel connectors waste Cloudflare
+    edge slots and confuse log streams.
+
+    Bypass with `--force` if you actually want duplicate connectors.
     """
     summary = read_config_summary()
     if summary is None:
@@ -325,6 +331,36 @@ def _cmd_start(extra_args: list[str]) -> int:
     if not tunnel_id:
         print("✗ config.yml missing 'tunnel:' field.", file=sys.stderr)
         return 1
+
+    # Pre-flight: is something already tunnelling? If so, refuse with a
+    # clear explanation unless --force was passed.
+    force = "--force" in extra_args
+    if force:
+        extra_args = [a for a in extra_args if a != "--force"]
+    elif _cloudflared_service_active():
+        print(
+            "✗ cloudflared systemd service is already active.\n\n"
+            "  Starting a second cloudflared would create a duplicate tunnel\n"
+            "  connector (Cloudflare tolerates this but it wastes edge slots\n"
+            "  and splits your log streams across two processes).\n\n"
+            "  What do you want to do?\n\n"
+            "    Watch logs:       maxim tunnel tail\n"
+            "    Stop the service: sudo systemctl stop cloudflared\n"
+            "    Force foreground: maxim tunnel start --force\n",
+            file=sys.stderr,
+        )
+        return 1
+    elif _cloudflared_process_running():
+        print(
+            "✗ cloudflared is already running as a foreground process.\n\n"
+            "  Starting another would create a duplicate connector.\n\n"
+            "  What do you want to do?\n\n"
+            "    Ctrl+C the other process first, then re-run this command.\n"
+            "    Or bypass:  maxim tunnel start --force\n",
+            file=sys.stderr,
+        )
+        return 1
+
     print(f"Starting cloudflared tunnel: {tunnel_id}")
     print("(Ctrl+C to stop)")
     # Surface the service-install hint unless a service is already running.
@@ -336,6 +372,18 @@ def _cmd_start(extra_args: list[str]) -> int:
     except KeyboardInterrupt:
         print("\nStopped.")
         return 0
+
+
+def _cloudflared_process_running() -> bool:
+    """Best-effort check for ANY cloudflared tunnel run process (not just systemd)."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-af", "cloudflared.*tunnel.*run"],
+            capture_output=True, text=True, timeout=2.0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
 def _print_service_install_hint() -> None:
@@ -458,24 +506,30 @@ def _cmd_tail(argv: list[str]) -> int:
 def _to_journalctl_since(value: str) -> str:
     """Translate '2m' / '5h' / '1d' into journalctl's accepted relative form.
 
-    journalctl's --since parser wants either an absolute timestamp
-    ('2024-01-02 15:04:05') or a relative phrase ('-2 minutes ago',
-    '-5 hours ago'). Values already matching one of those forms pass through.
+    systemd-journalctl --since accepts a few formats; the ones that actually
+    work on a stock Ubuntu 24.04 build:
+      - absolute timestamp: '2024-01-02 15:04:05'
+      - "N UNIT ago" with no leading dash: '2 minutes ago', '5 hours ago'
+      - compact "-Nunit" (no space): '-2min', '-5h', '-1day'
+
+    What does NOT work (despite some docs suggesting it): '-2 minutes ago'
+    with both the dash AND the spaces. We translate to the "N UNIT ago"
+    form since it's the most readable in log output.
     """
     import re
     text = value.strip()
     if not text:
-        return "-2 minutes ago"
-    # Already in journalctl form — leave it alone
-    if " ago" in text or "-" in text.split()[0] or re.match(r"^\d{4}-\d{2}-\d{2}", text):
+        return "2 minutes ago"
+    # Already in a journalctl-accepted form — leave it alone
+    if " ago" in text or re.match(r"^\d{4}-\d{2}-\d{2}", text) or re.match(r"^-\d+[a-z]+$", text):
         return text
     # Match compact forms: "2m", "5h", "1d", "30s"
     m = re.fullmatch(r"(\d+)\s*([smhd])", text)
     if not m:
-        return text  # let journalctl complain if still invalid
+        return text  # pass through; let journalctl complain if still invalid
     n, unit = int(m.group(1)), m.group(2)
     unit_name = {"s": "seconds", "m": "minutes", "h": "hours", "d": "days"}[unit]
-    return f"-{n} {unit_name} ago"
+    return f"{n} {unit_name} ago"
 
 
 # ─── key ──────────────────────────────────────────────────────────────────
