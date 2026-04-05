@@ -18,6 +18,26 @@ def _is_auth_error(err: Exception) -> bool:
     return "401" in msg or "403" in msg or "unauthorized" in msg or "forbidden" in msg
 
 
+def _http_status_of(err: Exception | None) -> int | None:
+    """Best-effort extraction of HTTP status code from an openai client error."""
+    if err is None:
+        return None
+    code = getattr(err, "status_code", None)
+    if isinstance(code, int):
+        return code
+    response = getattr(err, "response", None)
+    if response is not None:
+        code = getattr(response, "status_code", None)
+        if isinstance(code, int):
+            return code
+    # Last-resort string scan
+    msg = str(err)
+    for candidate in ("401", "403", "404", "429", "500", "502", "503", "504"):
+        if candidate in msg:
+            return int(candidate)
+    return None
+
+
 def _is_private_ip(ip: str) -> bool:
     try:
         addr = ipaddress.ip_address(ip)
@@ -185,6 +205,17 @@ class _OpenAIBackend:
             {"role": "user", "content": user},
         ]
 
+        # Stage A observability: generate a request-id for cross-machine
+        # correlation. Attached as X-Maxim-Request-Id header on every call;
+        # also logged via maxim.mesh.trace when MAXIM_LANE_TRACE or
+        # MAXIM_PEER_LOG_REQUESTS is set.
+        from maxim.models.language.mesh_trace import (
+            REQUEST_ID_HEADER, TraceRecord, emit_trace, generate_request_id,
+        )
+        request_id = generate_request_id()
+        base_url = self._get_base_url() or ""
+        extra_headers = {REQUEST_ID_HEADER: request_id}
+
         last_err: Exception | None = None
         for attempt in range(self._get_max_retries() + 1):
             try:
@@ -197,8 +228,21 @@ class _OpenAIBackend:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     stop=list(stop) if stop else None,
+                    extra_headers=extra_headers,
                 )
-                return self._parse_response(resp, model, start)
+                parsed = self._parse_response(resp, model, start)
+                emit_trace(TraceRecord(
+                    request_id=request_id,
+                    provider=self._provider_key,
+                    base_url=base_url,
+                    model=model,
+                    status="ok",
+                    http_status=200,
+                    latency_ms=parsed.latency_ms,
+                    input_tokens=parsed.input_tokens,
+                    output_tokens=parsed.output_tokens,
+                ))
+                return parsed
             except Exception as e:
                 last_err = e
                 if _is_auth_error(e):
@@ -208,7 +252,18 @@ class _OpenAIBackend:
                     continue
                 break
 
-        warn("OpenAI call failed: %s", last_err)
+        # Final failure — emit a trace record with error details before returning
+        emit_trace(TraceRecord(
+            request_id=request_id,
+            provider=self._provider_key,
+            base_url=base_url,
+            model=model,
+            status="error",
+            http_status=_http_status_of(last_err),
+            latency_ms=(time.time() - start) * 1000,
+            error=str(last_err)[:200] if last_err else None,
+        ))
+        warn("OpenAI call failed [req=%s]: %s", request_id[:8], last_err)
         return LLMResponse(content="")
 
     def _parse_response(self, resp: Any, model: str, start: float) -> LLMResponse:

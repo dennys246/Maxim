@@ -102,6 +102,19 @@ class LocalServerSpawner:
 
             env = self._build_subprocess_env()
             cmd = self._build_cmd()
+            # Stage A observability: MAXIM_TUNNEL_ECHO=1 keeps llama-cpp-server's
+            # stdout/stderr visible so users can see inbound HTTP requests
+            # (uvicorn access logs + request bodies) in real time. Default path
+            # keeps streams hidden to avoid flooding the terminal.
+            echo_enabled = os.environ.get("MAXIM_TUNNEL_ECHO", "").strip().lower() in (
+                "1", "true", "t", "yes", "y", "on",
+            )
+            stream_target = None if echo_enabled else subprocess.DEVNULL
+            if echo_enabled:
+                print(
+                    "[MAXIM_TUNNEL_ECHO=1] llama-cpp-server stdout/stderr will stream to this terminal",
+                    file=sys.stderr,
+                )
             try:
                 # start_new_session=True puts the subprocess in its own process
                 # group so terminal SIGINT (Ctrl+C) doesn't kill it. We control
@@ -110,8 +123,8 @@ class LocalServerSpawner:
                 # (e.g. sim-report LLM roundup) to make one last inference call.
                 self._process = subprocess.Popen(
                     cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=stream_target,
+                    stderr=stream_target,
                     env=env,
                     start_new_session=True,
                 )
