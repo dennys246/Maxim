@@ -287,7 +287,21 @@ class LaneBackendManager:
             "api_key_env": api_key_env,
             "model": cfg.remote_model or cfg.model_profile or base.model,
             "allow_local_endpoints": (kind == "self-hosted"),
+            # Peer-tunnel URLs resolve to Cloudflare IPs (classified as cloud)
+            # but actually serve a self-hosted model with no metered pricing.
+            # Skip the cost-estimation gate that would reject the provider
+            # when no pricing entry exists for the model name.
+            "pricing_required": False,
         }
+
+        # Ensure the lane provider appears in routing.provider_priority so
+        # _provider_order() doesn't silently exclude it when the user's
+        # llm.json defines an explicit priority list.
+        routing = dict(base.routing or {})
+        priority = list(routing.get("provider_priority", []))
+        if provider_key not in priority:
+            priority.insert(0, provider_key)
+        routing["provider_priority"] = priority
 
         try:
             remote_cfg = dataclasses.replace(
@@ -296,6 +310,7 @@ class LaneBackendManager:
                 backend="openai",
                 model=cfg.remote_model or cfg.model_profile or base.model,
                 providers=providers,
+                routing=routing,
                 # Self-hosted is not cloud; cloud lanes still require cloud_enabled.
                 cloud_enabled=(True if kind == "cloud" else base.cloud_enabled),
             )
