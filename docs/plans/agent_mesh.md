@@ -1,6 +1,8 @@
 # Agent Mesh Plan
 
 > **Status:** Not started. Depends on multi-LLM scaling plan (Phases 1-3 for LaneBackendManager), RuntimeCapabilities (implemented), CommunicationGateway channel system (implemented).
+>
+> **Reference — measured baselines**: Multi-LLM Phases 1–6a landed. See [multi_llm_scaling.md "Observed Performance & Gotchas"](multi_llm_scaling.md) for empirical numbers (44 ms short-completion on RTX 5080, ~5–20 ms LAN hops, ~20–50 ms Cloudflare tunnel hops), token-density gotchas (mistral tokens are ~1.7× English word count), VRAM accounting, and verified resilience behavior (auto-discovery, stale-URL recovery, signal isolation). Use those numbers when sizing mesh routing decisions, context budgets, transfer-discount policies, and retry timeouts.
 
 Cooperative peer-to-peer network of Maxim agent instances. Each agent owns its memories, causal models, and learned behaviors — but can share them cooperatively. Agents discover each other, advertise capabilities, delegate tasks, and learn from each other's experiences.
 

@@ -224,11 +224,439 @@ The `llama-cpp-python` package builds with Metal support on macOS by default. No
 
 ### Blackwell GPUs (RTX 5080/5090)
 
-Maxim auto-detects Blackwell architecture and adjusts inference parameters accordingly. Install the torch backend for full support:
+Blackwell (sm_120) GPUs require special handling because:
+
+1. **GStreamer/CUDA conflict**: reachy-mini's WebRTC media pipeline segfaults when CUDA is active on Blackwell. Maxim sets `GST_CUDA_NO_CUDA=1` + `REACHY_MEDIA_BACKEND=default` to neutralize this.
+2. **CUDA 12.8 requirement**: sm_120 needs CUDA toolkit ≥ 12.8 and wheels built against it. PyPI's default `llama-cpp-python` and `torch` wheels don't target sm_120.
+
+**Default behavior:** On Blackwell detection Maxim sets `GST_CUDA_NO_CUDA=1` + `REACHY_MEDIA_BACKEND=default` to neutralize GStreamer, but keeps CUDA visible for `llama-cpp-python` / `torch`. This requires Blackwell-compatible builds of both (see below).
+
+**Opt-out (CPU-only):** Set `MAXIM_BLACKWELL_HIDE_CUDA=1` to hide CUDA from the entire process. Use this if you still hit a GStreamer crash despite the GST guard, or if you haven't installed Blackwell-compatible wheels yet.
+
+#### Install Blackwell-compatible wheels
+
+**PyTorch (cu128):**
 
 ```bash
-pip install -e '.[llm-torch]'
+pip install "torch>=2.7" --index-url https://download.pytorch.org/whl/cu128
+pip install -e '.[llm-torch]' --no-deps  # installs the rest of the extra
 ```
+
+**llama-cpp-python with CUDA for sm_120** (source build required, PyPI ships CPU-only; abetlen's cu124 wheel index is stuck at v0.2.67):
+
+```bash
+# Requires CUDA 12.8 toolkit installed (e.g., /usr/local/cuda-12.8)
+bash scripts/build_llama_cpp_blackwell.sh
+```
+
+Or manually:
+
+```bash
+export CUDACXX=/usr/local/cuda-12.8/bin/nvcc
+export CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=120"
+export FORCE_CMAKE=1
+pip install --upgrade --force-reinstall --no-cache-dir \
+    --no-binary=llama-cpp-python llama-cpp-python==0.3.20
+```
+
+Build takes 5–15 min. Verify success:
+
+```bash
+python scripts/smoke_test_blackwell_gpu.py
+# expect: gpu_offload_supported: True, backend_info: ... CUDA ...
+```
+
+Then run:
+
+```bash
+maxim --language-model mistral-7b
+```
+
+## Remote & Distributed LLMs
+
+Maxim can serve LLM inference from a remote machine over HTTP. Typical use cases:
+
+- Offload heavy inference from a laptop or Reachy to a home PC with a GPU.
+- Keep one hot model resident on a home server; attach multiple Maxim instances.
+- Use a cloud provider (Anthropic, OpenAI) via its OpenAI-compatible API.
+
+All remote inference goes through **lane backends** — each WorkerPool lane can
+independently point at a different local model, a local LAN server, or a cloud API.
+
+### Safety gates
+
+Two environment variables control how many backends can be created. Defaults are
+conservative; raise them only as needed:
+
+| Env var | Default | Effect |
+|---|---|---|
+| `MAXIM_MAX_CONCURRENT_BACKENDS` | `2` | Hard cap on cached backends. Protects VRAM/RAM. |
+| `MAXIM_MAX_CLOUD_LANES` | `0` | Hard cap on lanes targeting a cloud endpoint. **Must be raised to use Claude, OpenAI, etc.** |
+
+Self-hosted servers (localhost / private-IP endpoints) are **not** counted as
+cloud, so they bypass `MAXIM_MAX_CLOUD_LANES`. The session-cost ceiling in
+`llm.json` (`max_session_cost`, default $5.00) provides a second layer.
+
+### Auto-spawn (Phase 6) — zero-terminal setup
+
+If you have a GPU and the `[llm-server]` extra installed, Maxim will **automatically launch a llama-cpp-server subprocess** at startup, wire the infer lane to it, and shut it down when Maxim exits. No second terminal needed.
+
+```bash
+pip install -e '.[llm-server]'  # one-time: bundles sse-starlette, openai SDK, etc.
+maxim                           # that's it — server spawns, lane wired, GPU used
+```
+
+On startup you'll see a banner like:
+
+```
+ ──────────────────────────────────────────────────────────────
+  Maxim LLM lanes
+  infer   self-hosted http://127.0.0.1:8100/v1
+  review  local   smollm-1.7b-instruct (cpu)
+  record  (no LLM)
+ ──────────────────────────────────────────────────────────────
+```
+
+**Auto-spawn is skipped if** any of:
+
+- `MAXIM_AUTO_SPAWN_LLM_SERVER=0` (opt-out)
+- No GPU detected
+- `MAXIM_LANE_INFER_REMOTE_URL` already set (user pointed at a different server)
+- The profile's GGUF file isn't present locally
+- `llama_cpp.server` isn't installed (missing `[llm-server]` extra)
+
+**Config knobs:**
+
+| Env var | Default | Effect |
+|---|---|---|
+| `MAXIM_AUTO_SPAWN_LLM_SERVER` | `1` | Set `0`/`false` to disable auto-spawn |
+| `MAXIM_AUTO_SPAWN_PORT` | `8100` | Port for the spawned server (avoid 8000 if you run your own) |
+| `MAXIM_AUTO_SPAWN_N_CTX` | `8192` | Context window for the spawned server |
+
+**Auto-discovery:** if a llama-cpp-server is already answering on the auto-spawn port, Maxim will **reuse it** rather than spawning a duplicate. Running two `maxim` terminals from the same shell is transparent — first spawns, second detects the existing server and wires its own lane to it. Two Maxim "minds" share one model copy in VRAM.
+
+**Signal isolation:** the spawned server runs in its own process group so Ctrl+C on the Maxim CLI doesn't kill it mid-shutdown. The server stays alive through Maxim's cleanup (e.g., sim-report LLM roundup) and is stopped explicitly via the atexit handler.
+
+**Stale remote URL recovery:** if `MAXIM_LANE_INFER_REMOTE_URL` points at a server that's no longer responding, Maxim warns once and drops the override so auto-spawn can take over. No more silent connection errors from leftover env vars.
+
+### Leader mode (Phase 6b) — be the cluster's inference host
+
+Leader mode changes the bind address of the auto-spawned server from `127.0.0.1`
+(loopback only) to `0.0.0.0` (LAN + tunnel reachable). The Maxim instance keeps
+running its own CLI + agent loop — it just also serves peers.
+
+**You become a leader automatically if:**
+
+- `~/.cloudflared/config.yml` or `/etc/cloudflared/config.yml` exists, OR
+- You set `MAXIM_ROLE=leader`
+
+Other valid roles:
+
+| `MAXIM_ROLE` | Bind | Use |
+|---|---|---|
+| `leader` | `0.0.0.0` | Host for peers (home PC, desktop with GPU) |
+| `client` | `127.0.0.1` | Follower — pairs with `MAXIM_LANE_INFER_REMOTE_URL` |
+| `solo` | `127.0.0.1` | Single-machine default (no peers) |
+
+**Setting up a home leader:**
+
+1. Install cloudflared + configure tunnel (see next section) — or skip and just use LAN IP
+2. Run `maxim` — auto-spawn detects cloudflared, promotes to leader, binds `0.0.0.0`
+3. On a peer machine: `MAXIM_LANE_INFER_REMOTE_URL=https://maxim-llm.yourdomain.com/v1 maxim`
+
+The leader's Maxim still runs locally too — both your home CLI and the laptop CLI hit the same GPU.
+
+### Running a local llama-cpp model server (Phase 4)
+
+On a machine with a capable GPU (e.g., your home PC), serve a GGUF model via
+llama-cpp-python's built-in HTTP server:
+
+```bash
+# Install server dependencies
+pip install 'llama-cpp-python[server]'
+
+# Serve a model — adjust --model path and --n_gpu_layers to your hardware
+python -m llama_cpp.server \
+    --model ~/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf \
+    --n_gpu_layers -1 \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --chat_format chatml
+```
+
+Keep that terminal running. The server exposes an OpenAI-compatible API at
+`http://<host>:8000/v1`.
+
+On the client machine, point a lane at the server via environment overrides
+(temporary) or `llm.json` (persistent):
+
+```bash
+# Quick test — one-shot remote lane
+MAXIM_LANE_INFER_REMOTE_URL=http://192.168.1.10:8000/v1 \
+MAXIM_LANE_INFER_REMOTE_MODEL=mistral-7b-instruct-v0.2 \
+maxim --language-model mistral-7b
+```
+
+Or pin it in `data/util/llm.json`:
+
+```json
+{
+  "lane_models": {
+    "infer": {
+      "remote_url": "http://192.168.1.10:8000/v1",
+      "model": "mistral-7b-instruct-v0.2"
+    }
+  }
+}
+```
+
+**Latency:** LAN ~5-20 ms + inference. The agentic loop is async (WorkerPool),
+so network hops are absorbed by the next cycle — you'll notice it only in
+reaction-time budgets. For real-time motor control, keep a local backend on
+the lane that drives motion.
+
+### `maxim doctor` — environment diagnostics
+
+Run anytime to see what's configured and what's missing:
+
+```bash
+maxim doctor           # print a one-shot report
+maxim doctor --retry   # walk through failing checks, re-test after each fix
+```
+
+Checks:
+- Platform (OS, runtime — WSL1/WSL2/native/docker, Linux distro, arch)
+- GPU / CUDA availability and VRAM
+- `llama_cpp.server` installed (the `[llm-server]` extra)
+- Auto-spawn server reachable on port 8100
+- Leader mode / bind address
+- **LAN access with platform-specific fix commands** (WSL2 netsh, Linux ufw/firewalld, macOS settings hint, Windows `New-NetFirewallRule`)
+- `cloudflared` installed (with OS-specific install command)
+- Tunnel config file + API key
+
+The fix hints include **your actual IP addresses** detected from the system — for WSL2, both the WSL IP (from `hostname -I`) and the Windows host's LAN IP (parsed from `ipconfig.exe`).
+
+### `maxim peer test <url>` — verify peer connectivity
+
+Run from a peer machine to verify the leader is reachable and correctly authenticated:
+
+```bash
+maxim peer test http://192.168.1.47:8100/v1
+maxim peer test https://maxim.yourdomain.com/v1 --key sk-ant-xxx
+```
+
+Runs four checks:
+1. DNS resolution
+2. HTTP(S) handshake
+3. `GET /v1/models` (401 → tells you the key is wrong)
+4. Chat completion round-trip with latency timing
+
+Uses `MAXIM_LANE_INFER_REMOTE_API_KEY` from env if `--key` isn't passed. Exit code 0 = fully working, 1 = any failure.
+
+### `maxim tunnel` — guided Cloudflare tunnel setup
+
+Maxim ships a `maxim tunnel` subcommand that wraps cloudflared's CLI. Once
+configured, leader-mode detection auto-fires on startup — no env vars needed.
+
+**Actions:**
+
+```bash
+maxim tunnel              # show usage
+maxim tunnel setup        # interactive setup (login, create, DNS, config.yml)
+maxim tunnel status       # show what's currently configured
+maxim tunnel start        # run cloudflared daemon in foreground (for testing)
+```
+
+**Prerequisites:**
+1. `cloudflared` binary installed on the machine (system package, not pip). `maxim tunnel status` prints the right install command for your OS.
+2. A domain on Cloudflare's nameservers — the tunnel needs a hostname (e.g., `maxim.yourdomain.com`).
+
+**Guided setup flow:**
+
+```bash
+maxim tunnel setup
+```
+
+Walks you through:
+1. Cloudflare authentication (opens browser)
+2. Tunnel name (default `maxim-llm`)
+3. DNS routing (you provide the hostname)
+4. Local port (default `8100`, matches `MAXIM_AUTO_SPAWN_PORT`)
+5. Writes `~/.cloudflared/config.yml`
+
+After setup, keep the tunnel daemon running:
+
+```bash
+# Foreground (test it first)
+cloudflared tunnel run maxim-llm
+
+# Or install as a system service (starts on boot)
+sudo cloudflared service install
+```
+
+Then on peers:
+
+```bash
+export MAXIM_LANE_INFER_REMOTE_URL=https://maxim.yourdomain.com/v1
+export MAXIM_MAX_CLOUD_LANES=1   # cloud-lane gate opt-in (public URL)
+maxim
+```
+
+#### Peer authentication — API key
+
+Once your tunnel is public, anyone who knows the hostname could hit your LLM.
+Maxim generates a **256-bit API key** during `tunnel setup` and wires it into
+the spawned llama-cpp-server via `--api_key`. Peers must present the key as a
+Bearer token or get 401.
+
+**Key file locations:**
+
+| OS | Path |
+|---|---|
+| Linux / macOS / WSL | `~/.config/maxim/api_key` (or `$XDG_CONFIG_HOME/maxim/api_key`) |
+| Windows | `%APPDATA%\maxim\api_key` |
+
+POSIX files are created with mode 0600 (owner read/write only).
+
+**Commands:**
+
+```bash
+maxim tunnel key show       # print the full key (for secure sharing)
+maxim tunnel key rotate     # generate a new key (invalidates peers)
+maxim tunnel key export     # copy-paste snippets for all shells
+```
+
+**Sharing with a peer — cross-platform snippets:**
+
+`maxim tunnel key export` prints ready-to-paste snippets for **bash/zsh,
+fish, PowerShell, and Windows cmd** — the peer picks theirs:
+
+```bash
+# bash / zsh (Linux, macOS, WSL)
+export MAXIM_LANE_INFER_REMOTE_API_KEY="…"
+echo 'export MAXIM_LANE_INFER_REMOTE_API_KEY="…"' >> ~/.bashrc
+
+# fish
+set -Ux MAXIM_LANE_INFER_REMOTE_API_KEY "…"
+
+# PowerShell
+$env:MAXIM_LANE_INFER_REMOTE_API_KEY = "…"
+Add-Content $PROFILE "`n$env:MAXIM_LANE_INFER_REMOTE_API_KEY = `"…`""
+
+# Windows cmd
+setx MAXIM_LANE_INFER_REMOTE_API_KEY "…"
+```
+
+**Rotation:** `maxim tunnel key rotate` generates a new key. Peers using the old
+key will get 401 until they update. Restart `maxim` on the leader after rotating
+so the spawned server picks up the new key.
+
+**Leader's own client:** auto-reads the key file — no shell config needed on
+the leader machine.
+
+**Solo mode (no tunnel):** localhost bind + no `MAXIM_ROLE=leader` = no auth
+required. The API key is only enforced when the spawner runs in leader mode
+(binds `0.0.0.0`).
+
+The `maxim tunnel status` command shows what's configured at any time:
+
+```
+──────────────────────────────────────────────────────────────
+  Maxim tunnel status
+──────────────────────────────────────────────────────────────
+  cloudflared: ✓ /usr/local/bin/cloudflared — cloudflared 2024.12.0
+  config.yml:  ✓ /home/dennys/.cloudflared/config.yml
+    tunnel: a1b2c3d4-...
+    credentials_file: /home/dennys/.cloudflared/a1b2c3d4-...json
+    hostname: maxim.example.com
+    service: http://localhost:8100
+  daemon:      ✓ running
+──────────────────────────────────────────────────────────────
+```
+
+### Remote access via Cloudflare tunnel (Phase 5, optional)
+
+**Optional.** Only needed if you want to reach your home server from
+**outside your LAN** without VPN or port-forwarding. For same-network setups,
+LAN direct IP or mDNS is enough.
+
+One-time setup on the machine running the model server:
+
+```bash
+# Install cloudflared (Linux example)
+sudo apt install cloudflared
+
+# Authenticate
+cloudflared tunnel login
+
+# Create and route tunnel
+cloudflared tunnel create maxim-llm
+cloudflared tunnel route dns maxim-llm maxim-llm.yourdomain.com
+```
+
+Config file (`~/.cloudflared/config.yml`):
+
+```yaml
+tunnel: <tunnel-id-from-create>
+credentials-file: ~/.cloudflared/<tunnel-id>.json
+ingress:
+  - hostname: maxim-llm.yourdomain.com
+    service: http://localhost:8000
+  - service: http_status:404
+```
+
+Run as a service (starts on boot):
+
+```bash
+sudo cloudflared service install
+```
+
+On the client, point a lane at the tunnel URL:
+
+```bash
+MAXIM_LANE_INFER_REMOTE_URL=https://maxim-llm.yourdomain.com/v1 \
+MAXIM_LANE_INFER_REMOTE_MODEL=mistral-7b-instruct-v0.2 \
+maxim
+```
+
+Because the tunnel URL is HTTPS + public DNS, it hits the cloud-lane gate:
+raise `MAXIM_MAX_CLOUD_LANES=1` to allow it. Cloudflare's zero-trust policies
+can handle auth if you need it (no Maxim-side API key required for tunnel access).
+
+### Cloud providers (Anthropic, OpenAI)
+
+Cloud providers need **three** things enabled explicitly:
+
+1. `cloud_enabled: true` in `llm.json` (or `MAXIM_LLM_CLOUD_ENABLED=1`)
+2. `MAXIM_MAX_CLOUD_LANES=1` (or higher) — gate on the number of cloud lanes
+3. API key in env — `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+
+Example `llm.json` for a Claude cloud lane:
+
+```json
+{
+  "cloud_enabled": true,
+  "lane_models": {
+    "infer": {
+      "remote_url": "https://api.anthropic.com/v1",
+      "model": "claude-3-5-sonnet-20241022",
+      "api_key_env": "ANTHROPIC_API_KEY"
+    }
+  }
+}
+```
+
+Then:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export MAXIM_MAX_CLOUD_LANES=1
+maxim
+```
+
+The session cost ceiling (`max_session_cost`, default $5.00 in the routing
+policy) is enforced **per LLMRouter** — if you run multiple cloud lanes, each
+has its own ceiling. Keep an eye on cost in sim reports.
 
 ## Python API
 
