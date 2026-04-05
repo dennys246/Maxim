@@ -61,6 +61,7 @@ Small, self-contained checks that add immediate diagnostic value.
 - **Permissions check** — fail loud if `~/.config/maxim/api_key` is mode 644/666 (not 0600).
 - **Auth smoke test** — with the key set, hit the local server's `/v1/models` using the actual Bearer token to verify auth is wired correctly.
 - **Unauth smoke test** — send a request with a bogus key, expect 401. If it succeeds, server isn't enforcing auth.
+- **Cloudflared loglevel warning** — parse `~/.cloudflared/config.yml` (or `/etc/cloudflared/config.yml`); if `loglevel: debug` is set, warn that Bearer tokens will be logged in plaintext to systemd journal. Suggest `loglevel: info` for production, with `journalctl --vacuum-time=1d` to purge the history. Discovered during Stage A peer-leader debugging.
 
 ### 4. JSON output
 - **`maxim doctor --json`** — machine-readable output for CI scripts, log pipelines, and support-bundle tooling.
@@ -90,6 +91,7 @@ These compose naturally into a `maxim doctor benchmark` subcommand that produces
 - **DNS resolver health** — measure resolution latency for the tunnel hostname.
 - **UPnP / NAT-PMP detection** — can we auto-open the LAN port for peer access on supported routers?
 - **mDNS broadcast + listen** — for Phase 7 peer discovery, verify mDNS works on this LAN (firewalls often block it).
+- **`maxim doctor peer-flow`** — codifies the [peer_diagnosis_runbook.md](peer_diagnosis_runbook.md) as an automated end-to-end check: peer config → DNS → edge → tunnel → auth → origin → GPU. Returns a structured report per rung. Runnable from either side.
 - **WebSocket test** — if/when multi-front input ships, verify WebSocket upgrades survive the tunnel.
 
 ### 7. Sim-based behavioral tests

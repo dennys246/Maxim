@@ -239,7 +239,26 @@ Not a build phase — a practice that starts once there's data to observe.
 
 ---
 
-## 5. Remaining Cleanup (opportunistic)
+## 6. Tool Refinement (ongoing)
+
+> **Status:** Living document — see [tool_refinement_plan.md](tool_refinement_plan.md).
+
+Ongoing curation of the tool surface the agent can call: introspection tools (agent → its own state), action tools (agent → world), composite tools. Tracks what's shipped, what's proposed, what's deprecated, and the design principles (read-only by default, secrets opaque, limits self-enforce, size-capped outputs, context-gated registration).
+
+**Currently proposed** (organized by subsystem in the plan doc):
+- **Mesh introspection** (blocked on Multi-LLM Phase 8) — `lane_status`, `inference_trace`, `compute_budget`, `peer_list`, `cluster_status`
+- **Runtime introspection** (buildable today) — `loop_stats`, `recent_actions`, `mode_status`, `worker_pool_status`
+- **Memory dynamics** (buildable today) — `memory_pressure`, `consolidation_status`, `bridge_activity`
+- **Decision + learning** (buildable today) — `nac_stats`, `plan_history`, `confidence_calibration`
+- **Pain + safety awareness** (buildable today) — `pain_triggers_active`, `fear_review_history`
+- **Sim-mode introspection** (buildable today, sim-gated) — `sim_status`, `sim_action_history`, `sim_observe_self`
+- **Provenance + explainability** (buildable today) — `session_overview`, `cycle_trace`
+
+Full catalog, design principles, lifecycle policy, and deprecation log live in the plan doc.
+
+---
+
+## 7. Remaining Cleanup (opportunistic)
 
 > **Status:** ~90% complete. Pick up when touching the file.
 
@@ -253,6 +272,20 @@ Not a build phase — a practice that starts once there's data to observe.
 | 29 | Standardize serialization | Before Agent Mesh Phase 8 |
 | 41 | Movement step-clamping helper | Next time touching movement.py |
 | 44 | Merge DNActionProposal | Next time touching default_network |
+
+### Security hardening (post-Stage A)
+
+Items surfaced while debugging peer-leader tunneling. Each is small and bounded; belongs in a later `bug/` or `feature/` branch once the current debug cycle settles.
+
+| Item | Where | Fix |
+|------|-------|-----|
+| Bearer tokens are logged in plaintext by `cloudflared` at `loglevel: debug` (found in journalctl after tunnel debugging) | `/etc/cloudflared/config.yml` | Document "switch loglevel back to `info` after debugging" in [llm-setup.md](../user/llm-setup.md); optionally have `maxim tunnel status` warn when loglevel is verbose |
+| `MAXIM_TUNNEL_ECHO=1` streams uvicorn access logs which include `x-request-id` but also any full URL/query strings | `runtime/local_server_spawner.py` | Already warns at startup; document that echo mode is debug-only, never leave on in production |
+| `maxim tunnel key show` prints the full API key to stdout (deliberate) — can end up in shell history + terminal scrollback | `tunnel/cli.py` `_cmd_key_show` | Optional: add `--copy` flag that pipes to `pbcopy`/`xclip`/`clip.exe` without printing; default still prints for scriptability |
+| Per-device keys still a parked discussion; shared-key model limits revocation granularity | Phase 7b/7c mesh work | Covered in [multi_llm_scaling.md](multi_llm_scaling.md) Phase 7 security notes |
+| `cloudflared` debug log rotation: journal holds Bearer tokens until rotation policy trims them | systemd/journald | Document `journalctl --vacuum-time=1d` as a cleanup step when downgrading loglevel |
+
+**Stage A specific**: the Stage A trace flags (`MAXIM_LANE_TRACE`, `MAXIM_PEER_LOG_REQUESTS`, `MAXIM_TUNNEL_ECHO`) all produce a loud startup banner. That's intentional for debug visibility, but the flags' output contains request URLs + provider names. Not secrets, but a privacy consideration worth noting in docs when Stage A ships for wider use.
 
 ---
 

@@ -12,6 +12,10 @@ failure fast.
 
 Companion doc: [multi_llm_scaling.md](multi_llm_scaling.md).
 
+**Status (2026-04-05)**: Stage D ("real leader-side routing") is now folded into the multi-LLM plan as Phases 7a-7d. This debug plan's Stages A-C remain the sequenced entry points — Stage A observability is a prerequisite for Phase 7a, and the `LeaderProxy` described in §4.4 is what Phase 7a builds.
+>
+> **Operational runbook:** [peer_diagnosis_runbook.md](peer_diagnosis_runbook.md) — step-by-step bisection ladder for diagnosing a peer that can't reach the leader. Built from real failure modes found during 2026-04-05 debugging. Safe for a Claude on the peer machine to follow autonomously.
+
 ---
 
 ## 1. What the code actually does today
