@@ -1,6 +1,6 @@
 # Multi-LLM Scaling Plan
 
-> **Status:** Phases 1–5 live. Users can run per-lane capability-driven local profiles, attach a remote llama-cpp-server, and reach it over a Cloudflare tunnel today. Phase 6 (leader mode + auto-spawn) is next, Phase 7 (peer mesh + multi-front input) follows.
+> **Status:** Phases 1–6 live (local multi-model, gates, remote lanes, tunnel, auto-spawn, leader mode). Phase 8 (LaneMetrics) is next. Phase 7 restructured into sub-phases 7a-7e covering leader-proxy + shared queue + mDNS + routing + multi-front input; see [peer_leader_debug_plan.md](peer_leader_debug_plan.md) for the architectural analysis that motivated the restructure.
 >
 > **Scope:** Local multi-model inference, remote model serving via home server + Cloudflare tunnel, dynamic backend spawning, peer-to-peer inference mesh, and multi-frontend input for shared-consciousness deployments.
 
@@ -535,31 +535,130 @@ for info in spawned:
         lane_configs["review"].remote_url = url
 ```
 
-### Phase 7: Peer Discovery + Inference Mesh + Multi-Front Input
+### Phase 7: Peer Mesh — leader proxy, shared queue, discovery, routing
 
-Maxim instances discover each other on LAN and share compute. Any instance can offload inference to a peer with better hardware. Beyond inference, a leader instance can also accept **user input from multiple frontends simultaneously** — a shared-consciousness topology where one agent loop is driven by many I/O channels.
+**Prerequisite**: [peer_leader_debug_plan.md](peer_leader_debug_plan.md) Stage A (observability) should land first or in lockstep with 7a. The debug plan's §1 analysis is load-bearing for this phase — it identified the architectural gap that 7a closes.
+>
+> **Before building Phase 7a**, validate the current peer path is end-to-end functional using [peer_diagnosis_runbook.md](peer_diagnosis_runbook.md). The runbook's 6-rung bisection ladder covers every hop (DNS → edge → tunnel → auth → outbound client → GPU).
 
-#### Multi-front input — "one mind, many channels"
+**The current architecture** (after Phases 1-6): two sovereign Maxim minds share a GPU via a dumb HTTP proxy. Peers and the leader are independent clients of the same llama-cpp-server, contending for GPU time with no coordination and no leader-side visibility. Phase 7 turns that into a real mesh where:
 
-A leader instance can expose its `ConversationalSource` + percept stream to remote callers, letting multiple humans drop into the same Maxim "mind" concurrently:
+- The leader's runtime **sees** every peer request (logging, auth, routing decisions).
+- Leader + peers share a queue on the leader's `WorkerPool` instead of racing at the inference server.
+- Instances discover each other without manually shared URLs.
+- Per-request routing picks the best available backend (local / peer / remote) based on measured latency + queue depth.
 
-| Frontend | Transport | Already exists? |
+Phase 7 splits into five sub-phases. Each is landable independently, each closes a specific gap.
+
+#### 7a. LeaderProxy — sidecar reverse proxy + observability hook
+
+A thin HTTP service on `:8099` that sits **in front of** llama-cpp-server (`:8100`). Tunnel ingress flips from `localhost:8100` → `localhost:8099`; llama-cpp-server becomes private-only.
+
+**Responsibilities:**
+- **Authoritative auth**: enforce Bearer check BEFORE the request reaches llama-cpp-server. Closes the "solo→leader transition leaves the server unauthenticated" gap identified in the debug plan.
+- **Request-id propagation**: generate/preserve `X-Maxim-Request-Id` (UUID4) on every call, pass through to the backend. Peer logs ID on send → leader proxy logs on receipt → trivial correlation across machines.
+- **Structured logging**: every inbound request → one log line with `{request_id, source_ip, auth_status, model, latency_ms, status}` via a dedicated `maxim.mesh.trace` logger.
+- **`/debug/last-requests`** (localhost-only, auth-gated): ring buffer of last 100 calls for post-hoc inspection.
+- **Future hook point**: where 7b plugs in to route requests through the `WorkerPool`.
+
+**Scope**: ~200 LOC FastAPI service + companion `LeaderProxySpawner` (reuses signal-isolation + atexit patterns from `LocalServerSpawner`). Adds ~1-2ms per request. Negligible vs. 44ms inference baseline.
+
+**Naming**: called `LeaderProxy` or `MaximGateway` (not "sidecar" — that term is overloaded). Final name TBD at implementation time.
+
+#### 7b. Route peer jobs through the leader's WorkerPool
+
+With 7a's proxy in place, parse inbound OpenAI-protocol requests and enqueue them on the leader's `WorkerPool` infer lane instead of forwarding straight to llama-cpp-server. The existing backend inside the lane still hits llama-cpp-server, but now peer jobs share the same queue as the leader's own agent loop.
+
+**What this unlocks:**
+- **Fair scheduling** between leader's agentic loop and N peers (no more GPU contention races).
+- **Per-peer attribution** via API key header or source IP; requests tagged in logs + metrics.
+- **Optional per-peer rate limits** (N jobs/min) — per-device keys from the long-parked security conversation become a prerequisite for meaningful rate-limiting.
+- **Cancellation + priority**: the WorkerPool already supports both; peer requests get surfaced to the same machinery that throttles the leader's own work.
+
+**Scope**: ~250 LOC (protocol parsing, lane enqueue, response streaming back through the proxy, SSE passthrough for streaming completions).
+
+**Trade-off**: now peer requests go through two layers (proxy → WorkerPool → backend). If the WorkerPool is saturated, peer latency jumps. Phase 8 metrics make this visible; Phase 7d's routing uses the signal.
+
+#### 7c. PeerRegistry + mDNS discovery
+
+Remove the need for manually shared URLs on LAN. Each Maxim instance advertises itself via mDNS (same mechanism the robot stack already uses for Reachy discovery):
+
+```python
+class PeerRegistry:
+    """Discover and track peer Maxim instances on the LAN.
+
+    Uses mDNS (zeroconf) to advertise available models and discover peers.
+    Each peer exposes its LeaderProxy on a local port.
+
+    Service type: _maxim-llm._tcp.local.
+    TXT records: models, vram_gb, device (gpu|cpu), node_id, proxy_port
+    """
+
+    SERVICE_TYPE = "_maxim-llm._tcp.local."
+
+    def start(self, *, node_id: str, port: int, advertise: PeerAdvertisement) -> None: ...
+    def peers(self) -> list[PeerInfo]: ...
+    def get_peer_for_model(self, model_name: str) -> PeerInfo | None: ...
+    def stop(self) -> None: ...
+```
+
+`PeerInfo` carries `{node_id, host, port, models, device, vram_gb, last_seen}`; `is_alive` uses a 30s heartbeat timeout.
+
+**Opt-in via `[mesh]` extra**: `zeroconf` is an optional dependency (`pip install -e '.[mesh]'`). Non-mesh users don't pay the dep cost.
+
+**Opt-in via env var**: `MAXIM_PEER_ENABLED=1` starts the registry. Off by default so solo/tunnel setups aren't affected.
+
+**Scope**: ~150 LOC + the `zeroconf` dep. Firewalls often block mDNS — `maxim doctor` gets a new "mDNS broadcast reachable" check ([doctor_upgrade_plan.md §6](doctor_upgrade_plan.md)).
+
+#### 7d. InferenceRouter — per-request backend selection
+
+The actual "local vs. peer vs. remote" decision, finally. Each inference call consults the router:
+
+```
+Per-request routing chain (first success wins):
+  1. Local lane backend if configured          — lowest latency, no network hop
+  2. Best LAN peer via PeerRegistry            — 5-20ms extra, may have better GPU
+  3. Remote tunnel backend if configured       — 20-50ms extra, always available (if tunnel up)
+  4. Fallback: smallest local CPU model        — slow but always works
+  5. None (caller handles gracefully)
+```
+
+**Routing inputs** (sourced from Phase 8's LaneMetrics):
+- Per-backend **queue depth** + current utilization
+- Recent **p50/p99 latency** per backend
+- Per-backend **failure rate** (backoff on consistently-failing backends)
+- **Context window fit** — skip a backend whose `n_ctx` can't hold the request
+- **Peer VRAM + advertised device** (GPU over CPU, higher VRAM wins ties)
+
+**Backoff on failure**: consistent 5xx or timeout from a backend → exponential backoff (30s, 60s, 120s, cap at 10min). Doesn't retry the same dead peer every call.
+
+**Scope**: ~200 LOC + wiring into `LaneBackendManager`. The router *augments* the manager — today's single-backend-per-lane behavior is the degenerate case (no peers, no remote, just the local backend).
+
+**Decision logging**: at `MAXIM_PROVENANCE_VERBOSITY=2`, log the full routing tree per request (candidates considered, what was skipped, why). Pairs with Phase 10.
+
+#### 7e. Multi-front input — "one mind, many channels" (split-candidate)
+
+A leader instance exposes its `ConversationalSource` to multiple I/O frontends concurrently. **This is architecturally orthogonal to 7a-7d** — it changes the agent's input boundary, not its compute. Strong candidate to split into a separate "Phase 11" plan.
+
+| Frontend | Transport | Exists? |
 |---|---|---|
 | Local stdin | Terminal | ✓ (current behavior) |
-| Remote CLI | WebSocket over tunnel | new (Phase 7) |
+| Remote CLI | WebSocket over tunnel | new |
 | SMS / voice | Twilio webhook | ✓ ([comms/](../../src/maxim/comms/)) |
-| Another Maxim instance | mDNS peer over HTTP | new (Phase 7) |
+| Another Maxim instance | mDNS peer over HTTP | new |
 
-**Constraints to design around:**
-- Input merging — if two humans give opposing commands, the agent needs to handle it (likely a turn-based queue with attribution).
-- Authentication — remote CLI frontends need at least a shared-secret token before hitting the agent bus.
-- Percept fan-out — every connected frontend should see the same percept stream, not just the one that drove the last turn.
-- Graceful degradation — if the leader disappears, remote frontends should fail visibly, not silently hang.
+**Design constraints**:
+- **Input merging** — two humans giving opposing commands: turn-based queue with attribution, or latest-wins with provenance?
+- **Auth for remote CLI** — shared-secret token to hit the agent bus, reusing leader's API key or a separate channel key?
+- **Percept fan-out** — every connected frontend sees the same percept stream, not just the one driving the current turn.
+- **Graceful degradation** — leader disappears → remote frontends fail visibly, not silently hang.
 
-**What stays the same:** the agent loop, memory, and LLM backends. Only the input/output boundary changes. The comms gateway already proves the pattern (Twilio SMS is architecturally just another `PerceptSource`); formalizing it means lifting `ConversationalSource` behind a pub/sub so N callers can publish/subscribe.
+**What stays the same**: agent loop, memory, LLM backends. Only the input/output boundary changes. The comms gateway (Twilio SMS) already proves the pattern; formalizing it means lifting `ConversationalSource` behind a pub/sub so N callers publish/subscribe.
+
+**Recommendation**: ship 7a-7d first. Revisit 7e when you have a concrete use case (shared household Maxim? remote operator watching a Reachy sim?).
 
 
-#### 7a. Peer advertisement via mDNS
+#### 7a. Peer advertisement via mDNS (legacy section — superseded by 7c above)
 
 Each Maxim instance advertises its available models via mDNS (same mechanism used for robot discovery):
 
@@ -748,29 +847,70 @@ def cluster_status(peer_registry: PeerRegistry, lane_manager: LaneBackendManager
     }
 ```
 
-### Phase 8: Per-Lane Metrics
+### Phase 8: Per-Lane Metrics (prerequisite for Phase 7d routing)
+
+Phase 8 is the signal source for Phase 7d's routing decisions. It also feeds `maxim doctor` so users can answer "is my infer lane actually fast?" empirically. Landable standalone; small, additive, no behavior change.
+
+**Data model:**
 
 ```python
+from collections import deque
+from dataclasses import dataclass, field
+
 @dataclass
 class LaneMetrics:
-    """Per-lane performance counters."""
+    """Per-lane performance counters with reservoir-sampled latency."""
+    # Monotonic counters
+    jobs_submitted: int = 0
     jobs_completed: int = 0
-    jobs_dropped: int = 0
-    total_latency_ms: float = 0.0
+    jobs_dropped: int = 0        # stale before execution reached
+    jobs_failed: int = 0         # backend returned error
+    failover_count: int = 0      # routing chain hit a fallback (Phase 7d)
+
+    # Backend attribution (set by the router, read in logs + doctor)
+    local_calls: int = 0         # in-process or loopback
+    remote_calls: int = 0        # self-hosted HTTP (any private IP)
+    peer_calls: int = 0          # LAN peer via mDNS (Phase 7c-d)
+    cloud_calls: int = 0         # public HTTPS endpoints
+
+    # Queue pressure (sampled at each submit)
+    current_queue_depth: int = 0
     peak_queue_depth: int = 0
-    remote_calls: int = 0      # Calls routed to remote/peer
-    local_calls: int = 0       # Calls served locally
-    failover_count: int = 0    # Times primary backend was unavailable
+
+    # Latency reservoir (last 100 samples, thread-safe)
+    latencies_ms: deque[float] = field(default_factory=lambda: deque(maxlen=100))
+
+    # Token + cost (from LLMResponse.complete_with_usage)
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_cost_usd: float = 0.0
 
     @property
-    def avg_latency_ms(self) -> float:
-        return self.total_latency_ms / max(self.jobs_completed, 1)
-
+    def avg_latency_ms(self) -> float: ...
     @property
-    def remote_ratio(self) -> float:
-        total = self.remote_calls + self.local_calls
-        return self.remote_calls / max(total, 1)
+    def p50_latency_ms(self) -> float: ...
+    @property
+    def p99_latency_ms(self) -> float: ...
+    @property
+    def remote_ratio(self) -> float: ...
+    @property
+    def failure_rate(self) -> float: ...
 ```
+
+**Integration points:**
+
+- **`LaneBackendManager` owns a `dict[str, LaneMetrics]`** keyed by lane name.
+- **Record hooks** wrap `backend.complete_with_usage()`: start-timestamp → completion delta, token counts, backend attribution via the `kind` field already exposed in `describe()`.
+- **Per-call metadata**: every submission gets `X-Maxim-Request-Id` (UUID4) attached; the ID appears in metrics records and in the `maxim.mesh.trace` logger (shared with Phase 7a).
+- **Exposure**:
+  - `manager.metrics_snapshot()` → dict for programmatic access
+  - `maxim doctor` gains a new "Lane metrics" section (per-lane p50/p99/counts)
+  - `maxim doctor --json` (from [doctor_upgrade_plan.md](doctor_upgrade_plan.md)) includes the snapshot
+  - `MAXIM_METRICS_INTERVAL_S=30` (default off) emits a periodic log line
+
+**Overlaps with the debug plan:** Phase 8 absorbs [peer_leader_debug_plan.md](peer_leader_debug_plan.md)'s `MAXIM_LANE_TRACE=1` flag — instead of a separate trace mechanism, metrics are always recorded and trace mode just prints each record at INFO rather than accumulating. One mechanism, two verbosities.
+
+**Scope**: ~150 LOC + ~50 LOC tests. Additive. No existing-behavior change.
 
 ### Phase 9: Environment Variable / Config Support
 
@@ -855,12 +995,21 @@ Or via `llm.json`:
 | **2** | `LaneModelConfig` + capability-driven assignment | ✅ done | Phase 1 |
 | **3** | `LaneBackendManager` + gates (`MAXIM_MAX_CONCURRENT_BACKENDS`, `MAXIM_MAX_CLOUD_LANES`) | ✅ done | Phase 1 |
 | **4** | Remote model server (`_build_remote_backend` + llama-cpp-server docs) | ✅ done | Phase 3 |
-| **5** | Cloudflare tunnel setup (docs only, optional) | ✅ done | Phase 4 |
-| **6** | `LocalBackendSpawner` + **leader-mode detection** (tunnel config → promote to leader) | next | Phase 3 |
-| **7** | `PeerRegistry` + `InferenceRouter` + **multi-front input** (N frontends, one mind) | later | Phases 3 + 6 |
-| **8** | `LaneMetrics` enrichment | small | Phase 3 |
-| **9** | Environment variable / config support (superseded by Phases 3+4) | mostly done | — |
-| **10** | Observability & verbose tracing | medium | Phases 3 + 7 |
+| **5** | Cloudflare tunnel setup (`maxim tunnel` subcommand) | ✅ done | Phase 4 |
+| **6a** | `LocalServerSpawner` (auto-spawn llama-cpp-server) | ✅ done | Phase 3 |
+| **6b** | Leader-mode detection + `TunnelDaemonSpawner` | ✅ done | Phase 6a |
+| **8** | `LaneMetrics` (prerequisite for 7d routing) | **next** | Phase 3 |
+| **7a** | `LeaderProxy` reverse-proxy + request-id + auth + `/debug/last-requests` | after 8 | Phase 6 + debug-plan Stage A |
+| **7b** | Route peer jobs through leader's `WorkerPool` | after 7a | Phase 7a |
+| **7c** | `PeerRegistry` + mDNS discovery (opt-in `[mesh]` extra) | after 7a | Phase 7a |
+| **7d** | `InferenceRouter` (per-request local→peer→remote fallback) | after 7b+7c | Phases 7b, 7c, 8 |
+| **7e** | Multi-front input — **split-candidate for a Phase 11** | deferred | Phase 7a |
+| **9** | Environment variable / config support | ✅ mostly done (absorbed into 3+4+6) | — |
+| **10** | Observability & verbose tracing (structured `maxim.mesh.trace`) | after 7d | Phases 7d + 8 |
+
+**Cross-plan references:**
+- [peer_leader_debug_plan.md](peer_leader_debug_plan.md) — Stage A (observability foundations) is a prerequisite for Phase 7a. Its §1 architectural analysis motivated the Phase 7 restructure. Stage D items are now folded into Phases 7a-7d.
+- [doctor_upgrade_plan.md](doctor_upgrade_plan.md) — `maxim doctor --json` + mDNS check feed into Phase 7 operability.
 
 **Also landed outside the plan** (discovered during implementation):
 - `build_primary_router()` factory unifying agentic_runtime + sim orchestrator LLM construction — prevents double-model loading.
@@ -868,13 +1017,22 @@ Or via `llm.json`:
 - `_validate_base_url` permits `http://` for private-IP endpoints.
 - LLMRouter respects `allow_local_endpoints` — self-hosted providers bypass cloud gate, cost check, and PII redaction.
 
-**Path forward from the current state (Phases 1–5 done):**
-1. **Phase 6 (leader-mode + auto-spawn)** — next up. Removes the "start server manually in another terminal" step, promotes GPU-rich machines to leader, auto-wires local lanes to the spawned server. Also unlocks the Phase 3 home-leader deployment topology for any user with `~/.cloudflared/config.yml`.
-2. **Phase 8 (LaneMetrics enrichment)** — can slot in any time after Phase 3; small and independent. Useful for verifying what Phase 6 actually does.
-3. **Phase 7 (peer mesh + multi-front input)** — bigger piece. Do after Phase 6 so there's a real leader to be a peer to. Multi-front input is its own sub-effort and may split into its own phase once scoped.
-4. **Phase 10 (observability)** — wait until Phase 7 is live; mesh routing decisions are what observability most needs to expose.
+**Path forward from the current state (Phases 1–6 done):**
 
-Phases 4-5 were external configuration + docs and are both done. Phase 9 (env vars) was largely absorbed into Phases 3+4.
+1. **[peer_leader_debug_plan.md](peer_leader_debug_plan.md) Stage A** (~1 session) — request-id propagation, `MAXIM_LANE_TRACE`, `MAXIM_PEER_LOG_REQUESTS`, `maxim tunnel tail`. No behavior change; turns opacity into traceable logs. Prerequisite for Phase 7a.
+2. **Phase 8** (~1 session) — `LaneMetrics`. Small, landable standalone, feeds `maxim doctor`. Its data model is what Phase 7d routes against. Absorbs the debug plan's `MAXIM_LANE_TRACE` flag.
+3. **Phase 7a** (~1-2 sessions) — `LeaderProxy` reverse-proxy with request-id + auth + structured logging. Closes the "leader runtime never sees peer requests" gap identified in the debug plan §1.
+4. **Phase 7b** (~2 sessions) — peer jobs enqueue on the leader's `WorkerPool`. Fair scheduling between leader's own agent loop and N peers.
+5. **Phase 7c** (~1-2 sessions) — `PeerRegistry` + mDNS discovery. Can land in parallel with 7b since 7a already created the proxy identity.
+6. **Phase 7d** (~2 sessions) — `InferenceRouter` with fallback chain. Uses Phase 8 metrics + 7c peer list.
+7. **Phase 10** — structured `maxim.mesh.trace` + verbose tracing across the whole mesh. Natural follow-on to 7d.
+8. **Phase 7e / Phase 11 (multi-front input)** — defer until there's a concrete use case. Architecturally orthogonal to 7a-7d; doesn't block anything else.
+
+Phases 4-5 were external configuration + docs and are both done. Phase 9 (env vars) was largely absorbed into Phases 3+4+6.
+
+**Why 8 before 7a**: Phase 8 is smaller, self-contained, and its request-id + latency recording are exactly the observability primitives Phase 7a wants to emit. Landing metrics first means 7a can reuse them rather than building parallel trace plumbing.
+
+**Why the debug plan ships first**: it identified a real architectural gap (§1) — without the LeaderProxy, leader-side code never sees peer requests, so there's nothing to log or route. Stage A's flags + request-id propagation give us the observability we need to *validate* 7a when we build it.
 
 ---
 
