@@ -218,8 +218,27 @@ class TestSubcommandDispatch:
         cmd = mock_call.call_args[0][0]
         assert cmd[0] == "journalctl"
         assert "-u" in cmd and "cloudflared" in cmd
-        assert "--since" in cmd and "10m" in cmd
+        assert "--since" in cmd
+        # Compact "10m" translates to journalctl's accepted relative phrase
+        assert "-10 minutes ago" in cmd
         assert "-f" in cmd
+
+    def test_tail_since_compact_forms(self):
+        from maxim.tunnel.cli import _to_journalctl_since
+        assert _to_journalctl_since("2m") == "-2 minutes ago"
+        assert _to_journalctl_since("5h") == "-5 hours ago"
+        assert _to_journalctl_since("1d") == "-1 days ago"
+        assert _to_journalctl_since("30s") == "-30 seconds ago"
+
+    def test_tail_since_passthrough_for_absolute(self):
+        from maxim.tunnel.cli import _to_journalctl_since
+        assert _to_journalctl_since("2024-01-02 15:04:05") == "2024-01-02 15:04:05"
+        assert _to_journalctl_since("-5 hours ago") == "-5 hours ago"
+        assert _to_journalctl_since("yesterday") == "yesterday"  # passthrough
+
+    def test_tail_since_empty_defaults_to_2min(self):
+        from maxim.tunnel.cli import _to_journalctl_since
+        assert _to_journalctl_since("") == "-2 minutes ago"
 
     def test_tail_missing_journalctl(self, capsys):
         with patch("subprocess.call", side_effect=FileNotFoundError):
@@ -234,3 +253,69 @@ class TestSubcommandDispatch:
         cmd = mock_call.call_args[0][0]
         assert "-g" in cmd
         assert "req=.*" in cmd
+
+
+class TestServiceInstallHint:
+    """`maxim tunnel start` should suggest installing as a service when one
+    isn't already running, but stay quiet when systemd reports it active."""
+
+    def _make_summary(self, tmp_path, monkeypatch):
+        target = tmp_path / "config.yml"
+        target.write_text(
+            "tunnel: abc-123\n"
+            "credentials-file: /c.json\n"
+            "ingress:\n  - hostname: h.example.com\n    service: http://localhost:8100\n"
+        )
+        monkeypatch.setattr("maxim.tunnel.config.CONFIG_PATH", target)
+
+    def test_hint_printed_when_no_service_active(self, tmp_path, monkeypatch, capsys):
+        self._make_summary(tmp_path, monkeypatch)
+        systemd_result = MagicMock(returncode=3, stdout="inactive\n")
+        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
+             patch("subprocess.run", return_value=systemd_result), \
+             patch("subprocess.call", return_value=0):
+            run_tunnel_subcommand(["start"])
+        out = capsys.readouterr().out
+        assert "service install" in out.lower()
+        assert "persistent tunnel" in out.lower()
+
+    def test_hint_skipped_when_service_active(self, tmp_path, monkeypatch, capsys):
+        self._make_summary(tmp_path, monkeypatch)
+        systemd_result = MagicMock(returncode=0, stdout="active\n")
+        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
+             patch("subprocess.run", return_value=systemd_result), \
+             patch("subprocess.call", return_value=0):
+            run_tunnel_subcommand(["start"])
+        out = capsys.readouterr().out
+        assert "service install" not in out.lower()
+
+    def test_hint_linux_uses_systemctl(self, tmp_path, monkeypatch, capsys):
+        self._make_summary(tmp_path, monkeypatch)
+        systemd_result = MagicMock(returncode=3, stdout="inactive\n")
+        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
+             patch("platform.system", return_value="Linux"), \
+             patch("subprocess.run", return_value=systemd_result), \
+             patch("subprocess.call", return_value=0):
+            run_tunnel_subcommand(["start"])
+        out = capsys.readouterr().out
+        assert "systemctl enable" in out
+
+    def test_hint_macos_uses_launchctl(self, tmp_path, monkeypatch, capsys):
+        self._make_summary(tmp_path, monkeypatch)
+        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
+             patch("platform.system", return_value="Darwin"), \
+             patch("subprocess.run", side_effect=OSError("no systemctl")), \
+             patch("subprocess.call", return_value=0):
+            run_tunnel_subcommand(["start"])
+        out = capsys.readouterr().out
+        assert "launchctl" in out
+
+    def test_hint_windows_uses_sc(self, tmp_path, monkeypatch, capsys):
+        self._make_summary(tmp_path, monkeypatch)
+        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
+             patch("platform.system", return_value="Windows"), \
+             patch("subprocess.run", side_effect=OSError("no systemctl")), \
+             patch("subprocess.call", return_value=0):
+            run_tunnel_subcommand(["start"])
+        out = capsys.readouterr().out
+        assert "Services.msc" in out or "sc start" in out
