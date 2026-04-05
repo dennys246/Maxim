@@ -342,6 +342,17 @@ def build_primary_router(
     from maxim.runtime.lane_models import apply_lane_env_overrides, build_lane_model_config
     from maxim.runtime.worker_pool import DEFAULT_LANES
 
+    # Peer-config auto-load: if ~/.config/maxim/peer.yml exists and env vars
+    # aren't already set, populate them from the file. Set by
+    # `maxim peer connect`. Env wins over file for per-session overrides.
+    try:
+        from maxim.peer.config import apply_peer_config_to_env, read_peer_config
+        peer_cfg = read_peer_config()
+        if peer_cfg is not None:
+            apply_peer_config_to_env(peer_cfg)
+    except Exception:
+        pass
+
     if capabilities is None:
         has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
         capabilities = RuntimeCapabilities(

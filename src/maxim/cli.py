@@ -458,6 +458,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         from maxim.doctor import run_doctor_subcommand
         return run_doctor_subcommand(raw_argv[1:])
     if raw_argv and raw_argv[0] == "peer":
+        # `peer connect/show/forget` go to the peer config module;
+        # `peer test` is a diagnostic that lives with `doctor`.
+        peer_action = raw_argv[1] if len(raw_argv) > 1 else ""
+        if peer_action in ("connect", "show", "forget"):
+            from maxim.peer import run_peer_connect_subcommand
+            return run_peer_connect_subcommand(raw_argv[1:])
         from maxim.doctor import run_peer_subcommand
         return run_peer_subcommand(raw_argv[1:])
 

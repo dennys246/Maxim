@@ -350,6 +350,8 @@ running its own CLI + agent loop — it just also serves peers.
 - `~/.cloudflared/config.yml` or `/etc/cloudflared/config.yml` exists, OR
 - You set `MAXIM_ROLE=leader`
 
+**Auto-spawn of cloudflared daemon:** when leader mode fires on `maxim` startup AND a tunnel config is present AND no cloudflared daemon is already running, Maxim launches the daemon as a managed subprocess alongside the llama-cpp-server. Respects existing systemd services (checks `pgrep` before spawning). Opt out with `MAXIM_AUTO_SPAWN_TUNNEL=0`.
+
 Other valid roles:
 
 | `MAXIM_ROLE` | Bind | Use |
@@ -435,6 +437,30 @@ Checks:
 - Tunnel config file + API key
 
 The fix hints include **your actual IP addresses** detected from the system — for WSL2, both the WSL IP (from `hostname -I`) and the Windows host's LAN IP (parsed from `ipconfig.exe`).
+
+### `maxim peer connect <url>` — one-time peer setup
+
+Symmetric to `maxim tunnel setup` on the leader side. Configures this machine to route inference to a leader's URL, persists the config, so subsequent `maxim` runs just work.
+
+```bash
+# Interactive (prompts for key)
+maxim peer connect https://maxim.yourdomain.com/v1
+
+# Non-interactive
+maxim peer connect https://maxim.yourdomain.com/v1 --key "paste-from-leader" --model mistral-7b
+```
+
+Stores `{url, api_key, model?, is_cloud}` at `~/.config/maxim/peer.yml` (or `%APPDATA%\maxim\peer.yml` on Windows), mode 0600 on POSIX. By default runs `maxim peer test` first and refuses to save if connectivity fails — pass `--skip-test` to save unconditionally.
+
+**Inspect / reset:**
+```bash
+maxim peer show      # print current peer config (key truncated)
+maxim peer forget    # remove the peer config file
+```
+
+**How it's used:** on every `maxim` startup, if `peer.yml` exists the URL + key + optional model are set as defaults for `MAXIM_LANE_INFER_*` env vars. **Env vars still win** — you can do per-session overrides without editing the file.
+
+For public URLs (tunnel hostnames), `is_cloud: true` is detected automatically and raises `MAXIM_MAX_CLOUD_LANES` to 1 on startup.
 
 ### `maxim peer test <url>` — verify peer connectivity
 
