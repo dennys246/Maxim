@@ -580,13 +580,18 @@ def _maybe_auto_spawn_server(
         n_gpu_layers=infer_cfg.n_gpu_layers,
         api_key=api_key,
     )
+    try:
+        timeout_s = float(os.environ.get("MAXIM_AUTO_SPAWN_TIMEOUT_S", "120.0"))
+    except ValueError:
+        timeout_s = 120.0
     if logger is not None:
         auth_note = " (auth=on)" if api_key else ""
         logger.info(
-            "Auto-spawning llama-cpp-server (model=%s port=%d host=%s role=%s)%s",
-            Path(model_path).name, port, role_decision.bind_host, role_decision.role, auth_note,
+            "Auto-spawning llama-cpp-server (model=%s port=%d host=%s role=%s timeout=%ds)%s",
+            Path(model_path).name, port, role_decision.bind_host, role_decision.role,
+            int(timeout_s), auth_note,
         )
-    url = spawner.start()
+    url = spawner.start(timeout_s=timeout_s)
     if url is None:
         if logger is not None:
             logger.warning("Auto-spawn failed; falling back to in-process inference")
