@@ -263,6 +263,7 @@ def start_simulation_mode(
     from maxim.agents.llm_worker import LLMWorker
     from maxim.agents.maxim_agent import MaximAgent
     from maxim.models.language.router import LLMRouter, load_llm_config
+    from maxim.runtime.lane_backends import build_primary_router
     from maxim.runtime.agent_loop import run_agentic_loop
     from maxim.runtime.bootstrap import (
         build_decision_engine,
@@ -300,10 +301,15 @@ def start_simulation_mode(
     stop_event = threading.Event()
 
     # ── Shared LLM router (single model, alternating inference) ──────────
-    llm_config = load_llm_config()
-    llm_router: LLMRouter | None = None
-    if llm_config.enabled:
-        llm_router = LLMRouter(llm_config)
+    # Routed through the multi-LLM factory so sim respects per-lane assignments
+    # (capability-driven profiles, env overrides, remote URLs, safety gates).
+    llm_router, _lane_manager = build_primary_router(logger=logger)
+    if llm_router is None:
+        # Factory returned nothing → fall back to the default global config path.
+        llm_config = load_llm_config()
+        if llm_config.enabled:
+            llm_router = LLMRouter(llm_config)
+    if llm_router is not None:
         llm_router.warmup()
         logger.info("Shared LLM router initialized")
 
@@ -837,10 +843,26 @@ def start_simulation_mode(
     _nudge_count = [0]
 
     def _stall_detector() -> None:
-        """Monitor for stalls and inject diagnostic nudge percepts."""
-        stall_threshold_s = 60.0  # No new turn for 60s = stalled
+        """Monitor for stalls and inject diagnostic nudge percepts.
+
+        Configurable via env vars:
+          MAXIM_SIM_STALL_THRESHOLD_S — idle seconds before nudging (default 60)
+          MAXIM_SIM_STALL_CHECK_INTERVAL_S — detector poll cadence (default 15)
+        """
+        import os as _os
+        try:
+            stall_threshold_s = float(_os.environ.get("MAXIM_SIM_STALL_THRESHOLD_S", "60.0"))
+        except ValueError:
+            stall_threshold_s = 60.0
+        try:
+            check_interval_s = float(_os.environ.get("MAXIM_SIM_STALL_CHECK_INTERVAL_S", "15.0"))
+        except ValueError:
+            check_interval_s = 15.0
+        # Clamp to sane bounds so a typo can't wedge the detector.
+        stall_threshold_s = max(5.0, stall_threshold_s)
+        check_interval_s = max(1.0, min(check_interval_s, stall_threshold_s))
         while not stop_event.is_set():
-            stop_event.wait(15.0)  # Check every 15s
+            stop_event.wait(check_interval_s)
             if stop_event.is_set():
                 break
             current_turns = bridge.turn_count

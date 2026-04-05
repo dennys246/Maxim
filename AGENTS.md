@@ -63,6 +63,26 @@ When multiple systems share the same functional role, they **must** use the same
 - Follow existing repo style; keep code straightforward and readable.
 - Add type hints where they improve clarity; prioritize stable interfaces for cross-module use.
 
+## Environment Diagnostics (`maxim doctor`)
+
+`maxim doctor` lives in [src/maxim/doctor/](src/maxim/doctor/) and runs platform-aware checks (OS, runtime — native/WSL2/docker/etc., GPU, local LLM server, leader role, LAN access, cloudflared, tunnel config, API key) with platform-specific fix hints. Companion subcommand `maxim peer test <url>` verifies peer↔leader connectivity. User-facing docs: [docs/user/llm-setup.md](docs/user/llm-setup.md). Forward roadmap: [docs/plans/doctor_upgrade_plan.md](docs/plans/doctor_upgrade_plan.md).
+
+**When adding a new check:**
+1. Pure function in `doctor/checks.py` → returns `CheckResult(name, status, message, fix?, retry_id?)`.
+2. Register it in `run_all_checks()` under the right section.
+3. Branch fix hints on `PlatformInfo.runtime` / `.os` / `.distro` with copy-pasteable, runnable commands. Fill in **real detected values** (IPs via `detect_wsl_ip()` / `detect_lan_ip()` / `info.windows_host_ip`) rather than placeholders.
+4. Add unit tests in `tests/unit/test_doctor.py`. Mock network + subprocess calls so tests run offline.
+5. Keep checks fast (< 1s). Long benchmarks belong in a future `maxim benchmark` subcommand.
+
+**Module layout rules:**
+- Lazy-import deps inside check functions (keeps `doctor` startup fast when optional features aren't installed). Tests must patch the **original** module path (e.g., `maxim.tunnel.cloudflared.find_cloudflared`), not the check module.
+- `maxim peer test` stays self-contained (no imports from the agent runtime) — peers may not have the full dep tree installed.
+
+**Don'ts:**
+- Don't auto-execute fixes without explicit user opt-in (the `--fix` flag is intentionally opt-in; see the upgrade plan).
+- Don't add a failing check without a user-actionable `fix` string.
+- Don't rename the subcommand modules (`doctor/`, `tunnel/`) — they're referenced by CLI entrypoints and user docs.
+
 ## When Uncertain
 - Ask for clarification about desired runtime behavior (e.g., “record everything” vs “latest snapshot”).
 - Don’t guess domain logic (robot kinematics, label semantics, training targets); prefer small instrumentation/logging to validate assumptions.

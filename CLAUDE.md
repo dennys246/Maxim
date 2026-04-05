@@ -48,6 +48,41 @@ Simulations call a live LLM for every turn and can burn cost + time quickly. Whe
 - **The WorkerPool is owned by LLMWorker**, which shuts it down on `stop()`. Don't create a parallel pool.
 - **`@resilient` decorator (runtime/resilient.py) wraps any callback that can fail** — use it instead of bare `except Exception: pass`.
 
+## `maxim doctor` — environment diagnostics
+
+Runs platform-aware checks + prints fix hints with the user's actual IPs filled in.
+Lives in [src/maxim/doctor/](src/maxim/doctor/) — three modules:
+
+- `platform_detect.py` — OS + runtime (native/WSL1/WSL2/docker) + Linux distro
+- `checks.py` — individual check functions, each returns a `CheckResult`
+- `cli.py` — `maxim doctor` and `maxim peer test` subcommands
+
+Companion: `maxim tunnel` subcommand in [src/maxim/tunnel/](src/maxim/tunnel/) (cloudflared wrapping + API key management).
+
+### Maintaining this over time
+
+**Adding a new check:**
+1. Write a pure function in `doctor/checks.py` that takes `PlatformInfo` (if platform-aware) and returns a `CheckResult`.
+2. Add it to the correct section in `run_all_checks()`.
+3. If the fix differs per platform, branch on `info.runtime` / `info.os` / `info.distro` inside the check and produce platform-specific `fix` strings with user-visible commands (users copy-paste, so make them runnable as-is).
+4. Use actual detected values (IPs, paths) in fix strings — call `detect_wsl_ip()` / `detect_lan_ip()` rather than `<your-ip>` placeholders when possible.
+5. Add a unit test in `tests/unit/test_doctor.py`; mock out network/process calls so tests run offline.
+
+**When a check references another module's function** (e.g., `find_cloudflared`, `_llm_server_responding_at`), import inside the function body (not module-level) to keep `maxim doctor` fast when unused features aren't installed. Tests must patch the **original** module path (`maxim.tunnel.cloudflared.find_cloudflared`), not `maxim.doctor.checks.find_cloudflared`.
+
+**Retry loop** (`maxim doctor --retry`): add `retry_id` on any `CheckResult` the user can fix iteratively, then register the retry callable in `cli._retry_loop.retryable`.
+
+**Adding a new platform:** extend `PlatformInfo`'s `OSName` / `Runtime` / `Distro` Literal types + the detection branches in `platform_detect.py`, and add fix-hint branches in every platform-aware check.
+
+**`maxim peer test`** should stay self-contained — no imports from the agent runtime. It's run from peer machines that may not have the full dependency set installed.
+
+**Don't:**
+- Don't auto-execute fixes without the user asking (`--fix` flag is explicit opt-in; see doctor_upgrade_plan.md).
+- Don't make checks slow (> 1s). Network probes use short timeouts (1.5–2s). Long-running benchmarks belong in a future `maxim benchmark` subcommand.
+- Don't silently drop failures — any failing check needs a user-actionable `fix` string.
+
+Upgrade roadmap in [docs/plans/doctor_upgrade_plan.md](docs/plans/doctor_upgrade_plan.md).
+
 ## Key Commands
 
 ```bash
@@ -68,6 +103,19 @@ maxim --sim scenarios/malware_with_pain.yaml
 
 # Run tests
 python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
+
+# Environment diagnostics (platform-aware, with fix hints)
+maxim doctor
+maxim doctor --retry          # walk through failures, retest after each fix
+
+# Cloudflare tunnel for remote access
+maxim tunnel setup            # one-time guided setup
+maxim tunnel status           # show what's configured
+maxim tunnel key rotate       # generate/replace peer API key
+maxim tunnel key export       # print shell-specific export snippets
+
+# Verify peer connectivity (run from peer machines)
+maxim peer test https://maxim.yourdomain.com/v1
 ```
 
 ## Project Structure
@@ -96,6 +144,8 @@ src/maxim/
   comms/            # Communication gateway (Twilio SMS/voice)
   integration/      # MemoryHub cross-system coordinator
   bridges/          # 8 cross-system integration bridges
+  doctor/           # `maxim doctor` — platform-aware diagnostics + peer test
+  tunnel/           # `maxim tunnel` — Cloudflare tunnel + API key management
 
 docs/               # Internal architecture docs
 docs/user/          # User-facing guides

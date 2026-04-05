@@ -1,0 +1,493 @@
+"""Tests for LaneBackendManager (multi-LLM Phase 3 + 4)."""
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from maxim.runtime.lane_backends import (
+    BackendGateError,
+    LaneBackendManager,
+    _is_cloud_url,
+    _llm_server_responding_at,
+    _validate_remote_urls,
+    build_primary_router,
+)
+from maxim.runtime.worker_pool import LaneConfig
+
+
+def _infer_lane(profile: str | None = "smollm-1.7b-instruct", **kw) -> LaneConfig:
+    return LaneConfig(
+        name="infer",
+        max_workers=1,
+        model_profile=profile,
+        device=kw.pop("device", "cpu"),
+        n_gpu_layers=kw.pop("n_gpu_layers", 0),
+        **kw,
+    )
+
+
+class TestConstruction:
+    def test_empty_manager(self):
+        mgr = LaneBackendManager({})
+        assert mgr.lanes == ()
+        assert mgr.describe() == {}
+
+    def test_lanes_exposed(self):
+        mgr = LaneBackendManager({
+            "infer": _infer_lane(),
+            "review": LaneConfig(name="review", max_workers=1, model_profile="smollm-1.7b-instruct"),
+        })
+        assert set(mgr.lanes) == {"infer", "review"}
+
+    def test_describe_before_load(self):
+        mgr = LaneBackendManager({"infer": _infer_lane(profile="mistral-7b-instruct-v0.2", device="gpu", n_gpu_layers=-1)})
+        info = mgr.describe()
+        assert info["infer"]["profile"] == "mistral-7b-instruct-v0.2"
+        assert info["infer"]["device"] == "gpu"
+        assert info["infer"]["n_gpu_layers"] == -1
+        assert info["infer"]["loaded"] is False
+
+
+class TestLaneResolution:
+    def test_unknown_lane_returns_none(self):
+        mgr = LaneBackendManager({"infer": _infer_lane()})
+        assert mgr.get_backend("bogus") is None
+
+    def test_lane_without_profile_or_remote_returns_none(self):
+        # The record lane (or any lane with no LLM assignment) should return None
+        mgr = LaneBackendManager({
+            "record": LaneConfig(name="record", max_workers=2),
+        })
+        assert mgr.get_backend("record") is None
+
+
+class TestLocalBackendBuild:
+    def test_build_invokes_load_llm_config_with_profile(self):
+        """The lane's model_profile should be passed as profile_override."""
+        mgr = LaneBackendManager({"infer": _infer_lane(profile="mistral-7b-instruct-v0.2")})
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router:
+            mock_load.return_value = object()  # placeholder LLMConfig
+            mock_router.return_value = "backend-instance"
+            backend = mgr.get_backend("infer")
+            assert backend == "backend-instance"
+            mock_load.assert_called_once_with(profile_override="mistral-7b-instruct-v0.2")
+
+    def test_env_profile_override_wins(self, monkeypatch):
+        """MAXIM_LLM_PROFILE set by the user should override the lane's choice."""
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "llama-3-8b-instruct")
+        mgr = LaneBackendManager({"infer": _infer_lane(profile="smollm-1.7b-instruct")})
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter"):
+            mock_load.return_value = object()
+            mgr.get_backend("infer")
+            mock_load.assert_called_once_with(profile_override="llama-3-8b-instruct")
+
+    def test_env_n_gpu_layers_override_wins(self, monkeypatch):
+        """MAXIM_LLM_N_GPU_LAYERS set by the user should suppress lane override."""
+        monkeypatch.setenv("MAXIM_LLM_N_GPU_LAYERS", "0")
+        mgr = LaneBackendManager({"infer": _infer_lane(n_gpu_layers=-1)})
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router, \
+             patch("dataclasses.replace") as mock_replace:
+            mock_load.return_value = object()
+            mgr.get_backend("infer")
+            # When the env var is set we should NOT call dataclasses.replace
+            mock_replace.assert_not_called()
+            mock_router.assert_called_once()
+
+
+class TestLazyLoading:
+    def test_backend_cached_after_first_call(self):
+        mgr = LaneBackendManager({"infer": _infer_lane()})
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router:
+            mock_load.return_value = object()
+            mock_router.return_value = "backend-instance"
+            a = mgr.get_backend("infer")
+            b = mgr.get_backend("infer")
+            assert a is b
+            # load_llm_config and LLMRouter both invoked exactly once
+            assert mock_load.call_count == 1
+            assert mock_router.call_count == 1
+
+    def test_describe_reflects_loaded_state(self):
+        mgr = LaneBackendManager({"infer": _infer_lane()})
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter"):
+            mock_load.return_value = object()
+            assert mgr.describe()["infer"]["loaded"] is False
+            mgr.get_backend("infer")
+            assert mgr.describe()["infer"]["loaded"] is True
+
+
+class TestUnload:
+    def test_unload_calls_backend_unload(self):
+        mgr = LaneBackendManager({"infer": _infer_lane()})
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router:
+            mock_load.return_value = object()
+            # Give the fake backend an unload() so the manager calls it
+            class FakeBackend:
+                def __init__(self):
+                    self.unloaded = False
+                def unload(self):
+                    self.unloaded = True
+            fake = FakeBackend()
+            mock_router.return_value = fake
+            mgr.get_backend("infer")
+            mgr.unload_all()
+            assert fake.unloaded is True
+            # After unload, lane should re-create on next access
+            assert mgr.describe()["infer"]["loaded"] is False
+
+    def test_unload_swallows_exceptions(self):
+        mgr = LaneBackendManager({"infer": _infer_lane()})
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router:
+            mock_load.return_value = object()
+            class BrokenBackend:
+                def unload(self):
+                    raise RuntimeError("oops")
+            mock_router.return_value = BrokenBackend()
+            mgr.get_backend("infer")
+            # Should not raise despite the broken unload()
+            mgr.unload_all()
+            assert mgr.describe()["infer"]["loaded"] is False
+
+
+class TestUrlClassification:
+    def test_localhost_is_self_hosted(self):
+        assert _is_cloud_url("http://localhost:8000/v1") is False
+        assert _is_cloud_url("http://127.0.0.1:8000/v1") is False
+        assert _is_cloud_url("http://[::1]:8000/v1") is False
+
+    def test_private_subnet_is_self_hosted(self):
+        assert _is_cloud_url("http://192.168.1.100:8000/v1") is False
+        assert _is_cloud_url("http://10.0.0.5:8000/v1") is False
+        assert _is_cloud_url("http://172.16.0.1:8000/v1") is False
+
+    def test_public_host_is_cloud(self):
+        assert _is_cloud_url("https://api.anthropic.com/v1") is True
+        assert _is_cloud_url("https://api.openai.com/v1") is True
+
+    def test_empty_url_is_not_cloud(self):
+        assert _is_cloud_url(None) is False
+        assert _is_cloud_url("") is False
+
+    def test_unparseable_fails_safe_to_cloud(self):
+        # We can't tell — err on the side of gating
+        assert _is_cloud_url("not-a-url://garbage") is True
+
+
+class TestBackendCap:
+    def test_cap_refuses_when_exceeded(self):
+        """MAXIM_MAX_CONCURRENT_BACKENDS caps how many backends can exist."""
+        mgr = LaneBackendManager(
+            {
+                "infer": _infer_lane(),
+                "review": LaneConfig(name="review", max_workers=1, model_profile="smollm-1.7b-instruct"),
+            },
+            max_backends=1,
+        )
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router:
+            mock_load.return_value = object()
+            mock_router.return_value = "backend-a"
+            assert mgr.get_backend("infer") == "backend-a"
+            # Second lane should refuse
+            with pytest.raises(BackendGateError, match="MAXIM_MAX_CONCURRENT_BACKENDS"):
+                mgr.get_backend("review")
+
+    def test_cap_respects_cached_lanes(self):
+        """A cached lane doesn't re-count against the cap on subsequent calls."""
+        mgr = LaneBackendManager({"infer": _infer_lane()}, max_backends=1)
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router:
+            mock_load.return_value = object()
+            mock_router.return_value = "backend"
+            mgr.get_backend("infer")
+            # Same lane, returns cached — no new backend created
+            assert mgr.get_backend("infer") == "backend"
+
+    def test_cap_from_env(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_MAX_CONCURRENT_BACKENDS", "3")
+        mgr = LaneBackendManager({"infer": _infer_lane()})
+        assert mgr.max_backends == 3
+
+    def test_default_cap(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_MAX_CONCURRENT_BACKENDS", raising=False)
+        mgr = LaneBackendManager({})
+        assert mgr.max_backends == 2
+
+
+class TestCloudLaneCap:
+    def test_cloud_refused_by_default(self):
+        """MAXIM_MAX_CLOUD_LANES=0 means no cloud access allowed."""
+        mgr = LaneBackendManager(
+            {
+                "infer": LaneConfig(
+                    name="infer", max_workers=1,
+                    remote_url="https://api.anthropic.com/v1",
+                    remote_model="claude-3-opus",
+                ),
+            },
+            max_cloud_lanes=0,
+        )
+        with pytest.raises(BackendGateError, match="MAXIM_MAX_CLOUD_LANES"):
+            mgr.get_backend("infer")
+
+    def test_cloud_allowed_under_cap(self):
+        mgr = LaneBackendManager(
+            {
+                "infer": LaneConfig(
+                    name="infer", max_workers=1,
+                    remote_url="https://api.anthropic.com/v1",
+                    remote_model="claude-3-opus",
+                ),
+            },
+            max_cloud_lanes=1,
+            max_backends=5,
+        )
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router:
+            from maxim.models.language.config import LLMConfig
+            mock_load.return_value = LLMConfig()
+            mock_router.return_value = "cloud-backend"
+            assert mgr.get_backend("infer") == "cloud-backend"
+
+    def test_self_hosted_not_counted_as_cloud(self):
+        """Local llama-cpp-server on private IP should bypass cloud gate."""
+        mgr = LaneBackendManager(
+            {
+                "infer": LaneConfig(
+                    name="infer", max_workers=1,
+                    remote_url="http://192.168.1.10:8000/v1",
+                    remote_model="mistral-7b",
+                ),
+            },
+            max_cloud_lanes=0,  # even with zero cloud lanes, self-hosted OK
+            max_backends=5,
+        )
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router:
+            from maxim.models.language.config import LLMConfig
+            mock_load.return_value = LLMConfig()
+            mock_router.return_value = "self-hosted"
+            assert mgr.get_backend("infer") == "self-hosted"
+
+    def test_default_cloud_cap_is_zero(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_MAX_CLOUD_LANES", raising=False)
+        mgr = LaneBackendManager({})
+        assert mgr.max_cloud_lanes == 0
+
+
+class TestRemoteBackendBuild:
+    def _remote_lane(self, url: str, model: str = "m", key: str | None = None) -> LaneConfig:
+        return LaneConfig(
+            name="infer", max_workers=1,
+            remote_url=url, remote_model=model, remote_api_key=key,
+        )
+
+    def test_self_hosted_sets_allow_local(self):
+        mgr = LaneBackendManager(
+            {"infer": self._remote_lane("http://192.168.1.10:8000/v1", "mistral-7b")},
+            max_backends=5,
+        )
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router:
+            from maxim.models.language.config import LLMConfig
+            mock_load.return_value = LLMConfig()
+            mgr.get_backend("infer")
+            # The LLMConfig passed to LLMRouter should have providers with the
+            # self-hosted entry set to allow local endpoints.
+            (remote_cfg,), _ = mock_router.call_args
+            provider = remote_cfg.providers["lane-infer"]
+            assert provider["base_url"] == "http://192.168.1.10:8000/v1"
+            assert provider["model"] == "mistral-7b"
+            assert provider["allow_local_endpoints"] is True
+            assert remote_cfg.backend == "openai"
+            assert remote_cfg.enabled is True
+            # Self-hosted shouldn't force cloud_enabled on
+            assert remote_cfg.cloud_enabled is False
+
+    def test_cloud_forces_cloud_enabled(self):
+        mgr = LaneBackendManager(
+            {"infer": self._remote_lane("https://api.anthropic.com/v1", "claude-3")},
+            max_cloud_lanes=1,
+            max_backends=5,
+        )
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router:
+            from maxim.models.language.config import LLMConfig
+            mock_load.return_value = LLMConfig(cloud_enabled=False)
+            mgr.get_backend("infer")
+            (remote_cfg,), _ = mock_router.call_args
+            # cloud lane should escalate cloud_enabled to True so LLMRouter's
+            # internal gate doesn't reject the request
+            assert remote_cfg.cloud_enabled is True
+            assert remote_cfg.providers["lane-infer"]["allow_local_endpoints"] is False
+
+    def test_api_key_propagated_to_env(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_LANE_INFER_API_KEY", raising=False)
+        mgr = LaneBackendManager(
+            {"infer": self._remote_lane("https://api.anthropic.com/v1", "claude-3", key="sk-test")},
+            max_cloud_lanes=1,
+            max_backends=5,
+        )
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter"):
+            from maxim.models.language.config import LLMConfig
+            mock_load.return_value = LLMConfig()
+            mgr.get_backend("infer")
+            import os
+            assert os.environ.get("MAXIM_LANE_INFER_API_KEY") == "sk-test"
+
+
+class TestBuildPrimaryRouter:
+    def test_returns_manager_even_when_router_none(self, monkeypatch):
+        """Factory always returns a manager; router may be None if build fails."""
+        monkeypatch.delenv("MAXIM_LANE_INFER_REMOTE_URL", raising=False)
+        monkeypatch.delenv("MAXIM_LANE_REVIEW_REMOTE_URL", raising=False)
+        with patch("maxim.runtime.capabilities.detect_compute_resources") as mock_detect, \
+             patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router:
+            mock_detect.return_value = (False, None, 0.0, 8.0)  # no GPU, 8GB RAM
+            from maxim.models.language.config import LLMConfig
+            mock_load.return_value = LLMConfig()
+            mock_router.return_value = "router-instance"
+            router, manager = build_primary_router()
+            assert router == "router-instance"
+            assert manager is not None
+            assert "infer" in manager.lanes
+
+    def test_uses_provided_capabilities(self, monkeypatch):
+        """When capabilities passed, factory does not call detect_compute_resources."""
+        monkeypatch.delenv("MAXIM_LANE_INFER_REMOTE_URL", raising=False)
+        from maxim.runtime.capabilities import RuntimeCapabilities
+        caps = RuntimeCapabilities(has_gpu=True, vram_gb=15.9, ram_gb=32.0)
+        with patch("maxim.runtime.capabilities.detect_compute_resources") as mock_detect, \
+             patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter") as mock_router:
+            from maxim.models.language.config import LLMConfig
+            mock_load.return_value = LLMConfig()
+            mock_router.return_value = "router"
+            build_primary_router(capabilities=caps)
+            mock_detect.assert_not_called()
+
+    def test_env_override_applied(self, monkeypatch):
+        """MAXIM_LANE_INFER_REMOTE_URL must flow through to the LaneBackendManager."""
+        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_URL", "http://127.0.0.1:8000/v1")
+        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_MODEL", "mistral-7b")
+        from maxim.runtime.capabilities import RuntimeCapabilities
+        caps = RuntimeCapabilities(has_gpu=True, vram_gb=15.9, ram_gb=32.0)
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter"), \
+             patch("maxim.runtime.lane_backends._llm_server_responding_at", return_value=True):
+            from maxim.models.language.config import LLMConfig
+            mock_load.return_value = LLMConfig()
+            _, manager = build_primary_router(capabilities=caps)
+            info = manager.describe()["infer"]
+            assert info["remote_url"] == "http://127.0.0.1:8000/v1"
+            assert info["kind"] == "self-hosted"
+
+    def test_logger_receives_describe(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_LANE_INFER_REMOTE_URL", raising=False)
+        from unittest.mock import MagicMock
+        from maxim.runtime.capabilities import RuntimeCapabilities
+        mock_logger = MagicMock()
+        caps = RuntimeCapabilities(has_gpu=False, vram_gb=0.0, ram_gb=8.0)
+        with patch("maxim.models.language.config.load_llm_config") as mock_load, \
+             patch("maxim.models.language.router.LLMRouter"):
+            from maxim.models.language.config import LLMConfig
+            mock_load.return_value = LLMConfig()
+            build_primary_router(capabilities=caps, logger=mock_logger)
+            # Lane assignments should be emitted at INFO level
+            mock_logger.info.assert_called_once()
+            call_args = mock_logger.info.call_args
+            assert "Lane assignments" in call_args[0][0]
+
+
+class TestLLMServerHealthCheck:
+    def test_responding_url_returns_true(self):
+        with patch("urllib.request.urlopen") as mock_open:
+            mock_resp = MagicMock()
+            mock_resp.status = 200
+            mock_open.return_value.__enter__.return_value = mock_resp
+            assert _llm_server_responding_at("http://127.0.0.1:8100/v1") is True
+            # Verify it probed the /v1/models endpoint
+            called_url = mock_open.call_args[0][0]
+            assert called_url.endswith("/v1/models")
+
+    def test_dead_url_returns_false(self):
+        with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
+            assert _llm_server_responding_at("http://127.0.0.1:8100/v1") is False
+
+    def test_empty_url_returns_false(self):
+        assert _llm_server_responding_at("") is False
+        assert _llm_server_responding_at(None) is False
+
+
+class TestValidateRemoteUrls:
+    def test_unreachable_loopback_dropped(self):
+        from unittest.mock import MagicMock as MM
+        logger = MM()
+        cfgs = {"infer": LaneConfig(
+            name="infer", max_workers=1,
+            remote_url="http://127.0.0.1:8000/v1",
+            remote_model="mistral-7b",
+            remote_api_key="test-key",
+        )}
+        with patch("maxim.runtime.lane_backends._llm_server_responding_at", return_value=False):
+            out = _validate_remote_urls(cfgs, logger)
+        assert out["infer"].remote_url is None
+        assert out["infer"].remote_model is None
+        assert out["infer"].remote_api_key is None
+        logger.warning.assert_called_once()
+
+    def test_reachable_loopback_kept(self):
+        cfgs = {"infer": LaneConfig(
+            name="infer", max_workers=1,
+            remote_url="http://127.0.0.1:8100/v1",
+            remote_model="mistral-7b",
+        )}
+        with patch("maxim.runtime.lane_backends._llm_server_responding_at", return_value=True):
+            out = _validate_remote_urls(cfgs, None)
+        assert out["infer"].remote_url == "http://127.0.0.1:8100/v1"
+
+    def test_cloud_url_not_probed(self):
+        """Public URLs shouldn't be health-checked at startup."""
+        cfgs = {"infer": LaneConfig(
+            name="infer", max_workers=1,
+            remote_url="https://api.anthropic.com/v1",
+            remote_model="claude-3",
+        )}
+        with patch("maxim.runtime.lane_backends._llm_server_responding_at") as mock_probe:
+            out = _validate_remote_urls(cfgs, None)
+        mock_probe.assert_not_called()
+        assert out["infer"].remote_url == "https://api.anthropic.com/v1"
+
+    def test_no_remote_url_untouched(self):
+        cfgs = {"infer": LaneConfig(name="infer", max_workers=1, model_profile="smollm-1.7b-instruct")}
+        out = _validate_remote_urls(cfgs, None)
+        assert out["infer"].remote_url is None
+        assert out["infer"].model_profile == "smollm-1.7b-instruct"
+
+
+class TestDescribeIncludesKind:
+    def test_kind_local(self):
+        mgr = LaneBackendManager({"infer": _infer_lane()})
+        assert mgr.describe()["infer"]["kind"] == "local"
+
+    def test_kind_self_hosted(self):
+        mgr = LaneBackendManager({
+            "infer": LaneConfig(name="infer", max_workers=1, remote_url="http://127.0.0.1:8000/v1"),
+        })
+        assert mgr.describe()["infer"]["kind"] == "self-hosted"
+
+    def test_kind_cloud(self):
+        mgr = LaneBackendManager({
+            "infer": LaneConfig(name="infer", max_workers=1, remote_url="https://api.anthropic.com/v1"),
+        })
+        assert mgr.describe()["infer"]["kind"] == "cloud"

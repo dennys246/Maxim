@@ -37,18 +37,28 @@ def _validate_base_url(base_url: str, allow_local: bool) -> str | None:
         parsed = urlparse(base_url)
     except Exception:
         return None
-    if parsed.scheme != "https":
+    # https required for public endpoints; http acceptable for self-hosted LAN
+    # servers (llama-cpp-server, Ollama) running on private IPs.
+    if parsed.scheme == "https":
+        pass
+    elif parsed.scheme == "http" and allow_local:
+        pass
+    else:
         return None
     host = parsed.hostname
     if not host:
         return None
+    default_port = 443 if parsed.scheme == "https" else 80
     try:
-        addrinfos = socket.getaddrinfo(host, parsed.port or 443, proto=socket.IPPROTO_TCP)
+        addrinfos = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
     except Exception:
         return None
     for info in addrinfos:
         ip = info[4][0]
         if _is_private_ip(ip) and not allow_local:
+            return None
+        # http scheme is only allowed for private IPs, even when allow_local
+        if parsed.scheme == "http" and not _is_private_ip(ip):
             return None
     return base_url
 

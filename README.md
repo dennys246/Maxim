@@ -74,6 +74,12 @@ maxim --sim
 
 # Specify prompt profile for low-compute systems
 maxim --mode agentic --prompt-profile minimal
+
+# Diagnose your environment (platform-aware fix hints)
+maxim doctor
+
+# Set up Cloudflare tunnel for remote/peer access
+maxim tunnel setup
 ```
 
 ### Reachy Mini Setup

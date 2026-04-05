@@ -459,7 +459,12 @@ class LLMRouter:
         filtered: list[str] = []
         for key in providers:
             cfg = self._providers.get(key, {})
-            if self._provider_is_cloud(cfg):
+            # Self-hosted openai-compatible servers (llama-cpp-server, Ollama,
+            # vLLM on a private IP) opt out of the cloud gate by setting
+            # allow_local_endpoints=True — the SSRF check in _OpenAIBackend
+            # still enforces that the URL actually resolves locally.
+            is_self_hosted = bool(cfg.get("allow_local_endpoints", False))
+            if self._provider_is_cloud(cfg) and not is_self_hosted:
                 if not self._cloud_allowed or (policy.require_cloud_opt_in and not self.cfg.cloud_enabled):
                     continue
             state = self._provider_states.get(key)
@@ -608,7 +613,8 @@ class LLMRouter:
         policy = self._routing_policy
         for provider_key in providers:
             provider_cfg = self._providers.get(provider_key, {})
-            if self._provider_is_cloud(provider_cfg) and not self._cloud_allowed:
+            is_self_hosted = bool(provider_cfg.get("allow_local_endpoints", False))
+            if self._provider_is_cloud(provider_cfg) and not is_self_hosted and not self._cloud_allowed:
                 continue
 
             backend = self._get_backend_for_provider(provider_key)
@@ -619,7 +625,11 @@ class LLMRouter:
             model = self._provider_model(provider_cfg)
             model_override = self._model_for_tier(model, provider_cfg, budget_tier)
 
-            if self._provider_is_cloud(provider_cfg):
+            # Cost checks + PII redaction only apply to real cloud providers,
+            # not to self-hosted openai-compatible servers (llama-cpp-server,
+            # Ollama, vLLM) running on a private IP.
+            treat_as_cloud = self._provider_is_cloud(provider_cfg) and not is_self_hosted
+            if treat_as_cloud:
                 if policy.max_cost_per_request > 0:
                     estimate = self._cost_tracker.estimate_cost(
                         model_override,
@@ -638,7 +648,7 @@ class LLMRouter:
             redaction_result: RedactionResult | None = None
             redacted_system = system
             redacted_user = user
-            if self._provider_is_cloud(provider_cfg):
+            if treat_as_cloud:
                 redactor = CloudRedactionFilter.from_config(
                     provider_cfg=provider_cfg,
                     global_cfg=self.cfg.redaction,

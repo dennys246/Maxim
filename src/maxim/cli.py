@@ -20,12 +20,30 @@ _blackwell_detected = False
 _BLACKWELL_CACHE_ENV = "_MAXIM_BLACKWELL_CHECKED"
 _cached_result = os.environ.get(_BLACKWELL_CACHE_ENV)
 
+# Blackwell CUDA policy: by default, keep CUDA visible for LLM backends
+# (llama-cpp-python, torch) and only disable CUDA inside GStreamer (GST_CUDA_NO_CUDA=1)
+# to avoid the reachy-mini media-pipeline segfault.
+#
+# Opt-out: set MAXIM_BLACKWELL_HIDE_CUDA=1 to hide CUDA from the entire process
+# (CPU-only mode). Use this if you hit a GStreamer crash despite the GST guard.
+_hide_cuda = os.environ.get("MAXIM_BLACKWELL_HIDE_CUDA", "").strip().lower() in (
+    "1", "true", "t", "yes", "y", "on",
+)
+
+
+def _apply_blackwell_guards(*, hide_cuda: bool) -> None:
+    """Apply GStreamer guards, and optionally hide CUDA from all libraries."""
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+    os.environ['GST_CUDA_NO_CUDA'] = '1'
+    os.environ.setdefault('REACHY_MEDIA_BACKEND', 'default')
+    if hide_cuda:
+        os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
+
 if _cached_result == "yes":
     # Cached: Blackwell was detected previously
     _blackwell_detected = True
-    os.environ['CUDA_VISIBLE_DEVICES'] = ''
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-    os.environ['GST_CUDA_NO_CUDA'] = '1'
+    _apply_blackwell_guards(hide_cuda=_hide_cuda)
 elif _cached_result == "no":
     # Cached: No Blackwell GPU, skip detection
     pass
@@ -40,12 +58,20 @@ else:
             gpu_names = result.stdout.strip().lower()
             if 'rtx 50' in gpu_names or '5080' in gpu_names or '5090' in gpu_names:
                 _blackwell_detected = True
-                # CRITICAL: Hide CUDA from ALL libraries to prevent GStreamer crash
-                os.environ['CUDA_VISIBLE_DEVICES'] = ''
-                os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-                os.environ['GST_CUDA_NO_CUDA'] = '1'
+                _apply_blackwell_guards(hide_cuda=_hide_cuda)
                 os.environ[_BLACKWELL_CACHE_ENV] = "yes"  # Cache for next run
-                print("Blackwell GPU detected - forcing CPU-only mode (GStreamer/CUDA incompatibility)", file=sys.stderr)
+                if _hide_cuda:
+                    print(
+                        "Blackwell GPU detected - CPU-only mode "
+                        "(MAXIM_BLACKWELL_HIDE_CUDA=1)",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        "Blackwell GPU detected - GStreamer CUDA disabled, "
+                        "LLM CUDA kept (set MAXIM_BLACKWELL_HIDE_CUDA=1 for CPU-only)",
+                        file=sys.stderr,
+                    )
             else:
                 os.environ[_BLACKWELL_CACHE_ENV] = "no"  # Cache: no Blackwell
         else:
@@ -423,6 +449,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
+
+    # Subcommand dispatch — intercepts positional subcommands before argparse.
+    if raw_argv and raw_argv[0] == "tunnel":
+        from maxim.tunnel import run_tunnel_subcommand
+        return run_tunnel_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "doctor":
+        from maxim.doctor import run_doctor_subcommand
+        return run_doctor_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "peer":
+        from maxim.doctor import run_peer_subcommand
+        return run_peer_subcommand(raw_argv[1:])
 
     # Handle --last, --show-last, --clear-last before full parse
     if "--show-last" in raw_argv:

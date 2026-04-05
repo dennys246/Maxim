@@ -1,10 +1,10 @@
 # Multi-LLM Scaling Plan
 
-> **Status:** Not started — but all prerequisites are complete. Depends on RuntimeCapabilities (implemented), WorkerPool lane system (implemented), shared LLMRouter pattern (implemented via Agentic Loop Modularization), and **Router Modularization (done — router.py split into config/types/token_counter/prompt_formats/json_parser modules)**. Ready to begin Phase 1.
+> **Status:** Phases 1–5 live. Users can run per-lane capability-driven local profiles, attach a remote llama-cpp-server, and reach it over a Cloudflare tunnel today. Phase 6 (leader mode + auto-spawn) is next, Phase 7 (peer mesh + multi-front input) follows.
 >
-> **Scope:** Local multi-model inference, remote model serving via home server + Cloudflare tunnel, dynamic backend spawning, and peer-to-peer inference mesh across Maxim instances.
+> **Scope:** Local multi-model inference, remote model serving via home server + Cloudflare tunnel, dynamic backend spawning, peer-to-peer inference mesh, and multi-frontend input for shared-consciousness deployments.
 
-Turn any machine running Maxim into a node in a distributed inference mesh. Each node contributes whatever compute it has — a 5080 GPU at home, a laptop CPU on the go, a Reachy with an edge GPU — and any node can route inference requests to the best available backend. Models stay loaded and warm. Access from anywhere via Cloudflare tunnel.
+Turn any machine running Maxim into a node in a distributed inference mesh. Each node contributes whatever compute it has — a 5080 GPU at home, a laptop CPU on the go, a Reachy with an edge GPU — and any node can route inference requests to the best available backend. Models stay loaded and warm. Access from anywhere via Cloudflare tunnel. A leader machine can expose its agent loop to multiple input frontends (local CLI, remote CLI, SMS) so a whole household talks to one Maxim mind.
 
 ---
 
@@ -33,6 +33,72 @@ Currently all WorkerPool lanes share a single local LLM backend. This means:
                                                         │  home server     │
                                                         └──────────────────┘
 ```
+
+---
+
+## Observed Performance & Gotchas
+
+Measured against a **self-hosted llama-cpp-server (mistral-7b-instruct-v0.2 Q4_K_M, `--n_ctx 8192`, CUDA, RTX 5080)** via HTTP loopback, Maxim process separate. Use these as baseline numbers when sizing mesh topologies or budgeting token counts; measure again on each new hardware / model combo.
+
+### Latency baseline (2026-04-04)
+
+| Scenario | Latency |
+|---|---|
+| Short completion (≤10 output tokens) | **~44 ms mean** (42–46 ms range over 10 sequential calls) |
+| 4 parallel short completions (wall-time) | **~0.72 s** for 4 requests — server batches well, ~4× faster than sequential |
+| Long-context completion (~4k prompt tokens) | ~1 s |
+| Direct `_OpenAIBackend.complete_with_usage()` one-shot | ~8.7 s (cold start; includes KV warmup) |
+
+**Implications for mesh routing:**
+- Peer hops over LAN add ~5–20 ms on top of these numbers. At 44 ms baseline, a LAN hop is ~11–45% overhead — acceptable for planning/reflection lanes, tight for real-time motor lanes.
+- Cloudflare tunnel hops add 20–50 ms + inference time (~65–94 ms total for a short call). Still async-friendly; only a concern for <100 ms response budgets.
+- Concurrency scales well: 2–4 Maxim instances sharing one server is realistic without per-request latency degradation.
+
+### Context window gotcha
+
+**Mistral tokens are denser than English-word count suggests.** A prompt that "looks like 5000 tokens" by word count may actually be 12,500. Measured via the server's own tokenizer:
+
+| Text | Word count | Token count | Ratio |
+|---|---|---|---|
+| "The word banana. " × 800 | ~2400 words | **4055 tokens** | 1.69× |
+| "The word banana. " × 2500 | ~7500 words | **12,552 tokens** | 1.67× |
+
+**Don't estimate prompt tokens from word counts** — use the actual tokenizer. The sim orchestrator's cooperative persona prompt is already ~2900 tokens on a simple goal; adversarial + history-heavy sims will push much higher. **`MAXIM_AUTO_SPAWN_N_CTX=8192` is acceptable for short sims but tight for long ones.** Mistral-7B-v0.2 trained at 32768 — raise if VRAM permits (≈doubling ctx roughly doubles KV-cache VRAM, ≈300 MB per doubling for 7B Q4).
+
+### Resilience behavior (verified)
+
+- **Auto-discovery**: a fresh `build_primary_router()` call correctly detects an existing server on the auto-spawn port and reuses it instead of spawning a duplicate.
+- **Stale-URL recovery**: if `MAXIM_LANE_*_REMOTE_URL` points at a dead server, the private-IP URL is probed at startup, dropped with a warning, and auto-spawn takes over. Public/cloud URLs are trusted (not probed — would add latency + cost).
+- **Signal isolation**: spawned server runs in its own process group (`start_new_session=True`), so Ctrl+C on the Maxim CLI doesn't kill it mid-shutdown. Cleanup paths (sim report LLM roundup) can make final inference calls before atexit terminates the subprocess.
+
+### Per-process VRAM accounting (5080, 16 GB VRAM)
+
+| Setup | VRAM | Notes |
+|---|---|---|
+| 1× mistral-7b Q4 (server) + client process | ~5 GB | Leaves 11 GB headroom |
+| 2× mistral-7b Q4 (one user ran a manual server + auto-spawn) | ~9 GB | Wasteful — auto-discovery now prevents this |
+| 1× llama-2-13b Q4 on server + client process | ~8 GB | Headroom for 16 GB card |
+| Peer mesh: 2 Maxim clients sharing 1 server | ~5 GB | Single model copy, N independent minds |
+
+---
+
+## Deployment Topologies
+
+One code path, four real-world shapes. All driven by the **same `build_primary_router()` factory** + env/config overrides:
+
+### 1. Solo laptop (no multi-LLM)
+Nothing to configure. `build_primary_router()` detects local capabilities, picks a profile, loads in-process. What most users see on day one.
+
+### 2. Solo desktop with a dedicated model server
+User manually runs `llama-cpp-server` in a second terminal; sets `MAXIM_LANE_INFER_REMOTE_URL=http://127.0.0.1:8000/v1`. No tunnel, no peers. Useful for keeping a model hot across Maxim restarts. **This is what Phase 4 already supports today.**
+
+### 3. Home leader + follower(s)
+One machine (typically the one with the best GPU) is the **leader**: it auto-spawns llama-cpp-server, exposes it via a Cloudflare tunnel or LAN IP, and still runs its own agentic loop locally. Followers (laptop, Reachy, second desktop) run Maxim with `MAXIM_LANE_INFER_REMOTE_URL` pointed at the leader. Leader is detected via `~/.cloudflared/config.yml` or `MAXIM_ROLE=leader`. **Phase 6 work.**
+
+### 4. LAN mesh with shared consciousness
+Multiple Maxim instances discover each other via mDNS. Inference is routed to whichever peer has the best hardware for each request. A designated leader optionally exposes its agent loop to remote CLI frontends so the whole household talks to one Maxim mind. **Phase 7 work.**
+
+The topologies are **additive** — a user can move from solo-laptop → home-leader → LAN mesh without rewriting configs, just by adding env vars / config entries as they scale up.
 
 ---
 
@@ -314,9 +380,28 @@ Or in `llm.json`:
 
 The AdaptivePlanner's `context_budget_ms` (currently 50ms) applies to memory gathering, not LLM inference. LLM calls are async via the WorkerPool. Remote latency is invisible to the agentic loop — it just means results arrive one cycle later.
 
-### Phase 6: Dynamic Local Backend Spawning
+### Phase 6: Dynamic Local Backend Spawning + Leader Mode
 
-Automatically detect available hardware at startup and spawn model server processes for models that should be locally available.
+Automatically detect available hardware at startup and spawn model server processes for models that should be locally available. On machines configured for remote access, promote this instance to a **leader** that serves inference to peers — same process also runs the normal agentic loop, so the leader machine stays fully usable.
+
+#### Role detection
+
+At startup, classify this instance:
+
+| Signal | Role | Behavior |
+|---|---|---|
+| `MAXIM_ROLE=leader` env set | explicit leader | Auto-spawn server + expose via tunnel |
+| `~/.cloudflared/config.yml` exists with `service: http://localhost:8000` | implicit leader | Same as above |
+| GPU present AND `MAXIM_ROLE` unset AND no cloudflared config | local-only | Spawn server, only `127.0.0.1` binding |
+| No GPU / `MAXIM_ROLE=client` | follower | Skip spawner; require `MAXIM_LANE_INFER_REMOTE_URL` or fall back to tiny CPU model |
+
+The leader distinction matters for:
+- **Bind address**: local-only uses `127.0.0.1`, leader binds `0.0.0.0` so tunnel/LAN can reach it.
+- **Peer advertisement**: leader registers itself via mDNS (Phase 7).
+- **Lifecycle**: leader's spawned servers outlive the Maxim process (optional `--persist` flag) so a peer isn't cut off when the leader restarts its agentic loop.
+
+The leader still runs its own agentic loop + CLI locally — **it doesn't become "just a server."** It uses its own spawned backends via `127.0.0.1`, identical to how peers reach it. One code path, many deployment topologies.
+
 
 #### 6a. Backend spawner
 
@@ -450,9 +535,29 @@ for info in spawned:
         lane_configs["review"].remote_url = url
 ```
 
-### Phase 7: Peer Discovery + Inference Mesh
+### Phase 7: Peer Discovery + Inference Mesh + Multi-Front Input
 
-Maxim instances discover each other on LAN and share compute. Any instance can offload inference to a peer with better hardware.
+Maxim instances discover each other on LAN and share compute. Any instance can offload inference to a peer with better hardware. Beyond inference, a leader instance can also accept **user input from multiple frontends simultaneously** — a shared-consciousness topology where one agent loop is driven by many I/O channels.
+
+#### Multi-front input — "one mind, many channels"
+
+A leader instance can expose its `ConversationalSource` + percept stream to remote callers, letting multiple humans drop into the same Maxim "mind" concurrently:
+
+| Frontend | Transport | Already exists? |
+|---|---|---|
+| Local stdin | Terminal | ✓ (current behavior) |
+| Remote CLI | WebSocket over tunnel | new (Phase 7) |
+| SMS / voice | Twilio webhook | ✓ ([comms/](../../src/maxim/comms/)) |
+| Another Maxim instance | mDNS peer over HTTP | new (Phase 7) |
+
+**Constraints to design around:**
+- Input merging — if two humans give opposing commands, the agent needs to handle it (likely a turn-based queue with attribution).
+- Authentication — remote CLI frontends need at least a shared-secret token before hitting the agent bus.
+- Percept fan-out — every connected frontend should see the same percept stream, not just the one that drove the last turn.
+- Graceful degradation — if the leader disappears, remote frontends should fail visibly, not silently hang.
+
+**What stays the same:** the agent loop, memory, and LLM backends. Only the input/output boundary changes. The comms gateway already proves the pattern (Twilio SMS is architecturally just another `PerceptSource`); formalizing it means lifting `ConversationalSource` behind a pub/sub so N callers can publish/subscribe.
+
 
 #### 7a. Peer advertisement via mDNS
 
@@ -715,29 +820,61 @@ Or via `llm.json`:
 }
 ```
 
+### Phase 10: Observability & Verbose Tracing
+
+**Timing:** Wait until at least Phases 3 + 7 are live. Observability designed on a single-backend world will miss what actually matters in a mesh (routing decisions, peer failovers, remote-vs-local pressure). Building it too early means rewriting it.
+
+**Goal:** Every LLM call in the logs should answer three questions at a glance:
+
+1. **Where did this response come from?** — lane, model profile, backend type (`local-llama`/`local-torch`/`remote-http`/`peer`), host identity if remote.
+2. **What memory pressure was the backend under?** — VRAM/RAM usage for local backends, queue depth for remote, backpressure signals.
+3. **What compute pressure?** — tokens/sec, p50/p99 latency, active workers in the lane, failover count since start.
+
+**Implementation sketch:**
+
+- **Structured log records per LLM call.** Extend `LLMResponse` (or add a `LLMCallTrace` alongside) with `lane`, `backend_kind`, `backend_host`, `model_profile`, `tokens_in`, `tokens_out`, `latency_ms`, `vram_used_mb`, `queue_depth_at_submit`. Log one JSON line per call at DEBUG, plus a compact one-liner at INFO.
+- **Periodic pressure snapshots.** A lightweight background task (~every 5s, gated on `MAXIM_PROVENANCE_VERBOSITY>=1`) samples `torch.cuda.memory_allocated()`, `psutil.virtual_memory()`, and per-lane `WorkerPool.status()`, and emits one structured line. Makes it easy to correlate latency spikes with memory/compute events.
+- **Routing-decision traces.** When `InferenceRouter` picks a backend (local → peer → remote fallback chain), log *why* — which candidates were considered, which were skipped, why. At `MAXIM_PROVENANCE_VERBOSITY=2`, include the full decision tree.
+- **Reuse existing provenance infrastructure.** `src/maxim/provenance/` already has 2-tier tracing (cycle traces + activity log). LLM-call traces should plug into the same system so they show up in the existing cycle trace viewer, not a separate log stream.
+- **Env toggles** (align with existing convention):
+  - `MAXIM_LLM_TRACE=1` — enable per-call structured trace
+  - `MAXIM_LLM_PRESSURE_INTERVAL_S=5` — snapshot cadence
+  - Tied into `MAXIM_PROVENANCE_VERBOSITY` for the broader verbosity knob
+
+**What this unlocks:** diagnosing "why is this sim slow?" without attaching a profiler — you see at a glance that `infer` lane spent 60% of the session on a peer because the local GPU OOM'd, or that the review lane queue stayed at depth 8 for 20s because a 7B CPU model was thrashing.
+
+**Non-goals:** Prometheus/Grafana export, long-term metric storage, dashboards. Those can layer on top of structured log lines later.
+
 ---
 
 ## Implementation Sequencing
 
-| Phase | What | Effort | Dependencies |
+| Phase | What | Status | Dependencies |
 |-------|------|--------|-------------|
-| **1** | `LaneConfig` gains model fields | Small | None |
-| **2** | `LaneModelConfig` + capability-driven assignment | Small | Phase 1 |
-| **3** | `LaneBackendManager` (local + remote backends) | Medium | Phase 1 |
-| **4** | Remote model server setup (home PC) | Small (config) | None (external) |
-| **5** | Cloudflare tunnel setup | Small (config) | Phase 4 |
-| **6** | `LocalBackendSpawner` (dynamic model servers) | Medium | Phase 3 |
-| **7** | `PeerRegistry` + `InferenceRouter` (mesh) | Large | Phases 3, 6 |
-| **8** | `LaneMetrics` enrichment | Small | Phase 3 |
-| **9** | Environment variable / config support | Small | All phases |
+| **1** | `LaneConfig` gains model fields | ✅ done | None |
+| **2** | `LaneModelConfig` + capability-driven assignment | ✅ done | Phase 1 |
+| **3** | `LaneBackendManager` + gates (`MAXIM_MAX_CONCURRENT_BACKENDS`, `MAXIM_MAX_CLOUD_LANES`) | ✅ done | Phase 1 |
+| **4** | Remote model server (`_build_remote_backend` + llama-cpp-server docs) | ✅ done | Phase 3 |
+| **5** | Cloudflare tunnel setup (docs only, optional) | ✅ done | Phase 4 |
+| **6** | `LocalBackendSpawner` + **leader-mode detection** (tunnel config → promote to leader) | next | Phase 3 |
+| **7** | `PeerRegistry` + `InferenceRouter` + **multi-front input** (N frontends, one mind) | later | Phases 3 + 6 |
+| **8** | `LaneMetrics` enrichment | small | Phase 3 |
+| **9** | Environment variable / config support (superseded by Phases 3+4) | mostly done | — |
+| **10** | Observability & verbose tracing | medium | Phases 3 + 7 |
 
-**Recommended order:**
-1. Phases 1-3 (local multi-model) — gets dual-model working on one machine
-2. Phases 4-5 (remote + tunnel) — offload from laptop/Reachy to home PC
-3. Phase 6 (auto-spawn) — convenience, no more manual server launches
-4. Phases 7-9 (mesh + metrics + config) — multi-node cluster
+**Also landed outside the plan** (discovered during implementation):
+- `build_primary_router()` factory unifying agentic_runtime + sim orchestrator LLM construction — prevents double-model loading.
+- `MAXIM_LANE_{NAME}_REMOTE_URL/_MODEL/_API_KEY` env overrides.
+- `_validate_base_url` permits `http://` for private-IP endpoints.
+- LLMRouter respects `allow_local_endpoints` — self-hosted providers bypass cloud gate, cost check, and PII redaction.
 
-Phases 4-5 are external configuration, not code changes. They can be done in parallel with Phase 3.
+**Path forward from the current state (Phases 1–5 done):**
+1. **Phase 6 (leader-mode + auto-spawn)** — next up. Removes the "start server manually in another terminal" step, promotes GPU-rich machines to leader, auto-wires local lanes to the spawned server. Also unlocks the Phase 3 home-leader deployment topology for any user with `~/.cloudflared/config.yml`.
+2. **Phase 8 (LaneMetrics enrichment)** — can slot in any time after Phase 3; small and independent. Useful for verifying what Phase 6 actually does.
+3. **Phase 7 (peer mesh + multi-front input)** — bigger piece. Do after Phase 6 so there's a real leader to be a peer to. Multi-front input is its own sub-effort and may split into its own phase once scoped.
+4. **Phase 10 (observability)** — wait until Phase 7 is live; mesh routing decisions are what observability most needs to expose.
+
+Phases 4-5 were external configuration + docs and are both done. Phase 9 (env vars) was largely absorbed into Phases 3+4.
 
 ---
 

@@ -150,17 +150,28 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 
 ## 2. Multi-LLM Scaling
 
-> **Status:** Not started. After router modularization.
-> **Effort:** ~2,000 LOC across 9 phases
+> **Status:** Phases 1–6 live. Phase 7 (peer mesh + multi-front input) next.
+> **Effort:** ~2,000 LOC across 10 phases
 > **Design:** [multi_llm_scaling.md](multi_llm_scaling.md)
 
-### Phases 1-3: Local Multi-Model (start here)
+### Phases 1-3: Local Multi-Model (✅ done)
 
 - Phase 1: `LaneConfig` gains `model_profile`, `device`, `n_gpu_layers`
 - Phase 2: `LaneModelConfig` + capability-driven assignment based on hardware
-- Phase 3: `LaneBackendManager` in new `lane_manager.py` — per-lane backend creation with lazy loading
+- Phase 3: `LaneBackendManager` with safety gates (concurrent backend + cloud-lane caps)
 
-**Target:** Run 24B Q4_K_M (GPU) + 3B Q4 (CPU) simultaneously on RTX 5080.
+**Target achieved:** Run mistral-7b (GPU) + SmolLM-1.7B (CPU) simultaneously on RTX 5080 via auto-spawn.
+
+### Phases 4-6: Remote + Auto-Spawn + Leader Mode (✅ done)
+
+- Phase 4-5: llama-cpp-server remote backend + Cloudflare tunnel docs
+- Phase 6: `LocalBackendSpawner` + leader-mode detection (`~/.cloudflared/config.yml` or `MAXIM_ROLE=leader`)
+
+### Doctor Upgrades (companion effort)
+
+> **Design:** [doctor_upgrade_plan.md](doctor_upgrade_plan.md)
+
+`maxim doctor` v1 ships with the multi-LLM work (platform detection, GPU/server/LAN/tunnel checks, platform-specific fix hints, retry loop, `maxim peer test`). Future expansions: deeper GPU health probes, inference coherence + tokens/sec benchmarks, sim-based behavior regression tests, JSON output for CI, fix automation, and agent-mesh health diagnostics.
 
 ### Phases 4-6: Remote + Auto-Spawn
 
