@@ -48,6 +48,7 @@ Actions:
   setup        Guided interactive tunnel setup (login, create, DNS, config.yml)
   status       Show current tunnel configuration
   start        Run cloudflared tunnel daemon in the foreground
+  tail         Stream cloudflared + llama-cpp-server logs (debug)
   key show     Print the current Maxim API key
   key rotate   Generate a new API key (invalidates peers)
   key export   Print copy-paste shell snippets for peers to set the key
@@ -75,6 +76,8 @@ def run_tunnel_subcommand(argv: Sequence[str]) -> int:
         return _cmd_start(list(argv[1:]))
     if action == "key":
         return _cmd_key(list(argv[1:]))
+    if action == "tail":
+        return _cmd_tail(list(argv[1:]))
     print(f"Unknown action: {action}\n\n{USAGE}", file=sys.stderr)
     return 2
 
@@ -328,6 +331,69 @@ def _cmd_start(extra_args: list[str]) -> int:
     cmd = [cloudflared, "tunnel", "run", tunnel_id] + extra_args
     try:
         return subprocess.call(cmd)
+    except KeyboardInterrupt:
+        print("\nStopped.")
+        return 0
+
+
+# ─── tail ─────────────────────────────────────────────────────────────────
+
+TAIL_USAGE = """\
+Usage: maxim tunnel tail [--since DURATION] [--filter REGEX]
+
+Streams cloudflared's systemd logs alongside llama-cpp-server output (if
+visible) so you can watch peer requests traverse the tunnel → local server
+in real time.
+
+Options:
+  --since DURATION   Show logs from the last N (e.g., 5m, 1h). Default: 2m
+  --filter REGEX     Only show lines matching this regex
+
+Tip: combine with MAXIM_LANE_TRACE=1 on the peer side and
+MAXIM_TUNNEL_ECHO=1 on the leader to get full request-id correlation.
+"""
+
+
+def _cmd_tail(argv: list[str]) -> int:
+    if argv and argv[0] in ("-h", "--help"):
+        print(TAIL_USAGE)
+        return 0
+    since = "2m"
+    filter_re: str | None = None
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--since" and i + 1 < len(argv):
+            since = argv[i + 1]
+            i += 2
+        elif a == "--filter" and i + 1 < len(argv):
+            filter_re = argv[i + 1]
+            i += 2
+        else:
+            print(f"Unknown option: {a}\n\n{TAIL_USAGE}", file=sys.stderr)
+            return 2
+
+    # Prefer journalctl (systemd service); fall back to looking for live
+    # cloudflared stderr. Either way we stream until Ctrl+C.
+    cmd = ["journalctl", "-u", "cloudflared", "--since", since, "-f", "--no-pager"]
+    if filter_re:
+        cmd.extend(["-g", filter_re])
+
+    print(f"Streaming cloudflared logs (systemd service)...")
+    print(f"  cmd: {' '.join(cmd)}")
+    print("  Ctrl+C to stop.")
+    print()
+    try:
+        return subprocess.call(cmd)
+    except FileNotFoundError:
+        print(
+            "✗ `journalctl` not found. On this system, cloudflared may be running\n"
+            "  as a foreground process or the systemd logs are in a different location.\n"
+            "  If running `maxim tunnel start` in another terminal, its stderr shows\n"
+            "  the same information directly.",
+            file=sys.stderr,
+        )
+        return 1
     except KeyboardInterrupt:
         print("\nStopped.")
         return 0

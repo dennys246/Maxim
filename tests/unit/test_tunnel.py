@@ -199,3 +199,38 @@ class TestSubcommandDispatch:
         err = capsys.readouterr().err
         assert "No tunnel configured" in err
         assert code == 1
+
+    def test_tail_help(self, capsys):
+        code = run_tunnel_subcommand(["tail", "--help"])
+        out = capsys.readouterr().out
+        assert code == 0
+        assert "tail" in out.lower() and "cloudflared" in out.lower()
+
+    def test_tail_unknown_option(self, capsys):
+        code = run_tunnel_subcommand(["tail", "--bogus"])
+        assert code == 2
+
+    def test_tail_invokes_journalctl(self, capsys):
+        with patch("subprocess.call", return_value=0) as mock_call:
+            code = run_tunnel_subcommand(["tail", "--since", "10m"])
+        assert code == 0
+        mock_call.assert_called_once()
+        cmd = mock_call.call_args[0][0]
+        assert cmd[0] == "journalctl"
+        assert "-u" in cmd and "cloudflared" in cmd
+        assert "--since" in cmd and "10m" in cmd
+        assert "-f" in cmd
+
+    def test_tail_missing_journalctl(self, capsys):
+        with patch("subprocess.call", side_effect=FileNotFoundError):
+            code = run_tunnel_subcommand(["tail"])
+        err = capsys.readouterr().err
+        assert code == 1
+        assert "journalctl" in err.lower()
+
+    def test_tail_filter_option(self):
+        with patch("subprocess.call", return_value=0) as mock_call:
+            run_tunnel_subcommand(["tail", "--filter", "req=.*"])
+        cmd = mock_call.call_args[0][0]
+        assert "-g" in cmd
+        assert "req=.*" in cmd

@@ -90,6 +90,40 @@ class TestApiKey:
         assert "--api_key" not in s._build_cmd()
 
 
+class TestTunnelEcho:
+    def test_echo_off_by_default_streams_to_devnull(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("MAXIM_TUNNEL_ECHO", raising=False)
+        import subprocess as _sp
+        model = tmp_path / "fake.gguf"
+        model.write_bytes(b"GGUF")
+        s = LocalServerSpawner(model_path=str(model))
+        with patch("subprocess.Popen") as mock_popen:
+            mock_proc = MagicMock()
+            mock_proc.poll.return_value = 1  # exit immediately
+            mock_popen.return_value = mock_proc
+            s.start(timeout_s=0.1)
+        kwargs = mock_popen.call_args.kwargs
+        assert kwargs.get("stdout") == _sp.DEVNULL
+        assert kwargs.get("stderr") == _sp.DEVNULL
+
+    def test_echo_on_inherits_parent_streams(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("MAXIM_TUNNEL_ECHO", "1")
+        model = tmp_path / "fake.gguf"
+        model.write_bytes(b"GGUF")
+        s = LocalServerSpawner(model_path=str(model))
+        with patch("subprocess.Popen") as mock_popen:
+            mock_proc = MagicMock()
+            mock_proc.poll.return_value = 1
+            mock_popen.return_value = mock_proc
+            s.start(timeout_s=0.1)
+        kwargs = mock_popen.call_args.kwargs
+        # None → inherits parent's stdout/stderr
+        assert kwargs.get("stdout") is None
+        assert kwargs.get("stderr") is None
+        # And we print a notice to stderr
+        assert "MAXIM_TUNNEL_ECHO" in capsys.readouterr().err
+
+
 class TestSignalIsolation:
     def test_subprocess_started_in_new_session(self, tmp_path):
         """start_new_session=True must be passed so Ctrl+C in the terminal

@@ -450,6 +450,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
 
+    # Stage A observability: print loud warning if trace flags are active so
+    # users don't leave them on accidentally (log volume + request-id exposure).
+    from maxim.models.language.mesh_trace import print_startup_warning_if_enabled
+    print_startup_warning_if_enabled()
+
     # Subcommand dispatch — intercepts positional subcommands before argparse.
     if raw_argv and raw_argv[0] == "tunnel":
         from maxim.tunnel import run_tunnel_subcommand
