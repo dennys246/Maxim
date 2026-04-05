@@ -47,7 +47,8 @@ Usage: maxim tunnel <action> [options]
 Actions:
   setup        Guided interactive tunnel setup (login, create, DNS, config.yml)
   status       Show current tunnel configuration
-  start        Run cloudflared tunnel daemon in the foreground
+  start        Run cloudflared tunnel daemon in the foreground (--force to
+               bypass the duplicate-instance check)
   tail         Stream cloudflared + llama-cpp-server logs (debug)
   key show     Print the current Maxim API key
   key rotate   Generate a new API key (invalidates peers)
@@ -309,7 +310,12 @@ def _cmd_start(extra_args: list[str]) -> int:
     """Run `cloudflared tunnel run` in the foreground.
 
     Useful for testing before installing as a service. Inherits stdout/stderr
-    so the user sees connection logs directly.
+    so the user sees connection logs directly. Refuses to start if another
+    cloudflared process is already running (systemd service OR another
+    foreground invocation) — duplicate tunnel connectors waste Cloudflare
+    edge slots and confuse log streams.
+
+    Bypass with `--force` if you actually want duplicate connectors.
     """
     summary = read_config_summary()
     if summary is None:
@@ -325,8 +331,40 @@ def _cmd_start(extra_args: list[str]) -> int:
     if not tunnel_id:
         print("✗ config.yml missing 'tunnel:' field.", file=sys.stderr)
         return 1
+
+    # Pre-flight: is something already tunnelling? If so, refuse with a
+    # clear explanation unless --force was passed.
+    force = "--force" in extra_args
+    if force:
+        extra_args = [a for a in extra_args if a != "--force"]
+    elif _cloudflared_service_active():
+        print(
+            "✗ cloudflared systemd service is already active.\n\n"
+            "  Starting a second cloudflared would create a duplicate tunnel\n"
+            "  connector (Cloudflare tolerates this but it wastes edge slots\n"
+            "  and splits your log streams across two processes).\n\n"
+            "  What do you want to do?\n\n"
+            "    Watch logs:       maxim tunnel tail\n"
+            "    Stop the service: sudo systemctl stop cloudflared\n"
+            "    Force foreground: maxim tunnel start --force\n",
+            file=sys.stderr,
+        )
+        return 1
+    elif _cloudflared_process_running():
+        print(
+            "✗ cloudflared is already running as a foreground process.\n\n"
+            "  Starting another would create a duplicate connector.\n\n"
+            "  What do you want to do?\n\n"
+            "    Ctrl+C the other process first, then re-run this command.\n"
+            "    Or bypass:  maxim tunnel start --force\n",
+            file=sys.stderr,
+        )
+        return 1
+
     print(f"Starting cloudflared tunnel: {tunnel_id}")
     print("(Ctrl+C to stop)")
+    # Surface the service-install hint unless a service is already running.
+    _print_service_install_hint()
     print()
     cmd = [cloudflared, "tunnel", "run", tunnel_id] + extra_args
     try:
@@ -334,6 +372,67 @@ def _cmd_start(extra_args: list[str]) -> int:
     except KeyboardInterrupt:
         print("\nStopped.")
         return 0
+
+
+def _cloudflared_process_running() -> bool:
+    """Best-effort check for ANY cloudflared tunnel run process (not just systemd)."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-af", "cloudflared.*tunnel.*run"],
+            capture_output=True, text=True, timeout=2.0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def _print_service_install_hint() -> None:
+    """Suggest installing cloudflared as a persistent service if one isn't running.
+
+    Detects whether a cloudflared systemd unit is already active on Linux;
+    otherwise prints an OS-appropriate `service install` command. Skips the
+    hint entirely when a service is already managing the tunnel (the
+    foreground start is then a deliberate debug run).
+    """
+    if _cloudflared_service_active():
+        return  # user already has a persistent service; don't nag
+
+    import platform
+    system = platform.system().lower()
+    print()
+    print("  ──────────────────────────────────────────────────────────────")
+    print("  Tip: running foreground. For a persistent tunnel that survives")
+    print("  reboots + terminal close, install cloudflared as a service:")
+    if system == "linux":
+        print(f"    sudo cloudflared --config {CONFIG_PATH} service install")
+        print("    sudo systemctl enable --now cloudflared")
+    elif system == "darwin":
+        print(f"    sudo cloudflared --config {CONFIG_PATH} service install")
+        print("    sudo launchctl start com.cloudflare.cloudflared")
+    elif system == "windows":
+        print(f'    cloudflared --config "{CONFIG_PATH}" service install')
+        print("    # Then use Services.msc or `sc start cloudflared`")
+    else:
+        print(f"    sudo cloudflared --config {CONFIG_PATH} service install")
+    print("  (Run `maxim tunnel start` any time to test foreground.)")
+    print("  ──────────────────────────────────────────────────────────────")
+
+
+def _cloudflared_service_active() -> bool:
+    """Return True iff systemd reports the cloudflared service as active.
+
+    POSIX-only, best-effort. Returns False on Windows, macOS, or when
+    systemctl isn't reachable — so the hint prints on those platforms
+    (there's no way to know if launchd / Windows Services already has it).
+    """
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-active", "cloudflared"],
+            capture_output=True, text=True, timeout=2.0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and result.stdout.strip() == "active"
 
 
 # ─── tail ─────────────────────────────────────────────────────────────────
@@ -373,9 +472,14 @@ def _cmd_tail(argv: list[str]) -> int:
             print(f"Unknown option: {a}\n\n{TAIL_USAGE}", file=sys.stderr)
             return 2
 
+    # Convert the user-friendly "2m"/"5h" form to journalctl's accepted
+    # "-2 minutes ago" / "-5 hours ago" format. journalctl rejects the
+    # compact form with "Failed to parse timestamp" on most distros.
+    since_arg = _to_journalctl_since(since)
+
     # Prefer journalctl (systemd service); fall back to looking for live
     # cloudflared stderr. Either way we stream until Ctrl+C.
-    cmd = ["journalctl", "-u", "cloudflared", "--since", since, "-f", "--no-pager"]
+    cmd = ["journalctl", "-u", "cloudflared", "--since", since_arg, "-f", "--no-pager"]
     if filter_re:
         cmd.extend(["-g", filter_re])
 
@@ -397,6 +501,35 @@ def _cmd_tail(argv: list[str]) -> int:
     except KeyboardInterrupt:
         print("\nStopped.")
         return 0
+
+
+def _to_journalctl_since(value: str) -> str:
+    """Translate '2m' / '5h' / '1d' into journalctl's accepted relative form.
+
+    systemd-journalctl --since accepts a few formats; the ones that actually
+    work on a stock Ubuntu 24.04 build:
+      - absolute timestamp: '2024-01-02 15:04:05'
+      - "N UNIT ago" with no leading dash: '2 minutes ago', '5 hours ago'
+      - compact "-Nunit" (no space): '-2min', '-5h', '-1day'
+
+    What does NOT work (despite some docs suggesting it): '-2 minutes ago'
+    with both the dash AND the spaces. We translate to the "N UNIT ago"
+    form since it's the most readable in log output.
+    """
+    import re
+    text = value.strip()
+    if not text:
+        return "2 minutes ago"
+    # Already in a journalctl-accepted form — leave it alone
+    if " ago" in text or re.match(r"^\d{4}-\d{2}-\d{2}", text) or re.match(r"^-\d+[a-z]+$", text):
+        return text
+    # Match compact forms: "2m", "5h", "1d", "30s"
+    m = re.fullmatch(r"(\d+)\s*([smhd])", text)
+    if not m:
+        return text  # pass through; let journalctl complain if still invalid
+    n, unit = int(m.group(1)), m.group(2)
+    unit_name = {"s": "seconds", "m": "minutes", "h": "hours", "d": "days"}[unit]
+    return f"{n} {unit_name} ago"
 
 
 # ─── key ──────────────────────────────────────────────────────────────────
