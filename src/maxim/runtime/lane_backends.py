@@ -438,6 +438,10 @@ def _llm_server_responding_at(url: str, *, timeout_s: float = 1.5) -> bool:
 
     Used for auto-discovery (reuse an already-running server) and for
     validating env-supplied remote URLs before wiring a lane to them.
+
+    Treats both 200 and 401 as "server is up": 401 means an HTTP listener
+    with auth enabled is answering, which is still a valid signal the port
+    is in use by a real llama-cpp-server (we're just not authenticated).
     """
     if not url:
         return False
@@ -445,9 +449,12 @@ def _llm_server_responding_at(url: str, *, timeout_s: float = 1.5) -> bool:
     base = url.rstrip("/")
     probe = base + "/models" if base.endswith("/v1") else base + "/v1/models"
     try:
+        import urllib.error
         import urllib.request
         with urllib.request.urlopen(probe, timeout=timeout_s) as resp:  # noqa: S310
             return resp.status == 200
+    except urllib.error.HTTPError as e:
+        return e.code == 401  # server reachable, auth-gated
     except Exception:
         return False
 
@@ -539,6 +546,17 @@ def _maybe_auto_spawn_server(
     except ValueError:
         port = 8100
 
+    # Load API key first — leader mode uses it both for spawning (--api_key
+    # flag) and for wiring the leader's own client. Auto-discovery below
+    # also needs it so reused servers get auth-wired into the lane.
+    api_key: str | None = None
+    if role_decision.role == "leader":
+        try:
+            from maxim.tunnel.keys import read_key
+            api_key = read_key()
+        except Exception:
+            api_key = None
+
     # Auto-discovery: if something already answers at port, reuse it and skip spawn.
     # This makes "run two maxim terminals" transparent — the second finds the
     # first's server and wires its infer lane to it, no duplicate model load.
@@ -553,6 +571,7 @@ def _maybe_auto_spawn_server(
             infer_cfg,
             remote_url=existing_url,
             remote_model=infer_cfg.model_profile,
+            remote_api_key=infer_cfg.remote_api_key or api_key,
         )
         return out
 
@@ -561,16 +580,9 @@ def _maybe_auto_spawn_server(
     except Exception:
         return lane_configs
 
-    # Load API key if leader mode is active — the spawned server gets the key
-    # passed via --api_key, and the leader's own client auto-uses it too.
-    # Solo mode (127.0.0.1 bind) skips auth since it's localhost-only.
-    api_key: str | None = None
-    if role_decision.role == "leader":
-        try:
-            from maxim.tunnel.keys import read_key
-            api_key = read_key()
-        except Exception:
-            api_key = None
+    # api_key was already loaded above (before auto-discovery) — reuse here
+    # when spawning the subprocess. Solo mode (127.0.0.1 bind) has api_key=None
+    # which means the server spawns without --api_key and accepts all requests.
 
     spawner = LocalServerSpawner(
         model_path=model_path,

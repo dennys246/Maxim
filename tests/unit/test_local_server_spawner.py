@@ -180,3 +180,51 @@ class TestHealthCheck:
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
         with patch("urllib.request.urlopen", side_effect=OSError("refused")):
             assert s._health_check() is False
+
+    def test_api_key_sent_as_bearer(self):
+        """When api_key is set, health check must include Authorization header
+        (llama-cpp-server's /v1/models endpoint requires auth when --api_key
+        is passed, so missing header would cause a 401 -> false timeout)."""
+        s = LocalServerSpawner(model_path="/tmp/fake.gguf", api_key="secret-token")
+        with patch("urllib.request.urlopen") as mock_open:
+            mock_resp = MagicMock()
+            mock_resp.status = 200
+            mock_open.return_value.__enter__.return_value = mock_resp
+            assert s._health_check() is True
+            # Verify the request object had the Authorization header
+            called_req = mock_open.call_args[0][0]
+            assert called_req.get_header("Authorization") == "Bearer secret-token"
+
+    def test_no_api_key_no_auth_header(self):
+        s = LocalServerSpawner(model_path="/tmp/fake.gguf")  # no api_key
+        with patch("urllib.request.urlopen") as mock_open:
+            mock_resp = MagicMock()
+            mock_resp.status = 200
+            mock_open.return_value.__enter__.return_value = mock_resp
+            s._health_check()
+            called_req = mock_open.call_args[0][0]
+            assert called_req.get_header("Authorization") is None
+
+    def test_401_counts_as_up(self):
+        """401 means the HTTP listener is alive, just rejected the key.
+        We treat this as 'server ready' — the spawner's job is just to
+        confirm the listener is up, not to validate the auth itself."""
+        import urllib.error
+        s = LocalServerSpawner(model_path="/tmp/fake.gguf", api_key="wrong-key")
+        err = urllib.error.HTTPError(
+            url="http://127.0.0.1:8100/v1/models",
+            code=401, msg="Unauthorized", hdrs=None, fp=None,
+        )
+        with patch("urllib.request.urlopen", side_effect=err):
+            assert s._health_check() is True
+
+    def test_500_does_not_count_as_up(self):
+        """A real server error should be treated as not-ready."""
+        import urllib.error
+        s = LocalServerSpawner(model_path="/tmp/fake.gguf")
+        err = urllib.error.HTTPError(
+            url="http://127.0.0.1:8100/v1/models",
+            code=500, msg="Server Error", hdrs=None, fp=None,
+        )
+        with patch("urllib.request.urlopen", side_effect=err):
+            assert s._health_check() is False
