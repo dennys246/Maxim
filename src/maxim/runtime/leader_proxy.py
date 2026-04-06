@@ -28,6 +28,7 @@ import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
 from pathlib import Path
 from typing import Any
 
@@ -624,8 +625,14 @@ def start_leader_proxy(
         "start_time": time.time(),
     })
 
+    # ThreadingHTTPServer handles concurrent connections from cloudflared's
+    # HTTP/2 multiplexing. Plain HTTPServer is single-threaded and blocks
+    # POST requests while a keep-alive GET connection is open.
+    class _ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+        daemon_threads = True
+
     try:
-        server = HTTPServer((bind_host, proxy_port), handler)
+        server = _ThreadingHTTPServer((bind_host, proxy_port), handler)
     except OSError as e:
         logger.warning("LeaderProxy port %d in use: %s", proxy_port, e)
         return None
