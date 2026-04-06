@@ -89,7 +89,7 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "description": "Alibaba Qwen2.5 14B Instruct - Excellent instruction following, 32K context",
         "size_gb": 8.5,
         "quantization": "Q4_K_M",
-        "url": "https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf",
+        "url": "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf",
         "filename": "Qwen2.5-14B-Instruct.Q4_K_M.gguf",
     },
 }
