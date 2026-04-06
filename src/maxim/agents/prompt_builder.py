@@ -120,6 +120,7 @@ def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, t
 
     if request.current_strategy:
         from maxim.modes.definitions import STRATEGIES
+
         strategy = STRATEGIES.get(request.current_strategy)
         if strategy:
             lines.append(f"Strategy: {strategy.name.upper()} - {strategy.description}")
@@ -210,6 +211,7 @@ def build_tools_section_filtered(
 def scan_workspace_entries(workspace_path: str) -> list[str]:
     """Scan .maxim_workspace/ and return formatted file entries."""
     import os
+
     if not os.path.isdir(workspace_path):
         return []
     entries: list[str] = []
@@ -247,40 +249,27 @@ def build_workspace_manifest(mode_name: str = "passive", cwd: str | None = None)
     if mode_name == "singularity":
         cwd_entries = scan_cwd_tree(cwd, max_depth=2, max_entries=30)
         n_entries = len(cwd_entries)
-        sections.append(
-            f"=== PROJECT DIRECTORY ({n_entries} entries, CWD: {cwd_name}) ==="
-        )
-        sections.append(
-            "You have FULL read/write access to all files below."
-        )
-        sections.append(
-            "!! IMPORTANT: These files ALREADY EXIST. Do NOT recreate them. !!"
-        )
+        sections.append(f"=== PROJECT DIRECTORY ({n_entries} entries, CWD: {cwd_name}) ===")
+        sections.append("You have FULL read/write access to all files below.")
+        sections.append("!! IMPORTANT: These files ALREADY EXIST. Do NOT recreate them. !!")
         sections.extend(cwd_entries)
         ws_entries = scan_workspace_entries(workspace)
         if ws_entries:
-            sections.append(
-                f"\n.maxim_workspace/ also available for scratch/drafts ({len(ws_entries)} files)."
-            )
+            sections.append(f"\n.maxim_workspace/ also available for scratch/drafts ({len(ws_entries)} files).")
         sections.append("\nRULES:")
         sections.append("  1. Use read_file FIRST to see current contents before editing")
         sections.append("  2. Then write_file with overwrite=true to update")
         sections.append("  3. NEVER write a brand-new file that duplicates an existing one")
         if n_entries >= 5:
             sections.append(
-                "PLAN FIRST: With many project files, use 'respond' to outline "
-                "your approach before making changes."
+                "PLAN FIRST: With many project files, use 'respond' to outline your approach before making changes."
             )
     else:
         ws_entries = scan_workspace_entries(workspace)
         if ws_entries:
             n_files = len(ws_entries)
-            sections.append(
-                f"=== EXISTING WORKSPACE ({n_files} file{'s' if n_files != 1 else ''}) ==="
-            )
-            sections.append(
-                "!! IMPORTANT: These files ALREADY EXIST. Do NOT recreate them. !!"
-            )
+            sections.append(f"=== EXISTING WORKSPACE ({n_files} file{'s' if n_files != 1 else ''}) ===")
+            sections.append("!! IMPORTANT: These files ALREADY EXIST. Do NOT recreate them. !!")
             sections.extend(ws_entries[:15])
             if n_files > 15:
                 sections.append(f"  ... and {n_files - 15} more files")
@@ -296,17 +285,11 @@ def build_workspace_manifest(mode_name: str = "passive", cwd: str | None = None)
 
         cwd_entries = scan_cwd_tree(cwd, max_depth=1, max_entries=10)
         if cwd_entries:
-            sections.append(
-                f"\n=== CWD Context (read-only: {cwd_name}) ==="
-            )
+            sections.append(f"\n=== CWD Context (read-only: {cwd_name}) ===")
             if mode_name == "active":
-                sections.append(
-                    "You can READ these files and SUGGEST edits (requires approval)."
-                )
+                sections.append("You can READ these files and SUGGEST edits (requires approval).")
             else:
-                sections.append(
-                    "You can READ these files. CWD edits must be proposed as plans."
-                )
+                sections.append("You can READ these files. CWD edits must be proposed as plans.")
             sections.extend(cwd_entries)
 
     return "\n".join(sections) if sections else ""
@@ -321,43 +304,49 @@ def build_tool_guidance_core(mode_name: str = "passive") -> str:
     ]
 
     if mode_name == "singularity":
-        lines.extend([
-            '- write_file: {"path": "src/main.py", "content": "code", "overwrite": true}',
-            '- read_file: {"path": "src/main.py"}',
-            '- internet_search: {"query": "search query"}',
-            "",
-            "=== File Operation Rules ===",
-            "You can read and write ANY file within the project directory.",
-            "EXISTING files: read_file FIRST, then write_file with overwrite=true.",
-            "NEW files: write_file (no overwrite needed).",
-            "NEVER blindly overwrite — always read first to understand current contents.",
-        ])
+        lines.extend(
+            [
+                '- write_file: {"path": "src/main.py", "content": "code", "overwrite": true}',
+                '- read_file: {"path": "src/main.py"}',
+                '- internet_search: {"query": "search query"}',
+                "",
+                "=== File Operation Rules ===",
+                "You can read and write ANY file within the project directory.",
+                "EXISTING files: read_file FIRST, then write_file with overwrite=true.",
+                "NEW files: write_file (no overwrite needed).",
+                "NEVER blindly overwrite — always read first to understand current contents.",
+            ]
+        )
     else:
-        lines.extend([
-            '- write_file: {"path": ".maxim_workspace/example.py", "content": "...", "overwrite": true}',
-            '- read_file: {"path": ".maxim_workspace/example.py"}',
-            '- internet_search: {"query": "search query"}',
-            "",
-            "=== File Operation Rules ===",
-            "All file writes MUST use '.maxim_workspace/' prefix.",
-            "EXISTING files: read_file FIRST, then write_file with overwrite=true.",
-            "NEW files: write_file (no overwrite needed).",
-            "NEVER blindly overwrite — always read first to understand current contents.",
-        ])
+        lines.extend(
+            [
+                '- write_file: {"path": ".maxim_workspace/example.py", "content": "...", "overwrite": true}',
+                '- read_file: {"path": ".maxim_workspace/example.py"}',
+                '- internet_search: {"query": "search query"}',
+                "",
+                "=== File Operation Rules ===",
+                "All file writes MUST use '.maxim_workspace/' prefix.",
+                "EXISTING files: read_file FIRST, then write_file with overwrite=true.",
+                "NEW files: write_file (no overwrite needed).",
+                "NEVER blindly overwrite — always read first to understand current contents.",
+            ]
+        )
         if mode_name == "active":
             lines.append("CWD files: You can read freely and suggest edits (requires approval).")
         else:
             lines.append("CWD files: You can read freely. Edits must be proposed as plans.")
 
-    lines.extend([
-        "",
-        "=== Planning Rule ===",
-        "For changes that touch multiple files or significantly alter existing code:",
-        "  1. Use 'respond' to outline your plan FIRST",
-        "  2. Wait for user confirmation before executing",
-        "  3. Then read_file → modify → write_file for each file",
-        "If request is unclear, use 'respond' to ask for clarification.",
-    ])
+    lines.extend(
+        [
+            "",
+            "=== Planning Rule ===",
+            "For changes that touch multiple files or significantly alter existing code:",
+            "  1. Use 'respond' to outline your plan FIRST",
+            "  2. Wait for user confirmation before executing",
+            "  3. Then read_file → modify → write_file for each file",
+            "If request is unclear, use 'respond' to ask for clarification.",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -377,22 +366,19 @@ def build_tool_guidance_extended(mode_name: str = "passive") -> str:
         "=== FILE WORKSPACE ===",
     ]
     if mode_name == "singularity":
+        lines.append("Project directory: full read/write access to all files.")
         lines.append(
-            "Project directory: full read/write access to all files."
-        )
-        lines.append(
-            "Workspace (.maxim_workspace/): drafts/ (code), notes/ (thinking), "
-            "plans/ (proposals), scratch/ (temp)"
+            "Workspace (.maxim_workspace/): drafts/ (code), notes/ (thinking), plans/ (proposals), scratch/ (temp)"
         )
     else:
-        lines.append(
-            "Workspace: drafts/ (code), notes/ (thinking), plans/ (proposals), scratch/ (temp)"
-        )
-    lines.extend([
-        "",
-        "=== BATCHED TOOL CALLS ===",
-        "Batch exploration with parallel_actions for efficiency.",
-    ])
+        lines.append("Workspace: drafts/ (code), notes/ (thinking), plans/ (proposals), scratch/ (temp)")
+    lines.extend(
+        [
+            "",
+            "=== BATCHED TOOL CALLS ===",
+            "Batch exploration with parallel_actions for efficiency.",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -413,35 +399,58 @@ def build_instructions_section(request: LLMRequest) -> str:
     """Build the response format instructions section."""
     lines = ["=== Instructions ==="]
     if request.autonomy_level == AutonomyLevel.PLANNING:
-        lines.extend([
-            "!" * 40,
-            "FINAL REMINDER: PLANNING MODE ACTIVE!",
-            "Your response MUST be:",
-            "1. Plain text proposal asking permission (NOT JSON!)",
-            "2. The delimiter <|action_json|>",
-            "3. Then the JSON",
-            "START YOUR RESPONSE WITH PLAIN ENGLISH TEXT!",
-            "!" * 40,
-        ])
+        lines.extend(
+            [
+                "!" * 40,
+                "FINAL REMINDER: PLANNING MODE ACTIVE!",
+                "Your response MUST be:",
+                "1. Plain text proposal asking permission (NOT JSON!)",
+                "2. The delimiter <|action_json|>",
+                "3. Then the JSON",
+                "START YOUR RESPONSE WITH PLAIN ENGLISH TEXT!",
+                "!" * 40,
+            ]
+        )
     else:
-        lines.extend([
-            "Respond with a compact JSON object. IMPORTANT: Put fields in this order:",
-            '  "action": {"tool_name": "<tool>", "params": {...}}',
-            '  "confidence": 0.0-1.0',
-            '  "reasoning": "Brief explanation (1 sentence)"',
-            "Keep response compact. Do not include optional fields.",
-        ])
+        lines.extend(
+            [
+                "Respond with a compact JSON object. IMPORTANT: Put fields in this order:",
+                '  "action": {"tool_name": "<tool>", "params": {...}}',
+                '  "confidence": 0.0-1.0',
+                '  "reasoning": "Brief explanation (1 sentence)"',
+                "Keep response compact. Do not include optional fields.",
+            ]
+        )
     return "\n".join(lines)
 
 
 def is_realtime_request(question_text: str) -> bool:
     """Check if the question is asking for real-time data."""
     realtime_keywords = [
-        "score", "game", "match", "playing", "vs", "versus",
-        "weather", "temperature", "forecast",
-        "news", "latest", "current", "today", "now", "live",
-        "price", "cost", "stock", "bitcoin", "crypto",
-        "broncos", "patriots", "lakers", "yankees",
+        "score",
+        "game",
+        "match",
+        "playing",
+        "vs",
+        "versus",
+        "weather",
+        "temperature",
+        "forecast",
+        "news",
+        "latest",
+        "current",
+        "today",
+        "now",
+        "live",
+        "price",
+        "cost",
+        "stock",
+        "bitcoin",
+        "crypto",
+        "broncos",
+        "patriots",
+        "lakers",
+        "yankees",
     ]
     q_lower = question_text.lower() if question_text else ""
     return any(kw in q_lower for kw in realtime_keywords)
@@ -611,6 +620,7 @@ class PromptBuilder:
             answer = generate_simple_answer(question_text, date_str, time_str)
             if answer:
                 import json
+
                 escaped_answer = json.dumps(answer)
                 return f'{{"action":{{"tool_name":"respond","params":{{"message":{escaped_answer}}}}},"confidence":0.95,"reasoning":"direct_answer"}}'
 
@@ -635,17 +645,10 @@ class PromptBuilder:
         reserved_ratio = cost_tracker.config.reserved_budget_ratio
         min_samples = cost_tracker.config.min_spend_samples
 
-        remaining_hour = (
-            max(policy.max_cost_per_hour - totals["hourly"], 0.0)
-            if policy.max_cost_per_hour > 0 else None
-        )
-        remaining_day = (
-            max(policy.max_cost_per_day - totals["daily"], 0.0)
-            if policy.max_cost_per_day > 0 else None
-        )
+        remaining_hour = max(policy.max_cost_per_hour - totals["hourly"], 0.0) if policy.max_cost_per_hour > 0 else None
+        remaining_day = max(policy.max_cost_per_day - totals["daily"], 0.0) if policy.max_cost_per_day > 0 else None
         remaining_month = (
-            max(policy.max_cost_per_month - totals["monthly"], 0.0)
-            if policy.max_cost_per_month > 0 else None
+            max(policy.max_cost_per_month - totals["monthly"], 0.0) if policy.max_cost_per_month > 0 else None
         )
 
         remaining_hour_visible = remaining_hour * (1.0 - reserved_ratio) if remaining_hour is not None else None
@@ -661,10 +664,16 @@ class PromptBuilder:
         spend_rate_7d = format_spend_rate(rates["ema_7d"], min_samples)
 
         hours_daily, daily_note = estimate_hours_until_limit(
-            remaining_day_visible, rates["ema_24h"], rates["ema_3h"], min_samples,
+            remaining_day_visible,
+            rates["ema_24h"],
+            rates["ema_3h"],
+            min_samples,
         )
         hours_monthly, monthly_note = estimate_hours_until_limit(
-            remaining_month_visible, rates["ema_7d"], rates["ema_24h"], min_samples,
+            remaining_month_visible,
+            rates["ema_7d"],
+            rates["ema_24h"],
+            min_samples,
             fallback_second=rates["ema_3h"],
         )
 
@@ -710,6 +719,7 @@ class PromptBuilder:
         mode_name = mode.name
 
         from maxim.utils.filesystem_policy import get_effective_cwd
+
         effective_cwd = get_effective_cwd()
 
         budgeter = PromptBudgeter(
@@ -728,30 +738,47 @@ class PromptBuilder:
         # ── CRITICAL sections ──
         budgeter.add("planning_banner", build_planning_banner(request.autonomy_level), SectionPriority.CRITICAL)
         if request.pending_modification:
-            budgeter.add("modification", build_modification_section(request.pending_modification), SectionPriority.CRITICAL)
+            budgeter.add(
+                "modification", build_modification_section(request.pending_modification), SectionPriority.CRITICAL
+            )
         budgeter.add("identity", build_identity_section(mode, request, date_str, time_str), SectionPriority.CRITICAL)
         # Tool section: split by learned relevance when index available
         if self._tool_index is not None:
             relevant, background = self._tool_index.get_relevant_tools(question_text)
             request.surfaced_tools = relevant
             relevant_section = build_tools_section_filtered(request, relevant, mode_name)
-            budgeter.add("tools", relevant_section, SectionPriority.CRITICAL,
-                          truncatable=True, min_tokens=50,
-                          truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter))
+            budgeter.add(
+                "tools",
+                relevant_section,
+                SectionPriority.CRITICAL,
+                truncatable=True,
+                min_tokens=50,
+                truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
+            )
             if background:
                 bg_section = f"Other tools available: {', '.join(sorted(background))}"
                 budgeter.add("tools_background", bg_section, SectionPriority.NICE_TO_HAVE)
         else:
-            budgeter.add("tools", build_tools_section(request, mode_name=mode_name), SectionPriority.CRITICAL,
-                          truncatable=True, min_tokens=50,
-                          truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter))
+            budgeter.add(
+                "tools",
+                build_tools_section(request, mode_name=mode_name),
+                SectionPriority.CRITICAL,
+                truncatable=True,
+                min_tokens=50,
+                truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
+            )
 
         workspace_manifest = build_workspace_manifest(mode_name=mode_name, cwd=effective_cwd)
         if workspace_manifest:
-            is_singularity = (mode_name == "singularity")
-            budgeter.add("workspace_manifest", workspace_manifest, SectionPriority.CRITICAL,
-                          truncatable=is_singularity, min_tokens=80 if is_singularity else 0,
-                          truncate_fn=((lambda c, m: _truncate_manifest(c, m, counter)) if is_singularity else None))
+            is_singularity = mode_name == "singularity"
+            budgeter.add(
+                "workspace_manifest",
+                workspace_manifest,
+                SectionPriority.CRITICAL,
+                truncatable=is_singularity,
+                min_tokens=80 if is_singularity else 0,
+                truncate_fn=((lambda c, m: _truncate_manifest(c, m, counter)) if is_singularity else None),
+            )
 
         if is_rt:
             hint = ">>> REAL-TIME DATA NEEDED <<<\n"
@@ -763,7 +790,9 @@ class PromptBuilder:
 
         # ── IMPORTANT sections ──
         budgeter.add("tool_guidance_core", build_tool_guidance_core(mode_name=mode_name), SectionPriority.IMPORTANT)
-        budgeter.add("tool_guidance_extended", build_tool_guidance_extended(mode_name=mode_name), SectionPriority.NICE_TO_HAVE)
+        budgeter.add(
+            "tool_guidance_extended", build_tool_guidance_extended(mode_name=mode_name), SectionPriority.NICE_TO_HAVE
+        )
         budgeter.add("datetime", build_datetime_section(date_str, time_str), SectionPriority.IMPORTANT)
 
         budget_context = self.build_budget_context()
@@ -772,31 +801,47 @@ class PromptBuilder:
 
         if request.conversation_history_text:
             conv_text = _compact_conversation(request.conversation_history_text, 12)
-            budgeter.add("conversation", "=== Conversation History ===\n" + conv_text,
-                          SectionPriority.IMPORTANT, truncatable=True, min_tokens=50,
-                          truncate_fn=lambda c, m: _truncate_conversation(c, m, counter))
+            budgeter.add(
+                "conversation",
+                "=== Conversation History ===\n" + conv_text,
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=50,
+                truncate_fn=lambda c, m: _truncate_conversation(c, m, counter),
+            )
 
         if request.context_pool_text:
-            budgeter.add("context_pool", "=== Context ===\n" + request.context_pool_text,
-                          SectionPriority.IMPORTANT, truncatable=True, min_tokens=30,
-                          truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter))
+            budgeter.add(
+                "context_pool",
+                "=== Context ===\n" + request.context_pool_text,
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=30,
+                truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter),
+            )
 
         if request.protocol_context:
-            budgeter.add("active_protocols",
-                          "=== Active Protocols ===\n" + request.protocol_context,
-                          SectionPriority.IMPORTANT)
+            budgeter.add(
+                "active_protocols", "=== Active Protocols ===\n" + request.protocol_context, SectionPriority.IMPORTANT
+            )
 
         carryover_text = self._reasoning_carryover.get_prompt_text()
         if carryover_text:
-            budgeter.add("reasoning_carryover", carryover_text, SectionPriority.IMPORTANT,
-                          truncatable=True, min_tokens=30,
-                          truncate_fn=lambda c, m: _truncate_reasoning_carryover(c, m, counter))
+            budgeter.add(
+                "reasoning_carryover",
+                carryover_text,
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=30,
+                truncate_fn=lambda c, m: _truncate_reasoning_carryover(c, m, counter),
+            )
 
         if request.prefetch_context:
             prefetch = request.prefetch_context
             if request.skip_exploration:
                 prefetch += (
-                    "\n\n" + "!" * 50
+                    "\n\n"
+                    + "!" * 50
                     + "\n!!! ONE-CALL MODE: WRITE DIRECTLY !!!\n"
                     + "!" * 50
                     + "\n\nFile discovery is COMPLETE. Do NOT use glob or read_file."
@@ -807,8 +852,14 @@ class PromptBuilder:
                 )
             has_discovery = "DISCOVERY PLAN" in prefetch or "FILE DISCOVERY" in prefetch
             priority = SectionPriority.CRITICAL if has_discovery else SectionPriority.IMPORTANT
-            budgeter.add("prefetch_context", prefetch, priority, truncatable=True, min_tokens=50,
-                          truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter))
+            budgeter.add(
+                "prefetch_context",
+                prefetch,
+                priority,
+                truncatable=True,
+                min_tokens=50,
+                truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter),
+            )
 
         guidelines_text = question_text
         if not guidelines_text and request.pending_modification:
@@ -825,6 +876,7 @@ class PromptBuilder:
 
         if request.current_strategy:
             from maxim.modes.definitions import STRATEGIES
+
             strategy = STRATEGIES.get(request.current_strategy)
             if strategy and strategy.context_prompt:
                 budgeter.add("strategy_context", strategy.context_prompt, SectionPriority.NICE_TO_HAVE)
@@ -882,10 +934,17 @@ class PromptBuilder:
                         pred_tool = pred.get("tool", "?")
                         pred_success = pred.get("success", "?")
                         pred_conf = pred.get("confidence", 0)
-                        mem_lines.append(f"  prediction: {pred_tool} (success={pred_success}, confidence={pred_conf:.2f})")
-            budgeter.add("relevant_memories", "\n".join(mem_lines),
-                          SectionPriority.IMPORTANT, truncatable=True, min_tokens=50,
-                          truncate_fn=lambda c, m: "\n".join(c.split("\n")[:max(2, m // 20)]))
+                        mem_lines.append(
+                            f"  prediction: {pred_tool} (success={pred_success}, confidence={pred_conf:.2f})"
+                        )
+            budgeter.add(
+                "relevant_memories",
+                "\n".join(mem_lines),
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=50,
+                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 20)]),
+            )
 
         if context.concept_context:
             concept_lines = ["=== Active Concepts ==="]
@@ -897,9 +956,52 @@ class PromptBuilder:
                 concept_lines.append(f"- {name} ({category}, confidence={confidence:.2f}, episodes={episodes})")
                 for rel in concept.get("relationships", [])[:2]:
                     concept_lines.append(f"  → {rel.get('type', '?')} {rel.get('target', '?')}")
-            budgeter.add("concept_context", "\n".join(concept_lines),
-                          SectionPriority.IMPORTANT, truncatable=True, min_tokens=30,
-                          truncate_fn=lambda c, m: "\n".join(c.split("\n")[:max(2, m // 15)]))
+            budgeter.add(
+                "concept_context",
+                "\n".join(concept_lines),
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=30,
+                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+            )
+
+        if context.knowledge_context:
+            knowledge_lines = ["=== Semantic Knowledge ==="]
+            for entry in context.knowledge_context[:5]:
+                name = entry.get("concept_name", "?")
+                definition = entry.get("definition", "")
+                layer = entry.get("source_layer", "?")
+                conf = entry.get("confidence", 0)
+                knowledge_lines.append(f"- {name} ({layer}, confidence={conf:.2f}): {definition}")
+                for rel in entry.get("relationships", [])[:2]:
+                    knowledge_lines.append(f"  → {rel.get('type', '?')} {rel.get('target', '?')}")
+            budgeter.add(
+                "knowledge_context",
+                "\n".join(knowledge_lines),
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=30,
+                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+            )
+
+        if context.causal_context:
+            causal_lines = ["=== Causal Predictions (learned from experience) ==="]
+            for pred in context.causal_context[:5]:
+                valence = pred.get("valence", "neutral")
+                conf = pred.get("confidence", 0)
+                ctx_match = pred.get("context_match", 0)
+                causal_lines.append(
+                    f"- {pred.get('event', '?')} → {pred.get('outcome', '?')} "
+                    f"(valence={valence}, confidence={conf:.2f}, context_match={ctx_match:.2f})"
+                )
+            budgeter.add(
+                "causal_context",
+                "\n".join(causal_lines),
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=30,
+                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+            )
 
         if context.statistical_context and context.active_pattern_count > 0:
             stat_lines = [
@@ -917,7 +1019,9 @@ class PromptBuilder:
                         f"{s.get('rationale', '')}"
                     )
             else:
-                stat_lines.append("Use 'math' tool to investigate patterns (assess_randomness, analyze, recall_memory).")
+                stat_lines.append(
+                    "Use 'math' tool to investigate patterns (assess_randomness, analyze, recall_memory)."
+                )
             stat_lines.append("Use 'internet_search' to research unfamiliar patterns or analysis techniques.")
             budgeter.add("statistical_patterns", "\n".join(stat_lines), SectionPriority.NICE_TO_HAVE)
 
@@ -925,8 +1029,13 @@ class PromptBuilder:
         if dropped:
             notice = f"[Context note: omitted due to token budget: {', '.join(dropped)}]"
             prompt_text = notice + "\n\n" + prompt_text
-            logger.info("Prompt budget: dropped %d sections for %s (n_ctx=%d, reserve=%d)",
-                        len(dropped), mode.name, self._n_ctx, response_reserve)
+            logger.info(
+                "Prompt budget: dropped %d sections for %s (n_ctx=%d, reserve=%d)",
+                len(dropped),
+                mode.name,
+                self._n_ctx,
+                response_reserve,
+            )
 
         return f"TOOL_PROMPT|{prompt_text}"
 
@@ -934,7 +1043,8 @@ class PromptBuilder:
         """Build a prompt to handle action followups based on followup_type."""
         new_format = re.match(
             r"\[ACTION_FOLLOWUP type=(\w+) tool=([\w_-]+) mode=([\w_-]+) query='(.*)'\]: (.*)",
-            followup_input, re.DOTALL
+            followup_input,
+            re.DOTALL,
         )
 
         if new_format:
@@ -946,11 +1056,13 @@ class PromptBuilder:
                 split_idx = followup_input.find("']: ")
                 bracket_start = followup_input.find("query='") + 7
                 original_query = followup_input[bracket_start:split_idx]
-                result = followup_input[split_idx + 4:]
+                result = followup_input[split_idx + 4 :]
             else:
                 original_query = raw_query
                 result = new_format.group(5)
-            logger.debug(f"Parsed followup: type={followup_type}, tool={tool_name}, query_len={len(original_query)}, result_len={len(result)}")
+            logger.debug(
+                f"Parsed followup: type={followup_type}, tool={tool_name}, query_len={len(original_query)}, result_len={len(result)}"
+            )
         else:
             legacy_format = re.match(r"\[SEARCH RESULT for '([^']+)'\]: (.*)", followup_input, re.DOTALL)
             if legacy_format:
@@ -960,7 +1072,9 @@ class PromptBuilder:
                 original_query = legacy_format.group(1)
                 result = legacy_format.group(2)
             else:
-                logger.warning(f"Could not parse followup input format, using fallback. Input starts with: {followup_input[:100]}")
+                logger.warning(
+                    f"Could not parse followup input format, using fallback. Input starts with: {followup_input[:100]}"
+                )
                 followup_type = "engage"
                 tool_name = "internet_search"
                 mode_name = "live"
@@ -1046,9 +1160,13 @@ Your response (use tool_name "respond"):"""
         time_str = now.strftime("%I:%M %p")
 
         if mode_name == "active-assistance":
-            engagement_instruction = "Be proactive and suggest 2-3 relevant follow-up options the user might find helpful."
+            engagement_instruction = (
+                "Be proactive and suggest 2-3 relevant follow-up options the user might find helpful."
+            )
         elif mode_name == "observe":
-            engagement_instruction = "Keep your response informative but concise. Only offer one follow-up if highly relevant."
+            engagement_instruction = (
+                "Keep your response informative but concise. Only offer one follow-up if highly relevant."
+            )
         else:
             engagement_instruction = "Optionally offer 1-2 relevant follow-up questions or related information."
 

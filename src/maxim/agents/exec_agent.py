@@ -226,6 +226,7 @@ class ExecAgent(Agent):
             provider_type = str(provider_cfg.get("type", "")).strip().lower()
             if provider_type in ("anthropic", "claude"):
                 from maxim.models.language.anthropic_backend import PROPOSED_GOAL_TOOL
+
                 return [PROPOSED_GOAL_TOOL]
         except Exception:
             pass
@@ -321,9 +322,7 @@ class ExecAgent(Agent):
             if total_obs == 0:
                 return None
             # Weight each link's predicted_value by its observation count
-            return sum(
-                link.predicted_value * link.observation_count for link in links
-            ) / total_obs
+            return sum(link.predicted_value * link.observation_count for link in links) / total_obs
 
         refined_rate = _weighted_success(refined_links)
         draft_rate = _weighted_success(draft_links)
@@ -414,9 +413,7 @@ class ExecAgent(Agent):
         min_sg = int(cfg.get("min_sub_goals_to_trigger", 2))
         return self._safe_sub_goal_count(response) >= min_sg
 
-    def _contemplation_llm_call(
-        self, *, system: str, user: str, max_tokens: int
-    ) -> dict[str, Any] | None:
+    def _contemplation_llm_call(self, *, system: str, user: str, max_tokens: int) -> dict[str, Any] | None:
         """Route a contemplation LLM call through the best available backend."""
         llm_worker = self._llm_worker
         router = self._router
@@ -441,14 +438,10 @@ class ExecAgent(Agent):
         else:
             llm = self._ensure_llm()
             if llm is not None:
-                return llm.generate_json(
-                    user, system_prompt=system, temperature=0.2, max_tokens=max_tokens
-                )
+                return llm.generate_json(user, system_prompt=system, temperature=0.2, max_tokens=max_tokens)
         return None
 
-    def _critique_plan(
-        self, draft: dict, ctx: StructuredContext
-    ) -> dict[str, Any] | None:
+    def _critique_plan(self, draft: dict, ctx: StructuredContext) -> dict[str, Any] | None:
         """Pass 2: critique the draft plan. Returns critique dict or None on failure."""
         cfg = self._contemplation_config()
         draft_json = json.dumps(draft, indent=2, default=str)
@@ -472,9 +465,7 @@ class ExecAgent(Agent):
         except Exception:
             return None
 
-    def _refine_plan(
-        self, draft: dict, critique: dict, ctx: StructuredContext
-    ) -> dict[str, Any] | None:
+    def _refine_plan(self, draft: dict, critique: dict, ctx: StructuredContext) -> dict[str, Any] | None:
         """Pass 3: refine the plan based on critique. Returns revised plan or None."""
         cfg = self._contemplation_config()
         draft_json = json.dumps(draft, indent=2, default=str)
@@ -516,8 +507,7 @@ class ExecAgent(Agent):
             return self._contemplate_fast(draft, ctx, cfg)
         return self._contemplate_standard(draft, ctx, cfg)
 
-    def _contemplate_standard(self, draft: dict, ctx: StructuredContext,
-                              cfg: dict[str, Any]) -> dict:
+    def _contemplate_standard(self, draft: dict, ctx: StructuredContext, cfg: dict[str, Any]) -> dict:
         """Standard contemplation: separate critique and refine passes."""
         # Preemption check before critique — only urgent percepts interrupt
         if self._urgent_work_available.is_set():
@@ -557,8 +547,7 @@ class ExecAgent(Agent):
 
         return refined
 
-    def _contemplate_fast(self, draft: dict, ctx: StructuredContext,
-                          cfg: dict[str, Any]) -> dict:
+    def _contemplate_fast(self, draft: dict, ctx: StructuredContext, cfg: dict[str, Any]) -> dict:
         """Fast contemplation: combined critique+refine in a single LLM call.
 
         Returns the improved plan if confidence is below threshold,
@@ -643,13 +632,9 @@ class ExecAgent(Agent):
         os.makedirs(staging_dir, exist_ok=True)
 
         if weights_path is None:
-            weights_path = os.path.join(
-                os.path.dirname(staging_dir), "util", "significance_weights.json"
-            )
+            weights_path = os.path.join(os.path.dirname(staging_dir), "util", "significance_weights.json")
         self._weight_learner = SignificanceWeightLearner(weights_path, hippocampus)
-        self._weight_learner.load_weights_into_heuristics(
-            self._significance_config.heuristics
-        )
+        self._weight_learner.load_weights_into_heuristics(self._significance_config.heuristics)
 
     def _evaluate_staging(
         self,
@@ -695,9 +680,7 @@ class ExecAgent(Agent):
             self._weight_learner.update_rpe_stats(rpe_raw)
 
         # Evaluate
-        score, heuristic_scores = self._weight_learner.evaluate(
-            ctx, self._significance_config
-        )
+        score, heuristic_scores = self._weight_learner.evaluate(ctx, self._significance_config)
 
         if score < self._significance_config.staging_threshold:
             return
@@ -911,9 +894,7 @@ class ExecAgent(Agent):
             try:
                 seeds = sorted(scored.values(), key=lambda x: -x[1])[:3]
                 for seed_mem, _ in seeds:
-                    associated = self._hippocampus.recall_associated(
-                        seed_ids=[seed_mem.id], max_depth=2, decay=0.5
-                    )
+                    associated = self._hippocampus.recall_associated(seed_ids=[seed_mem.id], max_depth=2, decay=0.5)
                     for mem, activation in associated:
                         if mem.id not in scored:
                             scored[mem.id] = (mem, activation)
@@ -923,9 +904,7 @@ class ExecAgent(Agent):
         # 3. Fall back to recall_similar if still under limit
         if len(scored) < limit:
             try:
-                similar = self._hippocampus.recall_similar(
-                    query, limit=limit - len(scored)
-                )
+                similar = self._hippocampus.recall_similar(query, limit=limit - len(scored))
                 for mem in similar:
                     if mem.id not in scored:
                         scored[mem.id] = (mem, 0.3)
@@ -1023,17 +1002,11 @@ class ExecAgent(Agent):
         for obj in ctx.detected_objects[:5]:
             if not isinstance(obj, dict):
                 continue
-            obj_lines.append(
-                f"  - class={obj.get('class_id')}, conf={obj.get('conf', 0):.2f}"
-            )
+            obj_lines.append(f"  - class={obj.get('class_id')}, conf={obj.get('conf', 0):.2f}")
         obj_str = "\n".join(obj_lines) if obj_lines else "  (none)"
 
         # People
-        people_str = (
-            f"{len(ctx.detected_people)} people detected"
-            if ctx.detected_people
-            else "No people detected"
-        )
+        people_str = f"{len(ctx.detected_people)} people detected" if ctx.detected_people else "No people detected"
 
         # Recent speech
         speech_str = "\n  ".join(ctx.detected_speech) if ctx.detected_speech else "(none)"
@@ -1044,9 +1017,7 @@ class ExecAgent(Agent):
             if not isinstance(out, dict):
                 continue
             status = "OK" if out.get("success") else f"FAILED: {out.get('error')}"
-            outcome_lines.append(
-                f"  - {out.get('tool_name', out.get('goal_id', '?'))}: {status}"
-            )
+            outcome_lines.append(f"  - {out.get('tool_name', out.get('goal_id', '?'))}: {status}")
         outcome_str = "\n".join(outcome_lines) if outcome_lines else "  (none)"
 
         # Relevant memories (dict format after Phase 0 unification)
@@ -1061,9 +1032,7 @@ class ExecAgent(Agent):
         mem_str = "\n".join(mem_lines) if mem_lines else "  (none)"
 
         # CLI inputs
-        cli_str = (
-            "\n  ".join(ctx.cli_inputs[-3:]) if ctx.cli_inputs else "(none)"
-        )
+        cli_str = "\n  ".join(ctx.cli_inputs[-3:]) if ctx.cli_inputs else "(none)"
 
         # Comms messages (inbound SMS/voice)
         comms_lines = []
@@ -1071,9 +1040,7 @@ class ExecAgent(Agent):
             prefix = "User" if msg.get("direction") == "inbound" else "Maxim"
             channel = msg.get("channel", "sms")
             sender = msg.get("sender", "unknown")
-            comms_lines.append(
-                f"  [{prefix} via {channel} {sender}] {msg.get('content', '')}"
-            )
+            comms_lines.append(f"  [{prefix} via {channel} {sender}] {msg.get('content', '')}")
         comms_str = "\n".join(comms_lines) if comms_lines else "(none)"
 
         # DN escalation context (if percept was escalated by Default Network)
@@ -1084,9 +1051,9 @@ class ExecAgent(Agent):
                 dn_str = f"""
 
 DEFAULT NETWORK ESCALATION:
-- Reason: {dn_ctx.get('reason', 'unknown')}
-- Urgency: {dn_ctx.get('urgency', 0.5):.2f}
-- Context: {dn_ctx.get('dn_context', {})}
+- Reason: {dn_ctx.get("reason", "unknown")}
+- Urgency: {dn_ctx.get("urgency", 0.5):.2f}
+- Context: {dn_ctx.get("dn_context", {})}
 (This percept was pre-filtered by the reactive layer and deemed worthy of deliberation)"""
                 # Clear after use
                 self._dn_escalation_context = None
@@ -1141,6 +1108,19 @@ STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
 
         budget_str = f"\n\n{budget_context}" if budget_context else ""
 
+        # Causal predictions (learned outcome expectations from NAc)
+        causal_str = ""
+        if ctx.causal_context:
+            causal_lines = ["\n\nCAUSAL PREDICTIONS (learned from past experience):"]
+            for pred in ctx.causal_context[:5]:
+                valence = pred.get("valence", "neutral")
+                conf = pred.get("confidence", 0)
+                causal_lines.append(
+                    f"  - {pred.get('event', '?')} → {pred.get('outcome', '?')} "
+                    f"(valence={valence}, confidence={conf:.2f})"
+                )
+            causal_str = "\n".join(causal_lines)
+
         return f"""ROOT GOAL: {ctx.root_goal}
 
 CURRENT STATE:
@@ -1167,7 +1147,7 @@ RECENT OUTCOMES:
 {outcome_str}
 
 RELEVANT MEMORIES:
-{mem_str}{notes_str}{workspace_str}{stat_str}{dn_str}{budget_str}
+{mem_str}{causal_str}{notes_str}{workspace_str}{stat_str}{dn_str}{budget_str}
 
 Based on this context, what goal should be proposed?"""
 
@@ -1253,10 +1233,7 @@ Based on this context, what goal should be proposed?"""
             # Contemplation: critique + refine for complex plans on non-thinking providers
             contemplated = False
             refined = False
-            if (
-                not thinking_cfg
-                and self._should_contemplate(response)
-            ):
+            if not thinking_cfg and self._should_contemplate(response):
                 draft = response
                 response = self._contemplate(response, ctx)
                 contemplated = True
@@ -1373,9 +1350,11 @@ Based on this context, what goal should be proposed?"""
 
         # Trigger proposal if needed
         if ctx.current_percept:
-            if ctx.current_percept.has_maxim_keyword or (
-                ctx.current_percept.salience > 0.5 and ctx.current_percept.novelty > 0.5
-            ) or ctx.current_percept.source == "cli":
+            if (
+                ctx.current_percept.has_maxim_keyword
+                or (ctx.current_percept.salience > 0.5 and ctx.current_percept.novelty > 0.5)
+                or ctx.current_percept.source == "cli"
+            ):
                 self._trigger_proposal()
 
         # Check for ready proposal

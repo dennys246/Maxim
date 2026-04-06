@@ -211,9 +211,7 @@ class MemoryItem:
         """Stable ID based on content hash (cached for performance)."""
         if self._cached_memory_id is None:
             content_str = str(self.content) if not isinstance(self.content, str) else self.content
-            self._cached_memory_id = hashlib.sha256(
-                f"{self.timestamp}:{content_str}".encode()
-            ).hexdigest()[:16]
+            self._cached_memory_id = hashlib.sha256(f"{self.timestamp}:{content_str}".encode()).hexdigest()[:16]
         return self._cached_memory_id
 
     def access(self) -> None:
@@ -221,9 +219,7 @@ class MemoryItem:
         self.last_accessed = time.time()
         self.access_count += 1
 
-    def should_promote(
-        self, access_threshold: int = 3, salience_threshold: float = 0.7
-    ) -> bool:
+    def should_promote(self, access_threshold: int = 3, salience_threshold: float = 0.7) -> bool:
         """Check if short-term memory should be promoted to long-term."""
         if self.tier != MemoryTier.SHORT_TERM:
             return False
@@ -292,9 +288,7 @@ class WorkingMemoryEntry(Generic[T]):
         """Clear keyword cache after record mutation (e.g., FORMING → complete)."""
         self._keywords = None
 
-    def should_promote(
-        self, access_threshold: int = 3, salience_threshold: float = 0.7
-    ) -> bool:
+    def should_promote(self, access_threshold: int = 3, salience_threshold: float = 0.7) -> bool:
         """Check if this entry should be promoted to long-term."""
         if self.tier != MemoryTier.SHORT_TERM:
             return False
@@ -330,11 +324,7 @@ class WorkingMemoryEntry(Generic[T]):
             "decay_rate": self.decay_rate,
             "source": self.source,
             "tier": self.tier.value,
-            "predicted_outcomes": (
-                [p.to_dict() for p in self.predicted_outcomes]
-                if self.predicted_outcomes
-                else None
-            ),
+            "predicted_outcomes": ([p.to_dict() for p in self.predicted_outcomes] if self.predicted_outcomes else None),
             "prediction_confidence": self.prediction_confidence,
         }
 
@@ -469,6 +459,11 @@ class StructuredContext:
     # Plan progress (from PlanManager when a long-horizon plan is active)
     plan_progress: PlanProgressContext | None = None
 
+    # Causal predictions from NAc (learned outcome expectations)
+    # Each entry: {"event": str, "outcome": str, "valence": str,
+    #              "confidence": float, "context_match": float}
+    causal_context: list[dict] = field(default_factory=list)
+
     # Provenance: compact trace markdown for LLM context (P7)
     provenance_context: str = ""
 
@@ -578,17 +573,14 @@ class ProposedGoal:
     def get_next_executable(self) -> SubGoal | None:
         """Get the next sub-goal that can be executed."""
         completed_ids = {
-            sg.id
-            for sg in self.sub_goals
-            if sg.status in (SubGoalStatus.COMPLETED, SubGoalStatus.SKIPPED)
+            sg.id for sg in self.sub_goals if sg.status in (SubGoalStatus.COMPLETED, SubGoalStatus.SKIPPED)
         }
 
         # Find all executable sub-goals
         executable = [
             sg
             for sg in self.sub_goals
-            if sg.status in (SubGoalStatus.PENDING, SubGoalStatus.BLOCKED)
-            and sg.can_execute(completed_ids)
+            if sg.status in (SubGoalStatus.PENDING, SubGoalStatus.BLOCKED) and sg.can_execute(completed_ids)
         ]
 
         if not executable:
@@ -630,17 +622,11 @@ class ProposedGoal:
         """Check if all sub-goals are complete (or skipped)."""
         if not self.sub_goals:
             return True
-        return all(
-            sg.status in (SubGoalStatus.COMPLETED, SubGoalStatus.SKIPPED)
-            for sg in self.sub_goals
-        )
+        return all(sg.status in (SubGoalStatus.COMPLETED, SubGoalStatus.SKIPPED) for sg in self.sub_goals)
 
     def all_failed(self) -> bool:
         """Check if goal failed due to sub-goal failures."""
-        return any(
-            sg.status == SubGoalStatus.FAILED and not sg.should_retry()
-            for sg in self.sub_goals
-        )
+        return any(sg.status == SubGoalStatus.FAILED and not sg.should_retry() for sg in self.sub_goals)
 
 
 @dataclass
@@ -802,13 +788,13 @@ class StatisticalInsight:
 class AnalysisSuggestion:
     """A specific, actionable analysis recommendation from StatisticianAgent."""
 
-    metric: str       # "tool:navigate:success"
-    tool_call: str    # "math"
-    operation: str    # "assess_randomness", "analyze", "recall_memory"
-    rationale: str    # Human-readable explanation of why this analysis is suggested
-    priority: float   # 0.0-1.0, higher = more urgent
-    data_type: str    # "binary", "continuous", "rate", "latency"
-    fsm_state: str    # "PATTERN_FORMING", "CONFIRMED_PATTERN", etc.
+    metric: str  # "tool:navigate:success"
+    tool_call: str  # "math"
+    operation: str  # "assess_randomness", "analyze", "recall_memory"
+    rationale: str  # Human-readable explanation of why this analysis is suggested
+    priority: float  # 0.0-1.0, higher = more urgent
+    data_type: str  # "binary", "continuous", "rate", "latency"
+    fsm_state: str  # "PATTERN_FORMING", "CONFIRMED_PATTERN", etc.
 
 
 @dataclass
@@ -866,15 +852,11 @@ class DependencyGraph(Generic[T]):
                 return
 
             for edge in self._outgoing[node_id]:
-                self._incoming[edge.target] = [
-                    e for e in self._incoming[edge.target] if e.source != node_id
-                ]
+                self._incoming[edge.target] = [e for e in self._incoming[edge.target] if e.source != node_id]
             del self._outgoing[node_id]
 
             for edge in self._incoming[node_id]:
-                self._outgoing[edge.source] = [
-                    e for e in self._outgoing[edge.source] if e.target != node_id
-                ]
+                self._outgoing[edge.source] = [e for e in self._outgoing[edge.source] if e.target != node_id]
             del self._incoming[node_id]
 
             del self._nodes[node_id]
@@ -953,9 +935,7 @@ class DependencyGraph(Generic[T]):
                 if edge_type is not None and edge.edge_type != edge_type:
                     continue
                 if metadata_match:
-                    if not all(
-                        edge.metadata.get(k) == v for k, v in metadata_match.items()
-                    ):
+                    if not all(edge.metadata.get(k) == v for k, v in metadata_match.items()):
                         continue
                 return edge
         return None
@@ -1237,7 +1217,8 @@ class AgentBus:
             except Exception as e:
                 logger.debug(
                     "Bus handler %s raised: %s",
-                    getattr(handler, "__qualname__", repr(handler)), e,
+                    getattr(handler, "__qualname__", repr(handler)),
+                    e,
                 )
 
     def clear(self) -> None:
