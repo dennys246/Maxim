@@ -11,7 +11,8 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Plan | Status | Next step |
 |------|--------|-----------|
 | Docker Sandbox | **Phase A done** | TmpdirSandbox + pain triggers implemented; Phase B (Docker backend) optional |
-| Research Protocol | **Not started** | Phase 0 mesh primitives (AgentProfile, UMR, MeshMessage, LocalMessageBus ~200 LOC) |
+| Hippocampal Recall Experiment | **Not started** | Merges Research Protocol + DM into a single deliverable: D&D campaign as Hippocampus experiment. See [hippocampal_recall_experiment.md](hippocampal_recall_experiment.md) |
+| Research Protocol | **Not started** | Phase 0 mesh primitives (AgentProfile, UMR, MeshMessage, LocalMessageBus ~200 LOC). First experiment: hippocampal recall. |
 | Multi-LLM Scaling | **Not started** | All prereqs done — Phase 1 (LaneConfig model fields) ready to start |
 | Agent Mesh | **Not started** | Blocked on Multi-LLM Phase 7 + Research Protocol Phase 0 |
 | Realtime Refinement | **Core done** | InspectAUTTool, 8 personas, 3 metric expectations, baseline scenario. Per-lane LLM metrics deferred to Multi-LLM Phase 8 |
@@ -26,6 +27,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Sim Entity Naming | **Not started** | Per-entity name prefix in sim logs (AUT/orchestrator only, ~120 LOC). Optional readability win. |
 | Stdlib OpenAI-Compat Client | **Not started** | Replace `openai` pip dep with ~40 LOC urllib fallback for peer→leader inference. Zero extra deps on peer machines. |
 | Simulation Test Bed | **Not started** | Automated sim regression suite: run scenario battery, assess against expectations, report pass/fail with bio-system health metrics. |
+| Remote Update Soft Restart | **Not started** | Auto-restart maxim process after `maxim peer update` via `os.execv`. Currently requires manual restart on leader after code pull. ~30 LOC in leader_proxy.py. |
 
 ### Completed Plans
 
