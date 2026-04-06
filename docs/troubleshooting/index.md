@@ -6,5 +6,6 @@ In-depth troubleshooting docs for specific subsystems. For quick-reference table
 
 | Guide | When to use |
 |-------|-------------|
+| [maxim doctor](maxim_doctor.md) | Understanding `maxim doctor` output, fixing each check, debug flags |
 | [Peer → Leader Connectivity](peer_leader_connectivity.md) | Peer can't reach the leader's GPU, tunnel issues, auth failures, lane routing bugs |
 | [Peer Diagnosis Runbook](peer_diagnosis_runbook.md) | Step-by-step bisection ladder (DNS → edge → tunnel → auth → lane → GPU). Copy-pasteable commands, safe for autonomous Claude agents |
