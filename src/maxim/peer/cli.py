@@ -66,7 +66,7 @@ def _print_peer_usage() -> None:
     print("  show             Show current peer configuration")
     print("  forget           Remove stored peer config")
     print("  test <url>       Verify a leader URL is reachable + authenticated")
-    print("  update [url]     Trigger git pull + pip install on the leader")
+    print("  update [url]     Pull + install on leader (--dry-run to preview)")
 
 
 # ─── connect ──────────────────────────────────────────────────────────────
@@ -243,7 +243,7 @@ def _cmd_update(argv: list[str]) -> int:
     url: str | None = None
     key: str | None = None
     branch = "main"
-    apply = False
+    dry_run = False
 
     i = 0
     while i < len(argv):
@@ -251,8 +251,8 @@ def _cmd_update(argv: list[str]) -> int:
         if a == "--branch":
             i += 1
             branch = argv[i] if i < len(argv) else "main"
-        elif a == "--apply":
-            apply = True
+        elif a in ("--dry-run", "--preview"):
+            dry_run = True
         elif a.startswith("http"):
             url = a
         i += 1
@@ -272,7 +272,7 @@ def _cmd_update(argv: list[str]) -> int:
     endpoint = f"{base}/v1/admin/update"
 
     # Build request
-    body = json.dumps({"branch": branch, "dry_run": not apply}).encode()
+    body = json.dumps({"branch": branch, "dry_run": dry_run}).encode()
     req = urllib.request.Request(
         endpoint, data=body, method="POST",
         headers={"Content-Type": "application/json"},
@@ -280,7 +280,7 @@ def _cmd_update(argv: list[str]) -> int:
     if key:
         req.add_header("Authorization", f"Bearer {key}")
 
-    print(f"{'Applying' if apply else 'Previewing'} update on leader ({base})...")
+    print(f"{'Previewing' if dry_run else 'Updating'} leader ({base})...")
     print(f"  branch: {branch}")
     print()
 
@@ -319,8 +319,8 @@ def _cmd_update(argv: list[str]) -> int:
         for c in commits:
             print(f"  {c}")
         print()
-        print("Run with --apply to apply:")
-        print("  maxim peer update --apply")
+        print("Run without --dry-run to apply:")
+        print("  maxim peer update")
         return 0
 
     if status == "updated":
