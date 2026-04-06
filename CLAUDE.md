@@ -132,10 +132,21 @@ maxim peer test https://maxim.yourdomain.com/v1
 maxim peer update              # pull + pip install on leader
 maxim peer update --dry-run    # preview pending commits only
 maxim peer update --branch dev # target a specific branch
+maxim peer update --force      # stash dirty tree, pull, restore (handles runtime state files)
 maxim peer restart             # soft-restart leader (reloads code after update)
 maxim peer version             # compare local vs leader version + git hash
 maxim peer logs                # show recent leader logs
 maxim peer logs -f             # follow leader logs in real time (Ctrl+C to stop)
+
+# Remote LLM hot-swap (change model without restarting Maxim)
+maxim peer llm qwen2.5-14b    # swap leader's llama-cpp-server to Qwen2.5-14B
+maxim peer llm mistral-7b     # swap to Mistral-7B
+maxim peer llm --status        # show active model, uptime, GPU, lane metrics
+
+# Cloud provider integration (optional fallback/dedicated lanes)
+maxim --cloud-fallback claude-sonnet     # cloud fallback when self-hosted fails
+maxim --cloud-lane review claude-haiku   # dedicated cloud model for review lane
+maxim --cloud-budget 2.00               # set max session cost for cloud providers
 ```
 
 ## Remote Update Workflow
@@ -152,12 +163,13 @@ maxim peer restart         # soft-restart to load new code
 - Always `git push` before `maxim peer update` — the leader pulls from origin, not from your local machine
 - Use `--dry-run` first if you're unsure what will be pulled
 - After `maxim peer update`, run `maxim peer restart` to reload the new code
+- Use `--force` if the leader has untracked runtime files (e.g., `active_llm_model.txt`) blocking the pull
 - If update fails with "dirty working tree", the leader has uncommitted files — commit or stash them on the leader
 - If update fails with "git pull failed", the leader has divergent branches — run `git pull --rebase origin main` on the leader
 - Leader mode auto-enables remote update + restart; disable with `MAXIM_ALLOW_REMOTE_UPDATE=0` if needed
 - Troubleshooting: [docs/troubleshooting/remote_update.md](docs/troubleshooting/remote_update.md)
 
-**Important for Claude agents:** `maxim peer update --dry-run`, `maxim peer version`, and `maxim peer logs` are safe and read-only. `maxim peer update` and `maxim peer restart` modify leader state — only run when explicitly asked by the user.
+**Important for Claude agents:** `maxim peer update --dry-run`, `maxim peer version`, `maxim peer logs`, and `maxim peer llm --status` are safe and read-only. `maxim peer update`, `maxim peer restart`, and `maxim peer llm <model>` modify leader state — only run when explicitly asked by the user.
 
 ## Versioning
 
@@ -218,6 +230,7 @@ src/maxim/
 docs/               # Internal architecture docs
 docs/user/          # User-facing guides
 docs/plans/         # Development roadmap
+docs/experiments/   # Experiment designs + run notes
 htmls-guides/       # Jinja2 HTML templates for dennyschaedig.com
 tests/              # Unit + integration + benchmark tests
 scenarios/          # YAML simulation scenarios
@@ -249,6 +262,10 @@ data/util/          # Runtime config (llm.json, cost_state.json)
 | Atomic JSON persistence | `utils/atomic_io.py` |
 | Mesh primitives (identity, messaging) | `mesh/` (AgentProfile, UMR, MeshMessage, LocalMessageBus) |
 | Research experiment tracking | `simulation/research_tools.py` (ExperimentLog, record/query tools) |
+| LLM hot-swap + persistence | `runtime/lane_backends.py` (swap_llm_server, _active_spawner) |
+| Cloud provider profiles | `models/language/config.py` (_BUILTIN_PROFILES, cloud: True marker) |
+| JSON repair pipeline | `models/language/json_parser.py` (4-stage: parse → sanitize → json_repair → structural) |
+| Experiment run notes | `docs/experiments/` (per-run findings + methodology) |
 
 ## Environment Variables
 
@@ -269,6 +286,17 @@ MAXIM_PEER_LOG_REQUESTS=1        # JSON log per outbound peer call
 # Leader proxy admission control
 MAXIM_PROXY_MAX_CONCURRENT=4     # Max in-flight requests to upstream (0=unlimited)
 MAXIM_PROXY_RATE_LIMIT_RPM=0     # Per-peer requests/minute (0=unlimited)
+
+# Cloud provider integration
+MAXIM_LLM_CLOUD_ENABLED=1       # Enable cloud dispatch (required for --cloud-* flags)
+MAXIM_MAX_CLOUD_LANES=1          # Max lanes using cloud providers (default: 0)
+MAXIM_LLM_REDACTION_POLICY=standard  # Redaction policy for cloud dispatch (standard/relaxed/strict)
+MAXIM_CLOUD_SESSION_BUDGET=5.00  # Hard ceiling on cloud spending per session
+
+# Peer/lane remote configuration
+MAXIM_LANE_INFER_REMOTE_URL=     # Override infer lane to use remote server
+MAXIM_LANE_INFER_REMOTE_MODEL=   # Model name to request from remote server
+MAXIM_LANE_INFER_REMOTE_API_KEY= # Auth token for remote server
 ```
 
 ## Testing
@@ -326,6 +354,25 @@ Every sim run saves to `data/sim_reports/{session_id}/`:
 - `actions.jsonl` -- Action records
 - `aut_hippocampus.json` -- AUT memories
 - `aut_nac.json` -- AUT causal links
+
+## Research Protocol — Campaign Execution
+
+When `--campaign <yaml>` is passed, campaign turns are **injected directly through the bridge** — the orchestrator LLM never touches the narrative text. This avoids JSON escaping issues with dialogue-heavy content.
+
+Flow:
+1. Campaign YAML loaded → turns extracted with salience/novelty
+2. Each turn sent via `bridge.send_and_wait()` with progress output
+3. AUT processes each turn (LLM inference → tool execution → hippocampus capture)
+4. After all turns complete, orchestrator LLM starts with analysis-only goal
+5. Orchestrator runs `inspect_aut`, `record_experiment`, `finish_simulation`
+
+Without `--campaign`, the orchestrator LLM drives the full simulation (probes, observations, analysis).
+
+**JSON robustness**: LLM JSON output goes through a 4-stage repair pipeline (`json_parser.py`): direct parse → control-char sanitize → `json_repair` library → structural repair. System prompts include explicit quote-escaping guidance (`_JSON_RULES` in `router.py`).
+
+**Experiment notes**: Run findings go in `docs/experiments/`. Current experiments:
+- `hippocampal_recall_experiment.md` — experiment design (seed/interference/recall)
+- `hippocampal_recall_run_notes.md` — per-run observations and findings
 
 ## Active initiatives
 

@@ -432,8 +432,18 @@ verify_ssl: true</pre>
       </div>
 
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Remote Self-Update &mdash; Soft Restart</h3>
-        <p class="text-slate-300 leading-relaxed"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer update</code> already pulls code + installs remotely. Planned: automatic process restart via <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">os.execv</code> so the leader loads new code without manual intervention.</p>
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Remote Self-Update &amp; Soft Restart</h3>
+        <p class="text-slate-300 leading-relaxed"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer update</code> pulls code + installs remotely. <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer restart</code> soft-restarts the leader via <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">os.execv</code> (same PID, clean import cycle). Use <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">--force</code> to stash dirty working tree automatically.</p>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">LLM Hot-Swap</h3>
+        <p class="text-slate-300 leading-relaxed"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer llm &lt;model&gt;</code> swaps the running LLM without restarting the Maxim process. Stops the current llama-cpp-server, starts a new one with the requested model, and health-checks it. The choice persists across restarts. <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer llm --status</code> shows the active model, uptimes, and GPU utilization.</p>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Cloud Provider Integration</h3>
+        <p class="text-slate-300 leading-relaxed">Cloud LLMs (Claude, GPT-4o) can be added as fallback engines or dedicated lane providers. <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">--cloud-fallback claude-sonnet</code> adds Claude as a fallback when the self-hosted model fails. <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">--cloud-lane review claude-haiku</code> assigns a cloud model to a specific lane. Cost tracking, redaction gates, and session budgets enforce safety.</p>
       </div>
     </div>
   </section>

@@ -41,8 +41,17 @@ git push origin main && maxim peer update && maxim peer restart
 # Target a specific branch:
 maxim peer update --branch dev
 
+# Force-update when leader has dirty tree (stashes + restores):
+maxim peer update --force
+
 # Provide URL explicitly (instead of peer.yml):
 maxim peer update https://maxim.yourdomain.com/v1
+
+# Hot-swap the LLM model without restarting Maxim:
+maxim peer llm qwen2.5-14b
+
+# Check what model is running:
+maxim peer llm --status
 ```
 
 ## Decision tree

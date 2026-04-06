@@ -40,10 +40,10 @@ percepts:
   - at: 1
     source: cli
     cli_input: |
-      Elara glances out her window nervously. "One more thing," she
-      calls after you. "Don't trust the miller — he reports to them."
-      She closes the shutters. The village square is quiet. Night is
-      falling. You should move on toward the Thornwood.
+      Elara glances out her window nervously. "Be safe on the road,"
+      she calls after you. She closes the shutters. The village square
+      is quiet. Night is falling. You should move on toward the
+      Thornwood.
     salience: 0.7
     novelty: 0.5
     metadata:

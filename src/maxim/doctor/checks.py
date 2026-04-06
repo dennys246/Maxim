@@ -107,6 +107,43 @@ def check_server_reachable(port: int = 8100) -> CheckResult:
     )
 
 
+def check_llm_model_active() -> CheckResult:
+    """Check if an LLM model is loaded and report which one."""
+    try:
+        from maxim.runtime.lane_backends import _active_model, _read_persisted_model
+
+        active = _active_model
+        persisted = _read_persisted_model()
+
+        if active:
+            return CheckResult(
+                name="LLM model",
+                status="ok",
+                message=f"active model: {active}",
+            )
+        if persisted:
+            return CheckResult(
+                name="LLM model",
+                status="warn",
+                message=f"persisted model: {persisted} (not yet loaded)",
+                fix=f"maxim peer llm {persisted}",
+                retry_id="llm_model",
+            )
+        return CheckResult(
+            name="LLM model",
+            status="warn",
+            message="no model configured — use `maxim peer llm <model>` to set one",
+            fix="maxim peer llm qwen2.5-14b",
+            retry_id="llm_model",
+        )
+    except Exception:
+        return CheckResult(
+            name="LLM model",
+            status="info",
+            message="model tracking not available (solo mode)",
+        )
+
+
 # ─── LAN access ────────────────────────────────────────────────────────────
 
 
@@ -481,6 +518,7 @@ def run_all_checks(info: PlatformInfo) -> list[tuple[str, list[CheckResult]]]:
             [
                 check_llama_cpp_server_installed(),
                 check_server_reachable(),
+                check_llm_model_active(),
             ],
         ),
         (
