@@ -7,8 +7,9 @@ loopback only.
 
 Signals, in priority order:
   1. MAXIM_ROLE env var (explicit)            → "leader" | "client" | "solo"
-  2. ~/.cloudflared/config.yml exists          → leader (implicit)
-  3. default                                   → "solo"
+  2. /etc/cloudflared/config.yml exists        → leader (implicit, systemd)
+  3. ~/.cloudflared/config.yml exists           → leader (implicit, user-space)
+  4. default                                   → "solo"
 
 The leader distinction only changes bind semantics and peer advertising —
 the process itself is still a normal Maxim instance with its own CLI + loop.
@@ -46,11 +47,13 @@ def _env_role() -> str | None:
 def _cloudflared_config_exists() -> Path | None:
     """Return the path to cloudflared's config.yml if present.
 
-    Checks ~/.cloudflared/config.yml and /etc/cloudflared/config.yml.
+    Prefers /etc/cloudflared/ (systemd service, production) over
+    ~/.cloudflared/ (user-space, development). The systemd service
+    reads from /etc/, so that's the authoritative location.
     """
     candidates = [
-        Path.home() / ".cloudflared" / "config.yml",
         Path("/etc/cloudflared/config.yml"),
+        Path.home() / ".cloudflared" / "config.yml",
     ]
     for path in candidates:
         try:

@@ -49,15 +49,15 @@ def cloudflared_already_running() -> bool:
 def resolve_config_path() -> Path | None:
     """Return the cloudflared config path to pass to --config.
 
-    Prefers the user-space config (~/.cloudflared/config.yml, the path
-    `maxim tunnel setup` writes) over the system-wide one, so the daemon
-    uses the same credentials file referenced by the user's config.
-    Falls through to /etc/cloudflared/config.yml if only that exists.
+    Prefers /etc/cloudflared/config.yml (system-wide, used by the
+    systemd service) over ~/.cloudflared/config.yml (user-space).
+    The systemd service is the authoritative tunnel process — its
+    config must match what we expect.
     """
-    if USER_CONFIG_PATH.is_file():
-        return USER_CONFIG_PATH
     if SYSTEM_CONFIG_PATH.is_file():
         return SYSTEM_CONFIG_PATH
+    if USER_CONFIG_PATH.is_file():
+        return USER_CONFIG_PATH
     return None
 
 

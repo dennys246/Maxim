@@ -75,12 +75,12 @@ maxim peer restart
 
 **Causes (in order of likelihood):**
 1. **Tunnel points at port 8100** (llama-cpp-server) instead of 8099 (LeaderProxy)
-   - Check on leader: `grep service ~/.cloudflared/config.yml`
+   - Check on leader: `grep service /etc/cloudflared/config.yml`
    - Should say `service: http://localhost:8099`
    - Fix: edit config, restart cloudflared
 2. **cloudflared not restarted** after config change
    - `sudo systemctl restart cloudflared` (Linux/systemd)
-   - `pkill -f cloudflared && cloudflared --config ~/.cloudflared/config.yml tunnel run &` (WSL2/manual)
+   - `pkill -f cloudflared && cloudflared --config /etc/cloudflared/config.yml tunnel run &` (WSL2/manual)
 3. **LeaderProxy didn't start** — port 8099 held by stale process
    - Check on leader: `ss -ltnp | grep 8099`
    - Restart maxim
@@ -95,7 +95,7 @@ maxim peer restart
 
 **Fix:** Leaders in leader mode auto-enable this. If it's still disabled:
 - Leader may not be detected as leader. Check: `maxim doctor` → Role section
-- Need either `MAXIM_ROLE=leader` env var or `~/.cloudflared/config.yml` present
+- Need either `MAXIM_ROLE=leader` env var or `/etc/cloudflared/config.yml` present
 - Explicitly: `MAXIM_ALLOW_REMOTE_UPDATE=1 maxim`
 
 ### HTTP 409 — Dirty working tree
