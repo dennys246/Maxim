@@ -61,7 +61,10 @@ the API key from `key export`.
 
 
 DEFAULT_TUNNEL_NAME = "maxim-llm"
-DEFAULT_LOCAL_PORT = 8100
+# Point at the LeaderProxy (Phase 7a) instead of directly at
+# llama-cpp-server. The proxy handles auth, logging, and GPU metrics
+# before forwarding to the inference server on port 8100.
+DEFAULT_LOCAL_PORT = 8099
 
 
 def run_tunnel_subcommand(argv: Sequence[str]) -> int:

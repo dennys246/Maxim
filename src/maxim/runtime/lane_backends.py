@@ -640,7 +640,7 @@ def _maybe_auto_spawn_server(
     # command. No-op when daemon is already running (systemd service, etc.).
     if role_decision.role == "leader":
         _maybe_auto_spawn_tunnel_daemon(logger)
-        _maybe_start_debug_status_server(role_decision.bind_host, api_key, logger)
+        _maybe_start_leader_proxy(role_decision.bind_host, api_key, logger)
     return out
 
 
@@ -688,26 +688,23 @@ def _maybe_auto_spawn_tunnel_daemon(logger: Any | None) -> None:
             )
 
 
-def _maybe_start_debug_status_server(
+def _maybe_start_leader_proxy(
     bind_host: str,
     api_key: str | None,
     logger: Any | None,
 ) -> None:
-    """Start the /v1/debug/status server alongside the inference server.
+    """Start the LeaderProxy reverse proxy in front of llama-cpp-server.
 
-    Provides GPU metrics to peers when they poll after inference calls
-    with MAXIM_LANE_TRACE=1. Auth-gated with the same key as the main server.
+    Handles auth, per-request logging, GPU debug endpoints, and injects
+    X-Maxim-* headers for peer-side trace enrichment. Tunnel ingress
+    should point at the proxy port (8099) instead of the inference
+    server (8100).
     """
     try:
-        from maxim.runtime.debug_status_server import start_debug_server
+        from maxim.runtime.leader_proxy import start_leader_proxy
     except Exception:
         return
-    server = start_debug_server(api_key=api_key, bind_host=bind_host)
-    if server is not None and logger is not None:
-        logger.info(
-            "Debug status endpoint live at %s:%d/v1/debug/status",
-            bind_host, server.server_address[1],
-        )
+    start_leader_proxy(api_key=api_key, bind_host=bind_host)
 
 
 def _print_lane_banner(manager: "LaneBackendManager") -> None:

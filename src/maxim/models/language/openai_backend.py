@@ -263,6 +263,7 @@ class _OpenAIBackend:
                 )
                 enrich_trace_with_leader_status(
                     trace, base_url, self._get_api_key(),
+                    response_headers=raw_resp.headers,
                 )
                 emit_trace(trace)
                 return parsed

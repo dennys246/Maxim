@@ -164,14 +164,57 @@ def fetch_leader_debug_status(
         return None
 
 
+def enrich_trace_from_headers(record: TraceRecord, headers: Any) -> None:
+    """Extract GPU metrics from X-Maxim-* response headers (LeaderProxy).
+
+    When the leader runs the LeaderProxy (Phase 7a), it injects GPU
+    metrics directly into inference response headers. This is faster
+    and more reliable than polling /v1/debug/status separately.
+    """
+    if not lane_trace_enabled() or not hasattr(headers, "get"):
+        return
+    gpu_util = headers.get("X-Maxim-GPU-Util")
+    if gpu_util is not None:
+        try:
+            record.gpu_util_pct = float(gpu_util)
+        except (ValueError, TypeError):
+            pass
+    gpu_vram = headers.get("X-Maxim-GPU-VRAM")
+    if gpu_vram and "/" in gpu_vram:
+        try:
+            used, total = gpu_vram.split("/")
+            record.gpu_vram_used_gb = float(used)
+            record.gpu_vram_total_gb = float(total.rstrip("G"))
+        except (ValueError, TypeError):
+            pass
+    gpu_temp = headers.get("X-Maxim-GPU-Temp")
+    if gpu_temp is not None:
+        try:
+            record.gpu_temp_c = float(gpu_temp)
+        except (ValueError, TypeError):
+            pass
+
+
 def enrich_trace_with_leader_status(
     record: TraceRecord,
     base_url: str,
     api_key: str | None = None,
+    response_headers: Any = None,
 ) -> None:
-    """If MAXIM_LANE_TRACE is on, poll leader for GPU status and fill the trace record."""
+    """Enrich a trace record with leader-side GPU metrics.
+
+    Tries two sources in order:
+    1. X-Maxim-* response headers (if LeaderProxy is running, zero-cost)
+    2. Poll /v1/debug/status (fallback for pre-7a leaders, adds ~2ms)
+    """
     if not lane_trace_enabled():
         return
+    # Try headers first (LeaderProxy injects these)
+    if response_headers is not None:
+        enrich_trace_from_headers(record, response_headers)
+        if record.gpu_util_pct is not None:
+            return  # Got metrics from headers, skip poll
+    # Fallback: poll /v1/debug/status
     status = fetch_leader_debug_status(base_url, api_key)
     if status is None:
         return
@@ -220,6 +263,7 @@ __all__ = [
     "peer_log_enabled",
     "any_trace_enabled",
     "emit_trace",
+    "enrich_trace_from_headers",
     "enrich_trace_with_leader_status",
     "fetch_leader_debug_status",
     "print_startup_warning_if_enabled",
