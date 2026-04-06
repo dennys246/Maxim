@@ -245,6 +245,7 @@ def start_simulation_mode(
     sandbox_image: str = "python:3.12-slim",
     sandbox_network: str = "none",
     aut_model: str | None = None,
+    pre_campaign_turns: list[dict[str, Any]] | None = None,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -886,6 +887,54 @@ def start_simulation_mode(
 
     aut_thread = threading.Thread(target=_aut_worker, name="sim.aut", daemon=True)
     aut_thread.start()
+
+    # ── Pre-campaign: inject turns directly through bridge ───────────────
+    # When campaign turns are provided, we bypass the orchestrator LLM for
+    # turn delivery.  The bridge sends each turn to the AUT as a raw percept,
+    # waits for the response, and records the result.  This avoids JSON
+    # escaping issues with narrative dialogue and ensures verbatim delivery.
+    campaign_results: list[dict[str, Any]] = []
+    if pre_campaign_turns:
+        import time as _pc_time
+
+        print(f"\n  Delivering {len(pre_campaign_turns)} campaign turns directly to AUT...")
+        # Give AUT a moment to start up
+        _pc_time.sleep(1.0)
+        for i, turn in enumerate(pre_campaign_turns, 1):
+            text = turn.get("text", "")
+            phase = turn.get("phase", "")
+            sal = turn.get("salience", 0.8)
+            nov = turn.get("novelty", 0.7)
+            phase_label = f" [{phase}]" if phase else ""
+            print(f"  Turn {i}/{len(pre_campaign_turns)}{phase_label}: sending ({len(text)} chars)...")
+            try:
+                result = bridge.send_and_wait(text, salience=sal, novelty=nov)
+                actions = [a.tool_name for a in result.get("actions", [])]
+                blocked = len(result.get("blocked", []))
+                response = result.get("response", "")
+                resp_preview = (
+                    (response[:80] + "...") if response and len(response) > 80 else (response or "(no verbal response)")
+                )
+                print(
+                    f"    AUT: {len(actions)} action(s) {actions}, {blocked} blocked, {result.get('duration_ms', 0):.0f}ms"
+                )
+                print(f"    Response: {resp_preview}")
+                campaign_results.append(
+                    {
+                        "turn": i,
+                        "phase": phase,
+                        "text_len": len(text),
+                        "actions": actions,
+                        "blocked": blocked,
+                        "response": response,
+                        "timed_out": result.get("timed_out", False),
+                        "duration_ms": result.get("duration_ms", 0),
+                    }
+                )
+            except Exception as e:
+                logger.warning("Campaign turn %d failed: %s", i, e)
+                campaign_results.append({"turn": i, "phase": phase, "error": str(e)})
+        print(f"  Campaign delivery complete: {len(campaign_results)} turns delivered\n")
 
     # ── Inject initial goal (or resume context) into orchestrator ────────
     if resume_session:

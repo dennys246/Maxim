@@ -124,44 +124,37 @@ def start_research_mode(
                             "phase": p.get("metadata", {}).get("phase", ""),
                             "role": p.get("metadata", {}).get("experiment_role", ""),
                             "tag": p.get("metadata", {}).get("scenario_tag", ""),
+                            "salience": p.get("salience", 0.8),
+                            "novelty": p.get("novelty", 0.7),
                         }
                     )
             print(f"  Loaded {len(campaign_turns)} campaign turns from {campaign}")
         except Exception as e:
             logger.warning("Failed to load campaign YAML: %s", e)
 
-    # Build the researcher goal with concrete campaign steps
+    # Build the researcher goal — campaign turns are injected directly
+    # through the bridge (bypassing the LLM), so the orchestrator only
+    # needs to do post-campaign analysis.
     researcher_goal = goal
     if campaign_turns:
-        turn_lines = []
-        for i, turn in enumerate(campaign_turns, 1):
-            phase_label = f" [{turn['phase']}]" if turn["phase"] else ""
-            # Show full text (up to 500 chars) so the LLM has the complete narrative
-            turn_lines.append(f"--- TURN {i}{phase_label} ---\n{turn['text'][:500]}")
-        turns_block = "\n\n".join(turn_lines)
         researcher_goal = (
             f"{goal}\n\n"
-            f"CAMPAIGN PROTOCOL\n"
-            f"=================\n"
-            f"You MUST deliver the following narrative turns to the AUT, in order.\n"
-            f'For each turn, call: send_message(text="<the narrative text below>")\n\n'
-            f"IMPORTANT RULES:\n"
-            f"- Send the narrative text VERBATIM — do NOT paraphrase, summarize, or adapt it.\n"
-            f"- Do NOT invent your own probes or adversarial variations.\n"
-            f"- Do NOT skip turns or reorder them.\n"
-            f"- Wait for the AUT response after each turn before sending the next.\n\n"
-            f"{turns_block}\n\n"
-            f"--- END OF CAMPAIGN TURNS ---\n\n"
-            f"After ALL {len(campaign_turns)} turns are sent and responses collected:\n"
-            f"1. Use inspect_aut(query='memory_recall', params={{'keyword': 'Verath'}}) to check memory survival\n"
-            f"2. Use inspect_aut(query='system_stats') for graph topology\n"
-            f"3. Record results with record_experiment\n"
-            f"4. Call finish_simulation with your findings"
+            f"CAMPAIGN COMPLETE — {len(campaign_turns)} narrative turns were delivered directly to the AUT.\n"
+            f"The campaign tested memory recall under narrative interference.\n\n"
+            f"YOUR TASK (analysis only — do NOT send any more narrative turns):\n"
+            f"1. Use inspect_aut(query='memory_recall', params={{'keyword': 'Verath'}}) to check if the seed memory survived\n"
+            f"2. Use inspect_aut(query='system_stats') for graph topology and memory count\n"
+            f"3. Use observe_actions to review the AUT's behavior during the campaign\n"
+            f"4. Record your findings with record_experiment (hypothesis, method, result, conclusion)\n"
+            f"5. Call finish_simulation with your analysis"
         )
     elif campaign:
         researcher_goal = f"{goal}\n\nCampaign file: {campaign} (failed to load — run manually with send_message)"
 
-    # Run the researcher via the existing simulation orchestrator
+    # Run the researcher via the existing simulation orchestrator.
+    # Campaign turns are injected directly through the bridge before the
+    # orchestrator LLM starts, ensuring verbatim delivery without JSON
+    # escaping issues.
     sim_result = start_simulation_mode(
         goal=researcher_goal,
         persona="researcher",
@@ -169,7 +162,8 @@ def start_research_mode(
         debug=debug,
         sandbox_backend=sandbox_backend,
         aut_model=aut_model,
-        no_sim_env=True,  # Research mode doesn't need pain-triggering files
+        no_sim_env=True,
+        pre_campaign_turns=campaign_turns if campaign_turns else None,
     )
 
     # The experiment log was populated by the researcher's record_experiment calls
