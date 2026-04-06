@@ -28,6 +28,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Stdlib OpenAI-Compat Client | **Not started** | Replace `openai` pip dep with ~40 LOC urllib fallback for peer→leader inference. Zero extra deps on peer machines. |
 | Simulation Test Bed | **Not started** | Automated sim regression suite: run scenario battery, assess against expectations, report pass/fail with bio-system health metrics. |
 | Remote Update Soft Restart | **Done** | `maxim peer restart` — soft-restarts leader via `os.execv`. ~50 LOC across leader_proxy.py + peer/cli.py. |
+| Peer Inference Retry on Leader Restart | **Not started** | OpenAI backend should retry with backoff on transient failures (502/503/connection reset) when the leader restarts mid-request. Currently a leader restart during a sim causes `No eligible LLM providers` stall. ~30 LOC in openai_backend.py. |
 
 ### Completed Plans
 
