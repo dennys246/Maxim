@@ -628,6 +628,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             _debug_subs = {s.strip().lower() for s in _debug_raw.split(",")}
         if _debug_all or "hippo" in _debug_subs:
             os.environ["MAXIM_HIPPO_TRACE"] = "1"
+        if _debug_all or "nac" in _debug_subs:
+            os.environ["MAXIM_NAC_TRACE"] = "1"
+        if _debug_all or "atl" in _debug_subs:
+            os.environ["MAXIM_ATL_TRACE"] = "1"
 
         # Check for agent mode (autonomous orchestrator)
         _sim_agent = str(sim_path).strip().lower() == "agent"

@@ -245,6 +245,22 @@ Tools move through stages:
 
 ---
 
+## Simulation experiment: tool interaction with bio-systems
+
+The hippocampal recall experiment (`scenarios/experiments/hippocampal_recall_*.yaml`) tests memory recall, but a follow-up experiment should test **tool selection recall** — does the Hippocampus + NAc influence which tools the AUT picks in familiar contexts?
+
+**Proposed experiment:**
+1. Run a sim where the AUT uses various tools (bash, read_file, write_file) across multiple scenarios
+2. Measure whether NAc builds causal links between tool choices and outcomes
+3. In a subsequent session (with saved Hippocampus state), test whether the AUT prefers tools that previously succeeded — especially avoiding tools that triggered FearAgent blocks
+4. Use `--debug nac,hippo` to trace the causal learning in real time
+
+**Dependencies:** The AUT needs a broader tool surface in sim mode for this to be meaningful. Currently sim AUT has filesystem + bash tools, which is sufficient for initial testing. Expanding the AUT's tool registry with more introspection tools (from this plan) would produce richer data.
+
+**When:** After the hippocampal recall experiment produces initial results. This experiment tests the NAc learning loop rather than pure Hippocampus recall.
+
+---
+
 ## Future directions (not yet concrete)
 
 - **Tool composition** — agent builds multi-step tool pipelines as named macros, stores them like skills

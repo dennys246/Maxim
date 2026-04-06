@@ -458,15 +458,32 @@ def start_simulation_mode(
 
         logger.info("AUT memory wired (hippocampus + NAc)")
 
-        # Attach HippocampusTracer if --debug-hippo or MAXIM_HIPPO_TRACE=1
-        if os.environ.get("MAXIM_HIPPO_TRACE", "").strip().lower() in (
-            "1", "true", "t", "yes", "y", "on",
-        ) or debug:
+        # Attach bio-system tracers based on --debug flags / env vars
+        def _env_trace(var: str) -> bool:
+            return os.environ.get(var, "").strip().lower() in ("1", "true", "t", "yes", "y", "on")
+
+        if _env_trace("MAXIM_HIPPO_TRACE") or debug:
             try:
                 from maxim.memory.hippo_tracer import HippocampusTracer
                 HippocampusTracer(aut_hippocampus)
             except Exception as e:
                 logger.debug("Hippo tracer not available: %s", e)
+
+        if _env_trace("MAXIM_NAC_TRACE") or debug:
+            try:
+                from maxim.decisions.nac_tracer import NacTracer
+                NacTracer(aut_nac)
+            except Exception as e:
+                logger.debug("NAc tracer not available: %s", e)
+
+        if _env_trace("MAXIM_ATL_TRACE") or debug:
+            try:
+                from maxim.memory.atl_tracer import ATLTracer
+                atl = getattr(aut_memory_hub, "_atl", None) or getattr(aut_memory_hub, "atl", None)
+                if atl is not None:
+                    ATLTracer(atl)
+            except Exception as e:
+                logger.debug("ATL tracer not available: %s", e)
     except Exception as e:
         logger.debug("AUT memory not available: %s", e)
 
