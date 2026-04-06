@@ -51,6 +51,8 @@ def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
         return _cmd_update(list(argv[1:]))
     if action == "restart":
         return _cmd_restart(list(argv[1:]))
+    if action == "version":
+        return _cmd_version(list(argv[1:]))
     # Fall through to maxim.doctor.cli for `peer test` (kept in doctor/ because
     # test is a diagnostic, not a configuration subcommand)
     if action == "test":
@@ -72,6 +74,7 @@ def _print_peer_usage() -> None:
     print("  test <url>       Verify a leader URL is reachable + authenticated")
     print("  update [url]     Pull + install on leader (--dry-run to preview)")
     print("  restart [url]    Soft-restart maxim on leader (reloads code)")
+    print("  version [url]    Show maxim version on leader (and local)")
 
 
 # ─── connect ──────────────────────────────────────────────────────────────
@@ -426,6 +429,73 @@ def _cmd_restart(argv: list[str]) -> int:
     print(f"Unexpected status: {status}")
     print(json.dumps(data, indent=2))
     return 1
+
+
+def _cmd_version(argv: list[str]) -> int:
+    """Show local and leader maxim version."""
+    import json
+    import urllib.error
+    import urllib.request
+
+    from maxim import get_version_info
+
+    local = get_version_info()
+    print(f"Local:  v{local['version']}", end="")
+    if local.get("git_hash"):
+        print(f" ({local['git_hash']})", end="")
+    print()
+    if local.get("git_message"):
+        print(f"        {local['git_message']}")
+
+    # Query leader
+    url: str | None = None
+    key: str | None = None
+
+    for a in argv:
+        if a.startswith("http"):
+            url = a
+
+    if url is None:
+        cfg = read_peer_config()
+        if cfg is None:
+            return 0  # No leader configured, just show local
+        url = cfg.url
+        key = cfg.api_key
+
+    base = url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    endpoint = f"{base}/v1/debug/version"
+
+    req = urllib.request.Request(
+        endpoint,
+        method="GET",
+        headers={"User-Agent": "maxim-peer/1.0"},
+    )
+    if key:
+        req.add_header("Authorization", f"Bearer {key}")
+
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            data = json.loads(resp.read())
+    except Exception as e:
+        print(f"Leader: (unreachable: {e})")
+        return 1
+
+    print(f"Leader: v{data.get('version', '?')}", end="")
+    if data.get("git_hash"):
+        print(f" ({data['git_hash']})", end="")
+    print()
+    if data.get("git_message"):
+        print(f"        {data['git_message']}")
+
+    # Highlight version mismatch
+    if local.get("git_hash") and data.get("git_hash"):
+        if local["git_hash"] != data["git_hash"]:
+            print()
+            print("  Version mismatch! Run: maxim peer update && maxim peer restart")
+
+    return 0
 
 
 __all__ = ["run_peer_connect_subcommand"]

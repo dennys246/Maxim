@@ -213,6 +213,14 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         except Exception:
             self._send_json(200, {})
 
+    def _handle_debug_version(self) -> None:
+        try:
+            from maxim import get_version_info
+
+            self._send_json(200, get_version_info())
+        except Exception:
+            self._send_json(200, {"version": "unknown"})
+
     def _handle_debug_last_requests(self) -> None:
         if self.request_log is None:
             self._send_json(200, {"total_requests": 0, "recent": []})
@@ -230,6 +238,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             "/v1/debug/status",
             "/v1/debug/heartbeat",
             "/v1/debug/metrics",
+            "/v1/debug/version",
             "/v1/debug/last-requests",
         )
 
@@ -241,6 +250,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self._handle_debug_heartbeat()
         elif stripped == "/v1/debug/metrics":
             self._handle_debug_metrics()
+        elif stripped == "/v1/debug/version":
+            self._handle_debug_version()
         elif stripped == "/v1/debug/last-requests":
             self._handle_debug_last_requests()
         else:
