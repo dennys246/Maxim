@@ -13,7 +13,7 @@ class TunnelConfig:
     tunnel_id: str
     credentials_file: str
     hostname: str
-    local_service: str  # e.g., "http://localhost:8100"
+    local_service: str  # e.g., "http://localhost:8099" (LeaderProxy)
 
 
 def config_exists() -> bool:

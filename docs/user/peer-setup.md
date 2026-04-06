@@ -104,7 +104,10 @@ ps aux | grep -E "(maxim|llama-cpp-server)" | grep -v grep
 # 2. Is cloudflared running?
 ps aux | grep cloudflared | grep -v grep
 
-# 3. Does the local server respond directly?
+# 3. Does the LeaderProxy respond?
+curl -sI http://127.0.0.1:8099/v1/debug/status
+
+# 4. Does the inference server respond directly?
 curl -sI http://127.0.0.1:8100/v1/models
 
 # 4. What does doctor say?
@@ -114,7 +117,11 @@ maxim doctor
 Common causes:
 - Maxim not started on the leader — run `maxim` (auto-detects leader role if `~/.cloudflared/config.yml` exists)
 - llama-cpp-server auto-spawn failed — check logs at `data/logs/` or bump `MAXIM_AUTO_SPAWN_TIMEOUT` for slow model loads
-- cloudflared pointing at the wrong local port — check `~/.cloudflared/config.yml` matches the server's actual port (default 8100)
+- cloudflared pointing at the wrong local port — check `~/.cloudflared/config.yml` has `service: http://localhost:8099` (LeaderProxy, not 8100)
+- Tunnel needs restart after config changes:
+  - **Linux/WSL2 (systemd):** `sudo systemctl restart cloudflared`
+  - **WSL2 (no systemd):** kill and relaunch: `pkill cloudflared && cloudflared --config ~/.cloudflared/config.yml tunnel run &`
+  - **Manual/foreground:** Ctrl+C the running `cloudflared` process, relaunch with `cloudflared --config ~/.cloudflared/config.yml tunnel run`
 
 ### Diagnosing 403
 

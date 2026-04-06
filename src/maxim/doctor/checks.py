@@ -279,10 +279,31 @@ def check_tunnel_config() -> CheckResult:
             retry_id="tunnel-config",
         )
     hostname = summary.get("hostname", "?")
+    service = summary.get("service", "")
+
+    # Warn if tunnel points directly at llama-cpp-server (8100) instead of
+    # LeaderProxy (8099). Without the proxy, peers bypass auth enforcement,
+    # logging, GPU metrics, admission control, and admin endpoints.
+    if ":8100" in service:
+        return CheckResult(
+            name="Tunnel config",
+            status="warn",
+            message=f"hostname={hostname} — tunnel points at port 8100 (llama-cpp-server directly)",
+            fix=(
+                "Update your tunnel config to route through the LeaderProxy (port 8099):\n"
+                f"  Edit {CONFIG_PATH}\n"
+                "  Change: service: http://localhost:8100\n"
+                "  To:     service: http://localhost:8099\n"
+                "  Then restart cloudflared:\n"
+                "    sudo systemctl restart cloudflared   # Linux\n"
+                "    cloudflared --config ~/.cloudflared/config.yml tunnel run   # manual"
+            ),
+        )
+
     return CheckResult(
         name="Tunnel config",
         status="ok",
-        message=f"hostname={hostname}",
+        message=f"hostname={hostname} service={service}",
     )
 
 

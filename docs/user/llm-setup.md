@@ -527,7 +527,7 @@ Walks you through:
 1. Cloudflare authentication (opens browser)
 2. Tunnel name (default `maxim-llm`)
 3. DNS routing (you provide the hostname)
-4. Local port (default `8100`, matches `MAXIM_AUTO_SPAWN_PORT`)
+4. Local port (default `8099`, routes through LeaderProxy for auth + logging)
 5. Writes `~/.cloudflared/config.yml`
 
 After setup, keep the tunnel daemon running:
@@ -615,7 +615,7 @@ The `maxim tunnel status` command shows what's configured at any time:
     tunnel: a1b2c3d4-...
     credentials_file: /home/dennys/.cloudflared/a1b2c3d4-...json
     hostname: maxim.example.com
-    service: http://localhost:8100
+    service: http://localhost:8099
   daemon:      ✓ running
 ──────────────────────────────────────────────────────────────
 ```

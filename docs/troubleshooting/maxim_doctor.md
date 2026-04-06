@@ -70,6 +70,22 @@ Lines starting with `→` are fix instructions. They're copy-pasteable and use y
 maxim tunnel setup    # interactive guided setup
 ```
 
+**"Tunnel points at port 8100 (llama-cpp-server directly)":**
+
+Your tunnel config routes traffic directly to the inference server, bypassing the LeaderProxy. This means peers skip auth enforcement, logging, GPU metrics, admission control, and admin endpoints (like remote update).
+
+Fix: edit `~/.cloudflared/config.yml`, change `service: http://localhost:8100` to `service: http://localhost:8099`, then restart cloudflared:
+```bash
+# Linux (systemd):
+sudo systemctl restart cloudflared
+
+# WSL2 (no systemd):
+pkill cloudflared && cloudflared --config ~/.cloudflared/config.yml tunnel run &
+
+# Manual/foreground:
+cloudflared --config ~/.cloudflared/config.yml tunnel run
+```
+
 ### API key
 
 | Check | What it tests | Common fixes |
