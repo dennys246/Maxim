@@ -29,6 +29,7 @@ class SimulationReport:
     goal: str = ""
     persona: str = ""
     language_model: str = ""
+    aut_model: str = ""  # Separate AUT model when dual-LLM mode is active
 
     # Timing
     duration_s: float = 0.0
@@ -322,7 +323,7 @@ def _build_roundup_prompt(report: SimulationReport) -> str:
             lines.append(f"  {i}. {text[:200]}")
 
     lines.append("")
-    lines.append(f"## AUT Cognitive State:")
+    lines.append("## AUT Cognitive State:")
     lines.append(f"  Episodic memories formed: {report.aut_memories_formed}")
     lines.append(f"  Causal links learned: {report.aut_causal_links}")
     if report.aut_nac_summary.get("top_links"):
@@ -372,7 +373,7 @@ def print_report(report: SimulationReport) -> None:
         print()
 
     if report.llm_summary:
-        print(f"  LLM Analysis:")
+        print("  LLM Analysis:")
         print(f"    {report.llm_summary}")
         print()
 

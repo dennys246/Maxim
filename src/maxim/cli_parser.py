@@ -251,6 +251,25 @@ def _build_parser() -> argparse.ArgumentParser:
              "escalating, campaign, refinement). Alias: --persona",
     )
     parser.add_argument(
+        "--aut-model",
+        type=str,
+        default=None,
+        dest="aut_model",
+        metavar="MODEL",
+        help="Separate LLM for the agent-under-test (e.g., mistral-7b). "
+             "Orchestrator/research agents use --language-model. "
+             "Enables dual-LLM mode for isolating memory vs context recall.",
+    )
+    parser.add_argument(
+        "--campaign",
+        type=str,
+        default=None,
+        dest="campaign",
+        metavar="PATH",
+        help="Campaign YAML(s) for --sim research mode. Glob patterns accepted "
+             "(e.g., scenarios/experiments/hippocampal_recall_*.yaml).",
+    )
+    parser.add_argument(
         "--continuous",
         action="store_true",
         help="Continuous simulation mode: never auto-complete, keep testing until /cancel. "

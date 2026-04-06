@@ -98,6 +98,12 @@ maxim --sim agent --goal "test safety" --persona adversarial --language-model cl
 # Resume a previous simulation
 maxim --sim agent --goal "continue" --resume-sim 20260403 --language-model claude-sonnet
 
+# Research protocol (multi-agent: Researcher → Writer → Reviewer)
+maxim --sim research --goal "hippocampal recall under interference" --campaign scenarios/experiments/hippocampal_recall_short.yaml
+
+# Dual-LLM research (Claude orchestrates, Mistral experiences)
+maxim --sim research --goal "hippocampal recall" --language-model claude-sonnet --aut-model mistral-7b --campaign scenarios/experiments/hippocampal_recall_*.yaml
+
 # Run YAML scenario
 maxim --sim scenarios/malware_with_pain.yaml
 
@@ -230,6 +236,7 @@ data/util/          # Runtime config (llm.json, cost_state.json)
 | Adding a new tool | `tools/` + register in the tool registry; see `tools/introspection.py` for a clean example |
 | LLM prompts / routing | `models/language/router.py`, `models/language/prompt_formats.py` |
 | Sim personas | `simulation/personas.py` (8 today: adversarial, cooperative, confused, escalating, campaign, refinement, researcher, sweep) |
+| Research protocol (Writer/Reviewer) | `simulation/research_agents.py`, `simulation/research_orchestrator.py` |
 | Memory capture → consolidation | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/semantic_promoter.py` |
 | Causal learning | `decisions/nac.py` |
 | Cross-layer wiring | `integration/memory_hub.py` (the single coordinator) |
@@ -321,6 +328,6 @@ See `docs/plans/future_plans.md` for the full roadmap. Current state:
 
 - **Multi-LLM scaling** — COMPLETE. All phases done (LeaderProxy, admission control, LaneMetrics, heartbeat, remote update). Archived at `docs/plans/agent_mesh.md`. mDNS + InferenceRouter moved to Agent Mesh.
 - **Agent Mesh** (`docs/plans/agent_mesh.md`) — Phase 1a-1b foundations in place (AgentProfile, UMR in `src/maxim/mesh/`). Phases 0a-0b (mDNS discovery + InferenceRouter) are next, then full protocol.
-- **Research Protocol** (`docs/plans/research_protocol_plan.md`) — Phase 0 complete (mesh primitives: AgentProfile, UMR, MeshMessage, LocalMessageBus in `src/maxim/mesh/`). Phase 1 complete (record_experiment, query_experiments in `src/maxim/simulation/research_tools.py`). Phases 2-4 (Writer, Reviewer, Orchestrator) next.
+- **Research Protocol** (`docs/plans/research_protocol_plan.md`) — All phases complete. Mesh primitives (`src/maxim/mesh/`), research tools (`src/maxim/simulation/research_tools.py`), Writer + Reviewer agents (`src/maxim/simulation/research_agents.py`), Research Orchestrator (`src/maxim/simulation/research_orchestrator.py`). CLI: `maxim --sim research --goal "..." [--campaign <yaml>] [--aut-model <model>]`.
 - **Realtime Refinement** (`docs/plans/realtime_refinement_plan.md`) — ~90% done; remaining ~50 LOC (6th persona + metric expectation types).
 - **Docker Sandbox** (`docs/plans/docker_sandbox_plan.md`) — Phase A (TmpdirSandbox + pain triggers) + Phase B (DockerSandbox + ContainerRunner protocol + image catalog + autonomy-scaled resource limits + unprivileged `maxim` user) DONE.

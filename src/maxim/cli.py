@@ -614,8 +614,29 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sandbox_backend=getattr(args, "sandbox_backend", "auto"),
                 sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
                 sandbox_network=getattr(args, "sandbox_network", "none"),
+                aut_model=getattr(args, "aut_model", None),
             )
             sys.exit(0 if result.finish_reason != "error" else 1)
+
+        # Check for research mode (multi-agent research protocol)
+        _sim_research = str(sim_path).strip().lower() == "research"
+        if _sim_research:
+            from maxim.simulation.research_orchestrator import start_research_mode
+
+            goal = getattr(args, "sim_goal", None) or "investigate the research question"
+            debug = bool(getattr(args, "debug", False) or getattr(args, "sim_debug", False))
+            campaign = getattr(args, "campaign", None)
+            language_model = str(getattr(args, "language_model", "") or "").strip() or None
+
+            result = start_research_mode(
+                goal=goal,
+                campaign=campaign,
+                language_model=language_model,
+                aut_model=getattr(args, "aut_model", None),
+                debug=debug,
+                sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+            )
+            sys.exit(0 if result.review_verdict != "reject" else 1)
 
         # Check for interactive mode
         _sim_interactive = str(sim_path).strip().lower() == "interactive"

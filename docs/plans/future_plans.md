@@ -11,8 +11,8 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Plan | Status | Next step |
 |------|--------|-----------|
 | Docker Sandbox | **Phase A done** | TmpdirSandbox + pain triggers implemented; Phase B (Docker backend) optional |
-| Hippocampal Recall Experiment | **Not started** | Merges Research Protocol + DM into a single deliverable: D&D campaign as Hippocampus experiment. See [hippocampal_recall_experiment.md](hippocampal_recall_experiment.md) |
-| Research Protocol | **Phase 0-1 done** | Mesh primitives (`src/maxim/mesh/`) + research tools (`record_experiment`, `query_experiments`) implemented. Next: Phase 2 (Writer agent). |
+| Hippocampal Recall Experiment | **Ready to run** | All infrastructure in place (Research Protocol complete, dual-LLM wiring done, campaign YAMLs authored). See [hippocampal_recall_experiment.md](hippocampal_recall_experiment.md) |
+| Research Protocol | **Complete** | All phases: mesh primitives, research tools, Writer + Reviewer agents, Research Orchestrator. CLI: `maxim --sim research`. |
 | Multi-LLM Scaling | **Complete** | All phases done. mDNS + InferenceRouter moved to Agent Mesh as Phases 0a-0b. [Archived](agent_mesh.md) |
 | Agent Mesh | **Phase 1a-1b foundations** | AgentProfile + UMR implemented in `src/maxim/mesh/`. Phases 0a-0b (mDNS + InferenceRouter) next, then full protocol. |
 | Realtime Refinement | **Core done** | InspectAUTTool, 8 personas, 3 metric expectations, baseline scenario. Per-lane LLM metrics deferred to Multi-LLM Phase 8 |
@@ -112,7 +112,7 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 | 3 | **Multi-LLM Phases 1-3** | ~500 | Local dual-model routing; bottleneck for compute scaling |
 | 4 | **Embodiment Core remaining phases** | per plan | Cerebellum forward models, structured failures |
 | 5 | **Multi-LLM Phases 4-6** | per plan | Remote LLM, tunnel, auto-spawn |
-| 6 | **Research Protocol Phases 1-3** | per plan | Researcher/Writer/Reviewer agents |
+| 6 | ~~Research Protocol Phases 1-3~~ | ~~per plan~~ | **Done.** Writer + Reviewer agents + Research Orchestrator |
 | 7 | **Multi-LLM Phase 7 + Agent Mesh Phase 1+** | per plans | Mesh lands (consumes RP + Multi-LLM P7) |
 | 8 | **Multi-LLM Phase 8** | per plan | Per-lane metrics, closes Refinement |
 | 9 | **Embodiment Hardware Adapter** | ~300 | Wraps RobotController for hardware |
@@ -201,8 +201,8 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 
 ## 3. Research Protocol (Agent Mesh proving ground)
 
-> **Status:** Phase 0 (mesh primitives) and Phase 1 (researcher tools) complete.
-> **Effort:** ~1,300 LOC across 5 phases (~350 LOC shipped)
+> **Status:** Complete. All phases shipped.
+> **Effort:** ~1,300 LOC across 5 phases
 > **Design:** [research_protocol_plan.md](research_protocol_plan.md)
 
 Three specialized agents collaborating on a research question:
@@ -210,15 +210,15 @@ Three specialized agents collaborating on a research question:
 - **Writer** — produces a structured paper (Methods → Results → Intro → Discussion → Conclusions)
 - **Peer Reviewer** — validates claims by re-running experiments, flags issues, demands revisions
 
-**Shipped (Phase 0-1):**
+**Shipped:**
 - `src/maxim/mesh/` — AgentProfile, UMR naming, MeshMessage, LocalMessageBus (~200 LOC)
 - `src/maxim/simulation/research_tools.py` — ExperimentLog, RecordExperimentTool, QueryExperimentsTool (~150 LOC)
-- Research tools wired into orchestrator for all personas; researcher persona updated with experiment protocol
-- 38 unit tests in `tests/unit/test_mesh_primitives.py` and `tests/unit/test_research_tools.py`
+- `src/maxim/simulation/research_agents.py` — WriterAgent, ReviewerAgent, PaperDraft, ReviewResult (~300 LOC)
+- `src/maxim/simulation/research_orchestrator.py` — start_research_mode, ResearchResult (~200 LOC)
+- Dual-LLM wiring: `--aut-model` flag in orchestrator for separate AUT model
+- 82 unit tests across mesh, research tools, and research agents
 
-**Next:** Phase 2 (Writer agent ~300 LOC), Phase 3 (Reviewer agent ~300 LOC), Phase 4 (Research Orchestrator ~200 LOC)
-
-CLI (future): `maxim --sim research --goal "does the agent block code execution?"`
+CLI: `maxim --sim research --goal "does the agent block code execution?" [--campaign <yaml>] [--aut-model mistral-7b]`
 
 ---
 

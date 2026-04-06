@@ -1,19 +1,24 @@
 # Hippocampal Recall Experiment Plan
 
-> **Status:** Design complete. Campaign YAMLs authored. Ready to implement.
-> **Depends on:** Research Protocol Phase 0 (~200 LOC), existing simulation infrastructure.
+> **Status:** Ready to run. All infrastructure implemented.
+> **Depends on:** Research Protocol (complete), dual-LLM wiring (complete), campaign YAMLs (complete).
 > **Replaces:** Standalone Dungeon Master MVP as first deliverable. DM runtime still ships later.
 >
-> **Critical path to running this experiment:**
-> 1. Fix sim orchestrator prompts — sims must sustain multi-turn conversations without hallucinating tools (~1 session)
-> 2. Dual-LLM wiring — `--aut-model` flag in orchestrator, second router for AUT (~40 LOC)
-> 3. Research Protocol Phase 0 — AgentProfile, UMR, MeshMessage, LocalMessageBus (~200 LOC)
-> 4. Campaign YAMLs — DONE (`scenarios/experiments/hippocampal_recall_*.yaml`)
-> 5. Researcher enhancements — `record_experiment`, `query_experiments`, measurement protocol (~150 LOC)
-> 6. Writer + Reviewer agents (~600 LOC)
-> 7. Research Orchestrator — `maxim --sim research --campaign <yaml>` (~200 LOC)
+> **All critical path items are DONE:**
+> 1. ~~Fix sim orchestrator prompts~~ — DONE
+> 2. ~~Dual-LLM wiring~~ — DONE (`--aut-model` flag, separate LLMRouter for AUT)
+> 3. ~~Research Protocol Phase 0~~ — DONE (`src/maxim/mesh/`)
+> 4. ~~Campaign YAMLs~~ — DONE (`scenarios/experiments/hippocampal_recall_*.yaml`)
+> 5. ~~Researcher enhancements~~ — DONE (`record_experiment`, `query_experiments`)
+> 6. ~~Writer + Reviewer agents~~ — DONE (`src/maxim/simulation/research_agents.py`)
+> 7. ~~Research Orchestrator~~ — DONE (`src/maxim/simulation/research_orchestrator.py`)
 >
-> **Not on the critical path:** Agent Mesh 0a/0b (mDNS + InferenceRouter), Embodiment Core, DM MVP, Sim Test Bed. This experiment runs locally on a single machine.
+> **Run it:**
+> ```bash
+> maxim --sim research --goal "hippocampal recall under narrative interference" \
+>   --language-model claude-sonnet --aut-model mistral-7b \
+>   --campaign scenarios/experiments/hippocampal_recall_short.yaml
+> ```
 
 ## Thesis
 

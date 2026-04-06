@@ -1,13 +1,16 @@
 # Research Protocol Plan
 
-> **Status:** Phase 0 (mesh primitives) and Phase 1 (researcher tools) complete. Phases 2-4 next.
+> **Status:** Complete. All phases shipped.
 > **Depends on:** Simulation Agent (implemented), Simulation Decomposition (implemented)
 >
 > **Shipped:**
 > - Phase 0: `src/maxim/mesh/` — AgentProfile, UMR, MeshMessage, LocalMessageBus (~200 LOC)
 > - Phase 1: `src/maxim/simulation/research_tools.py` — ExperimentLog, RecordExperimentTool, QueryExperimentsTool (~150 LOC)
-> - Research tools wired into orchestrator (all personas); researcher persona updated with experiment protocol
-> - Tests: `tests/unit/test_mesh_primitives.py` (23 tests), `tests/unit/test_research_tools.py` (15 tests)
+> - Phase 2-3: `src/maxim/simulation/research_agents.py` — WriterAgent, ReviewerAgent, PaperDraft, ReviewResult (~300 LOC)
+> - Phase 4: `src/maxim/simulation/research_orchestrator.py` — start_research_mode, ResearchResult (~200 LOC)
+> - Dual-LLM: `--aut-model` flag in orchestrator for separate AUT model (~40 LOC)
+> - Tests: 82 total across `test_mesh_primitives.py`, `test_research_tools.py`, `test_research_agents.py`
+> - CLI: `maxim --sim research --goal "..." [--campaign <yaml>] [--aut-model <model>]`
 
 ## Vision
 

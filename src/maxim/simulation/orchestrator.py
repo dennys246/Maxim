@@ -238,6 +238,7 @@ def start_simulation_mode(
     sandbox_backend: str = "auto",
     sandbox_image: str = "python:3.12-slim",
     sandbox_network: str = "none",
+    aut_model: str | None = None,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -469,14 +470,29 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("AUT PainBus subscription failed: %s", e)
 
-    # Build AUT's LLM worker (shares the router)
+    # Build AUT's LLM worker. When --aut-model is set, the AUT gets its
+    # own LLMRouter so there's no inference contention and the experiment
+    # can isolate memory recall from LLM context window effects.
+    aut_router = llm_router  # default: shared
+    if aut_model is not None and llm_router is not None:
+        try:
+            aut_config = load_llm_config(profile_override=aut_model)
+            if aut_config.enabled:
+                aut_router = LLMRouter(aut_config)
+                aut_router.warmup()
+                aut_router.wait_ready(timeout=120.0)
+                logger.info("AUT router initialized (model=%s)", aut_model)
+        except Exception as e:
+            logger.warning("Failed to build AUT router for '%s': %s — falling back to shared", aut_model, e)
+            aut_router = llm_router
+
     aut_llm_worker: LLMWorker | None = None
-    if llm_router is not None:
+    if aut_router is not None:
         aut_llm_worker = LLMWorker(
-            llm=llm_router,
-            stale_threshold_s=30.0,  # Higher than default: shared LLM may be busy
-            n_ctx=llm_router.n_ctx,
-            token_counter=llm_router.get_token_counter(),
+            llm=aut_router,
+            stale_threshold_s=30.0 if aut_router is llm_router else 15.0,
+            n_ctx=aut_router.n_ctx,
+            token_counter=aut_router.get_token_counter(),
         )
         aut_llm_worker.start()
 
