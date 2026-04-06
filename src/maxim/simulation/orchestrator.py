@@ -500,15 +500,35 @@ def start_simulation_mode(
     # Build AUT's LLM worker. When --aut-model is set, the AUT gets its
     # own LLMRouter so there's no inference contention and the experiment
     # can isolate memory recall from LLM context window effects.
+    #
+    # The AUT router uses the same infrastructure as the primary router
+    # (peer config, lane backends, etc.) but with a different model profile
+    # set via env var override. This ensures the AUT uses the leader's GPU
+    # (via peer config) rather than trying to load locally.
     aut_router = llm_router  # default: shared
     if aut_model is not None and llm_router is not None:
         try:
-            aut_config = load_llm_config(profile_override=aut_model)
-            if aut_config.enabled:
-                aut_router = LLMRouter(aut_config)
+            # Override the infer lane model for this second router build
+            old_profile = os.environ.get("MAXIM_LLM_PROFILE")
+            os.environ["MAXIM_LLM_PROFILE"] = aut_model
+            aut_router, _ = build_primary_router(logger=logger)
+            # Restore original profile
+            if old_profile is not None:
+                os.environ["MAXIM_LLM_PROFILE"] = old_profile
+            else:
+                os.environ.pop("MAXIM_LLM_PROFILE", None)
+
+            if aut_router is None:
+                aut_config = load_llm_config(profile_override=aut_model)
+                if aut_config.enabled:
+                    aut_router = LLMRouter(aut_config)
+
+            if aut_router is not None:
                 aut_router.warmup()
                 aut_router.wait_ready(timeout=120.0)
                 logger.info("AUT router initialized (model=%s)", aut_model)
+            else:
+                aut_router = llm_router
         except Exception as e:
             logger.warning("Failed to build AUT router for '%s': %s — falling back to shared", aut_model, e)
             aut_router = llm_router

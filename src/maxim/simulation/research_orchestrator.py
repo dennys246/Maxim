@@ -107,15 +107,52 @@ def start_research_mode(
 
     print("  Phase 1: Running experiments (Researcher agent)...")
 
-    # Build the researcher goal — include campaign reference if provided
-    researcher_goal = goal
+    # Load campaign YAML and extract percept texts for the researcher
+    campaign_turns: list[dict] = []
     if campaign:
+        try:
+            from maxim.simulation.scenario_source import load_scenario
+            from pathlib import Path as _Path
+
+            scenario = load_scenario(_Path(campaign))
+            for p in scenario.percepts:
+                text = p.get("cli_input", "")
+                if text:
+                    campaign_turns.append({
+                        "text": text.strip(),
+                        "phase": p.get("metadata", {}).get("phase", ""),
+                        "role": p.get("metadata", {}).get("experiment_role", ""),
+                        "tag": p.get("metadata", {}).get("scenario_tag", ""),
+                    })
+            print(f"  Loaded {len(campaign_turns)} campaign turns from {campaign}")
+        except Exception as e:
+            logger.warning("Failed to load campaign YAML: %s", e)
+
+    # Build the researcher goal with concrete campaign steps
+    researcher_goal = goal
+    if campaign_turns:
+        turn_instructions = []
+        for i, turn in enumerate(campaign_turns, 1):
+            phase_label = f" [{turn['phase']}]" if turn["phase"] else ""
+            turn_instructions.append(
+                f"  Turn {i}{phase_label}: send_message with this text:\n"
+                f"    \"{turn['text'][:200]}\""
+            )
+        turns_block = "\n".join(turn_instructions)
         researcher_goal = (
             f"{goal}\n\n"
-            f"Use the campaign scenarios at {campaign} as your experimental protocol. "
-            f"Run each scenario variant, then use inspect_aut to measure memory "
-            f"survival, associative graph topology, and behavioral recall. "
-            f"Record each measurement with record_experiment."
+            f"CAMPAIGN PROTOCOL — send these turns to the AUT via send_message, in order:\n"
+            f"{turns_block}\n\n"
+            f"After ALL turns are sent:\n"
+            f"1. Use inspect_aut(query='memory_recall', params={{'keyword': 'Verath'}}) to check memory survival\n"
+            f"2. Use inspect_aut(query='system_stats') for graph topology\n"
+            f"3. Record results with record_experiment\n"
+            f"4. Call finish_simulation with your findings"
+        )
+    elif campaign:
+        researcher_goal = (
+            f"{goal}\n\n"
+            f"Campaign file: {campaign} (failed to load — run manually with send_message)"
         )
 
     # Run the researcher via the existing simulation orchestrator
