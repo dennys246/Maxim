@@ -173,6 +173,18 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             "timestamp": time.time(),
         })
 
+    def _handle_debug_heartbeat(self) -> None:
+        try:
+            from maxim.runtime.heartbeat import get_heartbeat_monitor
+            self._send_json(200, get_heartbeat_monitor().snapshot())
+        except Exception:
+            # Fallback: at least return system metrics
+            try:
+                from maxim.runtime.system_metrics import collect_all
+                self._send_json(200, collect_all())
+            except Exception:
+                self._send_json(200, {"error": "heartbeat not available"})
+
     def _handle_debug_metrics(self) -> None:
         try:
             from maxim.models.language.lane_metrics import get_metrics_registry
@@ -194,13 +206,16 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def _is_debug_path(self, path: str) -> bool:
         stripped = path.rstrip("/").split("?")[0]
         return stripped in (
-            "/v1/debug/status", "/v1/debug/last-requests", "/v1/debug/metrics",
+            "/v1/debug/status", "/v1/debug/heartbeat",
+            "/v1/debug/metrics", "/v1/debug/last-requests",
         )
 
     def _route_debug(self, path: str) -> None:
         stripped = path.rstrip("/").split("?")[0]
         if stripped == "/v1/debug/status":
             self._handle_debug_status()
+        elif stripped == "/v1/debug/heartbeat":
+            self._handle_debug_heartbeat()
         elif stripped == "/v1/debug/metrics":
             self._handle_debug_metrics()
         elif stripped == "/v1/debug/last-requests":

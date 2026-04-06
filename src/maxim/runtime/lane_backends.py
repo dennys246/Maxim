@@ -439,6 +439,14 @@ def build_primary_router(
 
     _print_lane_banner(manager)
 
+    # Start heartbeat monitor if enabled via env flags (peer or solo mode)
+    try:
+        from maxim.runtime.heartbeat import get_heartbeat_monitor, should_enable_heartbeat
+        if should_enable_heartbeat():
+            get_heartbeat_monitor().start()
+    except Exception:
+        pass
+
     router = manager.get_backend("infer")
     return router, manager
 
@@ -726,6 +734,13 @@ def _maybe_start_leader_proxy(
     except Exception:
         return
     start_leader_proxy(api_key=api_key, bind_host=bind_host)
+
+    # Start heartbeat monitor in leader mode (always on for leaders)
+    try:
+        from maxim.runtime.heartbeat import get_heartbeat_monitor
+        get_heartbeat_monitor().start()
+    except Exception:
+        pass
 
 
 def _print_lane_banner(manager: "LaneBackendManager") -> None:

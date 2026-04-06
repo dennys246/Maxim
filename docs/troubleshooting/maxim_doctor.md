@@ -115,11 +115,29 @@ These env vars produce additional diagnostic output:
 
 | Flag | Effect |
 |------|--------|
-| `MAXIM_LANE_TRACE=1` | Log every LLM dispatch with provider, latency, tokens, GPU metrics |
+| `MAXIM_HEARTBEAT=1` | System health heartbeat every 10s: GPU/CPU/RAM/disk/WiFi + stall detection |
+| `MAXIM_LANE_TRACE=1` | Log every LLM dispatch with provider, latency, tokens, GPU metrics (also enables heartbeat) |
 | `MAXIM_PEER_LOG_REQUESTS=1` | JSON log per outbound peer call |
 | `MAXIM_PROVENANCE_VERBOSITY=2` | Verbose decision tracing in agent loop |
 
 All print a loud startup banner so you don't leave them on accidentally.
+
+## Heartbeat monitor
+
+The heartbeat monitor samples system + LLM metrics every 10 seconds and logs a compact health line:
+
+```
+[heartbeat] gpu=87% vram=6.2/16G 72C 180W | cpu=23% | ram=8.1/16G | disk=42G free | infer: 5calls p50=280ms fail=0% | loop: idle=2.1s state=waiting
+```
+
+**Stall detection:** if the agent loop has been idle for 30+ seconds (configurable via `MAXIM_HEARTBEAT_STALL_S`), the heartbeat emits a WARNING:
+```
+[heartbeat] STALL DETECTED — agent loop idle for 62s (state=waiting_followup, threshold=30s)
+```
+
+**Enable:** `MAXIM_HEARTBEAT=1` or `MAXIM_LANE_TRACE=1` (both start the monitor). Always on in leader mode.
+
+**Leader endpoint:** `GET /v1/debug/heartbeat` returns the full system snapshot as JSON (auth-gated). Peers can poll this for leader health visibility.
 
 ## Getting more help
 

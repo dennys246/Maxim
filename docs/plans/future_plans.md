@@ -248,7 +248,8 @@ Not a build phase — a practice that starts once there's data to observe.
 Ongoing curation of the tool surface the agent can call: introspection tools (agent → its own state), action tools (agent → world), composite tools. Tracks what's shipped, what's proposed, what's deprecated, and the design principles (read-only by default, secrets opaque, limits self-enforce, size-capped outputs, context-gated registration).
 
 **Currently proposed** (organized by subsystem in the plan doc):
-- **Mesh introspection** (blocked on Multi-LLM Phase 8) — `lane_status`, `inference_trace`, `compute_budget`, `peer_list`, `cluster_status`
+- **Mesh introspection** (Phase 8 landed, buildable now) — `lane_status`, `inference_trace`, `compute_budget`, `peer_list`, `cluster_status`
+- **System health** (buildable now, heartbeat infra landed) — `system_heartbeat` (GPU/CPU/RAM/disk/WiFi snapshot), `stall_check` (detect idle agent loop), `resource_pressure` (unified view of compute budget vs demand). These let the agent reason about its own resource state — e.g. "GPU is thermal-throttling, switch to CPU model" or "disk is 95% full, skip sim report archival".
 - **Runtime introspection** (buildable today) — `loop_stats`, `recent_actions`, `mode_status`, `worker_pool_status`
 - **Memory dynamics** (buildable today) — `memory_pressure`, `consolidation_status`, `bridge_activity`
 - **Decision + learning** (buildable today) — `nac_stats`, `plan_history`, `confidence_calibration`

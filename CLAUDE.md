@@ -187,6 +187,17 @@ OPENAI_API_KEY             # Required for OpenAI backend
 MAXIM_LLM_ENABLED=1        # Enable LLM inference
 MAXIM_LLM_PROFILE=claude-sonnet  # Default model profile
 MAXIM_PROVENANCE_VERBOSITY=1     # 0=off, 1=compact, 2=verbose
+
+# Heartbeat + trace (debug/diagnostics)
+MAXIM_HEARTBEAT=1                # System health heartbeat every 10s (GPU/CPU/RAM/disk/WiFi + stall detection)
+MAXIM_HEARTBEAT_INTERVAL_S=10    # Heartbeat sample interval
+MAXIM_HEARTBEAT_STALL_S=30       # Warn after this many seconds with no LLM calls
+MAXIM_LANE_TRACE=1               # Per-request LLM trace logs (also enables heartbeat)
+MAXIM_PEER_LOG_REQUESTS=1        # JSON log per outbound peer call
+
+# Leader proxy admission control
+MAXIM_PROXY_MAX_CONCURRENT=4     # Max in-flight requests to upstream (0=unlimited)
+MAXIM_PROXY_RATE_LIMIT_RPM=0     # Per-peer requests/minute (0=unlimited)
 ```
 
 ## Testing
