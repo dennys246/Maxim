@@ -1,7 +1,13 @@
 # Research Protocol Plan
 
-> **Status:** Not started. First real use case for agent mesh primitives.
-> **Depends on:** Simulation Agent (implemented), Simulation Decomposition (in PR)
+> **Status:** Phase 0 (mesh primitives) and Phase 1 (researcher tools) complete. Phases 2-4 next.
+> **Depends on:** Simulation Agent (implemented), Simulation Decomposition (implemented)
+>
+> **Shipped:**
+> - Phase 0: `src/maxim/mesh/` — AgentProfile, UMR, MeshMessage, LocalMessageBus (~200 LOC)
+> - Phase 1: `src/maxim/simulation/research_tools.py` — ExperimentLog, RecordExperimentTool, QueryExperimentsTool (~150 LOC)
+> - Research tools wired into orchestrator (all personas); researcher persona updated with experiment protocol
+> - Tests: `tests/unit/test_mesh_primitives.py` (23 tests), `tests/unit/test_research_tools.py` (15 tests)
 
 ## Vision
 

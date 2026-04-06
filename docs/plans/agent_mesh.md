@@ -1,6 +1,6 @@
 # Agent Mesh Plan
 
-> **Status:** Not started. All multi-LLM infrastructure prerequisites are complete (Phases 1-8, 7a, 7a-ext, 7b — LeaderProxy, LaneMetrics, admission control, remote update). RuntimeCapabilities and CommunicationGateway channel system also implemented.
+> **Status:** Phase 1a-1b foundations implemented via Research Protocol Phase 0. AgentProfile, UMR, MeshMessage, and LocalMessageBus live in `src/maxim/mesh/`. All multi-LLM infrastructure prerequisites are complete (Phases 1-8, 7a, 7a-ext, 7b — LeaderProxy, LaneMetrics, admission control, remote update). RuntimeCapabilities and CommunicationGateway channel system also implemented.
 >
 > **Prerequisites completed (from multi-LLM scaling, now archived):**
 > - Phases 1-3: LaneBackendManager, lane configs, safety gates

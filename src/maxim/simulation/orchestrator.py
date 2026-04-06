@@ -540,6 +540,24 @@ def start_simulation_mode(
         energy_registry=aut_energy_registry,
     ))
 
+    # Research tools — available for all personas (record_experiment is
+    # useful for any systematic investigation, not just "researcher").
+    # Experiment log lives in sim_tmpdir during the run; report.py
+    # copies it to the final session directory at save time.
+    experiment_log = None
+    try:
+        from maxim.simulation.research_tools import (
+            ExperimentLog,
+            RecordExperimentTool,
+            QueryExperimentsTool,
+        )
+        experiment_log = ExperimentLog(session_dir=sim_tmpdir)
+        orch_registry.register(RecordExperimentTool(experiment_log))
+        orch_registry.register(QueryExperimentsTool(experiment_log))
+        logger.info("Research tools registered (record_experiment, query_experiments)")
+    except Exception as e:
+        logger.debug("Research tools not available: %s", e)
+
     # Register simulation tools in TOOL_DESCRIPTIONS so the agent loop
     # knows to trigger followup LLM calls after tool execution.
     # Without this, the loop doesn't submit new context after send_message
@@ -606,6 +624,26 @@ def start_simulation_mode(
                            "If a sub-simulation is active, extends that. Use to go deeper on findings.",
             "params": {"goal": "The new objective to add"},
             "example": '{"tool_name": "extend_simulation", "params": {"goal": "now try writing to that file"}}',
+            "followup_type": "process",
+        },
+        "record_experiment": {
+            "description": "Record a structured experiment entry with hypothesis, method, result, "
+                           "and conclusion. Returns a UMR reference for cross-agent citation.",
+            "params": {
+                "hypothesis": "What you predicted",
+                "method": "What you did",
+                "result": "What happened (include data)",
+                "conclusion": "What it means",
+            },
+            "followup_type": "process",
+        },
+        "query_experiments": {
+            "description": "Search the experiment log by keyword or tag. Returns matching "
+                           "experiments with UMR references.",
+            "params": {
+                "keyword": "(optional) Search hypothesis, method, result, conclusion",
+                "tag": "(optional) Filter by tag",
+            },
             "followup_type": "process",
         },
     })
@@ -1092,6 +1130,16 @@ def start_simulation_mode(
         base_dir=report_dir,
         session_id=report.session_id,
     )
+
+    # Copy experiment log to report directory (if any experiments were recorded)
+    if experiment_log is not None and len(experiment_log) > 0:
+        import shutil
+        exp_src = sim_tmpdir / "experiments.jsonl"
+        exp_dst = Path(report_dir) / report.session_id / "experiments.jsonl"
+        if exp_src.exists():
+            exp_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(exp_src), str(exp_dst))
+            print(f"  Saving experiment log ({len(experiment_log)} experiments)...")
 
     # LLM-powered roundup (log noise suppressed by WARNING level above)
     if llm_router is not None and not getattr(llm_router, "session_cost_exceeded", False):

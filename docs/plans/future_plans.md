@@ -2,7 +2,7 @@
 
 Master roadmap for Maxim development. Individual plan files remain as detailed design references.
 
-**Last updated:** 2026-04-04
+**Last updated:** 2026-04-06
 
 ---
 
@@ -12,9 +12,9 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 |------|--------|-----------|
 | Docker Sandbox | **Phase A done** | TmpdirSandbox + pain triggers implemented; Phase B (Docker backend) optional |
 | Hippocampal Recall Experiment | **Not started** | Merges Research Protocol + DM into a single deliverable: D&D campaign as Hippocampus experiment. See [hippocampal_recall_experiment.md](hippocampal_recall_experiment.md) |
-| Research Protocol | **Not started** | Phase 0 mesh primitives (AgentProfile, UMR, MeshMessage, LocalMessageBus ~200 LOC). First experiment: hippocampal recall. |
+| Research Protocol | **Phase 0-1 done** | Mesh primitives (`src/maxim/mesh/`) + research tools (`record_experiment`, `query_experiments`) implemented. Next: Phase 2 (Writer agent). |
 | Multi-LLM Scaling | **Complete** | All phases done. mDNS + InferenceRouter moved to Agent Mesh as Phases 0a-0b. [Archived](agent_mesh.md) |
-| Agent Mesh | **Not started** | Multi-LLM infra complete. Phases 0a-0b (mDNS + InferenceRouter) are first, then identity + protocol. Research Protocol Phase 0 unblocks full mesh. |
+| Agent Mesh | **Phase 1a-1b foundations** | AgentProfile + UMR implemented in `src/maxim/mesh/`. Phases 0a-0b (mDNS + InferenceRouter) next, then full protocol. |
 | Realtime Refinement | **Core done** | InspectAUTTool, 8 personas, 3 metric expectations, baseline scenario. Per-lane LLM metrics deferred to Multi-LLM Phase 8 |
 | Embodiment Core | **Not started** | Phase 0 MVP + ATL grounding (~400 LOC) is the gate; Cerebellum + structured failures follow. Designed and scoped. |
 | Embodiment Hardware Adapter | **Not started** | Blocked on Embodiment Core MVP. 1-sprint adapter (~300 LOC) wrapping RobotController. |
@@ -49,12 +49,12 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 
 ```
                     ┌─────────────────────────────────┐
-                    │    Research Protocol Phase 0    │ (~200 LOC, unblocks half of Agent Mesh)
+                    │  Research Protocol Phase 0-1   │ ✅ DONE (mesh primitives + research tools)
                     └──────────────┬──────────────────┘
                                    ↓
      ┌─────────────────────┐    ┌──┴──────────────────┐
      │  Multi-LLM P1-3     │    │  Research Protocol  │
-     │  (local dual-model) │    │  Phases 1-3         │
+     │  (local dual-model) │    │  Phases 2-4         │
      └──────────┬──────────┘    └─────────────────────┘
                 ↓
      ┌──────────┴──────────┐
@@ -108,7 +108,7 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 | # | Work | LOC | Rationale |
 |---|------|-----|-----------|
 | 1 | **Embodiment Core Phase 0 MVP** | ~400 | No upstream deps, standalone-valuable, establishes body-state primitives that DM/Mesh inherit |
-| 2 | **Research Protocol Phase 0** | ~200 | Tiny, unblocks Agent Mesh; shared mesh primitives |
+| 2 | ~~Research Protocol Phase 0~~ | ~~200~~ | **Done.** Mesh primitives + research tools in `src/maxim/mesh/` and `src/maxim/simulation/research_tools.py` |
 | 3 | **Multi-LLM Phases 1-3** | ~500 | Local dual-model routing; bottleneck for compute scaling |
 | 4 | **Embodiment Core remaining phases** | per plan | Cerebellum forward models, structured failures |
 | 5 | **Multi-LLM Phases 4-6** | per plan | Remote LLM, tunnel, auto-spawn |
@@ -201,8 +201,8 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 
 ## 3. Research Protocol (Agent Mesh proving ground)
 
-> **Status:** Not started. First local mesh use case.
-> **Effort:** ~1,300 LOC across 5 phases
+> **Status:** Phase 0 (mesh primitives) and Phase 1 (researcher tools) complete.
+> **Effort:** ~1,300 LOC across 5 phases (~350 LOC shipped)
 > **Design:** [research_protocol_plan.md](research_protocol_plan.md)
 
 Three specialized agents collaborating on a research question:
@@ -210,19 +210,25 @@ Three specialized agents collaborating on a research question:
 - **Writer** — produces a structured paper (Methods → Results → Intro → Discussion → Conclusions)
 - **Peer Reviewer** — validates claims by re-running experiments, flags issues, demands revisions
 
-Builds the agent mesh primitives locally first (AgentProfile, UMR naming, MeshMessage, LocalMessageBus) as Phase 0, proving them before adding network code. Includes a validation suite with known-flawed scenarios to test reviewer effectiveness.
+**Shipped (Phase 0-1):**
+- `src/maxim/mesh/` — AgentProfile, UMR naming, MeshMessage, LocalMessageBus (~200 LOC)
+- `src/maxim/simulation/research_tools.py` — ExperimentLog, RecordExperimentTool, QueryExperimentsTool (~150 LOC)
+- Research tools wired into orchestrator for all personas; researcher persona updated with experiment protocol
+- 38 unit tests in `tests/unit/test_mesh_primitives.py` and `tests/unit/test_research_tools.py`
 
-CLI: `maxim --sim research --goal "does the agent block code execution?"`
+**Next:** Phase 2 (Writer agent ~300 LOC), Phase 3 (Reviewer agent ~300 LOC), Phase 4 (Research Orchestrator ~200 LOC)
+
+CLI (future): `maxim --sim research --goal "does the agent block code execution?"`
 
 ---
 
 ## 4. Agent Mesh
 
-> **Status:** Not started. Phases 1a-1b built as part of Research Protocol.
-> **Effort:** ~4,500 LOC across 10 phases
+> **Status:** Phase 1a-1b foundations implemented. AgentProfile, UMR, MeshMessage, LocalMessageBus live in `src/maxim/mesh/`.
+> **Effort:** ~4,500 LOC across 10 phases (~200 LOC shipped via Research Protocol Phase 0)
 > **Design:** [agent_mesh.md](agent_mesh.md)
 
-Cooperative peer-to-peer network of sovereign Maxim instances. Phases 1a-1b (AgentProfile + UMR) are built by the Research Protocol. Remaining phases add network discovery (mDNS), PeerChannel, knowledge sharing with transfer discount, and distributed planning.
+Cooperative peer-to-peer network of sovereign Maxim instances. Phases 1a-1b (AgentProfile + UMR) and Phase 2-3 foundations (MeshMessage + LocalMessageBus) are implemented via Research Protocol. Remaining phases add network discovery (mDNS), PeerChannel, knowledge sharing with transfer discount, and distributed planning.
 
 ---
 
@@ -307,8 +313,8 @@ Items surfaced while debugging peer-leader tunneling. Each is small and bounded;
 
 | Step | What | Why |
 |------|------|-----|
-| 3 | Research Protocol Phase 0 | AgentProfile + UMR + MeshMessage + LocalMessageBus |
-| 4 | Research Protocol Phases 1-3 | Researcher + Writer + Peer Reviewer agents |
+| 3 | ~~Research Protocol Phase 0-1~~ | ✅ Mesh primitives + research tools shipped |
+| 4 | Research Protocol Phases 2-3 | Writer + Peer Reviewer agents |
 | 5 | Research Protocol Phases 4-5 | Orchestration + validation suite |
 
 ### Wave 3: Infrastructure + Network Mesh

@@ -155,6 +155,7 @@ src/maxim/
   decisions/        # NAc causal learning, adaptive planner
   models/language/  # LLM router, backends (llama-cpp, anthropic, openai, transformers)
   simulation/       # SimulationBridge, orchestrator, tools, personas, report system
+  mesh/             # Agent mesh primitives (AgentProfile, UMR naming, MeshMessage, LocalMessageBus)
   tools/            # 40+ tools (filesystem, introspection, math, communication)
   default_network/  # Reactive behavior layer (thalamic gate, arbiter, behaviors)
   modes/            # Operating modes, strategies, exploration policy
@@ -197,12 +198,14 @@ data/util/          # Runtime config (llm.json, cost_state.json)
 | The agent loop / step pipeline | `runtime/agent_loop.py`, `runtime/loop_controller.py` |
 | Adding a new tool | `tools/` + register in the tool registry; see `tools/introspection.py` for a clean example |
 | LLM prompts / routing | `models/language/router.py`, `models/language/prompt_formats.py` |
-| Sim personas | `simulation/personas.py` (5 today: adversarial, cooperative, confused, escalating, campaign) |
+| Sim personas | `simulation/personas.py` (8 today: adversarial, cooperative, confused, escalating, campaign, refinement, researcher, sweep) |
 | Memory capture → consolidation | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/semantic_promoter.py` |
 | Causal learning | `decisions/nac.py` |
 | Cross-layer wiring | `integration/memory_hub.py` (the single coordinator) |
 | Adding an env var | Put it here in the env table + touch whatever reads it |
 | Atomic JSON persistence | `utils/atomic_io.py` |
+| Mesh primitives (identity, messaging) | `mesh/` (AgentProfile, UMR, MeshMessage, LocalMessageBus) |
+| Research experiment tracking | `simulation/research_tools.py` (ExperimentLog, record/query tools) |
 
 ## Environment Variables
 
@@ -286,7 +289,7 @@ Every sim run saves to `data/sim_reports/{session_id}/`:
 See `docs/plans/future_plans.md` for the full roadmap. Current state:
 
 - **Multi-LLM scaling** — COMPLETE. All phases done (LeaderProxy, admission control, LaneMetrics, heartbeat, remote update). Archived at `docs/plans/agent_mesh.md`. mDNS + InferenceRouter moved to Agent Mesh.
-- **Agent Mesh** (`docs/plans/agent_mesh.md`) — not started. Phases 0a-0b (mDNS discovery + InferenceRouter, from multi-LLM) are first, then identity + protocol. Research Protocol Phase 0 unblocks full mesh.
-- **Research Protocol** (`docs/plans/research_protocol_plan.md`) — not started, self-contained. Builds mesh primitives reused by agent-mesh later.
+- **Agent Mesh** (`docs/plans/agent_mesh.md`) — Phase 1a-1b foundations in place (AgentProfile, UMR in `src/maxim/mesh/`). Phases 0a-0b (mDNS discovery + InferenceRouter) are next, then full protocol.
+- **Research Protocol** (`docs/plans/research_protocol_plan.md`) — Phase 0 complete (mesh primitives: AgentProfile, UMR, MeshMessage, LocalMessageBus in `src/maxim/mesh/`). Phase 1 complete (record_experiment, query_experiments in `src/maxim/simulation/research_tools.py`). Phases 2-4 (Writer, Reviewer, Orchestrator) next.
 - **Realtime Refinement** (`docs/plans/realtime_refinement_plan.md`) — ~90% done; remaining ~50 LOC (6th persona + metric expectation types).
 - **Docker Sandbox** (`docs/plans/docker_sandbox_plan.md`) — Phase A (TmpdirSandbox + pain triggers) + Phase B (DockerSandbox + ContainerRunner protocol + image catalog + autonomy-scaled resource limits + unprivileged `maxim` user) DONE.
