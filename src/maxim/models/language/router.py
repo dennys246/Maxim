@@ -84,6 +84,40 @@ _MODEL_DOWNGRADE_MAP: dict[str, str] = {
 }
 
 
+# ─── Centralized JSON instruction prompts ────────────────────────────────
+# Used across all LLM→JSON paths for consistency.  The quote-escaping
+# guidance is critical for small/medium models (7B–14B) that embed
+# narrative dialogue with unescaped double quotes.
+
+_JSON_RULES = (
+    "CRITICAL JSON RULES:\n"
+    "- Output ONLY valid JSON. No text before or after the JSON object.\n"
+    '- Escape ALL double quotes inside string values with backslash: \\"  \n'
+    '- Example: {"message": "She said \\"hello\\" to me"}\n'
+    "- Never use unescaped double quotes inside a JSON string value.\n"
+    "- If including dialogue or quotes, always backslash-escape them."
+)
+
+_SYSTEM_TOOL_RESPONSE = (
+    "You are Maxim, an intelligent robot assistant. "
+    "You MUST respond with valid JSON only. No explanations outside JSON. "
+    "Select the most appropriate tool based on the context and user request. "
+    "If unsure, use 'respond' to communicate with the user.\n\n" + _JSON_RULES
+)
+
+_SYSTEM_JSON_ONLY = (
+    "You are a JSON-only response system. "
+    "Output ONLY valid JSON. No explanations, no code, no markdown. "
+    "If the user prompt contains partial JSON, complete it. "
+    "Never explain how to create JSON - just output the JSON directly.\n\n" + _JSON_RULES
+)
+
+_SYSTEM_ROUTE = (
+    "You are Maxim, a local robot assistant. "
+    "Return ONLY a single JSON object (no prose) describing the next action.\n\n" + _JSON_RULES
+)
+
+
 class LLMRouter:
     """
     Small, swappable transcript → action router.
@@ -104,9 +138,7 @@ class LLMRouter:
         self._ready_event = threading.Event()  # Set when warmup completes
         self._warmup_failed = False
         self._providers = self._normalize_providers(self.cfg)
-        self._provider_states: dict[str, ProviderState] = {
-            key: ProviderState() for key in self._providers.keys()
-        }
+        self._provider_states: dict[str, ProviderState] = {key: ProviderState() for key in self._providers.keys()}
         self._routing_policy = self._load_routing_policy(self.cfg.routing)
         self._cost_tracker = CostTracker(
             pricing=self._load_pricing_table(self.cfg),
@@ -123,6 +155,7 @@ class LLMRouter:
         self._last_used_provider: str = ""
         try:
             import atexit
+
             atexit.register(self._cost_tracker.flush)
         except Exception:
             pass
@@ -196,10 +229,7 @@ class LLMRouter:
     def _normalize_providers(cfg: LLMConfig) -> dict[str, dict[str, Any]]:
         providers = cfg.providers if isinstance(cfg.providers, dict) else {}
         if providers:
-            return {
-                str(k): v for k, v in providers.items()
-                if isinstance(k, str) and isinstance(v, dict)
-            }
+            return {str(k): v for k, v in providers.items() if isinstance(k, str) and isinstance(v, dict)}
         # Backward-compat: synthesize a local provider from base config
         return {
             "local": {
@@ -215,7 +245,9 @@ class LLMRouter:
     def _load_routing_policy(raw: dict[str, Any]) -> RoutingPolicy:
         data = raw if isinstance(raw, dict) else {}
         return RoutingPolicy(
-            provider_priority=list(data.get("provider_priority", [])) if isinstance(data.get("provider_priority"), list) else [],
+            provider_priority=list(data.get("provider_priority", []))
+            if isinstance(data.get("provider_priority"), list)
+            else [],
             fallback_on_rate_limit=bool(data.get("fallback_on_rate_limit", True)),
             fallback_on_timeout=bool(data.get("fallback_on_timeout", True)),
             fallback_on_budget_exceeded=str(data.get("fallback_on_budget_exceeded", "local") or "local"),
@@ -331,17 +363,21 @@ class LLMRouter:
             backend = _LlamaCppBackend(cfg)
         elif provider_type in ("pytorch", "torch", "transformers", "huggingface", "hf"):
             from maxim.models.language.transformers_backend import _PyTorchTransformersBackend
+
             cfg = self._build_provider_config(provider_cfg)
             backend = _PyTorchTransformersBackend(cfg)
         # Cloud backends
         elif provider_type in ("anthropic", "claude"):
             from maxim.models.language.anthropic_backend import _AnthropicBackend
+
             backend = _AnthropicBackend(self.cfg, provider_key=provider_key)
         elif provider_type in ("openai", "gpt"):
             from maxim.models.language.openai_backend import _OpenAIBackend
+
             backend = _OpenAIBackend(self.cfg, provider_key=provider_key)
         elif provider_type in ("openai_compatible", "openai_compat"):
             from maxim.models.language.openai_backend import _OpenAIBackend
+
             backend = _OpenAIBackend(self.cfg, provider_key=provider_key)
         else:
             warn("Unknown LLM provider type: %s (%s)", provider_type, provider_key)
@@ -568,7 +604,8 @@ class LLMRouter:
                 "Session cost ceiling reached ($%.2f >= $%.2f). "
                 "All further LLM requests will be rejected. "
                 "Increase max_session_cost in routing policy or llm.json to raise the limit.",
-                self._session_cost, policy.max_session_cost,
+                self._session_cost,
+                policy.max_session_cost,
             )
             return "", None
 
@@ -577,10 +614,15 @@ class LLMRouter:
         # one router; without this lock the second call segfaults.
         with self._inference_lock:
             return self._complete_text_locked(
-                system, user,
-                temperature=temperature, max_tokens=max_tokens,
-                provider_hint=provider_hint, request_context=request_context,
-                tools=tools, thinking=thinking, stream=stream,
+                system,
+                user,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                provider_hint=provider_hint,
+                request_context=request_context,
+                tools=tools,
+                thinking=thinking,
+                stream=stream,
             )
 
     def _complete_text_locked(
@@ -600,9 +642,7 @@ class LLMRouter:
         prompt_tokens = self._estimate_prompt_tokens(system, user)
         now = time.time()
 
-        providers, budget_tier, totals = self._candidate_providers(
-            prompt_tokens, max_tokens, now
-        )
+        providers, budget_tier, totals = self._candidate_providers(prompt_tokens, max_tokens, now)
         if provider_hint and provider_hint in providers:
             providers = [provider_hint] + [p for p in providers if p != provider_hint]
 
@@ -763,9 +803,7 @@ class LLMRouter:
         """Preview which provider would likely be used for this prompt."""
         prompt_tokens = self._estimate_prompt_tokens(system, user)
         now = time.time()
-        providers, budget_tier, totals = self._candidate_providers(
-            prompt_tokens, max_tokens, now
-        )
+        providers, budget_tier, totals = self._candidate_providers(prompt_tokens, max_tokens, now)
         if not providers:
             return {
                 "provider": "",
@@ -828,7 +866,9 @@ class LLMRouter:
 
         def _warmup_thread():
             start_time = time.time()
-            log_agentic("llm_router", "startup", {"status": "loading", "model": str(getattr(self.cfg, "model_path", ""))[-50:]})
+            log_agentic(
+                "llm_router", "startup", {"status": "loading", "model": str(getattr(self.cfg, "model_path", ""))[-50:]}
+            )
             backend = self._get_backend()
             success = False
             if backend is not None and hasattr(backend, "warmup"):
@@ -840,7 +880,9 @@ class LLMRouter:
                     success = True
                 else:
                     warn("LLM warmup failed")
-                    log_agentic("llm_router", "error", {"context": "warmup", "error": "warmup returned false"}, level="WARNING")
+                    log_agentic(
+                        "llm_router", "error", {"context": "warmup", "error": "warmup returned false"}, level="WARNING"
+                    )
             elif backend is not None:
                 # Backend doesn't have warmup, try a minimal completion to load
                 info("Warming up LLM backend (no warmup method, using test prompt)...")
@@ -923,10 +965,7 @@ class LLMRouter:
         tools = ", ".join(sorted(allowed_tools))
         commands = ", ".join(sorted(allowed_commands))
 
-        system = (
-            "You are Maxim, a local robot assistant. "
-            "Return ONLY a single JSON object (no prose) describing the next action."
-        )
+        system = _SYSTEM_ROUTE
         user = f"""
 Transcript:
 {transcript_text}
@@ -999,7 +1038,7 @@ Return JSON exactly like:
         # Stage 1: Get plain text answer (easier for small models)
         # Stage 2: Wrap in JSON programmatically
         if prompt.startswith("ANSWER_ONLY|"):
-            question = prompt[len("ANSWER_ONLY|"):].strip()
+            question = prompt[len("ANSWER_ONLY|") :].strip()
             return self._generate_answer_only(
                 backend,
                 question,
@@ -1011,7 +1050,7 @@ Return JSON exactly like:
 
         # Tool-aware prompt with full context
         if prompt.startswith("TOOL_PROMPT|"):
-            tool_prompt = prompt[len("TOOL_PROMPT|"):].strip()
+            tool_prompt = prompt[len("TOOL_PROMPT|") :].strip()
             return self._generate_tool_response(
                 backend,
                 tool_prompt,
@@ -1023,12 +1062,7 @@ Return JSON exactly like:
 
         # Standard JSON generation path
         # Use a strict system prompt
-        system = system_override or (
-            "You are a JSON-only response system. "
-            "Output ONLY valid JSON. No explanations, no code, no markdown. "
-            "If the user prompt contains partial JSON, complete it. "
-            "Never explain how to create JSON - just output the JSON directly."
-        )
+        system = system_override or _SYSTEM_JSON_ONLY
 
         text, usage = self._complete_text(
             system,
@@ -1097,13 +1131,18 @@ Return JSON exactly like:
 
         # Remove common prefixes the LLM might add
         prefixes_to_remove = [
-            "answer:", "the answer is:", "response:", "here is the answer:",
-            "a:", "q:", "the answer:",
+            "answer:",
+            "the answer is:",
+            "response:",
+            "here is the answer:",
+            "a:",
+            "q:",
+            "the answer:",
         ]
         answer_lower = answer.lower()
         for prefix in prefixes_to_remove:
             if answer_lower.startswith(prefix):
-                answer = answer[len(prefix):].strip()
+                answer = answer[len(prefix) :].strip()
                 break
 
         # Note: Response length is controlled by max_tokens in config
@@ -1165,12 +1204,7 @@ IMPORTANT: Follow the PLANNING MODE format exactly as shown above.
 First write your proposal in plain text, then <|action_json|>, then the JSON."""
         else:
             # NORMAL MODE: JSON-only response
-            system = (
-                "You are Maxim, an intelligent robot assistant. "
-                "You MUST respond with valid JSON only. No explanations outside JSON. "
-                "Select the most appropriate tool based on the context and user request. "
-                "If unsure, use 'respond' to communicate with the user."
-            )
+            system = _SYSTEM_TOOL_RESPONSE
             user = f"""{tool_prompt}
 
 Respond with ONLY a valid JSON object. No text before or after the JSON."""
@@ -1217,6 +1251,7 @@ Respond with ONLY a valid JSON object. No text before or after the JSON."""
             # Pattern: "message": "actual message content"
             if '"message"' in clean_text:
                 import re
+
                 msg_match = re.search(r'"message"\s*:\s*"([^"]*(?:\\"[^"]*)*)"', clean_text)
                 if msg_match:
                     # Extract and unescape the message
