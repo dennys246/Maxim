@@ -25,6 +25,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Interactive Sim Prompts | **Not started** | `ask_user` tool with timeout + replay (~180 LOC). Needed for DM architect extension; useful to any authoring persona. |
 | Sim Entity Naming | **Not started** | Per-entity name prefix in sim logs (AUT/orchestrator only, ~120 LOC). Optional readability win. |
 | Stdlib OpenAI-Compat Client | **Not started** | Replace `openai` pip dep with ~40 LOC urllib fallback for peer→leader inference. Zero extra deps on peer machines. |
+| Simulation Test Bed | **Not started** | Automated sim regression suite: run scenario battery, assess against expectations, report pass/fail with bio-system health metrics. |
 
 ### Completed Plans
 
@@ -351,7 +352,83 @@ The `openai` pip package (`openai` → `httpx` → `pydantic` → `anyio` → `s
 
 ---
 
+## Simulation Test Bed
 
+> **Status:** Not started. Builds on existing scenario YAML + refinement harness infrastructure.
+> **Effort:** ~400-600 LOC across 3 phases
+
+Automated regression suite that runs a battery of simulation scenarios, assesses results against defined expectations, and produces a structured pass/fail report with bio-system health metrics. Catches regressions in agent behavior, tool safety, memory systems, and LLM response quality without manual observation.
+
+### What exists today
+
+- 3 YAML scenarios in `scenarios/` (malware_with_pain, long_horizon_coding, refinement_baseline)
+- Refinement harness with metric expectations (action_count_range, tool_success_rate, response_latency_ms)
+- Sim reports saved to `data/sim_reports/{session_id}/` with metrics + LLM analysis
+- 8 personas (adversarial, cooperative, confused, escalating, campaign, refinement, researcher, sweep)
+
+### What's missing
+
+A runner that orchestrates multiple scenarios end-to-end and produces a single pass/fail verdict.
+
+### Phase 1: Test bed runner (~200 LOC)
+
+**CLI**: `maxim sim test` or `maxim sim test scenarios/tests/safety_basic.yaml`
+
+- Runs all `.yaml` files in `scenarios/tests/` (or a specified subset)
+- Each scenario gets a capped runtime (default 90s, configurable per-scenario)
+- Collects sim reports and evaluates against YAML-defined expectations
+- Produces a structured summary: scenario name, pass/fail, metrics, cost, issues found
+- Exit code 0 if all pass, 1 if any fail (CI-friendly)
+- `--json` flag for machine-readable output
+
+**New expectation types:**
+- `bio_system_active`: verify specific bio systems fired (Hippocampus capture, Pain detection, NAc observation)
+- `memory_count_range`: min/max episodic memories formed
+- `pain_triggered`: expect at least N pain events (for safety scenarios)
+- `cost_range`: max acceptable cost per scenario run
+
+### Phase 2: Scenario library in `scenarios/tests/` (~150 LOC in YAML)
+
+Test-specific scenarios live in `scenarios/tests/`, separate from general-purpose scenarios in `scenarios/` (malware_with_pain, long_horizon_coding, etc.). This keeps the test bed self-contained and avoids polluting the user-facing scenario library with assertion-heavy test configs.
+
+Curated scenarios covering key behavioral dimensions:
+
+| Scenario | Tests | Persona | Expected |
+|----------|-------|---------|----------|
+| `safety_basic.yaml` | Refuses to delete system files | adversarial | pain_triggered >= 1, blocked actions > 0 |
+| `tool_usage.yaml` | Uses correct tools for file ops | cooperative | tool_success_rate >= 0.8 |
+| `memory_formation.yaml` | Forms and recalls memories | cooperative | memory_count_range [3, 20], bio_system_active: hippocampus |
+| `cost_ceiling.yaml` | Stays within cost budget | cooperative | cost_range [0, 0.15] |
+| `stall_recovery.yaml` | Recovers from tool failures | confused | action_count_range [5, 50] |
+| `peer_inference.yaml` | Works over peer→leader tunnel | cooperative | tool_success_rate >= 0.9, latency checks |
+
+Each scenario is a standalone YAML file in `scenarios/tests/` with goal, persona, expectations, and optional params.
+
+### Phase 3: CI integration + trend tracking (~100 LOC)
+
+- `maxim sim test --baseline` saves results as the reference baseline
+- `maxim sim test --compare` diffs current run against baseline, flags regressions
+- JSON output consumable by CI (GitHub Actions, etc.)
+- Optional: publish results to `data/sim_test_history/` for trend analysis over time
+- Integrate with `maxim doctor`: "last sim test bed run: 6/6 passed (2h ago)"
+
+### Relationship to other plans
+
+- **Realtime Refinement**: test bed validates that refinement tuning didn't regress other behaviors
+- **Multi-LLM Phase 8 (metrics)**: per-lane metrics feed into `peer_inference.yaml` latency checks
+- **Remote self-update (7a-ext)**: run `maxim sim test` automatically after `POST /v1/admin/update` to validate the update before confirming success
+- **DM MVP**: DM campaigns become the ultimate stress-test scenarios in the library
+
+### Design constraints
+
+- **Scenarios must not require specific hardware** — use `--sandbox tmpdir` and `--language-model` flags to keep them portable across peer and leader machines
+- **Cost-capped**: each scenario declares max acceptable cost; runner aborts if exceeded
+- **Deterministic where possible**: use fixed seeds, specific goals, and bounded turn counts to reduce flakiness
+- **No test-suite dependency**: `maxim sim test` is a CLI command, not a pytest fixture. It calls real LLMs and should never run in `python -m pytest` (per CLAUDE.md guidance)
+
+---
+
+## Research Directions (Not Scheduled)
 
 Tracked for future consideration. Not committed to any timeline.
 
