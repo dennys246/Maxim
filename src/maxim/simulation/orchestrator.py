@@ -780,7 +780,12 @@ def start_simulation_mode(
         while not stop_event.is_set():
             try:
                 line = input()
-            except (EOFError, KeyboardInterrupt):
+            except EOFError:
+                # Non-interactive mode (piped stdin, CI, Claude Code).
+                # Don't cancel — let the sim run until max_turns or
+                # FinishSimulationTool fires.
+                return
+            except KeyboardInterrupt:
                 stop_event.set()
                 break
 

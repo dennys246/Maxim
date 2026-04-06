@@ -1421,7 +1421,15 @@ def run_agentic_loop(
                             if msg:
                                 result_str = f"[No results: {msg}]"
                     else:
-                        result_str = None
+                        # When output is None but tool returned an error,
+                        # include the error text so followup re-thinks can
+                        # see WHY the tool failed (e.g. "use send_message
+                        # instead of respond").
+                        error_msg = getattr(result, "error", None) if result else None
+                        if error_msg:
+                            result_str = f"[ERROR: {str(error_msg)[:result_limit]}]"
+                        else:
+                            result_str = None
 
                     _record_outcome(
                         tool_name=tool_name or "unknown",

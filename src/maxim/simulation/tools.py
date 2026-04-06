@@ -623,9 +623,11 @@ class SimRespondTool(Tool):
         super().__init__()
 
     def execute(self, **kwargs: Any) -> ToolOutput:
+        msg = "respond is not available in simulation mode. Use send_message to interact with the agent under test."
         return ToolOutput(
             success=False,
-            error="respond is not available in simulation mode. Use send_message to interact with the agent under test.",
+            output=msg,
+            error=msg,
         )
 
 
