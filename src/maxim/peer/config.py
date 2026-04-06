@@ -110,10 +110,12 @@ def apply_peer_config_to_env(cfg: PeerConfig) -> None:
     os.environ.setdefault("MAXIM_LANE_INFER_REMOTE_API_KEY", cfg.api_key)
     if cfg.model:
         os.environ.setdefault("MAXIM_LANE_INFER_REMOTE_MODEL", cfg.model)
-    if cfg.is_cloud:
-        # Need to raise the cloud-lane gate for public URLs. Use setdefault
-        # so an explicit user override (e.g. MAXIM_MAX_CLOUD_LANES=0) wins.
-        os.environ.setdefault("MAXIM_MAX_CLOUD_LANES", "1")
+    # Peer connections are to your own infrastructure — even if the URL
+    # resolves to a public IP (Cloudflare tunnel), it's not a cloud
+    # provider. Raise the cloud-lane gate so the lane backend doesn't
+    # block inference. Users who explicitly set MAXIM_MAX_CLOUD_LANES=0
+    # still win (setdefault respects existing env vars).
+    os.environ.setdefault("MAXIM_MAX_CLOUD_LANES", "1")
 
 
 def truncate_key(key: str, *, keep: int = 6) -> str:
