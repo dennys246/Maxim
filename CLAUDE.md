@@ -104,6 +104,11 @@ maxim --sim research --goal "hippocampal recall under interference" --campaign s
 # Dual-LLM research (Claude orchestrates, Mistral experiences)
 maxim --sim research --goal "hippocampal recall" --language-model claude-sonnet --aut-model mistral-7b --campaign scenarios/experiments/hippocampal_recall_*.yaml
 
+# Debug with subsystem tracing (hippo=memory, nac=causal, all=everything)
+maxim --sim agent --goal "test" --debug hippo
+maxim --sim agent --goal "test" --debug hippo,nac
+maxim --sim agent --goal "test" --debug        # all subsystems
+
 # Run YAML scenario
 maxim --sim scenarios/malware_with_pain.yaml
 

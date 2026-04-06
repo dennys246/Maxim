@@ -38,14 +38,15 @@ class TestAlreadyRunning:
 # ─── config path resolution ───────────────────────────────────────────────
 
 class TestConfigPathResolution:
-    def test_user_config_preferred_when_both_exist(self, tmp_path, monkeypatch):
+    def test_system_config_preferred_when_both_exist(self, tmp_path, monkeypatch):
+        """System config (/etc/cloudflared/) is authoritative for systemd service."""
         user_cfg = tmp_path / "user.yml"
         sys_cfg = tmp_path / "system.yml"
         user_cfg.write_text("user")
         sys_cfg.write_text("system")
         monkeypatch.setattr(daemon_spawner, "USER_CONFIG_PATH", user_cfg)
         monkeypatch.setattr(daemon_spawner, "SYSTEM_CONFIG_PATH", sys_cfg)
-        assert resolve_config_path() == user_cfg
+        assert resolve_config_path() == sys_cfg
 
     def test_system_config_used_when_only_it_exists(self, tmp_path, monkeypatch):
         user_cfg = tmp_path / "missing-user.yml"

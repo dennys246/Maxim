@@ -15,10 +15,53 @@
 >
 > **Run it:**
 > ```bash
+> # With real-time Hippocampus tracing (recommended for first run):
+> maxim --sim research --goal "hippocampal recall under narrative interference" \
+>   --language-model claude-sonnet --aut-model mistral-7b \
+>   --campaign scenarios/experiments/hippocampal_recall_short.yaml \
+>   --debug hippo
+>
+> # Without tracing:
 > maxim --sim research --goal "hippocampal recall under narrative interference" \
 >   --language-model claude-sonnet --aut-model mistral-7b \
 >   --campaign scenarios/experiments/hippocampal_recall_short.yaml
 > ```
+
+## What to Watch For During the Experiment
+
+When running with `--debug hippo`, watch the trace output for these key moments:
+
+### Act 1 (Seed Phase) — turns 1-2
+- **[CAPTURE]** should show a high-salience, high-novelty memory containing "Verath"
+  - Look for: `sal=1.00 nov=1.00` — the seed was injected at max salience
+  - The memory ID (e.g., `m_0041a3b2`) is the **seed memory** — track this through the trace
+- **[ASSOC]** should show edges forming to "Thornhaven", "Elara", "door", "silver elm"
+  - These edges are the recall pathway the Hippocampus will use later
+
+### Act 2 (Interference Phase) — turns 3-8
+- **[CAPTURE]** should show new memories with different content (ferryman, bandits, merchant)
+  - None of these should share perceptual features with the seed
+  - Watch the edge count — if interference memories form edges to the seed memory, that's contamination (shouldn't happen if the interference is truly disjoint)
+- **Memory count** should grow — the Hippocampus is accumulating narrative load
+
+### Act 3 (Recall Phase) — the critical moment
+- **[CAPTURE]** of the "silver elm + door" percept should trigger association formation
+- **[ASSOC]** should show edges forming between the recall-context memory and earlier memories
+  - The key question: does the associative path reach back to the seed memory?
+- **[SPREAD]** (if spreading activation fires during recall) should show:
+  - Seeds: the recall-context memory
+  - Activated: the seed memory with "Verath" (if recall succeeds)
+  - Score: > 0.05 means the path exists; > 0.15 means strong recall
+
+### What Success Looks Like
+1. **Seed memory survives** through all interference turns (not evicted or compressed)
+2. **Associative path exists** from recall context → ... → seed memory
+3. **AUT says "Verath"** (or references Elara/the password) in response to the door challenge
+
+### What Failure Tells You
+1. **Seed evicted** → consolidation thresholds too aggressive, or salience decayed too fast
+2. **No path in graph** → association formation during capture isn't connecting narrative events
+3. **Path exists but AUT doesn't recall** → the LLM context window, not the Hippocampus, drives behavior (try longer campaigns or weaker AUT model)
 
 ## Thesis
 

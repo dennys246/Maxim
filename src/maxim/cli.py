@@ -620,6 +620,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         from maxim.simulation.sinks import RecordingSink
         from maxim.simulation.validation import validate_expectations
 
+        # Parse --debug subsystem selection
+        _debug_raw = getattr(args, "debug", None)
+        _debug_all = _debug_raw == "all"
+        _debug_subs = set()
+        if _debug_raw and _debug_raw != "all":
+            _debug_subs = {s.strip().lower() for s in _debug_raw.split(",")}
+        if _debug_all or "hippo" in _debug_subs:
+            os.environ["MAXIM_HIPPO_TRACE"] = "1"
+
         # Check for agent mode (autonomous orchestrator)
         _sim_agent = str(sim_path).strip().lower() == "agent"
         if _sim_agent:
@@ -627,7 +636,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             goal = getattr(args, "sim_goal", None) or "test the agent's capabilities"
             persona = getattr(args, "sim_persona", "adversarial")
-            debug = bool(getattr(args, "debug", False) or getattr(args, "sim_debug", False))
+            debug = bool(_debug_raw)
             resume_sim = getattr(args, "resume_sim", None)
 
             result = start_simulation_mode(
@@ -650,7 +659,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             from maxim.simulation.research_orchestrator import start_research_mode
 
             goal = getattr(args, "sim_goal", None) or "investigate the research question"
-            debug = bool(getattr(args, "debug", False) or getattr(args, "sim_debug", False))
+            debug = bool(_debug_raw)
             campaign = getattr(args, "campaign", None)
             language_model = str(getattr(args, "language_model", "") or "").strip() or None
 

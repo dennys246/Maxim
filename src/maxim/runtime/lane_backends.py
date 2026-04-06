@@ -116,10 +116,12 @@ class LaneBackendManager:
         *,
         max_backends: int | None = None,
         max_cloud_lanes: int | None = None,
+        peer_owned: bool = False,
     ) -> None:
         self._configs: dict[str, LaneConfig] = dict(lane_configs)
         self._backends: dict[str, Any] = {}
         self._cloud_lanes: set[str] = set()
+        self._peer_owned = peer_owned
         self._lock = threading.Lock()
         self._max_backends = (
             max_backends if max_backends is not None
@@ -219,7 +221,8 @@ class LaneBackendManager:
         if cfg.remote_url:
             # Peer-owned URLs (from `maxim peer connect`) are your own
             # infrastructure behind a tunnel — not cloud providers.
-            if os.environ.get("MAXIM_PEER_OWNED_URL"):
+            # The flag is set by build_primary_router when peer config is loaded.
+            if self._peer_owned:
                 return "self-hosted"
             return "cloud" if _is_cloud_url(cfg.remote_url) else "self-hosted"
         return "local"
@@ -385,11 +388,13 @@ def build_primary_router(
     # Peer-config auto-load: if ~/.config/maxim/peer.yml exists and env vars
     # aren't already set, populate them from the file. Set by
     # `maxim peer connect`. Env wins over file for per-session overrides.
+    _has_peer_config = False
     try:
         from maxim.peer.config import apply_peer_config_to_env, read_peer_config
         peer_cfg = read_peer_config()
         if peer_cfg is not None:
             apply_peer_config_to_env(peer_cfg)
+            _has_peer_config = True
     except Exception:
         pass
 
@@ -436,7 +441,7 @@ def build_primary_router(
     # When it fires, the infer lane is rewritten to point at the spawned server.
     lane_configs = _maybe_auto_spawn_server(capabilities, lane_configs, logger)
 
-    manager = LaneBackendManager(lane_configs)
+    manager = LaneBackendManager(lane_configs, peer_owned=_has_peer_config)
 
     if logger is not None:
         logger.info("Lane assignments: %s", manager.describe())

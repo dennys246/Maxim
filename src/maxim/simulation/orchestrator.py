@@ -457,6 +457,16 @@ def start_simulation_mode(
                     logger.debug("Failed to restore AUT NAc: %s", e)
 
         logger.info("AUT memory wired (hippocampus + NAc)")
+
+        # Attach HippocampusTracer if --debug-hippo or MAXIM_HIPPO_TRACE=1
+        if os.environ.get("MAXIM_HIPPO_TRACE", "").strip().lower() in (
+            "1", "true", "t", "yes", "y", "on",
+        ) or debug:
+            try:
+                from maxim.memory.hippo_tracer import HippocampusTracer
+                HippocampusTracer(aut_hippocampus)
+            except Exception as e:
+                logger.debug("Hippo tracer not available: %s", e)
     except Exception as e:
         logger.debug("AUT memory not available: %s", e)
 

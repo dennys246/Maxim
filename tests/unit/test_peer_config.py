@@ -158,7 +158,7 @@ class TestPeerConnectCLI:
         assert loaded is not None
         assert loaded.url == "https://host.example.com/v1"
         assert loaded.api_key == "sk-123"
-        assert loaded.is_cloud is True  # public URL
+        assert loaded.is_cloud is False  # peer connections default to not-cloud (your own infra)
 
     def test_connect_normalizes_url(self, isolated_peer_config):
         run_peer_connect_subcommand([

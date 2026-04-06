@@ -334,9 +334,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--debug",
         "--sim-debug",
         dest="debug",
-        action="store_true",
-        help="Enable verbose debug tracing (simulation pipeline polling, "
-             "loop heartbeats, lane activity). Noisy. Alias: --sim-debug.",
+        nargs="?",
+        const="all",
+        default=None,
+        metavar="SUBSYSTEMS",
+        help="Enable debug tracing. Without args: all subsystems. With args: "
+             "comma-separated subsystem names (e.g., --debug hippo, --debug hippo,nac). "
+             "Subsystems: hippo (memory capture/recall/associations), nac (causal learning), "
+             "all (everything). Also settable via MAXIM_HIPPO_TRACE=1, MAXIM_LANE_TRACE=1.",
     )
     parser.add_argument(
         "--generate-simulation",
