@@ -143,6 +143,16 @@ def _parse_peer_opts(opts: list[str]) -> tuple[str | None, str | None]:
     import os
 
     key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY")
+    # Fall back to peer config if no key in env or args
+    if not key:
+        try:
+            from maxim.peer.config import read_peer_config
+
+            cfg = read_peer_config()
+            if cfg is not None:
+                key = cfg.api_key
+        except Exception:
+            pass
     model = None
     i = 0
     while i < len(opts):
