@@ -237,6 +237,13 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         auth = self.headers.get("Authorization", "")
         if auth == f"Bearer {self.api_key}":
             return True
+        # Log enough to diagnose mismatches without leaking the full key
+        expected_prefix = self.api_key[:6] if self.api_key else "?"
+        got_prefix = auth[7:13] if auth.startswith("Bearer ") else repr(auth[:20])
+        logger.warning(
+            "Auth failed: peer=%s expected=%s... got=%s...",
+            self.client_address[0], expected_prefix, got_prefix,
+        )
         self._send_json(401, {"error": "Invalid API key"})
         return False
 
@@ -754,12 +761,13 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     # ─── HTTP method dispatchers ──────────────────────────────────────
 
     def do_GET(self) -> None:  # noqa: N802
-        if not self._check_auth():
-            return
+        # Debug endpoints are read-only diagnostics — serve without auth
         if self._is_debug_path(self.path):
             self._route_debug(self.path)
-        else:
-            self._proxy_request("GET")
+            return
+        if not self._check_auth():
+            return
+        self._proxy_request("GET")
 
     def do_POST(self) -> None:  # noqa: N802
         if not self._check_auth():
