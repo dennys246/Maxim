@@ -34,6 +34,27 @@ _active_spawner: Any | None = None
 _active_model: str | None = None
 _swap_lock = threading.Lock()
 
+_MODEL_STATE_FILE = Path("data") / "util" / "active_llm_model.txt"
+
+
+def _read_persisted_model() -> str | None:
+    """Read the last swapped model name from disk (survives restarts)."""
+    try:
+        text = _MODEL_STATE_FILE.read_text().strip()
+        return text if text else None
+    except Exception:
+        return None
+
+
+def _write_persisted_model(profile: str | None) -> None:
+    """Persist the active model name so auto-spawn uses it after restart."""
+    try:
+        _MODEL_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _MODEL_STATE_FILE.write_text(profile or "")
+    except Exception:
+        pass
+
+
 # ─── env var plumbing ─────────────────────────────────────────────────────
 
 _DEFAULT_MAX_BACKENDS = 2
@@ -702,11 +723,19 @@ def _maybe_auto_spawn_server(
             )
         return lane_configs
 
+    # Check for a persisted model from a previous `maxim peer llm` swap.
+    # This survives os.execv restarts so the leader comes back with the
+    # same model the user selected, not the default profile.
+    persisted = _read_persisted_model()
+    effective_profile = persisted or infer_cfg.model_profile
+    if persisted and logger is not None:
+        logger.info("Auto-spawn: using persisted model '%s' from previous swap", persisted)
+
     # Resolve the profile's GGUF path
     try:
         from maxim.models.language.config import load_llm_config
 
-        profile_cfg = load_llm_config(profile_override=infer_cfg.model_profile)
+        profile_cfg = load_llm_config(profile_override=effective_profile)
         model_path = getattr(profile_cfg, "model_path", "")
     except Exception:
         return lane_configs
@@ -811,7 +840,7 @@ def _maybe_auto_spawn_server(
     # Track active spawner for hot-swap via `maxim peer llm <model>`
     global _active_spawner, _active_model  # noqa: PLW0603
     _active_spawner = spawner
-    _active_model = infer_cfg.model_profile
+    _active_model = effective_profile
 
     # Rewrite the infer lane to point at the spawned server. Auto-wire the
     # API key for the leader's own client so local inference doesn't 401.
@@ -820,7 +849,7 @@ def _maybe_auto_spawn_server(
     out["infer"] = dataclasses.replace(
         infer_cfg,
         remote_url=url,
-        remote_model=infer_cfg.model_profile,
+        remote_model=effective_profile,
         remote_api_key=infer_api_key,
     )
 
@@ -981,6 +1010,7 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
 
         _active_spawner = spawner
         _active_model = resolved
+        _write_persisted_model(resolved)
 
         return {
             "status": "swapped",
