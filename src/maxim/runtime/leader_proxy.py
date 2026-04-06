@@ -573,19 +573,22 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
         branch = body.get("branch", "main")
         dry_run = body.get("dry_run", True)
+        force = body.get("force", False)
 
         # Find repo root (leader_proxy.py is in src/maxim/runtime/)
         repo_root = str(Path(__file__).resolve().parents[3])
 
         logger.info(
-            "admin/update: peer=%s branch=%s dry_run=%s repo=%s",
+            "admin/update: peer=%s branch=%s dry_run=%s force=%s repo=%s",
             self.client_address[0],
             branch,
             dry_run,
+            force,
             repo_root,
         )
 
         # Check for dirty working tree
+        stashed = False
         try:
             status = subprocess.run(
                 ["git", "status", "--porcelain"],
@@ -595,14 +598,27 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 cwd=repo_root,
             )
             if status.stdout.strip():
-                self._send_json(
-                    409,
-                    {
-                        "error": "Working tree is dirty. Commit or stash changes first.",
-                        "dirty_files": status.stdout.strip().split("\n"),
-                    },
-                )
-                return
+                if force:
+                    # Stash changes so pull can proceed
+                    stash_result = subprocess.run(
+                        ["git", "stash", "--include-untracked"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                        cwd=repo_root,
+                    )
+                    stashed = "No local changes" not in (stash_result.stdout or "")
+                    logger.info("admin/update: stashed dirty tree (stashed=%s)", stashed)
+                else:
+                    self._send_json(
+                        409,
+                        {
+                            "error": "Working tree is dirty. Commit or stash changes first.",
+                            "hint": "Use: maxim peer update --force (stashes and restores automatically)",
+                            "dirty_files": status.stdout.strip().split("\n"),
+                        },
+                    )
+                    return
         except Exception as e:
             self._send_json(500, {"error": f"git status failed: {e}"})
             return
@@ -668,6 +684,14 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 check=True,
             )
         except subprocess.CalledProcessError as e:
+            # Restore stashed changes before reporting failure
+            if stashed:
+                subprocess.run(
+                    ["git", "stash", "pop"],
+                    capture_output=True,
+                    timeout=10,
+                    cwd=repo_root,
+                )
             self._send_json(
                 500,
                 {
@@ -677,6 +701,16 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 },
             )
             return
+
+        # Restore stashed changes after successful pull
+        if stashed:
+            subprocess.run(
+                ["git", "stash", "pop"],
+                capture_output=True,
+                timeout=10,
+                cwd=repo_root,
+            )
+            logger.info("admin/update: restored stashed changes")
 
         # pip install -e .
         pip_output = ""

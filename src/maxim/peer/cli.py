@@ -76,7 +76,7 @@ def _print_peer_usage() -> None:
     print("  show             Show current peer configuration")
     print("  forget           Remove stored peer config")
     print("  test <url>       Verify a leader URL is reachable + authenticated")
-    print("  update [url]     Pull + install on leader (--dry-run to preview)")
+    print("  update [url]     Pull + install on leader (--dry-run, --force)")
     print("  restart [url]    Soft-restart maxim on leader (reloads code)")
     print("  llm <model>     Hot-swap the LLM model on the leader")
     print("  version [url]    Show maxim version on leader (and local)")
@@ -306,6 +306,7 @@ def _cmd_update(argv: list[str]) -> int:
     key: str | None = None
     branch = "main"
     dry_run = False
+    force = False
 
     i = 0
     while i < len(argv):
@@ -315,6 +316,8 @@ def _cmd_update(argv: list[str]) -> int:
             branch = argv[i] if i < len(argv) else "main"
         elif a in ("--dry-run", "--preview"):
             dry_run = True
+        elif a in ("--force", "-f"):
+            force = True
         elif a.startswith("http"):
             url = a
         i += 1
@@ -334,7 +337,7 @@ def _cmd_update(argv: list[str]) -> int:
     endpoint = f"{base}/v1/admin/update"
 
     # Build request
-    body = json.dumps({"branch": branch, "dry_run": dry_run}).encode()
+    body = json.dumps({"branch": branch, "dry_run": dry_run, "force": force}).encode()
     req = urllib.request.Request(
         endpoint,
         data=body,
@@ -373,6 +376,9 @@ def _cmd_update(argv: list[str]) -> int:
             print("Leader has dirty working tree:", file=sys.stderr)
             for f in data.get("dirty_files", []):
                 print(f"  {f}", file=sys.stderr)
+            hint = data.get("hint")
+            if hint:
+                print(f"\n  {hint}", file=sys.stderr)
             return 1
         if e.code == 401:
             print("Authentication failed.", file=sys.stderr)
