@@ -175,7 +175,7 @@ class HeartbeatMonitor:
             parts.append(f"loop: idle={idle:.1f}s state={state}")
 
         if parts:
-            logger.info("[heartbeat] %s", " | ".join(parts))
+            logger.debug("[heartbeat] %s", " | ".join(parts))
 
     def _check_stall(self, data: dict[str, Any]) -> None:
         """Warn if no LLM calls have happened within the stall threshold."""
