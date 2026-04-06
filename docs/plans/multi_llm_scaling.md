@@ -535,35 +535,46 @@ for info in spawned:
         lane_configs["review"].remote_url = url
 ```
 
-### Phase 7: Peer Mesh — leader proxy, shared queue, discovery, routing
+### Phase 7: Peer Mesh — leader proxy, admission control, discovery, routing
 
-**Prerequisite**: [peer_leader_debug_plan.md](peer_leader_debug_plan.md) Stage A (observability) should land first or in lockstep with 7a. The debug plan's §1 analysis is load-bearing for this phase — it identified the architectural gap that 7a closes.
->
-> **Before building Phase 7a**, validate the current peer path is end-to-end functional using [peer_diagnosis_runbook.md](peer_diagnosis_runbook.md). The runbook's 6-rung bisection ladder covers every hop (DNS → edge → tunnel → auth → outbound client → GPU).
+> **Revised 2026-04-05** after implementing 7a and debugging the peer→leader path end-to-end. The original plan assumed FastAPI for the proxy and proposed routing peer requests through the leader's WorkerPool (7b). Both assumptions were wrong — see "What changed" below.
 
-**The current architecture** (after Phases 1-6): two sovereign Maxim minds share a GPU via a dumb HTTP proxy. Peers and the leader are independent clients of the same llama-cpp-server, contending for GPU time with no coordination and no leader-side visibility. Phase 7 turns that into a real mesh where:
+**Architecture after Phases 1-6 + 7a**: The LeaderProxy on `:8099` sits in front of llama-cpp-server (`:8100`). It handles auth, structured logging, request-id propagation, and GPU metrics. Peers talk to the leader via Cloudflare tunnel → LeaderProxy → llama-cpp-server. The leader's own agentic loop talks to llama-cpp-server directly via its lane backend. Both are independent HTTP clients of the same inference server.
 
-- The leader's runtime **sees** every peer request (logging, auth, routing decisions).
-- Leader + peers share a queue on the leader's `WorkerPool` instead of racing at the inference server.
-- Instances discover each other without manually shared URLs.
-- Per-request routing picks the best available backend (local / peer / remote) based on measured latency + queue depth.
+**Dependency graph for remaining phases:**
 
-Phase 7 splits into five sub-phases. Each is landable independently, each closes a specific gap.
+```
+Phase 8  (LaneMetrics)          -- land FIRST, data source for everything
+    |          \
+    v           v
+Phase 7b       Phase 7c        -- independent, can be parallelized
+(admission     (mDNS
+ control)       discovery)
+    |           |
+    +-----+-----+
+          |
+          v
+      Phase 7d
+    (InferenceRouter)
+          |
+          v
+      Phase 7e → DEFER to Phase 11
+    (multi-front input)
+```
 
-#### 7a. LeaderProxy — sidecar reverse proxy + observability hook
+#### 7a. LeaderProxy — DONE (2026-04-05)
 
-A thin HTTP service on `:8099` that sits **in front of** llama-cpp-server (`:8100`). Tunnel ingress flips from `localhost:8100` → `localhost:8099`; llama-cpp-server becomes private-only.
+Stdlib-only reverse proxy on `:8099` in `runtime/leader_proxy.py` (~250 LOC). Auto-started in leader mode alongside llama-cpp-server + tunnel daemon.
 
-**Responsibilities:**
-- **Authoritative auth**: enforce Bearer check BEFORE the request reaches llama-cpp-server. Closes the "solo→leader transition leaves the server unauthenticated" gap identified in the debug plan.
-- **Request-id propagation**: generate/preserve `X-Maxim-Request-Id` (UUID4) on every call, pass through to the backend. Peer logs ID on send → leader proxy logs on receipt → trivial correlation across machines.
-- **Structured logging**: every inbound request → one log line with `{request_id, source_ip, auth_status, model, latency_ms, status}` via a dedicated `maxim.mesh.trace` logger.
-- **`/debug/last-requests`** (localhost-only, auth-gated): ring buffer of last 100 calls for post-hoc inspection.
-- **Future hook point**: where 7b plugs in to route requests through the `WorkerPool`.
+**Implemented:**
+- Authoritative Bearer auth before requests reach llama-cpp-server
+- Per-request structured logging: request-id, peer IP, model, latency, token counts, GPU metrics
+- `X-Maxim-GPU-Util`, `X-Maxim-GPU-VRAM`, `X-Maxim-GPU-Temp`, `X-Maxim-Proxy-Ms`, `X-Maxim-Server-Ms` response headers
+- `GET /v1/debug/status`: GPU utilization, VRAM, temperature, uptime
+- `GET /v1/debug/last-requests`: ring buffer of last 100 requests (localhost-only)
+- CORS preflight support
 
-**Scope**: ~250 LOC stdlib-only HTTP server in `runtime/leader_proxy.py`. Adds ~1-2ms per request. Negligible vs. 44ms inference baseline.
-
-**Status (2026-04-05)**: IMPLEMENTED. `leader_proxy.py` handles auth, structured logging with request-id/peer-IP/latency/tokens/GPU metrics, `/v1/debug/status` (GPU util/VRAM/temp), `/v1/debug/last-requests` (ring buffer, localhost-only), and injects `X-Maxim-GPU-Util`, `X-Maxim-GPU-VRAM`, `X-Maxim-GPU-Temp`, `X-Maxim-Proxy-Ms`, `X-Maxim-Server-Ms` response headers. Auto-started in leader mode. Peer-side `mesh_trace.py` reads GPU metrics from response headers (zero-cost), falling back to `/v1/debug/status` poll for pre-7a leaders.
+Peer-side `mesh_trace.py` reads GPU metrics from response headers (zero-cost), falling back to `/v1/debug/status` poll for pre-7a leaders.
 
 #### 7a-ext. Remote self-update via LeaderProxy
 
@@ -590,337 +601,103 @@ Allow a peer (or the user from any machine) to trigger `git pull + pip install +
 
 **Scope**: ~100 LOC in `leader_proxy.py` + ~30 LOC CLI command. No new dependencies.
 
-#### 7b. Route peer jobs through the leader's WorkerPool
+#### 7b. Proxy-side admission control
 
-With 7a's proxy in place, parse inbound OpenAI-protocol requests and enqueue them on the leader's `WorkerPool` infer lane instead of forwarding straight to llama-cpp-server. The existing backend inside the lane still hits llama-cpp-server, but now peer jobs share the same queue as the leader's own agent loop.
+##### What changed from the original plan
 
-**What this unlocks:**
-- **Fair scheduling** between leader's agentic loop and N peers (no more GPU contention races).
-- **Per-peer attribution** via API key header or source IP; requests tagged in logs + metrics.
-- **Optional per-peer rate limits** (N jobs/min) — per-device keys from the long-parked security conversation become a prerequisite for meaningful rate-limiting.
-- **Cancellation + priority**: the WorkerPool already supports both; peer requests get surfaced to the same machinery that throttles the leader's own work.
+The original 7b proposed routing peer HTTP requests through the leader's `WorkerPool` for "fair scheduling." This was wrong for three reasons:
 
-**Scope**: ~250 LOC (protocol parsing, lane enqueue, response streaming back through the proxy, SSE passthrough for streaming completions).
+1. **Serialization penalty.** The infer lane has `max_workers=1`. Routing peer requests through it would serialize all inference (leader + N peers) into a single queue, *increasing* latency. llama-cpp-server already handles concurrent request batching efficiently on its own.
+2. **Architectural coupling.** The proxy runs in a daemon thread; the WorkerPool is owned by `LLMWorker` which is constructed later during agent loop setup. Wiring them together requires either fragile globals or invasive startup restructuring.
+3. **Solved problem.** llama-cpp-server's internal scheduler already does fair GPU batching across concurrent HTTP clients. The "contention race" the original plan feared doesn't exist at the inference layer.
 
-**Trade-off**: now peer requests go through two layers (proxy → WorkerPool → backend). If the WorkerPool is saturated, peer latency jumps. Phase 8 metrics make this visible; Phase 7d's routing uses the signal.
+##### Revised scope: admission control in LeaderProxy (~120 LOC)
 
-#### 7c. PeerRegistry + mDNS discovery
+Instead of WorkerPool integration, add lightweight request admission directly in the proxy:
 
-Remove the need for manually shared URLs on LAN. Each Maxim instance advertises itself via mDNS (same mechanism the robot stack already uses for Reachy discovery):
+- **Concurrency cap**: reject with 429 when N requests are already in-flight to upstream. `threading.Semaphore`, configurable via `MAXIM_PROXY_MAX_CONCURRENT` (default 4).
+- **Per-peer rate limit**: keyed by API key or source IP. Simple token-bucket in a new `runtime/rate_limiter.py` (~30 LOC, stdlib-only). `MAXIM_PROXY_RATE_LIMIT_RPM=60` (requests/minute per peer, default unlimited).
+- **Queue depth header**: `X-Maxim-Queue-Depth` response header so peers can make client-side routing decisions.
+- **Metrics integration**: each proxied request calls `LaneMetrics.record_call()` (from Phase 8), making proxy traffic visible in `maxim doctor` and metrics snapshots.
 
-```python
-class PeerRegistry:
-    """Discover and track peer Maxim instances on the LAN.
-
-    Uses mDNS (zeroconf) to advertise available models and discover peers.
-    Each peer exposes its LeaderProxy on a local port.
-
-    Service type: _maxim-llm._tcp.local.
-    TXT records: models, vram_gb, device (gpu|cpu), node_id, proxy_port
-    """
-
-    SERVICE_TYPE = "_maxim-llm._tcp.local."
-
-    def start(self, *, node_id: str, port: int, advertise: PeerAdvertisement) -> None: ...
-    def peers(self) -> list[PeerInfo]: ...
-    def get_peer_for_model(self, model_name: str) -> PeerInfo | None: ...
-    def stop(self) -> None: ...
-```
-
-`PeerInfo` carries `{node_id, host, port, models, device, vram_gb, last_seen}`; `is_alive` uses a 30s heartbeat timeout.
-
-**Opt-in via `[mesh]` extra**: `zeroconf` is an optional dependency (`pip install -e '.[mesh]'`). Non-mesh users don't pay the dep cost.
-
-**Opt-in via env var**: `MAXIM_PEER_ENABLED=1` starts the registry. Off by default so solo/tunnel setups aren't affected.
-
-**Scope**: ~150 LOC + the `zeroconf` dep. Firewalls often block mDNS — `maxim doctor` gets a new "mDNS broadcast reachable" check ([doctor_upgrade_plan.md §6](doctor_upgrade_plan.md)).
-
-#### 7d. InferenceRouter — per-request backend selection
-
-The actual "local vs. peer vs. remote" decision, finally. Each inference call consults the router:
-
-```
-Per-request routing chain (first success wins):
-  1. Local lane backend if configured          — lowest latency, no network hop
-  2. Best LAN peer via PeerRegistry            — 5-20ms extra, may have better GPU
-  3. Remote tunnel backend if configured       — 20-50ms extra, always available (if tunnel up)
-  4. Fallback: smallest local CPU model        — slow but always works
-  5. None (caller handles gracefully)
-```
-
-**Routing inputs** (sourced from Phase 8's LaneMetrics):
-- Per-backend **queue depth** + current utilization
-- Recent **p50/p99 latency** per backend
-- Per-backend **failure rate** (backoff on consistently-failing backends)
-- **Context window fit** — skip a backend whose `n_ctx` can't hold the request
-- **Peer VRAM + advertised device** (GPU over CPU, higher VRAM wins ties)
-
-**Backoff on failure**: consistent 5xx or timeout from a backend → exponential backoff (30s, 60s, 120s, cap at 10min). Doesn't retry the same dead peer every call.
-
-**Scope**: ~200 LOC + wiring into `LaneBackendManager`. The router *augments* the manager — today's single-backend-per-lane behavior is the degenerate case (no peers, no remote, just the local backend).
-
-**Decision logging**: at `MAXIM_PROVENANCE_VERBOSITY=2`, log the full routing tree per request (candidates considered, what was skipped, why). Pairs with Phase 10.
-
-#### 7e. Multi-front input — "one mind, many channels" (split-candidate)
-
-A leader instance exposes its `ConversationalSource` to multiple I/O frontends concurrently. **This is architecturally orthogonal to 7a-7d** — it changes the agent's input boundary, not its compute. Strong candidate to split into a separate "Phase 11" plan.
-
-| Frontend | Transport | Exists? |
+| File | Change | LOC |
 |---|---|---|
-| Local stdin | Terminal | ✓ (current behavior) |
-| Remote CLI | WebSocket over tunnel | new |
-| SMS / voice | Twilio webhook | ✓ ([comms/](../../src/maxim/comms/)) |
-| Another Maxim instance | mDNS peer over HTTP | new |
+| `runtime/leader_proxy.py` | Add `_semaphore`, `_rate_limiters` dict, 429 response path, `X-Maxim-Queue-Depth` header, `LaneMetrics` ref | ~80 |
+| `runtime/rate_limiter.py` | **New.** `TokenBucket` class, stdlib-only. `try_acquire() -> bool` | ~30 |
+| `runtime/lane_backends.py` | `_maybe_start_leader_proxy()` passes `LaneMetrics` instance | ~10 |
 
-**Design constraints**:
-- **Input merging** — two humans giving opposing commands: turn-based queue with attribution, or latest-wins with provenance?
-- **Auth for remote CLI** — shared-secret token to hit the agent bus, reusing leader's API key or a separate channel key?
-- **Percept fan-out** — every connected frontend sees the same percept stream, not just the one driving the current turn.
-- **Graceful degradation** — leader disappears → remote frontends fail visibly, not silently hang.
+#### 7c. PeerRegistry + mDNS discovery (~200 LOC)
 
-**What stays the same**: agent loop, memory, LLM backends. Only the input/output boundary changes. The comms gateway (Twilio SMS) already proves the pattern; formalizing it means lifting `ConversationalSource` behind a pub/sub so N callers publish/subscribe.
+Remove the need for manually shared URLs on LAN. Each Maxim instance advertises itself via mDNS (same mechanism the robot stack uses for Reachy discovery).
 
-**Recommendation**: ship 7a-7d first. Revisit 7e when you have a concrete use case (shared household Maxim? remote operator watching a Reachy sim?).
+- Service type: `_maxim-llm._tcp.local.`
+- TXT records: `node_id`, `models`, `vram_gb`, `device` (gpu|cpu), `proxy_port`
+- `PeerInfo` dataclass: `{node_id, host, port, models, device, vram_gb, last_seen}`, 30s heartbeat timeout
+- `PeerRegistry.peers() -> list[PeerInfo]`, `get_peer_for_model(model) -> PeerInfo | None`
 
+**Opt-in gates:** `MAXIM_PEER_ENABLED=1` env var AND `zeroconf` importable (optional `[mesh]` extra: `pip install -e '.[mesh]'`). Solo/tunnel users are unaffected.
 
-#### 7a. Peer advertisement via mDNS (legacy section — superseded by 7c above)
+| File | Change | LOC |
+|---|---|---|
+| `mesh/peer_registry.py` | **New.** `PeerRegistry` class with mDNS advertise/browse | ~120 |
+| `mesh/peer_info.py` | **New.** `PeerInfo`, `PeerAdvertisement` dataclasses | ~30 |
+| `pyproject.toml` | Add `[mesh]` optional extra: `zeroconf>=0.80` | ~3 |
+| `runtime/lane_backends.py` | `build_primary_router()` starts registry when enabled | ~20 |
+| `doctor/checks.py` | New "mDNS broadcast reachable" check | ~20 |
 
-Each Maxim instance advertises its available models via mDNS (same mechanism used for robot discovery):
+#### 7d. InferenceRouter — per-request backend selection (~250 LOC)
 
-```python
-class PeerRegistry:
-    """Discover and track peer Maxim instances on the LAN.
+The actual "local vs. peer vs. remote" routing decision. Augments `LaneBackendManager.get_backend()` — today's single-backend-per-lane behavior is the degenerate case.
 
-    Uses mDNS (zeroconf) to advertise available models and discover
-    peers. Each peer exposes an OpenAI-compatible API on a local port.
-
-    Service type: _maxim-llm._tcp.local.
-    TXT records: models=<comma-separated>, vram=<GB>, device=<gpu|cpu>
-    """
-
-    SERVICE_TYPE = "_maxim-llm._tcp.local."
-
-    def __init__(self, node_id: str, port: int) -> None:
-        self._node_id = node_id
-        self._port = port
-        self._peers: dict[str, PeerInfo] = {}  # node_id → info
-        self._zeroconf = None
-        self._browser = None
-        self._lock = threading.Lock()
-
-    def start(self, available_models: list[str], device: str, vram_gb: float) -> None:
-        """Start advertising this node and browsing for peers."""
-        from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo
-        import socket
-
-        self._zeroconf = Zeroconf()
-
-        # Advertise this node
-        info = ServiceInfo(
-            self.SERVICE_TYPE,
-            f"maxim-{self._node_id}.{self.SERVICE_TYPE}",
-            addresses=[socket.inet_aton(self._get_local_ip())],
-            port=self._port,
-            properties={
-                b"models": ",".join(available_models).encode(),
-                b"device": device.encode(),
-                b"vram": str(vram_gb).encode(),
-                b"node_id": self._node_id.encode(),
-            },
-        )
-        self._zeroconf.register_service(info)
-
-        # Browse for peers
-        self._browser = ServiceBrowser(
-            self._zeroconf,
-            self.SERVICE_TYPE,
-            handlers=[self._on_service_change],
-        )
-
-    def get_peer_for_model(self, model_name: str) -> PeerInfo | None:
-        """Find the best peer that serves a given model.
-
-        Prefers: highest VRAM → GPU over CPU → lowest latency.
-        """
-        with self._lock:
-            candidates = [
-                p for p in self._peers.values()
-                if model_name in p.models and p.is_alive
-            ]
-        if not candidates:
-            return None
-        # Sort: GPU first, then by VRAM descending
-        candidates.sort(key=lambda p: (p.device != "gpu", -p.vram_gb))
-        return candidates[0]
-
-    def stop(self) -> None:
-        if self._zeroconf:
-            self._zeroconf.unregister_all_services()
-            self._zeroconf.close()
-
-
-@dataclass
-class PeerInfo:
-    node_id: str
-    host: str
-    port: int
-    models: list[str]
-    device: str
-    vram_gb: float
-    last_seen: float = 0.0
-
-    @property
-    def is_alive(self) -> bool:
-        return (time.time() - self.last_seen) < 30.0  # 30s heartbeat timeout
-
-    @property
-    def base_url(self) -> str:
-        return f"http://{self.host}:{self.port}/v1"
+```
+Routing chain (first healthy backend wins):
+  1. Local lane backend        — 0ms overhead
+  2. Best LAN peer (from 7c)   — 5-20ms hop, selected by VRAM/GPU
+  3. Remote tunnel backend      — 20-50ms hop
+  4. None (caller degrades gracefully)
 ```
 
-#### 7b. Inference routing with fallback chain
+**Routing inputs** (from Phase 8 LaneMetrics + Phase 7c PeerRegistry):
+- Per-backend p50/p99 latency and failure rate
+- Peer VRAM + advertised device (GPU over CPU, higher VRAM wins ties)
+- Context window fit (skip backends whose `n_ctx` can't hold the request)
+- Exponential backoff on failing backends (30s/60s/120s, cap 10min)
 
-```python
-# Resolution order for each inference request:
-#
-# 1. Local backend (if available for this lane)
-#    └─ Fastest, no network hop
-#
-# 2. LAN peer (discovered via mDNS)
-#    └─ ~5-20ms latency, may have better GPU
-#
-# 3. Remote server (Cloudflare tunnel)
-#    └─ ~20-50ms + inference, always available
-#
-# 4. Fallback: smallest local CPU model
-#    └─ Slow but always works
+**Decision logging**: at `MAXIM_PROVENANCE_VERBOSITY=2`, log the full candidate list and selection reason per request via `maxim.mesh.trace` logger.
 
-class InferenceRouter:
-    """Routes inference requests to the best available backend.
+| File | Change | LOC |
+|---|---|---|
+| `mesh/inference_router.py` | **New.** `InferenceRouter` class with routing chain + backoff | ~150 |
+| `runtime/lane_backends.py` | `LaneBackendManager.attach_router()`, delegate from `get_backend()` | ~40 |
+| `models/language/openai_backend.py` | Add `health_check() -> bool` (HEAD `/v1/models`, 1s timeout) | ~15 |
+| `mesh/peer_info.py` | Add `estimated_latency_ms` field | ~10 |
 
-    Combines local, peer, and remote backends with automatic failover.
-    """
+#### 7e. Multi-front input — DEFERRED to Phase 11
 
-    def __init__(
-        self,
-        lane_manager: LaneBackendManager,
-        peer_registry: PeerRegistry | None = None,
-        remote_url: str | None = None,
-    ) -> None:
-        self._lane_manager = lane_manager
-        self._peer_registry = peer_registry
-        self._remote_url = remote_url
+Architecturally orthogonal to 7a-7d — changes the agent's input boundary, not its compute. No concrete use case exists yet. The comms gateway (Twilio SMS) already proves the pattern; formalizing it means lifting `ConversationalSource` behind a pub/sub so N callers publish/subscribe. Revisit when a concrete use case surfaces (shared household Maxim, remote operator watching a Reachy sim).
 
-    def get_backend(self, lane: str, model_hint: str | None = None) -> Any:
-        """Get the best available backend for a lane.
 
-        Tries: local → peer → remote → fallback.
-        """
-        # 1. Local
-        backend = self._lane_manager.get_backend(lane)
-        if backend is not None:
-            return backend
+### Phase 8: LaneMetrics — per-lane performance counters
 
-        # 2. Peer (LAN)
-        if self._peer_registry and model_hint:
-            peer = self._peer_registry.get_peer_for_model(model_hint)
-            if peer:
-                from maxim.models.language.openai_backend import _OpenAIBackend
-                return _OpenAIBackend(
-                    base_url=peer.base_url,
-                    model=model_hint,
-                    api_key="not-needed",
-                )
+> **Revised order**: land BEFORE 7b and 7d, since both consume this data. Small, additive, no behavior change.
 
-        # 3. Remote (Cloudflare tunnel)
-        if self._remote_url:
-            from maxim.models.language.openai_backend import _OpenAIBackend
-            return _OpenAIBackend(
-                base_url=self._remote_url,
-                model=model_hint or "default",
-                api_key=os.environ.get("MAXIM_REMOTE_LLM_KEY", "not-needed"),
-            )
+Thread-safe per-lane counters that answer "is my infer lane actually fast?" empirically. Feeds `maxim doctor`, LeaderProxy admission control (7b), and InferenceRouter health checks (7d).
 
-        # 4. Fallback: None (caller handles gracefully)
-        return None
-```
-
-#### 7c. Cluster status view
-
-```python
-def cluster_status(peer_registry: PeerRegistry, lane_manager: LaneBackendManager) -> dict:
-    """Get a snapshot of the full inference mesh."""
-    return {
-        "local": {
-            lane: {
-                "model": config.model_profile,
-                "device": config.device,
-                "status": "loaded" if lane in lane_manager._backends else "idle",
-            }
-            for lane, config in lane_manager._configs.items()
-        },
-        "peers": {
-            peer.node_id: {
-                "host": peer.host,
-                "models": peer.models,
-                "device": peer.device,
-                "vram_gb": peer.vram_gb,
-                "alive": peer.is_alive,
-            }
-            for peer in peer_registry._peers.values()
-        },
-    }
-```
-
-### Phase 8: Per-Lane Metrics (prerequisite for Phase 7d routing)
-
-Phase 8 is the signal source for Phase 7d's routing decisions. It also feeds `maxim doctor` so users can answer "is my infer lane actually fast?" empirically. Landable standalone; small, additive, no behavior change.
+| File | Change | LOC |
+|---|---|---|
+| `models/language/lane_metrics.py` | **New.** `LaneMetrics` dataclass with `record_call()`, p50/p99/avg latency, failure rate, token/cost accumulators. Thread-safe via deque + atomic counters | ~100 |
+| `runtime/lane_backends.py` | `LaneBackendManager` gains `_metrics: dict[str, LaneMetrics]`. `get_backend()` wraps backends in a recording proxy. Add `metrics_snapshot() -> dict` | ~40 |
+| `runtime/leader_proxy.py` | `_RequestLog.record()` also updates shared `LaneMetrics` instance (proxy already extracts tokens + latency) | ~20 |
+| `doctor/checks.py` | New "Lane metrics" section: per-lane p50/p99/counts | ~20 |
+| `tests/unit/test_lane_metrics.py` | Unit tests for counters, percentiles, thread safety | ~50 |
 
 **Data model:**
-
-```python
-from collections import deque
-from dataclasses import dataclass, field
-
-@dataclass
-class LaneMetrics:
-    """Per-lane performance counters with reservoir-sampled latency."""
-    # Monotonic counters
-    jobs_submitted: int = 0
-    jobs_completed: int = 0
-    jobs_dropped: int = 0        # stale before execution reached
-    jobs_failed: int = 0         # backend returned error
-    failover_count: int = 0      # routing chain hit a fallback (Phase 7d)
-
-    # Backend attribution (set by the router, read in logs + doctor)
-    local_calls: int = 0         # in-process or loopback
-    remote_calls: int = 0        # self-hosted HTTP (any private IP)
-    peer_calls: int = 0          # LAN peer via mDNS (Phase 7c-d)
-    cloud_calls: int = 0         # public HTTPS endpoints
-
-    # Queue pressure (sampled at each submit)
-    current_queue_depth: int = 0
-    peak_queue_depth: int = 0
-
-    # Latency reservoir (last 100 samples, thread-safe)
-    latencies_ms: deque[float] = field(default_factory=lambda: deque(maxlen=100))
-
-    # Token + cost (from LLMResponse.complete_with_usage)
-    total_input_tokens: int = 0
-    total_output_tokens: int = 0
-    total_cost_usd: float = 0.0
-
-    @property
-    def avg_latency_ms(self) -> float: ...
-    @property
-    def p50_latency_ms(self) -> float: ...
-    @property
-    def p99_latency_ms(self) -> float: ...
-    @property
-    def remote_ratio(self) -> float: ...
-    @property
-    def failure_rate(self) -> float: ...
-```
+- Monotonic counters: `jobs_submitted`, `jobs_completed`, `jobs_failed`, `failover_count`
+- Backend attribution: `local_calls`, `remote_calls`, `peer_calls`, `cloud_calls`
+- Latency reservoir: last 100 samples → `p50_latency_ms`, `p99_latency_ms`, `avg_latency_ms`
+- Token + cost: `total_input_tokens`, `total_output_tokens`, `total_cost_usd`
+- Queue pressure: `current_queue_depth`, `peak_queue_depth`
+- Derived: `failure_rate`, `remote_ratio`
 
 **Integration points:**
 
