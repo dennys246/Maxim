@@ -6,11 +6,12 @@
 >
 > **Critical path to running this experiment:**
 > 1. Fix sim orchestrator prompts — sims must sustain multi-turn conversations without hallucinating tools (~1 session)
-> 2. Research Protocol Phase 0 — AgentProfile, UMR, MeshMessage, LocalMessageBus (~200 LOC)
-> 3. Campaign YAMLs — DONE (`scenarios/experiments/hippocampal_recall_*.yaml`)
-> 4. Researcher enhancements — `record_experiment`, `query_experiments`, measurement protocol (~150 LOC)
-> 5. Writer + Reviewer agents (~600 LOC)
-> 6. Research Orchestrator — `maxim --sim research --campaign <yaml>` (~200 LOC)
+> 2. Dual-LLM wiring — `--aut-model` flag in orchestrator, second router for AUT (~40 LOC)
+> 3. Research Protocol Phase 0 — AgentProfile, UMR, MeshMessage, LocalMessageBus (~200 LOC)
+> 4. Campaign YAMLs — DONE (`scenarios/experiments/hippocampal_recall_*.yaml`)
+> 5. Researcher enhancements — `record_experiment`, `query_experiments`, measurement protocol (~150 LOC)
+> 6. Writer + Reviewer agents (~600 LOC)
+> 7. Research Orchestrator — `maxim --sim research --campaign <yaml>` (~200 LOC)
 >
 > **Not on the critical path:** Agent Mesh 0a/0b (mDNS + InferenceRouter), Embodiment Core, DM MVP, Sim Test Bed. This experiment runs locally on a single machine.
 
@@ -373,6 +374,9 @@ Each run produces a structured record:
   "campaign_file": "scenarios/experiments/hippocampal_recall_short.yaml",
   "seed_detail": "Verath",
   "interference_turns": 3,
+  "dual_llm": true,
+  "aut_model": "mistral-7b-instruct-v0.2",
+  "orchestrator_model": "claude-sonnet",
   "results": {
     "memory_survived": true,
     "memory_tier": "SHORT_TERM",
@@ -387,6 +391,107 @@ Each run produces a structured record:
   },
   "cost_usd": 0.08,
   "duration_s": 45
+}
+```
+
+---
+
+## Dual-LLM Configuration
+
+### The Problem with a Shared LLM
+
+The sim orchestrator currently builds one `LLMRouter` and shares it between AUT and orchestrator ([orchestrator.py:306](src/maxim/simulation/orchestrator.py#L306), wired at [L472](src/maxim/simulation/orchestrator.py#L472) and [L626](src/maxim/simulation/orchestrator.py#L626)). For this experiment, a single strong model (Claude) creates a confound: the AUT may "recall" Verath from its own conversation context rather than from Hippocampal memory. A single weak model (Mistral-7B) limits the orchestrator's ability to design experiments, write papers, and peer-review — the meta-reasoning that requires strong capabilities.
+
+### The Split
+
+| Role | Model | Why |
+|------|-------|-----|
+| **Orchestrator** (Researcher, Writer, Reviewer) | Claude Sonnet (cloud) | Strong reasoning for experiment design, paper writing, critical review. Runs infrequently (once per phase, not per turn). |
+| **AUT** (Aric the ranger) | Mistral-7B (local GPU) | Weaker model = more dependent on Hippocampal recall. Can't just "remember" Verath from a 32k context window when pushed past effective attention span. The experiment actually measures the memory system. |
+
+This maps directly to the existing Multi-LLM infrastructure:
+- `LaneBackendManager` (Phase 3, live) already caches separate backends per lane
+- `LaneModelConfig` (Phase 2, live) assigns different profiles per lane
+- `build_primary_router()` constructs routers from lane configs
+
+### What Changes in the Orchestrator (~40 LOC)
+
+`start_simulation_mode()` gains an `aut_model: str | None` parameter:
+
+```python
+def start_simulation_mode(
+    goal: str,
+    persona: str = "adversarial",
+    ...,
+    aut_model: str | None = None,  # NEW: separate model for the AUT
+) -> SimulationResult:
+```
+
+When `aut_model` is set:
+1. Build the **orchestrator router** from `build_primary_router()` as today (respects `--language-model`)
+2. Build a **second router** for the AUT using the `aut_model` profile
+3. Wire the AUT's `LLMWorker` to the AUT router, the orchestrator's `LLMWorker` to the orchestrator router
+4. Both routers coexist — no shared `_inference_lock` contention
+
+When `aut_model` is `None` (default): current behavior, single shared router.
+
+```python
+# In orchestrator.py, after building the primary router:
+aut_router = llm_router  # default: shared
+if aut_model is not None:
+    from maxim.models.language.router import LLMRouter, load_llm_config
+    aut_config = load_llm_config(profile_override=aut_model)
+    if aut_config.enabled:
+        aut_router = LLMRouter(aut_config)
+        aut_router.warmup()
+        aut_router.wait_ready(timeout=120.0)
+        logger.info("AUT router initialized (model=%s)", aut_model)
+
+# Then wire:
+aut_llm_worker = LLMWorker(llm=aut_router, ...)      # L475
+orch_llm_worker = LLMWorker(llm=llm_router, ...)     # L629
+```
+
+### CLI
+
+```bash
+# Dual-LLM: Claude orchestrates, Mistral experiences
+maxim --sim research \
+  --goal "hippocampal recall under narrative interference" \
+  --language-model claude-sonnet \
+  --aut-model mistral-7b \
+  --campaign scenarios/experiments/hippocampal_recall_short.yaml
+
+# Single-LLM comparison (control condition)
+maxim --sim research \
+  --goal "hippocampal recall under narrative interference" \
+  --language-model claude-sonnet \
+  --campaign scenarios/experiments/hippocampal_recall_short.yaml
+```
+
+### Why This Strengthens the Experiment
+
+1. **Isolates the variable.** Mistral-7B's effective attention degrades well before 32k tokens. In the `long_10` variant (25+ turns of narrative), the seed detail is almost certainly outside the LLM's reliable attention span. If the AUT still says "Verath," it's the Hippocampus doing the work.
+
+2. **Natural comparison condition.** Run each campaign variant twice — once with Claude as AUT, once with Mistral. If Claude recalls but Mistral doesn't, the question is: does the Hippocampus augment the weaker model? If both recall, the memory system works regardless of LLM strength.
+
+3. **Tests the architecture as designed.** The Multi-LLM vision is cheap local models for the agentic loop, strong cloud models for meta-reasoning. This experiment is that pattern applied concretely.
+
+4. **Cost control.** Mistral-7B is free (local GPU). Only the orchestrator/research agents burn cloud tokens, and they run once per experiment phase, not per campaign turn.
+
+### Known Limitation
+
+Mistral-7B's narrative quality is rough — the AUT's roleplaying responses will be less rich than Claude's. This is fine for measuring recall (binary: did it say "Verath" or not?) but means the Writer agent needs to account for lower-quality behavioral data. The experiment log records `aut_model` so the paper can analyze results stratified by LLM backend.
+
+### Experiment Log Schema Addition
+
+```json
+{
+  "experiment_id": "hippo_recall_001",
+  "aut_model": "mistral-7b-instruct-v0.2",
+  "orchestrator_model": "claude-sonnet",
+  "dual_llm": true,
+  ...
 }
 ```
 
@@ -412,11 +517,32 @@ Act 2 includes a high-salience emotional event (an NPC companion is injured). Te
 
 Run the `long_10` variant but insert a simulated sleep cycle (trigger `ConsolidationOrchestrator.run_wave()`) partway through Act 2. Tests whether sleep consolidation promotes the seed memory to LONG_TERM before the recall challenge.
 
+### Variant F: LLM Backend Comparison (Dual-LLM vs. Single-LLM)
+
+Run the same campaign variant (e.g., `medium_6`) in three configurations:
+1. **Claude-only** — `--language-model claude-sonnet` (no `--aut-model`): single shared router, strong AUT
+2. **Mistral-only** — `--language-model mistral-7b` (no `--aut-model`): single shared router, weak AUT + weak orchestrator
+3. **Dual** — `--language-model claude-sonnet --aut-model mistral-7b`: strong orchestrator, weak AUT
+
+Comparison reveals whether recall is driven by the LLM's context window (Claude > Mistral), the Hippocampus (equal performance across backends), or both (Claude recalls more, but Mistral still recalls some via Hippocampus). This is the central confound-elimination variant — it answers "are we testing the memory system or the LLM?"
+
 ---
 
 ## Implementation Plan
 
-### Phase 0: Research Protocol Mesh Primitives (~200 LOC)
+### Phase 0a: Dual-LLM Wiring (~40 LOC)
+
+Add `--aut-model` flag to `start_simulation_mode()` and CLI:
+- `orchestrator.py`: `aut_model` parameter, second `LLMRouter` construction when set
+- AUT's `LLMWorker` wired to AUT router, orchestrator's `LLMWorker` to primary router
+- CLI arg parser: `--aut-model <profile>` passed through to `start_simulation_mode()`
+- Sim report records both model names in metadata
+
+**Modified files:**
+- `src/maxim/simulation/orchestrator.py` (~30 LOC)
+- CLI arg parser (~10 LOC)
+
+### Phase 0b: Research Protocol Mesh Primitives (~200 LOC)
 
 As specified in the existing research_protocol_plan.md:
 - `AgentProfile`, `UMR naming`, `MeshMessage`, `LocalMessageBus`
@@ -457,7 +583,7 @@ As specified in research_protocol_plan.md Phase 4:
 - Comparative analysis tooling for the Researcher (diff activation scores across conditions)
 - Validation suite with expected outcomes per variant
 
-**Total: ~1,450 LOC** (vs ~2,140 LOC for both plans separately, with far fewer prerequisites)
+**Total: ~1,490 LOC** (vs ~2,140 LOC for both plans separately, with far fewer prerequisites)
 
 ---
 
@@ -503,7 +629,7 @@ As specified in research_protocol_plan.md Phase 4:
 | **Research Protocol** | This IS the first experiment. Phases 0-4 are identical. |
 | **Dungeon Master MVP** | Deferred. Campaign YAMLs from this experiment inform DM schema design. |
 | **DM Choice Classifier Spike** | Still useful — the recall challenge is a natural test of AUT free-text → classified action. |
-| **Multi-LLM Scaling** | Not a prerequisite. Single-model runs are sufficient for the experiment. |
+| **Multi-LLM Scaling** | Complete. Dual-LLM mode (`--aut-model`) uses existing `LaneBackendManager` + `build_primary_router()`. ~40 LOC change in orchestrator. |
 | **Agent Mesh** | Phase 0 primitives built here. Network phases still blocked on Multi-LLM Phase 7. |
 | **Embodiment Core** | Not a prerequisite. Narrative damage not needed for recall testing. |
 
@@ -511,10 +637,14 @@ As specified in research_protocol_plan.md Phase 4:
 
 ## Open Questions
 
-1. **Context window vs. Hippocampus** — with small models (7B), the entire campaign may fit in the context window, making Hippocampal recall unnecessary. Should we force context compaction after Act 2 to guarantee memory dependence?
+1. **Context window vs. Hippocampus** — even Mistral-7B at `n_ctx=8192` may hold the short campaign in context. The dual-LLM split helps (weaker model = weaker attention at distance), but for the `short_3` variant we may still need to force context compaction after Act 2 to guarantee memory dependence. The `long_10` variant is more naturally out of range.
 
-2. **Associative graph density** — if the interference encounters share zero perceptual features with the seed, will any associative path form at all? The seed mentions "Thornhaven" and "Thornwood" — the shared "Thorn-" prefix might be enough for partial overlap. If not, we may need one encounter in Act 2 that passes through Thornhaven again (weak link).
+2. **Associative graph density** — if the interference encounters share zero perceptual features with the seed, will any associative path form at all? The seed mentions "Thornhaven" and "Thornwood" — the shared "Thorn-" prefix might be enough for partial overlap in detected objects. If not, we may need one encounter in Act 2 that passes through Thornhaven again (weak link).
 
-3. **LLM backend sensitivity** — Claude may recall via its own training (it knows D&D conventions). Should we use nonsense words for the password to ensure recall is purely from Hippocampal memory? "Verath" is close enough to made-up, but worth testing with a truly random string like "Krelmoq."
+3. **LLM backend sensitivity** — Claude as AUT may recall via its own training (it knows D&D conventions). The dual-LLM design mitigates this — Mistral-7B is less likely to "just know" that password puzzles need a previously mentioned word. Still worth testing with a truly random string like "Krelmoq" as a control.
 
-4. **Run count** — how many runs per condition for statistical validity? The Reviewer should flag n < 5, but each run costs $0.05-0.15. Budget for ~20 runs total ($1-3).
+4. **Run count** — how many runs per condition for statistical validity? The Reviewer should flag n < 5. With dual-LLM, AUT runs on local GPU (free), so cost is only the orchestrator/research agents on Claude. Budget for ~20-30 runs total ($2-5).
+
+5. **Mistral narrative coherence** — Mistral-7B may struggle to maintain character identity across 10+ turns. If the AUT "forgets" it's Aric the ranger and starts responding generically, the experiment tests LLM quality rather than Hippocampal recall. Mitigation: the character sheet is injected as a high-salience turn-0 stimulus and captured in the Hippocampus, so identity recall exercises the same memory pathway. But this is worth monitoring — if narrative coherence breaks down, consider Mistral-22B or Llama-3-8B as an alternative AUT model.
+
+6. **Context compaction timing** — if we force compaction after Act 2, when exactly? After the last interference turn but before the recall challenge? The compaction itself may discard the seed memory if it's not yet consolidated. Need to verify that `ConsolidationOrchestrator.run_wave()` or the turn-pinning system preserves high-salience memories through compaction.

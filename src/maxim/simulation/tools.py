@@ -30,6 +30,10 @@ class SimToolRegistry:
 
     def register(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
+        # Keep _FallbackRedirectTool's tool list in sync
+        _FallbackRedirectTool._registered_tools = [
+            n for n in self._tools if n != "respond"
+        ]
 
     def get(self, name: str) -> Tool:
         if name in self._tools:
@@ -48,11 +52,14 @@ class SimToolRegistry:
 
 
 class _FallbackRedirectTool(Tool):
-    """Returned for any unknown tool name — redirects to send_message."""
+    """Returned for any unknown tool name — rejects with available tool list."""
 
     name = "respond"  # Masquerade as respond so followup_type='process' triggers
     description = "Redirect for unknown tools"
     input_schema = {}
+
+    # Set by SimToolRegistry when tools are registered
+    _registered_tools: list[str] = []
 
     def __init__(self, requested_name: str = "") -> None:
         super().__init__()
@@ -60,17 +67,17 @@ class _FallbackRedirectTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         tool_name = self._requested_name or "unknown"
-        redirect_msg = (
-            f"'{tool_name}' does not exist. You can ONLY use: send_message, "
-            "spawn_sub_simulation, extend_simulation, observe_actions, "
-            "check_completion, analyze_results, inject_pain, inspect_aut, "
-            "finish_simulation. Use send_message to interact with the agent."
+        tool_list = ", ".join(self._registered_tools) if self._registered_tools else (
+            "send_message, observe_actions, check_completion, analyze_results, "
+            "inject_pain, inspect_aut, finish_simulation, spawn_sub_simulation, "
+            "extend_simulation"
         )
-        # Return success=True with error as output so the followup pipeline
-        # triggers and the LLM sees this correction immediately. Returning
-        # success=False skips the followup, causing the orchestrator to stall
-        # until the stall detector fires (60s wasted).
-        return ToolOutput(success=True, output=redirect_msg)
+        error_msg = (
+            f"TOOL ERROR: '{tool_name}' does not exist. "
+            f"You can ONLY use these tools: {tool_list}. "
+            f"Use send_message to talk to the agent under test."
+        )
+        return ToolOutput(success=False, output=error_msg, error=error_msg)
 
 
 class SendMessageTool(Tool):
