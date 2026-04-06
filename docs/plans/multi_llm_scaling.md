@@ -1,6 +1,6 @@
 # Multi-LLM Scaling Plan
 
-> **Status:** Phases 1–6 live (local multi-model, gates, remote lanes, tunnel, auto-spawn, leader mode). Phase 8 (LaneMetrics) is next. Phase 7 restructured into sub-phases 7a-7e covering leader-proxy + shared queue + mDNS + routing + multi-front input; see [peer_leader_debug_plan.md](peer_leader_debug_plan.md) for the architectural analysis that motivated the restructure.
+> **Status:** Phases 1–6 live (local multi-model, gates, remote lanes, tunnel, auto-spawn, leader mode). Phase 8 (LaneMetrics) is next. Phase 7 restructured into sub-phases 7a-7e covering leader-proxy + shared queue + mDNS + routing + multi-front input; see [../troubleshooting/peer_leader_connectivity.md](../troubleshooting/peer_leader_connectivity.md) for the architectural analysis that motivated the restructure.
 >
 > **Scope:** Local multi-model inference, remote model serving via home server + Cloudflare tunnel, dynamic backend spawning, peer-to-peer inference mesh, and multi-frontend input for shared-consciousness deployments.
 
@@ -710,7 +710,7 @@ Thread-safe per-lane counters that answer "is my infer lane actually fast?" empi
   - `maxim doctor --json` (from [doctor_upgrade_plan.md](doctor_upgrade_plan.md)) includes the snapshot
   - `MAXIM_METRICS_INTERVAL_S=30` (default off) emits a periodic log line
 
-**Overlaps with the debug plan:** Phase 8 absorbs [peer_leader_debug_plan.md](peer_leader_debug_plan.md)'s `MAXIM_LANE_TRACE=1` flag — instead of a separate trace mechanism, metrics are always recorded and trace mode just prints each record at INFO rather than accumulating. One mechanism, two verbosities.
+**Overlaps with the debug plan:** Phase 8 absorbs [../troubleshooting/peer_leader_connectivity.md](../troubleshooting/peer_leader_connectivity.md)'s `MAXIM_LANE_TRACE=1` flag — instead of a separate trace mechanism, metrics are always recorded and trace mode just prints each record at INFO rather than accumulating. One mechanism, two verbosities.
 
 **Scope**: ~150 LOC + ~50 LOC tests. Additive. No existing-behavior change.
 
@@ -810,7 +810,7 @@ Or via `llm.json`:
 | **10** | Observability & verbose tracing (structured `maxim.mesh.trace`) | after 7d | Phases 7d + 8 |
 
 **Cross-plan references:**
-- [peer_leader_debug_plan.md](peer_leader_debug_plan.md) — Stage A (observability foundations) is a prerequisite for Phase 7a. Its §1 architectural analysis motivated the Phase 7 restructure. Stage D items are now folded into Phases 7a-7d.
+- [../troubleshooting/peer_leader_connectivity.md](../troubleshooting/peer_leader_connectivity.md) — Stage A (observability foundations) is a prerequisite for Phase 7a. Its §1 architectural analysis motivated the Phase 7 restructure. Stage D items are now folded into Phases 7a-7d.
 - [doctor_upgrade_plan.md](doctor_upgrade_plan.md) — `maxim doctor --json` + mDNS check feed into Phase 7 operability.
 
 **Also landed outside the plan** (discovered during implementation):
@@ -821,7 +821,7 @@ Or via `llm.json`:
 
 **Path forward from the current state (Phases 1–6 done):**
 
-1. **[peer_leader_debug_plan.md](peer_leader_debug_plan.md) Stage A** (~1 session) — request-id propagation, `MAXIM_LANE_TRACE`, `MAXIM_PEER_LOG_REQUESTS`, `maxim tunnel tail`. No behavior change; turns opacity into traceable logs. Prerequisite for Phase 7a.
+1. **[../troubleshooting/peer_leader_connectivity.md](../troubleshooting/peer_leader_connectivity.md) Stage A** (~1 session) — request-id propagation, `MAXIM_LANE_TRACE`, `MAXIM_PEER_LOG_REQUESTS`, `maxim tunnel tail`. No behavior change; turns opacity into traceable logs. Prerequisite for Phase 7a.
 2. **Phase 8** (~1 session) — `LaneMetrics`. Small, landable standalone, feeds `maxim doctor`. Its data model is what Phase 7d routes against. Absorbs the debug plan's `MAXIM_LANE_TRACE` flag.
 3. **Phase 7a** (~1-2 sessions) — `LeaderProxy` reverse-proxy with request-id + auth + structured logging. Closes the "leader runtime never sees peer requests" gap identified in the debug plan §1.
 4. **Phase 7b** (~2 sessions) — peer jobs enqueue on the leader's `WorkerPool`. Fair scheduling between leader's own agent loop and N peers.
