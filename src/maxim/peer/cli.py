@@ -307,6 +307,10 @@ def _cmd_update(argv: list[str]) -> int:
                 print(f"  {f}", file=sys.stderr)
             return 1
         print(f"Update failed ({e.code}): {data.get('error', str(e))}", file=sys.stderr)
+        if data.get("stderr"):
+            print(f"  stderr: {data['stderr']}", file=sys.stderr)
+        if data.get("stdout"):
+            print(f"  stdout: {data['stdout']}", file=sys.stderr)
         return 1
     except Exception as e:
         print(f"Connection failed: {e}", file=sys.stderr)
