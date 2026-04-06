@@ -143,7 +143,29 @@ maxim peer restart         # soft-restart to load new code
 - Leader mode auto-enables remote update + restart; disable with `MAXIM_ALLOW_REMOTE_UPDATE=0` if needed
 - Troubleshooting: [docs/troubleshooting/remote_update.md](docs/troubleshooting/remote_update.md)
 
-**Important for Claude agents:** `maxim peer update --dry-run` is safe and read-only. `maxim peer update` and `maxim peer restart` modify leader state — only run when explicitly asked by the user.
+**Important for Claude agents:** `maxim peer update --dry-run` and `maxim peer version` are safe and read-only. `maxim peer update` and `maxim peer restart` modify leader state — only run when explicitly asked by the user.
+
+## Versioning
+
+Version is defined in two places that **must stay in sync**:
+- `pyproject.toml` line 7: `version = "X.Y.Z"`
+- `src/maxim/__init__.py`: `__version__ = "X.Y.Z"`
+
+**When to bump:** Any change that affects runtime behavior, CLI interface, or peer/leader protocol. Pure docs-only or test-only changes do not require a bump.
+
+**How to check versions:**
+```bash
+# Local version + git hash:
+python -c "from maxim import get_version_info; print(get_version_info())"
+
+# Compare local vs leader:
+maxim peer version
+
+# Query leader only (no auth needed for debug endpoints):
+curl -s -H "User-Agent: maxim-peer/1.0" https://maxim.yourdomain.com/v1/debug/version
+```
+
+**Version mismatch between leader and peer** means the leader needs `maxim peer update && maxim peer restart` to sync.
 
 ## Project Structure
 

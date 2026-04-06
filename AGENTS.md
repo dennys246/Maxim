@@ -11,6 +11,7 @@ Maxim is a Reachy Mini project for capturing audio/video, running perception + m
 - Keep importable Python code under `src/maxim/` (avoid new top-level packages under `src/` unless packaging is updated).
 - Avoid reusable nested functions: if a helper could be reused, define it at module scope (or under `src/maxim/utils/`) instead of inside another function/method. Nested defs are OK when they must capture closure state (e.g., worker threads) or are truly one-off.
 - Any public API or CLI change must be reflected in `DECISIONS.md` and (when user-facing) `README.md`.
+- **Versioning:** When making changes that affect runtime behavior, CLI interface, or peer/leader protocol, bump the version in **both** `pyproject.toml` (`version = "X.Y.Z"`) and `src/maxim/__init__.py` (`__version__ = "X.Y.Z"`). Use `maxim peer version` to verify local/leader sync after deployment.
 - Add concise comments about important code functionality or nuanced behavior.
 - Build modules for scalability to be applied to multiple sensory modalities (e.g., diffusion models applied to both images and audio).
 - Run additional analysis on the security of code. If an insecurity is identified within the repo, analyze the bug for potential fixes and notify the user alongside the fix.

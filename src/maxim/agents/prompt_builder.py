@@ -334,8 +334,8 @@ def build_tool_guidance_core(mode_name: str = "passive") -> str:
         ])
     else:
         lines.extend([
-            '- write_file: {"path": ".maxim_workspace/f.py", "content": "code", "overwrite": true}',
-            '- read_file: {"path": ".maxim_workspace/f.py"}',
+            '- write_file: {"path": ".maxim_workspace/example.py", "content": "...", "overwrite": true}',
+            '- read_file: {"path": ".maxim_workspace/example.py"}',
             '- internet_search: {"query": "search query"}',
             "",
             "=== File Operation Rules ===",
