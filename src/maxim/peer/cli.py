@@ -46,6 +46,8 @@ def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
         return _cmd_show()
     if action == "forget":
         return _cmd_forget()
+    if action == "update":
+        return _cmd_update(list(argv[1:]))
     # Fall through to maxim.doctor.cli for `peer test` (kept in doctor/ because
     # test is a diagnostic, not a configuration subcommand)
     if action == "test":
@@ -64,6 +66,7 @@ def _print_peer_usage() -> None:
     print("  show             Show current peer configuration")
     print("  forget           Remove stored peer config")
     print("  test <url>       Verify a leader URL is reachable + authenticated")
+    print("  update [url]     Trigger git pull + pip install on the leader")
 
 
 # ─── connect ──────────────────────────────────────────────────────────────
@@ -228,6 +231,110 @@ def _run_peer_test(url: str, key: str) -> int:
     os.environ["MAXIM_LANE_INFER_REMOTE_API_KEY"] = key
     from maxim.doctor.cli import run_peer_subcommand
     return run_peer_subcommand(["test", url])
+
+
+def _cmd_update(argv: list[str]) -> int:
+    """Trigger git pull + pip install on the leader via /v1/admin/update."""
+    import json
+    import urllib.error
+    import urllib.request
+
+    # Determine URL: from arg, or from peer config
+    url: str | None = None
+    key: str | None = None
+    branch = "main"
+    apply = False
+
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--branch":
+            i += 1
+            branch = argv[i] if i < len(argv) else "main"
+        elif a == "--apply":
+            apply = True
+        elif a.startswith("http"):
+            url = a
+        i += 1
+
+    if url is None:
+        cfg = read_peer_config()
+        if cfg is None:
+            print("No peer config. Provide a URL: maxim peer update <url>", file=sys.stderr)
+            return 1
+        url = cfg.url
+        key = cfg.api_key
+
+    # Strip /v1 suffix, build admin endpoint
+    base = url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    endpoint = f"{base}/v1/admin/update"
+
+    # Build request
+    body = json.dumps({"branch": branch, "dry_run": not apply}).encode()
+    req = urllib.request.Request(
+        endpoint, data=body, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    if key:
+        req.add_header("Authorization", f"Bearer {key}")
+
+    print(f"{'Applying' if apply else 'Previewing'} update on leader ({base})...")
+    print(f"  branch: {branch}")
+    print()
+
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:  # noqa: S310
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        try:
+            data = json.loads(e.read())
+        except Exception:
+            data = {"error": str(e)}
+        if e.code == 403:
+            print("Remote update is disabled on the leader.", file=sys.stderr)
+            print("  Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.", file=sys.stderr)
+            return 1
+        if e.code == 409:
+            print("Leader has dirty working tree:", file=sys.stderr)
+            for f in data.get("dirty_files", []):
+                print(f"  {f}", file=sys.stderr)
+            return 1
+        print(f"Update failed ({e.code}): {data.get('error', str(e))}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Connection failed: {e}", file=sys.stderr)
+        return 1
+
+    status = data.get("status", "unknown")
+
+    if status == "up_to_date":
+        print("Already up to date.")
+        return 0
+
+    if status == "preview":
+        commits = data.get("pending_commits", [])
+        print(f"{len(commits)} pending commit(s):")
+        for c in commits:
+            print(f"  {c}")
+        print()
+        print("Run with --apply to apply:")
+        print("  maxim peer update --apply")
+        return 0
+
+    if status == "updated":
+        commits = data.get("commits_applied", [])
+        print(f"Updated! {len(commits)} commit(s) applied:")
+        for c in commits:
+            print(f"  {c}")
+        print()
+        print("Restart maxim on the leader to load new code.")
+        return 0
+
+    print(f"Unexpected status: {status}")
+    print(json.dumps(data, indent=2))
+    return 1
 
 
 __all__ = ["run_peer_connect_subcommand"]

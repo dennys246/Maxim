@@ -22,11 +22,13 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("maxim.leader_proxy")
@@ -356,6 +358,162 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             parts.append(f"vram={gpu['vram_used_gb']:.1f}/{gpu['vram_total_gb']:.0f}G")
         logger.info("proxy: %s", " ".join(parts))
 
+    # ─── admin endpoints ──────────────────────────────────────────────
+
+    def _handle_admin_update(self) -> None:
+        """POST /v1/admin/update — git pull + pip install on the leader.
+
+        Requires MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.
+        Accepts JSON body: {"branch": "main", "dry_run": true/false}
+        dry_run=true (default) previews pending commits without applying.
+        """
+        if os.environ.get("MAXIM_ALLOW_REMOTE_UPDATE", "").strip().lower() not in (
+            "1", "true", "t", "yes", "y", "on",
+        ):
+            self._send_json(403, {
+                "error": "Remote update disabled. Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader.",
+            })
+            return
+
+        # Parse request body
+        content_length = int(self.headers.get("Content-Length", 0))
+        body: dict[str, Any] = {}
+        if content_length > 0:
+            try:
+                body = json.loads(self.rfile.read(content_length))
+            except Exception:
+                pass
+
+        branch = body.get("branch", "main")
+        dry_run = body.get("dry_run", True)
+
+        # Find repo root (leader_proxy.py is in src/maxim/runtime/)
+        repo_root = str(Path(__file__).resolve().parents[3])
+
+        logger.info(
+            "admin/update: peer=%s branch=%s dry_run=%s repo=%s",
+            self.client_address[0], branch, dry_run, repo_root,
+        )
+
+        # Check for dirty working tree
+        try:
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True, text=True, timeout=10, cwd=repo_root,
+            )
+            if status.stdout.strip():
+                self._send_json(409, {
+                    "error": "Working tree is dirty. Commit or stash changes first.",
+                    "dirty_files": status.stdout.strip().split("\n"),
+                })
+                return
+        except Exception as e:
+            self._send_json(500, {"error": f"git status failed: {e}"})
+            return
+
+        # Fetch latest
+        try:
+            subprocess.run(
+                ["git", "fetch", "origin", branch],
+                capture_output=True, text=True, timeout=30, cwd=repo_root,
+                check=True,
+            )
+        except Exception as e:
+            self._send_json(500, {"error": f"git fetch failed: {e}"})
+            return
+
+        # Preview: what commits are pending?
+        try:
+            log_result = subprocess.run(
+                ["git", "log", f"HEAD..origin/{branch}", "--oneline"],
+                capture_output=True, text=True, timeout=10, cwd=repo_root,
+            )
+            pending = log_result.stdout.strip().split("\n") if log_result.stdout.strip() else []
+        except Exception:
+            pending = []
+
+        if not pending:
+            self._send_json(200, {
+                "status": "up_to_date",
+                "message": f"Already up to date with origin/{branch}.",
+                "commits": [],
+            })
+            return
+
+        if dry_run:
+            self._send_json(200, {
+                "status": "preview",
+                "branch": branch,
+                "pending_commits": pending,
+                "message": f"{len(pending)} commit(s) pending. Send dry_run=false to apply.",
+            })
+            return
+
+        # Apply: git pull
+        try:
+            subprocess.run(
+                ["git", "pull", "origin", branch],
+                capture_output=True, text=True, timeout=60, cwd=repo_root,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            self._send_json(500, {
+                "error": "git pull failed",
+                "stdout": e.stdout,
+                "stderr": e.stderr,
+            })
+            return
+
+        # pip install -e .
+        pip_output = ""
+        try:
+            pip_result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-e", "."],
+                capture_output=True, text=True, timeout=120, cwd=repo_root,
+            )
+            pip_output = pip_result.stdout[-500:] if pip_result.stdout else ""
+            if pip_result.returncode != 0:
+                # Rollback
+                subprocess.run(
+                    ["git", "checkout", "HEAD~1"],
+                    capture_output=True, timeout=10, cwd=repo_root,
+                )
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-e", "."],
+                    capture_output=True, timeout=120, cwd=repo_root,
+                )
+                self._send_json(500, {
+                    "error": "pip install failed, rolled back",
+                    "pip_stderr": pip_result.stderr[-500:],
+                })
+                return
+        except Exception as e:
+            self._send_json(500, {"error": f"pip install failed: {e}"})
+            return
+
+        # Log to request ring buffer
+        if self.request_log is not None:
+            self.request_log.record({
+                "type": "admin_update",
+                "peer_ip": self.client_address[0],
+                "branch": branch,
+                "commits_applied": pending,
+                "timestamp": time.time(),
+            })
+
+        logger.info(
+            "admin/update: SUCCESS — %d commits applied from origin/%s",
+            len(pending), branch,
+        )
+
+        self._send_json(200, {
+            "status": "updated",
+            "branch": branch,
+            "commits_applied": pending,
+            "pip_output": pip_output,
+            "message": f"Applied {len(pending)} commit(s). Restart maxim to load new code.",
+        })
+
     # ─── HTTP method dispatchers ──────────────────────────────────────
 
     def do_GET(self) -> None:  # noqa: N802
@@ -368,6 +526,10 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         if not self._check_auth():
+            return
+        stripped = self.path.rstrip("/").split("?")[0]
+        if stripped == "/v1/admin/update":
+            self._handle_admin_update()
             return
         if not self._check_admission():
             return
