@@ -561,9 +561,34 @@ A thin HTTP service on `:8099` that sits **in front of** llama-cpp-server (`:810
 - **`/debug/last-requests`** (localhost-only, auth-gated): ring buffer of last 100 calls for post-hoc inspection.
 - **Future hook point**: where 7b plugs in to route requests through the `WorkerPool`.
 
-**Scope**: ~200 LOC FastAPI service + companion `LeaderProxySpawner` (reuses signal-isolation + atexit patterns from `LocalServerSpawner`). Adds ~1-2ms per request. Negligible vs. 44ms inference baseline.
+**Scope**: ~250 LOC stdlib-only HTTP server in `runtime/leader_proxy.py`. Adds ~1-2ms per request. Negligible vs. 44ms inference baseline.
 
-**Naming**: called `LeaderProxy` or `MaximGateway` (not "sidecar" — that term is overloaded). Final name TBD at implementation time.
+**Status (2026-04-05)**: IMPLEMENTED. `leader_proxy.py` handles auth, structured logging with request-id/peer-IP/latency/tokens/GPU metrics, `/v1/debug/status` (GPU util/VRAM/temp), `/v1/debug/last-requests` (ring buffer, localhost-only), and injects `X-Maxim-GPU-Util`, `X-Maxim-GPU-VRAM`, `X-Maxim-GPU-Temp`, `X-Maxim-Proxy-Ms`, `X-Maxim-Server-Ms` response headers. Auto-started in leader mode. Peer-side `mesh_trace.py` reads GPU metrics from response headers (zero-cost), falling back to `/v1/debug/status` poll for pre-7a leaders.
+
+#### 7a-ext. Remote self-update via LeaderProxy
+
+Allow a peer (or the user from any machine) to trigger `git pull + pip install + restart` on the leader without SSH access. Builds on LeaderProxy's existing auth.
+
+**Endpoint**: `POST /v1/admin/update` (Bearer auth required)
+
+**Flow:**
+1. Peer/user sends `POST /v1/admin/update` with optional `{"branch": "main", "dry_run": true}`
+2. LeaderProxy runs `git fetch && git log HEAD..origin/main --oneline` to preview changes
+3. If `dry_run=false` (default): `git pull origin main && pip install -e .`
+4. Health-check: verify llama-cpp-server + LeaderProxy come back on their ports
+5. If health check fails: `git checkout HEAD~1 && pip install -e .` and report failure
+6. Restart the Maxim process (graceful: finish current inference, then `os.execv`)
+
+**Safety:**
+- Only pull from the configured remote + branch (default `origin/main`)
+- Refuse if working tree is dirty (`git status --porcelain` non-empty)
+- Log every update attempt to the request ring buffer
+- Optional `MAXIM_ALLOW_REMOTE_UPDATE=1` env flag (off by default) — leader must explicitly opt in
+- `dry_run=true` returns the pending commits without applying, for review
+
+**CLI companion**: `maxim peer update <url>` — calls the endpoint, prints the diff preview, asks for confirmation before sending `dry_run=false`.
+
+**Scope**: ~100 LOC in `leader_proxy.py` + ~30 LOC CLI command. No new dependencies.
 
 #### 7b. Route peer jobs through the leader's WorkerPool
 
