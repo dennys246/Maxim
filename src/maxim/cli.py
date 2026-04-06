@@ -166,11 +166,55 @@ def _normalize_args(args: argparse.Namespace) -> None:
                         if has_key:
                             hint += f"\n\n  {env_var} is set, but the profile '{language_model}' isn't in llm.json."
                         break
-                raise SystemExit(
-                    f"Unknown --language-model {language_model!r}. Available: {opts}{hint}"
-                )
+                raise SystemExit(f"Unknown --language-model {language_model!r}. Available: {opts}{hint}")
             os.environ["MAXIM_LLM_PROFILE"] = selected
         args.language_model = selected
+
+    # ── Cloud provider CLI flags ──────────────────────────────────────────
+    cloud_fallback = getattr(args, "cloud_fallback", None)
+    cloud_lane = getattr(args, "cloud_lane", None)
+    cloud_budget = getattr(args, "cloud_budget", None)
+
+    if cloud_fallback or cloud_lane:
+        from maxim.models.language.config import _BUILTIN_PROFILES, normalize_llm_profile
+
+        # Resolve and validate each cloud model reference
+        for label, model_name in [
+            ("--cloud-fallback", cloud_fallback),
+            ("--cloud-lane", cloud_lane[1] if cloud_lane else None),
+        ]:
+            if model_name is None:
+                continue
+            resolved = normalize_llm_profile(model_name)
+            profile = _BUILTIN_PROFILES.get(resolved, {})
+            if not profile.get("cloud"):
+                raise SystemExit(
+                    f"{label} {model_name!r} is not a cloud profile. "
+                    f"Use a cloud model like claude-sonnet, claude-haiku, gpt-4o, gpt-4o-mini."
+                )
+            api_key_env = profile.get("api_key_env", "")
+            if api_key_env and not os.environ.get(api_key_env):
+                raise SystemExit(
+                    f"{label} {model_name!r} requires {api_key_env} to be set.\n  export {api_key_env}=<your-key>"
+                )
+
+        if cloud_fallback:
+            resolved = normalize_llm_profile(cloud_fallback)
+            os.environ["MAXIM_CLOUD_FALLBACK_MODEL"] = resolved
+        if cloud_lane:
+            lane_name, model_name = cloud_lane
+            resolved = normalize_llm_profile(model_name)
+            os.environ[f"MAXIM_CLOUD_LANE_{lane_name.upper()}_MODEL"] = resolved
+        if cloud_budget is not None:
+            os.environ["MAXIM_CLOUD_SESSION_BUDGET"] = str(cloud_budget)
+
+        # Auto-enable cloud dispatch and set sensible defaults
+        os.environ.setdefault("MAXIM_LLM_CLOUD_ENABLED", "1")
+        os.environ.setdefault("MAXIM_LLM_REDACTION_POLICY", "standard")
+        current_max = int(os.environ.get("MAXIM_MAX_CLOUD_LANES", "0"))
+        needed = sum(1 for x in [cloud_fallback, cloud_lane] if x)
+        if current_max < needed:
+            os.environ["MAXIM_MAX_CLOUD_LANES"] = str(needed)
 
     segmentation_model = getattr(args, "segmentation_model", None)
     if segmentation_model is not None:
@@ -505,7 +549,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         # `peer connect/show/forget` go to the peer config module;
         # `peer test` is a diagnostic that lives with `doctor`.
         peer_action = raw_argv[1] if len(raw_argv) > 1 else ""
-        if peer_action in ("connect", "show", "forget", "update", "restart", "version", "logs"):
+        if peer_action in ("connect", "show", "forget", "update", "restart", "llm", "version", "logs"):
             from maxim.peer import run_peer_connect_subcommand
 
             return run_peer_connect_subcommand(raw_argv[1:])

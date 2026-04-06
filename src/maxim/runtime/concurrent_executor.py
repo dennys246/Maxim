@@ -53,7 +53,8 @@ TOOL_CONFLICTS: dict[str, ConflictType] = {
 def _get_resource_key(action: dict[str, Any]) -> str:
     """Extract the resource key from an action for conflict detection."""
     tool = action.get("tool_name", "")
-    params = action.get("params", {})
+    raw_params = action.get("params")
+    params = raw_params if isinstance(raw_params, dict) else {}
 
     if tool in ("write_file", "read_file", "execute_file"):
         return f"file:{params.get('path', params.get('file_path', ''))}"
@@ -150,15 +151,12 @@ class ConcurrentExecutor:
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             future_to_idx: dict[Future, int] = {
-                pool.submit(self.executor.execute, action): i
-                for i, action in enumerate(actions)
+                pool.submit(self.executor.execute, action): i for i, action in enumerate(actions)
             }
             self._active_futures = {i: f for f, i in future_to_idx.items()}
 
             try:
-                for future in as_completed(
-                    future_to_idx, timeout=self.per_tool_timeout
-                ):
+                for future in as_completed(future_to_idx, timeout=self.per_tool_timeout):
                     idx = future_to_idx[future]
                     try:
                         results[idx] = future.result(timeout=0)

@@ -15,6 +15,7 @@ Remote/cloud classification:
 - remote_url with public host → "cloud" (gated by MAXIM_MAX_CLOUD_LANES
   AND the existing LLMRouter cloud_enabled flag)
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -27,6 +28,11 @@ from urllib.parse import urlparse
 
 from maxim.runtime.worker_pool import LaneConfig
 
+
+# ─── active server tracking (for hot-swap) ────────────────────────────────
+_active_spawner: Any | None = None
+_active_model: str | None = None
+_swap_lock = threading.Lock()
 
 # ─── env var plumbing ─────────────────────────────────────────────────────
 
@@ -46,6 +52,7 @@ def _env_int(name: str, default: int) -> int:
 
 # ─── URL classification (cloud vs self-hosted) ────────────────────────────
 
+
 def _host_is_private(host: str) -> bool:
     """True if host is localhost, a private IP, or resolves to one.
 
@@ -57,11 +64,9 @@ def _host_is_private(host: str) -> bool:
         return False
     try:
         import ipaddress
+
         addr = ipaddress.ip_address(host)
-        return (
-            addr.is_private or addr.is_loopback
-            or addr.is_link_local or addr.is_reserved
-        )
+        return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
     except ValueError:
         pass
     if host.lower() in ("localhost", "local.home", "local"):
@@ -74,9 +79,9 @@ def _host_is_private(host: str) -> bool:
         ip = info[4][0]
         try:
             import ipaddress
+
             addr = ipaddress.ip_address(ip)
-            if not (addr.is_private or addr.is_loopback
-                    or addr.is_link_local or addr.is_reserved):
+            if not (addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved):
                 return False
         except ValueError:
             return False
@@ -101,11 +106,13 @@ def _is_cloud_url(remote_url: str | None) -> bool:
 
 # ─── exceptions ───────────────────────────────────────────────────────────
 
+
 class BackendGateError(RuntimeError):
     """Raised when a safety gate refuses to construct a backend."""
 
 
 # ─── manager ──────────────────────────────────────────────────────────────
+
 
 class LaneBackendManager:
     """Owns the lane → backend mapping for multi-LLM operation."""
@@ -124,15 +131,18 @@ class LaneBackendManager:
         self._peer_owned = peer_owned
         self._lock = threading.Lock()
         self._max_backends = (
-            max_backends if max_backends is not None
+            max_backends
+            if max_backends is not None
             else _env_int("MAXIM_MAX_CONCURRENT_BACKENDS", _DEFAULT_MAX_BACKENDS)
         )
         self._max_cloud_lanes = (
-            max_cloud_lanes if max_cloud_lanes is not None
+            max_cloud_lanes
+            if max_cloud_lanes is not None
             else _env_int("MAXIM_MAX_CLOUD_LANES", _DEFAULT_MAX_CLOUD_LANES)
         )
         # Phase 8: per-lane metrics (shared with LeaderProxy via singleton)
         from maxim.models.language.lane_metrics import get_metrics_registry
+
         self._metrics_registry = get_metrics_registry()
         # Pre-create metrics for all configured lanes
         for lane_name in self._configs:
@@ -275,10 +285,77 @@ class LaneBackendManager:
             except Exception:
                 pass
 
+        # Inject cloud fallback provider if configured via --cloud-fallback
+        llm_config = self._maybe_inject_cloud_fallback(cfg, llm_config)
+
         try:
             return LLMRouter(llm_config)
         except Exception:
             return None
+
+    def _maybe_inject_cloud_fallback(self, cfg: "LaneConfig", llm_config: Any) -> Any:
+        """Add a cloud fallback provider to the infer lane's LLMConfig.
+
+        When --cloud-fallback is set, the CLI stores the resolved model name
+        in MAXIM_CLOUD_FALLBACK_MODEL.  We inject it as a secondary provider
+        so the router tries the primary (local/self-hosted) first and falls
+        back to cloud on failure, rate-limit, or timeout.
+        """
+        if cfg.name != "infer":
+            return llm_config
+        fallback_model = os.environ.get("MAXIM_CLOUD_FALLBACK_MODEL", "").strip()
+        if not fallback_model:
+            return llm_config
+
+        try:
+            from maxim.models.language.config import _BUILTIN_PROFILES
+        except Exception:
+            return llm_config
+
+        profile_data = _BUILTIN_PROFILES.get(fallback_model, {})
+        if not profile_data.get("cloud"):
+            return llm_config
+
+        backend_type = profile_data.get("backend", "anthropic")
+        api_key_env = profile_data.get("api_key_env", "ANTHROPIC_API_KEY")
+        n_ctx = profile_data.get("n_ctx", 200000)
+
+        # Build providers dict — ensure local provider exists first
+        providers = dict(llm_config.providers or {})
+        if not providers:
+            providers["local"] = {
+                "type": llm_config.backend,
+                "model": llm_config.model,
+                "n_ctx": llm_config.n_ctx,
+            }
+        providers["cloud-fallback"] = {
+            "type": backend_type,
+            "model": fallback_model,
+            "api_key_env": api_key_env,
+            "n_ctx": n_ctx,
+        }
+
+        # Append cloud-fallback to priority (after primary)
+        routing = dict(llm_config.routing or {})
+        priority = list(routing.get("provider_priority", list(providers.keys())))
+        if "cloud-fallback" not in priority:
+            priority.append("cloud-fallback")
+        routing["provider_priority"] = priority
+
+        # Apply session budget override if set
+        budget = os.environ.get("MAXIM_CLOUD_SESSION_BUDGET", "").strip()
+        if budget:
+            try:
+                routing["max_session_cost"] = float(budget)
+            except ValueError:
+                pass
+
+        return dataclasses.replace(
+            llm_config,
+            cloud_enabled=True,
+            providers=providers,
+            routing=routing,
+        )
 
     def _build_remote_backend(self, cfg: LaneConfig) -> Any | None:
         """Construct an OpenAI-compatible remote backend via LLMRouter.
@@ -351,6 +428,42 @@ class LaneBackendManager:
             return None
 
 
+def _apply_cloud_cli_overrides(
+    lane_configs: dict[str, Any],
+    logger: Any | None,
+) -> dict[str, Any]:
+    """Apply --cloud-lane env vars set by cli.py.
+
+    Rewrites the named lane to use the cloud model profile as its primary.
+    The cloud fallback (--cloud-fallback) is handled later in
+    _build_local_backend, which injects the fallback provider into the
+    LLMRouter's provider dict.
+    """
+    out = dict(lane_configs)
+    for lane_name, cfg in list(out.items()):
+        cloud_model = os.environ.get(f"MAXIM_CLOUD_LANE_{lane_name.upper()}_MODEL", "").strip()
+        if not cloud_model:
+            continue
+        try:
+            from maxim.models.language.config import _BUILTIN_PROFILES
+        except Exception:
+            continue
+        profile_data = _BUILTIN_PROFILES.get(cloud_model, {})
+        if not profile_data.get("cloud"):
+            if logger is not None:
+                logger.warning(
+                    "MAXIM_CLOUD_LANE_%s_MODEL=%s is not a cloud profile — ignoring",
+                    lane_name.upper(),
+                    cloud_model,
+                )
+            continue
+        # Rewrite the lane to use the cloud profile as primary
+        out[lane_name] = dataclasses.replace(cfg, model_profile=cloud_model)
+        if logger is not None:
+            logger.info("Lane '%s' assigned cloud model: %s", lane_name, cloud_model)
+    return out
+
+
 def build_primary_router(
     capabilities: Any | None = None,
     *,
@@ -391,6 +504,7 @@ def build_primary_router(
     _has_peer_config = False
     try:
         from maxim.peer.config import apply_peer_config_to_env, read_peer_config
+
         peer_cfg = read_peer_config()
         if peer_cfg is not None:
             apply_peer_config_to_env(peer_cfg)
@@ -398,11 +512,27 @@ def build_primary_router(
     except Exception:
         pass
 
+    # ── Reconcile --language-model with peer remote config ────────────
+    # When peer config sets a remote URL for the infer lane AND the user
+    # specified --language-model (MAXIM_LLM_PROFILE), the intent is
+    # "run this model on the remote server" — not "load it locally."
+    # Redirect: copy the profile name into MAXIM_LANE_INFER_REMOTE_MODEL
+    # and clear MAXIM_LLM_PROFILE so the local backend machinery doesn't
+    # activate and try to load a local pytorch/llama_cpp backend.
+    if _has_peer_config:
+        _remote_url = os.environ.get("MAXIM_LANE_INFER_REMOTE_URL", "").strip()
+        _llm_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
+        if _remote_url and _llm_profile:
+            os.environ.setdefault("MAXIM_LANE_INFER_REMOTE_MODEL", _llm_profile)
+            os.environ.pop("MAXIM_LLM_PROFILE", None)
+
     if capabilities is None:
         has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
         capabilities = RuntimeCapabilities(
-            has_gpu=has_gpu, gpu_type=gpu_type,
-            vram_gb=vram_gb, ram_gb=ram_gb,
+            has_gpu=has_gpu,
+            gpu_type=gpu_type,
+            vram_gb=vram_gb,
+            ram_gb=ram_gb,
         )
 
     lane_configs = {name: dataclasses.replace(cfg) for name, cfg in DEFAULT_LANES.items()}
@@ -427,6 +557,7 @@ def build_primary_router(
             logger.warning("Lane model assignment failed (using defaults): %s", e)
 
     lane_configs = apply_lane_env_overrides(lane_configs)
+    lane_configs = _apply_cloud_cli_overrides(lane_configs, logger)
 
     # Health-check any user-supplied remote_url before wiring a lane to it.
     # Catches stale env vars pointing at servers that have since shut down —
@@ -451,6 +582,7 @@ def build_primary_router(
     # Start heartbeat monitor if enabled via env flags (peer or solo mode)
     try:
         from maxim.runtime.heartbeat import get_heartbeat_monitor, should_enable_heartbeat
+
         if should_enable_heartbeat():
             get_heartbeat_monitor().start()
     except Exception:
@@ -480,7 +612,9 @@ def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> d
             logger.warning(
                 "Lane '%s' remote_url=%s is unreachable — dropping it so auto-spawn "
                 "can take over. Unset MAXIM_LANE_%s_REMOTE_URL to silence this.",
-                name, url, name.upper(),
+                name,
+                url,
+                name.upper(),
             )
         out[name] = dataclasses.replace(cfg, remote_url=None, remote_model=None, remote_api_key=None)
     return out
@@ -504,6 +638,7 @@ def _llm_server_responding_at(url: str, *, timeout_s: float = 1.5) -> bool:
     try:
         import urllib.error
         import urllib.request
+
         with urllib.request.urlopen(probe, timeout=timeout_s) as resp:  # noqa: S310
             return resp.status == 200
     except urllib.error.HTTPError as e:
@@ -523,6 +658,7 @@ def _profile_has_local_file(profile_name: str) -> bool:
         return False
     try:
         from maxim.models.language.config import load_llm_config
+
         cfg = load_llm_config(profile_override=profile_name)
         model_path = getattr(cfg, "model_path", "") or ""
         return bool(model_path) and Path(model_path).is_file()
@@ -569,6 +705,7 @@ def _maybe_auto_spawn_server(
     # Resolve the profile's GGUF path
     try:
         from maxim.models.language.config import load_llm_config
+
         profile_cfg = load_llm_config(profile_override=infer_cfg.model_profile)
         model_path = getattr(profile_cfg, "model_path", "")
     except Exception:
@@ -578,7 +715,8 @@ def _maybe_auto_spawn_server(
             logger.warning(
                 "Auto-spawn skipped: GGUF file not found at %s (profile=%s). "
                 "Run ./scripts/download_models.sh --llm or adjust MAXIM_LLM_PROFILE.",
-                model_path, infer_cfg.model_profile,
+                model_path,
+                infer_cfg.model_profile,
             )
         return lane_configs
 
@@ -586,10 +724,12 @@ def _maybe_auto_spawn_server(
     try:
         from maxim.runtime.leader_mode import detect_role
     except Exception:
+
         class _Fallback:
             bind_host = "127.0.0.1"
             role = "solo"
             reason = "detect_role import failed"
+
         role_decision = _Fallback()
     else:
         role_decision = detect_role()
@@ -606,6 +746,7 @@ def _maybe_auto_spawn_server(
     if role_decision.role == "leader":
         try:
             from maxim.tunnel.keys import read_key
+
             api_key = read_key()
         except Exception:
             api_key = None
@@ -617,7 +758,8 @@ def _maybe_auto_spawn_server(
     if _llm_server_responding_at(existing_url):
         if logger is not None:
             logger.info(
-                "Auto-discovery: found existing llama-cpp-server on port %d, reusing it", port,
+                "Auto-discovery: found existing llama-cpp-server on port %d, reusing it",
+                port,
             )
         out = dict(lane_configs)
         out["infer"] = dataclasses.replace(
@@ -653,14 +795,23 @@ def _maybe_auto_spawn_server(
         auth_note = " (auth=on)" if api_key else ""
         logger.info(
             "Auto-spawning llama-cpp-server (model=%s port=%d host=%s role=%s timeout=%ds)%s",
-            Path(model_path).name, port, role_decision.bind_host, role_decision.role,
-            int(timeout_s), auth_note,
+            Path(model_path).name,
+            port,
+            role_decision.bind_host,
+            role_decision.role,
+            int(timeout_s),
+            auth_note,
         )
     url = spawner.start(timeout_s=timeout_s)
     if url is None:
         if logger is not None:
             logger.warning("Auto-spawn failed; falling back to in-process inference")
         return lane_configs
+
+    # Track active spawner for hot-swap via `maxim peer llm <model>`
+    global _active_spawner, _active_model  # noqa: PLW0603
+    _active_spawner = spawner
+    _active_model = infer_cfg.model_profile
 
     # Rewrite the infer lane to point at the spawned server. Auto-wire the
     # API key for the leader's own client so local inference doesn't 401.
@@ -686,13 +837,175 @@ def _maybe_auto_spawn_server(
     return out
 
 
+def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
+    """Hot-swap the llama-cpp-server to a different model.
+
+    Called by LeaderProxy's /v1/admin/llm-swap endpoint.  Stops the current
+    server, resolves the new profile to a GGUF path, and starts a fresh
+    LocalServerSpawner.
+
+    Returns a result dict consumed by the admin endpoint.
+    Raises ValueError for client errors (400-level) and RuntimeError for
+    server errors (500-level).
+    """
+    import time as _time
+
+    from maxim.models.language.config import (
+        _BUILTIN_PROFILES,
+        list_llm_profiles,
+        load_llm_config,
+        normalize_llm_profile,
+    )
+    from maxim.runtime.local_server_spawner import LocalServerSpawner
+
+    global _active_spawner, _active_model  # noqa: PLW0603
+
+    # Resolve profile name
+    resolved = normalize_llm_profile(profile)
+    if not resolved:
+        raise ValueError("Empty model name")
+
+    profile_data = _BUILTIN_PROFILES.get(resolved, {})
+
+    # Block cloud profiles
+    if profile_data.get("cloud"):
+        raise ValueError(f"Profile '{resolved}' is a cloud provider — cannot run on llama-cpp-server")
+
+    # Block non-llama_cpp backends
+    backend = profile_data.get("backend", "llama_cpp")
+    if backend not in ("llama_cpp", "llamacpp", "llama"):
+        raise ValueError(f"Profile '{resolved}' uses {backend} backend — not compatible with llama-cpp-server")
+
+    # Validate profile exists
+    available = list_llm_profiles()
+    if available and resolved not in available:
+        raise ValueError(f"Unknown model profile: {profile}. Available: {', '.join(sorted(available))}")
+
+    # Acquire swap lock (non-blocking — reject concurrent swaps)
+    if not _swap_lock.acquire(blocking=False):
+        raise RuntimeError("LLM swap already in progress")
+
+    try:
+        # Same model = no-op
+        if _active_model and _active_model == resolved and _active_spawner is not None:
+            if _active_spawner.is_running:
+                return {
+                    "status": "already_running",
+                    "model": resolved,
+                }
+
+        # Resolve GGUF path
+        try:
+            cfg = load_llm_config(profile_override=resolved)
+            model_path = getattr(cfg, "model_path", "")
+        except Exception as e:
+            raise ValueError(f"Failed to resolve profile '{resolved}': {e}") from e
+
+        if not model_path or not Path(model_path).is_file():
+            raise FileNotFoundError(
+                f"GGUF not found: {model_path}|Run on leader: python -m maxim.models.download --llm {resolved}"
+            )
+
+        # Determine port and API key (reuse current config)
+        try:
+            port = int(os.environ.get("MAXIM_AUTO_SPAWN_PORT", "8100"))
+        except ValueError:
+            port = 8100
+
+        api_key: str | None = None
+        try:
+            from maxim.tunnel.keys import read_key
+
+            api_key = read_key()
+        except Exception:
+            pass
+
+        previous_model = _active_model or "none"
+
+        # Drain in-flight requests (best-effort, 5s max)
+        try:
+            from maxim.models.language.lane_metrics import get_metrics_registry
+
+            metrics = get_metrics_registry().get("infer")
+            deadline = _time.time() + 5.0
+            while metrics.current_in_flight > 0 and _time.time() < deadline:
+                _time.sleep(0.25)
+        except Exception:
+            pass
+
+        # Stop current server
+        if _active_spawner is not None:
+            if logger is not None:
+                logger.info("LLM swap: stopping current server (model=%s)", _active_model)
+            _active_spawner.stop()
+            _active_spawner = None
+            _active_model = None
+
+        # Detect bind host
+        bind_host = "0.0.0.0"  # noqa: S104 — leader always binds all interfaces
+        try:
+            from maxim.runtime.leader_mode import detect_role
+
+            role_decision = detect_role()
+            bind_host = role_decision.bind_host
+        except Exception:
+            pass
+
+        # Start new server
+        n_ctx = cfg.n_ctx if cfg.n_ctx > 0 else 8192
+        spawner = LocalServerSpawner(
+            model_path=model_path,
+            port=port,
+            bind_host=bind_host,
+            n_ctx=n_ctx,
+            n_gpu_layers=cfg.n_gpu_layers,
+            api_key=api_key,
+        )
+
+        if logger is not None:
+            logger.info(
+                "LLM swap: starting %s (port=%d, n_ctx=%d)",
+                Path(model_path).name,
+                port,
+                n_ctx,
+            )
+
+        t0 = _time.time()
+        url = spawner.start(timeout_s=120.0)
+        startup_s = round(_time.time() - t0, 1)
+
+        if url is None:
+            raise RuntimeError(
+                f"Server failed to start for model '{resolved}'. Check GPU memory — the model may be too large."
+            )
+
+        _active_spawner = spawner
+        _active_model = resolved
+
+        return {
+            "status": "swapped",
+            "model": resolved,
+            "model_path": model_path,
+            "port": port,
+            "startup_s": startup_s,
+            "previous_model": previous_model,
+        }
+    finally:
+        _swap_lock.release()
+
+
 def _maybe_auto_spawn_tunnel_daemon(logger: Any | None) -> None:
     """Spawn the cloudflared tunnel daemon if leader mode + config + no daemon running.
 
     Opt out with MAXIM_AUTO_SPAWN_TUNNEL=0.
     """
     if os.environ.get("MAXIM_AUTO_SPAWN_TUNNEL", "").strip().lower() in (
-        "0", "false", "f", "no", "n", "off",
+        "0",
+        "false",
+        "f",
+        "no",
+        "n",
+        "off",
     ):
         return
     try:
@@ -706,16 +1019,14 @@ def _maybe_auto_spawn_tunnel_daemon(logger: Any | None) -> None:
     if cloudflared_already_running():
         if logger is not None:
             logger.info(
-                "Cloudflared daemon already running — skipping auto-spawn "
-                "(managed elsewhere, e.g. systemd service)"
+                "Cloudflared daemon already running — skipping auto-spawn (managed elsewhere, e.g. systemd service)"
             )
         return
     config_path = resolve_config_path()
     if config_path is None:
         if logger is not None:
             logger.debug(
-                "Tunnel auto-spawn skipped: no ~/.cloudflared/config.yml or "
-                "/etc/cloudflared/config.yml found."
+                "Tunnel auto-spawn skipped: no ~/.cloudflared/config.yml or /etc/cloudflared/config.yml found."
             )
         return
     spawner = TunnelDaemonSpawner(config_path=config_path)
@@ -751,6 +1062,7 @@ def _maybe_start_leader_proxy(
     # Start heartbeat monitor in leader mode (always on for leaders)
     try:
         from maxim.runtime.heartbeat import get_heartbeat_monitor
+
         get_heartbeat_monitor().start()
     except Exception:
         pass
@@ -765,6 +1077,7 @@ def _print_lane_banner(manager: "LaneBackendManager") -> None:
     at a glance.
     """
     import sys
+
     info = manager.describe()
     lines = [" " + "─" * 62, "  Maxim LLM lanes"]
     for lane, data in info.items():

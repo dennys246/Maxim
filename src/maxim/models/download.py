@@ -85,6 +85,13 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "url": "https://huggingface.co/Qwen/Qwen2-7B-Instruct-GGUF/resolve/main/qwen2-7b-instruct-q4_k_m.gguf",
         "filename": "qwen2-7b-instruct-q4_k_m.gguf",
     },
+    "qwen2.5-14b-instruct": {
+        "description": "Alibaba Qwen2.5 14B Instruct - Excellent instruction following, 32K context",
+        "size_gb": 8.5,
+        "quantization": "Q4_K_M",
+        "url": "https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf",
+        "filename": "Qwen2.5-14B-Instruct.Q4_K_M.gguf",
+    },
 }
 
 TTS_MODELS: dict[str, dict[str, Any]] = {
@@ -331,6 +338,7 @@ def download_vision(
                     dest = models_dir / model_info["filename"]
                     with zf.open(onnx_name) as src, open(dest, "wb") as dst:
                         import shutil
+
                         shutil.copyfileobj(src, dst)
                     print(f"  Extracted: {dest}")
             return True
@@ -398,9 +406,7 @@ def check_models(
 
     for name, info in TTS_MODELS.items():
         # TTS model is complete if all files exist
-        all_exist = all(
-            (tts_dir / f["filename"]).exists() for f in info["files"]
-        )
+        all_exist = all((tts_dir / f["filename"]).exists() for f in info["files"])
         status[f"tts:{name}"] = all_exist
 
     for name, info in VISION_MODELS.items():

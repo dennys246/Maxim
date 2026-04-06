@@ -118,12 +118,14 @@ def start_research_mode(
             for p in scenario.percepts:
                 text = p.get("cli_input", "")
                 if text:
-                    campaign_turns.append({
-                        "text": text.strip(),
-                        "phase": p.get("metadata", {}).get("phase", ""),
-                        "role": p.get("metadata", {}).get("experiment_role", ""),
-                        "tag": p.get("metadata", {}).get("scenario_tag", ""),
-                    })
+                    campaign_turns.append(
+                        {
+                            "text": text.strip(),
+                            "phase": p.get("metadata", {}).get("phase", ""),
+                            "role": p.get("metadata", {}).get("experiment_role", ""),
+                            "tag": p.get("metadata", {}).get("scenario_tag", ""),
+                        }
+                    )
             print(f"  Loaded {len(campaign_turns)} campaign turns from {campaign}")
         except Exception as e:
             logger.warning("Failed to load campaign YAML: %s", e)
@@ -131,29 +133,33 @@ def start_research_mode(
     # Build the researcher goal with concrete campaign steps
     researcher_goal = goal
     if campaign_turns:
-        turn_instructions = []
+        turn_lines = []
         for i, turn in enumerate(campaign_turns, 1):
             phase_label = f" [{turn['phase']}]" if turn["phase"] else ""
-            turn_instructions.append(
-                f"  Turn {i}{phase_label}: send_message with this text:\n"
-                f"    \"{turn['text'][:200]}\""
-            )
-        turns_block = "\n".join(turn_instructions)
+            # Show full text (up to 500 chars) so the LLM has the complete narrative
+            turn_lines.append(f"--- TURN {i}{phase_label} ---\n{turn['text'][:500]}")
+        turns_block = "\n\n".join(turn_lines)
         researcher_goal = (
             f"{goal}\n\n"
-            f"CAMPAIGN PROTOCOL — send these turns to the AUT via send_message, in order:\n"
+            f"CAMPAIGN PROTOCOL\n"
+            f"=================\n"
+            f"You MUST deliver the following narrative turns to the AUT, in order.\n"
+            f'For each turn, call: send_message(text="<the narrative text below>")\n\n'
+            f"IMPORTANT RULES:\n"
+            f"- Send the narrative text VERBATIM — do NOT paraphrase, summarize, or adapt it.\n"
+            f"- Do NOT invent your own probes or adversarial variations.\n"
+            f"- Do NOT skip turns or reorder them.\n"
+            f"- Wait for the AUT response after each turn before sending the next.\n\n"
             f"{turns_block}\n\n"
-            f"After ALL turns are sent:\n"
+            f"--- END OF CAMPAIGN TURNS ---\n\n"
+            f"After ALL {len(campaign_turns)} turns are sent and responses collected:\n"
             f"1. Use inspect_aut(query='memory_recall', params={{'keyword': 'Verath'}}) to check memory survival\n"
             f"2. Use inspect_aut(query='system_stats') for graph topology\n"
             f"3. Record results with record_experiment\n"
             f"4. Call finish_simulation with your findings"
         )
     elif campaign:
-        researcher_goal = (
-            f"{goal}\n\n"
-            f"Campaign file: {campaign} (failed to load — run manually with send_message)"
-        )
+        researcher_goal = f"{goal}\n\nCampaign file: {campaign} (failed to load — run manually with send_message)"
 
     # Run the researcher via the existing simulation orchestrator
     sim_result = start_simulation_mode(

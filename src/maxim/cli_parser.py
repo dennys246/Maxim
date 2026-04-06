@@ -66,6 +66,29 @@ def _build_parser() -> argparse.ArgumentParser:
         help="LLM profile name (overrides data/util/llm.json and $MAXIM_LLM_PROFILE).",
     )
     parser.add_argument(
+        "--cloud-fallback",
+        type=str,
+        default=None,
+        metavar="MODEL",
+        help="Add a cloud model as fallback on the infer lane (e.g., claude-sonnet, gpt-4o-mini). "
+        "Used when the primary (local/self-hosted) provider fails or is rate-limited.",
+    )
+    parser.add_argument(
+        "--cloud-lane",
+        type=str,
+        nargs=2,
+        default=None,
+        metavar=("LANE", "MODEL"),
+        help="Assign a cloud model to a specific lane (e.g., --cloud-lane review claude-haiku).",
+    )
+    parser.add_argument(
+        "--cloud-budget",
+        type=float,
+        default=None,
+        metavar="DOLLARS",
+        help="Max session cost in USD for cloud providers (default: $5.00).",
+    )
+    parser.add_argument(
         "--segmentation-model",
         type=str,
         default=None,
@@ -230,25 +253,26 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PATH",
         help="Run simulation. 'agent': autonomous orchestrator. "
-             "No argument: interactive REPL. Path: run scenario YAML.",
+        "No argument: interactive REPL. Path: run scenario YAML.",
     )
     parser.add_argument(
-        "--sim-goal", "--goal",
+        "--sim-goal",
+        "--goal",
         type=str,
         default=None,
         dest="sim_goal",
         metavar="GOAL",
-        help="Simulation goal for --sim agent mode (e.g., 'test safety boundaries'). "
-             "Alias: --goal",
+        help="Simulation goal for --sim agent mode (e.g., 'test safety boundaries'). Alias: --goal",
     )
     parser.add_argument(
-        "--sim-persona", "--persona",
+        "--sim-persona",
+        "--persona",
         type=str,
         default="adversarial",
         dest="sim_persona",
         metavar="PERSONA",
         help="Orchestrator persona for --sim agent (adversarial, cooperative, confused, "
-             "escalating, campaign, refinement). Alias: --persona",
+        "escalating, campaign, refinement). Alias: --persona",
     )
     parser.add_argument(
         "--aut-model",
@@ -257,8 +281,8 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="aut_model",
         metavar="MODEL",
         help="Separate LLM for the agent-under-test (e.g., mistral-7b). "
-             "Orchestrator/research agents use --language-model. "
-             "Enables dual-LLM mode for isolating memory vs context recall.",
+        "Orchestrator/research agents use --language-model. "
+        "Enables dual-LLM mode for isolating memory vs context recall.",
     )
     parser.add_argument(
         "--campaign",
@@ -267,13 +291,13 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="campaign",
         metavar="PATH",
         help="Campaign YAML(s) for --sim research mode. Glob patterns accepted "
-             "(e.g., scenarios/experiments/hippocampal_recall_*.yaml).",
+        "(e.g., scenarios/experiments/hippocampal_recall_*.yaml).",
     )
     parser.add_argument(
         "--continuous",
         action="store_true",
         help="Continuous simulation mode: never auto-complete, keep testing until /cancel. "
-             "Best with --persona infinite.",
+        "Best with --persona infinite.",
     )
     parser.add_argument(
         "--no-sim-env",
@@ -287,9 +311,9 @@ def _build_parser() -> argparse.ArgumentParser:
         default="auto",
         choices=["auto", "docker", "tmpdir"],
         help="Sandbox backend for simulation tool execution. "
-             "'auto' (default) uses Docker if available, else tmpdir with a "
-             "warning. 'docker' requires Docker. 'tmpdir' forces host-based "
-             "tmpdir isolation.",
+        "'auto' (default) uses Docker if available, else tmpdir with a "
+        "warning. 'docker' requires Docker. 'tmpdir' forces host-based "
+        "tmpdir isolation.",
     )
     parser.add_argument(
         "--sandbox-image",
@@ -297,9 +321,9 @@ def _build_parser() -> argparse.ArgumentParser:
         default="python:3.12-slim",
         metavar="IMAGE",
         help="Docker image for the sandbox container. Defaults to "
-             "python:3.12-slim. Catalog includes ubuntu:22.04, ubuntu:24.04, "
-             "debian:12-slim, rockylinux:9, almalinux:9, alpine:3.19, "
-             "and the RHEL UBI9 minimal image.",
+        "python:3.12-slim. Catalog includes ubuntu:22.04, ubuntu:24.04, "
+        "debian:12-slim, rockylinux:9, almalinux:9, alpine:3.19, "
+        "and the RHEL UBI9 minimal image.",
     )
     parser.add_argument(
         "--sandbox-network",
@@ -307,8 +331,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default="none",
         choices=["none", "bridge", "host"],
         help="Container network mode. 'none' (default) isolates the "
-             "container from the network; 'bridge' enables outbound "
-             "traffic; 'host' shares the host network stack.",
+        "container from the network; 'bridge' enables outbound "
+        "traffic; 'host' shares the host network stack.",
     )
     parser.add_argument(
         "--resume-sim",
@@ -316,7 +340,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="SESSION_ID",
         help="Resume a previous simulation session by ID (from data/sim_reports/). "
-             "Restores AUT memory state and provides previous findings as context.",
+        "Restores AUT memory state and provides previous findings as context.",
     )
     parser.add_argument(
         "--sim-report",
@@ -339,17 +363,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="SUBSYSTEMS",
         help="Enable debug tracing. Without args: all subsystems. With args: "
-             "comma-separated subsystem names (e.g., --debug hippo, --debug hippo,nac). "
-             "Subsystems: hippo (memory capture/recall/associations), nac (causal learning), "
-             "all (everything). Also settable via MAXIM_HIPPO_TRACE=1, MAXIM_LANE_TRACE=1.",
+        "comma-separated subsystem names (e.g., --debug hippo, --debug hippo,nac). "
+        "Subsystems: hippo (memory capture/recall/associations), nac (causal learning), "
+        "all (everything). Also settable via MAXIM_HIPPO_TRACE=1, MAXIM_LANE_TRACE=1.",
     )
     parser.add_argument(
         "--generate-simulation",
         type=str,
         default=None,
         metavar="DESCRIPTION",
-        help='Generate a simulation scenario YAML from a natural language description. '
-             'Example: --generate-simulation "user asks robot to pick up a cup"',
+        help="Generate a simulation scenario YAML from a natural language description. "
+        'Example: --generate-simulation "user asks robot to pick up a cup"',
     )
     parser.add_argument(
         "-o",

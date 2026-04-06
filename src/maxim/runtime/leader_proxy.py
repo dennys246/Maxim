@@ -253,12 +253,21 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
     def _handle_debug_status(self) -> None:
         gpu = _query_nvidia_smi()
+        # Include active LLM model info from lane_backends
+        active_model = None
+        try:
+            from maxim.runtime.lane_backends import _active_model
+
+            active_model = _active_model
+        except Exception:
+            pass
         self._send_json(
             200,
             {
                 "status": "ok",
                 "uptime_s": round(time.time() - self.start_time, 1),
                 "gpu": gpu,
+                "active_model": active_model,
                 "timestamp": time.time(),
             },
         )
@@ -782,6 +791,65 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         t = threading.Thread(target=_do_restart, name="admin.restart", daemon=True)
         t.start()
 
+    def _handle_admin_llm_swap(self) -> None:
+        """POST /v1/admin/llm-swap — hot-swap the LLM model.
+
+        Stops the current llama-cpp-server, resolves the new profile to a
+        GGUF path, and starts a fresh server.  Does NOT restart the Maxim
+        process — LeaderProxy stays alive throughout.
+
+        Body: {"model": "qwen2.5-14b"}
+        """
+        if os.environ.get("MAXIM_ALLOW_REMOTE_UPDATE", "").strip().lower() not in (
+            "1",
+            "true",
+            "t",
+            "yes",
+            "y",
+            "on",
+        ):
+            self._send_json(
+                403,
+                {"error": "Remote LLM swap disabled. Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader."},
+            )
+            return
+
+        content_length = int(self.headers.get("Content-Length", 0))
+        body: dict[str, Any] = {}
+        if content_length > 0:
+            try:
+                body = json.loads(self.rfile.read(content_length))
+            except Exception:
+                self._send_json(400, {"error": "Invalid JSON body"})
+                return
+
+        model = str(body.get("model", "")).strip()
+        if not model:
+            self._send_json(400, {"error": "Missing 'model' field in request body"})
+            return
+
+        logger.info("admin/llm-swap: peer=%s model=%s", self.client_address[0], model)
+
+        try:
+            from maxim.runtime.lane_backends import swap_llm_server
+
+            result = swap_llm_server(model, logger=logger)
+            self._send_json(200, result)
+        except ValueError as e:
+            self._send_json(400, {"error": str(e)})
+        except FileNotFoundError as e:
+            msg = str(e)
+            parts = msg.split("|", 1)
+            resp: dict[str, Any] = {"error": parts[0]}
+            if len(parts) > 1:
+                resp["hint"] = parts[1]
+            self._send_json(404, resp)
+        except RuntimeError as e:
+            if "already in progress" in str(e):
+                self._send_json(409, {"error": str(e)})
+            else:
+                self._send_json(500, {"error": str(e)})
+
     # ─── HTTP method dispatchers ──────────────────────────────────────
 
     def do_GET(self) -> None:  # noqa: N802
@@ -802,6 +870,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             return
         if stripped == "/v1/admin/restart":
             self._handle_admin_restart()
+            return
+        if stripped == "/v1/admin/llm-swap":
+            self._handle_admin_llm_swap()
             return
         if not self._check_admission():
             return

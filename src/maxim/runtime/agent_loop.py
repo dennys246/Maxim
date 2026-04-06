@@ -41,11 +41,7 @@ from maxim.runtime.approval import detect_approval_intent, _APPROVAL_YES, _APPRO
 def _safe_agent_name(agent: Any) -> str:
     raw = None
     try:
-        raw = (
-            getattr(agent, "state_name", None)
-            or getattr(agent, "agent_name", None)
-            or getattr(agent, "name", None)
-        )
+        raw = getattr(agent, "state_name", None) or getattr(agent, "agent_name", None) or getattr(agent, "name", None)
     except (AttributeError, TypeError) as e:
         log_swallowed_exception(e, operation="get_agent_name")
         raw = None
@@ -81,13 +77,15 @@ def _record_outcome(
     Appends to recent_outcomes, records reasoning carryover on llm_worker,
     and adds to context_pool.  Previously copy-pasted in ~10 locations.
     """
-    recent_outcomes.append({
-        "tool": tool_name,
-        "success": success,
-        "result": result_summary,
-        "error": error,
-        "timestamp": time.time(),
-    })
+    recent_outcomes.append(
+        {
+            "tool": tool_name,
+            "success": success,
+            "result": result_summary,
+            "error": error,
+            "timestamp": time.time(),
+        }
+    )
     if len(recent_outcomes) > max_recent:
         recent_outcomes.pop(0)
 
@@ -120,7 +118,7 @@ def run_agent_loop(
     run_id: str | None = None,
     stop_event: Any | None = None,
     on_step: Any | None = None,
-    on_event: Any | None = None,     # Fine-grained streaming callback
+    on_event: Any | None = None,  # Fine-grained streaming callback
     break_on_no_intent: bool = False,
     idle_sleep_s: float = 0.25,
     persist_every_n_steps: int = 10,
@@ -315,11 +313,13 @@ def run_agent_loop(
                             state.data["_replan_candidate"] = redecomposed
                             state.data["_replan_goal"] = str(goal)
                             if callable(on_event):
-                                on_event({
-                                    "type": "replan",
-                                    "depth": current_depth + 1,
-                                    "sub_actions": len(redecomposed.actions),
-                                })
+                                on_event(
+                                    {
+                                        "type": "replan",
+                                        "depth": current_depth + 1,
+                                        "sub_actions": len(redecomposed.actions),
+                                    }
+                                )
                     except Exception as e:
                         log_swallowed_exception(e, operation="adaptive_replan")
 
@@ -357,7 +357,7 @@ def run_agentic_loop(
     run_id: str | None = None,
     stop_event: Any | None = None,
     on_step: Any | None = None,
-    on_event: Any | None = None,     # Fine-grained streaming callback
+    on_event: Any | None = None,  # Fine-grained streaming callback
     idle_sleep_s: float = 0.05,  # Fast loop for responsiveness
     persist_every_n_steps: int = 10,
     target_hz: float = 30.0,  # Target loop frequency
@@ -413,6 +413,7 @@ def run_agentic_loop(
 
     # Create simulation adapter (Phase 4: isolate sim concerns)
     from maxim.runtime.sim_adapter import SimulationAdapter, NullSimulationAdapter
+
     if percept_source is not None:
         sim = SimulationAdapter(percept_source, action_sink, pain_bus)
     else:
@@ -547,7 +548,7 @@ def run_agentic_loop(
                 sim.log(
                     "PIPELINE",
                     f"Agent loop started: {_loop_name} target_hz={target_hz} "
-                    f"llm_worker={'YES' if llm_worker else 'no'}"
+                    f"llm_worker={'YES' if llm_worker else 'no'}",
                 )
                 _last_heartbeat_time[0] = loop_start
             elif loop_start - _last_heartbeat_time[0] >= 10.0:
@@ -592,7 +593,6 @@ def run_agentic_loop(
         if autonomy_controller.is_paused:
             time.sleep(idle_sleep_s)
             continue
-
 
         # 0.5 CHECK PERCEPT SOURCE EXHAUSTION (simulation mode)
         if sim.check_exhaustion(pending_proposal):
@@ -664,19 +664,23 @@ def run_agentic_loop(
                     pending_action_followup = None
                     logger.info(
                         "Preempted followup chain (%s) for new input: %s",
-                        _preempted_tool, cli_text[:60],
+                        _preempted_tool,
+                        cli_text[:60],
                     )
                     sim.log("PIPELINE", f"Preempted {_preempted_tool} followup for new CLI input")
                 if pending_proposal and getattr(pending_proposal, "strategy_used", None) in (
-                    "multi_step", "fallback",
+                    "multi_step",
+                    "fallback",
                 ):
                     _preempted_tool = (
                         pending_proposal.action.get("tool_name", "?")
-                        if isinstance(pending_proposal.action, dict) else "?"
+                        if isinstance(pending_proposal.action, dict)
+                        else "?"
                     )
                     logger.info(
                         "Preempted pending %s proposal for new input: %s",
-                        _preempted_tool, cli_text[:60],
+                        _preempted_tool,
+                        cli_text[:60],
                     )
                     sim.log("PIPELINE", f"Preempted pending {_preempted_tool} proposal for new CLI input")
                     pending_proposal = None
@@ -728,6 +732,7 @@ def run_agentic_loop(
             # Build a percept-like object from observation for context pool
             try:
                 from maxim.agents.bus import Percept
+
                 percept = None
                 if hasattr(observation, "get"):
                     # Mark as having maxim keyword if:
@@ -742,7 +747,9 @@ def run_agentic_loop(
                         has_keyword = True
                     else:
                         # Voice input - check for wake word
-                        has_keyword = bool(cli_input and ("maxim" in str(cli_input).lower() or "reachy" in str(cli_input).lower()))
+                        has_keyword = bool(
+                            cli_input and ("maxim" in str(cli_input).lower() or "reachy" in str(cli_input).lower())
+                        )
                     percept = Percept(
                         timestamp=time.time(),
                         source=observation.get("source", "observation"),
@@ -770,24 +777,25 @@ def run_agentic_loop(
             # can tie the llm_worker's "LLMProposal built" log to the
             # agent loop actually consuming it.
             if sim.is_sim_mode and new_proposal is not None:
-                _tool_name = (
-                    new_proposal.action.get("tool_name")
-                    if isinstance(new_proposal.action, dict) else None
-                )
+                _tool_name = new_proposal.action.get("tool_name") if isinstance(new_proposal.action, dict) else None
                 sim.log(
                     "EXEC",
                     f"Proposal consumed by {_loop_name}: tool={_tool_name} "
                     f"age={time.time() - new_proposal.timestamp:.2f}s",
                 )
             if new_proposal:
-                sim.log("EXEC", f"Proposal received: tool={new_proposal.action.get('tool_name') if isinstance(new_proposal.action, dict) else None}")
+                sim.log(
+                    "EXEC",
+                    f"Proposal received: tool={new_proposal.action.get('tool_name') if isinstance(new_proposal.action, dict) else None}",
+                )
 
                 # Staleness guard: discard proposals older than LLM timeout + margin
                 proposal_age = time.time() - new_proposal.timestamp
                 if proposal_age > 35.0:
                     logger.warning(
                         "Skipping stale LLM proposal (age=%.1fs, request_id=%s)",
-                        proposal_age, new_proposal.request_id,
+                        proposal_age,
+                        new_proposal.request_id,
                     )
                     sim.log("EXEC", f"DROPPED: stale proposal (age={proposal_age:.1f}s)")
                     new_proposal = None
@@ -804,8 +812,7 @@ def run_agentic_loop(
                         log_swallowed_exception(e, operation="on_event:inference_end")
                 if new_proposal.action:
                     tool_name = new_proposal.action.get("tool_name", "unknown")
-                    logger.info("LLM proposal received: tool=%s, confidence=%.2f",
-                                tool_name, new_proposal.confidence)
+                    logger.info("LLM proposal received: tool=%s, confidence=%.2f", tool_name, new_proposal.confidence)
                     sim.log("EXEC", f"LLM proposes: {tool_name} (confidence={new_proposal.confidence:.2f})")
                     # Log to agentic stream
                     log_agentic(
@@ -887,10 +894,10 @@ def run_agentic_loop(
             input_is_for_llm = "maxim" in pending_user_input.lower() or "reachy" in pending_user_input.lower()
 
         has_pending_llm_input = bool(
-            pending_user_input and
-            input_is_for_llm and
-            llm_worker is not None and
-            (time.time() - pending_input_time) < llm_response_timeout  # Timeout after 30s
+            pending_user_input
+            and input_is_for_llm
+            and llm_worker is not None
+            and (time.time() - pending_input_time) < llm_response_timeout  # Timeout after 30s
         )
 
         # Preemption hold check — skip goal proposal while holding
@@ -924,9 +931,7 @@ def run_agentic_loop(
                             confidence = float(intent.get("confidence", 0.5))
 
                             # Check if autonomy allows this action
-                            can_execute, reason = autonomy_controller.can_execute_action(
-                                action, confidence=confidence
-                            )
+                            can_execute, reason = autonomy_controller.can_execute_action(action, confidence=confidence)
 
                             # Log autonomy check
                             log_agentic(
@@ -955,7 +960,11 @@ def run_agentic_loop(
 
                                     if callable(on_event):
                                         try:
-                                            on_event(StreamEvent("tool_end", {"tool_name": action["tool_name"], "success": success}))
+                                            on_event(
+                                                StreamEvent(
+                                                    "tool_end", {"tool_name": action["tool_name"], "success": success}
+                                                )
+                                            )
                                         except Exception as e:
                                             log_swallowed_exception(e, operation="on_event:tool_end")
                                     log_agentic(
@@ -1026,7 +1035,10 @@ def run_agentic_loop(
                                                 state=state,
                                                 intent=intent,
                                                 decision={"action": action, "confidence": confidence},
-                                                action={"tool": action["tool_name"], "params": action.get("params", {})},
+                                                action={
+                                                    "tool": action["tool_name"],
+                                                    "params": action.get("params", {}),
+                                                },
                                                 result=result,
                                                 run_id=run_id or "",
                                             )
@@ -1048,7 +1060,9 @@ def run_agentic_loop(
                                         success=False,
                                         result_summary=None,
                                         error=str(e),
-                                        reasoning=getattr(pending_proposal, "reasoning", "") if pending_proposal else "",
+                                        reasoning=getattr(pending_proposal, "reasoning", "")
+                                        if pending_proposal
+                                        else "",
                                         recent_outcomes=recent_outcomes,
                                         max_recent=max_recent_outcomes,
                                         llm_worker=llm_worker,
@@ -1110,12 +1124,14 @@ def run_agentic_loop(
                         )
                         if not can_exec:
                             logger.warning("Parallel action %s rejected: %s", tool_name, reason)
-                            parallel_results.append({
-                                "tool": tool_name,
-                                "success": False,
-                                "error": f"Rejected: {reason}",
-                                "result": None,
-                            })
+                            parallel_results.append(
+                                {
+                                    "tool": tool_name,
+                                    "success": False,
+                                    "error": f"Rejected: {reason}",
+                                    "result": None,
+                                }
+                            )
                             continue
 
                         # Execute the action
@@ -1124,13 +1140,15 @@ def run_agentic_loop(
                         output = getattr(result, "output", None)
                         error = getattr(result, "error", None)
 
-                        parallel_results.append({
-                            "tool": tool_name,
-                            "params": parallel_action.get("params", {}),
-                            "success": success,
-                            "result": str(output)[:2000] if output else None,
-                            "error": error,
-                        })
+                        parallel_results.append(
+                            {
+                                "tool": tool_name,
+                                "params": parallel_action.get("params", {}),
+                                "success": success,
+                                "result": str(output)[:2000] if output else None,
+                                "error": error,
+                            }
+                        )
 
                         if not success:
                             all_succeeded = False
@@ -1143,12 +1161,14 @@ def run_agentic_loop(
 
                     except Exception as e:
                         logger.error("Parallel action %s failed: %s", tool_name, e)
-                        parallel_results.append({
-                            "tool": tool_name,
-                            "success": False,
-                            "error": str(e),
-                            "result": None,
-                        })
+                        parallel_results.append(
+                            {
+                                "tool": tool_name,
+                                "success": False,
+                                "error": str(e),
+                                "result": None,
+                            }
+                        )
                         all_succeeded = False
 
                 # Record individual outcomes so LLM has structured history
@@ -1234,8 +1254,7 @@ def run_agentic_loop(
                     pending_proposal = None
                     continue
 
-            logger.info("Executing LLM proposal: tool=%s, confidence=%.2f",
-                        action.get("tool_name"), confidence)
+            logger.info("Executing LLM proposal: tool=%s, confidence=%.2f", action.get("tool_name"), confidence)
 
             # Log LLM proposal received
             log_agentic(
@@ -1249,9 +1268,7 @@ def run_agentic_loop(
                 },
             )
 
-            can_execute, reason = autonomy_controller.can_execute_action(
-                action, confidence=confidence
-            )
+            can_execute, reason = autonomy_controller.can_execute_action(action, confidence=confidence)
 
             logger.info("Autonomy check: can_execute=%s, reason=%s", can_execute, reason)
 
@@ -1288,18 +1305,21 @@ def run_agentic_loop(
                         sim.log(
                             "EXEC",
                             f"Executing: {action.get('tool_name')} "
-                            f"by {_loop_name} params={list((action.get('params') or {}).keys())}"
+                            f"by {_loop_name} params={list((action.get('params') or {}).keys())}",
                         )
                     result = executor.execute(action)
                     exec_elapsed = time.time() - exec_start
                     success = getattr(result, "success", True)
-                    logger.info("Tool execution completed in %.2fs: %s, success=%s",
-                                exec_elapsed, action.get("tool_name"), success)
+                    logger.info(
+                        "Tool execution completed in %.2fs: %s, success=%s",
+                        exec_elapsed,
+                        action.get("tool_name"),
+                        success,
+                    )
                     if sim.is_sim_mode:
                         sim.log(
                             "EXEC",
-                            f"Completed: {action.get('tool_name')} "
-                            f"success={success} elapsed={exec_elapsed:.2f}s"
+                            f"Completed: {action.get('tool_name')} success={success} elapsed={exec_elapsed:.2f}s",
                         )
 
                     # Auto-recover: write_file failed because file exists → retry with overwrite
@@ -1308,12 +1328,14 @@ def run_agentic_loop(
                         and action.get("tool_name") == "write_file"
                         and "already exists" in str(getattr(result, "error", "")).lower()
                     ):
+                        raw_params = action.get("params")
+                        safe_params = raw_params if isinstance(raw_params, dict) else {}
                         logger.info(
                             "Auto-recovery: retrying write_file with overwrite=True for %s",
-                            action.get("params", {}).get("path", "?"),
+                            safe_params.get("path", "?"),
                         )
                         retry_action = dict(action)
-                        retry_params = dict(retry_action.get("params", {}))
+                        retry_params = dict(safe_params)
                         retry_params["overwrite"] = True
                         retry_action["params"] = retry_params
                         result = executor.execute(retry_action)
@@ -1394,6 +1416,7 @@ def run_agentic_loop(
                     current_mode = state.data.get("mode", "live")
 
                     from maxim.modes.definitions import get_tool_followup_type
+
                     followup_type = get_tool_followup_type(tool_name, current_mode)
 
                     # Store more result for tools that need processing (up to 3000 chars)
@@ -1409,9 +1432,7 @@ def run_agentic_loop(
                                     title = item.get("title", "")
                                     url = item.get("url", "")
                                     snippet = item.get("snippet", "")
-                                    formatted_parts.append(
-                                        f"[{i}] {title}\n    URL: {url}\n    {snippet}"
-                                    )
+                                    formatted_parts.append(f"[{i}] {title}\n    URL: {url}\n    {snippet}")
                             result_str = "\n\n".join(formatted_parts)[:result_limit]
                         else:
                             result_str = str(output)[:result_limit]
@@ -1465,13 +1486,7 @@ def run_agentic_loop(
                     # (e.g. sim orchestrator's catch-all 'respond' rejects →
                     # LLM should immediately re-think, not stall for 60s).
                     # Note: Use 'is not None' to handle empty lists [] which are falsy but still valid output
-                    should_followup = (
-                        followup_type
-                        and (
-                            (success and output is not None)
-                            or followup_type == "process"
-                        )
-                    )
+                    should_followup = followup_type and ((success and output is not None) or followup_type == "process")
                     if should_followup:
                         triggering_input = getattr(pending_proposal, "triggering_input", "")
                         pending_action_followup = ActionFollowup(
@@ -1482,12 +1497,15 @@ def run_agentic_loop(
                             mode=current_mode,
                             timestamp=time.time(),
                         )
-                        logger.info("Tool %s completed with followup_type=%s, queuing follow-up", tool_name, followup_type)
+                        logger.info(
+                            "Tool %s completed with followup_type=%s, queuing follow-up", tool_name, followup_type
+                        )
 
                     # Track conversation history for response/speak actions
                     tool_name = action.get("tool_name", "")
                     if tool_name in ("respond", "speak") and success:
-                        params = action.get("params", {})
+                        raw_params = action.get("params")
+                        params = raw_params if isinstance(raw_params, dict) else {}
                         response_message = params.get("message") or params.get("text", "")
                         triggering_input = getattr(pending_proposal, "triggering_input", "")
                         if response_message and triggering_input:
@@ -1712,14 +1730,11 @@ def run_agentic_loop(
 
                         # Queue follow-up so LLM can continue
                         from maxim.modes.definitions import get_tool_followup_type
+
                         current_mode = state.data.get("mode", "live")
                         followup_type = get_tool_followup_type(tool_name, current_mode)
-                        should_followup = (
-                            followup_type
-                            and (
-                                (success and output is not None)
-                                or followup_type == "process"
-                            )
+                        should_followup = followup_type and (
+                            (success and output is not None) or followup_type == "process"
                         )
                         if should_followup:
                             pending_action_followup = ActionFollowup(
@@ -1752,7 +1767,9 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         # Diagnostic: trace why LLM submission is skipped
         if llm_worker and pending_proposal is not None and cli_input and sim.is_sim_mode:
-            _pp_tool = pending_proposal.action.get("tool_name", "?") if isinstance(pending_proposal.action, dict) else "?"
+            _pp_tool = (
+                pending_proposal.action.get("tool_name", "?") if isinstance(pending_proposal.action, dict) else "?"
+            )
             sim.log("PIPELINE", f"LLM gate BLOCKED: pending_proposal={_pp_tool}, new cli_input={str(cli_input)[:40]}")
         if llm_worker and pending_proposal is None:
             now = time.time()
@@ -1772,6 +1789,7 @@ def run_agentic_loop(
                     # processed because memory.build_context() returned None.
                     if pending_action_followup and context is None:
                         from maxim.agents.bus import StructuredContext
+
                         context = StructuredContext(
                             timestamp=time.time(),
                             mode=state.data.get("mode", "observe"),
@@ -1810,29 +1828,46 @@ def run_agentic_loop(
                     if context:
                         # Known commands that should NOT be sent to LLM
                         # These are handled by Selfy's phrase response system
-                        SKIP_LLM_COMMANDS = frozenset({
-                            # System commands
-                            "maxim shutdown", "shutdown maxim",
-                            "maxim stop", "stop maxim",
-                            "maxim pause", "pause maxim",
-                            "maxim resume", "resume maxim",
-                            # Sleep/wake (processing state)
-                            "maxim sleep", "sleep maxim",
-                            "maxim nap", "maxim rest",
-                            "maxim wake", "wake maxim",
-                            "maxim wake up", "wake up maxim",
-                            # Strategy switching
-                            "maxim observe", "observe maxim", "maxim watch",
-                            "maxim explore", "explore maxim",
-                            "maxim research", "research maxim",
-                            "maxim assist", "maxim help",
-                            "maxim reflect", "maxim reflection",
-                            "maxim learn", "maxim train",
-                            # Mode switching
-                            "maxim passive",
-                            "maxim active",
-                            "maxim singularity",
-                        })
+                        SKIP_LLM_COMMANDS = frozenset(
+                            {
+                                # System commands
+                                "maxim shutdown",
+                                "shutdown maxim",
+                                "maxim stop",
+                                "stop maxim",
+                                "maxim pause",
+                                "pause maxim",
+                                "maxim resume",
+                                "resume maxim",
+                                # Sleep/wake (processing state)
+                                "maxim sleep",
+                                "sleep maxim",
+                                "maxim nap",
+                                "maxim rest",
+                                "maxim wake",
+                                "wake maxim",
+                                "maxim wake up",
+                                "wake up maxim",
+                                # Strategy switching
+                                "maxim observe",
+                                "observe maxim",
+                                "maxim watch",
+                                "maxim explore",
+                                "explore maxim",
+                                "maxim research",
+                                "research maxim",
+                                "maxim assist",
+                                "maxim help",
+                                "maxim reflect",
+                                "maxim reflection",
+                                "maxim learn",
+                                "maxim train",
+                                # Mode switching
+                                "maxim passive",
+                                "maxim active",
+                                "maxim singularity",
+                            }
+                        )
 
                         # Check for NEW CLI input (not already processed)
                         # CLI input always goes to LLM (maxim prefix presumed)
@@ -1844,7 +1879,9 @@ def run_agentic_loop(
                                     cli_lower = cli_input.lower().strip()
                                     # CLI source: always process (prefix presumed)
                                     # Voice source: require "maxim" or "reachy" wake word
-                                    should_process = (input_source == "CLI") or ("maxim" in cli_lower) or ("reachy" in cli_lower)
+                                    should_process = (
+                                        (input_source == "CLI") or ("maxim" in cli_lower) or ("reachy" in cli_lower)
+                                    )
                                     if should_process:
                                         # Skip LLM for known commands (handled by Selfy)
                                         if cli_lower in SKIP_LLM_COMMANDS:
@@ -1907,7 +1944,12 @@ def run_agentic_loop(
                                 context.cli_inputs.append(synthetic_input)
                             else:
                                 context.cli_inputs = [synthetic_input]
-                            logger.info("Injected action followup into context: type=%s, tool=%s, result_len=%d", followup_type, followup_tool, len(followup_result))
+                            logger.info(
+                                "Injected action followup into context: type=%s, tool=%s, result_len=%d",
+                                followup_type,
+                                followup_tool,
+                                len(followup_result),
+                            )
                             # Clear the followup after processing
                             pending_action_followup = None
 
@@ -1916,13 +1958,17 @@ def run_agentic_loop(
                         if sim.is_sim_mode and context and context.cli_inputs:
                             _unprocessed = [c for c in context.cli_inputs if c not in processed_cli_inputs]
                             if _unprocessed:
-                                sim.log("PIPELINE", f"LLM skip: has_meaningful=False but {len(_unprocessed)} unprocessed cli_inputs (all already processed)")
+                                sim.log(
+                                    "PIPELINE",
+                                    f"LLM skip: has_meaningful=False but {len(_unprocessed)} unprocessed cli_inputs (all already processed)",
+                                )
                         context = None  # Skip this submission
 
                     # Sleep state: Skip LLM unless wake keyword detected
                     # This allows background processing while monitoring for activation
                     if is_sleeping and context:
                         from maxim.modes.definitions import is_wake_keyword
+
                         has_wake_keyword = False
                         if context.cli_inputs:
                             for cli in context.cli_inputs:
@@ -1969,7 +2015,9 @@ def run_agentic_loop(
                             )
 
                             # Get available tools for exploration
-                            exploration_tools = exploration_mode_def.get_available_tools(_all_tools) if _all_tools else set()
+                            exploration_tools = (
+                                exploration_mode_def.get_available_tools(_all_tools) if _all_tools else set()
+                            )
 
                             mode_info = ModeInfo(
                                 name="exploration",
@@ -2039,7 +2087,11 @@ def run_agentic_loop(
                         # Filter CLI inputs to only include new ones (not already processed)
                         # This prevents the LLM from seeing the same input multiple times
                         if context.cli_inputs:
-                            new_inputs = [inp for inp in context.cli_inputs if inp not in processed_cli_inputs or inp == new_cli_input]
+                            new_inputs = [
+                                inp
+                                for inp in context.cli_inputs
+                                if inp not in processed_cli_inputs or inp == new_cli_input
+                            ]
                             # Only keep the most recent new input
                             if new_cli_input:
                                 context.cli_inputs = [new_cli_input]
@@ -2062,7 +2114,9 @@ def run_agentic_loop(
                                     tool_descriptions[name] = {
                                         "description": tool.description,
                                         "params": {
-                                            k: f"({v[0].__name__}, default={v[1]!r})" if isinstance(v, tuple) else v.__name__
+                                            k: f"({v[0].__name__}, default={v[1]!r})"
+                                            if isinstance(v, tuple)
+                                            else v.__name__
                                             for k, v in getattr(tool, "input_schema", {}).items()
                                         },
                                         "example": None,
@@ -2077,9 +2131,7 @@ def run_agentic_loop(
                         )
 
                         # Get conversation history for context
-                        conversation_history_text = context_pool.get_conversation_text(
-                            max_turns=5
-                        )
+                        conversation_history_text = context_pool.get_conversation_text(max_turns=5)
 
                         # Check for pending modification request
                         pending_modification = state.data.pop("pending_modification", None)
@@ -2118,7 +2170,9 @@ def run_agentic_loop(
                             recent_outcomes=recent_outcomes,
                             use_tool_prompting=use_tool_prompting and bool(available_tools),
                             # Use modification text as triggering_input if no new input but pending modification
-                            triggering_input=new_cli_input or followup_original_query or (pending_modification.get("user_modification", "") if pending_modification else ""),
+                            triggering_input=new_cli_input
+                            or followup_original_query
+                            or (pending_modification.get("user_modification", "") if pending_modification else ""),
                             conversation_history_text=conversation_history_text,
                             pending_modification=pending_modification,
                             prefetch_context=prefetch_context_text,
@@ -2137,12 +2191,19 @@ def run_agentic_loop(
                             if is_followup:
                                 logger.info("Submitted followup to LLM for processing")
                             elif new_cli_input:
-                                logger.info("Submitted to LLM: %s", new_cli_input[:50] if len(new_cli_input) > 50 else new_cli_input)
+                                logger.info(
+                                    "Submitted to LLM: %s",
+                                    new_cli_input[:50] if len(new_cli_input) > 50 else new_cli_input,
+                                )
                             log_agentic(
                                 "agent_loop",
                                 "llm_submit",
                                 {
-                                    "input": new_cli_input[:50] if new_cli_input else "followup" if is_followup else None,
+                                    "input": new_cli_input[:50]
+                                    if new_cli_input
+                                    else "followup"
+                                    if is_followup
+                                    else None,
                                     "mode": mode_info.name,
                                     "autonomy": autonomy_controller.current_level.value,
                                     "tools_available": len(available_tools),
@@ -2152,6 +2213,7 @@ def run_agentic_loop(
 
                 except Exception as e:
                     import traceback
+
                     logger.warning(f"Failed to submit context to LLM: {type(e).__name__}: {e}")
                     logger.debug(f"Full traceback:\n{traceback.format_exc()}")
 
@@ -2160,13 +2222,15 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         try:
             if callable(on_step):
-                on_step({
-                    "step": step_num,
-                    "state": state,
-                    "memory": memory,
-                    "autonomy_level": autonomy_controller.current_level.value,
-                    "pending_proposal": pending_proposal is not None,
-                })
+                on_step(
+                    {
+                        "step": step_num,
+                        "state": state,
+                        "memory": memory,
+                        "autonomy_level": autonomy_controller.current_level.value,
+                        "pending_proposal": pending_proposal is not None,
+                    }
+                )
         except Exception:
             logger.debug("on_step callback failed", exc_info=True)
 

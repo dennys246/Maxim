@@ -51,6 +51,8 @@ def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
         return _cmd_update(list(argv[1:]))
     if action == "restart":
         return _cmd_restart(list(argv[1:]))
+    if action == "llm":
+        return _cmd_llm(list(argv[1:]))
     if action == "version":
         return _cmd_version(list(argv[1:]))
     if action == "logs":
@@ -76,6 +78,7 @@ def _print_peer_usage() -> None:
     print("  test <url>       Verify a leader URL is reachable + authenticated")
     print("  update [url]     Pull + install on leader (--dry-run to preview)")
     print("  restart [url]    Soft-restart maxim on leader (reloads code)")
+    print("  llm <model>     Hot-swap the LLM model on the leader")
     print("  version [url]    Show maxim version on leader (and local)")
     print("  logs [url]       Tail live logs from leader (-f to follow)")
 
@@ -494,6 +497,155 @@ def _cmd_restart(argv: list[str]) -> int:
 
     print(f"Unexpected status: {status}")
     print(json.dumps(data, indent=2))
+    return 1
+
+
+def _cmd_llm_status(argv: list[str]) -> int:
+    """Show what LLM model is running on the leader."""
+    import json
+    import urllib.error
+    import urllib.request
+
+    url: str | None = None
+    for a in argv:
+        if a.startswith("http"):
+            url = a
+
+    if url is None:
+        cfg = read_peer_config()
+        if cfg is None:
+            print("No peer config. Provide a URL.", file=sys.stderr)
+            return 1
+        url = cfg.url
+
+    base = url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+
+    # Query debug/status (no auth required for debug endpoints)
+    req = urllib.request.Request(
+        f"{base}/v1/debug/status",
+        headers={"User-Agent": "maxim-peer/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            data = json.loads(resp.read())
+    except Exception as e:
+        print(f"  Failed to query leader: {e}", file=sys.stderr)
+        return 1
+
+    model = data.get("active_model") or "unknown"
+    uptime = data.get("uptime_s", 0)
+    gpu = data.get("gpu") or {}
+    gpu_util = gpu.get("utilization", "?")
+    gpu_mem = gpu.get("memory_used", "?")
+    gpu_total = gpu.get("memory_total", "?")
+
+    print("  Leader LLM status:")
+    print(f"    Model:   {model}")
+    print(f"    Uptime:  {int(uptime)}s")
+    if isinstance(gpu_util, (int, float)):
+        print(f"    GPU:     {gpu_util}% util, {gpu_mem}/{gpu_total} MB VRAM")
+    return 0
+
+
+def _cmd_llm(argv: list[str]) -> int:
+    """Hot-swap the LLM model on the leader via /v1/admin/llm-swap."""
+    import json
+    import time
+    import urllib.error
+    import urllib.request
+
+    if not argv or argv[0] in ("-h", "--help"):
+        print("Usage: maxim peer llm <model> [url]")
+        print("       maxim peer llm --status [url]")
+        print()
+        print("Hot-swap the LLM running on the leader's llama-cpp-server.")
+        print("Stops the current model, loads the new one, and health-checks.")
+        print()
+        print("Options:")
+        print("  --status         Show what model is currently running on the leader")
+        print()
+        print("Examples:")
+        print("  maxim peer llm qwen2.5-14b")
+        print("  maxim peer llm mistral-7b")
+        print("  maxim peer llm --status")
+        return 0
+
+    # Check for --status flag
+    if "--status" in argv:
+        return _cmd_llm_status([a for a in argv if a != "--status"])
+
+    model = argv[0]
+    url: str | None = None
+    key: str | None = None
+
+    for a in argv[1:]:
+        if a.startswith("http"):
+            url = a
+
+    if url is None:
+        cfg = read_peer_config()
+        if cfg is None:
+            print("No peer config. Provide a URL: maxim peer llm <model> <url>", file=sys.stderr)
+            return 1
+        url = cfg.url
+        key = cfg.api_key
+
+    base = url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    endpoint = f"{base}/v1/admin/llm-swap"
+
+    body = json.dumps({"model": model}).encode()
+    req = urllib.request.Request(
+        endpoint,
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "maxim-peer/1.0",
+        },
+    )
+    if key:
+        req.add_header("Authorization", f"Bearer {key}")
+
+    print(f"  Swapping leader to {model}...")
+    t0 = time.time()
+
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:  # noqa: S310
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        try:
+            data = json.loads(e.read())
+        except Exception:
+            data = {"error": str(e)}
+        error_msg = data.get("error", str(e))
+        hint = data.get("hint", "")
+        print(f"  Error ({e.code}): {error_msg}", file=sys.stderr)
+        if hint:
+            print(f"  Hint: {hint}", file=sys.stderr)
+        return 1
+    except urllib.error.URLError as e:
+        print(f"  Connection failed: {e.reason}", file=sys.stderr)
+        return 1
+
+    elapsed = round(time.time() - t0, 1)
+    status = data.get("status", "")
+
+    if status == "already_running":
+        print(f"  Already running {data.get('model', model)} — no swap needed.")
+        return 0
+
+    if status == "swapped":
+        prev = data.get("previous_model", "?")
+        new_model = data.get("model", model)
+        startup = data.get("startup_s", elapsed)
+        print(f"  Done: {prev} → {new_model} ({startup}s startup, {elapsed}s total)")
+        return 0
+
+    print(f"  Unexpected response: {json.dumps(data, indent=2)}")
     return 1
 
 

@@ -75,6 +75,9 @@ _PROFILE_ALIASES: dict[str, str] = {
     "qwen": "qwen2-7b-instruct",
     "qwen2": "qwen2-7b-instruct",
     "qwen2-7b": "qwen2-7b-instruct",
+    "qwen2.5-14b": "qwen2.5-14b-instruct",
+    "qwen2.5": "qwen2.5-14b-instruct",
+    "qwen14b": "qwen2.5-14b-instruct",
     # Gemma models
     "gemma": "gemma-2b-it",
     "gemma-2b": "gemma-2b-it",
@@ -84,6 +87,16 @@ _PROFILE_ALIASES: dict[str, str] = {
     "mistral-torch": "mistral-7b-instruct-torch",
     "llama3-torch": "llama3-8b-instruct-torch",
     "phi3-torch": "phi3-mini-torch",
+    # Cloud providers (Anthropic)
+    "claude": "claude-sonnet-4-5-20250514",
+    "claude-sonnet": "claude-sonnet-4-5-20250514",
+    "claude-haiku": "claude-haiku-4-5-20251001",
+    "claude-opus": "claude-opus-4-5-20250514",
+    # Cloud providers (OpenAI)
+    "gpt4o": "gpt-4o",
+    "gpt-4o": "gpt-4o",
+    "gpt4o-mini": "gpt-4o-mini",
+    "gpt-4o-mini": "gpt-4o-mini",
 }
 
 _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
@@ -142,6 +155,14 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "phi3",
         "stop": ["<|end|>", "<|endoftext|>"],
         "n_ctx": 4096,
+    },
+    "qwen2.5-14b-instruct": {
+        "backend": "llama_cpp",
+        "model": "qwen2.5-14b-instruct",
+        "model_base": "Qwen2.5-14B-Instruct",
+        "prompt_style": "chatml",
+        "stop": ["<|im_end|>", "<|endoftext|>"],
+        "n_ctx": 32768,
     },
     "qwen2-7b-instruct": {
         "backend": "llama_cpp",
@@ -204,6 +225,53 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "n_ctx": 4096,
         "quantization": "F16",
     },
+    # Cloud providers (Anthropic)
+    "claude-sonnet-4-5-20250514": {
+        "backend": "anthropic",
+        "model": "claude-sonnet-4-5-20250514",
+        "model_base": "claude-sonnet-4-5-20250514",
+        "prompt_style": "chatml",
+        "n_ctx": 200000,
+        "cloud": True,
+        "api_key_env": "ANTHROPIC_API_KEY",
+    },
+    "claude-haiku-4-5-20251001": {
+        "backend": "anthropic",
+        "model": "claude-haiku-4-5-20251001",
+        "model_base": "claude-haiku-4-5-20251001",
+        "prompt_style": "chatml",
+        "n_ctx": 200000,
+        "cloud": True,
+        "api_key_env": "ANTHROPIC_API_KEY",
+    },
+    "claude-opus-4-5-20250514": {
+        "backend": "anthropic",
+        "model": "claude-opus-4-5-20250514",
+        "model_base": "claude-opus-4-5-20250514",
+        "prompt_style": "chatml",
+        "n_ctx": 200000,
+        "cloud": True,
+        "api_key_env": "ANTHROPIC_API_KEY",
+    },
+    # Cloud providers (OpenAI)
+    "gpt-4o": {
+        "backend": "openai",
+        "model": "gpt-4o",
+        "model_base": "gpt-4o",
+        "prompt_style": "chatml",
+        "n_ctx": 128000,
+        "cloud": True,
+        "api_key_env": "OPENAI_API_KEY",
+    },
+    "gpt-4o-mini": {
+        "backend": "openai",
+        "model": "gpt-4o-mini",
+        "model_base": "gpt-4o-mini",
+        "prompt_style": "chatml",
+        "n_ctx": 128000,
+        "cloud": True,
+        "api_key_env": "OPENAI_API_KEY",
+    },
 }
 
 
@@ -213,6 +281,7 @@ def _normalize_profile(name: Any) -> str:
         return ""
     key = raw.strip().lower().replace("_", "-").replace(" ", "")
     return _PROFILE_ALIASES.get(key, raw.strip())
+
 
 def normalize_llm_profile(name: Any) -> str:
     return _normalize_profile(name)
@@ -423,13 +492,20 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
         or default.model
     ).strip()
     # Get quantization level (default Q4_K_M)
-    quantization = str(
-        os.getenv(
-            "MAXIM_LLM_QUANTIZATION",
-            profile_cfg.get("quantization", raw.get("quantization", builtin.get("quantization", default.quantization))),
+    quantization = (
+        str(
+            os.getenv(
+                "MAXIM_LLM_QUANTIZATION",
+                profile_cfg.get(
+                    "quantization", raw.get("quantization", builtin.get("quantization", default.quantization))
+                ),
+            )
+            or default.quantization
         )
-        or default.quantization
-    ).strip().upper().replace("-", "_")
+        .strip()
+        .upper()
+        .replace("-", "_")
+    )
     if quantization not in QUANTIZATION_LEVELS:
         quantization = DEFAULT_QUANTIZATION
 
@@ -514,6 +590,11 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
     prompt_profiles = raw.get("prompt_profiles") if isinstance(raw.get("prompt_profiles"), dict) else {}
     pricing = raw.get("pricing") if isinstance(raw.get("pricing"), dict) else {}
     redaction = raw.get("redaction") if isinstance(raw.get("redaction"), dict) else {}
+    # Allow env var to set a default redaction policy (used by --cloud-* CLI flags)
+    env_redaction_policy = os.environ.get("MAXIM_LLM_REDACTION_POLICY", "").strip()
+    if env_redaction_policy and not redaction.get("policy"):
+        redaction = dict(redaction)
+        redaction["policy"] = env_redaction_policy
     contemplation_raw = raw.get("contemplation")
     contemplation = tuple(contemplation_raw.items()) if isinstance(contemplation_raw, dict) else ()
 
