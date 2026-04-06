@@ -53,6 +53,8 @@ def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
         return _cmd_restart(list(argv[1:]))
     if action == "version":
         return _cmd_version(list(argv[1:]))
+    if action == "logs":
+        return _cmd_logs(list(argv[1:]))
     # Fall through to maxim.doctor.cli for `peer test` (kept in doctor/ because
     # test is a diagnostic, not a configuration subcommand)
     if action == "test":
@@ -75,6 +77,7 @@ def _print_peer_usage() -> None:
     print("  update [url]     Pull + install on leader (--dry-run to preview)")
     print("  restart [url]    Soft-restart maxim on leader (reloads code)")
     print("  version [url]    Show maxim version on leader (and local)")
+    print("  logs [url]       Tail live logs from leader (-f to follow)")
 
 
 # ─── connect ──────────────────────────────────────────────────────────────
@@ -496,6 +499,112 @@ def _cmd_version(argv: list[str]) -> int:
             print("  Version mismatch! Run: maxim peer update && maxim peer restart")
 
     return 0
+
+
+def _cmd_logs(argv: list[str]) -> int:
+    """Tail logs from the leader via /v1/debug/logs (polling)."""
+    import json
+    import time
+    import urllib.error
+    import urllib.request
+    from datetime import datetime
+
+    url: str | None = None
+    key: str | None = None
+    follow = False
+    poll_interval = 2.0
+    limit = 50
+
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a in ("-f", "--follow"):
+            follow = True
+        elif a == "--interval" and i + 1 < len(argv):
+            i += 1
+            poll_interval = max(0.5, float(argv[i]))
+        elif a == "--limit" and i + 1 < len(argv):
+            i += 1
+            limit = int(argv[i])
+        elif a.startswith("http"):
+            url = a
+        i += 1
+
+    if url is None:
+        cfg = read_peer_config()
+        if cfg is None:
+            print("No peer config. Provide a URL: maxim peer logs <url>", file=sys.stderr)
+            return 1
+        url = cfg.url
+        key = cfg.api_key
+
+    base = url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+
+    since_seq = -1
+
+    def _fetch(seq: int, n: int) -> dict | None:
+        endpoint = f"{base}/v1/debug/logs?since_seq={seq}&limit={n}"
+        req = urllib.request.Request(
+            endpoint,
+            method="GET",
+            headers={"User-Agent": "maxim-peer/1.0"},
+        )
+        if key:
+            req.add_header("Authorization", f"Bearer {key}")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            print(f"  Error: HTTP {e.code}", file=sys.stderr)
+            return None
+        except Exception as e:
+            print(f"  Connection error: {e}", file=sys.stderr)
+            return None
+
+    def _print_entry(entry: dict) -> None:
+        ts = datetime.fromtimestamp(entry["ts"]).strftime("%H:%M:%S.%f")[:-3]
+        level = entry.get("level", "?")
+        logger_name = entry.get("logger", "")
+        # Shorten logger name: maxim.runtime.foo → runtime.foo
+        if logger_name.startswith("maxim."):
+            logger_name = logger_name[6:]
+        msg = entry.get("message", "")
+
+        # Color by level
+        level_colors = {"ERROR": "\033[31m", "WARNING": "\033[33m", "INFO": "\033[36m", "DEBUG": "\033[90m"}
+        color = level_colors.get(level, "")
+        reset = "\033[0m" if color else ""
+
+        print(f"{color}{ts} [{level:<7}] [{logger_name}] {msg}{reset}")
+
+    # Initial fetch
+    data = _fetch(since_seq, limit)
+    if data is None:
+        return 1
+
+    for entry in data.get("entries", []):
+        _print_entry(entry)
+    since_seq = data.get("latest_seq", since_seq)
+
+    if not follow:
+        return 0
+
+    # Follow mode — poll until Ctrl+C
+    print(f"\n--- Following (poll every {poll_interval}s, Ctrl+C to stop) ---\n")
+    try:
+        while True:
+            time.sleep(poll_interval)
+            data = _fetch(since_seq, 200)
+            if data is None:
+                continue
+            for entry in data.get("entries", []):
+                _print_entry(entry)
+            since_seq = data.get("latest_seq", since_seq)
+    except KeyboardInterrupt:
+        print("\n  Stopped.")
+        return 0
 
 
 __all__ = ["run_peer_connect_subcommand"]

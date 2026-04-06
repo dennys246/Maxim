@@ -72,6 +72,69 @@ def _query_nvidia_smi() -> dict[str, Any] | None:
         return None
 
 
+# ─── log ring buffer ─────────────────────────────────────────────────────
+
+_MAX_LOG_LINES = 500
+
+
+class _LogBuffer(logging.Handler):
+    """Logging handler that captures records into a thread-safe ring buffer.
+
+    Installed on the root 'maxim' logger so all subsystem logs are captured.
+    The /v1/debug/logs endpoint reads from this buffer.
+    """
+
+    def __init__(self, maxlen: int = _MAX_LOG_LINES) -> None:
+        super().__init__()
+        self._buffer: collections.deque[dict[str, Any]] = collections.deque(maxlen=maxlen)
+        self._lock = threading.Lock()
+        self._seq = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            entry = {
+                "seq": self._seq,
+                "ts": record.created,
+                "level": record.levelname,
+                "logger": record.name,
+                "message": self.format(record),
+            }
+            with self._lock:
+                self._buffer.append(entry)
+                self._seq += 1
+        except Exception:
+            pass  # Never crash the logging system
+
+    def get_since(self, since_ts: float = 0.0, since_seq: int = -1, limit: int = 200) -> list[dict[str, Any]]:
+        """Return log entries after the given timestamp or sequence number."""
+        with self._lock:
+            if since_seq >= 0:
+                entries = [e for e in self._buffer if e["seq"] > since_seq]
+            else:
+                entries = [e for e in self._buffer if e["ts"] > since_ts]
+        return entries[-limit:]
+
+    def latest_seq(self) -> int:
+        with self._lock:
+            return self._seq - 1 if self._seq > 0 else -1
+
+
+# Singleton — installed once, shared across handler instances via class attr.
+_log_buffer: _LogBuffer | None = None
+
+
+def _ensure_log_buffer() -> _LogBuffer:
+    """Install the log buffer handler on the maxim logger (idempotent)."""
+    global _log_buffer
+    if _log_buffer is not None:
+        return _log_buffer
+    _log_buffer = _LogBuffer()
+    _log_buffer.setFormatter(logging.Formatter("%(message)s"))
+    _log_buffer.setLevel(logging.DEBUG)
+    logging.getLogger("maxim").addHandler(_log_buffer)
+    return _log_buffer
+
+
 # ─── request ring buffer ──────────────────────────────────────────────────
 
 
@@ -221,6 +284,29 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         except Exception:
             self._send_json(200, {"version": "unknown"})
 
+    def _handle_debug_logs(self) -> None:
+        """GET /v1/debug/logs?since_seq=N&limit=200 — return recent log lines."""
+        buf = _ensure_log_buffer()
+
+        # Parse query params
+        from urllib.parse import parse_qs, urlparse
+
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        since_seq = int(params.get("since_seq", ["-1"])[0])
+        since_ts = float(params.get("since_ts", ["0"])[0])
+        limit = min(int(params.get("limit", ["200"])[0]), 500)
+
+        entries = buf.get_since(since_ts=since_ts, since_seq=since_seq, limit=limit)
+        self._send_json(
+            200,
+            {
+                "entries": entries,
+                "count": len(entries),
+                "latest_seq": buf.latest_seq(),
+            },
+        )
+
     def _handle_debug_last_requests(self) -> None:
         if self.request_log is None:
             self._send_json(200, {"total_requests": 0, "recent": []})
@@ -239,6 +325,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             "/v1/debug/heartbeat",
             "/v1/debug/metrics",
             "/v1/debug/version",
+            "/v1/debug/logs",
             "/v1/debug/last-requests",
         )
 
@@ -252,6 +339,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self._handle_debug_metrics()
         elif stripped == "/v1/debug/version":
             self._handle_debug_version()
+        elif stripped == "/v1/debug/logs":
+            self._handle_debug_logs()
         elif stripped == "/v1/debug/last-requests":
             self._handle_debug_last_requests()
         else:
@@ -746,6 +835,9 @@ def start_leader_proxy(
 
     upstream_url = f"http://127.0.0.1:{upstream_port}"
     request_log = _RequestLog()
+
+    # Install log buffer handler so /v1/debug/logs can serve log lines
+    _ensure_log_buffer()
 
     # Phase 8: get the shared infer lane metrics for proxy traffic recording
     infer_metrics = None

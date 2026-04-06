@@ -122,6 +122,9 @@ maxim peer update              # pull + pip install on leader
 maxim peer update --dry-run    # preview pending commits only
 maxim peer update --branch dev # target a specific branch
 maxim peer restart             # soft-restart leader (reloads code after update)
+maxim peer version             # compare local vs leader version + git hash
+maxim peer logs                # show recent leader logs
+maxim peer logs -f             # follow leader logs in real time (Ctrl+C to stop)
 ```
 
 ## Remote Update Workflow
@@ -143,7 +146,7 @@ maxim peer restart         # soft-restart to load new code
 - Leader mode auto-enables remote update + restart; disable with `MAXIM_ALLOW_REMOTE_UPDATE=0` if needed
 - Troubleshooting: [docs/troubleshooting/remote_update.md](docs/troubleshooting/remote_update.md)
 
-**Important for Claude agents:** `maxim peer update --dry-run` and `maxim peer version` are safe and read-only. `maxim peer update` and `maxim peer restart` modify leader state — only run when explicitly asked by the user.
+**Important for Claude agents:** `maxim peer update --dry-run`, `maxim peer version`, and `maxim peer logs` are safe and read-only. `maxim peer update` and `maxim peer restart` modify leader state — only run when explicitly asked by the user.
 
 ## Versioning
 

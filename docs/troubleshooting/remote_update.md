@@ -169,6 +169,15 @@ maxim peer show
 # Preview update (dry run, no changes):
 maxim peer update --dry-run
 
+# Compare local vs leader version:
+maxim peer version
+
+# View recent leader logs:
+maxim peer logs
+
+# Follow leader logs in real time:
+maxim peer logs -f
+
 # Check leader health:
 curl -s -H "Authorization: Bearer $KEY" -H "User-Agent: maxim-peer/1.0" \
      https://yourhost/v1/debug/status
@@ -176,6 +185,10 @@ curl -s -H "Authorization: Bearer $KEY" -H "User-Agent: maxim-peer/1.0" \
      https://yourhost/v1/debug/heartbeat
 curl -s -H "Authorization: Bearer $KEY" -H "User-Agent: maxim-peer/1.0" \
      https://yourhost/v1/debug/metrics
+curl -s -H "Authorization: Bearer $KEY" -H "User-Agent: maxim-peer/1.0" \
+     https://yourhost/v1/debug/version
+curl -s -H "Authorization: Bearer $KEY" -H "User-Agent: maxim-peer/1.0" \
+     https://yourhost/v1/debug/logs?limit=50
 ```
 
 The following **modifies leader state** — use only when explicitly asked:
