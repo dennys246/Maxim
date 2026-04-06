@@ -116,7 +116,32 @@ maxim tunnel key export       # print shell-specific export snippets
 
 # Verify peer connectivity (run from peer machines)
 maxim peer test https://maxim.yourdomain.com/v1
+
+# Remote update (push code to leader without SSH)
+maxim peer update              # pull + pip install on leader
+maxim peer update --dry-run    # preview pending commits only
+maxim peer update --branch dev # target a specific branch
 ```
+
+## Remote Update Workflow
+
+After pushing code to origin, update the leader remotely:
+
+```bash
+git push origin main
+maxim peer update          # leader pulls + installs automatically
+```
+
+**Best practices:**
+- Always `git push` before `maxim peer update` — the leader pulls from origin, not from your local machine
+- Use `--dry-run` first if you're unsure what will be pulled
+- The leader must restart `maxim` after an update to load new code (soft restart is planned)
+- If update fails with "dirty working tree", the leader has uncommitted files — commit or stash them on the leader
+- If update fails with "git pull failed", the leader has divergent branches — run `git pull --rebase origin main` on the leader
+- Leader mode auto-enables remote update; disable with `MAXIM_ALLOW_REMOTE_UPDATE=0` if needed
+- Troubleshooting: [docs/troubleshooting/remote_update.md](docs/troubleshooting/remote_update.md)
+
+**Important for Claude agents:** `maxim peer update --dry-run` is safe and read-only. `maxim peer update` (without `--dry-run`) modifies leader state — only run when explicitly asked by the user.
 
 ## Project Structure
 
