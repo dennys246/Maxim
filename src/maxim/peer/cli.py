@@ -275,7 +275,12 @@ def _cmd_update(argv: list[str]) -> int:
     body = json.dumps({"branch": branch, "dry_run": dry_run}).encode()
     req = urllib.request.Request(
         endpoint, data=body, method="POST",
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            # Cloudflare Bot Fight Mode blocks Python's default User-Agent.
+            # Use a neutral UA to avoid error 1010.
+            "User-Agent": "maxim-peer/1.0",
+        },
     )
     if key:
         req.add_header("Authorization", f"Bearer {key}")
