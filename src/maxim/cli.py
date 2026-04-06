@@ -507,6 +507,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(raw_argv)
     _normalize_args(args)
 
+    # ── Early leader proxy bootstrap ─────────────────────────────────
+    # Start the LeaderProxy as early as possible so it's always reachable
+    # via the Cloudflare tunnel, regardless of what mode maxim enters
+    # (sim, interactive, agentic, etc.). This ensures `maxim peer update`,
+    # `maxim peer restart`, `maxim peer logs`, and `maxim peer version`
+    # always work. The proxy is a daemon thread — it dies with the process.
+    try:
+        from maxim.runtime.leader_mode import detect_role
+        _role = detect_role()
+        if _role.role == "leader":
+            import os as _os
+            _os.environ.setdefault("MAXIM_ALLOW_REMOTE_UPDATE", "1")
+            from maxim.runtime.leader_proxy import start_leader_proxy
+            _api_key = None
+            try:
+                from maxim.tunnel.keys import read_key
+                _api_key = read_key()
+            except Exception:
+                pass
+            start_leader_proxy(api_key=_api_key, bind_host=_role.bind_host)
+    except Exception:
+        pass  # Not a leader, or deps missing — fine, skip silently
+
     # Save this invocation if it's meaningful
     if should_save(raw_argv):
         save_last_run(raw_argv)

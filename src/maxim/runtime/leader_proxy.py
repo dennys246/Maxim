@@ -807,6 +807,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 # ─── server lifecycle ─────────────────────────────────────────────────────
 
 
+_leader_proxy_server: HTTPServer | None = None
+
+
 def start_leader_proxy(
     *,
     proxy_port: int | None = None,
@@ -817,7 +820,9 @@ def start_leader_proxy(
     """Start the LeaderProxy in a daemon thread.
 
     Returns the HTTPServer instance (for shutdown), or None on failure.
+    Idempotent — returns the existing server if already started.
     """
+    global _leader_proxy_server
     if proxy_port is None:
         proxy_port = int(
             os.environ.get(
@@ -825,6 +830,10 @@ def start_leader_proxy(
                 str(DEFAULT_PROXY_PORT),
             )
         )
+    # Idempotent guard for the default port (production). Tests use custom
+    # ports and should always get fresh servers.
+    if _leader_proxy_server is not None and proxy_port == DEFAULT_PROXY_PORT:
+        return _leader_proxy_server
     if upstream_port is None:
         upstream_port = int(
             os.environ.get(
@@ -905,6 +914,7 @@ def start_leader_proxy(
         upstream_url,
         "on" if api_key else "off",
     )
+    _leader_proxy_server = server
     return server
 
 
