@@ -1,4 +1,4 @@
-# Troubleshooting: Remote Update (`maxim peer update`)
+# Troubleshooting: Remote Update & Restart (`maxim peer update` / `maxim peer restart`)
 
 > **Audience:** Humans or AI assistants debugging remote update failures from a peer machine.
 > **Companion docs:** [peer_leader_connectivity.md](peer_leader_connectivity.md), [maxim_doctor.md](maxim_doctor.md)
@@ -21,7 +21,7 @@ Peer runs: maxim peer update
   └── Returns result to peer
 ```
 
-After a successful update, **maxim must be restarted on the leader** to load the new code. (Soft restart via `os.execv` is planned but not yet implemented.)
+After a successful update, run `maxim peer restart` to soft-restart the leader process and load the new code. The restart uses `os.execv` to replace the process in-place (same PID, clean Python import cycle).
 
 ## Quick commands
 
@@ -31,6 +31,12 @@ maxim peer update --dry-run
 
 # Pull + install:
 maxim peer update
+
+# Soft-restart leader to load new code:
+maxim peer restart
+
+# Full update + restart workflow:
+git push origin main && maxim peer update && maxim peer restart
 
 # Target a specific branch:
 maxim peer update --branch dev
@@ -50,8 +56,15 @@ maxim peer update
 ├── "git pull failed" ────────────── Divergent branches. Run on leader: git pull --rebase origin main
 ├── "pip install failed, rolled back" ── Dependency issue. Check stderr output for details.
 ├── "Already up to date" ────────── Nothing to pull. Leader has latest code.
-├── "Updated! N commit(s) applied" ── Success! Restart maxim on leader.
+├── "Updated! N commit(s) applied" ── Success! Run: maxim peer restart
 └── HTTP 404 ─────────────────────── LeaderProxy not running, or tunnel pointing at port 8100
+
+maxim peer restart
+│
+├── "Connection failed" ──────────── Tunnel/network issue. Run: maxim peer test <url>
+├── "Remote restart is disabled" ──── MAXIM_ALLOW_REMOTE_UPDATE=0 on leader
+├── "Leader is restarting" ────────── Success! Leader will be back in ~2s.
+└── HTTP 404 ─────────────────────── LeaderProxy not running, or old version without restart endpoint
 ```
 
 ## Common failures
@@ -168,6 +181,9 @@ curl -s -H "Authorization: Bearer $KEY" -H "User-Agent: maxim-peer/1.0" \
 The following **modifies leader state** — use only when explicitly asked:
 
 ```bash
-# Pull + install on leader (requires restart after):
+# Pull + install on leader:
 maxim peer update
+
+# Soft-restart leader (reloads code):
+maxim peer restart
 ```

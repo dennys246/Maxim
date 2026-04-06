@@ -27,7 +27,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Sim Entity Naming | **Not started** | Per-entity name prefix in sim logs (AUT/orchestrator only, ~120 LOC). Optional readability win. |
 | Stdlib OpenAI-Compat Client | **Not started** | Replace `openai` pip dep with ~40 LOC urllib fallback for peer→leader inference. Zero extra deps on peer machines. |
 | Simulation Test Bed | **Not started** | Automated sim regression suite: run scenario battery, assess against expectations, report pass/fail with bio-system health metrics. |
-| Remote Update Soft Restart | **Not started** | Auto-restart maxim process after `maxim peer update` via `os.execv`. Currently requires manual restart on leader after code pull. ~30 LOC in leader_proxy.py. |
+| Remote Update Soft Restart | **Done** | `maxim peer restart` — soft-restarts leader via `os.execv`. ~50 LOC across leader_proxy.py + peer/cli.py. |
 
 ### Completed Plans
 

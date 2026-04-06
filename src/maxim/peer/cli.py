@@ -4,6 +4,7 @@ Symmetric to `maxim tunnel setup` on the leader side. One-time setup on
 the peer machine, then `maxim` auto-reads the stored URL + key on every
 subsequent launch.
 """
+
 from __future__ import annotations
 
 import getpass
@@ -48,10 +49,13 @@ def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
         return _cmd_forget()
     if action == "update":
         return _cmd_update(list(argv[1:]))
+    if action == "restart":
+        return _cmd_restart(list(argv[1:]))
     # Fall through to maxim.doctor.cli for `peer test` (kept in doctor/ because
     # test is a diagnostic, not a configuration subcommand)
     if action == "test":
         from maxim.doctor.cli import run_peer_subcommand
+
         return run_peer_subcommand(argv)
     print(f"Unknown peer action: {action}", file=sys.stderr)
     _print_peer_usage()
@@ -67,9 +71,11 @@ def _print_peer_usage() -> None:
     print("  forget           Remove stored peer config")
     print("  test <url>       Verify a leader URL is reachable + authenticated")
     print("  update [url]     Pull + install on leader (--dry-run to preview)")
+    print("  restart [url]    Soft-restart maxim on leader (reloads code)")
 
 
 # ─── connect ──────────────────────────────────────────────────────────────
+
 
 def _cmd_connect(argv: list[str]) -> int:
     if not argv or argv[0] in ("-h", "--help"):
@@ -184,10 +190,12 @@ def _cmd_forget() -> int:
 
 # ─── helpers ──────────────────────────────────────────────────────────────
 
+
 def _is_public_url(url: str) -> bool:
     """Mirror lane_backends._is_cloud_url but avoid importing runtime here."""
     from urllib.parse import urlparse
     import socket
+
     try:
         parsed = urlparse(url)
     except Exception:
@@ -197,11 +205,9 @@ def _is_public_url(url: str) -> bool:
         return False
     try:
         import ipaddress
+
         addr = ipaddress.ip_address(host)
-        return not (
-            addr.is_private or addr.is_loopback
-            or addr.is_link_local or addr.is_reserved
-        )
+        return not (addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved)
     except ValueError:
         pass
     if host.lower() in ("localhost", "local.home", "local"):
@@ -214,11 +220,9 @@ def _is_public_url(url: str) -> bool:
         ip = info[4][0]
         try:
             import ipaddress
+
             addr = ipaddress.ip_address(ip)
-            if not (
-                addr.is_private or addr.is_loopback
-                or addr.is_link_local or addr.is_reserved
-            ):
+            if not (addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved):
                 return True
         except ValueError:
             return True
@@ -228,8 +232,10 @@ def _is_public_url(url: str) -> bool:
 def _run_peer_test(url: str, key: str) -> int:
     """Delegate to the existing `maxim peer test` implementation."""
     import os
+
     os.environ["MAXIM_LANE_INFER_REMOTE_API_KEY"] = key
     from maxim.doctor.cli import run_peer_subcommand
+
     return run_peer_subcommand(["test", url])
 
 
@@ -274,7 +280,9 @@ def _cmd_update(argv: list[str]) -> int:
     # Build request
     body = json.dumps({"branch": branch, "dry_run": dry_run}).encode()
     req = urllib.request.Request(
-        endpoint, data=body, method="POST",
+        endpoint,
+        data=body,
+        method="POST",
         headers={
             "Content-Type": "application/json",
             # Cloudflare Bot Fight Mode blocks Python's default User-Agent.
@@ -338,7 +346,81 @@ def _cmd_update(argv: list[str]) -> int:
         for c in commits:
             print(f"  {c}")
         print()
-        print("Restart maxim on the leader to load new code.")
+        print("Restart maxim on the leader to load new code:")
+        print("  maxim peer restart")
+        return 0
+
+    print(f"Unexpected status: {status}")
+    print(json.dumps(data, indent=2))
+    return 1
+
+
+def _cmd_restart(argv: list[str]) -> int:
+    """Soft-restart maxim on the leader via /v1/admin/restart."""
+    import json
+    import urllib.error
+    import urllib.request
+
+    url: str | None = None
+    key: str | None = None
+
+    for a in argv:
+        if a.startswith("http"):
+            url = a
+
+    if url is None:
+        cfg = read_peer_config()
+        if cfg is None:
+            print("No peer config. Provide a URL: maxim peer restart <url>", file=sys.stderr)
+            return 1
+        url = cfg.url
+        key = cfg.api_key
+
+    base = url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    endpoint = f"{base}/v1/admin/restart"
+
+    body = json.dumps({"delay_s": 1.5}).encode()
+    req = urllib.request.Request(
+        endpoint,
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "maxim-peer/1.0",
+        },
+    )
+    if key:
+        req.add_header("Authorization", f"Bearer {key}")
+
+    print(f"Restarting leader ({base})...")
+    print()
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        try:
+            data = json.loads(e.read())
+        except Exception:
+            data = {"error": str(e)}
+        if e.code == 403:
+            print("Remote restart is disabled on the leader.", file=sys.stderr)
+            print("  Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.", file=sys.stderr)
+            return 1
+        print(f"Restart failed ({e.code}): {data.get('error', str(e))}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Connection failed: {e}", file=sys.stderr)
+        return 1
+
+    status = data.get("status", "unknown")
+
+    if status == "restarting":
+        uptime = data.get("uptime_s", "?")
+        print(f"Leader is restarting (was up {uptime}s).")
+        print("  It will be back in a few seconds.")
         return 0
 
     print(f"Unexpected status: {status}")

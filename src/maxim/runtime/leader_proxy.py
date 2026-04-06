@@ -15,6 +15,7 @@ Adds ~1-2ms per request vs direct llama-cpp-server access.
 
 Supersedes debug_status_server.py (which only served /v1/debug/status).
 """
+
 from __future__ import annotations
 
 import collections
@@ -40,6 +41,7 @@ _MAX_RECENT_REQUESTS = 100
 
 
 # ─── GPU metrics ──────────────────────────────────────────────────────────
+
 
 def _query_nvidia_smi() -> dict[str, Any] | None:
     """Query nvidia-smi for GPU metrics. Returns None if unavailable."""
@@ -72,6 +74,7 @@ def _query_nvidia_smi() -> dict[str, Any] | None:
 
 # ─── request ring buffer ──────────────────────────────────────────────────
 
+
 class _RequestLog:
     """Thread-safe ring buffer of recent request records."""
 
@@ -94,6 +97,7 @@ class _RequestLog:
 
 
 # ─── proxy handler ────────────────────────────────────────────────────────
+
 
 class _ProxyHandler(BaseHTTPRequestHandler):
     """Reverse-proxy handler with auth, logging, and debug endpoints."""
@@ -119,25 +123,33 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         if self.rate_limiter is not None:
             peer_key = self.headers.get("Authorization", self.client_address[0])
             if not self.rate_limiter.try_acquire(peer_key):
-                self._send_json(429, {
-                    "error": "Rate limit exceeded",
-                    "retry_after_s": 1,
-                })
+                self._send_json(
+                    429,
+                    {
+                        "error": "Rate limit exceeded",
+                        "retry_after_s": 1,
+                    },
+                )
                 logger.info(
-                    "proxy: rate-limited peer=%s", self.client_address[0],
+                    "proxy: rate-limited peer=%s",
+                    self.client_address[0],
                 )
                 return False
         # Concurrency cap
         if self.concurrency_semaphore is not None:
             if not self.concurrency_semaphore.acquire(blocking=False):
                 queue_depth = self._queue_depth()
-                self._send_json(429, {
-                    "error": "Too many concurrent requests",
-                    "queue_depth": queue_depth,
-                })
+                self._send_json(
+                    429,
+                    {
+                        "error": "Too many concurrent requests",
+                        "queue_depth": queue_depth,
+                    },
+                )
                 logger.info(
                     "proxy: concurrency-limited peer=%s depth=%d",
-                    self.client_address[0], queue_depth,
+                    self.client_address[0],
+                    queue_depth,
                 )
                 return False
         return True
@@ -169,21 +181,26 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
     def _handle_debug_status(self) -> None:
         gpu = _query_nvidia_smi()
-        self._send_json(200, {
-            "status": "ok",
-            "uptime_s": round(time.time() - self.start_time, 1),
-            "gpu": gpu,
-            "timestamp": time.time(),
-        })
+        self._send_json(
+            200,
+            {
+                "status": "ok",
+                "uptime_s": round(time.time() - self.start_time, 1),
+                "gpu": gpu,
+                "timestamp": time.time(),
+            },
+        )
 
     def _handle_debug_heartbeat(self) -> None:
         try:
             from maxim.runtime.heartbeat import get_heartbeat_monitor
+
             self._send_json(200, get_heartbeat_monitor().snapshot())
         except Exception:
             # Fallback: at least return system metrics
             try:
                 from maxim.runtime.system_metrics import collect_all
+
                 self._send_json(200, collect_all())
             except Exception:
                 self._send_json(200, {"error": "heartbeat not available"})
@@ -191,6 +208,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def _handle_debug_metrics(self) -> None:
         try:
             from maxim.models.language.lane_metrics import get_metrics_registry
+
             self._send_json(200, get_metrics_registry().snapshot())
         except Exception:
             self._send_json(200, {})
@@ -209,8 +227,10 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def _is_debug_path(self, path: str) -> bool:
         stripped = path.rstrip("/").split("?")[0]
         return stripped in (
-            "/v1/debug/status", "/v1/debug/heartbeat",
-            "/v1/debug/metrics", "/v1/debug/last-requests",
+            "/v1/debug/status",
+            "/v1/debug/heartbeat",
+            "/v1/debug/metrics",
+            "/v1/debug/last-requests",
         )
 
     def _route_debug(self, path: str) -> None:
@@ -243,8 +263,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         req = urllib.request.Request(upstream, data=body, method=method)
 
         # Forward headers (skip hop-by-hop)
-        skip_headers = {"host", "connection", "transfer-encoding",
-                        "proxy-connection", "keep-alive"}
+        skip_headers = {"host", "connection", "transfer-encoding", "proxy-connection", "keep-alive"}
         for key, val in self.headers.items():
             if key.lower() not in skip_headers:
                 req.add_header(key, val)
@@ -291,8 +310,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         gpu = _query_nvidia_smi()
         if gpu is not None:
             self.send_header("X-Maxim-GPU-Util", f"{gpu['utilization_pct']:.0f}")
-            self.send_header("X-Maxim-GPU-VRAM",
-                             f"{gpu['vram_used_gb']:.1f}/{gpu['vram_total_gb']:.0f}")
+            self.send_header("X-Maxim-GPU-VRAM", f"{gpu['vram_used_gb']:.1f}/{gpu['vram_total_gb']:.0f}")
             if gpu.get("temperature_c") is not None:
                 self.send_header("X-Maxim-GPU-Temp", f"{gpu['temperature_c']:.0f}")
         self.send_header("Content-Length", str(len(resp_body)))
@@ -369,11 +387,19 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         dry_run=true (default) previews pending commits without applying.
         """
         if os.environ.get("MAXIM_ALLOW_REMOTE_UPDATE", "").strip().lower() not in (
-            "1", "true", "t", "yes", "y", "on",
+            "1",
+            "true",
+            "t",
+            "yes",
+            "y",
+            "on",
         ):
-            self._send_json(403, {
-                "error": "Remote update disabled. Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader.",
-            })
+            self._send_json(
+                403,
+                {
+                    "error": "Remote update disabled. Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader.",
+                },
+            )
             return
 
         # Parse request body
@@ -393,20 +419,29 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
         logger.info(
             "admin/update: peer=%s branch=%s dry_run=%s repo=%s",
-            self.client_address[0], branch, dry_run, repo_root,
+            self.client_address[0],
+            branch,
+            dry_run,
+            repo_root,
         )
 
         # Check for dirty working tree
         try:
             status = subprocess.run(
                 ["git", "status", "--porcelain"],
-                capture_output=True, text=True, timeout=10, cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=repo_root,
             )
             if status.stdout.strip():
-                self._send_json(409, {
-                    "error": "Working tree is dirty. Commit or stash changes first.",
-                    "dirty_files": status.stdout.strip().split("\n"),
-                })
+                self._send_json(
+                    409,
+                    {
+                        "error": "Working tree is dirty. Commit or stash changes first.",
+                        "dirty_files": status.stdout.strip().split("\n"),
+                    },
+                )
                 return
         except Exception as e:
             self._send_json(500, {"error": f"git status failed: {e}"})
@@ -416,7 +451,10 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         try:
             subprocess.run(
                 ["git", "fetch", "origin", branch],
-                capture_output=True, text=True, timeout=30, cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=repo_root,
                 check=True,
             )
         except Exception as e:
@@ -427,42 +465,57 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         try:
             log_result = subprocess.run(
                 ["git", "log", f"HEAD..origin/{branch}", "--oneline"],
-                capture_output=True, text=True, timeout=10, cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=repo_root,
             )
             pending = log_result.stdout.strip().split("\n") if log_result.stdout.strip() else []
         except Exception:
             pending = []
 
         if not pending:
-            self._send_json(200, {
-                "status": "up_to_date",
-                "message": f"Already up to date with origin/{branch}.",
-                "commits": [],
-            })
+            self._send_json(
+                200,
+                {
+                    "status": "up_to_date",
+                    "message": f"Already up to date with origin/{branch}.",
+                    "commits": [],
+                },
+            )
             return
 
         if dry_run:
-            self._send_json(200, {
-                "status": "preview",
-                "branch": branch,
-                "pending_commits": pending,
-                "message": f"{len(pending)} commit(s) pending. Send dry_run=false to apply.",
-            })
+            self._send_json(
+                200,
+                {
+                    "status": "preview",
+                    "branch": branch,
+                    "pending_commits": pending,
+                    "message": f"{len(pending)} commit(s) pending. Send dry_run=false to apply.",
+                },
+            )
             return
 
         # Apply: git pull
         try:
             subprocess.run(
                 ["git", "-c", "pull.rebase=true", "pull", "origin", branch],
-                capture_output=True, text=True, timeout=60, cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=repo_root,
                 check=True,
             )
         except subprocess.CalledProcessError as e:
-            self._send_json(500, {
-                "error": "git pull failed",
-                "stdout": e.stdout,
-                "stderr": e.stderr,
-            })
+            self._send_json(
+                500,
+                {
+                    "error": "git pull failed",
+                    "stdout": e.stdout,
+                    "stderr": e.stderr,
+                },
+            )
             return
 
         # pip install -e .
@@ -470,23 +523,33 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         try:
             pip_result = subprocess.run(
                 [sys.executable, "-m", "pip", "install", "-e", "."],
-                capture_output=True, text=True, timeout=120, cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=repo_root,
             )
             pip_output = pip_result.stdout[-500:] if pip_result.stdout else ""
             if pip_result.returncode != 0:
                 # Rollback
                 subprocess.run(
                     ["git", "checkout", "HEAD~1"],
-                    capture_output=True, timeout=10, cwd=repo_root,
+                    capture_output=True,
+                    timeout=10,
+                    cwd=repo_root,
                 )
                 subprocess.run(
                     [sys.executable, "-m", "pip", "install", "-e", "."],
-                    capture_output=True, timeout=120, cwd=repo_root,
+                    capture_output=True,
+                    timeout=120,
+                    cwd=repo_root,
                 )
-                self._send_json(500, {
-                    "error": "pip install failed, rolled back",
-                    "pip_stderr": pip_result.stderr[-500:],
-                })
+                self._send_json(
+                    500,
+                    {
+                        "error": "pip install failed, rolled back",
+                        "pip_stderr": pip_result.stderr[-500:],
+                    },
+                )
                 return
         except Exception as e:
             self._send_json(500, {"error": f"pip install failed: {e}"})
@@ -494,26 +557,99 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
         # Log to request ring buffer
         if self.request_log is not None:
-            self.request_log.record({
-                "type": "admin_update",
-                "peer_ip": self.client_address[0],
-                "branch": branch,
-                "commits_applied": pending,
-                "timestamp": time.time(),
-            })
+            self.request_log.record(
+                {
+                    "type": "admin_update",
+                    "peer_ip": self.client_address[0],
+                    "branch": branch,
+                    "commits_applied": pending,
+                    "timestamp": time.time(),
+                }
+            )
 
         logger.info(
             "admin/update: SUCCESS — %d commits applied from origin/%s",
-            len(pending), branch,
+            len(pending),
+            branch,
         )
 
-        self._send_json(200, {
-            "status": "updated",
-            "branch": branch,
-            "commits_applied": pending,
-            "pip_output": pip_output,
-            "message": f"Applied {len(pending)} commit(s). Restart maxim to load new code.",
-        })
+        self._send_json(
+            200,
+            {
+                "status": "updated",
+                "branch": branch,
+                "commits_applied": pending,
+                "pip_output": pip_output,
+                "message": f"Applied {len(pending)} commit(s). Restart maxim to load new code.",
+            },
+        )
+
+    def _handle_admin_restart(self) -> None:
+        """POST /v1/admin/restart — soft-restart the maxim process via os.execv.
+
+        Replaces the current process image with a fresh Python invocation,
+        reloading all code. Same PID, clean import cycle. Gated by
+        MAXIM_ALLOW_REMOTE_UPDATE (if you trust remote code pulls, you
+        trust remote restarts).
+
+        Accepts JSON body: {"delay_s": 1.5} (default 1.5s delay so the
+        HTTP response reaches the peer before the process replaces itself).
+        """
+        if os.environ.get("MAXIM_ALLOW_REMOTE_UPDATE", "").strip().lower() not in (
+            "1",
+            "true",
+            "t",
+            "yes",
+            "y",
+            "on",
+        ):
+            self._send_json(
+                403,
+                {
+                    "error": "Remote restart disabled. Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader.",
+                },
+            )
+            return
+
+        # Parse optional delay from body
+        content_length = int(self.headers.get("Content-Length", 0))
+        body: dict[str, Any] = {}
+        if content_length > 0:
+            try:
+                body = json.loads(self.rfile.read(content_length))
+            except Exception:
+                pass
+
+        delay_s = max(0.5, min(float(body.get("delay_s", 1.5)), 10.0))
+
+        uptime = round(time.time() - self.start_time, 1)
+        logger.info(
+            "admin/restart: peer=%s delay=%.1fs uptime=%.1fs",
+            self.client_address[0],
+            delay_s,
+            uptime,
+        )
+
+        # Send response BEFORE restarting — the peer needs to receive this
+        self._send_json(
+            200,
+            {
+                "status": "restarting",
+                "message": f"Restart initiated (delay {delay_s}s). Process will reload.",
+                "uptime_s": uptime,
+            },
+        )
+
+        # Schedule the restart on a background thread so the response
+        # is fully flushed before os.execv replaces the process image.
+        def _do_restart() -> None:
+            time.sleep(delay_s)
+            logger.info("admin/restart: executing os.execv — goodbye")
+            # Re-exec with the original command line
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
+        t = threading.Thread(target=_do_restart, name="admin.restart", daemon=True)
+        t.start()
 
     # ─── HTTP method dispatchers ──────────────────────────────────────
 
@@ -532,6 +668,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         if stripped == "/v1/admin/update":
             self._handle_admin_update()
             return
+        if stripped == "/v1/admin/restart":
+            self._handle_admin_restart()
+            return
         if not self._check_admission():
             return
         try:
@@ -549,8 +688,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers",
-                         "Authorization, Content-Type, X-Maxim-Request-Id")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Maxim-Request-Id")
         self.send_header("Access-Control-Max-Age", "86400")
         self.end_headers()
 
@@ -568,6 +706,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
 # ─── server lifecycle ─────────────────────────────────────────────────────
 
+
 def start_leader_proxy(
     *,
     proxy_port: int | None = None,
@@ -580,13 +719,19 @@ def start_leader_proxy(
     Returns the HTTPServer instance (for shutdown), or None on failure.
     """
     if proxy_port is None:
-        proxy_port = int(os.environ.get(
-            "MAXIM_LEADER_PROXY_PORT", str(DEFAULT_PROXY_PORT),
-        ))
+        proxy_port = int(
+            os.environ.get(
+                "MAXIM_LEADER_PROXY_PORT",
+                str(DEFAULT_PROXY_PORT),
+            )
+        )
     if upstream_port is None:
-        upstream_port = int(os.environ.get(
-            "MAXIM_AUTO_SPAWN_PORT", str(DEFAULT_UPSTREAM_PORT),
-        ))
+        upstream_port = int(
+            os.environ.get(
+                "MAXIM_AUTO_SPAWN_PORT",
+                str(DEFAULT_UPSTREAM_PORT),
+            )
+        )
 
     upstream_url = f"http://127.0.0.1:{upstream_port}"
     request_log = _RequestLog()
@@ -595,6 +740,7 @@ def start_leader_proxy(
     infer_metrics = None
     try:
         from maxim.models.language.lane_metrics import get_metrics_registry
+
         infer_metrics = get_metrics_registry().get("infer")
     except Exception:
         pass
@@ -606,6 +752,7 @@ def start_leader_proxy(
     peer_rate_limiter = None
     try:
         from maxim.runtime.rate_limiter import PeerRateLimiter
+
         peer_rate_limiter = PeerRateLimiter()
         if peer_rate_limiter.enabled:
             logger.info(
@@ -615,15 +762,19 @@ def start_leader_proxy(
     except Exception:
         pass
 
-    handler = type("ProxyHandler", (_ProxyHandler,), {
-        "api_key": api_key,
-        "upstream_url": upstream_url,
-        "request_log": request_log,
-        "lane_metrics": infer_metrics,
-        "concurrency_semaphore": semaphore,
-        "rate_limiter": peer_rate_limiter,
-        "start_time": time.time(),
-    })
+    handler = type(
+        "ProxyHandler",
+        (_ProxyHandler,),
+        {
+            "api_key": api_key,
+            "upstream_url": upstream_url,
+            "request_log": request_log,
+            "lane_metrics": infer_metrics,
+            "concurrency_semaphore": semaphore,
+            "rate_limiter": peer_rate_limiter,
+            "start_time": time.time(),
+        },
+    )
 
     # ThreadingHTTPServer handles concurrent connections from cloudflared's
     # HTTP/2 multiplexing. Plain HTTPServer is single-threaded and blocks
@@ -645,9 +796,10 @@ def start_leader_proxy(
     thread.start()
 
     logger.info(
-        "LeaderProxy listening on %s:%d → upstream %s "
-        "(auth=%s, debug endpoints enabled)",
-        bind_host, proxy_port, upstream_url,
+        "LeaderProxy listening on %s:%d → upstream %s (auth=%s, debug endpoints enabled)",
+        bind_host,
+        proxy_port,
+        upstream_url,
         "on" if api_key else "off",
     )
     return server
