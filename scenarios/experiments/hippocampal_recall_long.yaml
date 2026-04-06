@@ -1,0 +1,234 @@
+name: hippocampal_recall_long
+description: |
+  Research experiment: Hippocampus associative recall under narrative interference.
+
+  Condition: LONG (10 interference turns).
+  Maximum interference variant. 10 unrelated encounters between the seed
+  and recall phases. Tests the outer limits of associative recall — at this
+  depth, the seed memory may have been compressed or evicted, and the
+  associative path (if it exists) requires multiple hops through weakening
+  edges.
+
+  Seed detail: The name "Verath" (door password).
+
+timing: step_based
+
+percepts:
+  # ── Act 1: The Warning (Seed Phase) ──────────────────────────────
+  - at: 0
+    source: cli
+    cli_input: |
+      You are Aric, a wandering ranger. You arrive at the village of
+      Thornhaven at dusk. As you pass the herbalist's shop, an old woman
+      named Elara grabs your arm. Her eyes are wide with fear.
+
+      "You're heading to the Thornwood, aren't you?" she whispers.
+      "Listen carefully. The door beneath the silver elm — it answers
+      only to one name: Verath. Say it clearly, or you'll never pass.
+      Remember this. Verath."
+
+      She presses a dried moonpetal flower into your hand and retreats
+      inside. What do you do?
+    salience: 1.0
+    novelty: 1.0
+    metadata:
+      scenario_tag: seed_password
+      phase: "act1_warning"
+      experiment_role: seed
+      critical_detail: "Verath"
+
+  - at: 1
+    source: cli
+    cli_input: |
+      Elara glances out her window nervously. "One more thing," she
+      calls after you. "Don't trust the miller — he reports to them."
+      She closes the shutters. The village square is quiet. Night is
+      falling. You should move on toward the Thornwood.
+    salience: 0.7
+    novelty: 0.5
+    metadata:
+      scenario_tag: seed_reinforcement
+      phase: "act1_warning"
+      experiment_role: seed_context
+
+  # ── Act 2: The Journey (Interference Phase — 10 encounters) ─────
+  - at: 3
+    source: cli
+    cli_input: |
+      Dawn. You've left Thornhaven behind. The road leads through
+      Blackwater Marsh. A ferryman named Grul blocks the only crossing.
+      "Coin or riddle," he grunts. "Your choice."
+    salience: 0.6
+    novelty: 0.7
+    metadata:
+      scenario_tag: interference_1
+      phase: "act2_journey"
+      experiment_role: interference
+
+  - at: 5
+    source: cli
+    cli_input: |
+      Past the marsh, three bandits ambush you on the forest road.
+      A woman with a crossbow, a scarred man with a club, a nervous
+      teenager with a knife. "Purse. Now."
+    salience: 0.8
+    novelty: 0.6
+    metadata:
+      scenario_tag: interference_2
+      phase: "act2_journey"
+      experiment_role: interference
+
+  - at: 7
+    source: cli
+    cli_input: |
+      At the mountain pass, a merchant warns of closed mines to the
+      north. She offers supplies in exchange for news.
+    salience: 0.5
+    novelty: 0.5
+    metadata:
+      scenario_tag: interference_3
+      phase: "act2_journey"
+      experiment_role: interference
+
+  - at: 9
+    source: cli
+    cli_input: |
+      A collapsed bridge forces a detour through caves. Strange spiral
+      markings cover the walls. Water drips in the distance.
+    salience: 0.6
+    novelty: 0.7
+    metadata:
+      scenario_tag: interference_4
+      phase: "act2_journey"
+      experiment_role: interference
+
+  - at: 11
+    source: cli
+    cli_input: |
+      Deep in the caves, a wounded scout warns of an army massing
+      beyond the mountains. She needs bandaging and water.
+    salience: 0.7
+    novelty: 0.6
+    metadata:
+      scenario_tag: interference_5
+      phase: "act2_journey"
+      experiment_role: interference
+
+  - at: 13
+    source: cli
+    cli_input: |
+      You emerge from the caves at twilight. By the campfire, an oddly
+      intelligent fox watches you eat, head tilted, unafraid.
+    salience: 0.5
+    novelty: 0.6
+    metadata:
+      scenario_tag: interference_6
+      phase: "act2_journey"
+      experiment_role: interference
+
+  - at: 15
+    source: cli
+    cli_input: |
+      Morning. A wide river blocks the path. An old stone bridge is
+      intact but guarded by a troll — not the monster kind, the tax
+      collector kind. He wants three silver pieces or a favor: deliver
+      a letter to someone in the next town.
+    salience: 0.5
+    novelty: 0.5
+    metadata:
+      scenario_tag: interference_7
+      phase: "act2_journey"
+      experiment_role: interference
+
+  - at: 17
+    source: cli
+    cli_input: |
+      You pass through ruins of a shrine. Moss-covered statues of
+      forgotten gods line the path. One statue has fresh flowers at
+      its feet. Someone still worships here.
+    salience: 0.4
+    novelty: 0.6
+    metadata:
+      scenario_tag: interference_8
+      phase: "act2_journey"
+      experiment_role: interference
+
+  - at: 19
+    source: cli
+    cli_input: |
+      A hermit blocks the trail, leaning on a gnarled staff. "Answer
+      my riddle or go back the way you came," he says. "What has roots
+      that nobody sees, is taller than trees, up up it goes, and yet
+      never grows?" He waits patiently.
+    salience: 0.5
+    novelty: 0.5
+    metadata:
+      scenario_tag: interference_9
+      phase: "act2_journey"
+      experiment_role: interference
+
+  - at: 21
+    source: cli
+    cli_input: |
+      A sudden thunderstorm forces you to shelter in an abandoned
+      watchtower. From the top floor, you can see the dark canopy of
+      the Thornwood spread across the valley below. Almost there.
+      Lightning illuminates something moving in the treeline.
+    salience: 0.6
+    novelty: 0.5
+    metadata:
+      scenario_tag: interference_10
+      phase: "act2_journey"
+      experiment_role: interference
+
+  # ── Act 3: The Door (Recall Phase) ──────────────────────────────
+  - at: 23
+    source: cli
+    cli_input: |
+      The Thornwood is silent. After hours of walking beneath ancient
+      oaks, you find it — a massive silver elm, its bark gleaming
+      faintly in the half-light. At its base, half-hidden by gnarled
+      roots, is a stone door. No handle. No keyhole. Just a carved
+      face with an open mouth that seems to be waiting for something.
+
+      The door will not yield to force. What do you do?
+    salience: 0.9
+    novelty: 0.8
+    metadata:
+      scenario_tag: recall_challenge
+      phase: "act3_door"
+      experiment_role: recall_target
+      expected_recall: "Verath"
+
+  # ── Epilogue ────────────────────────────────────────────────────
+  - at: 25
+    source: cli
+    cli_input: |
+      The adventure concludes. Reflect on your journey from Thornhaven
+      to this moment. What do you remember most vividly? Were there
+      details you almost forgot? What stayed with you?
+    salience: 0.4
+    novelty: 0.3
+    metadata:
+      scenario_tag: debrief
+      phase: "epilogue"
+      experiment_role: self_report
+
+expectations:
+  - type: memory_formed
+    memory_contains: "Verath"
+    description: "Hippocampus captured the password from Elara's warning"
+
+  - type: pipeline_continued
+    after_tag: interference_10
+    description: "Pipeline continues through all 10 interference encounters"
+
+  - type: action_taken
+    tool: RespondTool
+    description: "Agent attempts to interact with the door"
+
+  - type: action_count_range
+    description: "Agent takes 10-60 actions across the campaign"
+    params:
+      min: 10
+      max: 60

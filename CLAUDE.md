@@ -285,8 +285,8 @@ Every sim run saves to `data/sim_reports/{session_id}/`:
 
 See `docs/plans/future_plans.md` for the full roadmap. Current state:
 
-- **Multi-LLM scaling** (`docs/plans/multi_llm_scaling.md`) — all prereqs done (router modularization, WorkerPool lanes, RuntimeCapabilities). Phase 1 ready to start.
+- **Multi-LLM scaling** — COMPLETE. All phases done (LeaderProxy, admission control, LaneMetrics, heartbeat, remote update). Archived at `docs/plans/multi_llm_scaling_ARCHIVED.md`. mDNS + InferenceRouter moved to Agent Mesh.
+- **Agent Mesh** (`docs/plans/agent_mesh.md`) — not started. Phases 0a-0b (mDNS discovery + InferenceRouter, from multi-LLM) are first, then identity + protocol. Research Protocol Phase 0 unblocks full mesh.
 - **Research Protocol** (`docs/plans/research_protocol_plan.md`) — not started, self-contained. Builds mesh primitives reused by agent-mesh later.
 - **Realtime Refinement** (`docs/plans/realtime_refinement_plan.md`) — ~90% done; remaining ~50 LOC (6th persona + metric expectation types).
-- **Agent Mesh** (`docs/plans/agent_mesh.md`) — blocked on Multi-LLM Phase 7 + Research Protocol Phase 0.
 - **Docker Sandbox** (`docs/plans/docker_sandbox_plan.md`) — Phase A (TmpdirSandbox + pain triggers) + Phase B (DockerSandbox + ContainerRunner protocol + image catalog + autonomy-scaled resource limits + unprivileged `maxim` user) DONE.

@@ -422,18 +422,18 @@ verify_ssl: true</pre>
 
     <div class="space-y-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Phase 7c &mdash; mDNS Discovery</h3>
-        <p class="text-slate-300 leading-relaxed">Automatic peer discovery on the local network using mDNS/DNS-SD. A Maxim leader broadcasts a <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">_maxim-llm._tcp</code> service record; peers discover it without manual endpoint configuration. Falls back to the current explicit peer.yml approach on networks where mDNS is blocked.</p>
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Agent Mesh &mdash; mDNS Discovery</h3>
+        <p class="text-slate-300 leading-relaxed">Automatic peer discovery on the local network using mDNS/DNS-SD. A Maxim instance broadcasts a <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">_maxim-llm._tcp</code> service record; peers discover it without manual endpoint configuration. Falls back to the current explicit peer.yml approach on networks where mDNS is blocked. Now part of the <a href="/maxim/roadmap" class="text-indigo-400 hover:text-indigo-300">Agent Mesh plan</a> (Phase 0a).</p>
       </div>
 
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Phase 7d &mdash; InferenceRouter</h3>
-        <p class="text-slate-300 leading-relaxed">Smart request routing when multiple inference backends are available (local GPU + cloud API + peer leader). The InferenceRouter selects the backend per-request based on lane metrics (latency, queue depth, failure rate), cost constraints, and model compatibility. This replaces the current static provider-priority approach.</p>
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Agent Mesh &mdash; InferenceRouter</h3>
+        <p class="text-slate-300 leading-relaxed">Smart request routing when multiple inference backends are available (local GPU + cloud API + peer leader). The InferenceRouter selects the backend per-request based on lane metrics (latency, queue depth, failure rate), cost constraints, and model compatibility. Now part of the <a href="/maxim/roadmap" class="text-indigo-400 hover:text-indigo-300">Agent Mesh plan</a> (Phase 0b).</p>
       </div>
 
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Phase 7a-ext &mdash; Remote Self-Update</h3>
-        <p class="text-slate-300 leading-relaxed">The leader can push a code update to connected peers via the tunnel. Peers pull from the leader's git hash, run their own test suite, and hot-reload. Designed for long-running deployments where SSH access to every peer is impractical.</p>
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Remote Self-Update &mdash; Soft Restart</h3>
+        <p class="text-slate-300 leading-relaxed"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer update</code> already pulls code + installs remotely. Planned: automatic process restart via <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">os.execv</code> so the leader loads new code without manual intervention.</p>
       </div>
     </div>
   </section>

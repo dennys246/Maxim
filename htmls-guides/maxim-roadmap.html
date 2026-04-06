@@ -83,8 +83,8 @@
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Multi-LLM Scaling</td>
-            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">In Progress</span></td>
-            <td class="py-3">Phases 1&ndash;8 done; 7c (mDNS discovery) and 7d (InferenceRouter) next</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Complete. mDNS + InferenceRouter moved to Agent Mesh as infrastructure phases.</td>
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Realtime Refinement</td>
@@ -99,7 +99,7 @@
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Agent Mesh</td>
             <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-600/40 text-slate-400">Not Started</span></td>
-            <td class="py-3">Blocked on Multi-LLM Phase 7c/7d + Research Protocol</td>
+            <td class="py-3">Multi-LLM infra complete. Phases 0a-0b (mDNS + InferenceRouter) first, then identity + protocol.</td>
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Embodiment Core</td>
@@ -244,13 +244,15 @@
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
       <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Dependencies</span>
 
-Phase 8 (done) ──&gt; Phase 7b (done) ──&gt; Phase 7d (InferenceRouter)
-                                                  &uarr;
-Phase 7c (mDNS Discovery) ────────────────────────┘
-
-Research Protocol ──&gt; Agent Mesh
+Multi-LLM Scaling ──── COMPLETE (all phases)
+      │
+      ▼
+Agent Mesh Phase 0a (mDNS) ──&gt; Phase 0b (InferenceRouter)
+      │                              │
+      ▼                              ▼
+Agent Mesh Phases 1+ (identity, protocol, knowledge sharing)
                           &uarr;
-Multi-LLM 7c/7d ─────────┘
+Research Protocol ────────┘
 
 Embodiment Core ──&gt; Embodiment Hardware Adapter
   (independent track, no blockers)
@@ -259,7 +261,7 @@ Simulation Test Bed
   (independent, unblocks safer iteration)
 
 DM MVP
-  (blocked on everything above)</div>
+  (blocked on Agent Mesh + Embodiment)</div>
     </div>
 
     <p class="text-slate-300 leading-relaxed">The <span class="text-indigo-400 font-semibold">InferenceRouter</span> (7d) is the key bottleneck: it needs both mDNS discovery (7c) and the Phase 7b/8 infrastructure. Once 7d lands, the Agent Mesh becomes unblocked on its networking side. The Research Protocol unblocks the mesh on its protocol side. Both must converge before mesh work can begin.</p>

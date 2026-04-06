@@ -25,7 +25,7 @@ Add a peer-mode path so `maxim doctor` diagnoses *either* role correctly.
 - **Auth smoke** — send a real completion with the configured key, confirm 200. If 401, key mismatch.
 - **Model availability** — does the remote `/v1/models` advertise the model the peer expects to use? Catches the case where the leader swapped models.
 - **Clock skew** (optional) — if auth is time-sensitive (future HMAC keys), flag > 30s drift.
-- **Latency budget warning** — if round-trip p50 > 200ms, nudge that real-time lanes may struggle (reference the [multi_llm_scaling.md latency baseline](multi_llm_scaling.md#latency-baseline-2026-04-04)).
+- **Latency budget warning** — if round-trip p50 > 200ms, nudge that real-time lanes may struggle (reference the [multi_llm_scaling_ARCHIVED.md latency baseline](multi_llm_scaling_ARCHIVED.md#latency-baseline-2026-04-04)).
 
 **Fix hints** should point at the **leader** machine, not this one:
 - "Ask the leader to run `maxim tunnel key rotate` then `maxim tunnel key export`"
@@ -83,7 +83,7 @@ Go beyond "server responds to /v1/models" into "server generates sensible output
 - **Context window sweep** — binary search to find the actual max working ctx vs what's configured. Sometimes the spawned server lies / runs out of VRAM partway up.
 - **Cold-start vs warm-cache timing** — first inference after restart vs steady-state.
 
-These compose naturally into a `maxim doctor benchmark` subcommand that produces a performance baseline document (complementing the [multi_llm_scaling.md observability section](multi_llm_scaling.md) numbers).
+These compose naturally into a `maxim doctor benchmark` subcommand that produces a performance baseline document (complementing the [multi_llm_scaling_ARCHIVED.md observability section](multi_llm_scaling_ARCHIVED.md) numbers).
 
 ### 6. Network / connectivity depth
 - **Latency to Cloudflare edge** — ping the user's nearest POP to size tunnel-hop overhead.
@@ -126,7 +126,7 @@ Once peers exist, `maxim doctor` becomes a mesh-topology diagnostic:
 
 - **Peer discovery** — list all mDNS-visible peers + their advertised models.
 - **Peer latency matrix** — measure round-trip to each peer, show table.
-- **Key validity across peers** — verify each peer's stored API key still matches what the leader's issued (for per-device keys from the [security model](multi_llm_scaling.md#phase-10-observability--verbose-tracing)).
+- **Key validity across peers** — verify each peer's stored API key still matches what the leader's issued (for per-device keys from the [security model](multi_llm_scaling_ARCHIVED.md#phase-10-observability--verbose-tracing)).
 - **Peer capability audit** — compare `RuntimeCapabilities` across the mesh, flag weak links (e.g., "Reachy has 4GB RAM, can't run the review lane — sharing with home PC").
 - **Topology visualizer** — ASCII graph of peers + roles + load.
 

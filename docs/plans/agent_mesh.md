@@ -1,8 +1,17 @@
 # Agent Mesh Plan
 
-> **Status:** Not started. Depends on multi-LLM scaling plan (Phases 1-3 for LaneBackendManager), RuntimeCapabilities (implemented), CommunicationGateway channel system (implemented).
+> **Status:** Not started. All multi-LLM infrastructure prerequisites are complete (Phases 1-8, 7a, 7a-ext, 7b — LeaderProxy, LaneMetrics, admission control, remote update). RuntimeCapabilities and CommunicationGateway channel system also implemented.
 >
-> **Reference — measured baselines**: Multi-LLM Phases 1–6a landed. See [multi_llm_scaling.md "Observed Performance & Gotchas"](multi_llm_scaling.md) for empirical numbers (44 ms short-completion on RTX 5080, ~5–20 ms LAN hops, ~20–50 ms Cloudflare tunnel hops), token-density gotchas (mistral tokens are ~1.7× English word count), VRAM accounting, and verified resilience behavior (auto-discovery, stale-URL recovery, signal isolation). Use those numbers when sizing mesh routing decisions, context budgets, transfer-discount policies, and retry timeouts.
+> **Prerequisites completed (from multi-LLM scaling, now archived):**
+> - Phases 1-3: LaneBackendManager, lane configs, safety gates
+> - Phases 4-6: Remote LLM, Cloudflare tunnel, auto-spawn, leader mode
+> - Phase 7a: LeaderProxy (auth, logging, GPU metrics, debug endpoints)
+> - Phase 7a-ext: Remote self-update (`maxim peer update`)
+> - Phase 7b: Admission control (concurrency cap, per-peer rate limiting)
+> - Phase 8: LaneMetrics (per-lane p50/p99, failure rate, token throughput)
+> - System heartbeat (GPU/CPU/RAM/disk/WiFi sampling, stall detection)
+>
+> **Measured baselines**: 44ms short-completion on RTX 5080, ~5-20ms LAN hops, ~20-50ms Cloudflare tunnel hops. Mistral tokens are ~1.7x English word count. Use these when sizing mesh routing decisions, context budgets, and retry timeouts.
 
 Cooperative peer-to-peer network of Maxim agent instances. Each agent owns its memories, causal models, and learned behaviors — but can share them cooperatively. Agents discover each other, advertise capabilities, delegate tasks, and learn from each other's experiences.
 
@@ -82,6 +91,54 @@ These types already have `to_dict()` / `from_dict()` and can go over the wire to
 ---
 
 ## Implementation
+
+### Phase 0a: PeerRegistry + mDNS Discovery (~200 LOC)
+
+> Absorbed from multi-LLM Phase 7c. Infrastructure for auto-discovery — used by both inference routing and agent mesh communication.
+
+Remove the need for manually shared URLs on LAN. Each Maxim instance advertises itself via mDNS (same mechanism the robot stack uses for Reachy discovery).
+
+- Service type: `_maxim-llm._tcp.local.`
+- TXT records: `node_id`, `models`, `vram_gb`, `device` (gpu|cpu), `proxy_port`
+- `PeerInfo` dataclass: `{node_id, host, port, models, device, vram_gb, last_seen}`, 30s heartbeat timeout
+- `PeerRegistry.peers() -> list[PeerInfo]`, `get_peer_for_model(model) -> PeerInfo | None`
+
+**Opt-in gates:** `MAXIM_PEER_ENABLED=1` env var AND `zeroconf` importable (optional `[mesh]` extra: `pip install -e '.[mesh]'`). Solo/tunnel users are unaffected.
+
+| File | Change | LOC |
+|---|---|---|
+| `mesh/peer_registry.py` | **New.** `PeerRegistry` class with mDNS advertise/browse | ~120 |
+| `mesh/peer_info.py` | **New.** `PeerInfo`, `PeerAdvertisement` dataclasses | ~30 |
+| `pyproject.toml` | Add `[mesh]` optional extra: `zeroconf>=0.80` | ~3 |
+| `runtime/lane_backends.py` | `build_primary_router()` starts registry when enabled | ~20 |
+| `doctor/checks.py` | New "mDNS broadcast reachable" check | ~20 |
+
+### Phase 0b: InferenceRouter — Per-Request Backend Selection (~250 LOC)
+
+> Absorbed from multi-LLM Phase 7d. The compute-routing layer that the agent mesh's task delegation builds on.
+
+Per-request routing chain: local → LAN peer → remote tunnel → graceful failure. Augments `LaneBackendManager.get_backend()`.
+
+```
+Routing chain (first healthy backend wins):
+  1. Local lane backend        — 0ms overhead
+  2. Best LAN peer (from 0a)   — 5-20ms hop, selected by VRAM/GPU
+  3. Remote tunnel backend      — 20-50ms hop
+  4. None (caller degrades gracefully)
+```
+
+**Routing inputs** (from LaneMetrics + PeerRegistry):
+- Per-backend p50/p99 latency and failure rate
+- Peer VRAM + advertised device (GPU over CPU, higher VRAM wins ties)
+- Context window fit (skip backends whose `n_ctx` can't hold the request)
+- Exponential backoff on failing backends (30s/60s/120s, cap 10min)
+
+| File | Change | LOC |
+|---|---|---|
+| `mesh/inference_router.py` | **New.** `InferenceRouter` class with routing chain + backoff | ~150 |
+| `runtime/lane_backends.py` | `LaneBackendManager.attach_router()`, delegate from `get_backend()` | ~40 |
+| `models/language/openai_backend.py` | Add `health_check() -> bool` (HEAD `/v1/models`, 1s timeout) | ~15 |
+| `mesh/peer_info.py` | Add `estimated_latency_ms` field | ~10 |
 
 ### Phase 1: AgentIdentity — Who Am I?
 
