@@ -143,7 +143,32 @@ def _normalize_args(args: argparse.Namespace) -> None:
             available = list_llm_profiles()
             if available and selected not in available:
                 opts = ", ".join(available)
-                raise SystemExit(f"Unknown --language-model {language_model!r}. Available: {opts}")
+                # Check if they're trying to use a cloud provider
+                cloud_hints = {
+                    "claude": ("ANTHROPIC_API_KEY", "pip install anthropic"),
+                    "anthropic": ("ANTHROPIC_API_KEY", "pip install anthropic"),
+                    "sonnet": ("ANTHROPIC_API_KEY", "pip install anthropic"),
+                    "opus": ("ANTHROPIC_API_KEY", "pip install anthropic"),
+                    "haiku": ("ANTHROPIC_API_KEY", "pip install anthropic"),
+                    "gpt": ("OPENAI_API_KEY", "pip install openai"),
+                    "openai": ("OPENAI_API_KEY", "pip install openai"),
+                }
+                hint = ""
+                for keyword, (env_var, install) in cloud_hints.items():
+                    if keyword in language_model.lower():
+                        has_key = bool(os.environ.get(env_var))
+                        hint = (
+                            f"\n\n  To use cloud models ({keyword}):\n"
+                            f"    1. {install}\n"
+                            f"    2. export {env_var}=<your-key>\n"
+                            f"    3. Add the profile to data/util/llm.json"
+                        )
+                        if has_key:
+                            hint += f"\n\n  {env_var} is set, but the profile '{language_model}' isn't in llm.json."
+                        break
+                raise SystemExit(
+                    f"Unknown --language-model {language_model!r}. Available: {opts}{hint}"
+                )
             os.environ["MAXIM_LLM_PROFILE"] = selected
         args.language_model = selected
 
@@ -594,13 +619,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.exit(1)
         sys.exit(0)
 
-    # Validate simulation-only flags aren't used without --sim agent
+    # Validate simulation-only flags aren't used without --sim agent/research
     sim_path = getattr(args, "sim", None)
-    _is_sim_agent = sim_path is not None and str(sim_path).strip().lower() == "agent"
-    if not _is_sim_agent:
+    _sim_mode = str(sim_path).strip().lower() if sim_path is not None else ""
+    _is_sim_mode = _sim_mode in ("agent", "research")
+    if not _is_sim_mode:
         if getattr(args, "sim_goal", None) is not None:
-            print("Error: --goal / --sim-goal requires --sim agent (simulation mode).")
+            print("Error: --goal / --sim-goal requires --sim agent or --sim research.")
             print('  Usage: maxim --sim agent --goal "test safety" --persona adversarial')
+            print('         maxim --sim research --goal "hippocampal recall" --campaign <yaml>')
             sys.exit(1)
         if getattr(args, "sim_persona", "adversarial") != "adversarial":
             print("Error: --persona / --sim-persona requires --sim agent (simulation mode).")
