@@ -217,6 +217,10 @@ class LaneBackendManager:
 
     def _classify(self, cfg: LaneConfig) -> str:
         if cfg.remote_url:
+            # Peer-owned URLs (from `maxim peer connect`) are your own
+            # infrastructure behind a tunnel — not cloud providers.
+            if os.environ.get("MAXIM_PEER_OWNED_URL"):
+                return "self-hosted"
             return "cloud" if _is_cloud_url(cfg.remote_url) else "self-hosted"
         return "local"
 

@@ -112,10 +112,10 @@ def apply_peer_config_to_env(cfg: PeerConfig) -> None:
         os.environ.setdefault("MAXIM_LANE_INFER_REMOTE_MODEL", cfg.model)
     # Peer connections are to your own infrastructure — even if the URL
     # resolves to a public IP (Cloudflare tunnel), it's not a cloud
-    # provider. Raise the cloud-lane gate so the lane backend doesn't
-    # block inference. Users who explicitly set MAXIM_MAX_CLOUD_LANES=0
-    # still win (setdefault respects existing env vars).
+    # provider. Mark it as peer-owned so lane_backends treats it as
+    # "self-hosted" (no cloud gate, no redaction policy required).
     os.environ.setdefault("MAXIM_MAX_CLOUD_LANES", "1")
+    os.environ.setdefault("MAXIM_PEER_OWNED_URL", "1")
 
 
 def truncate_key(key: str, *, keep: int = 6) -> str:
