@@ -22,7 +22,7 @@ def _sanitize_json_string(text: str) -> str:
             escape_next = False
             continue
 
-        if char == '\\':
+        if char == "\\":
             result.append(char)
             escape_next = True
             continue
@@ -34,21 +34,92 @@ def _sanitize_json_string(text: str) -> str:
 
         if in_string:
             # Escape control characters inside strings
-            if char == '\n':
-                result.append('\\n')
-            elif char == '\r':
-                result.append('\\r')
-            elif char == '\t':
-                result.append('\\t')
+            if char == "\n":
+                result.append("\\n")
+            elif char == "\r":
+                result.append("\\r")
+            elif char == "\t":
+                result.append("\\t")
             elif ord(char) < 32:
                 # Other control characters - escape as unicode
-                result.append(f'\\u{ord(char):04x}')
+                result.append(f"\\u{ord(char):04x}")
             else:
                 result.append(char)
         else:
             result.append(char)
 
-    return ''.join(result)
+    return "".join(result)
+
+
+def _repair_unescaped_quotes(text: str) -> str:
+    """Attempt to escape unescaped double quotes inside JSON string values.
+
+    When an LLM embeds narrative text containing dialogue (e.g., She said
+    "hello") into a JSON string, the inner quotes break parsing.  This
+    function heuristically detects quotes that appear inside a string value
+    (not at a structural boundary) and escapes them.
+
+    Strategy: walk the text tracking JSON structural context.  A quote that
+    appears inside a string value and is followed by content that doesn't
+    look like a JSON key or structural token is treated as a literal that
+    needs escaping.
+    """
+    import re
+
+    # Quick check: if it parses, no repair needed
+    try:
+        json.loads(text)
+        return text
+    except Exception:
+        pass
+
+    # Find all string value positions: after `"key":` patterns, the next
+    # quote opens a string value.  We re-escape any unescaped quotes
+    # inside that value by looking for the *correct* closing quote
+    # (one followed by , or } or ] or whitespace then one of those).
+    # This is a heuristic — it won't handle all edge cases but covers the
+    # common case of narrative dialogue embedded in tool params.
+    structural_close = re.compile(r'"\s*[,}\]]')
+
+    result = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "\\":
+            # Escaped char — pass through both characters
+            result.append(text[i : i + 2])
+            i += 2
+            continue
+        if ch == '"':
+            # Opening quote of a string — find the structural close
+            result.append('"')
+            i += 1
+            # Scan for the closing quote (one followed by structural char)
+            while i < n:
+                ic = text[i]
+                if ic == "\\":
+                    result.append(text[i : i + 2])
+                    i += 2
+                    continue
+                if ic == '"':
+                    # Is this the structural close?
+                    rest = text[i:]
+                    if structural_close.match(rest):
+                        result.append('"')
+                        i += 1
+                        break
+                    # Not structural — escape it
+                    result.append('\\"')
+                    i += 1
+                    continue
+                result.append(ic)
+                i += 1
+            continue
+        result.append(ch)
+        i += 1
+
+    return "".join(result)
 
 
 def _find_first_json_object(text: str) -> str | None:
@@ -192,23 +263,32 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
     try:
         obj = json.loads(json_candidate)
     except json.JSONDecodeError as e:
-        # Try sanitizing control characters inside strings
-        if "control character" in str(e).lower() or "invalid" in str(e).lower():
+        # Try sanitizing (control chars, unescaped quotes) on any parse failure
+        try:
+            sanitized = _sanitize_json_string(json_candidate)
+            obj = json.loads(sanitized)
+            info("JSON parse succeeded after sanitizing")
+        except Exception:
+            # Last resort: try repairing unescaped quotes inside string values
             try:
-                sanitized = _sanitize_json_string(json_candidate)
-                obj = json.loads(sanitized)
-                info("JSON parse succeeded after sanitizing control characters")
-            except Exception as e2:
-                warn("JSON parse failed after sanitization: %s | len=%d | last_50: %s",
-                     str(e2)[:80], len(json_candidate), json_candidate[-50:] if len(json_candidate) > 50 else json_candidate)
+                repaired = _repair_unescaped_quotes(json_candidate)
+                obj = json.loads(repaired)
+                info("JSON parse succeeded after quote repair")
+            except Exception:
+                warn(
+                    "JSON parse failed: %s | len=%d | last_50: %s",
+                    str(e)[:80],
+                    len(json_candidate),
+                    json_candidate[-50:] if len(json_candidate) > 50 else json_candidate,
+                )
                 return None
-        else:
-            warn("JSON parse failed: %s | len=%d | last_50: %s",
-                 str(e)[:80], len(json_candidate), json_candidate[-50:] if len(json_candidate) > 50 else json_candidate)
-            return None
     except Exception as e:
-        warn("JSON parse failed: %s | len=%d | last_50: %s",
-             str(e)[:80], len(json_candidate), json_candidate[-50:] if len(json_candidate) > 50 else json_candidate)
+        warn(
+            "JSON parse failed: %s | len=%d | last_50: %s",
+            str(e)[:80],
+            len(json_candidate),
+            json_candidate[-50:] if len(json_candidate) > 50 else json_candidate,
+        )
         return None
 
     return obj if isinstance(obj, dict) else None
