@@ -18,7 +18,8 @@ import sys
 import tempfile
 import threading
 import time
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -82,10 +83,10 @@ def _build_resume_prompt(report_data: dict[str, Any], goal: str, persona: str) -
     lines = [
         f"SIMULATION GOAL: {goal}",
         "",
-        f"You are RESUMING a previous simulation session.",
+        "You are RESUMING a previous simulation session.",
         f"You are the simulation orchestrator with the '{persona}' persona.",
         "",
-        f"## Previous Session Summary",
+        "## Previous Session Summary",
         f"Goal: {prev_goal}",
         f"Persona: {prev_persona}",
         f"Completed {prev_turns} turns, {prev_actions} actions ({prev_blocked} blocked)",
@@ -267,7 +268,6 @@ def start_simulation_mode(
     from maxim.runtime.agent_loop import run_agentic_loop
     from maxim.runtime.bootstrap import (
         build_decision_engine,
-        build_evaluators,
         build_memory,
         build_tool_registry,
     )
@@ -502,7 +502,7 @@ def start_simulation_mode(
             persistence_path=str(orch_persistence),
         ))
         orch_nac = NAc()
-        orch_memory_hub = MemoryHub(
+        orch_memory_hub = MemoryHub(  # noqa: F841 — created for Phase 3 cross-session learning
             hippocampus=orch_hippocampus,
             nac=orch_nac,
         )
@@ -750,8 +750,8 @@ def start_simulation_mode(
     print(f"  Goal: {goal}")
     print(f"  Max turns: {max_turns}")
     if sim_sandbox and not no_sim_env:
-        print(f"  Environment: simulated filesystem with pain triggers")
-    print(f"  Commands: /cancel  /new <goal>  /status  /report")
+        print("  Environment: simulated filesystem with pain triggers")
+    print("  Commands: /cancel  /new <goal>  /status  /report")
     print(f"{'='*60}\n")
 
     # ── Start AUT thread ─────────────────────────────────────────────────
@@ -1074,13 +1074,11 @@ def start_simulation_mode(
     #   3. User cancelled via stop_event
     #   4. Loops exited normally (completed)
     llm_finish = bridge.finish_context if bridge.finish_context else None
-    finish_summary_override: str | None = None
     if orch_error:
         finish_reason = "error"
     elif llm_finish and llm_finish.get("status"):
         finish_reason = llm_finish["status"]
-        # Remember the LLM's explanation so it can flow into the report
-        finish_summary_override = llm_finish.get("summary") or llm_finish.get("reason")
+        # LLM's explanation flows into the report via llm_finish_context below
     elif stop_event.is_set():
         finish_reason = "cancel"
     else:
@@ -1147,7 +1145,7 @@ def start_simulation_mode(
             print("  Running LLM analysis roundup...")
             analyze_simulation(report, llm_router=llm_router)
             save_report(report, base_dir=report_dir)
-        except Exception as e:
+        except Exception:
             print("  LLM roundup skipped (model unavailable after shutdown)")
     elif llm_router is not None:
         print("  Skipping LLM roundup (session cost ceiling reached)")

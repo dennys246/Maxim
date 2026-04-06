@@ -445,7 +445,7 @@ def _clear_memory(memory_types: str, home_dir: str = "data") -> dict[str, bool]:
 def main(argv: Sequence[str] | None = None) -> int:
     from maxim.utils.last_run import (
         should_save, save_last_run, load_last_run, load_all_runs,
-        clear_last_run, format_all_runs, format_last_run,
+        clear_last_run, format_all_runs,
     )
 
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
@@ -569,7 +569,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         from maxim.simulation.scenario_source import ScenarioSource
         from maxim.simulation.sinks import RecordingSink
-        from maxim.simulation.validation import ScenarioResult, validate_expectations
+        from maxim.simulation.validation import validate_expectations
 
         # Check for agent mode (autonomous orchestrator)
         _sim_agent = str(sim_path).strip().lower() == "agent"
@@ -637,8 +637,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             if _sim_debug:
                 print(f"  Simulation sandbox: {sim_tmpdir}")
 
-            all_results = []
-            any_failed = False
+            # (all_results / any_failed removed — unused; batch scenario
+            # result aggregation is handled by ScenarioRunner directly)
 
             from maxim.simulation.sim_logger import enable_sim_logging, disable_sim_logging
             sim_log_path = str(sim_workspace / f"sim_log_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
@@ -943,12 +943,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                                 if download_llm(profile):
                                     print(f"  Download complete: {profile}")
                                 else:
-                                    print(f"  Download failed. Run: ./scripts/download_models.sh --llm --enable")
+                                    print("  Download failed. Run: ./scripts/download_models.sh --llm --enable")
                             else:
-                                print(f"  Model not found. Run: ./scripts/download_models.sh --llm --enable")
+                                print("  Model not found. Run: ./scripts/download_models.sh --llm --enable")
                         except Exception as e:
                             print(f"  Auto-download failed: {e}")
-                            print(f"  Run: ./scripts/download_models.sh --llm --enable")
+                            print("  Run: ./scripts/download_models.sh --llm --enable")
 
                     if hasattr(llm_router, "warmup"):
                         llm_router.warmup()
