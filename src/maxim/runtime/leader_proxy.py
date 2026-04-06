@@ -453,7 +453,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         # Apply: git pull
         try:
             subprocess.run(
-                ["git", "pull", "--rebase", "origin", branch],
+                ["git", "-c", "pull.rebase=true", "pull", "origin", branch],
                 capture_output=True, text=True, timeout=60, cwd=repo_root,
                 check=True,
             )
