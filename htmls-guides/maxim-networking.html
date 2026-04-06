@@ -1,0 +1,471 @@
+{% extends "base.html" %}
+
+{% block title %}Multi-LLM Networking &amp; Peer Mesh — Maxim Docs | Distributed Inference{% endblock %}
+
+{% block meta_description %}How Maxim distributes LLM inference across peer machines using Cloudflare tunnels, a stdlib-only reverse proxy, admission control, and lane metrics. Setup, troubleshooting, and roadmap.{% endblock %}
+
+{% block meta_keywords %}Maxim networking, distributed inference, peer mesh, Cloudflare tunnel, LeaderProxy, LLM scaling, multi-GPU, agentic robotics, Maxim peer, admission control, lane metrics{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Multi-LLM Networking & Peer Mesh — Distributed Inference in Maxim",
+  "description": "How Maxim distributes LLM inference across peer machines using Cloudflare tunnels, a stdlib-only reverse proxy, admission control, and lane metrics.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/networking",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["distributed inference", "peer mesh", "Cloudflare tunnel", "LeaderProxy", "admission control", "lane metrics"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Networking", "item": "https://www.dennyschaedig.com/maxim/networking" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Multi-LLM Networking &amp; Peer Mesh</h1>
+    <p class="text-indigo-400 font-medium">Distributed Inference, Cloudflare Tunnels, and Cross-Machine Coordination</p>
+  </header>
+
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
+    <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+      <li><a href="#why-distributed" class="text-indigo-400 hover:text-indigo-300 no-underline">Why Distributed Inference</a></li>
+      <li><a href="#architecture" class="text-indigo-400 hover:text-indigo-300 no-underline">Architecture Overview</a></li>
+      <li><a href="#roles" class="text-indigo-400 hover:text-indigo-300 no-underline">Roles</a></li>
+      <li><a href="#leader-proxy" class="text-indigo-400 hover:text-indigo-300 no-underline">LeaderProxy (Phase 7a)</a></li>
+      <li><a href="#admission-control" class="text-indigo-400 hover:text-indigo-300 no-underline">Admission Control (Phase 7b)</a></li>
+      <li><a href="#lane-metrics" class="text-indigo-400 hover:text-indigo-300 no-underline">Lane Metrics (Phase 8)</a></li>
+      <li><a href="#heartbeat" class="text-indigo-400 hover:text-indigo-300 no-underline">System Heartbeat</a></li>
+      <li><a href="#peer-setup" class="text-indigo-400 hover:text-indigo-300 no-underline">Peer Setup</a></li>
+      <li><a href="#troubleshooting" class="text-indigo-400 hover:text-indigo-300 no-underline">Troubleshooting</a></li>
+      <li><a href="#whats-next" class="text-indigo-400 hover:text-indigo-300 no-underline">What's Next</a></li>
+    </ol>
+  </div>
+
+  <!-- 1. Why Distributed Inference -->
+  <section class="space-y-4">
+    <h2 id="why-distributed" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Why Distributed Inference</h2>
+
+    <p class="text-slate-300 leading-relaxed">Maxim's agent pipeline calls the LLM multiple times per cycle: perception, memory consolidation, goal reasoning, execution planning, and statistical review. On a single machine with one GPU, these calls compete for the same inference server. When the model is large or the context window is deep, that bottleneck caps the cycle rate.</p>
+
+    <p class="text-slate-300 leading-relaxed">Distributed inference solves this by letting <span class="text-indigo-400 font-semibold">peer machines contribute their compute</span>. A laptop on the same network, a desktop in another room, or a cloud VM halfway around the world can all send inference requests to the machine running the GPU. The leader handles the model; peers handle everything else.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">The Core Problem</h3>
+      <ul class="space-y-2 text-slate-300">
+        <li><span class="text-indigo-400 font-semibold">Single-GPU saturation</span> &mdash; A 7B model on a consumer GPU handles ~20 req/s; Maxim's full pipeline can generate 5-8 requests per cycle at higher frequencies.</li>
+        <li><span class="text-indigo-400 font-semibold">Model locality</span> &mdash; The model lives in VRAM on one machine. Moving it is expensive. Moving the requests to it is cheap.</li>
+        <li><span class="text-indigo-400 font-semibold">Remote access</span> &mdash; Cloudflare Tunnel exposes the inference server securely without opening firewall ports or configuring NAT, enabling peers anywhere on the internet.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 2. Architecture Overview -->
+  <section class="space-y-4">
+    <h2 id="architecture" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Architecture Overview</h2>
+
+    <p class="text-slate-300 leading-relaxed">The networking layer sits between the LLM router and the inference backend. On the leader, a reverse proxy accepts authenticated requests and forwards them to the local llama-cpp-server. On peers, the router is configured to point at the leader instead of localhost.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Network Topology</span>
+
+  Peer Machine                        Leader Machine
+ ┌──────────────┐                    ┌───────────────────────────────────┐
+ │ Agent Loop   │                    │                                   │
+ │   │          │                    │  Agent Loop ──┐                   │
+ │   ▼          │                    │               │                   │
+ │ LLM Router   │                    │  LLM Router   │                   │
+ │   │          │                    │    │           │                   │
+ └───┼──────────┘                    │    │           ▼                   │
+     │ HTTPS                         │    │     llama-cpp-server (:8100) │
+     ▼                               │    │           ▲                   │
+ Cloudflare Tunnel                   │    └───────────┘                   │
+     │                               │                ▲                   │
+     ▼                               │                │                   │
+ LeaderProxy (:8099) ────────────────┼────────────────┘                   │
+     ▲                               │                                   │
+     │ cloudflared                   │                                   │
+     └───────────────────────────────┘                                   │
+                                     └───────────────────────────────────┘</div>
+
+    <p class="text-slate-300 leading-relaxed">Both the leader's own agent loop and remote peers are independent HTTP clients of the same llama-cpp-server. The <span class="text-indigo-400 font-semibold">LeaderProxy</span> authenticates and rate-limits peer traffic before it reaches the backend. The leader's own requests go directly to :8100, bypassing the proxy entirely.</p>
+  </section>
+
+  <!-- 3. Roles -->
+  <section class="space-y-4">
+    <h2 id="roles" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Roles</h2>
+
+    <p class="text-slate-300 leading-relaxed">Every Maxim instance operates in one of three roles. The role determines how the LLM router resolves inference endpoints and whether the proxy/tunnel subsystems activate.</p>
+
+    <table class="w-full text-sm text-slate-300">
+      <thead>
+        <tr class="border-b border-slate-700">
+          <th class="text-left text-indigo-400 pb-2">Role</th>
+          <th class="text-left text-indigo-400 pb-2">Description</th>
+          <th class="text-left text-indigo-400 pb-2">Runs</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="border-b border-slate-800">
+          <td class="py-1.5"><span class="text-indigo-400 font-semibold">Leader</span></td>
+          <td class="py-1.5">GPU machine. Hosts the model, runs the inference server, proxy, and tunnel.</td>
+          <td class="py-1.5">llama-cpp-server + LeaderProxy + cloudflared + agent loop</td>
+        </tr>
+        <tr class="border-b border-slate-800">
+          <td class="py-1.5"><span class="text-indigo-400 font-semibold">Peer</span></td>
+          <td class="py-1.5">Client machine. Sends inference requests to the leader over the tunnel.</td>
+          <td class="py-1.5">agent loop only (LLM router points at leader)</td>
+        </tr>
+        <tr>
+          <td class="py-1.5"><span class="text-indigo-400 font-semibold">Solo</span></td>
+          <td class="py-1.5">Default. Everything local, no networking. Equivalent to a leader with no peers.</td>
+          <td class="py-1.5">llama-cpp-server + agent loop (no proxy, no tunnel)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 mt-3">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Role Detection</h3>
+      <p class="text-slate-300 leading-relaxed mb-2">Maxim detects the role at startup using the following priority:</p>
+      <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+        <li>Explicit <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">MAXIM_ROLE=leader|peer|solo</code> environment variable.</li>
+        <li>Presence of a cloudflared config file with an ingress rule pointing to :8099 implies <span class="text-indigo-400 font-semibold">leader</span>.</li>
+        <li>Presence of a <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">peer.yml</code> with a remote endpoint implies <span class="text-indigo-400 font-semibold">peer</span>.</li>
+        <li>Otherwise, <span class="text-indigo-400 font-semibold">solo</span>.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 4. LeaderProxy -->
+  <section class="space-y-4">
+    <h2 id="leader-proxy" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">LeaderProxy (Phase 7a)</h2>
+
+    <p class="text-slate-300 leading-relaxed">The LeaderProxy is a <span class="text-indigo-400 font-semibold">stdlib-only reverse proxy</span> that listens on port 8099 and forwards authenticated requests to the local llama-cpp-server on port 8100. It uses only Python's <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">http.server</code> and <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">urllib.request</code> &mdash; no third-party dependencies.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Key Features</h3>
+      <ul class="space-y-2 text-slate-300">
+        <li><span class="text-indigo-400 font-semibold">Auth enforcement</span> &mdash; Every request must carry a valid <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">Authorization: Bearer &lt;key&gt;</code> header. Keys are managed with <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim tunnel key rotate</code>.</li>
+        <li><span class="text-indigo-400 font-semibold">Request-ID propagation</span> &mdash; Each proxied request gets an <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">X-Request-ID</code> header (UUID4) for end-to-end tracing.</li>
+        <li><span class="text-indigo-400 font-semibold">Response headers</span> &mdash; <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">X-Maxim-Proxy: true</code>, <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">X-Maxim-Request-ID</code>, and <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">X-Maxim-Latency-Ms</code> on every response.</li>
+      </ul>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mt-4 mb-2">Debug Endpoints</h3>
+    <p class="text-slate-300 leading-relaxed mb-3">The proxy exposes four debug endpoints for operational visibility. All require the same Bearer token as inference requests.</p>
+
+    <table class="w-full text-sm text-slate-300">
+      <thead>
+        <tr class="border-b border-slate-700">
+          <th class="text-left text-indigo-400 pb-2">Endpoint</th>
+          <th class="text-left text-indigo-400 pb-2">Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="border-b border-slate-800">
+          <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">/v1/debug/status</code></td>
+          <td class="py-1.5">Proxy uptime, active connections, backend reachability</td>
+        </tr>
+        <tr class="border-b border-slate-800">
+          <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">/v1/debug/heartbeat</code></td>
+          <td class="py-1.5">Lightweight liveness check (200 OK)</td>
+        </tr>
+        <tr class="border-b border-slate-800">
+          <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">/v1/debug/metrics</code></td>
+          <td class="py-1.5">Request counts, latency percentiles, error rates</td>
+        </tr>
+        <tr>
+          <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">/v1/debug/last-requests</code></td>
+          <td class="py-1.5">Ring buffer of recent requests (peer ID, latency, status)</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 5. Admission Control -->
+  <section class="space-y-4">
+    <h2 id="admission-control" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Admission Control (Phase 7b)</h2>
+
+    <p class="text-slate-300 leading-relaxed">The inference server can only handle so many concurrent requests before latency degrades or VRAM is exhausted. Admission control prevents overload by rejecting excess traffic early, before it reaches the backend.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Two-Layer Protection</h3>
+      <div class="space-y-4">
+        <div>
+          <h4 class="text-white font-medium mb-1">Concurrency Semaphore</h4>
+          <p class="text-slate-300 leading-relaxed">Configured via <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">MAXIM_PROXY_MAX_CONCURRENT</code> (default: 4). When all slots are occupied, new requests receive a <span class="text-indigo-400 font-semibold">429 Too Many Requests</span> with an <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">X-Maxim-Queue-Depth</code> header indicating how many requests are waiting.</p>
+        </div>
+        <div>
+          <h4 class="text-white font-medium mb-1">Per-Peer Rate Limiting</h4>
+          <p class="text-slate-300 leading-relaxed">Configured via <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">MAXIM_PROXY_RATE_LIMIT_RPM</code> (default: 60). Each peer is tracked by its API key. Exceeding the limit returns a 429 with a <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">Retry-After</code> header.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mt-4 mb-2">Environment Variables</h3>
+    <table class="w-full text-sm text-slate-300">
+      <thead>
+        <tr class="border-b border-slate-700">
+          <th class="text-left text-indigo-400 pb-2">Variable</th>
+          <th class="text-left text-indigo-400 pb-2">Default</th>
+          <th class="text-left text-indigo-400 pb-2">Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="border-b border-slate-800">
+          <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">MAXIM_PROXY_MAX_CONCURRENT</code></td>
+          <td class="py-1.5">4</td>
+          <td class="py-1.5">Maximum simultaneous requests forwarded to backend</td>
+        </tr>
+        <tr>
+          <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">MAXIM_PROXY_RATE_LIMIT_RPM</code></td>
+          <td class="py-1.5">60</td>
+          <td class="py-1.5">Requests per minute allowed per peer API key</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="text-slate-300 leading-relaxed mt-3">On the peer side, the LLM router's retry logic handles 429s gracefully: it reads <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">Retry-After</code>, backs off, and retries. From the agent's perspective, the request is simply slower &mdash; the pipeline does not crash.</p>
+  </section>
+
+  <!-- 6. Lane Metrics -->
+  <section class="space-y-4">
+    <h2 id="lane-metrics" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Lane Metrics (Phase 8)</h2>
+
+    <p class="text-slate-300 leading-relaxed">The WorkerPool routes inference requests through three lanes: <span class="text-indigo-400 font-semibold">infer</span>, <span class="text-indigo-400 font-semibold">review</span>, and <span class="text-indigo-400 font-semibold">record</span>. Phase 8 adds per-lane performance counters that track how each lane is performing in real time.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Tracked Counters</h3>
+      <table class="w-full text-sm text-slate-300">
+        <thead>
+          <tr class="border-b border-slate-700">
+            <th class="text-left text-indigo-400 pb-2">Metric</th>
+            <th class="text-left text-indigo-400 pb-2">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-slate-800">
+            <td class="py-1.5">p50 / p99 latency</td>
+            <td class="py-1.5">Median and tail latency per lane, computed over a sliding window</td>
+          </tr>
+          <tr class="border-b border-slate-800">
+            <td class="py-1.5">Failure rate</td>
+            <td class="py-1.5">Percentage of requests that returned an error or timed out</td>
+          </tr>
+          <tr>
+            <td class="py-1.5">Token throughput</td>
+            <td class="py-1.5">Tokens per second generated, per lane</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The <span class="text-indigo-400 font-semibold">MetricsRegistry</span> is a singleton shared between the agent runtime and the LeaderProxy. Both write to the same counters, giving a unified view of local and remote load. These metrics feed into <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim doctor</code>, which flags lanes with elevated failure rates or latency spikes.</p>
+
+    <pre class="bg-slate-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto"># View lane metrics from the proxy debug endpoint
+curl -s -H "Authorization: Bearer $MAXIM_API_KEY" \
+  https://maxim.yourdomain.com/v1/debug/metrics | python -m json.tool
+
+# Example output
+{
+  "lanes": {
+    "infer":  { "p50_ms": 142, "p99_ms": 890, "fail_pct": 0.3, "tok_per_sec": 48.2 },
+    "review": { "p50_ms": 98,  "p99_ms": 520, "fail_pct": 0.0, "tok_per_sec": 31.7 },
+    "record": { "p50_ms": 67,  "p99_ms": 310, "fail_pct": 0.1, "tok_per_sec": 22.4 }
+  },
+  "uptime_s": 3847,
+  "total_requests": 1294
+}</pre>
+  </section>
+
+  <!-- 7. System Heartbeat -->
+  <section class="space-y-4">
+    <h2 id="heartbeat" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">System Heartbeat</h2>
+
+    <p class="text-slate-300 leading-relaxed">The heartbeat subsystem runs as a daemon thread that samples system vitals every 10 seconds. It provides early warning when hardware resources are constrained or the agent loop has stalled.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Sampled Signals</h3>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <h4 class="text-white font-medium mb-1">Hardware</h4>
+          <ul class="text-slate-300 space-y-1 text-sm">
+            <li>GPU utilization and VRAM usage</li>
+            <li>CPU load average (1m / 5m / 15m)</li>
+            <li>RAM usage (resident + swap)</li>
+            <li>Disk free space on the data partition</li>
+            <li>WiFi signal strength and link quality</li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="text-white font-medium mb-1">Runtime</h4>
+          <ul class="text-slate-300 space-y-1 text-sm">
+            <li>Agent loop cycle count and timestamp of last cycle</li>
+            <li>Stall detection: warns when the loop is idle &gt;30 seconds</li>
+            <li>WorkerPool queue depths per lane</li>
+            <li>Active inference request count</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mt-4 mb-2">Enabling the Heartbeat</h3>
+    <pre class="bg-slate-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto"># Enable heartbeat logging
+export MAXIM_HEARTBEAT=1
+
+# Or enable lane trace (which also enables heartbeat)
+export MAXIM_LANE_TRACE=1
+
+# Heartbeat output in the log
+[heartbeat] gpu=72% vram=5.1/8.0GB cpu=2.4 ram=61% disk=42GB loop=+0.8s lanes=3/0/1</pre>
+
+    <p class="text-slate-300 leading-relaxed">Stall detection is particularly useful for debugging distributed setups. If the agent loop blocks on a remote inference call that the leader has rate-limited, the heartbeat will flag the idle gap before the user notices the pause.</p>
+  </section>
+
+  <!-- 8. Peer Setup -->
+  <section class="space-y-4">
+    <h2 id="peer-setup" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Peer Setup</h2>
+
+    <p class="text-slate-300 leading-relaxed">Setting up a peer takes three steps: install Maxim on the peer machine, connect to the leader, and verify the link.</p>
+
+    <h3 class="text-lg font-semibold text-white mt-4 mb-2">1. Connect to the Leader</h3>
+    <pre class="bg-slate-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto"># On the peer machine
+maxim peer connect https://maxim.yourdomain.com/v1
+
+# This prompts for the API key (generated on the leader with `maxim tunnel key rotate`)
+# and writes ~/.config/maxim/peer.yml</pre>
+
+    <h3 class="text-lg font-semibold text-white mt-4 mb-2">2. Verify Connectivity</h3>
+    <pre class="bg-slate-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto"># Quick connectivity test (runs from the peer, no full agent runtime needed)
+maxim peer test https://maxim.yourdomain.com/v1
+
+# Expected output:
+#   Connecting to https://maxim.yourdomain.com/v1 ...
+#   Auth ............ OK (Bearer token accepted)
+#   Heartbeat ....... OK (proxy alive, 1294 requests served)
+#   Inference ....... OK (model loaded, 48 tok/s)
+#   Latency ......... 23ms round-trip</pre>
+
+    <h3 class="text-lg font-semibold text-white mt-4 mb-2">3. Run with Tracing</h3>
+    <pre class="bg-slate-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto"># Enable lane tracing to see which requests go remote
+export MAXIM_LANE_TRACE=1
+maxim --language-model mistral-7b
+
+# Trace output shows remote routing:
+# [lane:infer] POST /v1/chat/completions -> remote (23ms RTT, 142ms total)</pre>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 mt-3">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">peer.yml Structure</h3>
+      <pre class="bg-slate-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto">endpoint: https://maxim.yourdomain.com/v1
+api_key: mk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+timeout_s: 30
+retry_max: 3
+verify_ssl: true</pre>
+    </div>
+  </section>
+
+  <!-- 9. Troubleshooting -->
+  <section class="space-y-4">
+    <h2 id="troubleshooting" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Troubleshooting</h2>
+
+    <p class="text-slate-300 leading-relaxed">Most networking issues fall into a few categories. Start with <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim doctor</code> &mdash; it checks tunnel status, proxy reachability, and auth validity automatically.</p>
+
+    <div class="space-y-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Provider Priority</h3>
+        <p class="text-slate-300 leading-relaxed">If inference is unexpectedly hitting a cloud API (Anthropic/OpenAI) instead of the peer leader, check the provider priority in <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">data/util/llm.json</code>. The router picks the highest-priority provider that's available. Ensure the local/peer provider is ranked above cloud providers for the model you're using.</p>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Pricing Gate</h3>
+        <p class="text-slate-300 leading-relaxed">The energy tracker applies a cost multiplier per provider. If the peer endpoint is not registered as a <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">local</code>-class provider, the router may reject requests that exceed the per-cycle cost budget. Fix by setting the provider class to <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">local</code> in llm.json.</p>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Cloudflare WAF / Bot Fight Mode</h3>
+        <p class="text-slate-300 leading-relaxed">Cloudflare's Web Application Firewall can return a <span class="text-indigo-400 font-semibold">403 Forbidden</span> for automated requests. If <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer test</code> shows a 403 with an HTML body mentioning "Just a moment," Bot Fight Mode is interfering. Disable it in the Cloudflare dashboard under Security &rarr; Bots, or add a WAF exception rule for the tunnel hostname.</p>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Stale DNS</h3>
+        <p class="text-slate-300 leading-relaxed">After rotating the Cloudflare tunnel or changing the hostname, DNS propagation can take up to 5 minutes. If <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer test</code> times out but the leader's <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">cloudflared</code> shows no incoming connections, flush DNS on the peer machine and retry.</p>
+      </div>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed mt-3">For deeper diagnostic procedures, see <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">docs/troubleshooting/</code> in the repository.</p>
+  </section>
+
+  <!-- 10. What's Next -->
+  <section class="space-y-4">
+    <h2 id="whats-next" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What's Next</h2>
+
+    <p class="text-slate-300 leading-relaxed">The networking layer has a clear progression from the current manual-setup model toward automatic discovery and intelligent routing.</p>
+
+    <div class="space-y-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Phase 7c &mdash; mDNS Discovery</h3>
+        <p class="text-slate-300 leading-relaxed">Automatic peer discovery on the local network using mDNS/DNS-SD. A Maxim leader broadcasts a <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">_maxim-llm._tcp</code> service record; peers discover it without manual endpoint configuration. Falls back to the current explicit peer.yml approach on networks where mDNS is blocked.</p>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Phase 7d &mdash; InferenceRouter</h3>
+        <p class="text-slate-300 leading-relaxed">Smart request routing when multiple inference backends are available (local GPU + cloud API + peer leader). The InferenceRouter selects the backend per-request based on lane metrics (latency, queue depth, failure rate), cost constraints, and model compatibility. This replaces the current static provider-priority approach.</p>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Phase 7a-ext &mdash; Remote Self-Update</h3>
+        <p class="text-slate-300 leading-relaxed">The leader can push a code update to connected peers via the tunnel. Peers pull from the leader's git hash, run their own test suite, and hot-reload. Designed for long-running deployments where SSH access to every peer is impractical.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/technical-deepdive" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Technical Deep Dive</span>
+      </a>
+      <a href="/maxim/roadmap" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Roadmap</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

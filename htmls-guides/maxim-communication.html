@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+
+{% block title %}Communication &amp; Safety — Maxim Docs | Agentic Robotics Framework{% endblock %}
+
+{% block meta_description %}How Maxim reaches the outside world and handles interrupts. Explore the Communication Gateway, Preemption Circuit, execution tracking, and mode-based filesystem containment.{% endblock %}
+
+{% block meta_keywords %}Maxim communication, communication gateway, preemption circuit, execution tracking, agent safety, mode containment, filesystem policy, Twilio integration, interrupt handling{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Communication & Safety — How Maxim Reaches the World and Handles Interrupts",
+  "description": "How Maxim communicates externally and handles safety interrupts. The Communication Gateway, Preemption Circuit, and mode-based containment.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/communication",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["communication gateway", "preemption circuit", "agent safety", "filesystem containment"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Communication & Safety", "item": "https://www.dennyschaedig.com/maxim/communication" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Communication &amp; Safety</h1>
+    <p class="text-indigo-400 font-medium">Reaching the Outside World and Handling Interrupts</p>
+  </header>
+
+  <p class="text-slate-300 leading-relaxed">An agent that can only talk to itself isn't very useful. Maxim's agentic upgrade adds three critical capabilities: external communication channels, interrupt handling for when humans need to override decisions, and mode-based containment that scales access with trust.</p>
+
+  <!-- TOC -->
+  <nav class="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+    <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Contents</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-1">
+      <a href="#gateway" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">Communication Gateway</a>
+      <a href="#preemption" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">Preemption Circuit</a>
+      <a href="#execution" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">Execution Tracking</a>
+      <a href="#containment" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">Mode-Based Containment</a>
+      <a href="#bridge" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">Communication Bridge</a>
+    </div>
+  </nav>
+
+  <!-- Communication Gateway -->
+  <section class="space-y-4">
+    <h2 id="gateway" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Communication Gateway</h2>
+
+    <p class="text-slate-300 leading-relaxed">The gateway is a <em class="text-indigo-400 not-italic font-medium">pure transport layer</em>. It delivers messages when the agent tells it to and receives inbound messages into the bus. It has no opinion about <em>when</em> to notify or <em>what</em> to notify about &mdash; that's the agent's job.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Message Flow</span>
+
+<span class="text-amber-400">Outbound (agent &rarr; user)</span>
+  Agent decides to send  &rarr;  send_message tool  &rarr;  Gateway  &rarr;  Channel  &rarr;  User
+
+<span class="text-green-400">Inbound (user &rarr; agent)</span>
+  User texts/calls in    &rarr;  Channel  &rarr;  Gateway  &rarr;  Percept on bus  &rarr;  Agent
+
+<span class="text-slate-500">The gateway is a dumb pipe. The agent is the brain.</span></div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Channel Architecture</h3>
+
+    <p class="text-slate-300 leading-relaxed mb-3">Channels are pluggable transport adapters. Each channel handles a specific communication medium:</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-sm font-semibold text-indigo-400 mb-2">Twilio Channel</h4>
+        <p class="text-sm text-slate-300 mb-2">SMS + Voice via REST API. Outbound messages are immediate API calls. Inbound messages arrive via webhook.</p>
+        <ul class="text-xs text-slate-400 space-y-1">
+          <li><strong class="text-slate-300">send(recipient, body)</strong> &rarr; Twilio Messages API</li>
+          <li><strong class="text-slate-300">call(recipient, message)</strong> &rarr; TwiML voice synthesis</li>
+          <li><strong class="text-slate-300">Inbound webhook</strong> &rarr; gateway.receive_inbound()</li>
+        </ul>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-sm font-semibold text-slate-400 mb-2">Future Channels</h4>
+        <p class="text-sm text-slate-300 mb-2">The channel interface is intentionally minimal. Adding new channels requires implementing just <span class="font-mono text-xs">send()</span> and optionally <span class="font-mono text-xs">call()</span>.</p>
+        <ul class="text-xs text-slate-400 space-y-1">
+          <li>Email (SMTP/IMAP)</li>
+          <li>Slack / Discord webhooks</li>
+          <li>WebSocket for web interfaces</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Security: Hardened Inbound Path</h3>
+
+    <p class="text-slate-300 leading-relaxed mb-3">External messages are untrusted input. The gateway enforces strict separation between external data and internal control fields:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Inbound Percept Construction</span>
+
+percept = Percept(
+  source    = "comms:twilio"     <span class="text-slate-500"># Set by gateway (not external)</span>
+  content   = text               <span class="text-slate-500"># External text (only user data)</span>
+  salience  = 0.9                <span class="text-slate-500"># FIXED &mdash; not from external data</span>
+  hard_override = None           <span class="text-slate-500"># Only set if text matches HARD_STOP whitelist</span>
+  metadata  = {channel, sender}  <span class="text-slate-500"># Informational only</span>
+)
+
+<span class="text-slate-500">External data NEVER controls: salience, hard_override, novelty, interests</span>
+<span class="text-slate-500">hard_override is only str|None from HARD_STOP_TRIGGERS whitelist</span></div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Agent Tools</h3>
+
+    <p class="text-slate-300 leading-relaxed mb-3">Two tools give the agent control over outbound communication:</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700">
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Tool</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Parameters</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Effect</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-xs text-indigo-400">send_message</td>
+            <td class="py-2 px-3 text-xs">channel, recipient, body</td>
+            <td class="py-2 px-3 text-xs">Calls gateway.send() &rarr; delivers via channel adapter</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-xs text-indigo-400">call_user</td>
+            <td class="py-2 px-3 text-xs">recipient, message</td>
+            <td class="py-2 px-3 text-xs">Calls gateway.call() &rarr; initiates voice call with TTS</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-sm text-slate-400 mt-2">Both tools are registered in the tool registry during bootstrap and are subject to mode-based access gating. The agent decides <em>when</em> and <em>what</em> to communicate based on its reasoning &mdash; the gateway just delivers.</p>
+  </section>
+
+  <!-- Preemption Circuit -->
+  <section class="space-y-4">
+    <h2 id="preemption" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Preemption Circuit</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Biological Inspiration</h3>
+      <p class="text-slate-300">Biological agents can be interrupted. When something more urgent appears (a loud noise, a sudden threat), the current action is suspended and attention shifts. The prefrontal cortex mediates this via inhibitory control &mdash; the ability to stop an ongoing behavior. Maxim's preemption circuit provides the same capability: external signals (voice commands, inbound messages, hard stops) can interrupt the current goal.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The PreemptionCircuit evaluates incoming Percepts for urgency and can pause, redirect, or abort the current goal. It operates on a priority system:</p>
+
+    <div class="space-y-3 mt-4">
+      <div class="bg-red-950/30 border border-red-800/50 rounded-xl p-4">
+        <h4 class="text-sm font-semibold text-red-400 mb-1">HARD_STOP (immediate)</h4>
+        <p class="text-sm text-slate-300">Unconditional halt. Triggered by voice commands ("Maxim stop"), inbound messages matching the hard-stop whitelist, or safety circuit triggers. Cancels current goal, freezes motor output.</p>
+      </div>
+      <div class="bg-amber-950/30 border border-amber-800/50 rounded-xl p-4">
+        <h4 class="text-sm font-semibold text-amber-400 mb-1">REDIRECT (high priority)</h4>
+        <p class="text-sm text-slate-300">Suspend current goal and switch to a higher-priority one. Triggered by urgent user input or significant environmental changes. Current goal is preserved for potential resumption.</p>
+      </div>
+      <div class="bg-blue-950/30 border border-blue-800/50 rounded-xl p-4">
+        <h4 class="text-sm font-semibold text-blue-400 mb-1">HOLD (tonic inhibition)</h4>
+        <p class="text-sm text-slate-300">Pause goal execution for a duration. The agentic loop continues cycling but skips goal proposals while the hold is active. Used during mode transitions or when waiting for external input.</p>
+      </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Integration with the Agent Loop</h3>
+
+    <p class="text-slate-300 leading-relaxed">The preemption check happens early in each agent loop cycle, before goal proposals:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Agent Loop (simplified)</span>
+
+while running:
+  <span class="text-slate-500"># 0. Stop checks (max steps, stop event)</span>
+  <span class="text-red-400"># 0.5 Preemption hold check &mdash; skip cycle if holding</span>
+  if agent.goal.check_hold():
+      continue
+
+  <span class="text-slate-500"># 1. Perception / observation</span>
+  <span class="text-slate-500"># 2. LLM proposals (if needed)</span>
+  <span class="text-slate-500"># 3. Intent path (propose_intent &rarr; tool execution)</span>
+  <span class="text-slate-500"># 4. LLM action execution (autonomy-gated)</span></div>
+  </section>
+
+  <!-- Execution Tracking -->
+  <section class="space-y-4">
+    <h2 id="execution" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Execution Tracking</h2>
+
+    <p class="text-slate-300 leading-relaxed">When the preemption circuit interrupts an action mid-execution, the system needs to know what was happening so it can either reverse it or resume it later. The ExecutionTracker captures pre-execution snapshots:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Execution Snapshot</span>
+
+capture_before(
+  goal_description = "Navigate to kitchen"
+  tool_name        = "move"
+  tool_params      = {yaw: 30, pitch: -10, duration: 1.0}
+  robot            = &lt;RobotController reference&gt;
+)
+
+<span class="text-slate-500"># If preemption occurs, the snapshot enables:</span>
+<span class="text-slate-500"># - Reversal: undo the motor command (move back)</span>
+<span class="text-slate-500"># - Logging: what was interrupted and why</span>
+<span class="text-slate-500"># - Resumption: retry the same action after hold expires</span></div>
+
+    <p class="text-slate-300 leading-relaxed mt-3">Execution tracking is wired into the agent loop's LLM action execution path (Section 4). Before each tool call, a snapshot is captured. If the preemption circuit fires mid-execution, the snapshot provides the context needed for graceful handling.</p>
+  </section>
+
+  <!-- Mode-Based Containment -->
+  <section class="space-y-4">
+    <h2 id="containment" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Mode-Based Containment</h2>
+
+    <p class="text-slate-300 leading-relaxed">Trust scales with experience. A new agent shouldn't have filesystem root access. Maxim's tool registry enforces mode-based containment that limits capabilities based on the current <a href="/maxim/operating-modes" class="text-indigo-400 hover:text-indigo-300">operational mode</a>:</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700">
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Mode</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Filesystem Access</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Directory Change</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Tool Gating</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3"><span class="font-mono text-xs text-slate-400">passive</span></td>
+            <td class="py-2 px-3 text-xs">Restricted to <span class="font-mono">.maxim_sandbox/</span> within CWD</td>
+            <td class="py-2 px-3 text-xs text-red-400">Blocked</td>
+            <td class="py-2 px-3 text-xs">Read-only + network</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3"><span class="font-mono text-xs text-blue-400">active</span></td>
+            <td class="py-2 px-3 text-xs">Read/write within CWD</td>
+            <td class="py-2 px-3 text-xs text-amber-400">Can request</td>
+            <td class="py-2 px-3 text-xs">Full sandbox, execution requires approval</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="py-2 px-3"><span class="font-mono text-xs text-purple-400">singularity</span></td>
+            <td class="py-2 px-3 text-xs">Full filesystem access</td>
+            <td class="py-2 px-3 text-xs text-green-400">Unrestricted</td>
+            <td class="py-2 px-3 text-xs">All tools, constitution still applies</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed mt-3">Every filesystem tool (ReadFileTool, WriteFileTool, ExecuteFileTool, GlobTool, BashTool) receives an <span class="font-mono text-xs text-indigo-400">allowed_dirs</span> parameter at construction time, enforced on every call. The sandbox is created automatically in passive/active modes.</p>
+  </section>
+
+  <!-- Communication Bridge -->
+  <section class="space-y-4">
+    <h2 id="bridge" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Communication Bridge</h2>
+
+    <p class="text-slate-300 leading-relaxed">The CommunicationBridge connects external messaging to the reward system, enabling Maxim to learn from communication outcomes:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Communication &rarr; Learning Loop</span>
+
+Agent sends message  &rarr;  User responds positively  &rarr;  Inbound Percept
+      │                                                       │
+      &darr;                                                       &darr;
+CommunicationBridge                                    NAc reward attribution
+      │                                                       │
+      &darr;                                                       &darr;
+Record outcome: "messaging user about X &rarr; positive"    Learn: future similar
+                                                          situations &rarr; communicate</div>
+
+    <p class="text-slate-300 leading-relaxed mt-3">The bridge subscribes to the AgentBus and watches for communication-related ToolResults and subsequent user responses. Over time, the NAc learns which communication patterns lead to positive outcomes, making the agent progressively better at deciding <em>when</em> and <em>how</em> to reach out.</p>
+
+    <p class="text-slate-300 leading-relaxed">As a <em class="text-indigo-400 not-italic font-medium">PromotionSource</em>, the bridge can also contribute candidates to the <a href="/maxim/memory-systems#promotion" class="text-indigo-400 hover:text-indigo-300">SemanticPromoter</a> &mdash; communication patterns that repeat enough become ATL concepts ("user prefers brief updates" or "morning messages get faster responses").</p>
+  </section>
+
+  <!-- Navigation -->
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/proprioception" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Body Awareness</span>
+      </a>
+      <a href="/maxim/usage-guide" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Usage Guide</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking &amp; Mesh</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

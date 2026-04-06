@@ -1,0 +1,844 @@
+{% extends "base.html" %}
+
+{% block title %}Math &amp; Statistical Cognition — Maxim Docs | Agentic Robotics Framework{% endblock %}
+
+{% block meta_description %}How Maxim thinks about numbers. Explore the dual number system — IPS for fast approximate assessment, Angular Gyrus for precise computation — plus the StatisticianAgent pattern detector and SCN coupled oscillator network.{% endblock %}
+
+{% block meta_keywords %}Maxim math cognition, dual number system, IPS intraparietal sulcus, angular gyrus, statistician agent, pattern detection, Kuramoto oscillator, coupled oscillator, linear algebra, randomness assessment{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Math & Statistical Cognition — How Maxim Thinks About Numbers",
+  "description": "How Maxim thinks about numbers. The dual number system, pattern-emergence detection, and coupled temporal oscillators.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/math-cognition",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["dual number system", "IPS", "angular gyrus", "pattern detection", "Kuramoto model", "statistical cognition"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Math & Statistical Cognition", "item": "https://www.dennyschaedig.com/maxim/math-cognition" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .fsm-state {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+  .fsm-observing { background: rgba(100,116,139,0.3); color: #94a3b8; border: 1px solid rgba(100,116,139,0.5); }
+  .fsm-forming { background: rgba(234,179,8,0.15); color: #facc15; border: 1px solid rgba(234,179,8,0.4); }
+  .fsm-escalated { background: rgba(168,85,247,0.15); color: #c084fc; border: 1px solid rgba(168,85,247,0.4); }
+  .fsm-confirmed { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.4); }
+  .fsm-random { background: rgba(100,116,139,0.15); color: #64748b; border: 1px solid rgba(100,116,139,0.4); }
+  .number-system-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .number-system-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Math &amp; Statistical Cognition</h1>
+    <p class="text-indigo-400 font-medium">How Maxim Thinks About Numbers, Detects Patterns, and Learns Temporal Rhythms</p>
+  </header>
+
+  <p class="text-slate-300 leading-relaxed">Humans process numbers through two distinct neural systems. The <em class="text-indigo-400 not-italic font-medium">intraparietal sulcus</em> (IPS) provides fast, approximate magnitude sense &mdash; you instantly know 47 is "about 50." The <em class="text-indigo-400 not-italic font-medium">angular gyrus</em> handles precise symbolic computation &mdash; it's why you can calculate 47 &times; 13 = 611. Maxim implements both, and wires them into a pattern-emergence detector that distinguishes signal from noise.</p>
+
+  <!-- Table of Contents -->
+  <nav class="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+    <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Contents</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-1">
+      <a href="#dual-number" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">The Dual Number System</a>
+      <a href="#ips" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">IPS: Fast Approximate Assessment</a>
+      <a href="#angular-gyrus" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">Angular Gyrus: Precise Math Memory</a>
+      <a href="#linalg" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">Linear Algebra Foundation</a>
+      <a href="#statistician" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">The StatisticianAgent</a>
+      <a href="#oscillator" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">SCN Coupled Oscillators</a>
+      <a href="#integration" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">How It All Connects</a>
+    </div>
+  </nav>
+
+  <!-- The Dual Number System -->
+  <section class="space-y-4">
+    <h2 id="dual-number" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Dual Number System</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Biological Inspiration</h3>
+      <p class="text-slate-300">Neuroscience has identified two distinct systems for numerical cognition. The <strong class="text-white">dorsal stream</strong> (IPS, intraparietal sulcus) processes magnitude, approximate quantity, and spatial numerosity &mdash; it's fast, parallel, and "good enough." The <strong class="text-white">ventral stream</strong> (angular gyrus) handles exact arithmetic, symbolic manipulation, and mathematical facts &mdash; it's slow, sequential, and precise. Damage to one leaves the other intact: patients with IPS lesions can still do algebra, patients with angular gyrus damage can still estimate quantities.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Maxim implements both systems and lets them collaborate. The IPS runs constantly (microseconds per assessment), providing a "gut feeling" about data patterns. When the IPS is uncertain, it escalates to the Angular Gyrus for precise computation. This mirrors the biological dual-pathway.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="number-system-card bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-amber-400 mb-2">IPS &mdash; Fast Path</h3>
+        <p class="text-sm text-slate-400 mb-3">Dorsal stream. "Where?" and "How much?"</p>
+        <ul class="space-y-1 text-sm text-slate-300">
+          <li><strong class="text-white">Speed:</strong> Microseconds</li>
+          <li><strong class="text-white">Runs:</strong> Every analysis cycle (~5 seconds)</li>
+          <li><strong class="text-white">Handles:</strong> 90% of cases (clearly random or clearly patterned)</li>
+          <li><strong class="text-white">Methods:</strong> assess_randomness, detect_trend, detect_anomaly</li>
+          <li><strong class="text-white">Output:</strong> Confidence score (0.0&ndash;1.0)</li>
+        </ul>
+      </div>
+      <div class="number-system-card bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-purple-400 mb-2">Angular Gyrus &mdash; Slow Path</h3>
+        <p class="text-sm text-slate-400 mb-3">Ventral stream. "What exactly?" and "Have I seen this before?"</p>
+        <ul class="space-y-1 text-sm text-slate-300">
+          <li><strong class="text-white">Speed:</strong> Milliseconds</li>
+          <li><strong class="text-white">Runs:</strong> Only when IPS is uncertain</li>
+          <li><strong class="text-white">Handles:</strong> Ambiguous cases (confidence 0.3&ndash;0.65)</li>
+          <li><strong class="text-white">Methods:</strong> analyze (R&sup2;), mat_multiply, eigenvalues, solve_system</li>
+          <li><strong class="text-white">Output:</strong> Exact values + persistent memory</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- IPS -->
+  <section class="space-y-4">
+    <h2 id="ips" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">IPS: Fast Approximate Assessment</h2>
+
+    <p class="text-slate-300 leading-relaxed">The IPS provides three assessment capabilities, each answering a different question about incoming data:</p>
+
+    <div class="space-y-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-amber-400 mb-3">assess_randomness &mdash; "Is there a pattern here?"</h3>
+        <p class="text-slate-300 leading-relaxed mb-3">The core capability. Uses two complementary statistical tests to determine if a data sequence contains structure or is just noise:</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div class="bg-slate-900 rounded-lg p-4">
+            <h4 class="text-sm font-semibold text-white mb-2">Wald-Wolfowitz Runs Test</h4>
+            <p class="text-sm text-slate-400 mb-2">Convert values to binary (above/below median), count consecutive "runs." Random sequences have a predictable number of runs.</p>
+            <ul class="text-xs text-slate-400 space-y-1">
+              <li><strong class="text-slate-300">Too few runs</strong> &rarr; values cluster on one side &rarr; <em>trending</em></li>
+              <li><strong class="text-slate-300">Too many runs</strong> &rarr; values alternate rapidly &rarr; <em>cyclic</em></li>
+              <li><strong class="text-slate-300">Expected runs</strong> &rarr; no structure detected &rarr; <em>random</em></li>
+            </ul>
+          </div>
+          <div class="bg-slate-900 rounded-lg p-4">
+            <h4 class="text-sm font-semibold text-white mb-2">Lag-1 Autocorrelation</h4>
+            <p class="text-sm text-slate-400 mb-2">Measures how much each value depends on the previous value. Independent of the runs test, catches different patterns.</p>
+            <ul class="text-xs text-slate-400 space-y-1">
+              <li><strong class="text-slate-300">High positive</strong> &rarr; values persist (clustering)</li>
+              <li><strong class="text-slate-300">High negative</strong> &rarr; values alternate (oscillation)</li>
+              <li><strong class="text-slate-300">Near zero</strong> &rarr; no serial dependence (random)</li>
+            </ul>
+          </div>
+        </div>
+
+        <p class="text-slate-300 text-sm leading-relaxed mb-3">Both signals combine into a <em class="text-indigo-400 not-italic font-medium">pattern_confidence</em> score (0.0 = definitely random, 1.0 = definitely patterned), which drives pattern classification:</p>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-700">
+                <th class="text-left py-2 px-3 text-slate-400 font-medium">Pattern Type</th>
+                <th class="text-left py-2 px-3 text-slate-400 font-medium">Condition</th>
+                <th class="text-left py-2 px-3 text-slate-400 font-medium">Example</th>
+              </tr>
+            </thead>
+            <tbody class="text-slate-300">
+              <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+                <td class="py-2 px-3"><span class="text-slate-500 font-mono">RANDOM</span></td>
+                <td class="py-2 px-3">confidence &lt; 0.4</td>
+                <td class="py-2 px-3 text-xs text-slate-400">random.random() &times; 100 values</td>
+              </tr>
+              <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+                <td class="py-2 px-3"><span class="text-amber-400 font-mono">TRENDING</span></td>
+                <td class="py-2 px-3">runs_z &lt; -1.96 (too few runs)</td>
+                <td class="py-2 px-3 text-xs text-slate-400">Tool success rate declining over days</td>
+              </tr>
+              <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+                <td class="py-2 px-3"><span class="text-blue-400 font-mono">CYCLIC</span></td>
+                <td class="py-2 px-3">runs_z &gt; 1.96 (too many runs)</td>
+                <td class="py-2 px-3 text-xs text-slate-400">Activity cycling between high/low states</td>
+              </tr>
+              <tr class="hover:bg-slate-800/50">
+                <td class="py-2 px-3"><span class="text-purple-400 font-mono">CLUSTERING</span></td>
+                <td class="py-2 px-3">|autocorrelation| &gt; 0.3</td>
+                <td class="py-2 px-3 text-xs text-slate-400">Bursts of failures followed by recovery</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+          <h3 class="text-lg font-semibold text-amber-400 mb-2">detect_trend &mdash; "Which way is it going?"</h3>
+          <p class="text-sm text-slate-300">Determines if a sequence is increasing, decreasing, or stable. Uses linear regression for magnitude and direction. Returns trend direction, slope, and confidence.</p>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+          <h3 class="text-lg font-semibold text-amber-400 mb-2">detect_anomaly &mdash; "Is this value unusual?"</h3>
+          <p class="text-sm text-slate-300">Flags individual values that deviate significantly from established baselines. Computed via rolling statistics (mean, standard deviation) to catch sudden regime changes.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Angular Gyrus -->
+  <section class="space-y-4">
+    <h2 id="angular-gyrus" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Angular Gyrus: Precise Mathematical Memory</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Biological Inspiration</h3>
+      <p class="text-slate-300">The angular gyrus sits at the junction of the temporal, parietal, and occipital lobes. It's involved in exact arithmetic, mathematical fact retrieval, and symbolic processing. Brain imaging shows it activates when you recall that 7 &times; 8 = 56 (a fact, not a computation). It maintains a "math vocabulary" &mdash; learned mathematical knowledge that speeds future calculations.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Maxim's Angular Gyrus is both a <em class="text-indigo-400 not-italic font-medium">computation engine</em> and a <em class="text-indigo-400 not-italic font-medium">mathematical memory</em>. It stores learned patterns as persistent MathMemory records with an associative graph for recall, and it implements the <em class="text-indigo-400 not-italic font-medium">MemoryLayer</em> protocol alongside Hippocampus and ATL.</p>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Mathematical Memory Categories</h3>
+    <p class="text-slate-300 leading-relaxed mb-3">Each MathMemory record is classified into a category that determines how it's used:</p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <h4 class="text-sm font-semibold text-purple-400 mb-1">FACT</h4>
+        <p class="text-xs text-slate-400">Known constants and relationships. "Pi is approximately 3.14159." Recalled instantly without recomputation.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <h4 class="text-sm font-semibold text-purple-400 mb-1">RELATIONSHIP</h4>
+        <p class="text-xs text-slate-400">Proportional or causal links. "Temperature IS_PROPORTIONAL_TO energy." Captures how quantities relate to each other.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <h4 class="text-sm font-semibold text-purple-400 mb-1">METHOD</h4>
+        <p class="text-xs text-slate-400">Multi-step algorithms. "To solve a system: decompose, substitute, back-solve." Higher-order than formulas.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <h4 class="text-sm font-semibold text-purple-400 mb-1">CONSTANT</h4>
+        <p class="text-xs text-slate-400">Named numerical values. "Euler's number e = 2.71828." Seeded at startup, never expires.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <h4 class="text-sm font-semibold text-purple-400 mb-1">PATTERN</h4>
+        <p class="text-xs text-slate-400">Learned statistical patterns. "tool_navigate success declining (R&sup2;=0.73, slope=-0.02/day)." Created by StatisticianAgent via IPS&rarr;AG escalation.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <h4 class="text-sm font-semibold text-purple-400 mb-1">Associative Graph</h4>
+        <p class="text-xs text-slate-400">MathMemory records are connected via spreading activation. Recalling "linear regression" also activates "R&sup2;", "slope", and related patterns.</p>
+      </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Matrix Operations</h3>
+    <p class="text-slate-300 leading-relaxed mb-3">Four matrix operations are exposed via the Angular Gyrus, all delegating to the linear algebra module with lazy imports:</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700">
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Method</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Purpose</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Returns</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-purple-400">mat_multiply(A, B)</td>
+            <td class="py-2 px-3">Matrix multiplication A &times; B</td>
+            <td class="py-2 px-3 text-xs text-slate-400">ExactResult with result matrix</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-purple-400">mat_eigenvalues(M)</td>
+            <td class="py-2 px-3">Eigenvalue decomposition (symmetric)</td>
+            <td class="py-2 px-3 text-xs text-slate-400">ExactResult with eigenvalue list</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-purple-400">solve_system(A, b)</td>
+            <td class="py-2 px-3">Solve Ax = b (linear system)</td>
+            <td class="py-2 px-3 text-xs text-slate-400">ExactResult with solution vector</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-purple-400">mat_determinant(M)</td>
+            <td class="py-2 px-3">Matrix determinant</td>
+            <td class="py-2 px-3 text-xs text-slate-400">ExactResult with scalar value</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-sm text-slate-400 mt-2">All results include both <em>verbal</em> (natural language) and <em>code</em> (Python snippet) representations, matching how the angular gyrus bridges language and computation in the brain.</p>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Operation Aliases</h3>
+    <p class="text-slate-300 leading-relaxed mb-3">The MathTool accepts natural-language operation names and normalizes them to canonical forms before routing to the Angular Gyrus. This lets agents (and users) say <span class="font-mono text-xs text-purple-400">sqrt 25</span> instead of <span class="font-mono text-xs text-purple-400">compute(power, [25, 0.5])</span>:</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700">
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Alias</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Normalizes To</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-purple-400">sqrt, square_root</td>
+            <td class="py-2 px-3">compute(power, [value, 0.5])</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-purple-400">cube_root, cbrt</td>
+            <td class="py-2 px-3">compute(power, [value, 1/3])</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-purple-400">squared</td>
+            <td class="py-2 px-3">compute(power, [value, 2])</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-purple-400">cubed</td>
+            <td class="py-2 px-3">compute(power, [value, 3])</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-purple-400">factorial</td>
+            <td class="py-2 px-3">Direct computation (0&ndash;170)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Pre-LLM Instant Math</h3>
+    <p class="text-slate-300 leading-relaxed mb-3">For simple arithmetic and unary math, Maxim answers <em class="text-indigo-400 not-italic font-medium">before the LLM is ever called</em>. Regex-based evaluators in the LLMWorker catch common patterns and return instant results with zero inference latency:</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-sm font-semibold text-amber-400 mb-2">Binary Arithmetic</h4>
+        <p class="text-sm text-slate-300 mb-2">Matches <span class="font-mono text-xs">number op number</span> patterns.</p>
+        <ul class="text-xs text-slate-400 space-y-1">
+          <li>"what is 1+1" &rarr; <span class="text-green-400">1 + 1 = 2</span></li>
+          <li>"5 * 3" &rarr; <span class="text-green-400">5 * 3 = 15</span></li>
+          <li>"10 / 0" &rarr; <span class="text-red-400">division by zero</span></li>
+        </ul>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-sm font-semibold text-amber-400 mb-2">Unary + Compound</h4>
+        <p class="text-sm text-slate-300 mb-2">Matches unary ops, optionally followed by a binary trailing op.</p>
+        <ul class="text-xs text-slate-400 space-y-1">
+          <li>"square root of 25" &rarr; <span class="text-green-400">&radic;25 = 5</span></li>
+          <li>"square root of 25 plus 3" &rarr; <span class="text-green-400">&radic;25 + 3 = 8</span></li>
+          <li>"8 cubed" &rarr; <span class="text-green-400">8&sup3; = 512</span></li>
+        </ul>
+      </div>
+    </div>
+    <p class="text-sm text-slate-400 mt-3">This pre-LLM path also serves as a fallback when the LLM times out &mdash; if the timed-out question was a simple math query, the user still gets a correct answer instead of a generic "I'm not sure" response.</p>
+  </section>
+
+  <!-- Linear Algebra -->
+  <section class="space-y-4">
+    <h2 id="linalg" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Linear Algebra Foundation</h2>
+
+    <p class="text-slate-300 leading-relaxed">Underpinning both the Angular Gyrus matrix operations and the SCN oscillator is a pure-Python linear algebra module. No numpy dependency &mdash; Maxim runs on embedded hardware where heavyweight libraries aren't available.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Module: maxim.math.linalg</span>
+
+<span class="text-slate-500"># Types</span>
+Vec = list[float]          <span class="text-slate-500"># 1D vector</span>
+Mat = list[list[float]]    <span class="text-slate-500"># 2D matrix (row-major)</span>
+
+<span class="text-slate-500"># 25 functions across 5 categories:</span>
+<span class="text-amber-400">Vector ops (7):</span>  vec_add, vec_sub, vec_scale, vec_dot, vec_norm, vec_normalize, vec_elementwise_mul
+<span class="text-amber-400">Construction (3):</span> mat_zeros, mat_identity, mat_from_diag
+<span class="text-amber-400">Matrix ops (7):</span>  mat_add, mat_sub, mat_scale, mat_transpose, mat_mul, mat_vec_mul, mat_shape
+<span class="text-amber-400">Solvers (5):</span>     determinant, solve, inverse, eigenvalues_symmetric, _qr_decompose
+<span class="text-amber-400">Utilities (3):</span>   mat_frobenius_norm, mat_is_symmetric, mat_clamp</div>
+
+    <h3 class="text-lg font-semibold text-white mt-5 mb-3">Numerical Stability</h3>
+    <p class="text-slate-300 leading-relaxed mb-3">Small matrices on embedded hardware need careful numerics. The module employs four stability techniques:</p>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">Partial pivoting</strong> in Gaussian elimination &mdash; prevents catastrophic amplification from small pivots</li>
+      <li><strong class="text-white">Householder QR</strong> decomposition &mdash; numerically stable (preferred over Gram-Schmidt)</li>
+      <li><strong class="text-white">Wilkinson shifts</strong> for eigenvalue convergence &mdash; avoids slow convergence on nearly-equal eigenvalues</li>
+      <li><strong class="text-white">Tolerance constants</strong> &mdash; 1e-12 for singularity detection, 1e-15 for zero-vector guards</li>
+    </ul>
+
+    <p class="text-sm text-slate-400 mt-3">The flagship use case is the SCN oscillator: the coupling matrix &times; phase vector evolution that drives temporal rhythm learning. Without the linalg module, eigenvalue decomposition of the coupling matrix (used for dominant rhythm analysis) would require numpy.</p>
+  </section>
+
+  <!-- StatisticianAgent -->
+  <section class="space-y-4">
+    <h2 id="statistician" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The StatisticianAgent: Pattern-Emergence Detection</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Biological Inspiration</h3>
+      <p class="text-slate-300">The posterior parietal cortex (where IPS and angular gyrus reside) feeds quantitative analysis into the prefrontal cortex for executive decision-making. The StatisticianAgent is this bridge &mdash; it turns raw event streams into statistical context that influences goal selection. The IPS handles fast approximate assessment; the Angular Gyrus is reserved for precise multi-metric analyses that require algebraic precision.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The StatisticianAgent watches the AgentBus for tool outcomes and goal completions, building per-metric time series. Each tracked metric gets its own <em class="text-indigo-400 not-italic font-medium">PatternDetector</em> &mdash; a finite state machine that progresses from "I don't know yet" to "there's definitely a pattern here" (or "this is just noise").</p>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">PatternDetector State Machine</h3>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">FSM Transitions</span>
+
+  <span class="text-slate-500">┌──────────────────────────────────────────────────────────────────────────┐</span>
+  <span class="text-slate-500">│</span>                                                                          <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>  <span class="text-slate-400">OBSERVING</span> ──(confidence &gt; 0.4)──&gt; <span class="text-amber-400">PATTERN_FORMING</span>                       <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>       <span class="text-slate-600">│</span>                                    <span class="text-slate-600">│</span>                            <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>       <span class="text-slate-600">│</span>              ┌─(sustained &gt; 0.65)──┤                            <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>       <span class="text-slate-600">│</span>              <span class="text-slate-600">│</span>                      <span class="text-slate-600">│</span>                            <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>       <span class="text-slate-600">│</span>              <span class="text-slate-600">▼</span>                      <span class="text-slate-600">│</span>──(uncertain 8 steps)──&gt;   <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>       <span class="text-slate-600">│</span>     <span class="text-green-400">CONFIRMED_PATTERN</span>              <span class="text-purple-400">ESCALATED_TO_AG</span>             <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>       <span class="text-slate-600">│</span>     (publish insight)              (precise R&sup2;, autocorr)      <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>       <span class="text-slate-600">│</span>     (store in AG memory)            (recall AG memory)          <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>       <span class="text-slate-600">│</span>                                    <span class="text-slate-600">│</span>                            <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>       <span class="text-slate-600">│</span>                                    <span class="text-slate-600">├──(R&sup2; &gt; 0.5)──&gt; CONFIRMED   </span><span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>       <span class="text-slate-600">│</span>                                    <span class="text-slate-600">└──(R&sup2; &lt; 0.2)──&gt; RANDOM     </span><span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>       <span class="text-slate-600">│</span>                                                                 <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>       <span class="text-slate-600">└──(50+ obs, confidence &lt; 0.3)──&gt;</span> <span class="text-slate-500">CONFIRMED_RANDOM</span>                  <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>                                       (reduce monitoring)              <span class="text-slate-500">│</span>
+  <span class="text-slate-500">│</span>                                                                          <span class="text-slate-500">│</span>
+  <span class="text-slate-500">└──────────────────────────────────────────────────────────────────────────┘</span></div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">The Five States</h3>
+
+    <div class="space-y-2">
+      <div class="flex items-start gap-3">
+        <span class="fsm-state fsm-observing mt-0.5">OBSERVING</span>
+        <p class="text-sm text-slate-300">Collecting data, too early to tell. Needs at least 15 observations before the IPS runs its first assessment.</p>
+      </div>
+      <div class="flex items-start gap-3">
+        <span class="fsm-state fsm-forming mt-0.5">FORMING</span>
+        <p class="text-sm text-slate-300">IPS pattern_confidence crossed 0.4 &mdash; something may be emerging. Stays here while confidence fluctuates.</p>
+      </div>
+      <div class="flex items-start gap-3">
+        <span class="fsm-state fsm-escalated mt-0.5">ESCALATED</span>
+        <p class="text-sm text-slate-300">IPS stayed uncertain for 8 consecutive steps (confidence 0.3&ndash;0.65). Angular Gyrus invoked for precise R&sup2;, autocorrelation, and memory recall.</p>
+      </div>
+      <div class="flex items-start gap-3">
+        <span class="fsm-state fsm-confirmed mt-0.5">CONFIRMED</span>
+        <p class="text-sm text-slate-300">Non-random structure verified. A StatisticalInsight is published to the bus, and the pattern is stored as an AG MathMemory record for future recall.</p>
+      </div>
+      <div class="flex items-start gap-3">
+        <span class="fsm-state fsm-random mt-0.5">RANDOM</span>
+        <p class="text-sm text-slate-300">Sequence confirmed as noise. Monitoring frequency reduced to every 10th observation. Can re-enter OBSERVING if new data shows structure.</p>
+      </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">IPS &rarr; Angular Gyrus Escalation</h3>
+
+    <p class="text-slate-300 leading-relaxed mb-3">The escalation pathway is where the dual number system truly integrates. When IPS can't decide, the Angular Gyrus takes over with a three-step process:</p>
+
+    <ol class="space-y-3 text-slate-300 list-decimal pl-5">
+      <li>
+        <strong class="text-white">Check AG memory first</strong> &mdash; "Have I seen this pattern before?" Recall from the AG associative graph with <span class="font-mono text-xs text-purple-400">category=PATTERN</span>. If a prior MathMemory record matches (same metric, same trend direction), fast-track confirmation and reinforce the memory.
+      </li>
+      <li>
+        <strong class="text-white">Compute precisely</strong> &mdash; If no memory match, run full linear regression via <span class="font-mono text-xs text-purple-400">analyze("linear")</span> to get exact R&sup2; and autocorrelation confidence intervals. This uses the linalg module internally.
+      </li>
+      <li>
+        <strong class="text-white">Store or reject</strong> &mdash; R&sup2; &gt; 0.5 &rarr; store as a new PATTERN MathMemory record (becomes retrievable for future fast-tracking). R&sup2; &lt; 0.2 &rarr; declare random. In between &rarr; stay escalated, retry next cycle.
+      </li>
+    </ol>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 mt-4">
+      <h4 class="text-sm font-semibold text-white mb-2">AG Memory Lifecycle</h4>
+      <div class="text-sm text-slate-300 space-y-1">
+        <p><strong class="text-purple-400">First encounter:</strong> IPS uncertain &rarr; AG computes R&sup2; &rarr; stores PATTERN memory</p>
+        <p><strong class="text-purple-400">Second encounter:</strong> IPS uncertain &rarr; AG recalls memory &rarr; "I've seen this, R&sup2;=0.73" &rarr; fast confirm</p>
+        <p><strong class="text-purple-400">Over time:</strong> observation_count grows, confidence increases, pattern becomes established</p>
+        <p><strong class="text-purple-400">Pattern breaks:</strong> AG detects mismatch &rarr; reduce memory confidence &times; 0.7 &rarr; may compress/remove</p>
+      </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Bus Integration</h3>
+
+    <p class="text-slate-300 leading-relaxed mb-3">The StatisticianAgent is fully decoupled from other agents via the bus:</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h4 class="text-sm font-semibold text-white mb-2">Subscribes to (input)</h4>
+        <ul class="text-sm text-slate-300 space-y-1">
+          <li><span class="font-mono text-xs text-amber-400">ToolResult</span> &mdash; tracks success/failure rate per tool</li>
+          <li><span class="font-mono text-xs text-amber-400">GoalCompleted</span> &mdash; tracks goal outcome patterns</li>
+        </ul>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h4 class="text-sm font-semibold text-white mb-2">Publishes (output)</h4>
+        <ul class="text-sm text-slate-300 space-y-1">
+          <li><span class="font-mono text-xs text-green-400">StatisticalInsight</span> &mdash; on CONFIRMED_PATTERN (actionable alert)</li>
+          <li><span class="font-mono text-xs text-green-400">StatisticalSummary</span> &mdash; periodic context + ranked analysis suggestions for MemoryAgent</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="text-sm text-slate-400 mt-3">MemoryAgent subscribes to StatisticalSummary and populates <span class="font-mono text-xs">StructuredContext.statistical_context</span> and <span class="font-mono text-xs">statistical_suggestions</span>, which the LLM sees during goal proposal. This means the agent's reasoning is informed by detected patterns and data-type-aware analysis recommendations.</p>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Analysis Suggestion Engine</h3>
+
+    <p class="text-slate-300 leading-relaxed mb-3">Rather than generic "investigate patterns" guidance, the StatisticianAgent generates <em class="text-indigo-400 not-italic font-medium">specific, ranked analysis suggestions</em> based on what it actually sees. This is entirely deterministic &mdash; no LLM involved. The engine has three stages:</p>
+
+    <div class="space-y-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-sm font-semibold text-white mb-2">1. Data Type Inference (<span class="font-mono text-xs text-indigo-400">MetricDataType</span>)</h4>
+        <p class="text-sm text-slate-300 mb-2">Each metric is classified by naming convention first (fast path), then by value distribution analysis (fallback):</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+          <div class="bg-slate-900 rounded-lg p-3">
+            <p class="text-amber-400 font-semibold text-xs">BINARY</p>
+            <p class="text-xs text-slate-400"><span class="font-mono">*:success</span>, <span class="font-mono">*:fail</span>, or values &sube; {0, 1}</p>
+          </div>
+          <div class="bg-slate-900 rounded-lg p-3">
+            <p class="text-amber-400 font-semibold text-xs">RATE</p>
+            <p class="text-xs text-slate-400"><span class="font-mono">*rate*</span>, <span class="font-mono">*ratio*</span>, or all values in [0.0, 1.0]</p>
+          </div>
+          <div class="bg-slate-900 rounded-lg p-3">
+            <p class="text-amber-400 font-semibold text-xs">LATENCY</p>
+            <p class="text-xs text-slate-400"><span class="font-mono">*latency*</span>, <span class="font-mono">*duration*</span>, or non-negative values &gt; 1.0</p>
+          </div>
+          <div class="bg-slate-900 rounded-lg p-3">
+            <p class="text-amber-400 font-semibold text-xs">CONTINUOUS</p>
+            <p class="text-xs text-slate-400">Everything else (unbounded floats, signed values)</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-sm font-semibold text-white mb-2">2. Decision Matrix (FSM State &times; Data Type &rarr; Suggestion)</h4>
+        <p class="text-sm text-slate-300 mb-2">The suggestion depends on both what the FSM has determined and what kind of data it's looking at:</p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="border-b border-slate-600">
+                <th class="text-left py-2 px-2 text-slate-400">FSM State</th>
+                <th class="text-left py-2 px-2 text-slate-400">Binary/Rate</th>
+                <th class="text-left py-2 px-2 text-slate-400">Latency</th>
+                <th class="text-left py-2 px-2 text-slate-400">Continuous</th>
+                <th class="text-left py-2 px-2 text-slate-400">Priority</th>
+              </tr>
+            </thead>
+            <tbody class="text-slate-300">
+              <tr class="border-b border-slate-800">
+                <td class="py-2 px-2"><span class="fsm-state fsm-observing" style="font-size:0.65rem">OBSERVING</span></td>
+                <td class="py-2 px-2 text-slate-500" colspan="3">No suggestion (insufficient signal)</td>
+                <td class="py-2 px-2">&mdash;</td>
+              </tr>
+              <tr class="border-b border-slate-800">
+                <td class="py-2 px-2"><span class="fsm-state fsm-forming" style="font-size:0.65rem">FORMING</span></td>
+                <td class="py-2 px-2 font-mono">assess_randomness</td>
+                <td class="py-2 px-2 font-mono">anomaly</td>
+                <td class="py-2 px-2 font-mono">trend</td>
+                <td class="py-2 px-2">0.5</td>
+              </tr>
+              <tr class="border-b border-slate-800">
+                <td class="py-2 px-2"><span class="fsm-state fsm-escalated" style="font-size:0.65rem">ESCALATED</span></td>
+                <td class="py-2 px-2 font-mono" colspan="3">analyze linear (high priority &mdash; active uncertainty)</td>
+                <td class="py-2 px-2">0.8</td>
+              </tr>
+              <tr class="border-b border-slate-800">
+                <td class="py-2 px-2"><span class="fsm-state fsm-confirmed" style="font-size:0.65rem">CONFIRMED</span></td>
+                <td class="py-2 px-2 font-mono" colspan="3">recall_memory (if AG memory exists) or analyze (for characterization)</td>
+                <td class="py-2 px-2">0.6</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-2"><span class="fsm-state fsm-random" style="font-size:0.65rem">RANDOM</span></td>
+                <td class="py-2 px-2 text-slate-500" colspan="3">No suggestion (low value)</td>
+                <td class="py-2 px-2">&mdash;</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">Temporal context from the SCN oscillator adjusts priority: +0.15 when <span class="font-mono">temporal_anomaly &gt; 0.5</span>.</p>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-sm font-semibold text-white mb-2">3. Ranked Output (<span class="font-mono text-xs text-indigo-400">AnalysisSuggestion</span>)</h4>
+        <p class="text-sm text-slate-300 mb-2">Each suggestion carries full context for prompt construction:</p>
+        <div class="bg-slate-950 rounded-lg p-4 font-mono text-xs text-slate-300 overflow-x-auto whitespace-pre">AnalysisSuggestion(
+  metric="tool:navigate:success",   <span class="text-slate-500"># Which metric</span>
+  tool_call="math",                 <span class="text-slate-500"># Which tool to invoke</span>
+  operation="assess_randomness",    <span class="text-slate-500"># Specific operation</span>
+  rationale="binary metric showing  <span class="text-slate-500"># Why this analysis</span>
+    emerging pattern (mean=0.60)",
+  priority=0.5,                     <span class="text-slate-500"># 0.0-1.0 ranking</span>
+  data_type="binary",               <span class="text-slate-500"># Inferred type</span>
+  fsm_state="PATTERN_FORMING"       <span class="text-slate-500"># Current FSM state</span>
+)</div>
+        <p class="text-xs text-slate-400 mt-2">Top 5 suggestions are published with each <span class="font-mono">StatisticalSummary</span>. MemoryAgent serializes them into <span class="font-mono">StructuredContext.statistical_suggestions</span>, and both ExecAgent (up to 3) and LLMWorker prompts consume them as ranked, actionable guidance &mdash; replacing the previous generic "use math tool to investigate patterns" advice.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Coupled Oscillators -->
+  <section class="space-y-4">
+    <h2 id="oscillator" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">SCN Coupled Oscillator Network</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Biological Inspiration</h3>
+      <p class="text-slate-300">The suprachiasmatic nucleus (SCN) in the hypothalamus is the brain's master clock &mdash; a network of ~20,000 coupled oscillators synchronized via gap junctions and neurotransmitters. "Monday mornings" isn't a lookup in two separate tables &mdash; it's an <em>emergent rhythm</em> from learned coupling between circadian and weekly oscillators. The Kuramoto model, which Maxim implements, is the standard mathematical framework for studying such coupled oscillator networks.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The existing SCN in Maxim provides <em class="text-indigo-400 not-italic font-medium">temporal bin indexing</em> &mdash; 47 bins across 4 timescales for fast set-based lookup ("what memories happened at 9am?"). The oscillator network adds a fundamentally different capability: <em class="text-indigo-400 not-italic font-medium">learned temporal coupling</em> that makes rhythms interact and predict each other.</p>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Four Oscillators</h3>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4 text-center">
+        <div class="text-2xl mb-1">&#x1F305;</div>
+        <h4 class="text-sm font-semibold text-indigo-400">Circadian</h4>
+        <p class="text-xs text-slate-400">Period: 1 day</p>
+        <p class="text-xs text-slate-500">&omega; = 1.0</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4 text-center">
+        <div class="text-2xl mb-1">&#x1F4C5;</div>
+        <h4 class="text-sm font-semibold text-indigo-400">Weekly</h4>
+        <p class="text-xs text-slate-400">Period: 7 days</p>
+        <p class="text-xs text-slate-500">&omega; = 1/7</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4 text-center">
+        <div class="text-2xl mb-1">&#x1F319;</div>
+        <h4 class="text-sm font-semibold text-indigo-400">Monthly</h4>
+        <p class="text-xs text-slate-400">Period: 30 days</p>
+        <p class="text-xs text-slate-500">&omega; = 1/30</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4 text-center">
+        <div class="text-2xl mb-1">&#x2600;&#xFE0F;</div>
+        <h4 class="text-sm font-semibold text-indigo-400">Annual</h4>
+        <p class="text-xs text-slate-400">Period: 365.25 days</p>
+        <p class="text-xs text-slate-500">&omega; = 1/365.25</p>
+      </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Kuramoto Dynamics</h3>
+
+    <p class="text-slate-300 leading-relaxed mb-3">Each oscillator has a phase &theta; that evolves according to the Kuramoto model:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Phase Evolution</span>
+
+d&theta;<sub>i</sub>/dt = &omega;<sub>i</sub> + (K/N) &sum;<sub>j</sub> W[i][j] &middot; sin(&theta;<sub>j</sub> &minus; &theta;<sub>i</sub>)
+
+<span class="text-slate-500">&omega;<sub>i</sub>  = natural frequency of oscillator i</span>
+<span class="text-slate-500">K    = global coupling strength (default 0.1)</span>
+<span class="text-slate-500">W    = 4&times;4 coupling matrix (learned via Hebbian rule)</span>
+<span class="text-slate-500">N    = number of oscillators (4)</span></div>
+
+    <p class="text-slate-300 leading-relaxed mt-3">When oscillators have similar phases, sin(&theta;<sub>j</sub> &minus; &theta;<sub>i</sub>) &asymp; 0 and they don't influence each other. When out of sync, the coupling term pulls them toward alignment (or repulsion, if weights are negative).</p>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Hebbian Coupling Learning</h3>
+
+    <p class="text-slate-300 leading-relaxed mb-3">The coupling matrix W isn't static. It learns from observations via a Hebbian rule &mdash; "neurons that fire together wire together":</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Hebbian Learning</span>
+
+&Delta;W[i][j] = &eta; &middot; cos(&theta;<sub>i</sub> &minus; &theta;<sub>j</sub>)
+
+<span class="text-slate-500">When oscillators co-activate (similar phases): cos &asymp; 1 &rarr; strengthen coupling</span>
+<span class="text-slate-500">When anti-phase:                             cos &asymp; -1 &rarr; weaken coupling</span>
+
+<span class="text-slate-500">&eta; = 0.01 (learning rate), decay = 0.999 per step</span>
+<span class="text-slate-500">Weights bounded: [-0.5, 2.0] (mild inhibition to strong excitation)</span></div>
+
+    <p class="text-slate-300 leading-relaxed mt-3">This is how "Monday mornings" emerge. If events consistently happen when both the circadian oscillator (morning phase) and weekly oscillator (Monday phase) are active, the coupling between them strengthens. Eventually, the system predicts "Monday mornings" as a single emergent rhythm, not an intersection of two independent lookups.</p>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Soft Phase Reset</h3>
+
+    <p class="text-slate-300 leading-relaxed mb-3">Each observation nudges the oscillators toward the observed temporal signature, but how much depends on experience:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Blend Factor</span>
+
+blend = max(0.1, 1 / (1 + 0.01 &times; observation_count))
+
+<span class="text-slate-500">Early (obs ~0):    blend &asymp; 1.0  &rarr; trust observation fully</span>
+<span class="text-slate-500">After 100 obs:     blend &asymp; 0.5  &rarr; blend observation with model</span>
+<span class="text-slate-500">After 1000 obs:    blend &asymp; 0.1  &rarr; trust model, resist disruption</span></div>
+
+    <p class="text-slate-300 leading-relaxed mt-3">This mirrors biological entrainment &mdash; a newborn's circadian rhythm is easily disrupted by light changes, but an adult's clock resists jet lag because it has strong learned coupling.</p>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Key Capabilities</h3>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700">
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Method</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">What It Does</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-xs text-indigo-400">phase_coherence()</td>
+            <td class="py-2 px-3">Kuramoto order parameter r &isin; [0,1]. r=1 means all oscillators synchronized, r&lt;0.5 means spread. Indicates how "settled" the temporal model is.</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-xs text-indigo-400">predict_next_occurrence()</td>
+            <td class="py-2 px-3">Forward-simulates oscillator dynamics without mutation. "When will the circadian oscillator next reach morning phase?" Returns hours until target.</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-xs text-indigo-400">temporal_anomaly_score()</td>
+            <td class="py-2 px-3">Circular distance between predicted and observed phases. 0 = perfectly expected, 1 = maximally surprising for this moment in time.</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-xs text-indigo-400">coupling_eigenvalues()</td>
+            <td class="py-2 px-3">Eigenvalues of the coupling matrix &mdash; the dominant eigenvalue reveals the strongest learned rhythm. Uses linalg.eigenvalues_symmetric.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">SCN Integration: Bins + Oscillator</h3>
+
+    <p class="text-slate-300 leading-relaxed mb-3">The oscillator lives alongside the existing bin system, not replacing it. Every call to <span class="font-mono text-xs text-indigo-400">scn.register(memory_id, signature)</span> feeds both:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">SCN Architecture</span>
+
+              SCN
+   ┌───────────────────────┐
+   │  BIN INDICES           │  OSCILLATOR NETWORK
+   │  (existing, unchanged) │  (new, optional)
+   │                        │
+   │  24 hour bins          │  phases[4]
+   │  7 day bins            │  coupling[4&times;4]
+   │  4 week bins           │  frequencies[4]
+   │  12 month bins         │
+   │                        │
+   │  query_hour()          │  predict_next()
+   │  query_day()           │  phase_coherence()
+   │  get_bins()            │  temporal_anomaly_score()
+   │  is_sole_rep()         │  coupling_eigenvalues()
+   └───────────────────────┘
+
+<span class="text-slate-500">Enabled via: scn.enable_oscillator(config)</span>
+<span class="text-slate-500">Disabled by default &mdash; zero impact on existing consumers</span>
+<span class="text-slate-500">Persistence: v2.0 format, backward-compatible with v1.0</span></div>
+  </section>
+
+  <!-- Integration -->
+  <section class="space-y-4">
+    <h2 id="integration" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">How It All Connects</h2>
+
+    <p class="text-slate-300 leading-relaxed mb-3">The math framework isn't isolated &mdash; it's wired into the core cognitive loop. Here's the full data flow:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Math &harr; Agent Pipeline Integration</span>
+
+<span class="text-amber-400">Bus Events</span>                  <span class="text-purple-400">StatisticianAgent</span>               <span class="text-green-400">Output</span>
+────────────                  ──────────────────               ──────
+ToolResult ─────┐
+GoalCompleted ──┤             ┌──────────────────────┐
+                ├──bus──&rarr;     │ Per-metric series    │
+                │             │                      │
+                │             │ IPS fast path:       │        StatisticalInsight
+                │             │  assess_randomness() │──&rarr;     (on CONFIRMED)
+                │             │  detect_trend()      │
+                │             │                      │        StatisticalSummary
+                │             │ AG slow path:        │──&rarr;     (periodic &rarr; MemoryAgent)
+                │             │  analyze("linear")   │         + AnalysisSuggestions
+                │             │  recall/store memory  │         + data_type_breakdown
+                │             │                      │
+                │             │ Suggestion engine:   │        knowledge_context
+                │             │  infer_data_type()   │──&rarr;     (merged ATL + AG &rarr; LLM)
+                │             │  FSM &times; type matrix  │
+                │             │  rank by priority    │        PromotionCandidate
+                │             │                      │──&rarr;     (&rarr; SemanticPromoter &rarr; ATL)
+                │             │ SCN temporal context: │
+                │             │  anomaly weighting   │        statistical_suggestions
+                │             │  phase correlation   │──&rarr;     (&rarr; ExecAgent + LLMWorker prompts)
+                │             └──────────────────────┘
+</div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Integration Points</h3>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700">
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">System</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Uses Math For</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3"><strong class="text-white">MemoryAgent</strong></td>
+            <td class="py-2 px-3">Populates <span class="font-mono text-xs">statistical_context</span>, <span class="font-mono text-xs">active_pattern_count</span>, and <span class="font-mono text-xs">statistical_suggestions</span> in StructuredContext via bus subscription</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3"><strong class="text-white">ExecAgent / LLM</strong></td>
+            <td class="py-2 px-3">Sees statistical patterns and ranked analysis suggestions in prompt &mdash; data-type-aware guidance like "math assess_randomness on tool:navigate:success [binary]" instead of generic advice</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3"><strong class="text-white"><a href="/maxim/memory-systems#promotion" class="text-indigo-400 hover:text-indigo-300">SemanticPromoter</a></strong></td>
+            <td class="py-2 px-3">StatisticianAgent is a PromotionSource &mdash; confirmed patterns become ATL semantic concepts with cross-layer edges to AG records</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3"><strong class="text-white">SCN Bins</strong></td>
+            <td class="py-2 px-3">Oscillator enriches temporal indexing with coupling-based prediction, without changing any bin query behavior</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="py-2 px-3"><strong class="text-white">MathTool</strong></td>
+            <td class="py-2 px-3">Agent-accessible math operations routed through IPS (compare, trend, anomaly) and Angular Gyrus (compute, analyze, mat_multiply, eigenvalues, solve_system, determinant). Natural-language aliases (sqrt, square_root, cube_root, squared, cubed, factorial) auto-normalize to canonical operations. LLM prompts include PEMDAS decomposition guidance for multi-step expressions, using <span class="font-mono text-xs">store_value/recall_value</span> for intermediates</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 mt-4">
+      <h4 class="text-sm font-semibold text-white mb-2">A Concrete Example</h4>
+      <p class="text-slate-300 text-sm leading-relaxed mb-2">The robot has been using <span class="font-mono text-xs">navigate</span> for an hour, and success rate is declining:</p>
+      <ol class="text-sm text-slate-300 list-decimal pl-5 space-y-1">
+        <li><strong class="text-amber-400">IPS</strong> detects pattern_confidence rising: 0.12 &rarr; 0.35 &rarr; 0.52 &rarr; PatternDetector enters FORMING</li>
+        <li>Confidence oscillates around 0.45 for 8 steps &mdash; IPS uncertain. <strong class="text-purple-400">Escalated to AG.</strong></li>
+        <li><strong class="text-purple-400">AG</strong> checks memory: no prior "navigate decline" pattern. Runs <span class="font-mono text-xs">analyze("linear")</span>: R&sup2; = 0.73, slope = -0.02/step.</li>
+        <li>AG stores new <span class="font-mono text-xs">MathMemory(PATTERN, "stat:tool:navigate:success")</span> with R&sup2; and slope.</li>
+        <li><strong class="text-green-400">CONFIRMED_PATTERN</strong>. <span class="font-mono text-xs">StatisticalInsight</span> published to bus.</li>
+        <li>Suggestion engine infers <span class="font-mono text-xs">data_type=binary</span> (from <span class="font-mono text-xs">*:success</span> naming), generates <span class="font-mono text-xs">AnalysisSuggestion(operation="recall_memory", priority=0.6)</span> since AG memory exists.</li>
+        <li><strong class="text-white">MemoryAgent</strong> receives <span class="font-mono text-xs">StatisticalSummary</span> with suggestions, adds to LLM context: "navigate tool declining (R&sup2;=0.73)" + ranked analysis recommendation.</li>
+        <li><strong class="text-white">ExecAgent</strong> sees "SUGGESTED ANALYSES: math recall_memory on tool:navigate:success [binary]" &mdash; proposes a goal that avoids navigate, choosing an alternative approach.</li>
+        <li>Next session: IPS detects the same pattern. AG recalls the MathMemory record &rarr; <strong>fast-track confirmation</strong> (no recomputation).</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Navigation -->
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/memory-systems" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Memory Systems</span>
+      </a>
+      <a href="/maxim/attention-salience" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Attention &amp; Salience</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking &amp; Mesh</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

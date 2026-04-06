@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Maxim — A Brain for Robots | Agentic Robotics Cognitive Architecture{% endblock %}
+
+{% block meta_description %}Maxim is an agentic robotics framework that gives robots a brain. A biologically-inspired cognitive architecture for embodied AI agents with memory, attention, proprioception, and learning.{% endblock %}
+
+{% block meta_keywords %}Maxim, Maxim AI, Maxim agent, Maxim brain, Maxim robot, agentic robotics, cognitive architecture, robot brain, embodied AI, biologically-inspired AI, artificial mind, Reachy Mini, memory systems, attention networks, proprioception, ROS2{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}website{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Maxim",
+  "description": "Maxim is an agentic robotics framework that gives robots a brain. A biologically-inspired cognitive architecture for embodied AI agents with memory, attention, proprioception, and learning.",
+  "applicationCategory": "Artificial Intelligence",
+  "operatingSystem": "Linux, ROS2",
+  "author": {
+    "@type": "Person",
+    "name": "Denny Schaedig",
+    "url": "https://www.dennyschaedig.com"
+  },
+  "url": "https://www.dennyschaedig.com/maxim",
+  "codeRepository": "https://github.com/dennys246/Maxim",
+  "keywords": ["agentic robotics", "cognitive architecture", "robot brain", "embodied AI", "biologically-inspired AI", "memory systems", "attention networks", "proprioception"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Maxim",
+  "alternateName": "Maxim Agentic Robotics Framework",
+  "url": "https://www.dennyschaedig.com/maxim"
+}
+</script>
+{% endblock %}
+
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/ramblings" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Ramblings</a>
+
+  <header class="text-center space-y-2">
+    <h1 class="text-4xl md:text-5xl font-bold text-white tracking-tight" style="font-family: 'Space Grotesk', sans-serif;">MAXIM</h1>
+    <p class="text-indigo-400 font-medium">An Artificial Brain from Biological Blueprints</p>
+  </header>
+
+  <!-- Navigation Menu -->
+  <nav class="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+    <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3 text-center">Explore Maxim</h3>
+    <div class="flex flex-wrap justify-center gap-2">
+      <a href="/maxim/agent-architecture" class="btn-link">The Agent Brain</a>
+      <a href="/maxim/memory-systems" class="btn-link">Memory Systems</a>
+      <a href="/maxim/math-cognition" class="btn-link">Math &amp; Statistics</a>
+      <a href="/maxim/attention-salience" class="btn-link">Attention &amp; Salience</a>
+      <a href="/maxim/proprioception" class="btn-link">Body Awareness</a>
+      <a href="/maxim/communication" class="btn-link">Communication</a>
+      <a href="/maxim/usage-guide" class="btn-link">Usage Guide</a>
+      <a href="/maxim/technical-deepdive" class="btn-link">Technical Deep Dive</a>
+      <a href="/maxim/operating-modes" class="btn-link">Operating Modes</a>
+      <a href="/maxim/networking" class="btn-link">Networking &amp; Mesh</a>
+      <a href="/maxim/roadmap" class="btn-link">Roadmap</a>
+      <a href="/maxim/privacy-policy" class="btn-link">Privacy Policy</a>
+      <a href="/maxim/terms-and-conditions" class="btn-link">Terms &amp; Conditions</a>
+      <a href="https://github.com/dennys246/Maxim" class="btn-link">GitHub</a>
+    </div>
+  </nav>
+
+  <div class="rounded-xl bg-gradient-to-br from-indigo-700 via-purple-700 to-indigo-800 p-6 text-white shadow-lg">
+    <h3 class="text-lg font-semibold mb-3">What is Maxim?</h3>
+    <p class="leading-relaxed">Maxim is an agentic robotics framework that gives robots something resembling a mind. Not just reflexes. Not just if-then rules. An actual cognitive architecture inspired by how mammalian brains work, adapted for embodied AI agents that can perceive, remember, decide, and learn.</p>
+  </div>
+
+  <div class="pt-4"></div>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2">The Problem with Robot Brains</h2>
+    <p class="text-slate-300 leading-relaxed">Most robots today are either brilliant or stupid, rarely anything in between. Industrial robots execute perfect movements but can't adapt. LLM-powered robots can reason but lack genuine understanding of their bodies. They don't <em class="text-indigo-400 not-italic font-medium">feel</em> where they are in space. They don't <em class="text-indigo-400 not-italic font-medium">remember</em> what worked before.</p>
+    <p class="text-slate-300 leading-relaxed">Maxim bridges this gap by stealing shamelessly from neuroscience. If evolution spent hundreds of millions of years perfecting certain cognitive architectures, why reinvent them?</p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2">The Biological Blueprint</h2>
+    <p class="text-slate-300 leading-relaxed">Maxim implements computational models of several brain structures, each handling a specific cognitive function:</p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <a href="/maxim/memory-systems#hippocampus" class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-3xl mb-2">🧠</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Hippocampus</h4>
+        <p class="text-sm text-slate-400">Episodic memory. What happened, when, and what came of it.</p>
+      </a>
+      <a href="/maxim/memory-systems#scn" class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-3xl mb-2">⏰</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">SCN</h4>
+        <p class="text-sm text-slate-400">Circadian rhythms. Temporal patterns across hours, days, weeks.</p>
+      </a>
+      <a href="/maxim/memory-systems#nucleus-accumbens" class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-3xl mb-2">🎯</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Nucleus Accumbens</h4>
+        <p class="text-sm text-slate-400">Reward prediction. Learning what leads to good (or bad) outcomes.</p>
+      </a>
+      <a href="/maxim/memory-systems#entorhinal-cortex" class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-3xl mb-2">🔍</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Entorhinal Cortex</h4>
+        <p class="text-sm text-slate-400">Similarity matching. Finding relevant memories for new situations.</p>
+      </a>
+      <a href="/maxim/proprioception#pain" class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-3xl mb-2">⚡</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Pain Circuits</h4>
+        <p class="text-sm text-slate-400">Nociception. Detecting and learning from aversive experiences.</p>
+      </a>
+      <a href="/maxim/attention-salience#attention" class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-3xl mb-2">👁️</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Attention Networks</h4>
+        <p class="text-sm text-slate-400">Focus. Deciding where to look and what matters.</p>
+      </a>
+      <a href="/maxim/math-cognition#dual-number" class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-3xl mb-2">&#x1F9EE;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">IPS &amp; Angular Gyrus</h4>
+        <p class="text-sm text-slate-400">Dual number system. Fast approximate and slow precise math cognition.</p>
+      </a>
+      <a href="/maxim/memory-systems#atl" class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-3xl mb-2">&#x1F4DA;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Anterior Temporal Lobe</h4>
+        <p class="text-sm text-slate-400">Semantic memory. Lasting knowledge distilled from experience.</p>
+      </a>
+      <a href="/maxim/communication#gateway" class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-3xl mb-2">&#x1F4E1;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Communication Gateway</h4>
+        <p class="text-sm text-slate-400">External messaging. Reaching users via SMS, voice, and more.</p>
+      </a>
+    </div>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2">Operating Modes</h2>
+    <p class="text-slate-300 leading-relaxed">Maxim's behavior is controlled by three independent dimensions: <em class="text-indigo-400 not-italic font-medium">processing states</em> (awake vs sleep), <em class="text-indigo-400 not-italic font-medium">operational modes</em> (passive, active, singularity), and <em class="text-indigo-400 not-italic font-medium">strategies</em> (observe, explore, research, assist, reflect, learn). These combine freely to produce configurations like "active exploration" or "passive reflection."</p>
+    <p class="text-slate-300 leading-relaxed"><a href="/maxim/operating-modes#live-mode" class="text-indigo-400 hover:text-indigo-300">Live mode</a> is the full embodied runtime with a self-evolving intent system&mdash;the agent shapes its own personality through experience. <a href="/maxim/operating-modes#exploration" class="text-indigo-400 hover:text-indigo-300">Exploration mode</a> adds curiosity modeling and budget tracking. <a href="/maxim/operating-modes#sleep" class="text-indigo-400 hover:text-indigo-300">Sleep</a> isn't a mode but a processing state that enables memory consolidation while monitoring for wake keywords.</p>
+    <p class="text-slate-300 leading-relaxed"><a href="/maxim/operating-modes" class="text-indigo-400 hover:text-indigo-300 font-medium">Read the full Operating Modes guide &rarr;</a></p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2">How It All Connects</h2>
+    <p class="text-slate-300 leading-relaxed">The magic isn't in any single component. It's in how they integrate. Perception flows into memory. Memory informs attention. Attention shapes what gets remembered. Reward signals update causal models. Pain teaches avoidance.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">Perception → Memory → Attention → Decision → Action → Outcome
+     ↑                                              ↓
+     └──────────────── Learning ←───────────────────┘</div>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">A Concrete Example</h3>
+      <p class="text-slate-300 mb-3">A robot is asked to "find the coffee mug." Here's what happens:</p>
+      <ul class="space-y-2 text-slate-300 list-disc pl-5">
+        <li>The <em class="text-indigo-400 not-italic font-medium">Entorhinal Cortex</em> retrieves similar past experiences (maybe "finding cups" or "kitchen tasks")</li>
+        <li>The <em class="text-indigo-400 not-italic font-medium">Hippocampus</em> provides context: "Last time, the mug was on the counter"</li>
+        <li>The <em class="text-indigo-400 not-italic font-medium">SCN</em> notes it's morning, when mugs are often near the coffee maker</li>
+        <li>The <em class="text-indigo-400 not-italic font-medium">Attention Network</em> prioritizes scanning kitchen areas</li>
+        <li>The <em class="text-indigo-400 not-italic font-medium">Nucleus Accumbens</em> predicts: "Counter search usually succeeds"</li>
+        <li>If the robot moves too fast and jerks, <em class="text-indigo-400 not-italic font-medium">Pain Detection</em> signals discomfort</li>
+        <li>Success or failure updates all relevant memories and predictions</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2">Why This Matters</h2>
+    <p class="text-slate-300 leading-relaxed">This isn't just academic curiosity. Biological inspiration provides:</p>
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">Robustness:</strong> Brains evolved to handle noisy, unpredictable environments</li>
+      <li><strong class="text-white">Efficiency:</strong> Evolution optimized for energy constraints</li>
+      <li><strong class="text-white">Continuous Learning:</strong> Real memory systems adapt without catastrophic forgetting</li>
+      <li><strong class="text-white">Embodied Grounding:</strong> Cognition tied to sensorimotor experience</li>
+      <li><strong class="text-white">Safety:</strong> Pain and fear are ancient, battle-tested harm avoidance systems</li>
+    </ul>
+    <p class="text-slate-300 leading-relaxed">Maxim runs on the Reachy Mini humanoid robot, processing real visual input, real motor commands, real interactions with humans. It's not a simulation. It's not a thought experiment. It's a working system that learns from every interaction.</p>
+  </section>
+
+</div>
+{% endblock %}

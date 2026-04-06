@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+
+{% block title %}Roadmap — Maxim Docs | Future Plans &amp; Development{% endblock %}
+
+{% block meta_description %}Explore Maxim's development roadmap — current status of every initiative, recently shipped features, next priorities, and long-term research directions for the bio-inspired cognitive architecture.{% endblock %}
+
+{% block meta_keywords %}Maxim roadmap, Maxim future plans, multi-LLM scaling, agent mesh, embodiment, research protocol, Maxim development, cognitive architecture roadmap{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Roadmap — Maxim's Development Plans and Future Directions",
+  "description": "Current status, recently shipped features, next priorities, and long-term research directions for Maxim's bio-inspired cognitive architecture.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/roadmap",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["roadmap", "future plans", "multi-LLM", "agent mesh", "embodiment", "research"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Roadmap", "item": "https://www.dennyschaedig.com/maxim/roadmap" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Roadmap</h1>
+    <p class="text-indigo-400 font-medium">Development Status, Priorities, and Research Directions</p>
+  </header>
+
+  <p class="text-slate-300 leading-relaxed">Maxim is built in waves. Each wave stabilizes before the next begins, and every initiative has clear dependencies. This page tracks what's shipped, what's next, and where the project is heading long-term.</p>
+
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
+    <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+      <li><a href="#current-status" class="text-indigo-400 hover:text-indigo-300 no-underline">Current Status</a></li>
+      <li><a href="#recently-shipped" class="text-indigo-400 hover:text-indigo-300 no-underline">What We Just Shipped</a></li>
+      <li><a href="#next-up" class="text-indigo-400 hover:text-indigo-300 no-underline">Next Up</a></li>
+      <li><a href="#research-directions" class="text-indigo-400 hover:text-indigo-300 no-underline">Research Directions</a></li>
+      <li><a href="#dependency-graph" class="text-indigo-400 hover:text-indigo-300 no-underline">Dependency Graph</a></li>
+      <li><a href="#contributing" class="text-indigo-400 hover:text-indigo-300 no-underline">Contributing</a></li>
+    </ol>
+  </div>
+
+  <!-- 1. Current Status -->
+  <section class="space-y-4">
+    <h2 id="current-status" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Current Status</h2>
+
+    <p class="text-slate-300 leading-relaxed">Every active initiative and its current state at a glance. Status badges reflect the most recent milestone reached.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 overflow-x-auto">
+      <table class="w-full text-sm text-slate-300">
+        <thead>
+          <tr>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Initiative</th>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Status</th>
+            <th class="text-left text-indigo-400 pb-2">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Docker Sandbox</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Phase A (TmpdirSandbox + pain triggers) complete</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Multi-LLM Scaling</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">In Progress</span></td>
+            <td class="py-3">Phases 1&ndash;8 done; 7c (mDNS discovery) and 7d (InferenceRouter) next</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Realtime Refinement</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Core complete (~90%); remaining ~50 LOC for 6th persona + metric types</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Research Protocol</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-600/40 text-slate-400">Not Started</span></td>
+            <td class="py-3">Self-contained; builds mesh primitives reused by Agent Mesh</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Agent Mesh</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-600/40 text-slate-400">Not Started</span></td>
+            <td class="py-3">Blocked on Multi-LLM Phase 7c/7d + Research Protocol</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Embodiment Core</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-600/40 text-slate-400">Not Started</span></td>
+            <td class="py-3">Independent track; no blockers</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Embodiment Hardware Adapter</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-600/40 text-slate-400">Not Started</span></td>
+            <td class="py-3">Blocked on Embodiment Core</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Simulation Test Bed</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-600/40 text-slate-400">Not Started</span></td>
+            <td class="py-3">Regression safety net for sim orchestrator</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">DM MVP</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-red-500/20 text-red-400">Deferred</span></td>
+            <td class="py-3">Blocked on everything; lowest priority</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 2. What We Just Shipped -->
+  <section class="space-y-4">
+    <h2 id="recently-shipped" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What We Just Shipped</h2>
+
+    <p class="text-slate-300 leading-relaxed">The most recent wave focused on <span class="text-indigo-400 font-semibold">Multi-LLM Scaling</span>&mdash;giving Maxim the ability to distribute inference across multiple machines with a leader/peer architecture.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">LeaderProxy</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Authentication, GPU metrics exposure, and debug endpoints. The leader acts as the coordination point for all peer inference requests.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Admission Control</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Concurrency caps and rate limiting at the leader level. Prevents overloading any single node when multiple peers submit inference requests simultaneously.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">LaneMetrics</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Per-lane performance counters for the WorkerPool's three lanes (infer, review, record). Enables monitoring throughput and latency per workload type.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">System Heartbeat</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Stall detection across the inference pipeline. Automatically identifies when a lane or peer stops responding and triggers recovery.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Peer-to-Leader Inference</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Fixed provider priority ordering and pricing gate bugs that prevented peers from correctly routing inference to the leader node.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Process Followup Fix</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Eliminated a 60-second stall in the process followup path. Recovery is now instant, preventing cascading delays across the inference pipeline.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Next Up -->
+  <section class="space-y-4">
+    <h2 id="next-up" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Next Up</h2>
+
+    <p class="text-slate-300 leading-relaxed">Prioritized by impact on daily development velocity. Items higher on the list unblock more downstream work.</p>
+
+    <div class="space-y-3">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
+        <span class="text-2xl font-bold text-indigo-500 shrink-0">1</span>
+        <div>
+          <h3 class="text-white font-semibold">Fix Sim Orchestrator</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">The simulation orchestrator has issues blocking daily use. This is the highest priority because sims are the primary development and testing workflow.</p>
+        </div>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
+        <span class="text-2xl font-bold text-indigo-500 shrink-0">2</span>
+        <div>
+          <h3 class="text-white font-semibold">Remote Self-Update (Phase 7a-ext)</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Allow Maxim instances to pull updates remotely without manual SSH. Critical for faster iteration when running on headless machines.</p>
+        </div>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
+        <span class="text-2xl font-bold text-indigo-500 shrink-0">3</span>
+        <div>
+          <h3 class="text-white font-semibold">Simulation Test Bed</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Automated regression suite for the sim orchestrator. Provides a safety net so changes to the agent pipeline don't silently break simulation behavior.</p>
+        </div>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
+        <span class="text-2xl font-bold text-indigo-500 shrink-0">4</span>
+        <div>
+          <h3 class="text-white font-semibold">Phase 7c: mDNS Peer Discovery</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Zero-configuration peer discovery on the local network using mDNS/DNS-SD. Eliminates manual IP entry when adding new Maxim nodes.</p>
+        </div>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
+        <span class="text-2xl font-bold text-indigo-500 shrink-0">5</span>
+        <div>
+          <h3 class="text-white font-semibold">Phase 7d: InferenceRouter</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Intelligent routing with local &rarr; peer &rarr; remote fallback. The router picks the best available backend based on latency, cost, and model availability.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Research Directions -->
+  <section class="space-y-4">
+    <h2 id="research-directions" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Research Directions</h2>
+
+    <p class="text-slate-300 leading-relaxed">These are speculative, long-term directions. None are scheduled&mdash;they represent where the architecture could go once the current engineering work stabilizes.</p>
+
+    <div class="space-y-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">ATL Self-Extension through Mechanism Discovery</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Can Maxim's <span class="text-indigo-400 font-semibold">Anterior Temporal Lobe</span> discover new concept categories and relationship types on its own? Today the taxonomy is hand-coded. A self-extending ATL would let the semantic memory grow in ways its designers didn't anticipate.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">Federated Embodiments</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Multiple Maxim instances sharing memory and causal models across different physical bodies. A robot that learns to open a door could transfer that knowledge to a different robot with different actuators&mdash;adapting the motor plan while keeping the causal structure.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">Cross-Agent Affordance Delegation</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">When one agent discovers an affordance it can't act on (e.g., "this door has a handle but I have no gripper"), it could delegate to an agent that can. This requires a shared affordance vocabulary and a trust model for delegation.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">Distributed Embodiment Construction</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Multiple agents collaboratively assembling a physical structure, each contributing sensors and actuators. The <span class="text-indigo-400 font-semibold">Agent Mesh</span> provides the communication substrate; this research explores what shared representations are needed for coordinated physical action.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">Uncertainty-as-Pain</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Mapping epistemic uncertainty to the <span class="text-indigo-400 font-semibold">PainDetector</span> system. High uncertainty about a prediction would register as discomfort, motivating the agent to gather more information before acting&mdash;a bio-inspired approach to active learning and cautious exploration.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Dependency Graph -->
+  <section class="space-y-4">
+    <h2 id="dependency-graph" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Dependency Graph</h2>
+
+    <p class="text-slate-300 leading-relaxed">Not everything can run in parallel. This graph shows what blocks what&mdash;read arrows as "must finish before."</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Dependencies</span>
+
+Phase 8 (done) ──&gt; Phase 7b (done) ──&gt; Phase 7d (InferenceRouter)
+                                                  &uarr;
+Phase 7c (mDNS Discovery) ────────────────────────┘
+
+Research Protocol ──&gt; Agent Mesh
+                          &uarr;
+Multi-LLM 7c/7d ─────────┘
+
+Embodiment Core ──&gt; Embodiment Hardware Adapter
+  (independent track, no blockers)
+
+Simulation Test Bed
+  (independent, unblocks safer iteration)
+
+DM MVP
+  (blocked on everything above)</div>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The <span class="text-indigo-400 font-semibold">InferenceRouter</span> (7d) is the key bottleneck: it needs both mDNS discovery (7c) and the Phase 7b/8 infrastructure. Once 7d lands, the Agent Mesh becomes unblocked on its networking side. The Research Protocol unblocks the mesh on its protocol side. Both must converge before mesh work can begin.</p>
+
+    <p class="text-slate-300 leading-relaxed"><span class="text-indigo-400 font-semibold">Embodiment</span> runs on an independent track. It doesn't depend on the multi-LLM or mesh work, so it can progress whenever engineering bandwidth is available.</p>
+  </section>
+
+  <!-- 6. Contributing -->
+  <section class="space-y-4">
+    <h2 id="contributing" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Contributing</h2>
+
+    <p class="text-slate-300 leading-relaxed">Maxim is open source. Contributions are welcome&mdash;especially on items marked <span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-600/40 text-slate-400">Not Started</span> in the status table above.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h3 class="text-white font-semibold">Getting Started</h3>
+      <ol class="space-y-2 text-slate-300 list-decimal pl-5 text-sm leading-relaxed">
+        <li>Clone the repo from <a href="https://github.com/dennys246/maxim" class="text-indigo-400 hover:text-indigo-300 no-underline">github.com/dennys246/maxim</a></li>
+        <li>Read <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">CLAUDE.md</code> in the project root&mdash;it covers architectural invariants, testing commands, and the module map</li>
+        <li>Run <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">maxim doctor</code> to verify your environment</li>
+        <li>Run the test suite: <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py</code></li>
+        <li>Pick an initiative from the <a href="#current-status" class="text-indigo-400 hover:text-indigo-300 no-underline">status table</a> and open an issue or PR</li>
+      </ol>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-2">Before You Start</h3>
+      <p class="text-slate-300 text-sm">The project has strong architectural invariants (one-way memory tiers, separate EpisodicMemory instances, LLM access only through the router). Read the <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">CLAUDE.md</code> section on invariants before making structural changes. The bio-system class names (Hippocampus, ATL, NAc, SCN, EC, AngularGyrus) are intentional and should not be renamed.</p>
+    </div>
+  </section>
+
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-start items-stretch gap-4">
+      <a href="/maxim/networking" class="flex-1 max-w-xs bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Networking</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

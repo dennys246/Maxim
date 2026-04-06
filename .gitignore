@@ -237,6 +237,10 @@ adaptive_thresholds.json
 focus_learner.json
 learned_bounds.json
 
-htmls-guides/
-
 .maxim_workspace
+
+# Claude Code
+.claude/
+
+# Runtime state (per-user, evolves locally)
+data/util/cost_state.json

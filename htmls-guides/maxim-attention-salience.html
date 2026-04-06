@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+
+{% block title %}Attention &amp; Salience — Maxim Docs | Agentic Robotics Framework{% endblock %}
+
+{% block meta_description %}How Maxim decides what matters. Explore attention networks and salience mechanisms that let embodied AI agents focus on relevant stimuli, inspired by biological attention systems.{% endblock %}
+
+{% block meta_keywords %}Maxim attention, salience network AI, robot attention, focus mechanism, agentic attention, biologically-inspired attention, embodied AI perception, visual salience{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Attention & Salience — How Maxim Decides What Matters",
+  "description": "How Maxim decides what matters. Explore attention networks and salience mechanisms that let embodied AI agents focus on relevant stimuli.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/attention-salience",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["attention networks", "salience", "visual focus", "embodied AI perception"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Attention & Salience", "item": "https://www.dennyschaedig.com/maxim/attention-salience" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .attention-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 2px;
+  }
+  .grid-cell {
+    aspect-ratio: 1;
+    border-radius: 3px;
+    transition: background-color 1.2s ease;
+  }
+  .decay-track {
+    height: 12px;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .decay-fill {
+    height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, rgb(99 102 241), rgb(139 92 246));
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Attention &amp; Salience</h1>
+    <p class="text-indigo-400 font-medium">Deciding Where to Look and What Matters</p>
+  </header>
+
+  <p class="text-slate-300 leading-relaxed">Your visual system processes about 10 million bits per second. Your conscious awareness handles maybe 50. The gap is attention: a ruthless filter that decides what reaches awareness and what gets ignored. Maxim implements two complementary systems: <em class="text-indigo-400 not-italic font-medium">Attention</em> (where to look) and <em class="text-indigo-400 not-italic font-medium">Salience</em> (what matters).</p>
+
+  <!-- Attention Network -->
+  <section class="space-y-4">
+    <h2 id="attention" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Attention Network: Spatial Focus</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">🧬 Biological Inspiration</h3>
+      <p class="text-slate-300">The brain's attention network includes the frontal eye fields (directing gaze), the parietal cortex (spatial awareness), and the superior colliculus (rapid orienting). Together, they create a priority map of where to direct limited processing resources.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Maxim's <em class="text-indigo-400 not-italic font-medium">AttentionNetwork</em> tracks where the robot has looked using a spatial grid:</p>
+
+    <div class="bg-slate-950 rounded-lg p-4">
+      <div class="attention-grid" id="attentionGrid"></div>
+      <p class="text-center text-xs text-slate-500 mt-2"><em class="text-indigo-400/70 not-italic">Simulated attention heat map: brighter = more attention</em></p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">For each cell in the 10x10 grid (configurable), the system tracks:</p>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">Visit count:</strong> How often has this region been examined?</li>
+      <li><strong class="text-white">Success/failure history:</strong> Did looking here lead to good outcomes?</li>
+      <li><strong class="text-white">Last visit time:</strong> When was this region last attended?</li>
+      <li><strong class="text-white">Dwell time:</strong> How long was spent examining this area?</li>
+    </ul>
+
+    <p class="text-slate-300 leading-relaxed">This enables exploration vs exploitation trade-offs. Unexplored regions become increasingly attractive (novelty-seeking), while regions with successful interaction history get priority when relevant.</p>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Temporal Decay</h3>
+
+    <p class="text-slate-300 leading-relaxed">Attention salience decays over time (default: 2 seconds). This prevents "attention lock" where the robot fixates on one spot and ensures continuous environmental scanning.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h4 class="text-sm font-semibold text-slate-200 mb-2">Attention Decay Over Time</h4>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-slate-400 w-10">0s</span>
+        <div class="flex-1 decay-track bg-slate-700"><div class="decay-fill" style="width: 100%;"></div></div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-slate-400 w-10">0.5s</span>
+        <div class="flex-1 decay-track bg-slate-700"><div class="decay-fill" style="width: 77%;"></div></div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-slate-400 w-10">1.0s</span>
+        <div class="flex-1 decay-track bg-slate-700"><div class="decay-fill" style="width: 61%;"></div></div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-slate-400 w-10">1.5s</span>
+        <div class="flex-1 decay-track bg-slate-700"><div class="decay-fill" style="width: 47%;"></div></div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-slate-400 w-10">2.0s</span>
+        <div class="flex-1 decay-track bg-slate-700"><div class="decay-fill" style="width: 37%;"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Salience Network -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2">The Salience Network: What Matters</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">🧬 Biological Inspiration</h3>
+      <p class="text-slate-300">The salience network (anterior insula and ACC) determines the importance of stimuli. A snake in the grass pops out. Your name across a crowded room catches your ear. These aren't accidents; they're salience computations.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">While attention answers "where", salience answers "what." The <em class="text-indigo-400 not-italic font-medium">SalienceNetwork</em> computes importance scores for detected objects based on multiple factors:</p>
+
+    <div class="space-y-3">
+      <div class="flex items-center gap-4 bg-slate-950 rounded-lg p-4">
+        <span class="text-2xl w-10 text-center">✨</span>
+        <div>
+          <h5 class="text-white font-medium">Novelty (Instance + Class)</h5>
+          <p class="text-sm text-slate-400">Never-before-seen objects get a boost. In the SalienceNetwork, novelty decays over 30 seconds (<code class="bg-slate-950 px-1 py-0.5 rounded text-xs">novelty_decay_seconds</code>). The NoveltyTracker uses a two-phase model: novelty stays at maximum during focus, then decays after 10 seconds (<code class="bg-slate-950 px-1 py-0.5 rounded text-xs">focus_decay_seconds</code>) and recovers over 20 seconds (<code class="bg-slate-950 px-1 py-0.5 rounded text-xs">recovery_seconds</code>) when not focused. Class-level novelty habituates as more unique instances of a category are seen.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 bg-slate-950 rounded-lg p-4">
+        <span class="text-2xl w-10 text-center">🕐</span>
+        <div>
+          <h5 class="text-white font-medium">Recency</h5>
+          <p class="text-sm text-slate-400">Recently seen objects maintain salience. Decays over 5 seconds to enable re-detection.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 bg-slate-950 rounded-lg p-4">
+        <span class="text-2xl w-10 text-center">🎯</span>
+        <div>
+          <h5 class="text-white font-medium">Interest Matching</h5>
+          <p class="text-sm text-slate-400">Objects matching interest classes (person, animals) get a 1.5x salience boost. All detected classes are always tracked; interests control prioritization, not visibility.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 bg-slate-950 rounded-lg p-4">
+        <span class="text-2xl w-10 text-center">📊</span>
+        <div>
+          <h5 class="text-white font-medium">Confidence</h5>
+          <p class="text-sm text-slate-400">High-confidence detections are weighted higher than uncertain ones.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 bg-slate-950 rounded-lg p-4">
+        <span class="text-2xl w-10 text-center">💬</span>
+        <div>
+          <h5 class="text-white font-medium">Interaction History</h5>
+          <p class="text-sm text-slate-400">Objects with positive past interactions are boosted (via SalienceMemoryBridge).</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Class-Level Novelty -->
+  <section class="space-y-4">
+    <h3 class="text-lg font-semibold text-indigo-400">Class-Level Novelty: Categorical Habituation</h3>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h4 class="text-base font-semibold text-emerald-400 mb-2">Biological Inspiration</h4>
+      <p class="text-slate-300">The brain habituates to categories, not just instances. You notice your first penguin at the zoo immediately &mdash; by the twentieth, penguins barely register. But if a flamingo appears among the penguins, it pops out despite being "just another bird." This is <em class="text-indigo-400 not-italic font-medium">categorical habituation</em>: the brain tracks how familiar a <em>type</em> of stimulus is, separate from whether this specific instance is new. The superior temporal sulcus and inferotemporal cortex maintain category-level representations that modulate how strongly individual exemplars activate the salience network.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Maxim's <em class="text-indigo-400 not-italic font-medium">NoveltyTracker</em> implements two layers of novelty that work together:</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-2">Instance Novelty</h4>
+        <p class="text-sm text-slate-400 mb-2">Tracks individual objects by their tracking ID. A new object starts at maximum novelty. While focused, novelty stays at maximum; after focus ends, novelty decays over <code class="bg-slate-950 px-1 py-0.5 rounded text-xs">focus_decay_seconds</code> (default: 10s) and then recovers over <code class="bg-slate-950 px-1 py-0.5 rounded text-xs">recovery_seconds</code> (default: 20s) when not attended to.</p>
+        <p class="text-sm text-slate-400 italic">"Is this specific object new to me?"</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-2">Class Novelty</h4>
+        <p class="text-sm text-slate-400 mb-2">Tracks how many unique instances of each COCO class have been seen over the robot's lifetime. Uses logarithmic decay: novelty halves every 10 unique instances, but never drops below 30% of maximum.</p>
+        <p class="text-sm text-slate-400 italic">"How familiar am I with this type of object?"</p>
+      </div>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The effective novelty score blends both layers. A new instance of a familiar category (the 21st chair) scores lower than a new instance of a rare category (the first cup), even though both are individually new. This prevents the robot from being perpetually distracted by common objects while staying alert to genuinely novel ones.</p>
+
+    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-6 mt-4">
+      <h4 class="text-base font-semibold text-amber-400 mb-2">Sensitization: The Opposite of Habituation</h4>
+      <p class="text-slate-300 text-sm">When connected to the SalienceMemoryBridge, the NoveltyTracker can <em class="text-indigo-400 not-italic">sensitize</em> to object classes with significant interaction histories. Both strongly positive interactions (cups that were successfully grasped) and strongly negative ones (objects that caused errors) amplify class novelty, resisting the natural habituation that count-based decay provides. Only classes with neutral or no interaction history habituate normally.</p>
+      <p class="text-slate-300 text-sm mt-2">This mirrors VTA dopaminergic modulation in the brain: significant outcomes &mdash; whether rewarding or aversive &mdash; slow sensory cortex habituation for those stimulus categories. A burned child watches the stove; a rewarded child watches the cookie jar. Both resist habituation because the brain learned that these stimuli predict important outcomes.</p>
+    </div>
+  </section>
+
+  <!-- Comparison -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2">Attention vs Salience: The Distinction</h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-center text-white font-semibold mb-3 pb-3 border-b border-slate-700">👁️ Attention Network</h4>
+        <ul class="space-y-2 text-slate-300 list-disc pl-5 text-sm">
+          <li><strong class="text-white">Focus:</strong> Where to look</li>
+          <li><strong class="text-white">Unit:</strong> Spatial regions</li>
+          <li><strong class="text-white">Tracks:</strong> Visit history, coverage</li>
+          <li><strong class="text-white">Goal:</strong> Explore efficiently</li>
+          <li><strong class="text-white">Question:</strong> "Have I checked there?"</li>
+        </ul>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-center text-white font-semibold mb-3 pb-3 border-b border-slate-700">⭐ Salience Network</h4>
+        <ul class="space-y-2 text-slate-300 list-disc pl-5 text-sm">
+          <li><strong class="text-white">Focus:</strong> What matters</li>
+          <li><strong class="text-white">Unit:</strong> Detected objects</li>
+          <li><strong class="text-white">Tracks:</strong> Importance scores</li>
+          <li><strong class="text-white">Goal:</strong> Prioritize relevance</li>
+          <li><strong class="text-white">Question:</strong> "Should I care?"</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Integration -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2">Integration: The Perception Loop</h2>
+
+    <p class="text-slate-300 leading-relaxed">These systems work together in Maxim's perception cycle:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Perception cycle</span>
+1. CAPTURE: Camera captures frame
+         ↓
+2. DETECT: Vision model identifies objects
+         ↓
+3. SALIENCE: SalienceNetwork scores each detection
+         ↓
+4. ATTENTION: AttentionNetwork suggests unexplored regions
+         ↓
+5. GAZE: Select target (balance salience + exploration)
+         ↓
+6. MOVE: Orient toward selected target
+         ↓
+7. UPDATE: Record where we looked and what we saw
+         ↓
+→ Repeat</div>
+  </section>
+
+  <!-- Memory Integration -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2">Memory Integration: SalienceMemoryBridge</h2>
+
+    <p class="text-slate-300 leading-relaxed">The <em class="text-indigo-400 not-italic font-medium">SalienceMemoryBridge</em> connects perception to long-term memory:</p>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">On detection:</strong> Query Hippocampus for past interactions with similar objects</li>
+      <li><strong class="text-white">Positive history:</strong> Object gets salience boost (we liked it before)</li>
+      <li><strong class="text-white">Negative history:</strong> Object may get suppressed (we should avoid it)</li>
+      <li><strong class="text-white">Unknown:</strong> Novelty scoring applies (might be interesting)</li>
+    </ul>
+
+    <p class="text-slate-300 leading-relaxed">This creates a feedback loop: the robot learns what's worth paying attention to based on actual experience, not just hardcoded rules.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Example: Learning to Attend to Faces</h3>
+      <div class="space-y-2 text-slate-300">
+        <p><strong class="text-white">Initial state:</strong> The robot treats all objects roughly equally.</p>
+        <p><strong class="text-white">Day 1:</strong> A human talks to the robot while their face is detected. Positive interaction recorded.</p>
+        <p><strong class="text-white">Day 2:</strong> When a face appears, SalienceMemoryBridge retrieves the positive history. Salience boosted.</p>
+        <p><strong class="text-white">Day 3+:</strong> The robot naturally orients toward faces faster because past experience taught it: faces = interesting interactions.</p>
+        <p class="text-indigo-400 font-medium mt-3">No one programmed "faces are important." The system learned it.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/math-cognition" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Math &amp; Statistics</span>
+      </a>
+      <a href="/maxim/proprioception" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Body Awareness</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking &amp; Mesh</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  const grid = document.getElementById('attentionGrid');
+  if (grid) {
+    var cells = [];
+    var focusRow = 4.5, focusCol = 4.5;
+    for (var i = 0; i < 100; i++) {
+      var cell = document.createElement('div');
+      cell.className = 'grid-cell';
+      cells.push(cell);
+      grid.appendChild(cell);
+    }
+
+    function updateGrid() {
+      for (var i = 0; i < 100; i++) {
+        var row = Math.floor(i / 10);
+        var col = i % 10;
+        var dist = Math.sqrt(Math.pow(row - focusRow, 2) + Math.pow(col - focusCol, 2));
+        var value = Math.max(0, Math.min(1, 1 - dist / 6 + Math.random() * 0.15));
+        cells[i].style.backgroundColor = 'rgba(99, 102, 241, ' + value + ')';
+      }
+    }
+
+    updateGrid();
+
+    setInterval(function() {
+      focusRow += (Math.random() - 0.5) * 2.5;
+      focusCol += (Math.random() - 0.5) * 2.5;
+      focusRow = Math.max(1, Math.min(8, focusRow));
+      focusCol = Math.max(1, Math.min(8, focusCol));
+      updateGrid();
+    }, 2000);
+  }
+</script>
+{% endblock %}

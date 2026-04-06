@@ -1,0 +1,658 @@
+{% extends "base.html" %}
+
+{% block title %}The Agent Brain — Maxim Docs | Agentic Robotics Framework{% endblock %}
+
+{% block meta_description %}Explore Maxim's layered agent architecture — how perception, cognition, and action layers combine to give robots a brain inspired by biological neural systems.{% endblock %}
+
+{% block meta_keywords %}Maxim agent architecture, robot brain layers, agentic AI architecture, perception cognition action, embodied AI agent, Maxim cognitive layers, ROS2 agent{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "The Agent Brain — Maxim's Layered Cognitive Architecture",
+  "description": "Explore Maxim's layered agent architecture — how perception, cognition, and action layers combine to give robots a brain inspired by biological neural systems.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/agent-architecture",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["agent architecture", "cognitive layers", "robot brain", "embodied AI"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "The Agent Brain", "item": "https://www.dennyschaedig.com/maxim/agent-architecture" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .agent-box {
+    position: relative;
+  }
+  .agent-box:not(:last-child)::after {
+    content: '↓';
+    display: block;
+    text-align: center;
+    font-size: 1.5rem;
+    color: rgb(99 102 241);
+    padding: 4px 0;
+  }
+
+  /* Bio-detail: hidden by default, revealed on hover or click */
+  .bio-detail {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows 0.4s ease, opacity 0.3s ease;
+  }
+  .bio-detail > div {
+    overflow: hidden;
+  }
+  .agent-box:hover .bio-detail,
+  .bio-detail.active {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+  .bio-hint {
+    font-size: 0.75rem;
+    color: rgb(99 102 241 / 0.6);
+    transition: opacity 0.3s ease;
+  }
+  .agent-box:hover .bio-hint,
+  .bio-detail.active ~ .bio-hint {
+    opacity: 0;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">The Agent Brain</h1>
+    <p class="text-indigo-400 font-medium">How Biological Systems Meet Agentic AI</p>
+  </header>
+
+  <p class="text-slate-300 leading-relaxed">Maxim's cognitive components don't exist in isolation. They're woven into an agentic architecture where LLM-powered agents make decisions informed by biological memory, attention, and learning systems. This page explains how the pieces fit together.</p>
+
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
+    <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+      <li><a href="#layered-architecture" class="text-indigo-400 hover:text-indigo-300 no-underline">The Layered Architecture</a></li>
+      <li><a href="#agent-pipeline" class="text-indigo-400 hover:text-indigo-300 no-underline">The Agent Pipeline</a></li>
+      <li><a href="#biology-meets-ai" class="text-indigo-400 hover:text-indigo-300 no-underline">Where Biology Meets AI</a></li>
+      <li><a href="#structured-context" class="text-indigo-400 hover:text-indigo-300 no-underline">The StructuredContext</a></li>
+      <li><a href="#fear-circuit" class="text-indigo-400 hover:text-indigo-300 no-underline">Decision Safety: The Fear Circuit</a></li>
+      <li><a href="#motor-learning" class="text-indigo-400 hover:text-indigo-300 no-underline">Motor Learning: The Cerebellum</a></li>
+      <li><a href="#energy" class="text-indigo-400 hover:text-indigo-300 no-underline">Energy Awareness</a></li>
+      <li><a href="#design-principles" class="text-indigo-400 hover:text-indigo-300 no-underline">Design Principles</a></li>
+      <li><a href="#root-goal" class="text-indigo-400 hover:text-indigo-300 no-underline">The Root Goal</a></li>
+    </ol>
+  </div>
+
+  <!-- Layered Architecture -->
+  <section class="space-y-4">
+    <h2 id="layered-architecture" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Layered Architecture</h2>
+
+    <p class="text-slate-300 leading-relaxed">Maxim enforces strict one-way dependencies. Higher layers can call lower layers, but never the reverse. This prevents circular reasoning and ensures clean separation of concerns:</p>
+
+    <div class="bg-slate-950 rounded-xl p-5 space-y-2">
+      <div class="flex items-center bg-slate-800 rounded-lg p-3 border-l-4 border-indigo-500">
+        <span class="font-semibold text-white w-28 shrink-0">Agents</span>
+        <span class="text-sm text-slate-400">Goal reasoning, intent generation (NO side effects)</span>
+      </div>
+      <div class="text-center text-indigo-500 text-lg">↓</div>
+      <div class="flex items-center bg-slate-800 rounded-lg p-3 border-l-4 border-indigo-500">
+        <span class="font-semibold text-white w-28 shrink-0">Planning</span>
+        <span class="text-sm text-slate-400">Plan generation and refinement (NO execution)</span>
+      </div>
+      <div class="text-center text-indigo-500 text-lg">↓</div>
+      <div class="flex items-center bg-slate-800 rounded-lg p-3 border-l-4 border-indigo-500">
+        <span class="font-semibold text-white w-28 shrink-0">Decision</span>
+        <span class="text-sm text-slate-400">Action selection and arbitration (NO memory mutation)</span>
+      </div>
+      <div class="text-center text-indigo-500 text-lg">↓</div>
+      <div class="flex items-center bg-slate-800 rounded-lg p-3 border-l-4 border-indigo-500">
+        <span class="font-semibold text-white w-28 shrink-0">Runtime</span>
+        <span class="text-sm text-slate-400">Agentic orchestration loop</span>
+      </div>
+      <div class="text-center text-indigo-500 text-lg">↓</div>
+      <div class="flex items-center bg-slate-800 rounded-lg p-3 border-l-4 border-indigo-500">
+        <span class="font-semibold text-white w-28 shrink-0">Executor</span>
+        <span class="text-sm text-slate-400">Tool invocation and motor control</span>
+      </div>
+      <div class="text-center text-indigo-500 text-lg">↓</div>
+      <div class="flex items-center bg-slate-800 rounded-lg p-3 border-l-4 border-indigo-500">
+        <span class="font-semibold text-white w-28 shrink-0">Environment</span>
+        <span class="text-sm text-slate-400">World observation (NO side effects)</span>
+      </div>
+      <div class="text-center text-indigo-500 text-lg">↓</div>
+      <div class="flex items-center bg-slate-800 rounded-lg p-3 border-l-4 border-indigo-500">
+        <span class="font-semibold text-white w-28 shrink-0">Memory</span>
+        <span class="text-sm text-slate-400">Storage and retrieval (NO decision making)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Agent Pipeline -->
+  <section class="space-y-4">
+    <h2 id="agent-pipeline" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Agent Pipeline</h2>
+
+    <p class="text-slate-300 leading-relaxed">Five specialized agents work in the pipeline, each with a distinct role:</p>
+
+    <div class="space-y-1">
+      <div class="agent-box">
+        <div class="bg-slate-800 border-2 border-indigo-500/50 rounded-xl p-5">
+          <h4 class="text-white font-semibold mb-2 flex items-center gap-2">👁️ PerceptionAgent</h4>
+          <p class="text-sm text-slate-300">Observes raw input from the environment. Classifies objects, computes salience and novelty scores. Outputs a <em class="text-indigo-400 not-italic font-medium">Percept</em>: a normalized, classified observation ready for higher processing.</p>
+
+          <div class="bio-detail">
+            <div>
+              <div class="bg-slate-900/60 rounded-lg p-4 border border-slate-700 space-y-3 mt-3">
+                <h5 class="text-indigo-400 font-semibold text-sm">Inspired by the Visual Cortex and Sensory Processing Pathway</h5>
+                <p class="text-sm text-slate-300">The PerceptionAgent mirrors how the brain transforms raw sensory data into meaningful representations. In biological vision, photons hitting the retina are meaningless &mdash; it takes a cascade of increasingly abstract processing stages before you "see" a coffee mug. The PerceptionAgent implements this same progressive construction: raw pixels become detections, detections become classified objects, and classified objects become a structured Percept with salience and novelty scores attached.</p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">V1/V2 (Primary Visual Cortex) &rarr; Feature Extraction</p>
+                    <p class="text-slate-400">V1 neurons detect edges, orientations, and basic spatial frequencies &mdash; the raw building blocks of vision. The PerceptionAgent's vision model (RTMDet-m by default, with YOLOv8 available as an optional extra via <code>pip install "maxim[yolo]"</code>) performs the analogous step: detecting object classes in every frame &mdash; extracting bounding boxes, confidence scores, and class labels from raw camera input. Like V1, neither system "understands" what it sees at this stage &mdash; it just detects structure. Downstream salience filtering decides what reaches awareness.</p>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">Ventral Stream ("What" Pathway) &rarr; Object Classification</p>
+                    <p class="text-slate-400">The ventral stream flows from V1 through V4 to the inferotemporal cortex, progressively building object identity &mdash; from edges to textures to shapes to "that's a mug." The PerceptionAgent's classification step mirrors this hierarchy: raw detections are matched against known categories, assigned class labels, and enriched with contextual metadata before being passed upstream.</p>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">Dorsal Stream ("Where" Pathway) &rarr; Spatial Awareness</p>
+                    <p class="text-slate-400">The dorsal stream flows to the parietal cortex, computing spatial relationships and motion. The PerceptionAgent's AttentionNetwork implements this: tracking <em class="text-indigo-400 not-italic">where</em> objects are in a spatial grid, how spatial coverage has changed, and which regions remain unexplored. This is why the robot can balance exploitation (looking at known objects) with exploration (scanning unvisited areas).</p>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">Salience Network (Anterior Insula + ACC) &rarr; Importance Filtering</p>
+                    <p class="text-slate-400">The brain's salience network acts as a gatekeeper, deciding which stimuli deserve conscious attention. A snake in peripheral vision triggers it; a familiar chair doesn't. The PerceptionAgent's SalienceNetwork computes the same filter: instance novelty decays over 30 seconds, class-level novelty habituates as more unique instances of a category are seen (the 20th chair is less novel than the first cup), recency fades over 5 seconds, interest labels provide a 1.5x salience boost, and the SalienceMemoryBridge adds learned importance from past interactions.</p>
+                  </div>
+                </div>
+
+                <p class="text-sm text-slate-400 italic">The key insight: perception isn't passive recording &mdash; it's active construction. The brain doesn't upload reality; it builds a model of what matters right now. The PerceptionAgent does the same. Its output Percept isn't "everything the camera saw" &mdash; it's a curated, scored, attention-weighted snapshot of what's relevant. Most sensory data is discarded, just as in biological vision.</p>
+              </div>
+            </div>
+          </div>
+          <p class="bio-hint mt-2">Hover to explore the biological inspiration</p>
+        </div>
+      </div>
+      <div class="agent-box">
+        <div class="bg-slate-800 border-2 border-indigo-500/50 rounded-xl p-5">
+          <h4 class="text-white font-semibold mb-2 flex items-center gap-2">🧠 MemoryAgent</h4>
+          <p class="text-sm text-slate-300">The bridge between perception and decision. Doesn't store memories itself&mdash;it delegates that to the Hippocampus. Instead, it decides <em class="text-indigo-400 not-italic font-medium">what's important</em>, <em class="text-indigo-400 not-italic font-medium">what's relevant</em>, and builds the <em class="text-indigo-400 not-italic font-medium">StructuredContext</em> the LLM uses to reason. New observations are held in a staging area before being committed to long-term storage. This is where biological memory systems (Hippocampus, SCN, NAc, EC) integrate with the agent loop.</p>
+
+          <div class="bio-detail">
+            <div>
+              <div class="bg-slate-900/60 rounded-lg p-4 border border-slate-700 space-y-3 mt-3">
+                <h5 class="text-indigo-400 font-semibold text-sm">Inspired by the Medial Temporal Lobe</h5>
+                <p class="text-sm text-slate-300">The MemoryAgent mirrors the medial temporal lobe (MTL) &mdash; not as a storage vault, but as an active <em class="text-indigo-400 not-italic">convergence zone</em> that integrates multiple memory systems into a coherent context for decision-making. In the brain, you don't "look up" a memory like a database query. The MTL reconstructs it by weaving together episodic traces, temporal context, familiarity signals, and spatial patterns. The MemoryAgent does exactly this when building StructuredContext for the LLM.</p>
+                <p class="text-sm text-slate-300">Like biological working memory, observations don't become permanent memories instantly. They pass through <em class="text-indigo-400 not-italic">staged formation</em>: new observations enter a forming pool, accumulate context as they graduate to working status, and are finally committed to the Hippocampus for long-term storage. During the active session, forming and working entries are protected from eviction&mdash;just as the prefrontal cortex actively maintains items in biological working memory until they're consolidated.</p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">Hippocampus &rarr; Episodic Retrieval</p>
+                    <p class="text-slate-400">The hippocampus binds "what, where, when" into episodic memories and retrieves them via pattern completion &mdash; a partial cue triggers recall of the full episode. The MemoryAgent queries the Hippocampus with the current percept as a cue, retrieving relevant past episodes: "2 hours ago I found the mug on the counter" or "last week, searching the living room failed." These become the <em class="text-indigo-400 not-italic">relevant_memories</em> field in StructuredContext.</p>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">Entorhinal Cortex &rarr; Pattern Completion</p>
+                    <p class="text-slate-400">The EC's grid cells create abstract representations that generalize across experiences &mdash; letting you recognize that "finding a water bottle in the kitchen" is similar to "finding a mug in the kitchen." The MemoryAgent uses the EC's LSH-based similarity search to find analogous situations even when surface details differ, enabling transfer learning from past experience to novel contexts.</p>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">Parahippocampal Cortex &rarr; Contextual Framing</p>
+                    <p class="text-slate-400">The parahippocampal cortex processes scenes and spatial context &mdash; telling you "this is a kitchen" before you've identified any specific object. The MemoryAgent's SCN integration serves the same role: it provides temporal scene context ("it's 9 AM on a Tuesday, morning tasks typically involve the kitchen") that frames the current situation before any specific memory is retrieved. This is the <em class="text-indigo-400 not-italic">temporal_context</em> field.</p>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">Perirhinal Cortex &rarr; Familiarity Signals</p>
+                    <p class="text-slate-400">The perirhinal cortex provides rapid familiarity judgments &mdash; "I've seen this before" &mdash; without full episodic recall. The MemoryAgent computes novelty scores from the Hippocampus index: if an object or situation has many matching memory entries, it's familiar and novelty is low. If there are no matches, novelty is high. This fast signal shapes whether the system explores (novel) or exploits (familiar).</p>
+                  </div>
+                </div>
+
+                <p class="text-sm text-slate-400 italic">The key insight: memory retrieval is goal-directed. The prefrontal cortex tells the MTL what to look for, and the MTL returns what's relevant &mdash; not everything it has. The MemoryAgent implements this top-down control: active goals shape which memories are retrieved, which temporal patterns are surfaced, and which predictions are included. The same percept produces different StructuredContexts depending on what the robot is currently trying to do.</p>
+              </div>
+            </div>
+          </div>
+          <p class="bio-hint mt-2">Hover to explore the biological inspiration</p>
+        </div>
+      </div>
+      <div class="agent-box">
+        <div class="bg-slate-800 border-2 border-indigo-500/50 rounded-xl p-5">
+          <h4 class="text-white font-semibold mb-2 flex items-center gap-2">💭 ExecAgent</h4>
+          <p class="text-sm text-slate-300">Proposes goals via LLM. Uses context from MemoryAgent to generate <em class="text-indigo-400 not-italic font-medium">ProposedGoal</em> objects. Considers current state, active goals, and relevant history to suggest what the robot should do next. After each goal completion, evaluates significance for <em class="text-indigo-400 not-italic font-medium">acute staging</em> and provides the <span class="font-mono text-xs text-blue-400">recall_deep</span> tool for LSH-seeded deep memory recall.</p>
+
+          <div class="bio-detail">
+            <div>
+              <div class="bg-slate-900/60 rounded-lg p-4 border border-slate-700 space-y-3 mt-3">
+                <h5 class="text-indigo-400 font-semibold text-sm">Inspired by Frontal Lobe Executive Function</h5>
+                <p class="text-sm text-slate-300">The ExecAgent is modeled after the prefrontal cortex (PFC), the brain region responsible for executive function &mdash; the cognitive control system that decides <em class="text-indigo-400 not-italic">what to do</em> rather than <em class="text-indigo-400 not-italic">how to do it</em>. Just as the PFC sits atop the cortical hierarchy and orchestrates lower brain regions, the ExecAgent sits above memory and perception and orchestrates goal formation.</p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">Dorsolateral PFC &rarr; Goal Formulation</p>
+                    <p class="text-slate-400">The dlPFC maintains working memory and performs abstract reasoning to formulate plans. The ExecAgent mirrors this by holding StructuredContext in its prompt window and reasoning over it to propose new goals. It doesn't react to stimuli directly &mdash; it deliberates.</p>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">Anterior Cingulate &rarr; Conflict Monitoring</p>
+                    <p class="text-slate-400">The ACC detects when active goals conflict or when the current plan isn't working. The ExecAgent evaluates active goals against new percepts and can propose goal revisions, replacements, or escalations when it detects a mismatch between expectations and reality.</p>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">Orbitofrontal Cortex &rarr; Value Assessment</p>
+                    <p class="text-slate-400">The OFC evaluates the expected value of potential actions. The ExecAgent receives predicted outcomes from the NAc (reward system) and energy cost estimates, weighing them when choosing which goal to propose &mdash; favoring high-value, low-cost actions just as the OFC does.</p>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">Inhibitory Control &rarr; Goal Filtering</p>
+                    <p class="text-slate-400">A hallmark of executive function is the ability to <em class="text-indigo-400 not-italic">suppress</em> inappropriate responses. The ExecAgent doesn't just generate goals &mdash; it filters them. Redundant goals, goals conflicting with active tasks, and low-priority distractions are suppressed before they ever reach the AgenticGoalAgent.</p>
+                  </div>
+                </div>
+
+                <p class="text-sm text-slate-400 italic">The key insight: the frontal lobe doesn't execute actions &mdash; it decides what's worth doing. The ExecAgent preserves this separation. It proposes and prioritizes, but never acts. Execution is always delegated downward, just as the PFC delegates to motor cortex and basal ganglia.</p>
+              </div>
+            </div>
+          </div>
+          <p class="bio-hint mt-2">Hover to explore the biological inspiration</p>
+        </div>
+      </div>
+      <div class="agent-box">
+        <div class="bg-slate-800 border-2 border-indigo-500/50 rounded-xl p-5">
+          <h4 class="text-white font-semibold mb-2 flex items-center gap-2">🎯 AgenticGoalAgent</h4>
+          <p class="text-sm text-slate-300">Accepts or rejects proposed goals. If accepted, executes via tool invocation. Manages goal execution lifecycle and chains sub-goals hierarchically.</p>
+        </div>
+      </div>
+      <div class="agent-box">
+        <div class="bg-slate-800 border-2 border-indigo-500/50 rounded-xl p-5">
+          <h4 class="text-white font-semibold mb-2 flex items-center gap-2">📊 StatisticianAgent</h4>
+          <p class="text-sm text-slate-300">Monitors operational metrics&mdash;tool success rates, goal latencies, percept distributions&mdash;and detects emerging patterns. Uses the <em class="text-indigo-400 not-italic font-medium">dual number system</em>: IPS (fast approximate) for continuous screening, Angular Gyrus (slow precise) for uncertain cases. Infers metric data types (binary, continuous, rate, latency) and generates ranked <em class="text-indigo-400 not-italic font-medium">analysis suggestions</em> based on FSM state, which flow through to the LLM prompt as actionable guidance.</p>
+
+          <div class="bio-detail">
+            <div>
+              <div class="bg-slate-900/60 rounded-lg p-4 border border-slate-700 space-y-3 mt-3">
+                <h5 class="text-indigo-400 font-semibold text-sm">Inspired by the Posterior Parietal Cortex</h5>
+                <p class="text-sm text-slate-300">The posterior parietal cortex (PPC) integrates sensory streams into quantitative assessments that feed executive decision-making. The intraparietal sulcus (IPS) handles fast magnitude estimation&mdash;"about how many? more or less than before?"&mdash;while the angular gyrus performs slow, precise computation when the gut check is inconclusive.</p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">IPS (Fast Path) &rarr; Randomness Screening</p>
+                    <p class="text-slate-400">The IPS uses Wald-Wolfowitz runs tests and lag-1 autocorrelation to quickly assess whether a metric series contains structure or is just noise. This runs every analysis cycle and costs microseconds. Handles the 90% case: clearly random metrics stay quiet, clearly patterned ones escalate immediately.</p>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-white font-medium">Angular Gyrus (Slow Path) &rarr; Precise Confirmation</p>
+                    <p class="text-slate-400">When IPS can't decide (pattern confidence between 0.3&ndash;0.65 for several steps), Angular Gyrus is invoked for exact R&sup2; computation, autocorrelation confidence intervals, and memory recall. It checks: "Have I seen this pattern before?" If found in memory, fast-track. If new, compute precisely and store the result.</p>
+                  </div>
+                </div>
+
+                <p class="text-sm text-slate-400 italic">Each tracked metric has its own PatternDetector state machine: OBSERVING &rarr; PATTERN_FORMING &rarr; CONFIRMED_PATTERN (or ESCALATED_TO_AG when uncertain). The SCN oscillator provides temporal context, distinguishing "this is unusual" from "this is unusual <em>for this time</em>." <a href="/maxim/math-cognition#statistician" class="text-indigo-400 hover:text-indigo-300">Full details &rarr;</a></p>
+              </div>
+            </div>
+          </div>
+          <p class="bio-hint mt-2">Hover to explore the biological inspiration</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Biology Meets AI -->
+  <section class="space-y-4">
+    <h2 id="biology-meets-ai" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Where Biology Meets AI</h2>
+
+    <p class="text-slate-300 leading-relaxed">The integration points between biological systems and the agent pipeline:</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">Biological System</th>
+            <th class="px-4 py-3">Integration Point</th>
+            <th class="px-4 py-3 rounded-tr-lg">Effect on Agent</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">Hippocampus</td>
+            <td class="px-4 py-3">MemoryAgent (storage + context)</td>
+            <td class="px-4 py-3">Long-term memory store; provides relevant past episodes for LLM reasoning</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">SCN</td>
+            <td class="px-4 py-3">MemoryAgent context</td>
+            <td class="px-4 py-3">Adds temporal patterns ("this usually happens at...")</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">NAc</td>
+            <td class="px-4 py-3">Decision Engine</td>
+            <td class="px-4 py-3">Predicts action outcomes before execution</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">EC</td>
+            <td class="px-4 py-3">MemoryAgent retrieval</td>
+            <td class="px-4 py-3">Finds similar situations from different contexts</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">Attention</td>
+            <td class="px-4 py-3">PerceptionAgent</td>
+            <td class="px-4 py-3">Prioritizes unexplored spatial regions</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">Salience</td>
+            <td class="px-4 py-3">PerceptionAgent</td>
+            <td class="px-4 py-3">Highlights important objects for attention</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">Pain</td>
+            <td class="px-4 py-3">Decision Engine</td>
+            <td class="px-4 py-3">Blocks or modifies harmful action proposals</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">PFC (Executive Function)</td>
+            <td class="px-4 py-3">ExecAgent</td>
+            <td class="px-4 py-3">Goal formulation, conflict monitoring, inhibitory filtering, value-based prioritization</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">Cerebellum (FocusLearner)</td>
+            <td class="px-4 py-3">Executor (motor)</td>
+            <td class="px-4 py-3">Error-driven motor adaptation, movement gain calibration via Rescorla-Wagner learning</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">IPS (Intraparietal Sulcus)</td>
+            <td class="px-4 py-3">StatisticianAgent</td>
+            <td class="px-4 py-3">Fast approximate math: randomness screening, trend detection, anomaly scoring</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">Angular Gyrus</td>
+            <td class="px-4 py-3">StatisticianAgent</td>
+            <td class="px-4 py-3">Slow precise math: exact R&sup2;, correlation matrices, pattern memory recall and storage</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3">ATL (Anterior Temporal Lobe)</td>
+            <td class="px-4 py-3">MemoryAgent context</td>
+            <td class="px-4 py-3">Semantic knowledge: typed relationships between concepts distilled from episodes</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- StructuredContext -->
+  <section class="space-y-4">
+    <h2 id="structured-context" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The StructuredContext</h2>
+
+    <p class="text-slate-300 leading-relaxed">The MemoryAgent compiles a <em class="text-indigo-400 not-italic font-medium">StructuredContext</em> that gives the LLM everything it needs to reason about the current situation:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Data structure</span>
+StructuredContext:
+  current_percept:
+    - detected_objects: [{"class": "mug", "confidence": 0.89, "position": [0.3, 0.2]}]
+    - attention_target: "mug"
+    - novelty_score: 0.2
+    - salience_score: 0.7
+
+  relevant_memories:
+    - "2 hours ago: Successfully found mug on kitchen counter"
+    - "Yesterday: User asked for coffee, mug was near coffee maker"
+    - "Last week: Mug search failed in living room"
+
+  temporal_context:
+    - current_time: "09:15 Tuesday"
+    - scn_pattern: "Morning tasks typically involve kitchen"
+
+  predicted_outcomes:  # From NAc
+    - "counter_search": {valence: POSITIVE, strength: 0.82}
+    - "living_room_search": {valence: NEGATIVE, strength: 0.45}
+
+  active_goals:
+    - "Find the coffee mug for the user"
+
+  statistical_context:  # From StatisticianAgent
+    - "[PATTERN] navigate tool success declining (R²=0.73)"
+    - "[TEMPORAL] High coherence (0.91) — deviations significant"
+
+  statistical_suggestions:  # Ranked analysis recommendations
+    - {metric: "tool:navigate:success", operation: "recall_memory",
+       data_type: "binary", priority: 0.6, rationale: "Confirmed pattern with AG memory"}
+    - {metric: "sensor:battery:rate", operation: "assess_randomness",
+       data_type: "rate", priority: 0.5, rationale: "Emerging pattern (mean=0.72)"}
+
+  pain_warnings:
+    - None currently active
+
+  concept_context:   # From ConceptContextBuilder (ATL)
+    - {id: "f47ac10b...", name: "kitchen", category: "location",
+       confidence: 0.82, episode_count: 14,
+       relationships: [{id: "e3b9d4f1...", type: "EXECUTES_WITH",
+                        target: "skill:navigate"}]}
+
+  provenance_context:  # From ProvenanceCollector (recent traces)
+    - "**recall** → 2 concepts: `atl:c7f2a1b3` kitchen, `atl:e3b9d4f1` navigate"
+    - "**decision** → navigate_to (confidence: 0.9)"</div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Bio-Skill Integration</h3>
+
+    <p class="text-slate-300 leading-relaxed mb-3">Skills access biological memory systems through a <em class="text-indigo-400 not-italic font-medium">BioContext</em> facade &mdash; a lightweight wrapper that provides skill-friendly methods without exposing internal wiring. Skills opt in by declaring <span class="font-mono text-indigo-400">bio_dependencies(["memory_hub"])</span> and receive a BioContext instance at activation.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Skill-Concept Pipeline</span>
+
+Skill activates &rarr; Protocol injects skill name into context
+  &rarr; MemoryAgent writes _skill_name into perception observations
+    &rarr; ConceptExtractor creates "skill:patrol" concept (category=skill_execution)
+      &rarr; EXECUTES_WITH edges formed to co-occurring concepts
+        &rarr; PatternCompleter discovers skill concepts via graph
+          &rarr; ConceptContextBuilder ranks skills by edge overlap</div>
+
+    <p class="text-slate-300 leading-relaxed mt-3">The system <em class="text-indigo-400 not-italic font-medium">learns</em> which skills are relevant to which concepts organically &mdash; no hardcoded triggers needed. The ATL relationship graph IS the trigger system.</p>
+  </section>
+
+  <!-- Fear Circuit -->
+  <section class="space-y-4">
+    <h2 id="fear-circuit" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Decision Safety: The Fear Circuit</h2>
+
+    <p class="text-slate-300 leading-relaxed">Before any action executes, it passes through harm prediction:</p>
+
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-2">Two-Tier Harm Detection</h3>
+      <p class="text-slate-300 mb-2"><strong class="text-white">Tier 1 - Predictive (zero latency):</strong> Analyzes action parameters before execution. MovementHarmPredictor checks velocity, JointLimitHarmPredictor checks workspace bounds.</p>
+      <p class="text-slate-300"><strong class="text-white">Tier 2 - Reactive (learned):</strong> PainDetector monitors execution, feeds outcomes to NAc. Next time, similar actions are predicted as harmful.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The <em class="text-indigo-400 not-italic font-medium">FearAgent</em> reviews actions against harm predictions and pain history, returning a <span class="font-mono text-xs text-indigo-400">ReviewResult</span> with a binary <strong class="text-white">allow/block</strong> decision and a risk assessment:</p>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">allow = true:</strong> Proceed &mdash; risk is acceptable</li>
+      <li><strong class="text-white">allow = false:</strong> Block the action entirely</li>
+    </ul>
+
+    <p class="text-slate-300 leading-relaxed mt-3">Each review also produces a <span class="font-mono text-xs text-indigo-400">RiskLevel</span> (LOW, MEDIUM, HIGH, CRITICAL) and a list of specific <span class="font-mono text-xs text-indigo-400">Finding</span> objects describing what was detected. The risk level informs the binary decision but is also available to upstream agents for context.</p>
+  </section>
+
+  <!-- Coding Tools -->
+  <section class="space-y-4">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2 mt-6">Coding Tools</h3>
+    <p class="text-slate-300 leading-relaxed mb-4">
+      Maxim includes code-aware tools for autonomous software development:
+    </p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="font-semibold text-indigo-400 mb-1">edit_file</h4>
+        <p class="text-slate-400 text-sm">Text-anchor edits (old_text &rarr; new_text). Stable across multi-step plans &mdash; no line number drift.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="font-semibold text-indigo-400 mb-1">search_code</h4>
+        <p class="text-slate-400 text-sm">Regex search with context lines, file pattern filtering. Always allowed (read-only).</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="font-semibold text-indigo-400 mb-1">run_tests</h4>
+        <p class="text-slate-400 text-sm">Execute test suites with structured pass/fail results. 5-minute timeout. Feeds CodingReplanContext on failure.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="font-semibold text-indigo-400 mb-1">git_diff / git_commit</h4>
+        <p class="text-slate-400 text-sm">Version control awareness. git_diff is always allowed (read-only); git_commit requires autonomy approval.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Motor Learning: The Cerebellum -->
+  <section class="space-y-4">
+    <h2 id="motor-learning" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Motor Learning: The Cerebellum</h2>
+
+    <p class="text-slate-300 leading-relaxed">If the ExecAgent is the prefrontal cortex deciding <em class="text-indigo-400 not-italic">what</em> to do, the Executor layer's <em class="text-indigo-400 not-italic font-medium">FocusLearner</em> is the cerebellum &mdash; learning <em class="text-indigo-400 not-italic">how</em> to do it smoothly.</p>
+
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6 space-y-3">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-2">The Biological Parallel</h3>
+      <p class="text-slate-300">The cerebellum receives a copy of every motor command (efference copy) and compares the intended movement against what actually happened. When there's a mismatch &mdash; you reached for a cup and missed by 2cm &mdash; it adjusts an internal model so the next attempt is more accurate. Over many trials, movements become smooth and precise without conscious effort. This is why you can touch your nose with your eyes closed.</p>
+      <p class="text-slate-300">Critically, the cerebellum operates <em class="text-indigo-400 not-italic">below</em> conscious awareness. The prefrontal cortex decides "pick up that mug" and the cerebellum handles the fine-grained calibration of the reach. This mirrors Maxim's architecture exactly: the ExecAgent proposes goals, the AgenticGoalAgent accepts them, and the Executor layer's FocusLearner silently calibrates the motor commands that carry them out.</p>
+    </div>
+
+    <div class="bg-slate-900/60 rounded-lg p-4 border border-slate-700 space-y-3">
+      <h5 class="text-indigo-400 font-semibold text-sm">How the FocusLearner Implements Cerebellar Learning</h5>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+        <div class="space-y-1">
+          <p class="text-white font-medium">Efference Copy &rarr; Command Logging</p>
+          <p class="text-slate-400">The cerebellum receives a copy of each outgoing motor command. The FocusLearner records every gaze command issued &mdash; the intended target position and the movement gain used &mdash; so it can compare intent against outcome.</p>
+        </div>
+        <div class="space-y-1">
+          <p class="text-white font-medium">Error Signal &rarr; Prediction Error</p>
+          <p class="text-slate-400">Cerebellar Purkinje cells encode the difference between expected and actual sensory feedback. The FocusLearner computes a prediction error: how far the camera actually moved versus how far it should have. This error drives all adaptation.</p>
+        </div>
+        <div class="space-y-1">
+          <p class="text-white font-medium">Synaptic Plasticity &rarr; Rescorla-Wagner</p>
+          <p class="text-slate-400">The cerebellum adjusts synaptic weights through long-term depression at parallel fiber&ndash;Purkinje synapses. The FocusLearner uses Rescorla-Wagner learning to adjust movement gain: small errors produce small corrections, large errors produce large corrections, and learning rate decays as performance improves.</p>
+        </div>
+        <div class="space-y-1">
+          <p class="text-white font-medium">Automaticity &rarr; Unconscious Execution</p>
+          <p class="text-slate-400">Cerebellar learning is implicit &mdash; you don't decide to be more accurate, you just become so. The FocusLearner operates entirely below the agent pipeline. No agent is aware of gain adaptation. Goals flow down, calibrated motor commands flow out, and the learning happens silently in between.</p>
+        </div>
+      </div>
+
+      <p class="text-sm text-slate-400 italic">The result: a robot that starts clumsy and becomes precise. Early gaze commands overshoot and oscillate. After dozens of trials, movements are smooth and accurate. No parameter tuning required &mdash; the system calibrates itself, just as the cerebellum does.</p>
+    </div>
+  </section>
+
+  <!-- Energy -->
+  <section class="space-y-4">
+    <h2 id="energy" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Energy Awareness</h2>
+
+    <p class="text-slate-300 leading-relaxed">Actions consume resources. Maxim tracks energy expenditure across multiple domains:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Data structure</span>
+Energy Types:
+  - LLM_TOKENS: Input + output tokens consumed
+  - LLM_LATENCY: Time waiting for LLM responses
+  - MOTOR_COMMAND: Movement execution cost
+  - VISION_INFERENCE: Vision model processing
+  - AUDIO_PROCESSING: Speech transcription/synthesis
+  - ATTENTION: Cognitive focus cost</div>
+
+    <p class="text-slate-300 leading-relaxed">Energy signals flow to the NAc, creating associations between actions and their costs. Over time, the robot learns which approaches are efficient and which are wasteful, incorporating this into decision-making.</p>
+  </section>
+
+  <!-- Design Principles -->
+  <section class="space-y-4">
+    <h2 id="design-principles" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Design Principles</h2>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-3xl mb-2">🏗️</div>
+        <h5 class="text-indigo-400 font-semibold mb-1">Layered Separation</h5>
+        <p class="text-sm text-slate-400">One-way dependencies prevent circular reasoning</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-3xl mb-2">🧬</div>
+        <h5 class="text-indigo-400 font-semibold mb-1">Biological Plausibility</h5>
+        <p class="text-sm text-slate-400">Core systems mirror neuroscience mechanisms</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-3xl mb-2">📈</div>
+        <h5 class="text-indigo-400 font-semibold mb-1">Learning Over Tuning</h5>
+        <p class="text-sm text-slate-400">Systems adapt rather than requiring manual configuration</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-3xl mb-2">🛡️</div>
+        <h5 class="text-indigo-400 font-semibold mb-1">Safety First</h5>
+        <p class="text-sm text-slate-400">Multi-tier harm detection before and during execution</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-3xl mb-2">💾</div>
+        <h5 class="text-indigo-400 font-semibold mb-1">Continuous Memory</h5>
+        <p class="text-sm text-slate-400">Persistent learning enables improvement across sessions</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-3xl mb-2">🤝</div>
+        <h5 class="text-indigo-400 font-semibold mb-1">Human Deference</h5>
+        <p class="text-sm text-slate-400">Always yields to human authority and intervention</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Root Goal -->
+  <section class="space-y-4">
+    <h2 id="root-goal" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Root Goal</h2>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+      <p class="text-xl text-center italic text-slate-200">"Understand reality and help people."</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Every decision in Maxim traces back to this root goal. The biological systems provide the machinery for understanding (memory, attention, learning). The agent architecture provides the machinery for helping (goal decomposition, planning, execution). The integration of both creates something that might, in small ways, begin to resemble a mind.</p>
+  </section>
+
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Overview</span>
+      </a>
+      <a href="/maxim/memory-systems" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Memory Systems</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking &amp; Mesh</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  // Click-to-toggle for touch devices where hover doesn't work
+  document.querySelectorAll('.agent-box').forEach(function(box) {
+    box.addEventListener('click', function(e) {
+      var detail = box.querySelector('.bio-detail');
+      if (detail) {
+        detail.classList.toggle('active');
+      }
+    });
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,813 @@
+{% extends "base.html" %}
+
+{% block title %}Usage Guide — Maxim Docs | Installation, Configuration &amp; CLI Reference{% endblock %}
+
+{% block meta_description %}Get started with Maxim. Installation instructions, configuration options, CLI reference, and step-by-step setup guide for the agentic robotics cognitive architecture.{% endblock %}
+
+{% block meta_keywords %}Maxim installation, Maxim setup, Maxim CLI, Maxim configuration, agentic robotics setup, ROS2 robot framework, Maxim getting started, Maxim documentation{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Maxim Usage Guide — Installation, Configuration & CLI Reference",
+  "description": "Get started with Maxim. Installation instructions, configuration options, CLI reference, and step-by-step setup guide.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/usage-guide",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["installation", "configuration", "CLI", "setup guide"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Usage Guide", "item": "https://www.dennyschaedig.com/maxim/usage-guide" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .step-list {
+    counter-reset: steps;
+    list-style: none;
+    padding-left: 0;
+  }
+  .step-list li {
+    counter-increment: steps;
+    padding: 12px 16px 12px 52px;
+    position: relative;
+    background: rgb(30 41 59 / 0.8);
+    border: 1px solid rgb(51 65 85);
+    border-radius: 8px;
+    margin-bottom: 10px;
+  }
+  .step-list li::before {
+    content: counter(steps);
+    position: absolute;
+    left: 14px;
+    top: 12px;
+    width: 26px;
+    height: 26px;
+    background: rgb(79 70 229);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Usage Guide</h1>
+    <p class="text-indigo-400 font-medium">Installing, Configuring, and Running Maxim</p>
+  </header>
+
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
+    <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+      <li><a href="#requirements" class="text-indigo-400 hover:text-indigo-300 no-underline">Requirements</a></li>
+      <li><a href="#installation" class="text-indigo-400 hover:text-indigo-300 no-underline">Installation</a></li>
+      <li><a href="#configuration" class="text-indigo-400 hover:text-indigo-300 no-underline">Configuration</a></li>
+      <li><a href="#modes" class="text-indigo-400 hover:text-indigo-300 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking &amp; Mesh</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a></li>
+      <li><a href="#cli" class="text-indigo-400 hover:text-indigo-300 no-underline">CLI Reference</a></li>
+      <li><a href="#voice" class="text-indigo-400 hover:text-indigo-300 no-underline">Voice Commands</a></li>
+      <li><a href="#keyboard" class="text-indigo-400 hover:text-indigo-300 no-underline">Keyboard Controls</a></li>
+      <li><a href="#recipes" class="text-indigo-400 hover:text-indigo-300 no-underline">Common Recipes</a></li>
+      <li><a href="#memory-management" class="text-indigo-400 hover:text-indigo-300 no-underline">Memory Management</a></li>
+      <li><a href="#debugging" class="text-indigo-400 hover:text-indigo-300 no-underline">Debugging</a></li>
+    </ol>
+  </div>
+
+  <!-- 1. Requirements -->
+  <section class="space-y-4">
+    <h2 id="requirements" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Requirements</h2>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">Python 3.12+</strong></li>
+      <li><strong class="text-white">Hardware:</strong> Reachy Mini robot (optional &mdash; runs in headless mode without one)</li>
+      <li><strong class="text-white">RAM:</strong> 4GB minimum (8GB+ for larger LLMs)</li>
+      <li><strong class="text-white">GPU:</strong> Optional. Metal (macOS) or CUDA (Linux) supported</li>
+      <li><strong class="text-white">Network:</strong> Same LAN as Reachy Mini for Zenoh discovery (if using robot)</li>
+    </ul>
+
+    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-amber-400 mb-2">Blackwell GPU Note</h3>
+      <p class="text-slate-300">RTX 50-series (Blackwell) GPUs have a known GStreamer/CUDA incompatibility. Maxim auto-detects this and falls back to CPU mode. You can force CPU mode manually with <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">CUDA_VISIBLE_DEVICES=""</code>.</p>
+    </div>
+  </section>
+
+  <!-- 2. Installation -->
+  <section class="space-y-4">
+    <h2 id="installation" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Installation</h2>
+
+    <ol class="step-list text-slate-300">
+      <li><strong class="text-white">Clone the repository</strong>
+        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre">git clone https://github.com/dennys246/Maxim.git
+cd Maxim</div>
+      </li>
+      <li><strong class="text-white">Create a virtual environment</strong>
+        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre">python -m venv maxim-env
+source maxim-env/bin/activate</div>
+      </li>
+      <li><strong class="text-white">Install core package</strong>
+        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre">pip install -e .</div>
+      </li>
+      <li><strong class="text-white">Install LLM support</strong> (enables the agentic runtime)
+        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre">pip install -e '.[llm]'</div>
+      </li>
+      <li><strong class="text-white">Download a language model</strong>
+        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre">./scripts/download_models.sh --llm</div>
+        <p class="text-sm text-slate-400 mt-1">This downloads SmolLM 1.7B (~1.1GB), the default CPU-friendly model.</p>
+      </li>
+    </ol>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Optional Extras</h3>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">Extra</th>
+            <th class="px-4 py-3">Install Command</th>
+            <th class="px-4 py-3 rounded-tr-lg">What It Enables</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">TTS</td>
+            <td class="px-4 py-3 font-mono text-xs">pip install -e '.[tts]'</td>
+            <td class="px-4 py-3">Text-to-speech (Piper TTS)</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">Semantic</td>
+            <td class="px-4 py-3 font-mono text-xs">pip install -e '.[semantic]'</td>
+            <td class="px-4 py-3">Neural similarity (SentenceTransformer)</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">Torch LLM</td>
+            <td class="px-4 py-3 font-mono text-xs">pip install -e '.[llm-torch]'</td>
+            <td class="px-4 py-3">PyTorch transformers backend</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3">YOLOv8</td>
+            <td class="px-4 py-3 font-mono text-xs">pip install -e '.[yolo]'</td>
+            <td class="px-4 py-3">YOLOv8 vision engine via Ultralytics (AGPL-3.0). Default engine is RTMDet-m (Apache 2.0)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 3. Configuration -->
+  <section class="space-y-4">
+    <h2 id="configuration" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Configuration</h2>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Configuration Files</h3>
+    <p class="text-slate-300 leading-relaxed">All configuration lives in <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">data/util/</code>:</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">File</th>
+            <th class="px-4 py-3 rounded-tr-lg">Purpose</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">llm.json</td>
+            <td class="px-4 py-3">LLM model selection, quantization, per-mode response sizing</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">robots.yaml</td>
+            <td class="px-4 py-3">Robot connection settings (type, name, timeout)</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">phrase_responses.json</td>
+            <td class="px-4 py-3">Voice command mappings ("Maxim sleep" &rarr; sleep mode)</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">key_responses.json</td>
+            <td class="px-4 py-3">Keyboard shortcut bindings</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">whisper.json</td>
+            <td class="px-4 py-3">Audio transcription settings (model size, compute type)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Environment Variables</h3>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Core settings</span>
+
+MAXIM_LLM_ENABLED=1                   # Enable LLM inference
+MAXIM_LLM_PROFILE=smollm-1.7b-instruct  # Model profile
+MAXIM_LLM_QUANTIZATION=Q4_K_M         # Quantization level
+MAXIM_PROMPT_PROFILE=standard          # Prompt optimization tier
+MAXIM_ROBOT_NAME=reachy_mini           # Robot identifier
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">GPU control</span>
+
+CUDA_VISIBLE_DEVICES=""                # Force CPU-only
+MAXIM_LLM_N_GPU_LAYERS=0              # CPU inference
+MAXIM_LLM_N_GPU_LAYERS=-1             # All layers on GPU
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Display and audio</span>
+
+MAXIM_DISABLE_IMSHOW=1                 # Disable OpenCV windows
+MAXIM_WHISPER_COMPUTE_TYPE=float32     # Whisper precision fallback
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Headless / adaptive runtime</span>
+
+MAXIM_ROBOT_TIMEOUT=5                  # Reduce robot connect timeout (default 30s)
+MAXIM_PROVENANCE_VERBOSITY=1           # 0=off, 1=compact, 2=verbose
+MAXIM_PROVENANCE_PERSIST=1             # 0=disable, 1=enable persistence
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Networking &amp; diagnostics</span>
+
+MAXIM_ROLE=leader                      # leader / client / solo
+MAXIM_HEARTBEAT=1                      # System health heartbeat (GPU/CPU/RAM)
+MAXIM_LANE_TRACE=1                     # Per-request LLM trace + heartbeat
+MAXIM_PROXY_MAX_CONCURRENT=4           # Max in-flight proxy requests
+MAXIM_PROXY_RATE_LIMIT_RPM=0           # Per-peer rate limit (0=unlimited)</div>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Peer &amp; Tunnel Commands</h3>
+    <p class="text-slate-300 leading-relaxed">Connect peers to a leader's GPU for distributed inference. See <a href="/maxim/networking" class="text-indigo-400 hover:text-indigo-300">Networking &amp; Mesh</a> for full details.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Environment diagnostics</span>
+
+maxim doctor                           # Platform-aware health checks
+maxim doctor --retry                   # Walk through failures interactively
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Tunnel setup (leader machine)</span>
+
+maxim tunnel setup                     # One-time guided tunnel config
+maxim tunnel status                    # Show tunnel + key state
+maxim tunnel key rotate                # Generate/replace API key
+maxim tunnel key export                # Print peer export snippets
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Peer setup (client machine)</span>
+
+maxim peer connect https://maxim.yourdomain.com/v1
+maxim peer show                        # Verify peer config
+maxim peer test https://maxim.yourdomain.com/v1
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Debug trace (see everything)</span>
+
+MAXIM_LANE_TRACE=1 maxim               # Trace every LLM call
+MAXIM_HEARTBEAT=1 maxim                # System health every 10s</div>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Prompt Profiles</h3>
+    <p class="text-slate-300 leading-relaxed">Three tiers of cognitive effort, matched to your hardware:</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">Profile</th>
+            <th class="px-4 py-3">Max Depth</th>
+            <th class="px-4 py-3">LLM Calls</th>
+            <th class="px-4 py-3">Parallelism</th>
+            <th class="px-4 py-3 rounded-tr-lg">Best For</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">minimal</td>
+            <td class="px-4 py-3">2 levels</td>
+            <td class="px-4 py-3">8 max</td>
+            <td class="px-4 py-3">None</td>
+            <td class="px-4 py-3">CPU-only, low RAM, Raspberry Pi</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">standard</td>
+            <td class="px-4 py-3">5 levels</td>
+            <td class="px-4 py-3">20 max</td>
+            <td class="px-4 py-3">4 workers</td>
+            <td class="px-4 py-3">Laptop with GPU or fast CPU</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3">rich</td>
+            <td class="px-4 py-3">7 levels</td>
+            <td class="px-4 py-3">50 max</td>
+            <td class="px-4 py-3">8 workers</td>
+            <td class="px-4 py-3">Desktop with dedicated GPU</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 4. Operating Modes -->
+  <section class="space-y-4">
+    <h2 id="modes" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Operating Modes</h2>
+
+    <p class="text-slate-300 leading-relaxed">Maxim uses a decomposed mode architecture combining <em class="text-indigo-400 not-italic font-medium">processing states</em> (awake/sleep), <em class="text-indigo-400 not-italic font-medium">operational modes</em> (passive/active/singularity), and <em class="text-indigo-400 not-italic font-medium">strategies</em> (observe/explore/research/assist/reflect/learn). For backward compatibility, the CLI accepts legacy mode names that map to specific combinations. See the <a href="/maxim/operating-modes" class="text-indigo-400 hover:text-indigo-300 no-underline">Operating Modes deep dive</a> for full details.</p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <a href="/maxim/operating-modes#exploration" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-2xl mb-2">&#x1F52D;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Exploration</h4>
+        <p class="text-sm text-slate-400 mb-2">Active + explore strategy. Curiosity-driven discovery with budget tracking and novelty gating.</p>
+        <code class="bg-slate-950 px-2 py-0.5 rounded text-xs text-slate-300">maxim</code>
+      </a>
+      <a href="/maxim/operating-modes#live-mode" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-2xl mb-2">&#x1F4E1;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Live</h4>
+        <p class="text-sm text-slate-400 mb-2">Active + assist strategy. Full embodied runtime with self-evolving behavioral intent.</p>
+        <code class="bg-slate-950 px-2 py-0.5 rounded text-xs text-slate-300">maxim --mode live</code>
+      </a>
+      <a href="/maxim/operating-modes#sleep" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-2xl mb-2">&#x1F634;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Sleep</h4>
+        <p class="text-sm text-slate-400 mb-2">Sleep processing state. Audio monitoring, memory consolidation, wake keyword detection.</p>
+        <code class="bg-slate-950 px-2 py-0.5 rounded text-xs text-slate-300">maxim --mode sleep</code>
+      </a>
+      <a href="/maxim/operating-modes#legacy-modes" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-2xl mb-2">&#x1F4AD;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Reflection</h4>
+        <p class="text-sm text-slate-400 mb-2">Passive + reflect strategy. Internal analysis, memory review, pattern identification.</p>
+        <code class="bg-slate-950 px-2 py-0.5 rounded text-xs text-slate-300">maxim --mode reflection</code>
+      </a>
+      <a href="/maxim/operating-modes#legacy-modes" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-2xl mb-2">&#x1F3CB;&#xFE0F;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Train</h4>
+        <p class="text-sm text-slate-400 mb-2">Passive + learn strategy. Watch demonstrations, incorporate feedback, update behavior.</p>
+        <code class="bg-slate-950 px-2 py-0.5 rounded text-xs text-slate-300">maxim --mode train</code>
+      </a>
+      <a href="/maxim/operating-modes#legacy-modes" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
+        <div class="text-2xl mb-2">&#x1F440;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Observe</h4>
+        <p class="text-sm text-slate-400 mb-2">Passive + observe strategy. Watch and understand without interfering.</p>
+        <code class="bg-slate-950 px-2 py-0.5 rounded text-xs text-slate-300">maxim --mode observe</code>
+      </a>
+    </div>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Operational Modes &amp; Autonomy</h3>
+    <p class="text-slate-300 leading-relaxed">Operational modes map directly to autonomy levels:</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">Mode</th>
+            <th class="px-4 py-3">Autonomy</th>
+            <th class="px-4 py-3">Behavior</th>
+            <th class="px-4 py-3 rounded-tr-lg">Max Initiative</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">passive</td>
+            <td class="px-4 py-3">planning</td>
+            <td class="px-4 py-3">Proposes actions, waits for human approval</td>
+            <td class="px-4 py-3">0.3</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">active</td>
+            <td class="px-4 py-3">supervised</td>
+            <td class="px-4 py-3">Acts within defined boundaries, escalates on uncertainty</td>
+            <td class="px-4 py-3">0.7</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">singularity</td>
+            <td class="px-4 py-3">autonomous</td>
+            <td class="px-4 py-3">Full agency with self-correction (safety constraints still apply)</td>
+            <td class="px-4 py-3">1.0</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 5. CLI Reference -->
+  <section class="space-y-4">
+    <h2 id="cli" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">CLI Reference</h2>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Basic usage</span>
+
+maxim [OPTIONS]
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Connection</span>
+
+--robot-name TEXT            Robot identifier (default: reachy_mini)
+--home-dir PATH              Data directory (default: data)
+--timeout FLOAT              Connection timeout in seconds (default: 30.0)
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Execution</span>
+
+--mode MODE                  exploration|live|observe|sleep|reflection|train|research
+--epochs INT                 Stop after N cycles (0 = unlimited)
+--audio true|false           Enable audio recording (default: true)
+--audio_len FLOAT            Transcription chunk duration (default: 5.0s)
+--interactive true|false     Enable keyboard input (default: true)
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Agentic mode</span>
+
+--language-model TEXT        LLM profile (e.g., mistral-7b)
+--prompt-profile TIER        minimal|standard|rich
+--autonomy LEVEL             planning|supervised|autonomous
+--autonomy-duration FLOAT    Timed autonomy in seconds
+--memory-path PATH           Memory persistence file
+--reset                      Clear memory on startup
+--enable-embeddings          Enable semantic similarity (Phase 4)
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Network</span>
+
+--internet-access            Enable internet (default)
+--no-internet                Disable internet access
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Audio / TTS</span>
+
+--tts                        Enable text-to-speech
+--tts-model TEXT             Voice model (default: en_US-lessac-medium)
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Exploration</span>
+
+--explore [FOCUS]            Start exploration with optional focus topic
+--exploration-duration FLOAT Session duration in seconds
+--exploration-autonomy LEVEL supervised|autonomous
+--exploration-allow-scripts  Allow Python script generation
+--exploration-allow-training Allow model training during exploration
+--resume-session ID          Resume a previous session
+--list-sessions              List available sessions
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Maintenance</span>
+
+--clear-cache                Remove __pycache__ directories
+--clear-memory [TYPE]        Clear persistent memory and exit
+--verbosity 0|1|2            Logging level
+--agentic-verbosity 0|1|2|3  Agentic system logging detail
+--no-agentic-console         Suppress agentic event output
+--audit-architecture         Audit codebase for architecture layer rule violations and exit</div>
+  </section>
+
+  <!-- 6. Voice Commands -->
+  <section class="space-y-4">
+    <h2 id="voice" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Voice Commands</h2>
+
+    <p class="text-slate-300 leading-relaxed">All voice commands begin with the wake word <em class="text-indigo-400 not-italic font-medium">"Maxim"</em>:</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">Command</th>
+            <th class="px-4 py-3 rounded-tr-lg">Effect</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">"Maxim sleep"</td>
+            <td class="px-4 py-3">Enter sleep mode (audio monitoring only)</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">"Maxim wake up"</td>
+            <td class="px-4 py-3">Return to previous active mode</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">"Maxim observe"</td>
+            <td class="px-4 py-3">Switch to observe strategy</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">"Maxim explore"</td>
+            <td class="px-4 py-3">Switch to explore strategy</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">"Maxim assist"</td>
+            <td class="px-4 py-3">Switch to assist strategy</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">"Maxim reflect"</td>
+            <td class="px-4 py-3">Switch to reflect strategy</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">"Maxim passive" / "active" / "singularity"</td>
+            <td class="px-4 py-3">Switch operational mode</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3">"Maxim shutdown"</td>
+            <td class="px-4 py-3">Clean shutdown</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">See the <a href="/maxim/operating-modes#switching" class="text-indigo-400 hover:text-indigo-300">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking &amp; Mesh</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a> page for the full list. Custom voice commands can be added in <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">data/util/phrase_responses.json</code>.</p>
+  </section>
+
+  <!-- 7. Keyboard Controls -->
+  <section class="space-y-4">
+    <h2 id="keyboard" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Keyboard Controls</h2>
+
+    <p class="text-slate-300 leading-relaxed">Available in interactive mode (default):</p>
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div class="bg-slate-950 rounded-lg p-3 text-center">
+        <kbd class="inline-block bg-indigo-600 text-white px-3 py-1 rounded font-mono text-sm mb-1">c</kbd>
+        <span class="block text-xs text-slate-400">Center vision</span>
+      </div>
+      <div class="bg-slate-950 rounded-lg p-3 text-center">
+        <kbd class="inline-block bg-indigo-600 text-white px-3 py-1 rounded font-mono text-sm mb-1">u</kbd>
+        <span class="block text-xs text-slate-400">Mark trainable</span>
+      </div>
+      <div class="bg-slate-950 rounded-lg p-3 text-center">
+        <kbd class="inline-block bg-indigo-600 text-white px-3 py-1 rounded font-mono text-sm mb-1">0</kbd>
+        <span class="block text-xs text-slate-400">Label: no errors</span>
+      </div>
+      <div class="bg-slate-950 rounded-lg p-3 text-center">
+        <kbd class="inline-block bg-indigo-600 text-white px-3 py-1 rounded font-mono text-sm mb-1">1-9</kbd>
+        <span class="block text-xs text-slate-400">Label: error code</span>
+      </div>
+      <div class="bg-slate-950 rounded-lg p-3 text-center">
+        <kbd class="inline-block bg-indigo-600 text-white px-3 py-1 rounded font-mono text-sm mb-1">q</kbd>
+        <span class="block text-xs text-slate-400">Quit</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. Common Recipes -->
+  <section class="space-y-4">
+    <h2 id="recipes" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Common Recipes</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">First Run (No Robot)</h3>
+      <p class="text-slate-300 mb-2">Test the system without hardware using simulation:</p>
+      <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300">maxim --mode exploration</div>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Full Agentic Mode with Mistral</h3>
+      <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">maxim --mode live \
+  --language-model mistral-7b \
+  --prompt-profile standard \
+  --autonomy supervised</div>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">CPU-Only with Small Model</h3>
+      <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">CUDA_VISIBLE_DEVICES="" maxim \
+  --mode live \
+  --language-model smollm-1.7b \
+  --prompt-profile minimal</div>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Timed Autonomous Exploration</h3>
+      <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">maxim --explore "kitchen objects" \
+  --exploration-duration 300 \
+  --exploration-autonomy autonomous</div>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Verbose Debugging Session</h3>
+      <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">maxim --mode live \
+  --verbosity 2 \
+  --agentic-verbosity 3 \
+  --language-model phi-3-mini</div>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Resume a Previous Session</h3>
+      <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"># List available sessions
+maxim --list-sessions
+
+# Resume by ID
+maxim --resume-session abc123</div>
+    </div>
+  </section>
+
+  <!-- 9. Memory Management -->
+  <section class="space-y-4">
+    <h2 id="memory-management" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Memory Management</h2>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Clearing Memory</h3>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Clear everything</span>
+maxim --clear-memory all
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Clear specific types</span>
+maxim --clear-memory focus,bounds    # Movement learning only
+maxim --clear-memory nac,hippo       # Decision learning + episodes
+maxim --clear-memory pain,fear       # Safety learning only</div>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Available Memory Types</h3>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">Type</th>
+            <th class="px-4 py-3">What It Clears</th>
+            <th class="px-4 py-3 rounded-tr-lg">Effect</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">focus</td>
+            <td class="px-4 py-3">FocusLearner gains</td>
+            <td class="px-4 py-3">Resets movement calibration</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">bounds</td>
+            <td class="px-4 py-3">Workspace limits</td>
+            <td class="px-4 py-3">Relearns reachable space</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">nac</td>
+            <td class="px-4 py-3">Causal links</td>
+            <td class="px-4 py-3">Forgets action-outcome predictions</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">scn</td>
+            <td class="px-4 py-3">Temporal patterns</td>
+            <td class="px-4 py-3">Forgets time-of-day associations</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">hippo</td>
+            <td class="px-4 py-3">Episodic memories</td>
+            <td class="px-4 py-3">Complete amnesia</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">pain</td>
+            <td class="px-4 py-3">Pain thresholds</td>
+            <td class="px-4 py-3">Resets pain sensitivity</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">fear</td>
+            <td class="px-4 py-3">Fear associations</td>
+            <td class="px-4 py-3">Forgets learned dangers</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">escalation</td>
+            <td class="px-4 py-3">Escalation thresholds</td>
+            <td class="px-4 py-3">Resets when to ask for help</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">threshold</td>
+            <td class="px-4 py-3">Adaptive thresholds</td>
+            <td class="px-4 py-3">Resets all learned limits</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">semantic</td>
+            <td class="px-4 py-3">Neural embeddings</td>
+            <td class="px-4 py-3">Resets similarity cache</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Where Data Lives</h3>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Directory structure</span>
+
+data/
+├── util/               # Learned state (JSON)
+│   ├── hippocampus.json
+│   ├── nac_state.json
+│   ├── scn_state.json
+│   ├── focus_learner.json
+│   ├── learned_bounds.json
+│   ├── fear_learning.json
+│   └── ...
+├── videos/             # Recorded video (MP4)
+├── audio/              # Recorded audio (WAV)
+├── transcript/         # Transcriptions (JSONL)
+├── training/           # Motor training samples (JSONL)
+├── plans/checkpoints/  # Goal tree snapshots
+├── models/             # ML models
+│   ├── LLM/            # GGUF language models
+│   ├── MotorCortex/    # Vision-to-motor model
+│   └── YOLO/           # Vision models (RTMDet-m + RTMPose-m default; YOLOv8 optional)
+├── sandbox/            # Safe space for generated files
+└── logs/               # Session logs</div>
+  </section>
+
+  <!-- 10. Debugging -->
+  <section class="space-y-4">
+    <h2 id="debugging" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Debugging</h2>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Verbosity Levels</h3>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">Level</th>
+            <th class="px-4 py-3 rounded-tr-lg">What You See</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">0</td>
+            <td class="px-4 py-3">Errors only</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">1</td>
+            <td class="px-4 py-3">Key events (mode changes, goals, tool calls)</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3">2</td>
+            <td class="px-4 py-3">Detailed processing (every detection, memory query, decision)</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3">3 (agentic only)</td>
+            <td class="px-4 py-3">Full trace (LLM prompts, raw responses, bridge activity)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Inspecting Learned State</h3>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Python: inspect memory</span>
+
+from maxim.memory.hippocampus import Hippocampus
+
+hippo = Hippocampus()
+hippo.load("data/util/hippocampus.json")
+print(f"Total memories: {len(hippo.memories)}")
+
+for mem_id, mem in list(hippo.memories.items())[:5]:
+    print(f"  {mem.action.tool_name} → {mem.outcome.valence}")
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Python: inspect NAc learning</span>
+
+from maxim.decisions.nac import NAc
+
+nac = NAc.load_from_file("data/util/nac_state.json")
+for sig, pred in nac._learned_associations.items():
+    print(f"  {sig}: conf={pred.confidence:.2f}, val={pred.valence}")</div>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Hardware Diagnostics</h3>
+
+    <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300">maxim-diagnostics --host 192.168.1.100</div>
+
+    <p class="text-slate-300 leading-relaxed">Checks Zenoh connection, motor controller, video stream, and audio stream availability.</p>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Log Files</h3>
+
+    <p class="text-slate-300 leading-relaxed">Session logs are written to <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">data/logs/reachy_log_YYYY-MM-DD_HHMMSS.log</code> with timestamps, thread IDs, and structured event data.</p>
+
+    <div class="rounded-xl bg-gradient-to-br from-indigo-700 via-purple-700 to-indigo-800 p-6 text-white shadow-lg">
+      <h3 class="text-lg font-semibold mb-3">Getting Help</h3>
+      <p class="leading-relaxed">Maxim is open source. If you run into issues, check the <a href="https://github.com/dennys246/Maxim" class="text-white underline hover:text-indigo-200">GitHub repository</a> for the latest documentation and issue tracker.</p>
+    </div>
+  </section>
+
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/communication" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Communication</span>
+      </a>
+      <a href="/maxim/technical-deepdive" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Technical Deep Dive</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking &amp; Mesh</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
