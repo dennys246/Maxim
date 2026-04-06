@@ -255,19 +255,39 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         gpu = _query_nvidia_smi()
         # Include active LLM model info from lane_backends
         active_model = None
+        llm_uptime_s = None
         try:
-            from maxim.runtime.lane_backends import _active_model
+            from maxim.runtime.lane_backends import _active_model, _llm_start_time
 
             active_model = _active_model
+            if _llm_start_time is not None:
+                llm_uptime_s = round(time.time() - _llm_start_time, 1)
         except Exception:
             pass
+
+        # Lane metrics (infer lane)
+        lane_metrics = None
+        try:
+            from maxim.models.language.lane_metrics import get_metrics_registry
+
+            m = get_metrics_registry().get("infer")
+            lane_metrics = {
+                "total_requests": m.total_requests,
+                "in_flight": m.current_in_flight,
+                "avg_latency_ms": round(m.avg_latency_ms, 1) if m.avg_latency_ms else None,
+            }
+        except Exception:
+            pass
+
         self._send_json(
             200,
             {
                 "status": "ok",
-                "uptime_s": round(time.time() - self.start_time, 1),
+                "maxim_uptime_s": round(time.time() - self.start_time, 1),
+                "llm_model": active_model,
+                "llm_uptime_s": llm_uptime_s,
                 "gpu": gpu,
-                "active_model": active_model,
+                "infer_lane": lane_metrics,
                 "timestamp": time.time(),
             },
         )

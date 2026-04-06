@@ -534,18 +534,30 @@ def _cmd_llm_status(argv: list[str]) -> int:
         print(f"  Failed to query leader: {e}", file=sys.stderr)
         return 1
 
-    model = data.get("active_model") or "unknown"
-    uptime = data.get("uptime_s", 0)
+    model = data.get("llm_model") or data.get("active_model") or "unknown"
+    maxim_uptime = data.get("maxim_uptime_s", data.get("uptime_s", 0))
+    llm_uptime = data.get("llm_uptime_s")
     gpu = data.get("gpu") or {}
     gpu_util = gpu.get("utilization", "?")
     gpu_mem = gpu.get("memory_used", "?")
     gpu_total = gpu.get("memory_total", "?")
+    lane = data.get("infer_lane") or {}
 
-    print("  Leader LLM status:")
-    print(f"    Model:   {model}")
-    print(f"    Uptime:  {int(uptime)}s")
+    print("  Leader status:")
+    print(f"    Maxim uptime:  {int(maxim_uptime)}s")
+    print(f"    LLM model:     {model}")
+    if llm_uptime is not None:
+        print(f"    LLM uptime:    {int(llm_uptime)}s")
+    else:
+        print("    LLM uptime:    n/a")
     if isinstance(gpu_util, (int, float)):
-        print(f"    GPU:     {gpu_util}% util, {gpu_mem}/{gpu_total} MB VRAM")
+        print(f"    GPU:           {gpu_util}% util, {gpu_mem}/{gpu_total} MB VRAM")
+    if lane:
+        reqs = lane.get("total_requests", 0)
+        in_flight = lane.get("in_flight", 0)
+        latency = lane.get("avg_latency_ms")
+        latency_str = f"{latency}ms" if latency is not None else "n/a"
+        print(f"    Infer lane:    {reqs} requests, {in_flight} in-flight, avg {latency_str}")
     return 0
 
 

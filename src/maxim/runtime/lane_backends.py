@@ -22,6 +22,7 @@ import dataclasses
 import os
 import socket
 import threading
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -32,6 +33,7 @@ from maxim.runtime.worker_pool import LaneConfig
 # ─── active server tracking (for hot-swap) ────────────────────────────────
 _active_spawner: Any | None = None
 _active_model: str | None = None
+_llm_start_time: float | None = None
 _swap_lock = threading.Lock()
 
 _MODEL_STATE_FILE = Path("data") / "util" / "active_llm_model.txt"
@@ -702,6 +704,8 @@ def _maybe_auto_spawn_server(
     - llama_cpp.server isn't importable (user didn't install [llm-server])
     - resolving the profile to a GGUF file path fails or file doesn't exist
     """
+    global _active_spawner, _active_model, _llm_start_time  # noqa: PLW0603
+
     auto_raw = os.environ.get("MAXIM_AUTO_SPAWN_LLM_SERVER", "").strip().lower()
     if auto_raw in ("0", "false", "f", "no", "n", "off"):
         return lane_configs
@@ -790,11 +794,14 @@ def _maybe_auto_spawn_server(
                 "Auto-discovery: found existing llama-cpp-server on port %d, reusing it",
                 port,
             )
+        # Track the model so --status reports correctly
+        _active_model = effective_profile
+        _llm_start_time = time.time()
         out = dict(lane_configs)
         out["infer"] = dataclasses.replace(
             infer_cfg,
             remote_url=existing_url,
-            remote_model=infer_cfg.model_profile,
+            remote_model=effective_profile,
             remote_api_key=infer_cfg.remote_api_key or api_key,
         )
         return out
@@ -838,9 +845,9 @@ def _maybe_auto_spawn_server(
         return lane_configs
 
     # Track active spawner for hot-swap via `maxim peer llm <model>`
-    global _active_spawner, _active_model  # noqa: PLW0603
     _active_spawner = spawner
     _active_model = effective_profile
+    _llm_start_time = time.time()
 
     # Rewrite the infer lane to point at the spawned server. Auto-wire the
     # API key for the leader's own client so local inference doesn't 401.
@@ -1010,6 +1017,7 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
 
         _active_spawner = spawner
         _active_model = resolved
+        _llm_start_time = time.time()
         _write_persisted_model(resolved)
 
         return {
