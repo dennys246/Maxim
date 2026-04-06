@@ -640,6 +640,7 @@ def _maybe_auto_spawn_server(
     # command. No-op when daemon is already running (systemd service, etc.).
     if role_decision.role == "leader":
         _maybe_auto_spawn_tunnel_daemon(logger)
+        _maybe_start_debug_status_server(role_decision.bind_host, api_key, logger)
     return out
 
 
@@ -685,6 +686,28 @@ def _maybe_auto_spawn_tunnel_daemon(logger: Any | None) -> None:
                 "until you start it manually: cloudflared --config %s tunnel run",
                 config_path,
             )
+
+
+def _maybe_start_debug_status_server(
+    bind_host: str,
+    api_key: str | None,
+    logger: Any | None,
+) -> None:
+    """Start the /v1/debug/status server alongside the inference server.
+
+    Provides GPU metrics to peers when they poll after inference calls
+    with MAXIM_LANE_TRACE=1. Auth-gated with the same key as the main server.
+    """
+    try:
+        from maxim.runtime.debug_status_server import start_debug_server
+    except Exception:
+        return
+    server = start_debug_server(api_key=api_key, bind_host=bind_host)
+    if server is not None and logger is not None:
+        logger.info(
+            "Debug status endpoint live at %s:%d/v1/debug/status",
+            bind_host, server.server_address[1],
+        )
 
 
 def _print_lane_banner(manager: "LaneBackendManager") -> None:

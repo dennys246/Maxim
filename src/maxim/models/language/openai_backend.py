@@ -38,6 +38,19 @@ def _http_status_of(err: Exception | None) -> int | None:
     return None
 
 
+def _parse_processing_ms(headers: Any) -> float | None:
+    """Extract server-side processing time from openai-processing-ms header."""
+    val = None
+    if hasattr(headers, "get"):
+        val = headers.get("openai-processing-ms")
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def _is_private_ip(ip: str) -> bool:
     try:
         addr = ipaddress.ip_address(ip)
@@ -210,7 +223,8 @@ class _OpenAIBackend:
         # also logged via maxim.mesh.trace when MAXIM_LANE_TRACE or
         # MAXIM_PEER_LOG_REQUESTS is set.
         from maxim.models.language.mesh_trace import (
-            REQUEST_ID_HEADER, TraceRecord, emit_trace, generate_request_id,
+            REQUEST_ID_HEADER, TraceRecord, emit_trace,
+            enrich_trace_with_leader_status, generate_request_id,
         )
         request_id = generate_request_id()
         base_url = self._get_base_url() or ""
@@ -222,7 +236,8 @@ class _OpenAIBackend:
                 if stream:
                     return self._stream_response(client, model, messages, temperature, max_tokens, stop, start)
 
-                resp = client.chat.completions.create(
+                # Use with_raw_response to capture server-side timing headers
+                raw_resp = client.chat.completions.with_raw_response.create(
                     model=model,
                     messages=messages,
                     temperature=temperature,
@@ -230,8 +245,11 @@ class _OpenAIBackend:
                     stop=list(stop) if stop else None,
                     extra_headers=extra_headers,
                 )
+                resp = raw_resp.parse()
+                server_ms = _parse_processing_ms(raw_resp.headers)
+
                 parsed = self._parse_response(resp, model, start)
-                emit_trace(TraceRecord(
+                trace = TraceRecord(
                     request_id=request_id,
                     provider=self._provider_key,
                     base_url=base_url,
@@ -241,7 +259,12 @@ class _OpenAIBackend:
                     latency_ms=parsed.latency_ms,
                     input_tokens=parsed.input_tokens,
                     output_tokens=parsed.output_tokens,
-                ))
+                    server_processing_ms=server_ms,
+                )
+                enrich_trace_with_leader_status(
+                    trace, base_url, self._get_api_key(),
+                )
+                emit_trace(trace)
                 return parsed
             except Exception as e:
                 last_err = e

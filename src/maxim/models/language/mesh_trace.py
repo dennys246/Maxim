@@ -16,6 +16,7 @@ import os
 import time
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 TRACE_LOGGER_NAME = "maxim.mesh.trace"
 REQUEST_ID_HEADER = "X-Maxim-Request-Id"
@@ -62,9 +63,16 @@ class TraceRecord:
     input_tokens: int = 0
     output_tokens: int = 0
     error: str | None = None
+    # Server-side timing (from openai-processing-ms header)
+    server_processing_ms: float | None = None
+    # Leader GPU debug info (from /v1/debug/status poll)
+    gpu_util_pct: float | None = None
+    gpu_vram_used_gb: float | None = None
+    gpu_vram_total_gb: float | None = None
+    gpu_temp_c: float | None = None
 
     def to_dict(self) -> dict:
-        return {
+        d: dict[str, Any] = {
             "request_id": self.request_id,
             "provider": self.provider,
             "base_url": self.base_url,
@@ -76,6 +84,16 @@ class TraceRecord:
             "output_tokens": self.output_tokens,
             "error": self.error,
         }
+        if self.server_processing_ms is not None:
+            d["server_processing_ms"] = round(self.server_processing_ms, 1)
+        if self.gpu_util_pct is not None:
+            d["gpu_util_pct"] = round(self.gpu_util_pct, 1)
+        if self.gpu_vram_used_gb is not None:
+            d["gpu_vram_used_gb"] = round(self.gpu_vram_used_gb, 2)
+            d["gpu_vram_total_gb"] = round(self.gpu_vram_total_gb or 0, 2)
+        if self.gpu_temp_c is not None:
+            d["gpu_temp_c"] = round(self.gpu_temp_c, 0)
+        return d
 
     def format_compact(self) -> str:
         """Compact one-line INFO format for MAXIM_LANE_TRACE=1."""
@@ -86,10 +104,18 @@ class TraceRecord:
             f"status={self.status}",
             f"latency={self.latency_ms:.0f}ms",
         ]
+        if self.server_processing_ms is not None:
+            parts.append(f"server={self.server_processing_ms:.0f}ms")
         if self.http_status is not None:
             parts.append(f"http={self.http_status}")
         if self.input_tokens or self.output_tokens:
             parts.append(f"tokens={self.input_tokens}+{self.output_tokens}")
+        if self.gpu_util_pct is not None:
+            vram = ""
+            if self.gpu_vram_used_gb is not None and self.gpu_vram_total_gb:
+                vram = f" vram={self.gpu_vram_used_gb:.1f}/{self.gpu_vram_total_gb:.0f}G"
+            temp = f" {self.gpu_temp_c:.0f}C" if self.gpu_temp_c is not None else ""
+            parts.append(f"gpu={self.gpu_util_pct:.0f}%{vram}{temp}")
         if self.error:
             parts.append(f"err={self.error[:50]}")
         return "peer_infer " + " ".join(parts)
@@ -103,6 +129,58 @@ def emit_trace(record: TraceRecord) -> None:
         _trace_logger.info(record.format_compact())
     if peer_log_enabled():
         _trace_logger.info(json.dumps(record.to_dict()))
+
+
+def fetch_leader_debug_status(
+    base_url: str,
+    api_key: str | None = None,
+    *,
+    timeout_s: float = 1.5,
+) -> dict | None:
+    """Poll /v1/debug/status on the leader for GPU metrics.
+
+    Called after each inference request when MAXIM_LANE_TRACE=1 to capture
+    server-side GPU utilization, VRAM, and temperature. Returns None silently
+    if the endpoint is unavailable (leader hasn't been upgraded, or debug
+    endpoint not implemented yet).
+    """
+    import urllib.error
+    import urllib.request
+
+    url = base_url.rstrip("/")
+    if url.endswith("/v1"):
+        url = url[:-3]
+    url += "/v1/debug/status"
+
+    req = urllib.request.Request(url, method="GET")
+    if api_key:
+        req.add_header("Authorization", f"Bearer {api_key}")
+    req.add_header("User-Agent", "maxim-peer/1.0")
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # noqa: S310
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def enrich_trace_with_leader_status(
+    record: TraceRecord,
+    base_url: str,
+    api_key: str | None = None,
+) -> None:
+    """If MAXIM_LANE_TRACE is on, poll leader for GPU status and fill the trace record."""
+    if not lane_trace_enabled():
+        return
+    status = fetch_leader_debug_status(base_url, api_key)
+    if status is None:
+        return
+    gpu = status.get("gpu")
+    if isinstance(gpu, dict):
+        record.gpu_util_pct = gpu.get("utilization_pct")
+        record.gpu_vram_used_gb = gpu.get("vram_used_gb")
+        record.gpu_vram_total_gb = gpu.get("vram_total_gb")
+        record.gpu_temp_c = gpu.get("temperature_c")
 
 
 def print_startup_warning_if_enabled() -> None:
@@ -142,6 +220,8 @@ __all__ = [
     "peer_log_enabled",
     "any_trace_enabled",
     "emit_trace",
+    "enrich_trace_with_leader_status",
+    "fetch_leader_debug_status",
     "print_startup_warning_if_enabled",
     "start_call",
 ]
