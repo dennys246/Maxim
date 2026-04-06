@@ -100,11 +100,55 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     upstream_url: str = "http://127.0.0.1:8100"
     request_log: _RequestLog | None = None
     lane_metrics: Any = None  # LaneMetrics instance for the infer lane
+    concurrency_semaphore: threading.Semaphore | None = None  # Phase 7b
+    rate_limiter: Any = None  # PeerRateLimiter instance (Phase 7b)
     start_time: float = 0.0
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         # Route to structured logger instead of stderr
         pass
+
+    # ─── admission control (Phase 7b) ────────────────────────────────
+
+    def _check_admission(self) -> bool:
+        """Check concurrency cap + per-peer rate limit. Returns True if allowed."""
+        # Per-peer rate limit
+        if self.rate_limiter is not None:
+            peer_key = self.headers.get("Authorization", self.client_address[0])
+            if not self.rate_limiter.try_acquire(peer_key):
+                self._send_json(429, {
+                    "error": "Rate limit exceeded",
+                    "retry_after_s": 1,
+                })
+                logger.info(
+                    "proxy: rate-limited peer=%s", self.client_address[0],
+                )
+                return False
+        # Concurrency cap
+        if self.concurrency_semaphore is not None:
+            if not self.concurrency_semaphore.acquire(blocking=False):
+                queue_depth = self._queue_depth()
+                self._send_json(429, {
+                    "error": "Too many concurrent requests",
+                    "queue_depth": queue_depth,
+                })
+                logger.info(
+                    "proxy: concurrency-limited peer=%s depth=%d",
+                    self.client_address[0], queue_depth,
+                )
+                return False
+        return True
+
+    def _release_concurrency(self) -> None:
+        """Release the concurrency semaphore after a proxied request completes."""
+        if self.concurrency_semaphore is not None:
+            self.concurrency_semaphore.release()
+
+    def _queue_depth(self) -> int:
+        """Approximate in-flight request count for X-Maxim-Queue-Depth header."""
+        if self.lane_metrics is not None:
+            return self.lane_metrics.current_in_flight
+        return 0
 
     # ─── auth ─────────────────────────────────────────────────────────
 
@@ -223,6 +267,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 self.send_header(key, val)
         # Inject Maxim headers for peer-side trace enrichment
         self.send_header("X-Maxim-Proxy-Ms", f"{elapsed_ms:.0f}")
+        self.send_header("X-Maxim-Queue-Depth", f"{self._queue_depth()}")
         if server_ms is not None:
             self.send_header("X-Maxim-Server-Ms", f"{server_ms:.0f}")
         gpu = _query_nvidia_smi()
@@ -309,7 +354,12 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         if not self._check_auth():
             return
-        self._proxy_request("POST")
+        if not self._check_admission():
+            return
+        try:
+            self._proxy_request("POST")
+        finally:
+            self._release_concurrency()
 
     def do_HEAD(self) -> None:  # noqa: N802
         if not self._check_auth():
@@ -371,11 +421,29 @@ def start_leader_proxy(
     except Exception:
         pass
 
+    # Phase 7b: concurrency cap + per-peer rate limiter
+    max_concurrent = int(os.environ.get("MAXIM_PROXY_MAX_CONCURRENT", "4"))
+    semaphore = threading.Semaphore(max_concurrent) if max_concurrent > 0 else None
+
+    peer_rate_limiter = None
+    try:
+        from maxim.runtime.rate_limiter import PeerRateLimiter
+        peer_rate_limiter = PeerRateLimiter()
+        if peer_rate_limiter.enabled:
+            logger.info(
+                "Per-peer rate limit: %s RPM",
+                os.environ.get("MAXIM_PROXY_RATE_LIMIT_RPM", "0"),
+            )
+    except Exception:
+        pass
+
     handler = type("ProxyHandler", (_ProxyHandler,), {
         "api_key": api_key,
         "upstream_url": upstream_url,
         "request_log": request_log,
         "lane_metrics": infer_metrics,
+        "concurrency_semaphore": semaphore,
+        "rate_limiter": peer_rate_limiter,
         "start_time": time.time(),
     })
 
