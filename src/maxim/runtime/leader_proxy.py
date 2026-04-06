@@ -99,6 +99,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     api_key: str | None = None
     upstream_url: str = "http://127.0.0.1:8100"
     request_log: _RequestLog | None = None
+    lane_metrics: Any = None  # LaneMetrics instance for the infer lane
     start_time: float = 0.0
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
@@ -128,6 +129,13 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             "timestamp": time.time(),
         })
 
+    def _handle_debug_metrics(self) -> None:
+        try:
+            from maxim.models.language.lane_metrics import get_metrics_registry
+            self._send_json(200, get_metrics_registry().snapshot())
+        except Exception:
+            self._send_json(200, {})
+
     def _handle_debug_last_requests(self) -> None:
         if self.request_log is None:
             self._send_json(200, {"total_requests": 0, "recent": []})
@@ -141,12 +149,16 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
     def _is_debug_path(self, path: str) -> bool:
         stripped = path.rstrip("/").split("?")[0]
-        return stripped in ("/v1/debug/status", "/v1/debug/last-requests")
+        return stripped in (
+            "/v1/debug/status", "/v1/debug/last-requests", "/v1/debug/metrics",
+        )
 
     def _route_debug(self, path: str) -> None:
         stripped = path.rstrip("/").split("?")[0]
         if stripped == "/v1/debug/status":
             self._handle_debug_status()
+        elif stripped == "/v1/debug/metrics":
+            self._handle_debug_metrics()
         elif stripped == "/v1/debug/last-requests":
             self._handle_debug_last_requests()
         else:
@@ -257,6 +269,16 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         if self.request_log is not None:
             self.request_log.record(log_entry)
 
+        # Phase 8: record into LaneMetrics for doctor / admission control
+        if self.lane_metrics is not None and "/chat/completions" in self.path:
+            self.lane_metrics.record_call(
+                elapsed_ms,
+                success=(resp_code == 200),
+                kind="remote",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+
         # Structured log line
         parts = [
             f"req={request_id[:8]}" if request_id else "req=none",
@@ -341,10 +363,19 @@ def start_leader_proxy(
     upstream_url = f"http://127.0.0.1:{upstream_port}"
     request_log = _RequestLog()
 
+    # Phase 8: get the shared infer lane metrics for proxy traffic recording
+    infer_metrics = None
+    try:
+        from maxim.models.language.lane_metrics import get_metrics_registry
+        infer_metrics = get_metrics_registry().get("infer")
+    except Exception:
+        pass
+
     handler = type("ProxyHandler", (_ProxyHandler,), {
         "api_key": api_key,
         "upstream_url": upstream_url,
         "request_log": request_log,
+        "lane_metrics": infer_metrics,
         "start_time": time.time(),
     })
 

@@ -327,9 +327,32 @@ def check_role() -> CheckResult:
     )
 
 
+def _check_lane_metrics() -> list["CheckResult"]:
+    """Report per-lane performance metrics if available (Phase 8)."""
+    try:
+        from maxim.models.language.lane_metrics import get_metrics_registry
+    except Exception:
+        return []
+    registry = get_metrics_registry()
+    results: list[CheckResult] = []
+    for name, metrics in registry.all_metrics().items():
+        snap = metrics.snapshot()
+        total = snap["jobs_completed"] + snap["jobs_failed"]
+        if total == 0:
+            continue
+        msg = metrics.format_compact()
+        status: Status = "ok"
+        if snap["failure_rate"] > 0.2:
+            status = "warn"
+        if snap["failure_rate"] > 0.5:
+            status = "fail"
+        results.append(CheckResult(name=f"Lane: {name}", status=status, message=msg))
+    return results
+
+
 def run_all_checks(info: PlatformInfo) -> list[tuple[str, list[CheckResult]]]:
     """Return ordered [(section_name, results)] for `maxim doctor`."""
-    return [
+    sections = [
         ("Environment", [
             CheckResult(name="Platform", status="ok", message=info.display_name),
             CheckResult(name="Architecture", status="ok", message=info.arch),
@@ -351,6 +374,11 @@ def run_all_checks(info: PlatformInfo) -> list[tuple[str, list[CheckResult]]]:
             check_api_key(),
         ]),
     ]
+    # Phase 8: lane metrics (only show if any calls have been recorded)
+    lane_results = _check_lane_metrics()
+    if lane_results:
+        sections.append(("Lane Metrics", lane_results))
+    return sections
 
 
 __all__ = [

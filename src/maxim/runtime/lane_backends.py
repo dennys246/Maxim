@@ -129,6 +129,12 @@ class LaneBackendManager:
             max_cloud_lanes if max_cloud_lanes is not None
             else _env_int("MAXIM_MAX_CLOUD_LANES", _DEFAULT_MAX_CLOUD_LANES)
         )
+        # Phase 8: per-lane metrics (shared with LeaderProxy via singleton)
+        from maxim.models.language.lane_metrics import get_metrics_registry
+        self._metrics_registry = get_metrics_registry()
+        # Pre-create metrics for all configured lanes
+        for lane_name in self._configs:
+            self._metrics_registry.get(lane_name)
 
     @property
     def lanes(self) -> tuple[str, ...]:
@@ -141,6 +147,21 @@ class LaneBackendManager:
     @property
     def max_cloud_lanes(self) -> int:
         return self._max_cloud_lanes
+
+    def get_lane_kind(self, lane: str) -> str:
+        """Return the classification of a lane: 'cloud', 'self-hosted', or 'local'."""
+        cfg = self._configs.get(lane)
+        if cfg is None:
+            return "local"
+        return self._classify(cfg)
+
+    def metrics_snapshot(self) -> dict[str, dict[str, Any]]:
+        """Thread-safe snapshot of all per-lane metrics."""
+        return self._metrics_registry.snapshot()
+
+    def get_metrics(self, lane: str) -> Any:
+        """Get the LaneMetrics instance for a lane."""
+        return self._metrics_registry.get(lane)
 
     def describe(self) -> dict[str, dict[str, Any]]:
         """Snapshot of lane assignments, for logging/diagnostics."""
