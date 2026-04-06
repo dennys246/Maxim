@@ -24,6 +24,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Dungeon Master Extensions | **Deferred** | Optional follow-ons layered onto DM MVP: architect persona, encounter library, adaptive difficulty, true RNG, etc. Each extension gated on MVP usage pain. |
 | Interactive Sim Prompts | **Not started** | `ask_user` tool with timeout + replay (~180 LOC). Needed for DM architect extension; useful to any authoring persona. |
 | Sim Entity Naming | **Not started** | Per-entity name prefix in sim logs (AUT/orchestrator only, ~120 LOC). Optional readability win. |
+| Stdlib OpenAI-Compat Client | **Not started** | Replace `openai` pip dep with ~40 LOC urllib fallback for peer→leader inference. Zero extra deps on peer machines. |
 
 ### Completed Plans
 
@@ -324,7 +325,33 @@ Items surfaced while debugging peer-leader tunneling. Each is small and bounded;
 
 ---
 
-## Research Directions (Not Scheduled)
+## Stdlib OpenAI-Compatible Client
+
+> **Status:** Not started. Ship when peer dependency weight becomes painful.
+> **Effort:** ~40-60 LOC in `models/language/openai_backend.py`
+
+The `openai` pip package (`openai` → `httpx` → `pydantic` → `anyio` → `sniffio` → `jiter` → `distro`) is the only non-stdlib dep required on peer machines for remote inference. Our usage is minimal:
+- POST JSON to `/v1/chat/completions`, parse JSON response
+- GET `/v1/models` (health check)
+- Bearer token auth header
+
+**Plan:**
+1. Add a `_StdlibOpenAIClient` class in `openai_backend.py` using `urllib.request` (~40 LOC)
+2. `_OpenAIBackend._get_client()` tries `from openai import OpenAI` first, falls back to `_StdlibOpenAIClient`
+3. Stdlib client implements only `client.chat.completions.create()` — same interface, minimal surface
+4. Streaming support deferred (not used in peer→leader path today)
+
+**Testing requirements:**
+- Both client paths must be exercised against a real llama-cpp-server (leader + peer)
+- Verify error handling (401, 403, 502, timeout) matches `openai` package behavior
+- Confirm no regressions in existing local + cloud provider paths
+- Test on both leader (has `openai` installed) and peer (stdlib-only)
+
+**Why not now:** The `openai` package works and is already installed on the leader. This becomes valuable when onboarding new peers that should stay lightweight, or when dep conflicts arise.
+
+---
+
+
 
 Tracked for future consideration. Not committed to any timeline.
 
