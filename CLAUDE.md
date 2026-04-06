@@ -153,6 +153,8 @@ Version is defined in two places that **must stay in sync**:
 
 **When to bump:** Any change that affects runtime behavior, CLI interface, or peer/leader protocol. Pure docs-only or test-only changes do not require a bump.
 
+**Version is the source of truth on reboot.** After a restart or deploy, always verify the running version matches the expected git hash before assuming new code is live. The `get_version_info()` function reads the current git hash at runtime — if it doesn't match what was pushed, the code hasn't been reloaded.
+
 **How to check versions:**
 ```bash
 # Local version + git hash:
@@ -166,6 +168,8 @@ curl -s -H "User-Agent: maxim-peer/1.0" https://maxim.yourdomain.com/v1/debug/ve
 ```
 
 **Version mismatch between leader and peer** means the leader needs `maxim peer update && maxim peer restart` to sync.
+
+**Startup priority:** On boot, the leader must fully initialize the LLM engine (CUDA binaries, model load, warmup) before serving inference requests. The `/v1/debug/version` endpoint is available immediately (served by LeaderProxy before LLM is ready), but `/v1/chat/completions` will 502 until the model is warm. CUDA binary loading can take 30-60s on first boot; subsequent restarts reuse the existing llama-cpp-server process and are faster.
 
 ## Project Structure
 
