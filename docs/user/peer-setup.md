@@ -235,3 +235,16 @@ maxim
 Then re-run `nvidia-smi` on the leader during a sim and confirm GPU utilization spikes. A 7B-Q4 model at ~5 GB VRAM should peg a modern GPU briefly on each inference call.
 
 > **TODO (leader-side doctor check):** `maxim doctor` on the leader should detect CPU-only llama-cpp-python and warn — currently it just checks that the server responds on port 8100. See [docs/plans/doctor_upgrade_plan.md](../plans/doctor_upgrade_plan.md#1-deeper-gpu-health) for the planned GPU health checks.
+
+## Remote Updates
+
+Leaders automatically enable remote updates — peers can trigger `git pull + pip install` without SSH:
+
+```bash
+# From any peer:
+maxim peer update              # preview pending commits (dry run)
+maxim peer update --apply      # pull + install
+maxim peer update --branch dev # target a specific branch
+```
+
+The leader must restart `maxim` after an update to load new code. Disable with `MAXIM_ALLOW_REMOTE_UPDATE=0` if you don't want peers to be able to trigger updates.

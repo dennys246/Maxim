@@ -668,6 +668,10 @@ def _maybe_auto_spawn_server(
     # server, so `maxim` on the leader brings up the full stack in one
     # command. No-op when daemon is already running (systemd service, etc.).
     if role_decision.role == "leader":
+        # Auto-enable remote update for leaders unless explicitly disabled.
+        # Leader already auth-gates all requests via Bearer token — remote
+        # update is just another auth-gated action.
+        os.environ.setdefault("MAXIM_ALLOW_REMOTE_UPDATE", "1")
         _maybe_auto_spawn_tunnel_daemon(logger)
         _maybe_start_leader_proxy(role_decision.bind_host, api_key, logger)
     return out
