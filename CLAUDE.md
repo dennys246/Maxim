@@ -197,9 +197,45 @@ python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
 
 # Specific test file
 python -m pytest tests/unit/test_simulation_agent.py -v
+
+# Just the module you changed (fast feedback)
+python -m pytest tests/unit/test_lane_metrics.py -v
 ```
 
 Known pre-existing failure: `tests/integration/test_memory_hub.py::TestPlanningBridge::test_record_plan_outcome` — `record_plan_outcome` doesn't currently drive NAc's observation counter (the assertion `nac.stats()["total_observations"] > 0` fails). Not a blocker for the rest of the suite. (The NAc circular import that previously masked this was fixed in Wave A stabilization.)
+
+### Testing efficiently
+
+**Run narrow first, then wide.** Test the specific module you changed before running the full suite (~3 min). The full suite has 2500+ tests; don't wait for all of them on every edit.
+
+**Kill stale sims before running tests.** A running `maxim --sim agent` process holds GPU + port resources and can cause test hangs:
+```bash
+pkill -f "maxim.*sim" 2>/dev/null; sleep 2
+python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
+```
+
+**Threading pitfalls (learned the hard way):**
+- Use `threading.RLock` (not `Lock`) if a method acquires the lock and then calls another method that also acquires it (e.g. `snapshot()` calling `self.failure_rate`). Regular `Lock` deadlocks on re-entry.
+- Thread-safety tests with many workers (8+ threads × 100 calls) can appear to hang if a deadlock exists — they're not slow, they're stuck.
+
+**Don't run sims from tests.** Sims call real LLMs and can 2-3x test-suite runtime. The sim runner is for manual/CLI testing only (`maxim --sim agent`). Tests should mock LLM calls.
+
+**Peer/tunnel testing requires the leader.** Tests that exercise peer→leader inference need the leader machine running `maxim` with the tunnel up. Use `curl` probes first (fast, no Python overhead), then test through the LLMRouter:
+```bash
+# Quick connectivity check (no Maxim runtime needed)
+curl -si -H "Authorization: Bearer $KEY" https://maxim.yourdomain.com/v1/models
+
+# Full pipeline check (exercises lane wiring + provider routing)
+MAXIM_LANE_TRACE=1 python -c "
+from maxim.peer.config import read_peer_config, apply_peer_config_to_env
+cfg = read_peer_config(); apply_peer_config_to_env(cfg)
+from maxim.runtime.lane_backends import build_primary_router
+router, mgr = build_primary_router()
+print(router.generate_json('Reply: {\"ok\": true}', max_tokens=10))
+"
+```
+
+**Troubleshooting docs**: [docs/troubleshooting/](docs/troubleshooting/) has in-depth guides for peer connectivity issues.
 
 ## Simulation Reports
 
