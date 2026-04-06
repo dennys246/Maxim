@@ -135,7 +135,10 @@ def _cmd_connect(argv: list[str]) -> int:
         )
         return 1
 
-    is_cloud = _is_public_url(url)
+    # Peer connections are to your own infrastructure (leader behind a
+    # tunnel). Default to is_cloud=False so the cloud lane gate doesn't
+    # block inference. Use --cloud for actual cloud providers (Anthropic, etc).
+    is_cloud = "--cloud" in argv
 
     print()
     print("─" * 62)
