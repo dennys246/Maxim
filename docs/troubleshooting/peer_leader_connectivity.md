@@ -10,7 +10,7 @@ dying. This plan captures both the architectural gaps and a staged debugging
 strategy, including temporary security relaxations we can use to bisect the
 failure fast.
 
-Companion doc: [multi_llm_scaling_ARCHIVED.md](multi_llm_scaling_ARCHIVED.md).
+Companion doc: the multi-LLM scaling work (now complete).
 
 **Status (2026-04-05)**: Stage D ("real leader-side routing") is now folded into the multi-LLM plan as Phases 7a-7d. This debug plan's Stages A-C remain the sequenced entry points — Stage A observability is a prerequisite for Phase 7a, and the `LeaderProxy` described in §4.4 is what Phase 7a builds.
 >

@@ -2,7 +2,7 @@
 
 > **Type:** Operational runbook (not a build plan).
 > **Audience:** Humans or AI assistants debugging a peer that can't reach the leader's GPU.
-> **Companion docs:** [peer_leader_connectivity.md](peer_leader_connectivity.md) (architectural analysis), [multi_llm_scaling_ARCHIVED.md](../plans/multi_llm_scaling_ARCHIVED.md) (Phase 7+ context).
+> **Companion docs:** [peer_leader_connectivity.md](peer_leader_connectivity.md) (architectural analysis), the multi-LLM scaling work (now complete) (Phase 7+ context).
 
 This runbook was built from real debugging sessions (2026-04-05) that surfaced every failure mode listed here. Commands are copy-pasteable. Expected outputs are from a known-working state.
 

@@ -1,8 +1,18 @@
 # Hippocampal Recall Experiment Plan
 
-> **Status:** Design complete. Ready to implement.
+> **Status:** Design complete. Campaign YAMLs authored. Ready to implement.
 > **Depends on:** Research Protocol Phase 0 (~200 LOC), existing simulation infrastructure.
 > **Replaces:** Standalone Dungeon Master MVP as first deliverable. DM runtime still ships later.
+>
+> **Critical path to running this experiment:**
+> 1. Fix sim orchestrator prompts — sims must sustain multi-turn conversations without hallucinating tools (~1 session)
+> 2. Research Protocol Phase 0 — AgentProfile, UMR, MeshMessage, LocalMessageBus (~200 LOC)
+> 3. Campaign YAMLs — DONE (`scenarios/experiments/hippocampal_recall_*.yaml`)
+> 4. Researcher enhancements — `record_experiment`, `query_experiments`, measurement protocol (~150 LOC)
+> 5. Writer + Reviewer agents (~600 LOC)
+> 6. Research Orchestrator — `maxim --sim research --campaign <yaml>` (~200 LOC)
+>
+> **Not on the critical path:** Agent Mesh 0a/0b (mDNS + InferenceRouter), Embodiment Core, DM MVP, Sim Test Bed. This experiment runs locally on a single machine.
 
 ## Thesis
 

@@ -13,7 +13,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Docker Sandbox | **Phase A done** | TmpdirSandbox + pain triggers implemented; Phase B (Docker backend) optional |
 | Hippocampal Recall Experiment | **Not started** | Merges Research Protocol + DM into a single deliverable: D&D campaign as Hippocampus experiment. See [hippocampal_recall_experiment.md](hippocampal_recall_experiment.md) |
 | Research Protocol | **Not started** | Phase 0 mesh primitives (AgentProfile, UMR, MeshMessage, LocalMessageBus ~200 LOC). First experiment: hippocampal recall. |
-| Multi-LLM Scaling | **Complete** | All phases done. mDNS + InferenceRouter moved to Agent Mesh as Phases 0a-0b. [Archived](multi_llm_scaling_ARCHIVED.md) |
+| Multi-LLM Scaling | **Complete** | All phases done. mDNS + InferenceRouter moved to Agent Mesh as Phases 0a-0b. [Archived](agent_mesh.md) |
 | Agent Mesh | **Not started** | Multi-LLM infra complete. Phases 0a-0b (mDNS + InferenceRouter) are first, then identity + protocol. Research Protocol Phase 0 unblocks full mesh. |
 | Realtime Refinement | **Core done** | InspectAUTTool, 8 personas, 3 metric expectations, baseline scenario. Per-lane LLM metrics deferred to Multi-LLM Phase 8 |
 | Embodiment Core | **Not started** | Phase 0 MVP + ATL grounding (~400 LOC) is the gate; Cerebellum + structured failures follow. Designed and scoped. |
@@ -156,7 +156,7 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 
 > **Status:** Phases 1–6 live. Phase 7 (peer mesh + multi-front input) next.
 > **Effort:** ~2,000 LOC across 10 phases
-> **Design:** [multi_llm_scaling_ARCHIVED.md](multi_llm_scaling_ARCHIVED.md)
+> **Design:** the multi-LLM scaling work (now complete)
 
 ### Phases 1-3: Local Multi-Model (✅ done)
 
@@ -287,7 +287,7 @@ Items surfaced while debugging peer-leader tunneling. Each is small and bounded;
 | Bearer tokens are logged in plaintext by `cloudflared` at `loglevel: debug` (found in journalctl after tunnel debugging) | `/etc/cloudflared/config.yml` | Document "switch loglevel back to `info` after debugging" in [llm-setup.md](../user/llm-setup.md); optionally have `maxim tunnel status` warn when loglevel is verbose |
 | `MAXIM_TUNNEL_ECHO=1` streams uvicorn access logs which include `x-request-id` but also any full URL/query strings | `runtime/local_server_spawner.py` | Already warns at startup; document that echo mode is debug-only, never leave on in production |
 | `maxim tunnel key show` prints the full API key to stdout (deliberate) — can end up in shell history + terminal scrollback | `tunnel/cli.py` `_cmd_key_show` | Optional: add `--copy` flag that pipes to `pbcopy`/`xclip`/`clip.exe` without printing; default still prints for scriptability |
-| Per-device keys still a parked discussion; shared-key model limits revocation granularity | Phase 7b/7c mesh work | Covered in [multi_llm_scaling_ARCHIVED.md](multi_llm_scaling_ARCHIVED.md) Phase 7 security notes |
+| Per-device keys still a parked discussion; shared-key model limits revocation granularity | Phase 7b/7c mesh work | Covered in the multi-LLM scaling work (now complete) Phase 7 security notes |
 | `cloudflared` debug log rotation: journal holds Bearer tokens until rotation policy trims them | systemd/journald | Document `journalctl --vacuum-time=1d` as a cleanup step when downgrading loglevel |
 
 **Stage A specific**: the Stage A trace flags (`MAXIM_LANE_TRACE`, `MAXIM_PEER_LOG_REQUESTS`, `MAXIM_TUNNEL_ECHO`) all produce a loud startup banner. That's intentional for debug visibility, but the flags' output contains request URLs + provider names. Not secrets, but a privacy consideration worth noting in docs when Stage A ships for wider use.
