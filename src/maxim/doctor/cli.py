@@ -70,12 +70,14 @@ def _retry_loop(info) -> int:
         check_llama_cpp_server_installed,
         check_server_reachable,
         check_tunnel_config,
+        check_tunnel_config_sync,
     )
 
     retryable = {
         "server": check_server_reachable,
         "cloudflared": lambda: check_cloudflared(info),
         "tunnel-config": check_tunnel_config,
+        "tunnel-config-sync": check_tunnel_config_sync,
     }
     print("━━━ Retry loop ━━━")
     print("Press Enter after each fix to re-test. Ctrl+C to exit.")

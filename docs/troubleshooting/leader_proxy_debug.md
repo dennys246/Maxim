@@ -21,6 +21,12 @@ curl -s http://localhost:8099/v1/debug/ping
 grep -A1 service ~/.cloudflared/config.yml
 # Should show: service: http://localhost:8099
 
+# 3b. Is the systemd service using the SAME config?
+# IMPORTANT: systemd reads /etc/cloudflared/config.yml, NOT ~/.cloudflared/
+ps aux | grep cloudflared   # check --config path
+diff ~/.cloudflared/config.yml /etc/cloudflared/config.yml
+# If they differ, copy: sudo cp ~/.cloudflared/config.yml /etc/cloudflared/config.yml
+
 # 4. Did the early proxy boot run?
 # Check maxim's output for these lines:
 # "LeaderProxy listening on 0.0.0.0:8099 → upstream http://127.0.0.1:8100"
@@ -89,6 +95,38 @@ grep service ~/.cloudflared/config.yml
 sed -i 's|service: http://localhost:8100|service: http://localhost:8099|' ~/.cloudflared/config.yml
 
 # Restart cloudflared
+sudo systemctl restart cloudflared
+```
+
+### D2. Systemd cloudflared using a different config than expected
+
+**This is a common gotcha.** When cloudflared is installed as a systemd service,
+it reads from `/etc/cloudflared/config.yml`, **not** `~/.cloudflared/config.yml`.
+You can have the correct config in your home directory but the running service
+uses a stale or different copy.
+
+```bash
+# Check which config the running service is using:
+ps aux | grep cloudflared
+# Look for: --config /etc/cloudflared/config.yml
+
+# Compare the two configs:
+diff ~/.cloudflared/config.yml /etc/cloudflared/config.yml
+
+# If /etc/cloudflared/config.yml is wrong or outdated, copy the correct one:
+sudo cp ~/.cloudflared/config.yml /etc/cloudflared/config.yml
+sudo systemctl restart cloudflared
+```
+
+**Why this happens:** `maxim tunnel setup` writes to `~/.cloudflared/config.yml`
+(the user-level location), but `sudo cloudflared service install` or package
+managers install the systemd unit pointing at `/etc/cloudflared/config.yml`.
+After editing or regenerating `~/.cloudflared/config.yml`, you must copy it
+to `/etc/cloudflared/` for the systemd service to pick up the changes.
+
+**Quick rule of thumb:** After any change to `~/.cloudflared/config.yml`:
+```bash
+sudo cp ~/.cloudflared/config.yml /etc/cloudflared/config.yml
 sudo systemctl restart cloudflared
 ```
 

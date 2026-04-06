@@ -4,6 +4,7 @@ Each check is a pure function: takes `PlatformInfo`, returns a `CheckResult`.
 Results include a status, message, and platform-specific fix hint. The fix
 hint is rendered verbatim in the doctor output — it should be copy-pasteable.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,7 +20,7 @@ class CheckResult:
     name: str
     status: Status
     message: str
-    fix: str | None = None       # platform-specific fix hint
+    fix: str | None = None  # platform-specific fix hint
     retry_id: str | None = None  # only set when retry is meaningful
 
     @property
@@ -28,6 +29,7 @@ class CheckResult:
 
 
 # ─── environment checks ────────────────────────────────────────────────────
+
 
 def check_gpu() -> CheckResult:
     try:
@@ -41,6 +43,7 @@ def check_gpu() -> CheckResult:
         )
     if not torch.cuda.is_available():
         import os
+
         cuda_vis = os.environ.get("CUDA_VISIBLE_DEVICES")
         if cuda_vis == "":
             return CheckResult(
@@ -58,7 +61,7 @@ def check_gpu() -> CheckResult:
             message="No CUDA device available — inference will be CPU-only",
         )
     props = torch.cuda.get_device_properties(0)
-    vram_gb = props.total_memory / (1024 ** 3)
+    vram_gb = props.total_memory / (1024**3)
     return CheckResult(
         name="GPU / CUDA",
         status="ok",
@@ -86,6 +89,7 @@ def check_llama_cpp_server_installed() -> CheckResult:
 def check_server_reachable(port: int = 8100) -> CheckResult:
     """Probe the local auto-spawn port."""
     from maxim.runtime.lane_backends import _llm_server_responding_at
+
     url = f"http://127.0.0.1:{port}/v1"
     if _llm_server_responding_at(url, timeout_s=2.0):
         return CheckResult(
@@ -105,6 +109,7 @@ def check_server_reachable(port: int = 8100) -> CheckResult:
 
 # ─── LAN access ────────────────────────────────────────────────────────────
 
+
 def check_lan_access(info: PlatformInfo, port: int = 8100) -> CheckResult:
     """Platform-specific LAN-access guidance for exposing the local server.
 
@@ -113,6 +118,7 @@ def check_lan_access(info: PlatformInfo, port: int = 8100) -> CheckResult:
     their actual IPs filled in.
     """
     from maxim.runtime.leader_mode import detect_role
+
     # Use resolved role (respects both MAXIM_ROLE env var and implicit
     # cloudflared-config detection), not just the raw env var.
     leader = detect_role().is_leader
@@ -135,7 +141,8 @@ def check_lan_access(info: PlatformInfo, port: int = 8100) -> CheckResult:
             name="LAN access (WSL2)",
             status="warn" if not leader else "ok",
             message=(
-                "WSL2 port-forwarding required for LAN peers" if not leader
+                "WSL2 port-forwarding required for LAN peers"
+                if not leader
                 else f"leader mode + port-forwarded at {host_ip}:{port}"
             ),
             fix=fix if not leader else None,
@@ -154,13 +161,14 @@ def check_lan_access(info: PlatformInfo, port: int = 8100) -> CheckResult:
 
     if info.os == "linux":
         from maxim.doctor.platform_detect import detect_lan_ip
+
         lan_ip = detect_lan_ip() or "<your-lan-ip>"
         firewall_hint = {
             "ubuntu": f"sudo ufw allow {port}/tcp",
             "debian": f"sudo ufw allow {port}/tcp",
             "fedora": f"sudo firewall-cmd --add-port={port}/tcp --permanent && sudo firewall-cmd --reload",
-            "rhel":   f"sudo firewall-cmd --add-port={port}/tcp --permanent && sudo firewall-cmd --reload",
-            "arch":   f"sudo ufw allow {port}/tcp  # (or your preferred firewall)",
+            "rhel": f"sudo firewall-cmd --add-port={port}/tcp --permanent && sudo firewall-cmd --reload",
+            "arch": f"sudo ufw allow {port}/tcp  # (or your preferred firewall)",
         }.get(info.distro, f"Open TCP port {port} in your firewall")
         fix = (
             f"Linux peers reach you directly via your LAN IP:\n"
@@ -180,6 +188,7 @@ def check_lan_access(info: PlatformInfo, port: int = 8100) -> CheckResult:
 
     if info.os == "macos":
         from maxim.doctor.platform_detect import detect_lan_ip
+
         lan_ip = detect_lan_ip() or "<your-lan-ip>"
         fix = (
             f"macOS peers reach you directly via your LAN IP:\n"
@@ -222,30 +231,40 @@ def check_lan_access(info: PlatformInfo, port: int = 8100) -> CheckResult:
 
 # ─── cloudflared / tunnel ──────────────────────────────────────────────────
 
+
 def check_cloudflared(info: PlatformInfo) -> CheckResult:
     from maxim.tunnel.cloudflared import cloudflared_version, find_cloudflared
+
     path = find_cloudflared()
     if path is None:
         install = {
-            ("linux", "ubuntu"):
-                "curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb\n"
-                "  sudo dpkg -i cloudflared.deb",
-            ("linux", "debian"):
-                "curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb\n"
-                "  sudo dpkg -i cloudflared.deb",
-            ("linux", "fedora"):
-                "curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-x86_64.rpm -o cloudflared.rpm\n"
-                "  sudo rpm -i cloudflared.rpm",
-            ("linux", "rhel"):
-                "curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-x86_64.rpm -o cloudflared.rpm\n"
-                "  sudo rpm -i cloudflared.rpm",
-            ("linux", "arch"):
-                "yay -S cloudflared  # or your preferred AUR helper",
-            ("macos", "unknown"):
-                "brew install cloudflare/cloudflare/cloudflared",
-            ("windows", "unknown"):
-                "Download https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe\n"
-                "  (add to PATH)",
+            (
+                "linux",
+                "ubuntu",
+            ): "curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb\n"
+            "  sudo dpkg -i cloudflared.deb",
+            (
+                "linux",
+                "debian",
+            ): "curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb\n"
+            "  sudo dpkg -i cloudflared.deb",
+            (
+                "linux",
+                "fedora",
+            ): "curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-x86_64.rpm -o cloudflared.rpm\n"
+            "  sudo rpm -i cloudflared.rpm",
+            (
+                "linux",
+                "rhel",
+            ): "curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-x86_64.rpm -o cloudflared.rpm\n"
+            "  sudo rpm -i cloudflared.rpm",
+            ("linux", "arch"): "yay -S cloudflared  # or your preferred AUR helper",
+            ("macos", "unknown"): "brew install cloudflare/cloudflare/cloudflared",
+            (
+                "windows",
+                "unknown",
+            ): "Download https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe\n"
+            "  (add to PATH)",
         }
         key = (info.os, info.distro if info.os == "linux" else "unknown")
         install_cmd = install.get(
@@ -269,6 +288,7 @@ def check_cloudflared(info: PlatformInfo) -> CheckResult:
 
 def check_tunnel_config() -> CheckResult:
     from maxim.tunnel.config import CONFIG_PATH, read_config_summary
+
     summary = read_config_summary()
     if summary is None:
         return CheckResult(
@@ -307,10 +327,82 @@ def check_tunnel_config() -> CheckResult:
     )
 
 
+def check_tunnel_config_sync() -> CheckResult:
+    """Warn if the systemd cloudflared config differs from the user config.
+
+    When cloudflared is installed as a systemd service, it reads from
+    /etc/cloudflared/config.yml — NOT ~/.cloudflared/config.yml. After
+    editing or regenerating the user config, the systemd copy must be
+    updated too, or the tunnel will use stale settings.
+    """
+    import platform
+
+    if platform.system() != "Linux":
+        return CheckResult(
+            name="Tunnel config sync",
+            status="ok",
+            message="skipped (non-Linux)",
+        )
+
+    from pathlib import Path
+
+    user_cfg = Path.home() / ".cloudflared" / "config.yml"
+    system_cfg = Path("/etc/cloudflared/config.yml")
+
+    if not user_cfg.is_file():
+        return CheckResult(
+            name="Tunnel config sync",
+            status="ok",
+            message="no user config — nothing to compare",
+        )
+    if not system_cfg.is_file():
+        return CheckResult(
+            name="Tunnel config sync",
+            status="ok",
+            message="no systemd config — cloudflared may not be a service",
+        )
+
+    try:
+        user_text = user_cfg.read_text()
+        system_text = system_cfg.read_text()
+    except PermissionError:
+        return CheckResult(
+            name="Tunnel config sync",
+            status="warn",
+            message="cannot read /etc/cloudflared/config.yml (permission denied)",
+            fix="Run: sudo cat /etc/cloudflared/config.yml",
+        )
+
+    if user_text.strip() == system_text.strip():
+        return CheckResult(
+            name="Tunnel config sync",
+            status="ok",
+            message="~/.cloudflared/config.yml and /etc/cloudflared/config.yml are in sync",
+        )
+
+    return CheckResult(
+        name="Tunnel config sync",
+        status="warn",
+        message=(
+            "~/.cloudflared/config.yml and /etc/cloudflared/config.yml DIFFER — "
+            "systemd service may be using stale settings"
+        ),
+        fix=(
+            "The systemd cloudflared service reads /etc/cloudflared/config.yml,\n"
+            "not ~/.cloudflared/config.yml. After editing the user config, sync it:\n"
+            "  sudo cp ~/.cloudflared/config.yml /etc/cloudflared/config.yml\n"
+            "  sudo systemctl restart cloudflared"
+        ),
+        retry_id="tunnel-config-sync",
+    )
+
+
 # ─── API key ───────────────────────────────────────────────────────────────
+
 
 def check_api_key() -> CheckResult:
     from maxim.tunnel.keys import key_exists, key_file_path, truncate_for_display, read_key
+
     if not key_exists():
         return CheckResult(
             name="API key",
@@ -332,8 +424,10 @@ def check_api_key() -> CheckResult:
 
 # ─── leader role ───────────────────────────────────────────────────────────
 
+
 def check_role() -> CheckResult:
     from maxim.runtime.leader_mode import detect_role
+
     decision = detect_role()
     if decision.is_leader:
         return CheckResult(
@@ -374,26 +468,42 @@ def _check_lane_metrics() -> list["CheckResult"]:
 def run_all_checks(info: PlatformInfo) -> list[tuple[str, list[CheckResult]]]:
     """Return ordered [(section_name, results)] for `maxim doctor`."""
     sections = [
-        ("Environment", [
-            CheckResult(name="Platform", status="ok", message=info.display_name),
-            CheckResult(name="Architecture", status="ok", message=info.arch),
-            check_gpu(),
-        ]),
-        ("Local LLM", [
-            check_llama_cpp_server_installed(),
-            check_server_reachable(),
-        ]),
-        ("Role & Access", [
-            check_role(),
-            check_lan_access(info),
-        ]),
-        ("Tunnel (Cloudflare)", [
-            check_cloudflared(info),
-            check_tunnel_config(),
-        ]),
-        ("API key", [
-            check_api_key(),
-        ]),
+        (
+            "Environment",
+            [
+                CheckResult(name="Platform", status="ok", message=info.display_name),
+                CheckResult(name="Architecture", status="ok", message=info.arch),
+                check_gpu(),
+            ],
+        ),
+        (
+            "Local LLM",
+            [
+                check_llama_cpp_server_installed(),
+                check_server_reachable(),
+            ],
+        ),
+        (
+            "Role & Access",
+            [
+                check_role(),
+                check_lan_access(info),
+            ],
+        ),
+        (
+            "Tunnel (Cloudflare)",
+            [
+                check_cloudflared(info),
+                check_tunnel_config(),
+                check_tunnel_config_sync(),
+            ],
+        ),
+        (
+            "API key",
+            [
+                check_api_key(),
+            ],
+        ),
     ]
     # Phase 8: lane metrics (only show if any calls have been recorded)
     lane_results = _check_lane_metrics()
@@ -411,6 +521,7 @@ __all__ = [
     "check_lan_access",
     "check_cloudflared",
     "check_tunnel_config",
+    "check_tunnel_config_sync",
     "check_api_key",
     "check_role",
     "run_all_checks",
