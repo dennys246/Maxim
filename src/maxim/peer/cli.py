@@ -197,6 +197,50 @@ def _cmd_forget() -> int:
 # ─── helpers ──────────────────────────────────────────────────────────────
 
 
+def _check_proxy_ping(base_url: str, key: str | None = None) -> dict | None:
+    """Probe /v1/debug/ping to verify the tunnel reaches LeaderProxy.
+
+    Returns the ping response dict, or None if the probe fails.
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    endpoint = f"{base_url}/v1/debug/ping"
+    req = urllib.request.Request(
+        endpoint,
+        method="GET",
+        headers={"User-Agent": "maxim-peer/1.0"},
+    )
+    if key:
+        req.add_header("Authorization", f"Bearer {key}")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def _print_404_diagnosis(base_url: str) -> None:
+    """Print diagnostic hints when an admin/debug endpoint returns 404."""
+    print(file=sys.stderr)
+    print("  This usually means the tunnel is routing to llama-cpp-server", file=sys.stderr)
+    print("  (port 8100) instead of LeaderProxy (port 8099).", file=sys.stderr)
+    print(file=sys.stderr)
+    # Try to confirm by pinging the proxy
+    ping = _check_proxy_ping(base_url)
+    if ping and ping.get("service") == "LeaderProxy":
+        print("  However, /v1/debug/ping DID reach LeaderProxy.", file=sys.stderr)
+        print("  The endpoint may not exist in this version. Try updating the leader.", file=sys.stderr)
+    else:
+        print("  Quick checks on the leader machine:", file=sys.stderr)
+        print("    curl -s http://localhost:8099/v1/debug/ping", file=sys.stderr)
+        print("    grep service ~/.cloudflared/config.yml", file=sys.stderr)
+        print("      (should show: service: http://localhost:8099)", file=sys.stderr)
+        print(file=sys.stderr)
+        print("  See: docs/troubleshooting/leader_proxy_debug.md", file=sys.stderr)
+
+
 def _is_public_url(url: str) -> bool:
     """Mirror lane_backends._is_cloud_url but avoid importing runtime here."""
     from urllib.parse import urlparse
@@ -315,10 +359,18 @@ def _cmd_update(argv: list[str]) -> int:
             print("Remote update is disabled on the leader.", file=sys.stderr)
             print("  Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.", file=sys.stderr)
             return 1
+        if e.code == 404:
+            print("Admin endpoint returned 404.", file=sys.stderr)
+            _print_404_diagnosis(base)
+            return 1
         if e.code == 409:
             print("Leader has dirty working tree:", file=sys.stderr)
             for f in data.get("dirty_files", []):
                 print(f"  {f}", file=sys.stderr)
+            return 1
+        if e.code == 401:
+            print("Authentication failed.", file=sys.stderr)
+            print("  Check API key matches leader. Run: maxim tunnel key show (on leader)", file=sys.stderr)
             return 1
         print(f"Update failed ({e.code}): {data.get('error', str(e))}", file=sys.stderr)
         if data.get("stderr"):
@@ -414,6 +466,14 @@ def _cmd_restart(argv: list[str]) -> int:
         if e.code == 403:
             print("Remote restart is disabled on the leader.", file=sys.stderr)
             print("  Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.", file=sys.stderr)
+            return 1
+        if e.code == 404:
+            print("Admin endpoint returned 404.", file=sys.stderr)
+            _print_404_diagnosis(base)
+            return 1
+        if e.code == 401:
+            print("Authentication failed.", file=sys.stderr)
+            print("  Check API key matches leader. Run: maxim tunnel key show (on leader)", file=sys.stderr)
             return 1
         print(f"Restart failed ({e.code}): {data.get('error', str(e))}", file=sys.stderr)
         return 1

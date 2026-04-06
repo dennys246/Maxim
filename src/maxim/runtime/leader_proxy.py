@@ -242,7 +242,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         got_prefix = auth[7:13] if auth.startswith("Bearer ") else repr(auth[:20])
         logger.warning(
             "Auth failed: peer=%s expected=%s... got=%s...",
-            self.client_address[0], expected_prefix, got_prefix,
+            self.client_address[0],
+            expected_prefix,
+            got_prefix,
         )
         self._send_json(401, {"error": "Invalid API key"})
         return False
@@ -314,6 +316,25 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             },
         )
 
+    def _handle_debug_ping(self) -> None:
+        """GET /v1/debug/ping — identify this service as LeaderProxy.
+
+        Unlike /v1/debug/version (which llama-cpp-server could also serve),
+        this endpoint is ONLY served by LeaderProxy. Peers use it to confirm
+        the tunnel is routing to the proxy (port 8099), not directly to the
+        upstream inference server (port 8100).
+        """
+        self._send_json(
+            200,
+            {
+                "service": "LeaderProxy",
+                "proxy_port": self.server.server_address[1],
+                "upstream": self.upstream_url,
+                "auth_enabled": bool(self.api_key),
+                "uptime_s": round(time.time() - self.start_time, 1),
+            },
+        )
+
     def _handle_debug_last_requests(self) -> None:
         if self.request_log is None:
             self._send_json(200, {"total_requests": 0, "recent": []})
@@ -328,6 +349,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def _is_debug_path(self, path: str) -> bool:
         stripped = path.rstrip("/").split("?")[0]
         return stripped in (
+            "/v1/debug/ping",
             "/v1/debug/status",
             "/v1/debug/heartbeat",
             "/v1/debug/metrics",
@@ -338,7 +360,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
     def _route_debug(self, path: str) -> None:
         stripped = path.rstrip("/").split("?")[0]
-        if stripped == "/v1/debug/status":
+        if stripped == "/v1/debug/ping":
+            self._handle_debug_ping()
+        elif stripped == "/v1/debug/status":
             self._handle_debug_status()
         elif stripped == "/v1/debug/heartbeat":
             self._handle_debug_heartbeat()

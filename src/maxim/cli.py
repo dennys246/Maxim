@@ -27,17 +27,22 @@ _cached_result = os.environ.get(_BLACKWELL_CACHE_ENV)
 # Opt-out: set MAXIM_BLACKWELL_HIDE_CUDA=1 to hide CUDA from the entire process
 # (CPU-only mode). Use this if you hit a GStreamer crash despite the GST guard.
 _hide_cuda = os.environ.get("MAXIM_BLACKWELL_HIDE_CUDA", "").strip().lower() in (
-    "1", "true", "t", "yes", "y", "on",
+    "1",
+    "true",
+    "t",
+    "yes",
+    "y",
+    "on",
 )
 
 
 def _apply_blackwell_guards(*, hide_cuda: bool) -> None:
     """Apply GStreamer guards, and optionally hide CUDA from all libraries."""
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-    os.environ['GST_CUDA_NO_CUDA'] = '1'
-    os.environ.setdefault('REACHY_MEDIA_BACKEND', 'default')
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+    os.environ["GST_CUDA_NO_CUDA"] = "1"
+    os.environ.setdefault("REACHY_MEDIA_BACKEND", "default")
     if hide_cuda:
-        os.environ['CUDA_VISIBLE_DEVICES'] = ''
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 
 if _cached_result == "yes":
@@ -51,19 +56,20 @@ else:
     # No cache - run detection (with shorter 500ms timeout)
     try:
         result = subprocess.run(
-            ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
-            capture_output=True, text=True, timeout=0.5  # Reduced from 2s to 500ms
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=0.5,  # Reduced from 2s to 500ms
         )
         if result.returncode == 0:
             gpu_names = result.stdout.strip().lower()
-            if 'rtx 50' in gpu_names or '5080' in gpu_names or '5090' in gpu_names:
+            if "rtx 50" in gpu_names or "5080" in gpu_names or "5090" in gpu_names:
                 _blackwell_detected = True
                 _apply_blackwell_guards(hide_cuda=_hide_cuda)
                 os.environ[_BLACKWELL_CACHE_ENV] = "yes"  # Cache for next run
                 if _hide_cuda:
                     print(
-                        "Blackwell GPU detected - CPU-only mode "
-                        "(MAXIM_BLACKWELL_HIDE_CUDA=1)",
+                        "Blackwell GPU detected - CPU-only mode (MAXIM_BLACKWELL_HIDE_CUDA=1)",
                         file=sys.stderr,
                     )
                 else:
@@ -183,7 +189,7 @@ def _check_gpu_status(logger: logging.Logger) -> None:
     # Check if GPU is globally disabled
     cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
     if cuda_visible == "":
-        logger.warning("GPU acceleration disabled (CUDA_VISIBLE_DEVICES=\"\")")
+        logger.warning('GPU acceleration disabled (CUDA_VISIBLE_DEVICES="")')
         logger.info("Running in CPU-only mode")
         return
 
@@ -195,14 +201,14 @@ def _check_gpu_status(logger: logging.Logger) -> None:
         import tensorflow as tf
 
         # Check visible devices (respects set_visible_devices configuration)
-        tf_gpus = tf.config.get_visible_devices('GPU')
+        tf_gpus = tf.config.get_visible_devices("GPU")
         if not tf_gpus and _blackwell_detected:
             tf_on_cpu = True  # TensorFlow GPU disabled for Blackwell
         elif tf_gpus:
             for gpu in tf_gpus:
                 try:
                     gpu_details = tf.config.experimental.get_device_details(gpu)
-                    gpu_name = gpu_details.get('device_name', 'Unknown GPU')
+                    gpu_name = gpu_details.get("device_name", "Unknown GPU")
                     tf_gpu_info.append(gpu_name)
                 except Exception:
                     tf_gpu_info.append(str(gpu).split(":")[-1].rstrip("'"))
@@ -214,6 +220,7 @@ def _check_gpu_status(logger: logging.Logger) -> None:
     torch_gpu_info = []
     try:
         import torch
+
         if torch.cuda.is_available():
             torch_gpus = torch.cuda.device_count()
             for i in range(torch_gpus):
@@ -444,8 +451,12 @@ def _clear_memory(memory_types: str, home_dir: str = "data") -> dict[str, bool]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     from maxim.utils.last_run import (
-        should_save, save_last_run, load_last_run, load_all_runs,
-        clear_last_run, format_all_runs,
+        should_save,
+        save_last_run,
+        load_last_run,
+        load_all_runs,
+        clear_last_run,
+        format_all_runs,
     )
 
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
@@ -453,14 +464,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Stage A observability: print loud warning if trace flags are active so
     # users don't leave them on accidentally (log volume + request-id exposure).
     from maxim.models.language.mesh_trace import print_startup_warning_if_enabled
+
     print_startup_warning_if_enabled()
 
     # Subcommand dispatch — intercepts positional subcommands before argparse.
     if raw_argv and raw_argv[0] == "tunnel":
         from maxim.tunnel import run_tunnel_subcommand
+
         return run_tunnel_subcommand(raw_argv[1:])
     if raw_argv and raw_argv[0] == "doctor":
         from maxim.doctor import run_doctor_subcommand
+
         return run_doctor_subcommand(raw_argv[1:])
     if raw_argv and raw_argv[0] == "peer":
         # `peer connect/show/forget` go to the peer config module;
@@ -468,8 +482,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         peer_action = raw_argv[1] if len(raw_argv) > 1 else ""
         if peer_action in ("connect", "show", "forget", "update", "restart", "version", "logs"):
             from maxim.peer import run_peer_connect_subcommand
+
             return run_peer_connect_subcommand(raw_argv[1:])
         from maxim.doctor import run_peer_subcommand
+
         return run_peer_subcommand(raw_argv[1:])
 
     # Handle --last, --show-last, --clear-last before full parse
@@ -513,22 +529,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     # (sim, interactive, agentic, etc.). This ensures `maxim peer update`,
     # `maxim peer restart`, `maxim peer logs`, and `maxim peer version`
     # always work. The proxy is a daemon thread — it dies with the process.
+    detected_role = None
     try:
         from maxim.runtime.leader_mode import detect_role
-        _role = detect_role()
-        if _role.role == "leader":
+
+        detected_role = detect_role()
+        if detected_role.role == "leader":
             import os as _os
+
             _os.environ.setdefault("MAXIM_ALLOW_REMOTE_UPDATE", "1")
             from maxim.runtime.leader_proxy import start_leader_proxy
+
             _api_key = None
             try:
                 from maxim.tunnel.keys import read_key
+
                 _api_key = read_key()
             except Exception:
-                pass
-            start_leader_proxy(api_key=_api_key, bind_host=_role.bind_host)
-    except Exception:
-        pass  # Not a leader, or deps missing — fine, skip silently
+                print("[leader-boot] WARNING: could not read API key — proxy will run without auth")
+            _proxy = start_leader_proxy(api_key=_api_key, bind_host=detected_role.bind_host)
+            if _proxy is None:
+                print("[leader-boot] WARNING: LeaderProxy failed to start (port in use?)")
+    except Exception as _e:
+        import traceback as _tb
+
+        print(f"[leader-boot] WARNING: early proxy boot failed: {_e}")
+        _tb.print_exc()
 
     # Save this invocation if it's meaningful
     if should_save(raw_argv):
@@ -574,15 +600,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not _is_sim_agent:
         if getattr(args, "sim_goal", None) is not None:
             print("Error: --goal / --sim-goal requires --sim agent (simulation mode).")
-            print("  Usage: maxim --sim agent --goal \"test safety\" --persona adversarial")
+            print('  Usage: maxim --sim agent --goal "test safety" --persona adversarial')
             sys.exit(1)
         if getattr(args, "sim_persona", "adversarial") != "adversarial":
             print("Error: --persona / --sim-persona requires --sim agent (simulation mode).")
-            print("  Usage: maxim --sim agent --goal \"test safety\" --persona adversarial")
+            print('  Usage: maxim --sim agent --goal "test safety" --persona adversarial')
             sys.exit(1)
         if getattr(args, "resume_sim", None) is not None:
             print("Error: --resume-sim requires --sim agent (simulation mode).")
-            print("  Usage: maxim --sim agent --goal \"continue\" --resume-sim SESSION_ID")
+            print('  Usage: maxim --sim agent --goal "continue" --resume-sim SESSION_ID')
             sys.exit(1)
 
     # Simulation mode if requested — runs full agentic pipeline with fake percepts
@@ -667,14 +693,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not _sim_interactive:
             # Single/batch scenario mode: set up sandbox and load scenario
             import tempfile
+
             sim_workspace = Path(getattr(args, "home_dir", "data")) / "sim_sandbox"
             sim_workspace.mkdir(parents=True, exist_ok=True)
-            sim_tmpdir = Path(tempfile.mkdtemp(
-                prefix=f"sim_{time.strftime('%Y%m%d_%H%M%S')}_",
-                dir=str(sim_workspace),
-            ))
+            sim_tmpdir = Path(
+                tempfile.mkdtemp(
+                    prefix=f"sim_{time.strftime('%Y%m%d_%H%M%S')}_",
+                    dir=str(sim_workspace),
+                )
+            )
             args._sim_original_cwd = os.getcwd()
             import atexit
+
             atexit.register(lambda cwd=args._sim_original_cwd: os.chdir(cwd))
             os.chdir(str(sim_tmpdir))
             _sim_debug = bool(getattr(args, "debug", False) or getattr(args, "sim_debug", False))
@@ -685,6 +715,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             # result aggregation is handled by ScenarioRunner directly)
 
             from maxim.simulation.sim_logger import enable_sim_logging, disable_sim_logging
+
             sim_log_path = str(sim_workspace / f"sim_log_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
             enable_sim_logging(log_path=sim_log_path, debug=_sim_debug)
 
@@ -708,6 +739,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Architecture audit if requested
     if getattr(args, "audit_architecture", False):
         from maxim.utils.audit import audit_architecture
+
         violations = audit_architecture()
         if violations:
             print(f"Found {len(violations)} architecture violations:")
@@ -843,19 +875,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 # Create internet policy getter for tool registry
                 def get_internet_policy():
                     from maxim.utils.internet_access import InternetAccessPolicy
+
                     return InternetAccessPolicy(enabled=internet_enabled)
 
                 # Only pass policy getter if internet is enabled
                 internet_policy_getter = get_internet_policy if internet_enabled else None
 
                 # Build comms stack if enabled (--comms flag or MAXIM_COMMS_ENABLED env)
-                comms_enabled = (
-                    bool(getattr(args, "comms", False))
-                    or os.environ.get("MAXIM_COMMS_ENABLED", "").lower() in ("1", "true", "yes")
-                )
+                comms_enabled = bool(getattr(args, "comms", False)) or os.environ.get(
+                    "MAXIM_COMMS_ENABLED", ""
+                ).lower() in ("1", "true", "yes")
                 gateway = None
                 if comms_enabled:
                     from maxim.runtime.bootstrap import build_comms_stack
+
                     gateway, _conv_manager = build_comms_stack(
                         bus=agentic_agent._bus,
                     )
@@ -870,9 +903,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     from maxim.similarity.ec import EntorhinalCortex
                     from maxim.time.scn import SCN
 
-                    _cli_hippocampus = Hippocampus(config=HippocampusConfig(
-                        persistence_path=memory_path,
-                    ))
+                    _cli_hippocampus = Hippocampus(
+                        config=HippocampusConfig(
+                            persistence_path=memory_path,
+                        )
+                    )
                     _cli_nac = NAc()
                     _cli_scn = SCN()
                     _cli_ec = EntorhinalCortex()
@@ -981,7 +1016,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         logger.info("Model not found at %s — attempting download...", model_path)
                         try:
                             from maxim.models.download import download_llm, LLM_MODELS
-                            profile = str(getattr(llm_router.cfg, "profile", "") or getattr(llm_router.cfg, "model_base", "")).strip()
+
+                            profile = str(
+                                getattr(llm_router.cfg, "profile", "") or getattr(llm_router.cfg, "model_base", "")
+                            ).strip()
                             if profile and profile in LLM_MODELS:
                                 print(f"  Downloading LLM model: {profile}...")
                                 if download_llm(profile):
@@ -1009,11 +1047,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     logger.info("LLM router initialized: %s", llm_router)
                     llm_worker = LLMWorker(
                         llm_router,
-                        n_ctx=getattr(llm_router, 'n_ctx', 4096),
+                        n_ctx=getattr(llm_router, "n_ctx", 4096),
                         token_counter=(
-                            llm_router.get_token_counter()
-                            if hasattr(llm_router, 'get_token_counter')
-                            else None
+                            llm_router.get_token_counter() if hasattr(llm_router, "get_token_counter") else None
                         ),
                     )
                     llm_worker.start()
@@ -1038,7 +1074,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
 
                 # Check for interactive simulation REPL
-                if getattr(args, "sim", None) is not None and str(getattr(args, "sim", "")).strip().lower() == "interactive":
+                if (
+                    getattr(args, "sim", None) is not None
+                    and str(getattr(args, "sim", "")).strip().lower() == "interactive"
+                ):
                     from maxim.simulation.interactive import run_interactive_sim
                     from maxim.proprioception.pain_bus import (
                         PainBus as SimPainBus,
@@ -1152,12 +1191,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                             "passed": passed,
                             "action_count": len(sim_sink.actions),
                             "expectations_met": [
-                                r.expectation.description or r.expectation.type
-                                for r in results if r.passed
+                                r.expectation.description or r.expectation.type for r in results if r.passed
                             ],
                             "expectations_failed": [
                                 f"{r.expectation.description or r.expectation.type}: {r.detail}"
-                                for r in results if not r.passed
+                                for r in results
+                                if not r.passed
                             ],
                         }
                         with open(report_path, "w") as f:
@@ -1173,6 +1212,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     sim_tmpdir = getattr(args, "_sim_tmpdir", None)
                     if sim_tmpdir is not None:
                         import shutil
+
                         original_cwd = getattr(args, "_sim_original_cwd", "/")
                         os.chdir(original_cwd)
                         try:

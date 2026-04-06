@@ -12,17 +12,20 @@ Run these on the **leader machine**:
 ss -ltnp | grep 8099
 
 # 2. Is it the LeaderProxy or something else on 8099?
-curl -s http://localhost:8099/v1/debug/version
-# Expected: {"version": "0.1.0", "git_hash": "..."}
+curl -s http://localhost:8099/v1/debug/ping
+# Expected: {"service": "LeaderProxy", "proxy_port": 8099, ...}
 # If you get {"detail": "Not Found"} → that's llama-cpp-server, not the proxy
+# /v1/debug/ping is LeaderProxy-only; llama-cpp-server doesn't serve it.
 
 # 3. What does the tunnel point at?
 grep -A1 service ~/.cloudflared/config.yml
 # Should show: service: http://localhost:8099
 
 # 4. Did the early proxy boot run?
-# Check maxim's output for this line:
+# Check maxim's output for these lines:
 # "LeaderProxy listening on 0.0.0.0:8099 → upstream http://127.0.0.1:8100"
+# If boot failed, you'll see:
+# "[leader-boot] WARNING: ..." with a traceback (no longer silently swallowed)
 
 # 5. Is leader mode detected?
 python3 -c "from maxim.runtime.leader_mode import detect_role; print(detect_role())"
@@ -105,9 +108,11 @@ pkill -f "python.*maxim"
 maxim
 ```
 
-### F. Import error in early boot (silently caught)
+### F. Import error in early boot
 
-The early boot is wrapped in `try/except Exception: pass` so import failures are silent. Test manually:
+The early boot now prints `[leader-boot] WARNING: ...` with a full traceback
+on failure (previously it was silently swallowed). Check maxim's stdout for
+these warnings. You can also test manually:
 
 ```bash
 python3 -c "
@@ -129,37 +134,13 @@ If any import fails, that's the blocker. Common causes:
 
 ## Debugging the Early Boot Code
 
-The relevant code is in `src/maxim/cli.py` right after arg parsing:
+The early boot in `src/maxim/cli.py` now prints warnings and tracebacks
+automatically — no code edits needed. Look for `[leader-boot] WARNING:` lines
+in maxim's stdout on startup. Messages you may see:
 
-```python
-# ── Early leader proxy bootstrap ─────────────────────────────────
-try:
-    from maxim.runtime.leader_mode import detect_role
-    _role = detect_role()
-    if _role.role == "leader":
-        import os as _os
-        _os.environ.setdefault("MAXIM_ALLOW_REMOTE_UPDATE", "1")
-        from maxim.runtime.leader_proxy import start_leader_proxy
-        _api_key = None
-        try:
-            from maxim.tunnel.keys import read_key
-            _api_key = read_key()
-        except Exception:
-            pass
-        start_leader_proxy(api_key=_api_key, bind_host=_role.bind_host)
-except Exception:
-    pass  # Not a leader, or deps missing — fine, skip silently
-```
-
-To debug, temporarily replace the outer `except Exception: pass` with:
-
-```python
-except Exception as e:
-    import traceback
-    traceback.print_exc()
-```
-
-Then restart maxim and check stdout for the traceback.
+- `WARNING: could not read API key` — proxy starts without auth
+- `WARNING: LeaderProxy failed to start (port in use?)` — port 8099 is occupied
+- `WARNING: early proxy boot failed: <exception>` — with full traceback
 
 ## Nuclear Option: Force Proxy Start
 
@@ -175,10 +156,13 @@ This bypasses cloudflared config detection and forces leader mode, which trigger
 
 ```bash
 # From the leader:
-curl -s http://localhost:8099/v1/debug/version
-# Should return: {"version": "0.1.0", "git_hash": "70df927", ...}
+curl -s http://localhost:8099/v1/debug/ping
+# Should return: {"service": "LeaderProxy", "proxy_port": 8099, ...}
 
-# From a peer:
+# From a peer (now includes LeaderProxy identity check):
+maxim peer test <url>
+# Should show: ✓ LeaderProxy confirmed (up Xs, auth=on)
+
 maxim peer version
 # Should show matching versions with no error
 

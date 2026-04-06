@@ -1,4 +1,5 @@
 """`maxim doctor` + `maxim peer` subcommand handlers."""
+
 from __future__ import annotations
 
 import json
@@ -65,9 +66,12 @@ def _worst_status(sections: list[tuple[str, list[CheckResult]]]) -> str:
 def _retry_loop(info) -> int:
     """Walk through failing checks, wait for user Enter, re-run each."""
     from maxim.doctor.checks import (
-        check_cloudflared, check_llama_cpp_server_installed,
-        check_server_reachable, check_tunnel_config,
+        check_cloudflared,
+        check_llama_cpp_server_installed,
+        check_server_reachable,
+        check_tunnel_config,
     )
+
     retryable = {
         "server": check_server_reachable,
         "cloudflared": lambda: check_cloudflared(info),
@@ -135,6 +139,7 @@ def run_peer_subcommand(argv: Sequence[str]) -> int:
 
 def _parse_peer_opts(opts: list[str]) -> tuple[str | None, str | None]:
     import os
+
     key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY")
     model = None
     i = 0
@@ -178,13 +183,34 @@ def _peer_test(base_url: str, *, key: str | None, model: str | None) -> int:
         print(f"    → Check the hostname: {host}")
         return 1
 
-    # 2-3. HTTPS handshake + /v1/models
-    # NOTE: Cloudflare's default bot-protection WAF rules block the
-    # `Python-urllib/*` User-Agent with a 403. Send a neutral UA so the
-    # request looks like any other HTTP client — matches curl behavior.
+    # 2. Proxy identity check — /v1/debug/ping (LeaderProxy-only endpoint)
     headers = {"User-Agent": "maxim-peer-test/1.0"}
     if key:
         headers["Authorization"] = f"Bearer {key}"
+    ping_url = f"{base_url}/debug/ping"
+    try:
+        ping_req = urllib.request.Request(ping_url, headers=headers)
+        with urllib.request.urlopen(ping_req, timeout=5) as resp:  # noqa: S310
+            ping_data = json.loads(resp.read())
+        if ping_data.get("service") == "LeaderProxy":
+            print(
+                f"  ✓ LeaderProxy confirmed (up {ping_data.get('uptime_s', '?')}s, auth={'on' if ping_data.get('auth_enabled') else 'off'})"
+            )
+        else:
+            print(f"  ? /v1/debug/ping responded but service={ping_data.get('service', '?')}")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            print("  ? /v1/debug/ping returned 404 — may be talking to llama-cpp-server directly")
+            print("    → Check tunnel routes to port 8099 (LeaderProxy), not 8100")
+        else:
+            print(f"  ? /v1/debug/ping returned HTTP {e.code}")
+    except Exception as e:
+        print(f"  ? /v1/debug/ping unreachable: {e}")
+
+    # 3-4. HTTPS handshake + /v1/models
+    # NOTE: Cloudflare's default bot-protection WAF rules block the
+    # `Python-urllib/*` User-Agent with a 403. Send a neutral UA so the
+    # request looks like any other HTTP client — matches curl behavior.
     models_url = f"{base_url}/models"
     try:
         req = urllib.request.Request(models_url, headers=headers)
