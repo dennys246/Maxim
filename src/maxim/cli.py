@@ -663,6 +663,58 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.exit(1)
         sys.exit(0)
 
+    # ── Top-level --benchmark command ─────────────────────────────────
+    _benchmark_arg = getattr(args, "benchmark", None)
+    if _benchmark_arg is not None:
+        from maxim.simulation.benchmark import BenchmarkRunner
+
+        models_raw = getattr(args, "models", None)
+        if not models_raw:
+            print("  Error: --models is required for --benchmark")
+            print("  Example: maxim --benchmark tier1 --models mistral-7b,qwen2.5-14b")
+            sys.exit(1)
+
+        models = [m.strip() for m in models_raw.split(",") if m.strip()]
+        campaign = getattr(args, "campaign", None)
+        if not campaign:
+            # Default campaign suite based on tier
+            _tier_campaigns = {
+                "tier1": "scenarios/benchmarks/cognitive_suite.yaml",
+                "tier2": "scenarios/benchmarks/biosystem_suite.yaml",
+                "tier3": "scenarios/benchmarks/embodiment_suite.yaml",
+                "all": "scenarios/benchmarks/cognitive_suite.yaml",
+            }
+            campaign = _tier_campaigns.get(_benchmark_arg, _tier_campaigns["all"])
+
+        runner = BenchmarkRunner(
+            models=models,
+            suite_path=campaign,
+            runs=getattr(args, "runs", 1) or 1,
+            output_dir=getattr(args, "benchmark_output", "data/benchmarks"),
+            baseline_path=getattr(args, "baseline", None),
+            persona=getattr(args, "sim_persona", "campaign") or "campaign",
+            max_turns=50,
+            response_timeout=60.0,
+            debug=bool(getattr(args, "debug", "")),
+        )
+
+        report = runner.run()
+        print(report.summary_table())
+
+        report_dir = runner.save_report(report)
+        print(f"\n  Report saved: {report_dir}\n")
+
+        if getattr(args, "write_paper", False):
+            print("  Generating comparative paper...")
+            paper_path = runner.write_paper(report, report_dir)
+            if paper_path:
+                print(f"  Paper saved: {paper_path}\n")
+            else:
+                print("  Paper generation failed (LLM unavailable)\n")
+
+        all_passed = all(mr.passed for mr in report.results.values())
+        sys.exit(0 if all_passed else 1)
+
     # Validate simulation-only flags aren't used without --sim agent/research
     sim_path = getattr(args, "sim", None)
     _sim_mode = str(sim_path).strip().lower() if sim_path is not None else ""
@@ -719,8 +771,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         _is_legacy_benchmark = _sim_val_lower == "benchmark"
         _is_interactive = _sim_val_lower == "interactive"
         _is_goal_string = not (
-            _is_yaml or _is_legacy_agent or _is_legacy_research
-            or _is_legacy_benchmark or _is_interactive
+            _is_yaml or _is_legacy_agent or _is_legacy_research or _is_legacy_benchmark or _is_interactive
         )
 
         # If --research flag is set with a goal string, use research mode
@@ -809,7 +860,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             campaign = getattr(args, "campaign", None)
             if not campaign:
                 print("  Error: --campaign is required for --sim benchmark")
-                print("  Example: maxim --sim benchmark --models mistral-7b --campaign scenarios/benchmarks/cognitive_suite.yaml")
+                print(
+                    "  Example: maxim --sim benchmark --models mistral-7b --campaign scenarios/benchmarks/cognitive_suite.yaml"
+                )
                 sys.exit(1)
 
             runner = BenchmarkRunner(

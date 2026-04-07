@@ -1,5 +1,7 @@
 # Generative Campaign Mode — Dynamic Narrative Orchestration
 
+> **Status:** ALL STAGES SHIPPED (2026-04-07). Stage A: arc system, narrator, runner, entity naming, YAML export, CLI simplification. Stage B: plan-to-arc translation, narrator context enrichment, bridge-and-compress. Stage C: ask_user tool, timeout escalation, JSONL audit/replay. Stage D: --benchmark top-level command, tiered benchmarks, CLI flags. 71 generative campaign tests.
+
 ## Context
 
 The research protocol currently has two extremes:

@@ -289,6 +289,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Display name for the agent-under-test in simulation logs. Default: AUT",
     )
     parser.add_argument(
+        "--sim-interactive",
+        action="store_true",
+        dest="sim_interactive",
+        help="Enable human-in-the-loop interaction during simulation. "
+        "The narrator can pause for player choices, dice rolls, etc.",
+    )
+    parser.add_argument(
+        "--replay-from",
+        type=str,
+        default=None,
+        dest="replay_from",
+        metavar="SESSION_ID",
+        help="Replay recorded user interactions from a previous session. "
+        "Used with --sim-interactive for deterministic re-runs.",
+    )
+    parser.add_argument(
         "--sim-persona",
         "--persona",
         type=str,
@@ -393,6 +409,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     # ── Benchmark ───────────────────────────────────────────────────────
     parser.add_argument(
+        "--benchmark",
+        type=str,
+        nargs="?",
+        const="all",
+        default=None,
+        metavar="TIERS",
+        help="Run tiered benchmarks. Values: tier1, tier2, tier3, all, "
+        "or comma-separated (tier1,tier2). Requires --models. "
+        "Promoted from --sim benchmark (legacy alias still works).",
+    )
+    parser.add_argument(
         "--models",
         type=str,
         default=None,
@@ -405,8 +432,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         metavar="N",
-        help="Number of runs per model in --sim benchmark (default: 1). "
-        "Multiple runs enable variance measurement.",
+        help="Number of runs per model in --sim benchmark (default: 1). Multiple runs enable variance measurement.",
     )
     parser.add_argument(
         "--benchmark-output",

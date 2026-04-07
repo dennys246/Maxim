@@ -302,6 +302,12 @@ data/util/          # Runtime config (llm.json, cost_state.json)
 | Motor engrams | `embodiment/engrams.py` (MotorEngram, formation thresholds, graph node naming) |
 | Program executor | `embodiment/program_executor.py` (step-by-step runner, pain gates, PainBus interrupt) |
 | CerebellumModulator | `embodiment/backends/cerebellum_modulator.py` (predict/fallback/train + factory) |
+| Generative campaign arcs | `simulation/arcs.py` (NarrativeArc, NarrativePhase, BUILTIN_ARCS, load_arc_yaml) |
+| Generative campaign narrator | `simulation/narrator.py` (two-call + single-call, system prompts, story compression) |
+| Generative campaign runner | `simulation/generative_runner.py` (run_generative_campaign, YAML export, SEM entity loading) |
+| Plan-to-arc bridge | `simulation/plan_arc_bridge.py` (translate_plan_to_arc, enrich_narrator_context, bridge_and_compress) |
+| ask_user tool (interactive) | `simulation/tools_user.py` (AskUserTool, JSONL audit, replay, timeout escalation) |
+| Generative campaign guide | `docs/generative_campaigns_guide.md` |
 
 ## Environment Variables
 
