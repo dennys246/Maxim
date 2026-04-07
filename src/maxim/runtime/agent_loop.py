@@ -66,19 +66,23 @@ def _record_outcome(
     max_recent: int,
     llm_worker: Any | None,
     context_pool: Any,
+    nac: Any | None = None,
+    elapsed_s: float = 0.0,
 ) -> None:
-    """Record a tool outcome to all three sinks (Phase 0.1 consolidation).
+    """Record a tool outcome to all sinks including NAc causal learning.
 
     Appends to recent_outcomes, records reasoning carryover on llm_worker,
-    and adds to context_pool.  Previously copy-pasted in ~10 locations.
+    adds to context_pool, and (if NAc is wired) records a causal observation
+    so NAc learns tool → outcome patterns.
     """
+    ts = time.time()
     recent_outcomes.append(
         {
             "tool": tool_name,
             "success": success,
             "result": result_summary,
             "error": error,
-            "timestamp": time.time(),
+            "timestamp": ts,
         }
     )
     if len(recent_outcomes) > max_recent:
@@ -98,6 +102,24 @@ def _record_outcome(
         result_summary=result_summary,
         error=error,
     )
+
+    # NAc causal learning: record tool → outcome so predictions improve
+    if nac is not None:
+        try:
+            from maxim.decisions.causal_link import Valence
+
+            outcome_summary = (result_summary or error or "")[:50]
+            nac.observe(
+                event_type="tool",
+                event_signature=f"tool:{tool_name}",
+                outcome_type="tool_result",
+                outcome_signature=f"{'success' if success else 'failure'}:{outcome_summary}",
+                outcome_valence=Valence.POSITIVE if success else Valence.NEGATIVE,
+                delta_seconds=elapsed_s,
+                context={"goal": reasoning[:100]} if reasoning else {},
+            )
+        except Exception:
+            pass  # Don't let NAc errors disrupt the loop
 
 
 def run_agent_loop(
@@ -504,6 +526,9 @@ def run_agentic_loop(
             dn_enabled = False
             ctrl.dn_enabled = False
 
+    # Extract NAc reference for causal learning (passed to _record_outcome)
+    _loop_nac = getattr(memory_hub, "nac", None) if memory_hub is not None else None
+
     # Initialize MemoryHub session (restores priors from episodic memory)
     memory_hub_enabled = memory_hub is not None
     if memory_hub_enabled:
@@ -531,6 +556,8 @@ def run_agentic_loop(
     # unless sim mode is active.
     _last_heartbeat_time = [0.0]
     _loop_name = _safe_agent_name(agent)
+    _consecutive_llm_fallbacks = 0  # Track consecutive LLM failures for stall detection
+    _LLM_STALL_THRESHOLD = 3  # After N consecutive fallbacks, surface error to bridge
 
     for step_num in step_iter:
         loop_start = time.time()
@@ -795,8 +822,12 @@ def run_agentic_loop(
                     new_proposal = None
             # In simulation mode, skip fallback proposals — wait for real LLM
             if new_proposal and sim.should_skip_fallback_proposal(new_proposal):
-                logger.info("Sim mode: skipping fallback proposal, waiting for real LLM")
-                sim.log("EXEC", "DROPPED: fallback proposal (sim mode)")
+                _consecutive_llm_fallbacks += 1
+                logger.info(
+                    "Sim mode: skipping fallback proposal (%d consecutive)",
+                    _consecutive_llm_fallbacks,
+                )
+                sim.log("EXEC", f"DROPPED: fallback proposal (sim mode, #{_consecutive_llm_fallbacks})")
                 new_proposal = None
                 # Clear pending input so the loop doesn't block on a
                 # response that will never come.  Without this, the
@@ -806,7 +837,34 @@ def run_agentic_loop(
                 state.data.pop("pending_user_input", None)
                 state.data.pop("pending_user_input_time", None)
                 state.data.pop("pending_user_input_source", None)
+
+                # Stall detection: after N consecutive LLM failures, record a
+                # synthetic action so the bridge's settle loop detects activity
+                # and exits instead of spinning for 120s.
+                if _consecutive_llm_fallbacks >= _LLM_STALL_THRESHOLD and action_sink is not None:
+                    from maxim.simulation.sinks import ActionRecord
+
+                    action_sink.record(
+                        ActionRecord(
+                            timestamp=time.time(),
+                            tool_name="_llm_unavailable",
+                            tool_args={},
+                            result_success=False,
+                            result_output=None,
+                            result_error=f"LLM unavailable after {_consecutive_llm_fallbacks} consecutive failures",
+                        )
+                    )
+                    sim.log(
+                        "EXEC",
+                        f"LLM stall detected ({_consecutive_llm_fallbacks} failures) — surfacing to bridge",
+                    )
+                    logger.warning(
+                        "LLM stall: %d consecutive fallbacks dropped, surfacing _llm_unavailable to bridge",
+                        _consecutive_llm_fallbacks,
+                    )
+                    _consecutive_llm_fallbacks = 0  # Reset so we don't flood
             if new_proposal:
+                _consecutive_llm_fallbacks = 0  # Real proposal arrived — LLM is back
                 if callable(on_event):
                     try:
                         on_event(StreamEvent("inference_end", {"has_proposal": True}))
@@ -1069,6 +1127,7 @@ def run_agentic_loop(
                                         max_recent=max_recent_outcomes,
                                         llm_worker=llm_worker,
                                         context_pool=context_pool,
+                                        nac=_loop_nac,
                                     )
                             else:
                                 # Log rejected action
@@ -1185,6 +1244,7 @@ def run_agentic_loop(
                         max_recent=max_recent_outcomes,
                         llm_worker=llm_worker,
                         context_pool=context_pool,
+                        nac=_loop_nac,
                     )
 
                 # Combine results into a followup for the next LLM call
@@ -1464,6 +1524,7 @@ def run_agentic_loop(
                         max_recent=max_recent_outcomes,
                         llm_worker=llm_worker,
                         context_pool=context_pool,
+                        nac=_loop_nac,
                     )
 
                     # Record plan outcome in MemoryHub for learning
@@ -1599,6 +1660,7 @@ def run_agentic_loop(
                         max_recent=max_recent_outcomes,
                         llm_worker=llm_worker,
                         context_pool=context_pool,
+                        nac=_loop_nac,
                     )
 
                     # Mark failure in state
@@ -1689,6 +1751,7 @@ def run_agentic_loop(
                         max_recent=max_recent_outcomes,
                         llm_worker=llm_worker,
                         context_pool=context_pool,
+                        nac=_loop_nac,
                     )
                     logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
                 pending_proposal = None
@@ -1728,6 +1791,7 @@ def run_agentic_loop(
                             max_recent=max_recent_outcomes,
                             llm_worker=llm_worker,
                             context_pool=context_pool,
+                            nac=_loop_nac,
                         )
 
                         # Queue follow-up so LLM can continue
@@ -1761,6 +1825,7 @@ def run_agentic_loop(
                             max_recent=max_recent_outcomes,
                             llm_worker=llm_worker,
                             context_pool=context_pool,
+                            nac=_loop_nac,
                         )
 
         # ─────────────────────────────────────────────────────────────────
