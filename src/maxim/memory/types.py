@@ -112,6 +112,9 @@ class Perception:
     detected_people: list[str] = field(default_factory=list)
     salience: float = 0.5
     novelty: float = 0.5
+    # Decision provenance (why this action was chosen)
+    decision_rationale: str = ""
+    tool_alternatives: list[str] = field(default_factory=list)
 
 
 @dataclass

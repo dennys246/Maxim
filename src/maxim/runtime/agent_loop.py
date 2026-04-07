@@ -134,6 +134,25 @@ def _record_outcome(
         except Exception:
             pass  # Don't let NAc errors disrupt the loop
 
+    # Energy → NAc: learn which tools are expensive (metabolic budget)
+    if nac is not None and elapsed_s > 0:
+        try:
+            from maxim.decisions.causal_link import Valence as _V
+
+            # Expensive actions (>2s) get NEGATIVE energy valence; cheap ones NEUTRAL
+            energy_valence = _V.NEGATIVE if elapsed_s > 2.0 else _V.NEUTRAL
+            nac.observe(
+                event_type="energy",
+                event_signature=f"cost:{tool_name}",
+                outcome_type="energy_cost",
+                outcome_signature=f"elapsed:{elapsed_s:.1f}s",
+                outcome_valence=energy_valence,
+                delta_seconds=elapsed_s,
+                context={"tool": tool_name},
+            )
+        except Exception:
+            pass
+
 
 def run_agent_loop(
     agent: Any,

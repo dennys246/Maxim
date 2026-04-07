@@ -45,6 +45,8 @@ def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
         return _cmd_connect(list(argv[1:]))
     if action == "show":
         return _cmd_show()
+    if action == "key":
+        return _cmd_key(list(argv[1:]))
     if action == "forget":
         return _cmd_forget()
     if action == "update":
@@ -74,6 +76,8 @@ def _print_peer_usage() -> None:
     print("Actions:")
     print("  connect <url>    Configure this peer to route inference to a leader")
     print("  show             Show current peer configuration")
+    print("  key              Print the stored API key (for export/scripting)")
+    print("  key set <key>    Update the stored API key without re-running connect")
     print("  forget           Remove stored peer config")
     print("  test <url>       Verify a leader URL is reachable + authenticated")
     print("  update [url]     Pull + install on leader (--dry-run, --force)")
@@ -198,6 +202,73 @@ def _cmd_forget() -> int:
         return 0
     print(f"No peer config to remove at {path}")
     return 1
+
+
+# ─── key ─────────────────────────────────────────────────────────────────
+
+
+def _cmd_key(argv: list[str]) -> int:
+    """Print or update the stored API key.
+
+    maxim peer key          — print the raw key (for piping/export)
+    maxim peer key set KEY  — update the key in-place (validates, preserves 0600)
+    """
+    if argv and argv[0] == "set":
+        return _cmd_key_set(argv[1:])
+
+    # Default: print the raw key
+    cfg = read_peer_config()
+    if cfg is None:
+        print("No peer config found.", file=sys.stderr)
+        print("Run: maxim peer connect <url>", file=sys.stderr)
+        return 1
+    # Print raw key only — safe for `export KEY=$(maxim peer key)`
+    print(cfg.api_key)
+    return 0
+
+
+def _cmd_key_set(argv: list[str]) -> int:
+    """Update the API key in the existing peer config."""
+    cfg = read_peer_config()
+    if cfg is None:
+        print("No peer config found — run `maxim peer connect <url>` first.", file=sys.stderr)
+        return 1
+
+    # Get key from argument or prompt
+    if argv and argv[0] not in ("-h", "--help"):
+        key = argv[0].strip()
+    else:
+        if argv and argv[0] in ("-h", "--help"):
+            print("Usage: maxim peer key set <api-key>")
+            print("       maxim peer key set          (prompts for key)")
+            return 0
+        try:
+            key = getpass.getpass("Paste the new API key (hidden input): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.", file=sys.stderr)
+            return 1
+
+    if not key:
+        print("✗ API key required.", file=sys.stderr)
+        return 1
+
+    # Validate: Bearer tokens must be latin-1 encodable (HTTP header constraint)
+    try:
+        key.encode("latin-1")
+    except UnicodeEncodeError:
+        print(
+            "✗ API key contains non-ASCII characters — likely pasted from\n"
+            "  decorative output. Paste only the raw key string.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Update config, preserving url/model/is_cloud
+    updated = PeerConfig(url=cfg.url, api_key=key, model=cfg.model, is_cloud=cfg.is_cloud)
+    path = write_peer_config(updated)
+    print(f"✓ API key updated in {path}")
+    print(f"  key: {truncate_key(key)}")
+    return 0
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────

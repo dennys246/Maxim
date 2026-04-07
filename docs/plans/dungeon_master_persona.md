@@ -1,6 +1,6 @@
 # Dungeon Master Persona Plan — MVP
 
-> **Status:** Ready to start after [Bio-System Wiring Hardening](biosystem_wiring_hardening.md) ships. All infrastructure prerequisites satisfied (Embodiment Core, Multi-LLM, Generative Campaigns). Hardening plan fixes critical missing wiring (7 of 11 bio-systems disconnected in sim mode) + adds percept abstraction for entity-modulated perception.
+> **Status:** Ready to start. All prerequisites satisfied. [Bio-System Wiring Hardening](../archive/biosystem_wiring_hardening.md) complete (all phases shipped, pipeline audit 14/14 passing). Percept abstraction (SensoryModality, SensoryTag, SensoryGate) shipped.
 >
 > **Last updated:** 2026-04-07
 >
@@ -1791,10 +1791,8 @@ DM MVP doesn't need any mesh infrastructure — it runs single-AUT with local bi
 **All infrastructure prerequisites are satisfied.** The remaining gate is the [Bio-System Wiring Hardening](biosystem_wiring_hardening.md) plan. Phase 1 (critical wiring) is already shipped.
 
 **Recommended sequence:**
-1. ~~**Phase 0: Pipeline wiring (Phase 1)** — **SHIPPED** (commit 6c262c5)~~
-2. **Phase 0: Cascade surfacing (Hardening Phase 1.5)** (~1 day) — Rich tool results, immediate failure eval, body state in prompt, Cerebellum cascade observation. Without this, cascade effects are invisible to the ExecAgent.
-3. **Phase 0: Pipeline correctness (Hardening Phase 2)** (~1 day) — Forming boost, context_match, confidence decay, concept gate, pain cooldown, truncation.
-4. **Phase 0: Choice classifier** (~0.5 day) — Validate ATL+NAc classification accuracy. Runs after pipeline is verified (NAc actually learns now).
+1. ~~**Bio-System Wiring Hardening** — **ALL SHIPPED** (Phases 1-5, 7-8)~~
+2. **Choice classifier spike** (~0.5 day) — Validate ATL+NAc classification accuracy. NAc actually learns now (hardening Phase 1.3 wired it).
 3. **DM schema + validator** (~1 day) — CampaignDef, CascadeSpec, validator rules
 4. **DM runtime + entity wiring** (~1 day) — state machine, cascade resolver, expectation + pipeline health checker
 5. **Campaign 1: The Heist** + persona + orchestrator + end-to-end run (~1 day)

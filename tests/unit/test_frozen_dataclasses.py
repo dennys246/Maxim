@@ -7,7 +7,6 @@ import pytest
 from maxim.agents.bus import ToolErrorKind
 from maxim.agents.llm_types import LLMProposal
 from maxim.planning.plan_document import LongHorizonConfig
-from maxim.skills.base import SkillResult, SkillState
 from maxim.tools.base import ToolOutput
 
 
@@ -67,16 +66,6 @@ class TestLLMProposal:
         )
         with pytest.raises(TypeError):
             hash(obj)
-
-
-# ── SkillResult ───────────────────────────────────────────────────────────────
-
-
-class TestSkillResult:
-    def test_immutable(self):
-        obj = SkillResult(state=SkillState.ACTIVE, message="running")
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            obj.message = "stopped"
 
 
 # ── LongHorizonConfig ────────────────────────────────────────────────────────

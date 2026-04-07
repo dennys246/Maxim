@@ -22,8 +22,10 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Embodiment Core | **Complete** | All phases shipped: SEM protocol, PainBus, Cerebellum, motor programs, NarrativeModulator, auto-tool generation. 164 tests. Hardware adapter deferred. |
 | Embodiment Hardware Adapter | **Not started** | Deferred to future when deploying to real hardware. |
 | Generative Campaign Mode | **Complete** | All stages shipped: arc system, narrator, planner integration, `ask_user` tool, benchmark tiers, YAML export. 71 tests. [Plan](generative_campaign_plan.md) |
-| Dungeon Master Persona (MVP) | **Ready to start** | Bundled SEM characters + cascade DAG + generative infra reuse (~730 LOC). All prerequisites satisfied. Gated on choice classifier spike with bio-system observability. [Plan](dungeon_master_persona.md) |
-| DM Choice Classifier Spike | **Not started** | ~2 day spike: classification accuracy + bio-system ablation study. Merged into DM plan as Phase 0. |
+| Bio-System Wiring Hardening | **Complete** | All phases shipped: 7 disconnected bio-systems wired, pipeline correctness, percept abstraction (SensoryGate), cascade surfacing, ~1,100 LOC dead code removed, audit 14/14. [Plan](../archive/biosystem_wiring_hardening.md) |
+| Mode System Refactor | **Complete** | Autonomy levels only, strategies/exploration/LiveModeIntent removed, sleep is a tool, ~1,800 LOC removed. [Plan](mode_refactor_plan.md) |
+| Dungeon Master Persona (MVP) | **Ready to start** | Bundled SEM characters + cascade DAG + entity transfer/visibility + 4 showcase campaigns (~1,100 LOC). All prerequisites shipped. [Plan](dungeon_master_persona.md) |
+| DM Choice Classifier Spike | **Not started** | ~0.5 day: ATL+NAc classification accuracy. Merged into DM plan. |
 | Dungeon Master Extensions | **Deferred** | Optional follow-ons layered onto DM MVP. Each extension gated on MVP usage pain. Needs update for SEM character model. |
 | Interactive Sim Prompts | **Complete (folded)** | `ask_user` tool shipped as part of Generative Campaign Mode. |
 | Capability Agent | **Not started** | Continuous runtime awareness — live model availability, gate actions by hardware, proactive routing suggestions. ~500 LOC across 5 phases. Wraps detect_tiers + FunctionRouter + LaneMetrics + peer registry. [Design notes in doctor_upgrade_plan.md](doctor_upgrade_plan.md#capability-agent--continuous-runtime-awareness-300500-loc) |
@@ -106,8 +108,9 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 | ~~2-4~~ | ~~Simulation Benchmark (Phases 0-6)~~ | ~~950~~ | ✅ Complete |
 | ~~5~~ | ~~Embodiment Core (all phases)~~ | ~~per plan~~ | ✅ Complete (SEM, PainBus, Cerebellum, motor programs, 164 tests) |
 | ~~6~~ | ~~Generative Campaign Mode~~ | ~~1,210~~ | ✅ Complete (arcs, narrator, ask_user, benchmark tiers, 71 tests) |
-| 7 | **Bio-System Wiring Hardening** | ~1,010 | Fix 7 disconnected bio-systems in sim mode + pipeline correctness bugs + percept abstraction (entity-modulated SensoryGate) + sensory ablation campaign. All fixes in main codebase — benefits all modes. [Plan](biosystem_wiring_hardening.md) |
-| 8 | **DM MVP** | ~1,020 + YAMLs | Bundled SEM characters, cascade DAG, generative infra reuse, 4 showcase campaigns with pipeline health checks + ablation. [Plan](dungeon_master_persona.md) |
+| ~~7~~ | ~~Bio-System Wiring Hardening~~ | ~~1,010~~ | ✅ Complete. All phases shipped: wiring, cascade surfacing, pipeline correctness, percept abstraction, audit script, consolidation, dead code cleanup. [Plan](../archive/biosystem_wiring_hardening.md) |
+| ~~7b~~ | ~~Mode System Refactor~~ | ~~-1,800~~ | ✅ Complete. Autonomy levels only, strategies/exploration/LiveModeIntent removed, sleep is a tool. [Plan](mode_refactor_plan.md) |
+| 8 | **DM MVP** | ~1,100 + YAMLs | Bundled SEM characters, cascade DAG, entity transfer/visibility, 4 showcase campaigns with pipeline health checks + ablation. [Plan](dungeon_master_persona.md) |
 | ~~9~~ | ~~Agent Mesh Phases Pre-7~~ | ~~per plan~~ | ✅ Complete (identity, protocol, transport, admission, knowledge sharing, delegation, planning, SCN temporal). Phase 0a-0b (mDNS + InferenceRouter) deferred. |
 | 10 | **DM Extensions** | per-extension | Demand-driven, never speculative. Needs update for SEM character model. |
 | 11 | **Multi-AUT Party Mode** | per plan | Requires Agent Mesh P2+ AND DM MVP. Civilization-scale stress test. |

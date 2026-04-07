@@ -336,67 +336,6 @@ class TestToolHarmPredictorNoHistory:
 # ---------------------------------------------------------------------------
 
 
-class TestMonitorRegistryLifecycle:
-    """MonitorRegistry should start/stop without errors."""
-
-    def test_start_stop_no_crash(self) -> None:
-        from maxim.runtime.monitor_registry import MonitorRegistry, SignalMonitor
-
-        class DummyMonitor(SignalMonitor):
-            name = "dummy"
-
-            def check(self) -> PainSignal | None:
-                return None
-
-        registry = MonitorRegistry(poll_interval=0.05)
-        registry.register(DummyMonitor())
-        registry.start()
-        time.sleep(0.15)
-        registry.stop()
-        # No exception means success
-
-
-# ---------------------------------------------------------------------------
-# 12. MonitorRegistry fires callbacks
-# ---------------------------------------------------------------------------
-
-
-class TestMonitorRegistryCallbacks:
-    """Monitor that returns a PainSignal should trigger callbacks."""
-
-    def test_callback_receives_signal(self) -> None:
-        from maxim.runtime.monitor_registry import MonitorRegistry, SignalMonitor
-
-        emitted_signal = PainSignal(
-            pain_type=PainType.TOOL_SUSTAINED,
-            intensity=0.5,
-            timestamp=time.time(),
-        )
-
-        class FiringMonitor(SignalMonitor):
-            name = "firing"
-
-            def __init__(self) -> None:
-                self._fired = False
-
-            def check(self) -> PainSignal | None:
-                if not self._fired:
-                    self._fired = True
-                    return emitted_signal
-                return None
-
-        received: list[PainSignal] = []
-        registry = MonitorRegistry(poll_interval=0.05)
-        registry.register(FiringMonitor())
-        registry.add_signal_callback(received.append)
-        registry.start()
-        time.sleep(0.2)
-        registry.stop()
-
-        assert len(received) >= 1
-        assert received[0].pain_type == PainType.TOOL_SUSTAINED
-
-
 # ---------------------------------------------------------------------------
 # 13. Executor tracks running tool
 # ---------------------------------------------------------------------------
