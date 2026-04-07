@@ -1,0 +1,211 @@
+# The Poisoned Crown — DM Campaign (Slice 2)
+#
+# Tests: SCN (temporal bins), ATL (concept formation), Relationships
+#        (trust/rapport), Salience (novelty habituation), Angular Gyrus (math),
+#        Visibility (contextual reveal_when), Cascade resolution.
+#
+# Structure: 3 acts, 5 encounters, 3 NPCs, multiple branch points.
+
+campaign:
+  name: the_poisoned_crown
+  goal: test temporal memory, semantic concepts, and social reasoning
+  seed: 73
+
+player_character:
+  name: investigator
+  entity_type: character
+  metadata:
+    race: human
+    class: inquisitor
+    level: 5
+    backstory: "Royal investigator called to solve the king's mysterious illness."
+
+npcs:
+  king:
+    entity_type: npc
+    metadata:
+      race: human
+      role: monarch
+      persona_prompt: "Weak, feverish, trusting of those who show competence."
+    sensors:
+      health: {unit: ratio, range: [0, 1], initial: 0.3}
+      trust: {unit: ratio, range: [0, 1], initial: 0.5}
+
+  alchemist:
+    entity_type: npc
+    metadata:
+      race: elf
+      role: court_alchemist
+      persona_prompt: "Nervous, evasive when questioned directly. Hides something."
+    sensors:
+      mood: {unit: ratio, range: [-1, 1], initial: -0.3}
+      trust: {unit: ratio, range: [0, 1], initial: 0.4}
+      guilt:
+        unit: ratio
+        range: [0, 1]
+        initial: 0.8
+        visibility: hidden
+
+  herbalist:
+    entity_type: npc
+    metadata:
+      race: halfling
+      role: market_herbalist
+      persona_prompt: "Friendly, knowledgeable about plants and poisons. Willing to help."
+    sensors:
+      mood: {unit: ratio, range: [-1, 1], initial: 0.5}
+      trust: {unit: ratio, range: [0, 1], initial: 0.6}
+
+acts:
+  - name: audience
+    encounters: [throne_room]
+  - name: investigation
+    encounters: [market, laboratory]
+  - name: resolution
+    encounters: [confrontation, verdict]
+
+encounters:
+  throne_room:
+    scene: >
+      Morning. The throne room is cold despite the roaring fire. King
+      Aldric sits slumped on his throne, face pale and drawn. His
+      crown sits askew. A physician hovers nearby, wringing his hands.
+
+      "Three weeks of this fever," the physician says. "No remedy works.
+      I suspect poison, but I cannot prove it."
+
+      The king speaks weakly: "Find who did this. I trust your
+      judgment, investigator."
+
+      The court alchemist stands in the corner, avoiding eye contact.
+    active_npcs: [king, alchemist]
+    choices: [question_king, question_alchemist, examine_king]
+    branches:
+      question_king: market
+      question_alchemist: market
+      examine_king: market
+    on_choice:
+      question_alchemist:
+        flags: [suspicious_alchemist]
+      examine_king:
+        flags: [examined_king]
+    dialogue_hints:
+      default: "Please, find the truth."
+      suspicious_alchemist: "The alchemist flinched when you looked at him."
+
+  market:
+    scene: >
+      Midday. The market square is bustling. Three herbalists have stalls
+      here — you've been told one specializes in rare compounds.
+
+      You find the halfling herbalist arranging dried herbs. She looks up
+      with a warm smile. "Looking for something specific, investigator?"
+
+      You need to learn about poisons that cause slow fevers. The
+      herbalist might know what substance was used and where to find it.
+    active_npcs: [herbalist]
+    choices: [ask_about_poisons, buy_antidote, ask_about_alchemist]
+    branches:
+      ask_about_poisons: laboratory
+      buy_antidote: laboratory
+      ask_about_alchemist: laboratory
+    on_choice:
+      ask_about_poisons:
+        flags: [knows_poison_type]
+      ask_about_alchemist:
+        flags: [herbalist_suspects_alchemist]
+    dialogue_hints:
+      default: "Happy to help. What do you need?"
+      knows_poison_type: "Nightshade extract, slow-acting. Three drops daily would cause exactly these symptoms."
+
+  laboratory:
+    scene: >
+      Late afternoon. The court alchemist's laboratory is cluttered with
+      vials, dried herbs, and dusty tomes. The alchemist is here,
+      grinding something in a mortar.
+
+      On the workbench you notice several vials — one contains a dark
+      purple liquid. There are also ledgers recording ingredient
+      purchases.
+
+      The alchemist looks up nervously. "Can I help you, investigator?"
+    active_npcs: [alchemist]
+    choices: [confront_directly, search_laboratory, check_ledgers]
+    branches:
+      confront_directly: confrontation
+      search_laboratory: confrontation
+      check_ledgers: confrontation
+    on_choice:
+      search_laboratory:
+        flags: [found_nightshade_vial]
+      check_ledgers:
+        flags: [found_purchase_records]
+    dice:
+      search_laboratory:
+        roll: "1d20"
+        dc: 12
+        success_flag: thorough_search
+    dialogue_hints:
+      default: "I'm just preparing remedies, as always."
+      suspicious_alchemist: "Why do you keep looking at me like that?"
+
+  confrontation:
+    scene: >
+      Evening. You confront the alchemist with what you've learned.
+
+      Think carefully about the evidence:
+      - What did the herbalist tell you about the poison?
+      - What did you find in the laboratory?
+      - How has the alchemist behaved throughout?
+
+      The alchemist's hands are trembling. "What exactly are you
+      accusing me of, investigator?"
+    active_npcs: [alchemist]
+    choices: [accuse_with_evidence, bluff, show_mercy]
+    branches:
+      accuse_with_evidence: verdict
+      bluff: verdict
+      show_mercy: verdict
+    on_choice:
+      accuse_with_evidence:
+        flags: [formal_accusation]
+      show_mercy:
+        flags: [showed_mercy]
+    dice:
+      bluff:
+        roll: "1d20"
+        dc: 15
+        success_flag: bluff_succeeded
+
+  verdict:
+    scene: >
+      Night. Back in the throne room. The king awaits your findings.
+
+      Reflect on your investigation:
+      - Who did you talk to and what did you learn?
+      - What evidence did you gather?
+      - What was the poison? Can you recall the details?
+      - What is your final verdict?
+
+      The king looks at you expectantly. "Well, investigator? What
+      have you found?"
+    active_npcs: [king, alchemist]
+    choices: [present_evidence, request_more_time, declare_innocent]
+    branches:
+      present_evidence: __END__
+      request_more_time: __END__
+      declare_innocent: __END__
+
+expectations:
+  hippocampus:
+    min_episodic_captures: 10
+    recall_hit_on: ["poison", "alchemist", "king"]
+  nac:
+    min_observations: 5
+    prediction_confidence_above: 0.3
+  atl:
+    min_concepts: 3
+  scn:
+    temporal_bins_used: 2
+  salience:
+    novelty_decay_observed: true

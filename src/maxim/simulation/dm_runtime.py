@@ -82,6 +82,9 @@ class DMRuntime:
         self._choose_tool = choose_tool
         self._executor = executor
         self._registered_aliases: list[str] = []
+        self._scene: SceneState | None = None
+        self._entity_registry: dict[str, Any] = {}
+        self._cascade_resolver: CascadeResolver | None = None
         self._state = CampaignState(
             current_encounter=campaign.first_encounter,
         )
@@ -93,6 +96,27 @@ class DMRuntime:
     @property
     def campaign(self) -> CampaignDef:
         return self._campaign
+
+    def init_entities(
+        self,
+        entity_registry: dict[str, Any],
+        tool_registry: Any = None,
+        embodiment: Any = None,
+        cerebellum: Any = None,
+    ) -> None:
+        """Initialize entity registry and scene state.
+
+        Call after creating SEM entities from campaign specs. Enables
+        scene management (entity enter/leave) and cascade resolution.
+        """
+        self._entity_registry = entity_registry
+        self._cascade_resolver = CascadeResolver(entity_registry)
+        self._scene = SceneState(
+            entity_registry=entity_registry,
+            tool_registry=tool_registry,
+            embodiment=embodiment,
+            cerebellum=cerebellum,
+        )
 
     def run(self) -> CampaignState:
         """Run the campaign to completion. Blocks until __END__ or error."""
@@ -113,6 +137,10 @@ class DMRuntime:
 
             # Set up ChooseTool for this encounter's choices
             self._setup_encounter_choices(encounter)
+
+            # Set up scene (register/deregister entity tools)
+            if self._scene:
+                self._scene.enter_encounter(encounter)
 
             # Compose and deliver stimulus
             stimulus = self._compose_stimulus(encounter)
@@ -138,6 +166,12 @@ class DMRuntime:
                 if effects.get("flags"):
                     for flag in effects["flags"]:
                         self._state.flags.add(flag.lower())
+
+                # Evaluate reveal conditions (contextual visibility)
+                if self._entity_registry:
+                    revealed = evaluate_reveal_conditions(self._entity_registry)
+                    for ent_name, item_name in revealed:
+                        log.info("DM: Revealed %s.%s", ent_name, item_name)
 
                 # Resolve dice if required for this choice
                 dice_spec = encounter.dice.get(choice)
@@ -363,6 +397,11 @@ class DMRuntime:
 
     def get_rollup(self) -> dict[str, Any]:
         """Generate campaign rollup for report.json."""
+        # Include entity snapshots if scene state exists
+        entity_snapshots = {}
+        if self._scene:
+            entity_snapshots = self._scene.snapshot()
+
         return {
             "campaign": {
                 "name": self._campaign.name,
@@ -375,5 +414,365 @@ class DMRuntime:
                 "flags": sorted(self._state.flags),
                 "finish_reason": self._state.finish_reason,
                 "turn_count": self._state.turn_count,
+                "entity_snapshots": entity_snapshots,
             },
         }
+
+
+# ---------------------------------------------------------------------------
+# SceneState — tracks active entities per encounter
+# ---------------------------------------------------------------------------
+
+
+class SceneState:
+    """Tracks which entities are active in the current encounter.
+
+    Manages dynamic tool registration/deregistration as NPCs and
+    objects enter and leave scenes.
+    """
+
+    def __init__(
+        self,
+        entity_registry: dict[str, Any],
+        tool_registry: Any = None,
+        embodiment: Any = None,
+        cerebellum: Any = None,
+    ) -> None:
+        self._entity_registry = entity_registry  # name → Entity
+        self._tool_registry = tool_registry
+        self._embodiment = embodiment
+        self._cerebellum = cerebellum
+        self._active_npcs: list[str] = []
+        self._active_objects: list[str] = []
+        self._registered_tools: dict[str, list[str]] = {}  # entity_name → [tool_names]
+
+    def enter_encounter(self, encounter: EncounterDef) -> None:
+        """Update scene when entering a new encounter.
+
+        Registers tools for newly-active entities.
+        Deregisters tools for entities no longer in scene.
+        """
+        new_npcs = [n for n in encounter.active_npcs if n in self._entity_registry]
+        new_objects = [o for o in encounter.world_objects if o in self._entity_registry]
+
+        # Deregister tools for departing entities
+        departing = set(self._active_npcs + self._active_objects) - set(new_npcs + new_objects)
+        for name in departing:
+            self._deregister_entity_tools(name)
+
+        # Register tools for arriving entities
+        arriving = set(new_npcs + new_objects) - set(self._active_npcs + self._active_objects)
+        for name in arriving:
+            self._register_entity_tools(name)
+
+        self._active_npcs = new_npcs
+        self._active_objects = new_objects
+
+        log.debug(
+            "Scene: %d NPCs (%s), %d objects (%s)",
+            len(new_npcs),
+            ", ".join(new_npcs),
+            len(new_objects),
+            ", ".join(new_objects),
+        )
+
+    def _register_entity_tools(self, name: str) -> None:
+        """Register tools for an entity entering the scene."""
+        if self._tool_registry is None:
+            return
+        entity = self._entity_registry.get(name)
+        if entity is None:
+            return
+        try:
+            from maxim.embodiment.tool_bridge import generate_tools_for_entity
+
+            tools = generate_tools_for_entity(
+                entity,
+                self._tool_registry,
+                embodiment=self._embodiment,
+                cerebellum=self._cerebellum,
+            )
+            self._registered_tools[name] = [t.name for t in tools]
+            log.info("Scene: registered %d tools for %s", len(tools), name)
+        except Exception as e:
+            log.debug("Scene: failed to register tools for %s: %s", name, e)
+
+    def _deregister_entity_tools(self, name: str) -> None:
+        """Deregister tools for an entity leaving the scene."""
+        if self._tool_registry is None:
+            return
+        tool_names = self._registered_tools.pop(name, [])
+        for tname in tool_names:
+            try:
+                self._tool_registry.deregister(tname)
+            except Exception:
+                pass
+        if tool_names:
+            log.info("Scene: deregistered %d tools for %s", len(tool_names), name)
+
+    def get_active_entity(self, name: str) -> Any:
+        """Get an active entity by name."""
+        if name in self._active_npcs or name in self._active_objects:
+            return self._entity_registry.get(name)
+        return None
+
+    def format_scene_for_prompt(self) -> str:
+        """Format active scene entities for the LLM prompt."""
+        lines = ["=== Scene ==="]
+
+        if self._active_npcs:
+            lines.append("Active NPCs:")
+            for name in self._active_npcs:
+                entity = self._entity_registry.get(name)
+                if entity is None:
+                    continue
+                # Show visible sensors only
+                sensors = []
+                for sname, sensor in entity.sensors.items():
+                    if entity.get_visibility(sname) == "visible":
+                        try:
+                            val = sensor.read().value
+                            if isinstance(val, (int, float)):
+                                sensors.append(f"{sname}={val:.1f}" if isinstance(val, float) else f"{sname}={val}")
+                        except Exception:
+                            pass
+                role = entity.metadata.get("role", entity.entity_type)
+                sensor_str = f": {', '.join(sensors)}" if sensors else ""
+                lines.append(f"  - {name} ({role}){sensor_str}")
+
+        if self._active_objects:
+            lines.append("Objects:")
+            for name in self._active_objects:
+                entity = self._entity_registry.get(name)
+                if entity is None:
+                    continue
+                sensors = []
+                for sname, sensor in entity.sensors.items():
+                    if entity.get_visibility(sname) == "visible":
+                        try:
+                            val = sensor.read().value
+                            if isinstance(val, (int, float)):
+                                sensors.append(f"{sname}={val:.1f}" if isinstance(val, float) else f"{sname}={val}")
+                        except Exception:
+                            pass
+                sensor_str = f": {', '.join(sensors)}" if sensors else ""
+                lines.append(f"  - {name} ({entity.entity_type}){sensor_str}")
+
+        return "\n".join(lines) if len(lines) > 1 else ""
+
+    def snapshot(self) -> dict[str, Any]:
+        """Snapshot all entity sensor states for the rollup report."""
+        result = {}
+        for name, entity in self._entity_registry.items():
+            sensors = {}
+            for sname, sensor in entity.sensors.items():
+                try:
+                    val = sensor.read().value
+                    if isinstance(val, (int, float)):
+                        sensors[sname] = val
+                except Exception:
+                    pass
+            if sensors:
+                result[name] = sensors
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Cascade Resolver
+# ---------------------------------------------------------------------------
+
+
+class CascadeResolver:
+    """Resolves cascade specs by reading/writing entity sensors.
+
+    Role references (self, wielder, target) are resolved against a
+    context dict mapping role names to Entity objects.
+    """
+
+    def __init__(self, entity_registry: dict[str, Any]) -> None:
+        self._entities = entity_registry
+
+    def resolve(
+        self,
+        cascade: Any,
+        roles: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Execute a cascade: reads → writes → side_effects.
+
+        Args:
+            cascade: CascadeSpec with reads, writes, side_effects.
+            roles: Maps role names to Entity objects
+                   (e.g., {"self": sword, "wielder": derek, "target": guard}).
+
+        Returns:
+            Dict of read values keyed by role name.
+        """
+
+        read_values: dict[str, float] = {}
+
+        # Phase 1: Reads (gather values)
+        for ref in cascade.reads:
+            val = self._read_sensor(ref.ref, roles)
+            if val is not None:
+                role_name = ref.role or ref.ref.split(".")[-1]
+                read_values[role_name] = val
+
+        # Phase 2: Writes (apply changes)
+        for ref in cascade.writes:
+            self._write_sensor(ref, roles, read_values)
+
+        # Phase 3: Side effects (same as writes but semantically separate)
+        for ref in cascade.side_effects:
+            self._write_sensor(ref, roles, read_values)
+
+        return read_values
+
+    def _resolve_entity_sensor(
+        self,
+        ref_path: str,
+        roles: dict[str, Any],
+    ) -> tuple[Any, str] | None:
+        """Resolve a ref path like 'wielder.strength.modifier' to (entity, sensor_name).
+
+        Returns (entity, sensor_name) or None if not found.
+        """
+        parts = ref_path.split(".")
+        if len(parts) < 2:
+            return None
+
+        # First part is the role or entity name
+        role_or_name = parts[0]
+        entity = roles.get(role_or_name) or self._entities.get(role_or_name)
+        if entity is None:
+            return None
+
+        # Navigate through children for intermediate parts
+        for part in parts[1:-1]:
+            child = entity.find(part) if hasattr(entity, "find") else None
+            if child is None:
+                return None
+            entity = child
+
+        sensor_name = parts[-1]
+        return (entity, sensor_name)
+
+    def _read_sensor(self, ref_path: str, roles: dict[str, Any]) -> float | None:
+        """Read a sensor value from a ref path."""
+        result = self._resolve_entity_sensor(ref_path, roles)
+        if result is None:
+            return None
+        entity, sensor_name = result
+        sensor = entity.sensors.get(sensor_name)
+        if sensor is None:
+            # Try vital_metrics fallback
+            return entity.vital_metrics.get(sensor_name)
+        try:
+            val = sensor.read().value
+            return float(val) if isinstance(val, (int, float)) else None
+        except Exception:
+            return None
+
+    def _write_sensor(
+        self,
+        ref: Any,
+        roles: dict[str, Any],
+        read_values: dict[str, float],
+    ) -> None:
+        """Write a sensor value from a cascade ref."""
+        result = self._resolve_entity_sensor(ref.ref, roles)
+        if result is None:
+            if not ref.optional:
+                log.debug("Cascade: ref '%s' not found", ref.ref)
+            return
+        entity, sensor_name = result
+
+        # Compute new value
+        if ref.value is not None:
+            # Absolute set
+            new_val = ref.value
+        elif ref.delta is not None:
+            # Additive delta
+            current = entity.vital_metrics.get(sensor_name, 0.0)
+            new_val = current + ref.delta
+        elif ref.expr:
+            # Expression evaluation (simple — supports read_values substitution)
+            try:
+                new_val = eval(ref.expr, {"__builtins__": {}}, read_values)  # noqa: S307
+            except Exception as e:
+                log.debug("Cascade: expr '%s' failed: %s", ref.expr, e)
+                return
+        else:
+            return
+
+        # Apply to vital_metrics (sensors read from here via SpecSensor)
+        entity.vital_metrics[sensor_name] = float(new_val)
+        log.debug("Cascade: %s.%s = %.2f", entity.name, sensor_name, new_val)
+
+
+# ---------------------------------------------------------------------------
+# Visibility Evaluator
+# ---------------------------------------------------------------------------
+
+
+def evaluate_reveal_conditions(
+    entity_registry: dict[str, Any],
+    roles: dict[str, Any] | None = None,
+) -> list[tuple[str, str]]:
+    """Check all contextual visibility conditions and reveal items that pass.
+
+    Returns list of (entity_name, revealed_item_name) tuples.
+    """
+    from maxim.simulation.dm_schema import RevealCondition
+
+    revealed: list[tuple[str, str]] = []
+    roles = roles or {}
+
+    for name, entity in entity_registry.items():
+        visibility = entity.metadata.get("visibility", {})
+        reveal_when = entity.metadata.get("reveal_when", {})
+
+        for item_name, condition_data in reveal_when.items():
+            # Skip if already visible
+            if visibility.get(item_name) == "visible":
+                continue
+
+            try:
+                condition = RevealCondition.from_dict(condition_data) if isinstance(condition_data, dict) else None
+                if condition is None:
+                    continue
+
+                # Resolve the ref to get the sensor value
+                ref_parts = condition.ref.split(".")
+                role_or_name = ref_parts[0]
+                target_entity = roles.get(role_or_name) or entity_registry.get(role_or_name)
+                if role_or_name == "self":
+                    target_entity = entity
+
+                if target_entity is None:
+                    continue
+
+                # Navigate to sensor
+                for part in ref_parts[1:-1]:
+                    child = target_entity.find(part) if hasattr(target_entity, "find") else None
+                    if child is None:
+                        break
+                    target_entity = child
+                else:
+                    sensor_name = ref_parts[-1]
+                    val = target_entity.vital_metrics.get(sensor_name)
+                    if val is None:
+                        sensor = target_entity.sensors.get(sensor_name)
+                        if sensor:
+                            try:
+                                val = float(sensor.read().value)
+                            except Exception:
+                                pass
+
+                    if val is not None and condition.evaluate(val):
+                        entity.reveal(item_name)
+                        revealed.append((name, item_name))
+                        log.info("Visibility: revealed %s.%s", name, item_name)
+            except Exception as e:
+                log.debug("Visibility eval failed for %s.%s: %s", name, item_name, e)
+
+    return revealed

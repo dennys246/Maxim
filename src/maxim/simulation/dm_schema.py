@@ -31,6 +31,69 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
+class CascadeRef:
+    """A reference to a sensor on an entity, used in cascade reads/writes."""
+
+    ref: str  # e.g. "wielder.strength.modifier", "self.durability", "target.hp"
+    role: str = ""  # Named role for reads (e.g. "damage_bonus")
+    delta: float | None = None  # Additive change for writes
+    value: float | None = None  # Absolute value set for writes
+    expr: str = ""  # Expression for computed writes (e.g. "-(roll + damage_bonus)")
+    optional: bool = False  # Skip if entity/sensor doesn't exist
+
+
+@dataclass
+class CascadeSpec:
+    """Cross-entity cascade for an affordance.
+
+    When an affordance executes, the cascade resolves reads first (topological
+    order), then applies writes, then side effects. Each step references
+    entities by role (self, wielder, target) resolved at execution time.
+    """
+
+    reads: list[CascadeRef] = field(default_factory=list)
+    writes: list[CascadeRef] = field(default_factory=list)
+    side_effects: list[CascadeRef] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CascadeSpec:
+        """Parse cascade spec from YAML dict."""
+        reads = [CascadeRef(**r) if isinstance(r, dict) else CascadeRef(ref=str(r)) for r in data.get("reads", [])]
+        writes = [CascadeRef(**w) if isinstance(w, dict) else CascadeRef(ref=str(w)) for w in data.get("writes", [])]
+        side_effects = [
+            CascadeRef(**s) if isinstance(s, dict) else CascadeRef(ref=str(s)) for s in data.get("side_effects", [])
+        ]
+        return cls(reads=reads, writes=writes, side_effects=side_effects)
+
+
+@dataclass
+class RevealCondition:
+    """Condition for contextual visibility reveal."""
+
+    ref: str  # Sensor path to check (e.g. "pc.social.rel_guard.trust")
+    op: str  # Comparison operator: >, <, >=, <=, ==
+    value: float  # Threshold value
+
+    def evaluate(self, sensor_value: float) -> bool:
+        """Check if the condition is met."""
+        ops = {
+            ">": lambda a, b: a > b,
+            "<": lambda a, b: a < b,
+            ">=": lambda a, b: a >= b,
+            "<=": lambda a, b: a <= b,
+            "==": lambda a, b: abs(a - b) < 0.001,
+        }
+        fn = ops.get(self.op)
+        if fn is None:
+            return False
+        return fn(sensor_value, self.value)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RevealCondition:
+        return cls(ref=data["ref"], op=data["op"], value=float(data["value"]))
+
+
+@dataclass
 class DiceCheck:
     """A dice roll required by an encounter choice."""
 
