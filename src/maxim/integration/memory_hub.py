@@ -140,6 +140,9 @@ class MemoryHub:
     # Motor learning (optional)
     cerebellum: Any = None  # Cerebellum for forward models + motor programs
 
+    # Embodiment runtime (optional — for body state access + cascade evaluation)
+    embodiment: Any = None
+
     # Long-horizon planning (optional)
     _plan_manager: Any = None
 

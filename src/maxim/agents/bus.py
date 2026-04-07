@@ -472,6 +472,9 @@ class StructuredContext:
     # Provenance: compact trace markdown for LLM context (P7)
     provenance_context: str = ""
 
+    # Body state from Embodiment (interoception — always present when embodied)
+    body_state: str = ""
+
 
 @dataclass
 class PlanProgressContext:

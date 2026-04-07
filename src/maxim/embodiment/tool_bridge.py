@@ -82,7 +82,12 @@ class SensorReadTool(Tool):
 
 
 class ModulatorAffordanceTool(Tool):
-    """Auto-generated tool: execute one affordance on a modulator."""
+    """Auto-generated tool: execute one affordance on a modulator.
+
+    After execution, reads back entity sensor state, evaluates failure
+    modes immediately (don't wait for 1Hz poll), and feeds the actual
+    sensor deltas to Cerebellum for forward model training.
+    """
 
     def __init__(
         self,
@@ -91,6 +96,8 @@ class ModulatorAffordanceTool(Tool):
         affordance_name: str,
         schema: AffordanceSchema,
         tool_name: str,
+        embodiment: Any = None,
+        cerebellum: Any = None,
     ) -> None:
         self.name = tool_name
         self.description = (
@@ -101,16 +108,64 @@ class ModulatorAffordanceTool(Tool):
         self._entity = entity
         self._modulator = modulator
         self._affordance_name = affordance_name
+        self._embodiment = embodiment
+        self._cerebellum = cerebellum
         super().__init__()
 
     def execute(self, **kwargs: Any) -> Any:
         result = self._modulator.execute(self._affordance_name, kwargs)
         if not result.success:
             return ToolOutput(success=False, error=result.error)
+
+        # Read back entity sensor state after action (cascade effects)
+        entity_state = {}
+        try:
+            for sensor_name, sensor in self._entity.sensors.items():
+                reading = sensor.read()
+                if isinstance(reading.value, (int, float)):
+                    entity_state[sensor_name] = reading.value
+        except Exception:
+            pass
+
+        # Immediate failure evaluation — don't wait for 1Hz poll
+        active_failures: list[dict[str, Any]] = []
+        if self._embodiment is not None:
+            try:
+                failure_events = self._embodiment.evaluate_failures()
+                active_failures = [
+                    {"name": ev.failure_name, "entity": ev.entity_path, "pain": ev.pain_intensity}
+                    for ev in failure_events
+                ]
+            except Exception:
+                pass
+
+        # Cerebellum observes cascade outcome for forward model training
+        if self._cerebellum is not None and entity_state:
+            try:
+                sensor_ranges = {}
+                for sname, sensor in self._entity.sensors.items():
+                    schema = getattr(sensor, "reading_schema", None)
+                    if schema and isinstance(schema, dict):
+                        r = schema.get("range")
+                        if r and len(r) == 2:
+                            sensor_ranges[sname] = r
+                self._cerebellum.observe_from_action(
+                    entity_path=self._entity.full_path,
+                    modulator=self._modulator.name,
+                    affordance=self._affordance_name,
+                    params=kwargs,
+                    actual_sensors=entity_state,
+                    sensor_ranges=sensor_ranges,
+                )
+            except Exception:
+                pass
+
         return {
             "entity": result.entity_name,
             "affordance": result.affordance,
             "success": True,
+            "entity_state": entity_state,
+            "active_failures": active_failures,
             **result.metadata,
         }
 
@@ -139,11 +194,17 @@ class EntitySenseTool(Tool):
 def generate_tools_for_entity(
     entity: Entity,
     registry: ToolRegistry,
+    embodiment: Any = None,
+    cerebellum: Any = None,
 ) -> list[Tool]:
     """Generate all tools for an entity tree and register them.
 
     Names are resolved against the registry to avoid collisions — if two
     robots both have a ``shoulder``, the second gets prefixed automatically.
+
+    When *embodiment* is provided, ModulatorAffordanceTools run immediate
+    failure evaluation after execution (no 1Hz poll delay). When *cerebellum*
+    is provided, they feed actual sensor deltas for forward model training.
 
     Parameters
     ----------
@@ -195,6 +256,8 @@ def generate_tools_for_entity(
                     aff_name,
                     aff_schema,
                     tname,
+                    embodiment=embodiment,
+                    cerebellum=cerebellum,
                 )
                 registry.register(tool)
                 existing.add(tname)

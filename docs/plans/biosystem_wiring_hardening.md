@@ -241,6 +241,209 @@ def update_with_entity(self, entity_name: str, entity_type: str) -> float:
 
 ---
 
+## Phase 1.5: Cascade Result Surfacing (~120 LOC)
+
+The bio-systems are now wired (Phase 1), but there's a fundamental gap in how entity state changes flow back to the ExecAgent after tool execution. When a cascade fires (e.g., `slash → sword.durability -0.05 → guard.hp -8 → stamina -0.1 → pain fires`), the ExecAgent only sees **"slash succeeded"** — a 200-char truncated summary. The sensor deltas, failure modes, pain signals, and body state are computed but trapped in the embodiment layer.
+
+This is like having proprioception wired but not connected to consciousness — the body changes, but the brain doesn't know.
+
+### The Current Flow (broken)
+
+```
+ModulatorAffordanceTool.execute()
+  → NarrativeModulator.execute() → predicted_changes in metadata
+  → ModulatorResult → wrapped in ToolOutput
+  → _record_outcome() → "slash succeeded" (200 chars)  ← ExecAgent sees this
+  
+Meanwhile, silently:
+  → Entity.vital_metrics updated
+  → EmbodimentPerceptSource polls at 1Hz → evaluates failures → publishes pain
+  → format_body_state_for_prompt() generates state string
+  → sim_adapter doesn't extract it  ← ExecAgent never sees this
+```
+
+### What Should Happen
+
+After any embodiment tool executes:
+1. **Cascade effects included in tool result** — sensor deltas, failures triggered
+2. **Failure evaluation runs immediately** — not waiting for 1Hz poll
+3. **Body state always in prompt** — like interoception (you always know your body state)
+4. **Cerebellum observes the cascade** — trains forward models on actual sensor deltas
+
+### 1.5a Rich tool results from embodiment tools
+
+**Files:** `embodiment/tool_bridge.py` (~30 LOC)
+
+ModulatorAffordanceTool.execute() currently returns `{entity, affordance, success, **metadata}`. After execution, read back the sensors on all entities touched by the cascade and include the snapshot.
+
+```python
+# In ModulatorAffordanceTool.execute():
+result = self._modulator.execute(self._affordance_name, kwargs)
+if not result.success:
+    return ToolOutput(success=False, error=result.error)
+
+# Read back entity state after cascade resolution
+entity_state = {}
+for sensor_name, sensor in self._entity.sensors.items():
+    try:
+        reading = sensor.read()
+        if isinstance(reading.value, (int, float)):
+            entity_state[sensor_name] = reading.value
+    except Exception:
+        pass
+
+# Check for failure modes that just activated
+active_failures = [
+    {"name": fm.name, "pain": fm.pain_intensity}
+    for fm in self._entity.failure_modes
+    if fm.active
+]
+
+return {
+    "entity": result.entity_name,
+    "affordance": result.affordance,
+    "success": True,
+    "entity_state": entity_state,         # Current sensor values after action
+    "active_failures": active_failures,   # Failure modes now active
+    **result.metadata,                     # includes predicted_changes
+}
+```
+
+This means `_record_outcome()` gets a result_summary like: `"slash on guard_captain: success, entity_state={hp: 22, alertness: 0.9}, active_failures=[]"` instead of just `"slash succeeded"`. NAc learns from richer outcomes. The LLM's reasoning_carryover includes the cascade effects.
+
+**LOC:** ~30
+
+### 1.5b Immediate failure evaluation after embodiment tools
+
+**File:** `embodiment/tool_bridge.py` (~15 LOC)
+
+Don't wait for the 1Hz EmbodimentPerceptSource poll. After any ModulatorAffordanceTool completes, call `evaluate_failures()` on the entity and its ancestors so pain fires synchronously with the action that caused it.
+
+```python
+# In ModulatorAffordanceTool.execute(), after modulator.execute():
+# Evaluate failures immediately (don't wait for 1Hz poll)
+if self._embodiment is not None:
+    failure_events = self._embodiment.evaluate_failures()
+    # Pain is published automatically by evaluate_failures()
+```
+
+This requires passing the `Embodiment` runtime reference to ModulatorAffordanceTool during generation. The `generate_tools_for_entity()` function already receives the tool registry — add an optional `embodiment` parameter.
+
+**LOC:** ~15
+
+### 1.5c Body state as persistent context (interoception)
+
+**Files:** `agents/memory_agent.py:build_context()` + `agents/prompt_builder.py` (~30 LOC)
+
+The agent should **always** see its body state, not just after checking. This is interoception — you don't need to "decide to check" if you're in pain or exhausted. You just know.
+
+Add a `body_state` field to StructuredContext and populate it from Embodiment:
+
+```python
+# In agents/bus.py StructuredContext:
+body_state: str = ""  # Formatted body state from Embodiment (always present)
+
+# In memory_agent.py build_context():
+if self._memory_hub and hasattr(self._memory_hub, '_embodiment'):
+    embodiment = self._memory_hub._embodiment
+    if embodiment is not None:
+        sync_fields["body_state"] = embodiment.format_body_state_for_prompt()
+
+# In prompt_builder.py, add section (CRITICAL priority — always shown):
+if context.body_state:
+    budgeter.add("body_state", context.body_state, SectionPriority.CRITICAL)
+```
+
+Making body state `CRITICAL` priority means it's never dropped under token pressure. The LLM always sees:
+```
+=== Body State ===
+- derek.body.hp: 22 points
+- derek.body.stamina: 0.65 ratio
+- derek.inventory.longsword.durability: 0.85 ratio
+- derek.combat.threat_level: 0.45 ratio (WARN: overextension at 0.9)
+```
+
+**LOC:** ~30
+
+### 1.5d Embodiment reference on MemoryHub
+
+**File:** `integration/memory_hub.py` + `simulation/orchestrator.py` (~10 LOC)
+
+MemoryHub needs an optional `embodiment` reference so `build_context()` can access body state and Cerebellum can be wired to it.
+
+```python
+# In memory_hub.py (already has cerebellum field):
+embodiment: Any = None  # Embodiment runtime for body state access
+
+# In orchestrator.py, after Embodiment init (if/when it exists):
+if aut_memory_hub is not None and aut_embodiment is not None:
+    aut_memory_hub.embodiment = aut_embodiment
+```
+
+**LOC:** ~10
+
+### 1.5e Cerebellum observes cascade outcomes
+
+**File:** `embodiment/tool_bridge.py` (~15 LOC)
+
+After ModulatorAffordanceTool executes and failure evaluation runs, feed the actual sensor readings to Cerebellum so it can train forward models.
+
+```python
+# In ModulatorAffordanceTool.execute(), after evaluate_failures():
+if self._cerebellum is not None:
+    try:
+        self._cerebellum.observe_from_action(
+            entity_path=self._entity.full_path,
+            modulator=self._modulator.name,
+            affordance=self._affordance_name,
+            params=kwargs,
+            actual_sensors=entity_state,
+            sensor_ranges={s: self._entity.sensors[s].reading_schema.get("range", [0, 1])
+                          for s in entity_state},
+        )
+    except Exception:
+        pass
+```
+
+Over a campaign, Cerebellum learns: "slash with force=0.8 at this threat_level → durability drops by 0.05, stamina drops by 0.1." By mid-campaign, it predicts cascade outcomes before they happen.
+
+**LOC:** ~15
+
+### What This Enables for the Decision Loop
+
+After Phase 1.5, the ExecAgent's experience of a `slash` changes from:
+
+**Before:**
+```
+Tool result: slash succeeded
+(next cycle, 1s later) Body state shows hp changed... if it's in the prompt... which it isn't
+```
+
+**After:**
+```
+Tool result: slash on guard_captain — success
+  entity_state: {hp: 22, alertness: 0.9}
+  active_failures: []
+  predicted_changes: {hp: -8, alertness: +0.2}
+
+=== Body State ===  (always present, CRITICAL priority)
+- derek.body.hp: 26 points
+- derek.body.stamina: 0.55 ratio (dropped from 0.65)
+- derek.inventory.longsword.durability: 0.80 ratio (dropped from 0.85)
+- derek.combat.threat_level: 0.60 ratio
+
+=== Causal Predictions ===
+- tool:slash → success (confidence=0.72, based on 4 prior observations)
+
+=== Available Motor Programs ===
+- slash_combo (confidence=0.45, 3 runs, success=67%)
+  Steps: derek.combat.attack({target: "guard", weapon: "longsword"}) → ...
+```
+
+The LLM now sees the full cascade effects, the body state, and learned predictions — all in one prompt. This is the bio-inspired model: action → proprioceptive feedback → updated world model → next decision.
+
+---
+
 ## Phase 2: Pipeline Correctness (~150 LOC)
 
 Systems that are connected but produce wrong outputs.
@@ -885,23 +1088,25 @@ expectations:
 | Phase | What | LOC | Days |
 |---|---|---|---|
 | **Phase 1** | Critical wiring (9 items) | ~200 | ~1.5 |
+| **Phase 1** | **SHIPPED** (6c262c5) | 189 | done |
+| **Phase 1.5** | Cascade result surfacing (5 items) | ~120 | ~1 |
 | **Phase 2** | Pipeline correctness (10 items) | ~150 | ~1 |
 | **Phase 3** | Percept abstraction + entity-modulated perception | ~180 | ~1 |
 | **Phase 4** | Design gap fixes (6 items) | ~80 | ~0.5 |
 | **Phase 5** | Pipeline audit script | ~250 | ~0.5 |
 | **Phase 6** | Sensory ablation campaign YAML | ~150 | ~0.5 |
-| **Total** | | **~1,010** | **~5** |
+| **Total** | | **~1,130** | **~6** |
 
 ### Implementation Order
 
-1. **Phase 1.1-1.2** first (init systems + connect) — unlocks everything else
-2. **Phase 1.3** (NAc observe) — most impactful single fix
+1. ~~**Phase 1.1-1.9** (critical wiring) — **SHIPPED** (commit 6c262c5)~~
+2. **Phase 1.5** (cascade surfacing) — rich tool results, immediate failure eval, body state in prompt, Cerebellum observation
 3. **Phase 2.1** (forming boost) — most impactful correctness fix
-4. **Remaining Phase 1** (PainBus→NAc, SCN capture, Cerebellum, motor programs, novelty)
-5. **Remaining Phase 2** (context_match, decay, concept gate, pain cooldown, priority, truncation, thread safety)
-6. **Phase 3** (percept abstraction) — enables rich DM percepts
-7. **Phase 4** (design gaps)
-8. **Phase 5** (audit script) — validates everything
+4. **Remaining Phase 2** (context_match, decay, concept gate, pain cooldown, priority, truncation, thread safety)
+5. **Phase 3** (percept abstraction) — enables rich DM percepts with entity-modulated SensoryGate
+6. **Phase 4** (design gaps)
+7. **Phase 5** (audit script) — validates everything
+8. **Phase 6** (sensory ablation campaign)
 
 ### Verification
 

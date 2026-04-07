@@ -910,6 +910,10 @@ class PromptBuilder:
                 outcome_lines.append(f"- {tool}: {success}" + (f" ({result})" if result else ""))
             budgeter.add("recent_outcomes", "\n".join(outcome_lines), SectionPriority.IMPORTANT)
 
+        # ── Body state (interoception — always present when embodied) ──
+        if context.body_state:
+            budgeter.add("body_state", context.body_state, SectionPriority.CRITICAL)
+
         # ── Memory recall sections (from Hippocampus + ATL) ──
         if context.relevant_memories:
             mem_lines = ["=== Relevant Memories ==="]
@@ -1011,10 +1015,7 @@ class PromptBuilder:
                 rate = prog.get("success_rate", 0)
                 execs = prog.get("executions", 0)
                 steps_str = " → ".join(prog.get("steps", [])[:5])
-                motor_lines.append(
-                    f"- {name} (confidence={conf:.2f}, {execs} runs, "
-                    f"success={rate:.0%})"
-                )
+                motor_lines.append(f"- {name} (confidence={conf:.2f}, {execs} runs, success={rate:.0%})")
                 if steps_str:
                     motor_lines.append(f"  Steps: {steps_str}")
                 risks = prog.get("risks", [])

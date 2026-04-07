@@ -989,6 +989,16 @@ class MemoryAgent(Agent, AgentOutputMixin):
         except Exception:
             pass  # Cerebellum not critical for context building
 
+        # Body state from Embodiment (interoception — always present when embodied)
+        try:
+            embodiment = getattr(self._memory_hub, "embodiment", None) if self._memory_hub else None
+            if embodiment is not None:
+                body_str = embodiment.format_body_state_for_prompt()
+                if body_str:
+                    sync_fields["body_state"] = body_str
+        except Exception:
+            pass  # Embodiment not critical for context building
+
         context = StructuredContext(**sync_fields)
 
         # Persist snapshot to shared outputs if requested

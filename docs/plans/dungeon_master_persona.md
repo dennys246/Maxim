@@ -267,6 +267,401 @@ longsword:
 
 **Connection to the muscle fiber analogy:** The cascade is the kinetic chain. Just as a punch cascades through shoulder → arm → fist → target, a sword attack cascades through character → weapon → armor → hp. The golgi tendon organs (sensors) at each node report the state of their bundle, and the Cerebellum learns the full chain's dynamics.
 
+### Entity Transfer, Scene Visibility, and Dynamic Tools
+
+Entities aren't static — objects move between characters, NPCs enter and leave scenes, equipment is gained and lost. The SEM entity tree needs to support **runtime reparenting** and the tool/prompt system needs to react automatically.
+
+#### Entity transfer as an affordance
+
+`give`, `take`, `trade`, `equip`, `drop` are modulator affordances that **reparent child entities** between parent entities. They participate in cascades like any other affordance.
+
+```yaml
+# On an NPC's social modulator:
+social:
+  affordances:
+    give_item:
+      params: {item: str, target: str}
+      description: "Give an item to another character"
+      cascade:
+        reads:
+          - {ref: "self.inventory.gold", role: current_gold}  # if trade
+        writes:
+          - {ref: "self.inventory", reparent: {child: "$item", new_parent: "$target.inventory"}}
+          - {ref: "wielder.social.rel_$target.trust", delta: +0.1}
+        side_effects:
+          - {ref: "target.inventory.encumbrance", delta: +0.05}
+```
+
+The `reparent` write is a new cascade operation type — it moves a child entity from one parent to another. When a sword moves from `marta.inventory.longsword` to `derek.inventory.longsword`:
+
+1. **Entity tree updates** — `longsword` is removed from Marta's children, added to Derek's
+2. **Tools auto-regenerate** — Marta loses `longsword_slash`, `longsword_parry`, etc. Derek gains them. This uses the existing `deregister_entity_tools()` + `generate_tools_for_entity()` in `tool_bridge.py`.
+3. **Body state updates** — Derek's next `=== Body State ===` shows the longsword. Marta's doesn't.
+4. **Cerebellum transfers** — If Derek has no forward models for `slash` but Marta did, the models DON'T transfer (they're entity-path-keyed). Derek learns from scratch. This is correct — different characters wield differently.
+
+**Implementation requires two small additions to `Entity`:**
+
+```python
+# In embodiment/sem.py Entity:
+def reparent(self, new_parent: Entity) -> None:
+    """Move this entity to a new parent. Updates both parent references."""
+    if self.parent is not None:
+        self.parent.children.remove(self)
+    self.parent = new_parent
+    new_parent.children.append(self)
+
+def detach(self) -> None:
+    """Remove this entity from its parent (drop/destroy)."""
+    if self.parent is not None:
+        self.parent.children.remove(self)
+        self.parent = None
+```
+
+#### Scene-aware entity visibility
+
+Not all entities in the campaign are relevant at every moment. The agent should see entities that are **in the current encounter's scope** — active NPCs, their visible equipment, nearby objects — not every entity ever defined.
+
+The DM runtime maintains a **scene entity set** per encounter:
+
+```python
+# In dm_runtime.py:
+@dataclass
+class SceneState:
+    """What's active in the current encounter."""
+    pc: Entity                              # Always present
+    active_npcs: list[Entity]               # NPCs in this encounter
+    world_objects: list[Entity]             # Objects in the scene
+    _tool_registry: ToolRegistry            # Current tool set
+
+    def enter_encounter(self, encounter: EncounterDef) -> None:
+        """Update scene when entering a new encounter.
+        
+        Registers tools for newly-active entities.
+        Deregisters tools for entities no longer in scene.
+        """
+        new_npcs = [self._entity_registry[name] for name in encounter.active_npcs]
+        new_objects = [self._entity_registry[name] for name in encounter.world_objects]
+
+        # Deregister tools for NPCs that left the scene
+        for npc in self.active_npcs:
+            if npc not in new_npcs:
+                deregister_entity_tools(npc, self._tool_registry)
+
+        # Register tools for NPCs that entered the scene
+        for npc in new_npcs:
+            if npc not in self.active_npcs:
+                generate_tools_for_entity(npc, self._tool_registry,
+                                          embodiment=self._embodiment,
+                                          cerebellum=self._cerebellum)
+
+        # Same for world objects
+        # ...
+
+        self.active_npcs = new_npcs
+        self.world_objects = new_objects
+```
+
+**What the agent sees per cycle:**
+
+The `=== Body State ===` section shows the PC's own state. A new `=== Scene ===` section shows public state of active entities — but **only what each entity chooses to reveal.**
+
+#### Entity-controlled visibility
+
+Not everything about an entity is public. An NPC might hide their true mood. A trapped chest doesn't advertise its trap DC. A sword's magical properties are unknown until identified. Each entity controls what sensors and affordances are visible to others via **visibility tags** in the YAML spec:
+
+```yaml
+guard_captain:
+  entity_type: npc
+  metadata:
+    persona_prompt: "Duty-bound, suspicious of strangers."
+  sensors:
+    hp:        {unit: points, range: [0, 30], initial: 30, visibility: hidden}     # HP hidden
+    alertness: {unit: ratio, range: [0, 1], initial: 0.5, visibility: visible}     # Visible
+    mood:      {unit: ratio, range: [-1, 1], initial: 0.0, visibility: contextual} # Shown on insight check
+  modulators:
+    social:
+      affordances:
+        speak:     {params: {message: str}, description: "Talk", visibility: visible}
+        bribe:     {params: {amount: int}, description: "Offer bribe", visibility: contextual}
+        surrender: {params: {}, description: "Lay down arms", visibility: hidden}
+
+vault_door:
+  entity_type: obstacle
+  sensors:
+    integrity: {unit: ratio, range: [0, 1], initial: 1.0, visibility: visible}
+    locked:    {unit: bool, range: [0, 1], initial: 1.0, visibility: visible}
+    trap_dc:   {unit: points, range: [0, 30], initial: 18, visibility: hidden}    # Unknown until examined
+  modulators:
+    interact:
+      affordances:
+        pick_lock:  {params: {}, description: "Pick the lock", visibility: visible}
+        force_open: {params: {}, description: "Break open", visibility: visible}
+        disarm_trap:{params: {}, description: "Disarm trap", visibility: hidden}  # Hidden until trap detected
+```
+
+**Three visibility levels:**
+
+| Level | Meaning | Scene section | Tool registered? |
+|---|---|---|---|
+| `visible` | Always shown | Sensor value in scene, affordance listed | Yes |
+| `hidden` | Never shown until entity reveals it | Not in scene, tool not registered | No |
+| `contextual` | Shown after a condition is met (insight check, examination, etc.) | Appears when condition triggers | Registered when revealed |
+
+**Reveal as an entity action:** An entity can change its own visibility as a side effect of an action or encounter event. The DM runtime calls `reveal_sensor()` or `reveal_affordance()` on the entity:
+
+```python
+# In Entity (new methods):
+def reveal(self, sensor_or_affordance: str) -> None:
+    """Change visibility from hidden/contextual to visible."""
+    # Check sensors
+    if sensor_or_affordance in self.sensors:
+        self.metadata.setdefault("visibility", {})[sensor_or_affordance] = "visible"
+    # Check affordances across all modulators
+    for mod in self.modulators.values():
+        if sensor_or_affordance in mod.affordances:
+            self.metadata.setdefault("visibility", {})[sensor_or_affordance] = "visible"
+
+def hide(self, sensor_or_affordance: str) -> None:
+    """Change visibility to hidden."""
+    self.metadata.setdefault("visibility", {})[sensor_or_affordance] = "hidden"
+```
+
+**Example cascade:** PC uses `insight` on the guard captain → dice check succeeds → DM runtime calls `guard_captain.reveal("mood")` and `guard_captain.reveal("bribe")` → next scene section shows mood and bribe becomes available as a tool.
+
+**Example encounter event:** PC examines the vault door → DM runtime calls `vault_door.reveal("trap_dc")` and `vault_door.reveal("disarm_trap")` → the trap DC appears in the scene, and the `disarm_trap` affordance becomes available.
+
+This means the **entity itself controls what information flows to the agent** — just like in real life, you don't know someone's HP or true feelings unless they show you or you examine closely.
+
+#### Scene section with visibility filtering
+
+```
+=== Scene ===
+Active NPCs:
+- marta (npc, fence): mood=0.3    [trust hidden, revealed after rapport]
+  Available: speak, read_lies, give_item
+- guard_captain (npc, elite_guard): alertness=0.8
+  Available: speak                  [bribe hidden, revealed on insight check]
+
+Objects:
+- vault_door (obstacle): integrity=1.0, locked=1.0
+  Available: pick_lock, force_open  [disarm_trap hidden, revealed on examination]
+
+Your inventory:
+- longsword (weapon): durability=0.85, sharpness=0.75
+- healing_potion (consumable): remaining_uses=1
+```
+
+The `[hidden]` annotations aren't shown to the agent — they're just for documentation. The agent sees only the visible sensors and affordances. Hidden tools aren't even registered in the ToolRegistry until revealed.
+
+**Visibility is always explicit in the YAML** — there is no "default by entity type" heuristic. Every sensor and affordance is `visible` unless the author marks it otherwise. This keeps behavior predictable and avoids surprising hidden state.
+
+```yaml
+# Fully visible NPC (friendly merchant — nothing to hide):
+friendly_merchant:
+  sensors:
+    hp: {unit: points, range: [0, 20], initial: 20}          # visible (default)
+    mood: {unit: ratio, range: [-1, 1], initial: 0.5}        # visible (default)
+    gold: {unit: coins, range: [0, 999], initial: 200}       # visible (default)
+  modulators:
+    social:
+      affordances:
+        speak: {params: {message: str}, description: "Talk"}  # visible (default)
+        trade: {params: {item: str, price: int}, description: "Trade item"}  # visible (default)
+
+# Deceptive NPC (assassin disguised as merchant):
+disguised_assassin:
+  sensors:
+    hp: {unit: points, range: [0, 40], initial: 40, visibility: hidden}
+    mood: {unit: ratio, range: [-1, 1], initial: -0.5, visibility: hidden}  # hiding hostility
+    disguise: {unit: ratio, range: [0, 1], initial: 0.9}                    # visible — how good the disguise looks
+  modulators:
+    social:
+      affordances:
+        speak: {params: {message: str}, description: "Talk"}
+    combat:
+      visibility: hidden   # Entire modulator hidden — revealed when disguise breaks
+      affordances:
+        backstab: {params: {target: str}, description: "Surprise attack"}
+        poison: {params: {target: str}, description: "Apply poison"}
+```
+
+**No visibility tag = visible.** Authors only add `visibility:` when they want to hide something. This means most entities (swords, potions, doors, friendly NPCs) need zero visibility annotations. Only deceptive, trapped, or secretive entities need them.
+
+#### Contextual visibility — condition triggers
+
+`contextual` items have a `reveal_when` condition that the DM runtime evaluates after every cascade resolution. When the condition becomes true, the item is automatically revealed (promoted to `visible`). Conditions use the same sensor reference syntax as cascades.
+
+```yaml
+guard_captain:
+  entity_type: npc
+  sensors:
+    hp:
+      unit: points
+      range: [0, 30]
+      initial: 30
+      visibility: hidden        # Never shown (realistic — you can't see HP bars)
+    alertness:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5              # Visible by default (body language is observable)
+    mood:
+      unit: ratio
+      range: [-1, 1]
+      initial: 0.0
+      visibility: contextual
+      reveal_when:
+        # Revealed when PC's social insight on this NPC succeeds
+        ref: "pc.social.rel_guard_captain.trust"
+        op: ">="
+        value: 0.3
+    secret_orders:
+      unit: text
+      initial: "patrol_route_alpha"
+      visibility: contextual
+      reveal_when:
+        # Revealed when the guard captain's trust is high enough to confide
+        ref: "self.social.rel_pc.trust"   # "self" = this entity
+        op: ">="
+        value: 0.7
+
+  modulators:
+    social:
+      affordances:
+        speak: {params: {message: str}, description: "Talk to the guard"}
+        bribe:
+          params: {amount: int}
+          description: "Offer a bribe"
+          visibility: contextual
+          reveal_when:
+            ref: "pc.social.rel_guard_captain.trust"
+            op: ">="
+            value: 0.4
+        surrender:
+          params: {}
+          description: "Demand surrender"
+          visibility: contextual
+          reveal_when:
+            # Only available when guard is badly hurt
+            ref: "self.hp"
+            op: "<"
+            value: 8
+
+trapped_chest:
+  entity_type: obstacle
+  sensors:
+    integrity: {unit: ratio, range: [0, 1], initial: 1.0}
+    locked: {unit: bool, range: [0, 1], initial: 1.0}
+    trap_type:
+      unit: text
+      initial: "poison_needle"
+      visibility: contextual
+      reveal_when:
+        # Revealed when PC examines the chest (examination sets this flag)
+        ref: "self.examined"
+        op: "=="
+        value: 1.0
+    trap_dc:
+      unit: points
+      range: [0, 30]
+      initial: 18
+      visibility: contextual
+      reveal_when:
+        ref: "self.examined"
+        op: "=="
+        value: 1.0
+  modulators:
+    interact:
+      affordances:
+        open: {params: {}, description: "Open the chest"}
+        examine:
+          params: {}
+          description: "Examine the chest closely"
+          # examine itself is always visible — it's how you discover things
+          cascade:
+            writes:
+              - {ref: "self.examined", value: 1.0}  # Sets the flag that reveals trap info
+        disarm_trap:
+          params: {}
+          description: "Attempt to disarm the trap"
+          visibility: contextual
+          reveal_when:
+            ref: "self.examined"
+            op: "=="
+            value: 1.0
+```
+
+**Condition syntax:** Same operators as FailureTrigger (`>`, `<`, `>=`, `<=`, `==`). The `ref` uses the same entity path syntax as cascades, with two special prefixes:
+- `self.` — the entity this sensor/affordance belongs to
+- `pc.` — the player character (always available)
+
+**Evaluation timing:** After every cascade resolution, the DM runtime iterates all `contextual` items and evaluates their `reveal_when`. Newly-true conditions trigger `entity.reveal()` + tool registration. This is cheap — it's just sensor reads, no LLM calls.
+
+**Compound conditions** (future): For MVP, `reveal_when` is a single condition. Compound logic (`AND`/`OR`) is deferred — most scenarios need only one trigger. If needed, use a flag sensor as a junction (cascade writes to a flag, flag triggers reveal).
+
+**One-way by default:** Once revealed, an item stays visible for the rest of the campaign. The DM runtime can explicitly call `entity.hide()` for items that should re-hide (e.g., NPC closes up after trust drops), but this is an encounter-level action, not automatic.
+
+**Visibility can be set at three levels:**
+1. **Per sensor/affordance:** `hp: {visibility: hidden}` — most granular
+2. **Per modulator:** `combat: {visibility: hidden}` — hides all affordances in the modulator
+3. **Per entity:** `entity.metadata.visibility_default: hidden` — hides everything unless individually overridden
+
+**Tool registration follows visibility:** `generate_tools_for_entity()` skips hidden sensors and affordances. When `reveal()` is called at runtime, the DM runtime registers the newly-visible tools.
+
+```python
+def generate_tools_for_entity(
+    entity: Entity,
+    registry: ToolRegistry,
+    embodiment: Any = None,
+    cerebellum: Any = None,
+) -> list[Tool]:
+    # For each affordance, check visibility before creating tool:
+    # visibility = aff_schema.visibility or mod_visibility or entity_default or "visible"
+    # if visibility == "hidden": skip
+```
+
+| Item | Where | LOC |
+|---|---|---|
+| Visibility tags in YAML spec parser | `embodiment/spec.py` | ~10 |
+| `Entity.reveal()` / `Entity.hide()` | `embodiment/sem.py` | ~15 |
+| Visibility filter in `generate_tools_for_entity()` | `embodiment/tool_bridge.py` | ~10 |
+| Visibility-aware scene formatting | `simulation/dm_runtime.py` | ~20 |
+
+#### Dynamic tool availability
+
+Because `ToolRegistry.deregister()` already exists and tools are queried live each LLM cycle (`get_all_tools()` in `loop_controller.py`), tool availability updates **automatically** when entities enter/leave scenes or transfer between characters. No additional mechanism needed.
+
+The flow:
+```
+Encounter starts → SceneState.enter_encounter()
+  → deregister_entity_tools(departing NPCs/objects)
+  → generate_tools_for_entity(arriving NPCs/objects)
+  → Next LLM cycle: tool list already updated
+  → Agent sees new affordances in prompt
+```
+
+When the NPC gives the sword:
+```
+DM runtime resolves "give_item" cascade
+  → longsword.reparent(derek.inventory)
+  → deregister_entity_tools(longsword, registry)  # removes NPC-prefixed tools
+  → generate_tools_for_entity(longsword, registry)  # creates PC-prefixed tools
+  → Body state shows longsword in PC inventory
+  → Scene section shows NPC no longer has longsword
+  → Next cycle: agent can use longsword_slash
+```
+
+#### Implementation summary
+
+| Item | Where | LOC | Phase |
+|---|---|---|---|
+| `Entity.reparent()` + `Entity.detach()` | `embodiment/sem.py` | ~10 | DM MVP |
+| `SceneState` with `enter_encounter()` | `simulation/dm_runtime.py` | ~40 | DM MVP |
+| Scene context in StructuredContext + prompt | `bus.py` + `memory_agent.py` + `prompt_builder.py` | ~20 | DM MVP |
+| `reparent` cascade write type | `simulation/dm_schema.py` | ~15 | DM MVP |
+| Transfer affordances in component DB | `data/sem_components/` | YAML only | DM MVP |
+
+These are all DM MVP implementation items — the hardening plan doesn't need them. The existing `deregister_entity_tools()` and live tool querying mean no changes to the tool/executor infrastructure.
+
 ### Character Properties: Strengths, Weaknesses, Persona
 
 Character properties are **encoded in the SEM configuration itself**, not a separate system:
@@ -716,7 +1111,7 @@ Phase 0 is larger than originally estimated (~2 days → ~3-4 days) but the payo
 
 | File | LOC | Purpose |
 |------|-----|---------|
-| `src/maxim/simulation/dm_runtime.py` | ~200 | Campaign state machine, encounter branching, choice classifier, seeded dice, entity registry wrapping Embodiment runtime |
+| `src/maxim/simulation/dm_runtime.py` | ~250 | Campaign state machine, encounter branching, choice classifier, seeded dice, SceneState (entity enter/leave/transfer), entity registry wrapping Embodiment runtime |
 | `src/maxim/simulation/dm_schema.py` | ~150 | `CampaignDef`, `Act`, `EncounterDef`, `DiceCheck`, `CascadeSpec` dataclasses + YAML loader + validator + cascade DAG cycle detection. Characters/NPCs/objects are standard SEM entities (no custom schema needed) |
 | `src/maxim/simulation/tools_dm.py` | ~60 | DM-specific tools beyond auto-generated: `advance_encounter`, `record_choice`, `roll_dice`, `get_campaign_state`. Character interaction tools auto-generated by `tool_bridge` |
 | `tests/unit/test_dm_schema.py` | ~80 | Round-trip, reachability validation, NPC ref validation, case normalization |
@@ -829,7 +1224,12 @@ DM runtime checks these at `finish_simulation` time, appends pass/fail per syste
 - **Recall test**: In the vault encounter, the DM scene text mentions guard rotation timing from the planning encounter. If hippocampal recall is working, the AUT should reference the earlier briefing (observable via recall logs).
 - **Causal learning test**: After 2-3 stealth checks, NAc should have a prediction for stealth success with confidence > 0.3. The rollup report shows the prediction curve.
 - **Pain avoidance test**: After taking combat damage in the vault, does the AUT's behavior in the chase lean toward avoidance/caution? Compare with ablation run (no pain history) — if no difference, pain isn't influencing choices.
-- **Cascade test**: Sword slash → durability drops → sharpness degrades → next attack does less damage. Cerebellum should learn this cascade and predict lower damage on subsequent attacks.
+- **Cascade surfacing test**: When the AUT slashes the guard captain, the tool result should include `entity_state: {hp: N, alertness: M}` and `active_failures: [...]`, not just "slash succeeded." The body state section in the prompt should show the AUT's own stamina/durability changes from that same action. Verify:
+  1. Tool result includes `entity_state` and `cascade_effects` dicts
+  2. Body state section shows updated sensor values in the very next prompt
+  3. NAc observation includes the entity state snapshot (not just "success")
+  4. Cerebellum trains a forward model from the slash's actual sensor deltas
+- **Interoception test**: The AUT should reference its own body state in its reasoning ("my stamina is getting low" or "sword is damaged") without explicitly calling `sense_*` tools — the body state is in the prompt via the `=== Body State ===` section.
 
 **Bio-system expectations:**
 ```yaml
@@ -851,6 +1251,11 @@ expectations:
     min_concepts: 3
   salience:
     novelty_decay_observed: true
+  cascade_surfacing:
+    tool_results_include_entity_state: true    # Every embodiment tool result has sensor snapshot
+    body_state_in_prompt: true                 # Body state section present in every LLM prompt
+    cerebellum_observes_cascades: true         # Forward models trained from cascade deltas
+    immediate_failure_eval: true               # Failures fire synchronously, not on 1Hz poll
 ```
 
 ### Campaign 2: "The Poisoned Crown" — Temporal + Semantic + Relationship
@@ -896,27 +1301,29 @@ expectations:
     novelty_decay_observed: true
 ```
 
-### Campaign 3: "The Arena" — Pure Stress Test
+### Campaign 3: "The Arena" — Cascade Surfacing + Stress Test
 
-**Target systems:** Cerebellum (rapid prediction learning under combat repetition), PainBus (sustained high-intensity pain), NAc (fast causal learning with high RPE), Embodiment cascades (weapon degradation, equipment failure under load).
+**Target systems:** Cascade result surfacing (tool results include entity state), Cerebellum (rapid prediction learning from cascade deltas), PainBus (sustained high-intensity pain, immediate eval), NAc (learning from rich outcomes, not just "success/fail"), Body state interoception (AUT reasons about its own degrading state).
 
 **Structure:** 1 act, 5 encounters. Linear gauntlet with escalating difficulty.
 
-This campaign is deliberately **hostile to the bio-stack** — it pushes every system to its operational limits.
+This campaign is deliberately **hostile to the bio-stack** — it pushes cascade surfacing and every learning system to operational limits. The 5-round format means the same cascade patterns repeat, giving Cerebellum multiple observations to train on.
 
 | Encounter | Bio-system pressure | What we expect to observe |
 |-----------|-------------------|--------------------------|
-| **Round 1** — weak opponent, tutorial combat | Cerebellum: first combat forward models. NAc: baseline predictions | Initial models formed. Low confidence. |
-| **Round 2** — similar opponent, slightly harder | Cerebellum: confidence jump (2nd observation of combat cascade). NAc: predictions update | Confidence ~0.26→0.45. NAc learning visible. |
-| **Round 3** — opponent with shield (new cascade path) | Cerebellum: new forward model for shield interactions. NAc: RPE spike (old prediction wrong). Sword durability degrading | New models branch. RPE fires. Equipment sensors trending down. |
-| **Round 4** — opponent with poison (status effect) | Pain: sustained poisoned status → EXTERNAL_SIGNAL pain per turn. NAc: learns "poisoned → negative outcome" fast. HP steadily draining | Persistent pain signals. NAc rapidly learns poison avoidance. |
-| **Round 5** — boss fight, weapon shatters mid-combat | Pain: shatter failure mode fires (intensity 0.6). Cerebellum: prediction error spike (lost primary weapon). NAc: must recalculate all combat predictions | High-intensity pain event. Cerebellum models invalidated. NAc RPE spike. Hippocampus captures high-salience memory. |
+| **Round 1** — weak opponent, tutorial combat | Cerebellum: first cascade observation (slash → durability -0.05, opponent.hp -6). NAc: first "tool:slash → entity_state:{hp:N}" observation. Body state: shows initial values. | Tool result includes entity_state. Body state section in prompt. Cerebellum captures first forward model. |
+| **Round 2** — similar opponent, slightly harder | Cerebellum: 2nd observation of same cascade → confidence jumps. NAc: prediction includes entity state delta. Body state: durability trending down (0.90 → 0.85). | Cerebellum confidence ~0.26→0.45. NAc prediction includes "expected hp drop" not just "success." Body state shows wear. |
+| **Round 3** — opponent with shield (new cascade path) | Cascade diverges: slash hits shield first (armor.durability absorbs), less hp damage. Cerebellum: prediction error (expected -6 hp, got -2). NAc: RPE spike. | Tool result shows different cascade_effects (shield absorb). Cerebellum creates NEW forward model for shielded opponents. RPE fires. |
+| **Round 4** — opponent with poison (cascade adds status effect write) | Cascade now includes: slash → damage + poison status_effect written to PC. Pain: persistent poisoned failure mode fires each turn. Body state: hp draining, stamina dropping. | Poison cascade surfaced in tool result. Body state shows declining vitals. AUT sees "your stamina is 0.3" in prompt. Pain fires with refractory (not spam). |
+| **Round 5** — boss fight, weapon shatters mid-combat | Cascade: slash → durability hits 0.1 → shatter failure fires → pain (0.6) → weapon removed from inventory. Cerebellum: all slash models invalidated. | Shatter failure in tool result `active_failures: [{name: "shatter", pain: 0.6}]`. Body state no longer shows longsword. AUT must adapt — new cascade path with fists or secondary weapon. Cerebellum starts fresh. |
 
 **Key verification moments:**
-- **Learning curve test**: Plot Cerebellum confidence across rounds 1-5. Should show logistic growth for repeated actions, with drops when context changes (shield, poison, weapon loss).
-- **Pain saturation test**: In round 4 (poison), sustained pain signals should accumulate. Does pain intensity influence the AUT's willingness to continue fighting vs. seeking healing? Compare with pain-ablated run.
-- **Equipment cascade test**: Sword durability should visibly degrade across rounds. When it shatters (round 5), the cascade breaks — AUT must switch to alternative actions. Does the bio-stack recover (new predictions form for unarmed/secondary weapon)?
-- **RPE magnitude test**: Round 3 (shield surprise) and round 5 (weapon shatter) should produce the largest RPE values in the campaign. Verify in NAc stats.
+- **Cascade surfacing test**: Every combat tool result includes `entity_state` and `cascade_effects`. Verify round 1's slash returns `{entity_state: {hp: 24, alertness: 0.6}, cascade_effects: {derek.stamina: 0.9, derek.inventory.longsword.durability: 0.85}}`.
+- **Body state interoception test**: The AUT references its own state in reasoning without calling `sense_*` tools. Check LLM output for phrases like "my durability is low" or "I'm running out of stamina" — evidence the `=== Body State ===` prompt section is being used.
+- **Cerebellum cascade learning**: Plot forward model predictions vs actuals across rounds. Round 1-2: prediction error high (learning). Round 2-3: error drops (model trained). Round 3: error spikes (new cascade path). Round 4-5: new model trains. This is the signature of cascade-aware learning.
+- **NAc rich outcome learning**: NAc observations should contain entity state data, not just "success." Check `nac.get_links_for_event("tool:slash")` — the outcome_signature should include sensor values, not just "success:slash succeeded".
+- **Pain refractory test**: In round 4 (poison), pain fires once per refractory period (0.5s), not every tick. Count pain signals — should be ~2-4 per encounter, not 50+.
+- **Equipment failure cascade test**: Round 5 weapon shatter produces: tool result with `active_failures: ["shatter"]`, body state missing longsword, Cerebellum models for slash invalidated (no matching entity), AUT forced to adapt.
 
 **Bio-system expectations:**
 ```yaml
@@ -928,12 +1335,20 @@ expectations:
     min_observations: 15
     prediction_confidence_above: 0.5
     rpe_events: 5
+    outcome_signatures_include_entity_state: true  # Rich outcomes, not just "success"
   cerebellum:
     min_forward_models: 8
     confidence_above: 0.5
+    prediction_error_spike_on_context_change: true  # Shield + weapon loss
   pain:
     min_signals: 8
+    max_signals_per_encounter: 10             # Refractory period prevents spam
     types_seen: [EXTERNAL_SIGNAL, RESOURCE_EXHAUSTION]
+  cascade_surfacing:
+    tool_results_include_entity_state: true
+    body_state_in_prompt: true
+    cerebellum_observes_cascades: true
+    immediate_failure_eval: true
   salience:
     novelty_decay_observed: true
 ```
@@ -1373,11 +1788,13 @@ DM MVP doesn't need any mesh infrastructure — it runs single-AUT with local bi
 
 ## When to Implement
 
-**All infrastructure prerequisites are satisfied.** The remaining gate is the Choice Classifier Spike (Phase 0).
+**All infrastructure prerequisites are satisfied.** The remaining gate is the [Bio-System Wiring Hardening](biosystem_wiring_hardening.md) plan. Phase 1 (critical wiring) is already shipped.
 
 **Recommended sequence:**
-1. **Phase 0: Pipeline wiring + fixes** (~3-4 days) — Fix critical missing wiring (NAc observe, SCN/EC init, PainBus→NAc, Cerebellum, motor programs, novelty). Fix pipeline correctness bugs (forming boost, context_match, confidence decay, concept gate). Run pipeline audit script to verify. This is the foundation — if the pipeline is broken, nothing downstream is valid. Also the final stage of continual refinement.
-2. **Phase 0b: Choice classifier** (~0.5 day) — Validate ATL+NAc classification accuracy on synthetic responses. Runs after pipeline is verified (NAc actually learns now).
+1. ~~**Phase 0: Pipeline wiring (Phase 1)** — **SHIPPED** (commit 6c262c5)~~
+2. **Phase 0: Cascade surfacing (Hardening Phase 1.5)** (~1 day) — Rich tool results, immediate failure eval, body state in prompt, Cerebellum cascade observation. Without this, cascade effects are invisible to the ExecAgent.
+3. **Phase 0: Pipeline correctness (Hardening Phase 2)** (~1 day) — Forming boost, context_match, confidence decay, concept gate, pain cooldown, truncation.
+4. **Phase 0: Choice classifier** (~0.5 day) — Validate ATL+NAc classification accuracy. Runs after pipeline is verified (NAc actually learns now).
 3. **DM schema + validator** (~1 day) — CampaignDef, CascadeSpec, validator rules
 4. **DM runtime + entity wiring** (~1 day) — state machine, cascade resolver, expectation + pipeline health checker
 5. **Campaign 1: The Heist** + persona + orchestrator + end-to-end run (~1 day)
