@@ -50,6 +50,13 @@ TOOL_ALIASES: dict[str, str] = {
     # Internet search → memory_recall (in sim, there's no internet)
     "internet_search": "memory_recall",
     "web_search": "memory_recall",
+    # Choice / decision → choose (DM campaigns)
+    "pick": "choose",
+    "select": "choose",
+    "decide": "choose",
+    "choose_option": "choose",
+    "make_choice": "choose",
+    "reflect": "think",
     # Inspection / observation → examine
     "inspect": "examine",
     "look": "examine",
@@ -79,6 +86,19 @@ class Executor:
         self._tools_succeeded: list[str] = []
         self._tools_hallucinated: list[str] = []
         self._consecutive_failures: int = 0
+
+    def register_aliases(self, aliases: dict[str, str]) -> None:
+        """Register additional tool aliases at runtime.
+
+        Used by DM runtime to map encounter choice names to the choose tool.
+        E.g., {"accept_job": "choose", "decline": "choose", "fight": "choose"}
+        """
+        TOOL_ALIASES.update(aliases)
+
+    def remove_aliases(self, names: list[str]) -> None:
+        """Remove previously registered runtime aliases."""
+        for name in names:
+            TOOL_ALIASES.pop(name.lower(), None)
 
     def execute(self, action: dict[str, Any]) -> ToolOutput:
         """Execute a tool action, returning raw ToolOutput.
@@ -112,10 +132,13 @@ class Executor:
                     alias_target,
                 )
                 self.alias_redirects.append((tool_name, alias_target))
+                # For choose aliases: inject the original tool name as the option param
+                if alias_target == "choose" and "option" not in params:
+                    params = {**params, "option": original_name}
                 tool_name = alias_target
                 # Update the action so downstream (bus, hippocampus) sees
                 # the real tool name
-                action = {**action, "tool_name": tool_name}
+                action = {**action, "tool_name": tool_name, "params": params}
 
         invocation_id = str(uuid.uuid4())
 

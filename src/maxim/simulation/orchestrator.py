@@ -1111,11 +1111,18 @@ def start_simulation_mode(
 
         try:
             from maxim.simulation.dm_runtime import DMRuntime
+            from maxim.simulation.tools_dm import ChooseTool
+
+            # Register ChooseTool for the AUT
+            dm_choose_tool = ChooseTool()
+            aut_registry.register(dm_choose_tool)
 
             dm = DMRuntime(
                 campaign=dm_campaign,
                 bridge=bridge,
                 llm_router=llm_router,
+                choose_tool=dm_choose_tool,
+                executor=aut_executor,
             )
             dm_state = dm.run()
             dm_rollup = dm.get_rollup()

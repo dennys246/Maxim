@@ -72,11 +72,16 @@ class DMRuntime:
         bridge: Any,
         llm_router: Any = None,
         rng: random.Random | None = None,
+        choose_tool: Any = None,
+        executor: Any = None,
     ) -> None:
         self._campaign = campaign
         self._bridge = bridge
         self._llm = llm_router
         self._rng = rng or random.Random(campaign.seed)
+        self._choose_tool = choose_tool
+        self._executor = executor
+        self._registered_aliases: list[str] = []
         self._state = CampaignState(
             current_encounter=campaign.first_encounter,
         )
@@ -106,13 +111,16 @@ class DMRuntime:
             self._state.turn_count += 1
             log.info("DM: Encounter '%s' (turn %d)", enc_name, self._state.turn_count)
 
+            # Set up ChooseTool for this encounter's choices
+            self._setup_encounter_choices(encounter)
+
             # Compose and deliver stimulus
             stimulus = self._compose_stimulus(encounter)
             response = self._deliver_and_wait(stimulus)
 
-            # Classify choice
+            # Classify choice — prefer ChooseTool result, fall back to text classification
             if encounter.choices:
-                choice = self._classify_choice(response, encounter)
+                choice = self._get_choice(response, encounter)
                 log.info("DM: AUT chose '%s'", choice)
 
                 # Record choice
@@ -166,6 +174,44 @@ class DMRuntime:
             len(self._state.dice_rolls),
         )
         return self._state
+
+    def _setup_encounter_choices(self, encounter: EncounterDef) -> None:
+        """Set up ChooseTool and aliases for the current encounter's choices."""
+        # Clean up previous encounter's aliases
+        if self._executor and self._registered_aliases:
+            self._executor.remove_aliases(self._registered_aliases)
+            self._registered_aliases = []
+
+        if not encounter.choices:
+            if self._choose_tool:
+                self._choose_tool.set_choices([])
+            return
+
+        # Update ChooseTool with current choices
+        if self._choose_tool:
+            self._choose_tool.set_choices(encounter.choices)
+
+        # Register choice names as aliases to 'choose' in the executor
+        if self._executor:
+            aliases = {c.lower(): "choose" for c in encounter.choices}
+            # Also common variants
+            for c in encounter.choices:
+                aliases[c.lower().replace("_", "")] = "choose"
+                aliases[c.lower().replace("_", " ")] = "choose"
+            self._executor.register_aliases(aliases)
+            self._registered_aliases = list(aliases.keys())
+
+    def _get_choice(self, response: dict[str, Any], encounter: EncounterDef) -> str:
+        """Get the AUT's choice, preferring ChooseTool result over text classification."""
+        # Check if ChooseTool was used
+        if self._choose_tool and self._choose_tool.last_choice:
+            choice = self._choose_tool.last_choice
+            # Reset for next encounter
+            self._choose_tool._last_choice = None
+            return choice
+
+        # Fall back to text/LLM classification
+        return self._classify_choice(response, encounter)
 
     def _compose_stimulus(self, encounter: EncounterDef) -> str:
         """Build the narrative text for an encounter.
