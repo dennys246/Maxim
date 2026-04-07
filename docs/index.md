@@ -58,11 +58,10 @@ Comprehensive documentation for Maxim's systems and subsystems.
 |----------|-------------|
 | [ARCHITECTURE.md](../ARCHITECTURE.md#workspace-maxim_workspace) | Workspace structure, working notes, plan dashboard |
 
-### Skills & Protocols
+### Media
 
 | Document | Description |
 |----------|-------------|
-| [Skills](skills.md) | Composable capabilities, protocols, lifecycle, workspace constraints |
 | [MediaMTX](mediaMTX.md) | RTSP relay: auto-start, network topology, deployment scenarios |
 
 ### Integration
@@ -187,7 +186,7 @@ Future Actions
 
 ```
 src/maxim/
-├── agents/          → AGENTS.md
+├── agents/          → AGENTS.md (+ modality.py SensoryModality/SensoryTag, sensory_gate.py SensoryGate)
 ├── attention/       → attention.md
 ├── bridges/         → bridges.md
 ├── comms/           → (SMS/Voice communication; doc not yet written)
@@ -216,7 +215,6 @@ src/maxim/
 ├── salience/        → salience.md
 ├── similarity/      → semantic_similarity_analysis.md (Phase 4 implemented)
 ├── simulation/      → simulation.md (orchestrator, bridge, personas, campaigns, benchmarks)
-├── skills/          → skills.md (Skills & Protocols: composition, lifecycle, workspace bounds)
 ├── spatial/         → bridges.md (SpatialMemoryBridge)
 ├── time/            → time.md (+ BoundedBin, significance-based eviction)
 ├── tools/           → ARCHITECTURE.md (tools section)

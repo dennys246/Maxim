@@ -63,19 +63,12 @@ Paths refer to the `src/maxim/` package layout.
   - `llm_tracker.py`: Token-based LLM energy (input/output tokens, latency, model multipliers).
   - `movement_tracker.py`: Physics-based movement energy estimation.
   - `registry.py`: EnergyRegistry with domain budgets and aggregation.
-- `src/maxim/skills/`: owns composable capabilities (Skills) and operational profiles (Protocols). Skills are atomic, reusable units with explicit lifecycle states (IDLE → ACTIVE → FAILED). Protocols compose skills with workspace bounds, LLM context injection, and voice/CLI activation phrases. ProtocolRegistry manages lifecycle, tool registration, and workspace constraint composition. Must **not** do decision making or goal reasoning — protocols are activated by the agentic runtime, voice phrases, or tools.
-  - `base.py`: Skill ABC, SkillState enum, SkillResult dataclass.
-  - `protocol.py`: Protocol ABC, WorkspaceBounds, activation sequence with precondition checks and failure recovery.
-  - `registry.py`: ProtocolRegistry — register/activate/deactivate protocols, manage tool registration, compose workspace bounds.
-  - `rtsp_streaming.py`: RTSPStreamingSkill — streams camera as RTSP via ffmpeg.
-  - `protocols/shredder_segmenter.py`: ShredderSegmenterProtocol — RTSP streaming with gaze constraints for ski recording.
 - `src/maxim/bridges/`: owns cross-system integration between memory and external systems.
   - `spatial_bridge.py`: Location priors from historical object positions.
   - `salience_bridge.py`: Interaction history boosts for salience scoring.
   - `planning_bridge.py`: Plan template retrieval from successful memories.
   - `escalation_bridge.py`: Learned thresholds for when to escalate to human.
   - `pain_bridge.py`: Connects pain detection to NAc for causal learning of aversive patterns.
-  - `energy_bridge.py`: Connects energy tracking to NAc for learning action→energy associations.
   - `tool_pain_bridge.py`: Routes tool errors → NAc + SCN, creates CAUSES edges in hippocampus for surprising outcomes (RPE > 0.3), generates Reflexion-style verbal self-critiques stored as episodic memories, and updates `LearnedToolIndex` keyword weights.
 - `src/maxim/embodiment/`: owns body definition and motor learning via the SEM (Sensor-Entity-Modulator) protocol. Entities form composable trees; each entity owns sensors (readings), modulators (actions via affordances), and failure modes (pain triggers). Virtual entities use NarrativeModulator (LLM-backed) while hardware entities use real sensor backends.
   - `sem.py`: Core protocol — Entity, Sensor, Modulator, Affordance, FailureMode, FailureTrigger.
@@ -100,7 +93,7 @@ Paths refer to the `src/maxim/` package layout.
 - `src/maxim/integration/`: owns central coordination.
   - `memory_hub.py`: MemoryHub coordinates all bridges, manages session lifecycle, and wires multi-layer memory (ATL concept extraction, grounding, promotion). Connects 11 bio-systems in production; now also fully wired in simulation mode.
 - `src/maxim/state/` (reserved): owns authoritative runtime truth; must **not** contain long-term storage logic or planning.
-- `src/maxim/runtime/`: owns agentic orchestration/main execution loop; must **not** do domain reasoning. Includes `MonitorRegistry`/`SignalMonitor` for centralized watchdog monitoring, `RuntimeCapabilities` for hardware detection and graceful degradation (headless mode without robot), `AgentSession` for session persistence (save/load with Percept serialization), and `StreamEvent`/`on_event` callback for fine-grained streaming events from the agent loop. ADaPT-style replan loop: `FailureStrategy.REPLAN` triggers `planner.decompose()` at depth+1.
+- `src/maxim/runtime/`: owns agentic orchestration/main execution loop; must **not** do domain reasoning. Includes `RuntimeCapabilities` for hardware detection and graceful degradation (headless mode without robot), and `StreamEvent`/`on_event` callback for fine-grained streaming events from the agent loop. ADaPT-style replan loop: `FailureStrategy.REPLAN` triggers `planner.decompose()` at depth+1.
 - `src/maxim/conscience/`: owns robot orchestration/main loop (Reachy capture/inference/control); must **not** do agentic decision making. `ConnectionState` enum with callback system for runtime capability degradation/restoration on robot disconnect/reconnect. `_run_headless_loop()` for event-driven operation without media capture.
 
 ### Absolute Separation Rules
@@ -141,6 +134,8 @@ If a component cannot be tested in isolation, the architecture is violated.
   - `media_loop.py` (`MediaLoopMixin`): video/audio recording and display loop
   - `workers.py`: module-level worker functions (video writer, audio writer, transcription)
 - `src/maxim/agents/`: agent interfaces + implementations (reasoning/intent, no side effects).
+  - `modality.py`: `SensoryModality` enum, `SensoryTag` dataclass — typed percept classification.
+  - `sensory_gate.py`: `SensoryGate` — entity-modulated filtering of sensory input before pipeline processing.
   - Extracted modules (re-exported from `llm_worker.py` for backward compatibility): `llm_types.py`, `llm_context.py`, `prompt_budgeter.py`, `llm_fallback.py`, `prompt_builder.py`.
 - `src/maxim/planning/`: planning + policy + decision engine (agentic action selection).
   - `plan_dashboard.py`: Bus-driven `ACTIVE_PLAN.md` writer for workspace visibility.
@@ -286,10 +281,10 @@ Four biologically-inspired systems collaborate to give Maxim memory, temporal aw
                 │   (integration/memory_hub.py)  │
                 └────────────────┬───────────────┘
                                  │
-     ┌─────────┬─────────┬──────┼──────┬─────────┬─────────┬──────────┐
-     ▼         ▼         ▼      ▼      ▼         ▼         ▼          ▼
-  Spatial  Salience  Planning  Escal  Fear     Pain     ToolPain   Comms
-   Bridge   Bridge    Bridge  Bridge Bridge   Bridge    Bridge    Bridge
+     ┌─────────┬─────────┬──────┼──────┬─────────┬─────────┐
+     ▼         ▼         ▼      ▼      ▼         ▼         ▼
+  Spatial  Salience  Planning  Escal  Fear     Pain     ToolPain
+   Bridge   Bridge    Bridge  Bridge Bridge   Bridge    Bridge
 ```
 
 ### Coordinated Systems
@@ -312,7 +307,6 @@ Four biologically-inspired systems collaborate to give Maxim memory, temporal aw
 | **FearCircuitBridge** | Hippocampus ↔ FearAgent ↔ NAc | No learned risk patterns | Memory-informed risk assessment (also queries EC via associative graph for contextual history) |
 | **PainCircuitBridge** | PainDetector ↔ NAc | No movement-pain learning | Learned action→pain associations |
 | **ToolPainBridge** | Tool errors ↔ NAc ↔ FearAgent | No tool-failure learning | Cognitive pain from tool errors via Rescorla-Wagner |
-| **CommunicationBridge** | Comms ↔ Hippocampus | No communication context | Communication-aware memory |
 
 ### Selective Capture
 
@@ -467,19 +461,10 @@ budget_configs = {
 
 ### NAc Integration
 
-The EnergyCircuitBridge enables learning action→energy associations:
+Energy tracking now wires directly into NAc for metabolic cost learning via the agent loop (`runtime/agent_loop.py`):
 - High energy expenditure → NEGATIVE valence → NAc learns to predict
 - Low energy expenditure → POSITIVE valence → Efficient actions preferred
 - Future actions can be gated based on predicted energy cost
-
-### LLM Context Injection
-
-Energy state can be injected into LLM prompts for energy-aware decisions:
-
-```python
-energy_context = bridge.get_energy_context_for_llm()
-# Returns: "[Energy Status]\n- llm: 45% energy remaining\n..."
-```
 
 ## Persistence System
 

@@ -21,8 +21,6 @@ Bridges serve as integration points that:
 | `EscalationLearningBridge` | Hippocampus ↔ SCN/NAc | Learned escalation thresholds |
 | `FearCircuitBridge` | Hippocampus ↔ NAc ↔ EC | Learned risk patterns |
 | `PainCircuitBridge` | PainDetector ↔ NAc | Movement pain learning |
-| `EnergyCircuitBridge` | EnergyRegistry ↔ NAc | Energy cost learning |
-| `CommunicationBridge` | Comms ↔ Hippocampus | Communication-aware memory |
 | `MathBridge` | AngularGyrus ↔ Hippocampus | Math pattern learning |
 
 ---
@@ -402,48 +400,9 @@ should_gate_action() checks both tiers.
 
 ---
 
-## EnergyCircuitBridge
+## Energy-NAc Integration
 
-Connects energy tracking to NAc for cost-aware decisions.
-
-```python
-from maxim.bridges.energy_bridge import EnergyCircuitBridge, EnergyBridgeConfig
-
-config = EnergyBridgeConfig(
-    enable_learning=True,
-    high_energy_valence_threshold=3.0,  # > 3 = NEGATIVE
-    low_energy_valence_threshold=0.5,   # < 0.5 = POSITIVE
-)
-
-bridge = EnergyCircuitBridge(
-    nac=nac,
-    registry=energy_registry,
-    config=config,  # optional
-)
-
-# Track actual energy for an action
-event_id = bridge.record_action_start(
-    action_signature="large_generation",
-    action_type="llm",
-)
-# ... action executes, energy signals accumulate ...
-total_energy = bridge.record_action_end(event_id)
-
-# Predict energy cost before execution
-predicted = bridge.predict_energy(
-    action_signature="large_generation",
-    action_type="llm",
-)
-
-# Check if action should be gated due to high energy
-should_gate, reason = bridge.should_gate_action(
-    action_signature="large_generation",
-    action_type="llm",
-)
-
-# Get energy context string for LLM prompts
-context = bridge.get_energy_context_for_llm()
-```
+Energy tracking now wires directly into NAc for metabolic cost learning via the agent loop (`runtime/agent_loop.py`), rather than through a separate bridge class. The EnergyCircuitBridge has been removed.
 
 ---
 
