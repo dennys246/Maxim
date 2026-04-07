@@ -49,6 +49,34 @@ _INFER_VRAM_TIERS: tuple[tuple[float, str], ...] = (
 # instead of loading its own CPU model. SmolLM Q4 needs ~2GB resident + overhead.
 _REVIEW_MIN_RAM_GB = 4.0
 
+# RAM tiers for the medium tier (CPU/MPS). Picks the best model that fits
+# in available RAM with headroom for the OS + small tier (~2GB overhead).
+# Format: (min_ram_gb, profile)
+# Walk-down: first match wins. Uses the profile's default quantization
+# (Q4_K_M) — different RAM levels get different-sized models rather than
+# the same model at different quantizations (avoids GGUF download complexity).
+_MEDIUM_RAM_TIERS: tuple[tuple[float, str], ...] = (
+    (16.0, "mistral-7b-instruct-v0.2"),  # 7B Q4 ~4.5GB — plenty of headroom
+    (8.0, "phi-3-mini-4k-instruct"),  # 3.8B Q4 ~2.5GB — fits on 8GB with headroom
+    # Below 8GB: no medium tier (only small)
+)
+
+
+def _pick_medium_profile(
+    ram_gb: float,
+    profile_available: ProfileAvailabilityCheck | None = None,
+) -> str | None:
+    """Pick the best medium-tier model for available RAM.
+
+    Returns profile name or None if RAM is too low for any medium model.
+    """
+    check = profile_available or (lambda _: True)
+    for min_ram, profile in _MEDIUM_RAM_TIERS:
+        if ram_gb >= min_ram and check(profile):
+            return profile
+    return None
+
+
 # Lightweight profile used for CPU-side review/reflection when RAM permits.
 _REVIEW_PROFILE = "smollm-1.7b-instruct"
 
@@ -174,23 +202,27 @@ def detect_tiers(
             n_gpu_layers=-1,
         )
     elif caps.has_gpu and caps.gpu_type == "mps":
-        # Mac with MPS: unified memory GPU — treat as medium-capable
-        tiers["medium"] = LaneConfig(
-            name="medium",
-            max_workers=1,
-            model_profile="mistral-7b-instruct-v0.2",
-            device="auto",
-        )
+        # Mac with MPS: unified memory — pick model by RAM (shared with GPU)
+        m_profile = _pick_medium_profile(caps.ram_gb, profile_available)
+        if m_profile is not None:
+            tiers["medium"] = LaneConfig(
+                name="medium",
+                max_workers=1,
+                model_profile=m_profile,
+                device="auto",
+            )
 
-    # No GPU (or GPU with unknown type) + enough RAM for a 7B model → medium tier
-    if "medium" not in tiers and "large" not in tiers and caps.ram_gb >= 8:
-        tiers["medium"] = LaneConfig(
-            name="medium",
-            max_workers=1,
-            model_profile="mistral-7b-instruct-v0.2",
-            device="cpu",
-            n_gpu_layers=0,
-        )
+    # No GPU (or GPU with unknown type) — pick CPU model by RAM
+    if "medium" not in tiers and "large" not in tiers:
+        m_profile = _pick_medium_profile(caps.ram_gb, profile_available)
+        if m_profile is not None:
+            tiers["medium"] = LaneConfig(
+                name="medium",
+                max_workers=1,
+                model_profile=m_profile,
+                device="cpu",
+                n_gpu_layers=0,
+            )
 
     if len(tiers) == 1:
         logger.warning(

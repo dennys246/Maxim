@@ -310,6 +310,43 @@ class TestDetectTiers:
         assert tier_names.count("medium") == 1  # dict keys are unique anyway
         assert tiers["medium"].device == "auto"  # MPS path, not CPU path
 
+    # ── RAM-based medium tier model selection ──
+
+    def test_mac_8gb_gets_phi3_medium(self):
+        """Mac with 8GB → medium tier uses phi-3-mini (fits in RAM)."""
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="mps", vram_gb=0.0, ram_gb=8.0)
+        tiers = detect_tiers(caps)
+        assert "medium" in tiers
+        assert tiers["medium"].model_profile == "phi-3-mini-4k-instruct"
+
+    def test_mac_16gb_gets_mistral_medium(self):
+        """Mac with 16GB → medium tier uses mistral-7b (plenty of headroom)."""
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="mps", vram_gb=0.0, ram_gb=16.0)
+        tiers = detect_tiers(caps)
+        assert "medium" in tiers
+        assert tiers["medium"].model_profile == "mistral-7b-instruct-v0.2"
+
+    def test_cpu_8gb_gets_phi3_medium(self):
+        """CPU-only 8GB → medium tier uses phi-3-mini."""
+        caps = RuntimeCapabilities(has_gpu=False, vram_gb=0.0, ram_gb=8.0)
+        tiers = detect_tiers(caps)
+        assert "medium" in tiers
+        assert tiers["medium"].model_profile == "phi-3-mini-4k-instruct"
+
+    def test_cpu_12gb_gets_phi3_medium(self):
+        """CPU-only 12GB → phi-3-mini (below 16GB threshold for mistral)."""
+        caps = RuntimeCapabilities(has_gpu=False, vram_gb=0.0, ram_gb=12.0)
+        tiers = detect_tiers(caps)
+        assert "medium" in tiers
+        assert tiers["medium"].model_profile == "phi-3-mini-4k-instruct"
+
+    def test_mac_6gb_no_medium(self):
+        """Mac with 6GB → no medium tier (too little RAM for any model)."""
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="mps", vram_gb=0.0, ram_gb=6.0)
+        tiers = detect_tiers(caps)
+        assert "medium" not in tiers
+        assert list(tiers.keys()) == ["small"]
+
     def test_small_gpu_high_ram_gets_medium(self):
         """GPU with < 4GB VRAM + 16GB RAM → medium (CPU) + small."""
         caps = RuntimeCapabilities(has_gpu=True, gpu_type="NVIDIA GTX 1050", vram_gb=3.5, ram_gb=16.0)
