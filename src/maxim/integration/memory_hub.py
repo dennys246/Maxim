@@ -675,7 +675,7 @@ class MemoryHub:
             try:
                 from maxim.simulation.sim_logger import sim_scn
 
-                sim_scn(memory_id, f"circadian={sig.circadian:.2f}", salience)
+                sim_scn(memory_id, f"circadian={sig.circadian_phase:.2f}", salience)
             except Exception:
                 pass
         except Exception:
