@@ -2,8 +2,10 @@
 
 > **Status:** Not started. MVP-first — validates core loop before committing to further phases.
 > **Depends on:** ATL semantic memory (exists), PainBus (exists), Hippocampus (exists), NAc (exists), ToolPainBridge (exists), PerceptSource protocol (exists), LLMRouter (exists), EnergySignal (exists).
-> **Related plans:** `dungeon_master_persona.md` (downstream consumer — DM's `CharacterState` mirrors body-state primitives), `agent_mesh.md` (adds EmbodimentCapability).
+> **Related plans:** `dungeon_master_persona.md` (downstream consumer — DM's `CharacterState` mirrors body-state primitives), `agent_mesh.md` (adds EmbodimentCapability), `benchmark_plan.md` (Tier 3 metrics defined there, implementation details here).
 > **Includes:** Hardware adapter (formerly `embodiment_hardware_adapter_plan.md`) merged as Phase 3.
+>
+> **Benchmark integration:** When each phase ships, add the corresponding Tier 3 metric computation to `AUTIntrospector.embodiment_stats()` and create benchmark scenarios in `scenarios/benchmarks/`. See `benchmark_plan.md` Tier 3 section for the metric interface.
 
 ---
 
