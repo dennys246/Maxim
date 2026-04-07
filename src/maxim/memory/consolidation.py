@@ -75,8 +75,7 @@ class ConsolidationOrchestrator:
                 # Immediate promotion: skip waves for very high significance
                 if (
                     sidecar.get("sleep_cycles_seen", 0) == 0
-                    and sidecar.get("significance_score", 0)
-                    >= self.immediate_promotion_threshold
+                    and sidecar.get("significance_score", 0) >= self.immediate_promotion_threshold
                 ):
                     sidecar.setdefault("wave_scores", []).append(sidecar["significance_score"])
                     self._promote(sidecar)
@@ -89,11 +88,7 @@ class ConsolidationOrchestrator:
                 sidecar.setdefault("wave_scores", []).append(wave_score)
 
                 # Path-dependent threshold
-                threshold = (
-                    self.acute_threshold
-                    if sidecar.get("staging_path") == "acute"
-                    else self.chronic_threshold
-                )
+                threshold = self.acute_threshold if sidecar.get("staging_path") == "acute" else self.chronic_threshold
 
                 if wave_score >= threshold:
                     self._promote(sidecar)
@@ -132,9 +127,9 @@ class ConsolidationOrchestrator:
             event_sig = sidecar.get("action", {}).get("tool", "")
             if event_sig and self.nac is not None:
                 links = self.nac.get_links_for_event(event_sig)
-                obs_delta = sum(
-                    getattr(link, "observation_count", 0) for link in links
-                ) - sidecar.get("nac_obs_at_staging", 0)
+                obs_delta = sum(getattr(link, "observation_count", 0) for link in links) - sidecar.get(
+                    "nac_obs_at_staging", 0
+                )
                 nac_corroboration = sigmoid(obs_delta / 5.0)
         except Exception:
             pass
@@ -168,9 +163,7 @@ class ConsolidationOrchestrator:
 
                 percept_str = percept_to_canonical(percept)
                 if percept_str:
-                    percept_matches = self.percept_index.query_similar(
-                        percept_str, min_similarity=0.3
-                    )
+                    percept_matches = self.percept_index.query_similar(percept_str, min_similarity=0.3)
                     staging_ts = sidecar.get("timestamp", 0)
                     recent_hits = 0
                     for mid, _ in percept_matches:
@@ -186,9 +179,7 @@ class ConsolidationOrchestrator:
         try:
             context_str = sidecar.get("context_summary", "")
             if context_str and self.context_index is not None:
-                context_matches = self.context_index.query_similar(
-                    context_str, min_similarity=0.3
-                )
+                context_matches = self.context_index.query_similar(context_str, min_similarity=0.3)
                 staging_ts = sidecar.get("timestamp", 0)
                 recent_hits = 0
                 for mid, _ in context_matches:
@@ -265,9 +256,7 @@ class ConsolidationOrchestrator:
                     annual_phase=temporal.get("annual_phase", 0),
                 )
                 wave_scores = sidecar.get("wave_scores") or [0.5]
-                self.scn.register(
-                    memory.id, sig, significance=wave_scores[-1]
-                )
+                self.scn.register(memory.id, sig, significance=wave_scores[-1])
         except Exception:
             pass
 
@@ -276,13 +265,9 @@ class ConsolidationOrchestrator:
             from maxim.memory.context_index import percept_to_canonical
 
             if self.percept_index is not None:
-                self.percept_index.register(
-                    memory.id, percept_to_canonical(percept)
-                )
+                self.percept_index.register(memory.id, percept_to_canonical(percept))
             if self.context_index is not None and sidecar.get("context_summary"):
-                self.context_index.register(
-                    memory.id, sidecar["context_summary"]
-                )
+                self.context_index.register(memory.id, sidecar["context_summary"])
         except Exception:
             pass
 

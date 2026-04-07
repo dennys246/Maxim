@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any
 
-import pytest
 
 from maxim.agents.bus import Percept, StopReason
 from maxim.runtime.session import AgentSession

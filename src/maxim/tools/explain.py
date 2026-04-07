@@ -66,7 +66,10 @@ class ExplainTool(Tool):
             traces = self._collector.recent_traces(limit=100)
             activities = self._collector.recent_activities(limit=200)
             return render_session_report(
-                traces, activities, self._collector.session_id, v,
+                traces,
+                activities,
+                self._collector.session_id,
+                v,
             )
 
         if query == "export_json":
@@ -86,16 +89,13 @@ class ExplainTool(Tool):
             return self._query_session_history()
 
         if query.startswith("concept:"):
-            concept_name = query[len("concept:"):]
+            concept_name = query[len("concept:") :]
             return self._query_concept_history(concept_name)
 
         if query == "current":
             # Try in-progress trace first, fall back to most recent completed
             with self._collector._lock:
-                in_progress = [
-                    t for t in self._collector._traces.values()
-                    if not t.completed
-                ]
+                in_progress = [t for t in self._collector._traces.values() if not t.completed]
             if in_progress:
                 trace = max(in_progress, key=lambda t: t.started_at)
             else:

@@ -118,11 +118,12 @@ class ConceptGrounder:
         # Log grounding activity (P3e — Tier 2)
         if self._collector and self._collector.verbosity >= 1:
             from maxim.provenance.types import PipelineStage, ProvenanceRef
+
             prop_count = sum(1 for v in stats.values() if isinstance(v, dict))
             self._collector.log_activity(
-                PipelineStage.ENRICHMENT, "concept_grounder",
-                f"Grounded atl:{concept.id[:8]} ({concept.name}) "
-                f"with {prop_count} AG properties",
+                PipelineStage.ENRICHMENT,
+                "concept_grounder",
+                f"Grounded atl:{concept.id[:8]} ({concept.name}) with {prop_count} AG properties",
                 sources=[ProvenanceRef("atl", concept.id, concept.name)],
             )
 
@@ -202,9 +203,7 @@ class ConceptGrounder:
         except Exception as e:
             logger.debug("Failed to enqueue concept record for %s: %s", concept_id, e)
 
-    def _compute_relationship_updates(
-        self, concept: Concept
-    ) -> list[tuple[str, str, str, float | None, float | None]]:
+    def _compute_relationship_updates(self, concept: Concept) -> list[tuple[str, str, str, float | None, float | None]]:
         """Compute proposed edge changes from Jaccard co-occurrence.
 
         Returns list of (source_id, target_id, rel_type, weight_or_None, confidence_delta_or_None).
@@ -231,23 +230,29 @@ class ConceptGrounder:
             jaccard = shared / union
 
             if jaccard > 0.3 and shared >= 3:
-                updates.append((
-                    concept.id, other_id, rel.relationship_type,
-                    min(1.0, jaccard * self.JACCARD_WEIGHT_SCALE),
-                    0.05,
-                ))
+                updates.append(
+                    (
+                        concept.id,
+                        other_id,
+                        rel.relationship_type,
+                        min(1.0, jaccard * self.JACCARD_WEIGHT_SCALE),
+                        0.05,
+                    )
+                )
             elif jaccard < 0.05 and union >= 10:
-                updates.append((
-                    concept.id, other_id, rel.relationship_type,
-                    None,
-                    -0.1,
-                ))
+                updates.append(
+                    (
+                        concept.id,
+                        other_id,
+                        rel.relationship_type,
+                        None,
+                        -0.1,
+                    )
+                )
 
         return updates
 
-    def _compute_quantification_proposals(
-        self, concept: Concept, stats: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    def _compute_quantification_proposals(self, concept: Concept, stats: dict[str, Any]) -> list[dict[str, Any]]:
         """Compute proposed AG quantification records.
 
         Returns list of proposal dicts with field_name, concept info, and stats.
@@ -259,13 +264,15 @@ class ConceptGrounder:
             n = field_stats.get("n", 0)
             if n < 5:
                 continue
-            proposals.append({
-                "field_name": field_name,
-                "concept_name": concept.name,
-                "concept_id": concept.id,
-                "mean": field_stats["mean"],
-                "n": n,
-            })
+            proposals.append(
+                {
+                    "field_name": field_name,
+                    "concept_name": concept.name,
+                    "concept_id": concept.id,
+                    "mean": field_stats["mean"],
+                    "n": n,
+                }
+            )
         return proposals
 
     def _apply_updates(
@@ -355,9 +362,7 @@ class ConceptGrounder:
     # Numeric extraction
     # ------------------------------------------------------------------
 
-    def _extract_numerics(
-        self, episodes: list[EpisodicMemory | CompressedMemory]
-    ) -> dict[str, list[float]]:
+    def _extract_numerics(self, episodes: list[EpisodicMemory | CompressedMemory]) -> dict[str, list[float]]:
         """Extract numerical fields from loaded episodes.
 
         Returns field_name -> list of values across episodes.
@@ -409,9 +414,7 @@ class ConceptGrounder:
     # Statistics computation
     # ------------------------------------------------------------------
 
-    def _compute_stats(
-        self, concept: Concept, numerics: dict[str, list[float]]
-    ) -> dict[str, Any]:
+    def _compute_stats(self, concept: Concept, numerics: dict[str, list[float]]) -> dict[str, Any]:
         """Compute statistics using IPS (fast) with AG escalation (precise).
 
         IPS handles: mean (ApproximateResult), trend (TrendResult)
@@ -434,11 +437,7 @@ class ConceptGrounder:
                 field_stats["trend"] = trend.direction.name.lower()
 
             # AG escalation: precise analysis when IPS trend is uncertain
-            if (
-                len(values) >= 8
-                and trend
-                and 0.3 < trend.confidence < 0.65
-            ):
+            if len(values) >= 8 and trend and 0.3 < trend.confidence < 0.65:
                 try:
                     analysis = self._ag.analyze(values, method="linear")
                     if analysis and analysis.confidence > 0.5:
@@ -465,9 +464,7 @@ class ConceptGrounder:
         Uses Jaccard index (|A ∩ B| / |A ∪ B|) — symmetric and handles
         size imbalance naturally.
         """
-        relationships = self._atl.find_by_relationship(
-            concept.id, direction="both", limit=50
-        )
+        relationships = self._atl.find_by_relationship(concept.id, direction="both", limit=50)
         if not relationships:
             return
 
@@ -490,14 +487,18 @@ class ConceptGrounder:
             # Strengthen: high co-occurrence with enough shared evidence
             if jaccard > 0.3 and shared >= 3:
                 self._atl.semantics.update_edge(
-                    concept.id, other_id, rel.relationship_type,
+                    concept.id,
+                    other_id,
+                    rel.relationship_type,
                     weight=min(1.0, jaccard * self.JACCARD_WEIGHT_SCALE),
                     confidence_delta=0.05,
                 )
             # Weaken: low co-occurrence despite many total observations
             elif jaccard < 0.05 and union >= 10:
                 self._atl.semantics.update_edge(
-                    concept.id, other_id, rel.relationship_type,
+                    concept.id,
+                    other_id,
+                    rel.relationship_type,
                     confidence_delta=-0.1,
                 )
 
@@ -505,9 +506,7 @@ class ConceptGrounder:
     # AG quantification storage
     # ------------------------------------------------------------------
 
-    def _store_quantifications(
-        self, concept: Concept, stats: dict[str, Any]
-    ) -> None:
+    def _store_quantifications(self, concept: Concept, stats: dict[str, Any]) -> None:
         """Store significant numerical properties as AG MathMemory records
         linked to the concept via QUANTIFIES edges.
 
@@ -530,10 +529,7 @@ class ConceptGrounder:
                 # Update existing record in-place (it's in-memory)
                 record = existing[0]
                 if isinstance(record, MathMemory):
-                    record.verbal = (
-                        f"{concept.name} {field_name}: "
-                        f"mean={field_stats['mean']:.2f} (n={n})"
-                    )
+                    record.verbal = f"{concept.name} {field_name}: mean={field_stats['mean']:.2f} (n={n})"
                     record.observation_count = n
                     record.confidence = min(0.9, 0.3 + 0.05 * n)
                     record.touch()
@@ -545,10 +541,7 @@ class ConceptGrounder:
                     name=existing_name,
                     category=MathCategory.PATTERN,
                     domain="concept_property",
-                    verbal=(
-                        f"{concept.name} {field_name}: "
-                        f"mean={field_stats['mean']:.2f} (n={n})"
-                    ),
+                    verbal=(f"{concept.name} {field_name}: mean={field_stats['mean']:.2f} (n={n})"),
                     code="",
                     inputs=[concept.name],
                     outputs=[field_name],

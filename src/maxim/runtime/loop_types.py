@@ -5,7 +5,7 @@ Replaces stringly-typed ``state.data["pending_*"]`` dicts with typed structures.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 
-
 from maxim.utils.filesystem_policy import scan_cwd_tree
 
 

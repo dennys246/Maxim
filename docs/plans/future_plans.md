@@ -11,15 +11,15 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Plan | Status | Next step |
 |------|--------|-----------|
 | Tool Refactoring | **Complete** | All 10 phases done: say, think, examine, introspection, aliases, tracking, proactive list. [Plan](tool_refactoring_plan.md) |
-| Introspection API | **Phases 1-3 done** | `AUTIntrospector` class shipped, `InspectAUTTool` delegates. Remaining: standalone runner (Ph4), self-introspection (Ph5). [Plan](introspection_api_plan.md) |
+| Introspection API | **Phases 1-4 done** | `AUTIntrospector` + standalone `run_campaign()` shipped. Remaining: Ph5 self-introspection (needs discussion). |
 | Simulation Benchmark | **Not started** | Multi-model comparative testing (`--sim benchmark`). ~680 LOC. [Plan](benchmark_plan.md) |
-| Docker Sandbox | **Phase A done** | TmpdirSandbox + pain triggers implemented; Phase B (Docker backend) optional |
+| Docker Sandbox | **Complete** | Phase A (TmpdirSandbox + pain) + Phase B (DockerSandbox + ContainerRunner + CLI) both shipped |
 | Research Protocol | **Complete** | All phases: mesh primitives, research tools, Writer + Reviewer agents, Research Orchestrator. CLI: `maxim --sim research`. |
 | Multi-LLM Scaling | **Complete** | All phases done. mDNS + InferenceRouter moved to Agent Mesh as Phases 0a-0b. |
 | Agent Mesh | **Phase 1a-1b foundations** | AgentProfile + UMR implemented in `src/maxim/mesh/`. Phases 0a-0b (mDNS + InferenceRouter) next, then full protocol. |
 | Realtime Refinement | **Core done** | InspectAUTTool, 8 personas, 3 metric expectations, baseline scenario. Per-lane LLM metrics deferred to Multi-LLM Phase 8 |
 | Embodiment Core | **Not started** | Phase 0 MVP + ATL grounding (~400 LOC) is the gate; Cerebellum + structured failures follow. Designed and scoped. |
-| Embodiment Hardware Adapter | **Not started** | Blocked on Embodiment Core MVP. 1-sprint adapter (~300 LOC) wrapping RobotController. |
+| Embodiment Hardware Adapter | **Not started** | Folded into Embodiment Core as Phase 3. Blocked on Phases 0-2. |
 | Generative Campaign Mode | **Not started** | LLM-generated narrative campaigns with entity naming (~480+120 LOC). Entity naming folded in. [Plan](generative_campaign_plan.md) |
 | Dungeon Master Persona (MVP) | **Deferred** | Hand-authored D&D campaigns as ultimate bio-system stress test (~840 LOC). Held until Multi-LLM + Agent Mesh + Embodiment Core land. Gated on choice-classifier spike. |
 | DM Choice Classifier Spike | **Not started** | Half-day spike validating ATL+NAc classification path. Runs before DM MVP commits. |
@@ -434,6 +434,33 @@ Each scenario is a standalone YAML file in `scenarios/tests/` with goal, persona
 - **Cost-capped**: each scenario declares max acceptable cost; runner aborts if exceeded
 - **Deterministic where possible**: use fixed seeds, specific goals, and bounded turn counts to reduce flakiness
 - **No test-suite dependency**: `maxim sim test` is a CLI command, not a pytest fixture. It calls real LLMs and should never run in `python -m pytest` (per CLAUDE.md guidance)
+
+---
+
+## Research Paper Writer Refactor
+
+> Formerly standalone plan `research_paper_writer_plan.md`. Folded here as a quality improvement for the existing Writer agent.
+
+The Writer agent produces correct structure and data but has prose quality issues:
+- Section generation sometimes produces JSON instead of prose (root cause: `_JSON_RULES` in router.py system prompts)
+- Hallucinated references (smollm-1.7b invents fake papers — fix: only cite experiment UMRs)
+- Duplicate headings (LLM generates `## Heading` when `to_markdown()` also adds one)
+- Metrics partially incorrect (stat key mismatch — fix: use `AUTIntrospector` directly)
+- Prose quality limited by small models (recommend `--cloud-lane review claude-haiku` for Writer)
+
+**Components:**
+
+| Component | LOC | Priority |
+|-----------|-----|----------|
+| Writer prose prompts (per-section templates) | ~150 | High |
+| Paper template with markdown formatting | ~50 | High |
+| Multi-experiment aggregation | ~100 | Medium |
+| Reviewer prose quality checks | ~80 | Medium |
+| LaTeX output option | ~100 | Low |
+| Visualization generation | ~150 | Low |
+| **Total** | **~630** | |
+
+Ship incrementally: prose prompts + template first (~200 LOC), then aggregation + reviewer checks, then optional LaTeX/viz.
 
 ---
 

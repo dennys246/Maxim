@@ -130,9 +130,7 @@ class PersistenceMixin:
                 self._restore_graph(graph_data)
 
         edge_count = sum(
-            len(self._graph.get_associated(mid))
-            for mid in self._memories
-            if self._graph.get_node(mid) is not None
+            len(self._graph.get_associated(mid)) for mid in self._memories if self._graph.get_node(mid) is not None
         )
 
         logger.info(

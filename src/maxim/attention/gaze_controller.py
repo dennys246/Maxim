@@ -26,19 +26,21 @@ logger = logging.getLogger(__name__)
 
 class GazeState(Enum):
     """Current state of the gaze controller."""
-    FIXATING = "fixating"      # Holding gaze on target
-    SACCADING = "saccading"    # Rapid movement to new target
-    EXPLORING = "exploring"    # Slow scan when nothing salient
+
+    FIXATING = "fixating"  # Holding gaze on target
+    SACCADING = "saccading"  # Rapid movement to new target
+    EXPLORING = "exploring"  # Slow scan when nothing salient
 
 
 @dataclass
 class GazeCommand:
     """Command to execute a gaze movement."""
+
     target: tuple[float, float]  # (x, y) pixel coordinates
-    speed_multiplier: float      # Relative to normal tracking speed
-    action_type: str             # "saccade", "fixate", "explore"
-    priority: float              # For behavior arbitration
-    metadata: dict[str, Any]     # Additional context
+    speed_multiplier: float  # Relative to normal tracking speed
+    action_type: str  # "saccade", "fixate", "explore"
+    priority: float  # For behavior arbitration
+    metadata: dict[str, Any]  # Additional context
 
 
 @dataclass
@@ -59,6 +61,7 @@ class GazeControllerConfig:
         interrupt_salience_ratio: How much more salient to interrupt fixation.
         sample_temperature: Temperature for salience sampling.
     """
+
     # Fixation dynamics (human average is ~250-350ms)
     min_fixation_ms: float = 200.0
     max_fixation_ms: float = 800.0
@@ -190,10 +193,7 @@ class GazeController:
         min_fixation_sec = self.config.min_fixation_ms / 1000.0
         can_interrupt = elapsed > min_fixation_sec
 
-        should_interrupt = (
-            can_interrupt and
-            peak_salience > current_salience * self.config.interrupt_salience_ratio
-        )
+        should_interrupt = can_interrupt and peak_salience > current_salience * self.config.interrupt_salience_ratio
 
         # Check if fixation expired
         fixation_expired = elapsed >= self._fixation_duration
@@ -295,10 +295,7 @@ class GazeController:
         self._fixation_start = now
         self._fixation_duration = self._sample_fixation_duration()
 
-        logger.debug(
-            "GazeController: starting fixation (%.0fms)",
-            self._fixation_duration * 1000
-        )
+        logger.debug("GazeController: starting fixation (%.0fms)", self._fixation_duration * 1000)
 
     def _sample_fixation_duration(self) -> float:
         """Sample a fixation duration from distribution.

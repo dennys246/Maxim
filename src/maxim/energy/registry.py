@@ -35,14 +35,16 @@ class EnergyRegistryConfig:
 
     enable_budgets: bool = True
     enable_learning: bool = True
-    high_energy_threshold: float = 5.0      # Warn when single signal > 5 units
+    high_energy_threshold: float = 5.0  # Warn when single signal > 5 units
 
     # Budget configurations per domain
-    budget_configs: dict[str, dict[str, float]] = field(default_factory=lambda: {
-        "llm": {"capacity": 1000.0, "recharge_rate": 10.0},
-        "movement": {"capacity": 500.0, "recharge_rate": 5.0},
-        "vision": {"capacity": 200.0, "recharge_rate": 2.0},
-    })
+    budget_configs: dict[str, dict[str, float]] = field(
+        default_factory=lambda: {
+            "llm": {"capacity": 1000.0, "recharge_rate": 10.0},
+            "movement": {"capacity": 500.0, "recharge_rate": 5.0},
+            "vision": {"capacity": 200.0, "recharge_rate": 2.0},
+        }
+    )
 
 
 class EnergyRegistry:
@@ -260,26 +262,18 @@ class EnergyRegistry:
 
         for name, budget in self._budgets.items():
             if budget.is_critical:
-                recommendations["warnings"].append(
-                    f"{name} energy is critical ({budget.percentage:.0f}%)"
-                )
+                recommendations["warnings"].append(f"{name} energy is critical ({budget.percentage:.0f}%)")
             elif budget.is_low:
-                recommendations["warnings"].append(
-                    f"{name} energy is low ({budget.percentage:.0f}%)"
-                )
+                recommendations["warnings"].append(f"{name} energy is low ({budget.percentage:.0f}%)")
 
         # Domain-specific suggestions
         llm_budget = self._budgets.get("llm")
         if llm_budget and llm_budget.is_low:
-            recommendations["suggestions"].append(
-                "Consider using a smaller/faster model (haiku instead of sonnet)"
-            )
+            recommendations["suggestions"].append("Consider using a smaller/faster model (haiku instead of sonnet)")
 
         movement_budget = self._budgets.get("movement")
         if movement_budget and movement_budget.is_low:
-            recommendations["suggestions"].append(
-                "Reduce movement frequency or use smaller movements"
-            )
+            recommendations["suggestions"].append("Reduce movement frequency or use smaller movements")
 
         return recommendations
 

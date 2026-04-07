@@ -8,6 +8,7 @@ new keyword associations via Rescorla-Wagner inspired updates.
 Thread-safe: all mutations to _index and _tool_keywords are
 protected by a lock.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,25 +32,72 @@ class ToolKeywordEntry:
     observations: int = 0  # Times this word co-occurred with tool execution
 
 
-STOPWORDS = frozenset({
-    "a", "an", "the", "is", "are", "was", "were", "be", "been",
-    "being", "have", "has", "had", "do", "does", "did", "will",
-    "would", "could", "should", "may", "might", "can", "shall",
-    "to", "of", "in", "for", "on", "with", "at", "by", "from",
-    "as", "into", "through", "during", "before", "after", "and",
-    "but", "or", "nor", "not", "no", "so", "if", "than", "that",
-    "this", "it", "its", "use", "used", "using",
-})
+STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "can",
+        "shall",
+        "to",
+        "of",
+        "in",
+        "for",
+        "on",
+        "with",
+        "at",
+        "by",
+        "from",
+        "as",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "and",
+        "but",
+        "or",
+        "nor",
+        "not",
+        "no",
+        "so",
+        "if",
+        "than",
+        "that",
+        "this",
+        "it",
+        "its",
+        "use",
+        "used",
+        "using",
+    }
+)
 
 _SPLIT_RE = re.compile(r"[^a-z0-9]+")
 
 
 def _tokenize(text: str) -> set[str]:
     """Tokenize text for index lookup — lowercase, split, filter stopwords."""
-    return {
-        tok for tok in _SPLIT_RE.split(text.lower())
-        if len(tok) > 2 and tok not in STOPWORDS
-    }
+    return {tok for tok in _SPLIT_RE.split(text.lower()) if len(tok) > 2 and tok not in STOPWORDS}
 
 
 class LearnedToolIndex:
@@ -322,10 +370,7 @@ class LearnedToolIndex:
         """Return index statistics."""
         with self._lock:
             total_keywords = sum(len(kw) for kw in self._tool_keywords.values())
-            learned = sum(
-                1 for kw in self._tool_keywords.values()
-                for e in kw.values() if e.source == "learned"
-            )
+            learned = sum(1 for kw in self._tool_keywords.values() for e in kw.values() if e.source == "learned")
             return {
                 "tools_registered": len(self._tool_keywords),
                 "total_keywords": total_keywords,

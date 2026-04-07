@@ -184,9 +184,7 @@ class TestSignificanceWeightLearner:
         total = sum(w.weight for w in weight_learner.weights.values())
         assert total == pytest.approx(1.0, abs=0.01)
 
-    def test_evaluate_returns_score_and_heuristic_scores(
-        self, weight_learner, config, cycle_context
-    ):
+    def test_evaluate_returns_score_and_heuristic_scores(self, weight_learner, config, cycle_context):
         score, heuristic_scores = weight_learner.evaluate(cycle_context, config)
         assert isinstance(score, float)
         assert 0.0 <= score <= 1.0

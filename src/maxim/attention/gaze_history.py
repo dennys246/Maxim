@@ -31,6 +31,7 @@ class GazeHistoryConfig:
         max_history_size: Maximum number of gaze positions to track.
         dwell_time_seconds: Minimum time to stay at a position before moving.
     """
+
     decay_seconds: float = 2.0  # Salience recovers over ~2 seconds
     min_salience_to_move: float = 0.3  # Need 30% salience to move
     spatial_sigma: float = 80.0  # Pixels - positions within this are "similar"
@@ -41,6 +42,7 @@ class GazeHistoryConfig:
 @dataclass
 class GazePosition:
     """A recorded gaze position with timestamp."""
+
     u: float  # Image x coordinate
     v: float  # Image y coordinate
     timestamp: float = field(default_factory=time.time)
@@ -121,7 +123,7 @@ class GazeHistory:
             for gaze in self._history:
                 # Spatial similarity (Gaussian falloff)
                 dist_sq = (target_u - gaze.u) ** 2 + (target_v - gaze.v) ** 2
-                spatial_weight = math.exp(-dist_sq / (2 * self.config.spatial_sigma ** 2))
+                spatial_weight = math.exp(-dist_sq / (2 * self.config.spatial_sigma**2))
 
                 # Temporal decay (exponential recovery)
                 time_since = now - gaze.timestamp
@@ -172,7 +174,7 @@ class GazeHistory:
         """Get time since the last recorded movement."""
         with self._lock:
             if self._last_move_time == 0.0:
-                return float('inf')
+                return float("inf")
             return time.time() - self._last_move_time
 
     def clear(self) -> None:

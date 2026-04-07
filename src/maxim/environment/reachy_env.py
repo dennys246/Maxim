@@ -7,6 +7,7 @@ from typing import Any
 
 from maxim.environment.base import Environment
 
+
 def _tail_line(path: Path) -> str | None:
     try:
         with path.open("rb") as fp:

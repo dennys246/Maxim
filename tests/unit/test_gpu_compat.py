@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 
-
 class TestEnvFlag:
     """Test environment flag parsing."""
 

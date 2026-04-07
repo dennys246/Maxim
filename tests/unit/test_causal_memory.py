@@ -8,9 +8,7 @@ Phase 4: RPE-based observation salience boost
 
 from __future__ import annotations
 
-import time
-from typing import Any
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -79,9 +77,7 @@ class TestPhase1CausesEdgeCreatedOnHighRPE:
         from maxim.proprioception.pain import PainDetector
 
         detector = PainDetector()
-        bridge = ToolPainBridge(
-            nac=nac, pain_detector=detector, hippocampus=hippo
-        )
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector, hippocampus=hippo)
 
         bridge.record_tool_start("web_search", "inv-1")
         bridge.record_tool_complete("web_search", "inv-1", success=True)
@@ -115,9 +111,7 @@ class TestPhase1NoCausesEdgeOnLowRPE:
         from maxim.proprioception.pain import PainDetector
 
         detector = PainDetector()
-        bridge = ToolPainBridge(
-            nac=nac, pain_detector=detector, hippocampus=hippo
-        )
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector, hippocampus=hippo)
 
         bridge.record_tool_start("web_search", "inv-1")
         bridge.record_tool_complete("web_search", "inv-1", success=True)
@@ -139,9 +133,7 @@ class TestPhase1NoCausesEdgeWithoutHippocampus:
         from maxim.proprioception.pain import PainDetector
 
         detector = PainDetector()
-        bridge = ToolPainBridge(
-            nac=nac, pain_detector=detector, hippocampus=None
-        )
+        bridge = ToolPainBridge(nac=nac, pain_detector=detector, hippocampus=None)
 
         bridge.record_tool_start("web_search", "inv-1")
         # Should not raise
@@ -179,11 +171,7 @@ class TestPhase2ECRegistrationOnEstablishedLink:
 
         # EC.register should have been called with "causal:" prefix
         assert ec.register.called
-        causal_calls = [
-            c
-            for c in ec.register.call_args_list
-            if c[0][0].startswith("causal:")
-        ]
+        causal_calls = [c for c in ec.register.call_args_list if c[0][0].startswith("causal:")]
         assert len(causal_calls) >= 1
 
 

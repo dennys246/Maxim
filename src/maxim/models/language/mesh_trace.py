@@ -8,6 +8,7 @@ or MAXIM_PEER_LOG_REQUESTS is set.
 The dedicated `maxim.mesh.trace` logger is also used by Phase 7a's LeaderProxy
 when that ships — same channel, end-to-end correlation.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,7 +29,12 @@ _trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
 
 def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in (
-        "1", "true", "t", "yes", "y", "on",
+        "1",
+        "true",
+        "t",
+        "yes",
+        "y",
+        "on",
     )
 
 
@@ -236,6 +242,7 @@ def print_startup_warning_if_enabled() -> None:
     if not any_trace_enabled():
         return
     import sys
+
     flags = []
     if lane_trace_enabled():
         flags.append("MAXIM_LANE_TRACE")

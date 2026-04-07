@@ -25,16 +25,17 @@ __all__ = ["RTSPBridge", "RTSPBridgeConfig"]
 @dataclass(frozen=True)
 class RTSPBridgeConfig:
     """Configuration for the RTSP bridge."""
+
     rtsp_url: str = "rtsp://localhost:8554/reachy"
     fps: int = 20
     # ffmpeg encoding settings
-    preset: str = "ultrafast"       # CPU-friendly, low latency
-    tune: str = "zerolatency"       # No B-frames, minimal buffering
-    gop_size: int = 30              # Keyframe every ~1.5s at 20fps
-    bitrate: str = "2M"             # Good quality for 720p
+    preset: str = "ultrafast"  # CPU-friendly, low latency
+    tune: str = "zerolatency"  # No B-frames, minimal buffering
+    gop_size: int = 30  # Keyframe every ~1.5s at 20fps
+    bitrate: str = "2M"  # Good quality for 720p
     # MediaMTX auto-management
-    auto_start_mediamtx: bool = True   # Start MediaMTX if not already running
-    mediamtx_path: str | None = None   # Path to binary (auto-detected if None)
+    auto_start_mediamtx: bool = True  # Start MediaMTX if not already running
+    mediamtx_path: str | None = None  # Path to binary (auto-detected if None)
 
 
 class RTSPBridge:
@@ -223,19 +224,32 @@ class RTSPBridge:
     def _start_ffmpeg(self, w: int, h: int) -> subprocess.Popen | None:
         cfg = self.config
         cmd = [
-            "ffmpeg", "-y",
-            "-f", "rawvideo",
-            "-pix_fmt", "bgr24",
-            "-s", f"{w}x{h}",
-            "-r", str(cfg.fps),
-            "-i", "pipe:0",
-            "-c:v", "libx264",
-            "-preset", cfg.preset,
-            "-tune", cfg.tune,
-            "-g", str(cfg.gop_size),
-            "-b:v", cfg.bitrate,
-            "-f", "rtsp",
-            "-rtsp_transport", "tcp",
+            "ffmpeg",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "bgr24",
+            "-s",
+            f"{w}x{h}",
+            "-r",
+            str(cfg.fps),
+            "-i",
+            "pipe:0",
+            "-c:v",
+            "libx264",
+            "-preset",
+            cfg.preset,
+            "-tune",
+            cfg.tune,
+            "-g",
+            str(cfg.gop_size),
+            "-b:v",
+            cfg.bitrate,
+            "-f",
+            "rtsp",
+            "-rtsp_transport",
+            "tcp",
             cfg.rtsp_url,
         ]
         try:
@@ -291,8 +305,8 @@ class RTSPBridge:
         if frame is None:
             if last_error:
                 log.error(
-                    "RTSP bridge: could not get initial frame after 50 attempts. "
-                    "Last error: %s", last_error,
+                    "RTSP bridge: could not get initial frame after 50 attempts. Last error: %s",
+                    last_error,
                 )
             else:
                 log.error("RTSP bridge: no frames available from camera")
@@ -304,14 +318,15 @@ class RTSPBridge:
 
         log.info(
             "RTSP bridge starting: %dx%d @ %d fps -> %s",
-            w, h, cfg.fps, cfg.rtsp_url,
+            w,
+            h,
+            cfg.fps,
+            cfg.rtsp_url,
         )
 
         self._proc = self._start_ffmpeg(w, h)
         if self._proc is None:
-            log.warning(
-                "RTSP bridge: ffmpeg not found. Install with: apt install ffmpeg"
-            )
+            log.warning("RTSP bridge: ffmpeg not found. Install with: apt install ffmpeg")
             self._started.set()
             return
 
@@ -347,8 +362,10 @@ class RTSPBridge:
                 if (cur_h, cur_w) != self._expected_shape:
                     log.warning(
                         "RTSP bridge: resolution changed %dx%d -> %dx%d, restarting ffmpeg",
-                        self._expected_shape[1], self._expected_shape[0],
-                        cur_w, cur_h,
+                        self._expected_shape[1],
+                        self._expected_shape[0],
+                        cur_w,
+                        cur_h,
                     )
                     self._kill_ffmpeg()
                     self._expected_shape = (cur_h, cur_w)

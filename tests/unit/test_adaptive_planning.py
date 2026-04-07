@@ -1,10 +1,10 @@
 """Unit tests for AdaptivePlanner, AdaptivePolicy, and DecisionEngine PlanCandidate support."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
-import pytest
 
 from maxim.planning.adaptive_planner import (
     AdaptivePlanner,
@@ -200,7 +200,8 @@ class TestAdaptivePlannerNoMemory:
         planner = AdaptivePlanner()
         candidates = planner.propose_plans(
             {"tool_name": "read_file", "tool_params": {"path": "x"}, "description": "read"},
-            None, None,
+            None,
+            None,
         )
         assert len(candidates) >= 1
         assert candidates[0].source == "direct"
@@ -295,9 +296,11 @@ class TestAdaptivePlannerECIntegration:
 
     def test_ec_results_seed_hippocampus(self):
         ec = FakeEC(results=[("mem-1", "sig1"), ("mem-2", "sig2")])
-        hip = FakeHippocampus(associated_results=[
-            (FakeMemory(id="mem-3", outcome=FakeOutcome(success=True), action=FakeAction()), 0.8),
-        ])
+        hip = FakeHippocampus(
+            associated_results=[
+                (FakeMemory(id="mem-3", outcome=FakeOutcome(success=True), action=FakeAction()), 0.8),
+            ]
+        )
         planner = AdaptivePlanner(ec=ec, hippocampus=hip)
         candidates = planner.propose_plans({"tool_name": "t", "description": "d"}, None, None)
         pctx = candidates[0].planning_context
@@ -329,10 +332,12 @@ class TestAdaptivePlannerECIntegration:
             outcome=FakeOutcome(success=True),
             action=FakeAction(),
         )
-        hip = FakeHippocampus(associated_results=[
-            (reflection_mem, 0.9),
-            (success_mem, 0.7),
-        ])
+        hip = FakeHippocampus(
+            associated_results=[
+                (reflection_mem, 0.9),
+                (success_mem, 0.7),
+            ]
+        )
         ec = FakeEC(results=[("seed-1", "sig")])
         planner = AdaptivePlanner(ec=ec, hippocampus=hip)
         candidates = planner.propose_plans({"tool_name": "t", "description": "d"}, None, None)
@@ -617,9 +622,11 @@ class TestAdaptivePolicyConceptRelevance:
 
     def test_blends_success_rate(self):
         """When past_success_rate is available, blend 70/30."""
-        pctx = PlanningContext(ranked_skills=[
-            {"name": "grab", "relevance": 2, "past_success_rate": 0.9},
-        ])
+        pctx = PlanningContext(
+            ranked_skills=[
+                {"name": "grab", "relevance": 2, "past_success_rate": 0.9},
+            ]
+        )
         candidate = PlanCandidate(
             actions=[{"tool_name": "grab", "params": {}}],
             source="direct",

@@ -220,16 +220,12 @@ class TestFocusLearnerPersistence:
         # Create new instance and load
         from maxim.proprioception.focus_learner import FocusLearner, FocusLearnerConfig
 
-        new_learner = FocusLearner(
-            config=FocusLearnerConfig(persist_path=None, auto_save_interval=0)
-        )
+        new_learner = FocusLearner(config=FocusLearnerConfig(persist_path=None, auto_save_interval=0))
         new_learner.load(str(path))
 
         loaded_gain = new_learner.get_average_gain()
 
-        assert abs(loaded_gain - original_gain) < 0.001, (
-            f"Gain mismatch: {original_gain} vs {loaded_gain}"
-        )
+        assert abs(loaded_gain - original_gain) < 0.001, f"Gain mismatch: {original_gain} vs {loaded_gain}"
 
     def test_save_load_preserves_stats(self, focus_learner, tmp_path):
         """Statistics survive save/load cycle."""
@@ -248,9 +244,7 @@ class TestFocusLearnerPersistence:
 
         from maxim.proprioception.focus_learner import FocusLearner, FocusLearnerConfig
 
-        new_learner = FocusLearner(
-            config=FocusLearnerConfig(persist_path=None, auto_save_interval=0)
-        )
+        new_learner = FocusLearner(config=FocusLearnerConfig(persist_path=None, auto_save_interval=0))
         new_learner.load(str(path))
 
         loaded_stats = new_learner.get_stats()

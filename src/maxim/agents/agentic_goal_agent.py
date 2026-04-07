@@ -205,9 +205,7 @@ class AgenticGoalAgent(Agent):
                     },
                 )
             else:
-                should_continue = goal.handle_sub_goal_failure(
-                    current_sub, result.error or "Unknown error"
-                )
+                should_continue = goal.handle_sub_goal_failure(current_sub, result.error or "Unknown error")
                 if not should_continue:
                     self._complete_goal(
                         success=False,

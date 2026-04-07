@@ -156,8 +156,10 @@ class TestAsyncPath:
         concept = _make_concept(atl)
         episodes = _make_episodes(6)
 
-        with patch.object(grounder_async, "_modulate_relationships") as mock_mod, \
-             patch.object(grounder_async, "_store_quantifications") as mock_store:
+        with (
+            patch.object(grounder_async, "_modulate_relationships") as mock_mod,
+            patch.object(grounder_async, "_store_quantifications") as mock_store,
+        ):
             grounder_async.ground_concept(concept, episodes)
             mock_mod.assert_not_called()
             mock_store.assert_not_called()
@@ -224,8 +226,11 @@ class TestReviewConcept:
             concept_b.add_ref("hippocampus", f"ep-{i}")
 
         atl.define_relationship(
-            concept_a.id, concept_b.id, "RELATED_TO",
-            weight=0.3, confidence=0.3,
+            concept_a.id,
+            concept_b.id,
+            "RELATED_TO",
+            weight=0.3,
+            confidence=0.3,
         )
 
         stats = {"salience": {"mean": 0.7, "n": 6, "min": 0.5, "max": 0.9}}
@@ -265,8 +270,11 @@ class TestApplyUpdates:
         concept_b = _make_concept(atl, "kitchen", "location")
 
         atl.define_relationship(
-            concept_a.id, concept_b.id, "RELATED_TO",
-            weight=0.3, confidence=0.3,
+            concept_a.id,
+            concept_b.id,
+            "RELATED_TO",
+            weight=0.3,
+            confidence=0.3,
         )
 
         edge_updates = [
@@ -280,13 +288,15 @@ class TestApplyUpdates:
         """_apply_updates should create AG MathMemory records."""
         concept = _make_concept(atl)
 
-        quant_proposals = [{
-            "field_name": "salience",
-            "concept_name": concept.name,
-            "concept_id": concept.id,
-            "mean": 0.75,
-            "n": 8,
-        }]
+        quant_proposals = [
+            {
+                "field_name": "salience",
+                "concept_name": concept.name,
+                "concept_id": concept.id,
+                "mean": 0.75,
+                "n": 8,
+            }
+        ]
 
         grounder_async._apply_updates(concept.id, [], quant_proposals)
 
@@ -303,13 +313,15 @@ class TestApplyUpdates:
         """Quantification proposals should create QUANTIFIES cross-layer edges."""
         concept = _make_concept(atl)
 
-        quant_proposals = [{
-            "field_name": "salience",
-            "concept_name": concept.name,
-            "concept_id": concept.id,
-            "mean": 0.7,
-            "n": 6,
-        }]
+        quant_proposals = [
+            {
+                "field_name": "salience",
+                "concept_name": concept.name,
+                "concept_id": concept.id,
+                "mean": 0.7,
+                "n": 6,
+            }
+        ]
 
         grounder_async._apply_updates(concept.id, [], quant_proposals)
 
@@ -321,13 +333,15 @@ class TestApplyUpdates:
         """Quantification should add angular_gyrus ref to concept."""
         concept = _make_concept(atl)
 
-        quant_proposals = [{
-            "field_name": "salience",
-            "concept_name": concept.name,
-            "concept_id": concept.id,
-            "mean": 0.7,
-            "n": 6,
-        }]
+        quant_proposals = [
+            {
+                "field_name": "salience",
+                "concept_name": concept.name,
+                "concept_id": concept.id,
+                "mean": 0.7,
+                "n": 6,
+            }
+        ]
 
         grounder_async._apply_updates(concept.id, [], quant_proposals)
         assert concept.ref_count("angular_gyrus") >= 1
@@ -348,8 +362,11 @@ class TestComputeRelationshipUpdates:
             concept_b.add_ref("hippocampus", f"ep-{i}")
 
         atl.define_relationship(
-            concept_a.id, concept_b.id, "RELATED_TO",
-            weight=0.3, confidence=0.3,
+            concept_a.id,
+            concept_b.id,
+            "RELATED_TO",
+            weight=0.3,
+            confidence=0.3,
         )
 
         updates = grounder_async._compute_relationship_updates(concept_a)
@@ -368,8 +385,11 @@ class TestComputeRelationshipUpdates:
             concept_b.add_ref("hippocampus", f"ep-b-{i}")
 
         atl.define_relationship(
-            concept_a.id, concept_b.id, "RELATED_TO",
-            weight=0.5, confidence=0.5,
+            concept_a.id,
+            concept_b.id,
+            "RELATED_TO",
+            weight=0.5,
+            confidence=0.5,
         )
 
         updates = grounder_async._compute_relationship_updates(concept_a)

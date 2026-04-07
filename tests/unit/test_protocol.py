@@ -13,11 +13,17 @@ from maxim.skills.protocol import Protocol, WorkspaceBounds
 
 # --- Test helpers ---
 
+
 class StubSkill(Skill):
     """Controllable stub skill for protocol tests."""
 
-    def __init__(self, name: str = "stub", can_activate_result: tuple[bool, str] = (True, ""),
-                 activate_ok: bool = True, deps: list[str] | None = None):
+    def __init__(
+        self,
+        name: str = "stub",
+        can_activate_result: tuple[bool, str] = (True, ""),
+        activate_ok: bool = True,
+        deps: list[str] | None = None,
+    ):
         self._name = name
         self._state = SkillState.IDLE
         self._last_result: SkillResult | None = None
@@ -114,6 +120,7 @@ def mock_maxim():
 
 # --- WorkspaceBounds tests ---
 
+
 class TestWorkspaceBounds:
     def test_default_all_none(self):
         b = WorkspaceBounds()
@@ -132,6 +139,7 @@ class TestWorkspaceBounds:
 
 
 # --- Protocol lifecycle tests ---
+
 
 class TestProtocolActivation:
     def test_activate_single_skill(self, mock_maxim):

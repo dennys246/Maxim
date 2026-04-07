@@ -25,12 +25,11 @@ log = logging.getLogger(__name__)
 
 
 class ShredderSegmenterProtocol(Protocol):
-
     def __init__(
         self,
         rtsp_url: str = "rtsp://localhost:8554/reachy",
         fps: int = 20,
-        yaw_range: float = 30.0,    # ±30° horizontal arc
+        yaw_range: float = 30.0,  # ±30° horizontal arc
         pitch_range: float = 20.0,  # ±20° vertical arc
         # ShredderSegmenter API integration (optional)
         shredder_api_url: str | None = None,  # e.g., "http://localhost:8000"
@@ -64,10 +63,7 @@ class ShredderSegmenterProtocol(Protocol):
 
     @property
     def description(self) -> str:
-        return (
-            "Stream Reachy camera as RTSP for ShredderSegmenter ski recording. "
-            "Gaze constrained to a fixed arc."
-        )
+        return "Stream Reachy camera as RTSP for ShredderSegmenter ski recording. Gaze constrained to a fixed arc."
 
     def skills(self) -> list[Skill]:
         skills: list[Skill] = [RTSPStreamingSkill(self._rtsp_config)]
@@ -76,17 +72,25 @@ class ShredderSegmenterProtocol(Protocol):
             headers = {}
             if self._shredder_api_key:
                 headers["Authorization"] = f"Bearer {self._shredder_api_key}"
-            skills.append(HealthReportingSkill(HealthReportingConfig(
-                endpoint_url=self._health_endpoint_url,
-                interval_seconds=self._health_interval_seconds,
-                headers=headers,
-            )))
+            skills.append(
+                HealthReportingSkill(
+                    HealthReportingConfig(
+                        endpoint_url=self._health_endpoint_url,
+                        interval_seconds=self._health_interval_seconds,
+                        headers=headers,
+                    )
+                )
+            )
 
         # TimedProtocol must be last — it reads _protocol_name from context
         if self._duration_minutes > 0:
-            skills.append(TimedProtocolSkill(TimedProtocolConfig(
-                duration_minutes=self._duration_minutes,
-            )))
+            skills.append(
+                TimedProtocolSkill(
+                    TimedProtocolConfig(
+                        duration_minutes=self._duration_minutes,
+                    )
+                )
+            )
 
         return skills
 
@@ -167,39 +171,49 @@ class ShredderSegmenterProtocol(Protocol):
         host = parsed.hostname or "localhost"
         port = parsed.port or 8554
 
-        body = json.dumps({
-            "name": self._shredder_camera_name,
-            "engine_type": "maxim",
-            "host": host,
-            "port": port,
-            "rtsp_url": self._rtsp_config.rtsp_url,
-        }).encode()
+        body = json.dumps(
+            {
+                "name": self._shredder_camera_name,
+                "engine_type": "maxim",
+                "host": host,
+                "port": port,
+                "rtsp_url": self._rtsp_config.rtsp_url,
+            }
+        ).encode()
 
         for attempt in range(3):
             try:
                 req = urllib.request.Request(
-                    register_url, data=body, headers=headers, method="POST",
+                    register_url,
+                    data=body,
+                    headers=headers,
+                    method="POST",
                 )
                 with urllib.request.urlopen(req, timeout=5) as resp:
                     data = json.loads(resp.read())
                     self._registered_camera_id = data.get("id")
                     log.info(
                         "Registered camera '%s' with ShredderSegmenter (id=%s)",
-                        self._shredder_camera_name, self._registered_camera_id,
+                        self._shredder_camera_name,
+                        self._registered_camera_id,
                     )
                 break
             except Exception as e:
                 if attempt < 2:
-                    delay = 2 ** attempt  # 1s, 2s
+                    delay = 2**attempt  # 1s, 2s
                     log.warning(
                         "Registration attempt %d failed: %s (retrying in %ds)",
-                        attempt + 1, e, delay, exc_info=True,
+                        attempt + 1,
+                        e,
+                        delay,
+                        exc_info=True,
                     )
                     time.sleep(delay)
                 else:
                     log.error(
                         "Failed to register with ShredderSegmenter after 3 attempts: %s",
-                        e, exc_info=True,
+                        e,
+                        exc_info=True,
                     )
                     return
 
@@ -207,16 +221,22 @@ class ShredderSegmenterProtocol(Protocol):
         if self._registered_camera_id and self._shredder_site_id:
             try:
                 assign_url = f"{api_url}/sites/{self._shredder_site_id}/cameras"
-                assign_body = json.dumps({
-                    "camera_id": self._registered_camera_id,
-                }).encode()
+                assign_body = json.dumps(
+                    {
+                        "camera_id": self._registered_camera_id,
+                    }
+                ).encode()
                 req = urllib.request.Request(
-                    assign_url, data=assign_body, headers=headers, method="POST",
+                    assign_url,
+                    data=assign_body,
+                    headers=headers,
+                    method="POST",
                 )
                 urllib.request.urlopen(req, timeout=5)
                 log.info(
                     "Assigned camera %s to site %s",
-                    self._registered_camera_id, self._shredder_site_id,
+                    self._registered_camera_id,
+                    self._shredder_site_id,
                 )
             except Exception as e:
                 log.warning(
@@ -236,6 +256,7 @@ class ShredderSegmenterProtocol(Protocol):
         """Remove the camera registration on protocol deactivation."""
         try:
             import urllib.request
+
             url = f"{self._shredder_api_url}/cameras/{self._registered_camera_id}"
             headers = {}
             if self._shredder_api_key:
@@ -245,8 +266,9 @@ class ShredderSegmenterProtocol(Protocol):
             log.info("Unregistered camera '%s' from ShredderSegmenter", self._registered_camera_id)
         except Exception as e:
             log.error(
-                "Failed to unregister camera %s from ShredderSegmenter: %s. "
-                "Manual cleanup may be required.",
-                self._registered_camera_id, e, exc_info=True,
+                "Failed to unregister camera %s from ShredderSegmenter: %s. Manual cleanup may be required.",
+                self._registered_camera_id,
+                e,
+                exc_info=True,
             )
         self._registered_camera_id = None

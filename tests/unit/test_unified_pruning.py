@@ -32,10 +32,12 @@ from maxim.memory.semantic_types import (
 @pytest.fixture
 def small_atl():
     """ATL with a very small max_concepts for testing eviction."""
-    return ATL(ATLConfig(
-        max_concepts=5,
-        persistence_path=None,
-    ))
+    return ATL(
+        ATLConfig(
+            max_concepts=5,
+            persistence_path=None,
+        )
+    )
 
 
 @pytest.fixture
@@ -43,10 +45,12 @@ def tiny_hippocampus():
     """Hippocampus with small max_nodes for testing eviction."""
     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 
-    return Hippocampus(HippocampusConfig(
-        max_nodes=5,
-        persistence_path=None,
-    ))
+    return Hippocampus(
+        HippocampusConfig(
+            max_nodes=5,
+            persistence_path=None,
+        )
+    )
 
 
 def _make_memory_args(goal="test goal", tool="test_tool", success=True):
@@ -163,10 +167,12 @@ class TestATLConsolidation:
 
     def test_consolidate_removes_old_low_access(self):
         """consolidate() removes concepts that score below retention threshold."""
-        atl = ATL(ATLConfig(
-            persistence_path=None,
-            retention_threshold=0.2,
-        ))
+        atl = ATL(
+            ATLConfig(
+                persistence_path=None,
+                retention_threshold=0.2,
+            )
+        )
 
         # Create a concept that's old and untouched
         old_concept = Concept(
@@ -201,10 +207,12 @@ class TestATLConsolidation:
 
     def test_consolidate_uses_ref_count_bonus(self):
         """Concepts with high ref_count score higher in consolidation."""
-        atl = ATL(ATLConfig(
-            persistence_path=None,
-            retention_threshold=0.3,
-        ))
+        atl = ATL(
+            ATLConfig(
+                persistence_path=None,
+                retention_threshold=0.3,
+            )
+        )
 
         # Two concepts, same age and access count
         now = time.time()

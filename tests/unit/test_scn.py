@@ -7,7 +7,6 @@ sleep consolidation support.
 from __future__ import annotations
 
 
-
 class TestSCNRegistration:
     """Test memory registration and indexing."""
 
@@ -53,9 +52,7 @@ class TestSCNRegistration:
 class TestSCNQueries:
     """Test temporal queries."""
 
-    def test_query_hour_returns_matching_memories(
-        self, scn, temporal_signature_morning, temporal_signature_evening
-    ):
+    def test_query_hour_returns_matching_memories(self, scn, temporal_signature_morning, temporal_signature_evening):
         """Query by hour returns memories at that hour."""
         scn.register("morning", temporal_signature_morning)  # 9am
         scn.register("evening", temporal_signature_evening)  # 8pm
@@ -68,9 +65,7 @@ class TestSCNQueries:
         assert "evening" in evening_mems
         assert "evening" not in morning_mems
 
-    def test_query_day_returns_matching_memories(
-        self, scn, temporal_signature_morning, temporal_signature_evening
-    ):
+    def test_query_day_returns_matching_memories(self, scn, temporal_signature_morning, temporal_signature_evening):
         """Query by day returns memories on that day."""
         scn.register("monday", temporal_signature_morning)  # Monday
         scn.register("friday", temporal_signature_evening)  # Friday
@@ -87,18 +82,15 @@ class TestSCNQueries:
 
         # Monday 9am
         sig_mon_9 = TemporalSignature(
-            timestamp=1704103200.0,
-            circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
+            timestamp=1704103200.0, circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
         )
         # Monday 10am
         sig_mon_10 = TemporalSignature(
-            timestamp=1704106800.0,
-            circadian_phase=10 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
+            timestamp=1704106800.0, circadian_phase=10 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
         )
         # Tuesday 9am
         sig_tue_9 = TemporalSignature(
-            timestamp=1704189600.0,
-            circadian_phase=9 / 24, weekly_phase=1 / 7, monthly_phase=0.25, annual_phase=0.0
+            timestamp=1704189600.0, circadian_phase=9 / 24, weekly_phase=1 / 7, monthly_phase=0.25, annual_phase=0.0
         )
 
         scn.register("mon_9am", sig_mon_9)
@@ -119,16 +111,13 @@ class TestSCNQueries:
         from maxim.time.temporal_signature import TemporalSignature
 
         sig_9 = TemporalSignature(
-            timestamp=1704103200.0,
-            circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
+            timestamp=1704103200.0, circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
         )
         sig_10 = TemporalSignature(
-            timestamp=1704106800.0,
-            circadian_phase=10 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
+            timestamp=1704106800.0, circadian_phase=10 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
         )
         sig_12 = TemporalSignature(
-            timestamp=1704114000.0,
-            circadian_phase=12 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
+            timestamp=1704114000.0, circadian_phase=12 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
         )
 
         scn.register("9am", sig_9)
@@ -150,8 +139,7 @@ class TestSCNSleepConsolidation:
         from maxim.time.temporal_signature import TemporalSignature
 
         sig = TemporalSignature(
-            timestamp=1704103200.0,
-            circadian_phase=3 / 24, weekly_phase=6 / 7, monthly_phase=0.5, annual_phase=0.5
+            timestamp=1704103200.0, circadian_phase=3 / 24, weekly_phase=6 / 7, monthly_phase=0.5, annual_phase=0.5
         )
         scn.register("only_one", sig)
 
@@ -162,8 +150,7 @@ class TestSCNSleepConsolidation:
         from maxim.time.temporal_signature import TemporalSignature
 
         sig = TemporalSignature(
-            timestamp=1704103200.0,
-            circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
+            timestamp=1704103200.0, circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
         )
         scn.register("mem_1", sig)
         scn.register("mem_2", sig)
@@ -177,8 +164,7 @@ class TestSCNSleepConsolidation:
 
         # Create many memories at 9am
         sig_9am = TemporalSignature(
-            timestamp=1704103200.0,
-            circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
+            timestamp=1704103200.0, circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
         )
         for i in range(10):
             scn.register(f"mem_{i}", sig_9am)
@@ -190,8 +176,7 @@ class TestSCNSleepConsolidation:
         from maxim.time.temporal_signature import TemporalSignature
 
         sig = TemporalSignature(
-            timestamp=1704103200.0,
-            circadian_phase=3 / 24, weekly_phase=6 / 7, monthly_phase=0.5, annual_phase=0.5
+            timestamp=1704103200.0, circadian_phase=3 / 24, weekly_phase=6 / 7, monthly_phase=0.5, annual_phase=0.5
         )
         scn.register("lonely", sig)
 
@@ -202,12 +187,10 @@ class TestSCNSleepConsolidation:
         from maxim.time.temporal_signature import TemporalSignature
 
         sig_1 = TemporalSignature(
-            timestamp=1704103200.0,
-            circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
+            timestamp=1704103200.0, circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
         )
         sig_2 = TemporalSignature(
-            timestamp=1704106800.0,
-            circadian_phase=10 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
+            timestamp=1704106800.0, circadian_phase=10 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
         )
 
         scn.register("a", sig_1)
@@ -239,8 +222,7 @@ class TestSCNSleepConsolidation:
         from maxim.time.temporal_signature import TemporalSignature
 
         sig = TemporalSignature(
-            timestamp=1704103200.0,
-            circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
+            timestamp=1704103200.0, circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
         )
         for i in range(5):
             scn.register(f"mem_{i}", sig)
@@ -259,8 +241,7 @@ class TestSCNPatterns:
 
         # Create pattern: many at 9am Monday
         sig = TemporalSignature(
-            timestamp=1704103200.0,
-            circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
+            timestamp=1704103200.0, circadian_phase=9 / 24, weekly_phase=0 / 7, monthly_phase=0.25, annual_phase=0.0
         )
         for i in range(10):
             scn.register(f"mem_{i}", sig)

@@ -32,17 +32,17 @@ class CrossLayerEdgeType(Enum):
     """Types of edges between records in different memory layers."""
 
     # Episodic <-> Semantic
-    DERIVED_FROM = auto()             # ATL concept derived from episode(s)
-    INSTANCE_OF = auto()              # Episode is instance of ATL concept
-    INFORMS = auto()                  # Generic cross-layer influence
+    DERIVED_FROM = auto()  # ATL concept derived from episode(s)
+    INSTANCE_OF = auto()  # Episode is instance of ATL concept
+    INFORMS = auto()  # Generic cross-layer influence
 
     # Math <-> Semantic
-    COMPUTED_FROM = auto()            # AG result derived from another layer's data
-    QUANTIFIES = auto()               # AG provides numerical characterization
+    COMPUTED_FROM = auto()  # AG result derived from another layer's data
+    QUANTIFIES = auto()  # AG provides numerical characterization
 
     # Statistical <-> Semantic/Episodic
-    STATISTICALLY_CONFIRMS = auto()   # AG PATTERN validates ATL concept
-    TEMPORALLY_CORRELATES = auto()    # SCN coupling links temporal pattern
+    STATISTICALLY_CONFIRMS = auto()  # AG PATTERN validates ATL concept
+    TEMPORALLY_CORRELATES = auto()  # SCN coupling links temporal pattern
 
 
 @dataclass
@@ -110,7 +110,8 @@ class CrossLayerGraph:
         for edge in self._outgoing.pop(key, []):
             tgt = (edge.target_layer, edge.target_id)
             self._incoming[tgt] = [
-                e for e in self._incoming.get(tgt, [])
+                e
+                for e in self._incoming.get(tgt, [])
                 if not (e.source_layer == layer_name and e.source_id == record_id)
             ]
             removed += 1
@@ -119,7 +120,8 @@ class CrossLayerGraph:
         for edge in self._incoming.pop(key, []):
             src = (edge.source_layer, edge.source_id)
             self._outgoing[src] = [
-                e for e in self._outgoing.get(src, [])
+                e
+                for e in self._outgoing.get(src, [])
                 if not (e.target_layer == layer_name and e.target_id == record_id)
             ]
             removed += 1
@@ -178,9 +180,7 @@ class CrossLayerGraph:
         """
         # BFS with decay
         activations: dict[tuple[str, str], float] = {}
-        frontier: list[tuple[str, str, float]] = [
-            (start_layer, sid, 1.0) for sid in seed_ids
-        ]
+        frontier: list[tuple[str, str, float]] = [(start_layer, sid, 1.0) for sid in seed_ids]
         visited: set[tuple[str, str]] = set()
 
         for depth in range(max_depth):
@@ -220,6 +220,7 @@ class CrossLayerGraph:
             return
 
         from maxim.utils.atomic_io import atomic_write_json
+
         atomic_write_json(path, self.to_dict(), default=None)
 
     def load(self, path: str | None = None) -> None:
@@ -254,15 +255,17 @@ class CrossLayerGraph:
         edges = []
         for edge_list in self._outgoing.values():
             for edge in edge_list:
-                edges.append({
-                    "source_layer": edge.source_layer,
-                    "source_id": edge.source_id,
-                    "target_layer": edge.target_layer,
-                    "target_id": edge.target_id,
-                    "edge_type": edge.edge_type.name,
-                    "weight": edge.weight,
-                    "metadata": edge.metadata,
-                })
+                edges.append(
+                    {
+                        "source_layer": edge.source_layer,
+                        "source_id": edge.source_id,
+                        "target_layer": edge.target_layer,
+                        "target_id": edge.target_id,
+                        "edge_type": edge.edge_type.name,
+                        "weight": edge.weight,
+                        "metadata": edge.metadata,
+                    }
+                )
         return {"version": "1.0", "edges": edges}
 
     def stats(self) -> dict[str, Any]:

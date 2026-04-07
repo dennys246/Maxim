@@ -53,9 +53,7 @@ def detect_blackwell() -> GPUCompatState:
             gpu_names = result.stdout.strip().lower()
             if "rtx 50" in gpu_names or "5080" in gpu_names or "5090" in gpu_names:
                 _compat_state.blackwell_detected = True
-                _compat_state.original_cuda_devices = os.environ.get(
-                    "CUDA_VISIBLE_DEVICES", "0"
-                )
+                _compat_state.original_cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "0")
 
                 # GStreamer/GLib segfaults on Blackwell when CUDA is enabled in the
                 # media pipeline. These two flags neutralize the GStreamer side.
@@ -65,9 +63,14 @@ def detect_blackwell() -> GPUCompatState:
                 # Default: keep CUDA visible for LLM backends (the GStreamer guards
                 # above handle the media-pipeline crash). Opt out with
                 # MAXIM_BLACKWELL_HIDE_CUDA=1 to run fully CPU-only.
-                hide_cuda = os.environ.get(
-                    "MAXIM_BLACKWELL_HIDE_CUDA", ""
-                ).strip().lower() in ("1", "true", "t", "yes", "y", "on")
+                hide_cuda = os.environ.get("MAXIM_BLACKWELL_HIDE_CUDA", "").strip().lower() in (
+                    "1",
+                    "true",
+                    "t",
+                    "yes",
+                    "y",
+                    "on",
+                )
                 if hide_cuda:
                     os.environ["CUDA_VISIBLE_DEVICES"] = ""
     except Exception:
@@ -175,9 +178,7 @@ def is_connection_error(error: object) -> bool:
         return True
     if "timeout" in message or "timed out" in message:
         return True
-    if "connection" in message and any(
-        term in message for term in ("refused", "reset", "broken", "closed")
-    ):
+    if "connection" in message and any(term in message for term in ("refused", "reset", "broken", "closed")):
         return True
 
     # Dynamixel/serial communication errors (rustypot panics)

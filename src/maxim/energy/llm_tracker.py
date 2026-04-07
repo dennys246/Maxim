@@ -36,29 +36,31 @@ class LLMEnergyConfig(EnergyConfig):
     """
 
     # Token costs (relative energy units)
-    input_token_cost: float = 0.001      # 1000 input tokens = 1 energy
-    output_token_cost: float = 0.003     # 333 output tokens = 1 energy (generation is expensive)
+    input_token_cost: float = 0.001  # 1000 input tokens = 1 energy
+    output_token_cost: float = 0.003  # 333 output tokens = 1 energy (generation is expensive)
 
     # Latency cost (represents opportunity cost of waiting)
     latency_cost_per_second: float = 0.1  # 10 seconds = 1 energy
 
     # Model-specific multipliers (larger = more energy)
-    model_multipliers: dict[str, float] = field(default_factory=lambda: {
-        # Claude models
-        "claude-3-haiku": 0.5,
-        "claude-3-sonnet": 1.0,
-        "claude-3-opus": 2.0,
-        "claude-opus-4-5": 2.5,
-        "claude-sonnet-4-5": 1.2,
-        "claude-haiku-4-5": 0.6,
-        # OpenAI models (if used)
-        "gpt-4o": 1.5,
-        "gpt-4o-mini": 0.4,
-        "gpt-4-turbo": 1.8,
-        # Local models (if used)
-        "local": 0.2,            # Local inference is cheap
-        "ollama": 0.3,
-    })
+    model_multipliers: dict[str, float] = field(
+        default_factory=lambda: {
+            # Claude models
+            "claude-3-haiku": 0.5,
+            "claude-3-sonnet": 1.0,
+            "claude-3-opus": 2.0,
+            "claude-opus-4-5": 2.5,
+            "claude-sonnet-4-5": 1.2,
+            "claude-haiku-4-5": 0.6,
+            # OpenAI models (if used)
+            "gpt-4o": 1.5,
+            "gpt-4o-mini": 0.4,
+            "gpt-4-turbo": 1.8,
+            # Local models (if used)
+            "local": 0.2,  # Local inference is cheap
+            "ollama": 0.3,
+        }
+    )
 
     # Default multiplier for unknown models
     default_multiplier: float = 1.0
@@ -130,8 +132,7 @@ class LLMEnergyTracker(EnergyTracker):
         multiplier = self._get_model_multiplier(model)
 
         token_energy = (
-            input_tokens * self._llm_config.input_token_cost +
-            output_tokens * self._llm_config.output_token_cost
+            input_tokens * self._llm_config.input_token_cost + output_tokens * self._llm_config.output_token_cost
         ) * multiplier
 
         # Calculate latency energy
@@ -142,15 +143,17 @@ class LLMEnergyTracker(EnergyTracker):
 
         # Build context
         signal_context = context or {}
-        signal_context.update({
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "total_tokens": input_tokens + output_tokens,
-            "model": model,
-            "multiplier": multiplier,
-            "token_energy": round(token_energy, 4),
-            "latency_energy": round(latency_energy, 4),
-        })
+        signal_context.update(
+            {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+                "model": model,
+                "multiplier": multiplier,
+                "token_energy": round(token_energy, 4),
+                "latency_energy": round(latency_energy, 4),
+            }
+        )
 
         signal = EnergySignal(
             energy_type=EnergyType.LLM_TOKENS,
@@ -217,14 +220,9 @@ class LLMEnergyTracker(EnergyTracker):
                 "call_count": self._call_count,
                 # Averages
                 "avg_tokens_per_call": round(
-                    (self._total_input_tokens + self._total_output_tokens) /
-                    max(self._call_count, 1),
-                    1
+                    (self._total_input_tokens + self._total_output_tokens) / max(self._call_count, 1), 1
                 ),
-                "avg_latency_ms": round(
-                    self._total_latency_ms / max(self._call_count, 1),
-                    2
-                ),
+                "avg_latency_ms": round(self._total_latency_ms / max(self._call_count, 1), 2),
             }
 
     def get_token_budget_status(

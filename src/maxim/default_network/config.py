@@ -20,6 +20,7 @@ DEFAULT_CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "data" / "uti
 @dataclass
 class OrientingConfig:
     """Configuration for OrientingResponse behavior."""
+
     enabled: bool = True
     priority: float = 0.8
     novelty_threshold: float = 1.2
@@ -30,6 +31,7 @@ class OrientingConfig:
 @dataclass
 class SocialConfig:
     """Configuration for SocialAttention behavior."""
+
     enabled: bool = True
     priority: float = 0.9
     prefer_faces: bool = True
@@ -40,6 +42,7 @@ class SocialConfig:
 @dataclass
 class MotionConfig:
     """Configuration for MotionTracking behavior."""
+
     enabled: bool = True
     priority: float = 0.7
     velocity_threshold: float = 50.0
@@ -51,6 +54,7 @@ class MotionConfig:
 @dataclass
 class StartleConfig:
     """Configuration for StartleResponse behavior."""
+
     enabled: bool = True
     priority: float = 0.95
     peripheral_threshold: float = 0.7
@@ -62,6 +66,7 @@ class StartleConfig:
 @dataclass
 class IdleScanConfig:
     """Configuration for IdleScan behavior."""
+
     enabled: bool = True
     priority: float = 0.2
     idle_timeout: float = 5.0
@@ -73,6 +78,7 @@ class IdleScanConfig:
 @dataclass
 class MicrosaccadesConfig:
     """Configuration for Microsaccades behavior."""
+
     enabled: bool = True
     priority: float = 0.1
     fixation_timeout: float = 2.0
@@ -87,6 +93,7 @@ class ReturnToCenterConfig:
     The threshold determines when the behavior activates (fraction of max range).
     Lower threshold = activates earlier, preventing drift from accumulating.
     """
+
     enabled: bool = True
     priority: float = 0.2  # Slightly higher to compete with idle behaviors
     threshold: float = 0.6  # Activate at 60% of max range (was 70%)
@@ -101,6 +108,7 @@ class TurnAroundConfig:
     Rotates the body when the head is at its yaw limit and there's
     something interesting beyond what the head can see.
     """
+
     enabled: bool = True
     priority: float = 0.3  # Higher than idle, lower than tracking
     yaw_threshold: float = 0.85  # Trigger at 85% of yaw limit
@@ -114,6 +122,7 @@ class TurnAroundConfig:
 @dataclass
 class ArbiterSettings:
     """Configuration for the PriorityArbiter."""
+
     hysteresis_bonus: float = 0.1
     min_switch_interval: float = 0.3
     score_threshold: float = 0.1
@@ -122,6 +131,7 @@ class ArbiterSettings:
 @dataclass
 class GateSettings:
     """Configuration for the ThalamicGate."""
+
     novelty_threshold: float = 0.7
     salience_threshold: float = 0.6
     anomaly_threshold: float = 0.7
@@ -136,6 +146,7 @@ class GateSettings:
 @dataclass
 class InhibitionSettings:
     """Configuration for inhibition behavior."""
+
     auto_release_timeout: float = 5.0
     inhibit_during_tool_execution: bool = False
 
@@ -148,6 +159,7 @@ class PainDetectionConfig:
     generating pain signals when thresholds are exceeded. These
     signals feed into NAc for causal learning.
     """
+
     enabled: bool = True
     angular_velocity_threshold: float = 100.0  # deg/sec triggers pain
     translation_velocity_threshold: float = 50.0  # mm/sec triggers pain
@@ -163,6 +175,7 @@ class GazeControllerSettings:
 
     Controls saccade-fixate dynamics for natural eye movement patterns.
     """
+
     enabled: bool = True
     min_fixation_ms: float = 200.0
     max_fixation_ms: float = 800.0
@@ -177,6 +190,7 @@ class SceneContextSettings:
 
     Detects significant scene changes to trigger exploration behavior.
     """
+
     enabled: bool = True
     change_threshold: float = 0.4  # 40% change triggers scene scan
     scene_stability_seconds: float = 2.0
@@ -186,6 +200,7 @@ class SceneContextSettings:
 @dataclass
 class BehaviorsConfig:
     """Configuration for all behaviors."""
+
     orienting: OrientingConfig = field(default_factory=OrientingConfig)
     social: SocialConfig = field(default_factory=SocialConfig)
     motion: MotionConfig = field(default_factory=MotionConfig)
@@ -199,6 +214,7 @@ class BehaviorsConfig:
 @dataclass
 class DNConfig:
     """Complete configuration for the Default Network."""
+
     enabled: bool = True
     update_hz: float = 30.0
     publish_actions: bool = True
@@ -226,7 +242,7 @@ def _merge_dict_into_dataclass(data: dict[str, Any], dc_instance: Any) -> None:
             current = getattr(dc_instance, f.name)
 
             # If the field is itself a dataclass and value is a dict, recurse
-            if hasattr(current, '__dataclass_fields__') and isinstance(value, dict):
+            if hasattr(current, "__dataclass_fields__") and isinstance(value, dict):
                 _merge_dict_into_dataclass(value, current)
             else:
                 setattr(dc_instance, f.name, value)
@@ -264,8 +280,8 @@ def load_dn_config(path: Path | str | None = None) -> DNConfig:
 
         if data and isinstance(data, dict):
             # Handle nested 'default_network' key
-            if 'default_network' in data:
-                data = data['default_network']
+            if "default_network" in data:
+                data = data["default_network"]
 
             _merge_dict_into_dataclass(data, config)
             logger.info("Loaded DN config from %s", path)
@@ -293,9 +309,9 @@ def save_dn_config(config: DNConfig, path: Path | str) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    data = {'default_network': asdict(config)}
+    data = {"default_network": asdict(config)}
 
-    with open(path, 'w') as f:
+    with open(path, "w") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
     logger.info("Saved DN config to %s", path)

@@ -14,6 +14,7 @@ Signals, in priority order:
 The leader distinction only changes bind semantics and peer advertising —
 the process itself is still a normal Maxim instance with its own CLI + loop.
 """
+
 from __future__ import annotations
 
 import os
@@ -30,7 +31,7 @@ class RoleDecision:
 
     role: RoleName
     bind_host: str  # address the local server should bind to
-    reason: str     # human-readable signal that drove the decision
+    reason: str  # human-readable signal that drove the decision
 
     @property
     def is_leader(self) -> bool:

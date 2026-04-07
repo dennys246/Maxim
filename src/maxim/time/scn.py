@@ -171,18 +171,10 @@ class SCN:
         patterns = scn.find_rhythmic_patterns(min_occurrences=5)
     """
 
-    _circadian_bins: dict[int, BoundedBin] = field(
-        default_factory=lambda: defaultdict(BoundedBin)
-    )
-    _weekly_bins: dict[int, BoundedBin] = field(
-        default_factory=lambda: defaultdict(BoundedBin)
-    )
-    _monthly_bins: dict[int, BoundedBin] = field(
-        default_factory=lambda: defaultdict(BoundedBin)
-    )
-    _annual_bins: dict[int, BoundedBin] = field(
-        default_factory=lambda: defaultdict(BoundedBin)
-    )
+    _circadian_bins: dict[int, BoundedBin] = field(default_factory=lambda: defaultdict(BoundedBin))
+    _weekly_bins: dict[int, BoundedBin] = field(default_factory=lambda: defaultdict(BoundedBin))
+    _monthly_bins: dict[int, BoundedBin] = field(default_factory=lambda: defaultdict(BoundedBin))
+    _annual_bins: dict[int, BoundedBin] = field(default_factory=lambda: defaultdict(BoundedBin))
     _signatures: dict[str, TemporalSignature] = field(default_factory=dict)
 
     # Temporal priors for cold start
@@ -519,9 +511,7 @@ class SCN:
         """Return SCN statistics."""
         s: dict[str, Any] = {
             "total_signatures": len(self._signatures),
-            "circadian_bins_used": len(
-                [b for b in self._circadian_bins.values() if b]
-            ),
+            "circadian_bins_used": len([b for b in self._circadian_bins.values() if b]),
             "weekly_bins_used": len([b for b in self._weekly_bins.values() if b]),
             "monthly_bins_used": len([b for b in self._monthly_bins.values() if b]),
             "annual_bins_used": len([b for b in self._annual_bins.values() if b]),
@@ -608,18 +598,10 @@ class SCN:
         """Save SCN state to JSON file (v3.0 with bounded bins)."""
         data: dict[str, Any] = {
             "version": "3.0",
-            "circadian_bins": {
-                str(k): v.to_list() for k, v in self._circadian_bins.items() if v
-            },
-            "weekly_bins": {
-                str(k): v.to_list() for k, v in self._weekly_bins.items() if v
-            },
-            "monthly_bins": {
-                str(k): v.to_list() for k, v in self._monthly_bins.items() if v
-            },
-            "annual_bins": {
-                str(k): v.to_list() for k, v in self._annual_bins.items() if v
-            },
+            "circadian_bins": {str(k): v.to_list() for k, v in self._circadian_bins.items() if v},
+            "weekly_bins": {str(k): v.to_list() for k, v in self._weekly_bins.items() if v},
+            "monthly_bins": {str(k): v.to_list() for k, v in self._monthly_bins.items() if v},
+            "annual_bins": {str(k): v.to_list() for k, v in self._annual_bins.items() if v},
             "signatures": {k: v.to_dict() for k, v in self._signatures.items()},
             "priors": {k: list(v) for k, v in self._priors.items()},
         }
@@ -632,6 +614,7 @@ class SCN:
             json.dump(data, f, indent=2)
 
         import os
+
         os.replace(tmp_path, path)
         logger.info("Saved SCN to %s (%d signatures)", path, len(self._signatures))
 
@@ -661,18 +644,14 @@ class SCN:
             BoundedBin,
             {int(k): BoundedBin.from_list(v) for k, v in data.get("annual_bins", {}).items()},
         )
-        self._signatures = {
-            k: TemporalSignature.from_dict(v)
-            for k, v in data.get("signatures", {}).items()
-        }
-        self._priors = defaultdict(
-            set, {k: set(v) for k, v in data.get("priors", {}).items()}
-        )
+        self._signatures = {k: TemporalSignature.from_dict(v) for k, v in data.get("signatures", {}).items()}
+        self._priors = defaultdict(set, {k: set(v) for k, v in data.get("priors", {}).items()})
 
         # Restore oscillator if present (v2.0)
         osc_data = data.get("oscillator")
         if osc_data is not None:
             from maxim.time.oscillator import OscillatorNetwork
+
             self._oscillator = OscillatorNetwork.from_dict(osc_data)
             logger.info("Restored oscillator (%d observations)", self._oscillator._observation_count)
 

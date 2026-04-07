@@ -210,8 +210,7 @@ class TestHealthReportingLoop:
         # Should have posted at least 2 reports in 0.5s with 0.1s interval
         assert mock_urlopen.call_count >= 2
 
-    @patch("maxim.skills.health_reporting.urllib.request.urlopen",
-           side_effect=Exception("connection refused"))
+    @patch("maxim.skills.health_reporting.urllib.request.urlopen", side_effect=Exception("connection refused"))
     def test_report_loop_tracks_failures(self, mock_urlopen, skill, mock_maxim):
         """Failures should increment consecutive_failures counter."""
         skill.activate(mock_maxim, {})
@@ -222,12 +221,12 @@ class TestHealthReportingLoop:
 
 
 class TestHealthReportingFailureDetection:
-    @patch("maxim.skills.health_reporting.urllib.request.urlopen",
-           side_effect=Exception("connection refused"))
+    @patch("maxim.skills.health_reporting.urllib.request.urlopen", side_effect=Exception("connection refused"))
     def test_transitions_to_failed_after_10(self, mock_urlopen, config, mock_maxim):
         """10 consecutive failures in the report loop should trigger FAILED state."""
         # Use very fast interval so we hit 10 failures quickly
         import dataclasses
+
         fast_config = dataclasses.replace(config, interval_seconds=0.02)
         skill = HealthReportingSkill(fast_config)
         mock_maxim._protocol_registry._active = {}

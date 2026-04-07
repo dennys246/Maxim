@@ -31,10 +31,10 @@ class EnergyConfig:
         log_threshold: Minimum energy amount to log.
     """
 
-    window_seconds: float = 60.0        # 1-minute sliding window
-    max_history: int = 1000             # Keep last 1000 signals
+    window_seconds: float = 60.0  # 1-minute sliding window
+    max_history: int = 1000  # Keep last 1000 signals
     enable_logging: bool = True
-    log_threshold: float = 1.0          # Log signals >= 1.0 energy
+    log_threshold: float = 1.0  # Log signals >= 1.0 energy
 
 
 class EnergyTracker(ABC):
@@ -147,9 +147,7 @@ class EnergyTracker(ABC):
             return {
                 "total_count": self._total_count,
                 "total_energy": round(self._total_energy, 4),
-                "average_energy": round(
-                    self._total_energy / max(self._total_count, 1), 4
-                ),
+                "average_energy": round(self._total_energy / max(self._total_count, 1), 4),
                 "history_size": len(self._history),
             }
 

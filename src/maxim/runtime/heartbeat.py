@@ -17,6 +17,7 @@ Stall detection:
   emits a WARNING with the last known state. This would have caught the
   'respond success=False → 60s dead zone' bug instantly.
 """
+
 from __future__ import annotations
 
 import logging
@@ -41,13 +42,19 @@ class HeartbeatMonitor:
         stall_threshold_s: float | None = None,
     ) -> None:
         if interval_s is None:
-            interval_s = float(os.environ.get(
-                "MAXIM_HEARTBEAT_INTERVAL_S", str(DEFAULT_INTERVAL_S),
-            ))
+            interval_s = float(
+                os.environ.get(
+                    "MAXIM_HEARTBEAT_INTERVAL_S",
+                    str(DEFAULT_INTERVAL_S),
+                )
+            )
         if stall_threshold_s is None:
-            stall_threshold_s = float(os.environ.get(
-                "MAXIM_HEARTBEAT_STALL_S", str(DEFAULT_STALL_THRESHOLD_S),
-            ))
+            stall_threshold_s = float(
+                os.environ.get(
+                    "MAXIM_HEARTBEAT_STALL_S",
+                    str(DEFAULT_STALL_THRESHOLD_S),
+                )
+            )
         self._interval = interval_s
         self._stall_threshold = stall_threshold_s
         self._stop_event = threading.Event()
@@ -71,12 +78,15 @@ class HeartbeatMonitor:
             return
         self._stop_event.clear()
         self._thread = threading.Thread(
-            target=self._run, daemon=True, name="heartbeat-monitor",
+            target=self._run,
+            daemon=True,
+            name="heartbeat-monitor",
         )
         self._thread.start()
         logger.info(
             "Heartbeat monitor started (interval=%ds, stall_threshold=%ds)",
-            int(self._interval), int(self._stall_threshold),
+            int(self._interval),
+            int(self._stall_threshold),
         )
 
     def stop(self) -> None:
@@ -110,6 +120,7 @@ class HeartbeatMonitor:
         # LLM lane metrics
         try:
             from maxim.models.language.lane_metrics import get_metrics_registry
+
             data["lanes"] = get_metrics_registry().snapshot()
         except Exception:
             data["lanes"] = {}
@@ -201,7 +212,8 @@ class HeartbeatMonitor:
                         "[heartbeat] STALL DETECTED — agent loop idle for %.0fs "
                         "(state=%s, threshold=%ds). Last infer call: p50=%s ms, "
                         "failure_rate=%s",
-                        idle_s, loop.get("state", "?"),
+                        idle_s,
+                        loop.get("state", "?"),
                         int(self._stall_threshold),
                         infer.get("p50_latency_ms", "?"),
                         infer.get("failure_rate", "?"),
@@ -226,11 +238,21 @@ def get_heartbeat_monitor() -> HeartbeatMonitor:
 def should_enable_heartbeat() -> bool:
     """Check if heartbeat should auto-start based on env flags."""
     if os.environ.get("MAXIM_HEARTBEAT", "").strip().lower() in (
-        "1", "true", "t", "yes", "y", "on",
+        "1",
+        "true",
+        "t",
+        "yes",
+        "y",
+        "on",
     ):
         return True
     if os.environ.get("MAXIM_LANE_TRACE", "").strip().lower() in (
-        "1", "true", "t", "yes", "y", "on",
+        "1",
+        "true",
+        "t",
+        "yes",
+        "y",
+        "on",
     ):
         return True
     return False

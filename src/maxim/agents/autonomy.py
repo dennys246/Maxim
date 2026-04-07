@@ -285,9 +285,7 @@ class SupervisionPolicy:
     sandbox_execute_requires_approval: bool = True  # Sandbox execution needs approval
     cwd_write_requires_approval: bool = True  # CWD writes need approval in supervised
 
-    def can_execute(
-        self, action: dict[str, Any], *, confidence: float | None = None
-    ) -> tuple[bool, str | None]:
+    def can_execute(self, action: dict[str, Any], *, confidence: float | None = None) -> tuple[bool, str | None]:
         """Check if action can be executed autonomously."""
         tool_name = str(action.get("tool_name", "") or "")
 
@@ -406,11 +404,7 @@ class ProposalQueue:
     def _prune_expired(self) -> None:
         """Remove expired proposals (must hold lock)."""
         now = time.time()
-        expired = [
-            p
-            for p in self._pending
-            if p.status == "pending" and (now - p.timestamp) > self._expiry_seconds
-        ]
+        expired = [p for p in self._pending if p.status == "pending" and (now - p.timestamp) > self._expiry_seconds]
         for p in expired:
             p.status = "expired"
 
@@ -428,13 +422,10 @@ class AutonomyController:
         initial_level: AutonomyLevel = AutonomyLevel.PLANNING,
         safety_constraints: SafetyConstraints | None = None,
         supervision_policy: SupervisionPolicy | None = None,
-        on_level_change: Callable[[AutonomyLevel, AutonomyLevel, str], None]
-        | None = None,
+        on_level_change: Callable[[AutonomyLevel, AutonomyLevel, str], None] | None = None,
     ):
         self._current_level = initial_level
-        self._level_history: list[tuple[float, AutonomyLevel, str]] = [
-            (time.time(), initial_level, "initialization")
-        ]
+        self._level_history: list[tuple[float, AutonomyLevel, str]] = [(time.time(), initial_level, "initialization")]
         self._autonomous_until: float | None = None
         self._paused = False
         self._lock = threading.Lock()
@@ -452,10 +443,7 @@ class AutonomyController:
         """Get current autonomy level."""
         with self._lock:
             # Check if timed autonomy has expired
-            if (
-                self._autonomous_until is not None
-                and time.time() > self._autonomous_until
-            ):
+            if self._autonomous_until is not None and time.time() > self._autonomous_until:
                 self._autonomous_until = None
                 if self._current_level == AutonomyLevel.AUTONOMOUS:
                     self._transition_to(AutonomyLevel.SUPERVISED, "timed autonomy expired")
@@ -514,9 +502,7 @@ class AutonomyController:
             request.status = "approved"
             self._pending_requests.remove(request)
 
-            self._transition_to(
-                request.requested, f"approved: {request.justification}"
-            )
+            self._transition_to(request.requested, f"approved: {request.justification}")
 
             if request.duration is not None:
                 self._autonomous_until = time.time() + request.duration
@@ -550,23 +536,23 @@ class AutonomyController:
 
     # Tools that bypass all autonomy checks (including PLANNING mode)
     # These are tools deemed safe for immediate execution without approval
-    ALWAYS_ALLOWED_TOOLS: frozenset[str] = frozenset({
-        # Visual control (responsive, no side effects)
-        "move",             # Direct head movement
-        "track_target",     # Visual tracking
-        "focus_interests",  # Vision focus
-        # Read-only operations (cannot modify state)
-        "glob",             # File pattern search
-        "read_file",        # Read file contents
-        "list_directory",   # List directory contents
-        "search_code",      # Regex search file contents (read-only)
-        "git_diff",         # Show git differences (read-only)
-        "respond",          # Send text response to user
-    })
+    ALWAYS_ALLOWED_TOOLS: frozenset[str] = frozenset(
+        {
+            # Visual control (responsive, no side effects)
+            "move",  # Direct head movement
+            "track_target",  # Visual tracking
+            "focus_interests",  # Vision focus
+            # Read-only operations (cannot modify state)
+            "glob",  # File pattern search
+            "read_file",  # Read file contents
+            "list_directory",  # List directory contents
+            "search_code",  # Regex search file contents (read-only)
+            "git_diff",  # Show git differences (read-only)
+            "respond",  # Send text response to user
+        }
+    )
 
-    def can_execute_action(
-        self, action: dict[str, Any], confidence: float | None = None
-    ) -> tuple[bool, str | None]:
+    def can_execute_action(self, action: dict[str, Any], confidence: float | None = None) -> tuple[bool, str | None]:
         """Check if an action can be executed at current autonomy level."""
         level = self.current_level
         tool_name = str(action.get("tool_name", "") or "")
@@ -669,11 +655,7 @@ class AutonomyController:
         """Get actions per second in the last second."""
         now = time.time()
         with self._lock:
-            recent = [
-                e
-                for e in self.audit_log
-                if e.action_type == "executed" and (now - e.timestamp) < 1.0
-            ]
+            recent = [e for e in self.audit_log if e.action_type == "executed" and (now - e.timestamp) < 1.0]
             return len(recent)
 
     def _get_consecutive_failures(self) -> int:

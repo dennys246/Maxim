@@ -324,7 +324,7 @@ Long campaign (20+ turns) that tests context retention, memory formation under l
 
 ## Related Plans
 
-- [Tool refactoring plan](tool_refactoring_plan.md) — tool aliases and hallucination tracking that feed into benchmark metrics
-- [Realtime refinement plan](realtime_refinement_plan.md) — refinement persona and metric expectations that benchmarks reuse
-- [Research protocol plan](research_protocol_plan.md) — Writer + Reviewer pipeline for benchmark papers
+- [Tool refinement plan](tool_refinement_plan.md) — tool aliases and hallucination tracking that feed into benchmark metrics
+- Tool refactoring (done, archived) — `Executor.tool_usage_stats()` provides hallucination rate data
+- Research protocol (done, archived) — Writer + Reviewer pipeline for benchmark papers via `--write-paper`
 - [Generative campaign plan](generative_campaign_plan.md) — LLM-generated campaigns could auto-create benchmark scenarios

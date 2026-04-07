@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Matches sentence-ending punctuation followed by space or end of string
-_SENTENCE_END_PATTERN = re.compile(r'[.!?]+[\s\n]+|[.!?]+$')
+_SENTENCE_END_PATTERN = re.compile(r"[.!?]+[\s\n]+|[.!?]+$")
 
 
 def _truncate_at_sentence(text: str, max_length: int) -> str:
@@ -49,17 +49,17 @@ def _truncate_at_sentence(text: str, max_length: int) -> str:
     if matches:
         # Use the last complete sentence
         last_match = matches[-1]
-        return text[:last_match.end()].strip()
+        return text[: last_match.end()].strip()
 
     # No sentence boundary found - look for other natural breaks
     # Try comma, semicolon, or dash
-    for sep in [', ', '; ', ' - ', ' — ']:
+    for sep in [", ", "; ", " - ", " — "]:
         last_pos = search_text.rfind(sep)
         if last_pos > max_length // 2:  # Only if it's past halfway
-            return text[:last_pos + len(sep)].strip() + "..."
+            return text[: last_pos + len(sep)].strip() + "..."
 
     # Last resort: break at word boundary
-    last_space = search_text.rfind(' ')
+    last_space = search_text.rfind(" ")
     if last_space > max_length // 2:
         return text[:last_space].strip() + "..."
 
@@ -281,10 +281,7 @@ class ResponseOutput:
         max_speech_length = 1000
         if len(text) > max_speech_length:
             speech_text = _truncate_at_sentence(text, max_speech_length)
-            self.logger.debug(
-                "Truncated speech from %d to %d chars at sentence boundary",
-                len(text), len(speech_text)
-            )
+            self.logger.debug("Truncated speech from %d to %d chars at sentence boundary", len(text), len(speech_text))
         else:
             speech_text = text
 

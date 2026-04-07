@@ -3,12 +3,12 @@
 These tests don't actually launch llama-cpp-server — they verify the
 configuration, health-check, and lifecycle logic in isolation via mocks.
 """
+
 from __future__ import annotations
 
 import subprocess
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from maxim.runtime.local_server_spawner import LocalServerSpawner
 
@@ -94,6 +94,7 @@ class TestTunnelEcho:
     def test_echo_off_by_default_streams_to_devnull(self, tmp_path, monkeypatch):
         monkeypatch.delenv("MAXIM_TUNNEL_ECHO", raising=False)
         import subprocess as _sp
+
         model = tmp_path / "fake.gguf"
         model.write_bytes(b"GGUF")
         s = LocalServerSpawner(model_path=str(model))
@@ -244,10 +245,14 @@ class TestHealthCheck:
         We treat this as 'server ready' — the spawner's job is just to
         confirm the listener is up, not to validate the auth itself."""
         import urllib.error
+
         s = LocalServerSpawner(model_path="/tmp/fake.gguf", api_key="wrong-key")
         err = urllib.error.HTTPError(
             url="http://127.0.0.1:8100/v1/models",
-            code=401, msg="Unauthorized", hdrs=None, fp=None,
+            code=401,
+            msg="Unauthorized",
+            hdrs=None,
+            fp=None,
         )
         with patch("urllib.request.urlopen", side_effect=err):
             assert s._health_check() is True
@@ -255,10 +260,14 @@ class TestHealthCheck:
     def test_500_does_not_count_as_up(self):
         """A real server error should be treated as not-ready."""
         import urllib.error
+
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
         err = urllib.error.HTTPError(
             url="http://127.0.0.1:8100/v1/models",
-            code=500, msg="Server Error", hdrs=None, fp=None,
+            code=500,
+            msg="Server Error",
+            hdrs=None,
+            fp=None,
         )
         with patch("urllib.request.urlopen", side_effect=err):
             assert s._health_check() is False

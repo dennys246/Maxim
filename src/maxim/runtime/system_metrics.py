@@ -7,6 +7,7 @@ function returns a dict or None, never raises.
 Used by HeartbeatMonitor for periodic sampling and by LeaderProxy for
 the /v1/debug/heartbeat endpoint.
 """
+
 from __future__ import annotations
 
 import os
@@ -34,6 +35,7 @@ def collect_all() -> dict[str, Any]:
 
 # ─── GPU (nvidia-smi) ────────────────────────────────────────────────────
 
+
 def collect_gpu() -> dict[str, Any] | None:
     """Query nvidia-smi for GPU metrics."""
     try:
@@ -44,7 +46,9 @@ def collect_gpu() -> dict[str, Any] | None:
                 "temperature.gpu,power.draw,clocks.current.sm,name",
                 "--format=csv,noheader,nounits",
             ],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True,
+            text=True,
+            timeout=3,
         )
         if result.returncode != 0:
             return None
@@ -66,6 +70,7 @@ def collect_gpu() -> dict[str, Any] | None:
 
 
 # ─── CPU (stdlib /proc/stat or sysctl) ───────────────────────────────────
+
 
 def collect_cpu() -> dict[str, Any] | None:
     """CPU usage percentage + load average."""
@@ -115,6 +120,7 @@ def _read_proc_stat() -> float | None:
 
 # ─── Memory (stdlib) ─────────────────────────────────────────────────────
 
+
 def collect_memory() -> dict[str, Any] | None:
     """RAM usage. Linux: /proc/meminfo. macOS: vm_stat."""
     try:
@@ -158,14 +164,19 @@ def _memory_macos() -> dict[str, Any] | None:
         # Total memory via sysctl
         result = subprocess.run(
             ["sysctl", "-n", "hw.memsize"],
-            capture_output=True, text=True, timeout=2,
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         total_bytes = int(result.stdout.strip())
-        total_gb = round(total_bytes / (1024 ** 3), 2)
+        total_gb = round(total_bytes / (1024**3), 2)
 
         # vm_stat for page-level usage
         result = subprocess.run(
-            ["vm_stat"], capture_output=True, text=True, timeout=2,
+            ["vm_stat"],
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         pages: dict[str, int] = {}
         for line in result.stdout.strip().split("\n")[1:]:
@@ -183,7 +194,9 @@ def _memory_macos() -> dict[str, Any] | None:
         try:
             ps_result = subprocess.run(
                 ["sysctl", "-n", "hw.pagesize"],
-                capture_output=True, text=True, timeout=2,
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
             page_size = int(ps_result.stdout.strip())
         except Exception:
@@ -191,7 +204,7 @@ def _memory_macos() -> dict[str, Any] | None:
 
         free_pages = pages.get("Pages free", 0)
         inactive_pages = pages.get("Pages inactive", 0)
-        available_gb = round((free_pages + inactive_pages) * page_size / (1024 ** 3), 2)
+        available_gb = round((free_pages + inactive_pages) * page_size / (1024**3), 2)
         used_gb = round(total_gb - available_gb, 2)
 
         return {
@@ -206,6 +219,7 @@ def _memory_macos() -> dict[str, Any] | None:
 
 # ─── Disk ─────────────────────────────────────────────────────────────────
 
+
 def collect_disk(path: str | None = None) -> dict[str, Any] | None:
     """Disk usage for the Maxim data directory."""
     try:
@@ -215,9 +229,9 @@ def collect_disk(path: str | None = None) -> dict[str, Any] | None:
         usage = shutil.disk_usage(path)
         return {
             "path": path,
-            "total_gb": round(usage.total / (1024 ** 3), 2),
-            "used_gb": round(usage.used / (1024 ** 3), 2),
-            "free_gb": round(usage.free / (1024 ** 3), 2),
+            "total_gb": round(usage.total / (1024**3), 2),
+            "used_gb": round(usage.used / (1024**3), 2),
+            "free_gb": round(usage.free / (1024**3), 2),
             "usage_pct": round(usage.used / usage.total * 100, 1),
         }
     except Exception:
@@ -226,10 +240,12 @@ def collect_disk(path: str | None = None) -> dict[str, Any] | None:
 
 # ─── Network interfaces ──────────────────────────────────────────────────
 
+
 def collect_network_interfaces() -> dict[str, Any] | None:
     """Basic network interface info — active interfaces + IPs."""
     try:
         import socket
+
         hostname = socket.gethostname()
         try:
             local_ip = socket.gethostbyname(hostname)
@@ -244,6 +260,7 @@ def collect_network_interfaces() -> dict[str, Any] | None:
 
 
 # ─── WiFi signal ──────────────────────────────────────────────────────────
+
 
 def collect_wifi_signal() -> dict[str, Any] | None:
     """WiFi signal strength + SSID. macOS: airport. Linux: iwconfig."""
@@ -261,11 +278,12 @@ def _wifi_macos() -> dict[str, Any] | None:
     try:
         result = subprocess.run(
             [
-                "/System/Library/PrivateFrameworks/Apple80211.framework"
-                "/Versions/Current/Resources/airport",
+                "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport",
                 "-I",
             ],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True,
+            text=True,
+            timeout=3,
         )
         if result.returncode != 0:
             return None
@@ -291,7 +309,10 @@ def _wifi_macos() -> dict[str, Any] | None:
 def _wifi_linux() -> dict[str, Any] | None:
     try:
         result = subprocess.run(
-            ["iwconfig"], capture_output=True, text=True, timeout=3,
+            ["iwconfig"],
+            capture_output=True,
+            text=True,
+            timeout=3,
         )
         if result.returncode != 0:
             return None
@@ -316,6 +337,7 @@ def _wifi_linux() -> dict[str, Any] | None:
 
 # ─── Platform ─────────────────────────────────────────────────────────────
 
+
 def collect_platform() -> dict[str, Any]:
     """Static platform info."""
     return {
@@ -327,6 +349,7 @@ def collect_platform() -> dict[str, Any]:
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────
+
 
 def _float(val: Any) -> float:
     """Best-effort float conversion, returns 0.0 on failure."""

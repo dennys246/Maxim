@@ -70,7 +70,8 @@ class ReadDataFileTool(Tool):
 
         # Check permission
         allowed, reason = self._policy.check_permission(
-            path, self._policy.policies[0].permissions.READ  # Get READ permission
+            path,
+            self._policy.policies[0].permissions.READ,  # Get READ permission
         )
         if not allowed:
             return ToolResult(success=False, error=f"Permission denied: {reason}")
@@ -277,22 +278,26 @@ class ListSandboxTool(Tool):
                     for f in files:
                         full_path = os.path.join(root, f)
                         rel_path = os.path.relpath(full_path, self._sandbox_dir)
-                        entries.append({
-                            "name": rel_path,
-                            "type": "file",
-                            "size": os.path.getsize(full_path),
-                        })
+                        entries.append(
+                            {
+                                "name": rel_path,
+                                "type": "file",
+                                "size": os.path.getsize(full_path),
+                            }
+                        )
             else:
                 for name in os.listdir(path):
                     full_path = os.path.join(path, name)
                     if os.path.isdir(full_path):
                         entries.append({"name": name, "type": "directory"})
                     else:
-                        entries.append({
-                            "name": name,
-                            "type": "file",
-                            "size": os.path.getsize(full_path),
-                        })
+                        entries.append(
+                            {
+                                "name": name,
+                                "type": "file",
+                                "size": os.path.getsize(full_path),
+                            }
+                        )
 
             return ToolResult(
                 success=True,
@@ -389,10 +394,7 @@ class ExecuteSandboxScriptTool(Tool):
         def approval_callback(path: str, content: str, content_hash: str) -> bool:
             # For now, auto-approve in SUPERVISED if within sandbox
             # In real usage, this would prompt the user with content preview
-            logger.info(
-                f"Auto-approving script in SUPERVISED mode: {path} "
-                f"(content hash: {content_hash[:16]}...)"
-            )
+            logger.info(f"Auto-approving script in SUPERVISED mode: {path} (content hash: {content_hash[:16]}...)")
             self._approved_scripts[path] = content_hash
             return True
 
@@ -671,9 +673,11 @@ def build_sandbox_tools(
 
     # Add cross-instance tools if watcher is available
     if watcher:
-        tools.extend([
-            ListOtherInstanceOutputsTool(watcher),
-            ReadOtherInstanceOutputTool(watcher, policy.shared_outputs_dir),
-        ])
+        tools.extend(
+            [
+                ListOtherInstanceOutputsTool(watcher),
+                ReadOtherInstanceOutputTool(watcher, policy.shared_outputs_dir),
+            ]
+        )
 
     return tools

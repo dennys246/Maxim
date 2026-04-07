@@ -1,4 +1,5 @@
 """Generate and inspect ~/.cloudflared/config.yml for Maxim's leader-mode tunnel."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -45,8 +46,7 @@ def write_config_yml(cfg: TunnelConfig, *, overwrite: bool = False) -> Path:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     if CONFIG_PATH.exists() and not overwrite:
         raise FileExistsError(
-            f"{CONFIG_PATH} already exists. Pass overwrite=True to replace it, "
-            f"or back it up manually first."
+            f"{CONFIG_PATH} already exists. Pass overwrite=True to replace it, or back it up manually first."
         )
     CONFIG_PATH.write_text(render_config_yml(cfg))
     return CONFIG_PATH

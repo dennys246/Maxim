@@ -1,5 +1,3 @@
-
-
 class ConstraintViolation(Exception):
     pass
 

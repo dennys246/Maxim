@@ -73,14 +73,17 @@ class PatternCompleter:
         if self._atl is not None:
             try:
                 skill_concepts = self._atl.recall(
-                    limit=10, category="skill_execution",
+                    limit=10,
+                    category="skill_execution",
                 )
                 episode_concept_ids = {c.id for c in concepts}
                 for sc in skill_concepts:
                     if isinstance(sc, Concept):
                         rels = self._atl.find_by_relationship(
-                            sc.id, rel_type="EXECUTES_WITH",
-                            direction="outgoing", limit=20,
+                            sc.id,
+                            rel_type="EXECUTES_WITH",
+                            direction="outgoing",
+                            limit=20,
                         )
                         if any(oid in episode_concept_ids for oid, _ in rels):
                             concepts.append(sc)
@@ -104,32 +107,34 @@ class PatternCompleter:
         # arbitrary subset from set iteration order. recall_by_ids is
         # an in-memory dict lookup so loading all is cheap.
         all_episodes = hippocampus.recall_by_ids(list(episode_ids))
-        episodes = sorted(
-            all_episodes, key=lambda ep: ep.timestamp, reverse=True
-        )[:self.MAX_EPISODES]
+        episodes = sorted(all_episodes, key=lambda ep: ep.timestamp, reverse=True)[: self.MAX_EPISODES]
 
         # 4. Extract predictions from past outcomes
         predictions: list[PredictedOutcome] = []
         for ep in episodes:
             if isinstance(ep, CompressedMemory):
-                predictions.append(PredictedOutcome(
-                    tool=ep.tool_name,
-                    success=ep.success,
-                    goal=ep.goal,
-                    confidence=0.3,  # No decision.confidence on compressed
-                    source_episode_id=ep.id,
-                ))
+                predictions.append(
+                    PredictedOutcome(
+                        tool=ep.tool_name,
+                        success=ep.success,
+                        goal=ep.goal,
+                        confidence=0.3,  # No decision.confidence on compressed
+                        source_episode_id=ep.id,
+                    )
+                )
             elif isinstance(ep, EpisodicMemory):
                 goal = None
                 if isinstance(ep.decision.intent, dict):
                     goal = ep.decision.intent.get("goal")
-                predictions.append(PredictedOutcome(
-                    tool=ep.action.tool_name,
-                    success=ep.outcome.success,
-                    goal=goal,
-                    confidence=ep.decision.confidence,
-                    source_episode_id=ep.id,
-                ))
+                predictions.append(
+                    PredictedOutcome(
+                        tool=ep.action.tool_name,
+                        success=ep.outcome.success,
+                        goal=goal,
+                        confidence=ep.decision.confidence,
+                        source_episode_id=ep.id,
+                    )
+                )
 
         # 5. Enrich with per-concept math context using memory_refs
         # intersection. A prediction matches a concept if the prediction's
@@ -138,18 +143,14 @@ class PatternCompleter:
             layer_context = self._get_concept_layer_context(concept)
             if not layer_context:
                 continue
-            concept_episode_ids = set(
-                concept.memory_refs.get("hippocampus", {})
-            )
+            concept_episode_ids = set(concept.memory_refs.get("hippocampus", {}))
             for pred in predictions:
                 if pred.source_episode_id in concept_episode_ids:
                     pred.math_context = layer_context
 
         return predictions
 
-    def _find_matching_concepts(
-        self, episodic: EpisodicMemory
-    ) -> list[Concept]:
+    def _find_matching_concepts(self, episodic: EpisodicMemory) -> list[Concept]:
         """Find concepts matching the percept's objects, people, and goal.
 
         Objects and people are single-word concept names, so direct lookup
@@ -158,15 +159,10 @@ class PatternCompleter:
         matches: list[Concept] = []
         seen: set[str] = set()
 
-        search_terms: list[str] = list(
-            episodic.perception.detected_objects
-            + episodic.perception.detected_people
-        )
+        search_terms: list[str] = list(episodic.perception.detected_objects + episodic.perception.detected_people)
 
         if episodic.context.active_goal:
-            search_terms.extend(
-                normalize_tokens(episodic.context.active_goal)
-            )
+            search_terms.extend(normalize_tokens(episodic.context.active_goal))
 
         for term in search_terms:
             results = self._atl.recall(limit=1, name=term.lower())
@@ -177,9 +173,7 @@ class PatternCompleter:
 
         return matches
 
-    def _get_concept_layer_context(
-        self, concept: Concept
-    ) -> list[MathContextEntry] | None:
+    def _get_concept_layer_context(self, concept: Concept) -> list[MathContextEntry] | None:
         """Get enrichment context from registered layers for a concept.
 
         Skips hippocampus (provides episodes, not enrichment). Uses ID-based
@@ -201,12 +195,14 @@ class PatternCompleter:
             records = layer.recall_by_ids(list(ref_ids)[:5])
             for record in records:
                 if isinstance(record, MathMemory):
-                    entries.append(MathContextEntry(
-                        name=record.name,
-                        verbal=record.verbal,
-                        confidence=record.confidence,
-                        domain=record.domain,
-                    ))
+                    entries.append(
+                        MathContextEntry(
+                            name=record.name,
+                            verbal=record.verbal,
+                            confidence=record.confidence,
+                            domain=record.domain,
+                        )
+                    )
 
         return entries if entries else None
 

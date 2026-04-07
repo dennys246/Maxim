@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from maxim.agents.prompt_budgeter import _compact_conversation
 

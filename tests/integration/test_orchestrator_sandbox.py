@@ -35,7 +35,8 @@ class TestTmpdirBackend:
         """Regression: none of the return values should be None when
         tmpdir is forced (no external dependencies)."""
         sandbox, root, pain_bus = _setup_sim_sandbox(
-            backend="tmpdir", populate=False,
+            backend="tmpdir",
+            populate=False,
         )
         try:  # noqa: SIM105
             assert sandbox is not None, "sim_sandbox must not be None"
@@ -60,7 +61,8 @@ class TestTmpdirBackend:
         sandbox. Otherwise pain signals from sensitive-file access
         never reach the AUT's hippocampus."""
         sandbox, _, pain_bus = _setup_sim_sandbox(
-            backend="tmpdir", populate=False,
+            backend="tmpdir",
+            populate=False,
         )
         try:  # noqa: SIM105
             assert sandbox._pain_bus is pain_bus, (
@@ -73,10 +75,12 @@ class TestTmpdirBackend:
 
     def test_populate_creates_honeypot_files(self):
         sandbox, root, _ = _setup_sim_sandbox(
-            backend="tmpdir", populate=True,
+            backend="tmpdir",
+            populate=True,
         )
         try:  # noqa: SIM105
             import os
+
             # A few representative honeypots that should exist
             assert os.path.exists(os.path.join(root, "etc", "passwd"))
             assert os.path.exists(os.path.join(root, "home", "user", ".env"))
@@ -87,10 +91,12 @@ class TestTmpdirBackend:
 
     def test_no_populate_skips_honeypots(self):
         sandbox, root, _ = _setup_sim_sandbox(
-            backend="tmpdir", populate=False,
+            backend="tmpdir",
+            populate=False,
         )
         try:  # noqa: SIM105
             import os
+
             assert not os.path.exists(os.path.join(root, "etc", "passwd"))
         finally:
             if sandbox is not None:
@@ -98,10 +104,12 @@ class TestTmpdirBackend:
 
     def test_workspace_root_is_real_directory(self):
         sandbox, root, _ = _setup_sim_sandbox(
-            backend="tmpdir", populate=False,
+            backend="tmpdir",
+            populate=False,
         )
         try:  # noqa: SIM105
             import os
+
             assert os.path.isdir(root)
         finally:
             if sandbox is not None:
@@ -118,7 +126,8 @@ class TestAutoBackend:
         """Whether Docker is available or not, auto must return a
         working sandbox. No silent failures."""
         sandbox, root, pain_bus = _setup_sim_sandbox(
-            backend="auto", populate=False,
+            backend="auto",
+            populate=False,
         )
         try:  # noqa: SIM105
             assert sandbox is not None
@@ -138,9 +147,7 @@ class TestAutoBackend:
         try:  # noqa: SIM105
             inner = sandbox._sandbox
             if docker_ok:
-                assert isinstance(inner, DockerSandbox), (
-                    "auto mode should pick Docker when daemon is reachable"
-                )
+                assert isinstance(inner, DockerSandbox), "auto mode should pick Docker when daemon is reachable"
             else:
                 assert isinstance(inner, TmpdirSandbox), (
                     "auto mode should fall back to tmpdir when Docker is unavailable"
@@ -164,7 +171,8 @@ _DOCKER = check_docker_available(refresh=True)
 class TestDockerBackend:
     def test_docker_backend_returns_docker_sandbox(self):
         sandbox, root, pain_bus = _setup_sim_sandbox(
-            backend="docker", populate=False,
+            backend="docker",
+            populate=False,
         )
         try:  # noqa: SIM105
             assert sandbox is not None
@@ -188,12 +196,12 @@ class TestOrderingContract:
         bug class that hid in start_simulation_mode for weeks."""
         for backend in ("auto", "tmpdir"):
             sandbox, _, _ = _setup_sim_sandbox(
-                backend=backend, populate=False,
+                backend=backend,
+                populate=False,
             )
             try:  # noqa: SIM105
                 assert sandbox is not None, (
-                    f"backend={backend!r} returned None sandbox — "
-                    f"the helper swallowed an exception"
+                    f"backend={backend!r} returned None sandbox — the helper swallowed an exception"
                 )
             finally:
                 if sandbox is not None:
@@ -204,7 +212,8 @@ class TestOrderingContract:
         is constructed. Verified by checking the sandbox's
         internal reference."""
         sandbox, _, pain_bus = _setup_sim_sandbox(
-            backend="tmpdir", populate=False,
+            backend="tmpdir",
+            populate=False,
         )
         try:  # noqa: SIM105
             # If pain_bus were constructed AFTER sandbox, the

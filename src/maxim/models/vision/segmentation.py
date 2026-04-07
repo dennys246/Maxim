@@ -158,13 +158,18 @@ class YOLO8:
         observations: list[list[Any]] = []
         for dets in frame_dets:
             for det in dets:
-                observations.append([
-                    det.track_id,
-                    det.frame_index,
-                    det.x1, det.y1, det.x2, det.y2,
-                    det.confidence,
-                    det.class_id,
-                ])
+                observations.append(
+                    [
+                        det.track_id,
+                        det.frame_index,
+                        det.x1,
+                        det.y1,
+                        det.x2,
+                        det.y2,
+                        det.confidence,
+                        det.class_id,
+                    ]
+                )
         return observations
 
     # ── Pose estimation (legacy dict format) ─────────────────────────────

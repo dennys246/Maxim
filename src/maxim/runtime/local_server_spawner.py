@@ -13,6 +13,7 @@ Design:
 - atexit handler kills the subprocess on Python interpreter shutdown.
 - Health check: poll GET /v1/models until the server responds or timeout.
 """
+
 from __future__ import annotations
 
 import atexit
@@ -21,9 +22,7 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.error
 from pathlib import Path
-from typing import Any
 
 from maxim.utils.gpu_compat import get_original_cuda_devices
 
@@ -107,7 +106,12 @@ class LocalServerSpawner:
             # (uvicorn access logs + request bodies) in real time. Default path
             # keeps streams hidden to avoid flooding the terminal.
             echo_enabled = os.environ.get("MAXIM_TUNNEL_ECHO", "").strip().lower() in (
-                "1", "true", "t", "yes", "y", "on",
+                "1",
+                "true",
+                "t",
+                "yes",
+                "y",
+                "on",
             )
             stream_target = None if echo_enabled else subprocess.DEVNULL
             if echo_enabled:
@@ -172,13 +176,21 @@ class LocalServerSpawner:
 
     def _build_cmd(self) -> list[str]:
         cmd = [
-            sys.executable, "-m", "llama_cpp.server",
-            "--model", self._model_path,
-            "--n_gpu_layers", str(self._n_gpu_layers),
-            "--host", self._bind_host,
-            "--port", str(self._port),
-            "--n_ctx", str(self._n_ctx),
-            "--chat_format", self._chat_format,
+            sys.executable,
+            "-m",
+            "llama_cpp.server",
+            "--model",
+            self._model_path,
+            "--n_gpu_layers",
+            str(self._n_gpu_layers),
+            "--host",
+            self._bind_host,
+            "--port",
+            str(self._port),
+            "--n_ctx",
+            str(self._n_ctx),
+            "--chat_format",
+            self._chat_format,
         ]
         if self._api_key:
             cmd.extend(["--api_key", self._api_key])
@@ -210,6 +222,7 @@ class LocalServerSpawner:
         (just rejected the key, which would be a separate bug)."""
         try:
             import urllib.request
+
             req = urllib.request.Request(f"http://127.0.0.1:{self._port}/v1/models")
             if self._api_key:
                 req.add_header("Authorization", f"Bearer {self._api_key}")

@@ -7,7 +7,6 @@ prediction, and persistence.
 from __future__ import annotations
 
 
-
 class TestNAcObservation:
     """Test causal link creation and updates."""
 

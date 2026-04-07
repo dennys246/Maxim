@@ -153,6 +153,7 @@ def _atomic_write_text(path: Path, content: str) -> None:
     tmp_path.write_text(content, encoding="utf-8")
     os.replace(tmp_path, path)
 
+
 def _extract_metric_points(
     history: Sequence[dict],
     *,
@@ -185,6 +186,7 @@ def _extract_metric_points(
 
 def _extract_loss_points(history: Sequence[dict], *, max_points: int = 2000) -> list[tuple[int, float]]:
     return _extract_metric_points(history, metric_key="loss", max_points=max_points)
+
 
 def _fmt_metric(v: float) -> str:
     if abs(v) >= 1000:

@@ -1,20 +1,20 @@
 """Tests for LearnedToolIndex — keyword-weighted hashtable for tool relevance."""
+
 from __future__ import annotations
 
 import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-import pytest
 
-from maxim.tools.learned_index import LearnedToolIndex, ToolKeywordEntry, _tokenize
+from maxim.tools.learned_index import LearnedToolIndex, _tokenize
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fakes
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class FakeTool:
@@ -33,6 +33,7 @@ class FakeTool:
 # ─────────────────────────────────────────────────────────────────────────────
 # Tokenization
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestTokenize:
     def test_basic(self):
@@ -57,6 +58,7 @@ class TestTokenize:
 # ─────────────────────────────────────────────────────────────────────────────
 # Registration
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestRegistration:
     def test_auto_extracts_keywords(self):
@@ -106,6 +108,7 @@ class TestRegistration:
 # Scoring
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestScoring:
     def _make_index(self):
         index = LearnedToolIndex()
@@ -127,7 +130,10 @@ class TestScoring:
     def test_normalization_prevents_verbose_dominance(self):
         """A tool with 15 keywords shouldn't dominate one with 4."""
         index = LearnedToolIndex()
-        verbose = FakeTool(name="verbose_tool", description="This tool does many things including reading writing editing searching filtering sorting grouping mapping reducing transforming")
+        verbose = FakeTool(
+            name="verbose_tool",
+            description="This tool does many things including reading writing editing searching filtering sorting grouping mapping reducing transforming",
+        )
         concise = FakeTool(name="concise_tool", description="Read files")
         index.register_tool(verbose)
         index.register_tool(concise)
@@ -142,6 +148,7 @@ class TestScoring:
 # ─────────────────────────────────────────────────────────────────────────────
 # get_relevant_tools
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestGetRelevantTools:
     def test_minimum_tools_guaranteed(self):
@@ -170,6 +177,7 @@ class TestGetRelevantTools:
 # ─────────────────────────────────────────────────────────────────────────────
 # Learning
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestLearning:
     def test_success_strengthens_keywords(self):
@@ -238,6 +246,7 @@ class TestLearning:
 # ─────────────────────────────────────────────────────────────────────────────
 # Persistence
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestPersistence:
     def test_save_and_load(self, tmp_path: Path):
@@ -309,6 +318,7 @@ class TestPersistence:
 # Stats
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestStats:
     def test_stats_reflect_state(self):
         index = LearnedToolIndex()
@@ -330,6 +340,7 @@ class TestStats:
 # ─────────────────────────────────────────────────────────────────────────────
 # Thread safety
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestThreadSafety:
     def test_concurrent_score_and_update(self):

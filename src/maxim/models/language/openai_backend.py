@@ -56,13 +56,7 @@ def _is_private_ip(ip: str) -> bool:
         addr = ipaddress.ip_address(ip)
     except Exception:
         return True
-    return (
-        addr.is_private
-        or addr.is_loopback
-        or addr.is_link_local
-        or addr.is_reserved
-        or addr.is_multicast
-    )
+    return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast
 
 
 def _validate_base_url(base_url: str, allow_local: bool) -> str | None:
@@ -223,9 +217,13 @@ class _OpenAIBackend:
         # also logged via maxim.mesh.trace when MAXIM_LANE_TRACE or
         # MAXIM_PEER_LOG_REQUESTS is set.
         from maxim.models.language.mesh_trace import (
-            REQUEST_ID_HEADER, TraceRecord, emit_trace,
-            enrich_trace_with_leader_status, generate_request_id,
+            REQUEST_ID_HEADER,
+            TraceRecord,
+            emit_trace,
+            enrich_trace_with_leader_status,
+            generate_request_id,
         )
+
         request_id = generate_request_id()
         base_url = self._get_base_url() or ""
         extra_headers = {REQUEST_ID_HEADER: request_id}
@@ -262,7 +260,9 @@ class _OpenAIBackend:
                     server_processing_ms=server_ms,
                 )
                 enrich_trace_with_leader_status(
-                    trace, base_url, self._get_api_key(),
+                    trace,
+                    base_url,
+                    self._get_api_key(),
                     response_headers=raw_resp.headers,
                 )
                 emit_trace(trace)
@@ -277,16 +277,18 @@ class _OpenAIBackend:
                 break
 
         # Final failure — emit a trace record with error details before returning
-        emit_trace(TraceRecord(
-            request_id=request_id,
-            provider=self._provider_key,
-            base_url=base_url,
-            model=model,
-            status="error",
-            http_status=_http_status_of(last_err),
-            latency_ms=(time.time() - start) * 1000,
-            error=str(last_err)[:200] if last_err else None,
-        ))
+        emit_trace(
+            TraceRecord(
+                request_id=request_id,
+                provider=self._provider_key,
+                base_url=base_url,
+                model=model,
+                status="error",
+                http_status=_http_status_of(last_err),
+                latency_ms=(time.time() - start) * 1000,
+                error=str(last_err)[:200] if last_err else None,
+            )
+        )
         warn("OpenAI call failed [req=%s]: %s", request_id[:8], last_err)
         return LLMResponse(content="")
 

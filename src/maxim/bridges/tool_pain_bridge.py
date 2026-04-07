@@ -127,19 +127,15 @@ class ToolPainBridge:
             High values indicate surprising outcomes useful for memory salience.
         """
         with self._lock:
-            event_signature = self._pending_tools.pop(
-                (tool_name, invocation_id), None
-            )
-            tool_context = self._pending_contexts.pop(
-                (tool_name, invocation_id), None
-            )
+            event_signature = self._pending_tools.pop((tool_name, invocation_id), None)
+            tool_context = self._pending_contexts.pop((tool_name, invocation_id), None)
         if event_signature and success:
             links = self._nac.record_outcome(
                 event_type="tool",
                 event_id=event_signature,
                 outcome_valence=Valence.POSITIVE,
             )
-            rpe = max((l.last_rpe or 0.0 for l in links), default=0.0) if links else 0.0
+            rpe = max((lnk.last_rpe or 0.0 for lnk in links), default=0.0) if links else 0.0
             self._last_rpe = rpe
             self._create_causal_edges(links)
 
@@ -176,12 +172,8 @@ class ToolPainBridge:
         tool_name = signal.context.get("tool_name", "")
         invocation_id = signal.context.get("invocation_id", "")
         with self._lock:
-            event_signature = self._pending_tools.pop(
-                (tool_name, invocation_id), None
-            )
-            tool_context = self._pending_contexts.pop(
-                (tool_name, invocation_id), None
-            )
+            event_signature = self._pending_tools.pop((tool_name, invocation_id), None)
+            self._pending_contexts.pop((tool_name, invocation_id), None)
         if event_signature:
             links = self._nac.record_outcome(
                 event_type="tool",
@@ -189,7 +181,7 @@ class ToolPainBridge:
                 outcome_valence=Valence.NEGATIVE,
                 context=signal.context,
             )
-            rpe = max((l.last_rpe or 0.0 for l in links), default=0.0) if links else 0.0
+            rpe = max((lnk.last_rpe or 0.0 for lnk in links), default=0.0) if links else 0.0
             self._last_rpe = rpe
             self._create_causal_edges(links)
 
@@ -267,7 +259,7 @@ class ToolPainBridge:
         if now - last < self._REFLECTION_COOLDOWN_S:
             return None
 
-        surprising_links = [l for l in links if (l.last_rpe or 0.0) > 0.3]
+        surprising_links = [lnk for lnk in links if (lnk.last_rpe or 0.0) > 0.3]
         if not surprising_links:
             return None
 
@@ -276,9 +268,7 @@ class ToolPainBridge:
         if self._llm is None:
             # Template-based fallback (no LLM required)
             link = surprising_links[0]
-            ctx_summary = ", ".join(
-                f"{k}={v}" for k, v in list(context.items())[:3]
-            )
+            ctx_summary = ", ".join(f"{k}={v}" for k, v in list(context.items())[:3])
             return (
                 f"Unexpected failure: {tool_name} failed with '{error}'. "
                 f"Predicted success with value {link.predicted_value:.2f} "
@@ -363,10 +353,7 @@ class ToolPainBridge:
         )
         if prediction is None:
             return False, ""
-        if (
-            prediction.predicted_valence == Valence.NEGATIVE
-            and prediction.confidence >= 0.4
-        ):
+        if prediction.predicted_valence == Valence.NEGATIVE and prediction.confidence >= 0.4:
             return True, (
                 f"NAc predicts '{tool_name}' will fail "
                 f"(value={prediction.predicted_value:.2f}, "

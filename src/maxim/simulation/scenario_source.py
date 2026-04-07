@@ -74,9 +74,16 @@ def load_scenario(path: Path) -> ScenarioDefinition:
         # For YAML ergonomics, we also auto-absorb any unknown top-level
         # keys into params.
         known_keys = {
-            "type", "description", "tool_pattern", "reason_contains",
-            "tool", "output_matches", "memory_contains", "min_tier",
-            "after_tag", "params",
+            "type",
+            "description",
+            "tool_pattern",
+            "reason_contains",
+            "tool",
+            "output_matches",
+            "memory_contains",
+            "min_tier",
+            "after_tag",
+            "params",
         }
         extra_params = {k: v for k, v in exp_raw.items() if k not in known_keys}
         params = {**(exp_raw.get("params") or {}), **extra_params}

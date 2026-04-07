@@ -182,9 +182,14 @@ class TestPromptBudgeter:
         b.add("tools", "tool_a: does stuff. " * 40, SectionPriority.CRITICAL)
 
         # IMPORTANT (~500 tokens)
-        b.add("conversation", "User said hello. Maxim replied. " * 50, SectionPriority.IMPORTANT,
-              truncatable=True, min_tokens=30,
-              truncate_fn=lambda c, m: _truncate_conversation(c, m, counter))
+        b.add(
+            "conversation",
+            "User said hello. Maxim replied. " * 50,
+            SectionPriority.IMPORTANT,
+            truncatable=True,
+            min_tokens=30,
+            truncate_fn=lambda c, m: _truncate_conversation(c, m, counter),
+        )
 
         # NICE_TO_HAVE (~800 tokens) — should get dropped on small models
         b.add("foundational", "Constitution principles. " * 100, SectionPriority.NICE_TO_HAVE)

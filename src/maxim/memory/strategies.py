@@ -133,11 +133,7 @@ class AccessBasedStrategy(MemoryStrategy):
         centrality_boost = min(1.0, degree / 20) if degree > 0 else 0.0
 
         # Combine scores
-        score = (
-            recency_score * 0.5
-            + access_boost * 0.2
-            + centrality_boost * self.centrality_weight
-        )
+        score = recency_score * 0.5 + access_boost * 0.2 + centrality_boost * self.centrality_weight
 
         # Always keep if accessed many times
         if record.access_count >= self.access_count_threshold * 2:
@@ -252,12 +248,7 @@ class ImportanceBasedStrategy(MemoryStrategy):
         user_bonus = 0.3 if had_user_input else 0.0
 
         # Combine
-        score = (
-            age_score * 0.4
-            + success_score * self.success_weight
-            + novelty_score * self.novelty_weight
-            + user_bonus
-        )
+        score = age_score * 0.4 + success_score * self.success_weight + novelty_score * self.novelty_weight + user_bonus
 
         return min(1.0, score)
 
@@ -332,11 +323,7 @@ class CompositeStrategy(MemoryStrategy):
         degree: int = 0,
     ) -> bool:
         """Compress if majority of strategies agree."""
-        votes = sum(
-            1
-            for strategy, _ in self.strategies
-            if strategy.should_compress(record, now, degree)
-        )
+        votes = sum(1 for strategy, _ in self.strategies if strategy.should_compress(record, now, degree))
         return votes > len(self.strategies) / 2
 
 

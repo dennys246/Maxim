@@ -56,7 +56,12 @@ def main(argv: list[str] | None = None) -> int:
                 tokens = _normalize(text)
                 if "maxim" not in tokens:
                     continue
-                if "sleep" in tokens or "observe" in tokens or "shutdown" in tokens or ("shut" in tokens and "down" in tokens):
+                if (
+                    "sleep" in tokens
+                    or "observe" in tokens
+                    or "shutdown" in tokens
+                    or ("shut" in tokens and "down" in tokens)
+                ):
                     continue
                 t0 = time.perf_counter()
                 action = router.route(text, allowed_tools=allowed_tools, allowed_commands=allowed_commands)
@@ -80,4 +85,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

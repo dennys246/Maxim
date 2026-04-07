@@ -1,4 +1,5 @@
 """Session persistence for crash recovery and session replay."""
+
 from __future__ import annotations
 
 import json
@@ -26,20 +27,24 @@ class AgentSession:
 
     def log_event(self, category: str, title: str, detail: str = "") -> None:
         """Log a session-level event (goal changes, plan transitions, tool failures)."""
-        self.events.append({
-            "ts": time.time(),
-            "cat": category,
-            "title": title,
-            "detail": detail,
-        })
+        self.events.append(
+            {
+                "ts": time.time(),
+                "cat": category,
+                "title": title,
+                "detail": detail,
+            }
+        )
 
     def add_message(self, role: str, content: str) -> None:
         """Add a conversation turn."""
-        self.messages.append({
-            "role": role,
-            "content": content,
-            "timestamp": time.time(),
-        })
+        self.messages.append(
+            {
+                "role": role,
+                "content": content,
+                "timestamp": time.time(),
+            }
+        )
         self.last_active_at = time.time()
 
     def save(self, sessions_dir: str | Path) -> None:

@@ -28,9 +28,9 @@ TWO_PI: float = 2.0 * math.pi
 
 # Natural frequencies in cycles per day
 _NATURAL_FREQUENCIES: list[float] = [
-    1.0,            # circadian: 1 cycle / day
-    1.0 / 7.0,     # weekly: 1 cycle / 7 days
-    1.0 / 30.0,    # monthly: 1 cycle / 30 days
+    1.0,  # circadian: 1 cycle / day
+    1.0 / 7.0,  # weekly: 1 cycle / 7 days
+    1.0 / 30.0,  # monthly: 1 cycle / 30 days
     1.0 / 365.25,  # annual: 1 cycle / 365.25 days
 ]
 

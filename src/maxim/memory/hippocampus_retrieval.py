@@ -128,6 +128,7 @@ class RetrievalMixin:
         if results:
             try:
                 from maxim.simulation.sim_logger import sim_memory
+
                 sim_memory(f"Recalled {len(results)} memories", query_filters=len(index_filters))
             except Exception:
                 pass
@@ -336,9 +337,7 @@ class RetrievalMixin:
                 self._graph.add_node(recalled_mem.id, recalled_mem.id)
 
             # Form bidirectional edge (new ↔ recalled)
-            self._graph.add_bidirectional(
-                memory_id, recalled_mem.id, EdgeType.ASSOCIATES, weight
-            )
+            self._graph.add_bidirectional(memory_id, recalled_mem.id, EdgeType.ASSOCIATES, weight)
 
             # Touch the recalled memory (strengthens its retention)
             self._touch_internal(recalled_mem.id)
@@ -346,9 +345,7 @@ class RetrievalMixin:
             edges_formed += 1
 
         if edges_formed > 0:
-            self._stats["edges_formed"] = (
-                self._stats.get("edges_formed", 0) + edges_formed
-            )
+            self._stats["edges_formed"] = self._stats.get("edges_formed", 0) + edges_formed
             logger.debug(
                 "Formed %d associative edges for memory %s",
                 edges_formed,

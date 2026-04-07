@@ -8,8 +8,9 @@ import threading
 # - Memory allocators experience concurrent access corruption
 # See: https://www.blog.neudeep.com/howto/fixing-gstreamer-segmentation-faults-in-python-multiprocessing/
 import multiprocessing as mp
+
 try:
-    mp.set_start_method('spawn', force=True)
+    mp.set_start_method("spawn", force=True)
 except RuntimeError:
     pass  # Already set, ignore
 
@@ -67,8 +68,7 @@ _robot_registry.register_controller_type("reachy_mini", ReachyMiniController)
 _robot_registry.register_controller_type("simulated", SimulatedController)
 
 
-class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
-            VisionStreamMixin, AgenticRuntimeMixin, MediaLoopMixin):
+class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin, AgenticRuntimeMixin, MediaLoopMixin):
     """
     A class for orchestracting models and agents with Reachy-Mini's.
     """
@@ -90,8 +90,8 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
         interactive: bool = True,
         novelty_tracker: "NoveltyTracker | None" = None,
         simulation: bool = False,
-        robot_id: str | None = None):
-
+        robot_id: str | None = None,
+    ):
         #
         self.verbosity = int(verbosity or 0)
         if verbose and self.verbosity <= 0:
@@ -184,9 +184,9 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
         else:
             self.novelty_tracker = NoveltyTracker(
                 focus_decay_seconds=10.0,  # Time for novelty to decay while focused
-                recovery_seconds=20.0,     # Time for novelty to recover when not focused
-                max_novelty=2.0,           # Novelty boost for new objects
-                min_novelty=0.5,           # Minimum novelty for familiar objects
+                recovery_seconds=20.0,  # Time for novelty to recover when not focused
+                max_novelty=2.0,  # Novelty boost for new objects
+                min_novelty=0.5,  # Minimum novelty for familiar objects
             )
         # Class weights for attention (default gives slight preference to people)
         self.class_weights = dict(DEFAULT_CLASS_WEIGHTS)
@@ -228,7 +228,9 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
             config={
                 "robot_name": self.name,
                 "media_backend": media_backend,
-            } if not self._simulation else {
+            }
+            if not self._simulation
+            else {
                 "video_resolution": (640, 480),
                 "simulate_delays": False,
             },
@@ -616,9 +618,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
         if not force and getattr(self, "segmenter", None) is not None:
             return
 
-        seg_model = str(
-            model_name or os.getenv("MAXIM_SEGMENTATION_MODEL", "rtm") or "rtm"
-        ).strip() or "rtm"
+        seg_model = str(model_name or os.getenv("MAXIM_SEGMENTATION_MODEL", "rtm") or "rtm").strip() or "rtm"
         self.log.info("Loading vision models (%s seg+pose)...", seg_model)
         # Preflight matplotlib font cache in a subprocess to avoid hard crashes on Linux/WSL.
         preflight_ok = preflight_matplotlib_fonts(
@@ -656,7 +656,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
 
             # On Blackwell GPUs, start recording AFTER wake_up() to avoid
             # GStreamer/WebRTC threading issues that cause segfaults
-            if _blackwell_detected and not self._simulation and not getattr(self, '_recording_started', False):
+            if _blackwell_detected and not self._simulation and not getattr(self, "_recording_started", False):
                 time.sleep(0.3)  # Brief pause to let motor commands complete
                 try:
                     if self._robot is not None:
@@ -689,7 +689,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
                     self.log.warning("This is expected on RTX 5080/Blackwell GPUs with current TensorFlow")
 
                     # Force CPU mode
-                    with tf.device('/CPU:0'):
+                    with tf.device("/CPU:0"):
                         self.movement_model = MotorCortex(cfg)
                     self.log.info("Motor cortex initialized on CPU")
 
@@ -812,7 +812,9 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
                     if save_dir:
                         history_path = os.path.join(str(save_dir).rstrip("/"), "motor_cortex_history.json")
                     else:
-                        history_path = os.path.join(os.path.dirname(checkpoint_path) or ".", "motor_cortex_history.json")
+                        history_path = os.path.join(
+                            os.path.dirname(checkpoint_path) or ".", "motor_cortex_history.json"
+                        )
 
                     os.makedirs(os.path.dirname(history_path) or ".", exist_ok=True)
                     tmp_path = f"{history_path}.tmp"
@@ -871,8 +873,8 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin,
         except Exception as e:
             warn("Failed to disconnect robot: %s", e, logger=getattr(self, "log", None))
 
-
         return
+
 
 if __name__ == "__main__":
     conscience = Maxim()

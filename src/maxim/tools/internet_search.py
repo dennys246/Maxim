@@ -84,9 +84,7 @@ _SNIPPET_FALLBACK_PATTERN = re.compile(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _make_search_result(
-    title: str, url: str, snippet: str, source: str = "duckduckgo"
-) -> dict[str, str]:
+def _make_search_result(title: str, url: str, snippet: str, source: str = "duckduckgo") -> dict[str, str]:
     """Create a standardized search result."""
     return {
         "title": title,
@@ -133,7 +131,9 @@ def _search_with_ddg_package(
 
         # Log the raw results for debugging
         if search_results:
-            logger.debug(f"First result keys: {search_results[0].keys() if isinstance(search_results[0], dict) else type(search_results[0])}")
+            logger.debug(
+                f"First result keys: {search_results[0].keys() if isinstance(search_results[0], dict) else type(search_results[0])}"
+            )
 
         # Parse results
         for r in search_results:
@@ -159,7 +159,9 @@ def _search_with_ddg_package(
             first_item = search_results[0] if search_results else None
             item_type = type(first_item).__name__ if first_item else "None"
             item_keys = list(first_item.keys())[:5] if isinstance(first_item, dict) else "N/A"
-            logger.warning(f"Search returned {len(search_results)} items but couldn't parse. Item type: {item_type}, keys: {item_keys}")
+            logger.warning(
+                f"Search returned {len(search_results)} items but couldn't parse. Item type: {item_type}, keys: {item_keys}"
+            )
 
         return results
     except Exception as e:
@@ -213,9 +215,7 @@ def _search_duckduckgo(
     try:
         request = urllib.request.Request(
             api_url,
-            headers={
-                "User-Agent": "Maxim/1.0 (Research Assistant; +https://github.com/maxim)"
-            },
+            headers={"User-Agent": "Maxim/1.0 (Research Assistant; +https://github.com/maxim)"},
         )
         with urllib.request.urlopen(request, timeout=timeout_s) as response:
             data = json.loads(response.read().decode("utf-8"))
@@ -231,7 +231,7 @@ def _search_duckduckgo(
                 )
 
             # Check for related topics
-            for topic in data.get("RelatedTopics", [])[:max_results - len(results)]:
+            for topic in data.get("RelatedTopics", [])[: max_results - len(results)]:
                 if isinstance(topic, dict):
                     if "Topics" in topic:
                         # Nested topics
@@ -256,7 +256,7 @@ def _search_duckduckgo(
                         )
 
             # Check for results (rarely populated)
-            for result in data.get("Results", [])[:max_results - len(results)]:
+            for result in data.get("Results", [])[: max_results - len(results)]:
                 if isinstance(result, dict) and result.get("FirstURL"):
                     results.append(
                         _make_search_result(
@@ -334,9 +334,9 @@ def _search_duckduckgo_lite(
 
         # Filter out DuckDuckGo internal links
         filtered_links = [
-            (url, title) for url, title in links
-            if not url.startswith("//duckduckgo.com")
-            and "duckduckgo.com" not in url
+            (url, title)
+            for url, title in links
+            if not url.startswith("//duckduckgo.com") and "duckduckgo.com" not in url
         ]
 
         for i, (url, title) in enumerate(filtered_links[:max_results]):
@@ -345,6 +345,7 @@ def _search_duckduckgo_lite(
             if "uddg=" in url:
                 # Extract actual URL from DuckDuckGo redirect
                 import urllib.parse
+
                 parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
                 actual_url = parsed.get("uddg", [url])[0]
                 url = urllib.parse.unquote(actual_url)
@@ -513,11 +514,7 @@ class InternetSearchTool(Tool):
                 )
 
             # Build citations
-            citations = [
-                {"title": r["title"], "url": r["url"]}
-                for r in results
-                if r.get("url")
-            ]
+            citations = [{"title": r["title"], "url": r["url"]} for r in results if r.get("url")]
 
             return ToolResult(
                 success=True,

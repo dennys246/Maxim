@@ -62,8 +62,13 @@ def _det_preprocess(
     top, bottom = int(round(pad_h - 0.1)), int(round(pad_h + 0.1))
     left, right = int(round(pad_w - 0.1)), int(round(pad_w + 0.1))
     padded = cv2.copyMakeBorder(
-        resized, top, bottom, left, right,
-        cv2.BORDER_CONSTANT, value=(114, 114, 114),
+        resized,
+        top,
+        bottom,
+        left,
+        right,
+        cv2.BORDER_CONSTANT,
+        value=(114, 114, 114),
     )
     # Ensure exact target size
     padded = padded[:target_h, :target_w]
@@ -239,15 +244,11 @@ def _get_warp_matrix(
     src_w, src_h = scale
 
     src = np.array(
-        [[center[0], center[1]],
-         [center[0], center[1] - src_h * 0.5],
-         [center[0] + src_w * 0.5, center[1]]],
+        [[center[0], center[1]], [center[0], center[1] - src_h * 0.5], [center[0] + src_w * 0.5, center[1]]],
         dtype=np.float32,
     )
     dst = np.array(
-        [[dst_w * 0.5, dst_h * 0.5],
-         [dst_w * 0.5, 0.0],
-         [dst_w, dst_h * 0.5]],
+        [[dst_w * 0.5, dst_h * 0.5], [dst_w * 0.5, 0.0], [dst_w, dst_h * 0.5]],
         dtype=np.float32,
     )
     return cv2.getAffineTransform(src, dst)
@@ -272,7 +273,9 @@ def _pose_preprocess(
     warp_mat = _get_warp_matrix(center, scale, input_size)
 
     cropped = cv2.warpAffine(
-        img, warp_mat, input_size,
+        img,
+        warp_mat,
+        input_size,
         flags=cv2.INTER_LINEAR,
     )
     blob = cropped.astype(np.float32)
@@ -414,8 +417,7 @@ def _resolve_model_path(filename: str, model_dir: str) -> str:
         logger.warning("Auto-download failed for %s: %s", filename, exc)
 
     raise FileNotFoundError(
-        f"Vision model '{filename}' not found at {local}. "
-        f"Run: python -m maxim.models.download --vision"
+        f"Vision model '{filename}' not found at {local}. Run: python -m maxim.models.download --vision"
     )
 
 
@@ -512,7 +514,11 @@ class RTMEngine(VisionEngine):
 
             raw = outputs[0]
             boxes, scores, cls_ids = _det_postprocess(
-                raw, ratio, pad_wh, frame.shape[:2], conf_thr=conf,
+                raw,
+                ratio,
+                pad_wh,
+                frame.shape[:2],
+                conf_thr=conf,
             )
 
             if len(boxes) == 0:
@@ -523,16 +529,18 @@ class RTMEngine(VisionEngine):
 
             dets: list[Detection] = []
             for i in range(len(boxes)):
-                dets.append(Detection(
-                    track_id=int(track_ids[i]),
-                    frame_index=frame_idx,
-                    x1=float(boxes[i, 0]),
-                    y1=float(boxes[i, 1]),
-                    x2=float(boxes[i, 2]),
-                    y2=float(boxes[i, 3]),
-                    confidence=float(scores[i]),
-                    class_id=int(cls_ids[i]),
-                ))
+                dets.append(
+                    Detection(
+                        track_id=int(track_ids[i]),
+                        frame_index=frame_idx,
+                        x1=float(boxes[i, 0]),
+                        y1=float(boxes[i, 1]),
+                        x2=float(boxes[i, 2]),
+                        y2=float(boxes[i, 3]),
+                        confidence=float(scores[i]),
+                        class_id=int(cls_ids[i]),
+                    )
+                )
             all_detections.append(dets)
 
         return all_detections
@@ -566,7 +574,11 @@ class RTMEngine(VisionEngine):
             return None
 
         det_boxes, det_scores, det_cls = _det_postprocess(
-            det_out[0], ratio, pad_wh, frame.shape[:2], conf_thr=pose_conf,
+            det_out[0],
+            ratio,
+            pad_wh,
+            frame.shape[:2],
+            conf_thr=pose_conf,
         )
         # Filter to person class (0)
         person_mask = det_cls == 0
@@ -590,7 +602,9 @@ class RTMEngine(VisionEngine):
 
         # Run pose estimation on the best person box
         blob_pose, center, scale = _pose_preprocess(
-            frame, best_box, self._pose_input_size,
+            frame,
+            best_box,
+            self._pose_input_size,
         )
         try:
             pose_out = self._pose_session.run(blob_pose)  # type: ignore[union-attr]
@@ -601,7 +615,11 @@ class RTMEngine(VisionEngine):
         simcc_x, simcc_y = pose_out[0], pose_out[1]
         locs, scores = _simcc_decode(simcc_x, simcc_y)
         kp_img, kp_scores = _pose_postprocess(
-            locs, scores, center, scale, self._pose_input_size,
+            locs,
+            scores,
+            center,
+            scale,
+            self._pose_input_size,
         )
 
         # Build keypoints dict (first person in batch — N=1)
@@ -638,8 +656,7 @@ class RTMEngine(VisionEngine):
             method=method,
             target=target_pt,
             iou=best_iou,
-            pose_box=(float(best_box[0]), float(best_box[1]),
-                      float(best_box[2]), float(best_box[3])),
+            pose_box=(float(best_box[0]), float(best_box[1]), float(best_box[2]), float(best_box[3])),
             keypoints=kp_map,
             confidence=float(person_scores[best_idx]),
         )

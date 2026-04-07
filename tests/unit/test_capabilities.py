@@ -37,15 +37,11 @@ class TestRuntimeCapabilitiesUpdate:
         assert caps.has_vision is False
 
     def test_set_robot_type(self):
-        caps = RuntimeCapabilities(
-            has_robot=True, robot_type="mycobot_280"
-        )
+        caps = RuntimeCapabilities(has_robot=True, robot_type="mycobot_280")
         assert caps.robot_type == "mycobot_280"
 
     def test_connected_devices(self):
-        caps = RuntimeCapabilities(
-            connected_devices=["camera_0", "mic_1"]
-        )
+        caps = RuntimeCapabilities(connected_devices=["camera_0", "mic_1"])
         assert len(caps.connected_devices) == 2
         assert "camera_0" in caps.connected_devices
 

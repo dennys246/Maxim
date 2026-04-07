@@ -177,9 +177,7 @@ class WorkspaceBoundsLearner:
                         loaded = BoundState.from_dict(bound_data)
 
                         # Validate loaded bounds don't exceed hard ceiling
-                        initial_limit = getattr(
-                            self.config, DIMENSIONS.get(dim, ""), 0.0
-                        )
+                        initial_limit = getattr(self.config, DIMENSIONS.get(dim, ""), 0.0)
                         loaded.min_value = max(loaded.min_value, -initial_limit)
                         loaded.max_value = min(loaded.max_value, initial_limit)
 
@@ -192,13 +190,17 @@ class WorkspaceBoundsLearner:
                         if loaded.max_value < min_floor:
                             logger.warning(
                                 "Resetting %s max bound: %.2f -> %.2f (below minimum floor)",
-                                dim, loaded.max_value, min_floor
+                                dim,
+                                loaded.max_value,
+                                min_floor,
                             )
                             loaded.max_value = min_floor
                         if loaded.min_value > -min_floor:
                             logger.warning(
                                 "Resetting %s min bound: %.2f -> %.2f (below minimum floor)",
-                                dim, loaded.min_value, -min_floor
+                                dim,
+                                loaded.min_value,
+                                -min_floor,
                             )
                             loaded.min_value = -min_floor
 
@@ -282,9 +284,7 @@ class WorkspaceBoundsLearner:
 
                 if ik_failure or error > threshold:
                     # Movement was constrained - tighten bound
-                    self._contract_bound(
-                        dim, bound, act, is_positive, initial_limit, now
-                    )
+                    self._contract_bound(dim, bound, act, is_positive, initial_limit, now)
                 elif is_at_boundary:
                     # Successful movement at boundary - build confidence
                     self._build_confidence(dim, bound, is_positive, initial_limit, now)
@@ -294,9 +294,7 @@ class WorkspaceBoundsLearner:
         # Periodic save
         self._save_persisted()
 
-    def _is_at_boundary(
-        self, commanded: float, bound: BoundState, is_positive: bool
-    ) -> bool:
+    def _is_at_boundary(self, commanded: float, bound: BoundState, is_positive: bool) -> bool:
         """Check if commanded position is near the boundary."""
         if is_positive:
             limit = bound.max_value
@@ -394,9 +392,7 @@ class WorkspaceBoundsLearner:
             new_limit = min(new_limit, initial_limit)
 
             if new_limit > current:
-                logger.info(
-                    "Expanding %s max bound: %.2f -> %.2f", dim, current, new_limit
-                )
+                logger.info("Expanding %s max bound: %.2f -> %.2f", dim, current, new_limit)
                 bound.max_value = new_limit
                 bound.max_confidence = 0  # Reset for next expansion cycle
         else:
@@ -407,17 +403,13 @@ class WorkspaceBoundsLearner:
             new_limit = max(new_limit, -initial_limit)
 
             if new_limit < current:
-                logger.info(
-                    "Expanding %s min bound: %.2f -> %.2f", dim, current, new_limit
-                )
+                logger.info("Expanding %s min bound: %.2f -> %.2f", dim, current, new_limit)
                 bound.min_value = new_limit
                 bound.min_confidence = 0
 
         bound.last_update = now
 
-    def get_bound(
-        self, dimension: str, direction: str = "both"
-    ) -> float:
+    def get_bound(self, dimension: str, direction: str = "both") -> float:
         """Get current learned bound for a dimension.
 
         Args:
@@ -497,16 +489,8 @@ class WorkspaceBoundsLearner:
                     "max_confidence": bound.max_confidence,
                     "failures_min": bound.failure_count_min,
                     "failures_max": bound.failure_count_max,
-                    "usage_min": (
-                        round(abs(bound.min_value) / initial_limit, 2)
-                        if initial_limit > 0
-                        else 0
-                    ),
-                    "usage_max": (
-                        round(bound.max_value / initial_limit, 2)
-                        if initial_limit > 0
-                        else 0
-                    ),
+                    "usage_min": (round(abs(bound.min_value) / initial_limit, 2) if initial_limit > 0 else 0),
+                    "usage_max": (round(bound.max_value / initial_limit, 2) if initial_limit > 0 else 0),
                 }
 
             return stats
@@ -521,14 +505,9 @@ class WorkspaceBoundsLearner:
                 if bound:
                     initial = getattr(self.config, DIMENSIONS[dim], 0.0)
                     unit = "deg" if dim in ("yaw", "pitch", "roll") else "mm"
-                    usage = (
-                        max(bound.max_value, abs(bound.min_value)) / initial
-                        if initial > 0
-                        else 0
-                    )
+                    usage = max(bound.max_value, abs(bound.min_value)) / initial if initial > 0 else 0
                     lines.append(
-                        f"  {dim}: [{bound.min_value:+.1f}, {bound.max_value:+.1f}] {unit} "
-                        f"({usage:.0%} of max)"
+                        f"  {dim}: [{bound.min_value:+.1f}, {bound.max_value:+.1f}] {unit} ({usage:.0%} of max)"
                     )
 
             return "\n".join(lines)

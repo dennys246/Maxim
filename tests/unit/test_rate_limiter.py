@@ -1,4 +1,5 @@
 """Unit tests for Phase 7b: TokenBucket + PeerRateLimiter."""
+
 from __future__ import annotations
 
 import threading
@@ -112,11 +113,13 @@ class TestLeaderProxyAdmission:
 
         # Start proxy with max_concurrent=1, no upstream (will 502 on forward)
         import os
+
         old = os.environ.get("MAXIM_PROXY_MAX_CONCURRENT")
         os.environ["MAXIM_PROXY_MAX_CONCURRENT"] = "1"
         try:
             server = start_leader_proxy(
-                proxy_port=18199, upstream_port=19999,
+                proxy_port=18199,
+                upstream_port=19999,
                 bind_host="127.0.0.1",
             )
             assert server is not None
@@ -151,7 +154,8 @@ class TestLeaderProxyAdmission:
         from maxim.runtime.leader_proxy import start_leader_proxy
 
         server = start_leader_proxy(
-            proxy_port=18198, upstream_port=19998,
+            proxy_port=18198,
+            upstream_port=19998,
             bind_host="127.0.0.1",
         )
         assert server is not None

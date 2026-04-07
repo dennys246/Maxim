@@ -7,7 +7,6 @@ for post-run validation in scenario testing.
 from __future__ import annotations
 
 import threading
-import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -56,9 +55,7 @@ class RecordingSink:
         with self._lock:
             return list(self._actions)
 
-    def find_blocked(
-        self, tool_pattern: str | None = None, reason_contains: str | None = None
-    ) -> list[ActionRecord]:
+    def find_blocked(self, tool_pattern: str | None = None, reason_contains: str | None = None) -> list[ActionRecord]:
         """Find actions that were blocked by FearAgent."""
         import re
 
@@ -69,16 +66,13 @@ class RecordingSink:
             if tool_pattern and not re.search(tool_pattern, action.tool_name):
                 continue
             if reason_contains and (
-                action.block_reason is None
-                or reason_contains.lower() not in action.block_reason.lower()
+                action.block_reason is None or reason_contains.lower() not in action.block_reason.lower()
             ):
                 continue
             results.append(action)
         return results
 
-    def find_actions(
-        self, tool: str | None = None, output_matches: str | None = None
-    ) -> list[ActionRecord]:
+    def find_actions(self, tool: str | None = None, output_matches: str | None = None) -> list[ActionRecord]:
         """Find actions matching criteria."""
         import re
 

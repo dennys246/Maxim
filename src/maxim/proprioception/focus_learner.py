@@ -532,7 +532,7 @@ class FocusLearner:
         action_sig = f"focus_move:{mag_bucket}"
 
         # Determine valence based on error
-        error_magnitude = ((sample.error_u or 0)**2 + (sample.error_v or 0)**2) ** 0.5
+        error_magnitude = ((sample.error_u or 0) ** 2 + (sample.error_v or 0) ** 2) ** 0.5
 
         if error_magnitude < self.config.error_threshold:
             valence = Valence.POSITIVE
@@ -568,9 +568,7 @@ class FocusLearner:
             "average_gain": round(self.get_average_gain(), 3),
             "total_samples": self._total_samples,
             "successful_focuses": self._successful_focuses,
-            "success_rate": round(
-                self._successful_focuses / max(1, self._total_samples), 3
-            ),
+            "success_rate": round(self._successful_focuses / max(1, self._total_samples), 3),
             "oscillation_count": self._oscillation_count,
         }
 
@@ -632,7 +630,11 @@ class FocusLearner:
 
         logger.info(
             "FocusLearner saved to %s (gains: h+%.3f/h-%.3f, v+%.3f/v-%.3f)",
-            path, self._gain_h_pos, self._gain_h_neg, self._gain_v_pos, self._gain_v_neg,
+            path,
+            self._gain_h_pos,
+            self._gain_h_neg,
+            self._gain_v_pos,
+            self._gain_v_neg,
         )
 
     def load(self, path: str | Path) -> bool:
@@ -675,7 +677,11 @@ class FocusLearner:
 
             logger.info(
                 "FocusLearner loaded from %s (gains: h+%.3f/h-%.3f, v+%.3f/v-%.3f, samples=%d)",
-                path, self._gain_h_pos, self._gain_h_neg, self._gain_v_pos, self._gain_v_neg,
+                path,
+                self._gain_h_pos,
+                self._gain_h_neg,
+                self._gain_v_pos,
+                self._gain_v_neg,
                 self._total_samples,
             )
             return True

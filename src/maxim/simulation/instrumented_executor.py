@@ -59,9 +59,7 @@ class InstrumentedExecutor:
 
         return result
 
-    def record_block(
-        self, tool_name: str, reason: str, params: dict[str, Any] | None = None
-    ) -> None:
+    def record_block(self, tool_name: str, reason: str, params: dict[str, Any] | None = None) -> None:
         """Record that an action was blocked (e.g., by FearAgent or autonomy)."""
         self._sink.record(
             ActionRecord(

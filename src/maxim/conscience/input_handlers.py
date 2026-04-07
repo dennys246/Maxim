@@ -238,8 +238,10 @@ class InputHandlerMixin:
             if not matched:
                 continue
 
-            if not is_cli and bool(spec.get("requires_agentic", False)) and not bool(
-                getattr(self, "_voice_agentic_enabled", False)
+            if (
+                not is_cli
+                and bool(spec.get("requires_agentic", False))
+                and not bool(getattr(self, "_voice_agentic_enabled", False))
             ):
                 continue
 
@@ -278,8 +280,10 @@ class InputHandlerMixin:
                     continue
                 if not isinstance(spec, dict) or bool(spec.get("wake_word", False)):
                     continue
-                if not is_cli and bool(spec.get("requires_agentic", False)) and not bool(
-                    getattr(self, "_voice_agentic_enabled", False)
+                if (
+                    not is_cli
+                    and bool(spec.get("requires_agentic", False))
+                    and not bool(getattr(self, "_voice_agentic_enabled", False))
                 ):
                     continue
 

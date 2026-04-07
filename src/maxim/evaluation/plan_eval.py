@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from .base import Evaluator
 
+
 class PlanEvaluator(Evaluator):
     """
     Evaluates candidate plans before execution.
     """
+
     def evaluate(self, context):
         plan = context.get("plan")
         if not plan:
@@ -35,5 +37,5 @@ class PlanEvaluator(Evaluator):
         return {
             "valid": all_tools_registered,
             "score": score,
-            "issues": [] if all_tools_registered else ["Unknown tools in plan"]
+            "issues": [] if all_tools_registered else ["Unknown tools in plan"],
         }

@@ -89,8 +89,7 @@ class ProtocolRegistry:
         # phrases needed for voice re-activation.
 
         self._active[name] = protocol
-        log.info("Protocol '%s' activated with skills: %s", name,
-                 [s.name for s in protocol._active_skills])
+        log.info("Protocol '%s' activated with skills: %s", name, [s.name for s in protocol._active_skills])
         return f"Protocol '{name}' activated."
 
     def deactivate(self, name: str) -> str:
@@ -189,17 +188,23 @@ class ProtocolRegistry:
             return
 
         for phrase in protocol.phrases():
-            self._maxim._register_phrase_response(phrase, {
-                "call": "_protocol_activate",
-                "args": [name],
-                "requires_agentic": False,
-                "cooldown_s": 2.0,
-            })
+            self._maxim._register_phrase_response(
+                phrase,
+                {
+                    "call": "_protocol_activate",
+                    "args": [name],
+                    "requires_agentic": False,
+                    "cooldown_s": 2.0,
+                },
+            )
 
         for phrase in protocol.stop_phrases():
-            self._maxim._register_phrase_response(phrase, {
-                "call": "_protocol_deactivate",
-                "args": [name],
-                "requires_agentic": False,
-                "cooldown_s": 2.0,
-            })
+            self._maxim._register_phrase_response(
+                phrase,
+                {
+                    "call": "_protocol_deactivate",
+                    "args": [name],
+                    "requires_agentic": False,
+                    "cooldown_s": 2.0,
+                },
+            )

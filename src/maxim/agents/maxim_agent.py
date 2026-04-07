@@ -111,9 +111,7 @@ class MaximAgent(Agent):
         from maxim.planning.plan_document import LongHorizonConfig
 
         plan_config = LongHorizonConfig()
-        plans_dir = os.path.join(
-            data_folder or "data", plan_config.plan_persistence_path
-        )
+        plans_dir = os.path.join(data_folder or "data", plan_config.plan_persistence_path)
         self._plan_manager = PlanManager(
             plans_dir=plans_dir,
             bus=self._bus,
@@ -225,9 +223,7 @@ class MaximAgent(Agent):
             data_folder = self._data_folder or "data"
             staging_dir = os.path.join(data_folder, "short_term_memory")
             scn = getattr(memory_hub, "scn", None)
-            weights_path = os.path.join(
-                data_folder, "util", "significance_weights.json"
-            )
+            weights_path = os.path.join(data_folder, "util", "significance_weights.json")
             self.exec_agent.wire_staging(
                 staging_dir=staging_dir,
                 hippocampus=hippocampus,
@@ -409,13 +405,9 @@ class MaximAgent(Agent):
         params: dict[str, Any] | None = None,
     ) -> None:
         """Alias for publish_tool_result for compatibility."""
-        self.publish_tool_result(
-            tool_call_id, tool_name, success, result, error, params
-        )
+        self.publish_tool_result(tool_call_id, tool_name, success, result, error, params)
 
-    def update_interests(
-        self, add: list[int] | None = None, remove: list[int] | None = None
-    ) -> None:
+    def update_interests(self, add: list[int] | None = None, remove: list[int] | None = None) -> None:
         """Update object class interests for salience boosting.
 
         Interest classes get a 2x salience multiplier. All COCO classes are
@@ -438,11 +430,7 @@ class MaximAgent(Agent):
         """Get pending sub-goals for current goal."""
         goal = self.goal.get_current_goal()
         if goal and goal.sub_goals:
-            return [
-                sg.description
-                for sg in goal.sub_goals
-                if sg.status.name not in ("COMPLETED", "SKIPPED")
-            ]
+            return [sg.description for sg in goal.sub_goals if sg.status.name not in ("COMPLETED", "SKIPPED")]
         return []
 
     def get_current_goal_id(self) -> str | None:

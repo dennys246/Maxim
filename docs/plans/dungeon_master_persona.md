@@ -204,16 +204,13 @@ class CharacterState:
 | Plan | Relationship |
 |------|-------------|
 | **Embodiment Core** (not started) | **Prerequisite.** Establishes canonical body-state + pain/proprioception patterns that `CharacterState` inherits. Narrative damage uses the same `PainDetector` pathway as physical damage. |
-| **Multi-LLM Scaling** (not started) | **Prerequisite.** Per-lane model assignment for classification / dialogue / reasoning. |
-| **Agent Mesh** (blocked) | **Prerequisite.** Unlocks multi-AUT party mode — the civilization-scale version of DM. |
-| [Dungeon Master Extensions](dungeon_master_extensions.md) | **Follow-on plan** — architect persona, encounter library, adaptive difficulty, sub-sim isolation, true RNG, living-character relationship graph. Layered onto MVP. |
-| [DM Choice Classifier Spike](dm_choice_classifier_spike.md) | **Gating spike** — validates ATL+NAc classification before committing to MVP. |
-| [Interactive Simulation Prompts](interactive_sim_prompts.md) | Needed for DM Extensions architect persona. |
-| [Simulation Entity Naming](sim_entity_naming.md) | Optional readability win. |
+| **Multi-LLM Scaling** (done) | **Prerequisite.** Per-lane model assignment for classification / dialogue / reasoning. |
+| **Agent Mesh** (foundations) | **Prerequisite.** Unlocks multi-AUT party mode — the civilization-scale version of DM. |
+| [Dungeon Master Extensions](dungeon_master_extensions.md) | **Follow-on plan** — architect persona (with `ask_user` tool), encounter library, adaptive difficulty. |
 | **Simulation Decomposition** (done) | DM uses `send_message` + `finish_simulation` from that plan. |
-| **Realtime Refinement** (core done) | Extensions plan consumes `InspectAUTTool` for adaptive difficulty. |
-| **Research Protocol** (not started) | Independent. |
-| **Docker Sandbox** (Phase B done) | Independent. DM campaigns with filesystem actions still benefit from sandbox. |
+| **Realtime Refinement** (done) | Extensions plan consumes `AUTIntrospector` for adaptive difficulty. |
+| **Research Protocol** (done) | Independent. |
+| **Docker Sandbox** (done) | Independent. DM campaigns with filesystem actions benefit from sandbox. |
 
 ## When to Implement
 
@@ -223,7 +220,7 @@ class CharacterState:
 - **Agent Mesh** unlocks **multi-AUT party mode** — multiple bio-stacks experiencing the same campaign from different perspectives, with inter-party communication via mesh primitives. This is where DM goes from "test persona" to "bio-system stress test at civilization scale."
 - **Embodiment Core** establishes the canonical "AUT inhabits a body with state and constraints" patterns — body-state abstraction, damage signals through `PainDetector`, proprioceptive feedback, Cerebellum forward models. DM's `CharacterState` should **mirror/reuse these patterns** rather than inventing parallel abstractions. A D&D character taking damage should flow through the same pain pathway a robot collision does; the bio-stack shouldn't know the difference. This is exactly the "experience it as a human would" thesis, applied consistently.
 
-**Prereq spike to run before committing to DM work:** [DM Choice Classifier Spike](dm_choice_classifier_spike.md) — validates that AUT free-text responses can be mapped to campaign choices using existing ATL concept similarity + NAc causal scoring, not a from-scratch classifier.
+**Prereq spike to run before committing to DM work:** Phase 0 (Choice Classifier Spike, see above) — validates that AUT free-text responses can be mapped to campaign choices using existing ATL concept similarity + NAc causal scoring.
 
 **Architectural commitment:** once Embodiment Core ships, DM's `CharacterState` will align with whatever body-state primitives Embodiment establishes. Damage events flow through the shared `PainDetector` pathway; ability exhaustion emits proprioceptive signals identical in shape to physical fatigue; status effects propagate through the same salience/attention mechanisms Embodiment uses. This keeps the bio-stack's response to narrative events architecturally identical to its response to physical events.
 
@@ -239,9 +236,37 @@ class CharacterState:
 
 **After MVP lands,** real usage drives what extensions to prioritize. If hand-authoring campaigns is the main pain → architect persona next. If NPC continuity feels shallow → adaptive adaptation. If isolation matters → sub-sim encounters. Let the pain drive the roadmap, not speculation.
 
+## Phase 0: Choice Classifier Spike (half-day gate)
+
+> Formerly standalone plan `dm_choice_classifier_spike.md`. Merged here as the explicit validation gate before MVP work begins.
+
+**Purpose:** Validate that AUT free-text responses can be reliably mapped to campaign encounter choices using existing ATL concept-similarity + NAc causal scoring. If accuracy is too low, MVP design changes (force AUT to emit choice tags via tool calls instead of free text).
+
+**Approach:**
+1. **ATL Concept Similarity (primary):** Pre-register each encounter choice as an ATL concept (`choice:fight`, `choice:flee`, `choice:negotiate`). At classification time, tokenize AUT response, rank choices by `ConceptGrounder` Jaccard similarity.
+2. **NAc Causal Scoring (secondary):** After each classification, record `(response_tokens, choice) → success` in NAc. Over a campaign, NAc learns which response patterns map to which choices.
+3. **LLM Fallback:** If ATL+NAc score below confidence threshold (<0.6), fall back to a one-shot LLM classification call. Expected <10% of cases once NAc learns.
+
+**Deliverables:**
+- `scripts/spike_dm_classifier.py` (~150 LOC, experimental, not shipped as infra)
+- 3 test encounters × 4 choices × 20 synthetic responses = 240 test cases
+- Confusion matrix + accuracy + latency + LLM-fallback rate report
+
+**Decision criteria:**
+
+| Outcome | Accuracy | Decision |
+|---------|----------|----------|
+| Strong | ≥85% without LLM fallback | Proceed with MVP as designed |
+| Acceptable | 70-85% with <30% LLM-fallback | Proceed with MVP; budget for iteration |
+| Weak | <70% or >50% LLM-fallback | Redesign: force AUT to use `choose_option` tool call |
+
+**When to run:** Just before starting MVP work — after Multi-LLM + Agent Mesh have landed.
+
+---
+
 ## File Inventory
 
-**New files (~840 LOC):**
+**New files (~840 LOC, excluding spike):**
 - `src/maxim/simulation/campaign_schema.py` (~160)
 - `src/maxim/simulation/character_state.py` (~150)
 - `src/maxim/simulation/dm_runtime.py` (~250)

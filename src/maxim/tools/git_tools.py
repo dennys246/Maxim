@@ -1,8 +1,8 @@
 """Git version control tools."""
+
 from __future__ import annotations
 
 import subprocess
-from typing import Any
 
 from maxim.tools.base import Tool, ToolOutput
 from maxim.agents.bus import ToolErrorKind
@@ -40,8 +40,7 @@ class GitDiffTool(Tool):
         if result.returncode != 0:
             return ToolOutput(success=False, error=result.stderr.strip(), error_kind=ToolErrorKind.EXTERNAL_FAILURE)
 
-        return ToolOutput(success=True, output=result.stdout,
-                         metadata={"ref1": ref1, "ref2": ref2, "path": path})
+        return ToolOutput(success=True, output=result.stdout, metadata={"ref1": ref1, "ref2": ref2, "path": path})
 
 
 class GitCommitTool(Tool):
@@ -65,8 +64,11 @@ class GitCommitTool(Tool):
                 for f in files:
                     result = subprocess.run(["git", "add", f], capture_output=True, text=True, timeout=10)
                     if result.returncode != 0:
-                        return ToolOutput(success=False, error=f"git add failed for {f}: {result.stderr.strip()}",
-                                        error_kind=ToolErrorKind.EXTERNAL_FAILURE)
+                        return ToolOutput(
+                            success=False,
+                            error=f"git add failed for {f}: {result.stderr.strip()}",
+                            error_kind=ToolErrorKind.EXTERNAL_FAILURE,
+                        )
 
             cmd = ["git", "commit", "-m", message]
             if dry_run:
@@ -81,5 +83,4 @@ class GitCommitTool(Tool):
         if result.returncode != 0:
             return ToolOutput(success=False, error=result.stderr.strip(), error_kind=ToolErrorKind.EXTERNAL_FAILURE)
 
-        return ToolOutput(success=True, output=result.stdout.strip(),
-                         metadata={"message": message, "dry_run": dry_run})
+        return ToolOutput(success=True, output=result.stdout.strip(), metadata={"message": message, "dry_run": dry_run})

@@ -52,9 +52,7 @@ class MotionTracking(Behavior):
         self.prediction_seconds = prediction_seconds
 
         # track_id -> list of (timestamp, x, y)
-        self._position_history: dict[int, list[tuple[float, float, float]]] = (
-            defaultdict(list)
-        )
+        self._position_history: dict[int, list[tuple[float, float, float]]] = defaultdict(list)
 
     def evaluate(
         self,
@@ -87,9 +85,7 @@ class MotionTracking(Behavior):
             history.append((now, cx, cy))
 
             # Prune old entries
-            self._position_history[track_id] = [
-                (t, x, y) for t, x, y in history if t > cutoff
-            ]
+            self._position_history[track_id] = [(t, x, y) for t, x, y in history if t > cutoff]
 
         # Find fastest moving object
         best_target = None
@@ -154,10 +150,7 @@ class MotionTracking(Behavior):
         Args:
             active_track_ids: Set of currently visible track IDs.
         """
-        stale = [
-            tid for tid in self._position_history
-            if tid not in active_track_ids
-        ]
+        stale = [tid for tid in self._position_history if tid not in active_track_ids]
         for tid in stale:
             del self._position_history[tid]
 

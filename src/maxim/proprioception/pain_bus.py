@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable
 
 from maxim.proprioception.pain import PainSignal, PainType
 
@@ -146,6 +146,7 @@ def route_pain_percept(percept: Percept, pain_bus: PainBus) -> bool:
     # Simulation verbosity
     try:
         from maxim.simulation.sim_logger import sim_pain
+
         sim_pain(signal.pain_type.value, signal.intensity, **signal.context)
     except Exception:
         pass
@@ -190,10 +191,7 @@ def create_pain_memory_subscriber(
             ),
             decision=Decision(
                 intent={"goal": "pain_response"},
-                reasoning=(
-                    f"Pain detected: {signal.pain_type.value} "
-                    f"(intensity={signal.intensity:.2f})"
-                ),
+                reasoning=(f"Pain detected: {signal.pain_type.value} (intensity={signal.intensity:.2f})"),
             ),
             outcome=Outcome(
                 success=False,
@@ -208,9 +206,9 @@ def create_pain_memory_subscriber(
         # Simulation verbosity
         try:
             from maxim.simulation.sim_logger import sim_memory
+
             sim_memory(
-                f"Pain memory captured: {signal.pain_type.value} "
-                f"(intensity={signal.intensity:.2f})",
+                f"Pain memory captured: {signal.pain_type.value} (intensity={signal.intensity:.2f})",
             )
         except Exception:
             pass

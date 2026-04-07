@@ -67,9 +67,7 @@ def _get_config_candidates(
 
     # Repository root (relative to this file)
     try:
-        repo_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "..", "..")
-        )
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
         candidates.append(os.path.join(repo_root, "data", "util", filename))
         candidates.append(os.path.join(repo_root, filename))
     except Exception:
@@ -395,9 +393,7 @@ def load_phrase_responses(
         },
     }
 
-    candidates = _get_config_candidates(
-        "MAXIM_PHRASE_RESPONSES", "phrase_responses.json"
-    )
+    candidates = _get_config_candidates("MAXIM_PHRASE_RESPONSES", "phrase_responses.json")
 
     raw = None
     for path in candidates:

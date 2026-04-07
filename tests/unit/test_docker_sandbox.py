@@ -21,7 +21,6 @@ from maxim.simulation.container_runner import (
     ContainerHandle,
     ContainerRunner,
     ContainerSpec,
-    ImageProfile,
     LocalDockerRunner,
     check_docker_available,
     get_container_runner,
@@ -68,9 +67,7 @@ class TestImageCatalog:
 
     def test_catalog_covers_major_families(self):
         families = {p.family for p in IMAGE_CATALOG.values()}
-        assert {"debian", "ubuntu", "rhel", "alpine", "python"}.issubset(
-            families | {"python"}
-        )
+        assert {"debian", "ubuntu", "rhel", "alpine", "python"}.issubset(families | {"python"})
         # More defensively, just check we have coverage
         assert "debian" in families
         assert "ubuntu" in families
@@ -124,6 +121,7 @@ class TestPermissionsForAutonomy:
 
     def test_planning_is_most_restrictive(self):
         from maxim.agents.autonomy import AutonomyLevel
+
         perms = permissions_for_autonomy(AutonomyLevel.PLANNING)
         assert perms.workspace_readonly is True
         assert perms.memory == "256m"
@@ -132,6 +130,7 @@ class TestPermissionsForAutonomy:
 
     def test_supervised_is_middle(self):
         from maxim.agents.autonomy import AutonomyLevel
+
         perms = permissions_for_autonomy(AutonomyLevel.SUPERVISED)
         assert perms.workspace_readonly is False
         assert perms.memory == "512m"
@@ -139,6 +138,7 @@ class TestPermissionsForAutonomy:
 
     def test_autonomous_gets_largest_envelope(self):
         from maxim.agents.autonomy import AutonomyLevel
+
         perms = permissions_for_autonomy(AutonomyLevel.AUTONOMOUS)
         assert perms.workspace_readonly is False
         assert perms.memory == "1g"
@@ -226,6 +226,7 @@ class TestLocalDockerRunnerLaunch:
 
         with patch.object(runner, "_run_docker", return_value=mock_result):
             from maxim.simulation.container_runner import ContainerRunnerError
+
             with pytest.raises(ContainerRunnerError, match="no such image"):
                 runner.launch(ContainerSpec())
 
@@ -291,6 +292,7 @@ class TestLocalDockerRunnerDockerMissing:
         runner = LocalDockerRunner()
         with patch("subprocess.run", side_effect=FileNotFoundError("no docker")):
             from maxim.simulation.container_runner import ContainerRunnerError
+
             with pytest.raises(ContainerRunnerError, match="docker CLI not found"):
                 runner.launch(ContainerSpec())
 
@@ -320,10 +322,7 @@ class TestDockerSandboxPathMapping:
         # Relative → resolves under workspace → maps to host
         assert sandbox._map_to_host("notes.txt") == "/tmp/fake_workspace/notes.txt"
         # Absolute under container workspace → maps to host
-        assert (
-            sandbox._map_to_host("/home/maxim/.maxim_workspace/x.txt")
-            == "/tmp/fake_workspace/x.txt"
-        )
+        assert sandbox._map_to_host("/home/maxim/.maxim_workspace/x.txt") == "/tmp/fake_workspace/x.txt"
 
     def test_non_workspace_paths_do_not_map(self):
         sandbox = self._make_sandbox()
@@ -385,6 +384,7 @@ class TestDockerSandboxIntegration:
             sandbox.start()
             sandbox.write_file("hello.txt", "hello from host")
             import os
+
             host_path = os.path.join(sandbox.workspace_root, "hello.txt")
             assert os.path.exists(host_path)
             # And visible in container

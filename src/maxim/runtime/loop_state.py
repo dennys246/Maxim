@@ -5,7 +5,6 @@ import time
 from typing import Any
 
 from maxim.utils.atomic_io import atomic_write_json
-from maxim.utils.logging import warn
 
 
 def _persist_state_json(state: Any, path: str, *, meta: dict[str, Any]) -> None:

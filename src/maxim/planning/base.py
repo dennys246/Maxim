@@ -18,7 +18,10 @@ class Planner(ABC):
 
     @abstractmethod
     def propose_plans(
-        self, goal: dict | str, state: Any, memory: Any,
+        self,
+        goal: dict | str,
+        state: Any,
+        memory: Any,
     ) -> list[PlanCandidate | list[dict[str, Any]]]:
         """Return candidate plans.
 
@@ -29,7 +32,10 @@ class Planner(ABC):
         raise NotImplementedError
 
     def decompose(
-        self, failed_goal: dict, replan_ctx: Any, depth: int,
+        self,
+        failed_goal: dict,
+        replan_ctx: Any,
+        depth: int,
     ) -> PlanCandidate | None:
         """Recursive decomposition on failure (ADaPT).
 
@@ -43,7 +49,10 @@ class Policy(ABC):
 
     @abstractmethod
     def score(
-        self, plan: PlanCandidate | list[dict[str, Any]], state: Any, memory: Any,
+        self,
+        plan: PlanCandidate | list[dict[str, Any]],
+        state: Any,
+        memory: Any,
     ) -> float:
         """Score a plan candidate.  Higher is better."""
         raise NotImplementedError

@@ -75,6 +75,7 @@ class AgentOutputMixin:
             self._output_manager = output_manager
         else:
             from maxim.utils.agent_output import get_output_manager
+
             self._output_manager = get_output_manager()
 
     def _write_memory(
@@ -295,6 +296,7 @@ def with_output(agent_name: str | None = None):
         class MyAgent(Agent, AgentOutputMixin):
             pass
     """
+
     def decorator(cls):
         original_init = cls.__init__
 

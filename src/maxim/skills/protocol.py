@@ -38,12 +38,13 @@ class WorkspaceBounds:
     Example: constrain gaze to ±30° yaw, ±20° pitch, leave others default:
         WorkspaceBounds(yaw=30.0, pitch=20.0)
     """
-    x: float | None = None      # mm, forward/backward
-    y: float | None = None      # mm, left/right
-    z: float | None = None      # mm, up/down
-    roll: float | None = None   # degrees
+
+    x: float | None = None  # mm, forward/backward
+    y: float | None = None  # mm, left/right
+    z: float | None = None  # mm, up/down
+    roll: float | None = None  # degrees
     pitch: float | None = None  # degrees
-    yaw: float | None = None    # degrees
+    yaw: float | None = None  # degrees
 
 
 class Protocol(ABC):
@@ -146,22 +147,20 @@ class Protocol(ABC):
         for skill in skills:
             deps = skill.bio_dependencies()
             if deps:
-                skill._bio = {name: bio_registry[name] for name in deps
-                              if name in bio_registry}
+                skill._bio = {name: bio_registry[name] for name in deps if name in bio_registry}
                 missing = [d for d in deps if d not in bio_registry]
                 if missing:
                     logger.warning(
                         "Skill '%s' requested bio systems %s but they are not available",
-                        skill.name, missing,
+                        skill.name,
+                        missing,
                     )
 
         # Phase 2: Check all preconditions before starting anything
         for skill in skills:
             ok, reason = skill.can_activate(maxim)
             if not ok:
-                raise RuntimeError(
-                    f"Skill '{skill.name}' precondition failed: {reason}"
-                )
+                raise RuntimeError(f"Skill '{skill.name}' precondition failed: {reason}")
 
         # Phase 3: Activate skills in order with shared context
         for skill in skills:
@@ -181,7 +180,8 @@ class Protocol(ABC):
                 elif action == "continue":
                     logger.warning(
                         "Skill '%s' failed but protocol continuing: %s",
-                        skill.name, result.error or result.message,
+                        skill.name,
+                        result.error or result.message,
                     )
 
     def on_deactivate(self) -> None:
@@ -197,13 +197,17 @@ class Protocol(ABC):
             except Exception as e:
                 failures.append(skill.name)
                 logger.warning(
-                    "Skill '%s' deactivation failed: %s", skill.name, e,
+                    "Skill '%s' deactivation failed: %s",
+                    skill.name,
+                    e,
                     exc_info=True,
                 )
         if failures:
             logger.error(
                 "Deactivation incomplete: %d of %d skills failed to clean up: %s",
-                len(failures), len(self._active_skills), ", ".join(failures),
+                len(failures),
+                len(self._active_skills),
+                ", ".join(failures),
             )
         self._active_skills = []
         self._context = {}
@@ -233,13 +237,16 @@ class Protocol(ABC):
             except Exception as e:
                 failures.append(skill.name)
                 logger.warning(
-                    "Skill '%s' rollback failed: %s", skill.name, e,
+                    "Skill '%s' rollback failed: %s",
+                    skill.name,
+                    e,
                     exc_info=True,
                 )
         if failures:
             logger.error(
                 "Rollback incomplete! %d skills not cleaned up: %s",
-                len(failures), ", ".join(failures),
+                len(failures),
+                ", ".join(failures),
             )
         self._active_skills = []
 
@@ -260,6 +267,7 @@ class Protocol(ABC):
         if hub is not None:
             # Wrap hub in BioContext facade for skill-friendly access
             from maxim.skills.bio_context import BioContext
+
             systems["memory_hub"] = BioContext(hub)
             # Individual systems from hub (public attributes)
             hub_attrs = {
@@ -281,6 +289,7 @@ class Protocol(ABC):
         # IPS is stateless — instantiate on demand
         try:
             from maxim.math.ips import IPS
+
             systems["ips"] = IPS()
         except ImportError:
             pass

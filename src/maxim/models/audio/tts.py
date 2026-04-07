@@ -135,9 +135,7 @@ class PiperTTS:
         try:
             from piper import PiperVoice
         except ImportError as e:
-            raise ImportError(
-                "Missing dependency `piper-tts`. Install it with: pip install piper-tts"
-            ) from e
+            raise ImportError("Missing dependency `piper-tts`. Install it with: pip install piper-tts") from e
 
         if not self.model_path.exists():
             raise FileNotFoundError(

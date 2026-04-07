@@ -156,9 +156,7 @@ class EntorhinalCortex:
         if signature is None:
             if memory is None:
                 raise ValueError("Either signature or memory must be provided")
-            signature = SituationSignature.from_memory(
-                memory, semantic_hasher=self._semantic_hasher
-            )
+            signature = SituationSignature.from_memory(memory, semantic_hasher=self._semantic_hasher)
 
         self._signatures[memory_id] = signature
         self._lsh.add(memory_id, signature)
@@ -328,9 +326,7 @@ class EntorhinalCortex:
             query_hash = self._semantic_hasher.hash(query)
             results = []
             for mid, sig in self._signatures.items():
-                similarity = self._semantic_hasher.estimated_similarity(
-                    query_hash, sig.semantic_hash
-                )
+                similarity = self._semantic_hasher.estimated_similarity(query_hash, sig.semantic_hash)
                 if similarity >= threshold:
                     results.append((mid, similarity))
             results.sort(key=lambda x: x[1], reverse=True)
@@ -369,9 +365,7 @@ class EntorhinalCortex:
         Returns:
             Set of matching memory IDs
         """
-        return self._inverted.query_intersection(
-            tool=tool, outcome=outcome, mode=mode, hour=hour, day=day
-        )
+        return self._inverted.query_intersection(tool=tool, outcome=outcome, mode=mode, hour=hour, day=day)
 
     def find_by_temporal(
         self,
@@ -471,10 +465,7 @@ class EntorhinalCortex:
         self._inverted = InvertedIndices.from_dict(data.get("inverted", {}))
 
         # Load signatures
-        self._signatures = {
-            k: SituationSignature.from_dict(v)
-            for k, v in data.get("signatures", {}).items()
-        }
+        self._signatures = {k: SituationSignature.from_dict(v) for k, v in data.get("signatures", {}).items()}
 
         logger.info("Loaded EC from %s (%d signatures)", path, len(self._signatures))
 

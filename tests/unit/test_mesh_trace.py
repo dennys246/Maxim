@@ -1,13 +1,12 @@
 """Tests for Stage A observability (src/maxim/models/language/mesh_trace.py)."""
+
 from __future__ import annotations
 
 import json
 import logging
-from unittest.mock import patch
 
 import pytest
 
-from maxim.models.language import mesh_trace
 from maxim.models.language.mesh_trace import (
     REQUEST_ID_HEADER,
     TRACE_LOGGER_NAME,
@@ -128,8 +127,13 @@ class TestEmitTrace:
         monkeypatch.delenv("MAXIM_LANE_TRACE", raising=False)
         monkeypatch.delenv("MAXIM_PEER_LOG_REQUESTS", raising=False)
         rec = TraceRecord(
-            request_id="a", provider="p", base_url="u", model="m",
-            status="ok", http_status=200, latency_ms=10.0,
+            request_id="a",
+            provider="p",
+            base_url="u",
+            model="m",
+            status="ok",
+            http_status=200,
+            latency_ms=10.0,
         )
         with caplog.at_level(logging.DEBUG, logger=TRACE_LOGGER_NAME):
             emit_trace(rec)
@@ -139,8 +143,13 @@ class TestEmitTrace:
         monkeypatch.setenv("MAXIM_LANE_TRACE", "1")
         monkeypatch.delenv("MAXIM_PEER_LOG_REQUESTS", raising=False)
         rec = TraceRecord(
-            request_id="abc12345678", provider="p", base_url="u", model="m",
-            status="ok", http_status=200, latency_ms=10.0,
+            request_id="abc12345678",
+            provider="p",
+            base_url="u",
+            model="m",
+            status="ok",
+            http_status=200,
+            latency_ms=10.0,
         )
         with caplog.at_level(logging.INFO, logger=TRACE_LOGGER_NAME):
             emit_trace(rec)
@@ -152,8 +161,13 @@ class TestEmitTrace:
         monkeypatch.delenv("MAXIM_LANE_TRACE", raising=False)
         monkeypatch.setenv("MAXIM_PEER_LOG_REQUESTS", "1")
         rec = TraceRecord(
-            request_id="abc", provider="p", base_url="u", model="m",
-            status="ok", http_status=200, latency_ms=10.0,
+            request_id="abc",
+            provider="p",
+            base_url="u",
+            model="m",
+            status="ok",
+            http_status=200,
+            latency_ms=10.0,
         )
         with caplog.at_level(logging.INFO, logger=TRACE_LOGGER_NAME):
             emit_trace(rec)
@@ -166,8 +180,13 @@ class TestEmitTrace:
         monkeypatch.setenv("MAXIM_LANE_TRACE", "1")
         monkeypatch.setenv("MAXIM_PEER_LOG_REQUESTS", "1")
         rec = TraceRecord(
-            request_id="a", provider="p", base_url="u", model="m",
-            status="ok", http_status=200, latency_ms=1.0,
+            request_id="a",
+            provider="p",
+            base_url="u",
+            model="m",
+            status="ok",
+            http_status=200,
+            latency_ms=1.0,
         )
         with caplog.at_level(logging.INFO, logger=TRACE_LOGGER_NAME):
             emit_trace(rec)

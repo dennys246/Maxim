@@ -322,10 +322,7 @@ class StrategyLibrary:
         for strategy in self.strategies.values():
             # Check if applicable to current mode
             mode_name = mode.name.lower().replace("_", "-")
-            applicable = (
-                "any" in strategy.applicable_contexts
-                or mode_name in strategy.applicable_contexts
-            )
+            applicable = "any" in strategy.applicable_contexts or mode_name in strategy.applicable_contexts
 
             if not applicable:
                 continue
@@ -379,27 +376,19 @@ class StrategyLibrary:
         # Exponential moving average update
         target = 1.0 if success else 0.0
         strategy.historical_success_rate = (
-            (1 - learning_rate) * strategy.historical_success_rate
-            + learning_rate * target
-        )
+            1 - learning_rate
+        ) * strategy.historical_success_rate + learning_rate * target
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize library state for persistence."""
-        return {
-            "strategies": {
-                name: strategy.to_dict()
-                for name, strategy in self.strategies.items()
-            }
-        }
+        return {"strategies": {name: strategy.to_dict() for name, strategy in self.strategies.items()}}
 
     def load_stats(self, data: dict[str, Any]) -> None:
         """Load strategy statistics from persisted data."""
         strategies_data = data.get("strategies", {})
         for name, stats in strategies_data.items():
             if name in self.strategies:
-                self.strategies[name].historical_success_rate = float(
-                    stats.get("historical_success_rate", 0.5)
-                )
+                self.strategies[name].historical_success_rate = float(stats.get("historical_success_rate", 0.5))
                 self.strategies[name].times_used = int(stats.get("times_used", 0))
 
 

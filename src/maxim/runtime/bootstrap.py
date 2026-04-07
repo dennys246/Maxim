@@ -120,9 +120,11 @@ def build_tool_registry(
     registry.register(GitCommitTool())
 
     # Register directory change tool (only enabled for active/singularity modes)
-    registry.register(RequestDirectoryChangeTool(
-        can_change=mode_config.can_request_directory_change,
-    ))
+    registry.register(
+        RequestDirectoryChangeTool(
+            can_change=mode_config.can_request_directory_change,
+        )
+    )
 
     # Register Reachy robot tools
     if maxim is not None:
@@ -173,11 +175,13 @@ def build_tool_registry(
                 if maxim is not None and hasattr(maxim, "requested_mode"):
                     setattr(maxim, "requested_mode", mode)
 
-            registry.register(ModeSwitchTool(
-                get_current_mode=get_mode,
-                set_mode=set_mode,
-                autonomy_controller=autonomy_controller,
-            ))
+            registry.register(
+                ModeSwitchTool(
+                    get_current_mode=get_mode,
+                    set_mode=set_mode,
+                    autonomy_controller=autonomy_controller,
+                )
+            )
             registry.register(AutonomyLevelTool(autonomy_controller))
         except Exception:
             pass
@@ -221,13 +225,17 @@ def build_tool_registry(
             from maxim.tools.http_fetch import HttpFetchTool
             from maxim.utils.content_safety import check_content_safety
 
-            registry.register(InternetSearchTool(
-                get_internet_policy=internet_policy_getter,
-            ))
-            registry.register(HttpFetchTool(
-                get_internet_policy=internet_policy_getter,
-                content_safety_checker=check_content_safety,
-            ))
+            registry.register(
+                InternetSearchTool(
+                    get_internet_policy=internet_policy_getter,
+                )
+            )
+            registry.register(
+                HttpFetchTool(
+                    get_internet_policy=internet_policy_getter,
+                    content_safety_checker=check_content_safety,
+                )
+            )
             registry.register(InternetAccessTool())
         except Exception:
             pass
@@ -349,8 +357,7 @@ def build_comms_stack(
 
     if not all([account_sid, auth_token, from_number]):
         logger.debug(
-            "Twilio env vars not set (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, "
-            "TWILIO_FROM_NUMBER) — comms stack disabled"
+            "Twilio env vars not set (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER) — comms stack disabled"
         )
         return None, None
 
@@ -361,7 +368,7 @@ def build_comms_stack(
         from maxim.comms.api import start_api_server
     except ImportError as exc:
         logger.warning(
-            "Comms dependencies missing (%s). Install with: pip install \"maxim[comms]\"",
+            'Comms dependencies missing (%s). Install with: pip install "maxim[comms]"',
             exc,
         )
         return None, None
@@ -374,9 +381,7 @@ def build_comms_stack(
             "account_sid": account_sid,
             "auth_token": auth_token,
             "from_number": from_number,
-            "voice_enabled": os.environ.get(
-                "TWILIO_VOICE_ENABLED", ""
-            ).lower() in ("1", "true", "yes"),
+            "voice_enabled": os.environ.get("TWILIO_VOICE_ENABLED", "").lower() in ("1", "true", "yes"),
         }
         channel = TwilioChannel(twilio_config, conv_manager, gateway)
         gateway.register_channel("twilio", channel)
@@ -394,7 +399,9 @@ def build_comms_stack(
         )
         logger.info(
             "Comms stack started (Twilio from=%s, API on %s:%d)",
-            from_number, host, port,
+            from_number,
+            host,
+            port,
         )
         return gateway, conv_manager
     except Exception:
@@ -486,5 +493,6 @@ def build_default_network(
 
     except Exception as e:
         import logging
+
         logging.getLogger(__name__).warning("Failed to build DefaultNetwork: %s", e)
         return None

@@ -213,7 +213,8 @@ class TestSummarizeFileStructure:
     def test_extracts_classes_and_functions(self, tmp_path):
         """Extracts class and function names from a Python file."""
         f = tmp_path / "example.py"
-        f.write_text(textwrap.dedent("""\
+        f.write_text(
+            textwrap.dedent("""\
             \"\"\"Example module.\"\"\"
 
             class Foo:
@@ -224,7 +225,8 @@ class TestSummarizeFileStructure:
 
             def helper():
                 pass
-        """))
+        """)
+        )
         summary = summarize_file_structure(str(f))
         assert "Foo" in summary
         assert "Baz" in summary

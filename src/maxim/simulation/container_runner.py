@@ -59,18 +59,18 @@ class ContainerSpec:
     """
 
     image: str = "python:3.12-slim"
-    memory: str = "512m"            # Docker-style: "512m", "2g"
-    cpus: float = 1.0               # CPU cores (can be fractional)
-    network: str = "none"           # "none" | "bridge" | "host" | custom
+    memory: str = "512m"  # Docker-style: "512m", "2g"
+    cpus: float = 1.0  # CPU cores (can be fractional)
+    network: str = "none"  # "none" | "bridge" | "host" | custom
     pids_limit: int = 64
     env: dict[str, str] = field(default_factory=dict)
     mounts: list[tuple[str, str, str]] = field(default_factory=list)
     # mounts: list of (host_path, container_path, mode) — mode is "rw" or "ro"
-    user: str = "1000:1000"          # UID:GID inside container
+    user: str = "1000:1000"  # UID:GID inside container
     command: tuple[str, ...] = ("sleep", "infinity")
     workdir: str = "/home/user/.maxim_workspace"
     name_prefix: str = "maxim-sandbox"
-    shell: str = "/bin/bash"         # "/bin/bash" or "/bin/sh" for Alpine/BusyBox
+    shell: str = "/bin/bash"  # "/bin/bash" or "/bin/sh" for Alpine/BusyBox
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -83,67 +83,90 @@ class ImageProfile:
     """Describes a Docker image Maxim could realistically be deployed on."""
 
     image: str
-    family: str            # "debian", "ubuntu", "rhel", "alpine", "python"
+    family: str  # "debian", "ubuntu", "rhel", "alpine", "python"
     description: str
-    has_useradd: bool      # whether ``useradd`` is available out of the box
-    has_bash: bool         # whether /bin/bash exists (Alpine uses /bin/sh)
-    size_mb_approx: int    # approximate compressed image size
+    has_useradd: bool  # whether ``useradd`` is available out of the box
+    has_bash: bool  # whether /bin/bash exists (Alpine uses /bin/sh)
+    size_mb_approx: int  # approximate compressed image size
 
 
 IMAGE_CATALOG: dict[str, ImageProfile] = {
     # Python-focused (default — matches Maxim's own runtime)
     "python:3.12-slim": ImageProfile(
-        "python:3.12-slim", "debian",
+        "python:3.12-slim",
+        "debian",
         "Debian-slim with Python 3.12. Default Maxim sandbox.",
-        has_useradd=True, has_bash=True, size_mb_approx=45,
+        has_useradd=True,
+        has_bash=True,
+        size_mb_approx=45,
     ),
     "python:3.12-bookworm": ImageProfile(
-        "python:3.12-bookworm", "debian",
+        "python:3.12-bookworm",
+        "debian",
         "Full Debian 12 with Python 3.12 + dev tools.",
-        has_useradd=True, has_bash=True, size_mb_approx=350,
+        has_useradd=True,
+        has_bash=True,
+        size_mb_approx=350,
     ),
-
     # Ubuntu — most common Linux target for robots + laptops
     "ubuntu:22.04": ImageProfile(
-        "ubuntu:22.04", "ubuntu",
+        "ubuntu:22.04",
+        "ubuntu",
         "Ubuntu 22.04 LTS (Jammy). Widely deployed on robotics platforms.",
-        has_useradd=True, has_bash=True, size_mb_approx=30,
+        has_useradd=True,
+        has_bash=True,
+        size_mb_approx=30,
     ),
     "ubuntu:24.04": ImageProfile(
-        "ubuntu:24.04", "ubuntu",
+        "ubuntu:24.04",
+        "ubuntu",
         "Ubuntu 24.04 LTS (Noble). Current Ubuntu LTS.",
-        has_useradd=True, has_bash=True, size_mb_approx=30,
+        has_useradd=True,
+        has_bash=True,
+        size_mb_approx=30,
     ),
-
     # Debian — minimal, stable
     "debian:12-slim": ImageProfile(
-        "debian:12-slim", "debian",
+        "debian:12-slim",
+        "debian",
         "Debian 12 (Bookworm) slim. Minimal footprint for embedded use.",
-        has_useradd=True, has_bash=True, size_mb_approx=30,
+        has_useradd=True,
+        has_bash=True,
+        size_mb_approx=30,
     ),
-
     # Red Hat family
     "rockylinux:9": ImageProfile(
-        "rockylinux:9", "rhel",
+        "rockylinux:9",
+        "rhel",
         "Rocky Linux 9. Binary-compatible with RHEL 9.",
-        has_useradd=True, has_bash=True, size_mb_approx=75,
+        has_useradd=True,
+        has_bash=True,
+        size_mb_approx=75,
     ),
     "almalinux:9": ImageProfile(
-        "almalinux:9", "rhel",
+        "almalinux:9",
+        "rhel",
         "AlmaLinux 9. Binary-compatible with RHEL 9.",
-        has_useradd=True, has_bash=True, size_mb_approx=75,
+        has_useradd=True,
+        has_bash=True,
+        size_mb_approx=75,
     ),
     "registry.access.redhat.com/ubi9/ubi-minimal": ImageProfile(
-        "registry.access.redhat.com/ubi9/ubi-minimal", "rhel",
+        "registry.access.redhat.com/ubi9/ubi-minimal",
+        "rhel",
         "Red Hat Universal Base Image 9 (minimal). Official RHEL base.",
-        has_useradd=True, has_bash=True, size_mb_approx=35,
+        has_useradd=True,
+        has_bash=True,
+        size_mb_approx=35,
     ),
-
     # Alpine — minimal for edge / embedded
     "alpine:3.19": ImageProfile(
-        "alpine:3.19", "alpine",
+        "alpine:3.19",
+        "alpine",
         "Alpine Linux 3.19. Minimal footprint (musl libc, no bash).",
-        has_useradd=False, has_bash=False, size_mb_approx=8,
+        has_useradd=False,
+        has_bash=False,
+        size_mb_approx=8,
     ),
 }
 
@@ -291,13 +314,18 @@ class LocalDockerRunner:
         """
         name = f"{spec.name_prefix}-{uuid.uuid4().hex[:8]}"
         argv = [
-            self._docker, "run", "-d", "--rm",
-            "--name", name,
+            self._docker,
+            "run",
+            "-d",
+            "--rm",
+            "--name",
+            name,
             f"--network={spec.network}",
             f"--memory={spec.memory}",
             f"--cpus={spec.cpus}",
             f"--pids-limit={spec.pids_limit}",
-            "-w", spec.workdir,
+            "-w",
+            spec.workdir,
         ]
         for host_path, container_path, mode in spec.mounts:
             argv.extend(["-v", f"{host_path}:{container_path}:{mode}"])
@@ -308,17 +336,22 @@ class LocalDockerRunner:
 
         result = self._run_docker(argv, timeout=30.0)
         if result.returncode != 0:
-            raise ContainerRunnerError(
-                f"docker run failed (exit={result.returncode}): {result.stderr.strip()}"
-            )
+            raise ContainerRunnerError(f"docker run failed (exit={result.returncode}): {result.stderr.strip()}")
         container_id = result.stdout.strip()
         handle = ContainerHandle(
-            container_id=container_id, name=name, spec=spec,
+            container_id=container_id,
+            name=name,
+            spec=spec,
         )
         LocalDockerRunner._LIVE_HANDLES.add(handle)
         logger.info(
             "Container launched: %s (%s, image=%s, network=%s, mem=%s, cpus=%s)",
-            name, container_id[:12], spec.image, spec.network, spec.memory, spec.cpus,
+            name,
+            container_id[:12],
+            spec.image,
+            spec.network,
+            spec.memory,
+            spec.cpus,
         )
         return handle
 
@@ -333,7 +366,9 @@ class LocalDockerRunner:
             # Container may already be gone — log but don't raise.
             logger.debug(
                 "docker rm -f %s returned %d: %s",
-                handle.name, result.returncode, result.stderr.strip(),
+                handle.name,
+                result.returncode,
+                result.stderr.strip(),
             )
         try:
             LocalDockerRunner._LIVE_HANDLES.discard(handle)
@@ -363,8 +398,12 @@ class LocalDockerRunner:
         # Container-side kill using the Linux `timeout` coreutil.
         # Shell varies by image (bash on Debian/Ubuntu/RHEL, sh on Alpine).
         container_cmd = [
-            "timeout", "--signal=KILL", f"{timeout:.1f}",
-            handle.spec.shell, "-c", command,
+            "timeout",
+            "--signal=KILL",
+            f"{timeout:.1f}",
+            handle.spec.shell,
+            "-c",
+            command,
         ]
         argv = [self._docker, "exec"]
         if effective_user:
@@ -378,7 +417,10 @@ class LocalDockerRunner:
         # docker exec startup/teardown.
         host_timeout = timeout + 5.0
         result = self._run_docker(
-            argv, timeout=host_timeout, stdin=stdin, check=False,
+            argv,
+            timeout=host_timeout,
+            stdin=stdin,
+            check=False,
         )
         # timeout coreutil exits 124 on SIGTERM, 137 on SIGKILL
         timed_out = result.returncode in (124, 137)
@@ -404,20 +446,29 @@ class LocalDockerRunner:
         """
         # mkdir -p the parent, then tee the content in.
         import os
+
         parent = os.path.dirname(path) or "/"
         mk_result = self.exec(
-            handle, f"mkdir -p {parent!s}", user=user, timeout=5.0,
+            handle,
+            f"mkdir -p {parent!s}",
+            user=user,
+            timeout=5.0,
         )
         if mk_result.exit_code != 0:
             logger.warning(
                 "mkdir %s failed in container %s: %s",
-                parent, handle.name, mk_result.stderr,
+                parent,
+                handle.name,
+                mk_result.stderr,
             )
             return False
         # Use tee to write (handles arbitrary content via stdin).
         write_result = self.exec(
-            handle, f"tee {path!s} > /dev/null",
-            user=user, timeout=10.0, stdin=content,
+            handle,
+            f"tee {path!s} > /dev/null",
+            user=user,
+            timeout=10.0,
+            stdin=content,
         )
         return write_result.exit_code == 0
 
@@ -430,8 +481,10 @@ class LocalDockerRunner:
     ) -> tuple[str, bool]:
         """Read a file from inside the container. Returns (content, exists)."""
         result = self.exec(
-            handle, f"cat {path!s} 2>/dev/null",
-            user=user, timeout=10.0,
+            handle,
+            f"cat {path!s} 2>/dev/null",
+            user=user,
+            timeout=10.0,
         )
         return result.stdout, result.exit_code == 0
 
@@ -445,19 +498,21 @@ class LocalDockerRunner:
         """
         inspect = self._run_docker(
             [self._docker, "image", "inspect", image],
-            timeout=10.0, check=False,
+            timeout=10.0,
+            check=False,
         )
         if inspect.returncode == 0:
             return
         import sys
+
         print(f"  ↓ Pulling Docker image: {image} ...", file=sys.stderr, flush=True)
         pull = self._run_docker(
-            [self._docker, "pull", image], timeout=300.0, check=False,
+            [self._docker, "pull", image],
+            timeout=300.0,
+            check=False,
         )
         if pull.returncode != 0:
-            raise ContainerRunnerError(
-                f"docker pull {image} failed: {pull.stderr.strip()}"
-            )
+            raise ContainerRunnerError(f"docker pull {image} failed: {pull.stderr.strip()}")
 
     # ── Internals ────────────────────────────────────────────────────────
 
@@ -482,18 +537,15 @@ class LocalDockerRunner:
         except subprocess.TimeoutExpired as e:
             logger.warning("docker CLI timed out: %s", " ".join(list(argv)[:4]))
             return subprocess.CompletedProcess(
-                args=list(argv), returncode=124,
+                args=list(argv),
+                returncode=124,
                 stdout=e.stdout.decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or ""),
                 stderr="timeout",
             )
         except FileNotFoundError as e:
-            raise ContainerRunnerError(
-                f"docker CLI not found: {e}. Is Docker installed?"
-            ) from e
+            raise ContainerRunnerError(f"docker CLI not found: {e}. Is Docker installed?") from e
         if check and result.returncode != 0:
-            raise ContainerRunnerError(
-                f"docker command failed: {' '.join(list(argv)[:4])}\n{result.stderr}"
-            )
+            raise ContainerRunnerError(f"docker command failed: {' '.join(list(argv)[:4])}\n{result.stderr}")
         return result
 
     @classmethod
@@ -503,7 +555,9 @@ class LocalDockerRunner:
             try:
                 subprocess.run(
                     ["docker", "rm", "-f", handle.container_id],
-                    capture_output=True, timeout=10.0, check=False,
+                    capture_output=True,
+                    timeout=10.0,
+                    check=False,
                 )
             except Exception:
                 pass
@@ -551,7 +605,9 @@ def check_docker_available(refresh: bool = False) -> bool:
     try:
         result = subprocess.run(
             ["docker", "info"],
-            capture_output=True, timeout=5.0, check=False,
+            capture_output=True,
+            timeout=5.0,
+            check=False,
         )
         _DOCKER_AVAILABLE_CACHE = result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):

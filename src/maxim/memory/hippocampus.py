@@ -12,7 +12,6 @@ See hippocampus_plan.md for full design and future phases.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import queue
@@ -27,7 +26,7 @@ if TYPE_CHECKING:
     from maxim.memory.strategies import MemoryStrategy
     from maxim.time.scn import SCN
 
-from maxim.agents.bus import DependencyGraph, EdgeType
+from maxim.agents.bus import DependencyGraph
 from maxim.memory.hippocampus_consolidation import ConsolidationMixin
 from maxim.memory.hippocampus_persistence import PersistenceMixin
 from maxim.memory.hippocampus_retrieval import RetrievalMixin
@@ -62,9 +61,7 @@ class HippocampusConfig:
 
     # Index keys that should be tracked
     indexed_keys: frozenset[str] = field(
-        default_factory=lambda: frozenset(
-            {"goal", "tool", "object", "person", "success", "mode"}
-        )
+        default_factory=lambda: frozenset({"goal", "tool", "object", "person", "success", "mode"})
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -237,9 +234,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # Consolidation candidates queue (memories to evaluate for long-term promotion)
         # Bounded deque: oldest candidates are evicted when full so new memories
         # always get a chance at promotion instead of being silently dropped.
-        self._consolidation_candidates: deque[str] = deque(
-            maxlen=self.config.max_consolidation_candidates
-        )
+        self._consolidation_candidates: deque[str] = deque(maxlen=self.config.max_consolidation_candidates)
 
         # Track compressed vs full memory counts
         self._compressed_count: int = 0
@@ -251,9 +246,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         self._scn: "SCN | None" = None
 
         # Async capture infrastructure
-        self._capture_queue: queue.Queue[_CaptureRequest] = queue.Queue(
-            maxsize=self.config.capture_queue_size
-        )
+        self._capture_queue: queue.Queue[_CaptureRequest] = queue.Queue(maxsize=self.config.capture_queue_size)
         self._capture_worker_thread: threading.Thread | None = None
         self._capture_stop = threading.Event()
 
@@ -262,9 +255,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
     # ─────────────────────────────────────────────────────────────────────────
 
     @classmethod
-    def from_config(
-        cls, config: HippocampusConfig, persistence_path: str | None = None
-    ) -> "Hippocampus":
+    def from_config(cls, config: HippocampusConfig, persistence_path: str | None = None) -> "Hippocampus":
         """Create hippocampus from config, auto-loading saved state if path exists."""
         instance = cls(config=config)
         if persistence_path and os.path.exists(persistence_path):
@@ -445,9 +436,9 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # Simulation verbosity
         try:
             from maxim.simulation.sim_logger import sim_memory
+
             sim_memory(
-                f"Captured: {memory.action.tool_name or 'observation'} "
-                f"(salience={memory.perception.salience:.2f})",
+                f"Captured: {memory.action.tool_name or 'observation'} (salience={memory.perception.salience:.2f})",
                 goal=memory.context.active_goal,
                 success=memory.outcome.success,
             )
@@ -528,7 +519,11 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
         out = Outcome(
             success=success,
-            result=result if not hasattr(result, "to_dict") else result.to_dict() if hasattr(result, "to_dict") else str(result),
+            result=result
+            if not hasattr(result, "to_dict")
+            else result.to_dict()
+            if hasattr(result, "to_dict")
+            else str(result),
             error=error,
             evaluations=evaluations or [],
         )
@@ -564,18 +559,13 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         )
         self._capture_worker_thread.start()
         if thread_registry is not None:
-            thread_registry.register(
-                "hippocampus-capture", self._capture_worker_thread
-            )
+            thread_registry.register("hippocampus-capture", self._capture_worker_thread)
 
     def stop_capture_worker(self) -> None:
         """Stop the background capture worker. Drains queue first."""
         self.flush(timeout=5.0)
         self._capture_stop.set()
-        if (
-            self._capture_worker_thread is not None
-            and self._capture_worker_thread.is_alive()
-        ):
+        if self._capture_worker_thread is not None and self._capture_worker_thread.is_alive():
             self._capture_worker_thread.join(timeout=2.0)
 
     def capture_from_loop_async(self, **kwargs: Any) -> None:
@@ -706,9 +696,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                     results.append(mem)
             return results
 
-    def search_by_content(
-        self, query: str, limit: int = 20
-    ) -> list[EpisodicMemory | CompressedMemory]:
+    def search_by_content(self, query: str, limit: int = 20) -> list[EpisodicMemory | CompressedMemory]:
         """Search memories by text content across all fields.
 
         Searches perception.observations, outcome.result, and
@@ -766,8 +754,6 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
         return False
 
-
-
     def get_state(self, state_ref: str) -> dict[str, Any] | None:
         """Retrieve a full state snapshot from the StateStore.
 
@@ -794,11 +780,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         """
         with self._rwlock.read():
             memory_ids = self._context_index.get(index_key, set())
-            return [
-                self._memories[mid]
-                for mid in memory_ids
-                if mid in self._memories
-            ]
+            return [self._memories[mid] for mid in memory_ids if mid in self._memories]
 
     def index_keys(self) -> list[str]:
         """Return all index keys."""
@@ -809,17 +791,11 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
     # Persistence
     # ─────────────────────────────────────────────────────────────────────────
 
-
-
-
-
     def stats(self) -> dict[str, Any]:
         """Return hippocampus statistics."""
         with self._rwlock.read():
             # Count long-term memories
-            long_term_count = sum(
-                1 for m in self._memories.values() if getattr(m, "long_term", False)
-            )
+            long_term_count = sum(1 for m in self._memories.values() if getattr(m, "long_term", False))
 
             # Count graph nodes and edges
             graph_stats = self._graph.to_dict()
@@ -895,10 +871,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             # Remove orphan index entries
             for index_key in list(self._context_index.keys()):
                 original_count = len(self._context_index[index_key])
-                valid_ids = {
-                    mid for mid in self._context_index[index_key]
-                    if mid in self._memories
-                }
+                valid_ids = {mid for mid in self._context_index[index_key] if mid in self._memories}
                 removed = original_count - len(valid_ids)
                 if removed > 0:
                     self._context_index[index_key] = valid_ids
@@ -981,10 +954,6 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
     def _make_index_key(self, key: str, value: Any) -> str:
         """Create an index key from a key-value pair."""
         return f"{key}:{value}"
-
-
-
-
 
     def _remove_memory(self, memory_id: str) -> None:
         """Remove a memory and clean up all references (lock must be held).
@@ -1090,14 +1059,6 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
     # Phase 3: Sleep Consolidation
     # ─────────────────────────────────────────────────────────────────────────
 
-
-
-
-
-
-
-
-
     def _get_memory_strategy(self) -> "MemoryStrategy":
         """Get the configured memory strategy.
 
@@ -1179,5 +1140,3 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
     # ─────────────────────────────────────────────────────────────────────────
     # Temporal Clustering (SCN-integrated consolidation)
     # ─────────────────────────────────────────────────────────────────────────
-
-

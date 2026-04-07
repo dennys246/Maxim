@@ -224,8 +224,7 @@ class ConversationManager:
 
         lines = [
             f"Conversation via {conv.channel} with {conv.participant}:",
-            f"  {msg_count} messages ({inbound} inbound, {outbound} outbound), "
-            f"duration {duration:.0f}s",
+            f"  {msg_count} messages ({inbound} inbound, {outbound} outbound), duration {duration:.0f}s",
         ]
         for msg in conv.messages:
             prefix = "User" if msg.direction == "inbound" else "Maxim"

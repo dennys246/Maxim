@@ -28,6 +28,7 @@ from maxim.utils.queueing import put_latest
 # IK warning handler
 # ---------------------------------------------------------------------------
 
+
 class IKWarningHandler(logging.Handler):
     """Temporary handler to capture IK warnings during motor commands."""
 
@@ -132,10 +133,7 @@ def motor_worker(
                 # If too many consecutive failures, sync with hardware and optionally reset
                 now = time.time()
                 if ik_failure_count >= IK_FAILURE_THRESHOLD and (now - last_ik_reset_time) > 2.0:
-                    maxim.log.warning(
-                        "Too many IK failures (%d), syncing with hardware position",
-                        ik_failure_count
-                    )
+                    maxim.log.warning("Too many IK failures (%d), syncing with hardware position", ik_failure_count)
                     try:
                         # First try to sync with actual hardware position
                         # This corrects any drift between our tracking and reality
@@ -143,8 +141,7 @@ def motor_worker(
 
                         if synced:
                             maxim.log.info(
-                                "Synced position from hardware: yaw=%.1f°, pitch=%.1f°",
-                                maxim.yaw, maxim.pitch
+                                "Synced position from hardware: yaw=%.1f°, pitch=%.1f°", maxim.yaw, maxim.pitch
                             )
                             # If we're already near center, just reset counter
                             if abs(maxim.yaw) < 5.0 and abs(maxim.pitch) < 5.0:
@@ -154,6 +151,7 @@ def motor_worker(
                                 # Move toward center from current synced position
                                 maxim.log.info("Moving to center from synced position")
                                 from maxim.motion.movement import move_head
+
                                 move_head(maxim.mini, 0, 0, 0, 0, 0, 0, 0.5)
                                 maxim.yaw = 0.0
                                 maxim.pitch = 0.0
@@ -164,6 +162,7 @@ def motor_worker(
                             maxim.yaw = 0.0
                             maxim.pitch = 0.0
                             from maxim.motion.movement import move_head
+
                             move_head(maxim.mini, 0, 0, 0, 0, 0, 0, 0.5)
                             ik_failure_count = 0
 
@@ -234,6 +233,7 @@ def motor_worker(
 # Frame capture worker
 # ---------------------------------------------------------------------------
 
+
 def frame_capture_worker(
     stop_event: threading.Event,
     media_lock: threading.Lock,
@@ -283,6 +283,7 @@ def frame_capture_worker(
 # Audio capture worker
 # ---------------------------------------------------------------------------
 
+
 def audio_capture_worker(
     stop_event: threading.Event,
     media_lock: threading.Lock,
@@ -330,6 +331,7 @@ def audio_capture_worker(
 # ---------------------------------------------------------------------------
 # Video writer worker
 # ---------------------------------------------------------------------------
+
 
 def video_writer_worker(
     stop_event: threading.Event,
@@ -430,6 +432,7 @@ def video_writer_worker(
 # Audio writer worker
 # ---------------------------------------------------------------------------
 
+
 def audio_writer_worker(
     stop_event: threading.Event,
     maxim: Any,
@@ -464,6 +467,7 @@ def audio_writer_worker(
 
     def _flush_pending() -> None:
         from maxim.data.audio._file_based_transcription import create_task_file
+
         nonlocal pending_tasks
         if transcribe_process is None:
             return
@@ -573,6 +577,7 @@ def audio_writer_worker(
             deadline = time.time() + 10.0
             while pending_tasks and time.time() < deadline:
                 from maxim.data.audio._file_based_transcription import create_task_file
+
                 try:
                     task = pending_tasks[0]
                     task_file = create_task_file(

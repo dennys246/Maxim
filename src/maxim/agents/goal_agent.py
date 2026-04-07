@@ -22,4 +22,3 @@ class GoalAgent(Agent):
 
     def propose_intent(self, state: Any, memory: Any, **kwargs: Any) -> dict[str, Any] | None:
         return {"goal": self.goal, "confidence": float(self.confidence)}
-

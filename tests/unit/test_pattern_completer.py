@@ -58,9 +58,13 @@ def ag():
 
 @pytest.fixture
 def cross_layer(atl, ag, hippocampus):
-    return CrossLayerGraph(layers={
-        "atl": atl, "angular_gyrus": ag, "hippocampus": hippocampus,
-    })
+    return CrossLayerGraph(
+        layers={
+            "atl": atl,
+            "angular_gyrus": ag,
+            "hippocampus": hippocampus,
+        }
+    )
 
 
 @pytest.fixture
@@ -76,7 +80,10 @@ def completer(atl, layers):
 @pytest.fixture
 def grounder(atl, ag, cross_layer):
     return ConceptGrounder(
-        atl=atl, angular_gyrus=ag, ips=IPS(), cross_layer=cross_layer,
+        atl=atl,
+        angular_gyrus=ag,
+        ips=IPS(),
+        cross_layer=cross_layer,
     )
 
 
@@ -184,7 +191,10 @@ class TestPredictionExtraction:
     def test_extracts_tool_and_success(self, completer, atl, hippocampus):
         concept = _make_concept(atl, "mug", "object")
         ep = _store_episode(
-            hippocampus, tool_name="grasp", success=True, goal="grasp_mug",
+            hippocampus,
+            tool_name="grasp",
+            success=True,
+            goal="grasp_mug",
         )
         concept.add_ref("hippocampus", ep.id)
 
@@ -242,17 +252,19 @@ class TestPredictionExtraction:
         assert predictions[0].tool == "grasp"
         assert predictions[0].confidence == 0.3  # Compressed default
 
-    def test_multiple_episodes_ordered_by_recency(
-        self, completer, atl, hippocampus
-    ):
+    def test_multiple_episodes_ordered_by_recency(self, completer, atl, hippocampus):
         concept = _make_concept(atl, "mug", "object")
 
         base_time = time.time()
         ep_old = _store_episode(
-            hippocampus, tool_name="look", timestamp=base_time - 100,
+            hippocampus,
+            tool_name="look",
+            timestamp=base_time - 100,
         )
         ep_new = _store_episode(
-            hippocampus, tool_name="grasp", timestamp=base_time,
+            hippocampus,
+            tool_name="grasp",
+            timestamp=base_time,
         )
         concept.add_ref("hippocampus", ep_old.id)
         concept.add_ref("hippocampus", ep_new.id)
@@ -299,9 +311,7 @@ class TestEpisodeCap:
 
 
 class TestMathContextEnrichment:
-    def test_enriches_with_ag_context(
-        self, completer, atl, hippocampus, ag, cross_layer, grounder
-    ):
+    def test_enriches_with_ag_context(self, completer, atl, hippocampus, ag, cross_layer, grounder):
         concept = _make_concept(atl, "mug", "object")
 
         # Create enough episodes for grounding (n >= 5)
@@ -333,9 +343,7 @@ class TestMathContextEnrichment:
             assert isinstance(mc, list)
             assert all(isinstance(e, MathContextEntry) for e in mc)
 
-    def test_no_enrichment_without_ag_records(
-        self, completer, atl, hippocampus
-    ):
+    def test_no_enrichment_without_ag_records(self, completer, atl, hippocampus):
         concept = _make_concept(atl, "mug", "object")
         ep = _store_episode(hippocampus)
         concept.add_ref("hippocampus", ep.id)
@@ -357,16 +365,16 @@ class TestMathContextEnrichment:
 
 
 class TestDeduplication:
-    def test_deduplicates_episodes_across_concepts(
-        self, completer, atl, hippocampus
-    ):
+    def test_deduplicates_episodes_across_concepts(self, completer, atl, hippocampus):
         """An episode linked to multiple concepts should appear only once."""
         mug = _make_concept(atl, "mug", "object")
         grasp = _make_concept(atl, "grasp", "action")
 
         ep = _store_episode(
-            hippocampus, tool_name="grasp",
-            detected_objects=["mug"], goal="grasp_mug",
+            hippocampus,
+            tool_name="grasp",
+            detected_objects=["mug"],
+            goal="grasp_mug",
         )
         mug.add_ref("hippocampus", ep.id)
         grasp.add_ref("hippocampus", ep.id)

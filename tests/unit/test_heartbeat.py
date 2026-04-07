@@ -1,4 +1,5 @@
 """Unit tests for system metrics collector and heartbeat monitor."""
+
 from __future__ import annotations
 
 import time
@@ -63,6 +64,7 @@ class TestSystemMetrics:
     def test_gpu_returns_none_without_nvidia(self) -> None:
         """GPU returns None gracefully when nvidia-smi isn't available."""
         from maxim.runtime.system_metrics import collect_gpu
+
         # May return None or a dict depending on hardware — just shouldn't crash
         result = collect_gpu()
         assert result is None or isinstance(result, dict)
@@ -70,6 +72,7 @@ class TestSystemMetrics:
     def test_wifi_doesnt_crash(self) -> None:
         """WiFi collection may return None but should never raise."""
         from maxim.runtime.system_metrics import collect_wifi_signal
+
         result = collect_wifi_signal()
         assert result is None or isinstance(result, dict)
 
@@ -120,6 +123,7 @@ class TestHeartbeatMonitor:
 
         # Record some calls so stall detection activates
         from maxim.models.language.lane_metrics import LaneMetrics
+
         infer = LaneMetrics(lane_name="infer")
         infer.record_call(100, success=True)
 

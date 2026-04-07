@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import collections
 import logging
 import os
 import re
 import time
 import itertools
-import json
 from typing import TYPE_CHECKING, Any
 
 from maxim.evaluation.base import Evaluator
@@ -33,9 +31,6 @@ except ImportError:
     MemoryHub = None  # type: ignore
 
 logger = logging.getLogger(__name__)
-
-
-from maxim.runtime.approval import detect_approval_intent, _APPROVAL_YES, _APPROVAL_NO
 
 
 def _safe_agent_name(agent: Any) -> str:
@@ -399,7 +394,6 @@ def run_agentic_loop(
     from maxim.runtime.prefetch import (
         init_prefetcher,
         get_result_cache,
-        PrefetchResult,
     )
 
     if evaluators is None:

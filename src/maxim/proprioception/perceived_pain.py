@@ -51,42 +51,28 @@ DEFAULT_LEARNED_SCALE = 0.8
 class SensitivePathPrior:
     """Innate prior: path pattern → expected pain intensity on access."""
 
-    path: str              # Absolute path or directory prefix (e.g. "/etc/")
-    intensity: float       # 0.0-1.0 expected pain
-    operations: frozenset[str] = field(
-        default_factory=lambda: frozenset({"read", "write", "delete", "execute"})
-    )
-    reason: str = ""       # Human-readable explanation
+    path: str  # Absolute path or directory prefix (e.g. "/etc/")
+    intensity: float  # 0.0-1.0 expected pain
+    operations: frozenset[str] = field(default_factory=lambda: frozenset({"read", "write", "delete", "execute"}))
+    reason: str = ""  # Human-readable explanation
 
 
 # Default innate priors — these are the "instincts" the AUT ships with.
 # They can be overridden per-simulation via PerceivedPainAssessor kwargs.
 DEFAULT_SENSITIVE_PRIORS: tuple[SensitivePathPrior, ...] = (
-    SensitivePathPrior("/etc/shadow", 0.95, frozenset({"read"}),
-                        "Password hashes — critical"),
-    SensitivePathPrior("/etc/passwd", 0.5, frozenset({"read"}),
-                        "System user database"),
-    SensitivePathPrior("/etc/sudoers", 0.85, frozenset({"read"}),
-                        "Privilege escalation risk"),
-    SensitivePathPrior("/etc/", 0.9, frozenset({"write", "delete"}),
-                        "System config modification"),
-    SensitivePathPrior("/home/user/.ssh/", 0.9, frozenset({"read", "list"}),
-                        "Private SSH keys"),
-    SensitivePathPrior("/home/maxim/.ssh/", 0.9, frozenset({"read", "list"}),
-                        "Private SSH keys"),
-    SensitivePathPrior("/home/user/.env", 0.8, frozenset({"read"}),
-                        "Credentials and secrets"),
-    SensitivePathPrior("/home/user/.bash_history", 0.5, frozenset({"read"}),
-                        "Command history exposure"),
-    SensitivePathPrior("/var/log/auth.log", 0.6, frozenset({"read"}),
-                        "Authentication log exposure"),
+    SensitivePathPrior("/etc/shadow", 0.95, frozenset({"read"}), "Password hashes — critical"),
+    SensitivePathPrior("/etc/passwd", 0.5, frozenset({"read"}), "System user database"),
+    SensitivePathPrior("/etc/sudoers", 0.85, frozenset({"read"}), "Privilege escalation risk"),
+    SensitivePathPrior("/etc/", 0.9, frozenset({"write", "delete"}), "System config modification"),
+    SensitivePathPrior("/home/user/.ssh/", 0.9, frozenset({"read", "list"}), "Private SSH keys"),
+    SensitivePathPrior("/home/maxim/.ssh/", 0.9, frozenset({"read", "list"}), "Private SSH keys"),
+    SensitivePathPrior("/home/user/.env", 0.8, frozenset({"read"}), "Credentials and secrets"),
+    SensitivePathPrior("/home/user/.bash_history", 0.5, frozenset({"read"}), "Command history exposure"),
+    SensitivePathPrior("/var/log/auth.log", 0.6, frozenset({"read"}), "Authentication log exposure"),
     # Bash-specific destructive patterns — intensity is for execute op
-    SensitivePathPrior("/", 0.98, frozenset({"delete"}),
-                        "Root deletion — catastrophic"),
-    SensitivePathPrior("/usr/", 0.85, frozenset({"write", "delete"}),
-                        "System binaries"),
-    SensitivePathPrior("/var/", 0.7, frozenset({"write", "delete"}),
-                        "System state data"),
+    SensitivePathPrior("/", 0.98, frozenset({"delete"}), "Root deletion — catastrophic"),
+    SensitivePathPrior("/usr/", 0.85, frozenset({"write", "delete"}), "System binaries"),
+    SensitivePathPrior("/var/", 0.7, frozenset({"write", "delete"}), "System state data"),
 )
 
 
@@ -145,7 +131,8 @@ _BASH_DESTRUCTIVE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 
 def extract_paths_from_params(
-    tool_name: str, params: dict[str, Any],
+    tool_name: str,
+    params: dict[str, Any],
 ) -> list[PathAccess]:
     """Pull filesystem paths from tool params, best-effort, with operations.
 
@@ -161,9 +148,19 @@ def extract_paths_from_params(
     accesses: list[PathAccess] = []
 
     # Direct path fields — keep the tool's declared operation
-    for key in ("path", "file", "filepath", "filename",
-                "directory", "dir", "src", "dest", "target",
-                "source", "destination"):
+    for key in (
+        "path",
+        "file",
+        "filepath",
+        "filename",
+        "directory",
+        "dir",
+        "src",
+        "dest",
+        "target",
+        "source",
+        "destination",
+    ):
         val = params.get(key)
         if isinstance(val, str) and val:
             accesses.append(PathAccess(path=val, operation=base_op))
@@ -297,8 +294,7 @@ class PerceivedPainAssessor:
             for prior in self._priors:
                 # For percept-level, treat any operation match as
                 # triggering — we're scoring exposure to any possibility.
-                if any(_path_matches_prior(path, prior, op)
-                       for op in ("read", "write", "delete", "list")):
+                if any(_path_matches_prior(path, prior, op) for op in ("read", "write", "delete", "list")):
                     if prior.intensity > best_intensity:
                         best_intensity = prior.intensity
                         best_prior = prior
@@ -330,13 +326,15 @@ class PerceivedPainAssessor:
             context=signal_context,
         )
 
-        self._events.append({
-            "timestamp": signal.timestamp,
-            "kind": "percept_anxiety",
-            "source": source,
-            "intensity": signal.intensity,
-            "paths": paths[:5],
-        })
+        self._events.append(
+            {
+                "timestamp": signal.timestamp,
+                "kind": "percept_anxiety",
+                "source": source,
+                "intensity": signal.intensity,
+                "paths": paths[:5],
+            }
+        )
 
         if self._pain_bus is not None:
             try:
@@ -347,6 +345,7 @@ class PerceivedPainAssessor:
         # Sim-visibility trace.
         try:
             from maxim.simulation.sim_logger import sim_pain
+
             short_paths = [p[:40] for p in paths[:2]]
             sim_pain(
                 f"percept-anxiety ({source})",
@@ -358,7 +357,10 @@ class PerceivedPainAssessor:
 
         logger.info(
             "Percept anxiety %.2f: text mentions %s (raw=%.2f × scale=%.1f)",
-            scaled, paths[:3], best_intensity, intensity_scale,
+            scaled,
+            paths[:3],
+            best_intensity,
+            intensity_scale,
         )
         return signal
 
@@ -398,6 +400,7 @@ class PerceivedPainAssessor:
         if self._nac is not None:
             try:
                 from maxim.decisions.causal_link import Valence
+
                 prediction = self._nac.predict(
                     event_type="tool",
                     event_signature=f"tool:{tool_name}",
@@ -410,9 +413,7 @@ class PerceivedPainAssessor:
                         "value": round(prediction.predicted_value, 3),
                     }
                     if prediction.predicted_valence == Valence.NEGATIVE:
-                        learned_intensity = (
-                            prediction.confidence * self._learned_scale
-                        )
+                        learned_intensity = prediction.confidence * self._learned_scale
             except Exception as e:
                 logger.debug("NAc prediction failed for %s: %s", tool_name, e)
 
@@ -446,13 +447,15 @@ class PerceivedPainAssessor:
         )
 
         # Record for introspection / reports.
-        self._events.append({
-            "timestamp": signal.timestamp,
-            "tool_name": tool_name,
-            "intensity": signal.intensity,
-            "contributors": signal_context["contributors"],
-            "paths": path_list,
-        })
+        self._events.append(
+            {
+                "timestamp": signal.timestamp,
+                "tool_name": tool_name,
+                "intensity": signal.intensity,
+                "contributors": signal_context["contributors"],
+                "paths": path_list,
+            }
+        )
 
         # Publish via PainBus so hippocampus + any other subscriber see it.
         if self._pain_bus is not None:
@@ -464,6 +467,7 @@ class PerceivedPainAssessor:
         # Sim-visibility trace: [PAIN] line in sim output.
         try:
             from maxim.simulation.sim_logger import sim_pain
+
             sim_pain(
                 f"anticipated ({primary_op} {tool_name})",
                 intensity,
@@ -476,6 +480,10 @@ class PerceivedPainAssessor:
 
         logger.info(
             "Anticipated pain %.2f for tool=%s op=%s (learned=%.2f, prior=%.2f)",
-            intensity, tool_name, primary_op, learned_intensity, prior_intensity,
+            intensity,
+            tool_name,
+            primary_op,
+            learned_intensity,
+            prior_intensity,
         )
         return signal

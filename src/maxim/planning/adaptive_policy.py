@@ -9,6 +9,7 @@ Scores plans across 6 dimensions, each from a different memory system:
 - depth_penalty: ADaPT principle — simpler plans preferred
 - action_cost: fewer steps = less energy = less risk
 """
+
 from __future__ import annotations
 
 from typing import Any

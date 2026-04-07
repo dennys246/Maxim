@@ -43,7 +43,7 @@ MVP tells us which extensions matter. Don't commit to a sequence upfront. After 
 
 **Motivation:** hand-authoring campaign YAML — especially character sheets and NPC rosters — is the primary MVP friction. An architect persona interviews the user and generates campaigns, including player character and NPC creation.
 
-**Depends on:** [Interactive Simulation Prompts](interactive_sim_prompts.md) (the `ask_user` tool)
+**Depends on:** Interactive Simulation Prompts (the `ask_user` tool — see section below)
 
 **Depends on:** Extension A (library) — architect composes from library; without it the architect is generating from scratch every time, which was the whole problem.
 
@@ -165,14 +165,41 @@ campaign:
 7. **Extension D** (isolation) — only if MVP reveals state corruption
 8. **Extension F** (merging) — only on explicit user demand
 
-**Total scope if all extensions ship:** ~1,095 LOC on top of the ~560 LOC MVP. But most extensions should *never* ship unless MVP usage demands them.
+**Total scope if all extensions ship:** ~1,275 LOC on top of the ~560 LOC MVP (includes interactive prompts). But most extensions should *never* ship unless MVP usage demands them.
+
+---
+
+## Interactive Simulation Prompts (prerequisite for Extension B)
+
+> Formerly standalone plan `interactive_sim_prompts.md`. Merged here as the infrastructure Extension B depends on.
+
+**`ask_user` tool (~180 LOC)** — enables human-in-the-loop flows for any authoring-style persona.
+
+```python
+class AskUserTool(Tool):
+    name = "ask_user"
+    # params: question (str), options (list[str]|None), default (str), timeout_sec (int)
+    # Returns: { "response": str, "was_default": bool, "timed_out": bool }
+```
+
+**Modes:**
+- **Interactive** (default): prompt via stdin, wait up to `timeout_sec` (default 300s), fall back to `default`
+- **`--non-interactive`**: return `default` immediately
+- **`--replay-from <session>`**: read recorded responses from `user_interactions.jsonl`
+
+**Implementation:**
+- `src/maxim/simulation/tools_user.py` (~140) — tool + stdin handling + JSONL audit writer + replay reader
+- `tests/unit/test_ask_user_tool.py` (~80)
+- Modified: `tools.py` (register), CLI parser (`--non-interactive`, `--replay-from`), `orchestrator.py` (propagate mode)
+
+**Design decisions:** timeout via `select.select` (Unix-only for MVP), replay matches by position not hash, audit log always written, no TUI framework.
+
+---
 
 ## Ties to Other Plans
 
 | Plan | Relationship |
 |------|-------------|
 | [DM MVP](dungeon_master_persona.md) | **Prerequisite** — extensions layer onto MVP |
-| [Interactive Simulation Prompts](interactive_sim_prompts.md) | Needed for Extension B |
-| [Simulation Entity Naming](sim_entity_naming.md) | Soft win once NPC dialogue volume grows |
-| **Realtime Refinement** (core done) | Extension C consumes `InspectAUTTool` |
-| **Multi-LLM Scaling** (not started) | Architect + classification use cheap-lane model; synergistic, not required |
+| **Realtime Refinement** (done) | Extension C consumes `InspectAUTTool` / `AUTIntrospector` |
+| **Multi-LLM Scaling** (done) | Architect + classification use cheap-lane model; synergistic, not required |

@@ -8,13 +8,12 @@ headless, simulation, and robot modes alike.
 from __future__ import annotations
 
 import logging
-import time
 from typing import TYPE_CHECKING, Any
 
 from maxim.tools.base import ToolOutput
 
 if TYPE_CHECKING:
-    from maxim.agents.fear_agent import FearAgent, ReviewResult
+    from maxim.agents.fear_agent import FearAgent
     from maxim.bridges.pain_bridge import PainCircuitBridge
 
 logger = logging.getLogger(__name__)
@@ -95,6 +94,7 @@ class FearGatedExecutor:
             # Simulation verbosity
             try:
                 from maxim.simulation.sim_logger import sim_fear
+
                 sim_fear(tool_name, allowed=False, reason=reason)
             except ImportError:
                 pass
@@ -132,6 +132,7 @@ class FearGatedExecutor:
         # Simulation verbosity — log approval
         try:
             from maxim.simulation.sim_logger import sim_fear
+
             sim_fear(tool_name, allowed=True)
         except ImportError:
             pass
@@ -154,6 +155,7 @@ class FearGatedExecutor:
         # Simulation verbosity — log execution result
         try:
             from maxim.simulation.sim_logger import sim_action
+
             summary = str(result.output)[:80] if result.output else (result.error or "")[:80]
             sim_action(tool_name, result.success, summary)
         except ImportError:

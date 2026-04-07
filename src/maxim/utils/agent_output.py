@@ -483,14 +483,16 @@ class AgentOutputManager:
                 if output_type and output_type not in f:
                     continue
 
-                outputs.append({
-                    "path": path,
-                    "agent": file_agent,
-                    "type": file_type,
-                    "filename": f,
-                    "size": os.path.getsize(path),
-                    "modified": os.path.getmtime(path),
-                })
+                outputs.append(
+                    {
+                        "path": path,
+                        "agent": file_agent,
+                        "type": file_type,
+                        "filename": f,
+                        "size": os.path.getsize(path),
+                        "modified": os.path.getmtime(path),
+                    }
+                )
 
         outputs.sort(key=lambda x: x["modified"], reverse=True)
         return outputs

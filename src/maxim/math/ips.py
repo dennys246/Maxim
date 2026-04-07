@@ -406,10 +406,7 @@ class IPS:
         if var_sum < 1e-15:
             autocorr = 0.0
         else:
-            cov_sum = sum(
-                (values[i] - mean) * (values[i + 1] - mean)
-                for i in range(len(values) - 1)
-            )
+            cov_sum = sum((values[i] - mean) * (values[i + 1] - mean) for i in range(len(values) - 1))
             autocorr = cov_sum / var_sum
 
         # 3. Combine into pattern_confidence

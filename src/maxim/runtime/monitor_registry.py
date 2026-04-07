@@ -60,9 +60,7 @@ class MonitorRegistry:
     def start(self) -> None:
         """Start the background polling thread."""
         self._stop.clear()
-        self._thread = threading.Thread(
-            target=self._poll_loop, daemon=True, name="monitor_registry"
-        )
+        self._thread = threading.Thread(target=self._poll_loop, daemon=True, name="monitor_registry")
         self._thread.start()
 
     def stop(self) -> None:
@@ -81,9 +79,7 @@ class MonitorRegistry:
                         for cb in self._callbacks:
                             cb(signal)
                 except Exception:
-                    logger.debug(
-                        "Monitor %s check failed", monitor.name, exc_info=True
-                    )
+                    logger.debug("Monitor %s check failed", monitor.name, exc_info=True)
             self._stop.wait(timeout=self._poll_interval)
 
 

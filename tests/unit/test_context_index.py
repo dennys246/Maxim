@@ -74,9 +74,7 @@ class TestSimilarityIndexQueries:
 
         hi_recall = SimilarityIndex(num_hashes=64, num_bands=16)
         hi_recall.register("mem_1", "the robot saw a person near the table in the kitchen")
-        results = hi_recall.query_similar(
-            "the robot saw a person near the table in the room", min_similarity=0.2
-        )
+        results = hi_recall.query_similar("the robot saw a person near the table in the room", min_similarity=0.2)
         result_ids = {r[0] for r in results}
         assert "mem_1" in result_ids
 

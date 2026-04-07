@@ -1,4 +1,5 @@
 """Runtime capability detection for adaptive behavior."""
+
 from __future__ import annotations
 from dataclasses import dataclass, field
 
@@ -6,6 +7,7 @@ from dataclasses import dataclass, field
 @dataclass
 class RuntimeCapabilities:
     """What hardware/software is available. Can change during runtime."""
+
     has_robot: bool = False
     has_gpu: bool = False
     has_vision: bool = False
@@ -35,11 +37,12 @@ def detect_compute_resources() -> tuple[bool, str | None, float, float]:
 
     try:
         import torch
+
         if torch.cuda.is_available() and torch.cuda.device_count() > 0:
             has_gpu = True
             props = torch.cuda.get_device_properties(0)
             gpu_type = props.name
-            vram_gb = props.total_memory / (1024 ** 3)
+            vram_gb = props.total_memory / (1024**3)
         else:
             mps = getattr(getattr(torch, "backends", None), "mps", None)
             if mps is not None and getattr(mps, "is_available", lambda: False)():
@@ -50,13 +53,14 @@ def detect_compute_resources() -> tuple[bool, str | None, float, float]:
 
     try:
         import psutil
-        ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+
+        ram_gb = psutil.virtual_memory().total / (1024**3)
     except Exception:
         try:
             with open("/proc/meminfo") as f:
                 for line in f:
                     if line.startswith("MemTotal:"):
-                        ram_gb = int(line.split()[1]) / (1024 ** 2)
+                        ram_gb = int(line.split()[1]) / (1024**2)
                         break
         except Exception:
             pass

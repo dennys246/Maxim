@@ -62,13 +62,9 @@ class InvertedIndices:
             memory_id: Memory to remove
             signature: Signature to find index entries
         """
-        if signature.tool_name and memory_id in self._by_tool.get(
-            signature.tool_name, set()
-        ):
+        if signature.tool_name and memory_id in self._by_tool.get(signature.tool_name, set()):
             self._by_tool[signature.tool_name].discard(memory_id)
-        if signature.outcome_type and memory_id in self._by_outcome.get(
-            signature.outcome_type, set()
-        ):
+        if signature.outcome_type and memory_id in self._by_outcome.get(signature.outcome_type, set()):
             self._by_outcome[signature.outcome_type].discard(memory_id)
         if signature.mode and memory_id in self._by_mode.get(signature.mode, set()):
             self._by_mode[signature.mode].discard(memory_id)
@@ -167,21 +163,11 @@ class InvertedIndices:
     def from_dict(cls, data: dict[str, Any]) -> InvertedIndices:
         """Deserialize from dictionary."""
         instance = cls()
-        instance._by_tool = defaultdict(
-            set, {k: set(v) for k, v in data.get("by_tool", {}).items()}
-        )
-        instance._by_outcome = defaultdict(
-            set, {k: set(v) for k, v in data.get("by_outcome", {}).items()}
-        )
-        instance._by_mode = defaultdict(
-            set, {k: set(v) for k, v in data.get("by_mode", {}).items()}
-        )
-        instance._by_hour = defaultdict(
-            set, {int(k): set(v) for k, v in data.get("by_hour", {}).items()}
-        )
-        instance._by_day = defaultdict(
-            set, {int(k): set(v) for k, v in data.get("by_day", {}).items()}
-        )
+        instance._by_tool = defaultdict(set, {k: set(v) for k, v in data.get("by_tool", {}).items()})
+        instance._by_outcome = defaultdict(set, {k: set(v) for k, v in data.get("by_outcome", {}).items()})
+        instance._by_mode = defaultdict(set, {k: set(v) for k, v in data.get("by_mode", {}).items()})
+        instance._by_hour = defaultdict(set, {int(k): set(v) for k, v in data.get("by_hour", {}).items()})
+        instance._by_day = defaultdict(set, {int(k): set(v) for k, v in data.get("by_day", {}).items()})
         return instance
 
 

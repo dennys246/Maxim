@@ -55,6 +55,7 @@ class DefaultNetworkController:
             return
 
         from maxim.modes.definitions import get_mode
+
         mode_def = get_mode(mode_name)
         if mode_def is None:
             return
@@ -64,19 +65,17 @@ class DefaultNetworkController:
         if not dn_config.enabled:
             if self._dn.is_running:
                 self._dn.stop()
-                log_agentic("default_network", "dn_inhibited",
-                            {"reason": "mode_disabled", "mode": mode_name})
+                log_agentic("default_network", "dn_inhibited", {"reason": "mode_disabled", "mode": mode_name})
         else:
             if not self._dn.is_running:
                 self._dn.start()
-                log_agentic("default_network", "dn_released",
-                            {"reason": "mode_enabled", "mode": mode_name})
+                log_agentic("default_network", "dn_released", {"reason": "mode_enabled", "mode": mode_name})
 
             self._dn.clear_behavior_overrides()
             for behavior_name, modifier in dn_config.behavior_priority_modifiers.items():
                 self._dn.boost_behavior(behavior_name, modifier)
 
-            if hasattr(self._dn, 'gate') and hasattr(self._dn.gate, '_adaptive'):
+            if hasattr(self._dn, "gate") and hasattr(self._dn.gate, "_adaptive"):
                 if self._dn.gate._adaptive:
                     self._dn.gate._adaptive._novelty_threshold = dn_config.escalation_threshold
                     self._dn.gate._adaptive._salience_threshold = dn_config.escalation_threshold
@@ -88,5 +87,6 @@ class DefaultNetworkController:
         if not self.enabled or self._dn is None:
             return False
         from maxim.modes.definitions import get_mode
+
         mode_def = get_mode(mode_name)
         return bool(mode_def and mode_def.default_network.inhibit_during_tool_execution)

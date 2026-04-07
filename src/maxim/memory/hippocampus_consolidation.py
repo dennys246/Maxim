@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from maxim.memory.strategies import MemoryStrategy
@@ -45,13 +45,13 @@ class ConsolidationMixin:
             results = self._sleep(strategy)
 
         # Log consolidation activity OUTSIDE rwlock (P3f — Tier 2)
-        if hasattr(self, "_collector") and self._collector and \
-           self._collector.verbosity >= 1:
+        if hasattr(self, "_collector") and self._collector and self._collector.verbosity >= 1:
             from maxim.provenance.types import PipelineStage
+
             self._collector.log_activity(
-                PipelineStage.CONSOLIDATION, "hippocampus",
-                f"Promoted {results['promoted']}, compressed {results['compressed']}, "
-                f"removed {results['removed']}",
+                PipelineStage.CONSOLIDATION,
+                "hippocampus",
+                f"Promoted {results['promoted']}, compressed {results['compressed']}, removed {results['removed']}",
             )
 
         return results

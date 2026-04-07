@@ -89,9 +89,11 @@ class TestShredderSegmenterAPIRegistration:
         mock_maxim = Mock()
         mock_maxim.mini = Mock()
 
-        with patch(BRIDGE_PATH) as MockBridge, \
-             patch(BRIDGE_CONFIG_PATH), \
-             patch.object(shutil, "which", return_value="/usr/bin/ffmpeg"):
+        with (
+            patch(BRIDGE_PATH) as MockBridge,
+            patch(BRIDGE_CONFIG_PATH),
+            patch.object(shutil, "which", return_value="/usr/bin/ffmpeg"),
+        ):
             MockBridge.return_value.is_running = True
             protocol.on_activate(mock_maxim)
 
@@ -112,9 +114,11 @@ class TestShredderSegmenterAPIRegistration:
         mock_maxim = Mock()
         mock_maxim.mini = Mock()
 
-        with patch(BRIDGE_PATH) as MockBridge, \
-             patch(BRIDGE_CONFIG_PATH), \
-             patch.object(shutil, "which", return_value="/usr/bin/ffmpeg"):
+        with (
+            patch(BRIDGE_PATH) as MockBridge,
+            patch(BRIDGE_CONFIG_PATH),
+            patch.object(shutil, "which", return_value="/usr/bin/ffmpeg"),
+        ):
             MockBridge.return_value.is_running = True
             protocol_with_api.on_activate(mock_maxim)
 
@@ -135,9 +139,11 @@ class TestShredderSegmenterAPIRegistration:
         mock_maxim = Mock()
         mock_maxim.mini = Mock()
 
-        with patch(BRIDGE_PATH) as MockBridge, \
-             patch(BRIDGE_CONFIG_PATH), \
-             patch.object(shutil, "which", return_value="/usr/bin/ffmpeg"):
+        with (
+            patch(BRIDGE_PATH) as MockBridge,
+            patch(BRIDGE_CONFIG_PATH),
+            patch.object(shutil, "which", return_value="/usr/bin/ffmpeg"),
+        ):
             MockBridge.return_value.is_running = True
             protocol_with_api.on_activate(mock_maxim)
 

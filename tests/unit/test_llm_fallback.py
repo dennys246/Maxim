@@ -24,9 +24,7 @@ from maxim.agents.llm_types import LLMProposal
 @pytest.fixture(autouse=True)
 def _mock_fallback_responses(monkeypatch):
     """Mock get_fallback_responses to return an empty dict by default."""
-    monkeypatch.setattr(
-        "maxim.agents.llm_fallback.get_fallback_responses", lambda: {}
-    )
+    monkeypatch.setattr("maxim.agents.llm_fallback.get_fallback_responses", lambda: {})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -290,9 +288,7 @@ class TestReasoningEntry:
 
     def test_default_timestamp(self):
         before = time.time()
-        entry = ReasoningEntry(
-            action_tool="t", reasoning="r", success=True, result_summary="s"
-        )
+        entry = ReasoningEntry(action_tool="t", reasoning="r", success=True, result_summary="s")
         after = time.time()
         assert before <= entry.timestamp <= after
 

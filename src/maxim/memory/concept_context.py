@@ -111,14 +111,11 @@ class ConceptContextBuilder:
             if self._concept_grounder and episodes and not budget_exhausted:
                 elapsed_ms = (_time.monotonic() - budget_start) * 1000
                 if elapsed_ms < budget_ms:
-                    stats = self._concept_grounder.ground_concept(
-                        concept, episodes
-                    )
+                    stats = self._concept_grounder.ground_concept(concept, episodes)
                 else:
                     budget_exhausted = True
                     logger.debug(
-                        "Concept grounding budget exhausted (%.1fms), "
-                        "skipping AG stats for remaining %d concepts",
+                        "Concept grounding budget exhausted (%.1fms), skipping AG stats for remaining %d concepts",
                         elapsed_ms,
                         len(concepts) - len(context_entries),
                     )
@@ -206,29 +203,31 @@ class ConceptContextBuilder:
             records = layer.recall_by_ids(list(ref_ids)[:5])
             for record in records:
                 if isinstance(record, MathMemory):
-                    entries.append({
-                        "layer": layer_name,
-                        "name": record.name,
-                        "verbal": record.verbal,
-                        "confidence": record.confidence,
-                    })
+                    entries.append(
+                        {
+                            "layer": layer_name,
+                            "name": record.name,
+                            "verbal": record.verbal,
+                            "confidence": record.confidence,
+                        }
+                    )
         return entries
 
     def _collect_relationships(self, concept: Concept) -> list[dict]:
         """Collect relationship summaries for a concept."""
-        relationships = self._atl.find_by_relationship(
-            concept.id, direction="both", limit=10
-        )
+        relationships = self._atl.find_by_relationship(concept.id, direction="both", limit=10)
         summaries: list[dict] = []
         for other_id, rel in relationships:
             other = self._atl.get(other_id)
             if other:
-                summaries.append({
-                    "id": other.id,
-                    "type": rel.relationship_type,
-                    "target": other.name,
-                    "confidence": rel.confidence,
-                })
+                summaries.append(
+                    {
+                        "id": other.id,
+                        "type": rel.relationship_type,
+                        "target": other.name,
+                        "confidence": rel.confidence,
+                    }
+                )
         return summaries
 
     # ------------------------------------------------------------------
@@ -240,7 +239,8 @@ class ConceptContextBuilder:
         self._skill_registry = registry
 
     def rank_available_skills(
-        self, matched_concepts: list[Concept],
+        self,
+        matched_concepts: list[Concept],
     ) -> list[dict]:
         """Rank skills by concept co-occurrence in the ATL relationship graph.
 
@@ -258,7 +258,8 @@ class ConceptContextBuilder:
 
         # Get all skill concepts from ATL
         skill_concepts = self._atl.recall(
-            limit=50, category="skill_execution",
+            limit=50,
+            category="skill_execution",
         )
         if not skill_concepts:
             return []
@@ -276,13 +277,16 @@ class ConceptContextBuilder:
                 continue
             if not sc.name.startswith("skill:"):
                 continue
-            skill_name = sc.name[len("skill:"):]
+            skill_name = sc.name[len("skill:") :]
             if skill_name not in skill_names:
                 continue
 
             # Find co-occurring concepts via relationship graph
             rels = self._atl.find_by_relationship(
-                sc.id, rel_type="EXECUTES_WITH", direction="outgoing", limit=50,
+                sc.id,
+                rel_type="EXECUTES_WITH",
+                direction="outgoing",
+                limit=50,
             )
             matching = []
             for other_id, _rel in rels:
@@ -291,13 +295,15 @@ class ConceptContextBuilder:
                     matching.append({"id": other_id, "name": other.name})
 
             if matching:
-                ranked.append({
-                    "name": skill_name,
-                    "relevance": len(matching),
-                    "past_success_rate": sc.confidence,
-                    "skill_concept_id": sc.id,
-                    "matching_concepts": matching,
-                })
+                ranked.append(
+                    {
+                        "name": skill_name,
+                        "relevance": len(matching),
+                        "past_success_rate": sc.confidence,
+                        "skill_concept_id": sc.id,
+                        "matching_concepts": matching,
+                    }
+                )
 
         return sorted(ranked, key=lambda x: x["relevance"], reverse=True)
 

@@ -88,9 +88,7 @@ class ExplorationConstraints:
     max_fetches_per_minute: int = 20
     allowed_domain_suffixes: set[str] = field(default_factory=set)
     blocked_domains: set[str] = field(default_factory=set)
-    allowed_content_types: set[str] = field(
-        default_factory=lambda: {"text/html", "text/plain", "application/json"}
-    )
+    allowed_content_types: set[str] = field(default_factory=lambda: {"text/html", "text/plain", "application/json"})
 
     # Script execution limits
     max_script_runtime_seconds: float = 60.0
@@ -153,15 +151,11 @@ class CuriosityManager:
         elapsed_minutes = (time.time() - self._budget.start_time) / 60.0
 
         # Base decay over time
-        self._curiosity = self._budget.initial_curiosity * (
-            self._budget.curiosity_decay_rate**elapsed_minutes
-        )
+        self._curiosity = self._budget.initial_curiosity * (self._budget.curiosity_decay_rate**elapsed_minutes)
 
         # Boost on discovery
         if discovered_something:
-            self._curiosity = min(
-                1.0, self._curiosity + self._budget.curiosity_boost_on_discovery
-            )
+            self._curiosity = min(1.0, self._curiosity + self._budget.curiosity_boost_on_discovery)
             self._budget.last_discovery_time = time.time()
 
     @property
@@ -276,9 +270,7 @@ class AdversarialFocusValidator:
     ]
 
     def __init__(self) -> None:
-        self._compiled_patterns = [
-            re.compile(p, re.IGNORECASE) for p in self.DANGEROUS_PATTERNS
-        ]
+        self._compiled_patterns = [re.compile(p, re.IGNORECASE) for p in self.DANGEROUS_PATTERNS]
 
     def validate(self, focus: str) -> tuple[bool, str | None]:
         """Validate focus text. Returns (is_safe, reason_if_blocked)."""
@@ -334,13 +326,9 @@ class AdversarialFocusValidator:
 
 
 # Regex patterns for explore commands
-EXPLORE_PATTERN = re.compile(
-    r"\bmaxim\s+explore\s+(?P<focus>.{1,200}?)\s+please\b", re.IGNORECASE
-)
+EXPLORE_PATTERN = re.compile(r"\bmaxim\s+explore\s+(?P<focus>.{1,200}?)\s+please\b", re.IGNORECASE)
 EXPLORE_DEFAULT_PATTERN = re.compile(r"\bmaxim\s+explore\s+please\b", re.IGNORECASE)
-STOP_EXPLORATION_PATTERN = re.compile(
-    r"\bmaxim\s+(stop\s+exploring|stop\s+exploration)\s+please\b", re.IGNORECASE
-)
+STOP_EXPLORATION_PATTERN = re.compile(r"\bmaxim\s+(stop\s+exploring|stop\s+exploration)\s+please\b", re.IGNORECASE)
 
 
 def sanitize_focus(text: str) -> str:
@@ -446,9 +434,7 @@ class ExplorationSubGoal:
 class FocusDecomposer:
     """Decomposes complex exploration focus into sub-goals."""
 
-    def decompose(
-        self, focus: str, context: StructuredContext | None = None
-    ) -> list[ExplorationSubGoal]:
+    def decompose(self, focus: str, context: StructuredContext | None = None) -> list[ExplorationSubGoal]:
         """Decompose focus into sub-goals.
 
         For now, uses a simple heuristic decomposition.
@@ -569,9 +555,7 @@ class ExplorationSession:
     @property
     def top_discoveries(self) -> list[str]:
         """Get top discovery class names."""
-        sorted_discoveries = sorted(
-            self.discoveries, key=lambda d: d.get("novelty", 0), reverse=True
-        )
+        sorted_discoveries = sorted(self.discoveries, key=lambda d: d.get("novelty", 0), reverse=True)
         return [d.get("class_name", "unknown") for d in sorted_discoveries[:5]]
 
     def compute_novelty_coverage(self) -> float:
@@ -627,9 +611,7 @@ class ExplorationSession:
         session.memory_items_created = int(data.get("memory_items_created", 0))
         session.curiosity_level = float(data.get("curiosity_level", 1.0))
         session.autonomy_level = str(data.get("autonomy_level", "supervised"))
-        session.sub_goals = [
-            ExplorationSubGoal.from_dict(sg) for sg in data.get("sub_goals", [])
-        ]
+        session.sub_goals = [ExplorationSubGoal.from_dict(sg) for sg in data.get("sub_goals", [])]
         session.scripts_run = list(data.get("scripts_run", []))
         session.training_results = list(data.get("training_results", []))
         session.class_stats = dict(data.get("class_stats", {}))

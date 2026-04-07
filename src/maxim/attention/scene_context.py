@@ -28,6 +28,7 @@ class SceneContextConfig:
         histogram_memory: Number of class histograms to remember.
         position_change_threshold: Head position change to trigger scan.
     """
+
     change_threshold: float = 0.4  # 40% change triggers scene scan
     min_detections_for_comparison: int = 2
     scene_stability_seconds: float = 2.0
@@ -38,6 +39,7 @@ class SceneContextConfig:
 @dataclass
 class SceneSnapshot:
     """Snapshot of scene state at a point in time."""
+
     timestamp: float
     class_histogram: dict[int, int]  # class_id -> count
     total_detections: int
@@ -189,10 +191,7 @@ class SceneContextDetector:
         if not all_classes:
             return 0.0
 
-        hist_diff = sum(
-            abs(old.class_histogram.get(c, 0) - new.class_histogram.get(c, 0))
-            for c in all_classes
-        )
+        hist_diff = sum(abs(old.class_histogram.get(c, 0) - new.class_histogram.get(c, 0)) for c in all_classes)
         total_count = old.total_detections + new.total_detections
         hist_change = hist_diff / max(total_count, 1)
 
@@ -233,7 +232,7 @@ class SceneContextDetector:
             Seconds since scene changed, or inf if never.
         """
         if self._scene_changed_at == 0:
-            return float('inf')
+            return float("inf")
         return time.time() - self._scene_changed_at
 
     def is_scanning(self) -> bool:
@@ -263,7 +262,8 @@ class SceneContextDetector:
             "snapshots_count": len(self._snapshots),
             "last_head_yaw": self._last_head_yaw,
             "classes_in_scene": list(self._last_stable_snapshot.class_histogram.keys())
-                if self._last_stable_snapshot else [],
+            if self._last_stable_snapshot
+            else [],
         }
 
 

@@ -10,6 +10,7 @@ Design: no external deps, thread-safe via threading.Lock, O(1) record_call.
 Latency percentiles use a fixed-size reservoir (last 200 samples) — good
 enough for operational decisions without unbounded memory growth.
 """
+
 from __future__ import annotations
 
 import threading
@@ -181,10 +182,7 @@ class LaneMetrics:
     @property
     def remote_ratio(self) -> float:
         with self._lock:
-            total = (
-                self.local_calls + self.remote_calls
-                + self.peer_calls + self.cloud_calls
-            )
+            total = self.local_calls + self.remote_calls + self.peer_calls + self.cloud_calls
             if total == 0:
                 return 0.0
             return (self.remote_calls + self.peer_calls + self.cloud_calls) / total
@@ -248,9 +246,7 @@ class LaneMetrics:
                 parts.append(f"p99={self.p99_latency_ms:.0f}ms")
                 if self.jobs_failed > 0:
                     parts.append(f"fail={self.failure_rate:.0%}")
-                parts.append(
-                    f"tokens={self.total_input_tokens}in+{self.total_output_tokens}out"
-                )
+                parts.append(f"tokens={self.total_input_tokens}in+{self.total_output_tokens}out")
                 if self.total_cost_usd > 0:
                     parts.append(f"${self.total_cost_usd:.4f}")
         return " | ".join(parts)
@@ -282,9 +278,7 @@ class MetricsRegistry:
     def snapshot(self) -> dict[str, dict[str, Any]]:
         """Full snapshot for doctor / API."""
         with self._lock:
-            return {
-                name: m.snapshot() for name, m in self._metrics.items()
-            }
+            return {name: m.snapshot() for name, m in self._metrics.items()}
 
 
 # Module-level singleton — shared between lane manager + proxy

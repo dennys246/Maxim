@@ -210,8 +210,7 @@ class SimulatedController(RobotController):
 
         self._update_state(current_pose=self._current_pose.copy())
 
-        logger.debug("Simulated look at pixel (%d, %d) -> pitch=%.2f, yaw=%.2f",
-                     target.u, target.v, pitch, yaw)
+        logger.debug("Simulated look at pixel (%d, %d) -> pitch=%.2f, yaw=%.2f", target.u, target.v, pitch, yaw)
         return True
 
     def get_current_pose(self) -> dict[str, float]:

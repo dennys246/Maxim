@@ -21,22 +21,22 @@ class EnergyType(Enum):
     """
 
     # Compute-related energy
-    LLM_TOKENS = "llm_tokens"           # Token-based energy (input + output)
-    LLM_LATENCY = "llm_latency"         # Time waiting for LLM response
-    LLM_COST = "llm_cost"               # USD-normalized cost signal
-    COMPUTE_TIME = "compute_time"       # General CPU/GPU compute time
+    LLM_TOKENS = "llm_tokens"  # Token-based energy (input + output)
+    LLM_LATENCY = "llm_latency"  # Time waiting for LLM response
+    LLM_COST = "llm_cost"  # USD-normalized cost signal
+    COMPUTE_TIME = "compute_time"  # General CPU/GPU compute time
 
     # Movement-related energy
-    MOTOR_COMMAND = "motor_command"     # Energy to execute movement
-    MOTOR_CURRENT = "motor_current"     # Actual motor current draw (if available)
+    MOTOR_COMMAND = "motor_command"  # Energy to execute movement
+    MOTOR_CURRENT = "motor_current"  # Actual motor current draw (if available)
 
     # Sensor-related energy
-    VISION_INFERENCE = "vision_inference"   # Vision model inference
-    AUDIO_PROCESSING = "audio_processing"   # Audio transcription/TTS
+    VISION_INFERENCE = "vision_inference"  # Vision model inference
+    AUDIO_PROCESSING = "audio_processing"  # Audio transcription/TTS
 
     # Meta energy
-    ATTENTION = "attention"             # Cognitive attention/focus cost
-    MEMORY_ACCESS = "memory_access"     # Memory retrieval cost
+    ATTENTION = "attention"  # Cognitive attention/focus cost
+    MEMORY_ACCESS = "memory_access"  # Memory retrieval cost
 
 
 @dataclass
@@ -52,10 +52,10 @@ class EnergySignal:
     """
 
     energy_type: EnergyType
-    amount: float                       # Normalized energy units
+    amount: float  # Normalized energy units
     timestamp: float = field(default_factory=time.time)
-    source: str = ""                    # e.g., "llm_worker", "motor_cortex"
-    duration_ms: float = 0.0           # How long the activity took
+    source: str = ""  # e.g., "llm_worker", "motor_cortex"
+    duration_ms: float = 0.0  # How long the activity took
     context: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -93,9 +93,9 @@ class EnergyBudget:
     """
 
     domain: EnergyType
-    total_capacity: float = 100.0       # Maximum energy available
-    current_level: float = 100.0        # Current available energy
-    recharge_rate: float = 1.0          # Energy recovered per second
+    total_capacity: float = 100.0  # Maximum energy available
+    current_level: float = 100.0  # Current available energy
+    recharge_rate: float = 1.0  # Energy recovered per second
     last_update: float = field(default_factory=time.time)
 
     def spend(self, amount: float) -> bool:
@@ -117,10 +117,7 @@ class EnergyBudget:
         """Apply passive energy regeneration."""
         now = time.time()
         elapsed = now - self.last_update
-        self.current_level = min(
-            self.total_capacity,
-            self.current_level + elapsed * self.recharge_rate
-        )
+        self.current_level = min(self.total_capacity, self.current_level + elapsed * self.recharge_rate)
         self.last_update = now
 
     @property

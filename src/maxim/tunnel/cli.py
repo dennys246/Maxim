@@ -5,6 +5,7 @@ Three actions:
   status  — show what's currently configured
   start   — launch cloudflared tunnel run as a foreground process (optional)
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -88,6 +89,7 @@ def run_tunnel_subcommand(argv: Sequence[str]) -> int:
 
 # ─── setup ────────────────────────────────────────────────────────────────
 
+
 def _cmd_setup() -> int:
     print("─" * 62)
     print("  Maxim tunnel setup — guided cloudflared configuration")
@@ -135,10 +137,13 @@ def _cmd_setup() -> int:
     print()
 
     # 4. Create tunnel
-    tunnel_name = _prompt(
-        f"Step 2/4 — Tunnel name [{DEFAULT_TUNNEL_NAME}]: ",
-        default=DEFAULT_TUNNEL_NAME,
-    ).strip() or DEFAULT_TUNNEL_NAME
+    tunnel_name = (
+        _prompt(
+            f"Step 2/4 — Tunnel name [{DEFAULT_TUNNEL_NAME}]: ",
+            default=DEFAULT_TUNNEL_NAME,
+        ).strip()
+        or DEFAULT_TUNNEL_NAME
+    )
     print()
     print(f"Creating tunnel '{tunnel_name}'...")
     code, output = run_tunnel_create(tunnel_name)
@@ -246,7 +251,7 @@ def _cmd_setup() -> int:
     print("  3. Share the API key with peers via a secure channel, then:")
     print("       maxim tunnel key export     # on this machine — shows copy-paste snippets")
     print()
-    print(f"  4. On each peer:")
+    print("  4. On each peer:")
     print(f"       export MAXIM_LANE_INFER_REMOTE_URL=https://{hostname}/v1")
     print(f'       export {ENV_VAR}="<key-shared-securely>"')
     print("       export MAXIM_MAX_CLOUD_LANES=1")
@@ -256,6 +261,7 @@ def _cmd_setup() -> int:
 
 
 # ─── status ───────────────────────────────────────────────────────────────
+
 
 def _cmd_status() -> int:
     print("─" * 62)
@@ -300,7 +306,9 @@ def _is_daemon_running() -> bool:
     try:
         result = subprocess.run(
             ["pgrep", "-af", "cloudflared.*tunnel.*run"],
-            capture_output=True, text=True, timeout=2.0,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -308,6 +316,7 @@ def _is_daemon_running() -> bool:
 
 
 # ─── start ────────────────────────────────────────────────────────────────
+
 
 def _cmd_start(extra_args: list[str]) -> int:
     """Run `cloudflared tunnel run` in the foreground.
@@ -382,7 +391,9 @@ def _cloudflared_process_running() -> bool:
     try:
         result = subprocess.run(
             ["pgrep", "-af", "cloudflared.*tunnel.*run"],
-            capture_output=True, text=True, timeout=2.0,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -401,6 +412,7 @@ def _print_service_install_hint() -> None:
         return  # user already has a persistent service; don't nag
 
     import platform
+
     system = platform.system().lower()
     print()
     print("  ──────────────────────────────────────────────────────────────")
@@ -431,7 +443,9 @@ def _cloudflared_service_active() -> bool:
     try:
         result = subprocess.run(
             ["systemctl", "is-active", "cloudflared"],
-            capture_output=True, text=True, timeout=2.0,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -486,7 +500,7 @@ def _cmd_tail(argv: list[str]) -> int:
     if filter_re:
         cmd.extend(["-g", filter_re])
 
-    print(f"Streaming cloudflared logs (systemd service)...")
+    print("Streaming cloudflared logs (systemd service)...")
     print(f"  cmd: {' '.join(cmd)}")
     print("  Ctrl+C to stop.")
     print()
@@ -520,6 +534,7 @@ def _to_journalctl_since(value: str) -> str:
     form since it's the most readable in log output.
     """
     import re
+
     text = value.strip()
     if not text:
         return "2 minutes ago"
@@ -536,6 +551,7 @@ def _to_journalctl_since(value: str) -> str:
 
 
 # ─── key ──────────────────────────────────────────────────────────────────
+
 
 def _cmd_key(subargs: list[str]) -> int:
     if not subargs:
@@ -602,6 +618,7 @@ def _cmd_key_export() -> int:
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────
+
 
 def _prompt(msg: str, *, default: str) -> str:
     try:

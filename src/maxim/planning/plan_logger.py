@@ -44,9 +44,7 @@ class PlanLogger:
         self._plan_phases: dict[str, int] = {}
 
         # Background writer thread
-        self._writer_thread = threading.Thread(
-            target=self._writer_loop, daemon=True, name="plan-logger"
-        )
+        self._writer_thread = threading.Thread(target=self._writer_loop, daemon=True, name="plan-logger")
         self._writer_thread.start()
 
         # Subscribe to plan events
@@ -71,16 +69,14 @@ class PlanLogger:
         self._plan_phases[event.plan_id] = event.phase_count
         self._enqueue(
             event.timestamp,
-            f'CREATED {event.plan_id[:8]}: "{event.objective}" '
-            f"({event.phase_count} phases)",
+            f'CREATED {event.plan_id[:8]}: "{event.objective}" ({event.phase_count} phases)',
         )
 
     def _on_phase_started(self, event: PhaseStarted) -> None:
         total = self._plan_phases.get(event.plan_id, "?")
         self._enqueue(
             event.timestamp,
-            f"PHASE {event.phase_index + 1}/{total} STARTED "
-            f'{event.plan_id[:8]}: "{event.description}"',
+            f'PHASE {event.phase_index + 1}/{total} STARTED {event.plan_id[:8]}: "{event.description}"',
         )
 
     def _on_phase_completed(self, event: PhaseCompleted) -> None:
@@ -97,8 +93,7 @@ class PlanLogger:
         status = "SUCCESS" if event.success else "FAILED"
         self._enqueue(
             event.timestamp,
-            f"COMPLETED {event.plan_id[:8]}: {status} "
-            f"({event.phases_completed}/{event.phases_total} phases)",
+            f"COMPLETED {event.plan_id[:8]}: {status} ({event.phases_completed}/{event.phases_total} phases)",
         )
         self._plan_phases.pop(event.plan_id, None)
 
@@ -119,10 +114,7 @@ class PlanLogger:
 
     def _enqueue(self, timestamp: float, message: str) -> None:
         t = time.localtime(timestamp)
-        line = (
-            f"[{t.tm_year}-{t.tm_mon:02d}-{t.tm_mday:02d} "
-            f"{t.tm_hour:02d}:{t.tm_min:02d}] {message}\n"
-        )
+        line = f"[{t.tm_year}-{t.tm_mon:02d}-{t.tm_mday:02d} {t.tm_hour:02d}:{t.tm_min:02d}] {message}\n"
         self._queue.put(line)
 
     def _writer_loop(self) -> None:
@@ -164,19 +156,18 @@ class PlanLogger:
             os.makedirs(self._archive_dir, exist_ok=True)
             t = time.localtime()
             archive_name = (
-                f"history_{t.tm_year}{t.tm_mon:02d}{t.tm_mday:02d}_"
-                f"{t.tm_hour:02d}{t.tm_min:02d}{t.tm_sec:02d}.md"
+                f"history_{t.tm_year}{t.tm_mon:02d}{t.tm_mday:02d}_{t.tm_hour:02d}{t.tm_min:02d}{t.tm_sec:02d}.md"
             )
             archive_path = os.path.join(self._archive_dir, archive_name)
 
             # Move the old content to archive
             with open(archive_path, "w") as f:
-                f.writelines(all_lines[:-self.MAX_LINES])
+                f.writelines(all_lines[: -self.MAX_LINES])
 
             # Keep only the last MAX_LINES
             tmp = path + ".tmp"
             with open(tmp, "w") as f:
-                f.writelines(all_lines[-self.MAX_LINES:])
+                f.writelines(all_lines[-self.MAX_LINES :])
             os.replace(tmp, path)
 
             logger.debug(

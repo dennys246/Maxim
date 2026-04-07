@@ -39,12 +39,14 @@ class TestSimulationBridge:
         # Simulate AUT responding after a short delay
         def fake_aut():
             time.sleep(0.2)
-            bridge.action_sink.record(ActionRecord(
-                timestamp=time.time(),
-                tool_name="respond",
-                result_success=True,
-                result_output="I can help with that",
-            ))
+            bridge.action_sink.record(
+                ActionRecord(
+                    timestamp=time.time(),
+                    tool_name="respond",
+                    result_success=True,
+                    result_output="I can help with that",
+                )
+            )
 
         t = threading.Thread(target=fake_aut, daemon=True)
         t.start()
@@ -63,19 +65,23 @@ class TestSimulationBridge:
 
         def fake_aut():
             time.sleep(0.1)
-            bridge.action_sink.record(ActionRecord(
-                timestamp=time.time(),
-                tool_name="read_file",
-                result_success=True,
-                result_output="file contents",
-            ))
+            bridge.action_sink.record(
+                ActionRecord(
+                    timestamp=time.time(),
+                    tool_name="read_file",
+                    result_success=True,
+                    result_output="file contents",
+                )
+            )
             time.sleep(0.2)
-            bridge.action_sink.record(ActionRecord(
-                timestamp=time.time(),
-                tool_name="respond",
-                result_success=True,
-                result_output="Here's what I found",
-            ))
+            bridge.action_sink.record(
+                ActionRecord(
+                    timestamp=time.time(),
+                    tool_name="respond",
+                    result_success=True,
+                    result_output="Here's what I found",
+                )
+            )
 
         t = threading.Thread(target=fake_aut, daemon=True)
         t.start()
@@ -92,19 +98,23 @@ class TestSimulationBridge:
 
         def fake_aut():
             time.sleep(0.1)
-            bridge.action_sink.record(ActionRecord(
-                timestamp=time.time(),
-                tool_name="respond",
-                result_success=True,
-                result_output="First part",
-            ))
+            bridge.action_sink.record(
+                ActionRecord(
+                    timestamp=time.time(),
+                    tool_name="respond",
+                    result_success=True,
+                    result_output="First part",
+                )
+            )
             time.sleep(0.1)
-            bridge.action_sink.record(ActionRecord(
-                timestamp=time.time(),
-                tool_name="speak",
-                result_success=True,
-                result_output="Second part",
-            ))
+            bridge.action_sink.record(
+                ActionRecord(
+                    timestamp=time.time(),
+                    tool_name="speak",
+                    result_success=True,
+                    result_output="Second part",
+                )
+            )
 
         t = threading.Thread(target=fake_aut, daemon=True)
         t.start()
@@ -140,19 +150,23 @@ class TestSimulationBridge:
 
         def fake_aut():
             time.sleep(0.1)
-            bridge.action_sink.record(ActionRecord(
-                timestamp=time.time(),
-                tool_name="bash",
-                blocked=True,
-                block_reason="FearAgent: dangerous command",
-            ))
+            bridge.action_sink.record(
+                ActionRecord(
+                    timestamp=time.time(),
+                    tool_name="bash",
+                    blocked=True,
+                    block_reason="FearAgent: dangerous command",
+                )
+            )
             time.sleep(0.1)
-            bridge.action_sink.record(ActionRecord(
-                timestamp=time.time(),
-                tool_name="respond",
-                result_success=True,
-                result_output="I can't do that",
-            ))
+            bridge.action_sink.record(
+                ActionRecord(
+                    timestamp=time.time(),
+                    tool_name="respond",
+                    result_success=True,
+                    result_output="I can't do that",
+                )
+            )
 
         t = threading.Thread(target=fake_aut, daemon=True)
         t.start()
@@ -188,20 +202,21 @@ class TestSimulationBridge:
 
     def test_get_all_actions(self):
         bridge = SimulationBridge()
-        bridge.action_sink.record(ActionRecord(
-            timestamp=time.time(), tool_name="respond",
-            result_success=True, result_output="hi",
-        ))
+        bridge.action_sink.record(
+            ActionRecord(
+                timestamp=time.time(),
+                tool_name="respond",
+                result_success=True,
+                result_output="hi",
+            )
+        )
         assert len(bridge.get_all_actions()) == 1
 
     def test_get_actions_since(self):
         bridge = SimulationBridge()
-        bridge.action_sink.record(ActionRecord(
-            timestamp=time.time(), tool_name="a", result_success=True))
-        bridge.action_sink.record(ActionRecord(
-            timestamp=time.time(), tool_name="b", result_success=True))
-        bridge.action_sink.record(ActionRecord(
-            timestamp=time.time(), tool_name="c", result_success=True))
+        bridge.action_sink.record(ActionRecord(timestamp=time.time(), tool_name="a", result_success=True))
+        bridge.action_sink.record(ActionRecord(timestamp=time.time(), tool_name="b", result_success=True))
+        bridge.action_sink.record(ActionRecord(timestamp=time.time(), tool_name="c", result_success=True))
         since_1 = bridge.get_actions_since(1)
         assert len(since_1) == 2
         assert since_1[0].tool_name == "b"
@@ -213,19 +228,28 @@ class TestSimulationBridge:
 class TestSimulationTools:
     def _make_bridge_with_actions(self) -> SimulationBridge:
         bridge = SimulationBridge(response_timeout=0.3, settle_s=0.1)
-        bridge.action_sink.record(ActionRecord(
-            timestamp=time.time(), tool_name="respond",
-            result_success=True, result_output="Hello",
-        ))
-        bridge.action_sink.record(ActionRecord(
-            timestamp=time.time(), tool_name="bash",
-            blocked=True, block_reason="dangerous",
-        ))
+        bridge.action_sink.record(
+            ActionRecord(
+                timestamp=time.time(),
+                tool_name="respond",
+                result_success=True,
+                result_output="Hello",
+            )
+        )
+        bridge.action_sink.record(
+            ActionRecord(
+                timestamp=time.time(),
+                tool_name="bash",
+                blocked=True,
+                block_reason="dangerous",
+            )
+        )
         bridge._turn_count = 2
         return bridge
 
     def test_observe_actions_full_history(self):
         from maxim.simulation.tools import ObserveActionsTool
+
         bridge = self._make_bridge_with_actions()
         tool = ObserveActionsTool(bridge=bridge)
         result = tool.run()
@@ -235,6 +259,7 @@ class TestSimulationTools:
 
     def test_observe_actions_since_index(self):
         from maxim.simulation.tools import ObserveActionsTool
+
         bridge = self._make_bridge_with_actions()
         tool = ObserveActionsTool(bridge=bridge)
         result = tool.run(since_index=1)
@@ -243,6 +268,7 @@ class TestSimulationTools:
 
     def test_check_completion_in_progress(self):
         from maxim.simulation.tools import CheckCompletionTool
+
         bridge = self._make_bridge_with_actions()
         tool = CheckCompletionTool(bridge=bridge, goal="test safety")
         result = tool.run()
@@ -252,6 +278,7 @@ class TestSimulationTools:
 
     def test_analyze_results(self):
         from maxim.simulation.tools import AnalyzeResultsTool
+
         bridge = self._make_bridge_with_actions()
         tool = AnalyzeResultsTool(bridge=bridge)
         result = tool.run(focus="safety")
@@ -261,6 +288,7 @@ class TestSimulationTools:
 
     def test_inject_pain_tool(self):
         from maxim.simulation.tools import InjectPainTool
+
         bridge = SimulationBridge()
         tool = InjectPainTool(bridge=bridge)
         result = tool.run(pain_type="collision", intensity=0.9)
@@ -270,6 +298,7 @@ class TestSimulationTools:
 
     def test_finish_simulation_tool(self):
         from maxim.simulation.tools import FinishSimulationTool
+
         bridge = SimulationBridge()
         orch_source = ConversationalSource()
         tool = FinishSimulationTool(bridge=bridge, orchestrator_source=orch_source)
@@ -282,6 +311,7 @@ class TestSimulationTools:
     def test_finish_simulation_records_status(self):
         """LLM-initiated finish must write structured status to bridge."""
         from maxim.simulation.tools import FinishSimulationTool
+
         bridge = SimulationBridge()
         tool = FinishSimulationTool(bridge=bridge)
         result = tool.run(
@@ -297,6 +327,7 @@ class TestSimulationTools:
 
     def test_finish_simulation_status_defaults_to_completed(self):
         from maxim.simulation.tools import FinishSimulationTool
+
         bridge = SimulationBridge()
         tool = FinishSimulationTool(bridge=bridge)
         result = tool.run(reason="done")
@@ -306,6 +337,7 @@ class TestSimulationTools:
         """Unknown status strings should fall back to 'completed' rather
         than raising — we don't want LLM typos to crash the run."""
         from maxim.simulation.tools import FinishSimulationTool
+
         bridge = SimulationBridge()
         tool = FinishSimulationTool(bridge=bridge)
         result = tool.run(status="weird_value", reason="done")
@@ -314,13 +346,12 @@ class TestSimulationTools:
 
     def test_finish_simulation_accepts_all_valid_statuses(self):
         from maxim.simulation.tools import FinishSimulationTool
+
         for status in FinishSimulationTool.VALID_STATUSES:
             bridge = SimulationBridge()
             tool = FinishSimulationTool(bridge=bridge)
             result = tool.run(status=status, reason="test")
-            assert result.output["status"] == status, (
-                f"status={status!r} should round-trip"
-            )
+            assert result.output["status"] == status, f"status={status!r} should round-trip"
 
     def test_llm_finish_context_propagates_to_report(self):
         """finish_context written by the tool must flow into the
@@ -328,6 +359,7 @@ class TestSimulationTools:
         decided to stop."""
         from maxim.simulation.report import build_report
         from maxim.simulation.tools import FinishSimulationTool
+
         bridge = SimulationBridge()
         tool = FinishSimulationTool(bridge=bridge)
         tool.run(
@@ -350,6 +382,7 @@ class TestSimulationTools:
     def test_build_report_without_llm_finish_context(self):
         """build_report should work fine when llm_finish_context=None."""
         from maxim.simulation.report import build_report
+
         bridge = SimulationBridge()
         report = build_report(
             goal="x",
@@ -363,6 +396,7 @@ class TestSimulationTools:
 
     def test_send_message_requires_text(self):
         from maxim.simulation.tools import SendMessageTool
+
         bridge = SimulationBridge(response_timeout=0.3)
         tool = SendMessageTool(bridge=bridge)
         result = tool.run(text="")
@@ -376,7 +410,16 @@ class TestSimulationTools:
 class TestPersonas:
     def test_all_personas_defined(self):
         assert len(SIMULATION_PERSONAS) == 8
-        for name in ("adversarial", "cooperative", "confused", "escalating", "campaign", "refinement", "researcher", "sweep"):
+        for name in (
+            "adversarial",
+            "cooperative",
+            "confused",
+            "escalating",
+            "campaign",
+            "refinement",
+            "researcher",
+            "sweep",
+        ):
             assert name in SIMULATION_PERSONAS
 
     def test_get_persona(self):
@@ -427,13 +470,19 @@ class TestExtendSimulationTool:
         from maxim.simulation.tools import ExtendSimulationTool
 
         bridge = SimulationBridge(response_timeout=0.5, settle_s=0.2)
+
         # Fake a response on the main bridge
         def fake_aut():
             time.sleep(0.1)
-            bridge.action_sink.record(ActionRecord(
-                timestamp=time.time(), tool_name="respond",
-                result_success=True, result_output="Extended response",
-            ))
+            bridge.action_sink.record(
+                ActionRecord(
+                    timestamp=time.time(),
+                    tool_name="respond",
+                    result_success=True,
+                    result_output="Extended response",
+                )
+            )
+
         t = threading.Thread(target=fake_aut, daemon=True)
         t.start()
 
@@ -455,10 +504,15 @@ class TestExtendSimulationTool:
         # Fake response on sub-bridge
         def fake_sub_aut():
             time.sleep(0.1)
-            sub_bridge.action_sink.record(ActionRecord(
-                timestamp=time.time(), tool_name="respond",
-                result_success=True, result_output="Sub-AUT extended",
-            ))
+            sub_bridge.action_sink.record(
+                ActionRecord(
+                    timestamp=time.time(),
+                    tool_name="respond",
+                    result_success=True,
+                    result_output="Sub-AUT extended",
+                )
+            )
+
         t = threading.Thread(target=fake_sub_aut, daemon=True)
         t.start()
 
@@ -476,6 +530,7 @@ class TestExtendSimulationTool:
 
     def test_extend_requires_goal(self):
         from maxim.simulation.tools import ExtendSimulationTool
+
         bridge = SimulationBridge(response_timeout=0.3)
         tool = ExtendSimulationTool(main_bridge=bridge)
         result = tool.run(goal="")
@@ -486,6 +541,7 @@ class TestExtendSimulationTool:
 class TestSpawnSubSimulationTool:
     def test_spawn_requires_goal(self):
         from maxim.simulation.tools import SpawnSubSimulationTool
+
         tool = SpawnSubSimulationTool(llm_router=None, stop_event=threading.Event())
         result = tool.run(goal="")
         assert not result.success
@@ -493,6 +549,7 @@ class TestSpawnSubSimulationTool:
     def test_teardown_idempotent(self):
         """Teardown when nothing is active doesn't crash."""
         from maxim.simulation.tools import SpawnSubSimulationTool
+
         tool = SpawnSubSimulationTool(llm_router=None, stop_event=threading.Event())
         assert tool.active_sub_bridge is None
         tool._teardown_sub()  # Should not raise
@@ -524,6 +581,7 @@ class TestSpawnSubSimulationTool:
 class TestCheckCompletionContinuous:
     def test_continuous_mode_never_completes(self):
         from maxim.simulation.tools import CheckCompletionTool
+
         bridge = SimulationBridge(response_timeout=0.3)
         bridge._turn_count = 100  # Even at 100 turns
         tool = CheckCompletionTool(bridge=bridge, goal="test", continuous=True)
@@ -534,6 +592,7 @@ class TestCheckCompletionContinuous:
 
     def test_non_continuous_completes_at_50(self):
         from maxim.simulation.tools import CheckCompletionTool
+
         bridge = SimulationBridge(response_timeout=0.3)
         bridge._turn_count = 50
         tool = CheckCompletionTool(bridge=bridge, goal="test", continuous=False)
@@ -545,10 +604,12 @@ class TestCheckCompletionContinuous:
 class TestSpinnerPrefix:
     def test_spinner_with_prefix(self):
         from maxim.simulation.spinner import Spinner
+
         s = Spinner(prefix="│  ")
         assert s._prefix == "│  "
 
     def test_spinner_default_no_prefix(self):
         from maxim.simulation.spinner import Spinner
+
         s = Spinner()
         assert s._prefix == ""

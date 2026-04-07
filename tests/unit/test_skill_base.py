@@ -12,6 +12,7 @@ from maxim.skills.base import Skill, SkillResult, SkillState
 
 # --- Concrete test implementation ---
 
+
 class DummySkill(Skill):
     """Minimal concrete Skill for testing."""
 
@@ -109,6 +110,7 @@ def mock_maxim():
 
 # --- SkillState tests ---
 
+
 class TestSkillState:
     def test_enum_values(self):
         assert SkillState.IDLE.value == "idle"
@@ -122,6 +124,7 @@ class TestSkillState:
 
 
 # --- SkillResult tests ---
+
 
 class TestSkillResult:
     def test_ok_when_active(self):
@@ -155,6 +158,7 @@ class TestSkillResult:
 
 
 # --- Skill ABC tests ---
+
 
 class TestSkillLifecycle:
     def test_initial_state_is_idle(self, dummy_skill):

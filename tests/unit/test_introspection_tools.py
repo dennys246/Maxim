@@ -1,12 +1,11 @@
 """Tests for introspection tools (biological self-awareness)."""
+
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
 
 from maxim.tools.introspection import (
     CausalLinksTool,
@@ -250,7 +249,7 @@ class TestCausalLinksTool:
         nac = MagicMock()
         nac.get_links_for.return_value = [FakeCausalLink()]
         tool = CausalLinksTool(nac=nac)
-        result = tool.execute(memory_id="mem-001")
+        tool.execute(memory_id="mem-001")  # verify delegation to nac
         nac.get_links_for.assert_called_once_with("mem-001")
 
 

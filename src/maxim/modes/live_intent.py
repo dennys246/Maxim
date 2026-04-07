@@ -238,9 +238,7 @@ def get_live_mode_with_intent(intent: LiveModeIntent) -> "ModeDefinition":
     # Build extended context prompt
     extended_context = base_mode.context_prompt
     if intent.context_prompt_extension:
-        extended_context += (
-            f"\n\n--- Agent-Defined Intent ---\n{intent.context_prompt_extension}"
-        )
+        extended_context += f"\n\n--- Agent-Defined Intent ---\n{intent.context_prompt_extension}"
 
     # Build extended goal - primary goal is immutable
     extended_goal = f"{LIVE_MODE_PRIMARY_GOAL}. {base_mode.goal}"

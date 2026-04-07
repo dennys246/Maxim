@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import pytest
-from pathlib import Path
-from unittest.mock import patch
 
 from maxim.utils.last_run import (
     should_save,
@@ -27,6 +25,7 @@ def tmp_last_runs(tmp_path, monkeypatch):
 
 
 # ── should_save ─────────────────────────────────────────────────────
+
 
 class TestShouldSave:
     def test_sim_is_saveable(self):
@@ -59,6 +58,7 @@ class TestShouldSave:
 
 
 # ── save / load ─────────────────────────────────────────────────────
+
 
 class TestSaveLoad:
     def test_save_and_load(self):
@@ -111,6 +111,7 @@ class TestSaveLoad:
 
 # ── clear ───────────────────────────────────────────────────────────
 
+
 class TestClear:
     def test_clear_returns_false_when_empty(self):
         assert clear_last_run() is False
@@ -128,6 +129,7 @@ class TestClear:
 
 
 # ── format ──────────────────────────────────────────────────────────
+
 
 class TestFormat:
     def test_format_last_run(self):
@@ -148,6 +150,7 @@ class TestFormat:
 
 
 # ── old format migration ───────────────────────────────────────────
+
 
 class TestMigration:
     def test_migrates_single_dict(self, tmp_last_runs):

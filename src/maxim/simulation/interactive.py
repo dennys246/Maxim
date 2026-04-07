@@ -23,7 +23,6 @@ import logging
 import os
 import tempfile
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
@@ -95,15 +94,13 @@ def run_interactive_sim(
     debug: bool = False,
 ) -> None:
     """Run the interactive simulation REPL with LLM-generated continuations."""
-    from maxim.simulation.scenario_source import ScenarioSource, ScenarioDefinition
     from maxim.simulation.sim_logger import (
         enable_sim_logging,
         disable_sim_logging,
         sim_log,
     )
-    from maxim.simulation.simulation_generator import generate_scenario, warm_generator, _extract_json
+    from maxim.simulation.simulation_generator import generate_scenario, warm_generator
     from maxim.simulation.sinks import RecordingSink
-    from maxim.runtime.agent_loop import run_agentic_loop
 
     if sim_workspace is None:
         sim_workspace = Path("data/sim_sandbox")
@@ -176,8 +173,13 @@ def run_interactive_sim(
         print("  Running through agent pipeline...")
         sim_log("PIPELINE", "Running initial scenario turn")
         _run_scenario_turn(
-            transcript_path, agentic_agent, env, state, memory,
-            decision_engine, executor,
+            transcript_path,
+            agentic_agent,
+            env,
+            state,
+            memory,
+            decision_engine,
+            executor,
             autonomy_controller=autonomy_controller,
             llm_worker=llm_worker,
             hippocampus=hippocampus,
@@ -242,21 +244,21 @@ def run_interactive_sim(
             # Generate continuation percepts with context
             sim_log("PIPELINE", f"Generating continuation from: {user_input[:60]}")
             print("  Generating continuation...")
-            new_percepts = _generate_continuation(
-                user_input, all_percepts, all_actions, llm_profile
-            )
+            new_percepts = _generate_continuation(user_input, all_percepts, all_actions, llm_profile)
 
             if not new_percepts:
                 # Fallback: just inject the raw text as a CLI percept
                 print("    (Generator returned no percepts, using raw input)")
-                new_percepts = [{
-                    "at": 0,
-                    "source": "cli",
-                    "cli_input": user_input,
-                    "salience": 0.7,
-                    "novelty": 0.5,
-                    "metadata": {"scenario_tag": f"followup_{turn}"},
-                }]
+                new_percepts = [
+                    {
+                        "at": 0,
+                        "source": "cli",
+                        "cli_input": user_input,
+                        "salience": 0.7,
+                        "novelty": 0.5,
+                        "metadata": {"scenario_tag": f"followup_{turn}"},
+                    }
+                ]
 
             # Show what was generated
             for p in new_percepts:
@@ -280,8 +282,13 @@ def run_interactive_sim(
 
             # Run this turn
             _run_scenario_turn(
-                turn_path, agentic_agent, env, state, memory,
-                decision_engine, executor,
+                turn_path,
+                agentic_agent,
+                env,
+                state,
+                memory,
+                decision_engine,
+                executor,
                 autonomy_controller=autonomy_controller,
                 llm_worker=llm_worker,
                 hippocampus=hippocampus,
@@ -330,8 +337,12 @@ def run_interactive_sim(
 
 def _run_scenario_turn(
     scenario_path: Path,
-    agent: Any, env: Any, state: Any, memory: Any,
-    decision_engine: Any, executor: Any,
+    agent: Any,
+    env: Any,
+    state: Any,
+    memory: Any,
+    decision_engine: Any,
+    executor: Any,
     *,
     sink: Any,
     turn: int,
@@ -343,10 +354,12 @@ def _run_scenario_turn(
 
     # Create sandbox for this turn
     sim_workspace = kwargs.pop("sim_workspace", Path("data/sim_sandbox"))
-    run_tmpdir = Path(tempfile.mkdtemp(
-        prefix=f"sim_turn_{turn:03d}_",
-        dir=str(sim_workspace),
-    ))
+    run_tmpdir = Path(
+        tempfile.mkdtemp(
+            prefix=f"sim_turn_{turn:03d}_",
+            dir=str(sim_workspace),
+        )
+    )
     original_cwd = os.getcwd()
     os.chdir(str(run_tmpdir))
 
@@ -355,7 +368,12 @@ def _run_scenario_turn(
         stop = threading.Event()
 
         run_agentic_loop(
-            agent, env, state, memory, decision_engine, executor,
+            agent,
+            env,
+            state,
+            memory,
+            decision_engine,
+            executor,
             max_steps=0,  # Unlimited — stopped by grace period or stop_event
             run_id=f"sim_turn_{turn:03d}",
             stop_event=stop,
@@ -370,6 +388,7 @@ def _run_scenario_turn(
         os.chdir(original_cwd)
         try:
             import shutil
+
             shutil.rmtree(str(run_tmpdir))
         except Exception:
             pass

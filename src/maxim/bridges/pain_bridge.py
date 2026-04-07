@@ -207,10 +207,7 @@ class PainCircuitBridge:
         )
 
         # Set movement target for failure detection (if any targets provided)
-        has_target = any(
-            t is not None
-            for t in (target_yaw, target_pitch, target_x, target_y, target_z, target_roll)
-        )
+        has_target = any(t is not None for t in (target_yaw, target_pitch, target_x, target_y, target_z, target_roll))
         if has_target:
             self._detector.set_movement_target(
                 yaw=target_yaw,
@@ -314,9 +311,7 @@ class PainCircuitBridge:
         self._total_pain_attributed += 1
 
         # Log at WARNING for negative valence (high pain), INFO otherwise
-        log_msg = (
-            "Pain attributed to action: %s -> %s (intensity=%.2f, valence=%s)"
-        )
+        log_msg = "Pain attributed to action: %s -> %s (intensity=%.2f, valence=%s)"
         log_args = (
             self._pending_action,
             signal.pain_type.value,

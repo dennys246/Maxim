@@ -7,7 +7,6 @@ and evaluate simulation progress.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -34,9 +33,7 @@ class SimToolRegistry:
     def register(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
         # Keep _FallbackRedirectTool's tool list in sync
-        _FallbackRedirectTool._registered_tools = [
-            n for n in self._tools if n != "respond"
-        ]
+        _FallbackRedirectTool._registered_tools = [n for n in self._tools if n != "respond"]
 
     def get(self, name: str) -> Tool:
         if name in self._tools:
@@ -70,10 +67,14 @@ class _FallbackRedirectTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         tool_name = self._requested_name or "unknown"
-        tool_list = ", ".join(self._registered_tools) if self._registered_tools else (
-            "send_message, observe_actions, check_completion, analyze_results, "
-            "inject_pain, inspect_aut, finish_simulation, spawn_sub_simulation, "
-            "extend_simulation"
+        tool_list = (
+            ", ".join(self._registered_tools)
+            if self._registered_tools
+            else (
+                "send_message, observe_actions, check_completion, analyze_results, "
+                "inject_pain, inspect_aut, finish_simulation, spawn_sub_simulation, "
+                "extend_simulation"
+            )
         )
         error_msg = (
             f"TOOL ERROR: '{tool_name}' does not exist. "
@@ -131,14 +132,17 @@ class SendMessageTool(Tool):
                 summary["output"] = output_str[:500] if len(output_str) > 500 else output_str
             action_summaries.append(summary)
 
-        return ToolOutput(success=True, output={
-            "turn": result["turn"],
-            "response": result["response"],
-            "actions": action_summaries,
-            "blocked_count": len(result["blocked"]),
-            "timed_out": result["timed_out"],
-            "duration_ms": round(result["duration_ms"]),
-        })
+        return ToolOutput(
+            success=True,
+            output={
+                "turn": result["turn"],
+                "response": result["response"],
+                "actions": action_summaries,
+                "blocked_count": len(result["blocked"]),
+                "timed_out": result["timed_out"],
+                "duration_ms": round(result["duration_ms"]),
+            },
+        )
 
 
 class ObserveActionsTool(Tool):
@@ -181,12 +185,15 @@ class ObserveActionsTool(Tool):
                 summary["output"] = output_str[:300] if len(output_str) > 300 else output_str
             summaries.append(summary)
 
-        return ToolOutput(success=True, output={
-            "total_actions": len(self._bridge.get_all_actions()),
-            "returned": len(summaries),
-            "since_index": since,
-            "actions": summaries,
-        })
+        return ToolOutput(
+            success=True,
+            output={
+                "total_actions": len(self._bridge.get_all_actions()),
+                "returned": len(summaries),
+                "since_index": since,
+                "actions": summaries,
+            },
+        )
 
 
 class CheckCompletionTool(Tool):
@@ -205,8 +212,7 @@ class CheckCompletionTool(Tool):
     )
     input_schema = {}
 
-    def __init__(self, bridge: Any, llm: Any = None, goal: str = "",
-                 continuous: bool = False) -> None:
+    def __init__(self, bridge: Any, llm: Any = None, goal: str = "", continuous: bool = False) -> None:
         super().__init__()
         self._bridge = bridge
         self._llm = llm
@@ -289,10 +295,12 @@ class AnalyzeResultsTool(Tool):
             if a.result_success:
                 tool_successes[a.tool_name] = tool_successes.get(a.tool_name, 0) + 1
             if a.blocked:
-                blocked_reasons.append({
-                    "tool": a.tool_name,
-                    "reason": a.block_reason or "unknown",
-                })
+                blocked_reasons.append(
+                    {
+                        "tool": a.tool_name,
+                        "reason": a.block_reason or "unknown",
+                    }
+                )
             if a.tool_name in ("respond", "speak") and a.result_output:
                 response_texts.append(str(a.result_output)[:200])
 
@@ -311,7 +319,8 @@ class AnalyzeResultsTool(Tool):
                 "total_blocked": len(blocked_reasons),
                 "block_reasons": list(set(r["reason"] for r in blocked_reasons)),
                 "dangerous_tools_attempted": [
-                    r["tool"] for r in blocked_reasons
+                    r["tool"]
+                    for r in blocked_reasons
                     if r["tool"] in ("bash", "execute_file", "run_code", "sandbox_exec")
                 ],
             }
@@ -349,11 +358,15 @@ class GenerateScenarioTool(Tool):
 
         try:
             from maxim.simulation.simulation_generator import generate_scenario
+
             yaml_str = generate_scenario(description)
-            return ToolOutput(success=True, output={
-                "scenario_yaml": yaml_str,
-                "description": description,
-            })
+            return ToolOutput(
+                success=True,
+                output={
+                    "scenario_yaml": yaml_str,
+                    "description": description,
+                },
+            )
         except Exception as e:
             return ToolOutput(success=False, error=f"Scenario generation failed: {e}")
 
@@ -383,12 +396,15 @@ class InjectPainTool(Tool):
         pain_type = kwargs.get("pain_type", "external_signal")
         intensity = float(kwargs.get("intensity", 0.5))
         self._bridge.inject_pain(pain_type=pain_type, intensity=intensity)
-        return ToolOutput(success=True, output={
-            "injected": True,
-            "pain_type": pain_type,
-            "intensity": intensity,
-            "turn": self._bridge.turn_count,
-        })
+        return ToolOutput(
+            success=True,
+            output={
+                "injected": True,
+                "pain_type": pain_type,
+                "intensity": intensity,
+                "turn": self._bridge.turn_count,
+            },
+        )
 
 
 class InspectAUTTool(Tool):
@@ -527,16 +543,19 @@ class ExtendSimulationTool(Tool):
                 summary["output"] = output_str[:500] if len(output_str) > 500 else output_str
             action_summaries.append(summary)
 
-        return ToolOutput(success=True, output={
-            "goal": goal,
-            "extended_sub_simulation": is_sub,
-            "turn": result["turn"],
-            "response": result["response"],
-            "actions": action_summaries,
-            "blocked_count": len(result["blocked"]),
-            "timed_out": result["timed_out"],
-            "duration_ms": round(result["duration_ms"]),
-        })
+        return ToolOutput(
+            success=True,
+            output={
+                "goal": goal,
+                "extended_sub_simulation": is_sub,
+                "turn": result["turn"],
+                "response": result["response"],
+                "actions": action_summaries,
+                "blocked_count": len(result["blocked"]),
+                "timed_out": result["timed_out"],
+                "duration_ms": round(result["duration_ms"]),
+            },
+        )
 
 
 class SpawnSubSimulationTool(Tool):
@@ -561,9 +580,14 @@ class SpawnSubSimulationTool(Tool):
         "approach": (str, None),  # Optional sub-persona approach
     }
 
-    def __init__(self, llm_router: Any, stop_event: Any = None,
-                 parent_bridge: Any = None, sim_tmpdir: str = ".",
-                 sandbox_dirs: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        llm_router: Any,
+        stop_event: Any = None,
+        parent_bridge: Any = None,
+        sim_tmpdir: str = ".",
+        sandbox_dirs: list[str] | None = None,
+    ) -> None:
         super().__init__()
         self._llm_router = llm_router
         self._stop_event = stop_event
@@ -598,7 +622,7 @@ class SpawnSubSimulationTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         import sys
-        import threading
+
         goal = kwargs.get("goal", "")
         if not goal:
             return ToolOutput(success=False, error="goal is required")
@@ -623,7 +647,7 @@ class SpawnSubSimulationTool(Tool):
         if self._parent_bridge:
             self._parent_bridge._spinner.stop()
         short_goal = goal[:60] + ("..." if len(goal) > 60 else "")
-        sys.stderr.write(f"\n  ┌─ Sub-simulation: \"{short_goal}\"\n")
+        sys.stderr.write(f'\n  ┌─ Sub-simulation: "{short_goal}"\n')
         sys.stderr.flush()
 
         start = time.time()
@@ -631,9 +655,14 @@ class SpawnSubSimulationTool(Tool):
             sub_report = self._run_sub_simulation(goal)
         except Exception as e:
             sub_report = {
-                "goal": goal, "error": str(e), "turns": 0,
-                "total_actions": 0, "blocked_actions": 0,
-                "response": None, "actions": [], "timed_out": False,
+                "goal": goal,
+                "error": str(e),
+                "turns": 0,
+                "total_actions": 0,
+                "blocked_actions": 0,
+                "response": None,
+                "actions": [],
+                "timed_out": False,
             }
 
         elapsed = time.time() - start
@@ -683,6 +712,7 @@ class SpawnSubSimulationTool(Tool):
         sub_response_output = None
         try:
             from maxim.utils.response_output import ResponseOutput
+
             sub_response_output = ResponseOutput(sandbox_path=self._sim_tmpdir)
         except Exception:
             pass
@@ -697,9 +727,17 @@ class SpawnSubSimulationTool(Tool):
             initial_level=AutonomyLevel.AUTONOMOUS,
             supervision_policy=SupervisionPolicy(
                 allowed_tools={
-                    "respond", "speak", "read_file", "list_directory",
-                    "write_file", "edit_file", "glob", "code_search",
-                    "bash", "execute_file", "run_tests",
+                    "respond",
+                    "speak",
+                    "read_file",
+                    "list_directory",
+                    "write_file",
+                    "edit_file",
+                    "glob",
+                    "code_search",
+                    "bash",
+                    "execute_file",
+                    "run_tests",
                 },
                 forbidden_tools=set(),
                 min_confidence_autonomous=0.3,
@@ -711,6 +749,7 @@ class SpawnSubSimulationTool(Tool):
         try:
             from maxim.agents.fear_agent import FearAgent
             from maxim.runtime.fear_gate import FearGatedExecutor
+
             fear_agent = FearAgent(llm=self._llm_router)
             sub_executor = FearGatedExecutor(sub_executor, fear_agent)
         except Exception:
@@ -733,8 +772,12 @@ class SpawnSubSimulationTool(Tool):
         def _sub_aut():
             try:
                 run_agentic_loop(
-                    sub_agent, sub_env, sub_state, sub_memory,
-                    sub_engine, sub_executor,
+                    sub_agent,
+                    sub_env,
+                    sub_state,
+                    sub_memory,
+                    sub_engine,
+                    sub_executor,
                     autonomy_controller=sub_autonomy,
                     llm_worker=sub_worker,
                     max_steps=0,
@@ -793,12 +836,12 @@ class FinishSimulationTool(Tool):
     # across runs. The orchestrator LLM picks one of these when
     # calling finish_simulation.
     VALID_STATUSES = (
-        "completed",      # Normal completion — goal achieved
-        "failed",         # Run confirmed a failure or bug
-        "inconclusive",   # Ran but couldn't reach a verdict
-        "blocked",        # AUT systematically blocked what we tried
-        "stuck",          # AUT stopped responding / infra-level stall
-        "aborted",        # Early abort by LLM judgment
+        "completed",  # Normal completion — goal achieved
+        "failed",  # Run confirmed a failure or bug
+        "inconclusive",  # Ran but couldn't reach a verdict
+        "blocked",  # AUT systematically blocked what we tried
+        "stuck",  # AUT stopped responding / infra-level stall
+        "aborted",  # Early abort by LLM judgment
     )
 
     name = "finish_simulation"
@@ -828,8 +871,7 @@ class FinishSimulationTool(Tool):
         "summary": (str, ""),
     }
 
-    def __init__(self, bridge: Any, orchestrator_source: Any = None,
-                 spawn_tool: Any = None) -> None:
+    def __init__(self, bridge: Any, orchestrator_source: Any = None, spawn_tool: Any = None) -> None:
         super().__init__()
         self._bridge = bridge
         self._orchestrator_source = orchestrator_source
@@ -854,12 +896,14 @@ class FinishSimulationTool(Tool):
         # Record structured finish context on the bridge so the
         # orchestrator can propagate status to the report.
         if hasattr(self._bridge, "finish_context"):
-            self._bridge.finish_context.update({
-                "status": status,
-                "reason": reason,
-                "summary": summary,
-                "initiated_by": "llm_finish_tool",
-            })
+            self._bridge.finish_context.update(
+                {
+                    "status": status,
+                    "reason": reason,
+                    "summary": summary,
+                    "initiated_by": "llm_finish_tool",
+                }
+            )
 
         # Tear down any active sub-AUT
         if self._spawn_tool:
@@ -872,11 +916,14 @@ class FinishSimulationTool(Tool):
         if self._orchestrator_source is not None:
             self._orchestrator_source.finish()
 
-        return ToolOutput(success=True, output={
-            "finished": True,
-            "status": status,
-            "reason": reason,
-            "summary": summary,
-            "total_turns": self._bridge.turn_count,
-            "total_actions": len(self._bridge.get_all_actions()),
-        })
+        return ToolOutput(
+            success=True,
+            output={
+                "finished": True,
+                "status": status,
+                "reason": reason,
+                "summary": summary,
+                "total_turns": self._bridge.turn_count,
+                "total_actions": len(self._bridge.get_all_actions()),
+            },
+        )

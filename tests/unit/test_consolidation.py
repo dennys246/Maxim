@@ -170,9 +170,7 @@ class TestRunWave:
 
     def test_chronic_path_uses_higher_threshold(self, orchestrator, staging_dir):
         # Low significance chronic sidecar should survive (not promote)
-        sidecar = _make_sidecar(
-            significance=0.3, staging_path="chronic", sleep_cycles=1
-        )
+        sidecar = _make_sidecar(significance=0.3, staging_path="chronic", sleep_cycles=1)
         _write_sidecar(staging_dir, "test.json", sidecar)
 
         stats = orchestrator.run_wave()

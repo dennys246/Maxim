@@ -299,11 +299,7 @@ class RobotRegistry:
     def list_robots_by_type(self, robot_type: str) -> list[str]:
         """Get list of robot IDs of a specific type."""
         with self._robots_lock:
-            return [
-                reg.robot_id
-                for reg in self._robots.values()
-                if reg.robot_type == robot_type
-            ]
+            return [reg.robot_id for reg in self._robots.values() if reg.robot_type == robot_type]
 
     @property
     def robot_count(self) -> int:

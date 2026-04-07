@@ -28,9 +28,9 @@ class SendMessageTool(Tool):
         "Use to notify about events, answer questions, or reply to conversations."
     )
     input_schema = {
-        "channel": str,      # Required: "twilio", "webhook", etc.
-        "recipient": str,    # Required: phone number, user ID, etc.
-        "body": str,         # Required: message text
+        "channel": str,  # Required: "twilio", "webhook", etc.
+        "recipient": str,  # Required: phone number, user ID, etc.
+        "body": str,  # Required: message text
     }
 
     def __init__(self, gateway: "CommunicationGateway") -> None:
@@ -81,8 +81,8 @@ class CallUserTool(Tool):
         "Use for urgent notifications that require immediate attention."
     )
     input_schema = {
-        "recipient": str,    # Required: phone number
-        "message": str,      # Required: text to speak
+        "recipient": str,  # Required: phone number
+        "message": str,  # Required: text to speak
     }
 
     def __init__(self, gateway: "CommunicationGateway") -> None:

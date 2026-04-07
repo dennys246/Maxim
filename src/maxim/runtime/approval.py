@@ -5,18 +5,64 @@ from __future__ import annotations
 # PLANNING MODE APPROVAL DETECTION
 # ─────────────────────────────────────────────────────────────────────────────
 # Keywords for approval detection (case-insensitive)
-_APPROVAL_YES = frozenset({
-    "yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "approve",
-    "approved", "go", "go ahead", "do it", "proceed", "execute", "run",
-    "confirm", "confirmed", "accept", "accepted", "sounds good", "looks good",
-    "that works", "perfect", "great", "good", "fine", "correct", "right",
-})
+_APPROVAL_YES = frozenset(
+    {
+        "yes",
+        "y",
+        "yeah",
+        "yep",
+        "yup",
+        "sure",
+        "ok",
+        "okay",
+        "approve",
+        "approved",
+        "go",
+        "go ahead",
+        "do it",
+        "proceed",
+        "execute",
+        "run",
+        "confirm",
+        "confirmed",
+        "accept",
+        "accepted",
+        "sounds good",
+        "looks good",
+        "that works",
+        "perfect",
+        "great",
+        "good",
+        "fine",
+        "correct",
+        "right",
+    }
+)
 
-_APPROVAL_NO = frozenset({
-    "no", "n", "nope", "nah", "stop", "cancel", "abort", "reject",
-    "rejected", "deny", "denied", "don't", "dont", "do not", "never",
-    "negative", "wrong", "incorrect", "bad", "not that",
-})
+_APPROVAL_NO = frozenset(
+    {
+        "no",
+        "n",
+        "nope",
+        "nah",
+        "stop",
+        "cancel",
+        "abort",
+        "reject",
+        "rejected",
+        "deny",
+        "denied",
+        "don't",
+        "dont",
+        "do not",
+        "never",
+        "negative",
+        "wrong",
+        "incorrect",
+        "bad",
+        "not that",
+    }
+)
 
 
 def detect_approval_intent(text: str) -> tuple[str, str | None]:
@@ -50,9 +96,23 @@ def detect_approval_intent(text: str) -> tuple[str, str | None]:
 
     # Check for modification indicators
     modify_indicators = [
-        "but", "instead", "change", "modify", "update", "different",
-        "actually", "rather", "how about", "what if", "can you",
-        "could you", "would you", "please", "also", "add", "remove",
+        "but",
+        "instead",
+        "change",
+        "modify",
+        "update",
+        "different",
+        "actually",
+        "rather",
+        "how about",
+        "what if",
+        "can you",
+        "could you",
+        "would you",
+        "please",
+        "also",
+        "add",
+        "remove",
     ]
     for indicator in modify_indicators:
         if indicator in text_lower:

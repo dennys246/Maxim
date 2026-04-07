@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import threading
 import time
-
 
 
 class TestFailureState:
@@ -125,5 +123,3 @@ class TestConnectionConfig:
         assert config.robot_name == "test_robot"
         assert config.timeout == 60.0
         assert config.motor_failure_threshold == 5
-
-

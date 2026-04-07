@@ -67,7 +67,6 @@ def _retry_loop(info) -> int:
     """Walk through failing checks, wait for user Enter, re-run each."""
     from maxim.doctor.checks import (
         check_cloudflared,
-        check_llama_cpp_server_installed,
         check_server_reachable,
         check_tunnel_config,
         check_tunnel_config_sync,

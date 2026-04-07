@@ -27,6 +27,7 @@ from maxim.utils.logging import configure_logging, warn
 @dataclass(frozen=True, slots=True)
 class WhisperConfig:
     """Configuration for Whisper transcription."""
+
     enabled: bool = True
     model: str = "distil-large-v3"
     device: str = "auto"
@@ -146,6 +147,7 @@ def resolve_device(device: str) -> str:
     # Check for CUDA
     try:
         import torch
+
         if torch.cuda.is_available():
             return "cuda"
     except ImportError:
@@ -154,6 +156,7 @@ def resolve_device(device: str) -> str:
     # Check CTranslate2 CUDA support
     try:
         import ctranslate2
+
         if "cuda" in ctranslate2.get_supported_compute_types("cuda"):
             return "cuda"
     except Exception:
@@ -180,6 +183,7 @@ class WhisperTranscriber:
         try:
             log.debug("Importing faster_whisper.WhisperModel...")
             from faster_whisper import WhisperModel
+
             log.debug("faster_whisper imported successfully")
         except Exception as e:  # pragma: no cover
             raise ImportError(
@@ -190,7 +194,9 @@ class WhisperTranscriber:
         self.device = str(device or "cpu")
         self.compute_type = str(compute_type or "int8")
 
-        log.debug(f"Initializing WhisperModel: model={self.model_size_or_path}, device={self.device}, compute_type={self.compute_type}")
+        log.debug(
+            f"Initializing WhisperModel: model={self.model_size_or_path}, device={self.device}, compute_type={self.compute_type}"
+        )
         log.debug(f"Environment: CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<not set>')}")
         self._model = WhisperModel(self.model_size_or_path, device=self.device, compute_type=self.compute_type)
         log.debug("WhisperModel created successfully")
@@ -330,6 +336,7 @@ def transcribe_audio(
 # -----------------------------------------------------------------------------
 # File-based IPC for transcription worker
 # -----------------------------------------------------------------------------
+
 
 def create_task_file(
     chunk_dir: str,
@@ -488,6 +495,7 @@ def transcription_worker(
                 if log:
                     log.error(f"Exception during task_queue.get(): {e}")
                 import traceback
+
                 traceback.print_exc()
                 break
 
@@ -654,6 +662,7 @@ def watch_and_transcribe(
 
     # Handle signals gracefully to ensure file is synced before exit
     shutdown_requested = False
+
     def _signal_handler(signum, frame):
         nonlocal shutdown_requested
         log.info(f"Received signal {signum}, requesting shutdown")
@@ -738,7 +747,9 @@ def watch_and_transcribe(
                     fp.flush()
                     os.fsync(fp.fileno())  # Force OS to write to disk immediately
 
-                    log.debug(f"Transcribed chunk {task.get('chunk_index', -1)} in {elapsed:.2f}s: \"{result.get('text', '')[:50]}...\"")
+                    log.debug(
+                        f'Transcribed chunk {task.get("chunk_index", -1)} in {elapsed:.2f}s: "{result.get("text", "")[:50]}..."'
+                    )
 
                     # Check for shutdown after each transcription (don't wait for next loop iteration)
                     if _should_shutdown():

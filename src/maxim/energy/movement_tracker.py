@@ -40,21 +40,21 @@ class MovementEnergyConfig(EnergyConfig):
     """
 
     # Distance costs
-    angular_energy_per_degree: float = 0.02      # 50 degrees = 1 energy
-    translation_energy_per_mm: float = 0.05      # 20 mm = 1 energy
+    angular_energy_per_degree: float = 0.02  # 50 degrees = 1 energy
+    translation_energy_per_mm: float = 0.05  # 20 mm = 1 energy
 
     # Speed affects energy (faster = more expensive)
     # Energy scales with velocity^2 (kinetic energy relationship)
-    speed_multiplier_base: float = 1.0           # Baseline for normal speed
-    fast_speed_threshold: float = 100.0          # deg/sec threshold for "fast"
-    fast_speed_multiplier: float = 1.5           # Multiplier when above threshold
+    speed_multiplier_base: float = 1.0  # Baseline for normal speed
+    fast_speed_threshold: float = 100.0  # deg/sec threshold for "fast"
+    fast_speed_multiplier: float = 1.5  # Multiplier when above threshold
 
     # Duration cost (motor hold time)
-    duration_cost_per_second: float = 0.1        # Holding position has cost
+    duration_cost_per_second: float = 0.1  # Holding position has cost
 
     # Component multipliers
-    antenna_energy_multiplier: float = 0.3       # Antennas are lighter
-    body_rotation_multiplier: float = 2.0        # Body rotation is heavier
+    antenna_energy_multiplier: float = 0.3  # Antennas are lighter
+    body_rotation_multiplier: float = 2.0  # Body rotation is heavier
 
 
 class MovementEnergyTracker(EnergyTracker):
@@ -96,9 +96,9 @@ class MovementEnergyTracker(EnergyTracker):
         self._move_config = config or MovementEnergyConfig()
 
         # Movement-specific accumulators
-        self._total_angular_distance = 0.0       # Total degrees moved
-        self._total_translation_distance = 0.0   # Total mm moved
-        self._total_movement_time = 0.0          # Total seconds of movement
+        self._total_angular_distance = 0.0  # Total degrees moved
+        self._total_translation_distance = 0.0  # Total mm moved
+        self._total_movement_time = 0.0  # Total seconds of movement
         self._movement_count = 0
 
     def record(
@@ -131,14 +131,10 @@ class MovementEnergyTracker(EnergyTracker):
             EnergySignal representing this movement's energy cost.
         """
         # Calculate angular distance
-        angular_distance = math.sqrt(
-            delta_yaw**2 + delta_pitch**2 + delta_roll**2
-        )
+        angular_distance = math.sqrt(delta_yaw**2 + delta_pitch**2 + delta_roll**2)
 
         # Calculate translation distance
-        translation_distance = math.sqrt(
-            delta_x**2 + delta_y**2 + delta_z**2
-        )
+        translation_distance = math.sqrt(delta_x**2 + delta_y**2 + delta_z**2)
 
         # Calculate angular velocity for speed multiplier
         if duration_s > 0:
@@ -166,24 +162,23 @@ class MovementEnergyTracker(EnergyTracker):
             component_multiplier = 1.0
 
         # Total energy
-        total_energy = (
-            (angular_energy + translation_energy) * speed_multiplier * component_multiplier
-            + duration_energy
-        )
+        total_energy = (angular_energy + translation_energy) * speed_multiplier * component_multiplier + duration_energy
 
         # Build context
         signal_context = context or {}
-        signal_context.update({
-            "delta_yaw": round(delta_yaw, 2),
-            "delta_pitch": round(delta_pitch, 2),
-            "delta_roll": round(delta_roll, 2),
-            "angular_distance": round(angular_distance, 2),
-            "translation_distance": round(translation_distance, 2),
-            "angular_velocity": round(angular_velocity, 2),
-            "duration_s": round(duration_s, 3),
-            "movement_type": movement_type,
-            "speed_multiplier": speed_multiplier,
-        })
+        signal_context.update(
+            {
+                "delta_yaw": round(delta_yaw, 2),
+                "delta_pitch": round(delta_pitch, 2),
+                "delta_roll": round(delta_roll, 2),
+                "angular_distance": round(angular_distance, 2),
+                "translation_distance": round(translation_distance, 2),
+                "angular_velocity": round(angular_velocity, 2),
+                "duration_s": round(duration_s, 3),
+                "movement_type": movement_type,
+                "speed_multiplier": speed_multiplier,
+            }
+        )
 
         signal = EnergySignal(
             energy_type=EnergyType.MOTOR_COMMAND,
@@ -346,12 +341,8 @@ class MovementEnergyTracker(EnergyTracker):
                 "total_movement_time": round(self._total_movement_time, 2),
                 "movement_count": self._movement_count,
                 # Averages
-                "avg_angular_distance": round(
-                    self._total_angular_distance / max(self._movement_count, 1), 2
-                ),
-                "avg_movement_duration": round(
-                    self._total_movement_time / max(self._movement_count, 1), 3
-                ),
+                "avg_angular_distance": round(self._total_angular_distance / max(self._movement_count, 1), 2),
+                "avg_movement_duration": round(self._total_movement_time / max(self._movement_count, 1), 3),
             }
 
     def clear(self) -> None:

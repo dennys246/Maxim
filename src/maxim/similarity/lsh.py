@@ -60,9 +60,7 @@ class SemanticLSH:
 
         return tuple(bits)
 
-    def estimated_similarity(
-        self, hash1: tuple[int, ...], hash2: tuple[int, ...]
-    ) -> float:
+    def estimated_similarity(self, hash1: tuple[int, ...], hash2: tuple[int, ...]) -> float:
         """Estimate cosine similarity from hash Hamming distance.
 
         LSH with random hyperplanes preserves cosine similarity:
@@ -110,10 +108,7 @@ class LSHIndex:
             self._tables = [{} for _ in range(self.num_tables)]
 
         if not self._hashers:
-            self._hashers = [
-                SemanticLSH(num_planes=self.bits_per_table, seed=42 + i)
-                for i in range(self.num_tables)
-            ]
+            self._hashers = [SemanticLSH(num_planes=self.bits_per_table, seed=42 + i) for i in range(self.num_tables)]
 
     def add(self, memory_id: str, signature: SituationSignature) -> None:
         """Add a memory to the LSH index.
@@ -216,9 +211,7 @@ class LSHIndex:
         return {
             "num_tables": self.num_tables,
             "bits_per_table": self.bits_per_table,
-            "tables": [
-                {str(k): v for k, v in table.items()} for table in self._tables
-            ],
+            "tables": [{str(k): v for k, v in table.items()} for table in self._tables],
             "signatures": {k: v.to_dict() for k, v in self._signatures.items()},
         }
 
@@ -240,15 +233,9 @@ class LSHIndex:
         while len(self._tables) < self.num_tables:
             self._tables.append({})
 
-        self._hashers = [
-            SemanticLSH(num_planes=self.bits_per_table, seed=42 + i)
-            for i in range(self.num_tables)
-        ]
+        self._hashers = [SemanticLSH(num_planes=self.bits_per_table, seed=42 + i) for i in range(self.num_tables)]
 
-        self._signatures = {
-            k: SituationSignature.from_dict(v)
-            for k, v in data.get("signatures", {}).items()
-        }
+        self._signatures = {k: SituationSignature.from_dict(v) for k, v in data.get("signatures", {}).items()}
 
 
 __all__ = ["SemanticLSH", "LSHIndex"]

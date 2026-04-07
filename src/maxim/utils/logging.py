@@ -43,9 +43,10 @@ def configure_logging(
 
         abs_path = os.path.abspath(path)
         for handler in root.handlers:
-            if isinstance(handler, logging.FileHandler) and os.path.abspath(
-                getattr(handler, "baseFilename", "")
-            ) == abs_path:
+            if (
+                isinstance(handler, logging.FileHandler)
+                and os.path.abspath(getattr(handler, "baseFilename", "")) == abs_path
+            ):
                 return
 
         os.makedirs(os.path.dirname(abs_path) or ".", exist_ok=True)

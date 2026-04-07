@@ -1,4 +1,5 @@
 """LLM Agent - A flexible agent powered by llama.cpp with easy model switching."""
+
 from __future__ import annotations
 
 import threading

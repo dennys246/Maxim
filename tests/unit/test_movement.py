@@ -14,6 +14,7 @@ from maxim.conscience.movement import MovementMixin
 # Testable stub
 # ---------------------------------------------------------------------------
 
+
 class _TestMixin(MovementMixin):
     """Minimal concrete wrapper so we can instantiate the mixin."""
 
@@ -32,13 +33,16 @@ def mixin() -> _TestMixin:
 # Constants
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestConstants:
     """Verify class-level constants exist and have expected values."""
 
     def test_pixel_bounds(self):
         assert MovementMixin._LOOK_AT_PIXEL_BOUNDS == {
-            "u_min": 64, "u_max": 576,
-            "v_min": 48, "v_max": 432,
+            "u_min": 64,
+            "u_max": 576,
+            "v_min": 48,
+            "v_max": 432,
         }
 
     def test_translation_limits(self):
@@ -68,8 +72,8 @@ class TestConstants:
 # _get_workspace_limits
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestGetWorkspaceLimits:
 
+class TestGetWorkspaceLimits:
     def test_hardcoded_fallback(self, mixin: _TestMixin):
         """With _default_network=None, returns hardcoded limits."""
         limits = mixin._get_workspace_limits()
@@ -97,8 +101,7 @@ class TestGetWorkspaceLimits:
 
         class _FakeBoundsLearner:
             def get_bound(self, axis: str) -> float:
-                return {"x": 10.0, "y": 12.0, "z": 8.0,
-                        "roll": 20.0, "pitch": 25.0, "yaw": 40.0}[axis]
+                return {"x": 10.0, "y": 12.0, "z": 8.0, "roll": 20.0, "pitch": 25.0, "yaw": 40.0}[axis]
 
         class _FakeNetwork:
             _bounds_learner = _FakeBoundsLearner()
@@ -106,8 +109,12 @@ class TestGetWorkspaceLimits:
         mixin._default_network = _FakeNetwork()
         limits = mixin._get_workspace_limits()
         assert limits == {
-            "x": 10.0, "y": 12.0, "z": 8.0,
-            "roll": 20.0, "pitch": 25.0, "yaw": 40.0,
+            "x": 10.0,
+            "y": 12.0,
+            "z": 8.0,
+            "roll": 20.0,
+            "pitch": 25.0,
+            "yaw": 40.0,
         }
 
 
@@ -115,8 +122,8 @@ class TestGetWorkspaceLimits:
 # _clamp_to_workspace_6d
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestClampToWorkspace6D:
 
+class TestClampToWorkspace6D:
     def test_within_limits_unchanged(self, mixin: _TestMixin):
         """Values well within limits should pass through untouched."""
         result = mixin._clamp_to_workspace_6d(1.0, 2.0, 3.0, 5.0, 5.0, 10.0)
@@ -196,8 +203,8 @@ class TestClampToWorkspace6D:
 # _clamp_to_workspace (legacy 2D)
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestClampToWorkspace2D:
 
+class TestClampToWorkspace2D:
     def test_within_limits(self, mixin: _TestMixin):
         yaw_out, pitch_out = mixin._clamp_to_workspace(10.0, 5.0)
         assert yaw_out == pytest.approx(10.0)
@@ -225,8 +232,8 @@ class TestClampToWorkspace2D:
 # _calculate_movement_for_pixel
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestCalculateMovementForPixel:
 
+class TestCalculateMovementForPixel:
     def test_center_pixel_zero(self, mixin: _TestMixin):
         """Zero offset should produce all-zero movement."""
         result = mixin._calculate_movement_for_pixel(0.0, 0.0)

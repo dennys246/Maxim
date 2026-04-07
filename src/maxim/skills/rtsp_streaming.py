@@ -23,6 +23,7 @@ __all__ = ["RTSPStreamingSkill", "RTSPStreamingConfig"]
 @dataclass(frozen=True)
 class RTSPStreamingConfig(SkillConfig):
     """Configuration for the RTSP streaming skill."""
+
     rtsp_url: str = "rtsp://localhost:8554/reachy"
     fps: int = 20
     preset: str = "ultrafast"
@@ -86,7 +87,8 @@ class RTSPStreamingSkill(Skill):
             self._state = SkillState.ACTIVE
             log.info(
                 "RTSP stream started: %s at %d fps",
-                self._config.rtsp_url, self._config.fps,
+                self._config.rtsp_url,
+                self._config.fps,
             )
             self._last_result = SkillResult(
                 state=SkillState.ACTIVE,
@@ -100,8 +102,7 @@ class RTSPStreamingSkill(Skill):
         else:
             self._state = SkillState.FAILED
             log.error(
-                "RTSP bridge failed to start (url=%s). "
-                "Check that ffmpeg is installed and MediaMTX is reachable.",
+                "RTSP bridge failed to start (url=%s). Check that ffmpeg is installed and MediaMTX is reachable.",
                 self._config.rtsp_url,
             )
             self._last_result = SkillResult(
@@ -144,10 +145,7 @@ class RTSPStreamingSkill(Skill):
             return super().context_for_llm()  # uses _last_result.error
         if self.state != SkillState.ACTIVE:
             return "RTSP streaming skill loaded but not active."
-        return (
-            f"Streaming camera to {self._config.rtsp_url} "
-            f"at {self._config.fps} fps."
-        )
+        return f"Streaming camera to {self._config.rtsp_url} at {self._config.fps} fps."
 
     def health(self) -> dict[str, Any]:
         base = super().health()
@@ -159,12 +157,10 @@ class RTSPStreamingSkill(Skill):
 
 # --- Skill-owned tools ---
 
+
 class _StartStreamTool(Tool):
     name = "start_rtsp_stream"
-    description = (
-        "Start streaming the Reachy camera as RTSP. "
-        "Requires MediaMTX running and ffmpeg installed."
-    )
+    description = "Start streaming the Reachy camera as RTSP. Requires MediaMTX running and ffmpeg installed."
     input_schema = {
         "rtsp_url": (str, "rtsp://localhost:8554/reachy"),
         "fps": (int, 20),
@@ -190,7 +186,7 @@ class _StartStreamTool(Tool):
             return ToolOutput(
                 success=False,
                 error="Cannot start stream: skill is not attached to Maxim. "
-                      "Activate the protocol first (e.g., 'run shredder segmenter protocol').",
+                "Activate the protocol first (e.g., 'run shredder segmenter protocol').",
             )
         result = self._skill.activate(self._skill._maxim)
         if not result.ok:

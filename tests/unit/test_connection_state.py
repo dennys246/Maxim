@@ -1,12 +1,11 @@
 """Tests for ConnectionState enum and capability degradation."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
 
 from maxim.conscience.connection import (
-    ConnectionConfig,
     ConnectionState,
 )
 

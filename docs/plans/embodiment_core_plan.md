@@ -2,7 +2,8 @@
 
 > **Status:** Not started. MVP-first — validates core loop before committing to further phases.
 > **Depends on:** ATL semantic memory (exists), PainBus (exists), Hippocampus (exists), NAc (exists), ToolPainBridge (exists), PerceptSource protocol (exists), LLMRouter (exists), EnergySignal (exists).
-> **Related plans:** `embodiment_hardware_adapter_plan.md` (follow-up, after this ships), `realtime_refinement_plan.md` (reuses metric patterns), `agent_mesh.md` (adds EmbodimentCapability bullet), `dungeon_master_persona.md` (downstream consumer — DM's `CharacterState` mirrors body-state primitives established here so narrative damage flows through the same `PainDetector`/proprioception pathway as physical damage).
+> **Related plans:** `dungeon_master_persona.md` (downstream consumer — DM's `CharacterState` mirrors body-state primitives), `agent_mesh.md` (adds EmbodimentCapability).
+> **Includes:** Hardware adapter (formerly `embodiment_hardware_adapter_plan.md`) merged as Phase 3.
 
 ---
 
@@ -60,9 +61,9 @@ This fixes the biggest risk of LLM-imagined percepts (inconsistent physics at ru
 | **RuleBackend** | Deterministic physics for simple cases (joint limits, damping) | Pure Python |
 | **Embodiment** | Runtime: holds component state, dispatches to backends, tracks failures | New class |
 
-### Hardware Backend: Out of Scope
+### Hardware Backend: Phase 3
 
-Hardware integration (`HardwareBackend` wrapping `RobotController`) is **deliberately deferred** to `embodiment_hardware_adapter_plan.md`. This plan ships and validates the software stack first.
+Hardware integration (`HardwareBackend` wrapping `RobotController`) is **deferred to Phase 3** (see below). Phases 0-2 ship and validate the software stack first.
 
 ---
 
@@ -270,11 +271,9 @@ This plan dogfoods Maxim's testing harness for Maxim's own cognitive-architectur
 
 | Deferred To | Reason |
 |-------------|--------|
-| `embodiment_hardware_adapter_plan.md` | HardwareBackend adapter; separate micro-plan after core ships |
-| `realtime_refinement_plan.md` (extension) | User patience/engagement as persona sweep parameters |
+| Phase 3 (below) | HardwareBackend adapter — merged from former standalone plan |
 | `agent_mesh.md` (Phase 1 bullet) | `EmbodimentCapability` in AgentIdentity |
-| `future_plans.md` research directions | ATL Self-Extension through Mechanism Discovery |
-| Not scheduled | Federated embodiments, uncertainty-as-pain, curriculum learning, bio-multimodal sensors, distributed mesh construction |
+| `future_plans.md` research directions | ATL Self-Extension, federated embodiments, uncertainty-as-pain, curriculum learning, bio-multimodal sensors |
 
 ---
 
@@ -304,3 +303,46 @@ Everything depends on existing infrastructure:
 - `refinement_baseline.yaml` metric expectation infrastructure ✓
 
 Phase 0 can start today.
+
+---
+
+## Phase 3: Hardware Adapter (~300 LOC)
+
+> Formerly standalone plan `embodiment_hardware_adapter_plan.md`. Merged here as the natural follow-on once Phases 0-2 are validated.
+
+**Goal:** Bridge the Embodiment layer to real hardware (`RobotController` / `RobotState`) via an adapter pattern. Enables the Cerebellum to learn forward models against real sensors.
+
+**Explicitly not a refactor.** We wrap, not replace. Existing callers keep working. New callers use the unified API. ~10% cost for ~90% value, with clean rollback.
+
+**Deliverables:**
+- `src/maxim/embodiment/backends/hardware.py` (~150) — `HardwareBackend` wrapping `RobotController`
+- `Embodiment.sync_from_robot_state()` — pulls current pose into component state
+- `MovementTracker` optional `on_metrics` callback for embodiment observers
+- `scenarios/embodiment/hardware_live_baseline.yaml`
+- `tests/integration/test_embodiment_hardware.py`
+
+**Design:**
+```
+RobotController / RobotState (existing, untouched)
+        │ observed via adapter
+        ↓
+HardwareBackend (new adapter)
+  - reads RobotState.current_pose
+  - translates affordances → MotionTarget
+  - publishes sensor values to Embodiment
+        │ feeds
+        ↓
+Embodiment (from Phases 0-2)
+  - Cerebellum learns from real sensors
+  - New code reads via embodiment API
+```
+
+**Success criteria:**
+1. Live Reachy Mini test: pose readings match within 1 tick
+2. Cerebellum forward models predict head position with MAE < 5° after 50 motor commands
+3. Zero regression: all existing hardware tests pass unchanged
+
+**Risks:**
+- Sync lag (mitigation: sync in same tick as state read)
+- Double pain fire from PainDetector + Embodiment (mitigation: Embodiment defers to existing PainDetector for motor-derived pain)
+- Affordance translation ambiguity (mitigation: deterministic mapping + tests per affordance type)

@@ -37,6 +37,7 @@ def _get_robot_from_registry(
     # Look up from global registry
     try:
         from maxim.hardware import RobotRegistry
+
         registry = RobotRegistry()
 
         if robot_id is not None:
@@ -71,6 +72,7 @@ class FocusInterestsTool(Tool):
     def execute(self, **kwargs: Any) -> ToolResult:
         import time as _time
         import logging
+
         _logger = logging.getLogger(__name__)
         _exec_start = _time.time()
         _logger.info("focus_interests: starting execution")
@@ -108,14 +110,15 @@ class FocusInterestsTool(Tool):
         if target_class:
             class_name_to_id = {v.lower(): k for k, v in COCO_CLASSES.items()}
             target_class_id = class_name_to_id.get(str(target_class).lower().strip())
-            _logger.info("focus_interests: target_class='%s' mapped to class_id=%s",
-                         target_class, target_class_id)
+            _logger.info("focus_interests: target_class='%s' mapped to class_id=%s", target_class, target_class_id)
 
         paused = getattr(maxim, "_training_paused", None)
         pause_training = bool(getattr(maxim, "train", False)) and paused is not None
         lock = getattr(maxim, "_observation_lock", None)
 
-        _logger.info("focus_interests: setup took %.2fs, acquiring lock=%s", _time.time() - _exec_start, lock is not None)
+        _logger.info(
+            "focus_interests: setup took %.2fs, acquiring lock=%s", _time.time() - _exec_start, lock is not None
+        )
 
         detection_info = None
         try:
@@ -132,7 +135,9 @@ class FocusInterestsTool(Tool):
             else:
                 _logger.info("focus_interests: waiting for observation lock")
                 with lock:
-                    _logger.info("focus_interests: lock acquired in %.2fs, running detection", _time.time() - _lock_start)
+                    _logger.info(
+                        "focus_interests: lock acquired in %.2fs, running detection", _time.time() - _lock_start
+                    )
                     detection_info = passive_observation(maxim, frame, show=False, target_class_id=target_class_id)
             _logger.info("focus_interests: detection complete in %.2fs", _time.time() - _lock_start)
         except Exception as e:
@@ -152,24 +157,23 @@ class FocusInterestsTool(Tool):
             target_u = detection_info.get("target_u")
             target_v = detection_info.get("target_v")
             frame_center = detection_info.get("frame_center")
-            _logger.info("focus_interests: target_u=%s, target_v=%s, frame_center=%s",
-                         target_u, target_v, frame_center)
+            _logger.info("focus_interests: target_u=%s, target_v=%s, frame_center=%s", target_u, target_v, frame_center)
             if target_u is not None and target_v is not None and frame_center:
                 offset_x = target_u - frame_center[0]
                 offset_y = target_v - frame_center[1]
-                _logger.info("focus_interests: offset=(%d, %d), deadzone=%d",
-                             offset_x, offset_y, deadzone_px)
+                _logger.info("focus_interests: offset=(%d, %d), deadzone=%d", offset_x, offset_y, deadzone_px)
                 # Check if outside deadzone
                 if abs(offset_x) > deadzone_px or abs(offset_y) > deadzone_px:
                     # Use look_at_image which properly enqueues motor commands
                     look_at_fn = getattr(maxim, "look_at_image", None)
-                    _logger.info("focus_interests: outside deadzone, look_at_image=%s",
-                                 "available" if look_at_fn is not None else "None")
+                    _logger.info(
+                        "focus_interests: outside deadzone, look_at_image=%s",
+                        "available" if look_at_fn is not None else "None",
+                    )
                     if look_at_fn is not None:
                         try:
                             look_at_fn(target_u, target_v, duration=0.3)
-                            _logger.info("focus_interests: look_at_image called for (%d, %d)",
-                                        target_u, target_v)
+                            _logger.info("focus_interests: look_at_image called for (%d, %d)", target_u, target_v)
                             log_agentic(
                                 "focus_interests",
                                 "movement_queued",
@@ -186,11 +190,16 @@ class FocusInterestsTool(Tool):
         else:
             # Log what was returned to help debug
             if detection_info:
-                _logger.warning("focus_interests: detection_info returned but no 'detection' key, got: %s",
-                               list(detection_info.keys()))
+                _logger.warning(
+                    "focus_interests: detection_info returned but no 'detection' key, got: %s",
+                    list(detection_info.keys()),
+                )
             else:
-                _logger.warning("focus_interests: passive_observation returned None (target=%s, class_id=%s)",
-                               target_class, target_class_id)
+                _logger.warning(
+                    "focus_interests: passive_observation returned None (target=%s, class_id=%s)",
+                    target_class,
+                    target_class_id,
+                )
 
         _logger.info("focus_interests: total execution took %.2fs", _time.time() - _exec_start)
         return ToolResult(
@@ -311,9 +320,7 @@ class TrackTargetTool(Tool):
             )
 
         # Gate 1: Clamp to safe vision range
-        clamped_u, clamped_v, was_clamped = clamp_to_vision_range(
-            target_u, target_v, frame_width, frame_height
-        )
+        clamped_u, clamped_v, was_clamped = clamp_to_vision_range(target_u, target_v, frame_width, frame_height)
 
         # Gate 2: Check if movement is significant
         if not is_significant_movement(
@@ -380,6 +387,7 @@ class TrackTargetTool(Tool):
                     return ToolResult(success=False, error=f"Robot not found: {robot_id}")
 
                 from maxim.hardware import PixelTarget
+
                 target = PixelTarget(
                     u=int(clamped_u),
                     v=int(clamped_v),
@@ -563,8 +571,12 @@ class TrackTargetTool(Tool):
                             "conf": round(float(d.get("conf", 0)), 2),
                             "score": round(score_target(d), 2),
                             "center": (
-                                round((d.get("bbox_xyxy", [0, 0, 0, 0])[0] + d.get("bbox_xyxy", [0, 0, 0, 0])[2]) / 2, 1),
-                                round((d.get("bbox_xyxy", [0, 0, 0, 0])[1] + d.get("bbox_xyxy", [0, 0, 0, 0])[3]) / 2, 1),
+                                round(
+                                    (d.get("bbox_xyxy", [0, 0, 0, 0])[0] + d.get("bbox_xyxy", [0, 0, 0, 0])[2]) / 2, 1
+                                ),
+                                round(
+                                    (d.get("bbox_xyxy", [0, 0, 0, 0])[1] + d.get("bbox_xyxy", [0, 0, 0, 0])[3]) / 2, 1
+                                ),
                             ),
                         }
                         for d in target_list[:5]  # Limit to 5
@@ -803,11 +815,16 @@ class MaximCommandTool(Tool):
         note = kwargs.get("note")
 
         paused = getattr(maxim, "_training_paused", None)
-        pause_training = bool(getattr(maxim, "train", False)) and paused is not None and command in {
-            "center_vision",
-            "mark_trainable_moment",
-            "label_outcome",
-        }
+        pause_training = (
+            bool(getattr(maxim, "train", False))
+            and paused is not None
+            and command
+            in {
+                "center_vision",
+                "mark_trainable_moment",
+                "label_outcome",
+            }
+        )
 
         try:
             if pause_training:
@@ -1242,9 +1259,7 @@ class NoveltyTrackTool(Tool):
         target_u, target_v = target.center
 
         # Gate 1: Clamp to safe vision range (don't exceed head limits)
-        clamped_u, clamped_v, was_clamped = clamp_to_vision_range(
-            target_u, target_v, width, height
-        )
+        clamped_u, clamped_v, was_clamped = clamp_to_vision_range(target_u, target_v, width, height)
 
         # Gate 2: Check if movement is significant (avoid micro-movements)
         if not is_significant_movement(

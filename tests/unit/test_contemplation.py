@@ -34,12 +34,15 @@ def _make_exec_agent(**overrides: Any):
     agent.log = MagicMock()
     # Phase 2: contemplation metrics
     agent._contemplation_log = overrides.get("contemplation_log", {})
-    agent._contemplation_stats = overrides.get("contemplation_stats", {
-        "contemplated_success": 0,
-        "contemplated_total": 0,
-        "uncontemplated_success": 0,
-        "uncontemplated_total": 0,
-    })
+    agent._contemplation_stats = overrides.get(
+        "contemplation_stats",
+        {
+            "contemplated_success": 0,
+            "contemplated_total": 0,
+            "uncontemplated_success": 0,
+            "uncontemplated_total": 0,
+        },
+    )
     agent._nac = overrides.get("nac", None)
     return agent
 
@@ -178,11 +181,13 @@ class TestContemplate:
     def test_returns_draft_on_high_confidence(self):
         """If critique confidence >= threshold, accept draft."""
         agent = _make_exec_agent()
-        agent._critique_plan = MagicMock(return_value={
-            "confidence": 0.9,
-            "issues": [],
-            "suggestions": [],
-        })
+        agent._critique_plan = MagicMock(
+            return_value={
+                "confidence": 0.9,
+                "issues": [],
+                "suggestions": [],
+            }
+        )
 
         draft = {"goal_description": "test", "priority": "HIGH"}
         ctx = _make_ctx()
@@ -193,11 +198,13 @@ class TestContemplate:
     def test_refines_on_low_confidence(self):
         """If confidence < threshold and refine succeeds, return refined plan."""
         agent = _make_exec_agent()
-        agent._critique_plan = MagicMock(return_value={
-            "confidence": 0.3,
-            "issues": ["missing step"],
-            "suggestions": ["add step"],
-        })
+        agent._critique_plan = MagicMock(
+            return_value={
+                "confidence": 0.3,
+                "issues": ["missing step"],
+                "suggestions": ["add step"],
+            }
+        )
         refined = {"goal_description": "improved", "priority": "HIGH", "sub_goals": []}
         agent._refine_plan = MagicMock(return_value=refined)
 
@@ -210,11 +217,13 @@ class TestContemplate:
     def test_returns_draft_on_refine_failure(self):
         """If refine returns None (parse failure), keep draft."""
         agent = _make_exec_agent()
-        agent._critique_plan = MagicMock(return_value={
-            "confidence": 0.3,
-            "issues": ["bad"],
-            "suggestions": ["fix"],
-        })
+        agent._critique_plan = MagicMock(
+            return_value={
+                "confidence": 0.3,
+                "issues": ["bad"],
+                "suggestions": ["fix"],
+            }
+        )
         agent._refine_plan = MagicMock(return_value=None)
 
         draft = {"goal_description": "test", "priority": "HIGH"}
@@ -242,11 +251,13 @@ class TestContemplate:
         urgent_event = threading.Event()
         agent = _make_exec_agent(urgent_work_available=urgent_event)
 
-        agent._critique_plan = MagicMock(return_value={
-            "confidence": 0.3,
-            "issues": ["bad"],
-            "suggestions": ["fix"],
-        })
+        agent._critique_plan = MagicMock(
+            return_value={
+                "confidence": 0.3,
+                "issues": ["bad"],
+                "suggestions": ["fix"],
+            }
+        )
         agent._refine_plan = MagicMock()
 
         # Set the event after critique returns (simulating urgent percept during critique)
@@ -271,11 +282,13 @@ class TestContemplate:
         work_event = threading.Event()
         work_event.set()  # Normal (non-urgent) percept
         agent = _make_exec_agent(work_available=work_event)
-        agent._critique_plan = MagicMock(return_value={
-            "confidence": 0.3,
-            "issues": ["bad"],
-            "suggestions": ["fix"],
-        })
+        agent._critique_plan = MagicMock(
+            return_value={
+                "confidence": 0.3,
+                "issues": ["bad"],
+                "suggestions": ["fix"],
+            }
+        )
         refined = {"goal_description": "improved", "priority": "HIGH"}
         agent._refine_plan = MagicMock(return_value=refined)
 
@@ -289,11 +302,13 @@ class TestContemplate:
     def test_handles_non_numeric_confidence(self):
         """If critique returns non-numeric confidence, default to 1.0 (accept)."""
         agent = _make_exec_agent()
-        agent._critique_plan = MagicMock(return_value={
-            "confidence": "high",
-            "issues": [],
-            "suggestions": [],
-        })
+        agent._critique_plan = MagicMock(
+            return_value={
+                "confidence": "high",
+                "issues": [],
+                "suggestions": [],
+            }
+        )
 
         draft = {"goal_description": "test", "priority": "HIGH"}
         ctx = _make_ctx()
@@ -306,11 +321,13 @@ class TestContemplate:
         mock_router = MagicMock()
         mock_router.cfg = LLMConfig(contemplation=(("confidence_threshold", 0.95),))
         agent = _make_exec_agent(router=mock_router)
-        agent._critique_plan = MagicMock(return_value={
-            "confidence": 0.8,
-            "issues": ["could be better"],
-            "suggestions": ["improve"],
-        })
+        agent._critique_plan = MagicMock(
+            return_value={
+                "confidence": 0.8,
+                "issues": ["could be better"],
+                "suggestions": ["improve"],
+            }
+        )
         refined = {"goal_description": "improved", "priority": "HIGH"}
         agent._refine_plan = MagicMock(return_value=refined)
 
@@ -434,9 +451,7 @@ class TestContemplationLLMCall:
 
         result = agent._contemplation_llm_call(system="sys", user="usr", max_tokens=384)
         assert result == {"confidence": 0.5}
-        mock_llm.generate_json.assert_called_once_with(
-            "usr", system_prompt="sys", temperature=0.2, max_tokens=384
-        )
+        mock_llm.generate_json.assert_called_once_with("usr", system_prompt="sys", temperature=0.2, max_tokens=384)
 
     def test_returns_none_when_no_backend(self):
         agent = _make_exec_agent()
@@ -463,10 +478,12 @@ class TestContemplationConfig:
 
     def test_overrides_from_router_config(self):
         mock_router = MagicMock()
-        mock_router.cfg = LLMConfig(contemplation=(
-            ("confidence_threshold", 0.5),
-            ("critique_max_tokens", 512),
-        ))
+        mock_router.cfg = LLMConfig(
+            contemplation=(
+                ("confidence_threshold", 0.5),
+                ("critique_max_tokens", 512),
+            )
+        )
         agent = _make_exec_agent(router=mock_router)
 
         cfg = agent._contemplation_config()
@@ -515,7 +532,9 @@ class TestOnGoalCompleted:
     def test_contemplated_success_updates_stats(self):
         agent = _make_exec_agent()
         agent._contemplation_log["g1"] = {
-            "contemplated": True, "refined": True, "timestamp": 100.0,
+            "contemplated": True,
+            "refined": True,
+            "timestamp": 100.0,
         }
         agent._on_goal_completed(_make_goal_completed("g1", success=True))
 
@@ -526,7 +545,9 @@ class TestOnGoalCompleted:
     def test_contemplated_failure_updates_stats(self):
         agent = _make_exec_agent()
         agent._contemplation_log["g1"] = {
-            "contemplated": True, "refined": True, "timestamp": 100.0,
+            "contemplated": True,
+            "refined": True,
+            "timestamp": 100.0,
         }
         agent._on_goal_completed(_make_goal_completed("g1", success=False))
 
@@ -536,7 +557,9 @@ class TestOnGoalCompleted:
     def test_uncontemplated_success_updates_stats(self):
         agent = _make_exec_agent()
         agent._contemplation_log["g2"] = {
-            "contemplated": False, "refined": False, "timestamp": 100.0,
+            "contemplated": False,
+            "refined": False,
+            "timestamp": 100.0,
         }
         agent._on_goal_completed(_make_goal_completed("g2", success=True))
 
@@ -554,7 +577,9 @@ class TestOnGoalCompleted:
     def test_goal_removed_from_log_after_processing(self):
         agent = _make_exec_agent()
         agent._contemplation_log["g1"] = {
-            "contemplated": True, "refined": False, "timestamp": 100.0,
+            "contemplated": True,
+            "refined": False,
+            "timestamp": 100.0,
         }
         agent._on_goal_completed(_make_goal_completed("g1", success=True))
 
@@ -564,7 +589,9 @@ class TestOnGoalCompleted:
         mock_nac = MagicMock()
         agent = _make_exec_agent(nac=mock_nac)
         agent._contemplation_log["g1"] = {
-            "contemplated": True, "refined": True, "timestamp": 100.0,
+            "contemplated": True,
+            "refined": True,
+            "timestamp": 100.0,
         }
         agent._on_goal_completed(_make_goal_completed("g1", success=True))
 
@@ -578,7 +605,9 @@ class TestOnGoalCompleted:
         mock_nac = MagicMock()
         agent = _make_exec_agent(nac=mock_nac)
         agent._contemplation_log["g1"] = {
-            "contemplated": True, "refined": False, "timestamp": 100.0,
+            "contemplated": True,
+            "refined": False,
+            "timestamp": 100.0,
         }
         agent._on_goal_completed(_make_goal_completed("g1", success=True))
 
@@ -591,7 +620,9 @@ class TestOnGoalCompleted:
         mock_nac = MagicMock()
         agent = _make_exec_agent(nac=mock_nac)
         agent._contemplation_log["g1"] = {
-            "contemplated": True, "refined": True, "timestamp": 100.0,
+            "contemplated": True,
+            "refined": True,
+            "timestamp": 100.0,
         }
         agent._on_goal_completed(_make_goal_completed("g1", success=False))
 
@@ -603,7 +634,9 @@ class TestOnGoalCompleted:
         mock_nac.observe.side_effect = RuntimeError("NAc broke")
         agent = _make_exec_agent(nac=mock_nac)
         agent._contemplation_log["g1"] = {
-            "contemplated": True, "refined": True, "timestamp": 100.0,
+            "contemplated": True,
+            "refined": True,
+            "timestamp": 100.0,
         }
         # Should not raise
         agent._on_goal_completed(_make_goal_completed("g1", success=True))
@@ -612,7 +645,9 @@ class TestOnGoalCompleted:
     def test_no_nac_still_tracks_stats(self):
         agent = _make_exec_agent(nac=None)
         agent._contemplation_log["g1"] = {
-            "contemplated": True, "refined": True, "timestamp": 100.0,
+            "contemplated": True,
+            "refined": True,
+            "timestamp": 100.0,
         }
         agent._on_goal_completed(_make_goal_completed("g1", success=True))
         assert agent._contemplation_stats["contemplated_success"] == 1
@@ -629,38 +664,54 @@ class TestContemplationImprovementRate:
         assert result["improvement_delta"] is None
 
     def test_only_contemplated_data(self):
-        agent = _make_exec_agent(contemplation_stats={
-            "contemplated_success": 3, "contemplated_total": 4,
-            "uncontemplated_success": 0, "uncontemplated_total": 0,
-        })
+        agent = _make_exec_agent(
+            contemplation_stats={
+                "contemplated_success": 3,
+                "contemplated_total": 4,
+                "uncontemplated_success": 0,
+                "uncontemplated_total": 0,
+            }
+        )
         result = agent.contemplation_improvement_rate()
         assert result["contemplated_success_rate"] == 0.75
         assert result["uncontemplated_success_rate"] is None
         assert result["improvement_delta"] is None
 
     def test_both_categories_computes_delta(self):
-        agent = _make_exec_agent(contemplation_stats={
-            "contemplated_success": 8, "contemplated_total": 10,
-            "uncontemplated_success": 5, "uncontemplated_total": 10,
-        })
+        agent = _make_exec_agent(
+            contemplation_stats={
+                "contemplated_success": 8,
+                "contemplated_total": 10,
+                "uncontemplated_success": 5,
+                "uncontemplated_total": 10,
+            }
+        )
         result = agent.contemplation_improvement_rate()
         assert result["contemplated_success_rate"] == 0.8
         assert result["uncontemplated_success_rate"] == 0.5
         assert result["improvement_delta"] == pytest.approx(0.3)
 
     def test_negative_improvement_delta(self):
-        agent = _make_exec_agent(contemplation_stats={
-            "contemplated_success": 2, "contemplated_total": 10,
-            "uncontemplated_success": 8, "uncontemplated_total": 10,
-        })
+        agent = _make_exec_agent(
+            contemplation_stats={
+                "contemplated_success": 2,
+                "contemplated_total": 10,
+                "uncontemplated_success": 8,
+                "uncontemplated_total": 10,
+            }
+        )
         result = agent.contemplation_improvement_rate()
         assert result["improvement_delta"] == pytest.approx(-0.6)
 
     def test_totals_included(self):
-        agent = _make_exec_agent(contemplation_stats={
-            "contemplated_success": 1, "contemplated_total": 5,
-            "uncontemplated_success": 3, "uncontemplated_total": 7,
-        })
+        agent = _make_exec_agent(
+            contemplation_stats={
+                "contemplated_success": 1,
+                "contemplated_total": 5,
+                "uncontemplated_success": 3,
+                "uncontemplated_total": 7,
+            }
+        )
         result = agent.contemplation_improvement_rate()
         assert result["contemplated_total"] == 5
         assert result["uncontemplated_total"] == 7
@@ -691,7 +742,9 @@ class TestContemplationLogBounding:
         # Simulate 210 entries
         for i in range(210):
             agent._contemplation_log[f"g{i}"] = {
-                "contemplated": False, "refined": False, "timestamp": float(i),
+                "contemplated": False,
+                "refined": False,
+                "timestamp": float(i),
             }
         # Log should have 210 entries (bounding happens in _propose_goal, not here)
         assert len(agent._contemplation_log) == 210
@@ -702,8 +755,7 @@ class TestContemplationLogBounding:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _make_mock_link(predicted_value: float = 0.5, observation_count: int = 5,
-                    outcome_valence: str = "positive"):
+def _make_mock_link(predicted_value: float = 0.5, observation_count: int = 5, outcome_valence: str = "positive"):
     """Create a mock CausalLink with the fields _adaptive_thresholds reads."""
     link = MagicMock()
     link.predicted_value = predicted_value
@@ -746,7 +798,8 @@ class TestAdaptiveThresholds:
         mock_nac = MagicMock()
         # Only 4 total observations — below the 10 threshold
         mock_nac.get_links_for_event.side_effect = lambda sig: (
-            [_make_mock_link(observation_count=2)] if sig == "contemplation:refined"
+            [_make_mock_link(observation_count=2)]
+            if sig == "contemplation:refined"
             else [_make_mock_link(observation_count=2)]
         )
         agent = _make_exec_agent(nac=mock_nac)
@@ -829,12 +882,14 @@ class TestAdaptiveThresholds:
             else [_make_mock_link(predicted_value=0.3, observation_count=10)]
         )
         agent = _make_exec_agent(nac=mock_nac)
-        result = agent._adaptive_thresholds(_static_cfg(
-            adaptive_confidence_floor=0.5,
-            adaptive_confidence_ceiling=0.8,
-            adaptive_min_sub_goals_floor=2,
-            adaptive_min_sub_goals_ceiling=3,
-        ))
+        result = agent._adaptive_thresholds(
+            _static_cfg(
+                adaptive_confidence_floor=0.5,
+                adaptive_confidence_ceiling=0.8,
+                adaptive_min_sub_goals_floor=2,
+                adaptive_min_sub_goals_ceiling=3,
+            )
+        )
         assert result is not None
         # improvement = 0.6, shift = -0.6, new = 0.7 - 0.6 = 0.1 → clamped to custom floor 0.5
         assert result["confidence_threshold"] == 0.5
@@ -845,9 +900,7 @@ class TestAdaptiveThresholds:
         """When only refined links exist, compare against 0.5 baseline."""
         mock_nac = MagicMock()
         mock_nac.get_links_for_event.side_effect = lambda sig: (
-            [_make_mock_link(predicted_value=0.8, observation_count=12)]
-            if sig == "contemplation:refined"
-            else []
+            [_make_mock_link(predicted_value=0.8, observation_count=12)] if sig == "contemplation:refined" else []
         )
         agent = _make_exec_agent(nac=mock_nac)
         result = agent._adaptive_thresholds(_static_cfg())
@@ -861,8 +914,7 @@ class TestAdaptiveThresholds:
         """When only draft links exist, infer from draft success rate."""
         mock_nac = MagicMock()
         mock_nac.get_links_for_event.side_effect = lambda sig: (
-            [] if sig == "contemplation:refined"
-            else [_make_mock_link(predicted_value=0.9, observation_count=12)]
+            [] if sig == "contemplation:refined" else [_make_mock_link(predicted_value=0.9, observation_count=12)]
         )
         agent = _make_exec_agent(nac=mock_nac)
         result = agent._adaptive_thresholds(_static_cfg())
@@ -884,13 +936,9 @@ class TestAdaptiveThresholds:
     def test_adaptive_disabled_skips_adjustment(self):
         """When adaptive_enabled is false, config stays static."""
         mock_nac = MagicMock()
-        mock_nac.get_links_for_event.return_value = [
-            _make_mock_link(predicted_value=0.9, observation_count=20)
-        ]
+        mock_nac.get_links_for_event.return_value = [_make_mock_link(predicted_value=0.9, observation_count=20)]
         mock_router = MagicMock()
-        mock_router.cfg = LLMConfig(contemplation=(
-            ("adaptive_enabled", False),
-        ))
+        mock_router.cfg = LLMConfig(contemplation=(("adaptive_enabled", False),))
         agent = _make_exec_agent(nac=mock_nac, router=mock_router)
         cfg = agent._contemplation_config()
         # Adaptive is disabled, so config should use static defaults
@@ -1012,11 +1060,13 @@ class TestContemplateFast:
     def test_returns_draft_on_high_confidence(self):
         """If fast response confidence >= threshold, accept draft."""
         agent = self._make_fast_agent()
-        agent._contemplation_llm_call = MagicMock(return_value={
-            "confidence": 0.9,
-            "issues": [],
-            "plan": {"goal_description": "improved", "priority": "HIGH"},
-        })
+        agent._contemplation_llm_call = MagicMock(
+            return_value={
+                "confidence": 0.9,
+                "issues": [],
+                "plan": {"goal_description": "improved", "priority": "HIGH"},
+            }
+        )
 
         draft = {"goal_description": "test", "priority": "HIGH"}
         ctx = _make_ctx()
@@ -1028,11 +1078,13 @@ class TestContemplateFast:
         """If confidence < threshold, return the embedded plan."""
         agent = self._make_fast_agent()
         improved = {"goal_description": "improved", "priority": "HIGH", "sub_goals": []}
-        agent._contemplation_llm_call = MagicMock(return_value={
-            "confidence": 0.3,
-            "issues": ["missing step"],
-            "plan": improved,
-        })
+        agent._contemplation_llm_call = MagicMock(
+            return_value={
+                "confidence": 0.3,
+                "issues": ["missing step"],
+                "plan": improved,
+            }
+        )
 
         draft = {"goal_description": "test", "priority": "HIGH"}
         ctx = _make_ctx()
@@ -1054,9 +1106,11 @@ class TestContemplateFast:
     def test_returns_draft_on_missing_confidence(self):
         """If response lacks confidence field, return draft."""
         agent = self._make_fast_agent()
-        agent._contemplation_llm_call = MagicMock(return_value={
-            "plan": {"goal_description": "improved"},
-        })
+        agent._contemplation_llm_call = MagicMock(
+            return_value={
+                "plan": {"goal_description": "improved"},
+            }
+        )
 
         draft = {"goal_description": "test", "priority": "HIGH"}
         ctx = _make_ctx()
@@ -1067,11 +1121,13 @@ class TestContemplateFast:
     def test_returns_draft_on_missing_plan(self):
         """If response has low confidence but no valid plan, return draft."""
         agent = self._make_fast_agent()
-        agent._contemplation_llm_call = MagicMock(return_value={
-            "confidence": 0.3,
-            "issues": ["bad"],
-            "plan": None,
-        })
+        agent._contemplation_llm_call = MagicMock(
+            return_value={
+                "confidence": 0.3,
+                "issues": ["bad"],
+                "plan": None,
+            }
+        )
 
         draft = {"goal_description": "test", "priority": "HIGH"}
         ctx = _make_ctx()
@@ -1082,11 +1138,13 @@ class TestContemplateFast:
     def test_returns_draft_on_plan_missing_goal_description(self):
         """If plan dict lacks goal_description, return draft."""
         agent = self._make_fast_agent()
-        agent._contemplation_llm_call = MagicMock(return_value={
-            "confidence": 0.3,
-            "issues": ["bad"],
-            "plan": {"priority": "HIGH"},  # No goal_description
-        })
+        agent._contemplation_llm_call = MagicMock(
+            return_value={
+                "confidence": 0.3,
+                "issues": ["bad"],
+                "plan": {"priority": "HIGH"},  # No goal_description
+            }
+        )
 
         draft = {"goal_description": "test", "priority": "HIGH"}
         ctx = _make_ctx()
@@ -1114,11 +1172,13 @@ class TestContemplateFast:
         work_event.set()  # Non-urgent
         agent = self._make_fast_agent(work_available=work_event)
         improved = {"goal_description": "improved", "priority": "HIGH"}
-        agent._contemplation_llm_call = MagicMock(return_value={
-            "confidence": 0.3,
-            "issues": ["bad"],
-            "plan": improved,
-        })
+        agent._contemplation_llm_call = MagicMock(
+            return_value={
+                "confidence": 0.3,
+                "issues": ["bad"],
+                "plan": improved,
+            }
+        )
 
         draft = {"goal_description": "test", "priority": "HIGH"}
         ctx = _make_ctx()
@@ -1129,11 +1189,13 @@ class TestContemplateFast:
     def test_non_numeric_confidence_defaults_to_accept(self):
         """If confidence is non-numeric, defaults to 1.0 (accept draft)."""
         agent = self._make_fast_agent()
-        agent._contemplation_llm_call = MagicMock(return_value={
-            "confidence": "very high",
-            "issues": [],
-            "plan": {"goal_description": "improved"},
-        })
+        agent._contemplation_llm_call = MagicMock(
+            return_value={
+                "confidence": "very high",
+                "issues": [],
+                "plan": {"goal_description": "improved"},
+            }
+        )
 
         draft = {"goal_description": "test", "priority": "HIGH"}
         ctx = _make_ctx()

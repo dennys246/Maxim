@@ -9,7 +9,6 @@ Same data, different formats:
 
 from __future__ import annotations
 
-import time
 from datetime import datetime
 
 from maxim.provenance.types import (
@@ -93,13 +92,11 @@ def render_summary(
     lines.append(f"**Cycles:** {len(traces)} completed")
 
     success_count = sum(
-        1 for t in traces
-        for e in t.entries
-        if e.stage.value == "outcome" and "Success=True" in e.action
+        1 for t in traces for e in t.entries if e.stage.value == "outcome" and "Success=True" in e.action
     )
     total = len(traces)
     if total > 0:
-        lines.append(f"**Success rate:** {success_count}/{total} ({100*success_count//total}%)")
+        lines.append(f"**Success rate:** {success_count}/{total} ({100 * success_count // total}%)")
 
     lines.append("")
     lines.append("| # | Goal | Outcome | Duration |")
@@ -142,11 +139,7 @@ def render_session_report(
 
     if traces:
         first_ts = min(t.started_at for t in traces)
-        last_ts = max(
-            e.timestamp
-            for t in traces
-            for e in t.entries
-        ) if any(t.entries for t in traces) else first_ts
+        last_ts = max(e.timestamp for t in traces for e in t.entries) if any(t.entries for t in traces) else first_ts
         duration = last_ts - first_ts
         started = datetime.fromtimestamp(first_ts).strftime("%Y-%m-%d %H:%M:%S")
         mins = int(duration // 60)

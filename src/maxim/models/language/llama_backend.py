@@ -41,6 +41,7 @@ class _LlamaCppBackend:
                 if profile:
                     try:
                         from maxim.models.download import download_llm, LLM_MODELS
+
                         if profile in LLM_MODELS:
                             logger.info("Model not found at %s — downloading %s...", model_path, profile)
                             if download_llm(profile):
@@ -60,6 +61,7 @@ class _LlamaCppBackend:
             if not os.path.exists(model_path):
                 # Re-resolve: downloader may save with different casing than profile expects
                 from maxim.models.language.config import build_model_path
+
                 model_base = str(self.cfg.model_base or "").strip()
                 quant = str(self.cfg.quantization or "Q4_K_M").strip()
                 resolved = build_model_path(model_base, quant)
@@ -80,7 +82,10 @@ class _LlamaCppBackend:
                         warn(
                             "n_ctx=%d exceeds model's advertised %s context (%s). "
                             "Clamping to %d to avoid backend allocation failure.",
-                            n_ctx, hint, model_lower, limit,
+                            n_ctx,
+                            hint,
+                            model_lower,
+                            limit,
                         )
                         n_ctx = limit
                         break

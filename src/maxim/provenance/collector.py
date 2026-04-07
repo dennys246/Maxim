@@ -183,17 +183,11 @@ class ProvenanceCollector:
         if self._store and self.verbosity > ProvenanceVerbosity.OFF:
             # Collect under lock, write outside
             with self._lock:
-                unpersisted = [
-                    t
-                    for t in self._traces.values()
-                    if t.completed and not t._persisted
-                ]
+                unpersisted = [t for t in self._traces.values() if t.completed and not t._persisted]
                 stats: dict[str, Any] = {
                     "session_id": self.session_id,
                     "total_traces": len(self._traces),
-                    "completed_traces": sum(
-                        1 for t in self._traces.values() if t.completed
-                    ),
+                    "completed_traces": sum(1 for t in self._traces.values() if t.completed),
                     "total_activities": len(self._activities),
                 }
             # Write outside lock

@@ -16,18 +16,13 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.llm_worker import LLMProposal
-from maxim.agents.bus import StreamEvent
 from maxim.runtime.agent_loop import _record_outcome, _safe_agent_name
-from maxim.runtime.loop_state import _persist_state_json
 from maxim.runtime.dn_controller import DefaultNetworkController
 from maxim.runtime.loop_types import (
     ActionFollowup,
     PendingConfirmation,
-    PendingModification,
-    PlanModificationContext,
     TimeoutRetry,
 )
-from maxim.utils.logging import log_swallowed_exception, warn
 from maxim.utils.structured_logging import log_agentic
 
 if TYPE_CHECKING:
@@ -109,7 +104,10 @@ class LoopController:
         # ── Agent identity & persistence ─────────────────────────────────
         self.agent_name = _safe_agent_name(agent)
         self.state_path = os.path.join(
-            "data", "agents", self.agent_name, "runtime",
+            "data",
+            "agents",
+            self.agent_name,
+            "runtime",
             f"state_{self.run_id}.json",
         )
 
@@ -217,7 +215,6 @@ class LoopController:
 
         Returns True if the input was consumed (caller should skip further processing).
         """
-        from maxim.agents.autonomy import AutonomyLevel
         from maxim.modes.definitions import get_tool_followup_type
 
         pc = self.get_pending_confirmation()
@@ -277,7 +274,9 @@ class LoopController:
                 self.pending_action_followup = ActionFollowup(
                     tool=pc.tool_name,
                     result=confirmed_result_str,
-                    original_query=getattr(self.pending_proposal, "triggering_input", "") if self.pending_proposal else "",
+                    original_query=getattr(self.pending_proposal, "triggering_input", "")
+                    if self.pending_proposal
+                    else "",
                     followup_type=followup_type,
                     mode=current_mode,
                     timestamp=time.time(),
@@ -320,7 +319,8 @@ class LoopController:
             # Treat as modification request
             logger.info("User requested modification for action: %s", pc.tool_name)
             log_agentic(
-                "agent_loop", "user_modification_request",
+                "agent_loop",
+                "user_modification_request",
                 {"tool": pc.tool_name, "modification": cli_text[:100]},
             )
             self.state.data["pending_modification"] = {
@@ -331,7 +331,9 @@ class LoopController:
                 "timestamp": time.time(),
             }
             self.set_pending_confirmation(None)
-            print(f"📝 Modification requested - revising action based on: \"{cli_text[:80]}{'...' if len(cli_text) > 80 else ''}\"")
+            print(
+                f'📝 Modification requested - revising action based on: "{cli_text[:80]}{"..." if len(cli_text) > 80 else ""}"'
+            )
             self.clear_pending_user_input()
             return True
 
@@ -394,22 +396,31 @@ class LoopController:
 
         intent, modification = detect_approval_intent(cli_text)
         log_agentic(
-            "agent_loop", "plan_approval_check",
+            "agent_loop",
+            "plan_approval_check",
             {"input": cli_text[:50], "intent": intent, "has_pending_plan": True},
         )
 
         if intent == "approve":
             logger.info("Plan approved by user, executing stored action")
-            log_agentic("agent_loop", "plan_approved", {
-                "tool": self.pending_plan_proposal.action.get("tool_name") if self.pending_plan_proposal.action else None,
-            })
+            log_agentic(
+                "agent_loop",
+                "plan_approved",
+                {
+                    "tool": self.pending_plan_proposal.action.get("tool_name")
+                    if self.pending_plan_proposal.action
+                    else None,
+                },
+            )
             self.pending_proposal = self.pending_plan_proposal
             self.pending_plan_proposal = None
             self.state.data.pop("pending_plan_text", None)
             return True
 
         elif intent == "reject":
-            rejected_tool = self.pending_plan_proposal.action.get("tool_name") if self.pending_plan_proposal.action else "unknown"
+            rejected_tool = (
+                self.pending_plan_proposal.action.get("tool_name") if self.pending_plan_proposal.action else "unknown"
+            )
             logger.info("Plan rejected by user, cancelling")
             log_agentic("agent_loop", "plan_rejected", {"tool": rejected_tool})
 
@@ -427,9 +438,13 @@ class LoopController:
 
         elif intent == "modify":
             logger.info("Plan modification requested: %s", modification[:50] if modification else "")
-            log_agentic("agent_loop", "plan_modify_requested", {
-                "modification": modification[:100] if modification else None,
-            })
+            log_agentic(
+                "agent_loop",
+                "plan_modify_requested",
+                {
+                    "modification": modification[:100] if modification else None,
+                },
+            )
             self.state.data["plan_modification_context"] = {
                 "original_plan": self.pending_plan_proposal.plan_text,
                 "original_action": self.pending_plan_proposal.action,
@@ -457,7 +472,8 @@ class LoopController:
         self.state.data["pending_user_input_source"] = source_type
         logger.warning("Agent loop received %s input: %s", source_type, cli_text[:100])
         log_agentic(
-            "agent_loop", "user_input_received",
+            "agent_loop",
+            "user_input_received",
             {"text": cli_text[:100], "source": source_type},
         )
         if hasattr(self.memory, "record_command"):
@@ -476,7 +492,8 @@ class LoopController:
             if self.pending_prefetch.discovery_plan:
                 plan = self.pending_prefetch.discovery_plan
                 log_agentic(
-                    "agent_loop", "topic_discovery",
+                    "agent_loop",
+                    "topic_discovery",
                     {
                         "topics": plan.topic_extraction.explicit_topics[:5],
                         "dirs": plan.topic_extraction.directory_hints[:5],
@@ -495,7 +512,8 @@ class LoopController:
                 )
             if self.pending_prefetch.file_references:
                 log_agentic(
-                    "agent_loop", "prefetch_complete",
+                    "agent_loop",
+                    "prefetch_complete",
                     {
                         "files": [r.pattern for r in self.pending_prefetch.file_references[:3]],
                         "intent": self.pending_prefetch.intent,
@@ -507,7 +525,10 @@ class LoopController:
                     if self.pending_prefetch.intent == "create" and not self.pending_prefetch.file_contents:
                         logger.info("Pre-fetch: New file creation detected, skipping exploration")
                     else:
-                        logger.info("Pre-fetch: Systematic discovery complete (%d files), LLM can write directly", len(self.pending_prefetch.file_contents))
+                        logger.info(
+                            "Pre-fetch: Systematic discovery complete (%d files), LLM can write directly",
+                            len(self.pending_prefetch.file_contents),
+                        )
                 elif self.pending_prefetch.file_contents:
                     logger.info("Pre-fetch: Gathered %d files for context", len(self.pending_prefetch.file_contents))
         except Exception as e:

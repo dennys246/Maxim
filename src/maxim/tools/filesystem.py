@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 class PathValidationError(ValueError):
     """Raised when path validation fails."""
+
     pass
 
 
@@ -100,6 +101,7 @@ from maxim.utils.gpu_compat import env_flag as _env_flag
 from .base import Tool, ToolResult
 from maxim.agents.bus import ToolErrorKind
 
+
 class ReadFileTool(Tool):
     name = "read_file"
     description = "Read a file from disk"
@@ -157,7 +159,7 @@ class ReadFileTool(Tool):
                 data = f.read(read_size) + data
             lines = data.splitlines()[-n:]
             return b"\n".join(lines).decode("utf-8", errors="replace")
-        
+
 
 class WriteFileTool(Tool):
     name = "write_file"
@@ -173,19 +175,43 @@ class WriteFileTool(Tool):
 
     # Directories that should never be written to
     FORBIDDEN_PATHS: tuple[str, ...] = (
-        "/bin", "/sbin", "/usr/bin", "/usr/sbin", "/usr/local/bin",
-        "/etc", "/var", "/tmp", "/dev", "/proc", "/sys",
-        "/boot", "/lib", "/lib64", "/opt",
-        "/root", "/home",  # Protect all home directories by default
-        "/System", "/Library", "/Applications",  # macOS system paths
-        "/private/etc", "/private/var",  # macOS private paths
+        "/bin",
+        "/sbin",
+        "/usr/bin",
+        "/usr/sbin",
+        "/usr/local/bin",
+        "/etc",
+        "/var",
+        "/tmp",
+        "/dev",
+        "/proc",
+        "/sys",
+        "/boot",
+        "/lib",
+        "/lib64",
+        "/opt",
+        "/root",
+        "/home",  # Protect all home directories by default
+        "/System",
+        "/Library",
+        "/Applications",  # macOS system paths
+        "/private/etc",
+        "/private/var",  # macOS private paths
     )
 
     # File extensions that should never be written
     FORBIDDEN_EXTENSIONS: tuple[str, ...] = (
-        ".exe", ".dll", ".so", ".dylib",  # Executables/libraries
-        ".pem", ".key", ".crt", ".p12",  # Certificates/keys
-        ".env", ".credentials", ".secret",  # Secrets
+        ".exe",
+        ".dll",
+        ".so",
+        ".dylib",  # Executables/libraries
+        ".pem",
+        ".key",
+        ".crt",
+        ".p12",  # Certificates/keys
+        ".env",
+        ".credentials",
+        ".secret",  # Secrets
     )
 
     def __init__(
@@ -294,10 +320,7 @@ class WriteFileTool(Tool):
             # Write the file
             path.write_text(content, encoding="utf-8")
 
-            return ToolResult(
-                success=True,
-                output={"path": str(path), "size": len(content)}
-            )
+            return ToolResult(success=True, output={"path": str(path), "size": len(content)})
 
         except Exception as e:
             return ToolResult(success=False, error=str(e))
@@ -410,7 +433,7 @@ class ExecuteFileTool(Tool):
                     "stderr": result.stderr,
                     "returncode": result.returncode,
                     "path": str(path),
-                }
+                },
             )
 
         except subprocess.TimeoutExpired:
@@ -425,6 +448,7 @@ class EditFileTool(Tool):
     When old_text matches multiple locations, use context_before and/or
     context_after to disambiguate which occurrence to replace.
     """
+
     name = "edit_file"
     description = (
         "Replace specific text in a file. Read the file first to see current contents. "
@@ -436,7 +460,7 @@ class EditFileTool(Tool):
         "new_text": str,
         "expected_count": (int, 1),
         "context_before": (str, None),  # Text that must appear immediately before old_text
-        "context_after": (str, None),   # Text that must appear immediately after old_text
+        "context_after": (str, None),  # Text that must appear immediately after old_text
     }
 
     # Reuse WriteFileTool's safety lists
@@ -509,8 +533,12 @@ class EditFileTool(Tool):
             # is provided, search for the full pattern and replace only old_text.
             if context_before is not None or context_after is not None:
                 return self._replace_with_context(
-                    content, path, old_text, new_text,
-                    context_before or "", context_after or "",
+                    content,
+                    path,
+                    old_text,
+                    new_text,
+                    context_before or "",
+                    context_after or "",
                 )
 
             # Standard path: exact match without context
@@ -518,7 +546,7 @@ class EditFileTool(Tool):
             if count == 0:
                 lines = content.splitlines()
                 near_matches = [
-                    f"  line {i+1}: {line.strip()}"
+                    f"  line {i + 1}: {line.strip()}"
                     for i, line in enumerate(lines)
                     if old_text[:20] in line or old_text[-20:] in line
                 ]
@@ -535,14 +563,9 @@ class EditFileTool(Tool):
                 suggestions = self._suggest_context(content, old_text, match_lines)
                 suggestion_hint = ""
                 if suggestions:
-                    suggestion_hint = (
-                        "\nUse context_before/context_after to disambiguate. Suggestions:"
-                    )
+                    suggestion_hint = "\nUse context_before/context_after to disambiguate. Suggestions:"
                     for s in suggestions[:3]:
-                        suggestion_hint += (
-                            f"\n  line {s['line']}: "
-                            f'context_before="{s["before"]}"'
-                        )
+                        suggestion_hint += f'\n  line {s["line"]}: context_before="{s["before"]}"'
                 return ToolResult(
                     success=False,
                     error=f"Expected {expected} occurrences, found {count} at lines {match_lines}.{suggestion_hint}",
@@ -613,10 +636,12 @@ class EditFileTool(Tool):
                 # Truncate long lines
                 if len(prev_line) > 60:
                     prev_line = prev_line[:60] + "..."
-                suggestions.append({
-                    "line": line_num,
-                    "before": prev_line + "\n",
-                })
+                suggestions.append(
+                    {
+                        "line": line_num,
+                        "before": prev_line + "\n",
+                    }
+                )
         return suggestions
 
 
@@ -629,6 +654,7 @@ class GlobTool(Tool):
     - src/**/*.ts - TypeScript files under src/
     - data/*.{json,yaml} - JSON and YAML files in data/
     """
+
     name = "glob"
     description = "Search for files and directories using glob patterns"
     input_schema = {
@@ -682,7 +708,7 @@ class GlobTool(Tool):
 
             for match in Path(base).glob(pattern):
                 # Skip hidden files if not requested
-                if not include_hidden and any(part.startswith('.') for part in match.parts):
+                if not include_hidden and any(part.startswith(".") for part in match.parts):
                     continue
 
                 # Security: ensure match is within base directory
@@ -699,13 +725,15 @@ class GlobTool(Tool):
                 except (OSError, ValueError):
                     continue
 
-                matches.append({
-                    "path": str(match),
-                    "name": match.name,
-                    "is_file": match.is_file(),
-                    "is_dir": match.is_dir(),
-                    "size": match.stat().st_size if match.is_file() else None,
-                })
+                matches.append(
+                    {
+                        "path": str(match),
+                        "name": match.name,
+                        "is_file": match.is_file(),
+                        "is_dir": match.is_dir(),
+                        "size": match.stat().st_size if match.is_file() else None,
+                    }
+                )
 
                 if len(matches) >= max_results:
                     break
@@ -819,6 +847,7 @@ class BashTool(Tool):
     - grep pattern file: Search for patterns
     - find . -name "*.py": Find files by pattern
     """
+
     name = "bash"
     description = "Execute shell commands"
     input_schema = {
@@ -829,8 +858,13 @@ class BashTool(Tool):
 
     # Commands that are always blocked for safety
     BLOCKED_COMMANDS = {
-        "rm -rf /", "rm -rf /*", "dd", "mkfs", "fdisk",
-        ":(){:|:&};:", "chmod 777 /",  # Fork bombs, dangerous perms
+        "rm -rf /",
+        "rm -rf /*",
+        "dd",
+        "mkfs",
+        "fdisk",
+        ":(){:|:&};:",
+        "chmod 777 /",  # Fork bombs, dangerous perms
     }
 
     # Patterns that indicate dangerous operations

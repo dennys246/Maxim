@@ -107,9 +107,7 @@ class CommunicationBridge:
             )
             self.pending_outbound.remove(recent)
 
-    def _find_recent_outbound(
-        self, sender: str | None, max_age: float = 300
-    ) -> dict[str, Any] | None:
+    def _find_recent_outbound(self, sender: str | None, max_age: float = 300) -> dict[str, Any] | None:
         """Find most recent outbound message to this sender."""
         now = time.time()
         for outbound in reversed(self.pending_outbound):
@@ -170,11 +168,7 @@ class CommunicationBridge:
         """
         candidates = []
         # NAc already tracks causal links — delegate and filter for comms.
-        for candidate in self.nac.get_promotion_candidates(
-            min_confidence, min_observations
-        ):
-            if candidate.pattern_name.startswith(
-                "send_message →"
-            ) or candidate.pattern_name.startswith("call_user →"):
+        for candidate in self.nac.get_promotion_candidates(min_confidence, min_observations):
+            if candidate.pattern_name.startswith("send_message →") or candidate.pattern_name.startswith("call_user →"):
                 candidates.append(candidate)
         return candidates

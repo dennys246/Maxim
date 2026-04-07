@@ -9,7 +9,6 @@ commands in simulation would run in the user's repo directory.
 from __future__ import annotations
 
 import os
-import tempfile
 
 import pytest
 

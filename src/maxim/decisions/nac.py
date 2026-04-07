@@ -101,9 +101,7 @@ class NAc:
         self._total_observations = 0
         self._last_decay_time = time.time()
 
-    def _generate_link_id(
-        self, event_sig: str, outcome_sig: str, context_hash: str
-    ) -> str:
+    def _generate_link_id(self, event_sig: str, outcome_sig: str, context_hash: str) -> str:
         """Generate unique ID for a causal link."""
         combined = f"{event_sig}:{outcome_sig}:{context_hash}"
         return hashlib.sha256(combined.encode()).hexdigest()[:16]
@@ -182,9 +180,7 @@ class NAc:
         # temporal window) so the buffer doesn't leak in failure-heavy runs.
         stale_cutoff = now - (self.config.temporal_window_seconds * 2)
         if self._pending_events and self._pending_events[0]["timestamp"] < stale_cutoff:
-            self._pending_events = [
-                e for e in self._pending_events if e["timestamp"] >= stale_cutoff
-            ]
+            self._pending_events = [e for e in self._pending_events if e["timestamp"] >= stale_cutoff]
 
         self._pending_events.append(
             {
@@ -199,7 +195,7 @@ class NAc:
 
         # Hard cap in case of pathological bursts (keep most recent).
         if len(self._pending_events) > self.config.max_pending_events:
-            self._pending_events = self._pending_events[-self.config.max_pending_events:]
+            self._pending_events = self._pending_events[-self.config.max_pending_events :]
 
         return event_id
 
@@ -273,10 +269,7 @@ class NAc:
                 # Check if this is the attributed event
                 if attributed_event_id and event["id"] == attributed_event_id:
                     events_to_link.append((event, delta))
-                elif (
-                    attributed_event_signature
-                    and event["signature"] == attributed_event_signature
-                ):
+                elif attributed_event_signature and event["signature"] == attributed_event_signature:
                     events_to_link.append((event, delta))
                 elif not attributed_event_id and not attributed_event_signature:
                     # No specific attribution, check context similarity
@@ -297,9 +290,7 @@ class NAc:
         # Create or update causal links
         for event, delta in events_to_link:
             ctx_hash = self._hash_context(event["context"])
-            link_id = self._generate_link_id(
-                event["signature"], outcome_signature, ctx_hash
-            )
+            link_id = self._generate_link_id(event["signature"], outcome_signature, ctx_hash)
 
             # Find existing link or create new one
             event_links = self._links.setdefault(event["signature"], [])
@@ -316,9 +307,7 @@ class NAc:
                     memory_id=memory_id or event.get("memory_id"),
                     context=context,
                 )
-                existing_link.update_prediction_rw(
-                    outcome_valence, learning_rate=self.config.base_learning_rate
-                )
+                existing_link.update_prediction_rw(outcome_valence, learning_rate=self.config.base_learning_rate)
                 # Register established causal patterns in EC similarity space
                 if self._ec is not None and existing_link.observation_count >= 3:
                     self._register_causal_in_ec(existing_link)
@@ -354,12 +343,13 @@ class NAc:
         self._enforce_limits()
 
         # Log causal learning activity (P3g — Tier 2)
-        if hasattr(self, "_collector") and self._collector and \
-           self._collector.verbosity >= 1:
+        if hasattr(self, "_collector") and self._collector and self._collector.verbosity >= 1:
             from maxim.provenance.types import PipelineStage, ProvenanceRef
+
             for link in updated_links:
                 self._collector.log_activity(
-                    PipelineStage.LEARNING, "nac",
+                    PipelineStage.LEARNING,
+                    "nac",
                     f"Causal: {link.event_signature} → {link.outcome_signature} "
                     f"(V={link.predicted_value:.2f}, n={link.observation_count})",
                     sources=[ProvenanceRef("nac", link.id, link.event_signature)],
@@ -369,6 +359,7 @@ class NAc:
         for link in updated_links:
             try:
                 from maxim.simulation.sim_logger import sim_log
+
                 sim_log(
                     "NAc",
                     f"Causal link: {link.event_signature} -> {link.outcome_valence.value} "
@@ -414,9 +405,7 @@ class NAc:
                 memory_id=memory_id,
                 context=context,
             )
-            existing_link.update_prediction_rw(
-                outcome_valence, learning_rate=self.config.base_learning_rate
-            )
+            existing_link.update_prediction_rw(outcome_valence, learning_rate=self.config.base_learning_rate)
             return existing_link
         else:
             new_link = CausalLink(
@@ -474,25 +463,15 @@ class NAc:
                 sig = SituationSignature(
                     structural_hash=hash(event_signature),
                     temporal_hash=(0, 0, 0, 0),
-                    tool_name=(
-                        event_signature.split(":")[-1]
-                        if ":" in event_signature
-                        else event_signature
-                    ),
+                    tool_name=(event_signature.split(":")[-1] if ":" in event_signature else event_signature),
                     outcome_type="",
                     mode="",
-                    goal_keywords=tuple(
-                        (context or {}).get("goal", "").split()[:3]
-                    ),
-                    context_hash=(
-                        hash(frozenset(sorted((context or {}).items())))
-                        if context
-                        else 0
-                    ),
+                    goal_keywords=tuple((context or {}).get("goal", "").split()[:3]),
+                    context_hash=(hash(frozenset(sorted((context or {}).items()))) if context else 0),
                     semantic_hash=(),
                 )
                 similar = self._ec.find_similar(sig, k=10, min_similarity=0.5)
-                existing_ids = {id(l) for l in event_links}
+                existing_ids = {id(lnk) for lnk in event_links}
                 for causal_id, score in similar:
                     if causal_id.startswith("causal:"):
                         link_id = causal_id[7:]
@@ -511,9 +490,7 @@ class NAc:
                 return OutcomePrediction(
                     event_signature=event_signature,
                     predicted_outcome="unknown",
-                    predicted_valence=(
-                        Valence.POSITIVE if pred_val > 0.6 else Valence.NEUTRAL
-                    ),
+                    predicted_valence=(Valence.POSITIVE if pred_val > 0.6 else Valence.NEUTRAL),
                     predicted_value=pred_val,
                     predicted_delay=0.0,
                     delay_bounds=(0.0, 0.0),
@@ -524,11 +501,7 @@ class NAc:
             return None
 
         # Filter to high-confidence links
-        valid_links = [
-            link
-            for link in event_links
-            if link.confidence >= self.config.min_confidence_threshold
-        ]
+        valid_links = [link for link in event_links if link.confidence >= self.config.min_confidence_threshold]
 
         if not valid_links:
             return None
@@ -628,19 +601,11 @@ class NAc:
 
     def get_positive_outcomes(self, event_signature: str) -> list[CausalLink]:
         """Get links where this event led to positive outcomes."""
-        return [
-            link
-            for link in self._links.get(event_signature, [])
-            if link.outcome_valence == Valence.POSITIVE
-        ]
+        return [link for link in self._links.get(event_signature, []) if link.outcome_valence == Valence.POSITIVE]
 
     def get_negative_outcomes(self, event_signature: str) -> list[CausalLink]:
         """Get links where this event led to negative outcomes."""
-        return [
-            link
-            for link in self._links.get(event_signature, [])
-            if link.outcome_valence == Valence.NEGATIVE
-        ]
+        return [link for link in self._links.get(event_signature, []) if link.outcome_valence == Valence.NEGATIVE]
 
     def get_promotion_candidates(
         self,
@@ -706,27 +671,17 @@ class NAc:
             from maxim.similarity.signature import SituationSignature
 
             sig = SituationSignature(
-                structural_hash=hash(
-                    f"{link.event_signature}:{link.outcome_signature}"
-                ),
+                structural_hash=hash(f"{link.event_signature}:{link.outcome_signature}"),
                 temporal_hash=(0, 0, 0, 0),
                 tool_name=(
-                    link.event_signature.split(":")[-1]
-                    if ":" in link.event_signature
-                    else link.event_signature
+                    link.event_signature.split(":")[-1] if ":" in link.event_signature else link.event_signature
                 ),
                 outcome_type=link.outcome_valence.value,
                 mode="",
                 goal_keywords=(
-                    tuple(link.event_context.get("goal", "").split()[:3])
-                    if link.event_context.get("goal")
-                    else ()
+                    tuple(link.event_context.get("goal", "").split()[:3]) if link.event_context.get("goal") else ()
                 ),
-                context_hash=(
-                    hash(frozenset(sorted(link.event_context.items())))
-                    if link.event_context
-                    else 0
-                ),
+                context_hash=(hash(frozenset(sorted(link.event_context.items()))) if link.event_context else 0),
                 semantic_hash=(),
             )
             self._ec.register(f"causal:{link.id}", sig)
@@ -799,10 +754,7 @@ class NAc:
         """Save NAc state to JSON file."""
         data = {
             "version": "1.0",
-            "links": {
-                event_sig: [link.to_dict() for link in links]
-                for event_sig, links in self._links.items()
-            },
+            "links": {event_sig: [link.to_dict() for link in links] for event_sig, links in self._links.items()},
             "outcome_index": {k: list(v) for k, v in self._outcome_index.items()},
             "priors": self._priors,
             "total_observations": self._total_observations,
@@ -826,9 +778,7 @@ class NAc:
             event_sig: [CausalLink.from_dict(link_data) for link_data in links]
             for event_sig, links in data.get("links", {}).items()
         }
-        self._outcome_index = {
-            k: set(v) for k, v in data.get("outcome_index", {}).items()
-        }
+        self._outcome_index = {k: set(v) for k, v in data.get("outcome_index", {}).items()}
         self._priors = data.get("priors", {})
         self._total_observations = data.get("total_observations", 0)
 

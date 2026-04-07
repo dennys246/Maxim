@@ -18,4 +18,4 @@ class TestMemoryAgentStandalone:
         from maxim.agents.memory_agent import MemoryAgent
 
         agent = MemoryAgent.standalone()
-        assert hasattr(agent, '_bus') or hasattr(agent, 'bus')
+        assert hasattr(agent, "_bus") or hasattr(agent, "bus")

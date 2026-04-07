@@ -10,6 +10,7 @@ Respects any existing cloudflared daemon — if the systemd service
 (or another foreground invocation) is already running, we skip the
 spawn to avoid duplicate connections to Cloudflare's edge.
 """
+
 from __future__ import annotations
 
 import atexit
@@ -39,7 +40,9 @@ def cloudflared_already_running() -> bool:
     try:
         result = subprocess.run(
             ["pgrep", "-af", "cloudflared.*tunnel.*run"],
-            capture_output=True, text=True, timeout=2.0,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -95,8 +98,7 @@ class TunnelDaemonSpawner:
 
             if self._config_path is None or not self._config_path.is_file():
                 print(
-                    "[warn] TunnelDaemonSpawner: no config.yml found "
-                    "(checked ~/.cloudflared/ and /etc/cloudflared/)",
+                    "[warn] TunnelDaemonSpawner: no config.yml found (checked ~/.cloudflared/ and /etc/cloudflared/)",
                     file=sys.stderr,
                 )
                 return False
@@ -104,8 +106,10 @@ class TunnelDaemonSpawner:
             cmd = [
                 binary,
                 "--no-autoupdate",
-                "--config", str(self._config_path),
-                "tunnel", "run",
+                "--config",
+                str(self._config_path),
+                "tunnel",
+                "run",
             ]
             try:
                 self._process = subprocess.Popen(

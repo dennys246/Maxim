@@ -83,8 +83,13 @@ class TestModeInfoGetAvailableTools:
 
     def test_both_capabilities_disabled(self):
         all_tools = {
-            "read_file", "write_file", "list_directory", "execute_file",
-            "internet_search", "http_fetch", "speak",
+            "read_file",
+            "write_file",
+            "list_directory",
+            "execute_file",
+            "internet_search",
+            "http_fetch",
+            "speak",
         }
         mode = self._mode(can_access_filesystem=False, can_access_network=False)
         result = mode.get_available_tools(all_tools)
@@ -207,7 +212,10 @@ class TestLLMRequestOrdering:
         r4 = _make_request(priority=2, timestamp=1.0, request_id="mid")
         ordered = sorted([r1, r2, r3, r4])
         assert [r.request_id for r in ordered] == [
-            "high-early", "high-late", "mid", "low-late",
+            "high-early",
+            "high-late",
+            "mid",
+            "low-late",
         ]
 
     def test_equal_sort_index(self):

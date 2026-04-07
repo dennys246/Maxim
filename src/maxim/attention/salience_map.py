@@ -51,6 +51,7 @@ class SalienceMapConfig:
         min_salience_floor: Minimum salience for any cell (exploration baseline).
         temperature_default: Default sampling temperature (higher = more random).
     """
+
     grid_width: int = 16
     grid_height: int = 12
     frame_width: float = 640.0
@@ -82,6 +83,7 @@ class SalienceMapConfig:
 @dataclass
 class SalienceCell:
     """Salience state for a single grid cell."""
+
     # Component contributions (before weighting)
     novelty: float = 0.0
     social: float = 0.0
@@ -136,17 +138,14 @@ class SalienceMap:
 
         # Initialize grid
         self._grid: list[list[SalienceCell]] = [
-            [SalienceCell() for _ in range(self.config.grid_width)]
-            for _ in range(self.config.grid_height)
+            [SalienceCell() for _ in range(self.config.grid_width)] for _ in range(self.config.grid_height)
         ]
 
         # Precompute center bias for each cell
         self._precompute_center_bias()
 
         # Cache for current salience values (as numpy array for sampling)
-        self._salience_array: np.ndarray = np.zeros(
-            (self.config.grid_height, self.config.grid_width)
-        )
+        self._salience_array: np.ndarray = np.zeros((self.config.grid_height, self.config.grid_width))
 
         # Track current gaze for inhibition
         self._current_gaze_cell: tuple[int, int] | None = None
@@ -273,7 +272,8 @@ class SalienceMap:
 
             # Apply to cell and neighbors
             self._apply_detection_to_grid(
-                row, col,
+                row,
+                col,
                 novelty=novelty,
                 movement=movement,
                 is_person=is_person,
@@ -358,11 +358,11 @@ class SalienceMap:
             for col_idx, cell in enumerate(row):
                 # Weighted sum of components
                 total = (
-                    cell.novelty * cfg.novelty_weight +
-                    cell.social * cfg.social_weight +
-                    cell.movement * cfg.movement_weight +
-                    cell.unexplored * cfg.unexplored_weight +
-                    cell.center_bias * cfg.center_bias_weight
+                    cell.novelty * cfg.novelty_weight
+                    + cell.social * cfg.social_weight
+                    + cell.movement * cfg.movement_weight
+                    + cell.unexplored * cfg.unexplored_weight
+                    + cell.center_bias * cfg.center_bias_weight
                 )
 
                 # Apply floor
@@ -582,9 +582,7 @@ class SalienceMap:
             Dict with statistics.
         """
         flat = self._salience_array.flatten()
-        visited_count = sum(
-            1 for row in self._grid for cell in row if cell.visit_count > 0
-        )
+        visited_count = sum(1 for row in self._grid for cell in row if cell.visit_count > 0)
 
         return {
             "grid_size": (self.config.grid_height, self.config.grid_width),
@@ -608,7 +606,7 @@ class SalienceMap:
         lines = ["[SALIENCE MAP]"]
 
         stats = self.get_stats()
-        lines.append(f"Coverage: {stats['coverage']*100:.0f}% explored")
+        lines.append(f"Coverage: {stats['coverage'] * 100:.0f}% explored")
         lines.append(f"Salience range: {stats['min_salience']:.2f} - {stats['max_salience']:.2f}")
 
         # Top targets

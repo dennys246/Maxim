@@ -103,7 +103,7 @@ class ResultCache:
                     self._cache.items(),
                     key=lambda x: x[1].timestamp,
                 )
-                for old_key, _ in sorted_entries[:self._max_entries // 4]:
+                for old_key, _ in sorted_entries[: self._max_entries // 4]:
                     del self._cache[old_key]
 
             self._cache[key] = CacheEntry(

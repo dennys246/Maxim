@@ -56,11 +56,13 @@ def ag():
 
 @pytest.fixture
 def cross_layer(atl, ag, hippocampus):
-    return CrossLayerGraph(layers={
-        "atl": atl,
-        "angular_gyrus": ag,
-        "hippocampus": hippocampus,
-    })
+    return CrossLayerGraph(
+        layers={
+            "atl": atl,
+            "angular_gyrus": ag,
+            "hippocampus": hippocampus,
+        }
+    )
 
 
 @pytest.fixture
@@ -88,7 +90,9 @@ def builder(atl, layers):
 def builder_with_grounder(atl, layers, grounder):
     """ConceptContextBuilder with grounder."""
     return ConceptContextBuilder(
-        atl=atl, layers=layers, concept_grounder=grounder,
+        atl=atl,
+        layers=layers,
+        concept_grounder=grounder,
     )
 
 
@@ -232,8 +236,11 @@ class TestRelationshipCollection:
         kitchen = _make_concept(atl, "kitchen", "location")
 
         atl.define_relationship(
-            mug.id, kitchen.id, "RELATED_TO",
-            weight=0.7, confidence=0.8,
+            mug.id,
+            kitchen.id,
+            "RELATED_TO",
+            weight=0.7,
+            confidence=0.8,
         )
 
         result = builder.build(detected_objects=["mug"])
@@ -255,9 +262,7 @@ class TestRelationshipCollection:
 
 
 class TestAGGrounding:
-    def test_includes_stats_with_grounder(
-        self, builder_with_grounder, atl, hippocampus
-    ):
+    def test_includes_stats_with_grounder(self, builder_with_grounder, atl, hippocampus):
         concept = _make_concept(atl, "mug", "object")
 
         # Create episodes and link to concept
@@ -293,9 +298,7 @@ class TestAGGrounding:
 
 
 class TestBudget:
-    def test_budget_exhaustion_still_returns_entries(
-        self, builder_with_grounder, atl, hippocampus
-    ):
+    def test_budget_exhaustion_still_returns_entries(self, builder_with_grounder, atl, hippocampus):
         """Even with zero budget, concepts still get relationship context."""
         concept = _make_concept(atl, "mug", "object")
         for i in range(5):
@@ -312,9 +315,7 @@ class TestBudget:
         # Properties should be empty (budget exhausted before grounding)
         assert result[0]["properties"] == {}
 
-    def test_generous_budget_allows_grounding(
-        self, builder_with_grounder, atl, hippocampus
-    ):
+    def test_generous_budget_allows_grounding(self, builder_with_grounder, atl, hippocampus):
         concept = _make_concept(atl, "mug", "object")
         for i in range(5):
             ep = _make_episode(hippocampus, salience=0.8)
@@ -336,9 +337,7 @@ class TestBudget:
 
 
 class TestLayerEnrichment:
-    def test_collects_ag_math_memory(
-        self, builder_with_grounder, atl, ag, hippocampus, cross_layer
-    ):
+    def test_collects_ag_math_memory(self, builder_with_grounder, atl, ag, hippocampus, cross_layer):
         """When a concept has AG refs, enrichment should include them."""
         concept = _make_concept(atl, "mug", "object")
 
@@ -348,9 +347,7 @@ class TestLayerEnrichment:
             concept.add_ref("hippocampus", ep.id)
 
         # Ground concept to create MathMemory records
-        episodes = hippocampus.recall_by_ids(
-            list(concept.memory_refs.get("hippocampus", {}))
-        )
+        episodes = hippocampus.recall_by_ids(list(concept.memory_refs.get("hippocampus", {})))
         builder_with_grounder._concept_grounder.ground_concept(concept, episodes)
 
         # Now build context — should include layer_context from AG

@@ -38,6 +38,7 @@ def is_gpu_available() -> bool:
     """
     try:
         import torch
+
         return torch.cuda.is_available()
     except ImportError:
         return False
@@ -52,6 +53,7 @@ def is_semantic_available() -> bool:
     try:
         import sentence_transformers  # noqa: F401
         import torch  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -83,10 +85,7 @@ def _get_or_load_model(model_name: str) -> Any:
             return _sentence_transformer_model
 
         except ImportError:
-            logger.warning(
-                "sentence-transformers not installed. "
-                "Install with: pip install sentence-transformers"
-            )
+            logger.warning("sentence-transformers not installed. Install with: pip install sentence-transformers")
             return None
         except Exception as e:
             logger.error("Failed to load semantic model: %s", e)
@@ -190,14 +189,9 @@ class NeuralSemanticLSH:
 
         # Generate random hyperplanes for LSH
         np.random.seed(42)  # Reproducible hashes
-        self._random_planes = np.random.randn(
-            self.config.num_hash_bits, self.config.embedding_dim
-        )
+        self._random_planes = np.random.randn(self.config.num_hash_bits, self.config.embedding_dim)
         # Normalize planes
-        self._random_planes = (
-            self._random_planes
-            / np.linalg.norm(self._random_planes, axis=1, keepdims=True)
-        )
+        self._random_planes = self._random_planes / np.linalg.norm(self._random_planes, axis=1, keepdims=True)
 
         # Initialize async embedding if enabled
         if self.config.async_embedding:
@@ -530,11 +524,7 @@ class EmbeddingStore:
         if not self.embedder.is_healthy:
             return 0
 
-        missing = [
-            (mid, text)
-            for mid, text in memories.items()
-            if mid not in self._embeddings
-        ]
+        missing = [(mid, text) for mid, text in memories.items() if mid not in self._embeddings]
 
         if not missing:
             return 0

@@ -10,7 +10,6 @@ import threading
 import time
 
 
-
 class TestHippocampusCapture:
     """Test memory capture."""
 
@@ -158,7 +157,9 @@ class TestHippocampusRecall:
         ids = []
         for i in range(3):
             memory_id = hippocampus.capture(
-                perception=Perception(observations={"i": i}, detected_objects=[], detected_people=[], salience=0.5, novelty=0.5),
+                perception=Perception(
+                    observations={"i": i}, detected_objects=[], detected_people=[], salience=0.5, novelty=0.5
+                ),
                 context=Context(active_goal=f"goal_{i}", active_mode="explore"),
                 decision=Decision(intent={}, reasoning="", confidence=0.5),
                 action=Action(tool_name="test", tool_params={}),
@@ -230,7 +231,9 @@ class TestHippocampusSimilarRecall:
 
         # Memory with mug
         hippocampus.capture(
-            perception=Perception(observations={}, detected_objects=["mug"], detected_people=[], salience=0.5, novelty=0.5),
+            perception=Perception(
+                observations={}, detected_objects=["mug"], detected_people=[], salience=0.5, novelty=0.5
+            ),
             context=Context(active_goal="find", active_mode="explore"),
             decision=Decision(intent={}, reasoning="", confidence=0.5),
             action=Action(tool_name="look", tool_params={}),
@@ -239,7 +242,9 @@ class TestHippocampusSimilarRecall:
 
         # Memory with plate
         hippocampus.capture(
-            perception=Perception(observations={}, detected_objects=["plate"], detected_people=[], salience=0.5, novelty=0.5),
+            perception=Perception(
+                observations={}, detected_objects=["plate"], detected_people=[], salience=0.5, novelty=0.5
+            ),
             context=Context(active_goal="find", active_mode="explore"),
             decision=Decision(intent={}, reasoning="", confidence=0.5),
             action=Action(tool_name="look", tool_params={}),
@@ -389,10 +394,12 @@ class TestAsyncCapture:
     def _make_hippocampus(self):
         from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 
-        return Hippocampus(HippocampusConfig(
-            persistence_path=None,
-            enable_associative_graph=False,
-        ))
+        return Hippocampus(
+            HippocampusConfig(
+                persistence_path=None,
+                enable_associative_graph=False,
+            )
+        )
 
     def test_async_capture_processes_in_background(self):
         """capture_from_loop_async queues and processes in background."""
@@ -472,11 +479,13 @@ class TestAsyncCapture:
         """When queue is full, oldest capture is dropped."""
         from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 
-        hipp = Hippocampus(HippocampusConfig(
-            persistence_path=None,
-            enable_associative_graph=False,
-            capture_queue_size=3,  # tiny queue
-        ))
+        hipp = Hippocampus(
+            HippocampusConfig(
+                persistence_path=None,
+                enable_associative_graph=False,
+                capture_queue_size=3,  # tiny queue
+            )
+        )
         # Don't start worker — items stay queued
 
         for i in range(5):
@@ -502,11 +511,13 @@ class TestAsyncCapture:
         """flush returns False if queue doesn't drain in time."""
         from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 
-        hipp = Hippocampus(HippocampusConfig(
-            persistence_path=None,
-            enable_associative_graph=False,
-            capture_queue_size=10,
-        ))
+        hipp = Hippocampus(
+            HippocampusConfig(
+                persistence_path=None,
+                enable_associative_graph=False,
+                capture_queue_size=10,
+            )
+        )
         # Queue items but don't start worker
         for i in range(5):
             hipp.capture_from_loop_async(
@@ -563,8 +574,11 @@ class TestRecallLockSplit:
         # Capture a memory so there is something to scan
         hippocampus.capture(
             perception=Perception(
-                observations={}, detected_objects=["cup"], detected_people=[],
-                salience=0.5, novelty=0.5,
+                observations={},
+                detected_objects=["cup"],
+                detected_people=[],
+                salience=0.5,
+                novelty=0.5,
             ),
             context=Context(active_goal="test", active_mode="explore"),
             decision=Decision(intent={}, reasoning="", confidence=0.5),
@@ -575,8 +589,11 @@ class TestRecallLockSplit:
         queries_before = hippocampus._stats.get("queries", 0)
 
         query = Perception(
-            observations={}, detected_objects=["cup"], detected_people=[],
-            salience=0.5, novelty=0.5,
+            observations={},
+            detected_objects=["cup"],
+            detected_people=[],
+            salience=0.5,
+            novelty=0.5,
         )
         hippocampus.recall_similar(query)
 
@@ -590,8 +607,11 @@ class TestRecallLockSplit:
         for obj in ("cup", "plate", "fork"):
             hippocampus.capture(
                 perception=Perception(
-                    observations={}, detected_objects=[obj], detected_people=[],
-                    salience=0.5, novelty=0.5,
+                    observations={},
+                    detected_objects=[obj],
+                    detected_people=[],
+                    salience=0.5,
+                    novelty=0.5,
                 ),
                 context=Context(active_goal="test", active_mode="explore"),
                 decision=Decision(intent={}, reasoning="", confidence=0.5),
@@ -600,8 +620,11 @@ class TestRecallLockSplit:
             )
 
         query = Perception(
-            observations={}, detected_objects=["cup"], detected_people=[],
-            salience=0.5, novelty=0.5,
+            observations={},
+            detected_objects=["cup"],
+            detected_people=[],
+            salience=0.5,
+            novelty=0.5,
         )
 
         results = [None, None]

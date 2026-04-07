@@ -131,9 +131,7 @@ class CaptureManager:
         self._frame_index = 0
 
         # Create thread pool for hardware calls with timeout
-        self._hw_executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=2, thread_name_prefix="HWCapture"
-        )
+        self._hw_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="HWCapture")
 
         # Start frame capture thread
         self._frame_thread = threading.Thread(
@@ -161,8 +159,12 @@ class CaptureManager:
             )
             self._audio_thread.start()
 
-        logger.info("CaptureManager started (fps=%.1f, segmentation=%s, async=%s)",
-                    self._target_fps, self._enable_segmentation, self._enable_segmentation)
+        logger.info(
+            "CaptureManager started (fps=%.1f, segmentation=%s, async=%s)",
+            self._target_fps,
+            self._enable_segmentation,
+            self._enable_segmentation,
+        )
 
     def stop(self, timeout: float = 2.0) -> None:
         """Stop capture threads."""
@@ -517,13 +519,17 @@ class CaptureManager:
 
             # DEBUG: Log camera resolution (only occasionally to avoid spam)
             import time
+
             if not hasattr(self, "_last_res_log_time") or (time.time() - self._last_res_log_time) > 30:
                 self._last_res_log_time = time.time()
                 self._log.warning(
                     "CAPTURE_DEBUG: camera_resolution=%dx%d, target=%dx%d, scale_x=%.3f, scale_y=%.3f",
-                    frame_width, frame_height,
-                    int(self._TARGET_WIDTH), int(self._TARGET_HEIGHT),
-                    scale_x, scale_y
+                    frame_width,
+                    frame_height,
+                    int(self._TARGET_WIDTH),
+                    int(self._TARGET_HEIGHT),
+                    scale_x,
+                    scale_y,
                 )
 
             for obs in observations or []:
@@ -561,13 +567,15 @@ class CaptureManager:
                 x2 = float(obs[4]) * scale_x
                 y2 = float(obs[5]) * scale_y
 
-                detections.append({
-                    "track_id": track_id,
-                    "class_id": cls_id,
-                    "label": label,
-                    "conf": conf,
-                    "bbox_xyxy": [x1, y1, x2, y2],
-                })
+                detections.append(
+                    {
+                        "track_id": track_id,
+                        "class_id": cls_id,
+                        "label": label,
+                        "conf": conf,
+                        "bbox_xyxy": [x1, y1, x2, y2],
+                    }
+                )
 
             return detections
         except Exception as e:
@@ -620,8 +628,8 @@ class CaptureManager:
     def is_running(self) -> bool:
         """Check if capture is running."""
         return not self._stop_event.is_set() and (
-            (self._frame_thread is not None and self._frame_thread.is_alive()) or
-            (self._audio_thread is not None and self._audio_thread.is_alive())
+            (self._frame_thread is not None and self._frame_thread.is_alive())
+            or (self._audio_thread is not None and self._audio_thread.is_alive())
         )
 
     @property

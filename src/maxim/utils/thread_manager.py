@@ -103,11 +103,7 @@ class ThreadRegistry:
             List of alive thread names.
         """
         with self._lock:
-            return [
-                name
-                for name, thread in self._registry.items()
-                if thread is not None and thread.is_alive()
-            ]
+            return [name for name, thread in self._registry.items() if thread is not None and thread.is_alive()]
 
     def stop_all(self, timeout: float = 10.0) -> list[str]:
         """Stop all registered threads with force-kill fallback.
@@ -171,9 +167,7 @@ class ThreadRegistry:
                 return False
 
             # Raise SystemExit in the target thread
-            res = ctypes.pythonapi.PyThreadState_SetAsyncExc(
-                ctypes.c_ulong(thread_id), ctypes.py_object(SystemExit)
-            )
+            res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(thread_id), ctypes.py_object(SystemExit))
 
             if res == 1:
                 thread.join(timeout=0.5)

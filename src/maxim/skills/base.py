@@ -42,6 +42,7 @@ class SkillState(Enum):
         FAILED       — activate() raised, or runtime error detected
         DEACTIVATING — deactivate() in progress (cleanup, releasing resources)
     """
+
     IDLE = "idle"
     ACTIVATING = "activating"
     ACTIVE = "active"
@@ -63,6 +64,7 @@ class SkillResult:
             message="Streaming to rtsp://localhost:8554/reachy at 720p 20fps",
         )
     """
+
     state: SkillState
     message: str = ""
     error: str | None = None
@@ -76,6 +78,7 @@ class SkillResult:
 @dataclass(frozen=True)
 class SkillConfig:
     """Base config for skills. Subclass for skill-specific settings."""
+
     pass
 
 

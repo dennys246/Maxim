@@ -27,8 +27,13 @@ except ImportError:
     NeuralSemanticLSH = None  # type: ignore
     SemanticEmbedderConfig = None  # type: ignore
     EmbeddingStore = None  # type: ignore
-    def is_gpu_available() -> bool: return False  # type: ignore
-    def is_semantic_available() -> bool: return False  # type: ignore
+
+    def is_gpu_available() -> bool:
+        return False  # type: ignore
+
+    def is_semantic_available() -> bool:
+        return False  # type: ignore
+
     _SEMANTIC_AVAILABLE = False
 
 __all__ = [

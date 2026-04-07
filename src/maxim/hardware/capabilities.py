@@ -89,10 +89,7 @@ class RobotCapabilities:
 
     def has_audio(self) -> bool:
         """Convenience check for audio I/O capability."""
-        return (
-            StreamCapability.AUDIO_INPUT in self.streams
-            or StreamCapability.AUDIO_OUTPUT in self.streams
-        )
+        return StreamCapability.AUDIO_INPUT in self.streams or StreamCapability.AUDIO_OUTPUT in self.streams
 
 
 @dataclass(slots=True)
@@ -138,18 +135,22 @@ class RobotState:
 REACHY_MINI_CAPABILITIES = RobotCapabilities(
     robot_type="reachy_mini",
     robot_id="",  # Set at connection time
-    motion=frozenset({
-        MotionCapability.HEAD_PAN,
-        MotionCapability.HEAD_TILT,
-        MotionCapability.HEAD_ROLL,
-        MotionCapability.BODY_YAW,
-        MotionCapability.ANTENNA,
-    }),
-    streams=frozenset({
-        StreamCapability.VIDEO,
-        StreamCapability.AUDIO_INPUT,
-        StreamCapability.AUDIO_OUTPUT,
-    }),
+    motion=frozenset(
+        {
+            MotionCapability.HEAD_PAN,
+            MotionCapability.HEAD_TILT,
+            MotionCapability.HEAD_ROLL,
+            MotionCapability.BODY_YAW,
+            MotionCapability.ANTENNA,
+        }
+    ),
+    streams=frozenset(
+        {
+            StreamCapability.VIDEO,
+            StreamCapability.AUDIO_INPUT,
+            StreamCapability.AUDIO_OUTPUT,
+        }
+    ),
     video_resolution=(640, 480),  # Default, may vary
     audio_input_rate=48000,
     audio_output_rate=48000,
@@ -158,17 +159,21 @@ REACHY_MINI_CAPABILITIES = RobotCapabilities(
 SIMULATED_CAPABILITIES = RobotCapabilities(
     robot_type="simulated",
     robot_id="",
-    motion=frozenset({
-        MotionCapability.HEAD_PAN,
-        MotionCapability.HEAD_TILT,
-        MotionCapability.HEAD_ROLL,
-        MotionCapability.BODY_YAW,
-    }),
-    streams=frozenset({
-        StreamCapability.VIDEO,
-        StreamCapability.AUDIO_INPUT,
-        StreamCapability.AUDIO_OUTPUT,
-    }),
+    motion=frozenset(
+        {
+            MotionCapability.HEAD_PAN,
+            MotionCapability.HEAD_TILT,
+            MotionCapability.HEAD_ROLL,
+            MotionCapability.BODY_YAW,
+        }
+    ),
+    streams=frozenset(
+        {
+            StreamCapability.VIDEO,
+            StreamCapability.AUDIO_INPUT,
+            StreamCapability.AUDIO_OUTPUT,
+        }
+    ),
     video_resolution=(640, 480),
     audio_input_rate=16000,
     audio_output_rate=16000,

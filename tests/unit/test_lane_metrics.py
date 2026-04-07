@@ -1,4 +1,5 @@
 """Unit tests for Phase 8: LaneMetrics per-lane performance counters."""
+
 from __future__ import annotations
 
 import threading

@@ -79,11 +79,7 @@ class PredictedOutcome:
             "success": self.success,
             "goal": self.goal,
             "confidence": self.confidence,
-            "math_context": (
-                [m.to_dict() for m in self.math_context]
-                if self.math_context
-                else None
-            ),
+            "math_context": ([m.to_dict() for m in self.math_context] if self.math_context else None),
             "source_episode_id": self.source_episode_id,
         }
 
@@ -95,11 +91,7 @@ class PredictedOutcome:
             success=data["success"],
             goal=data.get("goal"),
             confidence=data.get("confidence", 1.0),
-            math_context=(
-                [MathContextEntry.from_dict(m) for m in math_ctx]
-                if math_ctx
-                else None
-            ),
+            math_context=([MathContextEntry.from_dict(m) for m in math_ctx] if math_ctx else None),
             source_episode_id=data.get("source_episode_id", ""),
         )
 
@@ -201,9 +193,7 @@ class MemoryRecord(ABC):
     consolidated_at: float | None = None
 
     # Thread-safe access tracking
-    _touch_lock: threading.Lock = field(
-        default_factory=threading.Lock, repr=False, compare=False
-    )
+    _touch_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def touch(self) -> None:
         """Update access tracking (called on recall). Thread-safe."""
@@ -408,9 +398,7 @@ class EpisodicMemory(MemoryRecord):
             kws.add(self.action.tool_name.lower())
         # CLI input
         if self.perception.cli_input:
-            kws.update(
-                w.lower() for w in self.perception.cli_input.split() if len(w) > 2
-            )
+            kws.update(w.lower() for w in self.perception.cli_input.split() if len(w) > 2)
         return kws
 
     def to_context_dict(self) -> dict[str, Any]:

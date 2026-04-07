@@ -1,4 +1,5 @@
 """Tests for leader-mode role detection (multi-LLM Phase 6b)."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -33,6 +34,7 @@ class TestExplicitEnvOverride:
         # Even if cloudflared exists, explicit client should win
         with patch("maxim.runtime.leader_mode._cloudflared_config_exists") as mock_cf:
             from pathlib import Path
+
             mock_cf.return_value = Path("/fake/cloudflared.yml")
             d = detect_role()
             assert d.role == "client"
@@ -53,6 +55,7 @@ class TestCloudflaredDetection:
         monkeypatch.delenv("MAXIM_ROLE", raising=False)
         with patch("maxim.runtime.leader_mode._cloudflared_config_exists") as mock_cf:
             from pathlib import Path
+
             mock_cf.return_value = Path("/home/u/.cloudflared/config.yml")
             d = detect_role()
             assert d.role == "leader"
@@ -76,4 +79,5 @@ class TestRoleDecision:
     def test_frozen(self):
         d = RoleDecision(role="solo", bind_host="127.0.0.1", reason="x")
         import dataclasses
+
         assert dataclasses.is_dataclass(d)

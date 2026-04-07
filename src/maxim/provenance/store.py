@@ -61,9 +61,7 @@ class ProvenanceStore:
         except Exception as e:
             logger.warning("Failed to persist trace: %s", e)
 
-    def write_activity(
-        self, entry: ProvenanceEntry, session_id: str
-    ) -> None:
+    def write_activity(self, entry: ProvenanceEntry, session_id: str) -> None:
         """Persist a background activity entry."""
         try:
             self._ensure_session_file(session_id)
@@ -76,9 +74,7 @@ class ProvenanceStore:
         except Exception as e:
             logger.warning("Failed to persist activity: %s", e)
 
-    def write_session_summary(
-        self, session_id: str, stats: dict[str, Any]
-    ) -> None:
+    def write_session_summary(self, session_id: str, stats: dict[str, Any]) -> None:
         """Write session summary and update manifest."""
         try:
             self._ensure_session_file(session_id)
@@ -88,9 +84,7 @@ class ProvenanceStore:
                 "ended_at": time.time(),
                 **stats,
             }
-            self._current_file.write(
-                json.dumps(summary, default=str) + "\n"
-            )
+            self._current_file.write(json.dumps(summary, default=str) + "\n")
             self._current_file.flush()
         except Exception as e:
             logger.warning("Failed to write session summary: %s", e)
@@ -108,9 +102,7 @@ class ProvenanceStore:
             self._current_file = None
             self._current_session_id = None
 
-    def _update_manifest(
-        self, session_id: str, stats: dict[str, Any]
-    ) -> None:
+    def _update_manifest(self, session_id: str, stats: dict[str, Any]) -> None:
         """Atomically update sessions.json manifest."""
         try:
             manifest = self._load_manifest()
@@ -160,9 +152,7 @@ class ProvenanceStore:
         )
         return [sid for sid, _ in sessions[:limit]]
 
-    def query_concept(
-        self, concept_name: str, max_sessions: int = 20
-    ) -> list[dict[str, Any]]:
+    def query_concept(self, concept_name: str, max_sessions: int = 20) -> list[dict[str, Any]]:
         """Find all provenance records mentioning a concept across sessions."""
         results: list[dict[str, Any]] = []
         for session_id in self.load_recent_sessions(max_sessions):
@@ -221,10 +211,7 @@ class ProvenanceStore:
             entries = [record]
         for entry in entries:
             if concept_name:
-                if any(
-                    concept_name.lower() in s.get("label", "").lower()
-                    for s in entry.get("sources", [])
-                ):
+                if any(concept_name.lower() in s.get("label", "").lower() for s in entry.get("sources", [])):
                     return True
             if tool_name and tool_name in entry.get("action", ""):
                 return True

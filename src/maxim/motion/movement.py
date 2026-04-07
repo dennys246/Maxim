@@ -8,34 +8,28 @@ from typing import Any
 
 from maxim.utils.logging import warn
 
-_DEFAULT_ACTIONS_PATH = (
-    Path(__file__).resolve().parents[3] / "data" / "motion" / "default_actions.json"
-)
+_DEFAULT_ACTIONS_PATH = Path(__file__).resolve().parents[3] / "data" / "motion" / "default_actions.json"
 
-_DEFAULT_POSES_PATH = (
-    Path(__file__).resolve().parents[3] / "data" / "motion" / "default_poses.json"
-)
+_DEFAULT_POSES_PATH = Path(__file__).resolve().parents[3] / "data" / "motion" / "default_poses.json"
 
-_DEFAULT_THRESHOLDS_PATH = (
-    Path(__file__).resolve().parents[3] / "data" / "motion" / "movement_thresholds.json"
-)
+_DEFAULT_THRESHOLDS_PATH = Path(__file__).resolve().parents[3] / "data" / "motion" / "movement_thresholds.json"
+
 
 def _to_rad(value: float, *, degrees: bool) -> float:
     value = float(value)
     return math.radians(value) if degrees else value
 
+
 def load_actions(path: Path | str = _DEFAULT_ACTIONS_PATH) -> dict[str, Any]:
-    
     actions_path = Path(path)
     with actions_path.open("r", encoding="utf-8") as file:
         actions = json.load(file)
 
     if not isinstance(actions, dict):
-        raise ValueError(
-            f"Expected top-level JSON object in {actions_path}, got {type(actions).__name__}"
-        )
+        raise ValueError(f"Expected top-level JSON object in {actions_path}, got {type(actions).__name__}")
 
     return actions
+
 
 def load_poses(path: Path | str = _DEFAULT_POSES_PATH) -> dict[str, list[float]]:
     """
@@ -98,6 +92,7 @@ def load_poses(path: Path | str = _DEFAULT_POSES_PATH) -> dict[str, list[float]]
     parsed.setdefault("centered", default["centered"])
     return parsed
 
+
 def load_movement_thresholds(path: Path | str = _DEFAULT_THRESHOLDS_PATH) -> dict[str, Any]:
     """
     Load movement thresholds (used to clamp per-call head movement steps).
@@ -154,9 +149,11 @@ def load_movement_thresholds(path: Path | str = _DEFAULT_THRESHOLDS_PATH) -> dic
         }
     }
 
+
 def move_head(mini, x, y, z, roll, pitch, yaw, duration):
     pose = head_pose_matrix(x, y, z, roll, pitch, yaw)
     mini.goto_target(head=pose, duration=duration, body_yaw=None)
+
 
 def move_antenna(
     mini,
@@ -166,8 +163,8 @@ def move_antenna(
     duration: float | None = 0.5,
     method: str = "minjerk",
     degrees: bool = True,
-    relative: bool = False) -> None:
-    
+    relative: bool = False,
+) -> None:
     if right is None and left is None:
         raise ValueError("At least one of right or left must be provided.")
 
@@ -195,29 +192,36 @@ def move_antenna(
     else:
         mini.goto_target(antennas=target, duration=float(duration), method=method, body_yaw=None)
 
+
 def head_pose_matrix(x=0, y=0, z=0, roll=0, pitch=0, yaw=0):
     # Convert units
     x, y, z = x / 1000, y / 1000, z / 1000
     roll, pitch, yaw = map(math.radians, (roll, pitch, yaw))
 
     # Rotation matrices
-    Rx = np.array([
-        [1, 0, 0],
-        [0, math.cos(roll), -math.sin(roll)],
-        [0, math.sin(roll),  math.cos(roll)],
-    ])
+    Rx = np.array(
+        [
+            [1, 0, 0],
+            [0, math.cos(roll), -math.sin(roll)],
+            [0, math.sin(roll), math.cos(roll)],
+        ]
+    )
 
-    Ry = np.array([
-        [ math.cos(pitch), 0, math.sin(pitch)],
-        [ 0,               1, 0],
-        [-math.sin(pitch), 0, math.cos(pitch)],
-    ])
+    Ry = np.array(
+        [
+            [math.cos(pitch), 0, math.sin(pitch)],
+            [0, 1, 0],
+            [-math.sin(pitch), 0, math.cos(pitch)],
+        ]
+    )
 
-    Rz = np.array([
-        [math.cos(yaw), -math.sin(yaw), 0],
-        [math.sin(yaw),  math.cos(yaw), 0],
-        [0,              0,             1],
-    ])
+    Rz = np.array(
+        [
+            [math.cos(yaw), -math.sin(yaw), 0],
+            [math.sin(yaw), math.cos(yaw), 0],
+            [0, 0, 1],
+        ]
+    )
 
     R = Rz @ Ry @ Rx
 

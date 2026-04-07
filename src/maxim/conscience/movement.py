@@ -48,16 +48,16 @@ class MovementMixin:
     # ═══════════════════════════════════════════════════════════════════════════
 
     # Translation limits (mm) - moderate range for stability
-    _SAFE_X_LIMIT = 15.0    # Forward/backward (mm) - rarely used
-    _SAFE_Y_LIMIT = 18.0    # Left/right (mm)
-    _SAFE_Z_LIMIT = 15.0    # Up/down (mm)
+    _SAFE_X_LIMIT = 15.0  # Forward/backward (mm) - rarely used
+    _SAFE_Y_LIMIT = 18.0  # Left/right (mm)
+    _SAFE_Z_LIMIT = 15.0  # Up/down (mm)
 
     # Rotation limits (degrees) - based on Reachy Mini SDK documentation
     # SDK limits: Roll/Pitch [-40°, +40°], Yaw delta max 65° (head relative to body)
     # Using slightly conservative values for safety margin
-    _SAFE_ROLL_LIMIT = 35.0   # Head tilt (degrees) - SDK allows ±40°
+    _SAFE_ROLL_LIMIT = 35.0  # Head tilt (degrees) - SDK allows ±40°
     _SAFE_PITCH_LIMIT = 35.0  # Look up/down (degrees) - SDK allows ±40°
-    _SAFE_YAW_LIMIT = 55.0    # Look left/right (degrees) - SDK allows ±65° (relative to body)
+    _SAFE_YAW_LIMIT = 55.0  # Look left/right (degrees) - SDK allows ±65° (relative to body)
 
     # Turn-around trigger settings
     # When head is at horizontal limit and target is beyond, rotate body instead
@@ -80,12 +80,12 @@ class MovementMixin:
     # The SDK's look_at_image expects coordinates in the camera's native resolution
     _SDK_IMAGE_WIDTH = 1920.0
     _SDK_IMAGE_HEIGHT = 1080.0
-    _SDK_IMAGE_CENTER_U = 960.0   # 1920 / 2
-    _SDK_IMAGE_CENTER_V = 540.0   # 1080 / 2
+    _SDK_IMAGE_CENTER_U = 960.0  # 1920 / 2
+    _SDK_IMAGE_CENTER_V = 540.0  # 1080 / 2
 
     # Camera FOV (approximate)
     _HORIZONTAL_FOV_DEG = 70.0  # degrees
-    _VERTICAL_FOV_DEG = 50.0    # degrees
+    _VERTICAL_FOV_DEG = 50.0  # degrees
 
     # ═══════════════════════════════════════════════════════════════════════════
     # BLENDED MOVEMENT PER PIXEL
@@ -94,10 +94,10 @@ class MovementMixin:
     # Rotation is now more prominent for natural head movement,
     # while translation provides the mechanical stability base.
     # For a 100px offset: ~5mm translation + ~10° rotation
-    _MM_PER_PIXEL_H = 0.05    # mm translation per pixel horizontally
-    _MM_PER_PIXEL_V = 0.04    # mm translation per pixel vertically
-    _DEG_PER_PIXEL_H = 0.10   # degrees rotation per pixel horizontally
-    _DEG_PER_PIXEL_V = 0.08   # degrees rotation per pixel vertically
+    _MM_PER_PIXEL_H = 0.05  # mm translation per pixel horizontally
+    _MM_PER_PIXEL_V = 0.04  # mm translation per pixel vertically
+    _DEG_PER_PIXEL_H = 0.10  # degrees rotation per pixel horizontally
+    _DEG_PER_PIXEL_V = 0.08  # degrees rotation per pixel vertically
 
     def center_vision(self, *, duration: Optional[float] = None) -> None:
         return self.goto_pose("centered", duration=duration)
@@ -250,7 +250,9 @@ class MovementMixin:
             if abs(yaw_deg) > 55.0:
                 self.log.warning(
                     "SYNC_DEBUG: yaw=%.1f EXCEEDS physical limit | world_yaw=%.1f body_yaw=%.1f",
-                    yaw_deg, yaw_world_deg, body_yaw_deg
+                    yaw_deg,
+                    yaw_world_deg,
+                    body_yaw_deg,
                 )
 
             # SANITY CHECK: The head physically cannot rotate more than ±55° relative
@@ -267,7 +269,11 @@ class MovementMixin:
                 clamped_yaw = max(-HEAD_YAW_PHYSICAL_LIMIT, min(HEAD_YAW_PHYSICAL_LIMIT, yaw_deg))
                 self.log.warning(
                     "Sync: clamping invalid yaw=%.1f -> %.1f (world=%.1f - body=%.1f, old=%.1f)",
-                    yaw_deg, clamped_yaw, yaw_world_deg, body_yaw_deg, old_yaw
+                    yaw_deg,
+                    clamped_yaw,
+                    yaw_world_deg,
+                    body_yaw_deg,
+                    old_yaw,
                 )
                 yaw_deg = clamped_yaw
 
@@ -275,8 +281,7 @@ class MovementMixin:
                 old_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
                 clamped_pitch = max(-HEAD_PITCH_PHYSICAL_LIMIT, min(HEAD_PITCH_PHYSICAL_LIMIT, pitch_deg))
                 self.log.warning(
-                    "Sync: clamping invalid pitch=%.1f -> %.1f (old=%.1f)",
-                    pitch_deg, clamped_pitch, old_pitch
+                    "Sync: clamping invalid pitch=%.1f -> %.1f (old=%.1f)", pitch_deg, clamped_pitch, old_pitch
                 )
                 pitch_deg = clamped_pitch
 
@@ -284,8 +289,7 @@ class MovementMixin:
                 old_roll = float(getattr(self, "roll", 0.0) or 0.0)
                 clamped_roll = max(-HEAD_ROLL_PHYSICAL_LIMIT, min(HEAD_ROLL_PHYSICAL_LIMIT, roll_deg))
                 self.log.warning(
-                    "Sync: clamping invalid roll=%.1f -> %.1f (old=%.1f)",
-                    roll_deg, clamped_roll, old_roll
+                    "Sync: clamping invalid roll=%.1f -> %.1f (old=%.1f)", roll_deg, clamped_roll, old_roll
                 )
                 roll_deg = clamped_roll
 
@@ -316,13 +320,15 @@ class MovementMixin:
             if yaw_diff > 2.0 or pitch_diff > 2.0 or y_diff > 2.0 or z_diff > 2.0:
                 self.log.debug(
                     "Sync: yaw=%.1f (body=%.1f), pitch=%.1f, y=%.1f, z=%.1f",
-                    yaw_deg, body_yaw_deg, pitch_deg, y_mm, z_mm
+                    yaw_deg,
+                    body_yaw_deg,
+                    pitch_deg,
+                    y_mm,
+                    z_mm,
                 )
 
             # Record position for pain detection (if enabled)
-            pain_bridge = getattr(
-                getattr(self, "_default_network", None), "_pain_bridge", None
-            )
+            pain_bridge = getattr(getattr(self, "_default_network", None), "_pain_bridge", None)
             if pain_bridge is not None:
                 try:
                     pain_bridge.detector.record_position(
@@ -381,8 +387,12 @@ class MovementMixin:
 
     def _clamp_to_workspace_6d(
         self,
-        x: float, y: float, z: float,
-        roll: float, pitch: float, yaw: float,
+        x: float,
+        y: float,
+        z: float,
+        roll: float,
+        pitch: float,
+        yaw: float,
     ) -> tuple[float, float, float, float, float, float]:
         """Clamp 6-DOF pose to the reachable Stewart platform workspace.
 
@@ -449,8 +459,12 @@ class MovementMixin:
         # 5. Combined constraint: only reduce rotation when translation is VERY high
         # The blended approach allows both translation and rotation to work together,
         # but we still need to prevent extreme combined positions that cause IK failure.
-        trans_usage = math.sqrt((x/x_limit)**2 + (y/y_limit)**2 + (z/z_limit)**2) if x_limit > 0 else 0
-        rot_usage = math.sqrt((roll/roll_limit)**2 + (pitch/pitch_limit)**2 + (yaw/yaw_limit)**2) if yaw_limit > 0 else 0
+        trans_usage = math.sqrt((x / x_limit) ** 2 + (y / y_limit) ** 2 + (z / z_limit) ** 2) if x_limit > 0 else 0
+        rot_usage = (
+            math.sqrt((roll / roll_limit) ** 2 + (pitch / pitch_limit) ** 2 + (yaw / yaw_limit) ** 2)
+            if yaw_limit > 0
+            else 0
+        )
 
         # Only apply combined constraint when BOTH are high
         combined = trans_usage * 0.5 + rot_usage * 0.5  # Equal weighting
@@ -463,21 +477,15 @@ class MovementMixin:
 
         return (x, y, z, roll, pitch, yaw)
 
-    def _clamp_to_workspace(
-        self, yaw: float, pitch: float
-    ) -> tuple[float, float]:
+    def _clamp_to_workspace(self, yaw: float, pitch: float) -> tuple[float, float]:
         """Legacy 2D clamp for backward compatibility.
 
         Delegates to 6D clamping with zero translation.
         """
-        _, _, _, _, pitch_out, yaw_out = self._clamp_to_workspace_6d(
-            0, 0, 0, 0, pitch, yaw
-        )
+        _, _, _, _, pitch_out, yaw_out = self._clamp_to_workspace_6d(0, 0, 0, 0, pitch, yaw)
         return (yaw_out, pitch_out)
 
-    def _calculate_movement_for_pixel(
-        self, du: float, dv: float
-    ) -> tuple[float, float, float, float, float, float]:
+    def _calculate_movement_for_pixel(self, du: float, dv: float) -> tuple[float, float, float, float, float, float]:
         """Calculate 6-DOF movement needed to center a pixel offset.
 
         Uses TRANSLATION as the primary movement mechanism:
@@ -504,7 +512,7 @@ class MovementMixin:
 
         # Rotation deltas (secondary/supplementary)
         # Same sign convention as translation
-        dyaw = -du * self._DEG_PER_PIXEL_H   # Turn right for right-of-center
+        dyaw = -du * self._DEG_PER_PIXEL_H  # Turn right for right-of-center
         dpitch = dv * self._DEG_PER_PIXEL_V  # Look down for below-center
         droll = 0.0  # Roll not used for pixel tracking
 
@@ -541,10 +549,7 @@ class MovementMixin:
             u_clamped = max(bounds["u_min"], min(bounds["u_max"], int(u)))
             v_clamped = max(bounds["v_min"], min(bounds["v_max"], int(v)))
             if u_clamped != int(u) or v_clamped != int(v):
-                self.log.debug(
-                    "Clamped look_at_image coordinates: (%d, %d) -> (%d, %d)",
-                    u, v, u_clamped, v_clamped
-                )
+                self.log.debug("Clamped look_at_image coordinates: (%d, %d) -> (%d, %d)", u, v, u_clamped, v_clamped)
             u, v = u_clamped, v_clamped
 
         position = (int(u), int(v))
@@ -560,7 +565,10 @@ class MovementMixin:
                         if reachability < min_reachability:
                             self.log.debug(
                                 "Skipping unreachable position (%d, %d) - reachability %.2f < %.2f",
-                                u, v, reachability, min_reachability
+                                u,
+                                v,
+                                reachability,
+                                min_reachability,
                             )
                             return
                     except Exception:
@@ -607,7 +615,10 @@ class MovementMixin:
                 focus_learner.record_intent(du, dv, gain_h, gain_v)
                 self.log.info(
                     "FocusLearner: raw_du=%.1f raw_dv=%.1f gain_h=%.3f gain_v=%.3f",
-                    du, dv, gain_h, gain_v,
+                    du,
+                    dv,
+                    gain_h,
+                    gain_v,
                 )
                 du = du * gain_h
                 dv = dv * gain_v
@@ -641,20 +652,18 @@ class MovementMixin:
             looking_right = cur_yaw < 0 or cur_y < 0
 
             # Get pain bridge for learned movement control
-            pain_bridge = getattr(
-                getattr(self, "_default_network", None), "_pain_bridge", None
-            )
+            pain_bridge = getattr(getattr(self, "_default_network", None), "_pain_bridge", None)
 
             # === TURN AROUND TRIGGER (LEARNED) ===
             # If movement in target direction would cause pain, rotate body instead
             import time as time_module
+
             now = time_module.time()
             can_turn = (now - self._last_turn_around_time) > self._TURN_AROUND_COOLDOWN
 
             # Check if pixel is significantly in the blocked direction
-            target_is_beyond = (
-                (looking_left and du < -self._TURN_AROUND_MIN_PIXEL_OFFSET) or
-                (looking_right and du > self._TURN_AROUND_MIN_PIXEL_OFFSET)
+            target_is_beyond = (looking_left and du < -self._TURN_AROUND_MIN_PIXEL_OFFSET) or (
+                looking_right and du > self._TURN_AROUND_MIN_PIXEL_OFFSET
             )
 
             if can_turn and target_is_beyond:
@@ -684,8 +693,7 @@ class MovementMixin:
                     turn_angle = self._TURN_AROUND_ANGLE if looking_left else -self._TURN_AROUND_ANGLE
 
                     self.log.info(
-                        "look_at_image triggering turn_around: %s, du=%.1f, turning %.0f°",
-                        turn_reason, du, turn_angle
+                        "look_at_image triggering turn_around: %s, du=%.1f, turning %.0f°", turn_reason, du, turn_angle
                     )
                     self._last_turn_around_time = now
 
@@ -779,8 +787,16 @@ class MovementMixin:
             self.log.warning(
                 "LOOK_AT_DEBUG: input_pixel=(%d,%d) center=(320,240) du=%.1f (%s) dv=%.1f "
                 "-> expect_yaw_to_%s | cur_yaw=%.1f cur_pitch=%.1f | final_pixel=(%d,%d)",
-                u, v, du, du_direction, dv, expected_yaw_change,
-                cur_yaw, cur_pitch, final_u, final_v
+                u,
+                v,
+                du,
+                du_direction,
+                dv,
+                expected_yaw_change,
+                cur_yaw,
+                cur_pitch,
+                final_u,
+                final_v,
             )
 
             # Calculate estimated commanded 6D pose for bounds learning
@@ -797,9 +813,7 @@ class MovementMixin:
 
             # Record action start for pain detection (before movement)
             # Includes target position for movement failure detection
-            pain_bridge = getattr(
-                getattr(self, "_default_network", None), "_pain_bridge", None
-            )
+            pain_bridge = getattr(getattr(self, "_default_network", None), "_pain_bridge", None)
             if pain_bridge is not None:
                 try:
                     # Create action signature from movement magnitude
@@ -827,7 +841,12 @@ class MovementMixin:
 
             self.log.warning(
                 "LOOK_AT_SDK: internal_pixel=(%d,%d) -> sdk_pixel=(%d,%d) scale=(%.2f,%.2f)",
-                final_u, final_v, sdk_u, sdk_v, sdk_scale_x, sdk_scale_y
+                final_u,
+                final_v,
+                sdk_u,
+                sdk_v,
+                sdk_scale_x,
+                sdk_scale_y,
             )
 
             # Use the SDK's look_at_image - it knows how to center on a pixel
@@ -865,8 +884,8 @@ class MovementMixin:
         roll: Optional[float] = None,
         pitch: Optional[float] = None,
         yaw: Optional[float] = None,
-        duration: Optional[float] = None) -> None:
-
+        duration: Optional[float] = None,
+    ) -> None:
         """
         Docstring for move
 
@@ -990,8 +1009,15 @@ class MovementMixin:
         }
 
         self._enqueue_motor(
-            move_head, self.mini,
-            self.x, self.y, self.z, self.roll, self.pitch, self.yaw, self.duration,
+            move_head,
+            self.mini,
+            self.x,
+            self.y,
+            self.z,
+            self.roll,
+            self.pitch,
+            self.yaw,
+            self.duration,
             _commanded_6d=commanded_6d,
         )
 
@@ -1021,11 +1047,11 @@ class MovementMixin:
         scale = 1.0 / 10.0
 
         # Translation deltas (primary) - mm
-        delta_y = float(dx) * scale * 2.0   # Horizontal: Y translation (2mm per unit)
-        delta_z = float(dy) * scale * 2.0   # Vertical: Z translation
+        delta_y = float(dx) * scale * 2.0  # Horizontal: Y translation (2mm per unit)
+        delta_z = float(dy) * scale * 2.0  # Vertical: Z translation
 
         # Rotation deltas (secondary) - degrees (smaller contribution)
-        delta_yaw = float(dx) * scale * 0.5   # Horizontal: yaw rotation (0.5° per unit)
+        delta_yaw = float(dx) * scale * 0.5  # Horizontal: yaw rotation (0.5° per unit)
         delta_pitch = float(dy) * scale * 0.5  # Vertical: pitch rotation
 
         # Get current 6D position
@@ -1050,17 +1076,17 @@ class MovementMixin:
         )
 
         self.log.debug(
-            "move_relative 6D: delta=(%.1f, %.1f) -> "
-            "trans(y=%.1f,z=%.1f) rot(yaw=%.1f,pitch=%.1f)",
-            dx, dy, new_y, new_z, new_yaw, new_pitch
+            "move_relative 6D: delta=(%.1f, %.1f) -> trans(y=%.1f,z=%.1f) rot(yaw=%.1f,pitch=%.1f)",
+            dx,
+            dy,
+            new_y,
+            new_z,
+            new_yaw,
+            new_pitch,
         )
 
         # Execute the 6D movement
-        self.move(
-            x=new_x, y=new_y, z=new_z,
-            roll=new_roll, pitch=new_pitch, yaw=new_yaw,
-            duration=duration
-        )
+        self.move(x=new_x, y=new_y, z=new_z, roll=new_roll, pitch=new_pitch, yaw=new_yaw, duration=duration)
 
     def turn_around(
         self,
@@ -1082,10 +1108,7 @@ class MovementMixin:
             recenter_head: If True, return head toward center during rotation.
         """
 
-        self.log.info(
-            "turn_around: rotating body %.0f° over %.1fs (recenter_head=%s)",
-            angle, duration, recenter_head
-        )
+        self.log.info("turn_around: rotating body %.0f° over %.1fs (recenter_head=%s)", angle, duration, recenter_head)
 
         # Clear any pending movements from the queue
         # This prevents old look_at_image commands from executing after the turn
@@ -1121,8 +1144,7 @@ class MovementMixin:
             target_body_yaw = max(-160.0, min(160.0, target_body_yaw))
 
             self.log.info(
-                "turn_around: 3-step sequence starting (body %.1f -> %.1f)",
-                current_body_yaw, target_body_yaw
+                "turn_around: 3-step sequence starting (body %.1f -> %.1f)", current_body_yaw, target_body_yaw
             )
 
             # ═══════════════════════════════════════════════════════════════════
@@ -1178,12 +1200,15 @@ class MovementMixin:
 
             self.log.info(
                 "turn_around complete: body_yaw %.1f -> %.1f (total %.1fs)",
-                current_body_yaw, target_body_yaw, step1_duration + step2_duration + 0.8
+                current_body_yaw,
+                target_body_yaw,
+                step1_duration + step2_duration + 0.8,
             )
 
         except Exception as e:
             self.log.warning("turn_around failed: %s", e)
             import traceback
+
             self.log.debug("turn_around traceback: %s", traceback.format_exc())
 
         finally:

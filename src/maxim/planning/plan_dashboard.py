@@ -48,9 +48,7 @@ class PlanDashboard:
         self._write_pending = threading.Event()
         self._clear_pending = False
         self._lock = threading.Lock()
-        self._writer_thread = threading.Thread(
-            target=self._writer_loop, daemon=True, name="plan-dashboard"
-        )
+        self._writer_thread = threading.Thread(target=self._writer_loop, daemon=True, name="plan-dashboard")
         self._writer_thread.start()
 
         # Subscribe to plan events
@@ -188,9 +186,7 @@ class PlanDashboard:
         total = len(self._phases)
         current = self._current_phase_index + 1
         replan_note = f" | Replan #{self._replan_count}" if self._replan_count else ""
-        lines.append(
-            f"Status: {self._status} | Phase {current}/{total}{started_str}{replan_note}"
-        )
+        lines.append(f"Status: {self._status} | Phase {current}/{total}{started_str}{replan_note}")
         lines.append("")
         lines.append("## Phases")
 

@@ -22,6 +22,7 @@ from maxim.salience.novelty import ThreadSafeNoveltyTracker
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def tracker():
     """Default NoveltyTracker with standard settings."""
@@ -43,6 +44,7 @@ def class_tracker():
 # ---------------------------------------------------------------------------
 # Instance-Level Novelty
 # ---------------------------------------------------------------------------
+
 
 class TestInstanceNovelty:
     """Tests for instance-level (track_id) novelty."""
@@ -86,6 +88,7 @@ class TestInstanceNovelty:
 # ---------------------------------------------------------------------------
 # Class-Level Novelty
 # ---------------------------------------------------------------------------
+
 
 class TestClassNovelty:
     """Tests for class-level (COCO class) novelty."""
@@ -152,6 +155,7 @@ class TestClassNovelty:
 # ---------------------------------------------------------------------------
 # Class Modulation of Instance Novelty
 # ---------------------------------------------------------------------------
+
 
 class TestClassModulation:
     """Tests that class novelty modulates instance novelty correctly."""
@@ -220,6 +224,7 @@ class TestClassModulation:
 # Update With Class
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateWithClass:
     """Tests for update_with_class method."""
 
@@ -250,6 +255,7 @@ class TestUpdateWithClass:
 # ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
+
 
 class TestCleanup:
     """Tests that cleanup handles class mappings correctly."""
@@ -293,6 +299,7 @@ class TestCleanup:
 # ---------------------------------------------------------------------------
 # ThreadSafeNoveltyTracker
 # ---------------------------------------------------------------------------
+
 
 class TestThreadSafeWrapper:
     """Tests for the thread-safe wrapper."""
@@ -361,6 +368,7 @@ class TestThreadSafeWrapper:
 # Full-Spectrum Detection (Integration-like)
 # ---------------------------------------------------------------------------
 
+
 class TestFullSpectrumDetection:
     """Tests verifying the full-spectrum detection design."""
 
@@ -377,8 +385,8 @@ class TestFullSpectrumDetection:
         _compute_salience (2x multiplier), NOT in NoveltyTracker.
         """
         # Both should behave identically in the tracker
-        tracker.update_with_class("person_1", 0)   # Interest class
-        tracker.update_with_class("cup_1", 41)      # Non-interest class
+        tracker.update_with_class("person_1", 0)  # Interest class
+        tracker.update_with_class("cup_1", 41)  # Non-interest class
 
         person_novelty = tracker.get_class_novelty(0)
         cup_novelty = tracker.get_class_novelty(41)
@@ -410,6 +418,7 @@ class TestFullSpectrumDetection:
 # ---------------------------------------------------------------------------
 # Sensitization
 # ---------------------------------------------------------------------------
+
 
 class TestSensitization:
     """Tests for value-gated sensitization via modulation_lookup callback."""
@@ -463,6 +472,7 @@ class TestSensitization:
 
     def test_broken_lookup_graceful_fallback(self):
         """Broken modulation lookup should fall back to unmodulated score."""
+
         def bad_lookup(_):
             raise RuntimeError("broken")
 

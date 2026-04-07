@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import subprocess
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 from maxim.agents.bus import ToolErrorKind
 from maxim.tools.git_tools import GitCommitTool, GitDiffTool
@@ -106,10 +104,7 @@ class TestGitCommitToolWithFiles:
             tool.run(message="add files", files=["a.py", "b.py"])
 
         # Check that git add was called for each file
-        add_calls = [
-            c for c in mock_run.call_args_list
-            if c[0][0][:2] == ["git", "add"]
-        ]
+        add_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["git", "add"]]
         assert len(add_calls) == 2
         assert add_calls[0][0][0][2] == "a.py"
         assert add_calls[1][0][0][2] == "b.py"

@@ -341,7 +341,6 @@ class TestHandlePhraseText:
         handler.label_outcome.assert_called_once()
 
     def test_cooldown_blocks_voice_source(self, handler):
-
         handler.phrase_responses = {
             "stop": {
                 "call": "label_outcome",

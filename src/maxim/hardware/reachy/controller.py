@@ -214,10 +214,7 @@ class ReachyMiniController(RobotController):
         try:
             # Build head target (roll, pitch, yaw)
             head_target = None
-            if any(
-                x is not None
-                for x in [target.head_roll, target.head_pitch, target.head_yaw]
-            ):
+            if any(x is not None for x in [target.head_roll, target.head_pitch, target.head_yaw]):
                 # Get current pose to fill in None values
                 current = self.get_current_pose()
                 head_target = (

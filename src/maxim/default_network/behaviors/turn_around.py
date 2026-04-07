@@ -185,9 +185,11 @@ class TurnAround(Behavior):
         duration = max(3.0, duration)  # At least 3 seconds
 
         logger.info(
-            "TurnAround triggered: yaw=%.1f (%.0f%% of limit), "
-            "interesting detection at edge, turning %.0f° over %.1fs",
-            self._head_yaw, yaw_fraction * 100, turn_amount, duration
+            "TurnAround triggered: yaw=%.1f (%.0f%% of limit), interesting detection at edge, turning %.0f° over %.1fs",
+            self._head_yaw,
+            yaw_fraction * 100,
+            turn_amount,
+            duration,
         )
 
         return self._create_proposal(

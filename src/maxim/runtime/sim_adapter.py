@@ -42,6 +42,7 @@ class SimulationAdapter:
             if sim_percept.source == "proprioception" and sim_percept.content == "pain_signal":
                 try:
                     from maxim.proprioception.pain_bus import route_pain_percept
+
                     _pb = self.pain_bus
                     if _pb is None:
                         _pb = getattr(default_network, "pain_bus", None) if default_network else None
@@ -85,17 +86,17 @@ class SimulationAdapter:
             log_agentic("agent_loop", "percept_source_exhausted", {"grace_seconds": 180})
 
         # Tighten grace if new actions appeared
-        if (self.action_sink is not None
-                and len(self.action_sink.actions) > self._grace_action_count
-                and pending_proposal is None):
+        if (
+            self.action_sink is not None
+            and len(self.action_sink.actions) > self._grace_action_count
+            and pending_proposal is None
+        ):
             self._grace_action_count = len(self.action_sink.actions)
             self._grace_deadline = min(self._grace_deadline, time.time() + 15.0)
-            log_agentic("agent_loop", "grace_tightened",
-                        {"actions": len(self.action_sink.actions)})
+            log_agentic("agent_loop", "grace_tightened", {"actions": len(self.action_sink.actions)})
 
         if time.time() >= self._grace_deadline:
-            log_agentic("agent_loop", "shutdown",
-                        {"reason": "percept_source_grace_expired"})
+            log_agentic("agent_loop", "shutdown", {"reason": "percept_source_grace_expired"})
             return True
 
         return False
@@ -104,6 +105,7 @@ class SimulationAdapter:
         """Log a simulation event via sim_logger."""
         try:
             from maxim.simulation.sim_logger import sim_log
+
             sim_log(category, msg, data)
         except Exception:
             pass
@@ -116,6 +118,7 @@ class SimulationAdapter:
         """Auto-resolve confirmation prompts using the bridge's response policy."""
         try:
             from maxim.simulation.bridge import SimulationBridge
+
             if isinstance(self.percept_source, SimulationBridge):
                 return self.percept_source.response_policy.resolve_confirmation(confirmation)
             # For ConversationalSource (non-bridge sim), check if it has a policy
@@ -131,6 +134,7 @@ class SimulationAdapter:
         """Auto-resolve plan approval prompts."""
         try:
             from maxim.simulation.bridge import SimulationBridge
+
             if isinstance(self.percept_source, SimulationBridge):
                 return self.percept_source.response_policy.resolve_plan_approval(plan_text)
         except Exception:
@@ -141,6 +145,7 @@ class SimulationAdapter:
         """Auto-resolve timeout retry prompts."""
         try:
             from maxim.simulation.bridge import SimulationBridge
+
             if isinstance(self.percept_source, SimulationBridge):
                 return self.percept_source.response_policy.resolve_timeout_retry(timeout_s)
         except Exception:

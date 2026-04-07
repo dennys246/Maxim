@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 
-
 class TestNormalizeTriggerText:
     """Test text normalization for phrase matching."""
 
@@ -99,9 +98,13 @@ class TestLoadKeyResponses:
         from maxim.utils.response_config import load_key_responses
 
         config_path = tmp_path / "key_responses.json"
-        config_path.write_text(json.dumps({
-            "x": {"call": "custom_action", "args": [1, 2]},
-        }))
+        config_path.write_text(
+            json.dumps(
+                {
+                    "x": {"call": "custom_action", "args": [1, 2]},
+                }
+            )
+        )
 
         old_env = os.environ.get("MAXIM_KEY_RESPONSES")
         try:

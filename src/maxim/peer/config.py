@@ -14,6 +14,7 @@ as defaults for the infer-lane remote config. Env vars (MAXIM_LANE_INFER_*)
 still override these — so users can do per-session tweaks without touching
 the file.
 """
+
 from __future__ import annotations
 
 import os

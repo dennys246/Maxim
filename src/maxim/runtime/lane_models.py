@@ -7,6 +7,7 @@ backend to instantiate per lane.
 This module only builds the *configuration* — it does not load models or create
 backends. That happens in Phase 3.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -24,8 +25,8 @@ ProfileAvailabilityCheck = Callable[[str], bool]
 class LaneModelConfig:
     """Resolved LLM assignment for a single WorkerPool lane."""
 
-    profile: str           # Matches a key in BUILTIN_PROFILES
-    device: str = "auto"   # "gpu" | "cpu" | "auto"
+    profile: str  # Matches a key in BUILTIN_PROFILES
+    device: str = "auto"  # "gpu" | "cpu" | "auto"
     n_gpu_layers: int = -1  # -1 = all on GPU, 0 = CPU only
 
 
@@ -35,10 +36,10 @@ class LaneModelConfig:
 #
 # Tiers are inclusive-lower, exclusive-upper: a 15.9GB card lands in the >=8 tier.
 _INFER_VRAM_TIERS: tuple[tuple[float, str], ...] = (
-    (14.0, "llama-2-13b-chat"),        # 13B Q4 ~8GB, leaves headroom on 16GB cards
-    (8.0, "llama-3-8b-instruct"),      # 8B Q4 ~5GB
+    (14.0, "llama-2-13b-chat"),  # 13B Q4 ~8GB, leaves headroom on 16GB cards
+    (8.0, "llama-3-8b-instruct"),  # 8B Q4 ~5GB
     (4.0, "mistral-7b-instruct-v0.2"),  # 7B Q4 ~4.5GB
-    (0.0, "smollm-1.7b-instruct"),      # 1.7B Q4 ~1GB, CPU fallback
+    (0.0, "smollm-1.7b-instruct"),  # 1.7B Q4 ~1GB, CPU fallback
 )
 
 # RAM threshold (GB) below which the review lane shares the infer backend

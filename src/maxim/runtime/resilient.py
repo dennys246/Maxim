@@ -55,7 +55,8 @@ def resilient(tier: str = "important", operation: str = "") -> Callable[[F], F]:
                 logger.log(level, "%s failed: %s", op_name, e)
                 if tier in ("critical",):
                     log_agentic(
-                        "agent_loop", "error",
+                        "agent_loop",
+                        "error",
                         {"context": op_name, "error": str(e)[:200]},
                         level="WARNING",
                     )

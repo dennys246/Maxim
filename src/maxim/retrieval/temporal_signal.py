@@ -249,9 +249,7 @@ class TemporalReferenceSignal(RetrievalSignal):
                 days_since = (now.weekday() - day_num) % 7
                 if days_since == 0:
                     days_since = 7  # Use last week if today is the day
-                target_date = now.replace(
-                    hour=12, minute=0, second=0, microsecond=0
-                )
+                target_date = now.replace(hour=12, minute=0, second=0, microsecond=0)
                 from datetime import timedelta
 
                 target_date = target_date - timedelta(days=days_since)
@@ -281,9 +279,7 @@ class TemporalReferenceSignal(RetrievalSignal):
             if period in text_lower:
                 # Use middle of the period
                 mid_hour = (start_hour + end_hour) // 2
-                target_date = now.replace(
-                    hour=mid_hour, minute=0, second=0, microsecond=0
-                )
+                target_date = now.replace(hour=mid_hour, minute=0, second=0, microsecond=0)
 
                 references.append(
                     ParsedTemporalReference(
@@ -378,9 +374,7 @@ class TemporalReferenceSignal(RetrievalSignal):
             ),
             (
                 "last_day",
-                re.compile(
-                    r"\blast\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"
-                ),
+                re.compile(r"\blast\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"),
                 lambda m, n: handle_last_day(m[0] if isinstance(m, tuple) else m, n),
             ),
         ]
@@ -389,15 +383,9 @@ class TemporalReferenceSignal(RetrievalSignal):
         """Classify the type of temporal reference."""
         phrase_lower = phrase.lower()
 
-        if any(
-            word in phrase_lower
-            for word in ["every", "always", "usually", "often", "mornings", "evenings"]
-        ):
+        if any(word in phrase_lower for word in ["every", "always", "usually", "often", "mornings", "evenings"]):
             return "recurring"
-        elif any(
-            word in phrase_lower
-            for word in ["ago", "last", "yesterday", "previous", "before"]
-        ):
+        elif any(word in phrase_lower for word in ["ago", "last", "yesterday", "previous", "before"]):
             return "relative"
         else:
             return "absolute"

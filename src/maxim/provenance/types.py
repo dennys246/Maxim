@@ -50,10 +50,7 @@ class ProvenanceRef:
     confidence: float = 1.0
 
     def __str__(self) -> str:
-        return (
-            f"`{self.layer}:{self.id[:8]}` {self.label} "
-            f"(confidence: {self.confidence:.2f})"
-        )
+        return f"`{self.layer}:{self.id[:8]}` {self.label} (confidence: {self.confidence:.2f})"
 
     def short(self) -> str:
         """Compact format for verbosity=1."""
@@ -128,9 +125,7 @@ class ProvenanceTrace:
     entries: list[ProvenanceEntry] = field(default_factory=list)
     completed: bool = False
     _persisted: bool = field(default=False, repr=False, compare=False)
-    _lock: threading.Lock = field(
-        default_factory=threading.Lock, repr=False, compare=False
-    )
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def add(
         self,
@@ -178,7 +173,5 @@ class ProvenanceTrace:
             started_at=data["started_at"],
             completed=data.get("completed", True),
         )
-        trace.entries = [
-            ProvenanceEntry.from_dict(e) for e in data.get("entries", [])
-        ]
+        trace.entries = [ProvenanceEntry.from_dict(e) for e in data.get("entries", [])]
         return trace

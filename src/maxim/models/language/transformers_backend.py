@@ -117,9 +117,7 @@ class _PyTorchTransformersBackend:
 
         # Require pinned revision for trust_remote_code
         if not self._revision:
-            logger.warning(
-                f"No revision pinned for {model_id}, blocking trust_remote_code"
-            )
+            logger.warning(f"No revision pinned for {model_id}, blocking trust_remote_code")
             return False
 
         try:
@@ -195,9 +193,7 @@ class _PyTorchTransformersBackend:
                     all_findings.extend(result.findings)
 
                     if not result.allow:
-                        logger.warning(
-                            f"FearAgent blocked {rel_path}: {result.summary}"
-                        )
+                        logger.warning(f"FearAgent blocked {rel_path}: {result.summary}")
                         return False
 
                 except Exception as e:
@@ -420,21 +416,15 @@ class _PyTorchTransformersBackend:
                 from transformers import StoppingCriteria, StoppingCriteriaList
 
                 class StopOnTokens(StoppingCriteria):
-                    def __init__(
-                        self, stop_strings: tuple[str, ...], tokenizer: Any
-                    ) -> None:
+                    def __init__(self, stop_strings: tuple[str, ...], tokenizer: Any) -> None:
                         self.stop_strings = stop_strings
                         self.tokenizer = tokenizer
 
-                    def __call__(
-                        self, input_ids: Any, scores: Any, **kwargs: Any
-                    ) -> bool:
+                    def __call__(self, input_ids: Any, scores: Any, **kwargs: Any) -> bool:
                         generated = self.tokenizer.decode(input_ids[0][-20:])
                         return any(s in generated for s in self.stop_strings)
 
-                gen_kwargs["stopping_criteria"] = StoppingCriteriaList(
-                    [StopOnTokens(stop, self._tokenizer)]
-                )
+                gen_kwargs["stopping_criteria"] = StoppingCriteriaList([StopOnTokens(stop, self._tokenizer)])
 
             # Generate
             with torch.no_grad():

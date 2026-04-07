@@ -68,10 +68,10 @@ class PatternState(Enum):
 class MetricDataType(Enum):
     """Inferred data type for a metric series."""
 
-    BINARY = "binary"          # 0/1 success/fail metrics
-    CONTINUOUS = "continuous"   # Unbounded float values
-    RATE = "rate"              # 0.0-1.0 bounded rates
-    LATENCY = "latency"        # Time-based measurements
+    BINARY = "binary"  # 0/1 success/fail metrics
+    CONTINUOUS = "continuous"  # Unbounded float values
+    RATE = "rate"  # 0.0-1.0 bounded rates
+    LATENCY = "latency"  # Time-based measurements
 
 
 @dataclass
@@ -215,7 +215,7 @@ class StatisticianAgent(Agent):
 
             # --- IPS fast path ---
             values = list(series)
-            randomness = self._ips.assess_randomness(values[-self._window_size:])
+            randomness = self._ips.assess_randomness(values[-self._window_size :])
             detector.last_randomness = randomness
             detector.confidence_history.append(randomness.pattern_confidence)
             # Keep confidence history bounded
@@ -236,10 +236,7 @@ class StatisticianAgent(Agent):
                 self._escalate_to_angular_gyrus(detector, values)
 
             # Publish insight on meaningful transitions
-            if (
-                detector.state == PatternState.CONFIRMED_PATTERN
-                and old_state != PatternState.CONFIRMED_PATTERN
-            ):
+            if detector.state == PatternState.CONFIRMED_PATTERN and old_state != PatternState.CONFIRMED_PATTERN:
                 insight = self._build_insight(detector, randomness, values)
                 self._bus.publish(insight)
 
@@ -282,11 +279,8 @@ class StatisticianAgent(Agent):
             detector._forming_steps += 1
 
             # IPS confident enough → direct confirmation
-            recent = detector.confidence_history[-detector.confirm_window:]
-            if (
-                len(recent) >= detector.confirm_window
-                and all(c > detector.confirm_threshold for c in recent)
-            ):
+            recent = detector.confidence_history[-detector.confirm_window :]
+            if len(recent) >= detector.confirm_window and all(c > detector.confirm_threshold for c in recent):
                 detector.state = PatternState.CONFIRMED_PATTERN
 
             # IPS still uncertain after patience exhausted → escalate to AG
@@ -309,9 +303,7 @@ class StatisticianAgent(Agent):
     # IPS → Angular Gyrus escalation
     # ------------------------------------------------------------------
 
-    def _escalate_to_angular_gyrus(
-        self, detector: PatternDetector, series: list[float]
-    ) -> None:
+    def _escalate_to_angular_gyrus(self, detector: PatternDetector, series: list[float]) -> None:
         """IPS uncertain → invoke AG for precise determination."""
         if self._ag is None:
             # No AG available — fall back to IPS thresholds
@@ -378,10 +370,7 @@ class StatisticianAgent(Agent):
                         name=f"stat:{detector.metric_name}",
                         category=MathCategory.PATTERN,
                         domain="operational_statistics",
-                        verbal=(
-                            f"{detector.metric_name} shows {direction} "
-                            f"(R²={r_squared:.2f}, slope={slope:.4f})"
-                        ),
+                        verbal=(f"{detector.metric_name} shows {direction} (R²={r_squared:.2f}, slope={slope:.4f})"),
                         code=f"linear_fit('{detector.metric_name}', R2={r_squared:.2f})",
                         inputs={"slope": slope, "r_squared": r_squared},
                         source="learned",
@@ -506,8 +495,7 @@ class StatisticianAgent(Agent):
                         record = self._ag.get(detector.ag_memory_id)
                         if record:
                             parts.append(
-                                f"observed {record.observation_count} times "
-                                f"(memory confidence={record.confidence:.2f})"
+                                f"observed {record.observation_count} times (memory confidence={record.confidence:.2f})"
                             )
                     except Exception:
                         pass
@@ -539,11 +527,7 @@ class StatisticianAgent(Agent):
 
     def _count_active_patterns(self) -> int:
         """Count metrics in CONFIRMED_PATTERN state."""
-        return sum(
-            1
-            for d in self._detectors.values()
-            if d.state == PatternState.CONFIRMED_PATTERN
-        )
+        return sum(1 for d in self._detectors.values() if d.state == PatternState.CONFIRMED_PATTERN)
 
     # ------------------------------------------------------------------
     # Data type inference + suggestion engine
@@ -641,8 +625,7 @@ class StatisticianAgent(Agent):
                     tool_call="math",
                     operation="anomaly",
                     rationale=(
-                        f"Latency metric with forming pattern "
-                        f"(mean={recent_mean:.2f}ms, obs={detector.observations})"
+                        f"Latency metric with forming pattern (mean={recent_mean:.2f}ms, obs={detector.observations})"
                     ),
                     priority=priority,
                     data_type=data_type.value,
@@ -654,8 +637,7 @@ class StatisticianAgent(Agent):
                     tool_call="math",
                     operation="trend",
                     rationale=(
-                        f"Continuous metric with forming pattern "
-                        f"(mean={recent_mean:.2f}, obs={detector.observations})"
+                        f"Continuous metric with forming pattern (mean={recent_mean:.2f}, obs={detector.observations})"
                     ),
                     priority=priority,
                     data_type=data_type.value,
@@ -695,10 +677,7 @@ class StatisticianAgent(Agent):
                     metric=detector.metric_name,
                     tool_call="math",
                     operation="analyze",
-                    rationale=(
-                        f"Confirmed pattern without AG memory — "
-                        f"characterize trend (mean={recent_mean:.2f})"
-                    ),
+                    rationale=(f"Confirmed pattern without AG memory — characterize trend (mean={recent_mean:.2f})"),
                     priority=priority,
                     data_type=data_type.value,
                     fsm_state=state.name,
@@ -725,10 +704,7 @@ class StatisticianAgent(Agent):
         data: dict[str, Any] = {
             "version": "1.0",
             "saved_at": time.time(),
-            "metric_series": {
-                name: list(series)
-                for name, series in self._metric_series.items()
-            },
+            "metric_series": {name: list(series) for name, series in self._metric_series.items()},
             "pattern_states": {},
         }
 
@@ -771,7 +747,7 @@ class StatisticianAgent(Agent):
         # Restore metric series
         for name, values in data.get("metric_series", {}).items():
             series: deque[float] = deque(maxlen=self._window_size)
-            series.extend(values[-self._window_size:])
+            series.extend(values[-self._window_size :])
             self._metric_series[name] = series
 
         # Restore pattern states
@@ -805,9 +781,7 @@ class StatisticianAgent(Agent):
 
         return {
             "metrics_monitored": len(self._detectors),
-            "total_observations": sum(
-                len(s) for s in self._metric_series.values()
-            ),
+            "total_observations": sum(len(s) for s in self._metric_series.values()),
             "state_distribution": state_counts,
             "active_patterns": self._count_active_patterns(),
         }
@@ -835,20 +809,14 @@ class StatisticianAgent(Agent):
 
             # Get confidence from AG memory if available, else from IPS
             confidence = detector.ag_r_squared or (
-                detector.last_randomness.pattern_confidence
-                if detector.last_randomness
-                else 0.0
+                detector.last_randomness.pattern_confidence if detector.last_randomness else 0.0
             )
             if confidence < min_confidence:
                 continue
 
             metadata: dict[str, Any] = {
                 "metric_name": metric_name,
-                "pattern_type": (
-                    detector.last_randomness.pattern_type.name
-                    if detector.last_randomness
-                    else "UNKNOWN"
-                ),
+                "pattern_type": (detector.last_randomness.pattern_type.name if detector.last_randomness else "UNKNOWN"),
                 "observations": detector.observations,
                 "ag_memory_id": detector.ag_memory_id,
                 "r_squared": detector.ag_r_squared,

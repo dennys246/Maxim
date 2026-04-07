@@ -42,7 +42,11 @@ def _display_disabled() -> bool:
         return True
     if os.name != "nt":
         # Only treat missing DISPLAY/WAYLAND_DISPLAY as headless on Linux/WSL.
-        if (sys.platform.startswith("linux") or _is_wsl()) and not os.getenv("DISPLAY") and not os.getenv("WAYLAND_DISPLAY"):
+        if (
+            (sys.platform.startswith("linux") or _is_wsl())
+            and not os.getenv("DISPLAY")
+            and not os.getenv("WAYLAND_DISPLAY")
+        ):
             return True
     return False
 
@@ -340,11 +344,7 @@ def annotate_frame(
 
     norm_boxes = iter_bounding_boxes(boxes)
     needs_draw = (
-        bool(norm_boxes)
-        or target_box is not None
-        or center is not None
-        or target_point is not None
-        or bool(text_lines)
+        bool(norm_boxes) or target_box is not None or center is not None or target_point is not None or bool(text_lines)
     )
     if needs_draw:
         frame = frame.copy()

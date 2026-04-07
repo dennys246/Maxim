@@ -104,10 +104,7 @@ class StartleResponse(Behavior):
                 dist_from_center_x = abs(cx - center_x)
                 dist_from_center_y = abs(cy - center_y)
 
-                is_peripheral = (
-                    dist_from_center_x > periph_x or
-                    dist_from_center_y > periph_y
-                )
+                is_peripheral = dist_from_center_x > periph_x or dist_from_center_y > periph_y
 
                 if is_peripheral:
                     # Calculate urgency based on how peripheral
@@ -131,10 +128,7 @@ class StartleResponse(Behavior):
                 dist_from_center_x = abs(first_x - center_x)
                 dist_from_center_y = abs(first_y - center_y)
 
-                is_peripheral = (
-                    dist_from_center_x > periph_x or
-                    dist_from_center_y > periph_y
-                )
+                is_peripheral = dist_from_center_x > periph_x or dist_from_center_y > periph_y
 
                 if is_peripheral:
                     urgency = max(
@@ -142,7 +136,7 @@ class StartleResponse(Behavior):
                         dist_from_center_y / center_y,
                     )
                     # Decay urgency with age
-                    urgency *= (1.0 - age / self.appearance_window)
+                    urgency *= 1.0 - age / self.appearance_window
 
                     if urgency > startle_urgency:
                         startle_urgency = urgency
@@ -175,10 +169,7 @@ class StartleResponse(Behavior):
         max_age = 30.0  # Keep entries for 30 seconds
         cutoff = now - max_age
 
-        old_ids = [
-            tid for tid, t in self._first_seen.items()
-            if t < cutoff
-        ]
+        old_ids = [tid for tid, t in self._first_seen.items() if t < cutoff]
         for tid in old_ids:
             del self._first_seen[tid]
             self._first_position.pop(tid, None)

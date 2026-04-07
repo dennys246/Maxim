@@ -27,8 +27,7 @@ def _is_rate_limit_error(err: Exception) -> bool:
 PROPOSED_GOAL_TOOL: dict[str, Any] = {
     "name": "propose_goal",
     "description": (
-        "Propose a goal with an associated tool action. "
-        "Return null goal_description if no action is needed."
+        "Propose a goal with an associated tool action. Return null goal_description if no action is needed."
     ),
     "input_schema": {
         "type": "object",
@@ -283,11 +282,13 @@ class _AnthropicBackend:
                 if text:
                     text_blocks.append(str(text))
             elif block_type == "tool_use":
-                tool_calls.append({
-                    "id": getattr(block, "id", ""),
-                    "name": getattr(block, "name", ""),
-                    "input": getattr(block, "input", {}),
-                })
+                tool_calls.append(
+                    {
+                        "id": getattr(block, "id", ""),
+                        "name": getattr(block, "name", ""),
+                        "input": getattr(block, "input", {}),
+                    }
+                )
             elif block_type == "thinking":
                 str(getattr(block, "thinking", "") or "")
 
@@ -297,6 +298,7 @@ class _AnthropicBackend:
         # so callers that expect text-based JSON still work
         if not content and tool_calls and len(tool_calls) == 1:
             import json
+
             content = json.dumps(tool_calls[0].get("input", {}))
 
         return LLMResponse(
@@ -364,6 +366,7 @@ class _AnthropicBackend:
                 elif event_type == "content_block_stop":
                     if current_tool is not None:
                         import json as _json
+
                         try:
                             current_tool["input"] = _json.loads(current_tool_json) if current_tool_json else {}
                         except Exception:
@@ -385,6 +388,7 @@ class _AnthropicBackend:
 
         if not content and tool_calls and len(tool_calls) == 1:
             import json as _json
+
             content = _json.dumps(tool_calls[0].get("input", {}))
 
         return LLMResponse(

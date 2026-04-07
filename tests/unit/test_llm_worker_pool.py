@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -43,9 +42,7 @@ class FakeLLM:
         self._delay = delay
         self.call_count = 0
 
-    def generate_json(
-        self, prompt: str, temperature: float = 0.3, max_tokens: int = 1024
-    ) -> dict[str, Any] | None:
+    def generate_json(self, prompt: str, temperature: float = 0.3, max_tokens: int = 1024) -> dict[str, Any] | None:
         self.call_count += 1
         if self._delay > 0:
             time.sleep(self._delay)
@@ -284,9 +281,11 @@ class TestLLMWorkerPoolMode:
         from maxim.runtime.worker_pool import LaneConfig, WorkerPool
 
         # Create pool with tiny queue
-        pool = WorkerPool(lane_configs={
-            "infer": LaneConfig(name="infer", max_workers=1, queue_size=2),
-        })
+        pool = WorkerPool(
+            lane_configs={
+                "infer": LaneConfig(name="infer", max_workers=1, queue_size=2),
+            }
+        )
         pool.start()
         try:
             # Use very slow LLM to back up the queue
@@ -319,9 +318,11 @@ class TestLLMWorkerExternalPool:
         from maxim.agents.llm_worker import LLMWorker
         from maxim.runtime.worker_pool import LaneConfig, WorkerPool
 
-        pool = WorkerPool(lane_configs={
-            "infer": LaneConfig(name="infer", max_workers=1),
-        })
+        pool = WorkerPool(
+            lane_configs={
+                "infer": LaneConfig(name="infer", max_workers=1),
+            }
+        )
         pool.start()
         try:
             worker = LLMWorker(llm=FakeLLM(), pool=pool)
@@ -343,9 +344,11 @@ class TestLLMWorkerExternalPool:
         from maxim.agents.llm_worker import LLMWorker
         from maxim.runtime.worker_pool import LaneConfig, WorkerPool
 
-        pool = WorkerPool(lane_configs={
-            "infer": LaneConfig(name="infer", max_workers=1),
-        })
+        pool = WorkerPool(
+            lane_configs={
+                "infer": LaneConfig(name="infer", max_workers=1),
+            }
+        )
         pool.start()
         try:
             worker = LLMWorker(llm=FakeLLM(), stale_threshold_s=30.0, pool=pool)
@@ -403,9 +406,11 @@ class TestLLMWorkerPriority:
                 }
 
         # Don't start the pool yet (let jobs queue up)
-        pool = WorkerPool(lane_configs={
-            "infer": LaneConfig(name="infer", max_workers=1),
-        })
+        pool = WorkerPool(
+            lane_configs={
+                "infer": LaneConfig(name="infer", max_workers=1),
+            }
+        )
 
         worker = LLMWorker(llm=OrderTrackingLLM(), stale_threshold_s=30.0, pool=pool)
         worker._llm_executor = __import__("concurrent.futures", fromlist=["ThreadPoolExecutor"]).ThreadPoolExecutor(

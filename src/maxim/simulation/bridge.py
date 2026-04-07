@@ -98,14 +98,11 @@ class SimulationBridge:
         # isn't being executed by the orch's agent loop.
         try:
             from maxim.simulation.sim_logger import sim_log
-            sim_log(
-                "EXEC",
-                f"Bridge.send_and_wait ENTER turn={self._turn_count + 1} "
-                f"text_len={len(text)}"
-            )
+
+            sim_log("EXEC", f"Bridge.send_and_wait ENTER turn={self._turn_count + 1} text_len={len(text)}")
         except Exception:
             pass
-        self._spinner.start(f"Turn {self._turn_count + 1}: Sending to AUT — \"{short_text}\"")
+        self._spinner.start(f'Turn {self._turn_count + 1}: Sending to AUT — "{short_text}"')
         # Fire percept-level anxiety (Layer 1b) BEFORE the percept reaches
         # the AUT, so the anticipation signal is already in the AUT's
         # memory when it reasons about the message.
@@ -130,7 +127,9 @@ class SimulationBridge:
             current_count = len(self.action_sink.actions)
             if current_count > last_action_count:
                 new_count = current_count - action_count_before
-                self._spinner.update(f"Turn {self._turn_count}: AUT responded ({new_count} action{'s' if new_count != 1 else ''}), settling...")
+                self._spinner.update(
+                    f"Turn {self._turn_count}: AUT responded ({new_count} action{'s' if new_count != 1 else ''}), settling..."
+                )
                 last_action_count = current_count
                 settle_deadline = time.time() + settle_timeout
             elif settle_deadline and time.time() >= settle_deadline:
@@ -171,9 +170,7 @@ class SimulationBridge:
             "duration_ms": (time.time() - start) * 1000,
         }
 
-    def inject_pain(
-        self, pain_type: str = "external_signal", intensity: float = 0.5, **context: Any
-    ) -> None:
+    def inject_pain(self, pain_type: str = "external_signal", intensity: float = 0.5, **context: Any) -> None:
         """Send a pain/proprioceptive signal to the AUT."""
         self.percept_source.inject_pain(pain_type=pain_type, intensity=intensity, **context)
         self._turn_count += 1

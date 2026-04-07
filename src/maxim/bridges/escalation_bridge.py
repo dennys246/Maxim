@@ -96,9 +96,7 @@ class EscalationLearningBridge:
     nac: "NAc"
 
     # Learned thresholds: (goal_type, hour_bin) -> LearnedThreshold
-    _thresholds: dict[tuple[str, int], LearnedThreshold] = field(
-        default_factory=dict
-    )
+    _thresholds: dict[tuple[str, int], LearnedThreshold] = field(default_factory=dict)
 
     # Recent escalation records for learning
     _recent_records: list[EscalationRecord] = field(default_factory=list)
@@ -145,9 +143,7 @@ class EscalationLearningBridge:
         """
         try:
             loaded = self.load(self.persist_path)
-            logger.info(
-                "EscalationLearningBridge loaded %d threshold patterns", loaded
-            )
+            logger.info("EscalationLearningBridge loaded %d threshold patterns", loaded)
             return loaded
 
         except Exception as e:
@@ -192,15 +188,17 @@ class EscalationLearningBridge:
             # Serialize recent records (keep last 100 for persistence)
             records_data = []
             for record in self._recent_records[-100:]:
-                records_data.append({
-                    "pattern_hash": record.pattern_hash,
-                    "goal_type": record.goal_type,
-                    "hour_bin": record.hour_bin,
-                    "escalated": record.escalated,
-                    "outcome_positive": record.outcome_positive,
-                    "timestamp": record.timestamp,
-                    "threshold_at_decision": record.threshold_at_decision,
-                })
+                records_data.append(
+                    {
+                        "pattern_hash": record.pattern_hash,
+                        "goal_type": record.goal_type,
+                        "hour_bin": record.hour_bin,
+                        "escalated": record.escalated,
+                        "outcome_positive": record.outcome_positive,
+                        "timestamp": record.timestamp,
+                        "threshold_at_decision": record.threshold_at_decision,
+                    }
+                )
 
             data = {
                 "version": 1,
@@ -262,15 +260,17 @@ class EscalationLearningBridge:
             # Load recent records
             records_data = data.get("records", [])
             for rec_data in records_data:
-                self._recent_records.append(EscalationRecord(
-                    pattern_hash=rec_data.get("pattern_hash", ""),
-                    goal_type=rec_data.get("goal_type", "unknown"),
-                    hour_bin=rec_data.get("hour_bin", -1),
-                    escalated=rec_data.get("escalated", False),
-                    outcome_positive=rec_data.get("outcome_positive", False),
-                    timestamp=rec_data.get("timestamp", 0.0),
-                    threshold_at_decision=rec_data.get("threshold_at_decision", 0.5),
-                ))
+                self._recent_records.append(
+                    EscalationRecord(
+                        pattern_hash=rec_data.get("pattern_hash", ""),
+                        goal_type=rec_data.get("goal_type", "unknown"),
+                        hour_bin=rec_data.get("hour_bin", -1),
+                        escalated=rec_data.get("escalated", False),
+                        outcome_positive=rec_data.get("outcome_positive", False),
+                        timestamp=rec_data.get("timestamp", 0.0),
+                        threshold_at_decision=rec_data.get("threshold_at_decision", 0.5),
+                    )
+                )
 
             logger.info(
                 "Loaded %d escalation thresholds, %d records from %s",
@@ -354,17 +354,17 @@ class EscalationLearningBridge:
             # Enrich with associative graph context if seeds provided
             if seed_memory_ids and self.hippocampus:
                 try:
-                    associated = self.hippocampus.recall_associated(
-                        seed_memory_ids, limit=10
-                    )
+                    associated = self.hippocampus.recall_associated(seed_memory_ids, limit=10)
                     # If associated memories show high failure rates, lower threshold
                     # (escalate more readily in contexts with historically bad outcomes)
                     successes = 0
                     failures = 0
                     for mem, _score in associated:
                         success_val = (
-                            mem.success if hasattr(mem, "success")
-                            else mem.outcome.success if hasattr(mem, "outcome")
+                            mem.success
+                            if hasattr(mem, "success")
+                            else mem.outcome.success
+                            if hasattr(mem, "outcome")
                             else None
                         )
                         if success_val is True:
@@ -488,9 +488,7 @@ class EscalationLearningBridge:
                 hour_bin = int(sig.circadian_phase * 24) % 24
 
             # Compute pattern hash
-            pattern_hash = hashlib.sha256(
-                f"{goal_type}:{hour_bin}".encode()
-            ).hexdigest()[:12]
+            pattern_hash = hashlib.sha256(f"{goal_type}:{hour_bin}".encode()).hexdigest()[:12]
 
             # Record the outcome
             record = EscalationRecord(
@@ -505,7 +503,7 @@ class EscalationLearningBridge:
 
             self._recent_records.append(record)
             if len(self._recent_records) > self._max_records:
-                self._recent_records = self._recent_records[-self._max_records:]
+                self._recent_records = self._recent_records[-self._max_records :]
 
             # Update learned threshold
             self._update_threshold(record)
@@ -611,9 +609,7 @@ class EscalationLearningBridge:
 
         if self._error_count >= self._max_errors:
             self._healthy = False
-            logger.error(
-                "EscalationLearningBridge disabled after %d errors", self._error_count
-            )
+            logger.error("EscalationLearningBridge disabled after %d errors", self._error_count)
 
     @property
     def is_healthy(self) -> bool:
@@ -630,9 +626,7 @@ class EscalationLearningBridge:
             "error_count": self._error_count,
             "learned_thresholds": len(self._thresholds),
             "total_samples": total_samples,
-            "overall_success_rate": (
-                total_successes / total_samples if total_samples > 0 else 0.5
-            ),
+            "overall_success_rate": (total_successes / total_samples if total_samples > 0 else 0.5),
             "recent_records": len(self._recent_records),
         }
 

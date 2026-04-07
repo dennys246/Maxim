@@ -32,9 +32,10 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class HealthReportingConfig(SkillConfig):
     """Configuration for health reporting."""
-    endpoint_url: str = ""            # HTTP POST target (required)
-    interval_seconds: float = 30.0    # How often to ping
-    timeout_seconds: float = 5.0      # HTTP request timeout
+
+    endpoint_url: str = ""  # HTTP POST target (required)
+    interval_seconds: float = 30.0  # How often to ping
+    timeout_seconds: float = 5.0  # HTTP request timeout
     headers: dict[str, str] = field(default_factory=dict)  # Extra headers (auth, etc.)
 
 
@@ -76,7 +77,9 @@ class HealthReportingSkill(Skill):
         self._consecutive_failures = 0
 
         self._thread = threading.Thread(
-            target=self._report_loop, daemon=True, name="health-reporter",
+            target=self._report_loop,
+            daemon=True,
+            name="health-reporter",
         )
         self._thread.start()
 
@@ -95,9 +98,7 @@ class HealthReportingSkill(Skill):
         self._state = SkillState.DEACTIVATING
         self._stop_event.set()
         if self._thread is not None:
-            self._thread.join(
-                timeout=self._config.interval_seconds + self._config.timeout_seconds + 2
-            )
+            self._thread.join(timeout=self._config.interval_seconds + self._config.timeout_seconds + 2)
             self._thread = None
         self._maxim = None
         self._context = None
@@ -176,12 +177,15 @@ class HealthReportingSkill(Skill):
                 if failures <= 3:
                     log.warning(
                         "Health report failed (%d consecutive): %s",
-                        failures, e, exc_info=True,
+                        failures,
+                        e,
+                        exc_info=True,
                     )
                 elif failures % 10 == 0:
                     log.error(
                         "Health reporting failing persistently (%d consecutive): %s",
-                        failures, e,
+                        failures,
+                        e,
                     )
                 if failures >= 10:
                     with self._lock:

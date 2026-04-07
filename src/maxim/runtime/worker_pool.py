@@ -133,7 +133,10 @@ class JobRegistry:
         # Sim trace
         try:
             from maxim.simulation.sim_logger import sim_log
-            sim_log("PIPELINE", f"WorkerPool job completed: {job_id[:20]} (lane={lane}, has_result={result is not None})")
+
+            sim_log(
+                "PIPELINE", f"WorkerPool job completed: {job_id[:20]} (lane={lane}, has_result={result is not None})"
+            )
         except Exception:
             pass
 
@@ -179,10 +182,7 @@ class JobRegistry:
         """Return and remove the most recent completed job for a lane, or None."""
         with self._lock:
             for job_id, status in list(self._jobs.items()):
-                if (
-                    status == JobStatus.COMPLETED
-                    and self._lanes.get(job_id) == lane
-                ):
+                if status == JobStatus.COMPLETED and self._lanes.get(job_id) == lane:
                     result = self._results.pop(job_id, None)
                     del self._jobs[job_id]
                     self._events.pop(job_id, None)
@@ -223,10 +223,7 @@ class JobRegistry:
         cancelled = 0
         with self._lock:
             for job_id, status in list(self._jobs.items()):
-                if (
-                    status == JobStatus.PENDING
-                    and self._lanes.get(job_id) == lane
-                ):
+                if status == JobStatus.PENDING and self._lanes.get(job_id) == lane:
                     self._jobs[job_id] = JobStatus.CANCELLED
                     event = self._events.get(job_id)
                     if event:
@@ -289,9 +286,7 @@ class DependencyGate:
                 self._failed_deps.append(job_id)
                 continue
             try:
-                if not self._registry.wait_for_completion(
-                    job_id, timeout=remaining
-                ):
+                if not self._registry.wait_for_completion(job_id, timeout=remaining):
                     self._failed_deps.append(job_id)
             except ValueError:
                 self._failed_deps.append(job_id)
@@ -323,9 +318,7 @@ class Lane:
     def __init__(self, config: LaneConfig, registry: JobRegistry) -> None:
         self._config = config
         self._registry = registry
-        self._queue: queue.PriorityQueue = queue.PriorityQueue(
-            maxsize=config.queue_size
-        )
+        self._queue: queue.PriorityQueue = queue.PriorityQueue(maxsize=config.queue_size)
         self._executor = ThreadPoolExecutor(
             max_workers=config.max_workers,
             thread_name_prefix=f"Lane-{config.name}",
@@ -372,9 +365,7 @@ class Lane:
         while True:
             try:
                 _, _, job = self._queue.get_nowait()
-                self._registry.mark_failed(
-                    job.job_id, error=RuntimeError("Cancelled")
-                )
+                self._registry.mark_failed(job.job_id, error=RuntimeError("Cancelled"))
                 self._queue.task_done()
                 cancelled += 1
             except queue.Empty:
@@ -457,9 +448,7 @@ class WorkerPool:
     ) -> None:
         self._registry = JobRegistry()
         configs = lane_configs or DEFAULT_LANES
-        self._lanes: dict[str, Lane] = {
-            name: Lane(cfg, self._registry) for name, cfg in configs.items()
-        }
+        self._lanes: dict[str, Lane] = {name: Lane(cfg, self._registry) for name, cfg in configs.items()}
         self._thread_registry = thread_registry
         self._gc_thread: threading.Thread | None = None
         self._gc_stop = threading.Event()
@@ -475,9 +464,7 @@ class WorkerPool:
         for lane in self._lanes.values():
             lane.start()
             if self._thread_registry and lane._dispatcher:
-                self._thread_registry.register(
-                    f"Lane-{lane.name}", lane._dispatcher
-                )
+                self._thread_registry.register(f"Lane-{lane.name}", lane._dispatcher)
 
         # Start job GC thread
         self._gc_stop.clear()

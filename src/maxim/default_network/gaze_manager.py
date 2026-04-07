@@ -13,19 +13,13 @@ from __future__ import annotations
 import logging
 import random
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from maxim.attention import GazeCommand
 from maxim.default_network.movement_utils import compute_dynamic_duration, compute_opposite_position
 
 if TYPE_CHECKING:
-    from maxim.attention import (
-        GazeController,
-        GazeHistory,
-        SceneContextDetector,
-        SalienceMap,
-    )
-    from maxim.spatial import SpatialMap
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +84,7 @@ class GazeManagerMixin:
 
         # Execute movement
         try:
-            if hasattr(self._maxim, 'look_at_image'):
+            if hasattr(self._maxim, "look_at_image"):
                 self._maxim.look_at_image(target[0], target[1], duration=duration)
                 self._gaze_history.record_gaze(target)
 
@@ -205,7 +199,7 @@ class GazeManagerMixin:
             Seconds since scene changed, or inf if never changed.
         """
         if self._scene_context is None:
-            return float('inf')
+            return float("inf")
         return self._scene_context.get_scene_age()
 
     def force_scene_scan(self) -> None:

@@ -1,4 +1,5 @@
 """Tests for peer-side config + `maxim peer connect/show/forget` CLI."""
+
 from __future__ import annotations
 
 import os
@@ -26,6 +27,7 @@ def isolated_peer_config(tmp_path, monkeypatch):
 
 # ─── PeerConfig serialization ──────────────────────────────────────────────
 
+
 class TestPeerConfigSerialization:
     def test_minimal_yaml(self):
         cfg = PeerConfig(url="https://host/v1", api_key="k")
@@ -48,6 +50,7 @@ class TestPeerConfigSerialization:
 
 # ─── File I/O ──────────────────────────────────────────────────────────────
 
+
 class TestFileIO:
     def test_read_missing_returns_none(self, isolated_peer_config):
         assert read_peer_config() is None
@@ -68,12 +71,7 @@ class TestFileIO:
 
     def test_read_ignores_comments_and_blanks(self, isolated_peer_config):
         isolated_peer_config.parent.mkdir(parents=True, exist_ok=True)
-        isolated_peer_config.write_text(
-            "# This is a comment\n"
-            "\n"
-            "url: https://host/v1\n"
-            "api_key: k\n"
-        )
+        isolated_peer_config.write_text("# This is a comment\n\nurl: https://host/v1\napi_key: k\n")
         loaded = read_peer_config()
         assert loaded is not None
         assert loaded.url == "https://host/v1"
@@ -95,10 +93,15 @@ class TestFileIO:
 
 # ─── apply_peer_config_to_env ──────────────────────────────────────────────
 
+
 class TestApplyToEnv:
     def test_sets_env_vars_when_unset(self, monkeypatch):
-        for var in ("MAXIM_LANE_INFER_REMOTE_URL", "MAXIM_LANE_INFER_REMOTE_API_KEY",
-                    "MAXIM_LANE_INFER_REMOTE_MODEL", "MAXIM_MAX_CLOUD_LANES"):
+        for var in (
+            "MAXIM_LANE_INFER_REMOTE_URL",
+            "MAXIM_LANE_INFER_REMOTE_API_KEY",
+            "MAXIM_LANE_INFER_REMOTE_MODEL",
+            "MAXIM_MAX_CLOUD_LANES",
+        ):
             monkeypatch.delenv(var, raising=False)
         cfg = PeerConfig(url="https://h/v1", api_key="k", model="m", is_cloud=True)
         apply_peer_config_to_env(cfg)
@@ -121,6 +124,7 @@ class TestApplyToEnv:
 
 
 # ─── CLI subcommand ────────────────────────────────────────────────────────
+
 
 class TestPeerConnectCLI:
     def test_no_args_prints_usage(self, capsys):
@@ -148,11 +152,15 @@ class TestPeerConnectCLI:
         assert "API key required" in capsys.readouterr().err
 
     def test_connect_saves_config(self, capsys, isolated_peer_config):
-        code = run_peer_connect_subcommand([
-            "connect", "https://host.example.com/v1",
-            "--key", "sk-123",
-            "--skip-test",
-        ])
+        code = run_peer_connect_subcommand(
+            [
+                "connect",
+                "https://host.example.com/v1",
+                "--key",
+                "sk-123",
+                "--skip-test",
+            ]
+        )
         assert code == 0
         loaded = read_peer_config()
         assert loaded is not None
@@ -161,21 +169,30 @@ class TestPeerConnectCLI:
         assert loaded.is_cloud is False  # peer connections default to not-cloud (your own infra)
 
     def test_connect_normalizes_url(self, isolated_peer_config):
-        run_peer_connect_subcommand([
-            "connect", "https://host/",
-            "--key", "k",
-            "--skip-test",
-        ])
+        run_peer_connect_subcommand(
+            [
+                "connect",
+                "https://host/",
+                "--key",
+                "k",
+                "--skip-test",
+            ]
+        )
         loaded = read_peer_config()
         assert loaded.url == "https://host/v1"
 
     def test_connect_with_model(self, isolated_peer_config):
-        run_peer_connect_subcommand([
-            "connect", "http://127.0.0.1:8100/v1",
-            "--key", "k",
-            "--model", "mistral-7b",
-            "--skip-test",
-        ])
+        run_peer_connect_subcommand(
+            [
+                "connect",
+                "http://127.0.0.1:8100/v1",
+                "--key",
+                "k",
+                "--model",
+                "mistral-7b",
+                "--skip-test",
+            ]
+        )
         loaded = read_peer_config()
         assert loaded.model == "mistral-7b"
         assert loaded.is_cloud is False  # loopback
@@ -213,17 +230,21 @@ class TestPeerConnectCLI:
 
 # ─── URL classification for is_cloud auto-detect ──────────────────────────
 
+
 class TestUrlClassification:
     def test_public_https_is_cloud(self):
         from maxim.peer.cli import _is_public_url
+
         assert _is_public_url("https://api.example.com/v1") is True
 
     def test_loopback_is_not_cloud(self):
         from maxim.peer.cli import _is_public_url
+
         assert _is_public_url("http://127.0.0.1:8100/v1") is False
         assert _is_public_url("http://localhost:8100/v1") is False
 
     def test_private_subnet_is_not_cloud(self):
         from maxim.peer.cli import _is_public_url
+
         assert _is_public_url("http://192.168.1.10:8100/v1") is False
         assert _is_public_url("http://10.0.0.5:8100/v1") is False

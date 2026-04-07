@@ -1,4 +1,5 @@
 """Tests for the `maxim tunnel` subcommand (multi-LLM Phase 6b)."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -21,6 +22,7 @@ from maxim.tunnel.config import (
 
 
 # ─── cloudflared binary detection ──────────────────────────────────────────
+
 
 class TestCloudflaredDetection:
     def test_find_cloudflared_returns_path_or_none(self):
@@ -48,6 +50,7 @@ class TestCloudflaredDetection:
 
 # ─── config.yml rendering ──────────────────────────────────────────────────
 
+
 class TestConfigRendering:
     def test_render_contains_required_fields(self):
         cfg = TunnelConfig(
@@ -65,15 +68,20 @@ class TestConfigRendering:
 
     def test_render_is_stable(self):
         cfg = TunnelConfig(
-            tunnel_id="a", credentials_file="b", hostname="c", local_service="d",
+            tunnel_id="a",
+            credentials_file="b",
+            hostname="c",
+            local_service="d",
         )
         assert render_config_yml(cfg) == render_config_yml(cfg)
 
     def test_write_creates_file(self, tmp_path, monkeypatch):
         monkeypatch.setattr("maxim.tunnel.config.CONFIG_PATH", tmp_path / "config.yml")
         cfg = TunnelConfig(
-            tunnel_id="t", credentials_file="/c.json",
-            hostname="h.com", local_service="http://localhost:8100",
+            tunnel_id="t",
+            credentials_file="/c.json",
+            hostname="h.com",
+            local_service="http://localhost:8100",
         )
         path = write_config_yml(cfg)
         assert path.is_file()
@@ -85,8 +93,10 @@ class TestConfigRendering:
         target.write_text("existing")
         monkeypatch.setattr("maxim.tunnel.config.CONFIG_PATH", target)
         cfg = TunnelConfig(
-            tunnel_id="t", credentials_file="/c.json",
-            hostname="h.com", local_service="http://localhost:8100",
+            tunnel_id="t",
+            credentials_file="/c.json",
+            hostname="h.com",
+            local_service="http://localhost:8100",
         )
         with pytest.raises(FileExistsError):
             write_config_yml(cfg)
@@ -98,14 +108,17 @@ class TestConfigRendering:
         target.write_text("existing")
         monkeypatch.setattr("maxim.tunnel.config.CONFIG_PATH", target)
         cfg = TunnelConfig(
-            tunnel_id="new", credentials_file="/c.json",
-            hostname="h.com", local_service="http://localhost:8100",
+            tunnel_id="new",
+            credentials_file="/c.json",
+            hostname="h.com",
+            local_service="http://localhost:8100",
         )
         write_config_yml(cfg, overwrite=True)
         assert "tunnel: new" in target.read_text()
 
 
 # ─── config.yml parsing ────────────────────────────────────────────────────
+
 
 class TestConfigReading:
     def test_read_returns_none_when_missing(self, tmp_path, monkeypatch):
@@ -134,6 +147,7 @@ class TestConfigReading:
 
 # ─── subcommand dispatch ───────────────────────────────────────────────────
 
+
 class TestSubcommandDispatch:
     def test_no_args_prints_usage(self, capsys):
         code = run_tunnel_subcommand([])
@@ -158,8 +172,10 @@ class TestSubcommandDispatch:
 
     def test_status_without_config(self, capsys, tmp_path, monkeypatch):
         monkeypatch.setattr("maxim.tunnel.config.CONFIG_PATH", tmp_path / "none.yml")
-        with patch("maxim.tunnel.cli.find_cloudflared", return_value="/usr/bin/cloudflared"), \
-             patch("maxim.tunnel.cli.cloudflared_version", return_value="cloudflared 2024.1.0"):
+        with (
+            patch("maxim.tunnel.cli.find_cloudflared", return_value="/usr/bin/cloudflared"),
+            patch("maxim.tunnel.cli.cloudflared_version", return_value="cloudflared 2024.1.0"),
+        ):
             code = run_tunnel_subcommand(["status"])
         out = capsys.readouterr().out
         assert "not found" in out.lower()
@@ -175,9 +191,11 @@ class TestSubcommandDispatch:
             "    service: http://localhost:8100\n"
         )
         monkeypatch.setattr("maxim.tunnel.config.CONFIG_PATH", target)
-        with patch("maxim.tunnel.cli.find_cloudflared", return_value="/usr/bin/cloudflared"), \
-             patch("maxim.tunnel.cli.cloudflared_version", return_value="cloudflared 2024.1.0"), \
-             patch("maxim.tunnel.cli._is_daemon_running", return_value=True):
+        with (
+            patch("maxim.tunnel.cli.find_cloudflared", return_value="/usr/bin/cloudflared"),
+            patch("maxim.tunnel.cli.cloudflared_version", return_value="cloudflared 2024.1.0"),
+            patch("maxim.tunnel.cli._is_daemon_running", return_value=True),
+        ):
             code = run_tunnel_subcommand(["status"])
         out = capsys.readouterr().out
         assert "abc" in out
@@ -226,6 +244,7 @@ class TestSubcommandDispatch:
 
     def test_tail_since_compact_forms(self):
         from maxim.tunnel.cli import _to_journalctl_since
+
         # "N UNIT ago" form (no leading dash — that's what journalctl accepts)
         assert _to_journalctl_since("2m") == "2 minutes ago"
         assert _to_journalctl_since("5h") == "5 hours ago"
@@ -234,6 +253,7 @@ class TestSubcommandDispatch:
 
     def test_tail_since_passthrough_for_absolute(self):
         from maxim.tunnel.cli import _to_journalctl_since
+
         assert _to_journalctl_since("2024-01-02 15:04:05") == "2024-01-02 15:04:05"
         # "-2min" (no-space compact form) is also valid journalctl syntax
         assert _to_journalctl_since("-2min") == "-2min"
@@ -244,10 +264,12 @@ class TestSubcommandDispatch:
 
     def test_tail_since_empty_defaults_to_2min(self):
         from maxim.tunnel.cli import _to_journalctl_since
+
         assert _to_journalctl_since("") == "2 minutes ago"
 
     def test_tail_since_invalid_falls_through(self):
         from maxim.tunnel.cli import _to_journalctl_since
+
         # Unknown forms pass through so journalctl can report its own error
         assert _to_journalctl_since("bogus") == "bogus"
 
@@ -281,9 +303,11 @@ class TestStartDuplicateGuard:
     def test_refuses_when_systemd_service_active(self, tmp_path, monkeypatch, capsys):
         self._make_config(tmp_path, monkeypatch)
         active = MagicMock(returncode=0, stdout="active\n")
-        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
-             patch("subprocess.run", return_value=active), \
-             patch("subprocess.call") as mock_call:
+        with (
+            patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"),
+            patch("subprocess.run", return_value=active),
+            patch("subprocess.call") as mock_call,
+        ):
             code = run_tunnel_subcommand(["start"])
         err = capsys.readouterr().err
         assert code == 1
@@ -293,6 +317,7 @@ class TestStartDuplicateGuard:
 
     def test_refuses_when_foreground_process_running(self, tmp_path, monkeypatch, capsys):
         self._make_config(tmp_path, monkeypatch)
+
         # systemd inactive, but pgrep finds a running process
         def fake_run(cmd, **kw):
             if "systemctl" in cmd:
@@ -300,9 +325,12 @@ class TestStartDuplicateGuard:
             if "pgrep" in cmd:
                 return MagicMock(returncode=0, stdout="12345 cloudflared tunnel run\n")
             return MagicMock(returncode=1, stdout="")
-        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
-             patch("subprocess.run", side_effect=fake_run), \
-             patch("subprocess.call") as mock_call:
+
+        with (
+            patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"),
+            patch("subprocess.run", side_effect=fake_run),
+            patch("subprocess.call") as mock_call,
+        ):
             code = run_tunnel_subcommand(["start"])
         err = capsys.readouterr().err
         assert code == 1
@@ -313,9 +341,11 @@ class TestStartDuplicateGuard:
     def test_force_bypasses_guard(self, tmp_path, monkeypatch, capsys):
         self._make_config(tmp_path, monkeypatch)
         active = MagicMock(returncode=0, stdout="active\n")
-        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
-             patch("subprocess.run", return_value=active), \
-             patch("subprocess.call", return_value=0) as mock_call:
+        with (
+            patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"),
+            patch("subprocess.run", return_value=active),
+            patch("subprocess.call", return_value=0) as mock_call,
+        ):
             code = run_tunnel_subcommand(["start", "--force"])
         assert code == 0
         mock_call.assert_called_once()
@@ -327,13 +357,17 @@ class TestStartDuplicateGuard:
         self._make_config(tmp_path, monkeypatch)
         inactive = MagicMock(returncode=3, stdout="inactive\n")
         empty = MagicMock(returncode=1, stdout="")
+
         def fake_run(cmd, **kw):
             if "systemctl" in cmd:
                 return inactive
             return empty  # pgrep
-        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
-             patch("subprocess.run", side_effect=fake_run), \
-             patch("subprocess.call", return_value=0) as mock_call:
+
+        with (
+            patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"),
+            patch("subprocess.run", side_effect=fake_run),
+            patch("subprocess.call", return_value=0) as mock_call,
+        ):
             code = run_tunnel_subcommand(["start"])
         assert code == 0
         mock_call.assert_called_once()
@@ -355,9 +389,11 @@ class TestServiceInstallHint:
     def test_hint_printed_when_no_service_active(self, tmp_path, monkeypatch, capsys):
         self._make_summary(tmp_path, monkeypatch)
         systemd_result = MagicMock(returncode=3, stdout="inactive\n")
-        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
-             patch("subprocess.run", return_value=systemd_result), \
-             patch("subprocess.call", return_value=0):
+        with (
+            patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"),
+            patch("subprocess.run", return_value=systemd_result),
+            patch("subprocess.call", return_value=0),
+        ):
             run_tunnel_subcommand(["start"])
         out = capsys.readouterr().out
         assert "service install" in out.lower()
@@ -366,9 +402,11 @@ class TestServiceInstallHint:
     def test_hint_skipped_when_service_active(self, tmp_path, monkeypatch, capsys):
         self._make_summary(tmp_path, monkeypatch)
         systemd_result = MagicMock(returncode=0, stdout="active\n")
-        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
-             patch("subprocess.run", return_value=systemd_result), \
-             patch("subprocess.call", return_value=0):
+        with (
+            patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"),
+            patch("subprocess.run", return_value=systemd_result),
+            patch("subprocess.call", return_value=0),
+        ):
             run_tunnel_subcommand(["start"])
         out = capsys.readouterr().out
         assert "service install" not in out.lower()
@@ -376,30 +414,36 @@ class TestServiceInstallHint:
     def test_hint_linux_uses_systemctl(self, tmp_path, monkeypatch, capsys):
         self._make_summary(tmp_path, monkeypatch)
         systemd_result = MagicMock(returncode=3, stdout="inactive\n")
-        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
-             patch("platform.system", return_value="Linux"), \
-             patch("subprocess.run", return_value=systemd_result), \
-             patch("subprocess.call", return_value=0):
+        with (
+            patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"),
+            patch("platform.system", return_value="Linux"),
+            patch("subprocess.run", return_value=systemd_result),
+            patch("subprocess.call", return_value=0),
+        ):
             run_tunnel_subcommand(["start"])
         out = capsys.readouterr().out
         assert "systemctl enable" in out
 
     def test_hint_macos_uses_launchctl(self, tmp_path, monkeypatch, capsys):
         self._make_summary(tmp_path, monkeypatch)
-        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
-             patch("platform.system", return_value="Darwin"), \
-             patch("subprocess.run", side_effect=OSError("no systemctl")), \
-             patch("subprocess.call", return_value=0):
+        with (
+            patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"),
+            patch("platform.system", return_value="Darwin"),
+            patch("subprocess.run", side_effect=OSError("no systemctl")),
+            patch("subprocess.call", return_value=0),
+        ):
             run_tunnel_subcommand(["start"])
         out = capsys.readouterr().out
         assert "launchctl" in out
 
     def test_hint_windows_uses_sc(self, tmp_path, monkeypatch, capsys):
         self._make_summary(tmp_path, monkeypatch)
-        with patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"), \
-             patch("platform.system", return_value="Windows"), \
-             patch("subprocess.run", side_effect=OSError("no systemctl")), \
-             patch("subprocess.call", return_value=0):
+        with (
+            patch("maxim.tunnel.cli.require_cloudflared", return_value="/bin/cloudflared"),
+            patch("platform.system", return_value="Windows"),
+            patch("subprocess.run", side_effect=OSError("no systemctl")),
+            patch("subprocess.call", return_value=0),
+        ):
             run_tunnel_subcommand(["start"])
         out = capsys.readouterr().out
         assert "Services.msc" in out or "sc start" in out

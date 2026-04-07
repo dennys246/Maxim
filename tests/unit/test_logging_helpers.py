@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 
 
-
 class TestLogSwallowedException:
     """Test log_swallowed_exception function."""
 
@@ -31,9 +30,7 @@ class TestLogSwallowedException:
             try:
                 raise RuntimeError("oops")
             except RuntimeError as e:
-                log_swallowed_exception(
-                    e, operation="risky_call", context={"attempt": 3, "timeout": 5.0}
-                )
+                log_swallowed_exception(e, operation="risky_call", context={"attempt": 3, "timeout": 5.0})
 
         assert "attempt=3" in caplog.text
         assert "timeout=5.0" in caplog.text
@@ -85,9 +82,7 @@ class TestLogRecoverableError:
             try:
                 raise FileNotFoundError("config.yaml")
             except FileNotFoundError as e:
-                log_recoverable_error(
-                    e, operation="load_config", recovery="using defaults"
-                )
+                log_recoverable_error(e, operation="load_config", recovery="using defaults")
 
         assert "load_config" in caplog.text
         assert "FileNotFoundError" in caplog.text

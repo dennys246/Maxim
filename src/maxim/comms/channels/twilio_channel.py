@@ -29,10 +29,7 @@ class TwilioChannel(Channel):
         try:
             from twilio.rest import Client  # type: ignore[import-untyped]
         except ImportError as exc:
-            raise ImportError(
-                "twilio package required for TwilioChannel. "
-                "Install with: pip install twilio"
-            ) from exc
+            raise ImportError("twilio package required for TwilioChannel. Install with: pip install twilio") from exc
 
         self.client = Client(config["account_sid"], config["auth_token"])
         self.from_number: str = config["from_number"]
@@ -47,9 +44,7 @@ class TwilioChannel(Channel):
         try:
             conv = self.conv_manager.get_or_create("twilio:sms", recipient)
             self.conv_manager.record_outbound(conv, body)
-            self.client.messages.create(
-                body=body, from_=self.from_number, to=recipient
-            )
+            self.client.messages.create(body=body, from_=self.from_number, to=recipient)
             return True
         except Exception:
             logger.exception("Twilio SMS send failed")

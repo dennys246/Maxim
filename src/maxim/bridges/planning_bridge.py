@@ -137,16 +137,16 @@ class PlanHistoryBridge:
             if memories:
                 seed_ids = [m.id for m in memories[:10]]
                 try:
-                    associated = self.hippocampus.recall_associated(
-                        seed_ids, limit=20
-                    )
+                    associated = self.hippocampus.recall_associated(seed_ids, limit=20)
                     seen_ids = {m.id for m in memories}
                     for mem, _score in associated:
                         if mem.id not in seen_ids:
                             # Only include successful associated memories
                             success_val = (
-                                mem.success if hasattr(mem, "success")
-                                else mem.outcome.success if hasattr(mem, "outcome")
+                                mem.success
+                                if hasattr(mem, "success")
+                                else mem.outcome.success
+                                if hasattr(mem, "outcome")
                                 else False
                             )
                             if success_val:
@@ -312,10 +312,7 @@ class PlanHistoryBridge:
             if not links:
                 return (0.5, 0)
 
-            positive = sum(
-                1 for link in links
-                if link.outcome_valence.value > 0
-            )
+            positive = sum(1 for link in links if link.outcome_valence.value > 0)
             return (positive / len(links), len(links))
 
         except Exception as e:

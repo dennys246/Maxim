@@ -272,8 +272,11 @@ class TestModulateRelationships:
 
         # Define initial relationship
         atl.define_relationship(
-            concept_a.id, concept_b.id, "RELATED_TO",
-            weight=0.3, confidence=0.3,
+            concept_a.id,
+            concept_b.id,
+            "RELATED_TO",
+            weight=0.3,
+            confidence=0.3,
         )
 
         grounder._modulate_relationships(concept_a)
@@ -294,8 +297,11 @@ class TestModulateRelationships:
             concept_b.add_ref("hippocampus", f"ep-b-{i}")
 
         atl.define_relationship(
-            concept_a.id, concept_b.id, "RELATED_TO",
-            weight=0.5, confidence=0.5,
+            concept_a.id,
+            concept_b.id,
+            "RELATED_TO",
+            weight=0.5,
+            confidence=0.5,
         )
 
         grounder._modulate_relationships(concept_a)
@@ -310,8 +316,11 @@ class TestModulateRelationships:
         concept_b.add_ref("hippocampus", "ep-1")
 
         atl.define_relationship(
-            concept_a.id, concept_b.id, "RELATED_TO",
-            weight=0.3, confidence=0.3,
+            concept_a.id,
+            concept_b.id,
+            "RELATED_TO",
+            weight=0.3,
+            confidence=0.3,
         )
 
         # Should not crash or modulate
@@ -372,9 +381,7 @@ class TestStoreQuantifications:
 
         # Check QUANTIFIES edge exists from AG to ATL
         edges = cross_layer._incoming.get(("atl", concept.id), [])
-        quantifies_edges = [
-            e for e in edges if e.edge_type.name == "QUANTIFIES"
-        ]
+        quantifies_edges = [e for e in edges if e.edge_type.name == "QUANTIFIES"]
         assert len(quantifies_edges) >= 1
 
     def test_adds_ag_ref_to_concept(self, grounder, atl, ag):

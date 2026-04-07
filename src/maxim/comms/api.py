@@ -46,10 +46,7 @@ def create_api_app(
     try:
         from fastapi import Depends, FastAPI, HTTPException, Request
     except ImportError as exc:
-        raise ImportError(
-            "fastapi package required for API server. "
-            "Install with: pip install fastapi uvicorn"
-        ) from exc
+        raise ImportError("fastapi package required for API server. Install with: pip install fastapi uvicorn") from exc
 
     _load_env()
 
@@ -168,10 +165,7 @@ def start_api_server(
     try:
         import uvicorn  # type: ignore[import-untyped]
     except ImportError as exc:
-        raise ImportError(
-            "uvicorn package required for API server. "
-            "Install with: pip install uvicorn"
-        ) from exc
+        raise ImportError("uvicorn package required for API server. Install with: pip install uvicorn") from exc
 
     app = create_api_app(
         bus=bus,

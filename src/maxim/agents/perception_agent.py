@@ -123,6 +123,7 @@ class PerceptionAgent(Agent):
 
         try:
             from maxim.modes.exploration import parse_explore_command
+
             return parse_explore_command(raw_text)
         except ImportError:
             return None
@@ -179,8 +180,7 @@ class PerceptionAgent(Agent):
         except Exception:
             mtime = None
         changed = self._last_transcript_path != path or (
-            mtime is not None
-            and (self._last_transcript_mtime is None or mtime > self._last_transcript_mtime)
+            mtime is not None and (self._last_transcript_mtime is None or mtime > self._last_transcript_mtime)
         )
         if changed:
             self._last_transcript_path = path
@@ -320,9 +320,7 @@ class PerceptionAgent(Agent):
 
         return None  # PerceptionAgent doesn't propose intents directly
 
-    def update_interests(
-        self, add: list[int] | None = None, remove: list[int] | None = None
-    ) -> None:
+    def update_interests(self, add: list[int] | None = None, remove: list[int] | None = None) -> None:
         """Update object class interests for salience boosting.
 
         Interest classes get a 2x salience multiplier. All COCO classes are

@@ -1,4 +1,5 @@
 """Tests for capability-driven per-lane LLM profile assignment."""
+
 from __future__ import annotations
 
 from maxim.runtime.capabilities import RuntimeCapabilities
@@ -83,6 +84,7 @@ class TestStructure:
         cfg = build_lane_model_config(_caps(True, 15.9, 32.0))
         assert isinstance(cfg["infer"], LaneModelConfig)
         import dataclasses
+
         assert dataclasses.is_dataclass(cfg["infer"])
 
 
@@ -133,7 +135,6 @@ class TestAvailabilityFilter:
         assert cfg["infer"].profile == "smollm-1.7b-instruct"
         # Review shares infer because smollm didn't pass the availability check
         assert cfg["review"] is cfg["infer"]
-
 
 
 class TestApplyLaneEnvOverrides:

@@ -35,6 +35,7 @@ class BehaviorState:
         salience_map: Unified salience map for spatial attention (if enabled).
         focus_learner: FocusLearner for adaptive movement correction (if enabled).
     """
+
     inhibited_behaviors: frozenset[str] = field(default_factory=frozenset)
     priority_modifiers: dict[str, float] = field(default_factory=dict)
     current_goals: list[str] = field(default_factory=list)
@@ -151,7 +152,7 @@ class Behavior(ABC):
     def time_since_activation(self) -> float:
         """Seconds since last activation (inf if never activated)."""
         if self._last_activation == 0.0:
-            return float('inf')
+            return float("inf")
         return time.time() - self._last_activation
 
     def _create_proposal(

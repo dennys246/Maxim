@@ -357,9 +357,7 @@ class TestWorkingMemoryEntry:
 
     def test_current_salience_no_decay_for_forming(self):
         ep = _make_episodic()
-        entry = WorkingMemoryEntry(
-            record=ep, salience=0.9, tier=MemoryTier.FORMING
-        )
+        entry = WorkingMemoryEntry(record=ep, salience=0.9, tier=MemoryTier.FORMING)
         assert entry.current_salience() == 0.9
 
     def test_should_promote_only_short_term(self):
@@ -396,10 +394,12 @@ class TestWorkingMemoryEntry:
 
     def test_from_dict_unknown_type_raises(self):
         with pytest.raises(ValueError, match="Unknown record type"):
-            WorkingMemoryEntry.from_dict({
-                "record_type": "FakeRecord",
-                "record": {},
-            })
+            WorkingMemoryEntry.from_dict(
+                {
+                    "record_type": "FakeRecord",
+                    "record": {},
+                }
+            )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -435,9 +435,7 @@ class TestStagedFormation:
         percept = Percept(timestamp=time.time(), source="vision", salience=0.8)
         with agent._lock:
             agent._begin_memory_formation(percept, "run-1")
-            agent._update_forming_decision(
-                "run-1", Decision(intent={"goal": "grasp"}, confidence=0.9)
-            )
+            agent._update_forming_decision("run-1", Decision(intent={"goal": "grasp"}, confidence=0.9))
 
         entry = agent._forming_pool["run-1"]
         assert entry.record.decision.intent["goal"] == "grasp"
@@ -713,7 +711,9 @@ class TestFullPipeline:
 
         predictions = [
             PredictedOutcome(
-                tool="navigate", success=True, goal="test",
+                tool="navigate",
+                success=True,
+                goal="test",
                 math_context=[MathContextEntry(name="speed", verbal="fast")],
             ),
         ]

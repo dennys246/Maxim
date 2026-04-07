@@ -150,12 +150,8 @@ class TestEscalationGoalSensitivity:
                 salience=0.4,
             )
 
-        escalation_bridge.get_threshold(
-            goal="navigate to bedroom", novelty=0.5, salience=0.5
-        )
-        escalation_bridge.get_threshold(
-            goal="observe surroundings", novelty=0.5, salience=0.5
-        )
+        escalation_bridge.get_threshold(goal="navigate to bedroom", novelty=0.5, salience=0.5)
+        escalation_bridge.get_threshold(goal="observe surroundings", novelty=0.5, salience=0.5)
 
         # Navigation should have lower threshold (escalate more)
         # Looking should have higher threshold (escalate less)
@@ -228,9 +224,7 @@ class TestEscalationPersistence:
                 salience=0.5,
             )
 
-        original_threshold = escalation_bridge.get_threshold(
-            goal="persistent_goal", novelty=0.5, salience=0.5
-        )
+        original_threshold = escalation_bridge.get_threshold(goal="persistent_goal", novelty=0.5, salience=0.5)
 
         path = tmp_path / "escalation.json"
         escalation_bridge.save(str(path))
@@ -246,9 +240,7 @@ class TestEscalationPersistence:
         )
         new_bridge.load(str(path))
 
-        loaded_threshold = new_bridge.get_threshold(
-            goal="persistent_goal", novelty=0.5, salience=0.5
-        )
+        loaded_threshold = new_bridge.get_threshold(goal="persistent_goal", novelty=0.5, salience=0.5)
 
         # Should be similar (may not be exact due to default handling)
         assert abs(loaded_threshold - original_threshold) < 0.1

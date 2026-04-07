@@ -142,9 +142,7 @@ class SituationSignature:
         context_hash = hash(context_str) & 0xFFFFFFFF
 
         # Extract goal keywords
-        goal_keywords = tuple(
-            word.lower() for word in semantic_text.split()[:10] if len(word) > 3
-        )
+        goal_keywords = tuple(word.lower() for word in semantic_text.split()[:10] if len(word) > 3)
 
         return cls(
             semantic_hash=semantic_hash,
@@ -174,9 +172,7 @@ class SituationSignature:
         max_diffs = (24, 7, 4, 12)
 
         total_dist = 0.0
-        for (a, b), max_diff, weight in zip(
-            zip(self.temporal_hash, other.temporal_hash), max_diffs, weights
-        ):
+        for (a, b), max_diff, weight in zip(zip(self.temporal_hash, other.temporal_hash), max_diffs, weights):
             # Circular distance for cyclic time
             diff = min(abs(a - b), max_diff - abs(a - b))
             total_dist += weight * (diff / max_diff)

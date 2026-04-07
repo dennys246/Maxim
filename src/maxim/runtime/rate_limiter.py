@@ -8,6 +8,7 @@ Design: classic token bucket with 1-second granularity refill. Tokens
 accumulate up to the burst cap (= rate limit). Each request consumes one
 token. If the bucket is empty, the request is rejected with 429.
 """
+
 from __future__ import annotations
 
 import os
@@ -56,9 +57,7 @@ class PeerRateLimiter:
     def __init__(self, rate_per_minute: float | None = None) -> None:
         if rate_per_minute is None:
             try:
-                rate_per_minute = float(
-                    os.environ.get("MAXIM_PROXY_RATE_LIMIT_RPM", "0")
-                )
+                rate_per_minute = float(os.environ.get("MAXIM_PROXY_RATE_LIMIT_RPM", "0"))
             except (ValueError, TypeError):
                 rate_per_minute = 0.0
         self._rate = rate_per_minute

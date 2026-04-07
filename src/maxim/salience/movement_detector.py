@@ -28,6 +28,7 @@ class MovementConfig:
         peripheral_boost: Extra boost for movement in peripheral vision.
         peripheral_threshold: Fraction from center to be considered peripheral.
     """
+
     velocity_normalization: float = 50.0  # pixels/frame for max score
     decay_seconds: float = 0.5  # Fast decay when stopped
     min_movement_threshold: float = 3.0  # Ignore tiny movements
@@ -39,6 +40,7 @@ class MovementConfig:
 @dataclass
 class ObjectMotion:
     """Motion state for a tracked object."""
+
     last_position: tuple[float, float]
     last_velocity: float  # pixels/frame
     movement_score: float  # 0-1 smoothed score
@@ -142,10 +144,7 @@ class MovementDetector:
 
                     # Smooth the score (exponential moving average)
                     alpha = 0.3  # Responsiveness
-                    motion.movement_score = (
-                        alpha * normalized_velocity +
-                        (1 - alpha) * motion.movement_score
-                    )
+                    motion.movement_score = alpha * normalized_velocity + (1 - alpha) * motion.movement_score
                     motion.last_velocity = velocity
 
                 motion.last_position = current_pos
@@ -214,8 +213,7 @@ class MovementDetector:
             return 0.0
 
         # Scale to 0-1 range beyond threshold
-        return min(1.0, (dist - self.config.peripheral_threshold) /
-                   (1.0 - self.config.peripheral_threshold))
+        return min(1.0, (dist - self.config.peripheral_threshold) / (1.0 - self.config.peripheral_threshold))
 
     def get_movement_score(self, track_id: int) -> float:
         """Get current movement score for a track ID.
@@ -240,11 +238,7 @@ class MovementDetector:
         Returns:
             List of (track_id, score) tuples, sorted by score descending.
         """
-        items = [
-            (tid, motion.movement_score)
-            for tid, motion in self._objects.items()
-            if motion.movement_score > 0.1
-        ]
+        items = [(tid, motion.movement_score) for tid, motion in self._objects.items() if motion.movement_score > 0.1]
         items.sort(key=lambda x: x[1], reverse=True)
         return items[:n]
 
@@ -257,8 +251,7 @@ class MovementDetector:
         # Remove objects not seen for 10+ seconds or with very low scores
         cutoff = now - 10.0
         to_remove = [
-            tid for tid, motion in self._objects.items()
-            if motion.last_update < cutoff or motion.movement_score < 0.01
+            tid for tid, motion in self._objects.items() if motion.last_update < cutoff or motion.movement_score < 0.01
         ]
         for tid in to_remove:
             del self._objects[tid]

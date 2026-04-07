@@ -350,12 +350,8 @@ class TestRetrievalOrchestrator:
 
             def extract(self, text: str) -> list[RetrievalCandidate]:
                 return [
-                    RetrievalCandidate(
-                        memory_id="mem_1", score=0.8, source=self.name
-                    ),
-                    RetrievalCandidate(
-                        memory_id="mem_2", score=0.6, source=self.name
-                    ),
+                    RetrievalCandidate(memory_id="mem_1", score=0.8, source=self.name),
+                    RetrievalCandidate(memory_id="mem_2", score=0.6, source=self.name),
                 ]
 
         class SignalB(RetrievalSignal):
@@ -365,12 +361,8 @@ class TestRetrievalOrchestrator:
 
             def extract(self, text: str) -> list[RetrievalCandidate]:
                 return [
-                    RetrievalCandidate(
-                        memory_id="mem_2", score=0.9, source=self.name
-                    ),
-                    RetrievalCandidate(
-                        memory_id="mem_3", score=0.5, source=self.name
-                    ),
+                    RetrievalCandidate(memory_id="mem_2", score=0.9, source=self.name),
+                    RetrievalCandidate(memory_id="mem_3", score=0.5, source=self.name),
                 ]
 
         orchestrator = RetrievalOrchestrator(hippocampus=None)  # Skip memory fetch
@@ -402,9 +394,7 @@ class TestRetrievalOrchestrator:
                 return "signal_a"
 
             def extract(self, text: str) -> list[RetrievalCandidate]:
-                return [
-                    RetrievalCandidate(memory_id="mem_1", score=1.0, source=self.name)
-                ]
+                return [RetrievalCandidate(memory_id="mem_1", score=1.0, source=self.name)]
 
         class SignalB(RetrievalSignal):
             @property
@@ -412,9 +402,7 @@ class TestRetrievalOrchestrator:
                 return "signal_b"
 
             def extract(self, text: str) -> list[RetrievalCandidate]:
-                return [
-                    RetrievalCandidate(memory_id="mem_1", score=0.5, source=self.name)
-                ]
+                return [RetrievalCandidate(memory_id="mem_1", score=0.5, source=self.name)]
 
         config = OrchestratorConfig(
             merge_strategy="weighted_avg",
@@ -444,9 +432,7 @@ class TestRetrievalOrchestrator:
                 return "signal_a"
 
             def extract(self, text: str) -> list[RetrievalCandidate]:
-                return [
-                    RetrievalCandidate(memory_id="mem_1", score=0.3, source=self.name)
-                ]
+                return [RetrievalCandidate(memory_id="mem_1", score=0.3, source=self.name)]
 
         class SignalB(RetrievalSignal):
             @property
@@ -454,9 +440,7 @@ class TestRetrievalOrchestrator:
                 return "signal_b"
 
             def extract(self, text: str) -> list[RetrievalCandidate]:
-                return [
-                    RetrievalCandidate(memory_id="mem_1", score=0.9, source=self.name)
-                ]
+                return [RetrievalCandidate(memory_id="mem_1", score=0.9, source=self.name)]
 
         config = OrchestratorConfig(merge_strategy="max")
         orchestrator = RetrievalOrchestrator(hippocampus=None, config=config)
@@ -507,12 +491,7 @@ class TestRetrievalOrchestrator:
                 return "many"
 
             def extract(self, text: str) -> list[RetrievalCandidate]:
-                return [
-                    RetrievalCandidate(
-                        memory_id=f"mem_{i}", score=0.5, source=self.name
-                    )
-                    for i in range(100)
-                ]
+                return [RetrievalCandidate(memory_id=f"mem_{i}", score=0.5, source=self.name) for i in range(100)]
 
         orchestrator = RetrievalOrchestrator(hippocampus=None)
         orchestrator.register_signal(ManyResultsSignal())

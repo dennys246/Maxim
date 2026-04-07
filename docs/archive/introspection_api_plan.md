@@ -7,7 +7,7 @@
 | 1 | **DONE** | `AUTIntrospector` class in `simulation/introspection.py` (~180 LOC) |
 | 2 | **DONE** | Wired into orchestrator — `aut_introspector` created once, passed to `InspectAUTTool` |
 | 3 | **DONE** | `InspectAUTTool` delegates all queries to `AUTIntrospector.dispatch()` |
-| 4 | Not started | Standalone experiment runner (`run_campaign()` function) |
+| 4 | **DONE** | Standalone experiment runner in `simulation/experiment.py` — `run_campaign()` + `ExperimentResult` |
 | 5 | Not started | AUT self-introspection tool (needs design discussion) |
 
 ## Context
@@ -209,9 +209,9 @@ This would let the AUT actively search its memory when encountering the door in 
 | 1: AUTIntrospector class | ~180 | High | **DONE** |
 | 2: Wire into orchestrator | ~20 | High | **DONE** |
 | 3: Refactor InspectAUTTool | ~20 | Medium | **DONE** |
-| 4: Standalone experiment runner | ~100 | Medium | Not started |
+| 4: Standalone experiment runner | ~120 | Medium | **DONE** |
 | 5: AUT self-introspection tool | ~50 | Low (needs discussion) | Not started |
-| **Total** | **~370** | | **~220 shipped** |
+| **Total** | **~390** | | **~340 shipped** |
 
 ## Related Plans
 

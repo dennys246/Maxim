@@ -35,7 +35,6 @@ from maxim.proprioception.perceived_pain import (
     SensitivePathPrior,
     _path_matches_prior,
     extract_paths_from_params,
-    tool_to_operation,
 )
 
 logger = logging.getLogger(__name__)
@@ -122,12 +121,14 @@ class PainInterceptorExecutor:
                 "prior_reason": best_prior.reason,
             },
         )
-        self._events.append({
-            "timestamp": signal.timestamp,
-            "tool_name": tool_name,
-            "intensity": signal.intensity,
-            "paths": path_list,
-        })
+        self._events.append(
+            {
+                "timestamp": signal.timestamp,
+                "tool_name": tool_name,
+                "intensity": signal.intensity,
+                "paths": path_list,
+            }
+        )
 
         if self._pain_bus is not None:
             try:
@@ -138,6 +139,7 @@ class PainInterceptorExecutor:
         # Sim-visibility trace.
         try:
             from maxim.simulation.sim_logger import sim_pain
+
             sim_pain(
                 f"consequence ({best_access.operation if best_access else '?'} {tool_name})",
                 best_intensity,
@@ -148,8 +150,10 @@ class PainInterceptorExecutor:
 
         logger.info(
             "Consequence pain %.2f fired: tool=%s op=%s paths=%s",
-            best_intensity, tool_name,
-            best_access.operation if best_access else "?", path_list,
+            best_intensity,
+            tool_name,
+            best_access.operation if best_access else "?",
+            path_list,
         )
         return result
 

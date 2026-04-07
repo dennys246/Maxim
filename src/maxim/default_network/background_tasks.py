@@ -37,6 +37,7 @@ class BackgroundTaskConfig:
         novelty_cleanup_enabled: Whether to cleanup novelty tracker.
         salience_cleanup_enabled: Whether to cleanup salience network.
     """
+
     enabled: bool = True
     cleanup_interval_seconds: float = 30.0  # Run cleanup every 30s
     stats_interval_seconds: float = 60.0  # Log stats every 60s
@@ -57,6 +58,7 @@ class ThrottleConfig:
         novelty_update_hz: Max rate for novelty tracker updates.
         behavior_eval_hz: Max rate for behavior evaluation.
     """
+
     spatial_map_update_hz: float = 5.0  # 5 updates/sec instead of 30
     salience_update_hz: float = 10.0  # 10 updates/sec
     novelty_update_hz: float = 10.0  # 10 updates/sec
@@ -179,7 +181,7 @@ class BackgroundTaskManager:
         if self._config.spatial_map_cleanup_enabled and self._spatial_map is not None:
             try:
                 # SpatialMap has cleanup() method
-                if hasattr(self._spatial_map, 'cleanup'):
+                if hasattr(self._spatial_map, "cleanup"):
                     self._spatial_map.cleanup()
                     cleaned += 1
             except Exception as e:

@@ -35,9 +35,7 @@ class SimilarityIndex:
         self.num_bands = num_bands
         self.rows_per_band = num_hashes // num_bands
         # Each band maps a hash signature → set of memory IDs
-        self.bands: list[dict[tuple[int, ...], set[str]]] = [
-            {} for _ in range(num_bands)
-        ]
+        self.bands: list[dict[tuple[int, ...], set[str]]] = [{} for _ in range(num_bands)]
         self.signatures: dict[str, list[int]] = {}  # memory_id → minhash signature
 
     def _shingle(self, text: str, k: int = 2) -> set[str]:
@@ -55,9 +53,7 @@ class SimilarityIndex:
         """Compute MinHash signature for a set of shingles."""
         sig = []
         for i in range(self.num_hashes):
-            min_hash = (
-                min(hash((i, s)) & 0xFFFFFFFF for s in shingles) if shingles else 0
-            )
+            min_hash = min(hash((i, s)) & 0xFFFFFFFF for s in shingles) if shingles else 0
             sig.append(min_hash)
         return sig
 
@@ -78,9 +74,7 @@ class SimilarityIndex:
                 self.bands[band_idx][band_hash] = set()
             self.bands[band_idx][band_hash].add(memory_id)
 
-    def query_similar(
-        self, text: str, min_similarity: float = 0.3
-    ) -> list[tuple[str, float]]:
+    def query_similar(self, text: str, min_similarity: float = 0.3) -> list[tuple[str, float]]:
         """Find memory IDs with similar text context.
 
         Returns list of (memory_id, estimated_jaccard_similarity) pairs,
@@ -128,10 +122,7 @@ class SimilarityIndex:
             "num_hashes": self.num_hashes,
             "num_bands": self.num_bands,
             "signatures": self.signatures,
-            "bands": [
-                {json.dumps(list(k)): list(v) for k, v in band.items()}
-                for band in self.bands
-            ],
+            "bands": [{json.dumps(list(k)): list(v) for k, v in band.items()} for band in self.bands],
         }
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         tmp_path = path + ".tmp"
@@ -146,10 +137,7 @@ class SimilarityIndex:
             data = json.load(f)
         idx = cls(data["num_hashes"], data["num_bands"])
         idx.signatures = data["signatures"]
-        idx.bands = [
-            {tuple(json.loads(k)): set(v) for k, v in band.items()}
-            for band in data["bands"]
-        ]
+        idx.bands = [{tuple(json.loads(k)): set(v) for k, v in band.items()} for band in data["bands"]]
         return idx
 
     def __len__(self) -> int:

@@ -11,6 +11,7 @@ server-side metrics without needing SSH access to the leader.
 Design: stdlib-only (http.server), no dependencies. Intentionally minimal
 so it adds no import cost when not used.
 """
+
 from __future__ import annotations
 
 import json
@@ -125,8 +126,11 @@ def start_debug_server(
     except OSError as e:
         # Port already in use — another debug server running
         import logging
+
         logging.getLogger("maxim").debug(
-            "Debug status server port %d in use: %s", port, e,
+            "Debug status server port %d in use: %s",
+            port,
+            e,
         )
         return None
 
@@ -135,8 +139,11 @@ def start_debug_server(
     thread.start()
 
     import logging
+
     logging.getLogger("maxim").info(
-        "Debug status server listening on %s:%d/v1/debug/status", bind_host, port,
+        "Debug status server listening on %s:%d/v1/debug/status",
+        bind_host,
+        port,
     )
     return server
 

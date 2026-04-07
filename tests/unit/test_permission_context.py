@@ -27,7 +27,9 @@ class TestPermissionDenial:
     def test_immutable(self) -> None:
         """Mutating a frozen dataclass raises FrozenInstanceError."""
         denial = PermissionDenial(
-            tool_name="x", reason="r", rule="forbidden_tool",
+            tool_name="x",
+            reason="r",
+            rule="forbidden_tool",
         )
 
         with pytest.raises(dataclasses.FrozenInstanceError):

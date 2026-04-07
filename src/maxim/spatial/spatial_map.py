@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 # Try to use numpy for efficient array operations
 try:
     import numpy as np
+
     HAS_NUMPY = True
 except ImportError:
     HAS_NUMPY = False
@@ -47,6 +48,7 @@ class SpatialMapConfig:
         default_reachable_range: Default UV range assumed reachable before learning.
         neighbor_search_radius: Grid cells to search for nearby memories.
     """
+
     grid_resolution: float = 0.1  # 10x10 grid over image space
     failure_decay_seconds: float = 60.0  # Failures decay over 1 minute
     memory_decay_seconds: float = 300.0  # Memories decay over 5 minutes
@@ -63,6 +65,7 @@ class SpatialMemory:
 
     Uses __slots__ for memory efficiency.
     """
+
     class_id: int | None
     label: str | None
     track_id: int | None
@@ -140,7 +143,7 @@ class ReachabilityGrid:
             return 0.5  # Unknown
 
         # Decay failure influence over time
-        time_since_failure = now - last_failure if last_failure > 0 else float('inf')
+        time_since_failure = now - last_failure if last_failure > 0 else float("inf")
         failure_weight = math.exp(-time_since_failure / self.decay_seconds) if time_since_failure < 1000 else 0.0
 
         total = success + failure
@@ -464,9 +467,7 @@ class SpatialMap:
 
         with self._lock:
             # Get all known reachable positions
-            reachable = self._reachability.get_all_reachable(
-                self.config.min_reachable_confidence
-            )
+            reachable = self._reachability.get_all_reachable(self.config.min_reachable_confidence)
 
             for grid_u, grid_v, reach_score in reachable:
                 # Skip current position if requested
@@ -530,10 +531,7 @@ class SpatialMap:
         with self._lock:
             if class_ids:
                 results = self._memories.get_by_class(class_ids, max_age_seconds)
-                return [
-                    (self._grid_to_pixel(cell[0], cell[1]), mem)
-                    for cell, mem in results
-                ]
+                return [(self._grid_to_pixel(cell[0], cell[1]), mem) for cell, mem in results]
             else:
                 # Return all recent memories
                 results = []

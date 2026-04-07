@@ -26,6 +26,7 @@ def compute_content_hash(content: str) -> str:
     """Compute SHA-256 hash of content for TOCTOU protection."""
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -243,7 +244,7 @@ BLOCKED_PYTHON_IMPORTS = {
 
 def _create_restricted_python_wrapper(script_path: str, sandbox_dir: str) -> str:
     """Create a wrapper script that restricts imports."""
-    wrapper = f'''
+    wrapper = f"""
 import sys
 import builtins
 
@@ -278,7 +279,7 @@ builtins.open = _restricted_open
 
 # Now execute the actual script
 exec(open({script_path!r}).read())
-'''
+"""
     return wrapper
 
 
@@ -739,13 +740,15 @@ class SandboxExecutor:
             path = os.path.join(scripts_dir, f)
             if os.path.isfile(path):
                 ext = os.path.splitext(f)[1]
-                scripts.append({
-                    "name": f,
-                    "path": path,
-                    "type": "python" if ext == ".py" else "shell" if ext == ".sh" else "unknown",
-                    "size": os.path.getsize(path),
-                    "modified": os.path.getmtime(path),
-                })
+                scripts.append(
+                    {
+                        "name": f,
+                        "path": path,
+                        "type": "python" if ext == ".py" else "shell" if ext == ".sh" else "unknown",
+                        "size": os.path.getsize(path),
+                        "modified": os.path.getmtime(path),
+                    }
+                )
         return scripts
 
 
@@ -757,6 +760,7 @@ class SandboxExecutor:
 def _get_executor_singleton():
     """Lazy import to avoid circular dependency."""
     from maxim.utils.singleton import Singleton
+
     return Singleton("sandbox_executor")
 
 

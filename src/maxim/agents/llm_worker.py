@@ -142,10 +142,7 @@ class LLMWorker:
         if self._has_cloud_providers():
             providers = self._llm.get_provider_configs()
             try:
-                max_ctx = max(
-                    int(cfg.get("n_ctx", self._n_ctx) or self._n_ctx)
-                    for cfg in providers.values()
-                )
+                max_ctx = max(int(cfg.get("n_ctx", self._n_ctx) or self._n_ctx) for cfg in providers.values())
                 self._n_ctx = max(self._n_ctx, max_ctx)
             except Exception:
                 pass
@@ -182,7 +179,11 @@ class LLMWorker:
         )
 
     def _get_provider_hint(
-        self, system: str, user: str, temperature: float, max_tokens: int,
+        self,
+        system: str,
+        user: str,
+        temperature: float,
+        max_tokens: int,
     ) -> tuple[str | None, bool]:
         """Preview which provider would handle a request.
 
@@ -192,8 +193,10 @@ class LLMWorker:
             return None, False
         try:
             preview = self._llm.preview_provider(
-                system=system, user=user,
-                temperature=temperature, max_tokens=max_tokens,
+                system=system,
+                user=user,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
             if isinstance(preview, dict):
                 return preview.get("provider"), bool(preview.get("is_cloud"))
@@ -247,6 +250,7 @@ class LLMWorker:
         logger.info("Retrying LLM request with timeout=%.0fs (was %.0fs)", timeout_s, old_timeout)
 
         if self._pool is not None:
+
             def _retry_fn(prefetched=None):
                 if self._stop_event.is_set():
                     return None
@@ -275,19 +279,19 @@ class LLMWorker:
 
         # Always create the LLM executor (needed for _call_llm_with_timeout)
         if self._llm_executor is None:
-            self._llm_executor = concurrent.futures.ThreadPoolExecutor(
-                max_workers=1, thread_name_prefix="LLMCall"
-            )
+            self._llm_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="LLMCall")
 
         # Create internal WorkerPool if none was provided
         if self._owns_pool:
             from maxim.runtime.worker_pool import LaneConfig, WorkerPool
 
             net_workers = self._init_provider_semaphores()
-            self._pool = WorkerPool(lane_configs={
-                "infer": LaneConfig(name="infer", max_workers=1, requires_gpu=True),
-                "infer_net": LaneConfig(name="infer_net", max_workers=net_workers, requires_gpu=False),
-            })
+            self._pool = WorkerPool(
+                lane_configs={
+                    "infer": LaneConfig(name="infer", max_workers=1, requires_gpu=True),
+                    "infer_net": LaneConfig(name="infer_net", max_workers=net_workers, requires_gpu=False),
+                }
+            )
 
         if self._pool is not None:
             self._pool.start()
@@ -370,9 +374,7 @@ class LLMWorker:
             # behind the still-running orphan, causing cascading timeouts).
             try:
                 old_executor = self._llm_executor
-                self._llm_executor = concurrent.futures.ThreadPoolExecutor(
-                    max_workers=1, thread_name_prefix="LLMCall"
-                )
+                self._llm_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="LLMCall")
                 if old_executor is not None:
                     old_executor.shutdown(wait=False, cancel_futures=True)
             except Exception as e:
@@ -437,6 +439,7 @@ class LLMWorker:
             try:
                 from maxim.energy.signal import EnergySignal, EnergyType
                 from maxim.energy.registry import get_global_registry
+
                 registry = get_global_registry()
                 signal = EnergySignal(
                     energy_type=EnergyType.LLM_COST,
@@ -478,7 +481,10 @@ class LLMWorker:
         is_cloud = False
 
         provider_hint, is_cloud = self._get_provider_hint(
-            system, user, temperature, max_tokens,
+            system,
+            user,
+            temperature,
+            max_tokens,
         )
 
         lane_name = lane or ("infer_net" if is_cloud else "infer")
@@ -614,6 +620,7 @@ class LLMWorker:
                         lane = "infer_net"
                         break
             request.lane = lane
+
             # WorkerPool mode: wrap _process_request in a job
             def _infer_job(prefetched=None):
                 # Staleness guard inside the job
@@ -639,9 +646,11 @@ class LLMWorker:
                 return True
             except queue.Full:
                 self._requests_dropped += 1
-                logger.warning("LLM request dropped (queue full): %s (total dropped: %d)",
-                               request.request_id if hasattr(request, 'request_id') else 'unknown',
-                               self._requests_dropped)
+                logger.warning(
+                    "LLM request dropped (queue full): %s (total dropped: %d)",
+                    request.request_id if hasattr(request, "request_id") else "unknown",
+                    self._requests_dropped,
+                )
                 return False
 
     # Lanes the LLM worker may dispatch to. Cloud-backed requests
@@ -738,7 +747,10 @@ class LLMWorker:
             # Use mode-specific max tokens for dynamic response length
             max_tokens = request.mode.max_response_tokens
             provider_hint, _ = self._get_provider_hint(
-                "", prompt, 0.3, max_tokens,
+                "",
+                prompt,
+                0.3,
+                max_tokens,
             )
             provider_semaphore = None
             if provider_hint and provider_hint in self._provider_semaphores:
@@ -830,6 +842,7 @@ class LLMWorker:
             # Trace for simulation debugging
             try:
                 from maxim.simulation.sim_logger import sim_log
+
                 _action = response.get("action") if isinstance(response, dict) else None
                 _tool = _action.get("tool_name") if isinstance(_action, dict) else None
                 sim_log("EXEC", f"LLM raw response parsed: tool={_tool}, type={type(response).__name__}")
@@ -897,8 +910,12 @@ class LLMWorker:
             )
             try:
                 from maxim.simulation.sim_logger import sim_log
+
                 _tool = proposal.action.get("tool_name") if isinstance(proposal.action, dict) else None
-                sim_log("EXEC", f"LLMProposal built: tool={_tool}, action_is_dict={isinstance(proposal.action, dict)}, req_id={request.request_id[:20]}")
+                sim_log(
+                    "EXEC",
+                    f"LLMProposal built: tool={_tool}, action_is_dict={isinstance(proposal.action, dict)}, req_id={request.request_id[:20]}",
+                )
             except Exception:
                 pass
             return proposal
@@ -906,6 +923,7 @@ class LLMWorker:
         except Exception as e:
             try:
                 from maxim.simulation.sim_logger import sim_log
+
                 sim_log("EXEC", f"LLMProposal EXCEPTION: {type(e).__name__}: {str(e)[:100]}")
             except Exception:
                 pass
@@ -949,7 +967,11 @@ class LLMWorker:
         return self._prompt_builder._build_engage_prompt(tool_name, query, result, mode_name)
 
     def _build_tool_aware_prompt(
-        self, request: LLMRequest, question_text: str, date_str: str, time_str: str,
+        self,
+        request: LLMRequest,
+        question_text: str,
+        date_str: str,
+        time_str: str,
     ) -> str:
         return self._prompt_builder._build_tool_aware_prompt(request, question_text, date_str, time_str)
 

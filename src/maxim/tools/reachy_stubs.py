@@ -110,6 +110,7 @@ NoOpMoveTool = create_stub_tool(
     always_allowed=True,
 )
 
+
 # MaximCommandTool stub (needs command validation)
 class NoOpMaximCommandTool(Tool):
     """No-op stub for maxim_command with command validation."""

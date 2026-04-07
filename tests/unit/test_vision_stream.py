@@ -49,9 +49,7 @@ class TestEnsureVisionLogger:
 
         mock_logger = MagicMock()
         mock_cls = MagicMock(return_value=mock_logger)
-        monkeypatch.setattr(
-            "maxim.conscience.vision_stream.VisionEventLogger", mock_cls
-        )
+        monkeypatch.setattr("maxim.conscience.vision_stream.VisionEventLogger", mock_cls)
 
         result = obj._ensure_vision_logger()
 
@@ -82,9 +80,7 @@ class TestEnsureVisionLogger:
 
         mock_logger = MagicMock()
         mock_cls = MagicMock(return_value=mock_logger)
-        monkeypatch.setattr(
-            "maxim.conscience.vision_stream.VisionEventLogger", mock_cls
-        )
+        monkeypatch.setattr("maxim.conscience.vision_stream.VisionEventLogger", mock_cls)
 
         first = obj._ensure_vision_logger()
         second = obj._ensure_vision_logger()
@@ -196,9 +192,7 @@ class TestStartVisionEventStream:
         obj._vision_event_thread = alive_thread
 
         mock_cls = MagicMock()
-        monkeypatch.setattr(
-            "maxim.conscience.vision_stream.VisionEventLogger", mock_cls
-        )
+        monkeypatch.setattr("maxim.conscience.vision_stream.VisionEventLogger", mock_cls)
 
         obj._start_vision_event_stream()
 

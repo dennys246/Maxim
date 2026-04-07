@@ -181,8 +181,12 @@ class MediaLoopMixin:
 
                 # Load whisper config from data/util/whisper.json
                 whisper_cfg = load_whisper_config()
-                self.log.info("Whisper config: model=%s, device=%s, compute_type=%s",
-                              whisper_cfg.model, whisper_cfg.device, whisper_cfg.compute_type)
+                self.log.info(
+                    "Whisper config: model=%s, device=%s, compute_type=%s",
+                    whisper_cfg.model,
+                    whisper_cfg.device,
+                    whisper_cfg.compute_type,
+                )
 
                 # Use file-based IPC instead of multiprocessing Queues
                 # Queues use shared memory which conflicts with TensorFlow+CUDA in parent
@@ -215,13 +219,16 @@ class MediaLoopMixin:
                 # This allows detection after parent has hidden GPUs from TensorFlow
                 try:
                     import subprocess
+
                     result = subprocess.run(
-                        ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
-                        capture_output=True, text=True, timeout=2
+                        ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                        capture_output=True,
+                        text=True,
+                        timeout=2,
                     )
                     if result.returncode == 0:
                         gpu_names = result.stdout.strip().lower()
-                        if 'rtx 50' in gpu_names or '5080' in gpu_names or '5090' in gpu_names:
+                        if "rtx 50" in gpu_names or "5080" in gpu_names or "5090" in gpu_names:
                             blackwell_detected = True
                             self.log.warning("⚠️  Detected Blackwell GPU (nvidia-smi)")
                 except Exception as e:
@@ -236,12 +243,16 @@ class MediaLoopMixin:
 
                 # Build VAD parameters dict for fine-tuned voice detection
                 # Lower threshold = more sensitive to speech (default Silero is 0.5)
-                vad_parameters = {
-                    "threshold": whisper_cfg.vad_threshold,
-                    "min_speech_duration_ms": whisper_cfg.vad_min_speech_duration_ms,
-                    "min_silence_duration_ms": whisper_cfg.vad_min_silence_duration_ms,
-                    "speech_pad_ms": whisper_cfg.vad_speech_pad_ms,
-                } if vad_filter else None
+                vad_parameters = (
+                    {
+                        "threshold": whisper_cfg.vad_threshold,
+                        "min_speech_duration_ms": whisper_cfg.vad_min_speech_duration_ms,
+                        "min_silence_duration_ms": whisper_cfg.vad_min_silence_duration_ms,
+                        "speech_pad_ms": whisper_cfg.vad_speech_pad_ms,
+                    }
+                    if vad_filter
+                    else None
+                )
 
                 self.log.info("Whisper model: %s", whisper_model)
                 self.log.info("Transcription VAD filter: %s", "enabled" if vad_filter else "disabled")
@@ -255,7 +266,9 @@ class MediaLoopMixin:
                 if whisper_device == "cuda":
                     cuda_devices_for_subprocess = _original_cuda_devices
                     if cuda_devices_for_subprocess:
-                        self.log.info("Whisper subprocess will use GPU: CUDA_VISIBLE_DEVICES=%s", cuda_devices_for_subprocess)
+                        self.log.info(
+                            "Whisper subprocess will use GPU: CUDA_VISIBLE_DEVICES=%s", cuda_devices_for_subprocess
+                        )
 
                 # Set environment flag for CPU-only mode BEFORE spawning subprocess
                 # This ensures CUDA_VISIBLE_DEVICES is set at module import time
@@ -332,13 +345,54 @@ class MediaLoopMixin:
         has_robot = self._robot is not None
         if parallel:
             if vision and has_robot:
-                threads.append(threading.Thread(target=frame_capture_worker, args=(stop_event, media_lock, self, frame_save_queue, frame_obs_queue), name="maxim.capture.video", daemon=True))
-                threads.append(threading.Thread(target=video_writer_worker, args=(stop_event, self, frame_save_queue, video_path), name="maxim.write.video", daemon=True))
+                threads.append(
+                    threading.Thread(
+                        target=frame_capture_worker,
+                        args=(stop_event, media_lock, self, frame_save_queue, frame_obs_queue),
+                        name="maxim.capture.video",
+                        daemon=True,
+                    )
+                )
+                threads.append(
+                    threading.Thread(
+                        target=video_writer_worker,
+                        args=(stop_event, self, frame_save_queue, video_path),
+                        name="maxim.write.video",
+                        daemon=True,
+                    )
+                )
             if motor and has_robot:
-                threads.append(threading.Thread(target=motor_worker, args=(motor_queue, stop_event, self), name="maxim.motor", daemon=True))
+                threads.append(
+                    threading.Thread(
+                        target=motor_worker, args=(motor_queue, stop_event, self), name="maxim.motor", daemon=True
+                    )
+                )
             if self.audio and has_robot:
-                threads.append(threading.Thread(target=audio_capture_worker, args=(stop_event, media_lock, self, audio_save_queue, audio_input_rate, audio_output_rate), name="maxim.capture.audio", daemon=True))
-                threads.append(threading.Thread(target=audio_writer_worker, args=(stop_event, self, audio_save_queue, audio_path, chunk_dir, audio_input_rate, audio_output_rate, transcribe_process), name="maxim.write.audio", daemon=True))
+                threads.append(
+                    threading.Thread(
+                        target=audio_capture_worker,
+                        args=(stop_event, media_lock, self, audio_save_queue, audio_input_rate, audio_output_rate),
+                        name="maxim.capture.audio",
+                        daemon=True,
+                    )
+                )
+                threads.append(
+                    threading.Thread(
+                        target=audio_writer_worker,
+                        args=(
+                            stop_event,
+                            self,
+                            audio_save_queue,
+                            audio_path,
+                            chunk_dir,
+                            audio_input_rate,
+                            audio_output_rate,
+                            transcribe_process,
+                        ),
+                        name="maxim.write.audio",
+                        daemon=True,
+                    )
+                )
 
             for t in threads:
                 if t is key_thread or t is transcript_thread or t is cli_thread:
@@ -407,14 +461,18 @@ class MediaLoopMixin:
                                                 self.current_epoch,
                                                 len(captured.detections or []),
                                             )
-                                        target_info = display_detections(
-                                            captured.frame,
-                                            captured.detections,
-                                            segmenter=None,  # Already segmented
-                                            window_name="Maxim Observation",
-                                            wait_ms=1,
-                                            show_pose=True,
-                                        ) if self.verbose else None
+                                        target_info = (
+                                            display_detections(
+                                                captured.frame,
+                                                captured.detections,
+                                                segmenter=None,  # Already segmented
+                                                window_name="Maxim Observation",
+                                                wait_ms=1,
+                                                show_pose=True,
+                                            )
+                                            if self.verbose
+                                            else None
+                                        )
                                     else:
                                         # Fall back to passive_observation if no segmented frame
                                         if self.verbosity >= 2:
@@ -495,6 +553,7 @@ class MediaLoopMixin:
                     # Also send SIGTERM directly via os.kill for reliability
                     try:
                         import signal
+
                         os.kill(transcribe_process.pid, signal.SIGTERM)
                     except Exception:
                         pass
@@ -513,6 +572,7 @@ class MediaLoopMixin:
                     # Also send SIGKILL directly for reliability
                     try:
                         import signal
+
                         os.kill(transcribe_process.pid, signal.SIGKILL)
                     except Exception:
                         pass
@@ -639,15 +699,7 @@ class MediaLoopMixin:
 
     def act(self, action):
         for movement in self.actions[action]["movements"]:
-            self.move(
-                movement[0],
-                movement[1],
-                movement[2],
-                movement[3],
-                movement[4],
-                movement[5],
-                movement[6]
-            )
+            self.move(movement[0], movement[1], movement[2], movement[3], movement[4], movement[5], movement[6])
             time.sleep(movement[6])
 
     def speak(self, samples, sample_rate: int = 16000):
@@ -687,6 +739,7 @@ class MediaLoopMixin:
         # Fall back to local audio playback
         try:
             from maxim.utils.audio import play_audio_local
+
             success = play_audio_local(samples, sample_rate=sample_rate, blocking=False)
             if success:
                 self.log.debug("Playing audio through local speakers")
@@ -695,7 +748,7 @@ class MediaLoopMixin:
             warn("Local audio playback failed: %s", e, logger=self.log)
             return False
 
-    def look(self, save_file = None, show = True, release = False):
+    def look(self, save_file=None, show=True, release=False):
         # Grab frame from reachy mini camera
         if self.mini is None:
             return None

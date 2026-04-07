@@ -465,8 +465,7 @@ def eigenvalues_symmetric(m: Mat) -> Vec:
         a = mat_add(mat_mul(r, q), mat_scale(mat_identity(n), shift))
     else:
         log.warning(
-            "eigenvalues_symmetric did not converge after %d iterations; "
-            "returning diagonal as approximation",
+            "eigenvalues_symmetric did not converge after %d iterations; returning diagonal as approximation",
             max_iters,
         )
 

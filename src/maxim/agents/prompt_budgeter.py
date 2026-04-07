@@ -17,9 +17,9 @@ logger = logging.getLogger(__name__)
 class SectionPriority(IntEnum):
     """Priority tiers for prompt sections. Lower = higher priority."""
 
-    MANDATORY = 0   # Never dropped (instructions, user request)
-    CRITICAL = 1    # Dropped only under extreme pressure (identity, tools, planning)
-    IMPORTANT = 2   # Truncatable first, then dropped (conversation, context pool)
+    MANDATORY = 0  # Never dropped (instructions, user request)
+    CRITICAL = 1  # Dropped only under extreme pressure (identity, tools, planning)
+    IMPORTANT = 2  # Truncatable first, then dropped (conversation, context pool)
     NICE_TO_HAVE = 3  # Dropped first (foundational, mode context, speech)
 
 
@@ -77,16 +77,18 @@ class PromptBudgeter:
         if not content or not content.strip():
             return
         token_count = self._counter.count_tokens(content)
-        self._sections.append(PromptSection(
-            name=name,
-            content=content,
-            priority=priority,
-            token_count=token_count,
-            insertion_order=self._insertion_idx,
-            truncatable=truncatable,
-            min_tokens=min_tokens,
-            truncate_fn=truncate_fn,
-        ))
+        self._sections.append(
+            PromptSection(
+                name=name,
+                content=content,
+                priority=priority,
+                token_count=token_count,
+                insertion_order=self._insertion_idx,
+                truncatable=truncatable,
+                min_tokens=min_tokens,
+                truncate_fn=truncate_fn,
+            )
+        )
         self._insertion_idx += 1
 
     def build(self) -> tuple[str, list[str]]:
@@ -122,27 +124,29 @@ class PromptBudgeter:
                     truncated = section.truncate_fn(section.content, remaining)
                     new_count = self._counter.count_tokens(truncated)
                     if new_count <= remaining and truncated.strip():
-                        included.append(PromptSection(
-                            name=section.name,
-                            content=truncated,
-                            priority=section.priority,
-                            token_count=new_count,
-                            insertion_order=section.insertion_order,
-                            truncatable=section.truncatable,
-                            min_tokens=section.min_tokens,
-                            truncate_fn=section.truncate_fn,
-                        ))
+                        included.append(
+                            PromptSection(
+                                name=section.name,
+                                content=truncated,
+                                priority=section.priority,
+                                token_count=new_count,
+                                insertion_order=section.insertion_order,
+                                truncatable=section.truncatable,
+                                min_tokens=section.min_tokens,
+                                truncate_fn=section.truncate_fn,
+                            )
+                        )
                         used += new_count
-                        logger.debug("Truncated section '%s': %d→%d tokens",
-                                     section.name, section.token_count, new_count)
+                        logger.debug(
+                            "Truncated section '%s': %d→%d tokens", section.name, section.token_count, new_count
+                        )
                     else:
                         dropped.append(section.name)
                 else:
                     dropped.append(section.name)
 
         if dropped:
-            logger.info("Prompt budget %d/%d — dropped sections: %s",
-                        used, budget, ", ".join(dropped))
+            logger.info("Prompt budget %d/%d — dropped sections: %s", used, budget, ", ".join(dropped))
 
         # Re-sort by original insertion order to preserve prompt flow
         included.sort(key=lambda s: s.insertion_order)
@@ -201,11 +205,11 @@ def _truncate_conversation(content: str, max_tokens: int, counter: Any) -> str:
 
     # Try removing from the front, one turn boundary at a time
     for cut_idx in range(1, len(turn_starts)):
-        candidate = "\n".join(lines[turn_starts[cut_idx]:])
+        candidate = "\n".join(lines[turn_starts[cut_idx] :])
         if counter.count_tokens(candidate) <= max_tokens:
             return candidate
     # Last resort: return just the last turn
-    return "\n".join(lines[turn_starts[-1]:])
+    return "\n".join(lines[turn_starts[-1] :])
 
 
 def _truncate_context_pool(content: str, max_tokens: int, counter: Any) -> str:
@@ -258,15 +262,19 @@ def _truncate_manifest(content: str, max_tokens: int, counter: Any) -> str:
     header_lines: list[str] = []
     entry_lines: list[str] = []
     for line in lines:
-        if line.startswith("  ") and not line.startswith("  ...") and not line.startswith("  1.") and not line.startswith("  2.") and not line.startswith("  3."):
+        if (
+            line.startswith("  ")
+            and not line.startswith("  ...")
+            and not line.startswith("  1.")
+            and not line.startswith("  2.")
+            and not line.startswith("  3.")
+        ):
             entry_lines.append(line)
         else:
             header_lines.append(line)
 
     # Remove entries from the end until it fits
-    while entry_lines and counter.count_tokens(
-        "\n".join(header_lines + entry_lines)
-    ) > max_tokens:
+    while entry_lines and counter.count_tokens("\n".join(header_lines + entry_lines)) > max_tokens:
         entry_lines.pop()
 
     if entry_lines:

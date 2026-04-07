@@ -1,9 +1,8 @@
 """Tests for Maxim API key management (src/maxim/tunnel/keys.py)."""
+
 from __future__ import annotations
 
 import os
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -21,6 +20,7 @@ def isolated_key_file(tmp_path, monkeypatch):
 
 # ─── generation ────────────────────────────────────────────────────────────
 
+
 class TestGeneration:
     def test_generate_returns_256_bit_string(self):
         key = keys.generate_key()
@@ -33,6 +33,7 @@ class TestGeneration:
 
 
 # ─── file I/O ──────────────────────────────────────────────────────────────
+
 
 class TestFileIO:
     def test_key_exists_false_when_missing(self, isolated_key_file):
@@ -75,6 +76,7 @@ class TestFileIO:
 
 # ─── ensure / rotate ───────────────────────────────────────────────────────
 
+
 class TestEnsureAndRotate:
     def test_ensure_generates_new_when_missing(self, isolated_key_file):
         key = keys.ensure_key()
@@ -94,6 +96,7 @@ class TestEnsureAndRotate:
 
 # ─── truncation for display ───────────────────────────────────────────────
 
+
 class TestTruncation:
     def test_truncate_long_key(self):
         out = keys.truncate_for_display("abcdefghijklmnopqrstuvwxyz", keep=4)
@@ -106,6 +109,7 @@ class TestTruncation:
 
 
 # ─── snippet rendering ────────────────────────────────────────────────────
+
 
 class TestSnippets:
     def test_render_all_shells(self):
@@ -142,6 +146,7 @@ class TestSnippets:
 
 
 # ─── CLI: maxim tunnel key ─────────────────────────────────────────────────
+
 
 class TestKeyCLI:
     def test_key_without_subaction(self, capsys):

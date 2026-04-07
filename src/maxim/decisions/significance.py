@@ -65,6 +65,7 @@ class SignificanceHeuristic:
 
 # ── Baseline heuristic evaluation functions ──────────────────────────────────
 
+
 def _eval_rpe(ctx: CycleContext) -> float:
     """RPE magnitude — normalized externally by SignificanceWeightLearner."""
     return ctx.rpe_raw  # Already normalized to 0-1 by caller
@@ -104,9 +105,7 @@ BASELINE_HEURISTICS = [
 class SignificanceConfig:
     """Configuration for the significance evaluation system."""
 
-    heuristics: list[SignificanceHeuristic] = field(
-        default_factory=lambda: list(BASELINE_HEURISTICS)
-    )
+    heuristics: list[SignificanceHeuristic] = field(default_factory=lambda: list(BASELINE_HEURISTICS))
     staging_threshold: float = 0.5  # Stage if weighted score exceeds this
     rpe_window: int = 100  # Rolling window for RPE normalization
 
@@ -185,9 +184,7 @@ class SignificanceWeightLearner:
         for h in BASELINE_HEURISTICS:
             lo, hi = h.init_range
             raw = random.uniform(lo, hi)
-            self.weights[h.name] = LearnableWeight(
-                name=h.name, weight=raw, init_range=(lo, hi)
-            )
+            self.weights[h.name] = LearnableWeight(name=h.name, weight=raw, init_range=(lo, hi))
         self._normalize_weights()
         self.rpe_running_mean = 0.0
         self.rpe_running_std = 1.0
@@ -198,9 +195,7 @@ class SignificanceWeightLearner:
         # Normalize RPE
         normalized_rpe = 0.0
         if ctx.rpe_raw > 0:
-            normalized_rpe = (ctx.rpe_raw - self.rpe_running_mean) / max(
-                self.rpe_running_std, 1e-6
-            )
+            normalized_rpe = (ctx.rpe_raw - self.rpe_running_mean) / max(self.rpe_running_std, 1e-6)
             ctx = CycleContext(
                 rpe_raw=sigmoid(normalized_rpe),
                 has_user_input=ctx.has_user_input,
@@ -255,9 +250,7 @@ class SignificanceWeightLearner:
 
             if edges or age_hours > min_age_hours * 3:
                 edge_growth = len(edges) - rec.edges_at_promotion
-                mean_weight = (
-                    statistics.mean(w for _, w in edges) if edges else 0.0
-                )
+                mean_weight = statistics.mean(w for _, w in edges) if edges else 0.0
                 utility = sigmoid(edge_growth / 3.0) * 0.6 + mean_weight * 0.4
 
                 if not edges and age_hours > min_age_hours * 3:
@@ -296,9 +289,7 @@ class SignificanceWeightLearner:
 
     def detect_stuck(self, window: int = 30, threshold: float = 0.05) -> bool:
         """Detect if learning is stuck by comparing weight snapshots."""
-        has_enough = any(
-            len(w.weight_snapshots) >= window for w in self.weights.values()
-        )
+        has_enough = any(len(w.weight_snapshots) >= window for w in self.weights.values())
         if not has_enough:
             return False
 
@@ -320,9 +311,7 @@ class SignificanceWeightLearner:
         """Callback from hippocampus — clean up tracked memory."""
         self.tracked_memories.pop(memory_id, None)
 
-    def load_weights_into_heuristics(
-        self, heuristics: list[SignificanceHeuristic]
-    ) -> None:
+    def load_weights_into_heuristics(self, heuristics: list[SignificanceHeuristic]) -> None:
         """Apply learned weights to heuristic list."""
         for h in heuristics:
             if h.name in self.weights:
@@ -336,9 +325,7 @@ class SignificanceWeightLearner:
             "rpe_running_mean": self.rpe_running_mean,
             "rpe_running_std": self.rpe_running_std,
             "rpe_window": list(self.rpe_window),
-            "tracked_memories": {
-                mid: asdict(rec) for mid, rec in self.tracked_memories.items()
-            },
+            "tracked_memories": {mid: asdict(rec) for mid, rec in self.tracked_memories.items()},
         }
         # Serialize LearnableWeight with deque → list conversion
         for name, w in self.weights.items():

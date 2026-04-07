@@ -139,9 +139,7 @@ def load_internet_access(path: Path | str | None = None) -> InternetAccessState:
         return InternetAccessState()
 
 
-def save_internet_access(
-    state: InternetAccessState, path: Path | str | None = None
-) -> bool:
+def save_internet_access(state: InternetAccessState, path: Path | str | None = None) -> bool:
     """Save internet access state to persistent storage."""
     path = Path(path) if path else DEFAULT_INTERNET_ACCESS_PATH
 
@@ -157,9 +155,7 @@ def save_internet_access(
         return False
 
 
-def set_internet_access(
-    enabled: bool, source: str = "tool", path: Path | str | None = None
-) -> InternetAccessState:
+def set_internet_access(enabled: bool, source: str = "tool", path: Path | str | None = None) -> InternetAccessState:
     """Set internet access state."""
     state = InternetAccessState(enabled=enabled, source=source)
     save_internet_access(state, path)
@@ -211,9 +207,9 @@ class InternetAccessPolicy:
         # Only update if the lowercase sets are empty but the original sets have values
         # This avoids re-processing when loading from cache
         if not self._allow_domains_lower and self.allow_domains:
-            object.__setattr__(self, '_allow_domains_lower', frozenset(d.lower() for d in self.allow_domains))
+            object.__setattr__(self, "_allow_domains_lower", frozenset(d.lower() for d in self.allow_domains))
         if not self._block_domains_lower and self.block_domains:
-            object.__setattr__(self, '_block_domains_lower', frozenset(d.lower() for d in self.block_domains))
+            object.__setattr__(self, "_block_domains_lower", frozenset(d.lower() for d in self.block_domains))
 
     def can_access(self, url: str) -> tuple[bool, str | None]:
         """Check if URL can be accessed according to policy.
@@ -300,9 +296,7 @@ class InternetAccessPolicy:
                 try:
                     ip = ipaddress.ip_address(ip_str)
                     if self._check_ip_is_private(ip):
-                        logger.warning(
-                            f"DNS rebinding protection: {_redact_hostname(hostname)} resolved to private IP"
-                        )
+                        logger.warning(f"DNS rebinding protection: {_redact_hostname(hostname)} resolved to private IP")
                         return True
                 except ValueError:
                     continue
@@ -372,9 +366,7 @@ class InternetAccessPolicy:
             block_domains=set(data.get("block_domains", [])),
             require_robots_ok=bool(data.get("require_robots_ok", True)),
             block_paywalled=bool(data.get("block_paywalled", True)),
-            allow_paywalled_with_credentials=bool(
-                data.get("allow_paywalled_with_credentials", False)
-            ),
+            allow_paywalled_with_credentials=bool(data.get("allow_paywalled_with_credentials", False)),
             unsafe_content_checks=bool(data.get("unsafe_content_checks", True)),
             max_fetch_bytes=int(data.get("max_fetch_bytes", 1_000_000)),
             max_pages_per_minute=int(data.get("max_pages_per_minute", 10)),
@@ -417,10 +409,7 @@ def load_internet_policy(path: Path | str | None = None) -> InternetAccessPolicy
             try:
                 current_mtime = path.stat().st_mtime if path.exists() else 0.0
                 # Cache hit if file unchanged AND enabled state unchanged
-                if (
-                    current_mtime == _cached_policy_mtime
-                    and access_state.enabled == _cached_policy_enabled
-                ):
+                if current_mtime == _cached_policy_mtime and access_state.enabled == _cached_policy_enabled:
                     return _cached_policy
             except OSError:
                 pass  # File access issue, reload
@@ -451,9 +440,7 @@ def load_internet_policy(path: Path | str | None = None) -> InternetAccessPolicy
     return policy
 
 
-def save_internet_policy(
-    policy: InternetAccessPolicy, path: Path | str | None = None
-) -> bool:
+def save_internet_policy(policy: InternetAccessPolicy, path: Path | str | None = None) -> bool:
     """Save internet access policy to file."""
     path = Path(path) if path else DEFAULT_POLICY_PATH
 

@@ -31,10 +31,10 @@ class PromotionCandidate:
     Source-agnostic — any causal system can produce these.
     """
 
-    pattern_name: str               # Human-readable: "grasp → success"
-    category: str                   # "causal_pattern", "operational_pattern", etc.
-    confidence: float               # Source system's confidence in this pattern
-    source_memory_ids: list[str]    # Episodic memory IDs where this was observed
+    pattern_name: str  # Human-readable: "grasp → success"
+    category: str  # "causal_pattern", "operational_pattern", etc.
+    confidence: float  # Source system's confidence in this pattern
+    source_memory_ids: list[str]  # Episodic memory IDs where this was observed
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -148,10 +148,7 @@ class SemanticPromoter:
 
             if len(timestamps) >= self._config.randomness_min_samples:
                 timestamps.sort()
-                intervals = [
-                    timestamps[i + 1] - timestamps[i]
-                    for i in range(len(timestamps) - 1)
-                ]
+                intervals = [timestamps[i + 1] - timestamps[i] for i in range(len(timestamps) - 1)]
                 result = self._ips.assess_randomness(intervals)
                 # Random timing suggests coincidence, not a real pattern
                 if result.is_random and result.pattern_confidence < self._config.randomness_threshold:

@@ -51,9 +51,7 @@ class TestNAcConvergence:
         final_value = link.predicted_value
         assert final_value < 0.2, f"Expected prediction < 0.2, got {final_value}"
 
-    def test_mixed_outcomes_converge_to_proportion(
-        self, nac, valence_positive, valence_negative
-    ):
+    def test_mixed_outcomes_converge_to_proportion(self, nac, valence_positive, valence_negative):
         """Mixed outcomes converge to approximate success rate."""
         # 70% positive, 30% negative
         for i in range(100):
@@ -72,9 +70,7 @@ class TestNAcConvergence:
         final_value = link.predicted_value
         assert 0.5 < final_value < 0.9, f"Expected ~0.7, got {final_value}"
 
-    def test_learning_is_monotonic_for_consistent_signal(
-        self, nac, valence_positive
-    ):
+    def test_learning_is_monotonic_for_consistent_signal(self, nac, valence_positive):
         """Consistent positive signal produces monotonic increase."""
         predictions = []
 
@@ -90,9 +86,7 @@ class TestNAcConvergence:
             predictions.append(link.predicted_value)
 
         # Check mostly monotonic (allow 1-2 small dips due to R-W dynamics)
-        increases = sum(
-            1 for i in range(1, len(predictions)) if predictions[i] >= predictions[i - 1]
-        )
+        increases = sum(1 for i in range(1, len(predictions)) if predictions[i] >= predictions[i - 1])
         monotonicity_ratio = increases / (len(predictions) - 1)
 
         assert monotonicity_ratio > 0.9, f"Expected mostly monotonic, got {monotonicity_ratio}"
@@ -132,9 +126,7 @@ class TestNAcConvergence:
         # Fast learner should have higher value after same observations
         assert fast_value > slow_value, f"Fast {fast_value} should > Slow {slow_value}"
 
-    def test_prediction_stabilizes_after_many_observations(
-        self, nac, valence_positive, valence_negative
-    ):
+    def test_prediction_stabilizes_after_many_observations(self, nac, valence_positive, valence_negative):
         """Predictions stabilize (low variance) after many observations."""
         # 60% positive rate
         for i in range(100):
@@ -151,9 +143,7 @@ class TestNAcConvergence:
         # Last 20 predictions should be stable
         history = link.prediction_history[-20:]
         if len(history) >= 10:
-            variance = sum((v - sum(history) / len(history)) ** 2 for v in history) / len(
-                history
-            )
+            variance = sum((v - sum(history) / len(history)) ** 2 for v in history) / len(history)
             assert variance < 0.02, f"Predictions not stable, variance={variance}"
 
 
@@ -161,9 +151,7 @@ class TestNAcConvergence:
 class TestNAcContextSensitivity:
     """Test that NAc learns context-dependent predictions."""
 
-    def test_different_contexts_learn_independently(
-        self, nac, valence_positive, valence_negative
-    ):
+    def test_different_contexts_learn_independently(self, nac, valence_positive, valence_negative):
         """Same action, different contexts, different predictions."""
         # Context A: always positive
         for _ in range(10):
@@ -219,9 +207,7 @@ class TestNAcTemporalLearning:
         expected_mean = sum(delays) / len(delays)
         actual_mean = link.temporal_delta.mean
 
-        assert abs(actual_mean - expected_mean) < 0.1, (
-            f"Expected mean ~{expected_mean}, got {actual_mean}"
-        )
+        assert abs(actual_mean - expected_mean) < 0.1, f"Expected mean ~{expected_mean}, got {actual_mean}"
 
     def test_temporal_prediction_provides_bounds(self, nac, valence_positive):
         """Temporal predictions include confidence bounds."""

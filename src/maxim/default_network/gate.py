@@ -64,6 +64,7 @@ COCO_CLASSES: dict[int, str] = {
 @dataclass
 class AdaptiveThresholdConfig:
     """Configuration for adaptive threshold adjustment."""
+
     base_novelty_threshold: float = 0.7
     base_salience_threshold: float = 0.6
     min_threshold: float = 0.3
@@ -174,9 +175,7 @@ class AdaptiveThresholdController:
         # Calculate outcome quality (what % of escalations led to actions)
         recent_outcomes = [o for t, o in self._outcome_history if t > window_start]
         if recent_outcomes:
-            useful_outcomes = sum(
-                1 for o in recent_outcomes if o in ('action_taken', 'goal_created')
-            )
+            useful_outcomes = sum(1 for o in recent_outcomes if o in ("action_taken", "goal_created"))
             outcome_quality = useful_outcomes / len(recent_outcomes)
         else:
             outcome_quality = 0.5  # Neutral if no data
@@ -210,12 +209,10 @@ class AdaptiveThresholdController:
 
         # Apply adjustment to both thresholds
         self._novelty_threshold = max(
-            self.config.min_threshold,
-            min(self.config.max_threshold, self._novelty_threshold + adjustment)
+            self.config.min_threshold, min(self.config.max_threshold, self._novelty_threshold + adjustment)
         )
         self._salience_threshold = max(
-            self.config.min_threshold,
-            min(self.config.max_threshold, self._salience_threshold + adjustment)
+            self.config.min_threshold, min(self.config.max_threshold, self._salience_threshold + adjustment)
         )
 
         logger.debug(
@@ -298,12 +295,8 @@ class AdaptiveThresholdController:
             with self._lock:
                 # Load thresholds
                 thresholds = data.get("thresholds", {})
-                self._novelty_threshold = thresholds.get(
-                    "novelty", self.config.base_novelty_threshold
-                )
-                self._salience_threshold = thresholds.get(
-                    "salience", self.config.base_salience_threshold
-                )
+                self._novelty_threshold = thresholds.get("novelty", self.config.base_novelty_threshold)
+                self._salience_threshold = thresholds.get("salience", self.config.base_salience_threshold)
 
                 # Load history
                 for ts, escalated in data.get("escalation_history", []):
@@ -343,6 +336,7 @@ class AdaptiveThresholdController:
 @dataclass
 class GateConfig:
     """Configuration for the ThalamicGate."""
+
     novelty_threshold: float = 0.7
     salience_threshold: float = 0.6
     anomaly_threshold: float = 0.7
@@ -392,9 +386,7 @@ class ThalamicGate:
             self._adaptive = AdaptiveThresholdController(adaptive_config)
 
         # Recent percept history for anomaly detection
-        self._recent_percepts: deque["Percept"] = deque(
-            maxlen=self.config.max_recent_percepts
-        )
+        self._recent_percepts: deque["Percept"] = deque(maxlen=self.config.max_recent_percepts)
 
         # Current active goal (set by deliberative layer)
         self._active_goal: str | None = None
@@ -429,14 +421,14 @@ class ThalamicGate:
             combined_thresh = novelty_thresh * salience_thresh
 
         # Get percept attributes safely
-        novelty = getattr(percept, 'novelty', 0.5)
-        salience = getattr(percept, 'salience', 0.5)
-        primary_track_id = getattr(percept, 'primary_track_id', None)
-        primary_class_id = getattr(percept, 'primary_class_id', None)
-        has_speech = getattr(percept, 'has_speech', False)
+        novelty = getattr(percept, "novelty", 0.5)
+        salience = getattr(percept, "salience", 0.5)
+        primary_track_id = getattr(percept, "primary_track_id", None)
+        primary_class_id = getattr(percept, "primary_class_id", None)
+        has_speech = getattr(percept, "has_speech", False)
 
         # Calculate fear factor from percept if available
-        fear_factor = getattr(percept, 'fear_factor', 0.0)
+        fear_factor = getattr(percept, "fear_factor", 0.0)
 
         # 1. Check attention locks (deliberative layer requested focus)
         with self._lock:
@@ -630,8 +622,9 @@ class ThalamicGate:
             if goal:
                 # Extract keywords for matching
                 self._goal_keywords = [
-                    w.lower() for w in goal.split()
-                    if len(w) > 2 and w.lower() not in ('the', 'a', 'an', 'find', 'look')
+                    w.lower()
+                    for w in goal.split()
+                    if len(w) > 2 and w.lower() not in ("the", "a", "an", "find", "look")
                 ]
             else:
                 self._goal_keywords = []
@@ -677,7 +670,7 @@ class ThalamicGate:
         if not self._goal_keywords:
             return False
 
-        primary_class_id = getattr(percept, 'primary_class_id', None)
+        primary_class_id = getattr(percept, "primary_class_id", None)
         if primary_class_id is None:
             return False
 
@@ -709,7 +702,7 @@ class ThalamicGate:
         Currently checks for rapid approach (high velocity toward camera).
         """
         # Check for velocity information
-        velocity = getattr(percept, 'velocity', None)
+        velocity = getattr(percept, "velocity", None)
         if velocity is None:
             return False
 

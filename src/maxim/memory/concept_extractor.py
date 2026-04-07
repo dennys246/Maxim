@@ -95,9 +95,7 @@ class ConceptExtractor:
         try:
             self._queue.put_nowait((memory_id, record))
         except queue.Full:
-            logger.warning(
-                "ConceptExtractor queue full, dropping %s", memory_id[:8]
-            )
+            logger.warning("ConceptExtractor queue full, dropping %s", memory_id[:8])
 
     # ------------------------------------------------------------------
     # Worker thread
@@ -113,15 +111,11 @@ class ConceptExtractor:
             try:
                 self._process_capture(memory_id, record)
             except Exception as e:
-                logger.warning(
-                    "ConceptExtractor failed for %s: %s", memory_id[:8], e
-                )
+                logger.warning("ConceptExtractor failed for %s: %s", memory_id[:8], e)
             finally:
                 self._queue.task_done()
 
-    def _process_capture(
-        self, memory_id: str, record: EpisodicMemory
-    ) -> None:
+    def _process_capture(self, memory_id: str, record: EpisodicMemory) -> None:
         """Actual concept extraction — runs in worker thread."""
         concepts_found: list[tuple[str, str]] = []  # (name, category)
 
@@ -174,12 +168,11 @@ class ConceptExtractor:
         # Log concept extraction activity (P3d — Tier 2)
         if self._collector and self._collector.verbosity >= 1:
             from maxim.provenance.types import PipelineStage, ProvenanceRef
-            refs = [
-                ProvenanceRef("atl", cid, f"{name} ({cat})")
-                for cid, name, cat in concept_ids
-            ]
+
+            refs = [ProvenanceRef("atl", cid, f"{name} ({cat})") for cid, name, cat in concept_ids]
             self._collector.log_activity(
-                PipelineStage.FORMATION, "concept_extractor",
+                PipelineStage.FORMATION,
+                "concept_extractor",
                 f"Extracted {len(refs)} concepts from hpc:{memory_id[:8]}",
                 sources=refs,
             )
@@ -243,7 +236,8 @@ class ConceptExtractor:
 
             sig = TemporalSignature.from_timestamp(record.timestamp)
             self._scn.register(
-                concept_id, sig,
+                concept_id,
+                sig,
                 significance=concept.confidence if concept else 0.5,
             )
 
@@ -253,9 +247,7 @@ class ConceptExtractor:
     # Inline relationships
     # ------------------------------------------------------------------
 
-    def _form_inline_relationships(
-        self, concept_ids: list[tuple[str, str, str]]
-    ) -> None:
+    def _form_inline_relationships(self, concept_ids: list[tuple[str, str, str]]) -> None:
         """Form tentative relationships between concepts in the same episode.
 
         Only relates concepts where at least one is an "active" concept —
@@ -264,9 +256,7 @@ class ConceptExtractor:
         frame don't auto-relate to each other (that's noise, not signal).
         """
         active_categories = {"goal", "action"}
-        active_ids = {
-            cid for cid, _, cat in concept_ids if cat in active_categories
-        }
+        active_ids = {cid for cid, _, cat in concept_ids if cat in active_categories}
 
         formed = 0
         for i, (cid_a, name_a, cat_a) in enumerate(concept_ids):
@@ -280,30 +270,29 @@ class ConceptExtractor:
 
                 # At least one concept must be active (goal/action),
                 # OR both must be non-object categories.
-                if not (
-                    cid_a in active_ids
-                    or cid_b in active_ids
-                    or (cat_a != "object" and cat_b != "object")
-                ):
+                if not (cid_a in active_ids or cid_b in active_ids or (cat_a != "object" and cat_b != "object")):
                     continue
 
                 rel_type = self._infer_relationship_type(cat_a, cat_b)
 
                 # Check if relationship already exists
-                existing = self._atl.find_by_relationship(
-                    cid_a, rel_type=rel_type, direction="outgoing", limit=20
-                )
+                existing = self._atl.find_by_relationship(cid_a, rel_type=rel_type, direction="outgoing", limit=20)
                 already_linked = any(oid == cid_b for oid, _ in existing)
 
                 if already_linked:
                     # Reinforce existing relationship — bump confidence
                     self._atl.semantics.update_edge(
-                        cid_a, cid_b, rel_type, confidence_delta=0.05,
+                        cid_a,
+                        cid_b,
+                        rel_type,
+                        confidence_delta=0.05,
                     )
                 else:
                     # New tentative relationship — low confidence
                     self._atl.define_relationship(
-                        cid_a, cid_b, rel_type,
+                        cid_a,
+                        cid_b,
+                        rel_type,
                         weight=0.3,
                         confidence=0.3,
                     )
@@ -317,10 +306,16 @@ class ConceptExtractor:
                     )
                     if alias_created:
                         self._atl.define_relationship(
-                            alias_id, cid_a, "ALIAS_OF", weight=0.8,
+                            alias_id,
+                            cid_a,
+                            "ALIAS_OF",
+                            weight=0.8,
                         )
                         self._atl.define_relationship(
-                            alias_id, cid_b, "ALIAS_OF", weight=0.8,
+                            alias_id,
+                            cid_b,
+                            "ALIAS_OF",
+                            weight=0.8,
                         )
                 formed += 1
 
@@ -397,7 +392,9 @@ class ConceptExtractor:
         elapsed_ms = (_time.monotonic() - start) * 1000
         logger.info(
             "ConceptExtractor reverse index rebuilt: %d refs across %d memories in %.1fms",
-            ref_count, len(self._reverse_index), elapsed_ms,
+            ref_count,
+            len(self._reverse_index),
+            elapsed_ms,
         )
 
     def shutdown(self) -> None:

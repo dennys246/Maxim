@@ -51,7 +51,9 @@ class TestCodeSearchTool:
         tool = CodeSearchTool()
 
         result = tool.execute(
-            pattern="return 42", path=str(src), context_lines=2,
+            pattern="return 42",
+            path=str(src),
+            context_lines=2,
         )
 
         assert result.success is True
@@ -67,7 +69,9 @@ class TestCodeSearchTool:
         tool = CodeSearchTool()
 
         result = tool.execute(
-            pattern="return", path=str(src), file_pattern="*.py",
+            pattern="return",
+            path=str(src),
+            file_pattern="*.py",
         )
 
         assert result.success is True
@@ -92,7 +96,8 @@ class TestCodeSearchTool:
         tool = CodeSearchTool()
 
         result = tool.execute(
-            pattern="zzz_nonexistent_pattern_zzz", path=str(src),
+            pattern="zzz_nonexistent_pattern_zzz",
+            path=str(src),
         )
 
         assert result.success is True
@@ -108,7 +113,9 @@ class TestCodeSearchTool:
 
         tool = CodeSearchTool()
         result = tool.execute(
-            pattern="item_", path=str(src), max_results=3,
+            pattern="item_",
+            path=str(src),
+            max_results=3,
         )
 
         assert result.success is True

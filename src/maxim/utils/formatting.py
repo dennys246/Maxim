@@ -37,6 +37,7 @@ class Colors:
             return False
         # Check for known color-supporting terminals
         import os
+
         term = os.environ.get("TERM", "")
         return term != "dumb" and "color" in term or term in ("xterm", "screen", "vt100")
 

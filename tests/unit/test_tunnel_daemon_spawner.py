@@ -1,11 +1,11 @@
 """Tests for cloudflared daemon auto-spawn (src/maxim/tunnel/daemon_spawner.py)."""
+
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from maxim.tunnel import daemon_spawner
 from maxim.tunnel.daemon_spawner import (
@@ -16,6 +16,7 @@ from maxim.tunnel.daemon_spawner import (
 
 
 # ─── cloudflared process detection ────────────────────────────────────────
+
 
 class TestAlreadyRunning:
     def test_returns_true_when_pgrep_finds_process(self):
@@ -36,6 +37,7 @@ class TestAlreadyRunning:
 
 
 # ─── config path resolution ───────────────────────────────────────────────
+
 
 class TestConfigPathResolution:
     def test_system_config_preferred_when_both_exist(self, tmp_path, monkeypatch):
@@ -64,6 +66,7 @@ class TestConfigPathResolution:
 
 # ─── spawner lifecycle ────────────────────────────────────────────────────
 
+
 class TestSpawnerStart:
     def test_skips_start_when_cloudflared_missing(self, tmp_path, capsys):
         cfg = tmp_path / "config.yml"
@@ -84,9 +87,11 @@ class TestSpawnerStart:
     def test_builds_expected_cmd(self, tmp_path):
         cfg = tmp_path / "config.yml"
         cfg.write_text("tunnel: x")
-        with patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value="/bin/cloudflared"), \
-             patch("subprocess.Popen") as mock_popen, \
-             patch("time.sleep"):
+        with (
+            patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value="/bin/cloudflared"),
+            patch("subprocess.Popen") as mock_popen,
+            patch("time.sleep"),
+        ):
             mock_proc = MagicMock()
             mock_proc.poll.return_value = None  # still running after sleep
             mock_popen.return_value = mock_proc
@@ -103,9 +108,11 @@ class TestSpawnerStart:
     def test_start_new_session_true(self, tmp_path):
         cfg = tmp_path / "config.yml"
         cfg.write_text("tunnel: x")
-        with patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value="/bin/cloudflared"), \
-             patch("subprocess.Popen") as mock_popen, \
-             patch("time.sleep"):
+        with (
+            patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value="/bin/cloudflared"),
+            patch("subprocess.Popen") as mock_popen,
+            patch("time.sleep"),
+        ):
             mock_proc = MagicMock()
             mock_proc.poll.return_value = None
             mock_popen.return_value = mock_proc
@@ -115,9 +122,11 @@ class TestSpawnerStart:
     def test_returns_false_when_process_dies_immediately(self, tmp_path):
         cfg = tmp_path / "config.yml"
         cfg.write_text("tunnel: x")
-        with patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value="/bin/cloudflared"), \
-             patch("subprocess.Popen") as mock_popen, \
-             patch("time.sleep"):
+        with (
+            patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value="/bin/cloudflared"),
+            patch("subprocess.Popen") as mock_popen,
+            patch("time.sleep"),
+        ):
             mock_proc = MagicMock()
             mock_proc.poll.return_value = 1  # dead after sleep
             mock_popen.return_value = mock_proc
@@ -126,8 +135,10 @@ class TestSpawnerStart:
     def test_subprocess_failure_returns_false(self, tmp_path, capsys):
         cfg = tmp_path / "config.yml"
         cfg.write_text("tunnel: x")
-        with patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value="/bin/cloudflared"), \
-             patch("subprocess.Popen", side_effect=OSError("nope")):
+        with (
+            patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value="/bin/cloudflared"),
+            patch("subprocess.Popen", side_effect=OSError("nope")),
+        ):
             assert TunnelDaemonSpawner(config_path=cfg).start() is False
         err = capsys.readouterr().err
         assert "failed to spawn" in err.lower()

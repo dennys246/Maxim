@@ -47,10 +47,10 @@ class ATLConfig:
     max_concepts: int = 10_000
     persistence_path: str | None = None
     indexed_keys: frozenset[str] = frozenset({"name", "category"})
-    retention_threshold: float = 0.2       # Lower than hippocampus — concepts more stable
+    retention_threshold: float = 0.2  # Lower than hippocampus — concepts more stable
     compression_threshold: float = 0.4
     max_age_without_access: float = 30 * 86400  # 30 days (slower decay)
-    name_similarity_threshold: float = 0.8      # For deduplication
+    name_similarity_threshold: float = 0.8  # For deduplication
 
 
 class ATL(MemoryLayer):
@@ -295,9 +295,7 @@ class ATL(MemoryLayer):
         with self._rwlock.read():
             data = {
                 "version": "1.0",
-                "concepts": {
-                    cid: c.to_dict() for cid, c in self._concepts.items()
-                },
+                "concepts": {cid: c.to_dict() for cid, c in self._concepts.items()},
                 "graph": self._graph.to_dict(),
                 "registry": self._semantics.registry.to_dict(),
                 "stats": dict(self._stats),
@@ -480,7 +478,12 @@ class ATL(MemoryLayer):
     ) -> bool:
         """Define a typed relationship between concepts."""
         return self._semantics.define(
-            source_id, target_id, rel_type, weight, confidence, metadata,
+            source_id,
+            target_id,
+            rel_type,
+            weight,
+            confidence,
+            metadata,
         )
 
     def find_by_relationship(

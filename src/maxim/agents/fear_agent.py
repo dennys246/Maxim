@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from maxim.bridges.pain_bridge import PainCircuitBridge
-    from maxim.bridges.tool_pain_bridge import ToolPainBridge
     from maxim.models.language.router import LLMRouter
 
 logger = logging.getLogger(__name__)
@@ -199,9 +198,7 @@ class FearAgent:
                                 description=f"Suspicious pattern: {pattern}",
                                 location=f"{source}:{line_num}",
                                 severity=RiskLevel.MEDIUM,
-                                evidence=code[
-                                    max(0, match.start() - 50) : match.end() + 50
-                                ],
+                                evidence=code[max(0, match.start() - 50) : match.end() + 50],
                             )
                         )
                 except re.error:
@@ -280,15 +277,9 @@ class FearAgent:
                     )
 
         # Check for predicted tool failure via ToolPainBridge
-        if (
-            hasattr(self, "_tool_pain_bridge")
-            and self._tool_pain_bridge is not None
-            and action_type == "tool_call"
-        ):
+        if hasattr(self, "_tool_pain_bridge") and self._tool_pain_bridge is not None and action_type == "tool_call":
             tool_name = action_params.get("tool_name", "")
-            should_gate, reason = self._tool_pain_bridge.should_gate_tool(
-                tool_name, context=action_params
-            )
+            should_gate, reason = self._tool_pain_bridge.should_gate_tool(tool_name, context=action_params)
             if should_gate:
                 findings.append(
                     Finding(

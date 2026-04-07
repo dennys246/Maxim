@@ -156,9 +156,7 @@ class MemoryHub:
             self.hippocampus.register_capture_callback(self._on_memory_captured)
             # Also register embedding store for deletion cleanup
             if self.ec._embedding_store is not None:
-                self.hippocampus.register_deletion_callback(
-                    self.ec._embedding_store.remove
-                )
+                self.hippocampus.register_deletion_callback(self.ec._embedding_store.remove)
             logger.info("Semantic embedding enabled")
 
         # Wire multi-layer memory (ATL, CrossLayerGraph, SemanticPromoter)
@@ -185,13 +183,9 @@ class MemoryHub:
 
         # Register cross-layer deletion callbacks
         if self._cross_layer is not None:
-            self.hippocampus.register_deletion_callback(
-                lambda rid: self._cross_layer.remove_record("hippocampus", rid)
-            )
+            self.hippocampus.register_deletion_callback(lambda rid: self._cross_layer.remove_record("hippocampus", rid))
             if self.atl is not None:
-                self.atl.register_deletion_callback(
-                    lambda rid: self._cross_layer.remove_record("atl", rid)
-                )
+                self.atl.register_deletion_callback(lambda rid: self._cross_layer.remove_record("atl", rid))
 
         # Build promotion sources
         sources: list[Any] = [self.nac]  # NAc always available
@@ -216,26 +210,16 @@ class MemoryHub:
                 worker_pool=self.worker_pool,
             )
             # Register as capture callback on Hippocampus
-            self.hippocampus.register_capture_callback(
-                self._concept_extractor.on_memory_captured
-            )
+            self.hippocampus.register_capture_callback(self._concept_extractor.on_memory_captured)
             # Register for deletion cleanup
-            self.hippocampus.register_deletion_callback(
-                self._concept_extractor.on_memory_deleted
-            )
+            self.hippocampus.register_deletion_callback(self._concept_extractor.on_memory_deleted)
             # Register for compression cleanup
-            self.hippocampus.register_compression_callback(
-                self._concept_extractor.on_memory_compressed
-            )
+            self.hippocampus.register_compression_callback(self._concept_extractor.on_memory_compressed)
             # Rebuild reverse index from persisted ATL state
             self._concept_extractor.rebuild_reverse_index()
 
         # Wire ConceptGrounder for AG numerical grounding of concepts
-        if (
-            self.atl is not None
-            and self.angular_gyrus is not None
-            and self._cross_layer is not None
-        ):
+        if self.atl is not None and self.angular_gyrus is not None and self._cross_layer is not None:
             from maxim.math.ips import IPS
             from maxim.memory.concept_grounder import ConceptGrounder
 
@@ -415,6 +399,7 @@ class MemoryHub:
         if self.ec.semantic_enabled and self.ec._embedding_store is not None:
             try:
                 import os
+
                 if os.path.exists(self.embedding_persist_path):
                     loaded = self.ec._embedding_store.load(self.embedding_persist_path)
                     results["semantic_embeddings_loaded"] = loaded
@@ -438,9 +423,7 @@ class MemoryHub:
 
         if self._escalation_bridge and "escalation" not in self._disabled_bridges:
             try:
-                results["escalation_thresholds"] = (
-                    self._escalation_bridge.on_session_start()
-                )
+                results["escalation_thresholds"] = self._escalation_bridge.on_session_start()
             except Exception as e:
                 logger.error("Escalation bridge startup failed: %s", e)
                 self._disabled_bridges.add("escalation")
@@ -514,6 +497,7 @@ class MemoryHub:
         if self.ec.semantic_enabled and self.ec._embedding_store is not None:
             try:
                 import os
+
                 os.makedirs(os.path.dirname(self.embedding_persist_path), exist_ok=True)
                 self.ec._embedding_store.save(self.embedding_persist_path)
                 results["semantic_embeddings_saved"] = len(self.ec._embedding_store)
@@ -624,9 +608,7 @@ class MemoryHub:
     # Multi-Layer Knowledge Queries
     # ─────────────────────────────────────────────────────────────────────────
 
-    def recall_concepts(
-        self, limit: int = 10, **filters: Any
-    ) -> list[Any]:
+    def recall_concepts(self, limit: int = 10, **filters: Any) -> list[Any]:
         """Query ATL semantic concepts. Delegates to ATL.recall()."""
         if self.atl is None:
             return []
@@ -687,15 +669,11 @@ class MemoryHub:
             return
 
         # Schedule async embedding
-        def embedding_callback(
-            mid: str, embedding: Any, hash_bits: tuple[int, ...]
-        ) -> None:
+        def embedding_callback(mid: str, embedding: Any, hash_bits: tuple[int, ...]) -> None:
             if self.ec._embedding_store is not None:
                 self.ec._embedding_store.set(mid, embedding, hash_bits)
 
-        scheduled = self.ec._neural_embedder.schedule_embedding(
-            memory_id, text, callback=embedding_callback
-        )
+        scheduled = self.ec._neural_embedder.schedule_embedding(memory_id, text, callback=embedding_callback)
 
         if not scheduled:
             # Fallback to sync embedding if queue full
@@ -813,9 +791,7 @@ class MemoryHub:
 
             # Step 2: Follow associations from direct results
             seed_ids = [m.id for m in direct]
-            associated = self.hippocampus.recall_associated(
-                seed_ids, limit=association_limit
-            )
+            associated = self.hippocampus.recall_associated(seed_ids, limit=association_limit)
 
             # Step 3: Merge and deduplicate
             seen_ids = set(seed_ids)
@@ -1023,9 +999,7 @@ class MemoryHub:
 
         if self._plan_bridge and self._plan_bridge.is_healthy:
             try:
-                self._plan_bridge.record_plan_outcome(
-                    goal, tool_sequence, success, memory_id=memory_id
-                )
+                self._plan_bridge.record_plan_outcome(goal, tool_sequence, success, memory_id=memory_id)
             except Exception as e:
                 logger.warning("Plan outcome recording failed: %s", e)
 
@@ -1102,9 +1076,7 @@ class MemoryHub:
 
         if self._escalation_bridge and self._escalation_bridge.is_healthy:
             try:
-                self._escalation_bridge.record_outcome(
-                    goal, escalated, success, novelty, salience
-                )
+                self._escalation_bridge.record_outcome(goal, escalated, success, novelty, salience)
             except Exception as e:
                 logger.warning("Escalation outcome recording failed: %s", e)
 
@@ -1328,31 +1300,11 @@ class MemoryHub:
             Dict mapping bridge name to health status
         """
         return {
-            "spatial": (
-                self._spatial_bridge.is_healthy
-                if self._spatial_bridge
-                else False
-            ),
-            "salience": (
-                self._salience_bridge.is_healthy
-                if self._salience_bridge
-                else False
-            ),
-            "planning": (
-                self._plan_bridge.is_healthy
-                if self._plan_bridge
-                else False
-            ),
-            "escalation": (
-                self._escalation_bridge.is_healthy
-                if self._escalation_bridge
-                else False
-            ),
-            "fear": (
-                self._fear_bridge.is_healthy
-                if self._fear_bridge
-                else False
-            ),
+            "spatial": (self._spatial_bridge.is_healthy if self._spatial_bridge else False),
+            "salience": (self._salience_bridge.is_healthy if self._salience_bridge else False),
+            "planning": (self._plan_bridge.is_healthy if self._plan_bridge else False),
+            "escalation": (self._escalation_bridge.is_healthy if self._escalation_bridge else False),
+            "fear": (self._fear_bridge.is_healthy if self._fear_bridge else False),
             "disabled_bridges": list(self._disabled_bridges),
         }
 

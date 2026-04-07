@@ -4,6 +4,7 @@ cloudflared is a Go binary installed via OS package manager — we can't vendor
 it via pip. These helpers handle detection, install hints, and running the
 tunnel-management commands on the user's behalf.
 """
+
 from __future__ import annotations
 
 import platform
@@ -83,7 +84,10 @@ def cloudflared_version() -> str | None:
         return None
     try:
         result = subprocess.run(
-            [path, "--version"], capture_output=True, text=True, timeout=5.0,
+            [path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5.0,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -104,7 +108,9 @@ def run_tunnel_create(tunnel_name: str) -> tuple[int, str]:
     path = require_cloudflared()
     result = subprocess.run(
         [path, "tunnel", "create", tunnel_name],
-        capture_output=True, text=True, timeout=30.0,
+        capture_output=True,
+        text=True,
+        timeout=30.0,
     )
     return result.returncode, (result.stdout + result.stderr)
 
@@ -114,7 +120,9 @@ def run_tunnel_route_dns(tunnel_name: str, hostname: str) -> tuple[int, str]:
     path = require_cloudflared()
     result = subprocess.run(
         [path, "tunnel", "route", "dns", tunnel_name, hostname],
-        capture_output=True, text=True, timeout=30.0,
+        capture_output=True,
+        text=True,
+        timeout=30.0,
     )
     return result.returncode, (result.stdout + result.stderr)
 
@@ -124,7 +132,9 @@ def list_tunnels() -> tuple[int, str]:
     path = require_cloudflared()
     result = subprocess.run(
         [path, "tunnel", "list"],
-        capture_output=True, text=True, timeout=10.0,
+        capture_output=True,
+        text=True,
+        timeout=10.0,
     )
     return result.returncode, (result.stdout + result.stderr)
 

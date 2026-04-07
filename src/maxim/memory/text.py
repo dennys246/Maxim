@@ -14,13 +14,55 @@ from __future__ import annotations
 
 import re
 
-_STOP_WORDS: frozenset[str] = frozenset({
-    "a", "an", "the", "to", "in", "on", "of", "for", "is", "it",
-    "and", "or", "but", "not", "with", "at", "by", "from", "as",
-    "be", "was", "were", "been", "are", "am", "do", "does", "did",
-    "has", "had", "have", "will", "would", "could", "should", "can",
-    "this", "that", "these", "those", "i", "me", "my", "we", "our",
-})
+_STOP_WORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "to",
+        "in",
+        "on",
+        "of",
+        "for",
+        "is",
+        "it",
+        "and",
+        "or",
+        "but",
+        "not",
+        "with",
+        "at",
+        "by",
+        "from",
+        "as",
+        "be",
+        "was",
+        "were",
+        "been",
+        "are",
+        "am",
+        "do",
+        "does",
+        "did",
+        "has",
+        "had",
+        "have",
+        "will",
+        "would",
+        "could",
+        "should",
+        "can",
+        "this",
+        "that",
+        "these",
+        "those",
+        "i",
+        "me",
+        "my",
+        "we",
+        "our",
+    }
+)
 
 
 def normalize_tokens(text: str) -> list[str]:

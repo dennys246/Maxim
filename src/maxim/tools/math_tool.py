@@ -358,14 +358,16 @@ class MathTool(Tool):
             )
             results = []
             for r in records:
-                results.append({
-                    "id": r.id,
-                    "name": r.name,
-                    "category": r.category.name,
-                    "domain": r.domain,
-                    "confidence": r.confidence,
-                    "access_count": r.access_count,
-                })
+                results.append(
+                    {
+                        "id": r.id,
+                        "name": r.name,
+                        "category": r.category.name,
+                        "domain": r.domain,
+                        "confidence": r.confidence,
+                        "access_count": r.access_count,
+                    }
+                )
             return {
                 "operation": "list_memories",
                 "count": len(results),

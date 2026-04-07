@@ -25,7 +25,9 @@ def _normalize_save_dir(path: Optional[str]) -> str:
     return save_dir
 
 
-def _normalize_checkpoint(save_dir: str, checkpoint: Optional[str], default_filename: str = DEFAULT_CHECKPOINT_FILENAME) -> str:
+def _normalize_checkpoint(
+    save_dir: str, checkpoint: Optional[str], default_filename: str = DEFAULT_CHECKPOINT_FILENAME
+) -> str:
     """
     Resolve a checkpoint path so that it respects the configured save_dir while
     still honouring explicit absolute paths or already-resolved relatives.
@@ -206,9 +208,7 @@ class build:
             config_json = json.load(config_file)
 
         if not isinstance(config_json, dict):
-            raise ValueError(
-                f"Expected top-level JSON object in {config_path}, got {type(config_json).__name__}"
-            )
+            raise ValueError(f"Expected top-level JSON object in {config_path}, got {type(config_json).__name__}")
         return config_json
 
     def configure(self, **kwargs: Any) -> None:
@@ -239,9 +239,7 @@ class build:
         self.movement_delta_limits = list(
             kwargs.get("movement_delta_limits") or config_template["movement_delta_limits"]
         )
-        self.movement_pose_limits = dict(
-            kwargs.get("movement_pose_limits") or config_template["movement_pose_limits"]
-        )
+        self.movement_pose_limits = dict(kwargs.get("movement_pose_limits") or config_template["movement_pose_limits"])
         self.movement_duration_limits = list(
             kwargs.get("movement_duration_limits") or config_template["movement_duration_limits"]
         )

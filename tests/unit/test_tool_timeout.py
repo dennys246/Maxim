@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from maxim.tools.base import Tool, ToolOutput
+from maxim.tools.base import Tool
 
 
 class _DummyTool(Tool):

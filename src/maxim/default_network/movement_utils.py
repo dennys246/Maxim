@@ -28,6 +28,7 @@ class MovementConfig:
         image_width: Expected image width for distance calculations.
         image_height: Expected image height for distance calculations.
     """
+
     base_duration: float = 0.3
     max_duration: float = 2.0
     duration_per_pixel: float = 0.001  # 1ms per pixel
@@ -266,7 +267,7 @@ def suggest_exploration_direction(
     best_score = -1
 
     for target in targets:
-        min_dist = float('inf')
+        min_dist = float("inf")
         for recent_pos in recent:
             dist = compute_distance(recent_pos, target)
             min_dist = min(min_dist, dist)

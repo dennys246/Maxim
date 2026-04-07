@@ -28,6 +28,7 @@ class ActionProposal:
         confidence: Confidence in this being the correct action (0.0-1.0).
         metadata: Behavior-specific data (track_id, novelty score, etc.).
     """
+
     behavior_name: str
     action_type: str
     target: tuple[float, float] | None
@@ -55,6 +56,7 @@ class FilteredPercept:
             which behaviors evaluated it, etc.).
         urgency: Urgency score 0.0-1.0, affects ExecAgent priority queue.
     """
+
     original: "Percept"
     escalation_reason: str
     dn_context: dict
@@ -63,7 +65,7 @@ class FilteredPercept:
     def __post_init__(self) -> None:
         """Validate urgency is in valid range."""
         if not 0.0 <= self.urgency <= 1.0:
-            object.__setattr__(self, 'urgency', max(0.0, min(1.0, self.urgency)))
+            object.__setattr__(self, "urgency", max(0.0, min(1.0, self.urgency)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +84,7 @@ class DNActionProposal:
         was_executed: Whether the action was actually executed
             (may be blocked by FearAgent or inhibition).
     """
+
     behavior: str
     action_type: str
     target: tuple[float, float] | None
@@ -105,6 +108,7 @@ class EscalationResult:
         fear_factor: FearAgent influence on decision (0.0-1.0).
         threshold_used: The threshold that was applied.
     """
+
     escalated: bool
     reason: str
     novelty_score: float

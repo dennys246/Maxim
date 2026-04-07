@@ -112,15 +112,14 @@ class BioContext:
         if concept is None:
             return None
         ep_ids = list(concept.memory_refs.get("hippocampus", {}).keys())
-        episodes = (
-            self._hub.hippocampus.recall_by_ids(ep_ids) if ep_ids else []
-        )
+        episodes = self._hub.hippocampus.recall_by_ids(ep_ids) if ep_ids else []
         return grounder.ground_concept(concept, episodes)
 
     # --- Pattern completion ---
 
     def complete_pattern(
-        self, episodic: EpisodicMemory,
+        self,
+        episodic: EpisodicMemory,
     ) -> list[PredictedOutcome]:
         """Predict likely outcomes for an episode via concept graph chaining.
 

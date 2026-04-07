@@ -107,7 +107,7 @@ class AgenticRuntimeMixin:
 
         # Phase 3: Initialize CaptureManager for direct frame access
         capture_manager = None
-        if use_capture_manager and hasattr(self, '_capabilities') and self._capabilities.has_vision:
+        if use_capture_manager and hasattr(self, "_capabilities") and self._capabilities.has_vision:
             try:
                 capture_manager = CaptureManager(
                     maxim=self,
@@ -145,6 +145,7 @@ class AgenticRuntimeMixin:
         nac = None
         try:
             from maxim.decisions.nac import NAc
+
             nac = NAc()
             self._nac = nac
             self.log.debug("NAc created for causal learning")
@@ -163,23 +164,30 @@ class AgenticRuntimeMixin:
 
             data_dir = str(getattr(self, "home_dir", "data") or "data")
 
-            hippocampus = Hippocampus(HippocampusConfig(
-                persistence_path=f"{data_dir}/memory/hippocampus.json",
-            ))
+            hippocampus = Hippocampus(
+                HippocampusConfig(
+                    persistence_path=f"{data_dir}/memory/hippocampus.json",
+                )
+            )
             scn = SCN()
             ec = EntorhinalCortex()
-            atl = ATL(ATLConfig(
-                persistence_path=f"{data_dir}/memory/atl.json",
-            ))
-            angular_gyrus = AngularGyrus(AngularGyrusConfig(
-                persistence_path=f"{data_dir}/memory/angular_gyrus.json",
-            ))
+            atl = ATL(
+                ATLConfig(
+                    persistence_path=f"{data_dir}/memory/atl.json",
+                )
+            )
+            angular_gyrus = AngularGyrus(
+                AngularGyrusConfig(
+                    persistence_path=f"{data_dir}/memory/angular_gyrus.json",
+                )
+            )
 
             # Use the already-created nac if available; otherwise create one
             # (NAc is re-imported here in case the earlier try block failed)
             hub_nac = nac
             if hub_nac is None:
                 from maxim.decisions.nac import NAc as _NAc
+
                 hub_nac = _NAc()
 
             memory_hub = MemoryHub(
@@ -313,6 +321,7 @@ class AgenticRuntimeMixin:
         # Create internet policy getter for tool registry
         def get_internet_policy():
             from maxim.utils.internet_access import InternetAccessPolicy
+
             return InternetAccessPolicy(enabled=allow_internet)
 
         # Only pass policy getter if internet is allowed
@@ -323,6 +332,7 @@ class AgenticRuntimeMixin:
         if os.environ.get("MAXIM_COMMS_ENABLED", "").lower() in ("1", "true", "yes"):
             try:
                 from maxim.runtime.bootstrap import build_comms_stack
+
                 gateway, _conv_manager = build_comms_stack(
                     bus=agent_bus,
                     nac=nac,
@@ -332,7 +342,7 @@ class AgenticRuntimeMixin:
 
         _t_tools = time.time()
         # Pass maxim=None when headless so robot tools get no-op stubs
-        _maxim_for_tools = self if (hasattr(self, '_capabilities') and self._capabilities.has_robot) else None
+        _maxim_for_tools = self if (hasattr(self, "_capabilities") and self._capabilities.has_robot) else None
         registry = build_tool_registry(
             maxim=_maxim_for_tools,
             response_output=response_output,
@@ -366,7 +376,6 @@ class AgenticRuntimeMixin:
         tool_pain_bridge = None
         try:
             from maxim.bridges.tool_pain_bridge import ToolPainBridge
-            from maxim.proprioception.pain import PainDetector as _PD
 
             pain_detector = getattr(self, "_pain_detector", None)
             if nac is not None:
@@ -410,16 +419,19 @@ class AgenticRuntimeMixin:
             from maxim.provenance.collector import ProvenanceCollector
             from maxim.provenance.types import ProvenanceVerbosity
 
-            prov_verbosity = int(os.getenv(
-                "MAXIM_PROVENANCE_VERBOSITY",
-                str(getattr(self, "provenance_verbosity", 1)),
-            ))
+            prov_verbosity = int(
+                os.getenv(
+                    "MAXIM_PROVENANCE_VERBOSITY",
+                    str(getattr(self, "provenance_verbosity", 1)),
+                )
+            )
             verbosity = ProvenanceVerbosity(min(prov_verbosity, 2))
             collector = ProvenanceCollector(verbosity=verbosity)
 
             prov_persist = os.getenv("MAXIM_PROVENANCE_PERSIST", "1") != "0"
             if prov_persist:
                 from maxim.provenance.store import ProvenanceStore
+
                 data_dir = str(getattr(self, "home_dir", "data") or "data")
                 collector._store = ProvenanceStore(
                     base_dir=os.path.join(data_dir, "provenance"),
@@ -429,6 +441,7 @@ class AgenticRuntimeMixin:
             self._provenance_collector = collector
 
             from maxim.tools.explain import ExplainTool
+
             registry.register(ExplainTool(collector))
         except Exception as e:
             warn("Failed to initialize provenance system: %s", e, logger=self.log)
@@ -437,9 +450,15 @@ class AgenticRuntimeMixin:
         # Expose biological subsystems as read-only LLM-callable tools
         try:
             from maxim.tools.introspection import (
-                MemoryRecallTool, PredictOutcomeTool, CausalLinksTool,
-                PainHistoryTool, TemporalPatternsTool, EnergyStatusTool,
-                ConceptQueryTool, SceneSummaryTool, SimilaritySearchTool,
+                MemoryRecallTool,
+                PredictOutcomeTool,
+                CausalLinksTool,
+                PainHistoryTool,
+                TemporalPatternsTool,
+                EnergyStatusTool,
+                ConceptQueryTool,
+                SceneSummaryTool,
+                SimilaritySearchTool,
                 SystemStatsTool,
             )
 
@@ -457,35 +476,42 @@ class AgenticRuntimeMixin:
             pain_detector = getattr(self, "_pain_detector", None)
             fear_agent = locals().get("fear_agent")
             if pain_detector is not None or fear_agent is not None:
-                registry.register(PainHistoryTool(
-                    pain_detector=pain_detector,
-                    fear_agent=fear_agent,
-                ))
+                registry.register(
+                    PainHistoryTool(
+                        pain_detector=pain_detector,
+                        fear_agent=fear_agent,
+                    )
+                )
 
             energy_tracker = getattr(self, "_energy_tracker", None)
             if energy_tracker is not None:
                 registry.register(EnergyStatusTool(energy_tracker=energy_tracker))
 
             # Scene tools only when vision subsystems available
+            default_network = getattr(self, "_default_network", None)
             if default_network is not None:
                 _salience = getattr(default_network, "_salience_network", None)
                 _attention = getattr(default_network, "_attention_network", None)
                 if _salience is not None or _attention is not None:
-                    registry.register(SceneSummaryTool(
-                        salience_network=_salience,
-                        attention_network=_attention,
-                    ))
+                    registry.register(
+                        SceneSummaryTool(
+                            salience_network=_salience,
+                            attention_network=_attention,
+                        )
+                    )
 
             # System stats always available (works with whatever subsystems exist)
-            registry.register(SystemStatsTool(
-                hippocampus=memory_hub.hippocampus if memory_hub else None,
-                nac=nac,
-                ec=memory_hub.ec if memory_hub else None,
-                atl=memory_hub.atl if memory_hub else None,
-                energy_tracker=energy_tracker,
-                pain_detector=pain_detector,
-                significance_learner=getattr(self, "_significance_learner", None),
-            ))
+            registry.register(
+                SystemStatsTool(
+                    hippocampus=memory_hub.hippocampus if memory_hub else None,
+                    nac=nac,
+                    ec=memory_hub.ec if memory_hub else None,
+                    atl=memory_hub.atl if memory_hub else None,
+                    energy_tracker=energy_tracker,
+                    pain_detector=pain_detector,
+                    significance_learner=getattr(self, "_significance_learner", None),
+                )
+            )
 
             self.log.info("Introspection tools registered")
         except Exception as e:
@@ -504,6 +530,7 @@ class AgenticRuntimeMixin:
             # Register built-in protocols
             try:
                 from maxim.skills.protocols.shredder_segmenter import ShredderSegmenterProtocol
+
                 duration_env = os.getenv("SHREDDER_DURATION_MINUTES", "0")
                 try:
                     duration_min = float(duration_env)
@@ -514,15 +541,17 @@ class AgenticRuntimeMixin:
                     health_interval = float(interval_env)
                 except ValueError:
                     health_interval = 30.0
-                self._protocol_registry.register(ShredderSegmenterProtocol(
-                    shredder_api_url=os.getenv("SHREDDER_API_URL"),
-                    shredder_license_id=os.getenv("SHREDDER_LICENSE_ID"),
-                    shredder_api_key=os.getenv("SHREDDER_API_KEY"),
-                    shredder_site_id=os.getenv("SHREDDER_SITE_ID"),
-                    duration_minutes=duration_min,
-                    health_endpoint_url=os.getenv("SHREDDER_HEALTH_URL", ""),
-                    health_interval_seconds=health_interval,
-                ))
+                self._protocol_registry.register(
+                    ShredderSegmenterProtocol(
+                        shredder_api_url=os.getenv("SHREDDER_API_URL"),
+                        shredder_license_id=os.getenv("SHREDDER_LICENSE_ID"),
+                        shredder_api_key=os.getenv("SHREDDER_API_KEY"),
+                        shredder_site_id=os.getenv("SHREDDER_SITE_ID"),
+                        duration_minutes=duration_min,
+                        health_endpoint_url=os.getenv("SHREDDER_HEALTH_URL", ""),
+                        health_interval_seconds=health_interval,
+                    )
+                )
             except Exception as e:
                 warn("ShredderSegmenterProtocol not available: %s", e, logger=self.log)
 
@@ -660,7 +689,7 @@ class AgenticRuntimeMixin:
 
         # Build Default Network for reactive behaviors (skip when headless)
         default_network = None
-        has_robot = hasattr(self, '_capabilities') and self._capabilities.has_robot
+        has_robot = hasattr(self, "_capabilities") and self._capabilities.has_robot
         if not has_robot:
             self.log.info("Headless mode: skipping DefaultNetwork (no robot)")
         try:
@@ -712,9 +741,7 @@ class AgenticRuntimeMixin:
         ):
             from maxim.proprioception.pain_bus import create_pain_memory_subscriber
 
-            default_network.pain_bus.subscribe(
-                create_pain_memory_subscriber(memory_hub.hippocampus)
-            )
+            default_network.pain_bus.subscribe(create_pain_memory_subscriber(memory_hub.hippocampus))
             self.log.info("PainBus → Hippocampus subscriber wired for pain memory capture")
 
         # Start capture manager or fall back to vision event stream
@@ -806,7 +833,7 @@ class AgenticRuntimeMixin:
                     stop_event=stop_event,
                     on_step=_on_step,
                     idle_sleep_s=0.1,
-                    target_hz=_compute_target_hz(self._capabilities) if hasattr(self, '_capabilities') else 10.0,
+                    target_hz=_compute_target_hz(self._capabilities) if hasattr(self, "_capabilities") else 10.0,
                     protocol_registry=self._protocol_registry,
                 )
             except Exception as e:
@@ -880,9 +907,11 @@ class AgenticRuntimeMixin:
             threads_to_stop.append(("agentic", t))
 
         if capture_manager is not None:
-            for attr, name in [("_frame_thread", "capture.frame"),
-                               ("_segmentation_thread", "capture.segmentation"),
-                               ("_audio_thread", "capture.audio")]:
+            for attr, name in [
+                ("_frame_thread", "capture.frame"),
+                ("_segmentation_thread", "capture.segmentation"),
+                ("_audio_thread", "capture.audio"),
+            ]:
                 thread = getattr(capture_manager, attr, None)
                 if thread is not None:
                     threads_to_stop.append((name, thread))
@@ -927,16 +956,13 @@ class AgenticRuntimeMixin:
                     if thread_id is not None:
                         # Raise SystemExit in the thread
                         res = ctypes.pythonapi.PyThreadState_SetAsyncExc(
-                            ctypes.c_ulong(thread_id),
-                            ctypes.py_object(SystemExit)
+                            ctypes.c_ulong(thread_id), ctypes.py_object(SystemExit)
                         )
                         if res == 0:
                             self.log.warning("Invalid thread id for '%s'", name)
                         elif res > 1:
                             # Reset if more than one thread was affected
-                            ctypes.pythonapi.PyThreadState_SetAsyncExc(
-                                ctypes.c_ulong(thread_id), None
-                            )
+                            ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(thread_id), None)
                         else:
                             self.log.info("Force-terminated thread '%s'", name)
                         # Give it a moment to terminate

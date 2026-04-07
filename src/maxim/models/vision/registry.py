@@ -64,10 +64,7 @@ def _build_engine(name: str, *, pose_model: bool = False) -> VisionEngine:
 
     if fqn is None:
         available = ", ".join(sorted(set(list(_ENGINE_BUILDERS.keys()) + list(_ALIASES.keys()))))
-        raise ValueError(
-            f"Unknown vision engine: {name!r}. "
-            f"Available engines: {available}"
-        )
+        raise ValueError(f"Unknown vision engine: {name!r}. Available engines: {available}")
 
     module_path, class_name = fqn.rsplit(".", 1)
 
@@ -79,8 +76,7 @@ def _build_engine(name: str, *, pose_model: bool = False) -> VisionEngine:
     except ImportError as exc:
         if canonical == "yolo":
             raise ImportError(
-                "The YOLO engine requires the 'ultralytics' package. "
-                "Install it with: pip install \"maxim[yolo]\""
+                "The YOLO engine requires the 'ultralytics' package. Install it with: pip install \"maxim[yolo]\""
             ) from exc
         raise
 

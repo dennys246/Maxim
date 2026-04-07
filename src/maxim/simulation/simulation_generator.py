@@ -10,9 +10,7 @@ Example:
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
-from typing import Any
 
 import yaml
 
@@ -143,7 +141,6 @@ def generate_scenario(
         The generated YAML string.
     """
     global _generator_agent, _generator_profile
-    import json
 
     from maxim.agents.llm_agent import LLMAgent
 
@@ -175,9 +172,7 @@ def generate_scenario(
         result = _extract_json(raw)
 
     if result is None:
-        raise RuntimeError(
-            f"LLM failed to generate valid JSON for scenario. Raw output:\n{raw[:500]}"
-        )
+        raise RuntimeError(f"LLM failed to generate valid JSON for scenario. Raw output:\n{raw[:500]}")
 
     # Ensure required fields
     if "name" not in result:
@@ -242,13 +237,17 @@ def _clean_percepts(percepts: list[dict]) -> list[dict]:
     # Ensure at least one text percept exists (cli or transcript)
     # so the LLM has something to respond to
     has_text = any(
-        p.get("source") in ("cli", "transcript") and (p.get("cli_input") or p.get("transcript_chunk"))
-        for p in cleaned
+        p.get("source") in ("cli", "transcript") and (p.get("cli_input") or p.get("transcript_chunk")) for p in cleaned
     )
     if not has_text and cleaned:
         # Prepend a CLI percept with a description derived from the first percept
         first = cleaned[0]
-        desc = first.get("cli_input") or first.get("transcript_chunk") or first.get("content") or "Describe what is happening"
+        desc = (
+            first.get("cli_input")
+            or first.get("transcript_chunk")
+            or first.get("content")
+            or "Describe what is happening"
+        )
         text_percept = {
             "at": 0,
             "source": "cli",
@@ -330,5 +329,6 @@ def _extract_json(raw: str) -> dict | None:
 def _slugify(text: str) -> str:
     """Convert text to a slug for scenario names."""
     import re
+
     slug = re.sub(r"[^a-z0-9]+", "_", text.lower())
     return slug.strip("_")[:60]

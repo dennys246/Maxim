@@ -15,6 +15,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
+    from maxim.agents.bus import ToolErrorKind
     from maxim.proprioception.movement_tracker import MovementMetrics, MovementTracker
 
 logger = logging.getLogger(__name__)
@@ -240,7 +241,9 @@ class PainDetector:
         self._pending_action_sig = action_signature
         logger.debug(
             "Movement target set: yaw=%s, pitch=%s (sig=%s)",
-            yaw, pitch, action_signature,
+            yaw,
+            pitch,
+            action_signature,
         )
 
     def clear_movement_target(self) -> None:
@@ -370,9 +373,7 @@ class PainDetector:
         # Check translation velocity
         if metrics.translation_velocity > self.config.translation_velocity_pain:
             if self._can_emit_pain(PainType.EXCESSIVE_VELOCITY, now):
-                excess = (
-                    metrics.translation_velocity - self.config.translation_velocity_pain
-                )
+                excess = metrics.translation_velocity - self.config.translation_velocity_pain
                 intensity = min(1.0, excess * self.config.pain_scaling_factor)
 
                 signal = PainSignal(
@@ -389,9 +390,7 @@ class PainDetector:
         if metrics.direction_reversals >= self.config.reversal_pain_threshold:
             if self._can_emit_pain(PainType.DIRECTION_THRASHING, now):
                 # Intensity scales with number of reversals
-                excess_reversals = (
-                    metrics.direction_reversals - self.config.reversal_pain_threshold
-                )
+                excess_reversals = metrics.direction_reversals - self.config.reversal_pain_threshold
                 intensity = min(1.0, 0.5 + excess_reversals * 0.2)
 
                 signal = PainSignal(
@@ -407,10 +406,7 @@ class PainDetector:
         # Check angular acceleration
         if abs(metrics.angular_acceleration) > self.config.angular_acceleration_pain:
             if self._can_emit_pain(PainType.EXCESSIVE_ACCELERATION, now):
-                excess = (
-                    abs(metrics.angular_acceleration)
-                    - self.config.angular_acceleration_pain
-                )
+                excess = abs(metrics.angular_acceleration) - self.config.angular_acceleration_pain
                 intensity = min(1.0, excess * self.config.pain_scaling_factor * 0.5)
 
                 signal = PainSignal(
@@ -442,10 +438,7 @@ class PainDetector:
             self._pain_counts[signal.pain_type] = self._pain_counts.get(signal.pain_type, 0) + 1
 
         # Log at WARNING for high intensity pain, INFO for moderate
-        log_msg = (
-            "Pain detected: %s (intensity=%.2f, angular_vel=%.1f deg/s, "
-            "translation_vel=%.1f mm/s, reversals=%d)"
-        )
+        log_msg = "Pain detected: %s (intensity=%.2f, angular_vel=%.1f deg/s, translation_vel=%.1f mm/s, reversals=%d)"
         log_args = (
             signal.pain_type.value,
             signal.intensity,
@@ -482,10 +475,7 @@ class PainDetector:
             callback: Function to call when pain is detected.
         """
         if self._pain_bus is not None:
-            logger.debug(
-                "add_pain_callback called with PainBus active; "
-                "consider using pain_bus.subscribe() instead"
-            )
+            logger.debug("add_pain_callback called with PainBus active; consider using pain_bus.subscribe() instead")
         self._callbacks.append(callback)
 
     def remove_pain_callback(self, callback: Callable[[PainSignal], None]) -> None:

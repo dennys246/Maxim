@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # Use numpy for efficient array operations
 try:
     import numpy as np
+
     HAS_NUMPY = True
 except ImportError:
     HAS_NUMPY = False
@@ -42,6 +43,7 @@ class AttentionConfig:
         min_dwell_seconds: Minimum time to stay at a position.
         default_safe_range: (u_min, v_min, u_max, v_max) in normalized coords.
     """
+
     grid_size: int = 10
     image_width: int = 640
     image_height: int = 480
@@ -54,6 +56,7 @@ class AttentionConfig:
 @dataclass
 class AttentionCell:
     """A single cell in the attention grid (for non-numpy fallback)."""
+
     grid_u: int
     grid_v: int
     visit_count: int = 0
@@ -483,20 +486,22 @@ class AttentionNetwork:
 
                     pixel_u, pixel_v = self._grid_to_pixel(grid_u, grid_v)
 
-                    results.append({
-                        "grid_u": grid_u,
-                        "grid_v": grid_v,
-                        "pixel_u": pixel_u,
-                        "pixel_v": pixel_v,
-                        "reachability": reach,
-                        "salience": salience,
-                        "visit_count": visit_count,
-                        "success_count": success,
-                        "failure_count": failure,
-                        "total_dwell": total_dwell,
-                        "in_safe_range": is_safe,
-                        "is_current": self._current_grid == (grid_u, grid_v),
-                    })
+                    results.append(
+                        {
+                            "grid_u": grid_u,
+                            "grid_v": grid_v,
+                            "pixel_u": pixel_u,
+                            "pixel_v": pixel_v,
+                            "reachability": reach,
+                            "salience": salience,
+                            "visit_count": visit_count,
+                            "success_count": success,
+                            "failure_count": failure,
+                            "total_dwell": total_dwell,
+                            "in_safe_range": is_safe,
+                            "is_current": self._current_grid == (grid_u, grid_v),
+                        }
+                    )
 
             return results
 

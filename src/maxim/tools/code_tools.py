@@ -1,11 +1,11 @@
 """Code-aware tools for searching and analyzing source code."""
+
 from __future__ import annotations
 
 import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Any
 
 from maxim.tools.base import Tool, ToolOutput
 from maxim.agents.bus import ToolErrorKind
@@ -13,6 +13,7 @@ from maxim.agents.bus import ToolErrorKind
 
 class CodeSearchTool(Tool):
     """Search file contents with regex support."""
+
     name = "search_code"
     description = "Search file contents with regex support"
     input_schema = {
@@ -37,21 +38,21 @@ class CodeSearchTool(Tool):
         try:
             regex = re.compile(pattern)
         except re.error as e:
-            return ToolOutput(success=False, error=f"Invalid regex: {e}",
-                            error_kind=ToolErrorKind.INVALID_INPUT)
+            return ToolOutput(success=False, error=f"Invalid regex: {e}", error_kind=ToolErrorKind.INVALID_INPUT)
 
         search_root = Path(search_path).resolve()
         if not search_root.exists():
-            return ToolOutput(success=False, error=f"Path not found: {search_path}",
-                            error_kind=ToolErrorKind.FILE_NOT_FOUND)
+            return ToolOutput(
+                success=False, error=f"Path not found: {search_path}", error_kind=ToolErrorKind.FILE_NOT_FOUND
+            )
 
         # Validate against allowed_dirs
         if self._allowed_dirs:
             real_path = str(search_root)
-            if not any(real_path.startswith(d + os.sep) or real_path == d
-                      for d in self._allowed_dirs):
-                return ToolOutput(success=False, error="Path outside allowed directories",
-                                error_kind=ToolErrorKind.PERMISSION_DENIED)
+            if not any(real_path.startswith(d + os.sep) or real_path == d for d in self._allowed_dirs):
+                return ToolOutput(
+                    success=False, error="Path outside allowed directories", error_kind=ToolErrorKind.PERMISSION_DENIED
+                )
 
         results = []
         files_searched = 0
@@ -67,7 +68,7 @@ class CodeSearchTool(Tool):
             if not file_path.is_file():
                 continue
             # Skip binary files and hidden directories
-            if any(part.startswith('.') for part in file_path.relative_to(search_root).parts):
+            if any(part.startswith(".") for part in file_path.relative_to(search_root).parts):
                 continue
             try:
                 content = file_path.read_text(encoding="utf-8", errors="ignore")
@@ -85,14 +86,16 @@ class CodeSearchTool(Tool):
                     context = []
                     for j in range(start, end):
                         prefix = ">>>" if j == i else "   "
-                        context.append(f"{prefix} {j+1}: {lines[j]}")
+                        context.append(f"{prefix} {j + 1}: {lines[j]}")
 
-                    results.append({
-                        "file": str(file_path.relative_to(search_root)),
-                        "line": i + 1,
-                        "match": line.strip(),
-                        "context": "\n".join(context),
-                    })
+                    results.append(
+                        {
+                            "file": str(file_path.relative_to(search_root)),
+                            "line": i + 1,
+                            "match": line.strip(),
+                            "context": "\n".join(context),
+                        }
+                    )
 
                     if len(results) >= max_results:
                         break
@@ -129,15 +132,20 @@ class RunTestsTool(Tool):
 
         try:
             result = subprocess.run(
-                cmd_parts, capture_output=True, text=True,
-                timeout=timeout, shell=False,
+                cmd_parts,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                shell=False,
             )
         except subprocess.TimeoutExpired:
-            return ToolOutput(success=False, error=f"Tests timed out after {timeout}s",
-                            error_kind=ToolErrorKind.TIMEOUT)
+            return ToolOutput(
+                success=False, error=f"Tests timed out after {timeout}s", error_kind=ToolErrorKind.TIMEOUT
+            )
         except FileNotFoundError:
-            return ToolOutput(success=False, error=f"Command not found: {cmd_parts[0]}",
-                            error_kind=ToolErrorKind.FILE_NOT_FOUND)
+            return ToolOutput(
+                success=False, error=f"Command not found: {cmd_parts[0]}", error_kind=ToolErrorKind.FILE_NOT_FOUND
+            )
 
         success = result.returncode == 0
         output_text = result.stdout[-2000:] if len(result.stdout) > 2000 else result.stdout

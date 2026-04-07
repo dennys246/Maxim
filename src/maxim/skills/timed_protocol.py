@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class TimedProtocolConfig(SkillConfig):
     """Configuration for the timed protocol skill."""
+
     duration_minutes: float = 60.0  # Default: 1 hour
 
 
@@ -112,7 +113,9 @@ class TimedProtocolSkill(Skill):
         except Exception as e:
             log.warning(
                 "TimedProtocolSkill: failed to deactivate '%s': %s",
-                protocol_name, e, exc_info=True,
+                protocol_name,
+                e,
+                exc_info=True,
             )
 
     def context_for_llm(self) -> str:

@@ -87,17 +87,13 @@ class TestBuildIdentitySection:
         return req
 
     def test_basic_identity(self):
-        result = build_identity_section(
-            self._make_mode(), self._make_request(), "Monday", "10:00 AM"
-        )
+        result = build_identity_section(self._make_mode(), self._make_request(), "Monday", "10:00 AM")
         assert "Maxim" in result
         assert "PASSIVE" in result
         assert "AWAKE" in result
 
     def test_sleeping_state(self):
-        result = build_identity_section(
-            self._make_mode(), self._make_request(sleeping=True), "Monday", "10:00 AM"
-        )
+        result = build_identity_section(self._make_mode(), self._make_request(sleeping=True), "Monday", "10:00 AM")
         assert "SLEEP" in result
 
     def test_mode_goal_included(self):
@@ -253,9 +249,7 @@ class TestBuildObservationSection:
         assert "do something" in result
 
     def test_combined(self):
-        result = build_observation_section(
-            self._make_percept(transcript="hi", cli_input="test")
-        )
+        result = build_observation_section(self._make_percept(transcript="hi", cli_input="test"))
         assert "hi" in result
         assert "test" in result
 
@@ -289,21 +283,27 @@ class TestBuildInstructionsSection:
 
 
 class TestIsRealtimeRequest:
-    @pytest.mark.parametrize("text", [
-        "What's the score of the Broncos game?",
-        "current weather in Denver",
-        "latest news about AI",
-        "bitcoin price today",
-        "Patriots vs Bills",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "What's the score of the Broncos game?",
+            "current weather in Denver",
+            "latest news about AI",
+            "bitcoin price today",
+            "Patriots vs Bills",
+        ],
+    )
     def test_realtime_detected(self, text):
         assert is_realtime_request(text) is True
 
-    @pytest.mark.parametrize("text", [
-        "What is the capital of France?",
-        "Explain quantum physics",
-        "Write a Python function",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "What is the capital of France?",
+            "Explain quantum physics",
+            "Write a Python function",
+        ],
+    )
     def test_non_realtime(self, text):
         assert is_realtime_request(text) is False
 

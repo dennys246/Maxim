@@ -80,8 +80,7 @@ class DefineLiveModeIntentTool(Tool):
                     original = initiative
                     initiative = max(MIN_INITIATIVE, min(MAX_INITIATIVE, initiative))
                     logger.warning(
-                        f"Initiative {original} clamped to {initiative} "
-                        f"(bounds: {MIN_INITIATIVE}-{MAX_INITIATIVE})"
+                        f"Initiative {original} clamped to {initiative} (bounds: {MIN_INITIATIVE}-{MAX_INITIATIVE})"
                     )
             except (TypeError, ValueError):
                 return ToolResult(
@@ -121,10 +120,7 @@ class DefineLiveModeIntentTool(Tool):
                     confidence=1.0,
                 )
 
-            logger.info(
-                f"Live mode intent updated (v{intent.version}): "
-                f"initiative={intent.max_initiative}"
-            )
+            logger.info(f"Live mode intent updated (v{intent.version}): initiative={intent.max_initiative}")
 
             return ToolResult(
                 success=True,
@@ -195,9 +191,7 @@ class ReviewLiveModeIntentTool(Tool):
                 outcomes = intent.historical_outcomes[-outcome_limit:]
                 success_count = sum(1 for o in outcomes if o.get("success"))
                 result["recent_outcomes"] = outcomes
-                result["success_rate"] = (
-                    success_count / len(outcomes) if outcomes else 0.0
-                )
+                result["success_rate"] = success_count / len(outcomes) if outcomes else 0.0
 
             return ToolResult(
                 success=True,

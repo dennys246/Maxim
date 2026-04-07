@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .base import Policy
 
+
 class DefaultPolicy(Policy):
     def score(self, plan, state, memory):
         steps = plan if isinstance(plan, list) else []

@@ -115,9 +115,7 @@ def failed_outcome():
 
 
 @pytest.fixture
-def complete_memory_args(
-    sample_perception, sample_context, sample_decision, sample_action, sample_outcome
-):
+def complete_memory_args(sample_perception, sample_context, sample_decision, sample_action, sample_outcome):
     """All arguments needed for Hippocampus.capture()."""
     return {
         "perception": sample_perception,

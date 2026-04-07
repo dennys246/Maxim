@@ -11,6 +11,7 @@ Queries all available memory systems before proposing plans:
 Tries direct execution first, decomposes only on failure or
 when memory systems signal caution.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ from maxim.planning.base import Planner
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class PlanningContext:
@@ -115,13 +117,8 @@ class PlanningContext:
             if top_hits:
                 parts.append("Broadly relevant memories (multi-signal retrieval):")
                 for hit in top_hits:
-                    signals = ", ".join(
-                        f"{k}={v:.2f}" for k, v in hit.signal_scores.items()
-                    )
-                    parts.append(
-                        f"  - {hit.memory_id[:8]}... "
-                        f"(score={hit.combined_score:.2f}, {signals})"
-                    )
+                    signals = ", ".join(f"{k}={v:.2f}" for k, v in hit.signal_scores.items())
+                    parts.append(f"  - {hit.memory_id[:8]}... (score={hit.combined_score:.2f}, {signals})")
 
         return "\n".join(parts) if parts else ""
 
@@ -143,6 +140,7 @@ class PlanCandidate:
 # ---------------------------------------------------------------------------
 # Planner
 # ---------------------------------------------------------------------------
+
 
 class AdaptivePlanner(Planner):
     """ADaPT-style lazy planner with deep memory integration."""
@@ -200,16 +198,18 @@ class AdaptivePlanner(Planner):
             if pctx.primary_prediction:
                 delay = pctx.primary_prediction.predicted_delay
                 bounds = pctx.primary_prediction.delay_bounds
-            candidates.append(PlanCandidate(
-                actions=[{"tool_name": tool_name, "params": goal_dict.get("tool_params", {})}],
-                source="direct",
-                planning_context=pctx,
-                nac_prediction=pctx.primary_prediction,
-                relevant_reflections=[getattr(r, "id", "") for r in pctx.reflections],
-                depth=0,
-                estimated_delay=delay,
-                delay_bounds=bounds,
-            ))
+            candidates.append(
+                PlanCandidate(
+                    actions=[{"tool_name": tool_name, "params": goal_dict.get("tool_params", {})}],
+                    source="direct",
+                    planning_context=pctx,
+                    nac_prediction=pctx.primary_prediction,
+                    relevant_reflections=[getattr(r, "id", "") for r in pctx.reflections],
+                    depth=0,
+                    estimated_delay=delay,
+                    delay_bounds=bounds,
+                )
+            )
 
         # 3. Concept-suggested alternative tools
         if pctx.ranked_skills:
@@ -221,34 +221,40 @@ class AdaptivePlanner(Planner):
                     if self._nac:
                         alt_prediction = self._nac.predict("tool", skill_name, context)
                     if alt_prediction is None or alt_prediction.predicted_valence.value != "negative":
-                        candidates.append(PlanCandidate(
-                            actions=[{"tool_name": skill_name, "params": {}}],
-                            source="concept_suggested",
-                            planning_context=pctx,
-                            nac_prediction=alt_prediction,
-                            depth=0,
-                            estimated_delay=alt_prediction.predicted_delay if alt_prediction else None,
-                            delay_bounds=alt_prediction.delay_bounds if alt_prediction else None,
-                        ))
+                        candidates.append(
+                            PlanCandidate(
+                                actions=[{"tool_name": skill_name, "params": {}}],
+                                source="concept_suggested",
+                                planning_context=pctx,
+                                nac_prediction=alt_prediction,
+                                depth=0,
+                                estimated_delay=alt_prediction.predicted_delay if alt_prediction else None,
+                                delay_bounds=alt_prediction.delay_bounds if alt_prediction else None,
+                            )
+                        )
                         break
 
         # 4. NAc positive alternative outcomes (different outcome for same tool)
         for alt in pctx.all_outcomes:
             if alt.predicted_valence.value == "positive" and alt.confidence > 0.5:
                 if pctx.primary_prediction and alt.predicted_outcome != pctx.primary_prediction.predicted_outcome:
-                    candidates.append(PlanCandidate(
-                        actions=[{
-                            "tool_name": tool_name,
-                            "params": goal_dict.get("tool_params", {}),
-                            "_nac_hint": alt.predicted_outcome,
-                        }],
-                        source="nac_alternative",
-                        planning_context=pctx,
-                        nac_prediction=alt,
-                        depth=0,
-                        estimated_delay=alt.predicted_delay,
-                        delay_bounds=alt.delay_bounds,
-                    ))
+                    candidates.append(
+                        PlanCandidate(
+                            actions=[
+                                {
+                                    "tool_name": tool_name,
+                                    "params": goal_dict.get("tool_params", {}),
+                                    "_nac_hint": alt.predicted_outcome,
+                                }
+                            ],
+                            source="nac_alternative",
+                            planning_context=pctx,
+                            nac_prediction=alt,
+                            depth=0,
+                            estimated_delay=alt.predicted_delay,
+                            delay_bounds=alt.delay_bounds,
+                        )
+                    )
                     break
 
         # 5. Decomposed plan if memory signals caution
@@ -259,12 +265,14 @@ class AdaptivePlanner(Planner):
 
         # Fallback: always return at least one candidate
         if not candidates:
-            candidates.append(PlanCandidate(
-                actions=[{"tool_name": tool_name, "params": goal_dict.get("tool_params", {})}],
-                source="direct",
-                planning_context=pctx,
-                depth=0,
-            ))
+            candidates.append(
+                PlanCandidate(
+                    actions=[{"tool_name": tool_name, "params": goal_dict.get("tool_params", {})}],
+                    source="direct",
+                    planning_context=pctx,
+                    depth=0,
+                )
+            )
 
         return candidates
 
@@ -441,6 +449,7 @@ class AdaptivePlanner(Planner):
 # Module-level helpers
 # ---------------------------------------------------------------------------
 
+
 def _extract_context(goal_dict: dict, state: Any) -> dict[str, Any]:
     """Build context dict compatible with NAc and EC queries."""
     ctx: dict[str, Any] = {}
@@ -459,8 +468,7 @@ def _build_decomposition_prompt(
 ) -> str:
     """Build LLM prompt for goal decomposition, enriched with memory signals."""
     parts = [
-        "Decompose this goal into 3-5 concrete sub-tasks. "
-        "Each sub-task must be executable by a single tool call.",
+        "Decompose this goal into 3-5 concrete sub-tasks. Each sub-task must be executable by a single tool call.",
         f"\nGoal: {goal_dict.get('description', '')}",
         f"Proposed tool: {goal_dict.get('tool_name', 'unknown')}",
     ]

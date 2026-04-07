@@ -169,10 +169,13 @@ class TestNMS:
     def test_overlapping_boxes_suppressed(self):
         from maxim.models.vision.rtm_engine import _nms
 
-        boxes = np.array([
-            [10, 10, 50, 50],
-            [12, 12, 52, 52],  # nearly identical
-        ], dtype=np.float32)
+        boxes = np.array(
+            [
+                [10, 10, 50, 50],
+                [12, 12, 52, 52],  # nearly identical
+            ],
+            dtype=np.float32,
+        )
         scores = np.array([0.9, 0.7])
         keep = _nms(boxes, scores, 0.5)
         assert len(keep) == 1
@@ -181,10 +184,13 @@ class TestNMS:
     def test_non_overlapping_preserved(self):
         from maxim.models.vision.rtm_engine import _nms
 
-        boxes = np.array([
-            [10, 10, 50, 50],
-            [200, 200, 250, 250],
-        ], dtype=np.float32)
+        boxes = np.array(
+            [
+                [10, 10, 50, 50],
+                [200, 200, 250, 250],
+            ],
+            dtype=np.float32,
+        )
         scores = np.array([0.9, 0.8])
         keep = _nms(boxes, scores, 0.5)
         assert len(keep) == 2
@@ -228,23 +234,20 @@ class _MockEngine(VisionEngine):
     def detect_and_track(self, frames, conf=0.5):
         results = []
         for i, _ in enumerate(frames):
-            results.append([
-                Detection(track_id=1, frame_index=i,
-                          x1=10, y1=20, x2=50, y2=60,
-                          confidence=0.9, class_id=0),
-            ])
+            results.append(
+                [
+                    Detection(track_id=1, frame_index=i, x1=10, y1=20, x2=50, y2=60, confidence=0.9, class_id=0),
+                ]
+            )
         return results
 
-    def estimate_pose(self, frame, bbox_xyxy, *, pose_conf=0.25,
-                      keypoint_conf=0.25, min_iou=0.1):
+    def estimate_pose(self, frame, bbox_xyxy, *, pose_conf=0.25, keypoint_conf=0.25, min_iou=0.1):
         return PoseResult(
             method="eyes",
             target=(30.0, 25.0),
             iou=0.85,
             pose_box=(10, 20, 50, 60),
-            keypoints={"left_eye": (25.0, 25.0, 0.9),
-                        "right_eye": (35.0, 25.0, 0.9),
-                        "nose": (30.0, 30.0, 0.8)},
+            keypoints={"left_eye": (25.0, 25.0, 0.9), "right_eye": (35.0, 25.0, 0.9), "nose": (30.0, 30.0, 0.8)},
             confidence=0.95,
         )
 

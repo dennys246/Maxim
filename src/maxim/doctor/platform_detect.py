@@ -3,6 +3,7 @@
 Captures enough detail to give platform-specific fix suggestions
 (e.g., `apt install cloudflared` vs `brew install`, WSL2 netsh commands).
 """
+
 from __future__ import annotations
 
 import os
@@ -20,10 +21,10 @@ Distro = Literal["ubuntu", "debian", "fedora", "rhel", "arch", "alpine", "other"
 @dataclass(frozen=True)
 class PlatformInfo:
     os: OSName
-    os_release: str           # e.g., "Ubuntu 24.04", "macOS 14.2", "Windows 11"
+    os_release: str  # e.g., "Ubuntu 24.04", "macOS 14.2", "Windows 11"
     runtime: Runtime
-    distro: Distro            # Linux only; "unknown" on macOS/Windows
-    arch: str                 # e.g., "x86_64", "aarch64", "arm64"
+    distro: Distro  # Linux only; "unknown" on macOS/Windows
+    arch: str  # e.g., "x86_64", "aarch64", "arm64"
     kernel_version: str
     windows_host_ip: str | None  # only set when runtime=wsl1/wsl2
 
@@ -148,7 +149,9 @@ def _detect_windows_host_ip() -> str | None:
     try:
         result = subprocess.run(
             ["ipconfig.exe"],
-            capture_output=True, text=True, timeout=3.0,
+            capture_output=True,
+            text=True,
+            timeout=3.0,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -157,6 +160,7 @@ def _detect_windows_host_ip() -> str | None:
     # Parse lines like: "   IPv4 Address. . . . . . . . . . . : 192.168.1.47"
     # Skip 127.x, 169.254.x, and the WSL virtual switch (usually 172.x/16)
     import re
+
     lines = result.stdout.splitlines()
     current_adapter = ""
     for line in lines:
@@ -179,7 +183,10 @@ def detect_wsl_ip() -> str | None:
     """From inside WSL, return the WSL2 distro's own IP."""
     try:
         result = subprocess.run(
-            ["hostname", "-I"], capture_output=True, text=True, timeout=2.0,
+            ["hostname", "-I"],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -194,7 +201,10 @@ def detect_lan_ip() -> str | None:
     # On Linux: hostname -I gives first non-loopback
     try:
         result = subprocess.run(
-            ["hostname", "-I"], capture_output=True, text=True, timeout=2.0,
+            ["hostname", "-I"],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip().split()[0]
@@ -203,6 +213,7 @@ def detect_lan_ip() -> str | None:
     # Fallback: socket connect trick
     try:
         import socket
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             sock.connect(("8.8.8.8", 80))

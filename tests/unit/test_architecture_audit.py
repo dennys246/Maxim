@@ -1,4 +1,5 @@
 """Tests for the architecture audit tool."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -26,9 +27,7 @@ class TestForbiddenImport:
         agents_dir = tmp_path / "agents"
         agents_dir.mkdir()
         (agents_dir / "__init__.py").write_text("")
-        (agents_dir / "bad.py").write_text(
-            "from maxim.tools.base import SomeTool\n"
-        )
+        (agents_dir / "bad.py").write_text("from maxim.tools.base import SomeTool\n")
 
         violations = audit_architecture(src_root=tmp_path)
 
@@ -42,9 +41,7 @@ class TestForbiddenImport:
         agents_dir = tmp_path / "agents"
         agents_dir.mkdir()
         (agents_dir / "__init__.py").write_text("")
-        (agents_dir / "good.py").write_text(
-            "from maxim.memory.types import MemoryRecord\n"
-        )
+        (agents_dir / "good.py").write_text("from maxim.memory.types import MemoryRecord\n")
 
         violations = audit_architecture(src_root=tmp_path)
 
@@ -54,9 +51,7 @@ class TestForbiddenImport:
         tools_dir = tmp_path / "tools"
         tools_dir.mkdir()
         (tools_dir / "__init__.py").write_text("")
-        (tools_dir / "bad.py").write_text(
-            "from agents.bus import WorkingMemoryEntry\n"
-        )
+        (tools_dir / "bad.py").write_text("from agents.bus import WorkingMemoryEntry\n")
 
         violations = audit_architecture(src_root=tmp_path)
 

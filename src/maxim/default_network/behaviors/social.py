@@ -139,10 +139,7 @@ class SocialAttention(Behavior):
 
         # Cleanup stale entries (people not seen for 30+ seconds)
         cutoff = now - 30.0
-        stale = [
-            tid for tid, last_time in self._person_last_attended.items()
-            if last_time < cutoff
-        ]
+        stale = [tid for tid, last_time in self._person_last_attended.items() if last_time < cutoff]
         for track_id in stale:
             self._person_dwell.pop(track_id, None)
             self._person_last_attended.pop(track_id, None)
@@ -154,15 +151,13 @@ class SocialAttention(Behavior):
     ) -> ActionProposal | None:
         """Evaluate detections and propose tracking a person."""
         if not self.can_activate():
-            logger.debug("SocialAttention on cooldown (%.2fs remaining)",
-                        self.cooldown_seconds - self.time_since_activation)
+            logger.debug(
+                "SocialAttention on cooldown (%.2fs remaining)", self.cooldown_seconds - self.time_since_activation
+            )
             return None
 
         # Find people in detections
-        people = [
-            d for d in detections
-            if d.get("class_id") == PERSON_CLASS_ID
-        ]
+        people = [d for d in detections if d.get("class_id") == PERSON_CLASS_ID]
 
         if not people:
             if detections:
@@ -215,7 +210,9 @@ class SocialAttention(Behavior):
                 old_dwell = self._person_dwell.get(self._tracked_person, 0.0)
                 logger.debug(
                     "SocialAttention: switching from track_id=%s (dwell=%.1fs) to %s",
-                    self._tracked_person, old_dwell, target_track_id
+                    self._tracked_person,
+                    old_dwell,
+                    target_track_id,
                 )
             self._tracked_person = target_track_id
 
@@ -260,7 +257,10 @@ class SocialAttention(Behavior):
         if dwell > 0.5:  # Only log when there's meaningful dwell time
             logger.debug(
                 "SocialAttention: track_id=%s dwell=%.1fs habituation=%.2f priority_scale=%.2f",
-                target_track_id, dwell, 1.0 - habituation_factor, priority_scale
+                target_track_id,
+                dwell,
+                1.0 - habituation_factor,
+                priority_scale,
             )
 
         # Record tracking target in centralized salience map for spatial hysteresis
@@ -273,7 +273,11 @@ class SocialAttention(Behavior):
 
         logger.debug(
             "SocialAttention: proposing track to (%.1f, %.1f) for person track_id=%s, conf=%.2f, priority=%.2f",
-            target_u, target_v, target_track_id, confidence, self.base_priority * priority_scale
+            target_u,
+            target_v,
+            target_track_id,
+            confidence,
+            self.base_priority * priority_scale,
         )
 
         return self._create_proposal(
@@ -309,8 +313,9 @@ class SocialAttention(Behavior):
 
         try:
             error = state.focus_learner.record_result(target_u, target_v)
-            if error is not None and (abs(error.overshoot_ratio_u - 1.0) > 0.2 or
-                                      abs(error.overshoot_ratio_v - 1.0) > 0.2):
+            if error is not None and (
+                abs(error.overshoot_ratio_u - 1.0) > 0.2 or abs(error.overshoot_ratio_v - 1.0) > 0.2
+            ):
                 logger.debug(
                     "SocialAttention: focus error reported (overshoot_u=%.2f, overshoot_v=%.2f)",
                     error.overshoot_ratio_u,

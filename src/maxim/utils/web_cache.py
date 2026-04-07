@@ -256,9 +256,7 @@ class WebCache:
             total = len(self._entries)
             with_raw = sum(1 for e in self._entries.values() if e.raw_content)
             with_salient = sum(1 for e in self._entries.values() if e.salient_summary)
-            contributed = sum(
-                1 for e in self._entries.values() if e.contributed_to_goal
-            )
+            contributed = sum(1 for e in self._entries.values() if e.contributed_to_goal)
 
             return {
                 "total_entries": total,
@@ -279,11 +277,7 @@ class WebCache:
             return
 
         # Find entry with oldest last_accessed that didn't contribute to goals
-        candidates = [
-            (key, entry)
-            for key, entry in self._entries.items()
-            if not entry.contributed_to_goal
-        ]
+        candidates = [(key, entry) for key, entry in self._entries.items() if not entry.contributed_to_goal]
 
         if not candidates:
             # All contributed - evict oldest anyway
@@ -351,6 +345,7 @@ class WebCache:
 def _get_cache_singleton():
     """Lazy import to avoid circular dependency."""
     from maxim.utils.singleton import Singleton
+
     return Singleton("web_cache")
 
 

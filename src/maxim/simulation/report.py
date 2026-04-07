@@ -118,12 +118,14 @@ def build_report(
             top_links = []
             for sig_links in aut_nac._links.values():
                 for link in sig_links:
-                    top_links.append({
-                        "event": getattr(link, "event_signature", ""),
-                        "outcome": getattr(link, "outcome_signature", ""),
-                        "confidence": round(getattr(link, "confidence", 0), 3),
-                        "observations": getattr(link, "observation_count", 0),
-                    })
+                    top_links.append(
+                        {
+                            "event": getattr(link, "event_signature", ""),
+                            "outcome": getattr(link, "outcome_signature", ""),
+                            "confidence": round(getattr(link, "confidence", 0), 3),
+                            "observations": getattr(link, "observation_count", 0),
+                        }
+                    )
             top_links.sort(key=lambda x: x["confidence"], reverse=True)
             nac_summary = {
                 "total_links": aut_links,
@@ -289,8 +291,11 @@ def analyze_simulation(
         elif isinstance(response, str):
             report.llm_summary = response
 
-        logger.info("Simulation roundup complete: %d issues, %d recommendations",
-                     len(report.llm_issues_found), len(report.llm_recommendations))
+        logger.info(
+            "Simulation roundup complete: %d issues, %d recommendations",
+            len(report.llm_issues_found),
+            len(report.llm_recommendations),
+        )
 
     except Exception as e:
         logger.warning("LLM roundup failed: %s", e)
@@ -329,23 +334,27 @@ def _build_roundup_prompt(report: SimulationReport) -> str:
     if report.aut_nac_summary.get("top_links"):
         lines.append("  Top causal links:")
         for link in report.aut_nac_summary["top_links"][:3]:
-            lines.append(f"    {link['event']} → {link['outcome']} (conf={link['confidence']}, obs={link['observations']})")
+            lines.append(
+                f"    {link['event']} → {link['outcome']} (conf={link['confidence']}, obs={link['observations']})"
+            )
 
     if report.cost_usd > 0:
         lines.append("")
-        lines.append(f"## Cost: ${report.cost_usd:.4f} ({report.total_input_tokens} in, {report.total_output_tokens} out)")
+        lines.append(
+            f"## Cost: ${report.cost_usd:.4f} ({report.total_input_tokens} in, {report.total_output_tokens} out)"
+        )
 
     lines.append("")
-    lines.append("Respond with JSON: {\"summary\": \"...\", \"issues\": [\"...\"], \"recommendations\": [\"...\"]}")
+    lines.append('Respond with JSON: {"summary": "...", "issues": ["..."], "recommendations": ["..."]}')
 
     return "\n".join(lines)
 
 
 def print_report(report: SimulationReport) -> None:
     """Print a human-readable report to stdout."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  SIMULATION REPORT — {report.session_id}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  Goal: {report.goal}")
     print(f"  Persona: {report.persona}")
     print(f"  Model: {report.language_model}")
@@ -388,4 +397,4 @@ def print_report(report: SimulationReport) -> None:
         for rec in report.llm_recommendations:
             print(f"    - {rec}")
 
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")

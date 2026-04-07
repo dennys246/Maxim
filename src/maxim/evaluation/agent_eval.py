@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from .base import Evaluator
 
+
 class AgentEvaluator(Evaluator):
     """
     Evaluates agent intents and reasoning.
     """
+
     def evaluate(self, context):
         intent = context.get("intent")
         if not intent:

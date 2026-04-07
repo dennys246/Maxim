@@ -6,8 +6,7 @@ exception types and let unexpected errors propagate.
 
 from __future__ import annotations
 
-import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -87,7 +86,8 @@ class TestOnStepCallbackLogging:
 
         self._call_on_step(bad_callback, {"step": 1}, mock_logger)
         mock_logger.debug.assert_called_once_with(
-            "on_step callback failed", exc_info=True,
+            "on_step callback failed",
+            exc_info=True,
         )
 
     def test_callback_success_no_log(self):

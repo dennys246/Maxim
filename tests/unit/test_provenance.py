@@ -16,7 +16,6 @@ import os
 import tempfile
 import threading
 import time
-from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -102,9 +101,7 @@ class TestProvenanceEntry:
 
 class TestProvenanceTrace:
     def test_add_and_complete(self):
-        trace = ProvenanceTrace(
-            trace_id="t1", run_id="r1", session_id="s1", started_at=time.time()
-        )
+        trace = ProvenanceTrace(trace_id="t1", run_id="r1", session_id="s1", started_at=time.time())
         trace.add(PipelineStage.PERCEPTION, "perception_agent", "3 objects")
         trace.add(PipelineStage.DECISION, "memory_agent", "navigate")
         trace.complete()
@@ -112,9 +109,7 @@ class TestProvenanceTrace:
         assert trace.completed
 
     def test_to_dict_roundtrip(self):
-        trace = ProvenanceTrace(
-            trace_id="t1", run_id="r1", session_id="s1", started_at=1000.0
-        )
+        trace = ProvenanceTrace(trace_id="t1", run_id="r1", session_id="s1", started_at=1000.0)
         trace.add(PipelineStage.RECALL, "pattern_completer", "2 predictions")
         trace.complete()
         d = trace.to_dict()
@@ -132,9 +127,7 @@ class TestProvenanceTrace:
         assert t1 == t2  # _persisted has compare=False
 
     def test_thread_safe_add(self):
-        trace = ProvenanceTrace(
-            trace_id="t", run_id="r", session_id="s", started_at=time.time()
-        )
+        trace = ProvenanceTrace(trace_id="t", run_id="r", session_id="s", started_at=time.time())
         errors: list[Exception] = []
 
         def add_entries():
@@ -209,9 +202,7 @@ class TestCollectorTier1:
         assert recent[0].run_id == "new"
 
     def test_evict_old_traces(self):
-        c = ProvenanceCollector(
-            verbosity=ProvenanceVerbosity.COMPACT, max_traces=3
-        )
+        c = ProvenanceCollector(verbosity=ProvenanceVerbosity.COMPACT, max_traces=3)
         for i in range(5):
             c.begin_trace(f"run-{i}")
         assert len(c._traces) == 3
@@ -220,9 +211,7 @@ class TestCollectorTier1:
 class TestCollectorTier2:
     def test_log_activity_stores_entries(self):
         c = ProvenanceCollector(verbosity=ProvenanceVerbosity.COMPACT)
-        c.log_activity(
-            PipelineStage.FORMATION, "concept_extractor", "Extracted 3 concepts"
-        )
+        c.log_activity(PipelineStage.FORMATION, "concept_extractor", "Extracted 3 concepts")
         activities = c.recent_activities()
         assert len(activities) == 1
         assert activities[0].component == "concept_extractor"
@@ -242,9 +231,7 @@ class TestCollectorTier2:
         mock_store.write_activity.assert_called_once()
 
     def test_activity_eviction(self):
-        c = ProvenanceCollector(
-            verbosity=ProvenanceVerbosity.COMPACT, max_activities=5
-        )
+        c = ProvenanceCollector(verbosity=ProvenanceVerbosity.COMPACT, max_activities=5)
         for i in range(10):
             c.log_activity(PipelineStage.FORMATION, "test", f"action-{i}")
         assert len(c._activities) == 5
@@ -318,9 +305,7 @@ class TestCollectorSessionLifecycle:
             except Exception as e:
                 errors.append(e)
 
-        threads = [
-            threading.Thread(target=tier1, name=f"tier1-{j}") for j in range(3)
-        ] + [
+        threads = [threading.Thread(target=tier1, name=f"tier1-{j}") for j in range(3)] + [
             threading.Thread(target=tier2, name=f"tier2-{j}") for j in range(2)
         ]
         for t in threads:
@@ -337,15 +322,16 @@ class TestCollectorSessionLifecycle:
 
 
 def _make_trace(run_id: str = "r1", completed: bool = True) -> ProvenanceTrace:
-    trace = ProvenanceTrace(
-        trace_id="t1", run_id=run_id, session_id="sess123", started_at=time.time()
-    )
+    trace = ProvenanceTrace(trace_id="t1", run_id=run_id, session_id="sess123", started_at=time.time())
     trace.add(
-        PipelineStage.RECALL, "pattern_completer", "2 predictions",
+        PipelineStage.RECALL,
+        "pattern_completer",
+        "2 predictions",
         sources=[ProvenanceRef("hippocampus", "ep1", "observe (success=True)", 0.85)],
     )
     trace.add(
-        PipelineStage.DECISION, "memory_agent",
+        PipelineStage.DECISION,
+        "memory_agent",
         "Action: navigate (confidence: 0.90)",
         confidence=0.9,
         reasoning="Kitchen had target",
@@ -410,12 +396,16 @@ class TestRenderSummary:
         traces = [_make_trace()]
         activities = [
             ProvenanceEntry(
-                timestamp=time.time(), stage=PipelineStage.FORMATION,
-                component="concept_extractor", action="extracted",
+                timestamp=time.time(),
+                stage=PipelineStage.FORMATION,
+                component="concept_extractor",
+                action="extracted",
             ),
             ProvenanceEntry(
-                timestamp=time.time(), stage=PipelineStage.LEARNING,
-                component="nac", action="learned",
+                timestamp=time.time(),
+                stage=PipelineStage.LEARNING,
+                component="nac",
+                action="learned",
             ),
         ]
         result = render_summary(traces, activities)
@@ -428,8 +418,10 @@ class TestRenderSessionReport:
         traces = [_make_trace()]
         activities = [
             ProvenanceEntry(
-                timestamp=time.time(), stage=PipelineStage.FORMATION,
-                component="extractor", action="extracted",
+                timestamp=time.time(),
+                stage=PipelineStage.FORMATION,
+                component="extractor",
+                action="extracted",
             ),
         ]
         result = render_session_report(traces, activities, "sess123")
@@ -640,6 +632,7 @@ class TestProvenanceStore:
 class TestStructuredContextProvenance:
     def test_provenance_context_field_exists(self):
         from maxim.agents.bus import StructuredContext
+
         ctx = StructuredContext(timestamp=time.time())
         assert hasattr(ctx, "provenance_context")
         assert ctx.provenance_context == ""

@@ -160,17 +160,12 @@ class MovementTracker:
         angular_accel = 0.0
         translation_accel = 0.0
 
-        if (
-            self._prev_angular_velocity is not None
-            and self._prev_velocity_time is not None
-        ):
+        if self._prev_angular_velocity is not None and self._prev_velocity_time is not None:
             dt = now - self._prev_velocity_time
             if dt > 0.01:  # Avoid division by very small numbers
                 angular_accel = (angular_velocity - self._prev_angular_velocity) / dt
                 if self._prev_translation_velocity is not None:
-                    translation_accel = (
-                        translation_velocity - self._prev_translation_velocity
-                    ) / dt
+                    translation_accel = (translation_velocity - self._prev_translation_velocity) / dt
 
         # Update velocity cache
         self._prev_angular_velocity = angular_velocity

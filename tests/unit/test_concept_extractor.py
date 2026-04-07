@@ -236,9 +236,7 @@ class TestConceptExtraction:
 
 class TestInlineRelationships:
     def test_forms_relationships_between_active_and_passive(self, extractor, atl):
-        ep = _make_episode(
-            objects=["mug"], tool_name="grasp", goal="grasp_mug"
-        )
+        ep = _make_episode(objects=["mug"], tool_name="grasp", goal="grasp_mug")
         extractor.on_memory_captured("ep-1", ep)
         extractor.flush()
 
@@ -260,10 +258,7 @@ class TestInlineRelationships:
         assert len(mug) == 1
         rels = atl.find_by_relationship(mug[0].id, direction="both")
         # Should have no relationships (both are passive objects)
-        mug_chair_rels = [
-            (oid, r) for oid, r in rels
-            if atl.get(oid) and atl.get(oid).name == "chair"
-        ]
+        mug_chair_rels = [(oid, r) for oid, r in rels if atl.get(oid) and atl.get(oid).name == "chair"]
         assert len(mug_chair_rels) == 0
 
     def test_relationship_reinforcement(self, extractor, atl):
@@ -388,9 +383,7 @@ class TestReverseIndex:
 
     def test_reverse_index_tracks_multiple_concepts(self, extractor, atl):
         """A single episode can create multiple concept refs."""
-        ep = _make_episode(
-            memory_id="ep-1", objects=["mug", "chair"], tool_name="scan"
-        )
+        ep = _make_episode(memory_id="ep-1", objects=["mug", "chair"], tool_name="scan")
         extractor.on_memory_captured("ep-1", ep)
         extractor.flush()
 
@@ -423,7 +416,9 @@ class TestSCNIntegration:
         """When SCN is provided, concepts should be registered with SCN."""
         mock_scn = MagicMock()
         ext = ConceptExtractor(
-            atl=atl, cross_layer=cross_layer, scn=mock_scn,
+            atl=atl,
+            cross_layer=cross_layer,
+            scn=mock_scn,
         )
 
         ep = _make_episode(memory_id="ep-1", objects=["mug"])

@@ -10,9 +10,8 @@ Checks post-run state against scenario-defined expectations:
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from maxim.memory.hippocampus import Hippocampus
@@ -48,11 +47,7 @@ class ScenarioResult:
 
     @property
     def expectations_failed(self) -> list[str]:
-        return [
-            f"{r.expectation.description or r.expectation.type}: {r.detail}"
-            for r in self.results
-            if not r.passed
-        ]
+        return [f"{r.expectation.description or r.expectation.type}: {r.detail}" for r in self.results if not r.passed]
 
 
 def validate_expectations(
@@ -80,9 +75,7 @@ def validate_expectations(
             results.append(_check_response_latency_ms(exp, sink))
         else:
             results.append(
-                ExpectationResult(
-                    expectation=exp, passed=False, detail=f"Unknown expectation type: {exp.type}"
-                )
+                ExpectationResult(expectation=exp, passed=False, detail=f"Unknown expectation type: {exp.type}")
             )
     return results
 
@@ -123,14 +116,10 @@ def _check_action_taken(exp: Expectation, sink: RecordingSink) -> ExpectationRes
     )
 
 
-def _check_memory_formed(
-    exp: Expectation, hippocampus: Hippocampus | None
-) -> ExpectationResult:
+def _check_memory_formed(exp: Expectation, hippocampus: Hippocampus | None) -> ExpectationResult:
     """Check that a memory was formed with given content."""
     if hippocampus is None:
-        return ExpectationResult(
-            expectation=exp, passed=False, detail="No hippocampus available"
-        )
+        return ExpectationResult(expectation=exp, passed=False, detail="No hippocampus available")
 
     query = exp.memory_contains or ""
     matches = hippocampus.search_by_content(query)
@@ -156,9 +145,7 @@ def _check_pipeline_continued(
     """Check that the pipeline continued processing after a tagged percept."""
     tag = exp.after_tag
     if not tag:
-        return ExpectationResult(
-            expectation=exp, passed=False, detail="No after_tag specified"
-        )
+        return ExpectationResult(expectation=exp, passed=False, detail="No after_tag specified")
 
     if emitted_tags and tag not in emitted_tags:
         return ExpectationResult(
@@ -246,10 +233,7 @@ def _check_response_latency_ms(exp: Expectation, sink: RecordingSink) -> Expecta
         )
 
     # Inter-action gaps in ms
-    gaps_ms = [
-        (actions[i].timestamp - actions[i - 1].timestamp) * 1000.0
-        for i in range(1, len(actions))
-    ]
+    gaps_ms = [(actions[i].timestamp - actions[i - 1].timestamp) * 1000.0 for i in range(1, len(actions))]
     gaps_ms.sort()
 
     def _percentile(p: float) -> float:

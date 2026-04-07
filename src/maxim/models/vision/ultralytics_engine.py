@@ -106,7 +106,7 @@ class UltralyticsEngine(VisionEngine):
         except ImportError:
             raise ImportError(
                 "The 'ultralytics' package is required for the YOLO engine. "
-                "Install it with: pip install \"maxim[yolo]\""
+                'Install it with: pip install "maxim[yolo]"'
             ) from None
 
         repo_root = Path(__file__).resolve().parents[4]
@@ -117,17 +117,20 @@ class UltralyticsEngine(VisionEngine):
         # Segmentation model
         seg_name = "yolov8m-seg.pt"
         seg_local = os.path.join(local_dir, seg_name)
-        seg_alt = _first_existing([
-            os.path.join(local_dir, "yolo8m-seg.pt"),
-            os.path.join(legacy_dir, seg_name),
-            os.path.join(legacy_dir, "yolo8m-seg.pt"),
-            os.path.join(legacy_models_dir, "yolo8m-seg.pt"),
-            os.path.join(legacy_models_dir, "yolov8m-seg.pt"),
-            "yolov8m-seg.pt",
-            "yolo8m-seg.pt",
-        ])
+        seg_alt = _first_existing(
+            [
+                os.path.join(local_dir, "yolo8m-seg.pt"),
+                os.path.join(legacy_dir, seg_name),
+                os.path.join(legacy_dir, "yolo8m-seg.pt"),
+                os.path.join(legacy_models_dir, "yolo8m-seg.pt"),
+                os.path.join(legacy_models_dir, "yolov8m-seg.pt"),
+                "yolov8m-seg.pt",
+                "yolo8m-seg.pt",
+            ]
+        )
         seg_path = _ensure_weight_file(
-            seg_local, seg_name,
+            seg_local,
+            seg_name,
             alternates=[seg_alt] if seg_alt else [],
         )
         self._model = YOLO(seg_path)
@@ -142,17 +145,20 @@ class UltralyticsEngine(VisionEngine):
         self._pose_load_error: str | None = None
         pose_name = "yolov8m-pose.pt"
         pose_local = os.path.join(local_dir, pose_name)
-        pose_alt = _first_existing([
-            os.path.join(local_dir, "yolo8m-pose.pt"),
-            os.path.join(legacy_dir, pose_name),
-            os.path.join(legacy_dir, "yolo8m-pose.pt"),
-            os.path.join(legacy_models_dir, "yolo8m-pose.pt"),
-            os.path.join(legacy_models_dir, "yolov8m-pose.pt"),
-            "yolov8m-pose.pt",
-            "yolo8m-pose.pt",
-        ])
+        pose_alt = _first_existing(
+            [
+                os.path.join(local_dir, "yolo8m-pose.pt"),
+                os.path.join(legacy_dir, pose_name),
+                os.path.join(legacy_dir, "yolo8m-pose.pt"),
+                os.path.join(legacy_models_dir, "yolo8m-pose.pt"),
+                os.path.join(legacy_models_dir, "yolov8m-pose.pt"),
+                "yolov8m-pose.pt",
+                "yolo8m-pose.pt",
+            ]
+        )
         self._pose_model_path = _ensure_weight_file(
-            pose_local, pose_name,
+            pose_local,
+            pose_name,
             alternates=[pose_alt] if pose_alt else [],
         )
 
@@ -197,12 +203,17 @@ class UltralyticsEngine(VisionEngine):
 
             try:
                 results = self._model.track(
-                    photo, conf=conf, persist=True, verbose=False,
+                    photo,
+                    conf=conf,
+                    persist=True,
+                    verbose=False,
                 )
             except TypeError:
                 try:
                     results = self._model.track(
-                        photo, conf=conf, persist=True,
+                        photo,
+                        conf=conf,
+                        persist=True,
                     )
                 except Exception:
                     results = []
@@ -282,13 +293,18 @@ class UltralyticsEngine(VisionEngine):
                     except Exception:
                         det_conf = 0.0
 
-                dets.append(Detection(
-                    track_id=track_id,
-                    frame_index=frame_idx,
-                    x1=x1, y1=y1, x2=x2, y2=y2,
-                    confidence=det_conf,
-                    class_id=cls_id if cls_id is not None else 0,
-                ))
+                dets.append(
+                    Detection(
+                        track_id=track_id,
+                        frame_index=frame_idx,
+                        x1=x1,
+                        y1=y1,
+                        x2=x2,
+                        y2=y2,
+                        confidence=det_conf,
+                        class_id=cls_id if cls_id is not None else 0,
+                    )
+                )
 
             all_detections.append(dets)
 
@@ -317,7 +333,9 @@ class UltralyticsEngine(VisionEngine):
 
         try:
             pose_results = self._pose_model.predict(
-                frame, conf=pose_conf, verbose=False,
+                frame,
+                conf=pose_conf,
+                verbose=False,
             )
         except TypeError:
             try:

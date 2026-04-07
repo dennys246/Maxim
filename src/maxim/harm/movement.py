@@ -73,12 +73,8 @@ class MovementHarmPredictor(HarmPredictor):
     }
 
     # Patterns for parsing action signatures
-    _LOOK_AT_PATTERN = re.compile(
-        r"look_at:dy=(-?[\d.]+):dp=(-?[\d.]+)"
-    )
-    _MOVE_PATTERN = re.compile(
-        r"move:dx=(-?[\d.]+):dy=(-?[\d.]+):dz=(-?[\d.]+)"
-    )
+    _LOOK_AT_PATTERN = re.compile(r"look_at:dy=(-?[\d.]+):dp=(-?[\d.]+)")
+    _MOVE_PATTERN = re.compile(r"move:dx=(-?[\d.]+):dy=(-?[\d.]+):dz=(-?[\d.]+)")
 
     def __init__(self, config: MovementHarmConfig | None = None) -> None:
         """Initialize the movement harm predictor.

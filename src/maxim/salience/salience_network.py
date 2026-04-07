@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # Use numpy for efficient array operations
 try:
     import numpy as np
+
     HAS_NUMPY = True
 except ImportError:
     HAS_NUMPY = False
@@ -41,6 +42,7 @@ class SalienceConfig:
         interest_boost: Multiplier for interest-matched objects.
         min_salience_threshold: Minimum salience to consider object important.
     """
+
     max_tracked_objects: int = 100
     novelty_decay_seconds: float = 30.0
     recency_decay_seconds: float = 5.0
@@ -53,6 +55,7 @@ class SalienceConfig:
 @dataclass
 class TrackedObject:
     """A tracked object in the scene (for non-numpy fallback)."""
+
     track_id: Any
     class_id: int
     label: str
@@ -251,10 +254,7 @@ class SalienceNetwork:
 
                         # Evict oldest if over limit
                         if len(self._objects) > self.config.max_tracked_objects:
-                            oldest_id = min(
-                                self._objects.keys(),
-                                key=lambda k: self._objects[k].last_seen
-                            )
+                            oldest_id = min(self._objects.keys(), key=lambda k: self._objects[k].last_seen)
                             del self._objects[oldest_id]
 
     def get_salience(self, track_id: Any) -> float:
@@ -301,7 +301,7 @@ class SalienceNetwork:
             recency = math.exp(-time_since_seen / self.config.recency_decay_seconds)
 
             # Combined salience
-            salience = (novelty * 0.3 + recency * 0.5 + confidence * 0.2)
+            salience = novelty * 0.3 + recency * 0.5 + confidence * 0.2
 
             # Apply interest boost
             if interest:
@@ -356,36 +356,46 @@ class SalienceNetwork:
                     if salience < threshold:
                         continue
 
-                    candidates.append((salience, {
-                        "track_id": track_id,
-                        "class_id": int(self._class_ids[idx]),
-                        "label": str(self._labels[idx]),
-                        "confidence": float(self._confidence[idx]),
-                        "salience": salience,
-                        "novelty": self.get_novelty(track_id),
-                        "position": (float(self._position_u[idx]), float(self._position_v[idx])),
-                        "bbox_size": (float(self._bbox_w[idx]), float(self._bbox_h[idx])),
-                        "times_seen": int(self._times_seen[idx]),
-                        "interest_matched": bool(self._interest_matched[idx]),
-                    }))
+                    candidates.append(
+                        (
+                            salience,
+                            {
+                                "track_id": track_id,
+                                "class_id": int(self._class_ids[idx]),
+                                "label": str(self._labels[idx]),
+                                "confidence": float(self._confidence[idx]),
+                                "salience": salience,
+                                "novelty": self.get_novelty(track_id),
+                                "position": (float(self._position_u[idx]), float(self._position_v[idx])),
+                                "bbox_size": (float(self._bbox_w[idx]), float(self._bbox_h[idx])),
+                                "times_seen": int(self._times_seen[idx]),
+                                "interest_matched": bool(self._interest_matched[idx]),
+                            },
+                        )
+                    )
             else:
                 for track_id, obj in self._objects.items():
                     salience = self.get_salience(track_id)
                     if salience < threshold:
                         continue
 
-                    candidates.append((salience, {
-                        "track_id": track_id,
-                        "class_id": obj.class_id,
-                        "label": obj.label,
-                        "confidence": obj.confidence,
-                        "salience": salience,
-                        "novelty": self.get_novelty(track_id),
-                        "position": (obj.position_u, obj.position_v),
-                        "bbox_size": (obj.bbox_w, obj.bbox_h),
-                        "times_seen": obj.times_seen,
-                        "interest_matched": obj.interest_matched,
-                    }))
+                    candidates.append(
+                        (
+                            salience,
+                            {
+                                "track_id": track_id,
+                                "class_id": obj.class_id,
+                                "label": obj.label,
+                                "confidence": obj.confidence,
+                                "salience": salience,
+                                "novelty": self.get_novelty(track_id),
+                                "position": (obj.position_u, obj.position_v),
+                                "bbox_size": (obj.bbox_w, obj.bbox_h),
+                                "times_seen": obj.times_seen,
+                                "interest_matched": obj.interest_matched,
+                            },
+                        )
+                    )
 
             # Sort by salience descending
             candidates.sort(key=lambda x: x[0], reverse=True)
@@ -416,28 +426,38 @@ class SalienceNetwork:
                 for idx in valid_indices:
                     pos_u = float(self._position_u[idx])
                     pos_v = float(self._position_v[idx])
-                    dist = math.sqrt((pos_u - target_u)**2 + (pos_v - target_v)**2)
+                    dist = math.sqrt((pos_u - target_u) ** 2 + (pos_v - target_v) ** 2)
 
                     if dist <= radius:
                         track_id = self._track_ids[idx]
-                        results.append((dist, {
-                            "track_id": track_id,
-                            "label": str(self._labels[idx]),
-                            "position": (pos_u, pos_v),
-                            "distance": dist,
-                            "salience": self.get_salience(track_id),
-                        }))
+                        results.append(
+                            (
+                                dist,
+                                {
+                                    "track_id": track_id,
+                                    "label": str(self._labels[idx]),
+                                    "position": (pos_u, pos_v),
+                                    "distance": dist,
+                                    "salience": self.get_salience(track_id),
+                                },
+                            )
+                        )
             else:
                 for track_id, obj in self._objects.items():
-                    dist = math.sqrt((obj.position_u - target_u)**2 + (obj.position_v - target_v)**2)
+                    dist = math.sqrt((obj.position_u - target_u) ** 2 + (obj.position_v - target_v) ** 2)
                     if dist <= radius:
-                        results.append((dist, {
-                            "track_id": track_id,
-                            "label": obj.label,
-                            "position": (obj.position_u, obj.position_v),
-                            "distance": dist,
-                            "salience": self.get_salience(track_id),
-                        }))
+                        results.append(
+                            (
+                                dist,
+                                {
+                                    "track_id": track_id,
+                                    "label": obj.label,
+                                    "position": (obj.position_u, obj.position_v),
+                                    "distance": dist,
+                                    "salience": self.get_salience(track_id),
+                                },
+                            )
+                        )
 
             results.sort(key=lambda x: x[0])
             return [r[1] for r in results]
@@ -486,20 +506,22 @@ class SalienceNetwork:
                     if interest_only and not interest:
                         continue
 
-                    results.append({
-                        "track_id": track_id,
-                        "class_id": int(self._class_ids[idx]),
-                        "label": label,
-                        "confidence": confidence,
-                        "salience": salience,
-                        "novelty": self.get_novelty(track_id),
-                        "position": (float(self._position_u[idx]), float(self._position_v[idx])),
-                        "bbox_size": (float(self._bbox_w[idx]), float(self._bbox_h[idx])),
-                        "times_seen": int(self._times_seen[idx]),
-                        "interest_matched": interest,
-                        "first_seen": float(self._first_seen[idx]),
-                        "last_seen": float(self._last_seen[idx]),
-                    })
+                    results.append(
+                        {
+                            "track_id": track_id,
+                            "class_id": int(self._class_ids[idx]),
+                            "label": label,
+                            "confidence": confidence,
+                            "salience": salience,
+                            "novelty": self.get_novelty(track_id),
+                            "position": (float(self._position_u[idx]), float(self._position_v[idx])),
+                            "bbox_size": (float(self._bbox_w[idx]), float(self._bbox_h[idx])),
+                            "times_seen": int(self._times_seen[idx]),
+                            "interest_matched": interest,
+                            "first_seen": float(self._first_seen[idx]),
+                            "last_seen": float(self._last_seen[idx]),
+                        }
+                    )
             else:
                 for track_id, obj in self._objects.items():
                     salience = self.get_salience(track_id)
@@ -513,20 +535,22 @@ class SalienceNetwork:
                     if interest_only and not obj.interest_matched:
                         continue
 
-                    results.append({
-                        "track_id": track_id,
-                        "class_id": obj.class_id,
-                        "label": obj.label,
-                        "confidence": obj.confidence,
-                        "salience": salience,
-                        "novelty": self.get_novelty(track_id),
-                        "position": (obj.position_u, obj.position_v),
-                        "bbox_size": (obj.bbox_w, obj.bbox_h),
-                        "times_seen": obj.times_seen,
-                        "interest_matched": obj.interest_matched,
-                        "first_seen": obj.first_seen,
-                        "last_seen": obj.last_seen,
-                    })
+                    results.append(
+                        {
+                            "track_id": track_id,
+                            "class_id": obj.class_id,
+                            "label": obj.label,
+                            "confidence": obj.confidence,
+                            "salience": salience,
+                            "novelty": self.get_novelty(track_id),
+                            "position": (obj.position_u, obj.position_v),
+                            "bbox_size": (obj.bbox_w, obj.bbox_h),
+                            "times_seen": obj.times_seen,
+                            "interest_matched": obj.interest_matched,
+                            "first_seen": obj.first_seen,
+                            "last_seen": obj.last_seen,
+                        }
+                    )
 
             return results
 
@@ -567,8 +591,7 @@ class SalienceNetwork:
 
             # Stats
             lines.append(
-                f"Stats: {self._total_unique_objects} unique objects, "
-                f"{self._interest_detections} interest matches"
+                f"Stats: {self._total_unique_objects} unique objects, {self._interest_detections} interest matches"
             )
 
             return "\n".join(lines)

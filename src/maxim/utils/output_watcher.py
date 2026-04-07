@@ -279,7 +279,7 @@ class OutputWatcher:
             with self._events_lock:
                 self._events.append(event)
                 if len(self._events) > self._max_events:
-                    self._events = self._events[-self._max_events:]
+                    self._events = self._events[-self._max_events :]
 
             # Call callback
             if event_type == "created" and self.on_new_file:
@@ -417,6 +417,7 @@ def create_memory_callback(memory: Any) -> Callable[[OutputEvent], None]:
 def _get_watcher_singleton():
     """Lazy import to avoid circular dependency."""
     from maxim.utils.singleton import Singleton
+
     return Singleton("output_watcher")
 
 

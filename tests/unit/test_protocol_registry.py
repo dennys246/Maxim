@@ -15,6 +15,7 @@ from maxim.skills.tools import RunProtocolTool, StopProtocolTool, ListProtocolsT
 
 # --- Test helpers ---
 
+
 class StubSkill(Skill):
     def __init__(self, name: str = "stub"):
         self._name = name
@@ -46,10 +47,14 @@ class StubSkill(Skill):
 
 
 class StubProtocol(Protocol):
-    def __init__(self, name: str = "stub_proto", skills: list[Skill] | None = None,
-                 bounds: WorkspaceBounds | None = None,
-                 phrases: list[str] | None = None,
-                 stop_phrases: list[str] | None = None):
+    def __init__(
+        self,
+        name: str = "stub_proto",
+        skills: list[Skill] | None = None,
+        bounds: WorkspaceBounds | None = None,
+        phrases: list[str] | None = None,
+        stop_phrases: list[str] | None = None,
+    ):
         super().__init__()
         self._name = name
         self._skills_list = skills or [StubSkill()]
@@ -102,6 +107,7 @@ def registry(mock_maxim, tool_registry):
 
 # --- Registration tests ---
 
+
 class TestProtocolRegistration:
     def test_register_protocol(self, registry):
         proto = StubProtocol()
@@ -119,6 +125,7 @@ class TestProtocolRegistration:
 
 
 # --- Activation tests ---
+
 
 class TestProtocolActivation:
     def test_activate_success(self, registry):
@@ -164,6 +171,7 @@ class TestProtocolActivation:
 
 # --- Deactivation tests ---
 
+
 class TestProtocolDeactivation:
     def test_deactivate_success(self, registry):
         registry.register(StubProtocol())
@@ -200,6 +208,7 @@ class TestProtocolDeactivation:
 
 # --- Multi-protocol workspace composition ---
 
+
 class TestWorkspaceComposition:
     def test_tightest_bounds_win(self, registry, mock_maxim):
         registry.register(StubProtocol("p1", bounds=WorkspaceBounds(yaw=30.0)))
@@ -226,6 +235,7 @@ class TestWorkspaceComposition:
 
 # --- LLM context ---
 
+
 class TestLLMContext:
     def test_context_empty_when_nothing_active(self, registry):
         assert registry.get_context_for_llm() == ""
@@ -238,6 +248,7 @@ class TestLLMContext:
 
 
 # --- Phrase registration ---
+
 
 class TestPhraseRegistration:
     def test_registers_activation_phrases(self, registry, mock_maxim):
@@ -260,6 +271,7 @@ class TestPhraseRegistration:
 
 
 # --- Protocol management tools ---
+
 
 class TestProtocolTools:
     def test_run_protocol_tool(self, registry):

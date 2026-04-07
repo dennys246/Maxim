@@ -29,7 +29,7 @@ except ImportError:
 # Default class weights (can be overridden dynamically)
 # Higher = more likely to be selected as primary target
 DEFAULT_CLASS_WEIGHTS: dict[int, float] = {
-    0: 1.2,   # person - slight preference for social interaction
+    0: 1.2,  # person - slight preference for social interaction
     # All other classes default to 1.0
 }
 
@@ -348,12 +348,8 @@ class NoveltyTracker:
 
         # First pass: remove entries older than max_age
         old_keys = set(self._track_times.keys())
-        self._track_times = {
-            k: v for k, v in self._track_times.items() if v > cutoff
-        }
-        self._focus_times = {
-            k: v for k, v in self._focus_times.items() if v > cutoff
-        }
+        self._track_times = {k: v for k, v in self._track_times.items() if v > cutoff}
+        self._focus_times = {k: v for k, v in self._focus_times.items() if v > cutoff}
         removed_keys = old_keys - set(self._track_times.keys())
 
         # Second pass: if still over hard cap, remove oldest entries
@@ -365,9 +361,7 @@ class NoveltyTracker:
             keys_to_remove = {k for k, _ in sorted_items[:excess]}
             self._track_times = dict(sorted_items[excess:])
             # Also remove from focus_times
-            self._focus_times = {
-                k: v for k, v in self._focus_times.items() if k not in keys_to_remove
-            }
+            self._focus_times = {k: v for k, v in self._focus_times.items() if k not in keys_to_remove}
             removed_keys |= keys_to_remove
 
         # Clean up class-level mappings for removed track_ids

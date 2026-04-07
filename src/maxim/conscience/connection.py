@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import logging
 import queue
-import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING
 
 from maxim.utils.gpu_compat import is_connection_error
 from maxim.utils.logging import warn
@@ -25,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 class ConnectionState(Enum):
     """Robot connection lifecycle states."""
+
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
     CONNECTED = "connected"
@@ -74,9 +74,7 @@ class FailureTracker:
     video: FailureState = field(default_factory=FailureState)
     audio: FailureState = field(default_factory=FailureState)
 
-    thresholds: dict[str, int] = field(
-        default_factory=lambda: {"motor": 3, "video": 5, "audio": 5}
-    )
+    thresholds: dict[str, int] = field(default_factory=lambda: {"motor": 3, "video": 5, "audio": 5})
     window_s: float = 5.0
 
     def record_failure(self, subsystem: str) -> bool:

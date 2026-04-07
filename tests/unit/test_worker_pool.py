@@ -163,8 +163,7 @@ class TestJobRegistry:
         reg = JobRegistry()
 
         # Create an "old" job with a timestamp 100s in the past
-        old_job = Job(job_id="old", fn=lambda: None, lane="infer",
-                      created_at=time.time() - 100)
+        old_job = Job(job_id="old", fn=lambda: None, lane="infer", created_at=time.time() - 100)
         reg.register(old_job)
         reg.mark_completed("old", result="old_val")
 
@@ -207,8 +206,7 @@ class TestJobRegistry:
     def test_prune_cleans_up_timestamps(self):
         """After pruning, _timestamps dict does not retain entries for pruned jobs."""
         reg = JobRegistry()
-        old_job = Job(job_id="j1", fn=lambda: None, lane="infer",
-                      created_at=time.time() - 100)
+        old_job = Job(job_id="j1", fn=lambda: None, lane="infer", created_at=time.time() - 100)
         reg.register(old_job)
         reg.mark_completed("j1", result="ok")
 
@@ -220,8 +218,7 @@ class TestJobRegistry:
         """Pruning many jobs leaves no stale entries in _timestamps."""
         reg = JobRegistry()
         for i in range(10):
-            job = Job(job_id=f"j{i}", fn=lambda: None, lane="infer",
-                      created_at=time.time() - 200)
+            job = Job(job_id=f"j{i}", fn=lambda: None, lane="infer", created_at=time.time() - 200)
             reg.register(job)
             reg.mark_completed(f"j{i}", result=i)
 
@@ -263,9 +260,7 @@ class TestDependencyGate:
     def test_early_prefetch_runs_on_submit(self):
         """Early prefetch data is available after wait."""
         reg = JobRegistry()
-        spec = DependencySpec(
-            prefetch_early=lambda: {"agent_states": [1, 2, 3]}
-        )
+        spec = DependencySpec(prefetch_early=lambda: {"agent_states": [1, 2, 3]})
         gate = DependencyGate(spec, reg)
         gate.start_early_prefetch()
         result, failed = gate.wait()
@@ -494,9 +489,7 @@ class TestLane:
 class TestWorkerPool:
     def test_submit_and_poll(self):
         """Submit a job and poll for completion."""
-        pool = WorkerPool(
-            lane_configs={"infer": LaneConfig("infer", max_workers=1)}
-        )
+        pool = WorkerPool(lane_configs={"infer": LaneConfig("infer", max_workers=1)})
         pool.start()
 
         pool.submit("infer", "j1", fn=lambda: 42)
@@ -507,9 +500,7 @@ class TestWorkerPool:
 
     def test_get_completed(self):
         """get_completed returns and removes a completed job."""
-        pool = WorkerPool(
-            lane_configs={"infer": LaneConfig("infer", max_workers=1)}
-        )
+        pool = WorkerPool(lane_configs={"infer": LaneConfig("infer", max_workers=1)})
         pool.start()
 
         pool.submit("infer", "j1", fn=lambda: "result")
@@ -525,9 +516,7 @@ class TestWorkerPool:
         pool.stop(timeout=2.0)
 
     def test_unknown_lane_raises(self):
-        pool = WorkerPool(
-            lane_configs={"infer": LaneConfig("infer", max_workers=1)}
-        )
+        pool = WorkerPool(lane_configs={"infer": LaneConfig("infer", max_workers=1)})
         with pytest.raises(ValueError, match="Unknown lane"):
             pool.submit("bogus", "j1", fn=lambda: None)
 
@@ -592,9 +581,7 @@ class TestWorkerPool:
 
     def test_prefetch_with_dependency(self):
         """Prefetch data is passed to the job function."""
-        pool = WorkerPool(
-            lane_configs={"infer": LaneConfig("infer", max_workers=1)}
-        )
+        pool = WorkerPool(lane_configs={"infer": LaneConfig("infer", max_workers=1)})
         pool.start()
 
         result_holder = []
@@ -641,9 +628,7 @@ class TestWorkerPool:
 
     def test_multiple_jobs_concurrent_execution(self):
         """Multiple jobs in the same lane execute."""
-        pool = WorkerPool(
-            lane_configs={"work": LaneConfig("work", max_workers=2)}
-        )
+        pool = WorkerPool(lane_configs={"work": LaneConfig("work", max_workers=2)})
         pool.start()
 
         results = []
@@ -654,6 +639,7 @@ class TestWorkerPool:
                 with lock:
                     results.append(val)
                 return val
+
             return fn
 
         for i in range(5):

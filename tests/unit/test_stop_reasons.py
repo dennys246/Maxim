@@ -58,9 +58,7 @@ class TestToolOutputErrorKind:
     """Verify error_kind field on ToolOutput."""
 
     def test_with_error_kind(self):
-        out = ToolOutput(
-            success=False, error="timed out", error_kind=ToolErrorKind.TIMEOUT
-        )
+        out = ToolOutput(success=False, error="timed out", error_kind=ToolErrorKind.TIMEOUT)
         assert out.success is False
         assert out.error == "timed out"
         assert out.error_kind is ToolErrorKind.TIMEOUT

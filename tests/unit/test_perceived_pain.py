@@ -63,7 +63,8 @@ class _Executor:
 class TestPathExtraction:
     def test_direct_path_param(self):
         accesses = extract_paths_from_params(
-            "read_file", {"path": "/etc/passwd"},
+            "read_file",
+            {"path": "/etc/passwd"},
         )
         assert len(accesses) == 1
         assert accesses[0].path == "/etc/passwd"
@@ -71,41 +72,43 @@ class TestPathExtraction:
 
     def test_bash_rm_rf_promotes_to_delete(self):
         accesses = extract_paths_from_params(
-            "bash", {"command": "rm -rf /etc/passwd"},
+            "bash",
+            {"command": "rm -rf /etc/passwd"},
         )
-        assert any(a.path == "/etc/passwd" and a.operation == "delete"
-                   for a in accesses)
+        assert any(a.path == "/etc/passwd" and a.operation == "delete" for a in accesses)
 
     def test_bash_cat_promotes_to_read(self):
         accesses = extract_paths_from_params(
-            "bash", {"command": "cat /etc/shadow"},
+            "bash",
+            {"command": "cat /etc/shadow"},
         )
-        assert any(a.path == "/etc/shadow" and a.operation == "read"
-                   for a in accesses)
+        assert any(a.path == "/etc/shadow" and a.operation == "read" for a in accesses)
 
     def test_bash_redirect_promotes_to_write(self):
         accesses = extract_paths_from_params(
-            "bash", {"command": "echo hello > /etc/passwd"},
+            "bash",
+            {"command": "echo hello > /etc/passwd"},
         )
-        assert any(a.path == "/etc/passwd" and a.operation == "write"
-                   for a in accesses)
+        assert any(a.path == "/etc/passwd" and a.operation == "write" for a in accesses)
 
     def test_bash_ls_ssh_dir(self):
         accesses = extract_paths_from_params(
-            "bash", {"command": "ls -la /home/user/.ssh/"},
+            "bash",
+            {"command": "ls -la /home/user/.ssh/"},
         )
-        assert any("/home/user/.ssh" in a.path and a.operation == "list"
-                   for a in accesses)
+        assert any("/home/user/.ssh" in a.path and a.operation == "list" for a in accesses)
 
     def test_no_paths_in_benign_command(self):
         accesses = extract_paths_from_params(
-            "bash", {"command": "echo hello world"},
+            "bash",
+            {"command": "echo hello world"},
         )
         assert accesses == []
 
     def test_relative_paths_ignored_in_commands(self):
         accesses = extract_paths_from_params(
-            "bash", {"command": "cat ./local/file.txt"},
+            "bash",
+            {"command": "cat ./local/file.txt"},
         )
         assert accesses == []
 
@@ -174,6 +177,7 @@ class TestPerceivedPainAssessor:
 
     def test_nac_learned_contributes(self):
         from maxim.decisions.causal_link import Valence
+
         nac = MagicMock()
         prediction = MagicMock()
         prediction.predicted_valence = Valence.NEGATIVE
@@ -191,6 +195,7 @@ class TestPerceivedPainAssessor:
 
     def test_combines_learned_and_prior_takes_max(self):
         from maxim.decisions.causal_link import Valence
+
         nac = MagicMock()
         prediction = MagicMock()
         prediction.predicted_valence = Valence.NEGATIVE
@@ -206,6 +211,7 @@ class TestPerceivedPainAssessor:
 
     def test_nac_positive_prediction_gives_no_learned_pain(self):
         from maxim.decisions.causal_link import Valence
+
         nac = MagicMock()
         prediction = MagicMock()
         prediction.predicted_valence = Valence.POSITIVE
@@ -336,10 +342,12 @@ class TestPainInterceptorExecutor:
     def test_bash_rm_rf_fires_delete(self):
         bus = _Bus()
         exe = PainInterceptorExecutor(_Executor(), pain_bus=bus)
-        exe.execute({
-            "tool_name": "bash",
-            "params": {"command": "rm -rf /etc/passwd"},
-        })
+        exe.execute(
+            {
+                "tool_name": "bash",
+                "params": {"command": "rm -rf /etc/passwd"},
+            }
+        )
         assert len(bus.signals) == 1
         assert bus.signals[0].context["operation"] == "delete"
 
@@ -395,7 +403,8 @@ class TestTwoLayerIntegration:
         with_consequence = PainInterceptorExecutor(_Executor(), pain_bus=bus)
         assessor = PerceivedPainAssessor(nac=None, pain_bus=bus)
         full_stack = AnticipatoryPainExecutor(
-            with_consequence, assessor=assessor,
+            with_consequence,
+            assessor=assessor,
         )
         full_stack.execute(
             {"tool_name": "read_file", "params": {"path": "/etc/shadow"}},
@@ -409,7 +418,8 @@ class TestTwoLayerIntegration:
         with_consequence = PainInterceptorExecutor(_Executor(), pain_bus=bus)
         assessor = PerceivedPainAssessor(nac=None, pain_bus=bus)
         full_stack = AnticipatoryPainExecutor(
-            with_consequence, assessor=assessor,
+            with_consequence,
+            assessor=assessor,
         )
         full_stack.execute(
             {"tool_name": "read_file", "params": {"path": "/tmp/fine.txt"}},

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import time
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -32,9 +32,7 @@ from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 from maxim.memory.pattern_completer import PatternCompleter
 from maxim.memory.semantic_types import (
     Concept,
-    ConceptProvenance,
     RelationshipRegistry,
-    SemanticMemory,
 )
 from maxim.memory.types import (
     Action,
@@ -71,11 +69,13 @@ def ag():
 
 @pytest.fixture
 def cross_layer(atl, ag, hippocampus):
-    return CrossLayerGraph(layers={
-        "atl": atl,
-        "angular_gyrus": ag,
-        "hippocampus": hippocampus,
-    })
+    return CrossLayerGraph(
+        layers={
+            "atl": atl,
+            "angular_gyrus": ag,
+            "hippocampus": hippocampus,
+        }
+    )
 
 
 @pytest.fixture
@@ -162,8 +162,12 @@ class TestContextDictId:
 
     def test_compressed_semantic_has_id(self):
         from maxim.memory.semantic_types import CompressedSemantic
+
         cs = CompressedSemantic(
-            id="cs-789", timestamp=time.time(), name="table", category="object",
+            id="cs-789",
+            timestamp=time.time(),
+            name="table",
+            category="object",
         )
         d = cs.to_context_dict()
         assert d["id"] == "cs-789"
@@ -250,7 +254,7 @@ class TestBioContext:
         hub = Mock()
         hub.hippocampus = hippocampus
 
-        ep = _make_episode(hippocampus, memory_id="seed-1")
+        _make_episode(hippocampus, memory_id="seed-1")  # side-effect: adds to hippocampus
         bio = BioContext(hub)
         result = bio.recall_associated(seed_ids=["seed-1"])
         # Should not raise; returns list (may be empty if no associations)
@@ -636,7 +640,10 @@ class TestSkillAutoAssociation:
 
         # Check it has EXECUTES_WITH relationships
         rels = atl.find_by_relationship(
-            skill_concepts[0].id, rel_type="EXECUTES_WITH", direction="both", limit=20,
+            skill_concepts[0].id,
+            rel_type="EXECUTES_WITH",
+            direction="both",
+            limit=20,
         )
         assert len(rels) > 0, "Skill concept should have EXECUTES_WITH edges"
 
@@ -689,7 +696,10 @@ class TestPhraseConceptIndexing:
         for alias in aliases:
             if isinstance(alias, Concept):
                 rels = atl.find_by_relationship(
-                    alias.id, rel_type="ALIAS_OF", direction="outgoing", limit=10,
+                    alias.id,
+                    rel_type="ALIAS_OF",
+                    direction="outgoing",
+                    limit=10,
                 )
                 assert len(rels) == 2, f"Alias '{alias.name}' should link to exactly 2 components"
 
@@ -736,15 +746,11 @@ class TestExecutesWithRelationship:
         assert "ALIAS_OF" in registry._types
 
     def test_infer_skill_execution_returns_executes_with(self):
-        result = ConceptExtractor._infer_relationship_type(
-            "skill_execution", "object"
-        )
+        result = ConceptExtractor._infer_relationship_type("skill_execution", "object")
         assert result == "EXECUTES_WITH"
 
     def test_infer_skill_execution_symmetric(self):
-        result = ConceptExtractor._infer_relationship_type(
-            "object", "skill_execution"
-        )
+        result = ConceptExtractor._infer_relationship_type("object", "skill_execution")
         assert result == "EXECUTES_WITH"
 
 
@@ -762,7 +768,10 @@ class TestPatternCompleterSkillPrediction:
         obj_concept = _make_concept(atl, "person", "object")
         skill_concept = _make_concept(atl, "skill:patrol", "skill_execution")
         atl.define_relationship(
-            skill_concept.id, obj_concept.id, "EXECUTES_WITH", weight=0.8,
+            skill_concept.id,
+            obj_concept.id,
+            "EXECUTES_WITH",
+            weight=0.8,
         )
 
         # Create an episode linked to the object concept
@@ -842,7 +851,10 @@ class TestSkillDiscovery:
 
         # Create EXECUTES_WITH edge
         atl.define_relationship(
-            skill_concept.id, obj_concept.id, "EXECUTES_WITH", weight=0.8,
+            skill_concept.id,
+            obj_concept.id,
+            "EXECUTES_WITH",
+            weight=0.8,
         )
 
         ranked = builder.rank_available_skills([obj_concept])
@@ -934,7 +946,7 @@ class TestSkillDiscovery:
         mock_skill.name = "patrol"
         builder.set_skill_registry([mock_skill])
 
-        sk = _make_concept(atl, "skill:patrol", "skill_execution")
+        _make_concept(atl, "skill:patrol", "skill_execution")  # side-effect: adds to ATL
 
         ranked = builder.rank_available_skills([])
         assert ranked == []

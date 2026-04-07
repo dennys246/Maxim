@@ -358,6 +358,7 @@ def get_instance_id_from_env(default_prefix: str = "maxim") -> str:
 def _get_policy_singleton() -> "Singleton[FilesystemPolicy]":
     """Lazy import to avoid circular dependency."""
     from maxim.utils.singleton import Singleton
+
     return Singleton("filesystem_policy")
 
 
@@ -910,12 +911,27 @@ def check_execute_permission(
 # CWD Tree Scanner (for LLM prompt context)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SCAN_SKIP_DIRS: frozenset[str] = frozenset({
-    ".git", "__pycache__", "node_modules", ".venv", "venv",
-    ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache",
-    ".eggs", "dist", "build", ".maxim_workspace",
-    ".idea", ".vscode", ".DS_Store", ".ipynb_checkpoints",
-})
+_SCAN_SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".venv",
+        "venv",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".eggs",
+        "dist",
+        "build",
+        ".maxim_workspace",
+        ".idea",
+        ".vscode",
+        ".DS_Store",
+        ".ipynb_checkpoints",
+    }
+)
 
 
 def scan_cwd_tree(

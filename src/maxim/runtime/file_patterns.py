@@ -33,15 +33,34 @@ FILE_PATTERNS = [
 ]
 
 # Keywords indicating file modification intent
-MODIFY_KEYWORDS = frozenset({
-    "update", "modify", "change", "edit", "fix", "add to", "append",
-    "remove from", "delete from", "refactor", "improve", "enhance",
-})
+MODIFY_KEYWORDS = frozenset(
+    {
+        "update",
+        "modify",
+        "change",
+        "edit",
+        "fix",
+        "add to",
+        "append",
+        "remove from",
+        "delete from",
+        "refactor",
+        "improve",
+        "enhance",
+    }
+)
 
 # Keywords indicating new file creation
-CREATE_KEYWORDS = frozenset({
-    "create", "new", "make", "write", "generate", "build",
-})
+CREATE_KEYWORDS = frozenset(
+    {
+        "create",
+        "new",
+        "make",
+        "write",
+        "generate",
+        "build",
+    }
+)
 
 
 @dataclass
@@ -84,12 +103,14 @@ def detect_file_references(text: str) -> list[FileReference]:
             is_path = "/" in file_ref
             confidence = 0.9 if is_path else 0.7
 
-            refs.append(FileReference(
-                pattern=file_ref,
-                is_path=is_path,
-                intent=intent,
-                confidence=confidence,
-            ))
+            refs.append(
+                FileReference(
+                    pattern=file_ref,
+                    is_path=is_path,
+                    intent=intent,
+                    confidence=confidence,
+                )
+            )
 
     # Sort by confidence descending
     refs.sort(key=lambda r: -r.confidence)

@@ -66,9 +66,7 @@ class SalienceMemoryBridge:
 
     # Interaction history: object_class -> InteractionRecord
     _interaction_history: dict[str, InteractionRecord] = field(
-        default_factory=lambda: defaultdict(
-            lambda: InteractionRecord(object_class="")
-        )
+        default_factory=lambda: defaultdict(lambda: InteractionRecord(object_class=""))
     )
 
     # Configuration
@@ -84,9 +82,7 @@ class SalienceMemoryBridge:
     def __post_init__(self) -> None:
         """Initialize default factory fields."""
         if not hasattr(self, "_interaction_history") or self._interaction_history is None:
-            self._interaction_history = defaultdict(
-                lambda: InteractionRecord(object_class="")
-            )
+            self._interaction_history = defaultdict(lambda: InteractionRecord(object_class=""))
 
     # ─────────────────────────────────────────────────────────────────────────
     # Session Lifecycle
@@ -107,17 +103,17 @@ class SalienceMemoryBridge:
             if successful:
                 seed_ids = [m.id for m in successful[:20]]
                 try:
-                    associated = self.hippocampus.recall_associated(
-                        seed_ids, limit=50
-                    )
+                    associated = self.hippocampus.recall_associated(seed_ids, limit=50)
                     seen_ids = {m.id for m in successful} | {m.id for m in failed}
                     for mem, _score in associated:
                         if mem.id not in seen_ids:
                             seen_ids.add(mem.id)
                             # Classify associated memory by its success status
                             success_val = (
-                                mem.success if hasattr(mem, "success")
-                                else mem.outcome.success if hasattr(mem, "outcome")
+                                mem.success
+                                if hasattr(mem, "success")
+                                else mem.outcome.success
+                                if hasattr(mem, "outcome")
                                 else False
                             )
                             if success_val:
@@ -138,9 +134,7 @@ class SalienceMemoryBridge:
                         record = self._get_or_create_record(obj)
                         record.success_count += 1
                         record.total_interactions += 1
-                        record.last_interaction = max(
-                            record.last_interaction, memory.timestamp
-                        )
+                        record.last_interaction = max(record.last_interaction, memory.timestamp)
                         if goal and goal not in record.positive_goals:
                             record.positive_goals.append(goal)
                             # Keep only last 10 goals
@@ -152,9 +146,7 @@ class SalienceMemoryBridge:
                         record = self._get_or_create_record(obj)
                         record.failure_count += 1
                         record.total_interactions += 1
-                        record.last_interaction = max(
-                            record.last_interaction, memory.timestamp
-                        )
+                        record.last_interaction = max(record.last_interaction, memory.timestamp)
 
             logger.info(
                 "Restored interaction history for %d object classes",
@@ -339,9 +331,7 @@ class SalienceMemoryBridge:
 
         if self._error_count >= self._max_errors:
             self._healthy = False
-            logger.error(
-                "SalienceMemoryBridge disabled after %d errors", self._error_count
-            )
+            logger.error("SalienceMemoryBridge disabled after %d errors", self._error_count)
 
     @property
     def is_healthy(self) -> bool:
@@ -350,20 +340,14 @@ class SalienceMemoryBridge:
 
     def stats(self) -> dict[str, Any]:
         """Return bridge statistics."""
-        total_interactions = sum(
-            r.total_interactions for r in self._interaction_history.values()
-        )
-        total_successes = sum(
-            r.success_count for r in self._interaction_history.values()
-        )
+        total_interactions = sum(r.total_interactions for r in self._interaction_history.values())
+        total_successes = sum(r.success_count for r in self._interaction_history.values())
         return {
             "healthy": self._healthy,
             "error_count": self._error_count,
             "object_classes_tracked": len(self._interaction_history),
             "total_interactions": total_interactions,
-            "overall_success_rate": (
-                total_successes / total_interactions if total_interactions > 0 else 0.5
-            ),
+            "overall_success_rate": (total_successes / total_interactions if total_interactions > 0 else 0.5),
         }
 
 

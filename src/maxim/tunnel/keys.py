@@ -9,6 +9,7 @@ Layout:
 - Format:    single-line URL-safe random string, 43 chars (256-bit entropy)
 - Perms:     0600 on POSIX; Windows relies on user-profile ACLs
 """
+
 from __future__ import annotations
 
 import os
@@ -119,39 +120,36 @@ def render_snippets(key: str) -> dict[str, str]:
 
 def _bash_snippet(key: str) -> str:
     return (
-        f'# bash / zsh — current session:\n'
+        f"# bash / zsh — current session:\n"
         f'export {ENV_VAR}="{key}"\n'
-        f'\n'
-        f'# Persist in your shell rc file (pick one):\n'
+        f"\n"
+        f"# Persist in your shell rc file (pick one):\n"
         f"echo 'export {ENV_VAR}=\"{key}\"' >> ~/.bashrc\n"
         f"echo 'export {ENV_VAR}=\"{key}\"' >> ~/.zshrc\n"
     )
 
 
 def _fish_snippet(key: str) -> str:
-    return (
-        f'# fish — universal (persists across sessions automatically):\n'
-        f'set -Ux {ENV_VAR} "{key}"\n'
-    )
+    return f'# fish — universal (persists across sessions automatically):\nset -Ux {ENV_VAR} "{key}"\n'
 
 
 def _powershell_snippet(key: str) -> str:
     return (
-        f'# PowerShell (Windows, Linux, macOS) — current session:\n'
+        f"# PowerShell (Windows, Linux, macOS) — current session:\n"
         f'$env:{ENV_VAR} = "{key}"\n'
-        f'\n'
-        f'# Persist in your profile (run once):\n'
+        f"\n"
+        f"# Persist in your profile (run once):\n"
         f'Add-Content $PROFILE "`n$env:{ENV_VAR} = `"{key}`""\n'
     )
 
 
 def _cmd_snippet(key: str) -> str:
     return (
-        f':: Windows cmd — persists across sessions (machine-wide for your user):\n'
+        f":: Windows cmd — persists across sessions (machine-wide for your user):\n"
         f'setx {ENV_VAR} "{key}"\n'
-        f'\n'
+        f"\n"
         f":: Current session only:\n"
-        f'set {ENV_VAR}={key}\n'
+        f"set {ENV_VAR}={key}\n"
     )
 
 

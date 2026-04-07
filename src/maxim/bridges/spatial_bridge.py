@@ -76,9 +76,7 @@ class SpatialMemoryBridge:
     attention: "AttentionNetwork | None" = None
 
     # Location priors: object_class -> list of ObjectLocationPrior
-    _location_priors: dict[str, list[ObjectLocationPrior]] = field(
-        default_factory=lambda: defaultdict(list)
-    )
+    _location_priors: dict[str, list[ObjectLocationPrior]] = field(default_factory=lambda: defaultdict(list))
 
     # Configuration
     min_observations_for_prior: int = 3
@@ -121,9 +119,7 @@ class SpatialMemoryBridge:
             if memories:
                 seed_ids = [m.id for m in memories[:20]]
                 try:
-                    associated = self.hippocampus.recall_associated(
-                        seed_ids, limit=50
-                    )
+                    associated = self.hippocampus.recall_associated(seed_ids, limit=50)
                     seen_ids = {m.id for m in memories}
                     for mem, _score in associated:
                         if mem.id not in seen_ids and hasattr(mem, "perception"):
@@ -267,9 +263,7 @@ class SpatialMemoryBridge:
 
             # Sort by probability and return top k
             priors.sort(key=lambda p: p.probability, reverse=True)
-            return [
-                (p.grid_u, p.grid_v, p.probability) for p in priors[:top_k]
-            ]
+            return [(p.grid_u, p.grid_v, p.probability) for p in priors[:top_k]]
 
         except Exception as e:
             self._record_error(e)
@@ -334,9 +328,7 @@ class SpatialMemoryBridge:
             # Enforce limits
             if len(priors) > self.max_priors_per_class:
                 priors.sort(key=lambda p: p.probability, reverse=True)
-                self._location_priors[object_class.lower()] = priors[
-                    : self.max_priors_per_class
-                ]
+                self._location_priors[object_class.lower()] = priors[: self.max_priors_per_class]
 
         except Exception as e:
             self._record_error(e)
@@ -434,13 +426,11 @@ class SpatialMemoryBridge:
     def _record_error(self, error: Exception) -> None:
         """Record an error and potentially disable the bridge."""
         self._error_count += 1
-        logger.warning("SpatialMemoryBridge error (%d/%d): %s",
-                       self._error_count, self._max_errors, error)
+        logger.warning("SpatialMemoryBridge error (%d/%d): %s", self._error_count, self._max_errors, error)
 
         if self._error_count >= self._max_errors:
             self._healthy = False
-            logger.error("SpatialMemoryBridge disabled after %d errors",
-                         self._error_count)
+            logger.error("SpatialMemoryBridge disabled after %d errors", self._error_count)
 
     @property
     def is_healthy(self) -> bool:

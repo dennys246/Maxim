@@ -26,6 +26,7 @@ class ArbiterConfig:
             (default 0.3s).
         score_threshold: Minimum effective score to act (default 0.1).
     """
+
     hysteresis_bonus: float = 0.1
     min_switch_interval: float = 0.3
     score_threshold: float = 0.1

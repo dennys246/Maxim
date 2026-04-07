@@ -97,14 +97,14 @@ EVENT_VERBOSITY: dict[str, int] = {
     "idle": 3,
     "state_persist": 3,
     # Default Network events
-    "dn_percept_escalated": 1,      # Important - means LLM will be called
-    "dn_action_executed": 2,        # Detailed - reactive movement
-    "dn_behavior_switched": 2,      # Detailed - behavior change
-    "dn_inhibited": 1,              # Important - DN suppressed
-    "dn_released": 2,               # Detailed - DN released
-    "dn_percept_filtered": 3,       # Debug - routine filtering
-    "dn_behavior_evaluated": 3,     # Debug - behavior evaluation
-    "dn_action_blocked": 2,         # Detailed - FearAgent blocked action
+    "dn_percept_escalated": 1,  # Important - means LLM will be called
+    "dn_action_executed": 2,  # Detailed - reactive movement
+    "dn_behavior_switched": 2,  # Detailed - behavior change
+    "dn_inhibited": 1,  # Important - DN suppressed
+    "dn_released": 2,  # Detailed - DN released
+    "dn_percept_filtered": 3,  # Debug - routine filtering
+    "dn_behavior_evaluated": 3,  # Debug - behavior evaluation
+    "dn_action_blocked": 2,  # Detailed - FearAgent blocked action
 }
 
 
@@ -234,7 +234,7 @@ class AbstractionBuffer:
         with self._lock:
             self._entries.append(record)
             if len(self._entries) > self._max:
-                self._entries = self._entries[-self._max:]
+                self._entries = self._entries[-self._max :]
 
             # Console output if enabled
             if self._console_output:
@@ -274,10 +274,7 @@ class AbstractionBuffer:
     def get_by_verbosity(self, max_verbosity: int, n: int = 20) -> list[dict[str, Any]]:
         """Get entries that would be shown at a given verbosity level."""
         with self._lock:
-            filtered = [
-                e for e in self._entries
-                if EVENT_VERBOSITY.get(e.event, 1) <= max_verbosity
-            ]
+            filtered = [e for e in self._entries if EVENT_VERBOSITY.get(e.event, 1) <= max_verbosity]
             return [e.to_compact() for e in filtered[-n:]]
 
     def get_summary(self) -> dict[str, Any]:
@@ -313,6 +310,7 @@ _global_verbosity: int = 1
 def _get_buffer_singleton():
     """Lazy import to avoid circular dependency."""
     from maxim.utils.singleton import Singleton
+
     return Singleton("abstraction_buffer")
 
 

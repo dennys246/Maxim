@@ -652,8 +652,7 @@ class AngularGyrus(MemoryLayer):
         strength = "strong" if r_squared >= 0.8 else "moderate" if r_squared >= 0.5 else "weak"
         direction = "positive" if slope > 0 else "negative" if slope < 0 else "flat"
         verbal = (
-            f"Linear regression: y = {slope:.4g}x + {intercept:.4g} "
-            f"(R²={r_squared:.3f}, {strength} {direction} trend)"
+            f"Linear regression: y = {slope:.4g}x + {intercept:.4g} (R²={r_squared:.3f}, {strength} {direction} trend)"
         )
         code = f"np.polyfit(x, y, 1)  # → [{slope:.6g}, {intercept:.6g}]"
 
@@ -691,32 +690,20 @@ class AngularGyrus(MemoryLayer):
 
         # Normal equations: [[n, s_x, s_x2], [s_x, s_x2, s_x3], [s_x2, s_x3, s_x4]] * [c, b, a] = [s_y, s_xy, s_x2y]
         # Solve using Cramer's rule
-        det = (
-            n * (s_x2 * s_x4 - s_x3**2)
-            - s_x * (s_x * s_x4 - s_x3 * s_x2)
-            + s_x2 * (s_x * s_x3 - s_x2**2)
-        )
+        det = n * (s_x2 * s_x4 - s_x3**2) - s_x * (s_x * s_x4 - s_x3 * s_x2) + s_x2 * (s_x * s_x3 - s_x2**2)
 
         if abs(det) < 1e-15:
             return self._analyze_linear(data)  # Fall back to linear
 
         c = (
-            s_y * (s_x2 * s_x4 - s_x3**2)
-            - s_x * (s_xy * s_x4 - s_x2y * s_x3)
-            + s_x2 * (s_xy * s_x3 - s_x2y * s_x2)
+            s_y * (s_x2 * s_x4 - s_x3**2) - s_x * (s_xy * s_x4 - s_x2y * s_x3) + s_x2 * (s_xy * s_x3 - s_x2y * s_x2)
         ) / det
 
         b = (
-            n * (s_xy * s_x4 - s_x2y * s_x3)
-            - s_y * (s_x * s_x4 - s_x3 * s_x2)
-            + s_x2 * (s_x * s_x2y - s_xy * s_x2)
+            n * (s_xy * s_x4 - s_x2y * s_x3) - s_y * (s_x * s_x4 - s_x3 * s_x2) + s_x2 * (s_x * s_x2y - s_xy * s_x2)
         ) / det
 
-        a = (
-            n * (s_x2 * s_x2y - s_x3 * s_xy)
-            - s_x * (s_x * s_x2y - s_xy * s_x2)
-            + s_y * (s_x * s_x3 - s_x2**2)
-        ) / det
+        a = (n * (s_x2 * s_x2y - s_x3 * s_xy) - s_x * (s_x * s_x2y - s_xy * s_x2) + s_y * (s_x * s_x3 - s_x2**2)) / det
 
         # R² computation
         y_mean = s_y / n
@@ -726,10 +713,7 @@ class AngularGyrus(MemoryLayer):
 
         params = {"a": a, "b": b, "c": c, "r_squared": r_squared}
 
-        verbal = (
-            f"Quadratic fit: y = {a:.4g}x² + {b:.4g}x + {c:.4g} "
-            f"(R²={r_squared:.3f})"
-        )
+        verbal = f"Quadratic fit: y = {a:.4g}x² + {b:.4g}x + {c:.4g} (R²={r_squared:.3f})"
         code = f"np.polyfit(x, y, 2)  # → [{a:.6g}, {b:.6g}, {c:.6g}]"
 
         return AnalysisResult(
@@ -838,7 +822,7 @@ class AngularGyrus(MemoryLayer):
         try:
             solution = solve(coefficients, constants)
             n = len(constants)
-            verbal_vals = ", ".join(f"x{i+1}={v:.6g}" for i, v in enumerate(solution))
+            verbal_vals = ", ".join(f"x{i + 1}={v:.6g}" for i, v in enumerate(solution))
             return ExactResult(
                 value=solution,
                 operation="solve_system",

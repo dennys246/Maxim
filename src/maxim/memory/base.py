@@ -8,6 +8,7 @@ import uuid
 if TYPE_CHECKING:
     from maxim.agents.bus import StructuredContext
 
+
 class SimpleRecord:
     """
     A single unit of memory (simple content wrapper).
@@ -16,6 +17,7 @@ class SimpleRecord:
     Not to be confused with the MemoryRecord ABC in types.py
     which is the base class for EpisodicMemory, MathMemory, etc.
     """
+
     def __init__(
         self,
         content: Any,
@@ -35,7 +37,6 @@ class SimpleRecord:
             "metadata": self.metadata,
             "timestamp": self.timestamp.isoformat(),
         }
-    
 
 
 class Memory(ABC):

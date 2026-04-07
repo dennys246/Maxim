@@ -1,4 +1,5 @@
 """Architecture audit: verify layer ownership and one-way dependency rules."""
+
 from __future__ import annotations
 
 import ast
@@ -9,6 +10,7 @@ from pathlib import Path
 @dataclass(frozen=True)
 class AuditViolation:
     """A single architecture rule violation."""
+
     file: str
     line: int
     layer: str

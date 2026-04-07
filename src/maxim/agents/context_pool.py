@@ -188,7 +188,7 @@ class ConversationTurn:
         return ContextEntry(
             timestamp=self.timestamp,
             entry_type="conversation",
-            content=f"User: \"{self.user_input[:100]}\" → Maxim: \"{self.assistant_response[:100]}\"",
+            content=f'User: "{self.user_input[:100]}" → Maxim: "{self.assistant_response[:100]}"',
             metadata={
                 "user": self.user_input,
                 "assistant": self.assistant_response,
@@ -253,14 +253,14 @@ class ContextPool:
         parts = []
 
         if percept.transcript_chunk:
-            parts.append(f"Heard: \"{percept.transcript_chunk[:100]}\"")
+            parts.append(f'Heard: "{percept.transcript_chunk[:100]}"')
 
         if percept.detections:
             objects = [d.get("label", "object") for d in percept.detections[:5]]
             parts.append(f"Saw: {', '.join(objects)}")
 
         if percept.cli_input:
-            parts.append(f"User input: \"{percept.cli_input[:100]}\"")
+            parts.append(f'User input: "{percept.cli_input[:100]}"')
 
         if percept.has_maxim_keyword:
             parts.append("(addressed directly)")
@@ -403,8 +403,8 @@ class ContextPool:
             return
 
         # Split into old (to summarize) and recent (to keep)
-        old_entries = self._entries[:-self.config.keep_recent]
-        recent_entries = self._entries[-self.config.keep_recent:]
+        old_entries = self._entries[: -self.config.keep_recent]
+        recent_entries = self._entries[-self.config.keep_recent :]
 
         # Build text to summarize
         text_to_summarize = self._entries_to_text(old_entries)
@@ -438,9 +438,7 @@ class ContextPool:
         # Invalidate cached context text
         self._cached_context_text = None
 
-        logger.debug(
-            f"Summarized {len(old_entries)} entries into {summary_entry.estimated_tokens} tokens"
-        )
+        logger.debug(f"Summarized {len(old_entries)} entries into {summary_entry.estimated_tokens} tokens")
 
     def _fallback_summarize(self, entries: list[ContextEntry]) -> str:
         """Create a simple summary without LLM."""
@@ -454,7 +452,7 @@ class ContextPool:
             if len(contents) <= 2:
                 parts.append(f"{entry_type}: {'; '.join(contents)}")
             else:
-                parts.append(f"{entry_type}: {len(contents)} events including \"{contents[-1][:50]}...\"")
+                parts.append(f'{entry_type}: {len(contents)} events including "{contents[-1][:50]}..."')
 
         return " | ".join(parts)
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import subprocess
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from maxim.agents.bus import ToolErrorKind
 from maxim.tools.code_tools import RunTestsTool

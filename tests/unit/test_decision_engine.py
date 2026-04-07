@@ -9,7 +9,6 @@ from __future__ import annotations
 from unittest.mock import Mock
 
 
-
 class TestDecisionEngineBasic:
     """Test basic decision engine functionality."""
 
@@ -28,9 +27,7 @@ class TestDecisionEngineBasic:
         """Returns the first action from the best plan."""
         from maxim.planning.decision_engine import DecisionEngine
 
-        mock_planner.propose_plans.return_value = [
-            [{"tool_name": "look_around", "params": {}}]
-        ]
+        mock_planner.propose_plans.return_value = [[{"tool_name": "look_around", "params": {}}]]
 
         engine = DecisionEngine(mock_planner, mock_policy)
         result = engine.decide("find mug", state={}, memory={})
@@ -99,9 +96,7 @@ class TestDecisionEngineConstraints:
         from maxim.planning.constraints import ConstraintViolation
         from maxim.planning.decision_engine import DecisionEngine
 
-        mock_planner.propose_plans.return_value = [
-            [{"tool_name": "dangerous_action"}]
-        ]
+        mock_planner.propose_plans.return_value = [[{"tool_name": "dangerous_action"}]]
 
         constraint = Mock()
         constraint.check.side_effect = ConstraintViolation("Not safe")
@@ -259,9 +254,7 @@ class TestDecisionEngineMultipleConstraints:
         constraint2 = Mock()
         constraint2.check.side_effect = ConstraintViolation("Failed")
 
-        engine = DecisionEngine(
-            mock_planner, mock_policy, constraints=[constraint1, constraint2]
-        )
+        engine = DecisionEngine(mock_planner, mock_policy, constraints=[constraint1, constraint2])
         result = engine.decide("goal", state={}, memory={})
 
         assert result is None
@@ -286,9 +279,7 @@ class TestDecisionEngineMultipleConstraints:
         constraint2 = Mock()
         constraint2.check = make_check("second")
 
-        engine = DecisionEngine(
-            mock_planner, mock_policy, constraints=[constraint1, constraint2]
-        )
+        engine = DecisionEngine(mock_planner, mock_policy, constraints=[constraint1, constraint2])
         engine.decide("goal", state={}, memory={})
 
         assert check_order == ["first", "second"]

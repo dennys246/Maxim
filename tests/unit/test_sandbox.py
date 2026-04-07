@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import os
-import time
 
-import pytest
 
 from maxim.simulation.sandbox import (
     DEFAULT_ENVIRONMENT_FILES,
     DEFAULT_SENSITIVE_FILES,
-    ExecutionResult,
     PainTriggerLayer,
     SensitiveFile,
     TmpdirSandbox,
@@ -171,7 +168,7 @@ class TestPainTriggerLayer:
         sandbox = TmpdirSandbox()
         layer = PainTriggerLayer(sandbox)
         layer.start(populate=True)
-        result = layer.execute("cat /etc/passwd")
+        layer.execute("cat /etc/passwd")  # side-effect: triggers pain event
         assert len(layer.pain_events) >= 1
         assert any(e["path"] == "/etc/passwd" for e in layer.pain_events)
         layer.cleanup()
@@ -213,8 +210,7 @@ class TestPainTriggerLayer:
 
     def test_custom_sensitive_files(self):
         custom = [
-            SensitiveFile("/secret/data.txt", 1.0, "custom_breach",
-                         frozenset({"read"}), "Top secret"),
+            SensitiveFile("/secret/data.txt", 1.0, "custom_breach", frozenset({"read"}), "Top secret"),
         ]
         sandbox = TmpdirSandbox()
         layer = PainTriggerLayer(sandbox, sensitive_files=custom)

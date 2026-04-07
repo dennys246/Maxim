@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from maxim.agents.bus import FailureStrategy, SubGoal, SubGoalStatus
+from maxim.agents.bus import SubGoal, SubGoalStatus
 from maxim.planning.plan_document import (
     CodingReplanContext,
     Phase,

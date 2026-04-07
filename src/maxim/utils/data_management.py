@@ -10,6 +10,7 @@ from typing import Any
 
 from maxim.utils.logging import warn
 
+
 def build_home(home_dir):
     for name in (
         "images",

@@ -110,9 +110,7 @@ class Semantics:
                 removed += 1
                 # Also remove from incoming
                 incoming = self._graph._incoming.get(target_id, [])
-                self._graph._incoming[target_id] = [
-                    e for e in incoming if not (e.source == source_id and e is edge)
-                ]
+                self._graph._incoming[target_id] = [e for e in incoming if not (e.source == source_id and e is edge)]
             self._graph._outgoing[source_id] = to_keep
 
             # Also remove reverse edge for symmetric types
@@ -212,7 +210,9 @@ class Semantics:
 
         # Find the edge via DependencyGraph's public API
         edge = self._graph.find_edge(
-            source_id, target_id, edge_type,
+            source_id,
+            target_id,
+            edge_type,
             metadata_match={"relationship_type": rel_type},
         )
         if edge is None:
@@ -228,7 +228,9 @@ class Semantics:
 
         # Apply via DependencyGraph's public update_edge
         self._graph.update_edge(
-            source_id, target_id, edge_type,
+            source_id,
+            target_id,
+            edge_type,
             weight=weight,
             metadata_updates=meta_updates if meta_updates else None,
         )
@@ -237,7 +239,9 @@ class Semantics:
         if self._registry.is_symmetric(rel_type):
             rev_meta = dict(meta_updates) if meta_updates else {}
             self._graph.update_edge(
-                target_id, source_id, edge_type,
+                target_id,
+                source_id,
+                edge_type,
                 weight=weight,
                 metadata_updates=rev_meta if rev_meta else None,
             )

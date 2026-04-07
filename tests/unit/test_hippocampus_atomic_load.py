@@ -15,10 +15,12 @@ from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 
 
 def _make_hippocampus() -> Hippocampus:
-    return Hippocampus(HippocampusConfig(
-        persistence_path=None,
-        enable_associative_graph=False,
-    ))
+    return Hippocampus(
+        HippocampusConfig(
+            persistence_path=None,
+            enable_associative_graph=False,
+        )
+    )
 
 
 def _valid_memory_dict(memory_id: str = "mem-1") -> dict:
@@ -48,9 +50,7 @@ def _valid_memory_dict(memory_id: str = "mem-1") -> dict:
 class TestAtomicLoad:
     """Test that load() is atomic — corrupted files don't destroy state."""
 
-    def test_corrupted_payload_preserves_existing_data(
-        self, hippocampus, complete_memory_args, tmp_path
-    ):
+    def test_corrupted_payload_preserves_existing_data(self, hippocampus, complete_memory_args, tmp_path):
         """If a payload contains a malformed entry, load() raises and
         existing in-memory data is not cleared."""
         # Populate with a real memory

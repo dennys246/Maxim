@@ -41,15 +41,15 @@ class IdleScan(Behavior):
 
     # Exploration zones (normalized 0-1 coordinates)
     _ZONES = [
-        (0.2, 0.3),   # Upper left
-        (0.5, 0.2),   # Upper center
-        (0.8, 0.3),   # Upper right
+        (0.2, 0.3),  # Upper left
+        (0.5, 0.2),  # Upper center
+        (0.8, 0.3),  # Upper right
         (0.15, 0.5),  # Mid left
-        (0.5, 0.5),   # Center
+        (0.5, 0.5),  # Center
         (0.85, 0.5),  # Mid right
-        (0.2, 0.7),   # Lower left
-        (0.5, 0.8),   # Lower center
-        (0.8, 0.7),   # Lower right
+        (0.2, 0.7),  # Lower left
+        (0.5, 0.8),  # Lower center
+        (0.8, 0.7),  # Lower right
     ]
 
     def __init__(
@@ -145,8 +145,7 @@ class IdleScan(Behavior):
 
         # Check if we need a new waypoint
         need_new_waypoint = (
-            self._current_waypoint is None or
-            (now - self._waypoint_start_time) > self._waypoint_dwell_time
+            self._current_waypoint is None or (now - self._waypoint_start_time) > self._waypoint_dwell_time
         )
 
         if need_new_waypoint:
@@ -156,9 +155,7 @@ class IdleScan(Behavior):
             # Pick new waypoint
             self._current_waypoint = self._pick_new_waypoint()
             self._waypoint_start_time = now
-            self._waypoint_dwell_time = random.uniform(
-                self.waypoint_dwell_min, self.waypoint_dwell_max
-            )
+            self._waypoint_dwell_time = random.uniform(self.waypoint_dwell_min, self.waypoint_dwell_max)
             self._interpolation_progress = 0.0
 
             # Decide if this is a quick saccade or smooth movement
@@ -318,17 +315,17 @@ class ReturnToCenter(Behavior):
 
     # 6D workspace limits (fallback if no bounds_learner)
     # Physical limits: Yaw ±55°, Pitch ±35°
-    _DEFAULT_MAX_Y = 18.0   # mm (left/right translation)
-    _DEFAULT_MAX_Z = 15.0   # mm (up/down translation)
-    _DEFAULT_MAX_YAW = 55.0    # degrees (matches physical head limit)
+    _DEFAULT_MAX_Y = 18.0  # mm (left/right translation)
+    _DEFAULT_MAX_Z = 15.0  # mm (up/down translation)
+    _DEFAULT_MAX_YAW = 55.0  # degrees (matches physical head limit)
     _DEFAULT_MAX_PITCH = 35.0  # degrees
 
     # Minimum limits - never use smaller than these even if bounds_learner suggests it
     # This prevents the behavior from over-triggering due to collapsed bounds
-    _MIN_MAX_YAW = 27.5     # 50% of physical limit
-    _MIN_MAX_PITCH = 17.5   # 50% of physical limit
-    _MIN_MAX_Y = 5.4        # 30% of default
-    _MIN_MAX_Z = 4.5        # 30% of default
+    _MIN_MAX_YAW = 27.5  # 50% of physical limit
+    _MIN_MAX_PITCH = 17.5  # 50% of physical limit
+    _MIN_MAX_Y = 5.4  # 30% of default
+    _MIN_MAX_Z = 4.5  # 30% of default
 
     # Critical threshold - force return even with detections
     CRITICAL_THRESHOLD = 0.90  # Trigger earlier to prevent hitting limits
@@ -500,22 +497,41 @@ class ReturnToCenter(Behavior):
                 "RTC_DEBUG: yaw=%.1f pitch=%.1f y=%.1f z=%.1f | max_yaw=%.1f max_pitch=%.1f "
                 "| norm_yaw=%.2f norm_pitch=%.2f | trans_dist=%.2f rot_dist=%.2f combined_dist=%.2f "
                 "| very_extreme=%s critical=%s",
-                yaw, pitch, y, z, max_yaw, max_pitch,
-                norm_yaw, norm_pitch, trans_dist, rot_dist, combined_dist,
-                is_very_extreme, is_critical
+                yaw,
+                pitch,
+                y,
+                z,
+                max_yaw,
+                max_pitch,
+                norm_yaw,
+                norm_pitch,
+                trans_dist,
+                rot_dist,
+                combined_dist,
+                is_very_extreme,
+                is_critical,
             )
 
         if is_very_extreme:
             logger.info(
                 "ReturnToCenter EXTREME: trans(y=%.1f,z=%.1f) rot(yaw=%.1f,pitch=%.1f) "
                 "dist=%.2f -> delta=(%.1f, %.1f) priority=%.2f",
-                y, z, yaw, pitch, combined_dist, dx * 10, dy * 10,
-                self.base_priority * priority_scale
+                y,
+                z,
+                yaw,
+                pitch,
+                combined_dist,
+                dx * 10,
+                dy * 10,
+                self.base_priority * priority_scale,
             )
         elif is_critical:
             logger.info(
                 "ReturnToCenter CRITICAL: dist=%.2f -> delta=(%.1f, %.1f) priority=%.2f",
-                combined_dist, dx * 10, dy * 10, self.base_priority * priority_scale
+                combined_dist,
+                dx * 10,
+                dy * 10,
+                self.base_priority * priority_scale,
             )
 
         return self._create_proposal(
@@ -540,8 +556,12 @@ class ReturnToCenter(Behavior):
 
     def set_head_position_6d(
         self,
-        x: float, y: float, z: float,
-        roll: float, pitch: float, yaw: float,
+        x: float,
+        y: float,
+        z: float,
+        roll: float,
+        pitch: float,
+        yaw: float,
     ) -> None:
         """Update current head position (full 6D).
 

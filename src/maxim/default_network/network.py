@@ -12,7 +12,6 @@ The DefaultNetwork is the central component that:
 from __future__ import annotations
 
 import logging
-import random
 import threading
 import time
 from dataclasses import dataclass, field
@@ -76,6 +75,7 @@ class DefaultNetworkConfig:
         publish_actions: Whether to publish DNActionProposal to bus.
         fear_gate_enabled: Whether to gate actions through FearAgent.
     """
+
     enabled: bool = True
     update_hz: float = 30.0
     auto_release_timeout: float = 5.0
@@ -85,9 +85,7 @@ class DefaultNetworkConfig:
     # Sub-component configs
     arbiter: ArbiterConfig = field(default_factory=ArbiterConfig)
     gate: GateConfig = field(default_factory=GateConfig)
-    adaptive_threshold: AdaptiveThresholdConfig = field(
-        default_factory=AdaptiveThresholdConfig
-    )
+    adaptive_threshold: AdaptiveThresholdConfig = field(default_factory=AdaptiveThresholdConfig)
     gaze_history: GazeHistoryConfig = field(default_factory=GazeHistoryConfig)
 
     # Gaze salience gating - prevents excessive movements
@@ -302,8 +300,10 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             # Connect bounds learner for joint limit prediction
             if self._bounds_learner is not None:
                 self._pain_bridge.set_bounds_learner(self._bounds_learner)
-            logger.info("PainCircuitBridge initialized with angular_velocity_threshold=%.1f",
-                        self._config.pain_angular_velocity_threshold)
+            logger.info(
+                "PainCircuitBridge initialized with angular_velocity_threshold=%.1f",
+                self._config.pain_angular_velocity_threshold,
+            )
 
         # Initialize FocusLearner for adaptive movement correction
         self._focus_learner: FocusLearner | None = None
@@ -364,6 +364,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         if self._bus is not None:
             try:
                 from maxim.agents.bus import Percept
+
                 self._bus.subscribe(Percept, self.on_percept)
                 self._subscribed_to_bus = True
                 logger.debug("DefaultNetwork subscribed to Percept messages")
@@ -501,6 +502,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         if self._subscribed_to_bus and self._bus is not None:
             try:
                 from maxim.agents.bus import Percept
+
                 self._bus.unsubscribe(Percept, self.on_percept)
                 self._subscribed_to_bus = False
             except Exception:
@@ -523,7 +525,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         with self._detection_lock:
             self._latest_percept = percept
             # Extract detections if available
-            detections = getattr(percept, 'detections', [])
+            detections = getattr(percept, "detections", [])
             self._latest_detections = list(detections)
 
         with self._stats_lock:
@@ -646,21 +648,23 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             lines.append("[GAZE DYNAMICS]")
             gc_stats = self._gaze_controller.get_stats()
             lines.append(f"State: {gc_stats.get('state', 'unknown')}")
-            if gc_stats.get('current_target'):
-                t = gc_stats['current_target']
+            if gc_stats.get("current_target"):
+                t = gc_stats["current_target"]
                 lines.append(f"Target: ({t[0]:.0f}, {t[1]:.0f})")
-            if gc_stats.get('state') == 'fixating':
-                lines.append(f"Fixation: {gc_stats.get('fixation_elapsed_ms', 0):.0f}ms / {gc_stats.get('fixation_duration_ms', 0):.0f}ms")
+            if gc_stats.get("state") == "fixating":
+                lines.append(
+                    f"Fixation: {gc_stats.get('fixation_elapsed_ms', 0):.0f}ms / {gc_stats.get('fixation_duration_ms', 0):.0f}ms"
+                )
 
         # Scene context state
         if self._scene_context is not None:
             lines.append("")
             lines.append("[SCENE CONTEXT]")
             sc_stats = self._scene_context.get_stats()
-            if sc_stats.get('is_scanning'):
+            if sc_stats.get("is_scanning"):
                 lines.append("Status: Scanning (scene recently changed)")
             else:
-                age = sc_stats.get('scene_age_seconds', float('inf'))
+                age = sc_stats.get("scene_age_seconds", float("inf"))
                 if age < 60:
                     lines.append(f"Status: Stable ({age:.0f}s since last change)")
                 else:
@@ -801,11 +805,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             self._next_exploration_time = self._schedule_next_exploration()
 
         # 3. Handle idle exploration if nothing interesting for a while
-        if (
-            self._config.idle_exploration_enabled
-            and not has_interesting
-            and now >= self._next_exploration_time
-        ):
+        if self._config.idle_exploration_enabled and not has_interesting and now >= self._next_exploration_time:
             # Generate random exploration movement
             target = self._generate_exploration_target()
             exploration_proposal = ActionProposal(
@@ -853,9 +853,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             for det in detections:
                 track_id = det.get("track_id")
                 if track_id is not None:
-                    novelty_scores[track_id] = self._novelty_tracker.get_novelty(
-                        track_id, class_id=det.get("class_id")
-                    )
+                    novelty_scores[track_id] = self._novelty_tracker.get_novelty(track_id, class_id=det.get("class_id"))
 
             self._spatial_map.record_observation(
                 position=current_pos,
@@ -925,9 +923,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
 
         # 5. Build behavior state
         state = BehaviorState(
-            inhibited_behaviors=frozenset(
-                name for name, mod in self._behavior_overrides.items() if mod <= 0
-            ),
+            inhibited_behaviors=frozenset(name for name, mod in self._behavior_overrides.items() if mod <= 0),
             priority_modifiers=self._behavior_overrides,
             interests=self._interests,
             frame_timestamp=now,
@@ -973,7 +969,10 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             if winner:
                 logger.debug(
                     "Arbiter selected: %s (priority=%.2f, conf=%.2f) -> %s",
-                    winner.behavior_name, winner.priority, winner.confidence, winner.target
+                    winner.behavior_name,
+                    winner.priority,
+                    winner.confidence,
+                    winner.target,
                 )
                 with self._stats_lock:
                     self._stats["actions_proposed"] += 1
@@ -1020,7 +1019,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                     logger.debug(
                         "FearAgent blocked DN action: %s (risk=%s)",
                         proposal.behavior_name,
-                        getattr(review, 'risk_level', 'unknown'),
+                        getattr(review, "risk_level", "unknown"),
                     )
                     with self._stats_lock:
                         self._stats["actions_blocked"] += 1
@@ -1088,19 +1087,19 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         try:
             if proposal.action_type == "look_at" and proposal.target:
                 u, v = proposal.target
-                if hasattr(self._maxim, 'look_at_image'):
+                if hasattr(self._maxim, "look_at_image"):
                     self._maxim.look_at_image(u, v, duration=duration)
                     executed = True
             elif proposal.action_type == "scan":
                 # For exploration, prefer look_at_image if target is provided
                 # This allows smooth movement to exploration waypoints
-                if proposal.target and hasattr(self._maxim, 'look_at_image'):
+                if proposal.target and hasattr(self._maxim, "look_at_image"):
                     u, v = proposal.target
                     # Use longer duration for leisurely exploration
                     explore_duration = max(0.5, duration * 0.8)
                     self._maxim.look_at_image(u, v, duration=explore_duration)
                     executed = True
-                elif hasattr(self._maxim, 'move_relative'):
+                elif hasattr(self._maxim, "move_relative"):
                     # Fallback to delta-based movement (for ReturnToCenter, etc.)
                     delta = proposal.metadata.get("delta", (0, 0))
                     self._maxim.move_relative(delta)
@@ -1108,7 +1107,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             elif proposal.action_type == "track" and proposal.target:
                 # Smooth tracking - use slightly shorter duration
                 u, v = proposal.target
-                if hasattr(self._maxim, 'look_at_image'):
+                if hasattr(self._maxim, "look_at_image"):
                     track_duration = max(0.1, duration * 0.5)  # Half duration for tracking
 
                     # DEBUG: Log social tracking request
@@ -1118,7 +1117,11 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                         direction = "RIGHT" if u > 320 else "LEFT" if u < 320 else "CENTER"
                         logger.debug(
                             "SocialTrack: target=(%.0f,%.0f) %s, yaw=%.1f, track_id=%s",
-                            u, v, direction, cur_yaw, proposal.metadata.get("track_id")
+                            u,
+                            v,
+                            direction,
+                            cur_yaw,
+                            proposal.metadata.get("track_id"),
                         )
 
                     self._maxim.look_at_image(u, v, duration=track_duration)
@@ -1129,13 +1132,10 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                 # Body rotation when head is at yaw limits
                 turn_angle = proposal.metadata.get("turn_angle", 90.0)
                 turn_duration = proposal.metadata.get("duration", 5.0)
-                if hasattr(self._maxim, 'turn_around'):
+                if hasattr(self._maxim, "turn_around"):
                     self._maxim.turn_around(turn_angle, duration=turn_duration)
                     executed = True
-                    logger.info(
-                        "Executing turn_around: %.0f° over %.1fs",
-                        turn_angle, turn_duration
-                    )
+                    logger.info("Executing turn_around: %.0f° over %.1fs", turn_angle, turn_duration)
         except Exception as e:
             error_msg = str(e).lower()
             # Check if this is an IK/collision error

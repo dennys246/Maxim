@@ -14,8 +14,6 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
-import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -24,9 +22,17 @@ from typing import Any
 _SAVEABLE_INDICATORS = {"--sim", "--mode", "--generate-simulation"}
 
 # Args that should NOT trigger a save (meta/utility commands)
-_SKIP_INDICATORS = {"--last", "--show-last", "--clear-last", "--help", "-h",
-                     "--clear-cache", "--clear-memory", "--audit-architecture",
-                     "--list-sessions"}
+_SKIP_INDICATORS = {
+    "--last",
+    "--show-last",
+    "--clear-last",
+    "--help",
+    "-h",
+    "--clear-cache",
+    "--clear-memory",
+    "--audit-architecture",
+    "--list-sessions",
+}
 
 _LAST_RUNS_PATH = Path.home() / ".maxim" / "last_runs.json"
 _MAX_SAVED_RUNS = 5

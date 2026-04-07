@@ -53,9 +53,7 @@ class TemporalDelta:
         if len(self.observed_deltas) < 2:
             return 0.0
         mean = self.mean
-        return sum((d - mean) ** 2 for d in self.observed_deltas) / len(
-            self.observed_deltas
-        )
+        return sum((d - mean) ** 2 for d in self.observed_deltas) / len(self.observed_deltas)
 
     def add_observation(self, delta: float) -> TemporalDelta:
         """Return new TemporalDelta with added observation."""
@@ -63,9 +61,7 @@ class TemporalDelta:
         observations = list(self.observed_deltas)[-99:] + [delta]
         return TemporalDelta(observed_deltas=tuple(observations))
 
-    def predict_delay(
-        self, confidence_interval: float = 0.8
-    ) -> tuple[float, float, float]:
+    def predict_delay(self, confidence_interval: float = 0.8) -> tuple[float, float, float]:
         """Predict expected delay with confidence bounds.
 
         Args:
@@ -149,9 +145,7 @@ class CausalLink:
 
     # Rescorla-Wagner prediction
     predicted_value: float = 0.5  # V - expected outcome (0=negative, 1=positive)
-    prediction_history: list[float] = field(
-        default_factory=list
-    )  # Track V over time
+    prediction_history: list[float] = field(default_factory=list)  # Track V over time
 
     # Confidence tracking
     observation_count: int = 0  # How many times observed

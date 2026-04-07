@@ -6,11 +6,9 @@ ToolHarmPredictor, MonitorRegistry lifecycle, and Executor running-tool tracking
 
 from __future__ import annotations
 
-import threading
 import time
-from dataclasses import dataclass
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -251,8 +249,7 @@ class TestToolPainBridgePainCallback:
 
         # record_outcome should have been called with NEGATIVE
         outcome_calls = [
-            c for c in nac.record_outcome.call_args_list
-            if c[1].get("outcome_valence") == Valence.NEGATIVE
+            c for c in nac.record_outcome.call_args_list if c[1].get("outcome_valence") == Valence.NEGATIVE
         ]
         assert len(outcome_calls) == 1
 
@@ -347,6 +344,7 @@ class TestMonitorRegistryLifecycle:
 
         class DummyMonitor(SignalMonitor):
             name = "dummy"
+
             def check(self) -> PainSignal | None:
                 return None
 
@@ -377,8 +375,10 @@ class TestMonitorRegistryCallbacks:
 
         class FiringMonitor(SignalMonitor):
             name = "firing"
+
             def __init__(self) -> None:
                 self._fired = False
+
             def check(self) -> PainSignal | None:
                 if not self._fired:
                     self._fired = True

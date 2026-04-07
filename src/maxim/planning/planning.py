@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .base import Planner
 
+
 def _path_from_state(state, key: str) -> str | None:
     try:
         data = getattr(state, "data", None)
@@ -13,6 +14,7 @@ def _path_from_state(state, key: str) -> str | None:
     except Exception:
         return None
     return None
+
 
 class TaskPlanner(Planner):
     def propose_plans(self, goal, state, memory):

@@ -167,9 +167,7 @@ class SkillMatcher:
             parts.append(ctx.active_goal)
         return " ".join(parts)
 
-    def _concept_relates_to_skill(
-        self, concept: dict[str, Any], skill: SkillPrompt
-    ) -> bool:
+    def _concept_relates_to_skill(self, concept: dict[str, Any], skill: SkillPrompt) -> bool:
         """Check if an ATL concept relates to a skill's intent."""
         concept_name = concept.get("concept_name", "").lower()
         intent_words = set(skill.intent.lower().split())

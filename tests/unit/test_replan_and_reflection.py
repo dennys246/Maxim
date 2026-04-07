@@ -5,12 +5,12 @@ Phase 3: ADaPT replan in run_agent_loop — failure with REPLAN strategy
 Phase 4: Reflexion in ToolPainBridge — surprising failures (RPE > 0.3)
          generate verbal reflections stored as episodic memories.
 """
+
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
-from typing import Any
-from unittest.mock import MagicMock, patch
+from dataclasses import dataclass
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -54,6 +54,7 @@ class TestGetPlanDepth:
         @dataclass
         class FakePlan:
             depth: int = 2
+
         decision = {"plan": FakePlan()}
         assert _get_plan_depth(decision) == 2
 
@@ -99,14 +100,25 @@ class TestReplanLoopIntegration:
             def __init__(self):
                 self.data = {"_replan_candidate": replan, "_replan_goal": "original_goal"}
                 self.steps_taken = 0
-            def update(self, obs): pass
-            def snapshot(self): return {}
-            def mark_failure(self, err): pass
-            def is_done(self): return True  # stop after one iteration
+
+            def update(self, obs):
+                pass
+
+            def snapshot(self):
+                return {}
+
+            def mark_failure(self, err):
+                pass
+
+            def is_done(self):
+                return True  # stop after one iteration
 
         class FakeEnv:
-            def observe(self): return {}
-            def step(self, result): return None
+            def observe(self):
+                return {}
+
+            def step(self, result):
+                return None
 
         class FakeResult:
             success = True
@@ -151,20 +163,32 @@ class TestReplanLoopIntegration:
             def __init__(self):
                 self.data = {}
                 self.steps_taken = 0
-            def update(self, obs): pass
-            def snapshot(self): return {}
-            def mark_failure(self, err): pass
-            def is_done(self): return True
+
+            def update(self, obs):
+                pass
+
+            def snapshot(self):
+                return {}
+
+            def mark_failure(self, err):
+                pass
+
+            def is_done(self):
+                return True
 
         class FakeEnv:
-            def observe(self): return {}
-            def step(self, result): return None
+            def observe(self):
+                return {}
+
+            def step(self, result):
+                return None
 
         class FakeResult:
             success = True
 
         class FakeExecutor:
-            def execute(self, action): return FakeResult()
+            def execute(self, action):
+                return FakeResult()
 
         agent = MagicMock()
         agent.propose_intent.return_value = {"goal": "test"}
@@ -295,7 +319,10 @@ class TestReflectionGeneration:
         link = _make_link(last_rpe=0.6)
 
         reflection = bridge._generate_reflection(
-            [link], {"tool_name": "grab"}, "out of reach", {},
+            [link],
+            {"tool_name": "grab"},
+            "out of reach",
+            {},
         )
         assert reflection == "The grab tool failed because the object was out of reach."
         llm.generate.assert_called_once()
@@ -307,7 +334,10 @@ class TestReflectionGeneration:
         link = _make_link(last_rpe=0.6)
 
         reflection = bridge._generate_reflection(
-            [link], {"tool_name": "grab"}, "err", {},
+            [link],
+            {"tool_name": "grab"},
+            "err",
+            {},
         )
         assert reflection is None
 

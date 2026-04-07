@@ -34,9 +34,7 @@ def _compile_phrase_pattern(phrase: str) -> re.Pattern:
 
 
 # Simple arithmetic: "number operator number" (supports negatives, decimals, 'x' for multiply)
-_ARITHMETIC_PATTERN = re.compile(
-    r"(-?\d+(?:\.\d+)?)\s*([+\-*/x^%])\s*(-?\d+(?:\.\d+)?)"
-)
+_ARITHMETIC_PATTERN = re.compile(r"(-?\d+(?:\.\d+)?)\s*([+\-*/x^%])\s*(-?\d+(?:\.\d+)?)")
 
 _SIMPLE_OPS: dict[str, Any] = {
     "+": lambda a, b: a + b,
@@ -44,7 +42,7 @@ _SIMPLE_OPS: dict[str, Any] = {
     "*": lambda a, b: a * b,
     "x": lambda a, b: a * b,
     "/": lambda a, b: a / b if b != 0 else float("nan"),
-    "^": lambda a, b: a ** b,
+    "^": lambda a, b: a**b,
     "%": lambda a, b: a % b if b != 0 else float("nan"),
 }
 
@@ -117,7 +115,7 @@ class ReasoningCarryover:
         with self._lock:
             self._entries.append(entry)
             if len(self._entries) > self._max_entries:
-                self._entries = self._entries[-self._max_entries:]
+                self._entries = self._entries[-self._max_entries :]
 
     def get_prompt_text(self) -> str:
         """Format entries as prompt text for injection."""
@@ -173,7 +171,7 @@ def evaluate_simple_arithmetic(text: str) -> str | None:
     left_str, op, right_str = match.groups()
 
     # Guard: reject chained expressions like "1 + 2 + 3"
-    remainder = text[match.end():].strip()
+    remainder = text[match.end() :].strip()
     if remainder and re.search(r"\d", remainder):
         return None
 
@@ -234,22 +232,22 @@ def evaluate_unary_math(text: str) -> str | None:
         if op_type == "sqrt":
             if value < 0:
                 return "The square root of a negative number is not a real number."
-            unary_result = value ** 0.5
+            unary_result = value**0.5
             label = f"√{_fmt(value)}"
         elif op_type == "cbrt":
             unary_result = value ** (1 / 3) if value >= 0 else -((-value) ** (1 / 3))
             label = f"∛{_fmt(value)}"
         elif op_type == "squared":
-            unary_result = value ** 2
+            unary_result = value**2
             label = f"{_fmt(value)}²"
         elif op_type == "cubed":
-            unary_result = value ** 3
+            unary_result = value**3
             label = f"{_fmt(value)}³"
         else:
             continue
 
         # Check for trailing binary operation: "... plus 3", "... minus 2"
-        remainder = lower[match.end():].strip()
+        remainder = lower[match.end() :].strip()
         trailing = _TRAILING_OP_PATTERN.search(remainder) if remainder else None
 
         if trailing:
@@ -285,9 +283,7 @@ def evaluate_unary_math(text: str) -> str | None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def generate_simple_answer(
-    question: str, date_str: str, time_str: str
-) -> str | None:
+def generate_simple_answer(question: str, date_str: str, time_str: str) -> str | None:
     """Generate answers for simple factual questions without LLM.
 
     Returns the answer string, or None if LLM is needed.
@@ -319,21 +315,11 @@ def generate_simple_answer(
     greeting_default = ["hello", "hi", "hey", "greetings"]
     wellbeing_default = ["how are you"]
 
-    time_phrases = normalize_phrases(
-        simple_answers.get("time_phrases"), time_default
-    )
-    date_phrases = normalize_phrases(
-        simple_answers.get("date_phrases"), date_default
-    )
-    identity_phrases = normalize_phrases(
-        simple_answers.get("identity_phrases"), identity_default
-    )
-    greeting_phrases = normalize_phrases(
-        simple_answers.get("greeting_phrases"), greeting_default
-    )
-    wellbeing_phrases = normalize_phrases(
-        simple_answers.get("wellbeing_phrases"), wellbeing_default
-    )
+    time_phrases = normalize_phrases(simple_answers.get("time_phrases"), time_default)
+    date_phrases = normalize_phrases(simple_answers.get("date_phrases"), date_default)
+    identity_phrases = normalize_phrases(simple_answers.get("identity_phrases"), identity_default)
+    greeting_phrases = normalize_phrases(simple_answers.get("greeting_phrases"), greeting_default)
+    wellbeing_phrases = normalize_phrases(simple_answers.get("wellbeing_phrases"), wellbeing_default)
 
     # Time questions
     if any(matches_phrase(q, phrase) for phrase in time_phrases):
@@ -534,9 +520,7 @@ class FallbackBehavior:
         internet_access: bool = False,
     ) -> LLMProposal:
         """Create a fallback proposal when LLM is unavailable."""
-        action = FallbackBehavior.get_fallback_action(
-            mode_name, percept, internet_access
-        )
+        action = FallbackBehavior.get_fallback_action(mode_name, percept, internet_access)
 
         return LLMProposal(
             request_id=f"fallback-{time.time_ns()}",

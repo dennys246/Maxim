@@ -67,9 +67,7 @@ _SECTION_RULES: list[tuple[re.Pattern, str, DataSensitivity, bool]] = [
 
 _HEADER_PATTERN = re.compile(r"^=== .* ===$")
 _PATH_PATTERN = re.compile(r"(?:(?:[A-Za-z]:\\)|/)[^ \n\t\r]+")
-_SECRET_PATTERN = re.compile(
-    r"(?i)(api[_-]?key|secret|token|bearer)\s*[:=]\s*[^ \n\t\r]+"
-)
+_SECRET_PATTERN = re.compile(r"(?i)(api[_-]?key|secret|token|bearer)\s*[:=]\s*[^ \n\t\r]+")
 
 
 class CloudRedactionFilter:
@@ -87,11 +85,7 @@ class CloudRedactionFilter:
     ) -> "CloudRedactionFilter":
         provider_cfg = provider_cfg or {}
         global_cfg = global_cfg or {}
-        policy_name = (
-            provider_cfg.get("redaction_policy")
-            or global_cfg.get("policy")
-            or "strict"
-        )
+        policy_name = provider_cfg.get("redaction_policy") or global_cfg.get("policy") or "strict"
         policy = cls._policy_from_name(str(policy_name))
         return cls(policy)
 

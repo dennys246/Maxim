@@ -40,21 +40,18 @@ def test_ping(host: str, timeout: int = 3) -> Tuple[bool, str]:
     try:
         # Use ping command with timeout
         result = subprocess.run(
-            ['ping', '-c', '3', '-W', str(timeout), host],
-            capture_output=True,
-            text=True,
-            timeout=timeout + 2
+            ["ping", "-c", "3", "-W", str(timeout), host], capture_output=True, text=True, timeout=timeout + 2
         )
 
         if result.returncode == 0:
             # Parse average latency from output
-            output_lines = result.stdout.split('\n')
+            output_lines = result.stdout.split("\n")
             for line in output_lines:
-                if 'rtt min/avg/max' in line or 'round-trip' in line:
+                if "rtt min/avg/max" in line or "round-trip" in line:
                     # Extract average latency
-                    parts = line.split('=')
+                    parts = line.split("=")
                     if len(parts) > 1:
-                        stats = parts[1].strip().split('/')
+                        stats = parts[1].strip().split("/")
                         if len(stats) >= 2:
                             avg_latency = stats[1]
                             return True, f"Average latency: {avg_latency} ms"
@@ -196,20 +193,20 @@ Examples:
 
   # Use hostname
   python -m maxim.utils.reachy_diagnostics --host reachy-mini.local
-        """
+        """,
     )
 
     parser.add_argument(
-        '--host',
+        "--host",
         type=str,
         default=None,
-        help='Reachy IP address or hostname (default: $MAXIM_REACHY_HOST or 192.168.50.149)'
+        help="Reachy IP address or hostname (default: $MAXIM_REACHY_HOST or 192.168.50.149)",
     )
 
     args = parser.parse_args()
 
     # Determine Reachy host
-    host = args.host or os.getenv('MAXIM_REACHY_HOST', '192.168.50.149')
+    host = args.host or os.getenv("MAXIM_REACHY_HOST", "192.168.50.149")
 
     try:
         return diagnose_reachy(host)

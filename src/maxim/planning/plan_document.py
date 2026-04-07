@@ -100,16 +100,12 @@ class PhaseEnergyBudget:
 
     @property
     def remaining(self) -> dict[str, float]:
-        return {
-            domain: self.allocations.get(domain, 0) - self.spent.get(domain, 0)
-            for domain in self.allocations
-        }
+        return {domain: self.allocations.get(domain, 0) - self.spent.get(domain, 0) for domain in self.allocations}
 
     @property
     def utilization(self) -> dict[str, float]:
         return {
-            domain: self.spent.get(domain, 0) / alloc if alloc > 0 else 0
-            for domain, alloc in self.allocations.items()
+            domain: self.spent.get(domain, 0) / alloc if alloc > 0 else 0 for domain, alloc in self.allocations.items()
         }
 
     def is_over_warning(self, domain: str) -> bool:
@@ -158,9 +154,7 @@ class PlanEnergyBudget:
         return {
             "plan_id": self.plan_id,
             "total": self.total,
-            "phase_budgets": {
-                pid: pb.to_dict() for pid, pb in self.phase_budgets.items()
-            },
+            "phase_budgets": {pid: pb.to_dict() for pid, pb in self.phase_budgets.items()},
             "replan_reserve": self.replan_reserve,
             "replan_reserve_fraction": self.replan_reserve_fraction,
             "buffer_fraction": self.buffer_fraction,
@@ -291,9 +285,7 @@ class ReplanContext:
         if self.completed_phases:
             sections.append("\n### Completed Phases (PRESERVE):")
             for cp in self.completed_phases:
-                sections.append(
-                    f"  - {cp['description']} → {cp['result_summary']}"
-                )
+                sections.append(f"  - {cp['description']} → {cp['result_summary']}")
 
         if self.remaining_phases:
             sections.append("\n### Remaining Phases:")
@@ -369,9 +361,7 @@ class ReplanContext:
             "attempted_tools": self.attempted_tools,
             "attempt_count": self.attempt_count,
             "completed_phases": self.completed_phases,
-            "preserved_results": {
-                k: json.dumps(v, default=str) for k, v in self.preserved_results.items()
-            },
+            "preserved_results": {k: json.dumps(v, default=str) for k, v in self.preserved_results.items()},
             "remaining_phases": self.remaining_phases,
             "original_objective": self.original_objective,
             "energy_remaining": self.energy_remaining,
@@ -381,9 +371,7 @@ class ReplanContext:
             "alternative_approaches": self.alternative_approaches,
             "tool_success_rates": self.tool_success_rates,
             "pattern_warnings": self.pattern_warnings,
-            "coding_context": (
-                self.coding_context.to_dict() if self.coding_context else None
-            ),
+            "coding_context": (self.coding_context.to_dict() if self.coding_context else None),
         }
 
     @classmethod
@@ -403,8 +391,7 @@ class ReplanContext:
             attempt_count=data.get("attempt_count", 0),
             completed_phases=data.get("completed_phases", []),
             preserved_results={
-                k: json.loads(v) if isinstance(v, str) else v
-                for k, v in data.get("preserved_results", {}).items()
+                k: json.loads(v) if isinstance(v, str) else v for k, v in data.get("preserved_results", {}).items()
             },
             remaining_phases=data.get("remaining_phases", []),
             original_objective=data.get("original_objective", ""),
@@ -416,8 +403,7 @@ class ReplanContext:
             tool_success_rates=data.get("tool_success_rates", {}),
             pattern_warnings=data.get("pattern_warnings", []),
             coding_context=(
-                CodingReplanContext.from_dict(data["coding_context"])
-                if data.get("coding_context") else None
+                CodingReplanContext.from_dict(data["coding_context"]) if data.get("coding_context") else None
             ),
         )
 
@@ -518,53 +504,37 @@ class Phase:
         depends_on ordering within the phase.
         """
         completed_ids = {
-            sg.id
-            for sg in self.sub_goals
-            if sg.status in (SubGoalStatus.COMPLETED, SubGoalStatus.SKIPPED)
+            sg.id for sg in self.sub_goals if sg.status in (SubGoalStatus.COMPLETED, SubGoalStatus.SKIPPED)
         }
 
         executable = [
             sg
             for sg in self.sub_goals
-            if sg.status in (SubGoalStatus.PENDING, SubGoalStatus.BLOCKED)
-            and sg.can_execute(completed_ids)
+            if sg.status in (SubGoalStatus.PENDING, SubGoalStatus.BLOCKED) and sg.can_execute(completed_ids)
         ]
 
         if not executable:
             retryable = [sg for sg in self.sub_goals if sg.should_retry()]
             if retryable:
-                retryable.sort(
-                    key=lambda sg: sg.effective_priority(GoalPriority.MEDIUM).value
-                )
+                retryable.sort(key=lambda sg: sg.effective_priority(GoalPriority.MEDIUM).value)
                 return retryable[0]
             return None
 
-        executable.sort(
-            key=lambda sg: sg.effective_priority(GoalPriority.MEDIUM).value
-        )
+        executable.sort(key=lambda sg: sg.effective_priority(GoalPriority.MEDIUM).value)
         return executable[0]
 
     def is_complete(self) -> bool:
         """Check if all sub-goals are completed or skipped."""
         if not self.sub_goals:
             return False
-        return all(
-            sg.status in (SubGoalStatus.COMPLETED, SubGoalStatus.SKIPPED)
-            for sg in self.sub_goals
-        )
+        return all(sg.status in (SubGoalStatus.COMPLETED, SubGoalStatus.SKIPPED) for sg in self.sub_goals)
 
     def all_failed(self) -> bool:
         """Check if all non-skippable sub-goals have failed."""
         if not self.sub_goals:
             return False
-        critical = [
-            sg for sg in self.sub_goals
-            if sg.on_failure not in (FailureStrategy.SKIP,)
-        ]
-        return bool(critical) and all(
-            sg.status == SubGoalStatus.FAILED and not sg.should_retry()
-            for sg in critical
-        )
+        critical = [sg for sg in self.sub_goals if sg.on_failure not in (FailureStrategy.SKIP,)]
+        return bool(critical) and all(sg.status == SubGoalStatus.FAILED and not sg.should_retry() for sg in critical)
 
     def to_dict(self) -> dict:
         return {
@@ -576,10 +546,7 @@ class Phase:
             "depends_on_phases": self.depends_on_phases,
             "expected_inputs": self.expected_inputs,
             "expected_outputs": self.expected_outputs,
-            "outputs": {
-                k: json.dumps(v, default=str)[:500]
-                for k, v in self.outputs.items()
-            },
+            "outputs": {k: json.dumps(v, default=str)[:500] for k, v in self.outputs.items()},
             "result_summary": self.result_summary,
             "error": self.error,
             "energy_spent": self.energy_spent,
@@ -604,12 +571,8 @@ class Phase:
                 }
                 for sg in self.sub_goals
             ],
-            "energy_budget": (
-                self.energy_budget.to_dict() if self.energy_budget else None
-            ),
-            "depth_extension": (
-                asdict(self.depth_extension) if self.depth_extension else None
-            ),
+            "energy_budget": (self.energy_budget.to_dict() if self.energy_budget else None),
+            "depth_extension": (asdict(self.depth_extension) if self.depth_extension else None),
         }
 
     @classmethod
@@ -623,10 +586,7 @@ class Phase:
             depends_on_phases=data.get("depends_on_phases", []),
             expected_inputs=data.get("expected_inputs", {}),
             expected_outputs=data.get("expected_outputs", {}),
-            outputs={
-                k: json.loads(v) if isinstance(v, str) else v
-                for k, v in data.get("outputs", {}).items()
-            },
+            outputs={k: json.loads(v) if isinstance(v, str) else v for k, v in data.get("outputs", {}).items()},
             result_summary=data.get("result_summary"),
             error=data.get("error"),
             energy_spent=data.get("energy_spent", 0.0),
@@ -638,18 +598,20 @@ class Phase:
         )
 
         for sg_data in data.get("sub_goals", []):
-            phase.sub_goals.append(SubGoal(
-                id=sg_data["id"],
-                description=sg_data["description"],
-                tool_name=sg_data["tool_name"],
-                tool_params=sg_data.get("tool_params", {}),
-                status=SubGoalStatus[sg_data["status"]],
-                error=sg_data.get("error"),
-                attempts=sg_data.get("attempts", 0),
-                max_retries=sg_data.get("max_retries", 2),
-                on_failure=FailureStrategy[sg_data.get("on_failure", "RETRY")],
-                depends_on=sg_data.get("depends_on", []),
-            ))
+            phase.sub_goals.append(
+                SubGoal(
+                    id=sg_data["id"],
+                    description=sg_data["description"],
+                    tool_name=sg_data["tool_name"],
+                    tool_params=sg_data.get("tool_params", {}),
+                    status=SubGoalStatus[sg_data["status"]],
+                    error=sg_data.get("error"),
+                    attempts=sg_data.get("attempts", 0),
+                    max_retries=sg_data.get("max_retries", 2),
+                    on_failure=FailureStrategy[sg_data.get("on_failure", "RETRY")],
+                    depends_on=sg_data.get("depends_on", []),
+                )
+            )
 
         if data.get("energy_budget"):
             phase.energy_budget = PhaseEnergyBudget.from_dict(data["energy_budget"])
@@ -765,13 +727,8 @@ class PlanDocument:
             "paused_reason": self.paused_reason,
             "abandoned_reason": self.abandoned_reason,
             "phases": [phase.to_dict() for phase in self.phases],
-            "active_depth_extensions": {
-                k: asdict(v) for k, v in self.active_depth_extensions.items()
-            },
-            "total_energy_budget": (
-                self.total_energy_budget.to_dict()
-                if self.total_energy_budget else None
-            ),
+            "active_depth_extensions": {k: asdict(v) for k, v in self.active_depth_extensions.items()},
+            "total_energy_budget": (self.total_energy_budget.to_dict() if self.total_energy_budget else None),
             "replan_history": [r.to_dict() for r in self.replan_history],
         }
 
@@ -822,9 +779,7 @@ class PlanDocument:
             plan.active_depth_extensions[k] = DepthExtension(**v)
 
         if data.get("total_energy_budget"):
-            plan.total_energy_budget = PlanEnergyBudget.from_dict(
-                data["total_energy_budget"]
-            )
+            plan.total_energy_budget = PlanEnergyBudget.from_dict(data["total_energy_budget"])
 
         for r in data.get("replan_history", []):
             plan.replan_history.append(ReplanRecord.from_dict(r))
@@ -867,9 +822,7 @@ class PlanDocument:
                     path = os.path.join(plans_dir, filename)
                     if os.path.exists(path):
                         plan = cls.load(path)
-                        if plan.status in (
-                            PlanStatus.ACTIVE, PlanStatus.PAUSED, PlanStatus.REPLANNING
-                        ):
+                        if plan.status in (PlanStatus.ACTIVE, PlanStatus.PAUSED, PlanStatus.REPLANNING):
                             return plan
                     # Pointer stale — clear it
                     os.remove(pointer_path)
@@ -883,9 +836,7 @@ class PlanDocument:
             path = os.path.join(plans_dir, filename)
             try:
                 plan = cls.load(path)
-                if plan.status in (
-                    PlanStatus.ACTIVE, PlanStatus.PAUSED, PlanStatus.REPLANNING
-                ):
+                if plan.status in (PlanStatus.ACTIVE, PlanStatus.PAUSED, PlanStatus.REPLANNING):
                     cls._write_pointer(plans_dir, filename)
                     return plan
             except Exception:

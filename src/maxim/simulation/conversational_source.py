@@ -68,9 +68,7 @@ class ConversationalSource:
         )
         self._inject(percept, {"source": "cli", "cli_input": text, "salience": salience})
 
-    def inject_pain(
-        self, pain_type: str = "external_signal", intensity: float = 0.5, **context: Any
-    ) -> None:
+    def inject_pain(self, pain_type: str = "external_signal", intensity: float = 0.5, **context: Any) -> None:
         """Inject a pain signal percept."""
         percept = Percept(
             timestamp=time.time(),
@@ -85,11 +83,14 @@ class ConversationalSource:
                 **context,
             },
         )
-        self._inject(percept, {
-            "source": "proprioception",
-            "content": "pain_signal",
-            "metadata": {"pain_type": pain_type, "intensity": intensity, **context},
-        })
+        self._inject(
+            percept,
+            {
+                "source": "proprioception",
+                "content": "pain_signal",
+                "metadata": {"pain_type": pain_type, "intensity": intensity, **context},
+            },
+        )
 
     def _inject(self, percept: Percept, yaml_record: dict[str, Any]) -> None:
         """Add percept to queue and write to transcript."""
@@ -106,6 +107,7 @@ class ConversationalSource:
         # Simulation verbosity
         try:
             from maxim.simulation.sim_logger import sim_percept
+
             summary = yaml_record.get("cli_input") or yaml_record.get("content") or "signal"
             sim_percept(percept.source, str(summary)[:80], step=yaml_record["at"])
         except Exception:

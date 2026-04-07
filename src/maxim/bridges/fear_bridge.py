@@ -98,9 +98,7 @@ class FearCircuitBridge:
     ec: "EntorhinalCortex"
 
     # Learned risk adjustments: (category, pattern_type) -> LearnedRiskAdjustment
-    _adjustments: dict[tuple[str, str], LearnedRiskAdjustment] = field(
-        default_factory=dict
-    )
+    _adjustments: dict[tuple[str, str], LearnedRiskAdjustment] = field(default_factory=dict)
 
     # Recent risk events for learning
     _recent_events: list[RiskEvent] = field(default_factory=list)
@@ -151,9 +149,7 @@ class FearCircuitBridge:
         """
         try:
             loaded = self.load(self.persist_path)
-            logger.info(
-                "FearCircuitBridge loaded %d adjustment patterns", loaded
-            )
+            logger.info("FearCircuitBridge loaded %d adjustment patterns", loaded)
             return loaded
 
         except Exception as e:
@@ -199,16 +195,18 @@ class FearCircuitBridge:
             # Serialize recent events (keep last 100 for persistence)
             events_data = []
             for event in self._recent_events[-100:]:
-                events_data.append({
-                    "pattern_hash": event.pattern_hash,
-                    "category": event.category,
-                    "severity": event.severity,
-                    "action_type": event.action_type,
-                    "was_blocked": event.was_blocked,
-                    "actual_harm": event.actual_harm,
-                    "timestamp": event.timestamp,
-                    "context": event.context,
-                })
+                events_data.append(
+                    {
+                        "pattern_hash": event.pattern_hash,
+                        "category": event.category,
+                        "severity": event.severity,
+                        "action_type": event.action_type,
+                        "was_blocked": event.was_blocked,
+                        "actual_harm": event.actual_harm,
+                        "timestamp": event.timestamp,
+                        "context": event.context,
+                    }
+                )
 
             data = {
                 "version": 1,
@@ -272,16 +270,18 @@ class FearCircuitBridge:
             # Load recent events
             events_data = data.get("events", [])
             for ev_data in events_data:
-                self._recent_events.append(RiskEvent(
-                    pattern_hash=ev_data.get("pattern_hash", ""),
-                    category=ev_data.get("category", "unknown"),
-                    severity=ev_data.get("severity", "medium"),
-                    action_type=ev_data.get("action_type", "code_review"),
-                    was_blocked=ev_data.get("was_blocked", False),
-                    actual_harm=ev_data.get("actual_harm"),
-                    timestamp=ev_data.get("timestamp", 0.0),
-                    context=ev_data.get("context", ""),
-                ))
+                self._recent_events.append(
+                    RiskEvent(
+                        pattern_hash=ev_data.get("pattern_hash", ""),
+                        category=ev_data.get("category", "unknown"),
+                        severity=ev_data.get("severity", "medium"),
+                        action_type=ev_data.get("action_type", "code_review"),
+                        was_blocked=ev_data.get("was_blocked", False),
+                        actual_harm=ev_data.get("actual_harm"),
+                        timestamp=ev_data.get("timestamp", 0.0),
+                        context=ev_data.get("context", ""),
+                    )
+                )
 
             # Load category stats
             self._category_stats = data.get("category_stats", {})
@@ -357,16 +357,16 @@ class FearCircuitBridge:
             # Enrich with associative graph context if seeds provided
             if seed_memory_ids and self.hippocampus:
                 try:
-                    associated = self.hippocampus.recall_associated(
-                        seed_memory_ids, limit=10
-                    )
+                    associated = self.hippocampus.recall_associated(seed_memory_ids, limit=10)
                     # Check if associated memories had risk-relevant outcomes
                     risk_signals = 0
                     safe_signals = 0
                     for mem, _score in associated:
                         success = (
-                            mem.success if hasattr(mem, "success")
-                            else mem.outcome.success if hasattr(mem, "outcome")
+                            mem.success
+                            if hasattr(mem, "success")
+                            else mem.outcome.success
+                            if hasattr(mem, "outcome")
                             else None
                         )
                         if success is True:
@@ -376,9 +376,7 @@ class FearCircuitBridge:
 
                     if risk_signals + safe_signals > 0:
                         # Blend in associative context (capped contribution)
-                        assoc_factor = (risk_signals - safe_signals) / (
-                            risk_signals + safe_signals
-                        )
+                        assoc_factor = (risk_signals - safe_signals) / (risk_signals + safe_signals)
                         adjustment += assoc_factor * 0.1  # Max ±0.1 from associations
                         adjustment = max(-self.max_adjustment, min(self.max_adjustment, adjustment))
                 except Exception:
@@ -431,10 +429,7 @@ class FearCircuitBridge:
             threshold = 0.65  # Adjustable based on policy
             should_block = final_score >= threshold
 
-            reason = (
-                f"score={final_score:.2f} (base={base_score:.2f}, "
-                f"adj={adjustment:+.2f}, nac={nac_factor:.2f})"
-            )
+            reason = f"score={final_score:.2f} (base={base_score:.2f}, adj={adjustment:+.2f}, nac={nac_factor:.2f})"
 
             return should_block, reason
 
@@ -501,9 +496,7 @@ class FearCircuitBridge:
 
         try:
             # Create pattern hash
-            pattern_hash = hashlib.sha256(
-                f"{category}:{pattern}:{context[:50]}".encode()
-            ).hexdigest()[:12]
+            pattern_hash = hashlib.sha256(f"{category}:{pattern}:{context[:50]}".encode()).hexdigest()[:12]
 
             # Record the event
             event = RiskEvent(
@@ -519,7 +512,7 @@ class FearCircuitBridge:
 
             self._recent_events.append(event)
             if len(self._recent_events) > self._max_events:
-                self._recent_events = self._recent_events[-self._max_events:]
+                self._recent_events = self._recent_events[-self._max_events :]
 
             # Update statistics
             self._update_stats(event)
@@ -656,9 +649,7 @@ class FearCircuitBridge:
 
         # Overall
         total_blocked = sum(s.get("blocked", 0) for s in self._category_stats.values())
-        total_fps = sum(
-            s.get("false_positives", 0) for s in self._category_stats.values()
-        )
+        total_fps = sum(s.get("false_positives", 0) for s in self._category_stats.values())
         return total_fps / total_blocked if total_blocked > 0 else 0.0
 
     def get_patterns_to_review(self, fp_threshold: float = 0.5) -> list[str]:
@@ -676,14 +667,9 @@ class FearCircuitBridge:
 
         for key, adj in self._adjustments.items():
             if adj.samples >= self.min_samples_for_adjustment:
-                fp_rate = (
-                    adj.false_positives / adj.samples if adj.samples > 0 else 0.0
-                )
+                fp_rate = adj.false_positives / adj.samples if adj.samples > 0 else 0.0
                 if fp_rate >= fp_threshold:
-                    patterns.append(
-                        f"{key[0]}:{key[1]} (FP rate: {fp_rate:.1%}, "
-                        f"samples: {adj.samples})"
-                    )
+                    patterns.append(f"{key[0]}:{key[1]} (FP rate: {fp_rate:.1%}, samples: {adj.samples})")
 
         return patterns
 
@@ -703,9 +689,7 @@ class FearCircuitBridge:
 
         if self._error_count >= self._max_errors:
             self._healthy = False
-            logger.error(
-                "FearCircuitBridge disabled after %d errors", self._error_count
-            )
+            logger.error("FearCircuitBridge disabled after %d errors", self._error_count)
 
     @property
     def is_healthy(self) -> bool:

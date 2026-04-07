@@ -40,20 +40,33 @@ from maxim.planning.plan_manager import PlanManager, PlanServices
 
 
 def make_phase(
-    plan_id="plan-1", index=0, description="Test phase", status="PENDING",
-    sub_goals=None, expected_inputs=None, expected_outputs=None, phase_id=None,
+    plan_id="plan-1",
+    index=0,
+    description="Test phase",
+    status="PENDING",
+    sub_goals=None,
+    expected_inputs=None,
+    expected_outputs=None,
+    phase_id=None,
 ):
     return Phase(
         id=phase_id or f"phase-{plan_id}-{index}",
-        description=description, status=PhaseStatus[status], plan_id=plan_id,
-        index=index, sub_goals=sub_goals or [],
-        expected_inputs=expected_inputs or {}, expected_outputs=expected_outputs or {},
+        description=description,
+        status=PhaseStatus[status],
+        plan_id=plan_id,
+        index=index,
+        sub_goals=sub_goals or [],
+        expected_inputs=expected_inputs or {},
+        expected_outputs=expected_outputs or {},
     )
 
 
 def make_plan_document(
-    num_phases=3, objective="Test objective", status="ACTIVE",
-    plan_id="plan-1", with_sub_goals=False,
+    num_phases=3,
+    objective="Test objective",
+    status="ACTIVE",
+    plan_id="plan-1",
+    with_sub_goals=False,
 ):
     phases = []
     for i in range(num_phases):
@@ -61,17 +74,25 @@ def make_plan_document(
         sgs = []
         if with_sub_goals:
             sg1 = SubGoal(
-                id=f"sg-{plan_id}-{i}-0", description=f"Sub-goal {i}.0",
-                tool_name=f"tool_{i}_0", on_failure=FailureStrategy.REPLAN,
+                id=f"sg-{plan_id}-{i}-0",
+                description=f"Sub-goal {i}.0",
+                tool_name=f"tool_{i}_0",
+                on_failure=FailureStrategy.REPLAN,
             )
             sg2 = SubGoal(
-                id=f"sg-{plan_id}-{i}-1", description=f"Sub-goal {i}.1",
-                tool_name=f"tool_{i}_1", depends_on=[sg1.id],
+                id=f"sg-{plan_id}-{i}-1",
+                description=f"Sub-goal {i}.1",
+                tool_name=f"tool_{i}_1",
+                depends_on=[sg1.id],
             )
             sgs = [sg1, sg2]
         phase = Phase(
-            id=f"phase-{plan_id}-{i}", description=f"Phase {i}: step {i}",
-            status=phase_status, plan_id=plan_id, index=i, sub_goals=sgs,
+            id=f"phase-{plan_id}-{i}",
+            description=f"Phase {i}: step {i}",
+            status=phase_status,
+            plan_id=plan_id,
+            index=i,
+            sub_goals=sgs,
             expected_outputs={f"output_{i}": f"result from phase {i}"},
         )
         if i == 0:
@@ -79,17 +100,25 @@ def make_plan_document(
         phases.append(phase)
     now = time.time()
     return PlanDocument(
-        id=plan_id, objective=objective, created_at=now, updated_at=now,
-        status=PlanStatus[status], phases=phases, current_phase_index=0,
+        id=plan_id,
+        objective=objective,
+        created_at=now,
+        updated_at=now,
+        status=PlanStatus[status],
+        phases=phases,
+        current_phase_index=0,
     )
 
 
 def make_plan_manager(tmp_path, bus=None, config=None, services=None):
     from pathlib import Path
+
     plans_dir = str(Path(tmp_path) / "plans")
     return PlanManager(
-        plans_dir=plans_dir, bus=bus or AgentBus(),
-        config=config or LongHorizonConfig(), services=services or PlanServices(),
+        plans_dir=plans_dir,
+        bus=bus or AgentBus(),
+        config=config or LongHorizonConfig(),
+        services=services or PlanServices(),
     )
 
 
@@ -99,8 +128,12 @@ class EventCollector:
     def __init__(self, bus: AgentBus):
         self.events: list = []
         for event_type in [
-            PlanCreated, PhaseStarted, PhaseCompleted,
-            PlanCompleted, PlanRestored, PlanReplanRequested,
+            PlanCreated,
+            PhaseStarted,
+            PhaseCompleted,
+            PlanCompleted,
+            PlanRestored,
+            PlanReplanRequested,
         ]:
             bus.subscribe(event_type, self.events.append)
 
@@ -175,26 +208,33 @@ class TestPlanCreationAndCompletion:
 
         # Phase 0 has two sub-goals: sg0 -> sg1 (dependency chain)
         sg0 = SubGoal(
-            id="sg-0-0", description="Fetch raw data",
-            tool_name="fetch_data", on_failure=FailureStrategy.RETRY,
+            id="sg-0-0",
+            description="Fetch raw data",
+            tool_name="fetch_data",
+            on_failure=FailureStrategy.RETRY,
         )
         sg1 = SubGoal(
-            id="sg-0-1", description="Parse fetched data",
-            tool_name="parse_data", depends_on=["sg-0-0"],
+            id="sg-0-1",
+            description="Parse fetched data",
+            tool_name="parse_data",
+            depends_on=["sg-0-0"],
         )
         phase0 = make_phase(
-            index=0, description="Data acquisition",
+            index=0,
+            description="Data acquisition",
             sub_goals=[sg0, sg1],
             expected_outputs={"raw_data": "fetched raw data"},
         )
 
         # Phase 1 has one sub-goal
         sg2 = SubGoal(
-            id="sg-1-0", description="Analyze parsed data",
+            id="sg-1-0",
+            description="Analyze parsed data",
             tool_name="analyze",
         )
         phase1 = make_phase(
-            index=1, description="Data analysis",
+            index=1,
+            description="Data analysis",
             sub_goals=[sg2],
         )
 
@@ -258,6 +298,7 @@ class TestMultiSessionPersistence:
     def test_plan_survives_restart(self, tmp_path):
         """Complete phase 0, session end, new manager, session start, verify phase 1 active."""
         from pathlib import Path
+
         plans_dir = str(Path(tmp_path) / "plans")
         bus = AgentBus()
         mgr = PlanManager(plans_dir=plans_dir, bus=bus, config=LongHorizonConfig())
@@ -304,11 +345,13 @@ class TestMultiSessionPersistence:
     def test_mid_phase_restart_resets_in_progress(self, tmp_path):
         """IN_PROGRESS sub-goals are reset to PENDING on restore."""
         from pathlib import Path
+
         plans_dir = str(Path(tmp_path) / "plans")
         bus = AgentBus()
 
         sg = SubGoal(
-            id="sg-mid", description="Long running task",
+            id="sg-mid",
+            description="Long running task",
             tool_name="long_task",
         )
         phase = make_phase(index=0, description="Phase with mid-run sub-goal", sub_goals=[sg])
@@ -332,6 +375,7 @@ class TestMultiSessionPersistence:
     def test_pointer_file_enables_fast_restore(self, tmp_path):
         """With 5 plan files on disk, find_active uses pointer file for O(1) lookup."""
         from pathlib import Path
+
         plans_dir = str(Path(tmp_path) / "plans")
         os.makedirs(plans_dir, exist_ok=True)
 
@@ -371,8 +415,10 @@ class TestReplanFlow:
 
         # Phase 0 with a REPLAN-eligible sub-goal
         sg = SubGoal(
-            id="sg-replan-0", description="Try approach A",
-            tool_name="approach_a", on_failure=FailureStrategy.REPLAN,
+            id="sg-replan-0",
+            description="Try approach A",
+            tool_name="approach_a",
+            on_failure=FailureStrategy.REPLAN,
         )
         phase0 = make_phase(index=0, description="Research phase", sub_goals=[sg])
         phase1 = make_phase(index=1, description="Write phase")
@@ -389,12 +435,15 @@ class TestReplanFlow:
 
         # Accept replan with new sub-goals
         new_sg = SubGoal(
-            id="sg-replan-1", description="Try approach B",
+            id="sg-replan-1",
+            description="Try approach B",
             tool_name="approach_b",
         )
         revised_phase = Phase(
-            id="phase-plan-1-0", description="Research phase",
-            status=PhaseStatus.ACTIVE, plan_id="plan-replan",
+            id="phase-plan-1-0",
+            description="Research phase",
+            status=PhaseStatus.ACTIVE,
+            plan_id="plan-replan",
             sub_goals=[new_sg],
         )
         mgr.accept_replan(revised_phase)
@@ -421,8 +470,10 @@ class TestReplanFlow:
         mgr = make_plan_manager(tmp_path, bus=bus, config=config)
 
         sg = SubGoal(
-            id="sg-ex-0", description="Fragile sub-goal",
-            tool_name="fragile_tool", on_failure=FailureStrategy.REPLAN,
+            id="sg-ex-0",
+            description="Fragile sub-goal",
+            tool_name="fragile_tool",
+            on_failure=FailureStrategy.REPLAN,
         )
         phase = make_phase(index=0, description="Fragile phase", sub_goals=[sg])
         mgr.create_plan("plan-exhaust", "Exhaust test", [phase])
@@ -433,12 +484,16 @@ class TestReplanFlow:
 
         # Accept replan and fail again
         new_sg = SubGoal(
-            id="sg-ex-1", description="New approach", tool_name="new_tool",
+            id="sg-ex-1",
+            description="New approach",
+            tool_name="new_tool",
             on_failure=FailureStrategy.REPLAN,
         )
         revised = Phase(
-            id="phase-plan-1-0", description="Fragile phase",
-            status=PhaseStatus.ACTIVE, plan_id="plan-exhaust",
+            id="phase-plan-1-0",
+            description="Fragile phase",
+            status=PhaseStatus.ACTIVE,
+            plan_id="plan-exhaust",
             sub_goals=[new_sg],
         )
         mgr.accept_replan(revised)
@@ -457,8 +512,10 @@ class TestReplanFlow:
         mgr = make_plan_manager(tmp_path, bus=bus)
 
         sg = SubGoal(
-            id="sg-ctx", description="Fetch API data",
-            tool_name="api_fetch", tool_params={"url": "https://example.com"},
+            id="sg-ctx",
+            description="Fetch API data",
+            tool_name="api_fetch",
+            tool_params={"url": "https://example.com"},
             on_failure=FailureStrategy.REPLAN,
         )
         phase = make_phase(index=0, description="API phase", sub_goals=[sg])
@@ -560,9 +617,7 @@ class TestSoftPreemption:
 
         # Preempted plans should be finalized (abandoned)
         assert len(mgr._preempted_plans) == 0
-        loaded_a = PlanDocument.load(
-            os.path.join(mgr._plans_dir, "plan-a.json")
-        )
+        loaded_a = PlanDocument.load(os.path.join(mgr._plans_dir, "plan-a.json"))
         assert loaded_a.status == PlanStatus.ABANDONED
 
     def test_preemption_chain_a_b_c(self, tmp_path):
@@ -641,9 +696,11 @@ class TestBackwardCompatibility:
 
         # Propose and complete a simple goal
         goal = ProposedGoal(
-            id="g-1", description="Simple goal",
+            id="g-1",
+            description="Simple goal",
             priority=GoalPriority.MEDIUM,
-            tool_name="test_tool", tool_params={},
+            tool_name="test_tool",
+            tool_params={},
         )
         bus.publish(goal)
 
@@ -691,9 +748,11 @@ class TestBackwardCompatibility:
 
         # Propose a goal
         goal = ProposedGoal(
-            id="g-delegate", description="Do phase 0 work",
+            id="g-delegate",
+            description="Do phase 0 work",
             priority=GoalPriority.MEDIUM,
-            tool_name="work_tool", tool_params={},
+            tool_name="work_tool",
+            tool_params={},
         )
         bus.publish(goal)
 

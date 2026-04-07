@@ -114,12 +114,12 @@ CRITIQUE_USER_TEMPLATE = (
     "3. Is the priority level appropriate for the situation?\n"
     "4. Will the tool_params actually work for the chosen tool?\n"
     "5. Could this be accomplished with fewer steps?\n\n"
-    'Respond with ONLY valid JSON:\n'
-    '{{\n'
+    "Respond with ONLY valid JSON:\n"
+    "{{\n"
     '    "confidence": 0.0,\n'
     '    "issues": ["issue 1"],\n'
     '    "suggestions": ["fix 1"]\n'
-    '}}'
+    "}}"
 )
 
 REFINE_SYSTEM = "You are refining an action plan based on self-critique. Produce an improved version."
@@ -132,20 +132,17 @@ REFINE_USER_TEMPLATE = (
     "{suggestions_text}\n\n"
     "Context:\n- Root goal: {root_goal}\n- Mode: {mode}\n\n"
     "Produce a corrected plan. Respond with ONLY valid JSON:\n"
-    '{{\n'
+    "{{\n"
     '    "goal_description": "...",\n'
     '    "priority": "CRITICAL|HIGH|MEDIUM|LOW|IDLE",\n'
     '    "tool_name": "...",\n'
     '    "tool_params": {{}},\n'
     '    "reasoning": "...",\n'
     '    "sub_goals": []\n'
-    '}}'
+    "}}"
 )
 
-FAST_CONTEMPLATE_SYSTEM = (
-    "You are evaluating and improving an action plan. "
-    "First assess quality, then fix any issues."
-)
+FAST_CONTEMPLATE_SYSTEM = "You are evaluating and improving an action plan. First assess quality, then fix any issues."
 
 FAST_CONTEMPLATE_USER_TEMPLATE = (
     "You previously proposed this plan:\n{draft_json}\n\n"
@@ -161,7 +158,7 @@ FAST_CONTEMPLATE_USER_TEMPLATE = (
     "5. Could this be accomplished with fewer steps?\n\n"
     "Respond with ONLY valid JSON containing your evaluation "
     "AND the corrected plan:\n"
-    '{{\n'
+    "{{\n"
     '    "confidence": 0.0,\n'
     '    "issues": ["issue 1"],\n'
     '    "plan": {{\n'
@@ -171,6 +168,6 @@ FAST_CONTEMPLATE_USER_TEMPLATE = (
     '        "tool_params": {{}},\n'
     '        "reasoning": "...",\n'
     '        "sub_goals": []\n'
-    '    }}\n'
-    '}}'
+    "    }}\n"
+    "}}"
 )

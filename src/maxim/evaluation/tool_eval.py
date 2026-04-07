@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from .base import Evaluator
 
+
 class ToolExecutionEvaluator(Evaluator):
     """
     Evaluates the outcome of tool executions.
     """
+
     def evaluate(self, context):
         result = context.get("tool_result")
         if result is None:

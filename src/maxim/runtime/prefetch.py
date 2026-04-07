@@ -48,13 +48,57 @@ logger = logging.getLogger(__name__)
 # Topic-Based File Discovery
 # ─────────────────────────────────────────────────────────────────────────────
 
-_STOPWORDS: frozenset[str] = frozenset({
-    "the", "a", "an", "to", "for", "in", "and", "or", "this", "that",
-    "is", "it", "of", "with", "my", "please", "can", "you", "i", "want",
-    "would", "could", "should", "do", "does", "how", "what", "where",
-    "make", "let", "me", "us", "on", "at", "be", "so", "if", "but",
-    "not", "all", "some", "about", "into", "from", "up", "out", "like",
-})
+_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "to",
+        "for",
+        "in",
+        "and",
+        "or",
+        "this",
+        "that",
+        "is",
+        "it",
+        "of",
+        "with",
+        "my",
+        "please",
+        "can",
+        "you",
+        "i",
+        "want",
+        "would",
+        "could",
+        "should",
+        "do",
+        "does",
+        "how",
+        "what",
+        "where",
+        "make",
+        "let",
+        "me",
+        "us",
+        "on",
+        "at",
+        "be",
+        "so",
+        "if",
+        "but",
+        "not",
+        "all",
+        "some",
+        "about",
+        "into",
+        "from",
+        "up",
+        "out",
+        "like",
+    }
+)
 
 # Maps domain terms to source directory prefixes (relative to src/maxim/).
 # Fuzzy fallback handles terms not in this map.
@@ -134,20 +178,33 @@ TOPIC_DIRECTORY_MAP: dict[str, list[str]] = {
 }
 
 # Intent keywords beyond the existing MODIFY_KEYWORDS / CREATE_KEYWORDS
-_EXPLORE_KEYWORDS: frozenset[str] = frozenset({
-    "understand", "explain", "how", "what", "where", "show", "list",
-    "find", "search", "look", "check", "explore", "investigate",
-})
+_EXPLORE_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "understand",
+        "explain",
+        "how",
+        "what",
+        "where",
+        "show",
+        "list",
+        "find",
+        "search",
+        "look",
+        "check",
+        "explore",
+        "investigate",
+    }
+)
 
 
 @dataclass
 class TopicExtraction:
     """Keywords and topics extracted from user input for file discovery."""
 
-    explicit_topics: list[str]    # Words from input that matched topics
-    directory_hints: list[str]    # Mapped directory prefixes to search
-    action_intent: str            # "modify", "create", "explore", "understand"
-    complexity: str               # "single_file", "multi_file", "system_wide"
+    explicit_topics: list[str]  # Words from input that matched topics
+    directory_hints: list[str]  # Mapped directory prefixes to search
+    action_intent: str  # "modify", "create", "explore", "understand"
+    complexity: str  # "single_file", "multi_file", "system_wide"
 
 
 def extract_topics(
@@ -229,7 +286,7 @@ class CandidateFile:
 
     path: str
     rel_path: str
-    score: float             # 0.0–1.0 relevance
+    score: float  # 0.0–1.0 relevance
     match_reasons: list[str]
     size_bytes: int
 
@@ -327,13 +384,15 @@ def discover_files_by_topic(
         # Only include files with some relevance
         score = min(score, 1.0)
         if score >= 0.15 and reasons:
-            candidates.append(CandidateFile(
-                path=abs_path,
-                rel_path=rel_path,
-                score=score,
-                match_reasons=reasons,
-                size_bytes=size_bytes,
-            ))
+            candidates.append(
+                CandidateFile(
+                    path=abs_path,
+                    rel_path=rel_path,
+                    score=score,
+                    match_reasons=reasons,
+                    size_bytes=size_bytes,
+                )
+            )
 
     # Sort by score descending
     candidates.sort(key=lambda c: -c.score)
@@ -346,9 +405,9 @@ class DiscoveryPlan:
 
     topic_extraction: TopicExtraction
     candidates: list[CandidateFile]
-    full_content_files: dict[str, str]    # path → full content
-    summary_files: dict[str, str]         # path → structure summary
-    listed_files: list[str]               # paths only
+    full_content_files: dict[str, str]  # path → full content
+    summary_files: dict[str, str]  # path → structure summary
+    listed_files: list[str]  # paths only
 
 
 _STRUCTURE_RE = re.compile(r"^(?:class |def |async def )(\w+)", re.MULTILINE)
@@ -437,6 +496,7 @@ def select_files_for_context(
 # Systematic File Discovery (using bash find)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class DiscoveredFile:
     """A file discovered during systematic search."""
@@ -485,19 +545,23 @@ def discover_files_with_find(
 
     if include_related and base_name:
         # Add test file patterns
-        patterns.extend([
-            f"*test_{base_name}*",
-            f"*{base_name}_test*",
-            f"*{base_name}Test*",
-        ])
+        patterns.extend(
+            [
+                f"*test_{base_name}*",
+                f"*{base_name}_test*",
+                f"*{base_name}Test*",
+            ]
+        )
         # Add config patterns if it looks like a source file
         if extension in (".py", ".js", ".ts", ".go", ".rs"):
-            patterns.extend([
-                "*config*.py",
-                "*config*.json",
-                "*settings*.py",
-                "*settings*.json",
-            ])
+            patterns.extend(
+                [
+                    "*config*.py",
+                    "*config*.json",
+                    "*settings*.py",
+                    "*settings*.json",
+                ]
+            )
 
     # Directories to exclude from search (virtual envs, caches, vendor dirs)
     exclude_dirs = [".venv", "venv", "node_modules", "__pycache__", ".git", ".tox", "dist", "build", "site-packages"]
@@ -562,26 +626,30 @@ def discover_files_with_find(
                     except Exception:
                         pass
 
-                discovered.append(DiscoveredFile(
-                    path=file_path,
-                    name=file_name,
-                    size=stat.st_size,
-                    content=content,
-                    is_main_target=is_main,
-                    is_test_file=is_test,
-                    is_config_file=is_config,
-                ))
+                discovered.append(
+                    DiscoveredFile(
+                        path=file_path,
+                        name=file_name,
+                        size=stat.st_size,
+                        content=content,
+                        is_main_target=is_main,
+                        is_test_file=is_test,
+                        is_config_file=is_config,
+                    )
+                )
 
             except Exception as e:
                 logger.debug("Failed to process discovered file %s: %s", file_path, e)
 
         # Sort: main target first, then tests, then configs, then others
-        discovered.sort(key=lambda f: (
-            not f.is_main_target,
-            not f.is_test_file,
-            not f.is_config_file,
-            f.path,
-        ))
+        discovered.sort(
+            key=lambda f: (
+                not f.is_main_target,
+                not f.is_test_file,
+                not f.is_config_file,
+                f.path,
+            )
+        )
 
     except Exception as e:
         logger.debug("File discovery failed: %s", e)
@@ -640,6 +708,7 @@ def discover_and_read_files(
 # ─────────────────────────────────────────────────────────────────────────────
 # Speculative Pre-fetcher
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class PrefetchResult:
@@ -714,11 +783,15 @@ class SpeculativePrefetcher:
                 topics = extract_topics(user_input)
                 if topics.explicit_topics:
                     candidates = discover_files_by_topic(
-                        topics, cwd=cwd or self._base_path, user_text=user_input,
+                        topics,
+                        cwd=cwd or self._base_path,
+                        user_text=user_input,
                     )
                     if candidates:
                         plan = select_files_for_context(
-                            candidates, max_total_chars=3000, cwd=cwd,
+                            candidates,
+                            max_total_chars=3000,
+                            cwd=cwd,
                         )
                         plan.topic_extraction = topics
                         result.discovery_plan = plan
@@ -761,9 +834,7 @@ class SpeculativePrefetcher:
                 # If we found the main file and have its content, we can skip exploration
                 if discovered_contents:
                     main_file_found = any(
-                        ref.pattern.lower() in path.lower()
-                        for ref in refs
-                        for path in discovered_contents.keys()
+                        ref.pattern.lower() in path.lower() for ref in refs for path in discovered_contents.keys()
                     )
                     if main_file_found and len(discovered_contents) >= 1:
                         result.skip_exploration = True
@@ -793,18 +864,23 @@ class SpeculativePrefetcher:
                 topics = extract_topics(user_input)
                 if topics.explicit_topics:
                     candidates = discover_files_by_topic(
-                        topics, cwd=cwd or self._base_path, user_text=user_input,
+                        topics,
+                        cwd=cwd or self._base_path,
+                        user_text=user_input,
                     )
                     if candidates:
                         plan = select_files_for_context(
-                            candidates, max_total_chars=3000, cwd=cwd,
+                            candidates,
+                            max_total_chars=3000,
+                            cwd=cwd,
                         )
                         plan.topic_extraction = topics
                         result.discovery_plan = plan
                         result.file_contents.update(plan.full_content_files)
                         logger.info(
                             "Fallback topic discovery for unresolved refs %s: %d candidates",
-                            ref_names, len(candidates),
+                            ref_names,
+                            len(candidates),
                         )
             except Exception as e:
                 logger.debug("Fallback topic discovery failed: %s", e)
@@ -891,11 +967,13 @@ class SpeculativePrefetcher:
 
         # Add config files if this is a source file
         if extension in (".py", ".js", ".ts"):
-            related_patterns.extend([
-                "**/config*.py",
-                "**/config*.json",
-                "**/settings*.py",
-            ])
+            related_patterns.extend(
+                [
+                    "**/config*.py",
+                    "**/config*.json",
+                    "**/settings*.py",
+                ]
+            )
 
         for pattern in related_patterns[:4]:  # Limit patterns
             try:
@@ -967,8 +1045,7 @@ class SpeculativePrefetcher:
                     f"⚠ REQUESTED FILE(S) NOT FOUND: {not_found}\n"
                     "The user asked about specific file(s) that could not be located.\n"
                     "Use glob or read_file to search for the file before taking action.\n"
-                    "Do NOT create unrelated files.\n\n"
-                    + plan_text
+                    "Do NOT create unrelated files.\n\n" + plan_text
                 )
             return plan_text
 
@@ -1079,9 +1156,7 @@ class SpeculativePrefetcher:
         """Format a topic-based discovery plan for LLM context."""
         topics = plan.topic_extraction
         topic_str = ", ".join(topics.explicit_topics) if topics.explicit_topics else "general"
-        total_files = (
-            len(plan.full_content_files) + len(plan.summary_files) + len(plan.listed_files)
-        )
+        total_files = len(plan.full_content_files) + len(plan.summary_files) + len(plan.listed_files)
 
         parts: list[str] = []
 

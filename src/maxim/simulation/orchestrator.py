@@ -39,6 +39,7 @@ class SimulationResult:
     finish_reason: str = "unknown"
     summary: str = ""
     campaign_analysis: dict[str, Any] = field(default_factory=dict)
+    introspector: Any = None
 
 
 def _load_resume_context(session_id: str) -> dict[str, Any] | None:
@@ -585,9 +586,7 @@ def start_simulation_mode(
 
         aut_registry.register(SayTool())
         aut_registry.register(ThinkTool())
-        aut_registry.register(
-            ExamineTool(bridge=bridge, hippocampus=aut_hippocampus)
-        )
+        aut_registry.register(ExamineTool(bridge=bridge, hippocampus=aut_hippocampus))
         logger.info("AUT narrative tools registered (say, think, examine)")
     except Exception as e:
         logger.debug("Failed to register AUT narrative tools: %s", e)
@@ -1472,6 +1471,7 @@ def start_simulation_mode(
         finish_reason=finish_reason,
         summary=report.llm_summary,
         campaign_analysis=campaign_analysis if pre_campaign_turns else {},
+        introspector=aut_introspector,
     )
 
     return result

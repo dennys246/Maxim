@@ -99,9 +99,7 @@ class JointLimitHarmPredictor(HarmPredictor):
     }
 
     # Pattern for parsing action signatures with absolute positions
-    _LOOK_AT_PATTERN = re.compile(
-        r"look_at:dy=(-?[\d.]+):dp=(-?[\d.]+)"
-    )
+    _LOOK_AT_PATTERN = re.compile(r"look_at:dy=(-?[\d.]+):dp=(-?[\d.]+)")
 
     def __init__(
         self,
@@ -216,10 +214,10 @@ class JointLimitHarmPredictor(HarmPredictor):
         # Check yaw
         yaw_usage = abs(target_yaw) / self.config.yaw_limit if self.config.yaw_limit > 0 else 0
         if yaw_usage >= self.config.danger_threshold:
-            issues.append(f"yaw {target_yaw:.1f}° at {yaw_usage*100:.0f}% of limit")
+            issues.append(f"yaw {target_yaw:.1f}° at {yaw_usage * 100:.0f}% of limit")
             max_usage = max(max_usage, yaw_usage)
         elif yaw_usage >= self.config.warning_threshold:
-            issues.append(f"yaw {target_yaw:.1f}° near limit ({yaw_usage*100:.0f}%)")
+            issues.append(f"yaw {target_yaw:.1f}° near limit ({yaw_usage * 100:.0f}%)")
             max_usage = max(max_usage, yaw_usage)
 
         # Check pitch
@@ -230,10 +228,10 @@ class JointLimitHarmPredictor(HarmPredictor):
 
         pitch_usage = abs(target_pitch) / pitch_limit if pitch_limit > 0 else 0
         if pitch_usage >= self.config.danger_threshold:
-            issues.append(f"pitch {target_pitch:.1f}° at {pitch_usage*100:.0f}% of limit")
+            issues.append(f"pitch {target_pitch:.1f}° at {pitch_usage * 100:.0f}% of limit")
             max_usage = max(max_usage, pitch_usage)
         elif pitch_usage >= self.config.warning_threshold:
-            issues.append(f"pitch {target_pitch:.1f}° near limit ({pitch_usage*100:.0f}%)")
+            issues.append(f"pitch {target_pitch:.1f}° near limit ({pitch_usage * 100:.0f}%)")
             max_usage = max(max_usage, pitch_usage)
 
         if not issues:
@@ -295,9 +293,7 @@ class JointLimitHarmPredictor(HarmPredictor):
             if learned_limits:
                 limits = learned_limits()
                 if limits:
-                    return self._check_against_learned_limits(
-                        target_yaw, target_pitch, limits, action_params
-                    )
+                    return self._check_against_learned_limits(target_yaw, target_pitch, limits, action_params)
 
             # Alternative: check historical success rate
             success_rate_fn = getattr(self._bounds_learner, "get_success_rate", None)
@@ -314,7 +310,7 @@ class JointLimitHarmPredictor(HarmPredictor):
                         intensity=min(1.0, intensity),
                         confidence=0.6,  # Lower confidence for learned predictions
                         reason=(
-                            f"Historical failure rate {(1-success_rate)*100:.0f}% "
+                            f"Historical failure rate {(1 - success_rate) * 100:.0f}% "
                             f"for positions near yaw={target_yaw:.1f}°, pitch={target_pitch:.1f}°"
                         ),
                         source=self.name,
@@ -369,7 +365,7 @@ class JointLimitHarmPredictor(HarmPredictor):
                 else:
                     yaw_usage = abs(target_yaw) / abs(yaw_min) if yaw_min < 0 else 0
                 if yaw_usage >= self.config.warning_threshold:
-                    issues.append(f"yaw {target_yaw:.1f}° at {yaw_usage*100:.0f}% of learned range")
+                    issues.append(f"yaw {target_yaw:.1f}° at {yaw_usage * 100:.0f}% of learned range")
                     max_usage = max(max_usage, yaw_usage)
 
         # Check pitch
@@ -389,7 +385,7 @@ class JointLimitHarmPredictor(HarmPredictor):
                 else:
                     pitch_usage = abs(target_pitch) / abs(pitch_min) if pitch_min < 0 else 0
                 if pitch_usage >= self.config.warning_threshold:
-                    issues.append(f"pitch {target_pitch:.1f}° at {pitch_usage*100:.0f}% of learned range")
+                    issues.append(f"pitch {target_pitch:.1f}° at {pitch_usage * 100:.0f}% of learned range")
                     max_usage = max(max_usage, pitch_usage)
 
         if not issues:

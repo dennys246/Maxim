@@ -128,9 +128,11 @@ class OrientingResponse(Behavior):
         # Log when movement contributes significantly
         if best_movement > 0.3:
             logger.debug(
-                "OrientingResponse: motion-boosted target track_id=%s "
-                "(novelty=%.2f, movement=%.2f, salience=%.2f)",
-                best_target.get("track_id"), best_novelty, best_movement, best_salience
+                "OrientingResponse: motion-boosted target track_id=%s (novelty=%.2f, movement=%.2f, salience=%.2f)",
+                best_target.get("track_id"),
+                best_novelty,
+                best_movement,
+                best_salience,
             )
 
         return self._create_proposal(

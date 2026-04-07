@@ -15,43 +15,124 @@ import re
 # Keywords that indicate specific language/technology requests
 LANGUAGE_KEYWORDS: dict[str, list[str]] = {
     "python": [
-        "python", "py", ".py", "script", "pip", "virtualenv", "venv",
-        "pandas", "numpy", "flask", "django", "fastapi", "pytest",
+        "python",
+        "py",
+        ".py",
+        "script",
+        "pip",
+        "virtualenv",
+        "venv",
+        "pandas",
+        "numpy",
+        "flask",
+        "django",
+        "fastapi",
+        "pytest",
     ],
     "html": [
-        "html", "webpage", "web page", "website", "markup", ".html",
-        "css", "stylesheet", "bootstrap", "tailwind",
+        "html",
+        "webpage",
+        "web page",
+        "website",
+        "markup",
+        ".html",
+        "css",
+        "stylesheet",
+        "bootstrap",
+        "tailwind",
     ],
     "javascript": [
-        "javascript", "js", ".js", "node", "nodejs", "npm", "react",
-        "vue", "angular", "typescript", "ts", ".ts", "express",
+        "javascript",
+        "js",
+        ".js",
+        "node",
+        "nodejs",
+        "npm",
+        "react",
+        "vue",
+        "angular",
+        "typescript",
+        "ts",
+        ".ts",
+        "express",
     ],
     "docker": [
-        "docker", "dockerfile", "container", "containerize", "docker-compose",
-        "compose", "image", "kubernetes", "k8s",
+        "docker",
+        "dockerfile",
+        "container",
+        "containerize",
+        "docker-compose",
+        "compose",
+        "image",
+        "kubernetes",
+        "k8s",
     ],
     "bash": [
-        "bash", "shell", "sh", ".sh", "terminal", "command line", "cli",
-        "zsh", "scripting",
+        "bash",
+        "shell",
+        "sh",
+        ".sh",
+        "terminal",
+        "command line",
+        "cli",
+        "zsh",
+        "scripting",
     ],
     "yaml": [
-        "yaml", "yml", ".yaml", ".yml", "config", "configuration",
-        "ansible", "helm", "github actions", "ci/cd", "pipeline",
+        "yaml",
+        "yml",
+        ".yaml",
+        ".yml",
+        "config",
+        "configuration",
+        "ansible",
+        "helm",
+        "github actions",
+        "ci/cd",
+        "pipeline",
     ],
     "json": [
-        "json", ".json", "api response", "data format",
+        "json",
+        ".json",
+        "api response",
+        "data format",
     ],
     "sql": [
-        "sql", "database", "query", "mysql", "postgres", "sqlite",
-        "select", "insert", "update", "table",
+        "sql",
+        "database",
+        "query",
+        "mysql",
+        "postgres",
+        "sqlite",
+        "select",
+        "insert",
+        "update",
+        "table",
     ],
     "markdown": [
-        "markdown", "md", ".md", "readme", "documentation", "docs",
-        "research document", "research paper", "document", "report",
+        "markdown",
+        "md",
+        ".md",
+        "readme",
+        "documentation",
+        "docs",
+        "research document",
+        "research paper",
+        "document",
+        "report",
     ],
     "glob": [
-        "glob", "find file", "find files", "search file", "search files",
-        "pattern", "wildcard", "**", "*.py", "*.js", "*.html",
+        "glob",
+        "find file",
+        "find files",
+        "search file",
+        "search files",
+        "pattern",
+        "wildcard",
+        "**",
+        "*.py",
+        "*.js",
+        "*.html",
     ],
 }
 
@@ -88,7 +169,6 @@ def main():
 if __name__ == "__main__":
     main()
 ```""",
-
     "html": """=== HTML/CSS BEST PRACTICES ===
 Structure:
 - Always include <!DOCTYPE html> declaration
@@ -128,7 +208,6 @@ Template:
 </body>
 </html>
 ```""",
-
     "javascript": """=== JAVASCRIPT BEST PRACTICES ===
 Modern JS:
 - Use const by default, let when reassignment needed (never var)
@@ -164,7 +243,6 @@ async function main() {
 
 main();
 ```""",
-
     "docker": """=== DOCKER BEST PRACTICES ===
 Dockerfile:
 - Use official base images (python:3.11-slim, node:20-alpine)
@@ -200,7 +278,6 @@ Docker Compose:
 - Define healthchecks
 - Use named volumes for persistent data
 - Set restart policies""",
-
     "bash": """=== BASH SCRIPTING BEST PRACTICES ===
 Header & Safety:
 - Start with shebang: #!/usr/bin/env bash
@@ -240,7 +317,6 @@ Common Patterns:
 - Check if command exists: command -v cmd &> /dev/null
 - Check if file exists: [[ -f "$file" ]]
 - Loop over files: for f in *.txt; do ... done""",
-
     "yaml": """=== YAML BEST PRACTICES ===
 Formatting:
 - Use 2-space indentation (consistent throughout)
@@ -292,7 +368,6 @@ services:
       - db
     restart: unless-stopped
 ```""",
-
     "json": """=== JSON BEST PRACTICES ===
 Formatting:
 - Use 2-space indentation for readability
@@ -322,7 +397,6 @@ API Response Pattern:
 ```
 
 Note: JSON does not support comments. Use a separate schema file or documentation.""",
-
     "sql": """=== SQL BEST PRACTICES ===
 Formatting:
 - Use UPPERCASE for SQL keywords (SELECT, FROM, WHERE)
@@ -357,7 +431,6 @@ cursor.execute(
     (user_id,)  # Parameters as tuple
 )
 ```""",
-
     "markdown": """=== MARKDOWN & RESEARCH DOCUMENT GUIDELINES ===
 Structure:
 - Start with a clear title (# Title)
@@ -417,7 +490,6 @@ Research Response Template:
 ## Summary
 [Brief concluding statement with key takeaways]
 ```""",
-
     "glob": """=== GLOB PATTERN GUIDE ===
 Glob patterns are used to match files and directories. Use the 'glob' tool to find files.
 
@@ -479,7 +551,7 @@ def detect_languages(text: str) -> list[str]:
         for keyword in keywords:
             # Use word boundary matching for short keywords
             if len(keyword) <= 3:
-                pattern = rf'\b{re.escape(keyword)}\b'
+                pattern = rf"\b{re.escape(keyword)}\b"
                 if re.search(pattern, text_lower):
                     detected.append(lang)
                     break
@@ -529,8 +601,17 @@ def get_guidelines_for_request(user_request: str, max_guidelines: int = 2) -> st
     """
     # Check if this is actually a coding/file creation request
     coding_indicators = [
-        "write", "create", "make", "generate", "script", "code", "program",
-        "file", "build", "develop", "implement",
+        "write",
+        "create",
+        "make",
+        "generate",
+        "script",
+        "code",
+        "program",
+        "file",
+        "build",
+        "develop",
+        "implement",
     ]
 
     request_lower = user_request.lower()
@@ -655,10 +736,23 @@ def is_file_search_request(text: str) -> bool:
 
     text_lower = text.lower()
     search_indicators = [
-        "find file", "find files", "search file", "search files",
-        "look for file", "locate file", "list file", "list files",
-        "glob", "pattern", "wildcard", "**", "*.py", "*.js",
-        "where is", "where are", "which file",
+        "find file",
+        "find files",
+        "search file",
+        "search files",
+        "look for file",
+        "locate file",
+        "list file",
+        "list files",
+        "glob",
+        "pattern",
+        "wildcard",
+        "**",
+        "*.py",
+        "*.js",
+        "where is",
+        "where are",
+        "which file",
     ]
     return any(indicator in text_lower for indicator in search_indicators)
 

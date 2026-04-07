@@ -73,9 +73,12 @@ class AssociationIndex:
                 self._keyword_index[kw].add(memory_id)
             # Also register in LSH index if available
             if self._context_index is not None:
-                text = content if isinstance(content, str) else " ".join(
-                    str(v) for v in (content.values() if isinstance(content, dict) else [str(content)])
-                    if v
+                text = (
+                    content
+                    if isinstance(content, str)
+                    else " ".join(
+                        str(v) for v in (content.values() if isinstance(content, dict) else [str(content)]) if v
+                    )
                 )
                 self._context_index.register(memory_id, text)
 
@@ -100,14 +103,9 @@ class AssociationIndex:
         """
         with self._lock:
             # Phase 3e: Prefer LSH similarity when index is populated
-            if (
-                self._context_index is not None
-                and self._context_index.signatures
-            ):
+            if self._context_index is not None and self._context_index.signatures:
                 query_text = str(query) if not isinstance(query, str) else query
-                lsh_results = self._context_index.query_similar(
-                    query_text, min_similarity=0.3
-                )
+                lsh_results = self._context_index.query_similar(query_text, min_similarity=0.3)
                 if lsh_results:
                     return lsh_results[:top_k]
 

@@ -75,7 +75,11 @@ HARMFUL_PATTERNS: dict[str, list[tuple[str, str, str]]] = {
         (r"data:text/html;base64,", "high", "Base64 encoded HTML (potential XSS)"),
     ],
     "phishing": [
-        (r"(verify|confirm|update)\s+(your\s+)?(account|password|credentials)", "medium", "Credential phishing language"),
+        (
+            r"(verify|confirm|update)\s+(your\s+)?(account|password|credentials)",
+            "medium",
+            "Credential phishing language",
+        ),
         (r"(click|tap)\s+here\s+to\s+(verify|confirm|secure)", "low", "Phishing call-to-action"),
         (r"(suspended|locked|compromised)\s+(account|access)", "low", "Account fear language"),
     ],
@@ -85,7 +89,11 @@ HARMFUL_PATTERNS: dict[str, list[tuple[str, str, str]]] = {
         (r"nsfw|not\s+safe\s+for\s+work", "low", "NSFW marker"),
     ],
     "violence": [
-        (r"(how\s+to|instructions?\s+(for|to))\s+(make|build|create)\s+(a\s+)?(bomb|explosive|weapon)", "high", "Weapons instructions"),
+        (
+            r"(how\s+to|instructions?\s+(for|to))\s+(make|build|create)\s+(a\s+)?(bomb|explosive|weapon)",
+            "high",
+            "Weapons instructions",
+        ),
         (r"(step.by.step|tutorial|guide)\s+(to|for)\s+(harm|hurt|kill)", "high", "Violence instructions"),
     ],
     "scam": [
@@ -130,18 +138,16 @@ class ContentSafetyChecker:
         for category, patterns in HARMFUL_PATTERNS.items():
             if category in self._enabled_categories:
                 self._patterns[category] = [
-                    (re.compile(p, re.IGNORECASE | re.DOTALL), sev, desc)
-                    for p, sev, desc in patterns
+                    (re.compile(p, re.IGNORECASE | re.DOTALL), sev, desc) for p, sev, desc in patterns
                 ]
 
         if custom_patterns:
             for category, patterns in custom_patterns.items():
                 if category not in self._patterns:
                     self._patterns[category] = []
-                self._patterns[category].extend([
-                    (re.compile(p, re.IGNORECASE | re.DOTALL), sev, desc)
-                    for p, sev, desc in patterns
-                ])
+                self._patterns[category].extend(
+                    [(re.compile(p, re.IGNORECASE | re.DOTALL), sev, desc) for p, sev, desc in patterns]
+                )
 
     def check(self, content: str, max_violations: int = 10) -> SafetyCheckResult:
         """Check content for safety violations.
@@ -172,13 +178,15 @@ class ContentSafetyChecker:
                     end = min(len(content), match.end() + 50)
                     context = content[start:end].strip()
 
-                    violations.append(SafetyViolation(
-                        category=category,
-                        severity=severity,
-                        description=description,
-                        matched_pattern=match.group(0)[:100],
-                        context=context[:200],
-                    ))
+                    violations.append(
+                        SafetyViolation(
+                            category=category,
+                            severity=severity,
+                            description=description,
+                            matched_pattern=match.group(0)[:100],
+                            context=context[:200],
+                        )
+                    )
 
                     if len(violations) >= max_violations:
                         break
@@ -212,32 +220,38 @@ class ContentSafetyChecker:
 
         # Data URLs with suspicious content
         if url_lower.startswith("data:"):
-            violations.append(SafetyViolation(
-                category="malware",
-                severity="high",
-                description="Data URL (potential malicious content)",
-                matched_pattern=url[:50],
-            ))
+            violations.append(
+                SafetyViolation(
+                    category="malware",
+                    severity="high",
+                    description="Data URL (potential malicious content)",
+                    matched_pattern=url[:50],
+                )
+            )
 
         # JavaScript URLs
         if url_lower.startswith("javascript:"):
-            violations.append(SafetyViolation(
-                category="malware",
-                severity="high",
-                description="JavaScript URL",
-                matched_pattern=url[:50],
-            ))
+            violations.append(
+                SafetyViolation(
+                    category="malware",
+                    severity="high",
+                    description="JavaScript URL",
+                    matched_pattern=url[:50],
+                )
+            )
 
         # Suspicious file extensions
         suspicious_extensions = [".exe", ".scr", ".bat", ".cmd", ".msi", ".dll"]
         for ext in suspicious_extensions:
             if url_lower.endswith(ext):
-                violations.append(SafetyViolation(
-                    category="malware",
-                    severity="medium",
-                    description=f"Suspicious file extension: {ext}",
-                    matched_pattern=url[-20:],
-                ))
+                violations.append(
+                    SafetyViolation(
+                        category="malware",
+                        severity="medium",
+                        description=f"Suspicious file extension: {ext}",
+                        matched_pattern=url[-20:],
+                    )
+                )
                 break
 
         return SafetyCheckResult(
@@ -255,6 +269,7 @@ class ContentSafetyChecker:
 def _get_checker_singleton():
     """Lazy import to avoid circular dependency."""
     from maxim.utils.singleton import Singleton
+
     return Singleton("content_safety_checker")
 
 

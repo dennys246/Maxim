@@ -24,9 +24,9 @@ class ConceptProvenance(Enum):
     """How a semantic concept was acquired."""
 
     EPISODIC_CONSOLIDATION = auto()  # Extracted from repeated episodes via NAc
-    DIRECT_INGESTION = auto()        # RAG / document ingestion
-    AGENT_INFERENCE = auto()         # Agent proposed a new concept
-    HYBRID = auto()                  # Multiple sources
+    DIRECT_INGESTION = auto()  # RAG / document ingestion
+    AGENT_INFERENCE = auto()  # Agent proposed a new concept
+    HYBRID = auto()  # Multiple sources
 
 
 class RelationshipType(Enum):
@@ -137,10 +137,7 @@ class RelationshipRegistry:
     def to_dict(self) -> dict[str, Any]:
         """Serialize registry for persistence."""
         return {
-            "types": {
-                name: {**info}
-                for name, info in self._types.items()
-            },
+            "types": {name: {**info} for name, info in self._types.items()},
         }
 
     @classmethod
@@ -273,9 +270,7 @@ class Concept(SemanticMemory):
     # Cross-layer references: layer_name -> ordered dict of memory_ids.
     # Uses dict[str, None] as an ordered set (Python 3.7+ dicts preserve
     # insertion order) so FIFO pruning evicts the truly oldest ref.
-    memory_refs: dict[str, dict[str, None]] = field(
-        default_factory=lambda: defaultdict(dict)
-    )
+    memory_refs: dict[str, dict[str, None]] = field(default_factory=lambda: defaultdict(dict))
 
     # Maximum refs tracked per layer. When exceeded, the oldest ref
     # (first inserted) is pruned.
@@ -308,11 +303,7 @@ class Concept(SemanticMemory):
         """Serialize Concept, converting ordered dicts to sorted lists for JSON."""
         data = super().to_dict()
         data["_concept"] = True
-        data["memory_refs"] = {
-            layer: sorted(ids.keys())
-            for layer, ids in self.memory_refs.items()
-            if ids
-        }
+        data["memory_refs"] = {layer: sorted(ids.keys()) for layer, ids in self.memory_refs.items() if ids}
         return data
 
     @classmethod

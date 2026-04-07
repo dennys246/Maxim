@@ -27,18 +27,18 @@ logger = logging.getLogger(__name__)
 
 # ANSI color codes for terminal output
 _COLORS = {
-    "PERCEPT": "\033[36m",      # Cyan
+    "PERCEPT": "\033[36m",  # Cyan
     "HIPPOCAMPUS": "\033[35m",  # Magenta
-    "NAc": "\033[33m",          # Yellow
-    "FEAR": "\033[31m",         # Red
-    "PAIN": "\033[31;1m",       # Bold red
-    "EXEC": "\033[32m",         # Green
-    "MOTOR": "\033[34m",        # Blue
-    "SALIENCE": "\033[33;1m",   # Bold yellow
-    "SCN": "\033[37m",          # White
-    "PIPELINE": "\033[37;2m",   # Dim white
-    "RESULT": "\033[32;1m",     # Bold green
-    "BLOCKED": "\033[31;1m",    # Bold red
+    "NAc": "\033[33m",  # Yellow
+    "FEAR": "\033[31m",  # Red
+    "PAIN": "\033[31;1m",  # Bold red
+    "EXEC": "\033[32m",  # Green
+    "MOTOR": "\033[34m",  # Blue
+    "SALIENCE": "\033[33;1m",  # Bold yellow
+    "SCN": "\033[37m",  # White
+    "PIPELINE": "\033[37;2m",  # Dim white
+    "RESULT": "\033[32;1m",  # Bold green
+    "BLOCKED": "\033[31;1m",  # Bold red
 }
 _RESET = "\033[0m"
 
@@ -78,6 +78,7 @@ def enable_sim_logging(
 
     if log_path:
         import os
+
         try:
             os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
             _log_file = open(log_path, "w")
@@ -126,6 +127,7 @@ def sim_log(subsystem: str, message: str, data: dict[str, Any] | None = None) ->
         return
 
     import threading
+
     elapsed = time.time() - _sim_start
     timestamp = f"{elapsed:7.2f}s"
     # Tag with thread role so AUT vs orchestrator logs are distinguishable
@@ -148,6 +150,7 @@ def sim_log(subsystem: str, message: str, data: dict[str, Any] | None = None) ->
 
     if _log_file is not None:
         import json
+
         _log_file.write(json.dumps(record) + "\n")
         _log_file.flush()
 

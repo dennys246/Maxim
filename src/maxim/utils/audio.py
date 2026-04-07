@@ -27,6 +27,7 @@ def _check_local_audio() -> bool:
 
     try:
         import sounddevice as sd  # noqa: F401
+
         _local_audio_available = True
         logger.debug("Local audio playback available (sounddevice)")
     except ImportError:
@@ -89,6 +90,7 @@ def stop_local_audio() -> None:
 
     try:
         import sounddevice as sd
+
         sd.stop()
     except Exception:
         pass

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 
-
 class TestStateManagerBasic:
     """Test basic state manager functionality."""
 
@@ -261,11 +260,13 @@ class TestStateManagerSerialization:
         from maxim.modes.state_manager import StateManager
 
         manager = StateManager()
-        manager.from_dict({
-            "operational_mode": "singularity",
-            "strategy": "research",
-            "processing_state": "sleep",
-        })
+        manager.from_dict(
+            {
+                "operational_mode": "singularity",
+                "strategy": "research",
+                "processing_state": "sleep",
+            }
+        )
 
         assert manager.operational_mode == "singularity"
         assert manager.strategy == "research"

@@ -5,6 +5,7 @@ Each tool wraps existing query methods on Maxim's memory, prediction,
 pain, temporal, and energy subsystems. No tool modifies agent state.
 All output is formatted for LLM consumption with bounded size.
 """
+
 from __future__ import annotations
 
 import time
@@ -16,6 +17,7 @@ from maxim.tools.base import Tool, ToolResult
 # ---------------------------------------------------------------------------
 # Tool 1: memory_recall — Episodic Memory Search
 # ---------------------------------------------------------------------------
+
 
 class MemoryRecallTool(Tool):
     """Search episodic memories with optional spreading activation."""
@@ -36,8 +38,18 @@ class MemoryRecallTool(Tool):
         "expand": (bool, False),
         "limit": (int, 5),
     }
-    MANUAL_KEYWORDS = {"remember", "recall", "memory", "past", "history",
-                       "previous", "before", "last", "when", "episode"}
+    MANUAL_KEYWORDS = {
+        "remember",
+        "recall",
+        "memory",
+        "past",
+        "history",
+        "previous",
+        "before",
+        "last",
+        "when",
+        "episode",
+    }
 
     def __init__(self, hippocampus: Any = None) -> None:
         super().__init__()
@@ -72,7 +84,8 @@ class MemoryRecallTool(Tool):
             try:
                 seed_ids = [m.id for m in memories[:3]]
                 associated = self._hippocampus.recall_associated(
-                    seed_ids=seed_ids, limit=limit,
+                    seed_ids=seed_ids,
+                    limit=limit,
                 )
                 # Merge, dedup
                 seen = {m.id for m in memories}
@@ -86,16 +99,20 @@ class MemoryRecallTool(Tool):
                 pass  # Expansion is best-effort
 
         results = [_format_episodic_memory(m) for m in memories[:limit]]
-        return ToolResult(success=True, output={
-            "count": len(results),
-            "memories": results,
-            "expanded": bool(kwargs.get("expand")),
-        })
+        return ToolResult(
+            success=True,
+            output={
+                "count": len(results),
+                "memories": results,
+                "expanded": bool(kwargs.get("expand")),
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
 # Tool 2: predict_outcome — NAc Causal Predictions
 # ---------------------------------------------------------------------------
+
 
 class PredictOutcomeTool(Tool):
     """Query causal predictions for a tool before executing it."""
@@ -111,8 +128,17 @@ class PredictOutcomeTool(Tool):
         "context": (dict, None),
         "include_all_outcomes": (bool, True),
     }
-    MANUAL_KEYWORDS = {"predict", "outcome", "expect", "happen", "result",
-                       "likely", "probability", "confidence", "risk"}
+    MANUAL_KEYWORDS = {
+        "predict",
+        "outcome",
+        "expect",
+        "happen",
+        "result",
+        "likely",
+        "probability",
+        "confidence",
+        "risk",
+    }
 
     def __init__(self, nac: Any = None) -> None:
         super().__init__()
@@ -170,6 +196,7 @@ class PredictOutcomeTool(Tool):
 # Tool 3: causal_links — Inspect Cause-Effect Relationships
 # ---------------------------------------------------------------------------
 
+
 class CausalLinksTool(Tool):
     """Inspect learned cause-effect relationships in the NAc."""
 
@@ -186,8 +213,7 @@ class CausalLinksTool(Tool):
         "valence": (str, None),
         "limit": (int, 10),
     }
-    MANUAL_KEYWORDS = {"cause", "effect", "causal", "link", "learn",
-                       "outcome", "because", "why", "consequence", "lead"}
+    MANUAL_KEYWORDS = {"cause", "effect", "causal", "link", "learn", "outcome", "because", "why", "consequence", "lead"}
 
     def __init__(self, nac: Any = None) -> None:
         super().__init__()
@@ -210,33 +236,37 @@ class CausalLinksTool(Tool):
             else:
                 # Return promotion candidates (high-confidence links)
                 candidates = self._nac.get_promotion_candidates(min_confidence=0.3, min_observations=2)
-                return ToolResult(success=True, output={
-                    "count": len(candidates[:limit]),
-                    "links": [
-                        {
-                            "pattern": c.pattern_name,
-                            "confidence": round(c.confidence, 3),
-                            "source_memories": len(c.source_memory_ids),
-                            "metadata": c.metadata,
-                        }
-                        for c in candidates[:limit]
-                    ],
-                })
+                return ToolResult(
+                    success=True,
+                    output={
+                        "count": len(candidates[:limit]),
+                        "links": [
+                            {
+                                "pattern": c.pattern_name,
+                                "confidence": round(c.confidence, 3),
+                                "source_memories": len(c.source_memory_ids),
+                                "metadata": c.metadata,
+                            }
+                            for c in candidates[:limit]
+                        ],
+                    },
+                )
         except Exception as e:
             return ToolResult(success=False, error=f"Causal link query failed: {e}")
 
         # Filter by valence
         valence_filter = kwargs.get("valence")
         if valence_filter:
-            links = [l for l in links if l.outcome_valence.value == valence_filter]
+            links = [lnk for lnk in links if lnk.outcome_valence.value == valence_filter]
 
-        results = [_format_causal_link(l) for l in links[:limit]]
+        results = [_format_causal_link(lnk) for lnk in links[:limit]]
         return ToolResult(success=True, output={"count": len(results), "links": results})
 
 
 # ---------------------------------------------------------------------------
 # Tool 4: pain_history — Pain and Fear Queries
 # ---------------------------------------------------------------------------
+
 
 class PainHistoryTool(Tool):
     """Query pain signals and fear gate status."""
@@ -252,8 +282,7 @@ class PainHistoryTool(Tool):
         "action_params": (dict, None),
         "limit": (int, 10),
     }
-    MANUAL_KEYWORDS = {"pain", "hurt", "fear", "danger", "safe", "risk",
-                       "error", "failure", "avoid", "block", "afraid"}
+    MANUAL_KEYWORDS = {"pain", "hurt", "fear", "danger", "safe", "risk", "error", "failure", "avoid", "block", "afraid"}
 
     def __init__(self, pain_detector: Any = None, fear_agent: Any = None) -> None:
         super().__init__()
@@ -295,6 +324,7 @@ class PainHistoryTool(Tool):
 # Tool 5: temporal_patterns — SCN Time-Based Queries
 # ---------------------------------------------------------------------------
 
+
 class TemporalPatternsTool(Tool):
     """Discover time-based patterns in experience."""
 
@@ -310,8 +340,19 @@ class TemporalPatternsTool(Tool):
         "discover_rhythms": (bool, False),
         "limit": (int, 10),
     }
-    MANUAL_KEYWORDS = {"time", "when", "morning", "evening", "monday",
-                       "pattern", "rhythm", "schedule", "circadian", "daily", "weekly"}
+    MANUAL_KEYWORDS = {
+        "time",
+        "when",
+        "morning",
+        "evening",
+        "monday",
+        "pattern",
+        "rhythm",
+        "schedule",
+        "circadian",
+        "daily",
+        "weekly",
+    }
 
     def __init__(self, scn: Any = None) -> None:
         super().__init__()
@@ -327,8 +368,7 @@ class TemporalPatternsTool(Tool):
             if kwargs.get("discover_rhythms"):
                 patterns = self._scn.find_rhythmic_patterns(min_occurrences=3)
                 result["rhythmic_patterns"] = {
-                    rhythm_type: [(bin_id, count) for bin_id, count in bins]
-                    for rhythm_type, bins in patterns.items()
+                    rhythm_type: [(bin_id, count) for bin_id, count in bins] for rhythm_type, bins in patterns.items()
                 }
             else:
                 memory_ids = self._scn.query_intersection(
@@ -348,6 +388,7 @@ class TemporalPatternsTool(Tool):
 # Tool 6: energy_status — Resource Consumption
 # ---------------------------------------------------------------------------
 
+
 class EnergyStatusTool(Tool):
     """Check energy and resource consumption."""
 
@@ -359,8 +400,17 @@ class EnergyStatusTool(Tool):
     input_schema = {
         "window_seconds": (float, 300.0),
     }
-    MANUAL_KEYWORDS = {"energy", "budget", "cost", "token", "resource",
-                       "usage", "consumption", "efficiency", "expensive"}
+    MANUAL_KEYWORDS = {
+        "energy",
+        "budget",
+        "cost",
+        "token",
+        "resource",
+        "usage",
+        "consumption",
+        "efficiency",
+        "expensive",
+    }
 
     def __init__(self, energy_tracker: Any = None) -> None:
         super().__init__()
@@ -386,6 +436,7 @@ class EnergyStatusTool(Tool):
 # Tool 7: concept_query — Semantic Knowledge Search
 # ---------------------------------------------------------------------------
 
+
 class ConceptQueryTool(Tool):
     """Search semantic knowledge base for concepts and relationships."""
 
@@ -402,8 +453,18 @@ class ConceptQueryTool(Tool):
         "relationship_type": (str, None),
         "limit": (int, 10),
     }
-    MANUAL_KEYWORDS = {"concept", "know", "knowledge", "what", "define",
-                       "relationship", "related", "category", "semantic", "meaning"}
+    MANUAL_KEYWORDS = {
+        "concept",
+        "know",
+        "knowledge",
+        "what",
+        "define",
+        "relationship",
+        "related",
+        "category",
+        "semantic",
+        "meaning",
+    }
 
     def __init__(self, atl: Any = None) -> None:
         super().__init__()
@@ -423,18 +484,21 @@ class ConceptQueryTool(Tool):
                     rel_type=kwargs.get("relationship_type"),
                     limit=limit,
                 )
-                return ToolResult(success=True, output={
-                    "concept_id": kwargs["concept_id"],
-                    "relationships": [
-                        {
-                            "target_id": tid,
-                            "type": rel.relationship_type,
-                            "weight": round(rel.weight, 3),
-                            "confidence": round(rel.confidence, 3),
-                        }
-                        for tid, rel in rels
-                    ],
-                })
+                return ToolResult(
+                    success=True,
+                    output={
+                        "concept_id": kwargs["concept_id"],
+                        "relationships": [
+                            {
+                                "target_id": tid,
+                                "type": rel.relationship_type,
+                                "weight": round(rel.weight, 3),
+                                "confidence": round(rel.confidence, 3),
+                            }
+                            for tid, rel in rels
+                        ],
+                    },
+                )
             except Exception as e:
                 return ToolResult(success=False, error=f"Relationship query failed: {e}")
 
@@ -458,6 +522,7 @@ class ConceptQueryTool(Tool):
 # Tool 8: scene_summary — Visual Scene
 # ---------------------------------------------------------------------------
 
+
 class SceneSummaryTool(Tool):
     """Get a summary of the current visual scene."""
 
@@ -470,8 +535,19 @@ class SceneSummaryTool(Tool):
         "top_n": (int, 5),
         "include_attention": (bool, True),
     }
-    MANUAL_KEYWORDS = {"see", "look", "scene", "visible", "object",
-                       "detect", "salient", "novel", "attention", "focus", "gaze"}
+    MANUAL_KEYWORDS = {
+        "see",
+        "look",
+        "scene",
+        "visible",
+        "object",
+        "detect",
+        "salient",
+        "novel",
+        "attention",
+        "focus",
+        "gaze",
+    }
 
     def __init__(self, salience_network: Any = None, attention_network: Any = None) -> None:
         super().__init__()
@@ -480,7 +556,9 @@ class SceneSummaryTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolResult:
         if self._salience is None and self._attention is None:
-            return ToolResult(success=True, output={"available": False, "reason": "No vision subsystems available (headless mode)"})
+            return ToolResult(
+                success=True, output={"available": False, "reason": "No vision subsystems available (headless mode)"}
+            )
 
         result: dict[str, Any] = {"timestamp": time.time()}
         top_n = min(int(kwargs.get("top_n", 5)), 15)
@@ -506,6 +584,7 @@ class SceneSummaryTool(Tool):
 # Tool 9: similarity_search — EC Similarity Queries
 # ---------------------------------------------------------------------------
 
+
 class SimilaritySearchTool(Tool):
     """Find similar situations via the Entorhinal Cortex."""
 
@@ -521,8 +600,7 @@ class SimilaritySearchTool(Tool):
         "context": (dict, None),
         "limit": (int, 5),
     }
-    MANUAL_KEYWORDS = {"similar", "like", "related", "comparable", "same",
-                       "analogy", "pattern", "match", "familiar"}
+    MANUAL_KEYWORDS = {"similar", "like", "related", "comparable", "same", "analogy", "pattern", "match", "familiar"}
 
     def __init__(self, ec: Any = None) -> None:
         super().__init__()
@@ -537,7 +615,8 @@ class SimilaritySearchTool(Tool):
         try:
             if kwargs.get("memory_id"):
                 results = self._ec.find_similar_by_memory(
-                    memory_id=kwargs["memory_id"], k=limit,
+                    memory_id=kwargs["memory_id"],
+                    k=limit,
                 )
             elif kwargs.get("tool_name"):
                 results = self._ec.find_similar_situations_for_action(
@@ -548,24 +627,28 @@ class SimilaritySearchTool(Tool):
                 # Convert (memory_id, SituationSignature) to (memory_id, score)
                 results = [(mid, 1.0) for mid, _sig in results]
             else:
-                return ToolResult(success=True, output={
-                    "message": "Provide either tool_name or memory_id to search.",
-                })
+                return ToolResult(
+                    success=True,
+                    output={
+                        "message": "Provide either tool_name or memory_id to search.",
+                    },
+                )
         except Exception as e:
             return ToolResult(success=False, error=f"Similarity search failed: {e}")
 
-        return ToolResult(success=True, output={
-            "count": len(results),
-            "similar": [
-                {"memory_id": mid, "similarity": round(score, 3)}
-                for mid, score in results
-            ],
-        })
+        return ToolResult(
+            success=True,
+            output={
+                "count": len(results),
+                "similar": [{"memory_id": mid, "similarity": round(score, 3)} for mid, score in results],
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
 # Tool 10: system_stats — Aggregate Health Summary
 # ---------------------------------------------------------------------------
+
 
 class SystemStatsTool(Tool):
     """Aggregate health summary of all biological subsystems."""
@@ -576,8 +659,7 @@ class SystemStatsTool(Tool):
         "causal link stats, energy usage, pain history, and learning progress."
     )
     input_schema = {}
-    MANUAL_KEYWORDS = {"status", "health", "stats", "system", "summary",
-                       "overview", "diagnostic", "how", "doing"}
+    MANUAL_KEYWORDS = {"status", "health", "stats", "system", "summary", "overview", "diagnostic", "how", "doing"}
 
     def __init__(
         self,
@@ -638,6 +720,7 @@ class SystemStatsTool(Tool):
 # ---------------------------------------------------------------------------
 # Output formatters
 # ---------------------------------------------------------------------------
+
 
 def _format_episodic_memory(m: Any) -> dict[str, Any]:
     """Format an EpisodicMemory for LLM consumption."""

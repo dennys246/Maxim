@@ -45,9 +45,7 @@ class NumericalWorkspace:
         self.config = config or WorkspaceConfig()
 
         self._registers: dict[str, NumericalValue] = {}
-        self._history: collections.deque[dict[str, Any]] = collections.deque(
-            maxlen=self.config.history_limit
-        )
+        self._history: collections.deque[dict[str, Any]] = collections.deque(maxlen=self.config.history_limit)
 
     def store(self, name: str, value: float | list[float], source: str = "") -> None:
         """Store a named value. IPS auto-categorizes magnitude."""
