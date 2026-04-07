@@ -588,6 +588,22 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("Failed to register AUT narrative tools: %s", e)
 
+    # --- Deregister robot-only tools in sim mode ---
+    # These tools return "No live robot connected" which confuses the LLM
+    # and wastes actions.  The AUT should use narrative tools instead.
+    _robot_tools = [
+        "focus_interests",
+        "track_target",
+        "move",
+        "novelty_track",
+        "maxim_command",
+        "autonomy_level",
+        "mode_switch",
+    ]
+    for _rt in _robot_tools:
+        if aut_registry.deregister(_rt):
+            logger.debug("Deregistered robot tool from AUT: %s", _rt)
+
     # Subscribe AUT PainBus to hippocampus (bus itself was created earlier
     # so the sandbox could route pain percepts through it).
     try:

@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 
 import threading
@@ -47,16 +45,23 @@ class Executor:
             self._running = (tool_name, time.time(), invocation_id)
 
         if self._tool_pain_bridge is not None:
-            self._tool_pain_bridge.record_tool_start(
-                tool_name, invocation_id, context={"params": params}
-            )
+            self._tool_pain_bridge.record_tool_start(tool_name, invocation_id, context={"params": params})
 
         try:
             tool = self.registry.get(tool_name)
         except KeyError:
             with self._lock:
                 self._running = None
-            result = ToolOutput(success=False, error=f"Tool not registered: {tool_name!r}")
+            error_msg = f"Tool not registered: {tool_name!r}."
+            suggestions = self.registry.find_similar(tool_name, limit=3)
+            if suggestions:
+                error_msg += f" Did you mean: {', '.join(suggestions)}?"
+            error_msg += (
+                " Only use tools from the Available Tools list."
+                " Use 'memory_recall' to remember, 'say' to speak aloud,"
+                " 'think' to reason."
+            )
+            result = ToolOutput(success=False, error=error_msg)
             self._report_failure(tool_name, invocation_id, result, params)
             return result
 
@@ -74,9 +79,7 @@ class Executor:
 
         if result.success:
             if self._tool_pain_bridge is not None:
-                self._tool_pain_bridge.record_tool_complete(
-                    tool_name, invocation_id, success=True
-                )
+                self._tool_pain_bridge.record_tool_complete(tool_name, invocation_id, success=True)
         else:
             self._report_failure(tool_name, invocation_id, result, params)
 
