@@ -274,6 +274,26 @@ SIMULATION_PERSONAS: dict[str, Persona] = {
             "- Edge cases discovered"
         ),
     ),
+    "dungeon_master": Persona(
+        name="dungeon_master",
+        description="Run D&D-style campaigns as bio-system stress tests",
+        focus="Drive the AUT through hand-authored narrative encounters with branching choices",
+        max_initiative=0.8,
+        context_prompt=(
+            "You are a Dungeon Master running a campaign for the AUT. "
+            "The campaign YAML defines encounters, NPCs, choices, and branches. "
+            "You do NOT improvise — you follow the campaign structure exactly.\n\n"
+            "Your turn loop:\n"
+            "1. Deliver the current encounter's scene text to the AUT\n"
+            "2. Wait for the AUT to respond with actions/dialogue\n"
+            "3. Classify which choice the AUT made\n"
+            "4. Apply effects (flags, dice rolls, state changes)\n"
+            "5. Follow the branch to the next encounter\n"
+            "6. Repeat until __END__\n\n"
+            "The DM runtime handles steps 1-6 automatically. Your role is to "
+            "compose rich narrative stimuli and interpret AUT responses."
+        ),
+    ),
 }
 
 DEFAULT_PERSONA = "adversarial"

@@ -228,6 +228,39 @@ class Entity:
                 result[name] = sensor.read()
         return result
 
+    # -- tree mutation (DM entity transfer) ------------------------------------
+
+    def reparent(self, new_parent: Entity) -> None:
+        """Move this entity to a new parent. Updates both parent references."""
+        if self.parent is not None:
+            self.parent.children.remove(self)
+        self.parent = new_parent
+        new_parent.children.append(self)
+
+    def detach(self) -> None:
+        """Remove this entity from its parent (drop/destroy)."""
+        if self.parent is not None:
+            self.parent.children.remove(self)
+            self.parent = None
+
+    # -- visibility (DM scene management) -------------------------------------
+
+    def reveal(self, name: str) -> None:
+        """Change a sensor or affordance visibility to 'visible'.
+
+        Used by DM runtime when conditions trigger disclosure
+        (insight check, examination, trust threshold).
+        """
+        self.metadata.setdefault("visibility", {})[name] = "visible"
+
+    def hide(self, name: str) -> None:
+        """Change a sensor or affordance visibility to 'hidden'."""
+        self.metadata.setdefault("visibility", {})[name] = "hidden"
+
+    def get_visibility(self, name: str) -> str:
+        """Get visibility for a sensor or affordance. Default: 'visible'."""
+        return self.metadata.get("visibility", {}).get(name, "visible")
+
     # -- repr ---------------------------------------------------------------
 
     def __repr__(self) -> str:

@@ -1,0 +1,122 @@
+# The Heist — Minimal DM Campaign (Slice 1)
+#
+# Tests: Hippocampus (episodic capture + recall), NAc (causal learning),
+#        PainBus (combat damage), choice classification, seeded dice.
+#
+# Structure: 3 encounters, 1 branch point, 2 NPCs, 1 dice check.
+
+campaign:
+  name: the_heist
+  goal: test memory recall and moral reasoning under pressure
+  seed: 42
+
+player_character:
+  name: derek
+  entity_type: character
+  metadata:
+    race: human
+    class: paladin
+    level: 3
+    backstory: "Former temple guard who quit after witnessing corruption."
+
+npcs:
+  marta:
+    entity_type: npc
+    metadata:
+      race: half-elf
+      role: fence
+      persona_prompt: "Cautious, mercenary, respects cunning over force."
+  guard_captain:
+    entity_type: npc
+    metadata:
+      race: human
+      role: elite_guard
+      persona_prompt: "Duty-bound, suspicious of strangers, no-nonsense."
+
+acts:
+  - name: setup
+    encounters: [tavern_meet]
+  - name: execution
+    encounters: [vault]
+  - name: escape
+    encounters: [chase]
+
+encounters:
+  tavern_meet:
+    scene: >
+      You enter the Rusty Anchor tavern at dusk. The air is thick with
+      pipe smoke and the smell of stale ale. In the back corner, a
+      half-elf woman in a dark cloak watches you approach. She slides a
+      folded map across the table.
+
+      "The vault beneath the magistrate's tower. Unguarded between the
+      second and third bell. The combination changes weekly — this week
+      it's seven-three-nine. Memorize it."
+
+      She looks you dead in the eye. "Are you in, or do I find someone
+      with more nerve?"
+    active_npcs: [marta]
+    choices: [accept_job, decline, negotiate_pay]
+    branches:
+      accept_job: vault
+      decline: __END__
+      negotiate_pay: vault
+    on_choice:
+      negotiate_pay:
+        flags: [haggler]
+    dialogue_hints:
+      default: "Keep your voice down. We don't know you."
+      haggler: "You drive a hard bargain. Fine — double the pay."
+
+  vault:
+    scene: >
+      The magistrate's tower basement is cold and damp. Before you
+      stands the vault door — iron-bound oak with a combination lock.
+      Three dials, each numbered 0-9.
+
+      From the shadows, a voice barks: "Halt! State your business."
+      The guard captain steps forward, hand on his halberd.
+
+      You remember Marta's words from the tavern. The combination.
+      But there's the guard to deal with first.
+    active_npcs: [guard_captain]
+    choices: [fight, stealth, bribe]
+    branches:
+      fight: chase
+      stealth: chase
+      bribe: chase
+    dice:
+      stealth:
+        roll: "1d20"
+        dc: 14
+        success_flag: clean_escape
+    dialogue_hints:
+      default: "State your business or face the consequences."
+
+  chase:
+    scene: >
+      Alarms ring through the tower. Whether you fought, snuck past,
+      or bribed the guard, the clock is ticking. You grab what you can
+      from the vault and sprint for the exit.
+
+      The streets outside are dark. You hear boots behind you — more
+      guards, drawn by the alarm. You need to lose them in the alleys
+      before reaching Marta's safehouse.
+
+      Reflect: What do you remember about this heist? Who helped you?
+      What was the vault combination? What happened with the guard?
+    choices: [flee, hide, stand_ground]
+    branches:
+      flee: __END__
+      hide: __END__
+      stand_ground: __END__
+
+expectations:
+  hippocampus:
+    min_episodic_captures: 5
+    recall_hit_on: ["marta", "vault"]
+  nac:
+    min_observations: 3
+    prediction_confidence_above: 0.3
+  pain:
+    min_signals: 0

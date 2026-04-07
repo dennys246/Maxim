@@ -763,8 +763,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         _is_legacy_research = _sim_val_lower == "research"
         _is_legacy_benchmark = _sim_val_lower == "benchmark"
         _is_interactive = _sim_val_lower == "interactive"
+        _is_dm = _sim_val_lower == "dm"
         _is_goal_string = not (
-            _is_yaml or _is_legacy_agent or _is_legacy_research or _is_legacy_benchmark or _is_interactive
+            _is_yaml or _is_legacy_agent or _is_legacy_research or _is_legacy_benchmark or _is_interactive or _is_dm
         )
 
         # If --research flag is set with a goal string, use research mode
@@ -813,6 +814,37 @@ def main(argv: Sequence[str] | None = None) -> int:
                     aut_model=getattr(args, "aut_model", None),
                 )
                 sys.exit(0 if result.finish_reason != "error" else 1)
+
+        # ── DM campaign mode ──
+        if _is_dm:
+            # Next positional arg should be the campaign YAML path
+            campaign_path = getattr(args, "sim_goal", None)
+            if not campaign_path:
+                print("Error: --sim dm requires a campaign YAML path")
+                print("Usage: maxim --sim dm scenarios/campaigns/heist_v1.yaml")
+                sys.exit(1)
+
+            from maxim.simulation.dm_schema import load_campaign, validate_campaign
+            from maxim.simulation.orchestrator import start_simulation_mode
+
+            campaign = load_campaign(campaign_path)
+            errors = validate_campaign(campaign)
+            if errors:
+                print(f"Campaign validation failed ({len(errors)} errors):")
+                for e in errors:
+                    print(f"  - {e}")
+                sys.exit(1)
+
+            debug = bool(_debug_raw)
+            result = start_simulation_mode(
+                goal=f"dm:{campaign.name}",
+                persona="dungeon_master",
+                debug=debug,
+                no_sim_env=bool(getattr(args, "no_sim_env", False)),
+                sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+                dm_campaign=campaign,
+            )
+            sys.exit(0 if result.finish_reason != "error" else 1)
 
         # ── Legacy: agent mode (deprecated alias) ──
         _sim_agent = _is_legacy_agent

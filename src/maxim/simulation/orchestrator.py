@@ -261,6 +261,7 @@ def start_simulation_mode(
     sandbox_network: str = "none",
     aut_model: str | None = None,
     pre_campaign_turns: list[dict[str, Any]] | None = None,
+    dm_campaign: Any = None,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -1094,6 +1095,41 @@ def start_simulation_mode(
     aut_thread.start()
 
     # ── Pre-campaign: inject turns directly through bridge ───────────────
+    # ── DM Campaign mode — DM runtime drives encounters ────────────────────
+    # When dm_campaign is provided, the DM runtime takes over instead of
+    # the orchestrator LLM. It drives encounters through the bridge, classifies
+    # AUT choices, resolves dice, and manages campaign state.
+    dm_rollup: dict[str, Any] = {}
+    if dm_campaign is not None:
+        import time as _dm_time
+
+        print(f"\n  DM Campaign: {dm_campaign.name}")
+        print(f"  Goal: {dm_campaign.goal}")
+        print(f"  Encounters: {len(dm_campaign.encounters)}")
+        print(f"  Seed: {dm_campaign.seed}")
+        _dm_time.sleep(1.0)  # Let AUT start up
+
+        try:
+            from maxim.simulation.dm_runtime import DMRuntime
+
+            dm = DMRuntime(
+                campaign=dm_campaign,
+                bridge=bridge,
+                llm_router=llm_router,
+            )
+            dm_state = dm.run()
+            dm_rollup = dm.get_rollup()
+
+            print(f"\n  DM Campaign complete: {dm_state.turn_count} turns, "
+                  f"{len(dm_state.choices_made)} choices, "
+                  f"{len(dm_state.dice_rolls)} dice rolls")
+            print(f"  Finish: {dm_state.finish_reason}")
+        except Exception as e:
+            logger.error("DM Campaign failed: %s", e)
+            print(f"\n  DM Campaign error: {e}")
+            dm_rollup = {"error": str(e)}
+
+    # ── Pre-campaign turn delivery ────────────────────────────────────────
     # When campaign turns are provided, we bypass the orchestrator LLM for
     # turn delivery.  The bridge sends each turn to the AUT as a raw percept,
     # waits for the response, and records the result.  This avoids JSON
@@ -1626,7 +1662,7 @@ def start_simulation_mode(
         duration_s=duration,
         finish_reason=finish_reason,
         summary=report.llm_summary,
-        campaign_analysis=campaign_analysis if pre_campaign_turns else {},
+        campaign_analysis=campaign_analysis if pre_campaign_turns else dm_rollup,
         introspector=aut_introspector,
         tool_stats=_tool_stats,
         actions=_actions,

@@ -1790,9 +1790,38 @@ DM MVP doesn't need any mesh infrastructure — it runs single-AUT with local bi
 
 **All infrastructure prerequisites are satisfied.** The remaining gate is the [Bio-System Wiring Hardening](biosystem_wiring_hardening.md) plan. Phase 1 (critical wiring) is already shipped.
 
-**Recommended sequence:**
-1. ~~**Bio-System Wiring Hardening** — **ALL SHIPPED** (Phases 1-5, 7-8)~~
-2. **Choice classifier spike** (~0.5 day) — Validate ATL+NAc classification accuracy. NAc actually learns now (hardening Phase 1.3 wired it).
+**Implementation slices** (vertical — each produces a runnable campaign):
+
+**Slice 1: Minimum Playable Campaign (~3 days)**
+1. `Entity.reparent()` + `Entity.reveal()`/`hide()` in sem.py (~25 LOC)
+2. `dm_schema.py` — CampaignDef, Act, EncounterDef, DiceCheck + YAML loader + validator (~120 LOC)
+3. `dm_runtime.py` (stripped) — state machine, branching, seeded dice, LLM-only choice classifier, NPC dialogue via NarrativeModulator (~150 LOC)
+4. `dungeon_master` persona in personas.py (~20 LOC)
+5. Orchestrator wiring — `--sim dm <path>`, entity tool registration (~40 LOC)
+6. Heist campaign YAML (minimal: 3 encounters, 2 NPCs, 1 weapon) (~100 LOC)
+7. Tests for schema + runtime (~120 LOC)
+
+**Ship gate:** `maxim --sim dm scenarios/campaigns/heist_v1.yaml` runs end-to-end.
+
+**Slice 2: Cascade DAG + Scene Management (~2 days)**
+8. Cascade spec (reads/writes/side_effects on affordances, topological resolution)
+9. SceneState — enter_encounter() registers/deregisters entity tools
+10. Entity transfer — reparent cascade write, tool regeneration
+11. Visibility system — visible/hidden/contextual + reveal_when
+12. Poisoned Crown campaign YAML
+
+**Slice 3: Showcase Campaigns + Polish (~2 days)**
+13. Arena campaign (cascade stress test)
+14. Darkened Cavern campaign (sensory ablation)
+15. Bio-system expectations checker
+16. Pipeline health checks per campaign
+17. Component database (deferred — nice to have, not blocking)
+
+**Deferred:**
+- Choice classifier spike → start with LLM-only, optimize with ATL/NAc later if latency is a problem
+- `--dm-ablate` CLI flag → manual for now
+- Component database → after MVP validates
+- Multi-AUT party mode → requires Agent Mesh P2+
 3. **DM schema + validator** (~1 day) — CampaignDef, CascadeSpec, validator rules
 4. **DM runtime + entity wiring** (~1 day) — state machine, cascade resolver, expectation + pipeline health checker
 5. **Campaign 1: The Heist** + persona + orchestrator + end-to-end run (~1 day)
