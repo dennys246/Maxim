@@ -25,6 +25,7 @@ class AgentProfile:
     role: str  # Functional role ("researcher", "writer", "reviewer", "aut", "orchestrator")
     capabilities: list[str] = field(default_factory=list)  # Tool names or skill names
     personality: str = ""  # One-line persona hint for LLM prompts
+    entity_type: str = "agent"  # "agent", "aut", "orchestrator", "npc", "player"
     agent_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     started_at: float = field(default_factory=time.time)
 
@@ -35,12 +36,18 @@ class AgentProfile:
             return self.nickname
         return self.nickname[:17] + "..."
 
+    @property
+    def log_prefix(self) -> str:
+        """Entity-aware log prefix. e.g. ``[Verath]``."""
+        return f"[{self.display_name}]"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "nickname": self.nickname,
             "role": self.role,
             "capabilities": self.capabilities,
             "personality": self.personality,
+            "entity_type": self.entity_type,
             "agent_id": self.agent_id,
             "started_at": self.started_at,
         }
@@ -52,6 +59,7 @@ class AgentProfile:
             role=d["role"],
             capabilities=d.get("capabilities", []),
             personality=d.get("personality", ""),
+            entity_type=d.get("entity_type", "agent"),
             agent_id=d.get("agent_id", uuid.uuid4().hex[:12]),
             started_at=d.get("started_at", time.time()),
         )
