@@ -1131,6 +1131,20 @@ def start_simulation_mode(
                   f"{len(dm_state.choices_made)} choices, "
                   f"{len(dm_state.dice_rolls)} dice rolls")
             print(f"  Finish: {dm_state.finish_reason}")
+
+            # Check bio-system expectations
+            exp_results = dm.check_expectations(
+                hippocampus=aut_hippocampus,
+                nac=aut_nac,
+                scn=getattr(aut_memory_hub, "scn", None) if aut_memory_hub else None,
+                pain_bus=aut_pain_bus,
+            )
+            dm_rollup["bio_systems"] = exp_results
+            if exp_results.get("checks"):
+                passed = sum(1 for c in exp_results["checks"].values() if c.get("pass"))
+                total = len(exp_results["checks"])
+                status = "ALL PASS" if exp_results["all_pass"] else f"{passed}/{total} passed"
+                print(f"  Bio-system expectations: {status}")
         except Exception as e:
             logger.error("DM Campaign failed: %s", e)
             print(f"\n  DM Campaign error: {e}")

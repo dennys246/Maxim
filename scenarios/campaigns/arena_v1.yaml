@@ -1,0 +1,199 @@
+# The Arena — DM Campaign (Slice 3)
+#
+# Tests: Cerebellum (rapid prediction learning), PainBus (sustained pain),
+#        NAc (fast causal learning, RPE spikes), cascade resolution
+#        (weapon degradation, equipment failure under load).
+#
+# Structure: 1 act, 5 encounters. Linear gauntlet with escalating difficulty.
+# Deliberately hostile to the bio-stack — pushes learning to operational limits.
+
+campaign:
+  name: the_arena
+  goal: stress test bio-system learning under repeated combat
+  seed: 99
+
+player_character:
+  name: gladiator
+  entity_type: character
+  metadata:
+    race: human
+    class: fighter
+    level: 4
+    backstory: "Arena champion forced into a gauntlet to win freedom."
+
+npcs:
+  weak_opponent:
+    entity_type: npc
+    metadata:
+      race: human
+      role: arena_fighter
+      persona_prompt: "Nervous rookie. Predictable attacks."
+    sensors:
+      hp: {unit: points, range: [0, 15], initial: 15}
+      morale: {unit: ratio, range: [0, 1], initial: 0.6}
+
+  shielded_opponent:
+    entity_type: npc
+    metadata:
+      race: dwarf
+      role: arena_veteran
+      persona_prompt: "Experienced. Uses shield effectively. Taunts opponents."
+    sensors:
+      hp: {unit: points, range: [0, 25], initial: 25}
+      shield_durability: {unit: ratio, range: [0, 1], initial: 0.9}
+
+  poisoner:
+    entity_type: npc
+    metadata:
+      race: elf
+      role: arena_assassin
+      persona_prompt: "Fast, fights dirty. Uses poison on blades."
+    sensors:
+      hp: {unit: points, range: [0, 18], initial: 18}
+
+  boss:
+    entity_type: npc
+    metadata:
+      race: orc
+      role: arena_champion
+      persona_prompt: "Massive, powerful. Fights to kill, not to win."
+    sensors:
+      hp: {unit: points, range: [0, 40], initial: 40}
+      rage: {unit: ratio, range: [0, 1], initial: 0.3}
+
+acts:
+  - name: gauntlet
+    encounters: [round_1, round_2, round_3, round_4, round_5]
+
+encounters:
+  round_1:
+    scene: >
+      The arena gates open. Sand crunches under your boots. The crowd
+      roars. Your first opponent enters — a nervous young fighter,
+      grip too tight on his sword.
+
+      This is a warm-up. Learn the rhythm of combat. Study how your
+      attacks land, how your stamina drains, how your weapon holds up.
+
+      What do you do? You can attack head-on, try to defend and study
+      his patterns, or attempt to end it quickly with a power strike.
+    active_npcs: [weak_opponent]
+    choices: [attack, defend, power_strike]
+    branches:
+      attack: round_2
+      defend: round_2
+      power_strike: round_2
+    dialogue_hints:
+      default: "The crowd cheers as you enter the ring."
+
+  round_2:
+    scene: >
+      Round two. A similar opponent, slightly more confident. The
+      crowd is settling in.
+
+      Your weapon should feel familiar now. Your muscles remember the
+      weight. Think about what you learned in round one — did your
+      attacks land cleanly? Did you tire quickly?
+
+      Same choices. But this time, you know the rhythm.
+    active_npcs: [weak_opponent]
+    choices: [attack, defend, power_strike]
+    branches:
+      attack: round_3
+      defend: round_3
+      power_strike: round_3
+
+  round_3:
+    scene: >
+      The crowd goes quiet. A dwarf enters the arena carrying a
+      massive shield. He's covered in scars — this is no rookie.
+
+      "Come on then," he taunts, banging his axe against the shield.
+
+      Your previous strategies may not work here. The shield absorbs
+      damage differently. You need to adapt. Think about what
+      happened in the first two rounds and adjust.
+
+      You can try to overpower his defense, use feints to get around
+      the shield, or wear him down with sustained pressure.
+    active_npcs: [shielded_opponent]
+    choices: [overpower, feint, sustain_pressure]
+    branches:
+      overpower: round_4
+      feint: round_4
+      sustain_pressure: round_4
+    dice:
+      feint:
+        roll: "1d20"
+        dc: 13
+        success_flag: shield_bypassed
+    dialogue_hints:
+      default: "The dwarf laughs. 'That all you got?'"
+      shield_bypassed: "The dwarf stumbles — your feint worked."
+
+  round_4:
+    scene: >
+      An elf enters the arena, moving unnervingly fast. You notice a
+      green sheen on her blade — poison.
+
+      The crowd murmurs. This fighter doesn't play fair.
+
+      You feel a scratch on your arm — she's already nicked you.
+      A burning sensation spreads. Your vision blurs slightly.
+
+      You're poisoned. Each turn, you'll feel weaker. You need to
+      end this fast or find a way to neutralize the poison.
+
+      Fight through the poison, try to disarm her, or call for
+      a healer (forfeit the round).
+    active_npcs: [poisoner]
+    choices: [fight_through, disarm, forfeit]
+    branches:
+      fight_through: round_5
+      disarm: round_5
+      forfeit: round_5
+    on_choice:
+      fight_through:
+        flags: [poisoned, fought_through_pain]
+      disarm:
+        flags: [disarmed_poisoner]
+
+  round_5:
+    scene: >
+      The final round. The arena champion enters — an orc twice your
+      size, carrying a weapon that looks like it was torn from a
+      siege engine.
+
+      The crowd is on its feet. This is the fight that matters.
+
+      Think about everything you've learned across all five rounds:
+      - How does combat work? What did you learn about attacking?
+      - How did the shield fight change your approach?
+      - What happened with the poison? How did it affect you?
+      - What is your weapon's condition? Is it still sharp?
+
+      This is your moment. Fight with everything you have, try to
+      outsmart the champion, or make a dramatic last stand.
+    active_npcs: [boss]
+    choices: [all_out_attack, tactical_fight, last_stand]
+    branches:
+      all_out_attack: __END__
+      tactical_fight: __END__
+      last_stand: __END__
+
+expectations:
+  hippocampus:
+    min_episodic_captures: 10
+    recall_hit_on: ["arena", "combat"]
+  nac:
+    min_observations: 10
+    prediction_confidence_above: 0.4
+    rpe_events: 3
+  cerebellum:
+    min_forward_models: 3
+    confidence_above: 0.3
+  pain:
+    min_signals: 1
+    types_seen: [EXTERNAL_SIGNAL]
+  salience:
+    novelty_decay_observed: true

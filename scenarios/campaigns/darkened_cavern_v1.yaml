@@ -1,0 +1,233 @@
+# The Darkened Cavern — DM Campaign (Slice 3)
+#
+# Tests: SensoryGate (entity-modulated perception), sensory ablation
+#        (blindness/deafness), Cerebellum (prediction under sensory change),
+#        PainBus (failure mode fires on acuity threshold), novelty decay.
+#
+# Structure: 3 acts, 6 encounters. PC progressively loses senses.
+
+campaign:
+  name: the_darkened_cavern
+  goal: test perception under sensory deprivation and recovery
+  seed: 55
+
+player_character:
+  name: spelunker
+  entity_type: character
+  metadata:
+    race: human
+    class: ranger
+    level: 3
+    backstory: "Cave explorer hired to map the Crystal Depths."
+
+npcs:
+  cave_guide:
+    entity_type: npc
+    metadata:
+      race: goblin
+      role: cave_guide
+      persona_prompt: "Cheerful but cautious. Knows the caves well. Warns about dangers."
+    sensors:
+      trust: {unit: ratio, range: [0, 1], initial: 0.5}
+
+  whisperer:
+    entity_type: npc
+    metadata:
+      race: unknown
+      role: cave_creature
+      persona_prompt: "Attacks through sound — psychic screams that damage hearing."
+    sensors:
+      hp: {unit: points, range: [0, 30], initial: 30}
+
+acts:
+  - name: descent
+    encounters: [cave_entrance, crystal_chamber]
+  - name: darkness
+    encounters: [flash_trap, echoing_tunnels]
+  - name: recovery
+    encounters: [healing_spring, boss_fight]
+
+encounters:
+  cave_entrance:
+    scene: >
+      Bright morning light. The cave entrance is wide, decorated with
+      mineral deposits that glitter in the sun. Water drips from
+      stalactites. The air smells of wet stone and moss.
+
+      Your goblin guide adjusts his lantern. "Stay close. The upper
+      caves are safe — crystal formations, good footing. But deeper
+      down..." He trails off.
+
+      You can see clearly. You can hear the echo of dripping water.
+      You can smell the damp earth. All your senses are sharp.
+
+      How do you proceed? Carefully map the entrance, rush ahead
+      to the crystal formations, or ask the guide about dangers below.
+    active_npcs: [cave_guide]
+    choices: [map_carefully, rush_ahead, ask_about_dangers]
+    branches:
+      map_carefully: crystal_chamber
+      rush_ahead: crystal_chamber
+      ask_about_dangers: crystal_chamber
+    on_choice:
+      ask_about_dangers:
+        flags: [warned_about_traps]
+    dialogue_hints:
+      default: "Beautiful up here, isn't it? Wait till you see the crystals."
+      warned_about_traps: "Watch for flash-crystals deeper down. They blind you."
+
+  crystal_chamber:
+    scene: >
+      The crystal chamber is breathtaking. Massive quartz formations
+      catch the lantern light and scatter rainbows across the walls.
+      It's completely silent — no dripping, no wind. Just crystal.
+
+      You notice the formations are arranged in patterns. Some emit
+      a faint hum when touched. The guide watches you explore.
+
+      "Beautiful, aren't they?" he whispers. "But don't touch the
+      red ones. Those are the flash-crystals."
+
+      Examine the crystal patterns, listen for the humming, or
+      continue deeper into the caves.
+    active_npcs: [cave_guide]
+    choices: [examine_crystals, listen_carefully, continue_deeper]
+    branches:
+      examine_crystals: flash_trap
+      listen_carefully: flash_trap
+      continue_deeper: flash_trap
+    on_choice:
+      examine_crystals:
+        flags: [studied_crystals]
+      listen_carefully:
+        flags: [heard_humming]
+
+  flash_trap:
+    scene: >
+      FLASH! A blinding explosion of light erupts from a crystal you
+      accidentally triggered. Your vision goes white, then dark.
+
+      You can't see anything. The world is blackness.
+
+      Your guide shouts somewhere to your left — you can hear him,
+      but you can't see him. "Stay still! It'll pass... maybe."
+
+      You're blind. You must navigate by sound, touch, and memory.
+      What do you remember about the layout? Can you hear the guide?
+
+      Call out to the guide, try to feel your way forward, or
+      stay still and wait for vision to return.
+    active_npcs: [cave_guide]
+    choices: [call_out, feel_forward, stay_still]
+    branches:
+      call_out: echoing_tunnels
+      feel_forward: echoing_tunnels
+      stay_still: echoing_tunnels
+    on_choice:
+      call_out:
+        flags: [used_sound_navigation]
+      stay_still:
+        flags: [patient_recovery]
+
+  echoing_tunnels:
+    scene: >
+      You move through the tunnels blind, guided only by sound.
+      Every footstep echoes. Water drips in patterns you're starting
+      to recognize — louder near the left wall, softer near the right.
+
+      The guide's voice bounces off the walls. "Left here. No, your
+      other left. Feel the wall — there's a groove."
+
+      Your hearing is becoming more acute. Without sight, sound
+      becomes your primary sense. You notice details you missed
+      before — the difference between stone types by their echo,
+      the distance to walls by how your breathing reflects.
+
+      Follow the sound patterns, trust the guide completely, or
+      try to remember the map from the entrance.
+    active_npcs: [cave_guide]
+    choices: [follow_sounds, trust_guide, use_memory]
+    branches:
+      follow_sounds: healing_spring
+      trust_guide: healing_spring
+      use_memory: healing_spring
+    on_choice:
+      follow_sounds:
+        flags: [adapted_to_blindness]
+      use_memory:
+        flags: [good_spatial_memory]
+
+  healing_spring:
+    scene: >
+      You stumble into a warm cavern. Steam rises from a luminous
+      pool — you can feel the heat, even if you can't see well.
+
+      Wait — you CAN see. Faintly. The pool's glow is visible
+      through your damaged eyes. Shapes are blurry but present.
+
+      The guide leads you to the water. "Drink. It heals. Old
+      cave magic."
+
+      Your vision is partially returning. The world is fuzzy but
+      present. Colors are muted. You can make out the guide's shape.
+
+      How much has changed since you went blind? What do you remember
+      from navigating in darkness?
+
+      Drink from the spring, rest beside it, or press on immediately.
+    active_npcs: [cave_guide]
+    choices: [drink, rest, press_on]
+    branches:
+      drink: boss_fight
+      rest: boss_fight
+      press_on: boss_fight
+    on_choice:
+      drink:
+        flags: [healed_partially]
+      rest:
+        flags: [rested, stamina_recovered]
+
+  boss_fight:
+    scene: >
+      A piercing shriek fills the cavern. The Whisperer emerges from
+      the darkness — a pale creature with no eyes, hunting by sound.
+
+      Its screams are weapons. Each shriek makes your ears ring,
+      your balance falter. Your hearing — the sense that saved you
+      in the tunnels — is now under attack.
+
+      Your vision is still recovering. Your hearing is degrading
+      from the screams. You're fighting with compromised senses.
+
+      Think about your journey:
+      - What did the crystal chamber teach you?
+      - How did you navigate when blind?
+      - What senses do you have left now?
+      - How do you fight something that attacks through sound?
+
+      Fight it head-on, try to outsmart it using what you learned
+      about the cave acoustics, or retreat to the healing spring.
+    active_npcs: [whisperer]
+    choices: [fight_head_on, use_acoustics, retreat]
+    branches:
+      fight_head_on: __END__
+      use_acoustics: __END__
+      retreat: __END__
+    on_choice:
+      use_acoustics:
+        flags: [used_cave_knowledge]
+
+expectations:
+  hippocampus:
+    min_episodic_captures: 10
+    recall_hit_on: ["cave", "blind", "crystal"]
+  nac:
+    min_observations: 5
+    prediction_confidence_above: 0.3
+  pain:
+    min_signals: 1
+    types_seen: [EXTERNAL_SIGNAL]
+  scn:
+    temporal_bins_used: 2
+  salience:
+    novelty_decay_observed: true

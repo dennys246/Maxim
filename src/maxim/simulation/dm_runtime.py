@@ -395,6 +395,99 @@ class DMRuntime:
         except Exception:
             pass
 
+    def check_expectations(
+        self,
+        hippocampus: Any = None,
+        nac: Any = None,
+        scn: Any = None,
+        pain_bus: Any = None,
+    ) -> dict[str, Any]:
+        """Check bio-system expectations from campaign YAML.
+
+        Returns a dict with per-system pass/fail results.
+        """
+        expectations = self._campaign.expectations
+        if not expectations:
+            return {"all_pass": True, "checks": {}}
+
+        checks: dict[str, dict[str, Any]] = {}
+
+        # Hippocampus checks
+        if "hippocampus" in expectations and hippocampus is not None:
+            exp = expectations["hippocampus"]
+            mem_count = len(hippocampus)
+            min_captures = exp.get("min_episodic_captures", 0)
+            checks["hippocampus_captures"] = {
+                "expected": min_captures,
+                "actual": mem_count,
+                "pass": mem_count >= min_captures,
+            }
+
+        # NAc checks
+        if "nac" in expectations and nac is not None:
+            exp = expectations["nac"]
+            nac_stats = nac.stats()
+            total_obs = nac_stats.get("total_observations", 0)
+            min_obs = exp.get("min_observations", 0)
+            checks["nac_observations"] = {
+                "expected": min_obs,
+                "actual": total_obs,
+                "pass": total_obs >= min_obs,
+            }
+            if "prediction_confidence_above" in exp:
+                threshold = exp["prediction_confidence_above"]
+                # Check if any link has confidence above threshold
+                max_conf = 0.0
+                for links in nac._links.values():
+                    for link in links:
+                        max_conf = max(max_conf, link.confidence)
+                checks["nac_confidence"] = {
+                    "expected": threshold,
+                    "actual": max_conf,
+                    "pass": max_conf >= threshold,
+                }
+
+        # SCN checks
+        if "scn" in expectations and scn is not None:
+            exp = expectations["scn"]
+            scn_stats = scn.stats()
+            bins_used = scn_stats.get("circadian_bins_used", 0)
+            min_bins = exp.get("temporal_bins_used", 0)
+            checks["scn_bins"] = {
+                "expected": min_bins,
+                "actual": bins_used,
+                "pass": bins_used >= min_bins,
+            }
+
+        # Pain checks
+        if "pain" in expectations and pain_bus is not None:
+            exp = expectations["pain"]
+            pain_stats = pain_bus.get_stats()
+            total_pain = pain_stats.get("total_published", 0)
+            min_signals = exp.get("min_signals", 0)
+            checks["pain_signals"] = {
+                "expected": min_signals,
+                "actual": total_pain,
+                "pass": total_pain >= min_signals,
+            }
+
+        all_pass = all(c.get("pass", True) for c in checks.values())
+
+        result = {"all_pass": all_pass, "checks": checks}
+
+        # Log results
+        for name, check in checks.items():
+            icon = "✓" if check["pass"] else "✗"
+            log.info(
+                "DM Expectation %s %s: expected=%s actual=%s",
+                icon,
+                name,
+                check["expected"],
+                check["actual"],
+            )
+
+        return result
+
     def get_rollup(self) -> dict[str, Any]:
         """Generate campaign rollup for report.json."""
         # Include entity snapshots if scene state exists
