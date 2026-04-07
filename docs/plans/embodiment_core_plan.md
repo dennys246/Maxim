@@ -284,7 +284,8 @@ This plan dogfoods Maxim's testing harness for Maxim's own cognitive-architectur
 | 0 (MVP + ATL grounding) | 400 | 2 | **Yes — gate** |
 | 1 (Cerebellum) | 400 | 2 | **Yes** |
 | 2 (Structured failures) | 150 | 1 | **Yes** |
-| **Total** | **950** | **5** | |
+| 3 (Hardware adapter) | 300 | 1 | After 0-2 validated |
+| **Total** | **1,250** | **6** | |
 
 Three phases, one hypothesis: **ATL-grounded + Cerebellum-cached LLM percepts produce consistent-enough signals for NAc to learn stable causal links.**
 
