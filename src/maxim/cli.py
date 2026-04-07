@@ -727,39 +727,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             print('  Usage: maxim --sim agent --goal "continue" --resume-sim SESSION_ID')
             sys.exit(1)
 
-    # ── DM Campaign mode (--dm flag) ────────────────────────────────────────
-    dm_path = getattr(args, "dm", None)
-    if dm_path is not None:
-        from pathlib import Path
-
-        from maxim.simulation.dm_schema import load_campaign, validate_campaign
-        from maxim.simulation.orchestrator import start_simulation_mode
-
-        dm_path = Path(dm_path)
-        if not dm_path.exists():
-            print(f"Error: campaign file not found: {dm_path}")
-            sys.exit(1)
-
-        campaign = load_campaign(dm_path)
-        errors = validate_campaign(campaign)
-        if errors:
-            print(f"Campaign validation failed ({len(errors)} errors):")
-            for e in errors:
-                print(f"  - {e}")
-            sys.exit(1)
-
-        _debug_raw = getattr(args, "debug", None)
-        debug = bool(_debug_raw)
-        result = start_simulation_mode(
-            goal=f"dm:{campaign.name}",
-            persona="dungeon_master",
-            debug=debug,
-            no_sim_env=bool(getattr(args, "no_sim_env", False)),
-            sandbox_backend=getattr(args, "sandbox_backend", "auto"),
-            dm_campaign=campaign,
-        )
-        sys.exit(0 if result.finish_reason != "error" else 1)
-
     # Simulation mode if requested — runs full agentic pipeline with fake percepts
     if sim_path is not None:
         import json as _json
@@ -796,9 +763,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         _is_legacy_research = _sim_val_lower == "research"
         _is_legacy_benchmark = _sim_val_lower == "benchmark"
         _is_interactive = _sim_val_lower == "interactive"
-        _is_dm = _sim_val_lower == "dm"
         _is_goal_string = not (
-            _is_yaml or _is_legacy_agent or _is_legacy_research or _is_legacy_benchmark or _is_interactive or _is_dm
+            _is_yaml or _is_legacy_agent or _is_legacy_research or _is_legacy_benchmark or _is_interactive
         )
 
         # If --research flag is set with a goal string, use research mode
@@ -847,41 +813,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     aut_model=getattr(args, "aut_model", None),
                 )
                 sys.exit(0 if result.finish_reason != "error" else 1)
-
-        # ── DM campaign mode ──
-        if _is_dm:
-            # Campaign path via --campaign or --sim-goal
-            campaign_path = getattr(args, "campaign", None) or getattr(args, "sim_goal", None)
-            if not campaign_path:
-                print("Error: --sim dm requires a campaign YAML path")
-                print("Usage: maxim --sim dm --campaign scenarios/campaigns/heist_v1.yaml")
-                print("   or: maxim --sim dm --goal scenarios/campaigns/heist_v1.yaml")
-                sys.exit(1)
-            # Handle glob patterns (campaign flag may be a list)
-            if isinstance(campaign_path, list):
-                campaign_path = campaign_path[0]
-
-            from maxim.simulation.dm_schema import load_campaign, validate_campaign
-            from maxim.simulation.orchestrator import start_simulation_mode
-
-            campaign = load_campaign(campaign_path)
-            errors = validate_campaign(campaign)
-            if errors:
-                print(f"Campaign validation failed ({len(errors)} errors):")
-                for e in errors:
-                    print(f"  - {e}")
-                sys.exit(1)
-
-            debug = bool(_debug_raw)
-            result = start_simulation_mode(
-                goal=f"dm:{campaign.name}",
-                persona="dungeon_master",
-                debug=debug,
-                no_sim_env=bool(getattr(args, "no_sim_env", False)),
-                sandbox_backend=getattr(args, "sandbox_backend", "auto"),
-                dm_campaign=campaign,
-            )
-            sys.exit(0 if result.finish_reason != "error" else 1)
 
         # ── Legacy: agent mode (deprecated alias) ──
         _sim_agent = _is_legacy_agent
@@ -980,8 +911,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.exit(0 if result.review_verdict != "reject" else 1)
 
         # ── Auto-detect DM campaigns from YAML ──
-        # If --sim points to a YAML with a top-level 'campaign:' key, treat as DM
-        if _is_yaml and not _is_dm:
+        # If --sim points to a YAML with 'campaign:' + 'encounters:' keys, it's a DM campaign.
+        # Also triggered by --dm flag with a goal string (future: generative DM).
+        _wants_dm = getattr(args, "dm", False)
+        if _is_yaml:
             _yaml_path = Path(sim_path).resolve()
             if _yaml_path.exists():
                 try:
@@ -990,8 +923,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     with open(_yaml_path) as _yf:
                         _raw = _yaml.safe_load(_yf)
                     if isinstance(_raw, dict) and "campaign" in _raw and "encounters" in _raw:
-                        _is_dm = True
-                        # Re-route to DM handler
                         from maxim.simulation.dm_schema import load_campaign, validate_campaign
                         from maxim.simulation.orchestrator import start_simulation_mode
 
@@ -1015,6 +946,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                         sys.exit(0 if result.finish_reason != "error" else 1)
                 except Exception:
                     pass  # Not a DM campaign — fall through to normal YAML handling
+
+        # --dm flag with a goal string = generative DM (future)
+        if _wants_dm and _is_goal_string:
+            print("Generative DM mode (--dm with a goal) is not yet implemented.")
+            print("For now, use a hand-authored campaign YAML:")
+            print("  maxim --sim scenarios/campaigns/heist_v1.yaml")
+            sys.exit(1)
 
         # Check for interactive mode
         if _is_interactive:

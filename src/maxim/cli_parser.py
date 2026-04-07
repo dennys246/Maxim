@@ -268,10 +268,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--dm",
-        type=str,
-        default=None,
-        metavar="CAMPAIGN_YAML",
-        help="Run a DM campaign. Path to a campaign YAML file. Example: --dm scenarios/campaigns/heist_v1.yaml",
+        action="store_true",
+        default=False,
+        help="Dungeon Master mode. With --sim <goal>: generate a campaign from the goal (future). "
+        "With --sim <path.yaml>: run as DM campaign (auto-detected from YAML structure).",
     )
     parser.add_argument(
         "--research",
