@@ -765,6 +765,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             report_dir = runner.save_report(report)
             print(f"\n  Report saved: {report_dir}\n")
 
+            # Optional: generate comparative paper
+            if getattr(args, "write_paper", False):
+                print("  Generating comparative paper...")
+                paper_path = runner.write_paper(report, report_dir)
+                if paper_path:
+                    print(f"  Paper saved: {paper_path}\n")
+                else:
+                    print("  Paper generation failed (LLM unavailable)\n")
+
             # Exit with 0 if all models passed, 1 if any failed
             all_passed = all(mr.passed for mr in report.results.values())
             sys.exit(0 if all_passed else 1)

@@ -79,6 +79,7 @@ class BenchmarkReport:
     rankings: dict[str, list[str]] = field(default_factory=dict)
     overall_ranking: list[str] = field(default_factory=list)
     duration_s: float = 0.0
+    baseline_comparison: dict[str, dict[str, dict[str, float]]] | None = None
 
     def summary_table(self) -> str:
         """Generate a human-readable summary table with tiered metrics."""
@@ -107,15 +108,26 @@ class BenchmarkReport:
         other_keys = [k for k in sorted(all_metrics) if k not in tier1_keys and k not in tier2_keys]
 
         def _fmt_val(model: str, key: str) -> str:
-            """Format a metric value with optional stddev."""
+            """Format a metric value with optional stddev and baseline delta."""
             mr = self.results.get(model)
             if not mr:
                 return "—"
             val = mr.metrics.get(key, 0)
             sd = mr.metrics_stddev.get(key, 0)
             if sd > 0.001:
-                return f"{val:.2f}+-{sd:.2f}"
-            return f"{val:.2f}"
+                base = f"{val:.2f}+-{sd:.2f}"
+            else:
+                base = f"{val:.2f}"
+            # Append baseline delta if available
+            if self.baseline_comparison and model in self.baseline_comparison:
+                delta_info = self.baseline_comparison[model].get(key)
+                if delta_info is not None:
+                    delta = delta_info["delta"]
+                    direction = delta_info["direction"]
+                    sign = "+" if delta >= 0 else ""
+                    arrow = "↑" if direction == "improved" else "↓" if direction == "regressed" else "="
+                    base += f" ({sign}{delta:.2f} {arrow})"
+            return base
 
         for section, keys in [
             ("TIER 1 — LLM BEHAVIOR", tier1_keys),
@@ -327,25 +339,20 @@ class BenchmarkRunner:
         start = time.time()
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         all_model_results: dict[str, ModelResult] = {}
+        total_models = len(self.models)
 
-        print(f"\n  Benchmark: {self.suite_path}")
-        print(f"  Models: {', '.join(self.models)}")
-        print(f"  Scenarios: {len(self._scenarios)} | Runs: {self.runs}\n")
-
-        for model in self.models:
-            print(f"  ── {model} ──")
+        for model_idx, model in enumerate(self.models):
+            print(f"\n{'=' * 60}")
+            print(f"Model: {model} ({model_idx + 1}/{total_models})")
             model_runs: list[RunResult] = []
 
             for run_idx in range(self.runs):
-                if self.runs > 1:
-                    print(f"    Run {run_idx + 1}/{self.runs}")
-
                 for scenario_desc in self._scenarios:
                     scenario_path = scenario_desc["path"]
                     scenario_name = Path(scenario_path).stem
                     scenario_seed_kw = scenario_desc.get("seed_keywords", self.seed_keywords)
 
-                    print(f"      {scenario_name}...", end=" ", flush=True)
+                    print(f"  Scenario: {scenario_name} (run {run_idx + 1}/{self.runs})")
 
                     try:
                         # Load scenario definition for expectations
@@ -398,40 +405,32 @@ class BenchmarkRunner:
                         )
                         model_runs.append(run_result)
 
-                        # Print compact result
-                        key_metric = next(
-                            (
-                                f"recall_{kw}: {metrics.get(f'recall_{kw}', 0):.0f}"
-                                for kw in scenario_seed_kw
-                                if f"recall_{kw}" in metrics
-                            ),
-                            f"mem: {metrics.get('memory_formation_rate', 0):.1f}/t",
-                        )
-                        print(
-                            f"{exp_result.sim_turns}t {exp_result.sim_duration_s:.1f}s "
-                            f"{key_metric} "
-                            f"exp: {exp_passed}/{exp_total}"
-                        )
+                        duration = run_result.duration_s
+                        turns = run_result.turns
+                        passed = run_result.expectations_passed
+                        total = run_result.expectations_total
+                        print(f"    \u2713 {duration:.1f}s \u2014 {turns} turns \u2014 {passed}/{total} expectations")
 
                     except Exception as e:
                         logger.warning("Scenario %s failed on %s: %s", scenario_name, model, e)
+                        error_msg = str(e)
                         model_runs.append(
                             RunResult(
                                 scenario=scenario_name,
                                 model=model,
                                 run_index=run_idx,
-                                error=str(e),
+                                error=error_msg,
                             )
                         )
-                        print(f"FAILED: {e}")
+                        print(f"    \u2717 Error: {error_msg}")
 
             # Aggregate across runs
             model_result = self._aggregate_runs(model, model_runs)
             all_model_results[model] = model_result
-            print(
-                f"    Score: {model_result.score:.2f} "
-                f"({model_result.expectations_passed}/{model_result.expectations_total} expectations)\n"
-            )
+            print(f"  Score: {model_result.score:.3f}")
+
+        total_duration = time.time() - start
+        print(f"\nBenchmark complete: {total_duration:.1f}s across {total_models} model(s)")
 
         # Build report
         report = BenchmarkReport(
@@ -440,7 +439,7 @@ class BenchmarkRunner:
             models=self.models,
             runs_per_model=self.runs,
             results=all_model_results,
-            duration_s=time.time() - start,
+            duration_s=total_duration,
         )
 
         # Rank models
@@ -450,6 +449,17 @@ class BenchmarkRunner:
             reverse=True,
         )
         report.rankings = self._compute_rankings(all_model_results)
+
+        # Baseline comparison (if a baseline path was provided)
+        if self.baseline_path:
+            baseline = self._load_baseline(self.baseline_path)
+            if baseline is not None:
+                report.baseline_comparison = self._compare_to_baseline(report, baseline)
+                logger.info(
+                    "Baseline comparison computed against %s (%d models compared)",
+                    self.baseline_path,
+                    len(report.baseline_comparison or {}),
+                )
 
         return report
 
@@ -652,6 +662,105 @@ class BenchmarkRunner:
 
         return rankings
 
+    # ── Baseline comparison ────────────────────────────────────────
+
+    # Metrics where a *lower* value means better performance.
+    _LOWER_IS_BETTER: set[str] = {
+        "hallucination_rate",
+        "alias_redirect_rate",
+        "cost_per_turn",
+        "action_latency_p50_ms",
+        "action_latency_p95_ms",
+    }
+
+    def _load_baseline(self, path: str) -> BenchmarkReport | None:
+        """Load a previously saved benchmark_report.json as a BenchmarkReport.
+
+        Returns ``None`` (with a warning) if the file is missing or corrupt.
+        """
+        import json as _json
+
+        p = Path(path)
+        if not p.exists():
+            logger.warning("Baseline file not found: %s — skipping comparison", path)
+            return None
+
+        try:
+            with open(p) as f:
+                data = _json.load(f)
+        except (OSError, _json.JSONDecodeError) as exc:
+            logger.warning("Failed to read baseline %s: %s — skipping comparison", path, exc)
+            return None
+
+        # Reconstruct ModelResult objects from serialized data
+        results: dict[str, ModelResult] = {}
+        for model, mr_data in data.get("results", {}).items():
+            results[model] = ModelResult(
+                model=mr_data.get("model", model),
+                metrics=mr_data.get("metrics", {}),
+                metrics_stddev=mr_data.get("metrics_stddev", {}),
+                score=mr_data.get("score", 0.0),
+                passed=mr_data.get("passed", False),
+                expectations_passed=mr_data.get("expectations_passed", 0),
+                expectations_total=mr_data.get("expectations_total", 0),
+                per_scenario=mr_data.get("per_scenario", {}),
+            )
+
+        return BenchmarkReport(
+            timestamp=data.get("timestamp", ""),
+            suite=data.get("suite", ""),
+            models=data.get("models", []),
+            runs_per_model=data.get("runs_per_model", 0),
+            results=results,
+            rankings=data.get("rankings", {}),
+            overall_ranking=data.get("overall_ranking", []),
+            duration_s=data.get("duration_s", 0.0),
+            baseline_comparison=data.get("baseline_comparison"),
+        )
+
+    def _compare_to_baseline(
+        self, report: BenchmarkReport, baseline: BenchmarkReport
+    ) -> dict[str, dict[str, dict[str, float]]]:
+        """Compute per-model, per-metric deltas between *report* and *baseline*.
+
+        Returns::
+
+            {
+                "model_name": {
+                    "metric_name": {"delta": float, "direction": "improved"|"regressed"|"unchanged"},
+                    ...
+                },
+                ...
+            }
+
+        Metrics present in only one side are silently skipped.
+        """
+        comparison: dict[str, dict[str, dict[str, float]]] = {}
+
+        for model, current_mr in report.results.items():
+            baseline_mr = baseline.results.get(model)
+            if baseline_mr is None:
+                logger.info("Model %s not in baseline — skipping baseline comparison for it", model)
+                continue
+
+            model_deltas: dict[str, dict[str, float]] = {}
+            # Only compare metrics present in both current and baseline
+            shared_keys = set(current_mr.metrics.keys()) & set(baseline_mr.metrics.keys())
+            for key in shared_keys:
+                delta = current_mr.metrics[key] - baseline_mr.metrics[key]
+                if abs(delta) < 1e-9:
+                    direction = "unchanged"
+                elif key in self._LOWER_IS_BETTER:
+                    direction = "improved" if delta < 0 else "regressed"
+                else:
+                    direction = "improved" if delta > 0 else "regressed"
+                model_deltas[key] = {"delta": delta, "direction": direction}
+
+            if model_deltas:
+                comparison[model] = model_deltas
+
+        return comparison
+
     # ── Persistence ──────────────────────────────────────────────
 
     def save_report(self, report: BenchmarkReport) -> Path:
@@ -685,6 +794,8 @@ class BenchmarkRunner:
             },
             "rankings": report.rankings,
         }
+        if report.baseline_comparison is not None:
+            report_data["baseline_comparison"] = report.baseline_comparison
         with open(report_path, "w") as f:
             _json.dump(report_data, f, indent=2, default=str)
 
@@ -702,3 +813,87 @@ class BenchmarkRunner:
 
         logger.info("Benchmark report saved: %s", report_dir)
         return report_dir
+
+    # ── Phase 7: Research protocol integration ───────────────────
+
+    def write_paper(self, report: BenchmarkReport, output_dir: Path) -> Path | None:
+        """Generate a comparative research paper from benchmark results.
+
+        Uses the existing WriterAgent pipeline from the research protocol.
+        Converts benchmark metrics into experiment log entries.
+
+        Returns the paper path, or None if generation fails.
+        """
+        try:
+            from maxim.mesh.bus import LocalMessageBus
+            from maxim.simulation.research_agents import WriterAgent
+            from maxim.simulation.research_tools import ExperimentLog
+
+            exp_log = ExperimentLog(session_dir=output_dir, nickname="benchmark")
+
+            for model, mr in report.results.items():
+                metrics_summary = ", ".join(f"{k}={v:.2f}" for k, v in sorted(mr.metrics.items())[:10])
+                exp_log.record(
+                    hypothesis=f"Model {model} performs well on {report.suite}",
+                    method=f"Benchmark suite: {report.suite}, {report.runs_per_model} run(s)",
+                    result=metrics_summary,
+                    conclusion=f"Score: {mr.score:.2f}, passed: {mr.passed}",
+                    tags=["benchmark", model],
+                    metrics=mr.metrics,
+                )
+
+            from maxim.models.language.router import LLMRouter
+
+            try:
+                router = LLMRouter()
+            except Exception:
+                logger.warning("No LLM available for paper generation")
+                return None
+
+            bus = LocalMessageBus()
+            writer = WriterAgent(
+                llm=router,
+                experiment_log=exp_log,
+                bus=bus,
+                session_dir=output_dir,
+            )
+
+            goal = (
+                f"Write a comparative analysis of {len(report.models)} LLM models "
+                f"benchmarked on the {report.suite} suite. "
+                f"Models tested: {', '.join(report.models)}. "
+                f"Include methodology, per-model results, and ranking analysis."
+            )
+
+            draft = writer.run(goal)
+            paper_path = output_dir / "paper.md"
+            draft.save(paper_path)
+            logger.info("Benchmark paper generated: %s", paper_path)
+            return paper_path
+
+        except Exception as e:
+            logger.warning("Paper generation failed: %s", e)
+            return None
+
+    # ── Phase 9: Tier 3 embodiment hooks ─────────────────────────
+
+    def _collect_tier3_metrics(self, result: Any) -> dict[str, float]:
+        """Collect Tier 3 (Embodiment) metrics if available.
+
+        Auto-detected: when Embodiment Core ships and adds
+        ``embodiment_stats()`` to the Observer, this method
+        picks up those metrics without any benchmark code changes.
+
+        Returns an empty dict pre-embodiment.
+        """
+        introspector = getattr(result, "introspector", None)
+        if introspector is None:
+            return {}
+
+        if not hasattr(introspector, "embodiment_stats"):
+            return {}
+
+        try:
+            return introspector.embodiment_stats()
+        except Exception:
+            return {}

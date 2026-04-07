@@ -67,7 +67,12 @@ class ExperimentResult:
 
 
 def load_campaign_turns(campaign_path: str) -> list[dict[str, Any]]:
-    """Load campaign YAML and extract turns for direct injection."""
+    """Load campaign YAML and extract turns for direct injection.
+
+    Returns dicts matching the format ``start_simulation_mode()``
+    expects for ``pre_campaign_turns``: ``text``, ``phase``,
+    ``salience``, ``novelty``, plus ``metadata`` for experiment use.
+    """
     import yaml
 
     path = Path(campaign_path)
@@ -78,15 +83,22 @@ def load_campaign_turns(campaign_path: str) -> list[dict[str, Any]]:
         data = yaml.safe_load(f)
 
     percepts = data.get("percepts", [])
-    return [
-        {
+    turns = []
+    for i, p in enumerate(percepts):
+        text = p.get("cli_input", "")
+        if not text:
+            continue
+        meta = p.get("metadata", {})
+        turns.append({
             "at": p.get("at", i),
-            "cli_input": p.get("cli_input", ""),
-            "metadata": p.get("metadata", {}),
-        }
-        for i, p in enumerate(percepts)
-        if p.get("cli_input")
-    ]
+            "text": text,
+            "cli_input": text,  # backward compat for ExperimentResult consumers
+            "phase": meta.get("phase", ""),
+            "salience": p.get("salience", 0.8),
+            "novelty": p.get("novelty", 0.7),
+            "metadata": meta,
+        })
+    return turns
 
 
 def run_campaign(

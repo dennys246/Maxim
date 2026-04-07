@@ -96,10 +96,12 @@ percepts:
             turns = load_campaign_turns(f.name)
 
         assert len(turns) == 3
-        assert turns[0]["cli_input"] == "You meet Elara in a forest."
+        assert turns[0]["text"] == "You meet Elara in a forest."
+        assert turns[0]["cli_input"] == "You meet Elara in a forest."  # backward compat
         assert turns[0]["metadata"]["experiment_role"] == "seed"
+        assert turns[0]["phase"] == ""  # no phase in metadata
         assert turns[1]["at"] == 2
-        assert turns[2]["cli_input"] == "A massive silver elm with a stone door."
+        assert turns[2]["text"] == "A massive silver elm with a stone door."
 
     def test_missing_file_raises(self):
         with pytest.raises(FileNotFoundError):

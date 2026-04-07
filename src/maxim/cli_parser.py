@@ -399,6 +399,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to a previous benchmark_report.json for comparison.",
     )
     parser.add_argument(
+        "--write-paper",
+        action="store_true",
+        default=False,
+        dest="write_paper",
+        help="Generate a comparative research paper from benchmark results. "
+        "Uses the Writer agent from the research protocol.",
+    )
+    parser.add_argument(
         "--generate-simulation",
         type=str,
         default=None,
