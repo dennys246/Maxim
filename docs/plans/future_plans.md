@@ -2,7 +2,7 @@
 
 Master roadmap for Maxim development. Individual plan files remain as detailed design references.
 
-**Last updated:** 2026-04-07
+**Last updated:** 2026-04-08
 
 ---
 
@@ -24,8 +24,8 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Generative Campaign Mode | **Complete** | All stages shipped: arc system, narrator, planner integration, `ask_user` tool, benchmark tiers, YAML export. 71 tests. [Plan](generative_campaign_plan.md) |
 | Bio-System Wiring Hardening | **Complete** | All phases shipped: 7 disconnected bio-systems wired, pipeline correctness, percept abstraction (SensoryGate), cascade surfacing, ~1,100 LOC dead code removed, audit 14/14. [Plan](../archive/biosystem_wiring_hardening.md) |
 | Mode System Refactor | **Complete** | Autonomy levels only, strategies/exploration/LiveModeIntent removed, sleep is a tool, ~1,800 LOC removed. [Plan](mode_refactor_plan.md) |
-| Dungeon Master Persona (MVP) | **Ready to start** | Bundled SEM characters + cascade DAG + entity transfer/visibility + 4 showcase campaigns (~1,100 LOC). All prerequisites shipped. [Plan](dungeon_master_persona.md) |
-| DM Choice Classifier Spike | **Not started** | ~0.5 day: ATL+NAc classification accuracy. Merged into DM plan. |
+| Dungeon Master Persona (MVP) | **Complete** | All 3 slices shipped: dm_schema.py, dm_runtime.py, tools_dm.py. 4 campaigns (heist, poisoned_crown, arena, darkened_cavern). ChooseTool + alias system, bio-system expectations checker. [Plan](dungeon_master_persona.md) |
+| DM Choice Classifier Spike | **Folded into DM MVP** | Addressed as part of ChooseTool alias system. |
 | Dungeon Master Extensions | **Deferred** | Optional follow-ons layered onto DM MVP. Each extension gated on MVP usage pain. Needs update for SEM character model. |
 | Interactive Sim Prompts | **Complete (folded)** | `ask_user` tool shipped as part of Generative Campaign Mode. |
 | Hippocampus AUT Memory Refinement | **Not started** | Improve how the AUT queries its own memories. Current `memory_recall` tool returns raw episodic records — needs semantic filtering, relevance ranking, and modality-aware recall (e.g., "what did I hear?" vs "what did I see?"). Also: reduce observation capture spam, improve recall precision for campaign-specific queries, and enable decision_rationale search. |
@@ -66,28 +66,20 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
      │  Lane Tier Arch ✅       Sim Benchmark (0-6) ✅          │
      │  Embodiment Core ✅      Generative Campaigns ✅         │
      │  Tool Refactoring ✅     Python API ✅                   │
+     │  DM MVP ✅               Agent Mesh (Pre-7) ✅           │
      └──────────────────────────┬──────────────────────────────┘
                                 │
           ┌─────────────────────┼──────────────────────┐
           ↓                     ↓                      ↓
   ┌───────────────────┐  ┌─────────────────┐  ┌──────────────────┐
-  │  Agent Mesh P2+   │  │  DM Classifier  │  │  PyPI Pub Ph3-6  │
-  │  (network transp) │  │  Spike (~2 days)│  │  (independent)   │
+  │  Agent Mesh P2+   │  │  DM Extensions  │  │  PyPI Pub Ph3-6  │
+  │  (network transp) │  │  (demand-driven)│  │  (independent)   │
   └───────┬───────────┘  └────────┬────────┘  └──────────────────┘
-          │                       ↓
-          │              ┌────────┴────────┐
-          │              │  DM MVP (~730)  │
-          │              │  Bundled SEM +  │
-          │              │  cascade DAG    │
-          │              └────────┬────────┘
-          │                       ↓
-          │              ┌────────┴────────┐
-          ├─────────────►│  DM Extensions  │
-          │              │  (demand-driven)│
-          │              └─────────────────┘
+          │                       │
+          ├───────────────────────┘
           ↓
   ┌───────────────────┐
-  │  Multi-AUT party  │  (requires Mesh P2+ AND DM MVP)
+  │  Multi-AUT party  │  (requires Mesh P2+ AND DM Extensions)
   └───────────────────┘
 
 Optional / independent (ship when demand surfaces):
@@ -111,15 +103,15 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 | ~~6~~ | ~~Generative Campaign Mode~~ | ~~1,210~~ | ✅ Complete (arcs, narrator, ask_user, benchmark tiers, 71 tests) |
 | ~~7~~ | ~~Bio-System Wiring Hardening~~ | ~~1,010~~ | ✅ Complete. All phases shipped: wiring, cascade surfacing, pipeline correctness, percept abstraction, audit script, consolidation, dead code cleanup. [Plan](../archive/biosystem_wiring_hardening.md) |
 | ~~7b~~ | ~~Mode System Refactor~~ | ~~-1,800~~ | ✅ Complete. Autonomy levels only, strategies/exploration/LiveModeIntent removed, sleep is a tool. [Plan](mode_refactor_plan.md) |
-| 8 | **DM MVP** | ~1,100 + YAMLs | Bundled SEM characters, cascade DAG, entity transfer/visibility, 4 showcase campaigns with pipeline health checks + ablation. [Plan](dungeon_master_persona.md) |
+| ~~8~~ | ~~DM MVP~~ | ~~1,100 + YAMLs~~ | ✅ Complete (dm_schema, dm_runtime, tools_dm, 4 campaigns, ChooseTool, bio-system expectations). [Plan](dungeon_master_persona.md) |
 | ~~9~~ | ~~Agent Mesh Phases Pre-7~~ | ~~per plan~~ | ✅ Complete (identity, protocol, transport, admission, knowledge sharing, delegation, planning, SCN temporal). Phase 0a-0b (mDNS + InferenceRouter) deferred. |
 | 10 | **DM Extensions** | per-extension | Demand-driven, never speculative. Needs update for SEM character model. |
 | 11 | **Multi-AUT Party Mode** | per plan | Requires Agent Mesh P2+ AND DM MVP. Civilization-scale stress test. |
 
 **Why this order:**
-- DM spike first: validates that bio-systems actually influence AUT behavior (foundational assumption for DM as stress test)
-- DM MVP next: exercises the full bio-stack with embodiment, generative campaigns, and SEM protocol working together
-- Agent Mesh is independent — can be worked in parallel with DM
+- DM MVP validated that bio-systems influence AUT behavior and exercises the full bio-stack with embodiment, generative campaigns, and SEM protocol working together
+- DM Extensions are demand-driven — ship when usage reveals pain points
+- Agent Mesh P2+ is independent — can be worked in parallel with DM Extensions
 - Multi-AUT party mode is the ultimate capstone, combining mesh + DM
 
 **Parallelism opportunities:**

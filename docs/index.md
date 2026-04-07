@@ -45,6 +45,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | [Embodiment Guide](embodiment_guide.md) | SEM protocol, entity specs, sensors, modulators, failure modes |
 | [Embodiment YAML Reference](embodiment_yaml_reference.md) | YAML format for body/entity definitions |
 | [Generative Campaigns](generative_campaigns_guide.md) | Narrative arc system, narrator, campaign modes |
+| [DM Campaigns](dm_campaigns_guide.md) | Bundled SEM characters, encounter choices, cascade DAG, 4 showcase campaigns |
 
 ### Communication
 

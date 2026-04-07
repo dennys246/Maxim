@@ -41,6 +41,11 @@ src/maxim/simulation/
     # Introspection
     introspection.py           # Observer class (fka AUTIntrospector) — powers observe()
 
+    # DM Campaigns
+    dm_schema.py               # Campaign YAML schema, encounter/character/entity definitions
+    dm_runtime.py              # DM campaign runtime, encounter executor, entity transfer/visibility
+    tools_dm.py                # ChooseTool + alias system for encounter choices
+
     # Benchmark
     benchmark.py               # BenchmarkRunner — multi-model comparison, tiered metrics
     experiment.py              # run_campaign() → ExperimentResult (standalone)

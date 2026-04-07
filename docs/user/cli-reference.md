@@ -83,7 +83,8 @@ maxim [OPTIONS]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--sim` | str | None | Simulation mode: `"goal string"` (generative), `path.yaml` (direct injection), `agent` (legacy autonomous), `research`, `benchmark`, `dm` |
+| `--sim` | str | None | Simulation mode: `"goal string"` (generative), `path.yaml` (direct injection/DM campaign auto-detect), `agent` (legacy autonomous), `research`, `benchmark` |
+| `--dm` | bool | `False` | Reserved for future generative DM mode. DM campaigns are auto-detected from YAML metadata today. |
 | `--persona` | str | `cooperative` | Sim persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement`, `researcher`, `sweep` |
 | `--research` | flag | | Enable research report (Writer + Reviewer agents after sim) |
 | `--interactive` | flag | | Enable `ask_user` tool for interactive campaigns |
@@ -188,6 +189,15 @@ maxim --sim
 
 ```bash
 maxim --sim scenarios/malware_with_pain.yaml --sim-report results.json
+```
+
+### Run a DM campaign (auto-detected from YAML)
+
+```bash
+maxim --sim scenarios/campaigns/heist_v1.yaml
+maxim --sim scenarios/campaigns/poisoned_crown_v1.yaml
+maxim --sim scenarios/campaigns/arena_v1.yaml
+maxim --sim scenarios/campaigns/darkened_cavern_v1.yaml
 ```
 
 ### Debug with subsystem tracing

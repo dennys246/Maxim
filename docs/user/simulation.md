@@ -272,6 +272,23 @@ maxim --sim "explore cooking safety" --interactive
 
 For full details on arc authoring, narrator mechanics, and plan-to-arc bridging, see [docs/generative_campaigns_guide.md](../generative_campaigns_guide.md).
 
+## DM Campaigns
+
+Pass a DM campaign YAML file to `--sim` and the runtime auto-detects it from YAML metadata (no special flag needed):
+
+```bash
+maxim --sim scenarios/campaigns/heist_v1.yaml
+maxim --sim scenarios/campaigns/poisoned_crown_v1.yaml
+maxim --sim scenarios/campaigns/arena_v1.yaml
+maxim --sim scenarios/campaigns/darkened_cavern_v1.yaml
+```
+
+DM campaigns define characters as bundled SEM entities with cascade DAGs for narrative branching. Encounters present choices to the AUT via `ChooseTool`, and bio-system expectations validate campaign results (memory formation, causal learning, pain responses).
+
+The `--dm` flag is reserved for a future generative DM mode. Today, all 4 shipped campaigns run through the auto-detect path.
+
+For full details on campaign authoring, character definitions, and the encounter system, see [DM Campaigns Guide](../dm_campaigns_guide.md).
+
 ## Research Protocol
 
 Add `--research` to any simulation to run Writer and Reviewer agents after the sim completes. They produce a structured research report with findings, methodology, and analysis.

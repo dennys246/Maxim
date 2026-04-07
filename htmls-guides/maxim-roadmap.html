@@ -143,8 +143,8 @@
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">DM MVP</td>
-            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400">Next Up</span></td>
-            <td class="py-3">Bundled SEM characters, cascade DAG for narrative branching, 4 showcase campaigns.</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">All 3 slices shipped: dm_schema.py, dm_runtime.py, tools_dm.py. 4 campaigns (heist, poisoned_crown, arena, darkened_cavern). ChooseTool + alias system, bio-system expectations checker. <code class="bg-slate-950 px-1 rounded text-xs">maxim --sim scenarios/campaigns/heist_v1.yaml</code></td>
           </tr>
         </tbody>
       </table>
@@ -155,9 +155,13 @@
   <section class="space-y-4">
     <h2 id="recently-shipped" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What We Just Shipped</h2>
 
-    <p class="text-slate-300 leading-relaxed">The most recent wave shipped <span class="text-indigo-400 font-semibold">Bio-System Wiring Hardening</span> (percept abstraction, energy&rarr;NAc wiring, pipeline correctness) and <span class="text-indigo-400 font-semibold">Mode System Refactor</span> (~1,800 LOC removed, sleep-as-tool, skills folded into Cerebellum). Before that: <span class="text-indigo-400 font-semibold">Agent Mesh</span>, <span class="text-indigo-400 font-semibold">Generative Campaign Mode</span>, <span class="text-indigo-400 font-semibold">Embodiment Core</span>, <span class="text-indigo-400 font-semibold">Lane Tier Architecture</span>, <span class="text-indigo-400 font-semibold">Simulation Benchmark</span>, <span class="text-indigo-400 font-semibold">Python API</span>, and <span class="text-indigo-400 font-semibold">Multi-LLM Scaling</span>.</p>
+    <p class="text-slate-300 leading-relaxed">The most recent wave shipped <span class="text-indigo-400 font-semibold">DM MVP</span> (bundled SEM characters, cascade DAG, ChooseTool, 4 campaigns). Before that: <span class="text-indigo-400 font-semibold">Bio-System Wiring Hardening</span>, <span class="text-indigo-400 font-semibold">Mode System Refactor</span>, <span class="text-indigo-400 font-semibold">Agent Mesh</span>, <span class="text-indigo-400 font-semibold">Generative Campaign Mode</span>, <span class="text-indigo-400 font-semibold">Embodiment Core</span>, <span class="text-indigo-400 font-semibold">Lane Tier Architecture</span>, <span class="text-indigo-400 font-semibold">Simulation Benchmark</span>, <span class="text-indigo-400 font-semibold">Python API</span>, and <span class="text-indigo-400 font-semibold">Multi-LLM Scaling</span>.</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">DM MVP</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Bundled SEM characters with cascade DAG for narrative branching. ChooseTool + alias system for encounter choices. Bio-system expectations checker validates campaign results. 4 campaigns: heist, poisoned_crown, arena, darkened_cavern. <code class="bg-slate-950 px-1 rounded text-xs">maxim --sim scenarios/campaigns/heist_v1.yaml</code></p>
+      </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
         <h3 class="text-white font-semibold mb-2">Bio-System Wiring Hardening</h3>
         <p class="text-slate-300 text-sm leading-relaxed">Percept abstraction layer (SensoryModality, SensoryTag, SensoryGate), pipeline correctness fixes, energy&rarr;NAc metabolic cost learning, <code class="bg-slate-950 px-1 rounded text-xs">decision_rationale</code> provenance field on Perception. 14/14 pipeline audit checks passing.</p>
@@ -211,26 +215,19 @@
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">1</span>
         <div>
-          <h3 class="text-white font-semibold">DM MVP</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Bundled SEM characters, cascade DAG for narrative branching, 4 showcase campaigns. ~1,020 LOC.</p>
-        </div>
-      </div>
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
-        <span class="text-2xl font-bold text-indigo-500 shrink-0">2</span>
-        <div>
           <h3 class="text-white font-semibold">DM Extensions</h3>
           <p class="text-slate-300 text-sm leading-relaxed">Demand-driven campaign generation, architect persona for world-building, encounter library for reusable narrative modules.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
-        <span class="text-2xl font-bold text-indigo-500 shrink-0">3</span>
+        <span class="text-2xl font-bold text-indigo-500 shrink-0">2</span>
         <div>
           <h3 class="text-white font-semibold">Multi-AUT Party Mode</h3>
           <p class="text-slate-300 text-sm leading-relaxed">Multiple AUT instances in a shared simulation. Requires DM + mesh infrastructure. Civilization-scale stress test for memory, causal learning, and coordination.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
-        <span class="text-2xl font-bold text-indigo-500 shrink-0">4</span>
+        <span class="text-2xl font-bold text-indigo-500 shrink-0">3</span>
         <div>
           <h3 class="text-white font-semibold">Embodiment Hardware Adapter</h3>
           <p class="text-slate-300 text-sm leading-relaxed">Wrap real robot SDKs (Reachy Mini, custom arms) as SEM <code class="bg-slate-950 px-1 rounded text-xs">HardwareSensor</code>/<code class="bg-slate-950 px-1 rounded text-xs">HardwareModulator</code> backends. Ships when deploying to physical hardware.</p>

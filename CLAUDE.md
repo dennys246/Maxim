@@ -123,6 +123,12 @@ maxim --sim agent --goal "test" --debug        # all subsystems
 # Run YAML scenario
 maxim --sim scenarios/malware_with_pain.yaml
 
+# DM campaigns (auto-detected from YAML metadata)
+maxim --sim scenarios/campaigns/heist_v1.yaml
+maxim --sim scenarios/campaigns/poisoned_crown_v1.yaml
+maxim --sim scenarios/campaigns/arena_v1.yaml
+maxim --sim scenarios/campaigns/darkened_cavern_v1.yaml
+
 # Benchmark (multi-model comparison)
 maxim --sim benchmark --models mistral-7b,qwen2.5-14b --campaign scenarios/benchmarks/cognitive_suite.yaml
 maxim --sim benchmark --models mistral-7b --campaign scenarios/benchmarks/quick_check.yaml --runs 3
@@ -313,6 +319,9 @@ data/util/          # Runtime config (llm.json, cost_state.json)
 | Plan-to-arc bridge | `simulation/plan_arc_bridge.py` (translate_plan_to_arc, enrich_narrator_context, bridge_and_compress) |
 | ask_user tool (interactive) | `simulation/tools_user.py` (AskUserTool, JSONL audit, replay, timeout escalation) |
 | Generative campaign guide | `docs/generative_campaigns_guide.md` |
+| DM campaign schema | `simulation/dm_schema.py` (campaign YAML schema, encounter/character/entity definitions) |
+| DM campaign runtime | `simulation/dm_runtime.py` (encounter executor, entity transfer/visibility) |
+| DM encounter tools | `simulation/tools_dm.py` (ChooseTool + alias system for encounter choices) |
 
 ## Environment Variables
 
@@ -474,7 +483,7 @@ See `docs/plans/future_plans.md` for the full roadmap. Current state:
 - **Generative Campaign Mode** — COMPLETE. All stages shipped: arc system, narrator, planner integration, `ask_user` tool, benchmark tiers, YAML export. 71 tests. CLI: `--sim "goal"` = generative, `--sim path.yaml` = direct injection.
 - **Bio-System Wiring Hardening** — COMPLETE. All phases shipped: 7 disconnected bio-systems wired, pipeline correctness fixes, percept abstraction (SensoryModality + SensoryTag + SensoryGate), cascade result surfacing, ~1,100 LOC dead code removed, pipeline audit 14/14 passing. Archived at `docs/archive/biosystem_wiring_hardening.md`.
 - **Mode System Refactor** — COMPLETE. Collapsed modes from 3 dimensions to autonomy levels, removed strategies/exploration/LiveModeIntent, ~1,800 LOC removed. Sleep is now a tool. Archived at `docs/plans/mode_refactor_plan.md`.
-- **Dungeon Master MVP** (`docs/plans/dungeon_master_persona.md`) — Next up. Characters as Bundled SEM entities with cascade DAG, entity transfer/visibility, 4 showcase campaigns. ~1,100 LOC.
+- **Dungeon Master MVP** (`docs/plans/dungeon_master_persona.md`) — COMPLETE. All 3 slices shipped: dm_schema.py, dm_runtime.py, tools_dm.py. 4 campaigns (heist, poisoned_crown, arena, darkened_cavern). ChooseTool + alias system, bio-system expectations checker. CLI: `maxim --sim scenarios/campaigns/heist_v1.yaml`. `--dm` flag reserved for future generative DM mode.
 - **Research Protocol** (`docs/plans/research_protocol_plan.md`) — All phases complete. CLI: `maxim --sim research --goal "..." [--campaign <yaml>] [--aut-model <model>]`.
 - **Realtime Refinement** (`docs/plans/realtime_refinement_plan.md`) — ~90% done; remaining ~50 LOC (6th persona + metric expectation types).
 - **Docker Sandbox** (`docs/plans/docker_sandbox_plan.md`) — Phase A (TmpdirSandbox + pain triggers) + Phase B (DockerSandbox + ContainerRunner protocol + image catalog + autonomy-scaled resource limits + unprivileged `maxim` user) DONE.

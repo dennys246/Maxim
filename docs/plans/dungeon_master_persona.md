@@ -1,6 +1,6 @@
 # Dungeon Master Persona Plan — MVP
 
-> **Status:** Ready to start. All prerequisites satisfied. [Bio-System Wiring Hardening](../archive/biosystem_wiring_hardening.md) complete (all phases shipped, pipeline audit 14/14 passing). Percept abstraction (SensoryModality, SensoryTag, SensoryGate) shipped.
+> **Status:** COMPLETE. All 3 slices shipped. 4 campaigns, cascade system, scene management, visibility, expectations checker. Ready for archival.
 >
 > **Last updated:** 2026-04-07
 >
