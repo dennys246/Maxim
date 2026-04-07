@@ -1,0 +1,52 @@
+name: cognitive_suite_v1
+description: |
+  Comprehensive cognitive architecture benchmark suite.
+  Tests LLM behavior (Tier 1) and bio-system dynamics (Tier 2)
+  across memory, tool usage, causal learning, aversion, and engagement.
+
+tags: [comprehensive, benchmark, cognitive]
+
+suite:
+  default_models:
+    - mistral-7b
+    - qwen2.5-14b
+
+  scenarios:
+    # Memory — does the AUT form and recall memories?
+    - path: scenarios/experiments/hippocampal_recall_short.yaml
+      weight: 2.0
+
+    # Quick recall — minimal seed-interference-recall
+    - path: scenarios/benchmarks/quick_check.yaml
+      weight: 1.0
+
+    # Tool compliance — does the AUT use available tools?
+    - path: scenarios/benchmarks/tool_discovery.yaml
+      weight: 1.0
+
+    # Causal learning — does NAc form cause-effect links?
+    - path: scenarios/benchmarks/causal_learning.yaml
+      weight: 1.5
+
+    # Aversion — does the AUT learn from pain?
+    - path: scenarios/benchmarks/aversion_learning.yaml
+      weight: 1.5
+
+    # Concept formation — do entities consolidate into concepts?
+    - path: scenarios/benchmarks/concept_formation.yaml
+      weight: 1.0
+
+  scoring:
+    # Tier 2: memory
+    recall_Verath: { pass: 1.0 }
+    recall_seven-three-nine: { pass: 1.0 }
+    memory_formation_rate: { pass_above: 0.5 }
+
+    # Tier 1: tool compliance
+    hallucination_rate: { pass_below: 0.5 }
+
+    # Tier 2: causal learning
+    causal_link_count: { pass_above: 0.0 }
+
+    # Tier 2: concept formation
+    concept_formation_rate: { pass_above: 0.0 }

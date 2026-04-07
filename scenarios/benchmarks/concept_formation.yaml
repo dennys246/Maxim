@@ -1,0 +1,133 @@
+name: concept_formation
+description: |
+  Rich narrative with named entities repeated across turns. Tests
+  whether hippocampal episodes consolidate into ATL semantic concepts.
+  Characters Elara and Kael appear multiple times with consistent traits.
+
+tags: [concepts, atl, semantic, memory, narrative]
+difficulty: medium
+estimated_duration_s: 60
+subsystems_tested: [hippocampus, atl, nac]
+tools_tested: [memory_recall, say, think, examine]
+
+timing: step_based
+
+percepts:
+  # Introduce Elara — healer with green cloak
+  - at: 0
+    source: cli
+    cli_input: |
+      In the village square, a woman in a green cloak kneels beside
+      an injured traveler. Her hands glow faintly as she works. The
+      villagers call her Elara. She looks up at you with tired eyes.
+      "Another adventurer," she says. "Be careful on the north road."
+    salience: 0.8
+    novelty: 1.0
+    metadata:
+      scenario_tag: elara_intro
+      phase: introductions
+      scene_elements: [Elara, green cloak, healer, village, traveler]
+      critical_detail: "Elara"
+
+  # Introduce Kael — blacksmith with missing finger
+  - at: 2
+    source: cli
+    cli_input: |
+      The blacksmith, a broad man named Kael, hammers a blade on his
+      anvil. He's missing the ring finger on his left hand — an old
+      injury, you'd guess. "Need anything repaired?" he asks, not
+      looking up. His work is precise despite the missing digit.
+    salience: 0.7
+    novelty: 0.9
+    metadata:
+      scenario_tag: kael_intro
+      phase: introductions
+      scene_elements: [Kael, blacksmith, anvil, blade, missing finger]
+      critical_detail: "Kael"
+
+  # Interference — unrelated scene
+  - at: 4
+    source: cli
+    cli_input: |
+      You travel north along a forest road. Birds call from the
+      canopy. A deer crosses the path ahead. The air smells of pine
+      and wildflowers. Nothing remarkable happens.
+    salience: 0.4
+    novelty: 0.5
+    metadata:
+      scenario_tag: interference
+      phase: travel
+      experiment_role: interference
+
+  # Re-encounter Elara — same traits, new context
+  - at: 6
+    source: cli
+    cli_input: |
+      At a roadside shrine, you find Elara again. She's still wearing
+      her green cloak, now dusty from travel. She's treating a child's
+      scraped knee with the same glowing hands you saw before.
+      "The north road was worse than I thought," she says.
+    salience: 0.7
+    novelty: 0.5
+    metadata:
+      scenario_tag: elara_2
+      phase: reencounter
+      scene_elements: [Elara, green cloak, healer, shrine, child]
+
+  # Re-encounter Kael — same traits, new context
+  - at: 8
+    source: cli
+    cli_input: |
+      Back in the village, Kael is at his forge again. He raises his
+      four-fingered left hand in greeting. "Brought me anything to
+      fix?" He examines a cracked shield someone left for repair,
+      turning it over with practiced hands.
+    salience: 0.6
+    novelty: 0.4
+    metadata:
+      scenario_tag: kael_2
+      phase: reencounter
+      scene_elements: [Kael, blacksmith, four-fingered, forge, shield]
+
+  # Test: ask about the characters
+  - at: 10
+    source: cli
+    cli_input: |
+      A stranger asks you: "Who are Elara and Kael? What can you
+      tell me about them?"
+    salience: 0.8
+    novelty: 0.6
+    metadata:
+      scenario_tag: recall_test
+      phase: recall
+      experiment_role: recall_target
+      expected_recall: "Elara"
+
+expectations:
+  - type: memory_formed
+    memory_contains: "Elara"
+    description: "Hippocampus captured Elara"
+
+  - type: memory_formed
+    memory_contains: "Kael"
+    description: "Hippocampus captured Kael"
+
+  - type: memory_count_range
+    params: { min: 4, max: 50 }
+    description: "Formed at least 4 episodic memories"
+
+  - type: action_count_range
+    params: { min: 5, max: 30 }
+
+  - type: pipeline_continued
+    after_tag: recall_test
+    description: "Pipeline processes all turns"
+
+benchmark:
+  category: engagement
+  tier: [2]
+  weight: 1.0
+  seed_keywords: ["Elara", "Kael", "healer", "blacksmith"]
+  metrics:
+    - concept_formation_rate
+    - memory_formation_rate

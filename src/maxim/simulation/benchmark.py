@@ -30,7 +30,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +81,14 @@ class BenchmarkReport:
     duration_s: float = 0.0
 
     def summary_table(self) -> str:
-        """Generate a human-readable summary table."""
+        """Generate a human-readable summary table with tiered metrics."""
+        w = max(60, 20 + 16 * len(self.models))
         lines = [
-            "=" * 60,
+            "=" * w,
             f"  BENCHMARK REPORT — {self.suite}",
             f"  Models: {', '.join(self.models)}",
             f"  Runs per model: {self.runs_per_model} | Duration: {self.duration_s:.1f}s",
-            "=" * 60,
+            "=" * w,
             "",
         ]
 
@@ -106,6 +106,17 @@ class BenchmarkReport:
         tier2_keys = [k for k in sorted(all_metrics) if k in _TIER2_METRICS or k.startswith("recall_")]
         other_keys = [k for k in sorted(all_metrics) if k not in tier1_keys and k not in tier2_keys]
 
+        def _fmt_val(model: str, key: str) -> str:
+            """Format a metric value with optional stddev."""
+            mr = self.results.get(model)
+            if not mr:
+                return "—"
+            val = mr.metrics.get(key, 0)
+            sd = mr.metrics_stddev.get(key, 0)
+            if sd > 0.001:
+                return f"{val:.2f}+-{sd:.2f}"
+            return f"{val:.2f}"
+
         for section, keys in [
             ("TIER 1 — LLM BEHAVIOR", tier1_keys),
             ("TIER 2 — COGNITIVE ARCHITECTURE", tier2_keys),
@@ -113,19 +124,34 @@ class BenchmarkReport:
             if keys:
                 lines.append(f"  {section}")
                 for key in keys:
-                    vals = "  ".join(
-                        f"{m}: {self.results[m].metrics.get(key, 0):.2f}" for m in self.models if m in self.results
-                    )
+                    vals = "  ".join(_fmt_val(m, key) for m in self.models)
                     lines.append(f"    {key:<30s}{vals}")
                 lines.append("")
 
         if other_keys:
             lines.append("  OTHER METRICS")
             for key in other_keys:
-                vals = "  ".join(
-                    f"{m}: {self.results[m].metrics.get(key, 0):.2f}" for m in self.models if m in self.results
-                )
+                vals = "  ".join(_fmt_val(m, key) for m in self.models)
                 lines.append(f"    {key:<30s}{vals}")
+            lines.append("")
+
+        # Per-scenario breakdown (if multiple scenarios)
+        has_per_scenario = any(mr.per_scenario for mr in self.results.values())
+        if has_per_scenario:
+            lines.append("  PER-SCENARIO BREAKDOWN")
+            # Collect all scenario names
+            all_scenarios: set[str] = set()
+            for mr in self.results.values():
+                all_scenarios.update(mr.per_scenario.keys())
+            for scenario in sorted(all_scenarios):
+                lines.append(f"    {scenario}")
+                # Show key metrics per model for this scenario
+                for m in self.models:
+                    mr = self.results.get(m)
+                    if mr and scenario in mr.per_scenario:
+                        sm = mr.per_scenario[scenario]
+                        key_vals = ", ".join(f"{k}={v:.2f}" for k, v in sorted(sm.items())[:5])
+                        lines.append(f"      {m}: {key_vals}")
             lines.append("")
 
         # Expectations summary
@@ -133,7 +159,8 @@ class BenchmarkReport:
         for m in self.models:
             if m in self.results:
                 mr = self.results[m]
-                lines.append(f"    {m}: {mr.expectations_passed}/{mr.expectations_total} passed")
+                status = "PASS" if mr.passed else "FAIL"
+                lines.append(f"    {m}: {mr.expectations_passed}/{mr.expectations_total} passed [{status}]")
         lines.append("")
 
         # Overall ranking
@@ -144,7 +171,7 @@ class BenchmarkReport:
                     lines.append(f"    {i}. {m:<20s} score: {self.results[m].score:.2f}")
             lines.append("")
 
-        lines.append("=" * 60)
+        lines.append("=" * w)
         return "\n".join(lines)
 
 
@@ -223,21 +250,26 @@ class BenchmarkRunner:
         self._scenarios = self._load_suite(suite_path)
 
     def _load_suite(self, path: str) -> list[dict[str, Any]]:
-        """Load benchmark suite or single scenario YAML.
+        """Load benchmark suite or single scenario via unified YAML loader.
+
+        Uses ``load_scenario()`` from ``scenario_source.py`` which parses
+        the unified schema (percepts, expectations, metadata, benchmark,
+        suite, config sections).
 
         Returns a list of scenario descriptors:
-        [{"path": str, "weight": float, "seed_keywords": list}, ...]
+        [{"path": str, "weight": float, "seed_keywords": list, "config": dict|None}, ...]
         """
+        from maxim.simulation.scenario_source import load_scenario
+
         p = Path(path)
         if not p.exists():
             raise FileNotFoundError(f"Suite/scenario not found: {path}")
 
-        with open(p) as f:
-            raw = yaml.safe_load(f) or {}
+        defn = load_scenario(p)
 
-        # Check if this is a suite file (has 'suite' section)
-        suite = raw.get("suite")
-        if suite:
+        # Suite file — references child scenarios
+        if defn.suite:
+            suite = defn.suite
             self._scoring = suite.get("scoring", {})
             scenarios = []
             for entry in suite.get("scenarios", []):
@@ -245,21 +277,37 @@ class BenchmarkRunner:
                     {
                         "path": entry["path"],
                         "weight": entry.get("weight", 1.0),
+                        "seed_keywords": entry.get("seed_keywords", []),
+                        "config": entry.get("config"),
                     }
                 )
             if not scenarios:
                 raise ValueError(f"Suite {path} has no scenarios listed")
+            logger.info(
+                "Loaded benchmark suite: %s (%d scenarios, %d scoring thresholds)",
+                defn.name,
+                len(scenarios),
+                len(self._scoring),
+            )
             return scenarios
 
-        # Check if this has a benchmark section
-        benchmark = raw.get("benchmark")
+        # Single scenario with optional benchmark section
         seed_kw = []
-        if benchmark:
-            seed_kw = benchmark.get("seed_keywords", [])
-            self._scoring = {}  # Single scenario, no suite-level scoring
+        weight = 1.0
+        if defn.benchmark:
+            seed_kw = defn.benchmark.get("seed_keywords", [])
+            weight = defn.benchmark.get("weight", 1.0)
+        self._scoring = {}
 
-        # Single scenario — wrap as a 1-element suite
-        return [{"path": path, "weight": 1.0, "seed_keywords": seed_kw}]
+        return [
+            {
+                "path": path,
+                "weight": weight,
+                "seed_keywords": seed_kw,
+                "config": defn.config,
+                "tags": defn.tags,
+            }
+        ]
 
     def run(self) -> BenchmarkReport:
         """Execute the full benchmark suite across all models.

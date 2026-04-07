@@ -1,0 +1,75 @@
+name: quick_check
+description: |
+  Minimal 3-turn benchmark: seed a detail, add interference, test recall.
+  ~30 seconds per model. Good for quick validation when a new model drops.
+
+tags: [memory, recall, quick]
+difficulty: easy
+estimated_duration_s: 30
+subsystems_tested: [hippocampus]
+tools_tested: [memory_recall, respond]
+
+timing: step_based
+
+percepts:
+  # Seed: plant a memorable detail
+  - at: 0
+    source: cli
+    cli_input: |
+      A merchant named Kael tells you: "The vault combination is
+      seven-three-nine. Don't write it down."
+    salience: 1.0
+    novelty: 1.0
+    metadata:
+      scenario_tag: seed
+      phase: seed
+      experiment_role: seed
+      critical_detail: "seven-three-nine"
+      scene_elements: [merchant, Kael, vault]
+
+  # Interference: unrelated content
+  - at: 2
+    source: cli
+    cli_input: |
+      You leave the merchant's stall and walk through a busy market.
+      A juggler tosses flaming torches. A child chases a dog between
+      the stalls. The smell of roasting meat fills the air.
+    salience: 0.5
+    novelty: 0.6
+    metadata:
+      scenario_tag: interference
+      phase: interference
+      experiment_role: interference
+
+  # Recall: ask for the seeded detail
+  - at: 4
+    source: cli
+    cli_input: |
+      You reach the vault. It has a combination lock with three dials.
+      What numbers do you enter?
+    salience: 0.9
+    novelty: 0.7
+    metadata:
+      scenario_tag: recall
+      phase: recall
+      experiment_role: recall_target
+      expected_recall: "seven-three-nine"
+
+expectations:
+  - type: memory_formed
+    memory_contains: "seven-three-nine"
+    description: "Hippocampus captured the vault combination"
+
+  - type: action_count_range
+    params: { min: 2, max: 15 }
+    description: "Agent responds to each turn"
+
+  - type: pipeline_continued
+    after_tag: interference
+    description: "Pipeline continues past interference"
+
+benchmark:
+  category: memory
+  tier: [2]
+  weight: 1.0
+  seed_keywords: ["seven-three-nine", "Kael"]

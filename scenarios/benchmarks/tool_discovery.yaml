@@ -1,0 +1,79 @@
+name: tool_discovery
+description: |
+  Ambiguous percepts that could map to any tool. Tests whether the model
+  reads the available tool list and picks correctly vs hallucinating
+  non-existent tools.
+
+tags: [tools, hallucination, compliance]
+difficulty: medium
+estimated_duration_s: 45
+subsystems_tested: [nac]
+tools_tested: [say, think, examine, memory_recall, respond]
+
+timing: step_based
+
+percepts:
+  # Ambiguous: could use think, respond, or say
+  - at: 0
+    source: cli
+    cli_input: |
+      You hear a voice echoing through the corridor. It speaks in a
+      language you almost understand. Fragments of meaning float past —
+      something about a warning, something about a name. The voice
+      fades before you can parse it fully.
+
+      The corridor branches left and right. Both are dark.
+    salience: 0.7
+    novelty: 0.8
+    metadata:
+      scenario_tag: ambiguous_1
+      phase: exploration
+      scene_elements: [corridor, voice, warning, branches]
+
+  # Requires examination
+  - at: 2
+    source: cli
+    cli_input: |
+      On the left wall, barely visible in the dim light, someone has
+      scratched symbols into the stone. They look deliberate — not
+      random marks but an organized pattern, perhaps a message or map.
+    salience: 0.6
+    novelty: 0.7
+    metadata:
+      scenario_tag: examine_prompt
+      phase: exploration
+      expected_tool: examine
+      scene_elements: [wall, symbols, stone, pattern, message]
+
+  # Requires recall from earlier
+  - at: 4
+    source: cli
+    cli_input: |
+      You emerge into a large chamber. At the far end, a stone pedestal
+      holds a crystal orb. As you approach, the orb pulses with light
+      and a voice says: "Speak the warning you were given."
+    salience: 0.9
+    novelty: 0.6
+    metadata:
+      scenario_tag: recall_prompt
+      phase: challenge
+      expected_tool: memory_recall
+      scene_elements: [chamber, pedestal, crystal orb, voice]
+
+expectations:
+  - type: action_count_range
+    params: { min: 3, max: 20 }
+    description: "Agent takes actions for each turn"
+
+  - type: hallucination_rate_below
+    params: { max_rate: 0.5 }
+    description: "Less than 50% tool hallucination"
+
+  - type: pipeline_continued
+    after_tag: examine_prompt
+    description: "Pipeline continues through all turns"
+
+benchmark:
+  category: tool_usage
+  tier: [1]
+  weight: 1.0

@@ -1,0 +1,139 @@
+name: causal_learning
+description: |
+  Repeated cause-effect patterns to test NAc causal link formation.
+  The AUT encounters fire (pain), a healing fountain (reward), and
+  a locked chest (neutral). Measures link count, confidence growth,
+  and causal diversity.
+
+tags: [causal, learning, nac, pain]
+difficulty: medium
+estimated_duration_s: 60
+subsystems_tested: [nac, hippocampus]
+tools_tested: [say, think, respond, examine]
+
+timing: step_based
+
+percepts:
+  # Encounter 1: fire (dangerous)
+  - at: 0
+    source: cli
+    cli_input: |
+      You enter a torch-lit cavern. A pool of liquid fire blocks the
+      path. The heat is intense. You could try to jump across, wade
+      through, or look for another way around.
+    salience: 0.8
+    novelty: 0.9
+    metadata:
+      scenario_tag: fire_1
+      phase: encounter_1
+      experiment_role: cause_effect
+      scene_elements: [cavern, fire, pool, torches, heat]
+
+  # Pain signal if AUT interacts with fire
+  - at: 1
+    source: proprioception
+    content: pain_signal
+    salience: 0.7
+    metadata:
+      pain_type: external_signal
+      intensity: 0.6
+      scenario_tag: fire_pain
+
+  # Encounter 2: healing fountain (rewarding)
+  - at: 3
+    source: cli
+    cli_input: |
+      Beyond the cavern, you find a crystal-clear fountain in a mossy
+      alcove. The water glows faintly blue. Drinking from it makes you
+      feel refreshed and energized. A sign reads: "Drink freely."
+    salience: 0.6
+    novelty: 0.7
+    metadata:
+      scenario_tag: fountain_1
+      phase: encounter_2
+      experiment_role: cause_effect
+      scene_elements: [fountain, water, glow, alcove, sign]
+
+  # Encounter 3: fire again (same pattern)
+  - at: 5
+    source: cli
+    cli_input: |
+      The passage narrows and you see another pool of liquid fire
+      ahead. This time the pool is wider. The same intense heat
+      radiates from it. What do you do?
+    salience: 0.8
+    novelty: 0.4
+    metadata:
+      scenario_tag: fire_2
+      phase: encounter_3
+      experiment_role: recall_target
+      scene_elements: [fire, pool, heat, passage]
+
+  # Pain signal again
+  - at: 6
+    source: proprioception
+    content: pain_signal
+    salience: 0.7
+    metadata:
+      pain_type: external_signal
+      intensity: 0.7
+      scenario_tag: fire_pain_2
+
+  # Encounter 4: fountain again (same positive pattern)
+  - at: 8
+    source: cli
+    cli_input: |
+      Another fountain, identical to the first. The same blue glow,
+      the same mossy alcove. Do you drink?
+    salience: 0.5
+    novelty: 0.3
+    metadata:
+      scenario_tag: fountain_2
+      phase: encounter_4
+      experiment_role: cause_effect
+      scene_elements: [fountain, water, glow]
+
+  # Encounter 5: fire a third time — has AUT learned?
+  - at: 10
+    source: cli
+    cli_input: |
+      A third fire pool. By now the pattern is clear. The heat is
+      familiar. What is your approach this time?
+    salience: 0.7
+    novelty: 0.2
+    metadata:
+      scenario_tag: fire_3
+      phase: encounter_5
+      experiment_role: recall_target
+      scene_elements: [fire, pool, heat]
+
+expectations:
+  - type: memory_formed
+    memory_contains: "fire"
+    description: "Hippocampus captured fire encounters"
+
+  - type: memory_formed
+    memory_contains: "fountain"
+    description: "Hippocampus captured fountain encounters"
+
+  - type: pain_signal_count
+    params: { min: 2 }
+    description: "At least 2 pain signals fired"
+
+  - type: action_count_range
+    params: { min: 5, max: 30 }
+
+  - type: pipeline_continued
+    after_tag: fire_3
+    description: "Pipeline processes all encounters"
+
+benchmark:
+  category: learning
+  tier: [2]
+  weight: 1.5
+  seed_keywords: ["fire", "fountain"]
+  metrics:
+    - causal_link_count
+    - learning_efficiency
+    - causal_diversity
+    - pain_signal_count
