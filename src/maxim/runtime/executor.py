@@ -50,6 +50,12 @@ TOOL_ALIASES: dict[str, str] = {
     # Internet search → memory_recall (in sim, there's no internet)
     "internet_search": "memory_recall",
     "web_search": "memory_recall",
+    # Inspection / observation → examine
+    "inspect": "examine",
+    "look": "examine",
+    "observe": "examine",
+    "look_at": "examine",
+    "investigate": "examine",
 }
 
 
@@ -68,6 +74,11 @@ class Executor:
         self._running: tuple[str, float, str] | None = None
         # Track alias redirects for experiment analysis
         self.alias_redirects: list[tuple[str, str]] = []
+        # Tool usage tracking (Phase 5c)
+        self._tools_attempted: list[str] = []
+        self._tools_succeeded: list[str] = []
+        self._tools_hallucinated: list[str] = []
+        self._consecutive_failures: int = 0
 
     def execute(self, action: dict[str, Any]) -> ToolOutput:
         """Execute a tool action, returning raw ToolOutput.
@@ -85,6 +96,8 @@ class Executor:
         params = action.get("params") if isinstance(action.get("params"), dict) else {}
         if not isinstance(tool_name, str) or not tool_name:
             return ToolOutput(success=False, error=f"Invalid action: {action!r}")
+
+        self._tools_attempted.append(tool_name)
 
         # ── Alias resolution ─────────────────────────────────────────
         original_name = tool_name
@@ -117,15 +130,22 @@ class Executor:
         except KeyError:
             with self._lock:
                 self._running = None
+            self._tools_hallucinated.append(original_name)
+            self._consecutive_failures += 1
             error_msg = f"Tool not registered: {tool_name!r}."
             suggestions = self.registry.find_similar(original_name, limit=3)
             if suggestions:
                 error_msg += f" Did you mean: {', '.join(suggestions)}?"
-            error_msg += (
-                " Only use tools from the Available Tools list."
-                " Use 'memory_recall' to remember, 'say' to speak aloud,"
-                " 'think' to reason."
-            )
+            # Phase 5d: proactive tool list after repeated failures
+            if self._consecutive_failures >= 2:
+                available = sorted(self.registry.list())
+                error_msg += f" Available tools: {', '.join(available)}."
+            else:
+                error_msg += (
+                    " Only use tools from the Available Tools list."
+                    " Use 'memory_recall' to remember, 'say' to speak aloud,"
+                    " 'think' to reason."
+                )
             result = ToolOutput(success=False, error=error_msg)
             self._report_failure(tool_name, invocation_id, result, params)
             return result
@@ -143,6 +163,8 @@ class Executor:
             self._running = None
 
         if result.success:
+            self._tools_succeeded.append(tool_name)
+            self._consecutive_failures = 0
             if self._tool_pain_bridge is not None:
                 self._tool_pain_bridge.record_tool_complete(tool_name, invocation_id, success=True)
         else:
@@ -182,6 +204,21 @@ class Executor:
         if self._tool_pain_bridge is not None:
             return self._tool_pain_bridge._last_rpe
         return 0.0
+
+    def tool_usage_stats(self) -> dict[str, Any]:
+        """Get tool usage statistics for experiment analysis."""
+        return {
+            "tools_attempted": list(self._tools_attempted),
+            "tools_succeeded": list(self._tools_succeeded),
+            "tools_hallucinated": list(self._tools_hallucinated),
+            "alias_redirects": [(orig, target) for orig, target in self.alias_redirects],
+            "total_attempts": len(self._tools_attempted),
+            "total_successes": len(self._tools_succeeded),
+            "total_hallucinated": len(self._tools_hallucinated),
+            "hallucination_rate": (
+                len(self._tools_hallucinated) / len(self._tools_attempted) if self._tools_attempted else 0.0
+            ),
+        }
 
     def get_running_tool(self) -> tuple[str, float, str] | None:
         """Get the currently running tool info.

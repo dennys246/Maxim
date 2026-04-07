@@ -1,14 +1,26 @@
 # Introspection API Plan — Programmatic AUT Access
 
+## Implementation Status
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| 1 | **DONE** | `AUTIntrospector` class in `simulation/introspection.py` (~180 LOC) |
+| 2 | **DONE** | Wired into orchestrator — `aut_introspector` created once, passed to `InspectAUTTool` |
+| 3 | **DONE** | `InspectAUTTool` delegates all queries to `AUTIntrospector.dispatch()` |
+| 4 | Not started | Standalone experiment runner (`run_campaign()` function) |
+| 5 | Not started | AUT self-introspection tool (needs design discussion) |
+
 ## Context
 
-The `InspectAUTTool` provides read-only access to the AUT's cognitive state (memory recall, causal links, system stats, etc.) via the simulation tool interface. However, it was designed for LLM orchestrators to call via JSON tool params — which causes persistent issues:
+The `InspectAUTTool` provides read-only access to the AUT's cognitive state (memory recall, causal links, system stats, etc.) via the simulation tool interface. However, it was designed for LLM orchestrators to call via JSON tool params — which caused persistent issues:
 
 1. **JSON escaping failures**: Qwen2.5-14B produces `{'query': 'memory_recall'}` (Python-style single quotes) instead of valid JSON, causing parse failures and 60s stalls.
-2. **Awkward programmatic access**: The current workaround accesses the tool through the registry (`orch_registry._tools`), which is brittle and implementation-dependent.
+2. **Awkward programmatic access**: The workaround accessed the tool through the registry (`orch_registry._tools`), which was brittle and implementation-dependent.
 3. **No standalone experiment scripting**: Researchers can't write simple Python scripts that introspect the AUT without bootstrapping the full simulation pipeline.
 
 The hippocampal recall experiment proved that programmatic campaign delivery + programmatic analysis is far more reliable than LLM-driven analysis. This plan extends that principle to a clean API.
+
+**Phases 1-3 shipped:** The `AUTIntrospector` class now provides typed Python methods for all introspection queries. The orchestrator's post-campaign analysis uses `aut_introspector.full_analysis()` instead of the old registry hack. `InspectAUTTool` is a thin wrapper that delegates to `AUTIntrospector.dispatch()`.
 
 ## Current State
 
@@ -192,14 +204,14 @@ This would let the AUT actively search its memory when encountering the door in 
 
 ## Estimated Scope
 
-| Phase | LOC | Priority |
-|-------|-----|----------|
-| 1: AUTIntrospector class | ~150 | High |
-| 2: Wire into orchestrator | ~50 | High |
-| 3: Refactor InspectAUTTool | ~30 | Medium |
-| 4: Standalone experiment runner | ~100 | Medium |
-| 5: AUT self-introspection tool | ~50 | Low (needs discussion) |
-| **Total** | **~380** | |
+| Phase | LOC | Priority | Status |
+|-------|-----|----------|--------|
+| 1: AUTIntrospector class | ~180 | High | **DONE** |
+| 2: Wire into orchestrator | ~20 | High | **DONE** |
+| 3: Refactor InspectAUTTool | ~20 | Medium | **DONE** |
+| 4: Standalone experiment runner | ~100 | Medium | Not started |
+| 5: AUT self-introspection tool | ~50 | Low (needs discussion) | Not started |
+| **Total** | **~370** | | **~220 shipped** |
 
 ## Related Plans
 

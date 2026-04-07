@@ -18,11 +18,11 @@ This plan addresses all four issues with a phased approach.
 | 1 | **DONE** | Introspection tools wired to AUT (existing `MemoryRecallTool`, not a new tool) |
 | 2 | **DONE** | `say` tool in `tools/narrative.py` |
 | 3 | **DONE** | `think` tool in `tools/narrative.py` |
-| 4 | Not started | `examine` tool — bridge approach (query SimulationBridge for latest message) |
+| 4 | **DONE** | `examine` tool in `tools/narrative.py` — bridge + hippocampus approach |
 | 5a | **DONE** | "Did you mean?" suggestions via `ToolRegistry.find_similar()` |
 | 5b | **DONE** | Tool descriptions in `TOOL_DESCRIPTIONS` + cognitive tools guidance in system prompt |
-| 5c | Not started | Tool usage tracking for experiment analysis |
-| 5d | Not started | Proactive tool list after repeated failures |
+| 5c | **DONE** | Tool usage tracking in `Executor.tool_usage_stats()` |
+| 5d | **DONE** | Proactive tool list after 2+ consecutive hallucinations |
 | 5e | **DONE** | Tool alias map — silently redirects hallucinated tool names to correct tools |
 | 6 | **DONE** | Robot tools deregistered in sim mode |
 
@@ -110,43 +110,20 @@ Returns `{"thought": text, "visible": False}`. The thought is captured in hippoc
 
 ---
 
-## Phase 4: `examine` — Scene inspection (~60 LOC)
+## Phase 4: `examine` — Scene inspection — DONE
 
-**Priority: MEDIUM** — Replaces `focus_interests` for narrative contexts.
+**File:** `src/maxim/tools/narrative.py`
 
-### What it does
+Inspect an object or scene element in detail. Two-stage approach:
 
-Inspect an object or scene element in detail:
+1. **Bridge scan:** queries the last 3 percepts from `SimulationBridge._transcript_percepts` for sentences mentioning the target
+2. **Hippocampus enrichment:** searches episodic memory for related entries, adds "You recall: ..." context
 
-```python
-class ExamineTool(Tool):
-    name = "examine"
-    description = (
-        "Examine an object, person, or feature in the current scene. "
-        "Returns what you observe about it."
-    )
-    input_schema = {
-        "target": str,
-    }
-```
+Falls back to "You don't see anything notable about {target}" when no matches found.
 
-### Implementation approach: SimulationBridge
+Accepts LLM param aliases: `target`, `object`, `text`. Deduplicates observations. Registered on the AUT's registry in sim mode alongside `say` and `think`.
 
-The `examine` tool will hold a reference to the `SimulationBridge` and query the latest message for mentions of the target. This is cleaner than scanning raw percepts since the AUT's "percept" in sim mode is the orchestrator's last message delivered through the bridge.
-
-```python
-class ExamineTool(Tool):
-    def __init__(self, *, bridge=None, hippocampus=None):
-        super().__init__()
-        self._bridge = bridge
-        self._hippocampus = hippocampus
-
-    def execute(self, **kwargs):
-        target = kwargs.get("target", "")
-        # Stage 1: scan latest bridge message for target mentions
-        # Stage 2: optionally enrich from hippocampus
-        # Falls back to "You don't see anything notable about {target}"
-```
+**Tool aliases added:** `inspect`, `look`, `observe`, `look_at`, `investigate` all redirect to `examine`.
 
 ### How it differs from `focus_interests`
 
@@ -180,21 +157,22 @@ if tool_name not in registry:
 
 Inject the registered tool names into the AUT's system prompt so the LLM knows exactly what's available. This already exists for the orchestrator (in `_SYSTEM_TOOL_RESPONSE`) but not for the AUT.
 
-### 5c. Tool usage tracking for experiment analysis
+### 5c. Tool usage tracking for experiment analysis — DONE
 
-Track which tools the AUT attempts vs which succeed, and include in experiment metrics:
+**File:** `src/maxim/runtime/executor.py`
 
-```python
-metrics = {
-    "tools_attempted": ["memory_recall", "say", "think", "respond"],
-    "tools_succeeded": ["memory_recall", "say", "respond"],
-    "tools_hallucinated": ["NLP", "dialogue"],  # attempted but not registered
-}
-```
+`Executor` now tracks every tool call across three lists:
+- `_tools_attempted` — every tool name the LLM tried to call
+- `_tools_succeeded` — tools that executed successfully
+- `_tools_hallucinated` — tool names that weren't registered (even after alias check)
 
-### 5d. Proactive tool list after repeated failures
+Access via `executor.tool_usage_stats()` which returns a dict with all three lists plus computed `hallucination_rate` (0.0-1.0). Used by benchmark and experiment reporting.
 
-After 2+ consecutive unregistered tool attempts, inject: "Available tools: respond, say, memory_recall, think..." to break the hallucination loop.
+### 5d. Proactive tool list after repeated failures — DONE
+
+**File:** `src/maxim/runtime/executor.py`
+
+After 2+ consecutive unregistered tool attempts (`_consecutive_failures >= 2`), the error message includes the full sorted list of available tools. Counter resets to 0 on any successful tool execution. This breaks hallucination loops where small models keep trying non-existent tools.
 
 ---
 
@@ -287,11 +265,11 @@ See also: [docs/troubleshooting/tool_aliases.md](../troubleshooting/tool_aliases
 | 1 | Introspection on AUT | ~60 | **DONE** | Door recall experiment |
 | 2 | `say` tool | ~50 | **DONE** | Narrative action capability |
 | 3 | `think` tool | ~40 | **DONE** | Better reasoning chains |
-| 4 | `examine` tool | ~60 | Next | Scene engagement (bridge approach) |
+| 4 | `examine` tool | ~80 | **DONE** | Scene engagement (bridge + hippocampus) |
 | 5a | "Did you mean?" | ~40 | **DONE** | Helpful error messages |
 | 5b | Tool descriptions + guidance | ~50 | **DONE** | LLM sees tool list |
-| 5c | Tool usage tracking | ~30 | Next | Experiment metrics |
-| 5d | Proactive tool list | ~20 | Next | Break hallucination loops |
+| 5c | Tool usage tracking | ~40 | **DONE** | Experiment metrics |
+| 5d | Proactive tool list | ~20 | **DONE** | Break hallucination loops |
 | 5e | Tool alias map | ~50 | **DONE** | Silent hallucination redirect |
 | 6 | Sim tool set | ~15 | **DONE** | No robot tool waste |
 
@@ -301,7 +279,9 @@ See also: [docs/troubleshooting/tool_aliases.md](../troubleshooting/tool_aliases
 
 **Session 3 (DONE):** Phase 5e — tool alias map for silent hallucination redirect.
 
-**Next:** Phase 4 (`examine` with bridge), 5c (usage tracking), 5d (proactive tool list).
+**Session 4 (DONE):** Phase 4 (`examine` with bridge + hippocampus), 5c (tool usage tracking via `Executor.tool_usage_stats()`), 5d (proactive tool list after 2+ consecutive failures).
+
+**All phases complete.** This plan is finished.
 
 ## Decisions Made
 
@@ -310,7 +290,7 @@ See also: [docs/troubleshooting/tool_aliases.md](../troubleshooting/tool_aliases
 3. **`think` counts as an action** — prevents infinite think loops. Small models can chain think→act in two turns.
 6. **Tool aliases over tool renaming** — LLMs hallucinate different names per model and even per run. No single naming convention would help. Alias map catches all variants and redirects silently.
 4. **`examine` uses bridge approach** — queries `SimulationBridge` for latest message, not raw percepts. Cleaner since the AUT's "percept" in sim mode is the orchestrator's last message.
-5. **No `AUTIntrospector` class yet** — the existing tools work; they just needed to be registered on the right registry. The introspection API plan remains a separate future concern.
+5. **`AUTIntrospector` class shipped** — `simulation/introspection.py` provides clean programmatic API. `InspectAUTTool` delegates to it. Registry hack in post-campaign analysis replaced.
 
 ## Open Questions (remaining)
 

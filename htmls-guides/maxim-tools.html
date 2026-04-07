@@ -279,6 +279,35 @@
     </div>
   </section>
 
+  <!-- ── AUT Narrative Tools ──────────────────────────────── -->
+  <section id="narrative-tools" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">AUT Narrative Tools</h2>
+    <p class="text-slate-300 leading-relaxed">These tools are registered on the <strong class="text-white">agent-under-test's</strong> tool registry in simulation mode. They let the AUT interact with the narrative environment &mdash; speaking in-world, reasoning explicitly, and examining scene details &mdash; as opposed to robot-specific tools like <code class="bg-slate-950 px-1 rounded text-xs">speak</code> (TTS) or <code class="bg-slate-950 px-1 rounded text-xs">focus_interests</code> (camera tracking), which are deregistered in sim mode.</p>
+
+    <div class="space-y-4">
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">say</code></h3>
+      <p class="text-slate-300 text-sm">Say something aloud in the current scene. An in-world narrative action distinct from <code class="text-indigo-300">respond</code> (talks to the CLI user). Speaking to NPCs, answering riddles, or saying passwords. The text becomes part of action history, captured by hippocampus through the normal episodic memory path.</p>
+      <p class="text-slate-400 text-xs">Params: <code>text</code> (str). Aliases: <code>message</code>, <code>phrase</code></p>
+
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">think</code></h3>
+      <p class="text-slate-300 text-sm">Pause and reason about the current situation before acting. An explicit "think before acting" step that doesn't produce an external action. Counts as an action in the turn budget to prevent infinite think loops. Useful for small models (7B) that tend to jump to action without reasoning.</p>
+      <p class="text-slate-400 text-xs">Params: <code>thought</code> (str). Aliases: <code>text</code>, <code>prompt</code></p>
+
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">examine</code></h3>
+      <p class="text-slate-300 text-sm">Examine an object, person, or feature in the current scene. Queries the SimulationBridge's last percepts for mentions of the target, then enriches with hippocampal memories. Returns what the AUT observes. Falls back to "You don't see anything notable" when no matches found.</p>
+      <p class="text-slate-400 text-xs">Params: <code>target</code> (str). Aliases: <code>object</code>, <code>text</code></p>
+
+      <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">memory_recall</code></h3>
+      <p class="text-slate-300 text-sm">Search the AUT's own episodic memory (hippocampus) by keyword with spreading activation. Enables the AUT to actively recall past experiences when facing a decision &mdash; e.g., remembering a password at a locked door.</p>
+      <p class="text-slate-400 text-xs">Params: <code>keyword</code> (str), <code>expand</code> (bool, default true)</p>
+    </div>
+
+    <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-5 space-y-2 mt-4">
+      <h4 class="text-indigo-400 font-semibold">Tool Alias Map</h4>
+      <p class="text-sm text-slate-300">Small models (7B-14B) hallucinate tool names from their training data. A <strong class="text-white">TOOL_ALIASES</strong> map in the executor silently redirects common hallucinations: <code class="text-indigo-300">remember</code>&rarr;<code class="text-indigo-300">memory_recall</code>, <code class="text-indigo-300">speech</code>&rarr;<code class="text-indigo-300">say</code>, <code class="text-indigo-300">reflection</code>&rarr;<code class="text-indigo-300">think</code>, <code class="text-indigo-300">look</code>&rarr;<code class="text-indigo-300">examine</code>, etc. After 2+ consecutive hallucinations, the error message includes the full available tool list to break the loop.</p>
+    </div>
+  </section>
+
   <!-- ── Learned Tool Index ──────────────────────────────── -->
   <section id="learned-index" class="space-y-4 pt-6 border-t border-slate-700">
     <h2 class="text-2xl font-bold text-white">Learned Tool Index</h2>

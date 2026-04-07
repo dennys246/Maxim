@@ -251,7 +251,9 @@ data/util/          # Runtime config (llm.json, cost_state.json)
 | I'm touching... | Start here |
 |---|---|
 | The agent loop / step pipeline | `runtime/agent_loop.py`, `runtime/loop_controller.py` |
-| Adding a new tool | `tools/` + register in the tool registry; see `tools/introspection.py` for a clean example |
+| Adding a new tool | `tools/` + register in the tool registry; see `tools/narrative.py` for sim tools or `tools/introspection.py` for subsystem tools |
+| AUT introspection (programmatic) | `simulation/introspection.py` (AUTIntrospector — clean API, no tool dispatch) |
+| Tool aliases (hallucination redirect) | `runtime/executor.py` (TOOL_ALIASES dict + tool_usage_stats()) |
 | LLM prompts / routing | `models/language/router.py`, `models/language/prompt_formats.py` |
 | Sim personas | `simulation/personas.py` (8 today: adversarial, cooperative, confused, escalating, campaign, refinement, researcher, sweep) |
 | Research protocol (Writer/Reviewer) | `simulation/research_agents.py`, `simulation/research_orchestrator.py` |

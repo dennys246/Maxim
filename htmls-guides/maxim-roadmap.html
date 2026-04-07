@@ -77,6 +77,16 @@
         </thead>
         <tbody>
           <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Tool Refactoring</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">All phases: say, think, examine, introspection tools, alias map, usage tracking, proactive tool list</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Introspection API</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Phases 1-3</span></td>
+            <td class="py-3">AUTIntrospector class shipped. InspectAUTTool delegates. Remaining: standalone runner, self-introspection</td>
+          </tr>
+          <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Docker Sandbox</td>
             <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
             <td class="py-3">Phase A (TmpdirSandbox + pain triggers) complete</td>
@@ -87,39 +97,34 @@
             <td class="py-3">Complete. mDNS + InferenceRouter moved to Agent Mesh as infrastructure phases.</td>
           </tr>
           <tr class="border-t border-slate-700">
-            <td class="pr-4 py-3 text-white font-medium">Realtime Refinement</td>
-            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
-            <td class="py-3">Core complete (~90%); remaining ~50 LOC for 6th persona + metric types</td>
-          </tr>
-          <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Research Protocol</td>
             <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
-            <td class="py-3">Complete: mesh primitives, research tools, Writer + Reviewer agents, Research Orchestrator, dual-LLM wiring. <code class="bg-slate-950 px-1 rounded text-xs">maxim --sim research</code></td>
+            <td class="py-3">Complete: mesh primitives, research tools, Writer + Reviewer, dual-LLM. <code class="bg-slate-950 px-1 rounded text-xs">maxim --sim research</code></td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Simulation Benchmark</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-600/40 text-slate-400">Not Started</span></td>
+            <td class="py-3">Multi-model comparative testing. <code class="bg-slate-950 px-1 rounded text-xs">maxim --sim benchmark</code>. ~680 LOC</td>
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Agent Mesh</td>
             <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400">Foundations</span></td>
-            <td class="py-3">Phase 1a-1b foundations in place via Research Protocol. Phases 0a-0b (mDNS + InferenceRouter) next.</td>
+            <td class="py-3">Phase 1a-1b foundations in place. Phases 0a-0b (mDNS + InferenceRouter) next.</td>
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Embodiment Core</td>
             <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-600/40 text-slate-400">Not Started</span></td>
-            <td class="py-3">Independent track; no blockers</td>
+            <td class="py-3">Independent track; no blockers. MVP ~400 LOC</td>
           </tr>
           <tr class="border-t border-slate-700">
-            <td class="pr-4 py-3 text-white font-medium">Embodiment Hardware Adapter</td>
+            <td class="pr-4 py-3 text-white font-medium">Generative Campaigns</td>
             <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-600/40 text-slate-400">Not Started</span></td>
-            <td class="py-3">Blocked on Embodiment Core</td>
-          </tr>
-          <tr class="border-t border-slate-700">
-            <td class="pr-4 py-3 text-white font-medium">Simulation Test Bed</td>
-            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-600/40 text-slate-400">Not Started</span></td>
-            <td class="py-3">Regression safety net for sim orchestrator</td>
+            <td class="py-3">LLM-generated narratives + entity naming. ~600 LOC</td>
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">DM MVP</td>
             <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-red-500/20 text-red-400">Deferred</span></td>
-            <td class="py-3">Blocked on everything; lowest priority</td>
+            <td class="py-3">Blocked on Embodiment Core + Agent Mesh + DM Spike</td>
           </tr>
         </tbody>
       </table>
@@ -130,7 +135,7 @@
   <section class="space-y-4">
     <h2 id="recently-shipped" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What We Just Shipped</h2>
 
-    <p class="text-slate-300 leading-relaxed">The most recent wave shipped <span class="text-indigo-400 font-semibold">Research Protocol Phase 0&ndash;1</span>&mdash;agent mesh primitives and structured experiment tracking. Before that: <span class="text-indigo-400 font-semibold">Multi-LLM Scaling</span> gave Maxim distributed inference across multiple machines with a leader/peer architecture.</p>
+    <p class="text-slate-300 leading-relaxed">The most recent wave shipped <span class="text-indigo-400 font-semibold">Tool Refactoring + Introspection API</span>&mdash;narrative tools (say, think, examine), tool alias map, usage tracking, proactive tool list, and <code class="bg-slate-950 px-1 rounded text-xs">AUTIntrospector</code> class for clean programmatic access to AUT cognitive state. Before that: <span class="text-indigo-400 font-semibold">Research Protocol</span> and <span class="text-indigo-400 font-semibold">Multi-LLM Scaling</span> gave Maxim distributed inference and structured experiment pipelines.</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
@@ -178,36 +183,36 @@
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">1</span>
         <div>
-          <h3 class="text-white font-semibold">Fix Sim Orchestrator</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">The simulation orchestrator has issues blocking daily use. This is the highest priority because sims are the primary development and testing workflow.</p>
+          <h3 class="text-white font-semibold">Simulation Benchmark</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Multi-model comparative testing via <code class="bg-slate-950 px-1 rounded text-xs">maxim --sim benchmark</code>. Validates tool refactoring, creates model baselines, reuses existing campaign + report infrastructure. ~680 LOC.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">2</span>
         <div>
-          <h3 class="text-white font-semibold">Remote Self-Update (Phase 7a-ext)</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Allow Maxim instances to pull updates remotely without manual SSH. Critical for faster iteration when running on headless machines.</p>
+          <h3 class="text-white font-semibold">Embodiment Core MVP</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">ATL-grounded body-state primitives (~400 LOC). No upstream deps, standalone-valuable, establishes patterns that DM campaigns and Agent Mesh inherit.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">3</span>
         <div>
-          <h3 class="text-white font-semibold">Simulation Test Bed</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Automated regression suite for the sim orchestrator. Provides a safety net so changes to the agent pipeline don't silently break simulation behavior.</p>
+          <h3 class="text-white font-semibold">Generative Campaign Mode</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">LLM-generated narrative campaigns with entity naming (~600 LOC). Exercises new examine/say/think tools at scale. Dynamic story arcs adapting to AUT responses.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">4</span>
         <div>
-          <h3 class="text-white font-semibold">Phase 7c: mDNS Peer Discovery</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Zero-configuration peer discovery on the local network using mDNS/DNS-SD. Eliminates manual IP entry when adding new Maxim nodes.</p>
+          <h3 class="text-white font-semibold">Agent Mesh Phase 2+</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Network transport, mDNS discovery, and distributed planning. Builds on Phase 1a-1b foundations (AgentProfile, UMR, MeshMessage, LocalMessageBus).</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">5</span>
         <div>
-          <h3 class="text-white font-semibold">Phase 7d: InferenceRouter</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Intelligent routing with local &rarr; peer &rarr; remote fallback. The router picks the best available backend based on latency, cost, and model availability.</p>
+          <h3 class="text-white font-semibold">DM Choice Classifier Spike</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Half-day validation that ATL concept similarity + NAc causal scoring can classify AUT free-text responses against campaign choices (~150 LOC). Gate for DM MVP.</p>
         </div>
       </div>
     </div>

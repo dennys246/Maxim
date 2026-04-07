@@ -10,39 +10,38 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 
 | Plan | Status | Next step |
 |------|--------|-----------|
+| Tool Refactoring | **Complete** | All 10 phases done: say, think, examine, introspection, aliases, tracking, proactive list. [Plan](tool_refactoring_plan.md) |
+| Introspection API | **Phases 1-3 done** | `AUTIntrospector` class shipped, `InspectAUTTool` delegates. Remaining: standalone runner (Ph4), self-introspection (Ph5). [Plan](introspection_api_plan.md) |
+| Simulation Benchmark | **Not started** | Multi-model comparative testing (`--sim benchmark`). ~680 LOC. [Plan](benchmark_plan.md) |
 | Docker Sandbox | **Phase A done** | TmpdirSandbox + pain triggers implemented; Phase B (Docker backend) optional |
-| Hippocampal Recall Experiment | **Ready to run** | All infrastructure in place (Research Protocol complete, dual-LLM wiring done, campaign YAMLs authored). See [hippocampal_recall_experiment.md](hippocampal_recall_experiment.md) |
 | Research Protocol | **Complete** | All phases: mesh primitives, research tools, Writer + Reviewer agents, Research Orchestrator. CLI: `maxim --sim research`. |
-| Multi-LLM Scaling | **Complete** | All phases done. mDNS + InferenceRouter moved to Agent Mesh as Phases 0a-0b. [Archived](agent_mesh.md) |
+| Multi-LLM Scaling | **Complete** | All phases done. mDNS + InferenceRouter moved to Agent Mesh as Phases 0a-0b. |
 | Agent Mesh | **Phase 1a-1b foundations** | AgentProfile + UMR implemented in `src/maxim/mesh/`. Phases 0a-0b (mDNS + InferenceRouter) next, then full protocol. |
 | Realtime Refinement | **Core done** | InspectAUTTool, 8 personas, 3 metric expectations, baseline scenario. Per-lane LLM metrics deferred to Multi-LLM Phase 8 |
 | Embodiment Core | **Not started** | Phase 0 MVP + ATL grounding (~400 LOC) is the gate; Cerebellum + structured failures follow. Designed and scoped. |
 | Embodiment Hardware Adapter | **Not started** | Blocked on Embodiment Core MVP. 1-sprint adapter (~300 LOC) wrapping RobotController. |
-| Wave A Stabilization | **Done** | Circular import + bounded queues + atomic-write hardening + silent-except cleanup |
-| Wave B Refinement Harness | **Done** | YAML `params` loader + `response_latency_ms` expectation + refinement_baseline.yaml + 9 new tests |
-| Dungeon Master Persona (MVP) | **Deferred** | Hand-authored D&D campaigns as ultimate bio-system stress test (~840 LOC). Held until Multi-LLM + Agent Mesh + Embodiment Core land. `CharacterState` mirrors Embodiment body-state patterns; narrative damage flows through shared `PainDetector` pathway. Gated on choice-classifier spike. |
-| DM Choice Classifier Spike | **Not started** | Half-day spike validating ATL concept similarity + NAc causal scoring can classify AUT free-text responses against campaign choices. Runs before DM MVP commits. |
-| Dungeon Master Extensions | **Deferred** | Optional follow-ons layered onto DM MVP: architect persona, encounter library, adaptive difficulty, true RNG, etc. Each extension gated on MVP usage pain. |
-| Interactive Sim Prompts | **Not started** | `ask_user` tool with timeout + replay (~180 LOC). Needed for DM architect extension; useful to any authoring persona. |
-| Sim Entity Naming | **Not started** | Per-entity name prefix in sim logs (AUT/orchestrator only, ~120 LOC). Optional readability win. |
-| Stdlib OpenAI-Compat Client | **Not started** | Replace `openai` pip dep with ~40 LOC urllib fallback for peer→leader inference. Zero extra deps on peer machines. |
-| Simulation Test Bed | **Not started** | Automated sim regression suite: run scenario battery, assess against expectations, report pass/fail with bio-system health metrics. |
-| Remote Update Soft Restart | **Done** | `maxim peer restart` — soft-restarts leader via `os.execv`. ~50 LOC across leader_proxy.py + peer/cli.py. |
-| Peer Inference Retry on Leader Restart | **Not started** | OpenAI backend should retry with backoff on transient failures (502/503/connection reset) when the leader restarts mid-request. Currently a leader restart during a sim causes `No eligible LLM providers` stall. ~30 LOC in openai_backend.py. |
+| Generative Campaign Mode | **Not started** | LLM-generated narrative campaigns with entity naming (~480+120 LOC). Entity naming folded in. [Plan](generative_campaign_plan.md) |
+| Dungeon Master Persona (MVP) | **Deferred** | Hand-authored D&D campaigns as ultimate bio-system stress test (~840 LOC). Held until Multi-LLM + Agent Mesh + Embodiment Core land. Gated on choice-classifier spike. |
+| DM Choice Classifier Spike | **Not started** | Half-day spike validating ATL+NAc classification path. Runs before DM MVP commits. |
+| Dungeon Master Extensions | **Deferred** | Optional follow-ons layered onto DM MVP. Each extension gated on MVP usage pain. |
+| Interactive Sim Prompts | **Not started** | `ask_user` tool with timeout + replay (~180 LOC). Needed for DM architect extension. |
+| Peer Inference Retry on Leader Restart | **Not started** | Retry with backoff on 502/503 during leader restart. ~30 LOC in openai_backend.py. |
 
 ### Completed Plans
 
 | Plan | What it delivered |
 |------|-------------------|
-| Simulation Decomposition | spawn_sub_simulation, extend_simulation, --continuous, 8 personas, approach param, stall detector, SimToolRegistry, bio system wiring |
-| Repo Cleanup (~90%) | Dead code removed, CI added, deps slimmed, version pins relaxed |
-| Agentic Loop Modularization | LoopController, SimulationAdapter, DefaultNetworkController, @resilient, typed state |
-| Simulation Agent (Phases 1-3) | SimulationBridge, 10 tools, 8 personas, orchestrator lifecycle, CLI wiring |
-| Intelligent Context Upgrade (~90%) | Edit disambiguation, turn pinning v1, dropped context notice |
-| LLMWorker Cleanup (Track B) | Removed legacy dual-mode, pass-through statics, fixed feature detection |
-| Router Modularization | router.py split into config.py, types.py, token_counter.py, prompt_formats.py, json_parser.py (router down to 1,268 LOC) |
-| Wave A Stabilization | NAc circular import fix, bounded `_consolidation_candidates` + `_pending_events`, `atomic_io` util with fsync, silent-except audit in agent_loop, defensive shutdown for concept subsystems |
-| Wave B Refinement Harness | YAML `params` loader, `response_latency_ms` expectation (p50/p95 inter-action gaps), `scenarios/refinement_baseline.yaml`, 9 expectation tests |
+| Tool Refactoring | say, think, examine tools + introspection on AUT + "did you mean?" + alias map + tool usage tracking + proactive tool list |
+| Research Protocol | AgentProfile, UMR, MeshMessage, LocalMessageBus, research tools, Writer + Reviewer agents, Research Orchestrator |
+| Multi-LLM Scaling (Phases 1-8) | Remote backend, tunnel, auto-spawn, leader mode, peer discovery, inference routing, per-lane metrics, cloud providers |
+| Remote Update + Soft Restart | `maxim peer update/restart/version/logs/llm` — all working through tunnel |
+| Wave A Stabilization | NAc circular import fix, bounded queues, atomic_io, silent-except cleanup |
+| Wave B Refinement Harness | YAML params, response_latency_ms, refinement_baseline.yaml, 9 tests |
+| Simulation Decomposition | spawn/extend/continuous, 8 personas, stall detector, SimToolRegistry |
+| Router Modularization | router.py split into config.py, types.py, token_counter.py, prompt_formats.py, json_parser.py |
+| Agentic Loop Modularization | LoopController, SimulationAdapter, DefaultNetworkController, @resilient |
+| Repo Cleanup (~90%) | Dead code removed, CI added, deps slimmed |
+| Doctor Upgrade (v1) | Platform detection, GPU/server/LAN/tunnel checks, `maxim peer test` |
 
 ---
 
@@ -97,7 +96,10 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
               └───────────────────────────────────┘
 
 Optional / independent (ship when demand surfaces):
-  Interactive Sim Prompts, Sim Entity Naming, test_record_plan_outcome fix
+  Interactive Sim Prompts, Simulation Benchmark, test_record_plan_outcome fix
+
+Low-priority (fold into future work when relevant):
+  Stdlib OpenAI-Compat Client, GitHub Repo Management
 ```
 
 ---
@@ -108,26 +110,23 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 
 | # | Work | LOC | Rationale |
 |---|------|-----|-----------|
-| 1 | **Embodiment Core Phase 0 MVP** | ~400 | No upstream deps, standalone-valuable, establishes body-state primitives that DM/Mesh inherit |
-| 2 | ~~Research Protocol Phase 0~~ | ~~200~~ | **Done.** Mesh primitives + research tools in `src/maxim/mesh/` and `src/maxim/simulation/research_tools.py` |
-| 3 | **Multi-LLM Phases 1-3** | ~500 | Local dual-model routing; bottleneck for compute scaling |
+| 1 | **Simulation Benchmark (Phases 1-2)** | ~280 | BenchmarkRunner + CLI. Validates tool refactoring and model comparison. Reuses existing campaign + report infra. |
+| 2 | **Embodiment Core Phase 0 MVP** | ~400 | No upstream deps, standalone-valuable, establishes body-state primitives that DM/Mesh inherit |
+| 3 | **Generative Campaign Mode** | ~600 | Dynamic narrative + entity naming (folded in). Exercises new examine/say/think tools. |
 | 4 | **Embodiment Core remaining phases** | per plan | Cerebellum forward models, structured failures |
-| 5 | **Multi-LLM Phases 4-6** | per plan | Remote LLM, tunnel, auto-spawn |
-| 6 | ~~Research Protocol Phases 1-3~~ | ~~per plan~~ | **Done.** Writer + Reviewer agents + Research Orchestrator |
-| 7 | **Multi-LLM Phase 7 + Agent Mesh Phase 1+** | per plans | Mesh lands (consumes RP + Multi-LLM P7) |
-| 8 | **Multi-LLM Phase 8** | per plan | Per-lane metrics, closes Refinement |
-| 9 | **Embodiment Hardware Adapter** | ~300 | Wraps RobotController for hardware |
-| 10 | **Interactive Sim Prompts** | ~180 | Ship when DM architect or other consumer surfaces |
-| 11 | **Sim Entity Naming** | ~120 | Ship when multi-entity log output becomes painful |
-| 12 | **DM Choice Classifier Spike** | ~150 scratch | Validates ATL+NAc classification path |
-| 13 | **DM MVP** | ~840 | Capstone bio-system stress test |
-| 14 | **DM Extensions** | per-extension | Demand-driven, never speculative |
+| 5 | **Agent Mesh Phase 2+** | per plan | Network transport, distributed planning |
+| 6 | **Introspection API Ph 4-5** | ~150 | Standalone experiment runner + AUT self-introspection |
+| 7 | **Embodiment Hardware Adapter** | ~300 | Wraps RobotController for hardware |
+| 8 | **Interactive Sim Prompts** | ~180 | Ship when DM architect or other consumer surfaces |
+| 9 | **DM Choice Classifier Spike** | ~150 scratch | Validates ATL+NAc classification path |
+| 10 | **DM MVP** | ~840 | Capstone bio-system stress test |
+| 11 | **DM Extensions** | per-extension | Demand-driven, never speculative |
 
 **Why this order:**
-- Finishes architectural foundations before layering features
+- Benchmark first: validates newly shipped tool refactoring + creates baseline for model comparison
 - Embodiment Core before DM so DM's `CharacterState` inherits established body-state patterns
-- Research Protocol Phase 0 early because it's tiny and unblocks mesh
-- Multi-LLM drives the critical path for compute scaling
+- Generative campaigns exercise the new narrative tools (say, think, examine) at scale
+- Agent Mesh Phase 2+ drives distributed coordination
 - DM comes last as the capstone that validates everything below it
 
 **Parallelism opportunities (if capacity allows):**

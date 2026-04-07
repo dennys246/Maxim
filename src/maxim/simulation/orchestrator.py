@@ -283,6 +283,7 @@ def start_simulation_mode(
     from maxim.simulation.bridge import SimulationBridge
     from maxim.simulation.conversational_source import ConversationalSource
     from maxim.simulation.personas import DEFAULT_PERSONA, get_persona, list_personas
+    from maxim.simulation.introspection import AUTIntrospector
     from maxim.simulation.tools import (
         AnalyzeResultsTool,
         CheckCompletionTool,
@@ -578,13 +579,16 @@ def start_simulation_mode(
         logger.debug("Failed to register AUT introspection tools: %s", e)
 
     # --- AUT narrative tools (sim-only) ---
-    # Let the AUT speak in-world and reason explicitly.
+    # Let the AUT speak in-world, reason explicitly, and examine scene details.
     try:
-        from maxim.tools.narrative import SayTool, ThinkTool
+        from maxim.tools.narrative import ExamineTool, SayTool, ThinkTool
 
         aut_registry.register(SayTool())
         aut_registry.register(ThinkTool())
-        logger.info("AUT narrative tools registered (say, think)")
+        aut_registry.register(
+            ExamineTool(bridge=bridge, hippocampus=aut_hippocampus)
+        )
+        logger.info("AUT narrative tools registered (say, think, examine)")
     except Exception as e:
         logger.debug("Failed to register AUT narrative tools: %s", e)
 
@@ -723,14 +727,13 @@ def start_simulation_mode(
         )
     )
     orch_registry.register(SimRespondTool())
-    orch_registry.register(
-        InspectAUTTool(
-            hippocampus=aut_hippocampus,
-            nac=aut_nac,
-            memory_hub=aut_memory_hub,
-            energy_registry=aut_energy_registry,
-        )
+    aut_introspector = AUTIntrospector(
+        hippocampus=aut_hippocampus,
+        nac=aut_nac,
+        memory_hub=aut_memory_hub,
+        energy_registry=aut_energy_registry,
     )
+    orch_registry.register(InspectAUTTool(introspector=aut_introspector))
 
     # Research tools — available for all personas (record_experiment is
     # useful for any systematic investigation, not just "researcher").
@@ -1032,50 +1035,27 @@ def start_simulation_mode(
         print(f"  Campaign delivery complete: {len(campaign_results)} turns delivered\n")
 
         # ── Programmatic post-campaign analysis ─────────────────────────
-        # Run inspect_aut queries directly instead of relying on the
-        # orchestrator LLM (which fails on single-quote JSON params).
+        # Use AUTIntrospector directly — clean API, no registry hack.
         print("  Running post-campaign analysis...")
-        inspect_tool = None
-        for tool in orch_registry._tools.values() if hasattr(orch_registry, "_tools") else []:
-            if getattr(tool, "name", "") == "inspect_aut":
-                inspect_tool = tool
-                break
 
         campaign_analysis: dict[str, Any] = {"turns": campaign_results}
-        if inspect_tool is not None:
-            # Memory recall check
-            try:
-                recall_result = inspect_tool.execute(query="memory_recall", params={"keyword": "Verath"})
-                campaign_analysis["memory_recall_verath"] = (
-                    recall_result.output if recall_result.success else {"error": recall_result.error}
-                )
-                print(f"    Memory recall (Verath): {'found' if recall_result.success else 'not found'}")
-            except Exception as e:
-                campaign_analysis["memory_recall_verath"] = {"error": str(e)}
+        try:
+            analysis = aut_introspector.full_analysis(seed_keywords=["Verath"])
+            campaign_analysis.update(analysis)
 
-            # System stats
-            try:
-                stats_result = inspect_tool.execute(query="system_stats")
-                campaign_analysis["system_stats"] = (
-                    stats_result.output if stats_result.success else {"error": stats_result.error}
-                )
-                if stats_result.success and isinstance(stats_result.output, dict):
-                    mem_count = stats_result.output.get("hippocampus", {}).get("total_memories", "?")
-                    graph_edges = stats_result.output.get("hippocampus", {}).get("graph_edges", "?")
-                    print(f"    System stats: {mem_count} memories, {graph_edges} graph edges")
-            except Exception as e:
-                campaign_analysis["system_stats"] = {"error": str(e)}
+            recall = analysis.get("memory_recall", {}).get("Verath", {})
+            recall_count = recall.get("count", 0)
+            print(f"    Memory recall (Verath): {recall_count} hit(s)")
 
-            # Causal links
-            try:
-                causal_result = inspect_tool.execute(query="causal_links")
-                campaign_analysis["causal_links"] = (
-                    causal_result.output if causal_result.success else {"error": causal_result.error}
-                )
-            except Exception as e:
-                campaign_analysis["causal_links"] = {"error": str(e)}
-        else:
-            print("    (inspect_aut not available — skipping introspection)")
+            stats = analysis.get("system_stats", {})
+            mem_count = stats.get("hippocampus_memories", "?")
+            links = stats.get("nac_causal_links", "?")
+            print(f"    System stats: {mem_count} memories, {links} causal links")
+
+            print(f"    Summary: {aut_introspector.summarize(analysis)}")
+        except Exception as e:
+            logger.warning("Post-campaign analysis failed: %s", e)
+            print(f"    (analysis failed: {e})")
 
         # Save analysis to session dir
         try:

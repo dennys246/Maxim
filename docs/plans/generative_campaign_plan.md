@@ -221,6 +221,28 @@ phases:
 - json_repair pipeline — handles decision-call JSON (simple, but still LLM output)
 - Arc template system — new, but small
 
+## Entity Naming (folded from sim_entity_naming plan)
+
+Generative campaigns create named characters interacting with the AUT. Each entity (AUT, orchestrator, generated NPCs) needs a display name threaded through logs. This was previously a standalone plan; it's folded here because generative campaigns are the primary consumer.
+
+### What it provides
+
+- `EntityIdentity` dataclass (name + role) attached to each `MaximAgent`
+- Log prefix becomes `[{entity_name}][{subsystem}]` instead of just `[{subsystem}]`
+- AUT name from `--aut-name` CLI flag (defaults to "AUT")
+- Truncation at 20 chars in rendered output, full name in structured fields
+- Backward compatible: no identity = fallback prefix
+
+### Implementation (~120 LOC)
+
+- `src/maxim/simulation/entity_identity.py` (~40) — dataclass + identity-aware logger helper
+- Modified: sim log formatter, `MaximAgent.__init__`, `orchestrator.py`, CLI arg parser
+- `tests/unit/test_entity_naming.py` (~50)
+
+### When to build
+
+Build alongside generative campaigns. Multi-entity log output becomes unreadable without entity prefixes once campaigns generate NPC dialogue and party interactions.
+
 ## Estimated Scope
 
 | Component | LOC | Complexity |
@@ -231,7 +253,8 @@ phases:
 | YAML arc loader | ~50 | Low |
 | Export generated turns to YAML | ~50 | Low |
 | `--narrator-model` flag | ~30 | Low |
-| **Total** | **~480** | |
+| Entity naming (folded) | ~120 | Low |
+| **Total** | **~600** | |
 
 ## CLI Examples
 
