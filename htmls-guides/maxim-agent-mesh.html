@@ -57,6 +57,7 @@
       <li><a href="#task-delegation" class="text-indigo-400 hover:text-indigo-300 no-underline">Task Delegation</a></li>
       <li><a href="#distributed-planning" class="text-indigo-400 hover:text-indigo-300 no-underline">Distributed Planning</a></li>
       <li><a href="#clock-sync" class="text-indigo-400 hover:text-indigo-300 no-underline">Clock Synchronization</a></li>
+      <li><a href="#api-endpoints" class="text-indigo-400 hover:text-indigo-300 no-underline">API Endpoints</a></li>
       <li><a href="#trust-model" class="text-indigo-400 hover:text-indigo-300 no-underline">Trust Model</a></li>
     </ol>
   </div>
@@ -223,7 +224,27 @@ ExperienceBroker.import_knowledge("causal_link", data, "peer-A", "verified")</di
     <p class="text-slate-300 leading-relaxed">The SCN's <code class="text-indigo-400">register_external()</code> corrects incoming TemporalSignatures before registration, ensuring temporal bins align across agents with different system clocks. The phase-normalized indexing is naturally resistant to small offsets &mdash; skew only matters when it shifts a memory into the wrong hour bin (&gt;30 minutes).</p>
   </section>
 
-  <!-- 9. Trust Model -->
+  <!-- 9. API Endpoints -->
+  <section class="space-y-4">
+    <h2 id="api-endpoints" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">API Endpoints</h2>
+
+    <p class="text-slate-300 leading-relaxed">The mesh mounts under the existing LeaderProxy, inheriting authentication, rate limiting, and GPU metrics. Three endpoints handle all mesh traffic:</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-slate-300 text-sm">
+        <thead><tr class="border-b border-slate-700"><th class="py-2 text-indigo-400">Endpoint</th><th class="py-2 text-indigo-400">Method</th><th class="py-2 text-indigo-400">Purpose</th></tr></thead>
+        <tbody>
+          <tr class="border-b border-slate-800"><td class="py-2 font-mono text-xs">/v1/mesh/message</td><td>POST</td><td>Send a MeshMessage to this agent (checked by MeshAdmissionControl)</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2 font-mono text-xs">/v1/mesh/peers</td><td>GET</td><td>List all known peers from PeerRegistry (read-only)</td></tr>
+          <tr><td class="py-2 font-mono text-xs">/v1/mesh/status</td><td>GET</td><td>Admission control state &mdash; per-peer trust, violations, gate status</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-slate-400 text-sm mt-3">The <span class="text-indigo-400 font-semibold">PeerRegistry</span> bootstraps from the existing peer config file (tunnel URL + API key) or can be populated via mDNS discovery (future). Peers are tracked by persistent <code class="text-indigo-400">node_id</code>, updated on each heartbeat exchange.</p>
+  </section>
+
+  <!-- 10. Trust Model -->
   <section class="space-y-4">
     <h2 id="trust-model" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Trust Model</h2>
 
@@ -268,7 +289,10 @@ ExperienceBroker.import_knowledge("causal_link", data, "peer-A", "verified")</di
         <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
         <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
         <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking</a>
-        <a href="/maxim/agent-mesh" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Agent Mesh</a>
+        <a href="/maxim/agent-mesh" class="text-xs text-indigo-400 transition px-2 py-1 rounded bg-slate-800 no-underline font-semibold">Agent Mesh</a>
+        <a href="/maxim/embodiment" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Embodiment</a>
+        <a href="/maxim/simulation" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Simulation</a>
+        <a href="/maxim/benchmarks" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Benchmarks</a>
         <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
       </div>
     </div>

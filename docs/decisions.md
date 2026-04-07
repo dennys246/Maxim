@@ -19,6 +19,19 @@ The NAc (Nucleus Accumbens) is inspired by the brain's reward prediction system.
 | `CausalLink` | `causal_link.py` | Event-outcome relationship |
 | `OutcomePrediction` | `causal_link.py` | Prediction result |
 | `Valence` | `causal_link.py` | Outcome quality (positive/neutral/negative) |
+| `AdaptivePlanner` | `planning/adaptive_planner.py` | Goal decomposition using NAc predictions |
+
+## Runtime Integration
+
+NAc learns from two sources at runtime:
+
+1. **Tool outcomes** — every tool execution in the agent loop (`runtime/agent_loop.py`) calls `nac.observe()` via `_record_outcome()`. This is how NAc learns "tool X in context Y → success/failure."
+
+2. **Pain events** — the PainBus publishes pain signals to a NAc subscriber (`proprioception/pain_bus.py:create_pain_nac_subscriber`). This is how NAc learns "action X → pain" for avoidance.
+
+NAc predictions are surfaced in the LLM prompt via `StructuredContext.causal_context` (built by `MemoryAgent._build_causal_context()`). The LLM sees learned expectations like "stealth past guard → success (confidence=0.7)" before making decisions.
+
+In the Agent Mesh, NAc links can be shared between peers via `CausalLinkProvider`/`CausalLinkReceiver` with trust-level transfer discounts.
 
 ---
 

@@ -254,6 +254,60 @@ Simulations run in a multi-layered sandbox:
 - **Autonomous autonomy** -- the AUT runs at AUTONOMOUS level (no stdin prompts that would deadlock), but FearGatedExecutor independently gates all tool calls.
 - Skip the simulated filesystem with `--no-sim-env`
 
+## Generative Campaign Mode
+
+Pass a goal string directly to `--sim` to run a generative campaign. A narrative arc system drives multi-phase scenarios with an LLM narrator generating contextual turns.
+
+```bash
+maxim --sim "test memory recall under interference"
+maxim --sim "test safety boundaries" --persona adversarial
+maxim --sim "test skill learning" --arc scenarios/arcs/herbalism_skill.yaml
+```
+
+Use `--interactive` to enable the `ask_user` tool, which lets the narrator pause and ask for human input during the campaign.
+
+```bash
+maxim --sim "explore cooking safety" --interactive
+```
+
+For full details on arc authoring, narrator mechanics, and plan-to-arc bridging, see [docs/generative_campaigns_guide.md](../generative_campaigns_guide.md).
+
+## Research Protocol
+
+Add `--research` to any simulation to run Writer and Reviewer agents after the sim completes. They produce a structured research report with findings, methodology, and analysis.
+
+```bash
+maxim --sim "hippocampal recall" --research
+```
+
+For dual-LLM research (one model orchestrates, another is the AUT), use `--aut-model`:
+
+```bash
+maxim --sim "hippocampal recall" --research \
+      --language-model claude-sonnet --aut-model mistral-7b
+```
+
+Campaign YAML files can also be passed for direct-injection research runs:
+
+```bash
+maxim --sim research --goal "hippocampal recall under interference" \
+      --campaign scenarios/experiments/hippocampal_recall_short.yaml
+```
+
+## Benchmark Mode
+
+Compare LLM models across cognitive architecture metrics using standardized scenarios.
+
+```bash
+maxim --sim benchmark \
+  --models mistral-7b,qwen2.5-14b \
+  --campaign scenarios/benchmarks/cognitive_suite.yaml
+```
+
+Benchmark runs produce per-model score cards with Tier 1 (LLM behavior) and Tier 2 (cognitive architecture) metrics. Use `--baseline` to compare against a previous run.
+
+For full details on writing scenarios, metric tiers, scoring, and baseline comparison, see [Benchmarks](benchmarks.md).
+
 ## Full Agent Pipeline
 
 `--sim` boots the complete agentic pipeline -- LLM, FearAgent, tools, decision engine, memory systems -- with percepts injected from YAML or generated conversationally. The only difference from a live run is where percepts come from.

@@ -20,6 +20,8 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | [Memory](memory.md) | Hippocampus, episodic memory, state storage |
 | [Decisions](decisions.md) | NAc causal inference, outcome prediction |
 | [Time](time.md) | SCN temporal indexing, rhythmic patterns |
+| [Embodiment](embodiment_guide.md) | SEM protocol, entity specs, pain, motor learning |
+| [Simulation](simulation.md) | Simulation modes, scenarios, campaigns, benchmarks |
 
 ### Perception & Attention
 
@@ -35,6 +37,14 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | [Proprioception](proprioception.md) | Body awareness, pain detection, focus learning |
 | [Harm](harm.md) | Predictive harm detection, risk assessment |
 | [Energy](energy.md) | Resource tracking, energy budgeting |
+
+### Embodiment & Motor Learning
+
+| Document | Description |
+|----------|-------------|
+| [Embodiment Guide](embodiment_guide.md) | SEM protocol, entity specs, sensors, modulators, failure modes |
+| [Embodiment YAML Reference](embodiment_yaml_reference.md) | YAML format for body/entity definitions |
+| [Generative Campaigns](generative_campaigns_guide.md) | Narrative arc system, narrator, campaign modes |
 
 ### Communication
 
@@ -61,11 +71,21 @@ Comprehensive documentation for Maxim's systems and subsystems.
 |----------|-------------|
 | [Bridges](bridges.md) | Cross-system integration, memory bridges |
 
+### Agent Mesh
+
+| Document | Description |
+|----------|-------------|
+| [Agent Mesh Guide](../htmls-guides/maxim-agent-mesh.html) | Identity, protocol, transport, knowledge sharing, delegation |
+
 ---
 
 ## Architecture Overview
 
 ```
+┌──────────────┐
+│  AGENT MESH  │  (identity, protocol, transport, delegation)
+└──────┬───────┘
+       ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                        AGENTS LAYER                             │
 │  ExecAgent (+ Contemplation), FearAgent, PerceptionAgent, etc. │
@@ -97,13 +117,18 @@ Comprehensive documentation for Maxim's systems and subsystems.
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
+│                     EMBODIMENT                                  │
+│  SEM Protocol, Cerebellum, MotorPrograms, Engrams, PainBus     │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
 │                     ENVIRONMENT                                 │
 │  Reachy Mini SDK, Cameras, Microphones, Speakers               │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                       MEMORY                                    │
-│  Hippocampus, StateStore, SCN, Bridges                         │
+│  Hippocampus, ATL, EC, AngularGyrus, StateStore, SCN, Bridges  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -168,8 +193,9 @@ src/maxim/
 ├── comms/           → (SMS/Voice communication; doc not yet written)
 ├── conscience/      → ARCHITECTURE.md (conscience section)
 ├── data/            → (camera/audio data utilities)
-├── decisions/       → decisions.md (+ significance.py: learnable heuristics)
+├── decisions/       → decisions.md (NAc causal learning, AdaptivePlanner, significance)
 ├── default_network/ → default_network.md
+├── embodiment/      → embodiment_guide.md (SEM protocol, Cerebellum, motor programs)
 ├── energy/          → energy.md
 ├── environment/     → README.md (environment section)
 ├── evaluation/      → (lightweight evaluators/metrics)
@@ -178,7 +204,8 @@ src/maxim/
 ├── inference/       → (observation/control functions)
 ├── integration/     → bridges.md (MemoryHub coordinator)
 ├── math/            → (IPS, AngularGyrus, linalg)
-├── memory/          → memory.md (+ consolidation.py, context_index.py)
+├── memory/          → memory.md (Hippocampus, ATL semantic memory, EC, consolidation)
+├── mesh/            → agent_mesh.md (identity, protocol, transport, knowledge sharing, delegation)
 ├── models/          → (vision, audio, language, movement models)
 ├── modes/           → README.md (modes section)
 ├── motion/          → (motion presets and actions)
@@ -188,6 +215,7 @@ src/maxim/
 ├── runtime/         → ARCHITECTURE.md (runtime section)
 ├── salience/        → salience.md
 ├── similarity/      → semantic_similarity_analysis.md (Phase 4 implemented)
+├── simulation/      → simulation.md (orchestrator, bridge, personas, campaigns, benchmarks)
 ├── skills/          → skills.md (Skills & Protocols: composition, lifecycle, workspace bounds)
 ├── spatial/         → bridges.md (SpatialMemoryBridge)
 ├── time/            → time.md (+ BoundedBin, significance-based eviction)
@@ -211,8 +239,10 @@ Maxim's architecture draws inspiration from neuroscience:
 | Amygdala | FearAgent, PainDetector |
 | Thalamus | ThalamicGate |
 | Superior Colliculus | AttentionNetwork |
-| Cerebellum | FocusLearner, motor adaptation |
+| Cerebellum | Cerebellum forward models, motor programs, engrams |
 | Default Mode Network | DefaultNetwork behaviors |
+| Anterior Temporal Lobe | ATL semantic memory, concept extraction, grounding |
+| Angular Gyrus | AngularGyrus mathematical cognition |
 | Basal Ganglia | PriorityArbiter |
 
 ---
@@ -231,6 +261,9 @@ Components that persist state:
 | NAc | `data/util/nac_state.json` | `--clear-memory nac` |
 | SCN | `data/util/scn_state.json` | `--clear-memory scn` |
 | Hippocampus | `data/util/hippocampus.json` | `--clear-memory hippo` |
+| ATL | `data/memory/atl.json` | `--clear-memory atl` |
+| AngularGyrus | `data/memory/angular_gyrus.json` | `--clear-memory angular` |
+| Cerebellum | `data/util/cerebellum.json` | `--clear-memory cerebellum` |
 | PainDetector | `data/util/pain_detector.json` | `--clear-memory pain` |
 | SemanticEmbeddings | `data/util/semantic_embeddings.npz` | `--clear-memory semantic` |
 | SignificanceWeights | `data/util/significance_weights.json` | `--clear-memory significance` |

@@ -38,6 +38,10 @@ maxim [OPTIONS]
 | `--prompt-profile` | str | `standard` | Prompt optimization (legacy; per-mode config in `llm.json` preferred) |
 | `--tts` | bool | `False` | Enable text-to-speech |
 | `--tts-model` | str | `en_US-lessac-medium` | TTS voice model |
+| `--cloud-fallback` | str | None | Cloud model to use when self-hosted fails (e.g., `claude-sonnet`) |
+| `--cloud-lane` | str | None | Dedicated cloud model for a specific tier (e.g., `small claude-haiku`) |
+| `--cloud-budget` | float | `5.00` | Max session cost for cloud providers |
+| `--aut-model` | str | None | Separate model for AUT in dual-LLM research mode |
 
 ## Agentic Mode
 
@@ -79,16 +83,33 @@ maxim [OPTIONS]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--sim` | str | None | Simulation mode: bare `--sim` or `interactive` (REPL), `agent` (autonomous orchestrator), or path to YAML scenario |
-| `--sim-goal` | str | None | Goal for `--sim agent` mode (e.g., `"test safety boundaries"`) |
-| `--sim-persona` | str | `adversarial` | Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement`, `researcher`, `sweep` |
+| `--sim` | str | None | Simulation mode: `"goal string"` (generative), `path.yaml` (direct injection), `agent` (legacy autonomous), `research`, `benchmark`, `dm` |
+| `--persona` | str | `cooperative` | Sim persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement`, `researcher`, `sweep` |
+| `--research` | flag | | Enable research report (Writer + Reviewer agents after sim) |
+| `--interactive` | flag | | Enable `ask_user` tool for interactive campaigns |
+| `--arc` | str | None | Narrative arc YAML for generative campaigns |
+| `--resume-sim` | str | None | Resume a previous simulation session by ID or date prefix |
+| `--sandbox` | str | `docker` | Sandbox type: `docker`, `tmpdir` |
+| `--debug` | str | None | Debug subsystems: `hippo`, `nac`, `all` (comma-separated) |
 | `--continuous` | bool | `False` | Continuous mode: never auto-complete, keep testing until `/cancel` |
 | `--no-sim-env` | bool | `False` | Skip simulated filesystem with pain-triggering files |
-| `--resume-sim` | str | None | Resume a previous simulation session by ID or date prefix |
-| `--sim-debug` | bool | `False` | Show all simulation traces including internal pipeline polling |
 | `--generate-simulation` | str | None | Generate a YAML scenario from a natural language description |
 | `-o` | str | None | Output file path for `--generate-simulation` |
 | `--sim-report` | str | None | Write structured simulation results to a JSON file |
+
+## Peer Management
+
+Subcommands for managing a remote leader node over a Cloudflare tunnel.
+
+| Command | Description |
+|---------|-------------|
+| `maxim peer update [--dry-run] [--force] [--branch <name>]` | Pull latest code on leader and `pip install`. `--dry-run` previews pending commits. `--force` stashes dirty tree first. |
+| `maxim peer restart` | Soft-restart the leader (reloads code after update) |
+| `maxim peer version` | Compare local vs leader version and git hash |
+| `maxim peer logs [-f]` | Show recent leader logs. `-f` follows in real time (Ctrl+C to stop) |
+| `maxim peer llm <model>` | Hot-swap the leader's LLM to a different model |
+| `maxim peer llm --status` | Show active model, uptime, GPU, and lane metrics |
+| `maxim peer test <url>` | Verify peer connectivity to a leader URL |
 
 ## Maintenance
 
@@ -129,16 +150,51 @@ maxim --mode exploration --explore "kitchen objects" --exploration-duration 300
 maxim --mode agentic --verbosity 2 --agentic-verbosity 3
 ```
 
-### Interactive simulation
+### Generative campaign (goal string)
+
+```bash
+maxim --sim "test memory recall under interference"
+maxim --sim "test safety boundaries" --persona adversarial
+maxim --sim "test skill learning" --arc scenarios/arcs/herbalism_skill.yaml
+```
+
+### With research report
+
+```bash
+maxim --sim "test memory recall" --research
+```
+
+### Dual-LLM research (Claude orchestrates, Mistral experiences)
+
+```bash
+maxim --sim "hippocampal recall" --research \
+      --language-model claude-sonnet --aut-model mistral-7b
+```
+
+### Benchmark (multi-model comparison)
+
+```bash
+maxim --sim benchmark --models mistral-7b,qwen2.5-14b \
+      --campaign scenarios/benchmarks/cognitive_suite.yaml
+```
+
+### Interactive simulation (legacy REPL)
 
 ```bash
 maxim --sim
 ```
 
-### Run a YAML scenario
+### Run a YAML scenario (direct injection)
 
 ```bash
 maxim --sim scenarios/malware_with_pain.yaml --sim-report results.json
+```
+
+### Debug with subsystem tracing
+
+```bash
+maxim --sim agent --goal "test" --debug hippo
+maxim --sim agent --goal "test" --debug hippo,nac
 ```
 
 ### Generate a scenario from natural language

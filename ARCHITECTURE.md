@@ -77,8 +77,28 @@ Paths refer to the `src/maxim/` package layout.
   - `pain_bridge.py`: Connects pain detection to NAc for causal learning of aversive patterns.
   - `energy_bridge.py`: Connects energy tracking to NAc for learning action→energy associations.
   - `tool_pain_bridge.py`: Routes tool errors → NAc + SCN, creates CAUSES edges in hippocampus for surprising outcomes (RPE > 0.3), generates Reflexion-style verbal self-critiques stored as episodic memories, and updates `LearnedToolIndex` keyword weights.
+- `src/maxim/embodiment/`: owns body definition and motor learning via the SEM (Sensor-Entity-Modulator) protocol. Entities form composable trees; each entity owns sensors (readings), modulators (actions via affordances), and failure modes (pain triggers). Virtual entities use NarrativeModulator (LLM-backed) while hardware entities use real sensor backends.
+  - `sem.py`: Core protocol — Entity, Sensor, Modulator, Affordance, FailureMode, FailureTrigger.
+  - `spec.py`: YAML loader — parse entity specs, attach backends via `attach_backends()`.
+  - `body.py`: Embodiment runtime — failure evaluation, vital drift, body state for prompts.
+  - `tool_bridge.py`: Auto-generate tools from entity sensors/modulators (SensorReadTool, ModulatorAffordanceTool, EntitySenseTool).
+  - `cerebellum.py`: Forward models (Rescorla-Wagner per-action prediction), motor programs, ProgramRegistry.
+  - `motor.py`: MotorProgram, MotorStep, sequence crystallization.
+  - `engrams.py`: MotorEngram — contextual links between programs and episodic memories.
+  - `llm_backend.py`: LLMSensor, LLMModulator, NarrativeSensor, NarrativeModulator.
+  - `program_executor.py`: Step-by-step motor program execution with pain gates.
+- `src/maxim/mesh/`: owns cooperative peer-to-peer agent networking. Each Maxim instance is sovereign (owns its memories, causal models, behaviors) but can share cooperatively.
+  - `identity.py`: AgentProfile — lightweight identity for local multi-agent coordination.
+  - `agent_identity.py`: AgentIdentity — extends AgentProfile with hardware capabilities and knowledge statistics for network-level coordination.
+  - `message.py`: MeshMessage (24 typed message types), protocol versioning.
+  - `peer_channel.py`: PeerChannel — HTTP transport with async send queue, retry with backoff.
+  - `peer_registry.py`: PeerRegistry — thread-safe registry, bootstrapped from peer config.
+  - `admission.py`: MeshAdmissionControl — per-peer rate limiting, burst detection, escalating gate durations.
+  - `knowledge.py`: ExperienceBroker + KnowledgeProvider/Receiver protocol. Built-in adapters: CausalLink (NAc), Reflection (Hippocampus), MotorProgram (Cerebellum).
+  - `task_delegation.py`: TaskDelegator + TaskReceiver — goal delegation with loop detection and queue depth checks.
+  - `clock.py`: PeerClockEstimator — NTP-lite clock offset estimation for cross-agent temporal coordination.
 - `src/maxim/integration/`: owns central coordination.
-  - `memory_hub.py`: MemoryHub coordinates all bridges and manages session lifecycle.
+  - `memory_hub.py`: MemoryHub coordinates all bridges, manages session lifecycle, and wires multi-layer memory (ATL concept extraction, grounding, promotion). Connects 11 bio-systems in production; now also fully wired in simulation mode.
 - `src/maxim/state/` (reserved): owns authoritative runtime truth; must **not** contain long-term storage logic or planning.
 - `src/maxim/runtime/`: owns agentic orchestration/main execution loop; must **not** do domain reasoning. Includes `MonitorRegistry`/`SignalMonitor` for centralized watchdog monitoring, `RuntimeCapabilities` for hardware detection and graceful degradation (headless mode without robot), `AgentSession` for session persistence (save/load with Percept serialization), and `StreamEvent`/`on_event` callback for fine-grained streaming events from the agent loop. ADaPT-style replan loop: `FailureStrategy.REPLAN` triggers `planner.decompose()` at depth+1.
 - `src/maxim/conscience/`: owns robot orchestration/main loop (Reachy capture/inference/control); must **not** do agentic decision making. `ConnectionState` enum with callback system for runtime capability degradation/restoration on robot disconnect/reconnect. `_run_headless_loop()` for event-driven operation without media capture.

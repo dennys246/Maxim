@@ -1,0 +1,921 @@
+# Bio-System Wiring Hardening Plan
+
+> **Status:** Not started. Gate for DM MVP — must ship first.
+>
+> **Last updated:** 2026-04-07
+>
+> **Summary:** Comprehensive audit of Maxim's bio-system pipeline revealed that **7 of 11 bio-systems are completely disconnected in simulation mode**, and several connected systems have correctness bugs. This plan fixes all critical wiring, pipeline bugs, and design gaps. Every fix goes into the main codebase — benefits all modes, not just DM campaigns. Also serves as the final stage of continual refinement.
+>
+> **Root cause:** `simulation/orchestrator.py:485` creates `MemoryHub(hippocampus=..., nac=...)` — missing SCN, EC, ATL, AngularGyrus, and never calling `memory_hub.connect()`. The production init in `agentic_runtime.py` wires everything; the sim init doesn't.
+
+## What the Audit Found
+
+### System Status in Simulation Mode
+
+| Bio-System | Init'd? | Wired? | Receives outcomes? | In prompt? | Assessment |
+|---|---|---|---|---|---|
+| **Hippocampus** | Yes | Yes | Yes (capture) | Yes (relevant_memories) | **Working** but callbacks not registered |
+| **NAc** | Yes | Partial | **No** — observe() never called from loop | Yes (causal_context) | **BROKEN** — learns nothing |
+| **SCN** | **No** | No | No | No | **MISSING** — temporal bins empty |
+| **EC** | **No** | No | No | No | **MISSING** — similarity recall unavailable |
+| **ATL** | **No** | No | No | Rendered but always empty | **MISSING** — concept formation disabled |
+| **AngularGyrus** | **No** | No | N/A (tool) | No | **MISSING** — math cognition disabled |
+| **Cerebellum** | **No** | No | No | Dead code path (never populated) | **MISSING** — motor learning disabled |
+| **DefaultNetwork** | Yes | Partial | Independent | No | **Partial** — runs but disconnected from learning |
+| **PainBus** | Yes | Partial | → Hippocampus only | No | **Partial** — NAc never learns from pain |
+| **Salience/Novelty** | In DN only | Vision only | Text percepts bypassed | No | **BROKEN** for text-mode |
+| **Attention** | In DN only | Vision only | N/A for text | No | OK (vision-only by design) |
+
+**Result: The AUT in simulation mode runs with ~2 of 11 bio-systems functional.** DM campaigns would exercise episodic memory and nothing else.
+
+---
+
+## Phase 1: Critical Wiring (~200 LOC)
+
+These are systems that exist, have code, but aren't connected. Each fix is small — it's plumbing, not new features.
+
+### 1.1 Initialize missing systems in orchestrator
+
+**File:** `simulation/orchestrator.py` (~line 485)
+
+```python
+# Current (broken):
+aut_memory_hub = MemoryHub(hippocampus=aut_hippocampus, nac=aut_nac)
+
+# Fixed:
+from maxim.time.scn import SCN
+from maxim.similarity.ec import EntorhinalCortex
+from maxim.memory.atl import ATL, ATLConfig
+from maxim.math.angular_gyrus import AngularGyrus, AngularGyrusConfig
+
+aut_scn = SCN()
+aut_ec = EntorhinalCortex()
+aut_atl = ATL(config=ATLConfig())
+aut_angular_gyrus = AngularGyrus(config=AngularGyrusConfig())
+
+aut_memory_hub = MemoryHub(
+    hippocampus=aut_hippocampus,
+    scn=aut_scn,
+    nac=aut_nac,
+    ec=aut_ec,
+    atl=aut_atl,
+    angular_gyrus=aut_angular_gyrus,
+)
+```
+
+**Impact:** Unlocks multi-layer wiring (`_wire_multi_layer()`), which initializes:
+- ConceptExtractor (ATL ← Hippocampus)
+- ConceptGrounder (ATL ← AngularGyrus numerical grounding)
+- ConceptContextBuilder (concept-aware recall → prompt)
+- PatternCompleter (graph-based prediction)
+- SemanticPromoter (episodic → semantic promotion)
+- EC similarity indexing on every memory capture
+
+**LOC:** ~15 (imports + init + pass to MemoryHub)
+
+### 1.2 Call `memory_hub.connect()`
+
+**File:** `simulation/orchestrator.py` (after MemoryHub creation)
+
+Currently `aut_memory_hub.connect()` is **never called**. This means:
+- No bridges instantiated (SalienceMemory, PlanHistory, Escalation, Fear)
+- No external system wiring
+
+```python
+aut_memory_hub.connect(
+    fear_agent=aut_fear_agent,  # if available
+)
+```
+
+**LOC:** ~5
+
+### 1.3 Wire NAc.observe() into agent loop
+
+**File:** `runtime/agent_loop.py` (after `_record_outcome()` calls ~lines 1060, 1467, 1592)
+
+NAc.observe() is never called. Tool outcomes go to context_pool and llm_worker but not NAc.
+
+```python
+# After each _record_outcome() call:
+if nac is not None:
+    try:
+        nac.observe(
+            event_type="tool",
+            event_signature=f"tool:{tool_name}",
+            outcome_type="tool_result",
+            outcome_signature=f"{'success' if success else 'failure'}:{result_str[:50]}",
+            outcome_valence=Valence.POSITIVE if success else Valence.NEGATIVE,
+            delta_seconds=exec_elapsed,
+            context={"goal": goal_description[:100]} if goal_description else {},
+        )
+    except Exception:
+        pass  # @resilient pattern
+```
+
+**LOC:** ~20 (3 call sites x ~7 lines each)
+
+### 1.4 Wire PainBus → NAc
+
+**File:** `proprioception/pain_bus.py` (new subscriber factory) + `simulation/orchestrator.py`
+
+PainBus publishes to Hippocampus (memory formation) but NAc never subscribes. Agent can't learn "action X → pain."
+
+```python
+# In pain_bus.py:
+def create_pain_nac_subscriber(nac, intensity_threshold: float = 0.3):
+    """NAc learns causal links from pain events."""
+    def _on_pain(signal: PainSignal) -> None:
+        if signal.intensity < intensity_threshold:
+            return
+        entity = signal.context.get("entity_path", "unknown")
+        nac.observe(
+            event_type="pain",
+            event_signature=f"pain:{signal.pain_type.name}:{entity}",
+            outcome_type="pain",
+            outcome_signature=f"intensity:{signal.intensity:.2f}",
+            outcome_valence=Valence.NEGATIVE,
+            delta_seconds=0.0,
+            context=signal.context,
+        )
+    return _on_pain
+
+# In orchestrator.py:
+if aut_pain_bus is not None and aut_nac is not None:
+    aut_pain_bus.subscribe(create_pain_nac_subscriber(aut_nac))
+```
+
+**LOC:** ~20
+
+### 1.5 SCN registration on capture (not just consolidation)
+
+**File:** `memory/hippocampus.py` or `integration/memory_hub.py`
+
+Currently SCN only registers memories during sleep consolidation (`consolidation.py:259`). Active campaigns have empty SCN bins.
+
+```python
+# In memory_hub's capture callback (wired via hippocampus.register_capture_callback):
+def _on_capture(memory_id: str, record: EpisodicMemory) -> None:
+    if self.scn is not None:
+        sig = TemporalSignature.from_timestamp(record.perception.timestamp)
+        self.scn.register(memory_id, sig, significance=record.perception.salience)
+```
+
+**LOC:** ~10
+
+### 1.6 Initialize Cerebellum in sim mode
+
+**File:** `simulation/orchestrator.py`
+
+Cerebellum is never created in sim mode. Motor learning from tool outcomes is disabled.
+
+```python
+from maxim.embodiment.cerebellum import Cerebellum, CerebellumConfig
+
+aut_cerebellum = Cerebellum(config=CerebellumConfig())
+# Pass to MemoryHub or wire separately
+```
+
+**LOC:** ~5
+
+### 1.7 Wire motor programs into StructuredContext
+
+**File:** `agents/memory_agent.py:build_context()`
+
+`prompt_builder.py:1006-1030` renders motor programs beautifully, but `build_context()` never populates the field.
+
+```python
+# In build_context(), alongside other parallel futures:
+if self._cerebellum is not None:
+    programs = self._cerebellum.programs.find_related(current_goal or "")
+    context.motor_programs = [
+        {"name": p.name, "confidence": p.confidence, "steps": [...], ...}
+        for p in programs[:8]
+    ]
+```
+
+**LOC:** ~15
+
+### 1.8 Wire Cerebellum.observe_from_action() into loop
+
+**File:** `runtime/agent_loop.py` (after tool execution, near NAc observe)
+
+```python
+# After tool execution, if embodiment entities are active:
+if cerebellum is not None and entity_path:
+    sensor_readings = embodiment.read_scalars().get(entity_path, {})
+    cerebellum.observe_from_action(
+        entity_path=entity_path,
+        modulator=modulator_name,
+        affordance=affordance_name,
+        params=tool_params,
+        actual_sensors=sensor_readings,
+        sensor_ranges=entity.sensor_ranges(),
+    )
+```
+
+**LOC:** ~15
+
+### 1.9 Novelty tracking for text percepts
+
+**File:** `default_network/network.py` (~line 836) or new `salience/entity_novelty.py`
+
+Novelty tracker only updates on YOLO detections (`track_id` + `class_id`). Text percepts from DM campaigns bypass novelty entirely.
+
+Two options:
+- **Option A:** Extend existing `ThreadSafeNoveltyTracker` to accept string entity IDs (not just int track_ids). DM entities get IDs from their SEM entity names.
+- **Option B:** Create `EntityNoveltyTracker` for SEM entities specifically.
+
+Option A is simpler and keeps one tracker:
+
+```python
+# In novelty tracker, add:
+def update_with_entity(self, entity_name: str, entity_type: str) -> float:
+    """Track novelty for named entities (text-mode, no vision)."""
+    # Use hash of entity_name as pseudo track_id, entity_type as pseudo class_id
+    pseudo_track = hash(entity_name) & 0x7FFFFFFF
+    pseudo_class = hash(entity_type) & 0x7FFFFFFF
+    return self.update_with_class(pseudo_track, pseudo_class)
+```
+
+**LOC:** ~15
+
+---
+
+## Phase 2: Pipeline Correctness (~150 LOC)
+
+Systems that are connected but produce wrong outputs.
+
+### 2.1 Forming pool recall boost: +1.0 → +0.2
+
+**File:** `agents/memory_agent.py:695`
+
+Current-episode entries get `salience + 1.0`, drowning out all other memories. A forming entry with salience 0.5 scores 1.5, while a critical old memory with salience 0.9 scores ~0.7.
+
+```python
+# Current:
+combined.append((hid, self._salience.get(hid, 0.5) + 1.0))
+
+# Fixed:
+combined.append((hid, self._salience.get(hid, 0.5) + 0.2))
+```
+
+**LOC:** 1
+
+### 2.2 NAc predict() context_match floor
+
+**File:** `decisions/nac.py` (~line 520)
+
+`predict()` checks confidence but not `context_match`. Returns predictions from completely wrong contexts.
+
+```python
+# After scoring, before returning:
+if best_link and self._context_similarity(best_link.event_context, context) < 0.3:
+    return None  # Context mismatch — don't surface stale prediction
+```
+
+**LOC:** ~5
+
+### 2.3 Causal context context_match floor
+
+**File:** `agents/memory_agent.py:_build_causal_context()` (~line 1215)
+
+```python
+# Current:
+if prediction and prediction.confidence >= 0.3:
+
+# Fixed:
+if prediction and prediction.confidence >= 0.3 and prediction.context_match >= 0.2:
+```
+
+**LOC:** 1
+
+### 2.4 NAc confidence decay — wire decay_all()
+
+**File:** `integration/memory_hub.py` or `runtime/agent_loop.py`
+
+`CausalLink.decay()` exists but `NAc.decay_all()` is never called. Links persist at 0.99 forever.
+
+```python
+# In memory_hub's periodic maintenance (e.g., every 100 loop cycles or on session checkpoint):
+if self.nac is not None:
+    self.nac.decay_all(factor=0.995)  # Slow decay: ~50% after 138 cycles
+```
+
+**LOC:** ~5
+
+### 2.5 ATL concept confidence gate
+
+**File:** `memory/semantic_types.py:reinforce()` (~line 196)
+
+Single percept creates 0.6 confidence concept. Should require minimum reinforcement.
+
+```python
+# Current:
+self.confidence = min(0.99, 0.5 + 0.1 * math.sqrt(self.reinforcement_count))
+
+# Fixed — cap until sufficient evidence:
+raw_conf = 0.5 + 0.1 * math.sqrt(self.reinforcement_count)
+self.confidence = min(0.99, raw_conf) if self.reinforcement_count >= 3 else min(0.4, raw_conf)
+```
+
+**LOC:** ~3
+
+### 2.6 SemanticPromoter — already wired, unblocked by Phase 1.1
+
+**File:** `integration/memory_hub.py:510`
+
+`scan_for_promotions()` IS already called in `on_session_end()`. However, it's gated on `self._promoter is not None`, which requires ATL to be initialized (set in `_wire_multi_layer()`). Since ATL is None in sim mode, the call is dead code. **Phase 1.1 (init ATL) automatically unblocks this — no additional wiring needed.**
+
+Verify after Phase 1.1 that promotion runs during `on_session_end()` in sim.
+
+**LOC:** 0 (already wired)
+
+### 2.7 Pain refractory period
+
+**File:** `proprioception/pain_bus.py`
+
+No cooldown on `publish()`. Rapid pain signals spam memories.
+
+```python
+class PainBus:
+    _last_published: dict[str, float]  # (pain_type, entity) → timestamp
+    REFRACTORY_S = 0.5
+
+    def publish(self, signal: PainSignal) -> None:
+        key = f"{signal.pain_type.name}:{signal.context.get('entity_path', '')}"
+        now = time.monotonic()
+        if now - self._last_published.get(key, 0) < self.REFRACTORY_S:
+            return  # Refractory period — skip
+        self._last_published[key] = now
+        # ... existing publish logic
+```
+
+**LOC:** ~10
+
+### 2.8 Prompt section priority — causal_context → CRITICAL
+
+**File:** `agents/prompt_builder.py` (~line 997)
+
+All bio-system sections are `IMPORTANT`. Learned causal predictions should outrank individual memory items under token pressure.
+
+```python
+# Current:
+budgeter.add("causal_context", ..., SectionPriority.IMPORTANT, ...)
+
+# Fixed:
+budgeter.add("causal_context", ..., SectionPriority.CRITICAL, ...)
+```
+
+**LOC:** 1
+
+### 2.9 Prompt truncation — token-aware
+
+**File:** `agents/prompt_builder.py` (~lines 946, 965, 984, 1003)
+
+Truncation lambdas use line-count (`m // 20`), not tokens. Can overshoot budget.
+
+```python
+# Replace naive lambda with token-aware truncation:
+def _truncate_section(content: str, max_tokens: int) -> str:
+    lines = content.split("\n")
+    result = [lines[0]] if lines else []  # Keep header
+    for line in lines[1:]:
+        candidate = "\n".join(result + [line])
+        if count_tokens(candidate) > max_tokens:
+            break
+        result.append(line)
+    return "\n".join(result)
+```
+
+**LOC:** ~15
+
+### 2.10 CausalLink thread safety
+
+**File:** `decisions/causal_link.py:record_observation()` (~line 182)
+
+Read-modify-write on `observation_count` + `confidence` without locking.
+
+```python
+# Add RLock to CausalLink:
+_lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
+
+def record_observation(self, ...):
+    with self._lock:
+        self.temporal_delta = self.temporal_delta.add_observation(delta_seconds)
+        self.observation_count += 1
+        self.confidence = min(0.99, 0.5 + 0.1 * (self.observation_count ** 0.5))
+```
+
+**LOC:** ~5
+
+---
+
+## Phase 3: Percept Abstraction — Entity-Modulated Perception (~180 LOC)
+
+### The Problem
+
+The current `Percept` class (agents/bus.py:116-170) is a flat bag of optional fields — `detections` for vision, `transcript_chunk` for audio, `cli_input` for text, `content` for everything else. The `source` field is a freeform string (`"vision"`, `"cli"`, `"transcript"`, etc.) with no type system.
+
+This works for the current robot use case (camera + microphone + CLI), but DM campaigns need richer sensory injection. "You hear a loud crash behind you" should arrive as an auditory percept that triggers different bio-system responses than "You see a guard approaching" (visual). Currently both would be `source="cli"` with text in `content`.
+
+More fundamentally: **percepts don't interact with entities at all.** An entity's sensory capacity should define how it perceives the world. A character with high Wisdom (good perception) should receive richer sensory tags than one with low Wisdom. A blind character shouldn't receive sight percepts. This is the bio-inspired model — sensory organs modulate what reaches the brain.
+
+### Design: Entity-Modulated Sensory Perception
+
+The key insight: **an entity's SEM sensors define its sensory capacity, and percepts are filtered/modulated through that capacity before reaching the bio-stack.** This mirrors how real sensory organs work — the retina doesn't just relay photons, it shapes them through receptor density, adaptation, and gating.
+
+#### Layer 1: Sensory Modality Protocol
+
+Don't replace `Percept` — extend it with a modality system that existing consumers can ignore.
+
+```python
+# New file: agents/modality.py (~80 LOC)
+
+class SensoryModality(Enum):
+    """What sense channel produced this percept."""
+    SIGHT = "sight"           # Visual — detections, scene descriptions
+    SOUND = "sound"           # Auditory — speech, ambient, alerts
+    TOUCH = "touch"           # Tactile — proprioception, pain, texture
+    SMELL = "smell"           # Olfactory — environmental, tracking
+    INTEROCEPTION = "intero"  # Internal — hunger, fatigue, emotional state
+    NARRATIVE = "narrative"   # Meta — DM scene-setting, exposition (not a "real" sense)
+    ABSTRACT = "abstract"     # Non-sensory — tool results, system messages
+
+@dataclass(frozen=True)
+class SensoryTag:
+    """Rich sensory metadata attached to a Percept."""
+    modality: SensoryModality
+    submodality: str = ""        # "speech" vs "ambient" for SOUND, "pain" vs "pressure" for TOUCH
+    spatial_source: str = ""     # "behind_you", "left", "overhead" — for attention/orienting
+    intensity: float = 0.5       # 0-1 raw signal strength (before entity modulation)
+    entity_source: str = ""      # SEM entity name that produced this percept ("guard_captain")
+    # Set by entity modulation (Layer 2):
+    perceived_intensity: float | None = None  # After entity sensor filtering (None = unmodulated)
+    modulated_by: str = ""       # Which entity sensor filtered this ("derek.wisdom.modifier")
+```
+
+Add optional field to `Percept`:
+
+```python
+# In agents/bus.py, Percept class:
+sensory: SensoryTag | None = None  # None = legacy percept (backward compatible)
+```
+
+#### Layer 2: Entity Sensory Capacity
+
+An entity's sensors define what it can perceive and how well. This connects percepts to the SEM protocol — each entity has sensory "organs" that modulate incoming percepts.
+
+```yaml
+# In a character entity spec:
+derek_the_great:
+  entity_type: character
+  children:
+    - name: perception
+      entity_type: sensory_bundle
+      sensors:
+        # Each sensor defines capacity for a modality
+        sight_acuity: {unit: ratio, range: [0, 1], initial: 0.7}    # Normal human vision
+        hearing_acuity: {unit: ratio, range: [0, 1], initial: 0.8}  # Good hearing
+        smell_acuity: {unit: ratio, range: [0, 1], initial: 0.3}    # Human baseline
+        pain_sensitivity: {unit: ratio, range: [0, 1], initial: 0.6}
+        intuition: {unit: ratio, range: [0, 1], initial: 0.5}       # Maps to interoception
+      failure_modes:
+        - name: blinded
+          trigger: {field: sight_acuity, op: "<=", value: 0.05, pain: 0.3}
+          persistent: true
+          recovery_condition: {field: sight_acuity, op: ">", value: 0.1}
+        - name: deafened
+          trigger: {field: hearing_acuity, op: "<=", value: 0.05, pain: 0.2}
+          persistent: true
+```
+
+**Modulation rules:**
+
+```python
+# New file: agents/sensory_gate.py (~60 LOC)
+
+class SensoryGate:
+    """Filters percepts through an entity's sensory capacity.
+    
+    The entity's perception bundle sensors define acuity per modality.
+    Percepts below the acuity threshold are dropped or reduced in salience.
+    """
+
+    # Maps SensoryModality → sensor name on the perception bundle
+    MODALITY_SENSOR_MAP = {
+        SensoryModality.SIGHT: "sight_acuity",
+        SensoryModality.SOUND: "hearing_acuity",
+        SensoryModality.SMELL: "smell_acuity",
+        SensoryModality.TOUCH: "pain_sensitivity",
+        SensoryModality.INTEROCEPTION: "intuition",
+    }
+
+    def __init__(self, perception_entity: Entity):
+        self._perception = perception_entity
+
+    def modulate(self, percept: Percept) -> Percept | None:
+        """Filter a percept through entity sensory capacity.
+        
+        Returns None if the entity can't perceive this modality (acuity = 0).
+        Returns modified percept with perceived_intensity set based on acuity.
+        NARRATIVE and ABSTRACT percepts pass through unmodulated.
+        """
+        if percept.sensory is None:
+            return percept  # Legacy percept — pass through
+
+        modality = percept.sensory.modality
+        if modality in (SensoryModality.NARRATIVE, SensoryModality.ABSTRACT):
+            return percept  # Meta-percepts aren't filtered by senses
+
+        sensor_name = self.MODALITY_SENSOR_MAP.get(modality)
+        if sensor_name is None:
+            return percept  # Unknown modality — pass through
+
+        # Read the entity's acuity for this modality
+        reading = self._perception.sensors.get(sensor_name)
+        if reading is None:
+            return percept  # No sensor for this modality — pass through unmodulated
+
+        acuity = reading.read().value  # 0.0 (blind/deaf) to 1.0 (perfect)
+
+        # Gate: drop percepts the entity can't perceive
+        if acuity <= 0.05:
+            return None  # Entity is effectively blind/deaf to this modality
+
+        # Modulate: perceived intensity = raw intensity * acuity
+        raw_intensity = percept.sensory.intensity
+        perceived = raw_intensity * acuity
+
+        # Update the sensory tag with modulation results
+        new_tag = SensoryTag(
+            modality=percept.sensory.modality,
+            submodality=percept.sensory.submodality,
+            spatial_source=percept.sensory.spatial_source,
+            intensity=percept.sensory.intensity,
+            entity_source=percept.sensory.entity_source,
+            perceived_intensity=perceived,
+            modulated_by=f"{self._perception.full_path}.{sensor_name}",
+        )
+
+        # Also modulate the percept's salience
+        new_salience = percept.salience * acuity if percept.salience else perceived
+
+        # Return a modified copy (Percept is not frozen, but we treat it as immutable)
+        return Percept(
+            **{**percept.__dict__, "sensory": new_tag, "salience": new_salience}
+        )
+```
+
+**What this enables:**
+
+1. **Blinded character** — `sight_acuity` drops to 0 from a spell or injury → SensoryGate returns `None` for all SIGHT percepts → the character literally can't see. Hippocampus never captures visual memories. NAc never learns from visual stimuli. The bio-stack adapts to blindness naturally.
+
+2. **High-Wisdom character** — `intuition` = 0.9 → INTEROCEPTION percepts arrive at near-full intensity → the character "feels" danger more strongly → higher salience on threat percepts → hippocampus captures them more reliably → NAc learns threat patterns faster.
+
+3. **Deafened by explosion** — `hearing_acuity` drops from 0.8 to 0.05 → `deafened` failure mode fires → PainSignal published → hearing_acuity recovers slowly (vital_drift or explicit recovery) → character gradually hears again. During deafness, all SOUND percepts are dropped.
+
+4. **Non-alive objects** — a sword has no `perception` bundle → SensoryGate passes all percepts through unmodulated (or isn't used at all). Objects don't perceive.
+
+5. **Status effects modulate senses** — a "poisoned" status can reduce all acuity sensors by 0.2. A "blessed" status can boost `intuition` to 1.0. These effects flow through the existing SEM failure mode and vital_drift systems — no new mechanism needed.
+
+#### Layer 3: Campaign YAML Integration
+
+DM encounters specify multi-sensory scenes:
+
+```yaml
+encounters:
+  vault:
+    scene:
+      - modality: sight
+        text: "The vault door slides open, revealing rows of gold."
+        intensity: 0.7
+      - modality: sound
+        text: "You hear heavy footsteps approaching from behind."
+        submodality: ambient
+        spatial_source: behind
+        intensity: 0.8
+      - modality: smell
+        text: "The air smells of iron and old stone."
+        intensity: 0.3
+      - modality: interoception
+        text: "Your heart races. Something feels wrong."
+        submodality: anxiety
+        intensity: 0.6
+    active_npcs: [guard_captain]
+```
+
+DM runtime converts each to a `Percept` with `SensoryTag`, then passes through the PC's `SensoryGate`. If the PC is blinded, the SIGHT percept is dropped and the LLM only receives the sound, smell, and interoceptive percepts. The character experiences the encounter through its available senses.
+
+**NPC-generated percepts** also get tagged:
+
+```python
+# When guard_captain speaks:
+percept = Percept(
+    source="dm",
+    content="'Halt! State your business.' barks the guard captain.",
+    sensory=SensoryTag(
+        modality=SensoryModality.SOUND,
+        submodality="speech",
+        spatial_source="ahead",
+        intensity=0.7,
+        entity_source="guard_captain",
+    ),
+)
+# Passed through PC's SensoryGate before reaching bio-stack
+```
+
+**Entity state changes** produce percepts through the entity's own modality:
+
+```python
+# When sword durability drops:
+percept = Percept(
+    source="embodiment",
+    content="Your longsword feels lighter — the blade is chipping.",
+    sensory=SensoryTag(
+        modality=SensoryModality.TOUCH,
+        submodality="proprioception",
+        entity_source="longsword",
+        intensity=0.4,
+    ),
+)
+```
+
+#### How Downstream Systems Use This
+
+**Backward compatible:** Existing consumers check `percept.source` (string) and ignore `sensory`. Nothing breaks.
+
+**New consumers (DM, embodiment, novelty)** check `percept.sensory`:
+
+```python
+# Novelty tracker keys on entity, not just text:
+if percept.sensory and percept.sensory.entity_source:
+    novelty_tracker.update_with_entity(
+        entity_name=percept.sensory.entity_source,
+        entity_type=percept.sensory.modality.value,
+    )
+
+# Memory formation encodes modality — hippocampal encoding differs by sense:
+if percept.sensory:
+    memory.perception.observations["modality"] = percept.sensory.modality.value
+    memory.perception.observations["spatial"] = percept.sensory.spatial_source
+    memory.perception.observations["perceived_intensity"] = percept.sensory.perceived_intensity
+
+# Default Network orienting responds to spatial source:
+if percept.sensory and percept.sensory.spatial_source == "behind":
+    # Trigger TurnAround behavior with higher priority
+    ...
+
+# ATL concept formation gets modality context:
+# "guard_captain" concept formed from SOUND percepts has different
+# properties than one formed from SIGHT percepts — the character
+# "knows the guard by his voice" vs "knows the guard by his face"
+```
+
+### Implementation
+
+| File | LOC | Change |
+|---|---|---|
+| `agents/modality.py` | ~80 | New: SensoryModality enum, SensoryTag dataclass |
+| `agents/sensory_gate.py` | ~60 | New: SensoryGate — entity-modulated percept filtering |
+| `agents/bus.py` | ~3 | Add `sensory: SensoryTag | None = None` to Percept |
+| `simulation/dm_runtime.py` | ~20 | Convert scene YAML to Percepts with SensoryTag + pass through SensoryGate |
+| `default_network/network.py` | ~15 | Check `percept.sensory.spatial_source` for orienting |
+| `salience/novelty.py` | ~10 | Use `percept.sensory.entity_source` for entity tracking |
+| `agents/memory_agent.py` | ~10 | Tag memory encoding with modality metadata |
+| `tests/unit/test_modality.py` | ~40 | SensoryTag creation, entity modulation, blind/deaf gating |
+| `tests/unit/test_sensory_gate.py` | ~40 | Acuity modulation, failure mode interaction, legacy passthrough |
+
+---
+
+## Phase 4: Design Gap Fixes (~80 LOC)
+
+### 4.1 Echo detection — min-age filter on recall
+
+**File:** `agents/memory_agent.py:_get_relevant_memories()`
+
+```python
+# After combining all sources, before returning:
+min_age_turns = 2
+combined = [(mid, score) for mid, score in combined
+            if self._memory_age_turns(mid) >= min_age_turns or mid in forming_pool_ids]
+```
+
+**LOC:** ~5
+
+### 4.2 Salience bounds validation in Hippocampus.capture()
+
+**File:** `memory/hippocampus.py:capture()`
+
+```python
+if record.perception.salience is not None:
+    record.perception.salience = max(0.0, min(1.0, record.perception.salience))
+```
+
+**LOC:** ~3
+
+### 4.3 Empty transcript fallback
+
+**File:** `agents/memory_agent.py:666`
+
+```python
+# Current:
+raw_query = current.raw_transcript_text or str(current.detections)
+
+# Fixed:
+raw_query = current.raw_transcript_text
+if not raw_query and current.detections:
+    raw_query = " ".join(d.get("label", "") for d in current.detections if d.get("label"))
+if not raw_query:
+    return []  # No semantic content to match against
+```
+
+**LOC:** ~5
+
+### 4.4 Concept name deduplication — use name_similarity_threshold
+
+**File:** `memory/atl.py:find_or_create()` (~line 449)
+
+`ATLConfig.name_similarity_threshold = 0.8` exists but is never used for dedup.
+
+```python
+# After exact-match check, add fuzzy check:
+if not existing:
+    for concept in self._concepts.values():
+        if concept.category == category:
+            similarity = _name_similarity(concept.name, name)
+            if similarity >= self.config.name_similarity_threshold:
+                concept.reinforce(episode_id)
+                return concept.id, False
+```
+
+**LOC:** ~10
+
+### 4.5 Salience dict cap
+
+**File:** `agents/memory_agent.py`
+
+```python
+MAX_SALIENCE_ENTRIES = 50_000
+
+def _apply_decay(self, elapsed: float) -> None:
+    # ... existing decay logic ...
+    # After removing below-threshold entries:
+    if len(self._salience) > MAX_SALIENCE_ENTRIES:
+        sorted_items = sorted(self._salience.items(), key=lambda x: x[1])
+        to_prune = len(self._salience) - MAX_SALIENCE_ENTRIES
+        for mid, _ in sorted_items[:to_prune]:
+            del self._salience[mid]
+```
+
+**LOC:** ~10
+
+### 4.6 ConceptExtractor queue — increase + priority
+
+**File:** `memory/concept_extractor.py`
+
+```python
+# Increase default queue size:
+self._queue: queue.Queue = queue.Queue(maxsize=1000)  # was 200
+```
+
+**LOC:** ~1
+
+---
+
+## Phase 5: Pipeline Audit Script (~250 LOC)
+
+Instrument the pipeline, run test encounters, produce a report verifying all fixes.
+
+**File:** `scripts/spike_dm_pipeline_audit.py`
+
+The script:
+1. Creates a full MemoryHub with all systems wired (mirrors fixed orchestrator init)
+2. Runs 3 short test encounters (5-10 turns each) through SimulationBridge
+3. After each encounter, collects:
+   - Memory formation log (count, salience distribution, capture triggers)
+   - Recall precision (relevant hits / total recalled per context query)
+   - Echo rate (memories recalled < 2 turns after formation)
+   - NAc learning curve (confidence per event type over time)
+   - Pain correctness (source entity for each PainSignal)
+   - Concept formation audit (episode_count vs confidence)
+   - SCN bin population (memories per temporal bin)
+   - Cerebellum model count and confidence
+   - Novelty decay for repeated entities
+4. Produces a JSON report with pass/fail per check
+
+### Pass Thresholds
+
+| Check | Threshold | Rationale |
+|---|---|---|
+| Recall precision | > 0.7 | 70%+ of recalled memories should be contextually relevant |
+| Echo rate | < 0.15 | Less than 15% of recalls should be same-turn echoes |
+| NAc learning monotonic | Yes | Confidence should increase for repeated event types |
+| Pain entity-sourced | 100% | Every PainSignal must originate from an entity threshold |
+| Concept confidence gate | No concept > 0.5 with episodes < 2 | No high-confidence concepts from single exposure |
+| SCN bins populated | >= 2 bins | Memories should file into at least 2 temporal bins |
+| Cerebellum models | >= 1 with conf > 0.3 | At least one learned forward model by end |
+| Novelty decay | At least 1 entity < 0.5 | Repeated entities should habituate |
+
+---
+
+---
+
+## Phase 6: Sensory Ablation Campaign — "The Darkened Cavern" (~150 YAML)
+
+A purpose-built campaign for validating entity-modulated perception. Structured so each encounter isolates a specific sensory modality and tests what happens when it's removed.
+
+### Campaign Structure
+
+3 acts, 6 encounters. The PC starts fully-sighted and hearing, then progressively loses senses.
+
+| Encounter | Sensory focus | Ablation event | What we test |
+|---|---|---|---|
+| **Cave entrance** — bright, noisy waterfall, strong mineral smell | Full sensory — all modalities active | None (baseline) | All modalities arrive. Novelty high for all entity types. Memory captures include modality tags. |
+| **Crystal chamber** — visually stunning, dead silent, no smell | SIGHT dominant | None | With silence, SOUND percepts have intensity 0. Memory formation keys on visual modality. ATL forms "crystal" concept from SIGHT, not SOUND. |
+| **Flash bang trap** — blinding explosion | SIGHT ablated | `sight_acuity` drops to 0.0 → `blinded` failure mode fires, PainSignal published | SensoryGate drops all SIGHT percepts. PC must navigate by SOUND and TOUCH only. Hippocampus stops forming visual memories. NAc learns "trap → pain → blindness." |
+| **Echoing tunnels** — must navigate by sound alone | SOUND dominant (sight still ablated) | None | PC relies on SOUND percepts. Novelty tracks acoustic entities. Memory formation is auditory-only. Can the bio-stack learn spatial patterns from sound alone? |
+| **Healing spring** — recovery encounter | SIGHT recovering | `sight_acuity` ticks up via vital_drift (0.0 → 0.3 → 0.5) | Partial vision returns. SensoryGate passes SIGHT percepts at reduced `perceived_intensity`. Memories formed with low visual salience. Gradual sensory recovery. |
+| **Boss: the whisperer** — enemy that attacks via SOUND, boss fight in dim light | All modalities stressed | `hearing_acuity` drops during fight (sonic attack), `sight_acuity` still recovering | Both primary senses degraded. PC must rely on TOUCH/INTEROCEPTION. Cerebellum predictions from earlier encounters may be wrong (different sensory context). NAc RPE spike. |
+
+### Bio-System Expectations
+
+```yaml
+expectations:
+  sensory_gate:
+    sight_percepts_dropped_while_blind: true    # Gate must drop SIGHT percepts when acuity <= 0.05
+    sound_percepts_at_full_in_tunnels: true     # SOUND percepts unmodified when hearing_acuity normal
+    perceived_intensity_scales_with_acuity: true # perceived = raw * acuity
+  hippocampus:
+    min_episodic_captures: 10
+    blind_memories_lack_visual_tags: true        # Memories during blindness have no "modality: sight"
+    hearing_memories_have_spatial: true          # SOUND memories include spatial_source metadata
+  nac:
+    min_observations: 5
+    learns_trap_pain_link: true                  # "flash_bang" → pain causal link formed
+    prediction_confidence_above: 0.3
+  pain:
+    min_signals: 2
+    types_seen: [EXTERNAL_SIGNAL]               # Blinding + sonic attack
+    fires_on_acuity_threshold: true             # Failure mode fires when acuity crosses threshold
+  cerebellum:
+    prediction_error_on_sensory_change: true    # Models trained in full-sight context have higher error in blind context
+  salience:
+    novelty_decay_observed: true
+    novelty_tracks_entity_not_text: true        # Novelty keyed on entity_source, not raw content
+```
+
+### Ablation Runs
+
+| Condition | What's changed | What we learn |
+|---|---|---|
+| **Full** | All systems active, SensoryGate active | Baseline: bio-stack adapts to sensory loss |
+| **No gate** | SensoryGate disabled — all percepts pass through unmodulated | Does the bio-stack behave differently when it "sees" everything regardless of acuity? If no difference → gate isn't contributing. |
+| **No recovery** | sight_acuity stays at 0.0 permanently (no vital_drift) | Does the bio-stack learn to compensate with remaining senses? Are later encounter memories purely auditory/tactile? |
+| **Instant recovery** | sight_acuity jumps from 0.0 to 1.0 instantly after healing spring | Does sudden sensory recovery cause prediction errors? NAc predictions trained in blind context may not transfer. |
+
+### File
+
+- `scenarios/campaigns/darkened_cavern_v1.yaml` (~150 lines)
+- Included in the DM MVP campaign set alongside heist, poisoned_crown, and arena
+
+---
+
+## Summary
+
+| Phase | What | LOC | Days |
+|---|---|---|---|
+| **Phase 1** | Critical wiring (9 items) | ~200 | ~1.5 |
+| **Phase 2** | Pipeline correctness (10 items) | ~150 | ~1 |
+| **Phase 3** | Percept abstraction + entity-modulated perception | ~180 | ~1 |
+| **Phase 4** | Design gap fixes (6 items) | ~80 | ~0.5 |
+| **Phase 5** | Pipeline audit script | ~250 | ~0.5 |
+| **Phase 6** | Sensory ablation campaign YAML | ~150 | ~0.5 |
+| **Total** | | **~1,010** | **~5** |
+
+### Implementation Order
+
+1. **Phase 1.1-1.2** first (init systems + connect) — unlocks everything else
+2. **Phase 1.3** (NAc observe) — most impactful single fix
+3. **Phase 2.1** (forming boost) — most impactful correctness fix
+4. **Remaining Phase 1** (PainBus→NAc, SCN capture, Cerebellum, motor programs, novelty)
+5. **Remaining Phase 2** (context_match, decay, concept gate, pain cooldown, priority, truncation, thread safety)
+6. **Phase 3** (percept abstraction) — enables rich DM percepts
+7. **Phase 4** (design gaps)
+8. **Phase 5** (audit script) — validates everything
+
+### Verification
+
+After all phases, run the audit script. If all checks pass, the bio-system pipeline is production-quality and DM campaigns will exercise the full cognitive architecture.
+
+---
+
+## Ties to Other Plans
+
+| Plan | Relationship |
+|------|-------------|
+| **DM MVP** | Gate — this plan must ship before DM campaigns are meaningful |
+| **Generative Campaigns** | Benefits — all campaign modes get better bio-system support |
+| **Agent Mesh Phase 4** | Benefits — knowledge sharing assumes NAc/ATL actually learn |
+| **Research Protocol** | Benefits — Writer/Reviewer agents get richer bio-system data to report on |
+| **Realtime Refinement** | This IS the final refinement stage |
+| **Embodiment Core** | Benefits — Cerebellum wiring in loop applies to real embodiment too |

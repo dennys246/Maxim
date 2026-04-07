@@ -35,6 +35,12 @@ Maxim provides:
 | **Skills & Protocols** | Composable capabilities with lifecycle states, workspace constraints, and voice activation |
 | **SMS/Voice Comms** | Send and receive texts/calls via Twilio (see `src/maxim/comms/`) |
 | **Percept Simulation** | Interactive REPL (`maxim --sim`) or scripted YAML scenarios with bio-subsystem tracing, FearGatedExecutor safety review, and sandboxed filesystem |
+| **Generative Campaigns** | LLM-driven narrative arcs (`maxim --sim "goal"`), bridge-and-compress for long campaigns, `ask_user` tool for interactive mode |
+| **Research Protocol** | Multi-agent research: Researcher + Writer + Reviewer agents, dual-LLM, experiment tracking (`maxim --sim research`) |
+| **Embodiment** | SEM protocol (Sensor-Entity-Modulator) for body definition, Cerebellum forward models, motor programs with engrams, composable failure modes |
+| **Agent Mesh** | Cooperative peer-to-peer network: knowledge sharing (CausalLinks, reflections, motor programs), task delegation, distributed planning, SCN clock sync |
+| **Multi-LLM Scaling** | Local + remote + cloud LLM backends, Cloudflare tunnel, per-tier model routing, peer discovery, hot-swap |
+| **Benchmarks** | Multi-model comparative testing (`maxim --sim benchmark`), bio-system expectations, scenario suites |
 | **Thread Safety** | All 16 config dataclasses frozen for immutability; mutation via `dataclasses.replace()` |
 
 ---
@@ -72,8 +78,17 @@ maxim --mode agentic --language-model mistral-7b
 # Interactive simulation mode
 maxim --sim
 
-# Specify prompt profile for low-compute systems
-maxim --mode agentic --prompt-profile minimal
+# Generative campaign (LLM-driven narrative)
+maxim --sim "test memory recall under interference"
+
+# With research report (Writer + Reviewer after sim)
+maxim --sim "test safety boundaries" --research
+
+# YAML scenario (direct injection)
+maxim --sim scenarios/experiments/hippocampal_recall_short.yaml
+
+# Multi-model benchmark
+maxim --sim benchmark --models mistral-7b,qwen2.5-14b --campaign scenarios/benchmarks/cognitive_suite.yaml
 
 # Diagnose your environment (platform-aware fix hints)
 maxim doctor
@@ -120,6 +135,16 @@ Agents → Planning → Decision Engine → Runtime → Executor → Tools → E
 | `src/maxim/energy/` | Resource expenditure tracking (tokens, compute, movement) |
 | `src/maxim/skills/` | Composable skills and protocols (see [docs/skills.md](docs/skills.md)) |
 | `src/maxim/bridges/` | Cross-system integration (pain, energy, memory) |
+| `src/maxim/embodiment/` | SEM protocol (Sensor-Entity-Modulator), Cerebellum, motor programs |
+| `src/maxim/mesh/` | Agent mesh: identity, protocol, transport, knowledge sharing, delegation |
+| `src/maxim/simulation/` | Simulation modes, generative campaigns, research protocol, benchmarks |
+| `src/maxim/integration/` | MemoryHub cross-system coordinator (11 bio-systems) |
+| `src/maxim/decisions/` | NAc causal learning, adaptive planner |
+| `src/maxim/time/` | SCN temporal rhythm indexing |
+| `src/maxim/similarity/` | Entorhinal Cortex similarity matching |
+| `src/maxim/math/` | Angular Gyrus mathematical cognition, IPS fast stats |
+| `src/maxim/default_network/` | Reactive behavior layer (thalamic gate, arbiter) |
+| `src/maxim/salience/` | Novelty tracking, interest matching |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design rules.
 

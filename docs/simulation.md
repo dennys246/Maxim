@@ -8,22 +8,42 @@ Internal documentation for the `src/maxim/simulation/` module.
 src/maxim/simulation/
     __init__.py
     sources.py                 # PerceptSource protocol + ConversationalSource
+    conversational_source.py   # ConversationalSource (thread-safe live input)
     sinks.py                   # ActionSink protocol + RecordingSink
-    scenario_source.py         # ScenarioSource (YAML loader + emitter)
+    scenario_source.py         # ScenarioSource (YAML loader + emitter) + ScenarioDefinition
     bridge.py                  # SimulationBridge (ConversationalSource + RecordingSink + send_and_wait)
     orchestrator.py            # start_simulation_mode() lifecycle, 3-thread orchestrator
     tools.py                   # Orchestrator tools (send_message, spawn_sub_simulation, extend_simulation, ...)
-    personas.py                # 8 personas + continuous suffix (adversarial, cooperative, confused, escalating, campaign, refinement, researcher, sweep)
+    tools_user.py              # AskUserTool (interactive human-in-the-loop, JSONL audit, replay)
+    personas.py                # 8 personas (adversarial, cooperative, confused, escalating, campaign, refinement, researcher, sweep)
     response_policy.py         # ResponsePolicy (auto-approve/reject/delayed/ask-orchestrator)
     report.py                  # SimulationReport builder, persistence, LLM roundup
     interactive.py             # Conversational REPL (rewired for multi-turn)
     runner.py                  # ScenarioRunner (standalone executor)
-    validation.py              # Expectation checking + ScenarioResult
+    validation.py              # 15 expectation types (behavioral, metric, bio-system)
     instrumented_executor.py   # InstrumentedExecutor wrapper
     simulation_generator.py    # LLM-powered natural language → YAML generation
     sim_logger.py              # Bio-subsystem tracing + JSONL persistence
     sandbox.py                 # SandboxEnvironment ABC + TmpdirSandbox + DockerSandbox + PainTriggerLayer
     container_runner.py        # ContainerRunner Protocol + LocalDockerRunner + image catalog
+
+    # Generative Campaign System
+    arcs.py                    # NarrativeArc, NarrativePhase, BUILTIN_ARCS, load_arc_yaml
+    narrator.py                # Two-call narrator (decision + generation), single-call fallback
+    generative_runner.py       # run_generative_campaign(), YAML export, SEM entity loading
+    plan_arc_bridge.py         # translate_plan_to_arc, enrich_narrator_context, bridge_and_compress
+
+    # Research Protocol
+    research_tools.py          # ExperimentLog, RecordExperimentTool, QueryExperimentsTool
+    research_agents.py         # WriterAgent, ReviewerAgent, PaperDraft, ReviewResult
+    research_orchestrator.py   # start_research_mode, ResearchResult
+
+    # Introspection
+    introspection.py           # Observer class (fka AUTIntrospector) — powers observe()
+
+    # Benchmark
+    benchmark.py               # BenchmarkRunner — multi-model comparison, tiered metrics
+    experiment.py              # run_campaign() → ExperimentResult (standalone)
 
 src/maxim/runtime/
     fear_gate.py               # FearGatedExecutor (independent of DefaultNetwork)

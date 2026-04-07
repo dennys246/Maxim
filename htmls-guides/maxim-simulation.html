@@ -98,6 +98,8 @@
       <li><a href="#concept" class="text-indigo-400 hover:text-indigo-300 no-underline">The Concept</a></li>
       <li><a href="#interactive" class="text-indigo-400 hover:text-indigo-300 no-underline">Interactive Mode</a></li>
       <li><a href="#agent" class="text-indigo-400 hover:text-indigo-300 no-underline">Simulation Agent</a></li>
+      <li><a href="#generative" class="text-indigo-400 hover:text-indigo-300 no-underline">Generative Campaigns</a></li>
+      <li><a href="#research" class="text-indigo-400 hover:text-indigo-300 no-underline">Research Mode</a></li>
       <li><a href="#running" class="text-indigo-400 hover:text-indigo-300 no-underline">Running YAML Scenarios</a></li>
       <li><a href="#generating" class="text-indigo-400 hover:text-indigo-300 no-underline">Generating from Natural Language</a></li>
       <li><a href="#writing" class="text-indigo-400 hover:text-indigo-300 no-underline">Writing Scenarios by Hand</a></li>
@@ -306,6 +308,64 @@ Thread 3 (stdin):         routes /cancel, /new, /persona, free text to orchestra
 
     <h3 class="text-lg font-semibold text-indigo-400 mt-4">Cost Ceiling</h3>
     <p class="text-slate-300">Cloud API costs are capped at <strong class="text-white">$5.00 per session</strong> by default. Once hit, all further LLM requests are hard-rejected. Configure via <code class="bg-slate-950 px-1 rounded text-xs">max_session_cost</code> in <code class="bg-slate-950 px-1 rounded text-xs">llm.json</code> routing policy. Additional soft limits apply per-request ($0.50), hourly ($1.00), daily ($10.00), and monthly ($100.00) &mdash; these downgrade models rather than blocking.</p>
+  </section>
+
+  <!-- 2c. Generative Campaigns -->
+  <section class="space-y-4">
+    <h2 id="generative" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Generative Campaigns</h2>
+
+    <p class="text-slate-300">The default simulation mode. Pass a natural-language goal string to <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">--sim</code> and a <span class="text-indigo-400 font-semibold">narrator LLM</span> generates a multi-phase narrative arc that drives the AUT through a structured story:</p>
+
+    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300"><span class="text-slate-500"># Generative campaign (default when --sim receives a string)</span>
+maxim --sim "test memory recall under interference"
+
+<span class="text-slate-500"># With a specific persona</span>
+maxim --sim "test safety boundaries" --persona adversarial
+
+<span class="text-slate-500"># With a custom narrative arc</span>
+maxim --sim "test skill learning" --arc scenarios/arcs/herbalism_skill.yaml
+
+<span class="text-slate-500"># Interactive mode — ask_user tool pauses for human input</span>
+maxim --sim "test cooperative behavior" --interactive</div>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Narrative Arcs</h3>
+    <p class="text-slate-300">Each campaign follows a <span class="text-indigo-400 font-semibold">NarrativeArc</span> &mdash; a sequence of phases (setup, rising action, climax, resolution) with intensity curves. Built-in arcs cover common testing patterns; custom arcs can be loaded from YAML.</p>
+
+    <p class="text-slate-300 mt-2">The narrator compresses the story history between phases using <code class="bg-slate-950 px-1 rounded text-xs">bridge_and_compress</code>, keeping context manageable across long campaigns. An <code class="bg-slate-950 px-1 rounded text-xs">AdaptivePlanner</code> integration translates plan goals into arc-compatible phases via <code class="bg-slate-950 px-1 rounded text-xs">translate_plan_to_arc</code>.</p>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">How It Differs from the Simulation Agent</h3>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h4 class="text-white font-semibold mb-1">Simulation Agent</h4>
+        <p class="text-slate-400 text-sm"><code class="bg-slate-950 px-1 rounded text-xs">--sim agent</code> &mdash; An orchestrator LLM drives the AUT with full tool access, adaptive probing, and real-time analysis. Maximum flexibility, higher cost.</p>
+      </div>
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-4">
+        <h4 class="text-white font-semibold mb-1">Generative Campaign</h4>
+        <p class="text-slate-400 text-sm"><code class="bg-slate-950 px-1 rounded text-xs">--sim "goal"</code> &mdash; A narrator generates structured story turns injected directly through the bridge. More predictable, lower cost, exports to YAML for reproducibility.</p>
+      </div>
+    </div>
+
+    <p class="text-slate-300 mt-3">Generative campaigns export the generated scenario to YAML after completion, so successful runs can be re-run deterministically as direct injection campaigns.</p>
+  </section>
+
+  <!-- 2d. Research Mode -->
+  <section class="space-y-4">
+    <h2 id="research" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Research Mode</h2>
+
+    <p class="text-slate-300">Run a simulation with structured experiment tracking and automatic paper generation:</p>
+
+    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300"><span class="text-slate-500"># Add --research to any sim mode for Writer + Reviewer post-analysis</span>
+maxim --sim "hippocampal recall under interference" --research
+
+<span class="text-slate-500"># With a direct-injection campaign for reproducible experiments</span>
+maxim --sim "hippocampal recall" --research \
+  --campaign scenarios/experiments/hippocampal_recall_short.yaml
+
+<span class="text-slate-500"># Dual-LLM: Claude orchestrates, Mistral experiences</span>
+maxim --sim "hippocampal recall" --research \
+  --language-model claude-sonnet --aut-model mistral-7b</div>
+
+    <p class="text-slate-300 mt-3">After the simulation completes, a <span class="text-indigo-400 font-semibold">Writer</span> agent produces a structured research paper and a <span class="text-indigo-400 font-semibold">Reviewer</span> agent evaluates it. Both use mesh primitives (<code class="text-indigo-400">AgentProfile</code>, <code class="text-indigo-400">MeshMessage</code>) for communication. The <code class="bg-slate-950 px-1 rounded text-xs">ExperimentLog</code> tracks all runs with structured metadata for querying.</p>
   </section>
 
   <!-- 3. Running YAML Scenarios -->
@@ -844,9 +904,12 @@ Actions recorded: 3
         <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
         <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
         <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
-        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking &amp; Mesh</a>
-        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking</a>
+        <a href="/maxim/agent-mesh" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Agent Mesh</a>
+        <a href="/maxim/embodiment" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Embodiment</a>
         <a href="/maxim/simulation" class="text-xs text-indigo-400 transition px-2 py-1 rounded bg-slate-800 no-underline font-semibold">Simulation</a>
+        <a href="/maxim/benchmarks" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Benchmarks</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
       </div>
     </div>
   </div>
