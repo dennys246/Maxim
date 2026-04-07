@@ -165,6 +165,8 @@ def run_generative_campaign(
     memory_context: str = "",
     tool_registry: Any = None,
     session_dir: str | None = None,
+    planner: Any = None,
+    planner_state: Any = None,
 ) -> GenerativeCampaignResult:
     """Run a generative campaign.
 
@@ -201,20 +203,28 @@ def run_generative_campaign(
     """
     start_time = time.time()
 
-    # Resolve arc
+    # Resolve arc — planner-driven if available, else keyword match / YAML
+    planning_context_str = memory_context
     if arc is None:
         if arc_yaml:
             arc = load_arc_yaml(arc_yaml)
+        elif planner is not None:
+            arc, planning_context_str = _resolve_arc_via_planner(
+                goal,
+                planner,
+                planner_state,
+                memory_context,
+            )
         else:
             arc = select_arc_for_goal(goal)
         if arc is None:
-            # Default to memory_recall as a reasonable generic arc
             arc = BUILTIN_ARCS["memory_recall"]
 
     log.info(
-        "Starting generative campaign: goal=%r, arc=%s, turns=%d-%d",
+        "Starting generative campaign: goal=%r, arc=%s (%s), turns=%d-%d",
         goal,
         arc.name,
+        arc.source,
         arc.total_turns_min,
         arc.total_turns_max,
     )
@@ -222,13 +232,13 @@ def run_generative_campaign(
     # Load SEM world entities if available
     entity_tools = _load_world_entities(arc, tool_registry)
 
-    # Create narrator
+    # Create narrator with enriched memory context
     narrator = Narrator(
         llm=llm,
         arc=arc,
         aut_name=aut_name,
         goal=goal,
-        memory_context=memory_context,
+        memory_context=planning_context_str,
     )
 
     # Run turn loop
@@ -341,3 +351,61 @@ def _single_call_turn(
 ) -> tuple[str, dict[str, Any]]:
     """Execute one turn using single-call approach (Option B)."""
     return narrator.generate_single(last_aut_response)
+
+
+# ---------------------------------------------------------------------------
+# Planner-driven arc resolution
+# ---------------------------------------------------------------------------
+
+
+def _resolve_arc_via_planner(
+    goal: str,
+    planner: Any,
+    planner_state: Any,
+    memory_context: str,
+) -> tuple[NarrativeArc | None, str]:
+    """Use AdaptivePlanner to decompose goal into a NarrativeArc.
+
+    Returns (arc, enriched_memory_context). If planner fails,
+    returns (None, original_memory_context).
+    """
+    try:
+        from maxim.simulation.plan_arc_bridge import (
+            enrich_narrator_context,
+            translate_plan_to_arc,
+        )
+
+        # Ask planner to decompose the goal
+        candidates = planner.propose_plans(
+            goal={"description": goal, "goal": goal},
+            state=planner_state,
+            memory=None,
+        )
+
+        if not candidates:
+            return None, memory_context
+
+        best = candidates[0]
+        actions = best.actions if hasattr(best, "actions") else []
+
+        if not actions:
+            return None, memory_context
+
+        # Translate plan to arc
+        arc = translate_plan_to_arc(actions, goal)
+
+        # Enrich narrator context from planning memory signals
+        pctx = getattr(best, "planning_context", None)
+        enriched = enrich_narrator_context(pctx)
+        if enriched:
+            if memory_context:
+                enriched = f"{memory_context}\n\n{enriched}"
+        else:
+            enriched = memory_context
+
+        log.info("Planner decomposed goal into arc: %s (%d phases)", arc.name, len(arc.phases))
+        return arc, enriched
+
+    except Exception as e:
+        log.debug("Planner arc resolution failed: %s", e)
+        return None, memory_context

@@ -198,12 +198,12 @@ class AdaptivePlanner(Planner):
                     if prog.confidence > 0.6:
                         candidates.append(PlanCandidate(
                             source="motor_program",
-                            tool_name=f"motor_program:{prog.name}",
-                            confidence=prog.confidence,
-                            context={
+                            actions=[{
+                                "tool_name": f"motor_program:{prog.name}",
                                 "program": prog.to_prompt_dict(),
                                 "from_cerebellum": True,
-                            },
+                            }],
+                            planning_context=pctx,
                         ))
                 if candidates:
                     return candidates  # Short-circuit — motor program available
