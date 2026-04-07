@@ -286,7 +286,7 @@ def benchmark_snapshot(self, seed_keywords: list[str] | None = None) -> dict:
 
 ## Narrative Percept Transcriber
 
-> **Depends on:** [Lane tier architecture](lane_tier_plan.md) (small tier) + DefaultNetwork activation (Phase 0b).
+> **Depends on:** [Lane tier architecture](../archive/lane_tier_plan.md) (small tier) + DefaultNetwork activation (Phase 0b).
 
 Narrative text currently bypasses the bio-stack. The transcriber converts text into structured detections for the full pipeline:
 
@@ -707,11 +707,11 @@ Baseline comparison + paper generation + narrative transcriber + Tier 3 hooks.
 
 ## Prerequisites
 
-- **[Lane tier architecture](lane_tier_plan.md)** — small tier for narrative transcriber. Benchmark runner swaps `large` model while `small` stays constant. Required for Phase 8 (transcriber), not for Phases 0-7.
+- **[Lane tier architecture](../archive/lane_tier_plan.md)** — small tier for narrative transcriber. Benchmark runner swaps `large` model while `small` stays constant. Required for Phase 8 (transcriber), not for Phases 0-7.
 
 ## Related Plans
 
-- [Lane tier plan](lane_tier_plan.md) — small tier for narrative transcription
+- [Lane tier plan](../archive/lane_tier_plan.md) — small tier for narrative transcription
 - [Tool refinement plan](tool_refinement_plan.md) — hallucination tracking feeding Tier 1
 - [Embodiment core plan](embodiment_core_plan.md) — Tier 3 metric sources
 - [Generative campaign plan](generative_campaign_plan.md) — auto-generated benchmark scenarios

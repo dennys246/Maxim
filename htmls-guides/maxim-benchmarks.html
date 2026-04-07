@@ -1,0 +1,534 @@
+{% extends "base.html" %}
+
+{% block title %}Benchmarks — Maxim Docs | Multi-Model Cognitive Architecture Testing{% endblock %}
+
+{% block meta_description %}Compare LLM backends across cognitive metrics with Maxim's three-tier benchmark system. Measure hallucination rates, memory formation, causal learning, and embodiment readiness.{% endblock %}
+
+{% block meta_keywords %}Maxim benchmarks, cognitive benchmarks, LLM comparison, hallucination rate, memory formation, causal learning, embodiment metrics, bio-inspired testing{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Benchmarks — Multi-Model Cognitive Architecture Testing",
+  "description": "Compare LLM backends across cognitive metrics with Maxim's three-tier benchmark system. Measure hallucination rates, memory formation, causal learning, and embodiment readiness.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/benchmarks",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["benchmarks", "cognitive metrics", "LLM comparison", "hallucination rate", "memory formation", "causal learning"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Benchmarks", "item": "https://www.dennyschaedig.com/maxim/benchmarks" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Benchmarks</h1>
+    <p class="text-indigo-400 font-medium">Multi-Model Cognitive Architecture Testing</p>
+  </header>
+
+  <!-- Table of Contents -->
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
+    <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+      <li><a href="#overview" class="text-indigo-400 hover:text-indigo-300 no-underline">Overview</a></li>
+      <li><a href="#quick-start" class="text-indigo-400 hover:text-indigo-300 no-underline">Quick Start</a></li>
+      <li><a href="#metric-tiers" class="text-indigo-400 hover:text-indigo-300 no-underline">Metric Tiers</a></li>
+      <li><a href="#scenario-suite" class="text-indigo-400 hover:text-indigo-300 no-underline">Scenario Suite</a></li>
+      <li><a href="#custom-scenarios" class="text-indigo-400 hover:text-indigo-300 no-underline">Writing Custom Scenarios</a></li>
+      <li><a href="#baseline" class="text-indigo-400 hover:text-indigo-300 no-underline">Baseline Comparison</a></li>
+      <li><a href="#output" class="text-indigo-400 hover:text-indigo-300 no-underline">Output &amp; Reports</a></li>
+      <li><a href="#bio-expectations" class="text-indigo-400 hover:text-indigo-300 no-underline">Bio-System Expectations</a></li>
+    </ol>
+  </div>
+
+  <!-- 1. Overview -->
+  <section class="space-y-4">
+    <h2 id="overview" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Overview</h2>
+
+    <p class="text-slate-300">Standard LLM benchmarks measure token prediction. Maxim benchmarks measure <strong class="text-white">cognitive behavior</strong> &mdash; whether a model can form memories, learn causal relationships, use tools correctly, and drive a bio-inspired architecture end-to-end.</p>
+
+    <p class="text-slate-300">The benchmark system runs the same simulation pipeline used for scenario testing, but adds structured metric collection across three tiers. Each tier captures a different layer of the architecture, from raw LLM output quality up through embodiment readiness.</p>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">Tier 1 &mdash; LLM Behavior</h4>
+        <p class="text-slate-400 text-sm">How well does the model follow instructions? Measures hallucination, JSON compliance, tool usage accuracy, and alias handling at the raw output level.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">Tier 2 &mdash; Cognitive Architecture</h4>
+        <p class="text-slate-400 text-sm">Does the model drive the cognitive systems effectively? Tracks memory formation, associative graph growth, concept extraction, causal link discovery, and learning efficiency.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">Tier 3 &mdash; Embodiment Hooks</h4>
+        <p class="text-slate-400 text-sm">Is the model ready for physical deployment? Auto-detected when hardware adapters are available. Measures spatial attention accuracy, motor planning latency, and sensor fusion coherence.</p>
+      </div>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5">
+      <p class="text-slate-300"><strong class="text-indigo-400">Why three tiers?</strong> A model that scores perfectly on JSON compliance (Tier 1) might still fail to form useful memories (Tier 2). And a model that drives the cognitive architecture well in simulation might produce actions too slowly for real-time embodiment (Tier 3). Each tier catches failures the others miss.</p>
+    </div>
+  </section>
+
+  <!-- 2. Quick Start -->
+  <section class="space-y-4">
+    <h2 id="quick-start" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Quick Start</h2>
+
+    <p class="text-slate-300">Run a benchmark from the CLI by specifying models to compare and a campaign scenario:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-slate-500"># Compare two models across the full cognitive suite</span>
+maxim --sim benchmark \
+  --models mistral-7b,qwen2.5-14b \
+  --campaign scenarios/benchmarks/cognitive_suite.yaml
+
+<span class="text-slate-500"># Single model, specific scenario</span>
+maxim --sim benchmark \
+  --models claude-sonnet \
+  --campaign scenarios/benchmarks/causal_learning.yaml
+
+<span class="text-slate-500"># Compare against a saved baseline</span>
+maxim --sim benchmark \
+  --models qwen2.5-14b \
+  --campaign scenarios/benchmarks/cognitive_suite.yaml \
+  --baseline data/benchmarks/20260401_mistral-7b/</div>
+
+    <p class="text-slate-300 mt-4">Or use the Python API for programmatic access:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-slate-500"># Run a benchmark suite programmatically</span>
+result = maxim.imagine(
+    goal=<span class="text-green-400">"benchmark: cognitive_suite"</span>,
+    persona=<span class="text-green-400">"adversarial"</span>,
+)
+
+<span class="text-slate-500"># Access structured results</span>
+<span class="text-indigo-400">print</span>(result.metrics[<span class="text-green-400">"hallucination_rate"</span>])     <span class="text-slate-500"># 0.03</span>
+<span class="text-indigo-400">print</span>(result.metrics[<span class="text-green-400">"memory_formation_rate"</span>])  <span class="text-slate-500"># 0.85</span>
+<span class="text-indigo-400">print</span>(result.passed)                            <span class="text-slate-500"># True</span></div>
+  </section>
+
+  <!-- 3. Metric Tiers -->
+  <section class="space-y-4">
+    <h2 id="metric-tiers" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Metric Tiers</h2>
+
+    <p class="text-slate-300">Every benchmark run collects metrics across all available tiers. Tier 1 and Tier 2 are always present. Tier 3 activates automatically when embodiment adapters are detected.</p>
+
+    <!-- Tier 1 -->
+    <h3 class="text-lg font-semibold text-white mt-6">Tier 1 &mdash; LLM Behavior</h3>
+    <p class="text-slate-400 text-sm mb-3">Raw model output quality. These metrics measure how well the LLM follows structured output requirements and avoids common failure modes.</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">Metric</th>
+            <th class="px-4 py-3">Type</th>
+            <th class="px-4 py-3 rounded-tr-lg">Description</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">hallucination_rate</td>
+            <td class="px-4 py-3">float (0&ndash;1)</td>
+            <td class="px-4 py-3">Fraction of responses containing fabricated facts or non-existent tool names</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">correct_tool_usage_rate</td>
+            <td class="px-4 py-3">float (0&ndash;1)</td>
+            <td class="px-4 py-3">Fraction of tool calls with valid name, correct argument types, and meaningful parameters</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">json_compliance_rate</td>
+            <td class="px-4 py-3">float (0&ndash;1)</td>
+            <td class="px-4 py-3">Fraction of responses that parse as valid JSON on first attempt (before repair pipeline)</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">alias_redirect_rate</td>
+            <td class="px-4 py-3">float (0&ndash;1)</td>
+            <td class="px-4 py-3">Fraction of hallucinated tool names successfully caught and redirected via TOOL_ALIASES</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Tier 2 -->
+    <h3 class="text-lg font-semibold text-white mt-6">Tier 2 &mdash; Cognitive Architecture</h3>
+    <p class="text-slate-400 text-sm mb-3">How effectively the model drives Maxim's bio-inspired subsystems. These metrics reflect the quality of the cognitive pipeline, not just the LLM output.</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">Metric</th>
+            <th class="px-4 py-3">Type</th>
+            <th class="px-4 py-3 rounded-tr-lg">Description</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">memory_formation_rate</td>
+            <td class="px-4 py-3">float (0&ndash;1)</td>
+            <td class="px-4 py-3">Fraction of salient percepts that produce at least one hippocampal memory</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">associative_graph_density</td>
+            <td class="px-4 py-3">float</td>
+            <td class="px-4 py-3">Edges / nodes in the hippocampal associative graph (higher = richer associations)</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">concept_formation_rate</td>
+            <td class="px-4 py-3">float (0&ndash;1)</td>
+            <td class="px-4 py-3">Fraction of eligible memory clusters that produce ATL semantic concepts</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">causal_link_count</td>
+            <td class="px-4 py-3">int</td>
+            <td class="px-4 py-3">Number of action-outcome causal links discovered by NAc</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">learning_efficiency</td>
+            <td class="px-4 py-3">float</td>
+            <td class="px-4 py-3">Causal links per observation &mdash; how quickly the model learns from experience</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">observation_density</td>
+            <td class="px-4 py-3">float</td>
+            <td class="px-4 py-3">Observations per simulation turn &mdash; how much the model attends to its environment</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">pain_signal_count</td>
+            <td class="px-4 py-3">int</td>
+            <td class="px-4 py-3">Number of pain/aversion signals triggered during the run</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">type_token_ratio</td>
+            <td class="px-4 py-3">float (0&ndash;1)</td>
+            <td class="px-4 py-3">Lexical diversity of model output &mdash; unique tokens / total tokens</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Tier 3 -->
+    <h3 class="text-lg font-semibold text-white mt-6">Tier 3 &mdash; Embodiment Hooks</h3>
+    <p class="text-slate-400 text-sm mb-3">Auto-detected when hardware adapters are present. These metrics measure readiness for physical deployment.</p>
+
+    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-6">
+      <p class="text-slate-300"><strong class="text-amber-400">Auto-detection:</strong> Tier 3 metrics activate when the runtime detects hardware adapters (vision engine, motor controller, sensor fusion). In pure simulation mode, Tier 3 is reported as <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">not_available</code> and does not affect pass/fail status.</p>
+    </div>
+  </section>
+
+  <!-- 4. Scenario Suite -->
+  <section class="space-y-4">
+    <h2 id="scenario-suite" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Scenario Suite</h2>
+
+    <p class="text-slate-300">Maxim ships with six built-in benchmark scenarios, ranging from a 30-second smoke test to a comprehensive cognitive evaluation.</p>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-1">quick_check</h4>
+        <p class="text-slate-400 text-sm mb-2">30-second smoke test. Verifies the pipeline boots, the model produces valid JSON, and at least one tool call succeeds.</p>
+        <span class="text-xs font-mono text-slate-500">~30s | Tier 1 only</span>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-1">tool_discovery</h4>
+        <p class="text-slate-400 text-sm mb-2">Presents novel situations requiring tool exploration. Measures correct_tool_usage_rate and alias_redirect_rate under unfamiliar conditions.</p>
+        <span class="text-xs font-mono text-slate-500">~60s | Tier 1</span>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-1">causal_learning</h4>
+        <p class="text-slate-400 text-sm mb-2">Repeated action-outcome sequences to test NAc causal link formation. Measures causal_link_count and learning_efficiency.</p>
+        <span class="text-xs font-mono text-slate-500">~90s | Tier 1 + 2</span>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-1">aversion_learning</h4>
+        <p class="text-slate-400 text-sm mb-2">Scenarios that should trigger pain/aversion signals. Tests whether the model learns to avoid harmful actions after negative feedback.</p>
+        <span class="text-xs font-mono text-slate-500">~90s | Tier 1 + 2</span>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-1">concept_formation</h4>
+        <p class="text-slate-400 text-sm mb-2">Multi-turn narrative with recurring themes. Measures whether hippocampal memories cluster into ATL semantic concepts.</p>
+        <span class="text-xs font-mono text-slate-500">~120s | Tier 1 + 2</span>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-1">cognitive_suite</h4>
+        <p class="text-slate-400 text-sm mb-2">Comprehensive evaluation that combines all scenarios above. The standard benchmark for model-to-model comparison.</p>
+        <span class="text-xs font-mono text-slate-500">~5min | Tier 1 + 2 (+ Tier 3 if available)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Writing Custom Scenarios -->
+  <section class="space-y-4">
+    <h2 id="custom-scenarios" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Writing Custom Scenarios</h2>
+
+    <p class="text-slate-300">Benchmark scenarios use the same YAML format as simulation scenarios, with additional <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">benchmark</code> and <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">suite</code> sections for metric expectations and metadata.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-slate-500"># scenarios/benchmarks/my_custom_benchmark.yaml</span>
+<span class="text-indigo-400">name</span>: custom_memory_test
+<span class="text-indigo-400">description</span>: Test memory formation under interference
+
+<span class="text-indigo-400">metadata</span>:
+  <span class="text-indigo-400">tags</span>: [memory, interference, hippocampus]
+  <span class="text-indigo-400">difficulty</span>: medium
+  <span class="text-indigo-400">subsystems_tested</span>: [hippocampus, atl, nac]
+
+<span class="text-indigo-400">turns</span>:
+  - <span class="text-indigo-400">text</span>: <span class="text-green-400">"A red bird lands on the windowsill."</span>
+    <span class="text-indigo-400">salience</span>: 0.8
+    <span class="text-indigo-400">novelty</span>: 0.9
+  - <span class="text-indigo-400">text</span>: <span class="text-green-400">"The weather forecast plays on the radio."</span>
+    <span class="text-indigo-400">salience</span>: 0.2
+    <span class="text-indigo-400">novelty</span>: 0.1
+  - <span class="text-indigo-400">text</span>: <span class="text-green-400">"What color was the bird you saw earlier?"</span>
+    <span class="text-indigo-400">salience</span>: 0.7
+    <span class="text-indigo-400">novelty</span>: 0.3
+
+<span class="text-indigo-400">benchmark</span>:
+  <span class="text-indigo-400">expectations</span>:
+    - <span class="text-indigo-400">type</span>: memory_count_range
+      <span class="text-indigo-400">min</span>: 2
+      <span class="text-indigo-400">max</span>: 10
+    - <span class="text-indigo-400">type</span>: hallucination_rate_below
+      <span class="text-indigo-400">threshold</span>: 0.1
+    - <span class="text-indigo-400">type</span>: graph_density_above
+      <span class="text-indigo-400">threshold</span>: 0.5
+
+<span class="text-indigo-400">suite</span>:
+  <span class="text-indigo-400">cognitive_suite</span>: true
+  <span class="text-indigo-400">weight</span>: 1.0</div>
+
+    <p class="text-slate-300 mt-4">The <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">metadata</code> section is used for filtering and reporting. The <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">benchmark.expectations</code> list defines pass/fail criteria. The <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">suite</code> section controls which aggregate suites include this scenario.</p>
+  </section>
+
+  <!-- 6. Baseline Comparison -->
+  <section class="space-y-4">
+    <h2 id="baseline" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Baseline Comparison</h2>
+
+    <p class="text-slate-300">Use <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">--baseline</code> to compare the current run against a previous benchmark result. The output shows deltas for every metric, making regressions immediately visible.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">maxim --sim benchmark \
+  --models qwen2.5-14b \
+  --campaign scenarios/benchmarks/cognitive_suite.yaml \
+  --baseline data/benchmarks/20260401_mistral-7b/</div>
+
+    <p class="text-slate-300 mt-4">The delta report uses directional arrows to show improvement or regression:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-white font-semibold">Benchmark: cognitive_suite</span>
+<span class="text-white font-semibold">Model: qwen2.5-14b vs baseline (mistral-7b)</span>
+
+<span class="text-slate-500">Tier 1 — LLM Behavior</span>
+  hallucination_rate        0.02   <span class="text-green-400">-0.05 &#8595;</span>  (lower is better)
+  correct_tool_usage_rate   0.91   <span class="text-green-400">+0.08 &#8593;</span>
+  json_compliance_rate      0.97   <span class="text-green-400">+0.12 &#8593;</span>
+  alias_redirect_rate       0.85   <span class="text-amber-400">-0.02 &#8595;</span>
+
+<span class="text-slate-500">Tier 2 — Cognitive Architecture</span>
+  memory_formation_rate     0.88   <span class="text-green-400">+0.05 &#8593;</span>
+  associative_graph_density 1.42   <span class="text-green-400">+0.31 &#8593;</span>
+  concept_formation_rate    0.65   <span class="text-red-400">-0.12 &#8595;</span>  (regression)
+  causal_link_count         7      <span class="text-green-400">+3 &#8593;</span>
+  learning_efficiency       0.23   <span class="text-green-400">+0.09 &#8593;</span>
+
+<span class="text-white font-semibold">Result: PASS (7/8 expectations met)</span></div>
+
+    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-6 mt-4">
+      <p class="text-slate-300"><strong class="text-amber-400">Tip:</strong> Baselines are saved automatically after each run. To create a named baseline for long-term tracking, copy the output directory: <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">cp -r data/benchmarks/latest/ data/benchmarks/v0.9.0_mistral-7b/</code></p>
+    </div>
+  </section>
+
+  <!-- 7. Output & Reports -->
+  <section class="space-y-4">
+    <h2 id="output" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Output &amp; Reports</h2>
+
+    <p class="text-slate-300">Benchmark results are saved to <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">data/benchmarks/{timestamp}_{model}/</code> with a structured JSON report and a human-readable Markdown summary.</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">File</th>
+            <th class="px-4 py-3 rounded-tr-lg">Description</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">results.json</td>
+            <td class="px-4 py-3">Full structured output &mdash; all metrics, expectations, pass/fail status, model metadata</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">summary.md</td>
+            <td class="px-4 py-3">Human-readable summary with tables, deltas (if baseline provided), and per-scenario breakdown</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">actions.jsonl</td>
+            <td class="px-4 py-3">Full action log from the simulation run (same format as sim reports)</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">aut_state/</td>
+            <td class="px-4 py-3">Subdirectory with AUT hippocampus, NAc, and ATL state snapshots at end of run</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-slate-300 mt-4">The JSON report structure:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">{
+  <span class="text-indigo-400">"model"</span>: <span class="text-green-400">"qwen2.5-14b"</span>,
+  <span class="text-indigo-400">"campaign"</span>: <span class="text-green-400">"cognitive_suite"</span>,
+  <span class="text-indigo-400">"timestamp"</span>: <span class="text-green-400">"2026-04-06T14:23:01Z"</span>,
+  <span class="text-indigo-400">"duration_s"</span>: <span class="text-amber-400">287.4</span>,
+  <span class="text-indigo-400">"passed"</span>: <span class="text-amber-400">true</span>,
+  <span class="text-indigo-400">"metrics"</span>: {
+    <span class="text-indigo-400">"tier_1"</span>: {
+      <span class="text-indigo-400">"hallucination_rate"</span>: <span class="text-amber-400">0.02</span>,
+      <span class="text-indigo-400">"correct_tool_usage_rate"</span>: <span class="text-amber-400">0.91</span>,
+      <span class="text-indigo-400">"json_compliance_rate"</span>: <span class="text-amber-400">0.97</span>,
+      <span class="text-indigo-400">"alias_redirect_rate"</span>: <span class="text-amber-400">0.85</span>
+    },
+    <span class="text-indigo-400">"tier_2"</span>: {
+      <span class="text-indigo-400">"memory_formation_rate"</span>: <span class="text-amber-400">0.88</span>,
+      <span class="text-indigo-400">"associative_graph_density"</span>: <span class="text-amber-400">1.42</span>,
+      <span class="text-indigo-400">"concept_formation_rate"</span>: <span class="text-amber-400">0.65</span>,
+      <span class="text-indigo-400">"causal_link_count"</span>: <span class="text-amber-400">7</span>,
+      <span class="text-indigo-400">"learning_efficiency"</span>: <span class="text-amber-400">0.23</span>,
+      <span class="text-indigo-400">"observation_density"</span>: <span class="text-amber-400">1.8</span>,
+      <span class="text-indigo-400">"pain_signal_count"</span>: <span class="text-amber-400">2</span>,
+      <span class="text-indigo-400">"type_token_ratio"</span>: <span class="text-amber-400">0.71</span>
+    },
+    <span class="text-indigo-400">"tier_3"</span>: <span class="text-green-400">"not_available"</span>
+  },
+  <span class="text-indigo-400">"expectations"</span>: [
+    { <span class="text-indigo-400">"type"</span>: <span class="text-green-400">"hallucination_rate_below"</span>, <span class="text-indigo-400">"passed"</span>: <span class="text-amber-400">true</span> },
+    { <span class="text-indigo-400">"type"</span>: <span class="text-green-400">"memory_count_range"</span>, <span class="text-indigo-400">"passed"</span>: <span class="text-amber-400">true</span> }
+  ]
+}</div>
+  </section>
+
+  <!-- 8. Bio-System Expectations -->
+  <section class="space-y-4">
+    <h2 id="bio-expectations" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Bio-System Expectations</h2>
+
+    <p class="text-slate-300">Expectations define pass/fail criteria for benchmark scenarios. Each expectation type maps to a specific bio-system measurement. A scenario passes only when all its expectations are met.</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">Expectation Type</th>
+            <th class="px-4 py-3">Bio-System</th>
+            <th class="px-4 py-3">Parameters</th>
+            <th class="px-4 py-3 rounded-tr-lg">Description</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">memory_count_range</td>
+            <td class="px-4 py-3">Hippocampus</td>
+            <td class="px-4 py-3 font-mono text-xs">min, max</td>
+            <td class="px-4 py-3">Total episodic memories formed must fall within the given range</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">concept_formed</td>
+            <td class="px-4 py-3">ATL</td>
+            <td class="px-4 py-3 font-mono text-xs">concept_name</td>
+            <td class="px-4 py-3">A specific semantic concept must be extracted by the ATL</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">graph_density_above</td>
+            <td class="px-4 py-3">Hippocampus</td>
+            <td class="px-4 py-3 font-mono text-xs">threshold</td>
+            <td class="px-4 py-3">Associative graph edge/node ratio must exceed the threshold</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">causal_link_formed</td>
+            <td class="px-4 py-3">NAc</td>
+            <td class="px-4 py-3 font-mono text-xs">action, outcome</td>
+            <td class="px-4 py-3">A specific action &rarr; outcome causal link must be discovered</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">prediction_valence</td>
+            <td class="px-4 py-3">NAc</td>
+            <td class="px-4 py-3 font-mono text-xs">action, valence</td>
+            <td class="px-4 py-3">NAc's predicted valence for an action must match (positive/negative/neutral)</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">hallucination_rate_below</td>
+            <td class="px-4 py-3">LLM</td>
+            <td class="px-4 py-3 font-mono text-xs">threshold</td>
+            <td class="px-4 py-3">Hallucination rate must stay below the threshold (typically 0.05&ndash;0.15)</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">tool_used</td>
+            <td class="px-4 py-3">Executor</td>
+            <td class="px-4 py-3 font-mono text-xs">tool_name, min_count</td>
+            <td class="px-4 py-3">A specific tool must be called at least min_count times during the run</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">pain_signal_count</td>
+            <td class="px-4 py-3">Proprioception</td>
+            <td class="px-4 py-3 font-mono text-xs">min, max</td>
+            <td class="px-4 py-3">Pain/aversion signals triggered must fall within the given range</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5 mt-4">
+      <p class="text-slate-300"><strong class="text-indigo-400">Composing expectations:</strong> A single scenario can combine any number of expectations. For example, a causal learning scenario might require <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">causal_link_formed</code> + <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">memory_count_range</code> + <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">hallucination_rate_below</code> to pass. All expectations must be satisfied &mdash; there is no partial credit.</p>
+    </div>
+  </section>
+
+  <!-- Navigation -->
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/simulation" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Simulation</span>
+      </a>
+      <a href="/maxim/roadmap" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Roadmap</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Agent Architecture</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking &amp; Mesh</a>
+        <a href="/maxim/simulation" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Simulation</a>
+        <a href="/maxim/benchmarks" class="text-xs text-indigo-400 transition px-2 py-1 rounded bg-slate-800 no-underline font-semibold">Benchmarks</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

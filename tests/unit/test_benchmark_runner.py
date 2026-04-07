@@ -726,3 +726,412 @@ class TestBenchmarkScenarios:
         assert defn.benchmark is not None
         assert "Elara" in defn.benchmark["seed_keywords"]
         assert "Kael" in defn.benchmark["seed_keywords"]
+
+
+# ── Phase 6: Baseline comparison tests ──────────────────────────────
+
+
+class TestBaselineComparison:
+    def _make_runner(self, baseline_path=None):
+        yaml_content = "name: test\npercepts: []\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            return BenchmarkRunner(
+                models=["test"], suite_path=f.name, baseline_path=baseline_path
+            )
+
+    def _make_baseline_json(self, results_data):
+        """Write a baseline JSON file and return its path."""
+        import json
+
+        data = {
+            "timestamp": "20260401_000000",
+            "suite": "test_suite",
+            "models": list(results_data.keys()),
+            "runs_per_model": 1,
+            "duration_s": 10.0,
+            "overall_ranking": list(results_data.keys()),
+            "results": results_data,
+            "rankings": {},
+        }
+        f = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+        json.dump(data, f, indent=2)
+        f.flush()
+        f.close()
+        return f.name
+
+    def test_load_baseline_valid(self):
+        baseline_path = self._make_baseline_json(
+            {
+                "model_a": {
+                    "model": "model_a",
+                    "metrics": {"memory_formation_rate": 2.0},
+                    "metrics_stddev": {},
+                    "score": 0.6,
+                    "passed": True,
+                    "expectations_passed": 3,
+                    "expectations_total": 4,
+                    "per_scenario": {},
+                }
+            }
+        )
+        runner = self._make_runner(baseline_path=baseline_path)
+        report = runner._load_baseline(baseline_path)
+        assert report is not None
+        assert "model_a" in report.results
+        assert report.results["model_a"].metrics["memory_formation_rate"] == 2.0
+
+    def test_load_baseline_missing_file(self):
+        runner = self._make_runner()
+        result = runner._load_baseline("/nonexistent/baseline.json")
+        assert result is None
+
+    def test_load_baseline_corrupt_json(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("{not valid json!!!")
+            f.flush()
+            runner = self._make_runner()
+            result = runner._load_baseline(f.name)
+        assert result is None
+
+    def test_compare_improvement_higher_is_better(self):
+        """Positive delta on memory_formation_rate = improvement."""
+        runner = self._make_runner()
+        current = BenchmarkReport(
+            timestamp="now",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"memory_formation_rate": 3.0, "concept_formation_rate": 0.5},
+                ),
+            },
+        )
+        baseline = BenchmarkReport(
+            timestamp="before",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"memory_formation_rate": 2.0, "concept_formation_rate": 0.5},
+                ),
+            },
+        )
+        comparison = runner._compare_to_baseline(current, baseline)
+        assert "model_a" in comparison
+        mem_delta = comparison["model_a"]["memory_formation_rate"]
+        assert mem_delta["delta"] == pytest.approx(1.0)
+        assert mem_delta["direction"] == "improved"
+        # concept_formation_rate unchanged (delta ~0)
+        concept_delta = comparison["model_a"]["concept_formation_rate"]
+        assert concept_delta["direction"] == "unchanged"
+
+    def test_compare_regression_higher_is_better(self):
+        """Negative delta on memory_formation_rate = regression."""
+        runner = self._make_runner()
+        current = BenchmarkReport(
+            timestamp="now",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"memory_formation_rate": 1.0},
+                ),
+            },
+        )
+        baseline = BenchmarkReport(
+            timestamp="before",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"memory_formation_rate": 2.0},
+                ),
+            },
+        )
+        comparison = runner._compare_to_baseline(current, baseline)
+        delta = comparison["model_a"]["memory_formation_rate"]
+        assert delta["delta"] == pytest.approx(-1.0)
+        assert delta["direction"] == "regressed"
+
+    def test_compare_lower_is_better_improvement(self):
+        """Negative delta on hallucination_rate = improvement."""
+        runner = self._make_runner()
+        current = BenchmarkReport(
+            timestamp="now",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"hallucination_rate": 0.1},
+                ),
+            },
+        )
+        baseline = BenchmarkReport(
+            timestamp="before",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"hallucination_rate": 0.3},
+                ),
+            },
+        )
+        comparison = runner._compare_to_baseline(current, baseline)
+        delta = comparison["model_a"]["hallucination_rate"]
+        assert delta["delta"] == pytest.approx(-0.2)
+        assert delta["direction"] == "improved"
+
+    def test_compare_lower_is_better_regression(self):
+        """Positive delta on hallucination_rate = regression."""
+        runner = self._make_runner()
+        current = BenchmarkReport(
+            timestamp="now",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"hallucination_rate": 0.5},
+                ),
+            },
+        )
+        baseline = BenchmarkReport(
+            timestamp="before",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"hallucination_rate": 0.2},
+                ),
+            },
+        )
+        comparison = runner._compare_to_baseline(current, baseline)
+        delta = comparison["model_a"]["hallucination_rate"]
+        assert delta["delta"] == pytest.approx(0.3)
+        assert delta["direction"] == "regressed"
+
+    def test_compare_skips_missing_model(self):
+        """Model in current but not in baseline is skipped gracefully."""
+        runner = self._make_runner()
+        current = BenchmarkReport(
+            timestamp="now",
+            suite="test",
+            models=["model_a", "model_b"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(model="model_a", metrics={"mem": 1.0}),
+                "model_b": ModelResult(model="model_b", metrics={"mem": 2.0}),
+            },
+        )
+        baseline = BenchmarkReport(
+            timestamp="before",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(model="model_a", metrics={"mem": 0.5}),
+            },
+        )
+        comparison = runner._compare_to_baseline(current, baseline)
+        assert "model_a" in comparison
+        assert "model_b" not in comparison
+
+    def test_compare_skips_missing_metrics(self):
+        """Metrics present in only one side are skipped."""
+        runner = self._make_runner()
+        current = BenchmarkReport(
+            timestamp="now",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"memory_formation_rate": 2.0, "new_metric": 1.0},
+                ),
+            },
+        )
+        baseline = BenchmarkReport(
+            timestamp="before",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"memory_formation_rate": 1.0, "old_metric": 0.5},
+                ),
+            },
+        )
+        comparison = runner._compare_to_baseline(current, baseline)
+        assert "memory_formation_rate" in comparison["model_a"]
+        assert "new_metric" not in comparison["model_a"]
+        assert "old_metric" not in comparison["model_a"]
+
+    def test_summary_table_shows_deltas(self):
+        """Summary table includes delta indicators when baseline_comparison is set."""
+        report = BenchmarkReport(
+            timestamp="test",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"memory_formation_rate": 3.0, "hallucination_rate": 0.1},
+                    score=0.7,
+                    passed=True,
+                ),
+            },
+            overall_ranking=["model_a"],
+            baseline_comparison={
+                "model_a": {
+                    "memory_formation_rate": {"delta": 1.0, "direction": "improved"},
+                    "hallucination_rate": {"delta": -0.2, "direction": "improved"},
+                },
+            },
+        )
+        table = report.summary_table()
+        assert "+1.00" in table
+        assert "-0.20" in table
+
+    def test_summary_table_no_baseline(self):
+        """Summary table works normally when baseline_comparison is None."""
+        report = BenchmarkReport(
+            timestamp="test",
+            suite="test",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"memory_formation_rate": 2.0},
+                    score=0.6,
+                    passed=True,
+                ),
+            },
+            overall_ranking=["model_a"],
+        )
+        table = report.summary_table()
+        assert "memory_formation_rate" in table
+        # No delta indicators
+        assert "(" not in table or "+-" in table or "(" not in table.split("memory_formation_rate")[1].split("\n")[0]
+
+    def test_save_report_includes_baseline(self):
+        """Saved JSON includes baseline_comparison when present."""
+        import json
+
+        report = BenchmarkReport(
+            timestamp="20260406_baseline_test",
+            suite="test_suite",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"memory_formation_rate": 3.0},
+                    score=0.7,
+                    passed=True,
+                ),
+            },
+            overall_ranking=["model_a"],
+            baseline_comparison={
+                "model_a": {
+                    "memory_formation_rate": {"delta": 1.0, "direction": "improved"},
+                },
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yaml_content = "name: test\npercepts: []\n"
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+                f.write(yaml_content)
+                f.flush()
+                runner = BenchmarkRunner(models=["model_a"], suite_path=f.name, output_dir=tmpdir)
+            report_dir = runner.save_report(report)
+            with open(report_dir / "benchmark_report.json") as fp:
+                data = json.load(fp)
+            assert "baseline_comparison" in data
+            assert data["baseline_comparison"]["model_a"]["memory_formation_rate"]["delta"] == 1.0
+
+    def test_save_report_omits_baseline_when_none(self):
+        """Saved JSON does not include baseline_comparison when None."""
+        import json
+
+        report = BenchmarkReport(
+            timestamp="20260406_no_baseline",
+            suite="test_suite",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"memory_formation_rate": 2.0},
+                    score=0.6,
+                    passed=True,
+                ),
+            },
+            overall_ranking=["model_a"],
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yaml_content = "name: test\npercepts: []\n"
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+                f.write(yaml_content)
+                f.flush()
+                runner = BenchmarkRunner(models=["model_a"], suite_path=f.name, output_dir=tmpdir)
+            report_dir = runner.save_report(report)
+            with open(report_dir / "benchmark_report.json") as fp:
+                data = json.load(fp)
+            assert "baseline_comparison" not in data
+
+    def test_load_baseline_roundtrip(self):
+        """A saved report can be loaded back as a baseline."""
+        report = BenchmarkReport(
+            timestamp="20260406_roundtrip",
+            suite="test_suite",
+            models=["model_a"],
+            runs_per_model=1,
+            results={
+                "model_a": ModelResult(
+                    model="model_a",
+                    metrics={"memory_formation_rate": 2.5, "causal_link_count": 4.0},
+                    metrics_stddev={"memory_formation_rate": 0.3},
+                    score=0.65,
+                    passed=True,
+                    expectations_passed=4,
+                    expectations_total=5,
+                ),
+            },
+            overall_ranking=["model_a"],
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yaml_content = "name: test\npercepts: []\n"
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+                f.write(yaml_content)
+                f.flush()
+                runner = BenchmarkRunner(models=["model_a"], suite_path=f.name, output_dir=tmpdir)
+            report_dir = runner.save_report(report)
+            loaded = runner._load_baseline(str(report_dir / "benchmark_report.json"))
+
+        assert loaded is not None
+        assert loaded.suite == "test_suite"
+        mr = loaded.results["model_a"]
+        assert mr.metrics["memory_formation_rate"] == pytest.approx(2.5)
+        assert mr.score == pytest.approx(0.65)
+        assert mr.expectations_passed == 4

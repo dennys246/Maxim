@@ -895,6 +895,29 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("AUT PainDetector creation failed: %s", e)
 
+    # ── DefaultNetwork (Phase 0b — bio-stack activation) ──────────────
+    aut_default_network = None
+    try:
+        from maxim.default_network.network import DefaultNetwork, DefaultNetworkConfig
+
+        # Sim mode has no physical Maxim instance, but DefaultNetwork
+        # only touches maxim via getattr (sync_head_position, yaw, pitch)
+        # which gracefully return None on a plain object stub.
+        _sim_maxim_stub = object()
+        aut_default_network = DefaultNetwork(
+            maxim=_sim_maxim_stub,
+            bus=None,
+            config=DefaultNetworkConfig(
+                enabled=True,
+                publish_actions=False,  # no bus in sim
+                fear_gate_enabled=False,  # FearAgent wired separately
+            ),
+            nac=aut_nac,
+        )
+        logger.info("AUT DefaultNetwork active in sim mode")
+    except Exception as e:
+        logger.debug("AUT DefaultNetwork creation failed: %s", e)
+
     # ── Executors ────────────────────────────────────────────────────────
     from maxim.runtime.bootstrap import build_executor
 
@@ -994,6 +1017,7 @@ def start_simulation_mode(
                 aut_executor,
                 autonomy_controller=aut_autonomy,
                 llm_worker=aut_llm_worker,
+                default_network=aut_default_network,
                 hippocampus=aut_hippocampus,
                 memory_hub=aut_memory_hub,
                 max_steps=0,  # unlimited — AUT stops when bridge.finish() is called

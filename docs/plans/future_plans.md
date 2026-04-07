@@ -11,9 +11,9 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Plan | Status | Next step |
 |------|--------|-----------|
 | Tool Refactoring | **Complete** | All 10 phases done: say, think, examine, introspection, aliases, tracking, proactive list. [Plan](tool_refactoring_plan.md) |
-| Introspection API | **Phases 1-4 done** | `AUTIntrospector` + standalone `run_campaign()` shipped. Remaining: Ph5 self-introspection (needs discussion). |
-| Lane Tier Architecture | **Complete** | Size-based model routing (large/medium/small). FunctionRouter, detect_tiers, doctor check, config loader, LaneMetrics aliases. `infer_net` absorbed. [Plan](lane_tier_plan.md) |
-| Simulation Benchmark | **Not started** | Phase 0 (sim improvements, ~220 LOC) + Phases 1-9 (benchmark runner, ~910 LOC). [Plan](benchmark_plan.md) |
+| Introspection API | **Phases 1-4 done** | `Observer` (renamed from `AUTIntrospector`) + standalone `run_campaign()` shipped. Remaining: Ph5 self-introspection (needs discussion). |
+| Lane Tier Architecture | **Complete (archived)** | Size-based model routing (large/medium/small). FunctionRouter, detect_tiers, doctor check, config loader, LaneMetrics aliases. `infer_net` absorbed. [Plan](../archive/lane_tier_plan.md) |
+| Simulation Benchmark | **Complete (Phases 0-6)** | BenchmarkRunner, `--sim benchmark` CLI, bio-system expectations, scenario suite, baseline comparison, live progress. Phases 7-9 deferred (paper gen, narrative transcriber, embodiment hooks). [Plan](../archive/benchmark_plan.md) |
 | Docker Sandbox | **Complete** | Phase A (TmpdirSandbox + pain) + Phase B (DockerSandbox + ContainerRunner + CLI) both shipped |
 | Research Protocol | **Complete** | All phases: mesh primitives, research tools, Writer + Reviewer agents, Research Orchestrator. CLI: `maxim --sim research`. |
 | Multi-LLM Scaling | **Complete** | All phases done. mDNS + InferenceRouter moved to Agent Mesh as Phases 0a-0b. |
@@ -27,8 +27,8 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Dungeon Master Extensions | **Deferred** | Optional follow-ons layered onto DM MVP. Each extension gated on MVP usage pain. |
 | Interactive Sim Prompts | **Not started** | `ask_user` tool with timeout + replay (~180 LOC). Needed for DM architect extension. |
 | Peer Inference Retry on Leader Restart | **Not started** | Retry with backoff on 502/503 during leader restart. ~30 LOC in openai_backend.py. |
-| Python API | **Not started** | Verb-based public interface (`run`, `imagine`, `connect`, `diagnose`, `observe`, `configure`). Rename AUTIntrospector -> Observer. ~400 LOC facade + ~100 LOC rename. [Plan](python_api_plan.md) |
-| PyPI Publication | **Phase 0 done** | Metadata + name (`pymaxim`) done. Dep restructuring, multi-robot plugins, CI/CD, README rewrite remain. Depends on Python API plan. [Plan](pypi_publication_plan.md) |
+| Python API | **Complete** | Verb-based public interface (`run`, `imagine`, `connect`, `diagnose`, `observe`, `configure`). Observer rename done. `src/maxim/api.py` + lazy `__init__.py`. [Plan](python_api_plan.md) |
+| PyPI Publication | **Phase 0-2 done** | Name (`pymaxim`), metadata, dep restructuring, Python API all done. Remaining: multi-robot plugins (Ph3), CI/CD (Ph4), README rewrite (Ph5), Test PyPI (Ph6). [Plan](pypi_publication_plan.md) |
 
 ### Completed Plans
 
@@ -45,6 +45,10 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Agentic Loop Modularization | LoopController, SimulationAdapter, DefaultNetworkController, @resilient |
 | Repo Cleanup (~90%) | Dead code removed, CI added, deps slimmed |
 | Doctor Upgrade (v1) | Platform detection, GPU/server/LAN/tunnel checks, `maxim peer test` |
+| Lane Tier Architecture | FunctionRouter (13 functions, fallback chains, priority boost), DEFAULT_TIERS, detect_tiers(), `infer_net` absorbed, config loader, MetricsRegistry aliases, doctor `check_tier_detection` |
+| Simulation Benchmark (Phases 0-6) | BenchmarkRunner + `--sim benchmark` CLI, 8 bio-system expectation types, scenario metadata, JSON compliance counter, Observer.benchmark_snapshot(), unified YAML loader, 6 benchmark scenarios (cognitive_suite), tiered terminal output + JSON/MD persistence, baseline comparison with deltas, live progress display, DefaultNetwork wired in sim. Phases 7-9 deferred: paper gen (research Writer already exists), narrative transcriber (new feature), Tier 3 embodiment hooks (blocked on Embodiment Core). |
+| Python API | Verb-based `maxim.run/imagine/connect/diagnose/observe/configure` in `src/maxim/api.py`. Lazy `__getattr__` in `__init__.py`. Observer rename (AUTIntrospector→Observer). `introspect` alias. DiagnosticReport dataclass. |
+| PyPI Publication (Phases 0-2) | Package name `pymaxim`, authors/URLs/keywords metadata, core deps slimmed to 4 (numpy, scipy, pyyaml, json-repair), new optional extras (vision, audio, reachy, search), build validated with twine check. |
 
 ---
 
