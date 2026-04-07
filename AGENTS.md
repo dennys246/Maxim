@@ -1,6 +1,6 @@
 # Agent Rules (Maxim)
 
-Maxim is a Reachy Mini project for capturing audio/video, running perception + motor learning, and controlling the robot in real time.
+Maxim is a bio-inspired cognitive architecture for autonomous agents. Published to PyPI as `pymaxim` (import name: `maxim`). Works headless, with simulation, or connected to robots via the pluggable `RobotController` abstraction.
 
 ## Standards (Project Defaults)
 - Prefer small, surgical changes; minimize refactors unless explicitly requested.
@@ -11,6 +11,8 @@ Maxim is a Reachy Mini project for capturing audio/video, running perception + m
 - Keep importable Python code under `src/maxim/` (avoid new top-level packages under `src/` unless packaging is updated).
 - Avoid reusable nested functions: if a helper could be reused, define it at module scope (or under `src/maxim/utils/`) instead of inside another function/method. Nested defs are OK when they must capture closure state (e.g., worker threads) or are truly one-off.
 - Any public API or CLI change must be reflected in `DECISIONS.md` and (when user-facing) `README.md`.
+- **Python API (`src/maxim/api.py`):** The six verbs (`run`, `imagine`, `connect`, `diagnose`, `observe`, `configure`) are thin facades — don't put logic in them. Heavy imports must be inside function bodies (lazy). Return structured data, never print. `introspect` is an alias for `observe`.
+- **Package name:** `pymaxim` on PyPI, `maxim` as Python import. Core deps are minimal (`numpy`, `scipy`, `pyyaml`, `json-repair`). Everything else is optional extras.
 - **Versioning:** When making changes that affect runtime behavior, CLI interface, or peer/leader protocol, bump the version in **both** `pyproject.toml` (`version = "X.Y.Z"`) and `src/maxim/__init__.py` (`__version__ = "X.Y.Z"`). Use `maxim peer version` to verify local/leader sync after deployment.
 - **Remote diagnostics:** Use `maxim peer logs` (or `maxim peer logs -f` to follow) to view leader logs remotely. Use `maxim peer version` to check if leader is running expected code. Both are read-only and safe for autonomous use.
 - Add concise comments about important code functionality or nuanced behavior.

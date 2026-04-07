@@ -1,4 +1,4 @@
-"""Tests for AUTIntrospector, ExamineTool, and tool usage tracking."""
+"""Tests for Observer, ExamineTool, and tool usage tracking."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from maxim.simulation.introspection import AUTIntrospector
+from maxim.simulation.introspection import Observer
 from maxim.tools.narrative import ExamineTool, SayTool, ThinkTool
 from maxim.tools.registry import ToolRegistry
 from maxim.runtime.executor import Executor, TOOL_ALIASES
@@ -116,10 +116,10 @@ class FakeEnergyRegistry:
         return {"tokens_used": 1000, "cost_usd": 0.05}
 
 
-# ── AUTIntrospector tests ───────────────────────────────────────────
+# ── Observer tests ───────────────────────────────────────────
 
 
-class TestAUTIntrospector:
+class TestObserver:
     def _make_introspector(self, **overrides):
         defaults = {
             "hippocampus": FakeHippocampus(),
@@ -128,7 +128,7 @@ class TestAUTIntrospector:
             "energy_registry": FakeEnergyRegistry(),
         }
         defaults.update(overrides)
-        return AUTIntrospector(**defaults)
+        return Observer(**defaults)
 
     def test_memory_recall_keyword(self):
         intro = self._make_introspector()
@@ -224,7 +224,7 @@ class TestAUTIntrospector:
 
     def test_dispatch_routes_correctly(self):
         intro = self._make_introspector()
-        for query in AUTIntrospector.ALLOWED_QUERIES:
+        for query in Observer.ALLOWED_QUERIES:
             result = intro.dispatch(query)
             assert isinstance(result, dict)
             # All should return something (available True or False)
@@ -270,7 +270,7 @@ class TestInspectAUTToolDelegation:
     def test_delegates_to_introspector(self):
         from maxim.simulation.tools import InspectAUTTool
 
-        intro = AUTIntrospector(hippocampus=FakeHippocampus(), nac=FakeNAc())
+        intro = Observer(hippocampus=FakeHippocampus(), nac=FakeNAc())
         tool = InspectAUTTool(introspector=intro)
 
         result = tool.execute(query="system_stats")

@@ -297,7 +297,7 @@ def start_simulation_mode(
     from maxim.simulation.bridge import SimulationBridge
     from maxim.simulation.conversational_source import ConversationalSource
     from maxim.simulation.personas import DEFAULT_PERSONA, get_persona, list_personas
-    from maxim.simulation.introspection import AUTIntrospector
+    from maxim.simulation.introspection import Observer
     from maxim.simulation.tools import (
         AnalyzeResultsTool,
         CheckCompletionTool,
@@ -739,7 +739,7 @@ def start_simulation_mode(
         )
     )
     orch_registry.register(SimRespondTool())
-    aut_introspector = AUTIntrospector(
+    aut_introspector = Observer(
         hippocampus=aut_hippocampus,
         nac=aut_nac,
         memory_hub=aut_memory_hub,
@@ -1059,7 +1059,7 @@ def start_simulation_mode(
         print(f"  Campaign delivery complete: {len(campaign_results)} turns delivered\n")
 
         # ── Programmatic post-campaign analysis ─────────────────────────
-        # Use AUTIntrospector directly — clean API, no registry hack.
+        # Use Observer directly — clean API, no registry hack.
         print("  Running post-campaign analysis...")
 
         campaign_analysis: dict[str, Any] = {"turns": campaign_results}

@@ -1,6 +1,50 @@
-"""Maxim package."""
+"""Maxim — bio-inspired cognitive architecture.
+
+Public API (verb-based):
+
+    import maxim
+
+    maxim.configure(verbosity=2)
+    maxim.run(model="mistral-7b")
+    maxim.imagine(goal="test safety", persona="adversarial")
+    maxim.connect("simulated")
+    maxim.diagnose()
+    maxim.observe("memory")
+    maxim.introspect("causal")   # alias for observe
+"""
 
 __version__ = "0.1.0"
+
+# Verb-based public API — lazy-loaded to keep ``import maxim`` fast.
+_API_VERBS = frozenset(
+    {
+        "configure",
+        "connect",
+        "diagnose",
+        "imagine",
+        "introspect",
+        "observe",
+        "run",
+    }
+)
+
+# Also expose key types for library users who need them directly.
+_API_TYPES = {
+    "DiagnosticReport": "maxim.api",
+}
+
+__all__ = [
+    "__version__",
+    "get_version_info",
+    "configure",
+    "connect",
+    "diagnose",
+    "imagine",
+    "introspect",
+    "observe",
+    "run",
+    "DiagnosticReport",
+]
 
 
 def get_version_info() -> dict[str, str]:
@@ -31,3 +75,21 @@ def get_version_info() -> dict[str, str]:
     except Exception:
         pass
     return info
+
+
+def __getattr__(name: str):
+    """Lazy-load API verbs and types on first access."""
+    if name in _API_VERBS:
+        from maxim import api
+
+        func = getattr(api, name)
+        globals()[name] = func  # Cache for subsequent calls
+        return func
+    if name in _API_TYPES:
+        import importlib
+
+        mod = importlib.import_module(_API_TYPES[name])
+        obj = getattr(mod, name)
+        globals()[name] = obj
+        return obj
+    raise AttributeError(f"module 'maxim' has no attribute {name!r}")

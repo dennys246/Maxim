@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 from maxim.tools.base import Tool, ToolOutput
 
 if TYPE_CHECKING:
-    from maxim.simulation.introspection import AUTIntrospector
+    from maxim.simulation.introspection import Observer
 
 logger = logging.getLogger(__name__)
 
@@ -410,7 +410,7 @@ class InjectPainTool(Tool):
 class InspectAUTTool(Tool):
     """Query the AUT's internal cognitive state (read-only).
 
-    Thin wrapper around :class:`AUTIntrospector` that exposes introspection
+    Thin wrapper around :class:`Observer` that exposes introspection
     as a simulation tool for the orchestrator LLM to call.
 
     Requires MemoryHub (hippocampus + NAc) to be wired on the AUT.
@@ -436,15 +436,15 @@ class InspectAUTTool(Tool):
         nac: Any = None,
         memory_hub: Any = None,
         energy_registry: Any = None,
-        introspector: "AUTIntrospector | None" = None,
+        introspector: "Observer | None" = None,
     ) -> None:
         super().__init__()
         if introspector is not None:
             self._introspector = introspector
         else:
-            from maxim.simulation.introspection import AUTIntrospector
+            from maxim.simulation.introspection import Observer
 
-            self._introspector = AUTIntrospector(
+            self._introspector = Observer(
                 hippocampus=hippocampus,
                 nac=nac,
                 memory_hub=memory_hub,

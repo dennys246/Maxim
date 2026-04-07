@@ -2,7 +2,7 @@
 
 Wraps ``start_simulation_mode()`` with campaign-specific defaults and
 returns an ``ExperimentResult`` containing the simulation result plus
-``AUTIntrospector`` analysis.  Designed for scripting experiments without
+``Observer`` analysis.  Designed for scripting experiments without
 bootstrapping the full interactive CLI.
 
 Example::
@@ -38,7 +38,7 @@ class ExperimentResult:
     sim_duration_s: float
     finish_reason: str
 
-    # AUTIntrospector analysis (from full_analysis)
+    # Observer analysis (from full_analysis)
     analysis: dict[str, Any] = field(default_factory=dict)
     summary: str = ""
 
@@ -104,7 +104,7 @@ def run_campaign(
     This is the recommended entry point for scripted experiments. It:
     1. Loads campaign YAML and extracts turns
     2. Runs ``start_simulation_mode()`` with direct injection
-    3. Performs ``AUTIntrospector.full_analysis()`` on the result
+    3. Performs ``Observer.full_analysis()`` on the result
     4. Returns an ``ExperimentResult`` with all data
 
     Args:

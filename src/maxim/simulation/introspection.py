@@ -1,4 +1,4 @@
-"""AUTIntrospector — programmatic access to AUT cognitive state.
+"""Observer — programmatic access to AUT cognitive state.
 
 Provides clean Python methods for querying the agent-under-test's memory,
 causal links, predictions, energy, and system stats without going through
@@ -17,7 +17,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-class AUTIntrospector:
+class Observer:
     """Read-only introspection into an AUT's cognitive subsystems.
 
     All methods return plain dicts/lists — no ToolOutput wrapping.
@@ -339,3 +339,6 @@ class AUTIntrospector:
             parts.append(f"{causal.get('link_count', 0)} total causal links")
 
         return "; ".join(parts) if parts else "No subsystem data available."
+
+
+AUTIntrospector = Observer  # Deprecated alias — remove in 0.2.0

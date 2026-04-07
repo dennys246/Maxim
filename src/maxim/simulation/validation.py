@@ -83,7 +83,7 @@ def validate_expectations(
         sink: RecordingSink with action history.
         hippocampus: Hippocampus instance for memory checks.
         emitted_tags: Scenario tags that were emitted.
-        subsystem_snapshot: From AUTIntrospector.benchmark_snapshot() — provides
+        subsystem_snapshot: From Observer.benchmark_snapshot() — provides
             hippocampus_stats, nac_stats, pain_stats, concepts, etc.
         tool_stats: From Executor.tool_usage_stats() — provides hallucination_rate, etc.
     """

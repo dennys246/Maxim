@@ -2,7 +2,7 @@
 
 Covers:
 - SimulationResult enriched fields (0a)
-- AUTIntrospector.pain_stats() and benchmark_snapshot() (0b, 0f)
+- Observer.pain_stats() and benchmark_snapshot() (0b, 0f)
 - Bio-system expectation types (0c)
 - Scenario metadata loading (0d)
 - JSON compliance counters (0e)
@@ -99,23 +99,23 @@ class FakeMemoryHub:
         self.scn = None
 
 
-# ── Phase 0b/0f: AUTIntrospector pain_stats + benchmark_snapshot ─────
+# ── Phase 0b/0f: Observer pain_stats + benchmark_snapshot ─────
 
 
-class TestAUTIntrospectorPainStats:
+class TestObserverPainStats:
     def test_pain_stats_with_detector(self):
-        from maxim.simulation.introspection import AUTIntrospector
+        from maxim.simulation.introspection import Observer
 
-        intro = AUTIntrospector(pain_detector=FakePainDetector())
+        intro = Observer(pain_detector=FakePainDetector())
         result = intro.pain_stats()
         assert result["available"] is True
         assert result["total_pain_signals"] == 5
         assert result["pain_counts"]["TOOL_FAILURE"] == 3
 
     def test_pain_stats_no_detector(self):
-        from maxim.simulation.introspection import AUTIntrospector
+        from maxim.simulation.introspection import Observer
 
-        intro = AUTIntrospector()
+        intro = Observer()
         result = intro.pain_stats()
         assert result["available"] is False
         assert "PainDetector" in result["reason"]
@@ -123,9 +123,9 @@ class TestAUTIntrospectorPainStats:
 
 class TestBenchmarkSnapshot:
     def test_snapshot_includes_all_subsystem_stats(self):
-        from maxim.simulation.introspection import AUTIntrospector
+        from maxim.simulation.introspection import Observer
 
-        intro = AUTIntrospector(
+        intro = Observer(
             hippocampus=FakeHippocampus(),
             nac=FakeNAc(),
             memory_hub=FakeMemoryHub(),
@@ -152,9 +152,9 @@ class TestBenchmarkSnapshot:
         assert snapshot["pain_stats"]["total_pain_signals"] == 5
 
     def test_snapshot_without_subsystems(self):
-        from maxim.simulation.introspection import AUTIntrospector
+        from maxim.simulation.introspection import Observer
 
-        intro = AUTIntrospector()
+        intro = Observer()
         snapshot = intro.benchmark_snapshot()
         assert "system_stats" in snapshot
         # Should not crash, just omit subsystem data

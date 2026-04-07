@@ -3,13 +3,14 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "maxim"
+name = "pymaxim"
 version = "0.1.0"
-description = "Agentic robotics framework for Reachy Mini with recursive planning and local LLM inference"
+description = "Bio-inspired cognitive architecture with adaptive planning, biological memory systems, and local LLM inference. Works headless, with simulation, or connected to robots."
 readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "Apache-2.0"}
-keywords = ["robotics", "reachy", "llm", "agentic", "planning", "embodied-ai"]
+authors = [{name = "Denny Schaedig"}]
+keywords = ["cognitive-architecture", "llm", "agentic", "planning", "embodied-ai", "robotics", "memory", "simulation", "bio-inspired"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -19,23 +20,43 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Robotics",
 ]
+
 dependencies = [
-    "reachy-mini[gstreamer]==1.2.6",
-    "faster-whisper>=1.1.1",
-    "ctranslate2>=4.6.0",
-    "onnxruntime>=1.20,<2.0",
-    "av>=14.0.0",
     "numpy>=2.2,<3.0",
-    "opencv-python>=4.12,<5.0",
     "scipy>=1.15,<2.0",
-    "llama-cpp-python>=0.3.8",
-    "ddgs>=6.0.0",
-    "json-repair>=0.30",
     "pyyaml>=6.0",
-    "openai>=1.0.0",
+    "json-repair>=0.30",
 ]
 
+[project.urls]
+Homepage = "https://github.com/dennys246/Maxim"
+Repository = "https://github.com/dennys246/Maxim.git"
+Issues = "https://github.com/dennys246/Maxim/issues"
+
 [project.optional-dependencies]
+# LLM local inference (alias for llm-llama)
+llm-local = [
+    "llama-cpp-python>=0.3.8",
+]
+# Vision perception (OpenCV + ONNX Runtime)
+vision = [
+    "opencv-python>=4.12,<5.0",
+    "onnxruntime>=1.20,<2.0",
+]
+# Audio perception (Whisper + ctranslate2)
+audio = [
+    "faster-whisper>=1.1.1",
+    "ctranslate2>=4.6.0",
+    "av>=14.0.0",
+]
+# Reachy Mini robot hardware
+reachy = [
+    "reachy-mini[gstreamer]==1.2.6",
+]
+# Web search
+search = [
+    "ddgs>=6.0.0",
+]
 # Training support (MotorCortex model training)
 training = [
     "tensorflow>=2.20,<3.0",
@@ -68,10 +89,6 @@ llm-torch = [
     "sentencepiece>=0.2.0",
     "huggingface-hub>=0.24.0",
 ]
-# Legacy alias
-llm = [
-    "llama-cpp-python>=0.3.8",
-]
 llm-anthropic = [
     "anthropic>=0.40.0",
 ]
@@ -103,18 +120,7 @@ temporal = [
     "dateparser>=1.2.0",
 ]
 all = [
-    "llama-cpp-python==0.3.8",
-    "transformers>=4.40.0",
-    "accelerate>=0.27.0",
-    "bitsandbytes>=0.43.0",
-    "sentencepiece>=0.2.0",
-    "huggingface-hub>=0.24.0",
-    "anthropic>=0.40.0",
-    "openai>=1.0.0",
-    "tiktoken>=0.7.0",
-    "piper-tts>=1.2.0",
-    "sentence-transformers>=2.2.0",
-    "dateparser>=1.2.0",
+    "pymaxim[llm-local,llm-server,llm-anthropic,llm-openai,vision,audio,reachy,comms,search,temporal]",
 ]
 # Test dependencies
 test = [
