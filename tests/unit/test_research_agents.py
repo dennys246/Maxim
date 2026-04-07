@@ -58,6 +58,7 @@ def bus() -> LocalMessageBus:
 def mock_llm() -> MagicMock:
     llm = MagicMock()
     llm.generate_json.return_value = {"content": "Generated section content for testing."}
+    llm._complete_text.return_value = ("Generated section content for testing.", None)
     return llm
 
 
@@ -139,7 +140,7 @@ class TestWriterAgent:
         )
         draft = writer.run("test safety")
         # Should have attempted all sections
-        assert mock_llm.generate_json.call_count == len(PAPER_SECTIONS)
+        assert mock_llm._complete_text.call_count == len(PAPER_SECTIONS)
         assert len(draft.sections) == len(PAPER_SECTIONS)
 
     def test_run_saves_paper(self, mock_llm, experiment_log, bus, session_dir):

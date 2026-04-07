@@ -193,30 +193,82 @@ class WriterAgent:
         self.draft.save(paper_path)
         return self.draft
 
+    _WRITER_SYSTEM = (
+        "You are an academic research paper writer. "
+        "Output ONLY prose text in markdown format — no JSON, no code fences, no metadata. "
+        "Write in third person, academic tone. "
+        "Cite experiment references inline (e.g., [researcher.hippo.exp_001]). "
+        "Include specific metrics and numbers from the experiment data. "
+        "Be concise but thorough."
+    )
+
+    def _generate_prose(self, prompt: str, max_tokens: int = 1024) -> str:
+        """Generate prose text via LLM, bypassing JSON parsing."""
+        if self.llm is None:
+            return ""
+        try:
+            text, _usage = self.llm._complete_text(
+                self._WRITER_SYSTEM,
+                prompt,
+                max_tokens=max_tokens,
+                temperature=0.4,
+            )
+            return text.strip() if text else ""
+        except Exception as e:
+            logger.warning("Writer: prose generation failed: %s", e)
+            return ""
+
     def _generate_section(self, section: str, goal: str, exp_summary: str) -> str:
-        """Use the LLM to generate a paper section."""
+        """Use the LLM to generate a paper section as academic prose."""
         if self.llm is None:
             return ""
 
         prompt = (
-            f"You are writing the {section.upper()} section of a research paper.\n\n"
+            f"Write the {section.upper()} section of a research paper.\n\n"
             f"Research goal: {goal}\n\n"
             f"Experiment data:\n{exp_summary[:4000]}\n\n"
-            f"Write the {section} section. Be concise, evidence-based, and cite "
-            f"experiment UMR references (e.g., researcher.hippo.exp_001) where applicable.\n"
-            f"Output ONLY the section content (no heading, no markdown fences)."
+            f"Requirements for this section:\n"
         )
 
-        try:
-            result = self.llm.generate_json(prompt, max_tokens=1024)
-            if isinstance(result, dict):
-                return result.get("content", result.get("text", str(result)))
-            if isinstance(result, str):
-                return result
-            return str(result) if result else ""
-        except Exception as e:
-            logger.warning("Writer: failed to generate '%s': %s", section, e)
-            return ""
+        # Section-specific guidance
+        section_guidance = {
+            "title_abstract": (
+                "Write a paper title on the first line, then a blank line, then an abstract (150-250 words). "
+                "The abstract should state the research question, methodology, key findings, and conclusions."
+            ),
+            "introduction": (
+                "Provide background on memory retention under interference in cognitive architectures. "
+                "State the research question and hypothesis. Explain why this matters."
+            ),
+            "methods": (
+                "Describe the experimental setup: campaign structure (seed/interference/recall phases), "
+                "turn count, delivery method (direct bridge injection), AUT model, and measurement approach. "
+                "Include enough detail for reproducibility."
+            ),
+            "results": (
+                "Report the findings with specific numbers: memory survival (yes/no), total memories formed, "
+                "graph edges, causal links, AUT actions per turn. Use a results table if helpful."
+            ),
+            "discussion": (
+                "Interpret the results: what do they mean for the memory system? "
+                "Discuss the gap between memory survival and behavioral recall. "
+                "Note limitations and suggest improvements."
+            ),
+            "conclusions": (
+                "Summarize the key findings in 2-3 sentences. State whether the hypothesis was supported. "
+                "Suggest next steps (longer campaigns, different AUT models, self-introspection tools)."
+            ),
+            "references": (
+                "List all experiment references cited in the paper, formatted as:\n"
+                "[UMR] Author, Title, Method, Key Finding"
+            ),
+            "acknowledgements": (
+                "Brief acknowledgement of the experimental infrastructure and any relevant tools used."
+            ),
+        }
+
+        prompt += section_guidance.get(section, "Write this section clearly and concisely.")
+        return self._generate_prose(prompt)
 
     def _revise_section(self, section: str, current: str, feedback: str, exp_summary: str) -> str:
         """Use the LLM to revise a section based on feedback."""
@@ -224,23 +276,15 @@ class WriterAgent:
             return current
 
         prompt = (
-            f"Revise the {section.upper()} section based on reviewer feedback.\n\n"
+            f"Revise the {section.upper()} section of a research paper based on reviewer feedback.\n\n"
             f"Current text:\n{current[:2000]}\n\n"
             f"Reviewer feedback: {feedback}\n\n"
             f"Experiment data:\n{exp_summary[:2000]}\n\n"
-            f"Output ONLY the revised section content."
+            f"Rewrite the section addressing the feedback. Output ONLY the revised prose."
         )
 
-        try:
-            result = self.llm.generate_json(prompt, max_tokens=1024)
-            if isinstance(result, dict):
-                return result.get("content", result.get("text", str(result)))
-            if isinstance(result, str):
-                return result
-            return str(result) if result else current
-        except Exception as e:
-            logger.warning("Writer: failed to revise '%s': %s", section, e)
-            return current
+        result = self._generate_prose(prompt)
+        return result if result else current
 
 
 # ── Reviewer Agent ───────────────────────────────────────────────────────────
