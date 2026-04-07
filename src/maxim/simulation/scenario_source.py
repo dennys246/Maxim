@@ -42,13 +42,31 @@ class Expectation:
 
 @dataclass
 class ScenarioDefinition:
-    """Parsed scenario from YAML."""
+    """Parsed scenario from YAML.
+
+    Core fields (name, percepts, expectations) are required for all scenarios.
+    Optional sections add capability for specific runners:
+    - tags/metadata: discoverability for benchmark filtering
+    - benchmark: tier/weight/metrics config for benchmark runner
+    - suite: child scenario list for benchmark suites
+    - config: execution defaults (persona, timeout, sandbox)
+    """
 
     name: str
     description: str = ""
     timing: str = "step_based"  # "relative" or "step_based"
     percepts: list[dict[str, Any]] = field(default_factory=list)
     expectations: list[Expectation] = field(default_factory=list)
+    # Discoverability metadata (optional)
+    tags: list[str] = field(default_factory=list)
+    difficulty: str = ""  # easy | medium | hard
+    estimated_duration_s: float = 0.0
+    subsystems_tested: list[str] = field(default_factory=list)
+    tools_tested: list[str] = field(default_factory=list)
+    # Optional runner-specific sections (attached by loader)
+    benchmark: dict[str, Any] | None = None
+    suite: dict[str, Any] | None = None
+    config: dict[str, Any] | None = None
 
 
 def load_scenario(path: Path) -> ScenarioDefinition:
@@ -113,6 +131,16 @@ def load_scenario(path: Path) -> ScenarioDefinition:
         timing=raw.get("timing", "step_based"),
         percepts=percepts,
         expectations=expectations,
+        # Discoverability metadata
+        tags=raw.get("tags", []),
+        difficulty=raw.get("difficulty", ""),
+        estimated_duration_s=float(raw.get("estimated_duration_s", 0)),
+        subsystems_tested=raw.get("subsystems_tested", []),
+        tools_tested=raw.get("tools_tested", []),
+        # Optional runner-specific sections
+        benchmark=raw.get("benchmark"),
+        suite=raw.get("suite"),
+        config=raw.get("config"),
     )
 
 

@@ -19,9 +19,38 @@ All JSON parsing of LLM output should go through ``_extract_json_object()``.
 from __future__ import annotations
 
 import json
+import threading
 from typing import Any
 
 from maxim.utils.logging import info, warn
+
+# ── JSON parse compliance counters (Phase 0e) ────────────────────────────
+# Thread-safe counters tracking first-try vs total parse attempts.
+# Read via json_parse_stats(); reset with json_parse_stats_reset().
+_json_lock = threading.Lock()
+_json_first_try: int = 0
+_json_total: int = 0
+_json_repaired: int = 0
+
+
+def json_parse_stats() -> dict[str, Any]:
+    """Get JSON parse compliance stats."""
+    with _json_lock:
+        return {
+            "json_first_try": _json_first_try,
+            "json_total": _json_total,
+            "json_repaired": _json_repaired,
+            "json_compliance_rate": (_json_first_try / _json_total if _json_total > 0 else 1.0),
+        }
+
+
+def json_parse_stats_reset() -> None:
+    """Reset JSON parse counters (for per-session tracking)."""
+    global _json_first_try, _json_total, _json_repaired
+    with _json_lock:
+        _json_first_try = 0
+        _json_total = 0
+        _json_repaired = 0
 
 
 # ─── Stage 2: control character sanitization ─────────────────────────────
@@ -243,9 +272,14 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
 
     Returns the parsed dict, or None if extraction fails.
     """
+    global _json_first_try, _json_total, _json_repaired
+
     raw = str(text or "").strip()
     if not raw:
         return None
+
+    with _json_lock:
+        _json_total += 1
 
     # ── Stage 0: Pre-process (strip tokens, commentary, fences) ──────
     cleaned = _preprocess(raw)
@@ -260,6 +294,8 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
     try:
         obj = json.loads(json_candidate)
         if isinstance(obj, dict):
+            with _json_lock:
+                _json_first_try += 1
             return obj
     except (json.JSONDecodeError, ValueError):
         pass
@@ -270,6 +306,8 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
         obj = json.loads(sanitized)
         if isinstance(obj, dict):
             info("JSON parse succeeded after control-char sanitization")
+            with _json_lock:
+                _json_repaired += 1
             return obj
     except (json.JSONDecodeError, ValueError):
         pass
@@ -282,6 +320,8 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
             obj = json.loads(repaired_str)
             if isinstance(obj, dict):
                 info("JSON parse succeeded via json_repair library")
+                with _json_lock:
+                    _json_repaired += 1
                 return obj
         except (json.JSONDecodeError, ValueError):
             pass
@@ -294,6 +334,8 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
             obj = json.loads(structurally_repaired)
             if isinstance(obj, dict):
                 info("JSON parse succeeded after structural repair")
+                with _json_lock:
+                    _json_repaired += 1
                 return obj
         except (json.JSONDecodeError, ValueError):
             pass
@@ -305,6 +347,8 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
                 obj = json.loads(repaired_str)
                 if isinstance(obj, dict):
                     info("JSON parse succeeded via json_repair after structural repair")
+                    with _json_lock:
+                        _json_repaired += 1
                     return obj
             except (json.JSONDecodeError, ValueError):
                 pass

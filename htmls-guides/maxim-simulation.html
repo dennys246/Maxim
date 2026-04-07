@@ -489,6 +489,92 @@ Thread 3 (stdin):         routes /cancel, /new, /persona, free text to orchestra
       </table>
     </div>
 
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Metric Expectations</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">Type</th>
+            <th class="px-4 py-3">Params</th>
+            <th class="px-4 py-3 rounded-tr-lg">What It Checks</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">action_count_range</td>
+            <td class="px-4 py-3 font-mono text-xs">min, max</td>
+            <td class="px-4 py-3">Total action count within range</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">tool_success_rate</td>
+            <td class="px-4 py-3 font-mono text-xs">tool, min_rate</td>
+            <td class="px-4 py-3">A tool's success rate meets the threshold</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">response_latency_ms</td>
+            <td class="px-4 py-3 font-mono text-xs">p50_max_ms, p95_max_ms</td>
+            <td class="px-4 py-3">Inter-action latency percentiles within caps</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Bio-System Expectations</h3>
+    <p class="text-slate-300 text-sm">These validate cognitive architecture behavior &mdash; whether the bio-inspired subsystems are functioning correctly. Requires <code class="bg-slate-950 px-1 rounded text-xs">subsystem_snapshot</code> and <code class="bg-slate-950 px-1 rounded text-xs">tool_stats</code> data from <code class="bg-slate-950 px-1 rounded text-xs">SimulationResult</code>.</p>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead>
+          <tr class="bg-indigo-700 text-white">
+            <th class="px-4 py-3 rounded-tl-lg">Type</th>
+            <th class="px-4 py-3">Params</th>
+            <th class="px-4 py-3 rounded-tr-lg">What It Checks</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">memory_count_range</td>
+            <td class="px-4 py-3 font-mono text-xs">min, max</td>
+            <td class="px-4 py-3">Episodic memory count within range (hippocampus)</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">concept_formed</td>
+            <td class="px-4 py-3 font-mono text-xs">concept_name</td>
+            <td class="px-4 py-3">ATL formed a semantic concept matching the name</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">graph_density_above</td>
+            <td class="px-4 py-3 font-mono text-xs">min_density</td>
+            <td class="px-4 py-3">Hippocampal associative graph density meets threshold</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">causal_link_formed</td>
+            <td class="px-4 py-3 font-mono text-xs">event_contains</td>
+            <td class="px-4 py-3">NAc formed a causal link matching the event pattern</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">prediction_valence</td>
+            <td class="px-4 py-3 font-mono text-xs">tool, expected_valence</td>
+            <td class="px-4 py-3">NAc predicts the given valence for a tool (positive/negative)</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">hallucination_rate_below</td>
+            <td class="px-4 py-3 font-mono text-xs">max_rate</td>
+            <td class="px-4 py-3">Tool hallucination rate below threshold (0.0&ndash;1.0)</td>
+          </tr>
+          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">tool_used</td>
+            <td class="px-4 py-3 font-mono text-xs">tool</td>
+            <td class="px-4 py-3">A specific tool was called at least once</td>
+          </tr>
+          <tr class="hover:bg-slate-800/50">
+            <td class="px-4 py-3 font-mono text-xs">pain_signal_count</td>
+            <td class="px-4 py-3 font-mono text-xs">min</td>
+            <td class="px-4 py-3">PainDetector fired at least N pain signals</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <h3 class="text-lg font-semibold text-indigo-400 mt-4">Output Format</h3>
 
     <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300">FAIL: malware_request_with_pain

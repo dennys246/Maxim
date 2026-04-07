@@ -28,7 +28,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SimulationResult:
-    """Result from a completed simulation session."""
+    """Result from a completed simulation session.
+
+    Carries all data needed for benchmarks, experiment analysis, and
+    programmatic inspection.  Previously, detailed data was only
+    persisted to session files; now it's available in-memory.
+    """
 
     goal: str
     persona: str
@@ -40,6 +45,14 @@ class SimulationResult:
     summary: str = ""
     campaign_analysis: dict[str, Any] = field(default_factory=dict)
     introspector: Any = None
+    # Tool usage stats (from Executor.tool_usage_stats())
+    tool_stats: dict[str, Any] = field(default_factory=dict)
+    # Serialized action history (ActionRecord dicts)
+    actions: list[dict[str, Any]] = field(default_factory=list)
+    # Subsystem snapshot (from AUTIntrospector.benchmark_snapshot())
+    subsystem_snapshot: dict[str, Any] = field(default_factory=dict)
+    # JSON parse compliance (from json_parser counters)
+    router_stats: dict[str, Any] = field(default_factory=dict)
 
 
 def _load_resume_context(session_id: str) -> dict[str, Any] | None:
@@ -870,6 +883,18 @@ def start_simulation_mode(
         )
         orch_llm_worker.start()
 
+    # ── PainDetector (Phase 0b — bio-stack activation) ─────────────────
+    aut_pain_detector = None
+    try:
+        from maxim.proprioception.pain import PainDetector
+
+        aut_pain_detector = PainDetector()
+        # Wire to introspector for benchmark_snapshot() pain_stats
+        aut_introspector._pain_detector = aut_pain_detector
+        logger.info("AUT PainDetector active in sim mode")
+    except Exception as e:
+        logger.debug("AUT PainDetector creation failed: %s", e)
+
     # ── Executors ────────────────────────────────────────────────────────
     from maxim.runtime.bootstrap import build_executor
 
@@ -889,7 +914,7 @@ def start_simulation_mode(
         if aut_nac is not None:
             aut_tool_pain_bridge = ToolPainBridge(
                 nac=aut_nac,
-                pain_detector=None,
+                pain_detector=aut_pain_detector,
                 scn=aut_memory_hub.scn if aut_memory_hub else None,
                 hippocampus=aut_hippocampus,
                 tool_index=None,
@@ -1460,7 +1485,55 @@ def start_simulation_mode(
     # Print human-readable report
     print_report(report)
 
-    # Build SimulationResult for backward compat
+    # ── Capture detailed data for programmatic access ──────────────────
+    # Tool usage stats from the inner executor (before wrappers)
+    _tool_stats: dict[str, Any] = {}
+    try:
+        # Unwrap FearGated/Pain wrappers to reach the inner Executor
+        _inner = aut_executor
+        for _attr in ("_executor", "_executor"):
+            if hasattr(_inner, _attr):
+                _inner = getattr(_inner, _attr)
+        if hasattr(_inner, "tool_usage_stats"):
+            _tool_stats = _inner.tool_usage_stats()
+    except Exception:
+        pass
+
+    # Serialized action history
+    _actions: list[dict[str, Any]] = []
+    try:
+        for a in bridge.get_all_actions():
+            _actions.append(
+                {
+                    "timestamp": a.timestamp,
+                    "tool_name": a.tool_name,
+                    "tool_args": getattr(a, "tool_args", {}),
+                    "result_success": a.result_success,
+                    "result_output": str(a.result_output)[:200] if a.result_output else None,
+                    "blocked": a.blocked,
+                    "block_reason": a.block_reason,
+                }
+            )
+    except Exception:
+        pass
+
+    # Subsystem snapshot
+    _snapshot: dict[str, Any] = {}
+    if aut_introspector is not None:
+        try:
+            _snapshot = aut_introspector.benchmark_snapshot()
+        except Exception:
+            pass
+
+    # JSON parse compliance
+    _router_stats: dict[str, Any] = {}
+    try:
+        from maxim.models.language.json_parser import json_parse_stats
+
+        _router_stats = json_parse_stats()
+    except Exception:
+        pass
+
     result = SimulationResult(
         goal=goal,
         persona=persona,
@@ -1472,6 +1545,10 @@ def start_simulation_mode(
         summary=report.llm_summary,
         campaign_analysis=campaign_analysis if pre_campaign_turns else {},
         introspector=aut_introspector,
+        tool_stats=_tool_stats,
+        actions=_actions,
+        subsystem_snapshot=_snapshot,
+        router_stats=_router_stats,
     )
 
     return result

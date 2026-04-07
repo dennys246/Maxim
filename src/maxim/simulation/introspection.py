@@ -44,11 +44,13 @@ class AUTIntrospector:
         nac: Any = None,
         memory_hub: Any = None,
         energy_registry: Any = None,
+        pain_detector: Any = None,
     ) -> None:
         self._hippocampus = hippocampus
         self._nac = nac
         self._memory_hub = memory_hub
         self._energy_registry = energy_registry
+        self._pain_detector = pain_detector
 
     # ── Individual query methods ─────────────────────────────────────
 
@@ -198,6 +200,53 @@ class AUTIntrospector:
             }
         except Exception:
             return {"available": True, "error": "SCN query failed"}
+
+    def pain_stats(self) -> dict:
+        """Get direct pain signal counters from PainDetector.
+
+        Unlike pain_history() which searches hippocampal memories for
+        the word "pain", this returns actual PainDetector counters:
+        total signals fired, per-type breakdown, etc.
+        """
+        if self._pain_detector is None:
+            return {"available": False, "reason": "PainDetector not wired"}
+        try:
+            stats = self._pain_detector.get_stats()
+            return {"available": True, **stats}
+        except Exception:
+            return {"available": True, "error": "PainDetector stats unavailable"}
+
+    # ── Benchmark data collection ────────────────────────────────────
+
+    def benchmark_snapshot(self, seed_keywords: list[str] | None = None) -> dict:
+        """Comprehensive snapshot for benchmark metric computation.
+
+        Extends full_analysis() with raw subsystem stats (graph topology,
+        NAc observation counts, PainDetector counters) that the aggregated
+        system_stats() method doesn't surface.
+        """
+        snapshot = self.full_analysis(seed_keywords=seed_keywords)
+
+        # Raw hippocampus stats (graph topology, compression counts)
+        if self._hippocampus is not None:
+            try:
+                snapshot["hippocampus_stats"] = self._hippocampus.stats()
+            except Exception:
+                pass
+
+        # Raw NAc stats (event signatures, observation counts, priors)
+        if self._nac is not None:
+            try:
+                snapshot["nac_stats"] = self._nac.stats()
+            except Exception:
+                pass
+
+        # Direct pain stats (not memory-search proxy)
+        pain = self.pain_stats()
+        if pain.get("available"):
+            snapshot["pain_stats"] = pain
+
+        return snapshot
 
     # ── Dispatch (for InspectAUTTool compatibility) ──────────────────
 
