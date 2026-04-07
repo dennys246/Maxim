@@ -624,6 +624,19 @@ def build_primary_router(
 
         lane_configs = {name: dataclasses.replace(cfg) for name, cfg in DEFAULT_TIERS.items()}
 
+    # If peer config provides a remote URL for the large tier but local
+    # hardware didn't create one (e.g., Mac with no CUDA GPU), inject a
+    # large tier placeholder so apply_lane_env_overrides() can wire it
+    # to the leader. The remote URL IS the large tier — the leader's GPU.
+    if "large" not in lane_configs:
+        _large_url = os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip()
+        if _large_url:
+            lane_configs["large"] = LaneConfig(
+                name="large",
+                max_workers=1,
+                requires_gpu=False,  # Remote — no local GPU needed
+            )
+
     # Apply tier/function config from llm.json if present
     _llm_json_tier_config: dict = {}
     _llm_json_func_config: dict = {}

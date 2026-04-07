@@ -13,7 +13,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Tool Refactoring | **Complete** | All 10 phases done: say, think, examine, introspection, aliases, tracking, proactive list. [Plan](tool_refactoring_plan.md) |
 | Introspection API | **Phases 1-4 done** | `Observer` (renamed from `AUTIntrospector`) + standalone `run_campaign()` shipped. Remaining: Ph5 self-introspection (needs discussion). |
 | Lane Tier Architecture | **Complete (archived)** | Size-based model routing (large/medium/small). FunctionRouter, detect_tiers, doctor check, config loader, LaneMetrics aliases. `infer_net` absorbed. [Plan](../archive/lane_tier_plan.md) |
-| Simulation Benchmark | **Complete (Phases 0-6)** | BenchmarkRunner, `--sim benchmark` CLI, bio-system expectations, scenario suite, baseline comparison, live progress. Phases 7-9 deferred (paper gen, narrative transcriber, embodiment hooks). [Plan](../archive/benchmark_plan.md) |
+| Simulation Benchmark | **Complete (Phases 0-6)** | BenchmarkRunner, `--sim benchmark` CLI, bio-system expectations, scenario suite, baseline comparison, live progress. Phases 7-9 deferred (paper gen, narrative transcriber, embodiment hooks). Pending: promote to `maxim --benchmark` top-level flag with tiered benchmarks (Tier 1 cognitive, Tier 2 bio-system, Tier 3 embodiment). Part of Generative Campaign CLI simplification. [Plan](../archive/benchmark_plan.md) |
 | Docker Sandbox | **Complete** | Phase A (TmpdirSandbox + pain) + Phase B (DockerSandbox + ContainerRunner + CLI) both shipped |
 | Research Protocol | **Complete** | All phases: mesh primitives, research tools, Writer + Reviewer agents, Research Orchestrator. CLI: `maxim --sim research`. |
 | Multi-LLM Scaling | **Complete** | All phases done. mDNS + InferenceRouter moved to Agent Mesh as Phases 0a-0b. |
@@ -21,11 +21,12 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Realtime Refinement | **Core done** | InspectAUTTool, 8 personas, 3 metric expectations, baseline scenario. Per-lane LLM metrics deferred to Multi-LLM Phase 8 |
 | Embodiment Core | **Not started** | Phase 0 MVP + ATL grounding (~400 LOC) is the gate; Cerebellum + structured failures follow. Designed and scoped. |
 | Embodiment Hardware Adapter | **Not started** | Folded into Embodiment Core as Phase 3. Blocked on Phases 0-2. |
-| Generative Campaign Mode | **Not started** | LLM-generated narrative campaigns with entity naming (~480+120 LOC). Entity naming folded in. [Plan](generative_campaign_plan.md) |
+| Generative Campaign Mode | **Not started** | LLM-generated narrative campaigns (~1,250 LOC in 4 stages). CLI simplification (`--sim <goal>`), lane-tiered cascade (Option B/C), continuous dynamic arcs with bridge-and-compress, entity naming (AgentProfile ext), `ask_user` tool (`--interactive`), tiered `--benchmark` promotion, YAML export. [Plan](generative_campaign_plan.md) |
 | Dungeon Master Persona (MVP) | **Deferred** | Hand-authored D&D campaigns as ultimate bio-system stress test (~840 LOC). Held until Multi-LLM + Agent Mesh + Embodiment Core land. Gated on choice-classifier spike. |
 | DM Choice Classifier Spike | **Not started** | Half-day spike validating ATL+NAc classification path. Runs before DM MVP commits. |
 | Dungeon Master Extensions | **Deferred** | Optional follow-ons layered onto DM MVP. Each extension gated on MVP usage pain. |
-| Interactive Sim Prompts | **Not started** | `ask_user` tool with timeout + replay (~180 LOC). Needed for DM architect extension. |
+| Interactive Sim Prompts | **Folded** | `ask_user` tool folded into Generative Campaign Mode plan (`--interactive` flag). DM extensions reference it there. |
+| Capability Agent | **Not started** | Continuous runtime awareness — live model availability, gate actions by hardware, proactive routing suggestions. ~500 LOC across 5 phases. Wraps detect_tiers + FunctionRouter + LaneMetrics + peer registry. [Design notes in doctor_upgrade_plan.md](doctor_upgrade_plan.md#capability-agent--continuous-runtime-awareness-300500-loc) |
 | Peer Inference Retry on Leader Restart | **Not started** | Retry with backoff on 502/503 during leader restart. ~30 LOC in openai_backend.py. |
 | Python API | **Complete** | Verb-based public interface (`run`, `imagine`, `connect`, `diagnose`, `observe`, `configure`). Observer rename done. `src/maxim/api.py` + lazy `__init__.py`. [Plan](python_api_plan.md) |
 | PyPI Publication | **Phase 0-2 done** | Name (`pymaxim`), metadata, dep restructuring, Python API all done. Remaining: multi-robot plugins (Ph3), CI/CD (Ph4), README rewrite (Ph5), Test PyPI (Ph6). [Plan](pypi_publication_plan.md) |
@@ -108,7 +109,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
               └───────────────────────────────────┘
 
 Optional / independent (ship when demand surfaces):
-  Interactive Sim Prompts, test_record_plan_outcome fix
+  test_record_plan_outcome fix
 
 Low-priority (fold into future work when relevant):
   Stdlib OpenAI-Compat Client, GitHub Repo Management
@@ -127,7 +128,7 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 | 3 | **Benchmark Phases 1-2 (Core runner)** | ~330 | BenchmarkRunner wrapping run_campaign() + CLI. End-to-end `--sim benchmark` working. |
 | 4 | **Benchmark Phases 3-5 (Scenarios + output)** | ~400+YAML | Unified YAML loader + tiered output + live progress + cognitive_suite scenarios. First real benchmark runs. |
 | 5 | **Embodiment Core Phase 0 MVP** | ~400 | ATL-grounded body-state primitives. Run benchmarks before/after. |
-| 6 | **Generative Campaign Mode** | ~600 | Dynamic narrative + entity naming. Uses small tier for transcription + naming. |
+| 6 | **Generative Campaign Mode** | ~1,250 | 4 stages: (A) CLI + generative runner + entity naming + YAML export, (B) arc selection + continuous dynamic arcs + bridge-and-compress + lane cascade, (C) `--interactive` + `ask_user` + timeout escalation, (D) `--benchmark` tiered promotion. |
 | 7 | **Embodiment Core remaining phases** | per plan | Cerebellum forward models, structured failures, hardware adapter |
 | 8 | **Agent Mesh Phase 2+** | per plan | Network transport, distributed planning |
 | 9 | **DM Choice Classifier Spike** | ~150 scratch | Validates ATL+NAc classification on small tier |

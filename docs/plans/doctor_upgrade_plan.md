@@ -158,6 +158,170 @@ Lightweight opt-in telemetry that makes diagnostics smarter over time:
 
 ---
 
+## Capability Agent — continuous runtime awareness (~300–500 LOC)
+
+Beyond one-shot diagnostics: a **CapabilityAgent** that maintains a live picture of what this system (and its peers) can do, and gates actions that exceed those capabilities. Runs as a lightweight background service alongside the agent loop.
+
+### Problem
+
+Today, capability awareness is fragmented:
+- `detect_tiers()` runs once at startup and never updates
+- The benchmark runner blindly attempts models the hardware can't run
+- The sim orchestrator loads a 14B model on a Mac that should route to the leader
+- No system knows what models are available across the mesh at any given moment
+- A peer going offline mid-sim causes a hard failure instead of graceful rerouting
+
+### CapabilityAgent design
+
+```python
+class CapabilityAgent:
+    """Continuous awareness of what this system can do.
+
+    Maintains a live CapabilitySnapshot that other subsystems query
+    before attempting actions. Updated on events (peer join/leave,
+    GPU thermal throttle, model swap) and periodically (heartbeat).
+    """
+
+    def __init__(self, caps: RuntimeCapabilities, peer_registry=None):
+        self._local_caps = caps
+        self._peer_registry = peer_registry
+        self._snapshot = CapabilitySnapshot(...)
+        self._lock = threading.RLock()
+
+    # ── Queries (called by other subsystems) ──
+
+    def can_run_model(self, profile: str) -> ModelAvailability:
+        """Check if a model can run locally, remotely, or not at all.
+        Returns: ModelAvailability(where="local"|"remote"|"cloud"|"unavailable",
+                                   node=..., estimated_latency_ms=..., reason=...)
+        """
+
+    def available_models(self) -> list[ModelInfo]:
+        """All models runnable right now (local + peer + cloud)."""
+
+    def recommended_tier(self, function: str) -> TierRecommendation:
+        """Best tier for a function given current load + capabilities.
+        Considers: local hardware, peer availability, queue depth, cost.
+        """
+
+    def gate_action(self, action: str, requirements: dict) -> GateResult:
+        """Should this action proceed? Returns allow/deny with reason.
+        Examples:
+          gate_action("benchmark", {"models": ["qwen2.5-14b"]})
+            → deny: "qwen2.5-14b requires 10GB+ VRAM, local has 0GB, leader unreachable"
+          gate_action("sim", {"model": "mistral-7b"})
+            → allow: "routing to leader (RTX 5080), estimated 44ms latency"
+        """
+
+    # ── Updates (called by events) ──
+
+    def on_peer_joined(self, peer_info): ...
+    def on_peer_left(self, peer_id): ...
+    def on_model_swapped(self, tier, new_profile): ...
+    def on_heartbeat(self, metrics_snapshot): ...
+    def on_thermal_throttle(self, gpu_temp): ...
+```
+
+### CapabilitySnapshot
+
+A frozen-at-a-point-in-time view of the full system:
+
+```python
+@dataclass
+class CapabilitySnapshot:
+    timestamp: float
+
+    # Local hardware
+    local_tiers: dict[str, LaneConfig]      # From detect_tiers()
+    local_gpu: GPUState | None              # VRAM free/total, temp, utilization
+    local_ram_free_gb: float
+    local_disk_free_gb: float
+
+    # Models available right now
+    local_models: list[str]                  # GGUF files present + loaded
+    remote_models: dict[str, str]            # peer_id → model currently loaded
+    cloud_models: list[str]                  # Cloud profiles with valid API keys
+
+    # Peer state (from PeerRegistry / heartbeat)
+    peers: list[PeerCapability]              # Each peer's tiers + load + latency
+    leader_available: bool
+    leader_queue_depth: int
+    leader_model: str | None
+
+    # Aggregate
+    total_gpu_vram_gb: float                 # Sum across local + peers
+    total_cpu_ram_gb: float
+    strongest_tier: str                      # "large" if any node has it
+```
+
+### Integration points
+
+| Consumer | How it uses CapabilityAgent |
+|----------|---------------------------|
+| **Benchmark runner** | `available_models()` to filter `--models` list before running. Skip models that can't run anywhere with clear message: "Skipping qwen2.5-14b: requires 10GB VRAM, best available is 0GB (Mac peer). Add --cloud-fallback or run on leader." |
+| **Sim orchestrator** | `can_run_model(aut_model)` before building AUT router. Routes to leader if local can't handle it. |
+| **FunctionRouter** | `recommended_tier(function)` as the dynamic `health_check` callback. Considers real-time load, not just static tier existence. |
+| **`maxim doctor`** | `snapshot()` powers a rich capability report: what you can run, where, estimated performance. Replaces the static `check_tier_detection()`. |
+| **Agent mesh** | `on_peer_joined/left` keeps the capability picture current as the mesh topology changes. |
+| **Default Network** | Gate exploration actions: "don't attempt tool X, it requires a model we can't run right now." |
+| **CLI pre-flight** | Before any `--sim` or `--language-model` command, quick gate check: "this model needs leader, leader is unreachable → fail fast with fix hint." |
+
+### Model availability check (for benchmarks)
+
+```python
+def check_model_availability(models: list[str]) -> dict[str, ModelAvailability]:
+    """Pre-flight check for benchmark runner.
+
+    For each model:
+      1. Local VRAM sufficient? (detect_tiers + _INFER_VRAM_TIERS)
+      2. GGUF downloaded? (_profile_has_local_file)
+      3. Leader can run it? (peer config + /v1/models probe)
+      4. Cloud profile exists? (_BUILTIN_PROFILES with cloud: True)
+
+    Returns dict of model → availability with routing recommendation.
+    """
+```
+
+The benchmark runner calls this before its run loop and either:
+- Routes each model to the right node (local vs leader vs cloud)
+- Skips unavailable models with an actionable message
+- Warns when a model will run on slow hardware (Mac CPU vs leader GPU)
+
+### Gating + proactive suggestions
+
+The CapabilityAgent doesn't just block — it **advises and suggests**. When a requested action exceeds local capabilities, it proactively recommends alternatives:
+
+- "qwen2.5-14b can't run locally (no GPU). Leader has an RTX 5080 — route there? Or use --cloud-fallback claude-sonnet."
+- "mistral-7b will run locally but expect ~60s/turn on CPU. Leader can do it in ~2s. Routing to leader."
+- "Leader is under load (queue depth 3). Running concept extraction locally on small tier instead."
+- "You haven't tried llama-3-8b yet — it fits your VRAM and benchmarks show 2x better tool compliance than mistral-7b on this task."
+
+The agent should be **proactive** — not just answering "can I?" but volunteering "here's what I'd recommend given what I know about this system." This makes it feel like a teammate that knows the hardware, not just a gatekeeper.
+
+### Relationship to existing systems
+
+Wraps existing infrastructure — no replacement:
+- `detect_tiers()` → startup detection; CapabilityAgent adds runtime updates
+- `FunctionRouter` → function→tier mapping; CapabilityAgent feeds dynamic health via `health_check` callback
+- `LaneMetrics` → per-tier counters; CapabilityAgent reads for load awareness
+- `RuntimeCapabilities` → hardware dataclass; CapabilityAgent enriches with peer + cloud
+- `maxim doctor` → user-facing diagnostic; CapabilityAgent provides live data
+
+### Implementation phases
+
+| Phase | What | LOC | Depends on |
+|-------|------|-----|------------|
+| CA-1 | `CapabilitySnapshot` + `check_model_availability()` | ~100 | Lane tiers (done) |
+| CA-2 | `CapabilityAgent` with local + leader awareness | ~150 | CA-1 |
+| CA-3 | Benchmark + sim pre-flight gates | ~100 | CA-2 |
+| CA-4 | Peer awareness + mesh integration | ~100 | Agent Mesh Phase 0a |
+| CA-5 | FunctionRouter health_check + proactive suggestions | ~50 | CA-2 |
+| **Total** | | **~500** | |
+
+CA-1 through CA-3 ship before the agent mesh. CA-4 and CA-5 integrate with mesh discovery. Full design deferred to its own plan when implementation starts.
+
+---
+
 ## Cross-cutting: doctor invoked FROM other code paths
 
 Today `maxim doctor` is a user-invoked subcommand. Future use cases that want automatic diagnostics:
