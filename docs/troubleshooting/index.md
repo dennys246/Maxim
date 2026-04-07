@@ -14,3 +14,4 @@ In-depth troubleshooting docs for specific subsystems. For quick-reference table
 | [Agent Mesh](mesh.md) | Mesh peer connectivity, admission control gating, knowledge sharing issues, task delegation failures, clock sync, protocol version mismatches |
 | [Benchmarks](benchmarks.md) | Benchmark runner issues, metric comparison failures, scenario validation |
 | [Embodiment](embodiment.md) | YAML loading, SEM entity issues, motor program failures, pain bus, cerebellum |
+| [Bio-Systems](biosystems.md) | Diagnosing bio-inspired subsystem issues using DM campaigns. Hippocampus recall, NAc learning, SCN temporal bins, ATL concepts, PainBus, Cerebellum, SensoryGate, ChooseTool. Pipeline audit script usage. |

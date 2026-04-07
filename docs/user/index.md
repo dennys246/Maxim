@@ -22,6 +22,8 @@ Documentation for users of Maxim — a robotics framework for Reachy Mini with l
 - [Safety](safety.md) — Autonomy levels, FearAgent, pain detection, harm prediction
 - [Simulation Guide](simulation.md) — Running and recording simulated scenarios
 - [Writing Scenarios](writing-scenarios.md) — Authoring YAML test scenarios
+- [DM Campaigns](dm-campaigns.md) — Writing and running D&D-style bio-system stress tests
+- [Benchmarks](benchmarks.md) — Multi-model comparison testing
 
 ## Setup & Support
 
