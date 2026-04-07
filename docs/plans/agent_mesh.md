@@ -1,6 +1,14 @@
 # Agent Mesh Plan
 
-> **Status:** Phase 1a-1b foundations implemented via Research Protocol Phase 0. AgentProfile, UMR, MeshMessage, and LocalMessageBus live in `src/maxim/mesh/`. All multi-LLM infrastructure prerequisites are complete (Phases 1-8, 7a, 7a-ext, 7b — LeaderProxy, LaneMetrics, admission control, remote update). RuntimeCapabilities and CommunicationGateway channel system also implemented.
+> **Status:** Phase 0 foundations implemented via Research Protocol. AgentProfile, UMR, MeshMessage, and LocalMessageBus live in `src/maxim/mesh/`. All multi-LLM infrastructure prerequisites are complete (Phases 1-8, 7a, 7a-ext, 7b — LeaderProxy, LaneMetrics, admission control, remote update). RuntimeCapabilities and CommunicationGateway channel system also implemented.
+>
+> **What the Research Protocol proved:**
+> - LocalMessageBus delivery works (synchronous, in-process, thread-safe)
+> - MeshMessage serialization round-trips correctly (to_dict/from_dict)
+> - AgentProfile identity is sufficient for local multi-agent coordination
+> - UMR references enable cross-agent resource naming (`researcher.hippo.exp_001`)
+> - Typed message enums (PAPER_DRAFT, REVIEW_RESULT) prevent protocol confusion
+> - **Limitation exposed:** synchronous bus delivery blocks sender thread — network transport will need async/queued dispatch (see Phase 3 notes)
 >
 > **Prerequisites completed (from multi-LLM scaling, now archived):**
 > - Phases 1-3: LaneBackendManager, lane configs, safety gates
@@ -82,15 +90,54 @@ These types already have `to_dict()` / `from_dict()` and can go over the wire to
 | `Percept` | agents/bus.py | Sensor input with source, content, salience |
 | `WorkingMemoryEntry` | agents/bus.py | Memory wrapper with tier, salience, decay |
 
-**Not serializable yet (need to_dict/from_dict):**
-- `ProposedGoal`, `SubGoal` — goal delegation
-- `RuntimeCapabilities` — capability advertisement
-- `StreamEvent` — telemetry
-- `ToolResult` — task delegation results
+**Not serializable yet (need to_dict/from_dict — see Pre-work):**
+- `ProposedGoal`, `SubGoal` — goal delegation (Pre-work)
+- `RuntimeCapabilities` — capability advertisement (Pre-work)
+- `ToolResult` — task delegation results (Pre-work)
+- `StreamEvent` — telemetry (deferred — no phase currently needs it)
 
 ---
 
 ## Implementation
+
+### Pre-work: Serialization + NAc Import
+
+These are blockers for Phases 4 and 5. Do them first — no network code, just adding methods to existing classes.
+
+#### Serialization for non-serializable types
+
+Add `to_dict()` / `from_dict()` to the types that need network transport:
+
+| Type | Location | What to serialize |
+|------|----------|------------------|
+| `ProposedGoal` | `agents/bus.py` | id, description, priority (str), tool_name, tool_params, reasoning, confidence, sub_goals (recursive) |
+| `SubGoal` | `agents/bus.py` | id, description, tool_name, tool_params, status (str), depends_on, on_failure (str), attempts, max_retries |
+| `RuntimeCapabilities` | `runtime/capabilities.py` | All fields (all primitives, already trivial) |
+| `ToolResult` | `agents/bus.py` | tool_call_id, tool_name, success, result, error, params |
+
+These are straightforward — all fields are primitives, enums (serialize as strings), or dicts.
+
+#### NAc._register_imported_link()
+
+`ExperienceSharer.import_causal_link()` calls `nac._register_imported_link(link)`, which does not exist yet. Implement in `decisions/nac.py`:
+
+```python
+def _register_imported_link(self, link: CausalLink) -> None:
+    """Register an externally-imported CausalLink.
+
+    The link should already have transfer discount applied to confidence,
+    predicted_value reset, and provenance tagged in event_context.
+    """
+    sig = link.event_signature
+    if sig not in self._links:
+        self._links[sig] = []
+    self._links[sig].append(link)
+    self._register_causal_in_ec(link)
+```
+
+~10 LOC in NAc. Add a unit test that imports a link and verifies it appears in `get_links_for_event()`.
+
+---
 
 ### Phase 0a: PeerRegistry + mDNS Discovery (~200 LOC)
 
@@ -107,10 +154,10 @@ Remove the need for manually shared URLs on LAN. Each Maxim instance advertises 
 
 | File | Change | LOC |
 |---|---|---|
-| `mesh/peer_registry.py` | **New.** `PeerRegistry` class with mDNS advertise/browse | ~120 |
-| `mesh/peer_info.py` | **New.** `PeerInfo`, `PeerAdvertisement` dataclasses | ~30 |
+| `mesh/peer_registry.py` | **Extend.** Add mDNS advertise/browse as discovery source to existing `PeerRegistry` (created in Phase 3 from peer config) | ~120 |
+| `mesh/peer_info.py` | Add `PeerAdvertisement` dataclass for mDNS TXT records | ~30 |
 | `pyproject.toml` | Add `[mesh]` optional extra: `zeroconf>=0.80` | ~3 |
-| `runtime/lane_backends.py` | `build_primary_router()` starts registry when enabled | ~20 |
+| `runtime/lane_backends.py` | `build_primary_router()` starts mDNS when `MAXIM_PEER_ENABLED=1` | ~20 |
 | `doctor/checks.py` | New "mDNS broadcast reachable" check | ~20 |
 
 ### Phase 0b: InferenceRouter — Per-Request Backend Selection (~250 LOC)
@@ -144,18 +191,25 @@ Routing chain (first healthy backend wins):
 
 Each Maxim instance builds an identity that describes what it is, what it can do, and what it has learned. This is the foundation for peer discovery and task routing.
 
+**Relationship to AgentProfile:** `AgentProfile` (in `mesh/identity.py`) is the lightweight identity used by local agents (research protocol Writer/Reviewer). `AgentIdentity` **extends** `AgentProfile` with hardware capabilities, knowledge statistics, and inference info needed for network-level coordination. Local agents keep using `AgentProfile`; `AgentIdentity` wraps one and adds the networked fields. The `build_from_agent()` factory constructs a full identity from an `AgentProfile` + live subsystems.
+
 ```python
 @dataclass
 class AgentIdentity:
     """What this agent is and what it can do.
 
-    Broadcast to peers via mDNS heartbeat. Read-only externally —
-    only the owning agent updates its own identity.
+    Extends AgentProfile with network-level metadata. Broadcast to peers
+    via heartbeat. Read-only externally — only the owning agent updates
+    its own identity.
     """
     # Core identity
-    agent_id: str                          # Unique node ID (UUID, persisted across restarts)
+    profile: AgentProfile                  # Nickname, role, capabilities, personality
+    # NOTE: profile.agent_id is session-scoped (random on each start).
+    # AgentIdentity.node_id is the persistent node identity, saved to disk
+    # and stable across restarts. Peers use node_id to track each other.
+    node_id: str                           # Persistent node ID (UUID, saved to data/util/node_id.txt)
     agent_name: str                        # Human-readable name ("reachy-kitchen", "desktop-coder")
-    started_at: float                      # Startup timestamp
+    started_at: float                      # This instance's startup timestamp (not from profile)
 
     # Hardware capabilities (from RuntimeCapabilities)
     capabilities: dict[str, Any]           # Serialized RuntimeCapabilities
@@ -194,99 +248,201 @@ class AgentIdentity:
 
 ### Phase 2: Mesh Protocol Messages
 
-Define the wire protocol for inter-agent communication. Built on JSON over HTTP (reusing the existing Gateway/API server architecture).
+Expand the existing `MeshMessage` and `MeshMessageType` in `mesh/message.py` — don't create a parallel wire format.
+
+**Migration from existing implementation:** The current `MeshMessage` uses `sender`/`recipient`/`msg_id`/`in_reply_to` as field names, and `MeshMessageType` uses `auto()` (integer enum, serialized via `.name`). Phase 2 keeps these conventions and adds new fields:
+- Add `protocol_version: int = 1` field
+- Add `correlation_id: str` field (for request/response matching across network; `in_reply_to` stays for reply chains, `correlation_id` groups a full exchange)
+- Keep `sender`/`recipient` names (not `sender_id`/`recipient_id`) for consistency with existing code
+- Keep `auto()` for enum values; wire format uses `.name` (e.g. `"HEARTBEAT"`, `"GOAL_PROPOSAL"`)
 
 ```python
 class MeshMessageType(Enum):
-    """Inter-agent message types."""
-    # Discovery
-    HEARTBEAT = "heartbeat"                  # Periodic identity broadcast
-    IDENTITY_REQUEST = "identity_request"    # "Tell me about yourself"
-    IDENTITY_RESPONSE = "identity_response"
+    """Inter-agent message types.
 
-    # Task delegation
-    GOAL_PROPOSAL = "goal_proposal"          # "Can you do this?"
-    GOAL_ACCEPTED = "goal_accepted"          # "Yes, I'll do it"
-    GOAL_REJECTED = "goal_rejected"          # "No, I can't / won't"
-    GOAL_RESULT = "goal_result"              # "Here's what happened"
+    Uses auto() consistently. Wire format serializes via .name.
+    Existing research protocol types kept as-is.
+    """
+    # Research protocol types (existing, unchanged)
+    EXPERIMENT_DATA = auto()
+    PAPER_DRAFT = auto()
+    REVIEW_RESULT = auto()
+    REVISION_REQUEST = auto()
+    TASK_COMPLETE = auto()
+    REQUEST = auto()
+    RESPONSE = auto()
+    ERROR = auto()
 
-    # Knowledge sharing
-    EXPERIENCE_OFFER = "experience_offer"    # "I learned something relevant to you"
-    EXPERIENCE_REQUEST = "experience_request" # "What do you know about X?"
-    EXPERIENCE_RESPONSE = "experience_response"
-    CAUSAL_LINK_SHARE = "causal_link_share"  # "This tool fails in this context"
-    REFLECTION_SHARE = "reflection_share"    # "Here's why it failed"
+    # Discovery (Phase 2)
+    HEARTBEAT = auto()                       # Periodic identity broadcast
+    IDENTITY_REQUEST = auto()                # "Tell me about yourself"
+    IDENTITY_RESPONSE = auto()
 
-    # Prediction queries
-    PREDICT_REQUEST = "predict_request"      # "What would happen if I did X?"
-    PREDICT_RESPONSE = "predict_response"
+    # Task delegation (Phase 2)
+    GOAL_PROPOSAL = auto()                   # "Can you do this?"
+    GOAL_ACCEPTED = auto()                   # "Yes, I'll do it"
+    GOAL_REJECTED = auto()                   # "No, I can't / won't"
+    GOAL_RESULT = auto()                     # "Here's what happened"
 
-    # Inference routing (delegates to multi-LLM plan)
-    INFERENCE_REQUEST = "inference_request"
-    INFERENCE_RESPONSE = "inference_response"
+    # Knowledge sharing (Phase 2)
+    EXPERIENCE_OFFER = auto()                # "I learned something relevant to you"
+    EXPERIENCE_REQUEST = auto()              # "What do you know about X?"
+    EXPERIENCE_RESPONSE = auto()
+    CAUSAL_LINK_SHARE = auto()               # "This tool fails in this context"
+    REFLECTION_SHARE = auto()                # "Here's why it failed"
+
+    # Prediction queries (Phase 2)
+    PREDICT_REQUEST = auto()                 # "What would happen if I did X?"
+    PREDICT_RESPONSE = auto()
+
+    # Inference routing (Phase 2, delegates to multi-LLM plan)
+    INFERENCE_REQUEST = auto()
+    INFERENCE_RESPONSE = auto()
 
 
 @dataclass
 class MeshMessage:
-    """Wire format for inter-agent communication."""
-    msg_type: str                    # MeshMessageType value
-    sender_id: str                   # AgentIdentity.agent_id
-    recipient_id: str | None         # None = broadcast
-    payload: dict[str, Any]          # Type-specific content
-    timestamp: float
-    correlation_id: str              # For request/response matching
+    """Typed message envelope for inter-agent communication.
+
+    Extends the existing MeshMessage with network-level fields.
+    Field names match the current implementation (sender, recipient, msg_id, in_reply_to).
+    """
+    sender: str                      # Sender nickname or agent_id
+    recipient: str                   # Recipient nickname/agent_id ("*" for broadcast)
+    msg_type: MeshMessageType
+    payload: dict[str, Any] = field(default_factory=dict)
+    msg_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    timestamp: float = field(default_factory=time.time)
+    in_reply_to: str | None = None   # msg_id of the message this replies to
+
+    # New fields (Phase 2) — optional with defaults for backward compat
+    protocol_version: int = 1        # Bump on breaking changes
+    correlation_id: str = ""         # Groups a full request/response exchange
 
     def to_dict(self) -> dict[str, Any]: ...
 
     @classmethod
-    def from_dict(cls, data: dict) -> MeshMessage: ...
+    def from_dict(cls, data: dict) -> MeshMessage:
+        """Deserialize. Raises ValueError if protocol_version > supported.
+        Missing new fields default gracefully (protocol_version=1, correlation_id="").
+        """
+        ...
+```
+
+**Version rules:** Receivers reject messages with `protocol_version` higher than their own. Messages with lower versions are accepted (backward compat). Bump version when adding required fields or changing payload semantics — new optional fields don't require a bump.
+
+**GOAL_PROPOSAL payload schema** (used by Phase 5 TaskDelegator):
+
+```python
+# Required fields in GOAL_PROPOSAL payload:
+{
+    "tool_name": str,              # Required tool
+    "tool_params": dict,           # Tool parameters
+    "description": str,            # Human-readable goal description
+    "delegation_depth": int,       # Starts at 0, incremented on each delegation
+    "delegation_chain": list[str], # Agent IDs that have touched this goal (cycle detection)
+    "timeout_s": float,            # Max time peer should spend on this goal
+}
+# TaskReceiver rejects if delegation_depth > 2 or local agent_id in delegation_chain.
 ```
 
 ### Phase 3: MeshChannel — Transport Layer
 
 Implement a `PeerChannel` that plugs into the existing `CommunicationGateway` channel system. This means peer messages flow through the same architecture as SMS/voice — the agent sees them as percepts on the bus.
 
+**PeerRegistry dependency:** Phase 3 does NOT require mDNS (Phase 0a). Instead, it uses a lightweight `PeerRegistry` backed by the existing `peer/config.py` (tunnel URLs) and optional manual entries. mDNS auto-discovery is added later in Phase 0a as an additional peer source — not a prerequisite.
+
+```python
+class PeerRegistry:
+    """Registry of known peers. Initially populated from peer config
+    (tunnel URLs) and manual registration. Phase 0a adds mDNS as an
+    additional discovery source.
+    """
+    def register(self, peer_id: str, base_url: str, trust_level: str) -> None: ...
+    def get_peer(self, peer_id: str) -> PeerInfo | None: ...
+    def all_peers(self) -> list[PeerInfo]: ...
+
+    @classmethod
+    def from_peer_config(cls) -> PeerRegistry:
+        """Bootstrap from existing peer/config.py (tunnel URL + API key)."""
+        ...
+```
+
+**Important: async send.** The research protocol exposed that `LocalMessageBus` runs handlers in the sender's thread. `PeerChannel.send()` involves HTTP I/O — if called from a bus handler, it blocks the sender. Solution: `PeerChannel` uses a background send queue (`threading.Thread` + `queue.Queue`). The `send()` method enqueues and returns immediately; the background thread drains the queue and POSTs to peers. Failures go to a retry queue with exponential backoff (1s/2s/4s, cap 30s, max 3 retries).
+
 ```python
 class PeerChannel(Channel):
     """Communication channel for peer-to-peer agent mesh.
 
     Plugs into CommunicationGateway using the existing Channel interface.
-    Each peer is an HTTP endpoint (reuses the FastAPI server from comms/api.py).
+    Each peer is an HTTP endpoint. Mount under /v1/mesh/* to inherit
+    LeaderProxy auth, rate limiting, and GPU metrics.
+
+    Sends are queued — the caller never blocks on network I/O.
     """
 
     def __init__(self, peer_registry: PeerRegistry, local_port: int) -> None:
         self._peer_registry = peer_registry
         self._local_port = local_port
+        self._send_queue: queue.Queue[MeshMessage] = queue.Queue(maxsize=1000)
+        self._sender_thread = threading.Thread(target=self._drain_queue, daemon=True)
+        self._sender_thread.start()
 
     def send(self, recipient: str, body: str, metadata: dict | None = None) -> bool:
-        """Send a mesh message to a peer agent."""
-        # recipient is the agent_id
+        """Enqueue a mesh message for async delivery to a peer."""
         peer = self._peer_registry.get_peer(recipient)
         if peer is None:
             return False
+        msg_type_name = (metadata or {}).get("msg_type", "GOAL_PROPOSAL")
         msg = MeshMessage(
-            msg_type=metadata.get("msg_type", MeshMessageType.GOAL_PROPOSAL.value),
-            sender_id=self._local_agent_id,
-            recipient_id=recipient,
+            sender=self._local_agent_id,
+            recipient=recipient,
+            msg_type=MeshMessageType[msg_type_name],
             payload=json.loads(body),
-            timestamp=time.time(),
-            correlation_id=metadata.get("correlation_id", str(uuid4())),
+            correlation_id=(metadata or {}).get("correlation_id", uuid4().hex[:12]),
+            protocol_version=1,
         )
-        # POST to peer's mesh endpoint
-        resp = httpx.post(f"{peer.base_url}/mesh", json=msg.to_dict(), timeout=10.0)
-        return resp.status_code == 200
+        try:
+            self._send_queue.put_nowait(msg)
+            return True
+        except queue.Full:
+            logger.warning("mesh send queue full, dropping message to %s", recipient)
+            return False
+
+    def _drain_queue(self) -> None:
+        """Background thread: drain send queue, POST to peers."""
+        while True:
+            msg = self._send_queue.get()
+            peer = self._peer_registry.get_peer(msg.recipient)
+            if peer is None:
+                continue
+            for attempt in range(3):
+                try:
+                    resp = httpx.post(
+                        f"{peer.base_url}/v1/mesh/message",
+                        json=msg.to_dict(),
+                        timeout=10.0,
+                    )
+                    if resp.status_code == 200:
+                        break
+                except httpx.RequestError:
+                    time.sleep(min(1 * 2**attempt, 30))
 
     def receive(self, msg: MeshMessage) -> None:
         """Handle an incoming mesh message (called by API endpoint)."""
+        # Reject unknown protocol versions
+        if msg.protocol_version > 1:
+            logger.warning("rejecting mesh message with protocol_version=%d", msg.protocol_version)
+            return
         # Convert to Percept and publish on local bus
         percept = Percept(
             timestamp=msg.timestamp,
-            source=f"mesh:{msg.sender_id}",
+            source=f"mesh:{msg.sender}",
             content=json.dumps(msg.payload),
             salience=0.7,  # Peer messages are important but not critical
             metadata={
-                "msg_type": msg.msg_type,
-                "sender_id": msg.sender_id,
+                "msg_type": msg.msg_type.name,
+                "sender": msg.sender,
                 "correlation_id": msg.correlation_id,
                 "external": True,
             },
@@ -294,13 +450,13 @@ class PeerChannel(Channel):
         self._bus.publish(percept)
 ```
 
-**API endpoint** (add to existing `comms/api.py`):
+**API endpoints** (mount under `/v1/mesh/` on existing LeaderProxy to inherit auth + rate limiting):
 
 ```python
-@app.post("/mesh")
+@app.post("/v1/mesh/message")
 async def mesh_receive(request: Request):
     data = await request.json()
-    msg = MeshMessage.from_dict(data)
+    msg = MeshMessage.from_dict(data)  # Raises ValueError on bad protocol_version
     peer_channel.receive(msg)
     return {"status": "ok"}
 ```
@@ -319,8 +475,13 @@ class ExperienceSharer:
     and what to accept. Imported knowledge gets reduced confidence.
     """
 
-    # Peer knowledge starts at this fraction of its original confidence
-    TRANSFER_DISCOUNT = 0.5
+    # Default transfer discounts by trust level (overridable per-peer)
+    TRANSFER_DISCOUNTS: dict[str, float] = {
+        "verified": 0.5,    # Same owner, pre-shared key
+        "discovered": 0.3,  # LAN mDNS, no verification
+        "remote": 0.3,      # Cloudflare tunnel (tunnel auth = verification)
+        "unknown": 0.1,     # Unsolicited contact
+    }
 
     # Only share links above this confidence threshold
     SHARE_MIN_CONFIDENCE = 0.6
@@ -328,6 +489,10 @@ class ExperienceSharer:
     def __init__(self, nac: NAc, hippocampus: Hippocampus) -> None:
         self._nac = nac
         self._hippocampus = hippocampus
+
+    def _get_discount(self, peer_trust: str) -> float:
+        """Look up transfer discount for a peer's trust level."""
+        return self.TRANSFER_DISCOUNTS.get(peer_trust, 0.1)
 
     def get_shareable_links(self, tool_name: str | None = None) -> list[dict]:
         """Get high-confidence causal links suitable for sharing.
@@ -337,20 +502,22 @@ class ExperienceSharer:
         """
         if tool_name:
             links = self._nac.get_links_for_event(f"tool:{tool_name}")
+            return [
+                link.to_dict() for link in links
+                if link.confidence >= self.SHARE_MIN_CONFIDENCE and link.observation_count >= 3
+            ]
         else:
-            links = self._nac.get_promotion_candidates(
+            # get_promotion_candidates returns PromotionCandidate, not CausalLink
+            candidates = self._nac.get_promotion_candidates(
                 min_confidence=self.SHARE_MIN_CONFIDENCE,
                 min_observations=3,
             )
-        return [
-            link.to_dict() if hasattr(link, 'to_dict') else link.metadata
-            for link in links
-        ]
+            return [c.link.to_dict() for c in candidates]
 
-    def import_causal_link(self, link_data: dict, source_agent: str) -> bool:
+    def import_causal_link(self, link_data: dict, source_agent: str, peer_trust: str = "unknown") -> bool:
         """Import a CausalLink from a peer agent.
 
-        Applies transfer discount and tags with source.
+        Applies trust-level transfer discount and tags with source.
         Returns True if imported (novel), False if already known.
         """
         from maxim.decisions.causal_link import CausalLink
@@ -364,16 +531,21 @@ class ExperienceSharer:
                 # Already known — skip import
                 return False
 
-        # Apply transfer discount: peer's confidence is discounted
-        link.confidence *= self.TRANSFER_DISCOUNT
+        # Apply trust-level transfer discount
+        discount = self._get_discount(peer_trust)
+        link.confidence *= discount
         link.predicted_value = 0.5  # Reset R-W to neutral — let local experience refine
         link.observation_count = 1  # Treat as single observation locally
 
         # Tag provenance
         link.event_context["_imported_from"] = source_agent
         link.event_context["_import_timestamp"] = time.time()
+        link.event_context["_import_trust"] = peer_trust
 
         # Register in local NAc
+        # NOTE: NAc._register_imported_link() must be implemented (pre-work).
+        # It should append the link to self._links[event_signature] and
+        # register it in the EC index via _register_causal_in_ec().
         self._nac._register_imported_link(link)
         return True
 
@@ -393,19 +565,29 @@ class ExperienceSharer:
                 reflections.append(m.to_dict())
         return reflections
 
-    def import_reflection(self, memory_data: dict, source_agent: str) -> str | None:
+    # Salience caps per trust level for imported reflections
+    REFLECTION_SALIENCE_CAPS: dict[str, float] = {
+        "verified": 0.5,
+        "discovered": 0.35,
+        "remote": 0.35,
+        "unknown": 0.15,
+    }
+
+    def import_reflection(self, memory_data: dict, source_agent: str, peer_trust: str = "unknown") -> str | None:
         """Import a reflection from a peer as a low-salience episodic memory.
 
-        Imported reflections get reduced salience (0.5 vs 0.9 for local)
-        so they don't dominate the agent's own experience.
+        Salience cap is trust-level aware (verified=0.5, unknown=0.15)
+        so untrusted reflections are evicted first during consolidation.
         """
         from maxim.memory.types import EpisodicMemory
 
         memory = EpisodicMemory.from_dict(memory_data)
 
-        # Reduce salience for imported knowledge
-        memory.perception.salience = min(memory.perception.salience, 0.5)
+        # Reduce salience based on trust level
+        cap = self.REFLECTION_SALIENCE_CAPS.get(peer_trust, 0.15)
+        memory.perception.salience = min(memory.perception.salience, cap)
         memory.perception.observations["_imported_from"] = source_agent
+        memory.perception.observations["_import_trust"] = peer_trust
 
         # Capture into local hippocampus
         return self._hippocampus.capture(record=memory)
@@ -436,9 +618,11 @@ class TaskDelegator:
     3. How loaded is the peer? (inference queue depth)
     """
 
-    def __init__(self, peer_registry: PeerRegistry, mesh_channel: PeerChannel) -> None:
+    def __init__(self, peer_registry: PeerRegistry, mesh_channel: PeerChannel, local_agent_id: str) -> None:
         self._peers = peer_registry
         self._channel = mesh_channel
+        self._local_agent_id = local_agent_id
+        self._pending: dict[str, dict] = {}  # correlation_id -> {"event": Event, "result": dict|None}
 
     def find_best_peer(self, goal: dict) -> PeerInfo | None:
         """Find the peer best suited for a goal."""
@@ -468,26 +652,40 @@ class TaskDelegator:
         candidates.sort(key=lambda x: -x[1])
         return candidates[0][0]
 
-    async def delegate(self, goal: dict, peer: PeerInfo) -> dict | None:
-        """Send a goal to a peer and await the result.
+    def delegate(self, goal: dict, peer: PeerInfo) -> dict | None:
+        """Send a goal to a peer and block until result or timeout.
 
-        Returns the result dict or None on timeout/rejection.
+        Synchronous — the agent loop is sync, so this uses a threading.Event
+        to wait for the correlated response. Returns the result dict or None.
         """
-        correlation_id = str(uuid4())
-        msg = MeshMessage(
-            msg_type=MeshMessageType.GOAL_PROPOSAL.value,
-            sender_id=self._local_agent_id,
-            recipient_id=peer.node_id,
-            payload=goal,
-            timestamp=time.time(),
-            correlation_id=correlation_id,
-        )
-        self._channel.send(peer.node_id, json.dumps(msg.payload), {
-            "msg_type": msg.msg_type,
+        correlation_id = uuid4().hex[:12]
+
+        # Inject delegation tracking into payload
+        goal.setdefault("delegation_depth", 0)
+        goal["delegation_depth"] += 1
+        goal.setdefault("delegation_chain", [])
+        goal["delegation_chain"].append(self._local_agent_id)
+
+        self._pending[correlation_id] = {"event": threading.Event(), "result": None}
+
+        self._channel.send(peer.node_id, json.dumps(goal), {
+            "msg_type": MeshMessageType.GOAL_PROPOSAL.name,
             "correlation_id": correlation_id,
         })
-        # Wait for response (with timeout)
-        return await self._wait_for_response(correlation_id, timeout=60.0)
+
+        # Block until response arrives or timeout
+        timeout = goal.get("timeout_s", 60.0)
+        self._pending[correlation_id]["event"].wait(timeout=timeout)
+        result = self._pending.pop(correlation_id, {}).get("result")
+        return result
+
+    def handle_response(self, correlation_id: str, payload: dict) -> None:
+        """Called by the bus handler when a GOAL_RESULT/GOAL_ACCEPTED/GOAL_REJECTED
+        arrives with a matching correlation_id."""
+        pending = self._pending.get(correlation_id)
+        if pending:
+            pending["result"] = payload
+            pending["event"].set()
 ```
 
 **On the receiving end:**
@@ -500,19 +698,38 @@ class TaskReceiver:
     feasible, then executes it through the normal agent loop.
     """
 
-    def __init__(self, planner, executor, nac) -> None:
+    # Reject delegated goals when local queue exceeds this depth
+    MAX_DELEGATION_QUEUE = 5
+
+    def __init__(self, planner, executor, nac, local_agent_id: str, worker_pool=None) -> None:
         self._planner = planner
         self._executor = executor
         self._nac = nac
+        self._local_agent_id = local_agent_id
+        self._worker_pool = worker_pool
+        self._active_delegations: int = 0
 
     def evaluate_proposal(self, goal: dict, sender_id: str) -> tuple[bool, str]:
         """Decide whether to accept a delegated goal.
 
-        Criteria:
-        1. Do we have the required tool? (hard requirement)
-        2. Does NAc predict success? (soft preference)
-        3. Are we overloaded? (queue depth check)
+        Criteria (checked in order):
+        1. Delegation loop detection (depth > 2 or cycle in chain)
+        2. Are we overloaded? (hard cap on concurrent delegations)
+        3. Do we have the required tool? (hard requirement)
+        4. Does NAc predict success? (soft preference)
         """
+        # Delegation loop detection
+        depth = goal.get("delegation_depth", 0)
+        chain = goal.get("delegation_chain", [])
+        if depth > 2:
+            return False, f"delegation too deep (depth={depth})"
+        if self._local_agent_id in chain:
+            return False, f"delegation cycle detected (already in chain)"
+
+        # Queue depth check — reject if already saturated
+        if self._active_delegations >= self.MAX_DELEGATION_QUEUE:
+            return False, f"overloaded ({self._active_delegations} active delegations)"
+
         tool_name = goal.get("tool_name")
         if not tool_name:
             return False, "no tool specified"
@@ -521,7 +738,7 @@ class TaskReceiver:
         if not self._executor.has_tool(tool_name):
             return False, f"tool {tool_name} not available"
 
-        # Check NAc prediction
+        # Check NAc prediction — reject if high-confidence negative prediction
         prediction = self._nac.predict("tool", f"tool:{tool_name}")
         if prediction and prediction.predicted_valence.value == "negative" and prediction.confidence > 0.7:
             return False, f"NAc predicts failure (confidence={prediction.confidence:.2f})"
@@ -540,8 +757,12 @@ def _tag_delegatable_subgoals(
     self,
     sub_actions: list[dict],
     peer_registry: PeerRegistry | None,
+    admission: MeshAdmissionControl | None = None,
 ) -> list[dict]:
-    """Tag sub-goals with preferred_node if a peer is better suited."""
+    """Tag sub-goals with preferred_node if a peer is better suited.
+
+    Skips peers that are dead, identity-less, or currently gated.
+    """
     if peer_registry is None:
         return sub_actions
 
@@ -558,6 +779,9 @@ def _tag_delegatable_subgoals(
         # Check if a peer is better suited
         for peer in peer_registry.all_peers():
             if not peer.is_alive or peer.identity is None:
+                continue
+            # Skip gated peers — they're misbehaving or overloaded
+            if admission and admission.is_peer_gated(peer.node_id):
                 continue
             peer_identity = peer.identity
 
@@ -577,33 +801,275 @@ def _tag_delegatable_subgoals(
     return sub_actions
 ```
 
-### Phase 7: Mesh API Endpoints
+### Mesh API Endpoints
 
-Extend the existing FastAPI server from `comms/api.py` with mesh-specific endpoints:
+Mount under `/v1/mesh/` on the existing LeaderProxy to inherit auth, rate limiting, and GPU metrics. No new HTTP server needed.
 
 ```python
-# GET /mesh/identity — Return this agent's identity
-# POST /mesh/message — Receive a mesh message
-# GET /mesh/peers — List known peers
-# POST /mesh/query/predict — "What would happen if I did X?"
-# POST /mesh/query/experience — "What do you know about tool X?"
-# GET /mesh/status — Cluster status view
+# GET  /v1/mesh/identity    — Return this agent's AgentIdentity
+# POST /v1/mesh/message     — Receive a MeshMessage (protocol_version checked)
+# GET  /v1/mesh/peers       — List known peers (id, name, trust, alive)
+# POST /v1/mesh/query/predict    — "What would happen if I did X?"
+# POST /v1/mesh/query/experience — "What do you know about tool X?"
+# GET  /v1/mesh/status      — Cluster status (peer count, message rates, gated peers)
 ```
 
-These reuse the existing API server infrastructure — no new HTTP server needed.
+### Phase 3b: Mesh Admission Control
 
-### Phase 8: Serialization for Non-Serializable Types
+Per-peer rate limiting, penalty tracking, and gating for misbehaving peers. Protects the mesh from flooding, whether accidental (buggy peer in a tight loop) or malicious.
 
-Add `to_dict()` / `from_dict()` to the types that need network transport:
+```python
+@dataclass
+class PeerAdmissionState:
+    """Tracks a single peer's behavior for admission decisions."""
+    peer_id: str
+    trust_level: str                       # "verified" | "discovered" | "remote" | "unknown"
+    messages_received: int = 0             # Total messages received from this peer
+    messages_this_window: int = 0          # Messages in current rate-limit window
+    window_start: float = 0.0             # Start of current window (monotonic)
+    burst_timestamps: list[float] = field(default_factory=list)  # Recent message times for burst detection
+    violations: int = 0                    # Cumulative rate-limit violations
+    gated_until: float = 0.0              # Monotonic time when gate lifts (0 = not gated)
+    gate_reason: str = ""                 # Why this peer was gated
 
-| Type | What to serialize |
-|------|------------------|
-| `ProposedGoal` | id, description, priority (str), tool_name, tool_params, reasoning, sub_goals |
-| `SubGoal` | id, description, tool_name, tool_params, status (str), depends_on |
-| `RuntimeCapabilities` | All fields (all primitives, already trivial) |
-| `ToolResult` | success, output, error, error_kind (str) |
+    @property
+    def is_gated(self) -> bool:
+        return time.monotonic() < self.gated_until
 
-These are straightforward — all fields are primitives, enums (serialize as strings), or dicts.
+
+class MeshAdmissionControl:
+    """Rate limiter and circuit breaker for incoming mesh messages.
+
+    Sits between the /v1/mesh/message endpoint and PeerChannel.receive().
+    Peers that exceed rate limits accumulate violations; repeated
+    violations trigger escalating gate durations.
+    """
+
+    # Rate limit: messages per peer per window
+    DEFAULT_RATE_LIMIT = 60               # messages per window
+    WINDOW_SECONDS = 60.0                 # 1-minute sliding window
+
+    # Escalating gate durations (indexed by violation count, capped at last)
+    GATE_DURATIONS = [30, 120, 600, 3600]  # 30s, 2min, 10min, 1hr
+
+    # Auto-gate triggers (any single condition triggers a gate)
+    BURST_THRESHOLD = 20                  # Messages in 5 seconds = burst
+    BURST_WINDOW = 5.0
+
+    def __init__(self, rate_limit: int = DEFAULT_RATE_LIMIT) -> None:
+        self._rate_limit = rate_limit
+        self._peers: dict[str, PeerAdmissionState] = {}
+        self._lock = threading.Lock()
+
+    def check(self, peer_id: str, trust_level: str = "unknown") -> tuple[bool, str]:
+        """Check if a message from this peer should be admitted.
+
+        Returns (admitted: bool, reason: str).
+        Called on every incoming mesh message before dispatching.
+        """
+        with self._lock:
+            state = self._peers.get(peer_id)
+            if state is None:
+                state = PeerAdmissionState(peer_id=peer_id, trust_level=trust_level)
+                self._peers[peer_id] = state
+
+            now = time.monotonic()
+
+            # Check if peer is currently gated
+            if state.is_gated:
+                return False, f"gated until {state.gated_until - now:.0f}s ({state.gate_reason})"
+
+            # Reset window if expired
+            if now - state.window_start > self.WINDOW_SECONDS:
+                state.messages_this_window = 0
+                state.window_start = now
+
+            state.messages_received += 1
+            state.messages_this_window += 1
+
+            # Burst detection — sliding window of recent timestamps
+            state.burst_timestamps.append(now)
+            burst_cutoff = now - self.BURST_WINDOW
+            state.burst_timestamps = [t for t in state.burst_timestamps if t > burst_cutoff]
+            if len(state.burst_timestamps) > self.BURST_THRESHOLD:
+                state.violations += 1
+                duration = self.GATE_DURATIONS[min(state.violations - 1, len(self.GATE_DURATIONS) - 1)]
+                state.gated_until = now + duration
+                state.gate_reason = f"burst detected ({len(state.burst_timestamps)} msgs in {self.BURST_WINDOW}s)"
+                logger.warning("mesh: gating peer %s for %ds — %s", peer_id, duration, state.gate_reason)
+                return False, state.gate_reason
+
+            # Check per-window rate limit
+            if state.messages_this_window > self._rate_limit:
+                state.violations += 1
+                duration = self.GATE_DURATIONS[min(state.violations - 1, len(self.GATE_DURATIONS) - 1)]
+                state.gated_until = now + duration
+                state.gate_reason = f"rate limit exceeded ({state.messages_this_window}/{self._rate_limit} in {self.WINDOW_SECONDS}s)"
+                logger.warning("mesh: gating peer %s for %ds — %s", peer_id, duration, state.gate_reason)
+                return False, state.gate_reason
+
+            return True, "ok"
+
+    def gate_peer(self, peer_id: str, duration_s: float, reason: str) -> None:
+        """Manually gate a peer (e.g., from an admin command or anomaly detector)."""
+        with self._lock:
+            state = self._peers.get(peer_id)
+            if state is None:
+                state = PeerAdmissionState(peer_id=peer_id, trust_level="unknown")
+                self._peers[peer_id] = state
+            state.gated_until = time.monotonic() + duration_s
+            state.gate_reason = reason
+            state.violations += 1
+            logger.warning("mesh: manually gating peer %s for %ds — %s", peer_id, duration_s, reason)
+
+    def is_peer_gated(self, peer_id: str) -> bool:
+        """Quick check used by distributed planning to skip gated peers."""
+        with self._lock:
+            state = self._peers.get(peer_id)
+            return state.is_gated if state else False
+
+    def ungate_peer(self, peer_id: str) -> None:
+        """Manually lift a gate (e.g., after the peer is fixed)."""
+        with self._lock:
+            state = self._peers.get(peer_id)
+            if state:
+                state.gated_until = 0.0
+                state.gate_reason = ""
+
+    def get_status(self) -> list[dict[str, Any]]:
+        """Return admission state for all known peers (for /v1/mesh/status)."""
+        with self._lock:
+            return [
+                {
+                    "peer_id": s.peer_id,
+                    "trust_level": s.trust_level,
+                    "messages_received": s.messages_received,
+                    "violations": s.violations,
+                    "is_gated": s.is_gated,
+                    "gate_reason": s.gate_reason,
+                }
+                for s in self._peers.values()
+            ]
+```
+
+**Integration point:** The `/v1/mesh/message` endpoint calls `admission.check(sender_id, trust_level)` before passing the message to `PeerChannel.receive()`. Rejected messages get a 429 response with the gate reason.
+
+**Trust level assignment:** Determined from auth context on the incoming request:
+- Pre-shared key match → `"verified"`
+- mDNS-discovered peer → `"discovered"`
+- Cloudflare tunnel auth → `"remote"` (upgrade to `"verified"` if key matches)
+- No auth → `"unknown"`
+
+| File | Change | LOC |
+|---|---|---|
+| `mesh/admission.py` | **New.** `MeshAdmissionControl`, `PeerAdmissionState` | ~120 |
+| Phase 3 endpoint | Add `admission.check()` before `receive()` | ~10 |
+| `doctor/checks.py` | New "mesh admission status" check (gated peer count) | ~15 |
+
+### Phase 7: SCN Temporal Coordination
+
+Use the existing SCN (Suprachiasmatic Nucleus) to handle clock skew between peers. The SCN already works in **phase-normalized time** (0.0–1.0 for each rhythm: circadian, weekly, monthly, annual) rather than absolute timestamps — this makes it naturally resistant to clock offsets. The Kuramoto oscillator network can learn inter-agent phase coupling.
+
+#### Why SCN fits
+
+1. **Phase-normalized indexing.** SCN bins memories by circadian/weekly/monthly/annual phases, not raw timestamps. Two agents with clocks offset by N seconds will compute different phases for the same real-world event, but the offset is stable and learnable.
+2. **Kuramoto coupling.** The oscillator network already learns how phases co-activate. Adding a peer's clock as another coupled oscillator lets the network learn inter-agent drift over time.
+3. **Temporal anomaly detection.** `temporal_anomaly_score()` already flags memories that occur at unusual times. Cross-agent events with anomalous timing relative to the local clock suggest skew.
+
+#### Design
+
+```python
+@dataclass
+class PeerClockEstimate:
+    """Estimated clock offset for a peer agent."""
+    peer_id: str
+    offset_s: float = 0.0          # Estimated: peer_time - local_time
+    drift_rate: float = 0.0        # Seconds per hour of drift
+    confidence: float = 0.0        # 0.0 = no data, 1.0 = many sync points
+    sync_points: int = 0           # Number of round-trips used to estimate
+    last_sync: float = 0.0         # Local monotonic time of last sync
+
+
+class PeerClockEstimator:
+    """Learns clock offsets between local SCN and peer agents.
+
+    Uses heartbeat round-trip times to estimate offset, then
+    corrects incoming TemporalSignatures before SCN registration.
+    """
+
+    def __init__(self, scn: SCN) -> None:
+        self._scn = scn
+        self._estimates: dict[str, PeerClockEstimate] = {}
+
+    def record_sync_point(self, peer_id: str, peer_timestamp: float, rtt_s: float) -> None:
+        """Update clock estimate from a heartbeat round-trip.
+
+        peer_timestamp: the peer's reported wall-clock time
+        rtt_s: measured round-trip time for the heartbeat exchange
+        """
+        local_time = time.time()
+        # Estimate peer's current time (NTP-lite: subtract half RTT)
+        estimated_peer_now = peer_timestamp + rtt_s / 2
+        offset = estimated_peer_now - local_time
+
+        est = self._estimates.get(peer_id)
+        if est is None:
+            est = PeerClockEstimate(peer_id=peer_id)
+            self._estimates[peer_id] = est
+
+        # EMA of offset (α = 0.3 gives ~3 sync points to stabilize)
+        alpha = 0.3
+        if est.sync_points == 0:
+            est.offset_s = offset
+        else:
+            est.offset_s = alpha * offset + (1 - alpha) * est.offset_s
+
+        est.sync_points += 1
+        est.confidence = min(1.0, est.sync_points / 10)  # Full confidence after 10 syncs
+        est.last_sync = time.monotonic()
+
+    def correct_timestamp(self, peer_id: str, peer_timestamp: float) -> float:
+        """Convert a peer's timestamp to local-clock equivalent."""
+        est = self._estimates.get(peer_id)
+        if est is None or est.confidence < 0.1:
+            return peer_timestamp  # No correction possible yet
+        return peer_timestamp - est.offset_s
+
+    def correct_signature(self, peer_id: str, sig: TemporalSignature) -> TemporalSignature:
+        """Correct a peer's TemporalSignature for clock skew.
+
+        Re-derives phases from the corrected timestamp so SCN bins
+        align with local time.
+        """
+        corrected_ts = self.correct_timestamp(peer_id, sig.timestamp)
+        return TemporalSignature.from_timestamp(corrected_ts)
+```
+
+**Integration with SCN:**
+
+```python
+# In SCN, add a method for registering peer memories:
+def register_external(
+    self,
+    memory_id: str,
+    signature: TemporalSignature,
+    peer_id: str,
+    clock_estimator: PeerClockEstimator,
+    significance: float = 0.5,
+) -> None:
+    """Register a memory from a peer with clock skew correction."""
+    corrected = clock_estimator.correct_signature(peer_id, signature)
+    self.register(memory_id, corrected, significance)
+```
+
+**Sync point source:** HEARTBEAT messages include the sender's wall-clock time. The receiver measures RTT from the heartbeat request/response cycle. Each heartbeat refines the clock estimate.
+
+| File | Change | LOC |
+|---|---|---|
+| `mesh/clock.py` | **New.** `PeerClockEstimator`, `PeerClockEstimate` | ~80 |
+| `time/scn.py` | Add `register_external()` method | ~10 |
+| `time/temporal_signature.py` | Add optional `source_agent_id` field | ~5 |
+| Phase 3 heartbeat handler | Call `estimator.record_sync_point()` on each heartbeat | ~10 |
 
 ---
 
@@ -611,21 +1077,28 @@ These are straightforward — all fields are primitives, enums (serialize as str
 
 | Phase | What | Effort | Dependencies |
 |-------|------|--------|-------------|
-| **1** | `AgentIdentity` dataclass with `build_from_agent()` | Small | None |
-| **2** | `MeshMessage` protocol + `MeshMessageType` enum | Small | None |
-| **3** | `PeerChannel` + mesh API endpoints on existing FastAPI server | Medium | Multi-LLM Phase 7 (PeerRegistry) |
-| **4** | `ExperienceSharer` — causal link + reflection import/export with transfer discount | Medium | Phase 2 |
-| **5** | `TaskDelegator` + `TaskReceiver` — goal delegation | Medium | Phases 2, 3 |
-| **6** | Distributed planning — `_tag_delegatable_subgoals()` in AdaptivePlanner | Small | Phase 5 |
-| **7** | Mesh API endpoints | Small | Phase 3 |
-| **8** | Serialization for ProposedGoal, SubGoal, RuntimeCapabilities, ToolResult | Small | Phase 5 |
+| **Pre** | NAc `_register_imported_link()` + serialization for ProposedGoal, SubGoal, RuntimeCapabilities, ToolResult | Small | None |
+| **1** | `AgentIdentity` dataclass (extends `AgentProfile`) with `build_from_agent()` | Small | None |
+| **2** | `MeshMessage` protocol expansion + `protocol_version` + `correlation_id` + GOAL_PROPOSAL payload schema | Small | None |
+| **3** | `PeerChannel` (async send queue) + `PeerRegistry` (from peer config) + mesh endpoints on `/v1/mesh/*` | Medium | Phase 2 |
+| **3b** | `MeshAdmissionControl` — per-peer rate limiting, burst detection, gating | Small | Phase 3 |
+| **4** | `ExperienceSharer` — causal link + reflection import/export with trust-level discount | Medium | Pre, Phase 2 |
+| **5** | `TaskDelegator` + `TaskReceiver` — goal delegation with queue depth check | Medium | Pre, Phases 2, 3 |
+| **6** | Distributed planning — `_tag_delegatable_subgoals()` in AdaptivePlanner (skips gated peers) | Small | Phases 3b, 5 |
+| **7** | SCN temporal coordination — `PeerClockEstimator`, `register_external()` | Medium | Phase 3 |
+| **0a** | mDNS discovery — additional peer source for PeerRegistry (optional, LAN-only) | Medium | Phase 3 |
+| **0b** | InferenceRouter — per-request backend selection | Medium | Phase 0a |
 
 **Recommended order:**
-1. Phase 1 + 2 (identity + protocol) — foundations, no network yet
-2. Phase 8 (serialization) — unblocks everything else
-3. Phase 3 + 7 (transport + endpoints) — agents can talk
-4. Phase 4 (knowledge sharing) — agents learn from each other
-5. Phase 5 + 6 (task delegation + distributed planning) — agents cooperate
+1. **Pre-work** (serialization + `_register_imported_link`) — unblocks everything, no network yet
+2. **Phase 1 + 2** (identity + protocol) — foundations
+3. **Phase 3 + 3b** (transport + admission control) — agents can talk, safely
+4. **Phase 4** (knowledge sharing) — agents learn from each other
+5. **Phase 5 + 6** (task delegation + distributed planning) — agents cooperate
+6. **Phase 7** (SCN temporal coordination) — cross-agent temporal reasoning
+7. **Phase 0a + 0b** (mDNS + InferenceRouter) — LAN auto-discovery, defer until multiple LAN machines exist
+
+**Why this order:** The old sequencing had serialization (Phase 8) last, but Phase 5 (task delegation) needs `ProposedGoal.to_dict()` and `ToolResult.to_dict()` to work. Serialization is now pre-work. mDNS (0a/0b) is deferred — the existing Cloudflare tunnel setup already handles peer routing; mDNS only matters when multiple LAN machines join.
 
 ---
 
@@ -648,13 +1121,15 @@ These are straightforward — all fields are primitives, enums (serialize as str
 
 ### Transfer discount by trust level:
 
-| Relationship | Discount | How established |
-|-------------|---------|-----------------|
-| **Self** | 1.0 | — |
-| **Verified peer** (same owner, shared secret) | 0.5 | Pre-shared key in config |
-| **Discovered peer** (LAN mDNS) | 0.3 | Automatic, no verification |
-| **Remote peer** (Cloudflare tunnel) | 0.3 | Tunnel auth serves as verification |
-| **Unknown** | 0.1 | Unsolicited contact |
+These discounts are defined in `ExperienceSharer.TRANSFER_DISCOUNTS` and used by `MeshAdmissionControl` for trust assignment. A peer's trust level is determined once at first contact and stored in `PeerAdmissionState.trust_level`.
+
+| Relationship | Discount | How established | Admission rate limit |
+|-------------|---------|-----------------|---------------------|
+| **Self** | 1.0 | — | — |
+| **Verified peer** (same owner, shared secret) | 0.5 | Pre-shared key in config | 120 msg/min |
+| **Discovered peer** (LAN mDNS) | 0.3 | Automatic, no verification | 60 msg/min |
+| **Remote peer** (Cloudflare tunnel) | 0.3 | Tunnel auth serves as verification | 60 msg/min |
+| **Unknown** | 0.1 | Unsolicited contact | 20 msg/min |
 
 ---
 
@@ -662,26 +1137,34 @@ These are straightforward — all fields are primitives, enums (serialize as str
 
 | This plan | Other plan | Interaction |
 |-----------|-----------|-------------|
-| Phase 3 (PeerChannel) | Multi-LLM Phase 7 (PeerRegistry) | Reuses PeerRegistry for agent discovery |
+| Phase 3 (PeerChannel) | `peer/config.py` (existing tunnel config) | PeerRegistry bootstraps from existing peer config; Phase 0a adds mDNS |
+| Phase 3b (admission control) | Multi-LLM Phase 7b (admission control) | Same pattern as LeaderProxy rate limiting, extended to mesh messages |
 | Phase 5 (task delegation) | Decision Engine (AdaptivePlanner) | Delegated goals evaluated by same planner |
-| Phase 4 (knowledge sharing) | Causal Memory (NAc links) | CausalLinks are the primary shared knowledge type |
+| Phase 4 (knowledge sharing) | Causal Memory (NAc links) | CausalLinks are the primary shared knowledge type; requires new `_register_imported_link()` on NAc |
 | Phase 4 (reflection sharing) | Decision Engine Phase 4 (reflections) | Reflections from peers imported as episodic memories |
+| Phase 7 (temporal coordination) | SCN (`time/scn.py`) | `PeerClockEstimator` corrects incoming TemporalSignatures; SCN gains `register_external()` |
+| Phase 7 (temporal coordination) | Kuramoto oscillator (`time/oscillator.py`) | Future: treat peer clocks as coupled oscillators for drift learning |
 | Phase 1 (AgentIdentity) | Adaptive Runtime (RuntimeCapabilities) | Identity includes serialized capabilities |
 | Phase 1 (AgentIdentity) | Embodiment Core (EmbodimentCapability) | `AgentIdentity.embodiment_summary` advertises body: modalities, affordances, hardware-backed vs. imagined. Populated when Embodiment Core ships. |
+| Pre-work (serialization) | `agents/bus.py` (ProposedGoal, SubGoal, ToolResult) | Add to_dict/from_dict to existing dataclasses — no behavioral changes |
 | Future (not scheduled) | Embodiment — federation, affordance delegation, NAc transfer | Cross-agent affordance invocation, federated bodies (components from multiple peers), CausalLink transfer gated by spec similarity. Tracked in `future_plans.md`. |
 
 ---
 
 ## Risks
 
-1. **Knowledge poisoning.** A malicious peer could send fabricated CausalLinks that cause bad decisions. **Mitigation:** Transfer discount reduces imported confidence. Locally-learned links always dominate. Links tagged with `_imported_from` can be audited and purged.
+1. **Knowledge poisoning.** A malicious peer could send fabricated CausalLinks that cause bad decisions. **Mitigation:** Transfer discount reduces imported confidence (trust-level aware — verified=0.5, unknown=0.1). Locally-learned links always dominate. Links tagged with `_imported_from` + `_import_trust` can be audited and purged.
 
 2. **Goal delegation loops.** Agent A delegates to B, B delegates back to A. **Mitigation:** Goals carry a `delegation_depth` counter. Reject goals with depth > 2. Include `delegation_chain: list[str]` to detect cycles.
 
-3. **Network partition.** Peer goes offline mid-task. **Mitigation:** Task delegation has a timeout. AdaptivePlanner's replan loop handles delegation failure like any tool failure — decomposes and retries locally or on another peer.
+3. **Network partition.** Peer goes offline mid-task. **Mitigation:** Task delegation has a timeout. AdaptivePlanner's replan loop handles delegation failure like any tool failure — decomposes and retries locally or on another peer. PeerChannel's send queue retries with exponential backoff (3 attempts max).
 
 4. **Memory bloat from imports.** Accepting too many peer reflections floods the hippocampus. **Mitigation:** Rate-limit imports (max 10 per peer per hour). Imported memories have reduced salience so they're evicted first during consolidation.
 
 5. **Privacy leakage.** AgentIdentity broadcasts tool lists and domain summaries. On a shared LAN this reveals what the agent is doing. **Mitigation:** Identity broadcast is opt-in (`MAXIM_PEER_ADVERTISE=1`). Sensitive fields can be omitted. Cloudflare tunnel peers use zero-trust auth.
 
-6. **Clock skew.** Agents on different machines may have different clocks, affecting temporal reasoning. **Mitigation:** MeshMessage includes sender timestamp. Receiver adjusts for skew using round-trip time estimation (same pattern as NTP lite).
+6. **Clock skew.** Agents on different machines may have different clocks, affecting temporal reasoning in SCN and memory ordering. **Mitigation:** Phase 7 introduces `PeerClockEstimator` which uses heartbeat round-trip times (NTP-lite) to estimate per-peer offsets. The SCN's phase-normalized indexing is naturally resistant to small offsets — skew only matters when it shifts a memory into the wrong hour bin (>30 minutes). Incoming `TemporalSignature`s from peers are corrected before SCN registration via `register_external()`.
+
+7. **Peer flooding / misbehavior.** A buggy or malicious peer sends a burst of messages that overwhelms the local agent. **Mitigation:** `MeshAdmissionControl` (Phase 3b) rate-limits per peer (60 msg/min default), with escalating gate durations on violations (30s → 2min → 10min → 1hr). Gated peers receive 429 responses. Manual gate/ungate available via `gate_peer()` / `ungate_peer()`. Burst detection triggers immediate gating (20 messages in 5 seconds). Peer admission status visible via `/v1/mesh/status` and `maxim doctor`.
+
+8. **Protocol version mismatch.** Peers running different Maxim versions may send incompatible messages. **Mitigation:** `MeshMessage.protocol_version` field (added in Phase 2). Receivers reject messages with versions higher than their own. Lower versions accepted for backward compat. Version bumped only on breaking payload changes.
