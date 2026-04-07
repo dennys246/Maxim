@@ -96,37 +96,9 @@ class PerceptionAgent(Agent):
         """Detect hard override commands."""
         if "sleep" in tokens:
             return "request_sleep"
-        if "observe" in tokens:
-            return "request_observe"
         if "shutdown" in tokens or ("shut" in tokens and "down" in tokens):
             return "request_shutdown"
-        # Exploration commands are handled separately via _parse_explore_command
         return None
-
-    def _parse_explore_command(self, raw_text: str | None) -> dict[str, Any] | None:
-        """Parse exploration commands from raw transcript text.
-
-        Detects patterns like:
-        - "maxim explore please" -> general exploration
-        - "maxim explore [focus] please" -> focused exploration
-        - "maxim stop exploring please" -> stop exploration
-
-        Returns:
-            dict with keys:
-                - "focus": str | None - the exploration focus
-                - "stop": bool - True if stop command
-                - "source": str - always "voice_command"
-            or None if no explore command detected.
-        """
-        if not raw_text:
-            return None
-
-        try:
-            from maxim.modes.exploration import parse_explore_command
-
-            return parse_explore_command(raw_text)
-        except ImportError:
-            return None
 
     def _compute_salience(self, detections: list[dict]) -> float:
         """Compute salience from vision detections."""
@@ -231,16 +203,9 @@ class PerceptionAgent(Agent):
         salience = self._compute_salience(detections)
         novelty = self._compute_novelty(detections)
 
-        # Check for exploration commands
-        explore_command = self._parse_explore_command(raw_text)
-
         # Boost salience for voice commands
         if has_maxim:
             salience = max(salience, 0.9)
-
-        # Boost salience even more for exploration commands
-        if explore_command:
-            salience = 1.0
 
         # Determine source
         source = "idle"
@@ -263,7 +228,6 @@ class PerceptionAgent(Agent):
             has_voice_command=bool(transcript and normalized_tokens),
             has_maxim_keyword=has_maxim,
             hard_override=hard_override,
-            explore_command=explore_command,
             raw_transcript_text=raw_text,
             maxim_runtime=maxim_runtime,
         )
@@ -271,18 +235,13 @@ class PerceptionAgent(Agent):
         self._recent_percepts.append(percept)
 
         # Log to abstraction stream (only significant percepts)
-        if has_maxim or salience > 0.5 or explore_command:
+        if has_maxim or salience > 0.5:
             log_data = {
                 "source": source,
                 "salience": round(salience, 2),
                 "novelty": round(novelty, 2),
                 "has_maxim": has_maxim,
             }
-            if explore_command:
-                log_data["explore_command"] = {
-                    "focus": explore_command.get("focus"),
-                    "stop": explore_command.get("stop", False),
-                }
             log_structured(
                 self.log,
                 logging.INFO,

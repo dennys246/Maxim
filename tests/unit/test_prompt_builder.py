@@ -79,9 +79,8 @@ class TestBuildIdentitySection:
         mode.goal = goal
         return mode
 
-    def _make_request(self, strategy=None, autonomy=AutonomyLevel.SUPERVISED, sleeping=False):
+    def _make_request(self, autonomy=AutonomyLevel.SUPERVISED, sleeping=False):
         req = MagicMock()
-        req.current_strategy = strategy
         req.autonomy_level = autonomy
         req.is_sleeping = sleeping
         return req

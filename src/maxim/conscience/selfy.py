@@ -535,29 +535,6 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         """Wake from sleep processing state."""
         self._state_manager.request_wake()
 
-    def request_observe(self) -> None:
-        """Legacy: switch to observe strategy."""
-        self._state_manager.request_strategy_observe()
-
-    # Strategy switch methods (called by phrase responses)
-    def request_strategy_observe(self) -> None:
-        self._state_manager.request_strategy_observe()
-
-    def request_strategy_explore(self) -> None:
-        self._state_manager.request_strategy_explore()
-
-    def request_strategy_research(self) -> None:
-        self._state_manager.request_strategy_research()
-
-    def request_strategy_assist(self) -> None:
-        self._state_manager.request_strategy_assist()
-
-    def request_strategy_reflect(self) -> None:
-        self._state_manager.request_strategy_reflect()
-
-    def request_strategy_learn(self) -> None:
-        self._state_manager.request_strategy_learn()
-
     # Operational mode switch methods (called by phrase responses)
     def request_mode_passive(self) -> None:
         self._state_manager.request_mode_passive()

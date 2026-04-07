@@ -1,32 +1,24 @@
-"""Simplified mode architecture with processing states and strategies.
+"""Mode architecture — autonomy levels + processing states.
 
 Architecture:
-- 2 Operational Modes: passive (proposes), active (executes), +singularity (autonomous)
+- 3 Autonomy Levels (OperationalMode): passive, active, singularity
 - 2 Processing States: awake (full LLM), sleep (background tasks + keyword monitoring)
-- 6 Strategies: observe, explore, research, assist, reflect, learn
 
-Sleep is a processing state, not a mode - Maxim can be passive/sleeping or active/sleeping.
-This means sleep reduces processing load while maintaining the current operational mode.
-
-Keyword activation switches strategies: "Maxim explore", "Maxim observe", etc.
-Processing state changes: "Maxim sleep", "Maxim wake up"
+Sleep is a processing state, not a mode — Maxim can be passive/sleeping or active/sleeping.
+The agent enters sleep by calling the sleep tool; wakes automatically on user input.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from maxim.utils.prompts import (
     ResponseFormat,
     get_mode_prompt,
     get_mode_response_config,
 )
-
-if TYPE_CHECKING:
-    from maxim.modes.exploration import ExplorationPolicy
-    from maxim.modes.live_intent import LiveModeIntentStore
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -37,7 +29,7 @@ if TYPE_CHECKING:
 class ProcessingState(Enum):
     """Processing states control resource usage and LLM engagement."""
 
-    AWAKE = "awake"  # Full LLM processing, strategy-driven behavior
+    AWAKE = "awake"  # Full LLM processing
     SLEEP = "sleep"  # Background tasks only (memory, training), keyword monitoring
 
 
@@ -61,155 +53,8 @@ class OperationalMode(Enum):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Strategies (behavioral focus within a mode)
+# Default Network Configuration
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-@dataclass
-class Strategy:
-    """Defines a behavioral strategy that operates within an operational mode.
-
-    Strategies determine WHAT Maxim focuses on:
-    - observe: Watch and understand without interfering
-    - explore: Actively discover and learn
-    - research: Deep information gathering on topics
-    - assist: Help users achieve their goals
-    - reflect: Internal analysis and memory consolidation
-    - learn: Incorporate feedback and demonstrations
-    """
-
-    name: str
-    description: str
-    focus: str  # Primary goal of this strategy
-    keywords: list[str]  # Trigger phrases (e.g., ["explore", "discover"])
-
-    # Tool preferences
-    preferred_tools: list[str] = field(default_factory=list)
-    avoid_tools: list[str] = field(default_factory=list)
-
-    # Behavioral parameters
-    max_initiative: float = 0.5  # 0.0 = fully reactive, 1.0 = fully proactive
-    response_style: ResponseFormat = ResponseFormat.CONVERSATIONAL
-
-    # Context for LLM
-    context_prompt: str = ""
-
-    def matches_keyword(self, text: str) -> bool:
-        """Check if text contains a trigger keyword for this strategy."""
-        text_lower = text.lower()
-        return any(kw.lower() in text_lower for kw in self.keywords)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Strategy Definitions
-# ─────────────────────────────────────────────────────────────────────────────
-
-STRATEGIES: dict[str, Strategy] = {
-    "observe": Strategy(
-        name="observe",
-        description="Watch and understand without interfering",
-        focus="Build understanding of the environment through perception",
-        keywords=["observe", "watch", "look", "see"],
-        preferred_tools=["focus_interests", "track_target", "read_file"],
-        avoid_tools=["write_file", "execute_file", "speak"],
-        max_initiative=0.2,
-        response_style=ResponseFormat.MINIMAL,
-        context_prompt="""OBSERVE STRATEGY: Focus on perceiving and understanding.
-- Process visual and audio data from sensors
-- Track and identify objects in the environment
-- Record observations without taking action
-- Only speak when directly addressed""",
-    ),
-    "explore": Strategy(
-        name="explore",
-        description="Actively discover and learn through curiosity-driven behavior",
-        focus="Discover new things through visual attention, movement, and research",
-        keywords=["explore", "discover", "investigate", "curious"],
-        preferred_tools=["focus_interests", "track_target", "internet_search", "glob", "read_file"],
-        avoid_tools=[],
-        max_initiative=0.8,
-        response_style=ResponseFormat.BRIEF,
-        context_prompt="""EXPLORE STRATEGY: Be curious and proactive in discovery.
-- Seek out novel objects and phenomena
-- Research interesting discoveries to build understanding
-- Track and focus on unusual or important objects
-- Record observations and insights for future reference""",
-    ),
-    "research": Strategy(
-        name="research",
-        description="Deep information gathering and synthesis on topics",
-        focus="Gather, verify, and synthesize information from multiple sources",
-        keywords=["research", "investigate", "study", "analyze"],
-        preferred_tools=["internet_search", "read_file", "write_file", "http_fetch"],
-        avoid_tools=["execute_file"],
-        max_initiative=0.7,
-        response_style=ResponseFormat.ACADEMIC,
-        context_prompt="""RESEARCH STRATEGY: Gather comprehensive information.
-- Use multiple sources to verify information
-- Synthesize findings into coherent summaries
-- Provide citations and source references
-- Distinguish between facts and interpretations""",
-    ),
-    "assist": Strategy(
-        name="assist",
-        description="Proactively help users achieve their goals",
-        focus="Anticipate needs and complete requested tasks efficiently",
-        keywords=["help", "assist", "support", "task"],
-        preferred_tools=["respond", "speak", "write_file", "internet_search"],
-        avoid_tools=[],
-        max_initiative=0.8,
-        response_style=ResponseFormat.CONVERSATIONAL,
-        context_prompt="""ASSIST STRATEGY: Proactively help the user.
-- Anticipate user needs based on context
-- Offer relevant suggestions without overwhelming
-- Complete requested tasks efficiently
-- Ask clarifying questions when intent is unclear""",
-    ),
-    "reflect": Strategy(
-        name="reflect",
-        description="Internal analysis, memory consolidation, and self-evaluation",
-        focus="Analyze past experiences and develop insights through introspection",
-        keywords=["reflect", "think", "consider", "review"],
-        preferred_tools=["read_file", "write_file"],
-        avoid_tools=["speak", "track_target", "execute_file"],
-        max_initiative=0.3,
-        response_style=ResponseFormat.DETAILED,
-        context_prompt="""REFLECT STRATEGY: Focus on internal analysis.
-- Review and organize recent memories
-- Identify patterns in past interactions
-- Generate insights and learned lessons
-- Evaluate decisions and outcomes""",
-    ),
-    "learn": Strategy(
-        name="learn",
-        description="Incorporate feedback and demonstrations to improve",
-        focus="Learn from demonstrations and feedback to update behavior",
-        keywords=["learn", "train", "teach", "show me"],
-        preferred_tools=["respond", "speak", "read_file", "focus_interests"],
-        avoid_tools=["execute_file", "maxim_command"],
-        max_initiative=0.3,
-        response_style=ResponseFormat.CONVERSATIONAL,
-        context_prompt="""LEARN STRATEGY: Focus on learning and improvement.
-- Watch demonstrations carefully
-- Request feedback on actions
-- Explain reasoning when asked
-- Incorporate corrections into behavior""",
-    ),
-}
-
-
-def get_strategy(name: str) -> Strategy | None:
-    """Get a strategy by name."""
-    normalized = name.lower().replace("-", "_")
-    return STRATEGIES.get(normalized)
-
-
-def get_strategy_for_keyword(text: str) -> Strategy | None:
-    """Find a strategy that matches a keyword in the text."""
-    for strategy in STRATEGIES.values():
-        if strategy.matches_keyword(text):
-            return strategy
-    return None
 
 
 @dataclass
@@ -227,6 +72,11 @@ class DefaultNetworkModeConfig:
     escalation_threshold: float = 0.7  # Novelty/salience threshold for escalation
     inhibit_during_tool_execution: bool = False
     update_hz: float = 30.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Mode Definition
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -247,20 +97,13 @@ class ModeDefinition:
     can_access_network: bool = True
     can_execute_code: bool = False
 
-    # Preferences (soft guidance, not hard rules)
-    preferred_strategies: list[str] = field(default_factory=list)
-    avoid_strategies: list[str] = field(default_factory=list)
-
     # Context for LLM (loaded from data/prompts/modes/ if empty)
     context_prompt: str = ""
 
     # Response configuration (dynamic context window and formatting)
-    max_response_tokens: int = 1024  # Increased from 512 to ensure complete JSON responses
-    context_window_tokens: int = 4096  # Increased to allow more context
+    max_response_tokens: int = 1024
+    context_window_tokens: int = 4096
     response_format: ResponseFormat = ResponseFormat.CONVERSATIONAL
-
-    # Learning
-    outcome_memory_key: str = ""  # Where to store mode outcomes
 
     # Default Network configuration for this mode
     default_network: DefaultNetworkModeConfig = field(default_factory=DefaultNetworkModeConfig)
@@ -319,13 +162,10 @@ class ModeDefinition:
             "can_access_filesystem": self.can_access_filesystem,
             "can_access_network": self.can_access_network,
             "can_execute_code": self.can_execute_code,
-            "preferred_strategies": self.preferred_strategies,
-            "avoid_strategies": self.avoid_strategies,
             "context_prompt": self.context_prompt,
             "max_response_tokens": self.max_response_tokens,
             "context_window_tokens": self.context_window_tokens,
             "response_format": self.response_format.value,
-            "outcome_memory_key": self.outcome_memory_key,
             "default_network": {
                 "enabled": self.default_network.enabled,
                 "active_behaviors": list(self.default_network.active_behaviors),
@@ -367,13 +207,10 @@ class ModeDefinition:
             can_access_filesystem=bool(data.get("can_access_filesystem", True)),
             can_access_network=bool(data.get("can_access_network", True)),
             can_execute_code=bool(data.get("can_execute_code", False)),
-            preferred_strategies=list(data.get("preferred_strategies", [])),
-            avoid_strategies=list(data.get("avoid_strategies", [])),
             context_prompt=str(data.get("context_prompt", "")),
             max_response_tokens=int(data.get("max_response_tokens", 512)),
             context_window_tokens=int(data.get("context_window_tokens", 2048)),
             response_format=response_format,
-            outcome_memory_key=str(data.get("outcome_memory_key", "")),
             default_network=default_network,
         )
 
@@ -399,7 +236,7 @@ DANGEROUS_TOOLS = {"execute_file", "run_code", "sandbox_exec"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Operational Mode Definitions (New Simplified Architecture)
+# Operational Mode Definitions
 # ─────────────────────────────────────────────────────────────────────────────
 
 OPERATIONAL_MODES: dict[str, ModeDefinition] = {
@@ -420,8 +257,6 @@ OPERATIONAL_MODES: dict[str, ModeDefinition] = {
         can_access_filesystem=True,  # Read CWD, write workspace
         can_access_network=True,
         can_execute_code=False,
-        preferred_strategies=["observe", "reflect", "learn"],
-        avoid_strategies=["any_autonomous_action"],
         default_network=DefaultNetworkModeConfig(
             enabled=True,
             active_behaviors=frozenset({"orienting", "social", "idle_scan", "motion"}),
@@ -433,7 +268,6 @@ Your role is to:
 - Process sensor data and understand the environment
 - Answer questions and provide information
 - PROPOSE actions when relevant, but wait for approval
-- Focus on the current STRATEGY to guide your behavior
 
 FILESYSTEM PERMISSIONS:
 - WORKSPACE (.maxim_workspace/): You can ALWAYS write here - your personal working area
@@ -449,10 +283,7 @@ When in passive mode:
 - You CAN: read files, write to workspace (journaling), search the internet, respond to questions
 - You CAN PROPOSE: edits to CWD files (submit as proposals for approval)
 - You CANNOT: execute code, change directories, or act without approval
-- Use the workspace directories to organize your work: drafts/ for code, plans/ for proposals, notes/ for thinking
-
-Strategy modifies your focus (observe vs explore vs research) but you remain in planning mode.""",
-        outcome_memory_key="passive_outcomes",
+- Use the workspace directories to organize your work: drafts/ for code, plans/ for proposals, notes/ for thinking""",
     ),
     "active": ModeDefinition(
         name="active",
@@ -468,8 +299,6 @@ Strategy modifies your focus (observe vs explore vs research) but you remain in 
         can_access_filesystem=True,  # CWD with approval
         can_access_network=True,
         can_execute_code=False,  # Execution needs approval
-        preferred_strategies=["assist", "explore", "research"],
-        avoid_strategies=[],
         default_network=DefaultNetworkModeConfig(
             enabled=True,
             active_behaviors=frozenset({"social", "orienting", "startle", "motion"}),
@@ -482,7 +311,7 @@ Strategy modifies your focus (observe vs explore vs research) but you remain in 
 Your role is to:
 - Execute requested tasks
 - Help users achieve their goals
-- Take initiative within your current STRATEGY
+- Take initiative when appropriate
 - Use tools to accomplish objectives
 
 FILESYSTEM PERMISSIONS:
@@ -507,10 +336,7 @@ When in active mode:
 - You CAN: read/write workspace freely, read CWD, search, respond, use robot tools
 - You CAN SUGGEST: direct edits to CWD files (shown to user for approval)
 - REQUIRES APPROVAL: CWD writes, sandbox execution, directory changes
-- Act decisively but thoughtfully - quality over speed
-
-Strategy modifies your focus (assist vs explore vs research) within supervised execution.""",
-        outcome_memory_key="active_outcomes",
+- Act decisively but thoughtfully - quality over speed""",
     ),
     "singularity": ModeDefinition(
         name="singularity",
@@ -526,8 +352,6 @@ Strategy modifies your focus (assist vs explore vs research) within supervised e
         can_access_filesystem=True,  # Full CWD access
         can_access_network=True,
         can_execute_code=True,  # Can execute code in singularity
-        preferred_strategies=["explore", "research", "assist"],
-        avoid_strategies=[],
         default_network=DefaultNetworkModeConfig(
             enabled=True,
             active_behaviors=frozenset({"orienting", "social", "motion", "idle_scan", "startle", "microsaccades"}),
@@ -560,8 +384,27 @@ In singularity mode:
 - Safety and ethical constraints STILL APPLY - Constitution overrides all
 
 With great power comes great responsibility. Act wisely.""",
-        outcome_memory_key="singularity_outcomes",
     ),
+}
+
+# Backward-compatible alias
+MODES = OPERATIONAL_MODES
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Legacy Name Mapping
+# ─────────────────────────────────────────────────────────────────────────────
+
+_LEGACY_NAME_MAP: dict[str, str] = {
+    "observe": "passive",
+    "reflection": "passive",
+    "sleep": "passive",
+    "train": "passive",
+    "live": "active",
+    "active-assistance": "active",
+    "active_assistance": "active",
+    "exploration": "active",
+    "research": "active",
 }
 
 
@@ -600,12 +443,10 @@ class MaximState:
     Combines:
     - Operational mode: passive, active, singularity
     - Processing state: awake, sleep
-    - Strategy: observe, explore, research, assist, reflect, learn
     """
 
     mode: OperationalMode = OperationalMode.PASSIVE
     processing_state: ProcessingState = ProcessingState.AWAKE
-    strategy: str = "observe"  # Current strategy name
 
     def is_sleeping(self) -> bool:
         """Check if in sleep processing state."""
@@ -619,29 +460,16 @@ class MaximState:
         """Get the ModeDefinition for current operational mode."""
         return OPERATIONAL_MODES[self.mode.value]
 
-    def get_strategy(self) -> Strategy | None:
-        """Get the current Strategy object."""
-        return STRATEGIES.get(self.strategy)
-
     def get_effective_initiative(self) -> float:
-        """Get effective max_initiative combining mode and strategy."""
-        mode_def = self.get_mode_definition()
-        strategy = self.get_strategy()
-        if strategy:
-            # Use the lower of mode and strategy initiative
-            return min(mode_def.max_initiative, strategy.max_initiative)
-        return mode_def.max_initiative
+        """Get effective max_initiative from mode."""
+        return self.get_mode_definition().max_initiative
 
     def get_context_prompt(self) -> str:
-        """Build combined context prompt from mode and strategy."""
+        """Build context prompt from mode."""
         parts = []
         mode_def = self.get_mode_definition()
         if mode_def.context_prompt:
             parts.append(mode_def.context_prompt)
-
-        strategy = self.get_strategy()
-        if strategy and strategy.context_prompt:
-            parts.append(f"\n{strategy.context_prompt}")
 
         if self.is_sleeping():
             parts.append("\n[SLEEP STATE: Minimal processing. Monitoring for wake keywords.]")
@@ -650,293 +478,40 @@ class MaximState:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Legacy Mode Mapping (Backward Compatibility)
-# ─────────────────────────────────────────────────────────────────────────────
-# Maps old mode names to new (operational_mode, strategy) pairs
-
-LEGACY_MODE_MAPPING: dict[str, tuple[str, str]] = {
-    "observe": ("passive", "observe"),
-    "reflection": ("passive", "reflect"),
-    "sleep": ("passive", "observe"),  # Sleep is now a processing state
-    "train": ("passive", "learn"),
-    "live": ("active", "assist"),
-    "active-assistance": ("active", "assist"),
-    "exploration": ("active", "explore"),
-    "research": ("active", "research"),
-}
-
-
-def _create_legacy_mode(legacy_name: str, op_mode: str, strategy_name: str) -> ModeDefinition:
-    """Create a ModeDefinition that combines operational mode and strategy for backward compat."""
-    base_mode = OPERATIONAL_MODES[op_mode]
-    strategy = STRATEGIES.get(strategy_name)
-
-    # Combine prompts
-    context_parts = []
-    if base_mode.context_prompt:
-        context_parts.append(base_mode.context_prompt)
-    if strategy and strategy.context_prompt:
-        context_parts.append(strategy.context_prompt)
-
-    # Merge tool preferences
-    preferred = list(base_mode.preferred_strategies)
-    avoided = list(base_mode.avoid_strategies)
-    if strategy:
-        preferred = strategy.preferred_tools + preferred
-        avoided = strategy.avoid_tools + avoided
-
-    return ModeDefinition(
-        name=legacy_name,
-        goal=base_mode.goal + (f" ({strategy.focus})" if strategy else ""),
-        success_criteria=base_mode.success_criteria,
-        allowed_tools=base_mode.allowed_tools,
-        forbidden_tools=base_mode.forbidden_tools,
-        max_initiative=min(base_mode.max_initiative, strategy.max_initiative) if strategy else base_mode.max_initiative,
-        can_access_filesystem=base_mode.can_access_filesystem,
-        can_access_network=base_mode.can_access_network,
-        can_execute_code=base_mode.can_execute_code,
-        preferred_strategies=preferred,
-        avoid_strategies=avoided,
-        context_prompt="\n\n".join(context_parts),
-        max_response_tokens=base_mode.max_response_tokens,
-        context_window_tokens=base_mode.context_window_tokens,
-        response_format=strategy.response_style if strategy else base_mode.response_format,
-        outcome_memory_key=f"{legacy_name}_outcomes",
-        default_network=base_mode.default_network,
-    )
-
-
-# Generate MODES dict for backward compatibility
-MODES: dict[str, ModeDefinition] = {
-    legacy_name: _create_legacy_mode(legacy_name, op_mode, strategy)
-    for legacy_name, (op_mode, strategy) in LEGACY_MODE_MAPPING.items()
-}
-
-# Also add the new operational modes directly accessible
-MODES["passive"] = OPERATIONAL_MODES["passive"]
-MODES["active"] = OPERATIONAL_MODES["active"]
-MODES["singularity"] = OPERATIONAL_MODES["singularity"]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Mode Utilities
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def get_mode(
-    name: str,
-    intent_store: "LiveModeIntentStore | None" = None,
-) -> ModeDefinition | None:
+def get_mode(name: str) -> ModeDefinition | None:
     """Get a mode definition by name.
 
-    Supports both hyphenated and underscored names.
-    For 'live' mode, optionally applies agent-defined intent.
-
-    Args:
-        name: Mode name
-        intent_store: Optional store for live mode intent. If provided and
-            mode is 'live', returns a mode definition with agent-defined
-            customizations applied.
+    Supports both new operational mode names (passive, active, singularity)
+    and legacy mode names (observe, live, exploration, etc.) which map to
+    the closest operational mode.
     """
     # Normalize name
     normalized = name.lower().replace("_", "-")
 
-    # For live mode, check for agent intent
-    if normalized == "live" and intent_store is not None:
-        from maxim.modes.live_intent import get_live_mode_with_intent
-
-        intent = intent_store.load()
-        return get_live_mode_with_intent(intent)
-
-    if normalized in MODES:
-        return MODES[normalized]
+    # Direct lookup
+    if normalized in OPERATIONAL_MODES:
+        return OPERATIONAL_MODES[normalized]
 
     # Try with underscores
     underscored = name.lower().replace("-", "_")
-    if underscored in MODES:
-        return MODES[underscored]
+    if underscored in OPERATIONAL_MODES:
+        return OPERATIONAL_MODES[underscored]
+
+    # Legacy name mapping
+    legacy_target = _LEGACY_NAME_MAP.get(normalized) or _LEGACY_NAME_MAP.get(underscored)
+    if legacy_target:
+        return OPERATIONAL_MODES[legacy_target]
 
     return None
 
 
 def list_modes() -> list[str]:
     """Get list of available mode names."""
-    return list(MODES.keys())
-
-
-def get_exploration_mode_with_policy(policy: ExplorationPolicy) -> ModeDefinition:
-    """Create an exploration mode definition with a specific policy.
-
-    The policy determines which tools are forbidden and the max_initiative.
-    """
-    base_mode = MODES["exploration"]
-    return ModeDefinition(
-        name=base_mode.name,
-        goal=base_mode.goal,
-        success_criteria=base_mode.success_criteria,
-        allowed_tools=base_mode.allowed_tools,
-        forbidden_tools=policy.forbidden_tools(),
-        max_initiative=policy.max_initiative,
-        can_access_filesystem=base_mode.can_access_filesystem,
-        can_access_network=base_mode.can_access_network,
-        can_execute_code=base_mode.can_execute_code,
-        preferred_strategies=base_mode.preferred_strategies,
-        avoid_strategies=base_mode.avoid_strategies,
-        context_prompt=base_mode.context_prompt,
-        max_response_tokens=base_mode.max_response_tokens,
-        context_window_tokens=base_mode.context_window_tokens,
-        response_format=base_mode.response_format,
-        outcome_memory_key=base_mode.outcome_memory_key,
-    )
-
-
-def get_mode_for_context(
-    has_user_request: bool = False,
-    has_urgent_task: bool = False,
-    is_training: bool = False,
-    is_research: bool = False,
-    battery_low: bool = False,
-) -> ModeDefinition:
-    """Suggest a mode based on context.
-
-    This is a heuristic helper - the agent can override this.
-    Uses new architecture but returns legacy-compatible ModeDefinition.
-    """
-    if battery_low:
-        # Sleep is now a processing state, but return passive/observe for compat
-        return MODES["observe"]
-
-    if is_training:
-        return MODES["train"]
-
-    if is_research:
-        return MODES["research"]
-
-    if has_urgent_task:
-        return MODES["active"]  # New: use active mode
-
-    if has_user_request:
-        return MODES["active"]  # New: active mode handles requests
-
-    return MODES["passive"]  # Default to passive
-
-
-def get_state_for_context(
-    has_user_request: bool = False,
-    has_urgent_task: bool = False,
-    is_training: bool = False,
-    is_research: bool = False,
-    battery_low: bool = False,
-) -> MaximState:
-    """Suggest a complete MaximState based on context.
-
-    Returns the new-architecture state with mode, processing_state, and strategy.
-    """
-    state = MaximState()
-
-    if battery_low:
-        state.processing_state = ProcessingState.SLEEP
-        state.mode = OperationalMode.PASSIVE
-        state.strategy = "observe"
-        return state
-
-    state.processing_state = ProcessingState.AWAKE
-
-    if is_training:
-        state.mode = OperationalMode.PASSIVE
-        state.strategy = "learn"
-    elif is_research:
-        state.mode = OperationalMode.ACTIVE
-        state.strategy = "research"
-    elif has_urgent_task:
-        state.mode = OperationalMode.ACTIVE
-        state.strategy = "assist"
-    elif has_user_request:
-        state.mode = OperationalMode.ACTIVE
-        state.strategy = "assist"
-    else:
-        state.mode = OperationalMode.PASSIVE
-        state.strategy = "observe"
-
-    return state
-
-
-def parse_state_command(text: str, current_state: MaximState | None = None) -> MaximState | None:
-    """Parse a command to change state.
-
-    Handles commands like:
-    - "Maxim sleep" -> ProcessingState.SLEEP
-    - "Maxim wake up" -> ProcessingState.AWAKE
-    - "Maxim explore" -> strategy="explore"
-    - "Maxim passive" -> mode=PASSIVE
-    - "Maxim active" -> mode=ACTIVE
-
-    Returns new state if command recognized, None otherwise.
-    """
-    if current_state is None:
-        current_state = MaximState()
-
-    text_lower = text.lower()
-
-    # Check for wake/sleep commands
-    if is_wake_keyword(text):
-        new_state = MaximState(
-            mode=current_state.mode,
-            processing_state=ProcessingState.AWAKE,
-            strategy=current_state.strategy,
-        )
-        return new_state
-
-    sleep_keywords = ["sleep", "go to sleep", "rest", "standby"]
-    if any(kw in text_lower for kw in sleep_keywords):
-        new_state = MaximState(
-            mode=current_state.mode,
-            processing_state=ProcessingState.SLEEP,
-            strategy=current_state.strategy,
-        )
-        return new_state
-
-    # Check for mode commands
-    if "passive" in text_lower:
-        new_state = MaximState(
-            mode=OperationalMode.PASSIVE,
-            processing_state=current_state.processing_state,
-            strategy=current_state.strategy,
-        )
-        return new_state
-
-    if "active" in text_lower:
-        new_state = MaximState(
-            mode=OperationalMode.ACTIVE,
-            processing_state=current_state.processing_state,
-            strategy=current_state.strategy,
-        )
-        return new_state
-
-    if "singularity" in text_lower or "autonomous" in text_lower:
-        new_state = MaximState(
-            mode=OperationalMode.SINGULARITY,
-            processing_state=current_state.processing_state,
-            strategy=current_state.strategy,
-        )
-        return new_state
-
-    # Check for strategy keywords
-    strategy = get_strategy_for_keyword(text)
-    if strategy:
-        new_state = MaximState(
-            mode=current_state.mode,
-            processing_state=current_state.processing_state,
-            strategy=strategy.name,
-        )
-        return new_state
-
-    return None
-
-
-def list_strategies() -> list[str]:
-    """Get list of available strategy names."""
-    return list(STRATEGIES.keys())
+    return list(OPERATIONAL_MODES.keys())
 
 
 def list_operational_modes() -> list[str]:
@@ -965,7 +540,7 @@ class FollowupType:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tool Descriptions for LLM Prompts
-# ──────��──────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 
 TOOL_DESCRIPTIONS: dict[str, dict[str, Any]] = {
     "respond": {
@@ -1275,12 +850,8 @@ def get_tool_followup_type(tool_name: str, mode_name: str | None = None) -> str 
 
     # Mode-specific overrides
     if mode_name and followup_type:
-        # In observe mode, downgrade "engage" to "respond" (less proactive)
-        if mode_name == "observe" and followup_type == "engage":
+        if mode_name == "passive" and followup_type == "engage":
             return "respond"
-        # In active-assistance mode, upgrade "respond" to "engage" (more proactive)
-        if mode_name == "active-assistance" and followup_type == "respond":
-            return "engage"
 
     return followup_type
 
@@ -1304,14 +875,12 @@ def get_tool_prompt_section(available_tools: set[str]) -> str:
             lines.append(f"  - {tool_name}: {desc['description']}")
             if params:
                 lines.append(f"    Parameters: {params}")
-            # Include example to show exact format expected
             if "example" in desc:
                 example_json = json.dumps(desc["example"], separators=(",", ":"))
                 lines.append(f"    Example: {example_json}")
         else:
             lines.append(f"  - {tool_name}")
 
-    # Add critical reminder about filling in params
     lines.append("")
     lines.append("CRITICAL: You MUST fill in all required parameters with actual content.")
     lines.append("For 'respond' tool: params.message MUST contain your actual answer to the question.")

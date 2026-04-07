@@ -118,14 +118,6 @@ def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, t
         f"Mode goal: {mode.goal}",
     ]
 
-    if request.current_strategy:
-        from maxim.modes.definitions import STRATEGIES
-
-        strategy = STRATEGIES.get(request.current_strategy)
-        if strategy:
-            lines.append(f"Strategy: {strategy.name.upper()} - {strategy.description}")
-            lines.append(f"Strategy focus: {strategy.focus}")
-
     lines.append(f"Autonomy level: {request.autonomy_level.value if request.autonomy_level else 'unknown'}")
 
     if request.is_sleeping:
@@ -873,13 +865,6 @@ class PromptBuilder:
         budgeter.add("foundational", _load_foundational_context(), SectionPriority.IMPORTANT)
         if mode.context_prompt:
             budgeter.add("mode_context", mode.context_prompt, SectionPriority.NICE_TO_HAVE)
-
-        if request.current_strategy:
-            from maxim.modes.definitions import STRATEGIES
-
-            strategy = STRATEGIES.get(request.current_strategy)
-            if strategy and strategy.context_prompt:
-                budgeter.add("strategy_context", strategy.context_prompt, SectionPriority.NICE_TO_HAVE)
 
         if context.current_percept:
             obs_text = build_observation_section(context.current_percept)

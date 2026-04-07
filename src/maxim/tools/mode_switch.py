@@ -18,20 +18,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Valid modes that can be switched to
-VALID_MODES = frozenset(
-    {
-        "observe",
-        "reflection",
-        "active-assistance",
-        "active_assistance",
-        "sleep",
-        "live",  # Supports agent-defined intent via LiveModeIntentStore
-        "train",
-        "exploration",
-        "research",
-    }
-)
+# Valid modes that can be switched to (autonomy levels only)
+VALID_MODES = frozenset({"passive", "active", "singularity"})
 
 
 class ModeSwitchTool(Tool):

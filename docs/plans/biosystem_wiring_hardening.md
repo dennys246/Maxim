@@ -1114,11 +1114,165 @@ After all phases, run the audit script. If all checks pass, the bio-system pipel
 
 ---
 
+## Phase 7: Bio-System Consolidation — Absorb Dormant Systems (~200 LOC)
+
+Broad repo audit (2026-04-07) found several systems that are defined but not wired, and could either be absorbed into bio-inspired systems or removed as dead code. This phase turns dormant infrastructure into active bio-systems or cleans it up.
+
+### 7.1 Energy → Metabolic Budget (wire into decisions)
+
+**Status:** `energy/` tracks token/cost data but **no bio-system consumes it for decisions.**
+
+In neuroscience, metabolic cost directly gates behavior — fatigue makes you avoid effortful actions, conserve resources, and default to habits. The energy system should feed into:
+
+**Wire energy → NAc (effort-reward learning):**
+
+```python
+# In runtime/agent_loop.py, after tool execution alongside NAc.observe():
+if nac is not None and energy_registry is not None:
+    cost = energy_registry.last_action_cost()
+    if cost is not None:
+        nac.observe(
+            event_type="energy",
+            event_signature=f"cost:{tool_name}",
+            outcome_type="energy_cost",
+            outcome_signature=f"tokens:{cost.tokens}",
+            outcome_valence=Valence.NEGATIVE if cost.tokens > 500 else Valence.NEUTRAL,
+            delta_seconds=exec_elapsed,
+            context={"tool": tool_name, "cost_usd": cost.cost_usd},
+        )
+```
+
+**Wire energy → Default Network (metabolic gating):**
+
+```python
+# In runtime/dn_controller.py, when configuring DN:
+# High energy expenditure → DN naturally activates (brain does this — rest when tired)
+if energy_registry is not None:
+    session_cost = energy_registry.session_total()
+    if session_cost and session_cost.cost_usd > budget_threshold * 0.8:
+        # Boost DN activation — system is "fatigued"
+        dn.set_escalation_threshold(dn.escalation_threshold * 0.7)
+```
+
+**LOC:** ~40
+
+### 7.2 Skills → Delete or Fold into Cerebellum
+
+**Status:** `skills/` is entirely DORMANT — `Skill` ABC, `Protocol`, health_reporting, rtsp_streaming, timed_protocol, shredder_segmenter — **none instantiated anywhere in runtime.** ~600 LOC.
+
+Two options:
+
+**Option A: Delete.** Skills are architecturally similar to `embodiment/motor.py` motor programs but for cognitive procedures. The Cerebellum already has `ProgramRegistry` and `ForwardModel`. If cognitive procedural memory is needed later, build it on top of the existing Cerebellum infrastructure rather than maintaining a parallel unused system.
+
+**Option B: Fold into Cerebellum.** Rename "skills" to "cognitive programs" and register them via `ProgramRegistry`. A skill like "health_reporting" becomes a multi-step motor program with abstract (non-physical) steps. This requires extending `MotorProgram` to support non-embodiment steps.
+
+**Recommendation: Option A (delete).** The skill system was designed before Cerebellum existed. If needed, the Cerebellum's motor program model is a better foundation. Remove `skills/` and its 6 files (~600 LOC).
+
+**LOC:** -600 (removal)
+
+### 7.3 Provenance → Fold into Hippocampus Episodic Trace
+
+**Status:** `provenance/` has types, collector, store, and renderer defined — **not wired into the agent loop.** ~300 LOC of unused infrastructure.
+
+Provenance traces ("what did I do, why, what decision was made") are structurally identical to episodic memory. Rather than maintaining a separate system:
+
+- Add optional `decision_rationale` and `tool_choice_context` fields to `EpisodicMemory.perception`
+- "Explain what I did" becomes a Hippocampus query with a filter on `decision_rationale is not None`
+- The dead `ExplainTool` (see 7.5) would become a specialized Hippocampus recall
+
+**Implementation:**
+
+```python
+# In agents/bus.py, Perception dataclass:
+decision_rationale: str = ""  # Why this action was chosen (provenance)
+tool_alternatives: list[str] = field(default_factory=list)  # What else was considered
+
+# In runtime/agent_loop.py, when recording outcomes:
+# Populate from LLM reasoning_carryover if available
+perception.decision_rationale = reasoning_carryover[:200] if reasoning_carryover else ""
+```
+
+After this, delete `provenance/` (~300 LOC). If the opt-in experimental provenance feature is needed later, it can be rebuilt on top of Hippocampus episodic queries.
+
+**LOC:** ~20 added, ~300 removed. Net: -280
+
+### 7.4 Communication Bridge → Wire or Remove
+
+**Status:** `bridges/communication_bridge.py` is 1 of 8 bridges, defined but **never instantiated** in `MemoryHub.connect()`. The other 7 bridges are all active.
+
+If the `comms/` system (Twilio SMS/voice) is going to be used:
+- Add instantiation in `MemoryHub.connect()` when comms gateway is available
+- Wire conversation history into Hippocampus for episodic capture of communications
+
+If not planned for near-term:
+- Delete the bridge file (~80 LOC) and add it back when comms is activated
+
+**Recommendation:** Delete for now. Comms is optional/experimental and the bridge can be recreated from the existing bridge pattern when needed.
+
+**LOC:** -80
+
+### 7.5 Dead Tools → Remove or Absorb
+
+Three tools are defined but **never registered** anywhere:
+
+| Tool | File | Assessment |
+|------|------|-----------|
+| `ExplainTool` | `tools/explain.py` | Surfaces provenance traces. If provenance folds into Hippocampus (7.3), this becomes a specialized memory query. **Delete the file** — the functionality will be covered by Hippocampus recall with decision_rationale filter. |
+| `PainHistoryTool` | `tools/introspection.py:271` | Queries pain system history. PainBus already publishes to Hippocampus, so pain history is already queryable via memory recall. **Delete the class.** |
+| `SceneSummaryTool` | `tools/introspection.py:526` | Simulation-only scene summary. Never exposed to agents. **Delete the class.** |
+
+**LOC:** ~200 removed
+
+---
+
+## Phase 8: Dead Runtime Code Cleanup (~400 LOC)
+
+Broad repo audit found 4 runtime modules with **zero imports anywhere** in the codebase:
+
+| Module | LOC | Why dead | Action |
+|--------|-----|----------|--------|
+| `runtime/resilient.py` | 68 | `@resilient` decorator — CLAUDE.md references it but it has 0 imports, 0 call sites | Delete. The pattern (`except Exception: pass`) is used inline everywhere instead. |
+| `runtime/session.py` | 97 | `AgentSession` crash recovery — superseded by plan persistence and agent state management | Delete. |
+| `runtime/debug_status_server.py` | 152 | Old debug HTTP server — explicitly superseded by `leader_proxy.py` (says so in its own header) | Delete. |
+| `runtime/monitor_registry.py` | 87 | `MonitorRegistry` abstract polling pattern for PainSignal monitors — PainBus (pub/sub) already handles this better | Delete. |
+
+Additionally:
+
+| Item | LOC | Why dead | Action |
+|------|-----|----------|--------|
+| `planning/adaptive_planner.set_mesh_context()` | ~30 | Method implemented, **zero callers**. `self._peer_registry` is always None. Mesh peer-sharing code paths in planner are permanently dead. | Remove method + all `if self._peer_registry` branches. |
+| `mesh/knowledge.py` exports | ~200 | `ExperienceBroker`, all Provider/Receiver protocols — **never instantiated**. Protocol stubs for future Phase 1+. | Keep as future-proofing but document as stub. No LOC change. |
+| `data/agents/MagicMock_*` dirs | 348 dirs | Leaked test fixtures from mock objects during unit testing | Delete all `MagicMock_name_mock.*` directories. Add `.gitignore` pattern. |
+
+**Total LOC removed:** ~434
+
+---
+
+## Updated Summary
+
+| Phase | What | LOC | Days |
+|---|---|---|---|
+| **Phase 1** | Critical wiring (9 items) | 189 | **SHIPPED** |
+| **Phase 1.5** | Cascade result surfacing (5 items) | ~120 | ~1 |
+| **Phase 2** | Pipeline correctness (10 items) | ~150 | ~1 |
+| **Phase 3** | Percept abstraction + entity-modulated perception | ~180 | ~1 |
+| **Phase 4** | Design gap fixes (6 items) | ~80 | ~0.5 |
+| **Phase 5** | Pipeline audit script | ~250 | ~0.5 |
+| **Phase 6** | Sensory ablation campaign YAML | ~150 | ~0.5 |
+| **Phase 7** | Bio-system consolidation (absorb/remove dormant systems) | -720 net | ~1 |
+| **Phase 8** | Dead runtime code cleanup | -434 | ~0.5 |
+| **Total** | | **~576 net** (-1,154 removed, +578 added) | **~6.5** |
+
+Phase 7 and 8 are pure cleanup — they can be done in any order relative to each other, and can be interleaved with the earlier phases. The only hard dependency is that Phase 7.3 (provenance → Hippocampus) should happen after Phase 1 (critical wiring) since it adds fields to the episodic memory system that Phase 1 initializes.
+
+---
+
 ## Ties to Other Plans
 
 | Plan | Relationship |
 |------|-------------|
 | **DM MVP** | Gate — this plan must ship before DM campaigns are meaningful |
+| **Mode Refactor** | Independent — can run in parallel. Mode refactor removes ~1,800 LOC of behavioral steering; this plan removes ~1,154 LOC of dead/dormant code. Together they cut ~3,000 LOC. |
 | **Generative Campaigns** | Benefits — all campaign modes get better bio-system support |
 | **Agent Mesh Phase 4** | Benefits — knowledge sharing assumes NAc/ATL actually learn |
 | **Research Protocol** | Benefits — Writer/Reviewer agents get richer bio-system data to report on |

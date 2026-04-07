@@ -348,6 +348,7 @@ class AgenticRuntimeMixin:
             response_output=response_output,
             internet_policy_getter=internet_policy_getter,
             gateway=gateway,
+            state_manager=self._state_manager,
         )
         executor = build_executor(registry)
         evaluators = build_evaluators()

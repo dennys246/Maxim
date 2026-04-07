@@ -12,23 +12,20 @@ class TestStateManagerBasic:
 
         config = StateManagerConfig(
             initial_mode="active",
-            initial_strategy="explore",
             initial_processing_state="awake",
         )
         manager = StateManager(config)
 
         assert manager.operational_mode == "active"
-        assert manager.strategy == "explore"
         assert manager.processing_state == "awake"
 
     def test_default_state(self):
-        """Default state is passive/observe/awake."""
+        """Default state is passive/awake."""
         from maxim.modes.state_manager import StateManager
 
         manager = StateManager()
 
         assert manager.operational_mode == "passive"
-        assert manager.strategy == "observe"
         assert manager.processing_state == "awake"
 
 
@@ -60,42 +57,6 @@ class TestStateManagerProcessingState:
         manager = StateManager()
 
         assert manager.set_processing_state("invalid") is False
-
-
-class TestStateManagerStrategy:
-    """Test strategy changes."""
-
-    def test_set_strategy(self):
-        """Can set strategy."""
-        from maxim.modes.state_manager import StateManager
-
-        manager = StateManager()
-
-        assert manager.set_strategy("explore") is True
-        assert manager.strategy == "explore"
-
-    def test_set_strategy_auto_wake(self):
-        """Strategy change wakes from sleep."""
-        from maxim.modes.state_manager import StateManager
-
-        manager = StateManager()
-        manager.set_processing_state("sleep")
-
-        manager.set_strategy("explore")
-
-        assert manager.processing_state == "awake"
-
-    def test_set_strategy_no_auto_wake(self):
-        """Can disable auto-wake on strategy change."""
-        from maxim.modes.state_manager import StateManager, StateManagerConfig
-
-        config = StateManagerConfig(auto_wake_on_strategy_change=False)
-        manager = StateManager(config)
-        manager.set_processing_state("sleep")
-
-        manager.set_strategy("explore")
-
-        assert manager.processing_state == "sleep"
 
 
 class TestStateManagerOperationalMode:
@@ -144,10 +105,10 @@ class TestStateManagerCallbacks:
             changes.append((state_type, old, new))
 
         manager.add_callback(callback)
-        manager.set_strategy("explore")
+        manager.set_operational_mode("active")
 
         assert len(changes) == 1
-        assert changes[0] == ("strategy", "observe", "explore")
+        assert changes[0] == ("operational_mode", "passive", "active")
 
     def test_remove_callback(self):
         """Removed callbacks are not called."""
@@ -161,7 +122,7 @@ class TestStateManagerCallbacks:
 
         manager.add_callback(callback)
         manager.remove_callback(callback)
-        manager.set_strategy("explore")
+        manager.set_operational_mode("active")
 
         assert len(changes) == 0
 
@@ -180,19 +141,14 @@ class TestStateManagerAgent:
             def set_processing_state(self, state):
                 notifications.append(("processing_state", state))
 
-            def set_strategy(self, strategy):
-                notifications.append(("strategy", strategy))
-
             def set_operational_mode(self, mode):
                 notifications.append(("operational_mode", mode))
 
         manager.set_agent(MockAgent())
         manager.set_processing_state("sleep")
-        manager.set_strategy("explore")
         manager.set_operational_mode("active")
 
         assert ("processing_state", "sleep") in notifications
-        assert ("strategy", "explore") in notifications
         assert ("operational_mode", "active") in notifications
 
 
@@ -208,21 +164,6 @@ class TestStateManagerConvenienceMethods:
         assert manager.shutdown_requested is False
         manager.request_shutdown()
         assert manager.shutdown_requested is True
-
-    def test_strategy_convenience_methods(self):
-        """Strategy convenience methods work."""
-        from maxim.modes.state_manager import StateManager
-
-        manager = StateManager()
-
-        manager.request_strategy_explore()
-        assert manager.strategy == "explore"
-
-        manager.request_strategy_research()
-        assert manager.strategy == "research"
-
-        manager.request_strategy_assist()
-        assert manager.strategy == "assist"
 
     def test_mode_convenience_methods(self):
         """Mode convenience methods work."""
@@ -246,13 +187,11 @@ class TestStateManagerSerialization:
 
         manager = StateManager()
         manager.set_operational_mode("active")
-        manager.set_strategy("explore")
         manager.request_shutdown()
 
         data = manager.to_dict()
 
         assert data["operational_mode"] == "active"
-        assert data["strategy"] == "explore"
         assert data["shutdown_requested"] is True
 
     def test_from_dict(self):
@@ -263,11 +202,9 @@ class TestStateManagerSerialization:
         manager.from_dict(
             {
                 "operational_mode": "singularity",
-                "strategy": "research",
                 "processing_state": "sleep",
             }
         )
 
         assert manager.operational_mode == "singularity"
-        assert manager.strategy == "research"
         assert manager.processing_state == "sleep"

@@ -1,6 +1,6 @@
 """State manager for Maxim's operational state.
 
-Manages transitions between processing states, strategies, and operational modes.
+Manages transitions between processing states and operational modes (autonomy levels).
 Provides callbacks for notifying agents of state changes.
 """
 
@@ -14,7 +14,6 @@ from maxim.modes.definitions import (
     MaximState,
     OperationalMode,
     ProcessingState,
-    get_strategy,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,10 +26,6 @@ class AgentProtocol(Protocol):
         """Called when processing state changes."""
         ...
 
-    def set_strategy(self, strategy: str) -> None:
-        """Called when strategy changes."""
-        ...
-
     def set_operational_mode(self, mode: str) -> None:
         """Called when operational mode changes."""
         ...
@@ -41,9 +36,7 @@ class StateManagerConfig:
     """Configuration for state manager."""
 
     initial_mode: str = "passive"
-    initial_strategy: str = "observe"
     initial_processing_state: str = "awake"
-    auto_wake_on_strategy_change: bool = True
     auto_wake_on_mode_change: bool = True
 
 
@@ -53,26 +46,15 @@ StateChangeCallback = Callable[[str, str, str], None]  # (state_type, old, new)
 class StateManager:
     """Manages Maxim's operational state with agent notification.
 
-    Tracks three orthogonal state dimensions:
+    Tracks two orthogonal state dimensions:
     - Operational mode: passive, active, singularity (autonomy level)
     - Processing state: awake, sleep (resource usage)
-    - Strategy: observe, explore, research, assist, reflect, learn (behavioral focus)
 
     Example:
         manager = StateManager()
-
-        # Register agent for notifications
         manager.set_agent(my_agent)
-
-        # State changes
-        manager.set_strategy("explore")  # Also wakes up if sleeping
         manager.set_operational_mode("active")
         manager.set_processing_state("sleep")
-
-        # Get current state
-        state = manager.state
-        if state.is_sleeping():
-            print("Zzz...")
     """
 
     def __init__(
@@ -95,7 +77,6 @@ class StateManager:
         self._state = MaximState(
             mode=OperationalMode(self.config.initial_mode),
             processing_state=ProcessingState(self.config.initial_processing_state),
-            strategy=self.config.initial_strategy,
         )
 
         # Shutdown flag
@@ -115,11 +96,6 @@ class StateManager:
     def processing_state(self) -> str:
         """Current processing state as string."""
         return self._state.processing_state.value
-
-    @property
-    def strategy(self) -> str:
-        """Current strategy as string."""
-        return self._state.strategy
 
     @property
     def is_sleeping(self) -> bool:
@@ -194,47 +170,6 @@ class StateManager:
 
         return True
 
-    def set_strategy(self, strategy: str) -> bool:
-        """Set current strategy.
-
-        If auto_wake_on_strategy_change is True and currently sleeping,
-        automatically wakes up.
-
-        Args:
-            strategy: New strategy name.
-
-        Returns:
-            True if strategy changed.
-        """
-        old = self._state.strategy
-        if strategy == old:
-            return False
-
-        # Validate strategy exists
-        if get_strategy(strategy) is None:
-            self._log.warning("Unknown strategy: %s", strategy)
-            # Allow it anyway for flexibility
-            pass
-
-        self._log.info("Strategy: %s -> %s", old, strategy)
-        self._state.strategy = strategy
-
-        # Auto-wake if sleeping
-        if self.config.auto_wake_on_strategy_change and self.is_sleeping:
-            self.set_processing_state("awake")
-
-        # Notify agent
-        if self._agent is not None and hasattr(self._agent, "set_strategy"):
-            try:
-                self._agent.set_strategy(strategy)
-            except Exception as e:
-                self._log.warning("Failed to notify agent of strategy: %s", e)
-
-        # Notify callbacks
-        self._notify_callbacks("strategy", old, strategy)
-
-        return True
-
     def set_operational_mode(self, mode: str) -> bool:
         """Set operational mode (passive/active/singularity).
 
@@ -289,25 +224,6 @@ class StateManager:
         """Request awake processing state."""
         self.set_processing_state("awake")
 
-    # Convenience methods for phrase responses
-    def request_strategy_observe(self) -> None:
-        self.set_strategy("observe")
-
-    def request_strategy_explore(self) -> None:
-        self.set_strategy("explore")
-
-    def request_strategy_research(self) -> None:
-        self.set_strategy("research")
-
-    def request_strategy_assist(self) -> None:
-        self.set_strategy("assist")
-
-    def request_strategy_reflect(self) -> None:
-        self.set_strategy("reflect")
-
-    def request_strategy_learn(self) -> None:
-        self.set_strategy("learn")
-
     def request_mode_passive(self) -> None:
         self.set_operational_mode("passive")
 
@@ -330,7 +246,6 @@ class StateManager:
         return {
             "operational_mode": self.operational_mode,
             "processing_state": self.processing_state,
-            "strategy": self.strategy,
             "shutdown_requested": self._shutdown_requested,
         }
 
@@ -348,8 +263,7 @@ class StateManager:
             except ValueError:
                 pass
 
-        if "strategy" in data:
-            self._state.strategy = str(data["strategy"])
+        # Silently ignore "strategy" key from old persisted state
 
         if "shutdown_requested" in data:
             self._shutdown_requested = bool(data["shutdown_requested"])

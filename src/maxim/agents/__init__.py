@@ -62,7 +62,6 @@ from maxim.agents.llm_worker import (
     LLMRequest,
     LLMWorker,
     ModeInfo,
-    StrategyInfo,
 )
 
 # Context pool for accumulated observations
@@ -141,7 +140,6 @@ __all__ = [
     "LLMRequest",
     "LLMWorker",
     "ModeInfo",
-    "StrategyInfo",
     # Context Pool
     "AbstractionEntry",
     "AgentStateEntry",

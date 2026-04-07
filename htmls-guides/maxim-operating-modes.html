@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Operating Modes — Maxim Docs | Processing States &amp; Strategies{% endblock %}
+{% block title %}Operating Modes — Maxim Docs | Autonomy Levels{% endblock %}
 
-{% block meta_description %}Explore Maxim's operating modes — processing states, operational modes, and strategies. Learn how awake, sleep, passive, active, and singularity modes shape robot behavior.{% endblock %}
+{% block meta_description %}Explore Maxim's operating modes — three autonomy levels (passive, active, singularity) and sleep as a tool-invoked processing state.{% endblock %}
 
-{% block meta_keywords %}Maxim operating modes, robot processing states, agentic strategies, sleep mode AI, active mode robot, exploration mode, Maxim behavior control, robot operational modes{% endblock %}
+{% block meta_keywords %}Maxim operating modes, robot autonomy levels, passive mode, active mode, singularity mode, sleep tool, robot operational modes{% endblock %}
 
 {% block meta_author %}Maxim Project{% endblock %}
 {% block og_site_name %}Maxim{% endblock %}
@@ -15,13 +15,13 @@
 {
   "@context": "https://schema.org",
   "@type": "TechArticle",
-  "headline": "Operating Modes — Maxim's Processing States, Modes, and Strategies",
-  "description": "Explore Maxim's operating modes — processing states, operational modes, and strategies that shape robot behavior.",
+  "headline": "Operating Modes — Maxim's Autonomy Levels",
+  "description": "Explore Maxim's operating modes — three autonomy levels and sleep as a tool-invoked processing state.",
   "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
   "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
   "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/operating-modes",
   "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
-  "keywords": ["operating modes", "processing states", "strategies", "robot behavior"]
+  "keywords": ["operating modes", "autonomy levels", "passive", "active", "singularity", "sleep"]
 }
 </script>
 <script type="application/ld+json">
@@ -52,17 +52,7 @@
   .badge-passive { background: rgb(148 163 184 / 0.2); color: rgb(203 213 225); border: 1px solid rgb(203 213 225 / 0.3); }
   .badge-active { background: rgb(59 130 246 / 0.2); color: rgb(147 197 253); border: 1px solid rgb(147 197 253 / 0.3); }
   .badge-singularity { background: rgb(168 85 247 / 0.2); color: rgb(216 180 254); border: 1px solid rgb(216 180 254 / 0.3); }
-  .badge-strategy { background: rgb(99 102 241 / 0.15); color: rgb(165 180 252); border: 1px solid rgb(165 180 252 / 0.2); }
   .badge-sm { font-size: 0.65rem; }
-  .intent-field {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 12px 16px;
-    background: rgb(15 23 42 / 0.8);
-    border-radius: 8px;
-    border-left: 3px solid rgb(99 102 241);
-  }
 </style>
 {% endblock %}
 
@@ -73,47 +63,36 @@
   <header class="text-center space-y-2">
     <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
     <h1 class="text-3xl md:text-4xl font-bold text-white">Operating Modes</h1>
-    <p class="text-indigo-400 font-medium">Processing States, Operational Modes, and Behavioral Strategies</p>
+    <p class="text-indigo-400 font-medium">Three Autonomy Levels + Sleep as a Tool</p>
   </header>
 
-  <p class="text-slate-300 leading-relaxed">Maxim doesn't have simple on/off modes. Its behavior emerges from three independent dimensions: <em class="text-indigo-400 not-italic font-medium">how much it processes</em>, <em class="text-indigo-400 not-italic font-medium">how much authority it has</em>, and <em class="text-indigo-400 not-italic font-medium">what it focuses on</em>. This decomposed architecture means you can combine states freely: an active robot can explore or assist; a passive robot can observe or reflect; and any configuration can be awake or sleeping.</p>
+  <p class="text-slate-300 leading-relaxed">Maxim's behavior is controlled by two independent dimensions: <em class="text-indigo-400 not-italic font-medium">how much it processes</em> (awake or sleeping) and <em class="text-indigo-400 not-italic font-medium">how much authority it has</em> (passive, active, or singularity). Sleep is not a mode&mdash;the agent enters it by calling the <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">sleep</code> tool, and wakes automatically when user input arrives.</p>
 
   <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
     <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
     <ol class="space-y-1 text-slate-300 list-decimal pl-5">
-      <li><a href="#architecture" class="text-indigo-400 hover:text-indigo-300 no-underline">The Decomposed Architecture</a></li>
-      <li><a href="#processing-states" class="text-indigo-400 hover:text-indigo-300 no-underline">Processing States</a></li>
-      <li><a href="#operational-modes" class="text-indigo-400 hover:text-indigo-300 no-underline">Operational Modes</a></li>
-      <li><a href="#strategies" class="text-indigo-400 hover:text-indigo-300 no-underline">Strategies</a></li>
-      <li><a href="#live-mode" class="text-indigo-400 hover:text-indigo-300 no-underline">Live Mode: The Embodied Runtime</a></li>
-      <li><a href="#exploration" class="text-indigo-400 hover:text-indigo-300 no-underline">Exploration Mode</a></li>
-      <li><a href="#sleep" class="text-indigo-400 hover:text-indigo-300 no-underline">Sleep Mode</a></li>
-      <li><a href="#legacy-modes" class="text-indigo-400 hover:text-indigo-300 no-underline">Legacy Mode Names</a></li>
+      <li><a href="#architecture" class="text-indigo-400 hover:text-indigo-300 no-underline">The Two-Axis Architecture</a></li>
+      <li><a href="#autonomy-levels" class="text-indigo-400 hover:text-indigo-300 no-underline">Autonomy Levels</a></li>
+      <li><a href="#sleep" class="text-indigo-400 hover:text-indigo-300 no-underline">Sleep</a></li>
+      <li><a href="#headless" class="text-indigo-400 hover:text-indigo-300 no-underline">Headless Mode</a></li>
       <li><a href="#switching" class="text-indigo-400 hover:text-indigo-300 no-underline">Mode Switching</a></li>
-      <li><a href="#initiative" class="text-indigo-400 hover:text-indigo-300 no-underline">Initiative Calculation</a></li>
     </ol>
   </div>
 
   <!-- 1. Architecture -->
   <section class="space-y-4">
-    <h2 id="architecture" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Decomposed Architecture</h2>
+    <h2 id="architecture" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Two-Axis Architecture</h2>
 
-    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6">
-      <h3 class="text-lg font-semibold text-indigo-400 mb-2">Design Rationale</h3>
-      <p class="text-slate-300">Early Maxim used monolithic mode names like "live" and "exploration." This created a combinatorial explosion: every new capability needed its own mode. The decomposed architecture solves this by factoring behavior into three independent dimensions that combine freely.</p>
-    </div>
-
-    <p class="text-slate-300 leading-relaxed">Maxim's state is tracked by three independent axes:</p>
+    <p class="text-slate-300 leading-relaxed">Maxim's state is tracked by two independent axes:</p>
 
     <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Data structure</span>
 MaximState:
   processing_state: awake | sleep           # Resource usage
-  operational_mode: passive | active | singularity  # Action authority
-  strategy: observe | explore | research | assist | reflect | learn  # Behavioral focus</div>
+  operational_mode: passive | active | singularity  # Action authority</div>
 
-    <p class="text-slate-300 leading-relaxed">This means sleep isn't a mode&mdash;it's a processing state. A sleeping robot retains its operational mode and strategy, reducing resource usage while maintaining configuration. When it wakes, it resumes exactly where it left off.</p>
+    <p class="text-slate-300 leading-relaxed">Sleep is a processing state the agent enters by calling the <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">sleep</code> tool. A sleeping agent retains its operational mode and wakes automatically when user input arrives, resuming exactly where it left off.</p>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
         <h4 class="text-white font-semibold mb-2">Processing State</h4>
         <p class="text-sm text-slate-400 mb-3">Controls resource usage</p>
@@ -131,75 +110,14 @@ MaximState:
           <span class="state-badge badge-singularity">singularity</span>
         </div>
       </div>
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
-        <h4 class="text-white font-semibold mb-2">Strategy</h4>
-        <p class="text-sm text-slate-400 mb-3">Behavioral focus</p>
-        <div class="flex justify-center gap-2 flex-wrap">
-          <span class="state-badge badge-strategy badge-sm">observe</span>
-          <span class="state-badge badge-strategy badge-sm">explore</span>
-          <span class="state-badge badge-strategy badge-sm">research</span>
-          <span class="state-badge badge-strategy badge-sm">assist</span>
-          <span class="state-badge badge-strategy badge-sm">reflect</span>
-          <span class="state-badge badge-strategy badge-sm">learn</span>
-        </div>
-      </div>
     </div>
   </section>
 
-  <!-- 2. Processing States -->
+  <!-- 2. Autonomy Levels -->
   <section class="space-y-4">
-    <h2 id="processing-states" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Processing States</h2>
+    <h2 id="autonomy-levels" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Autonomy Levels</h2>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h4 class="text-center text-white font-semibold mb-3 pb-3 border-b border-slate-700"><span class="state-badge badge-awake mr-2">awake</span> Full Processing</h4>
-        <ul class="space-y-2 text-slate-300 list-disc pl-5 text-sm">
-          <li>Full LLM processing active</li>
-          <li>Strategy-driven behavior</li>
-          <li>All tools available (per mode constraints)</li>
-          <li>Default Network (orienting, social) enabled</li>
-          <li>Video and audio capture running</li>
-        </ul>
-      </div>
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h4 class="text-center text-white font-semibold mb-3 pb-3 border-b border-slate-700"><span class="state-badge badge-sleep mr-2">sleep</span> Background Only</h4>
-        <ul class="space-y-2 text-slate-300 list-disc pl-5 text-sm">
-          <li>LLM processing <strong class="text-white">skipped</strong> unless wake keyword detected</li>
-          <li>Background tasks: memory consolidation, model training, pattern extraction</li>
-          <li>Only <code class="bg-slate-950 px-1.5 py-0.5 rounded text-xs">respond</code> tool available</li>
-          <li>Default Network disabled</li>
-          <li>Audio monitoring active (listens for wake keywords)</li>
-        </ul>
-      </div>
-    </div>
-
-    <p class="text-slate-300 leading-relaxed">Wake keywords: <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">"maxim"</code>, <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">"hey maxim"</code>, <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">"wake up"</code>, <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">"hello"</code>. When detected, the robot wakes, actuates motors, and resumes its previous operational mode and strategy.</p>
-
-    <h3 id="headless-mode" class="text-lg font-semibold text-white mt-6 mb-3 scroll-mt-32">Headless Mode (Adaptive Runtime)</h3>
-
-    <p class="text-slate-300 leading-relaxed mb-3">When no robot hardware is detected, Maxim automatically enters <em class="text-indigo-400 not-italic font-medium">headless mode</em> &mdash; the full agentic loop runs without media capture, motor control, or Default Network overhead. Detection uses mDNS: if the robot's hostname doesn't resolve within 5 seconds, Maxim skips the SDK connection and starts immediately.</p>
-
-    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-      <h4 class="text-center text-white font-semibold mb-3 pb-3 border-b border-slate-700"><span class="state-badge badge-awake mr-2">headless</span> No Robot Connected</h4>
-      <ul class="space-y-2 text-slate-300 list-disc pl-5 text-sm">
-        <li>Full LLM processing and agentic loop active</li>
-        <li>CLI input and file-change perception only (no video/audio)</li>
-        <li>Default Network <strong class="text-white">disabled</strong> (no motor commands)</li>
-        <li>Frame/audio capture workers <strong class="text-white">not started</strong></li>
-        <li>Whisper transcription <strong class="text-white">not started</strong></li>
-        <li>All bio memory systems active (Hippocampus, ATL, NAc, AG, EC)</li>
-        <li>Tools, provenance, and concept memory fully operational</li>
-      </ul>
-    </div>
-
-    <p class="text-slate-300 leading-relaxed mt-3">Set <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">MAXIM_ROBOT_TIMEOUT=5</code> to reduce the mDNS timeout for faster headless startup. The system uses <em class="text-indigo-400 not-italic font-medium">capability detection, not mode flags</em> &mdash; like a biological organism adapting to sensory loss rather than requiring an explicit switch.</p>
-  </section>
-
-  <!-- 3. Operational Modes -->
-  <section class="space-y-4">
-    <h2 id="operational-modes" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Operational Modes</h2>
-
-    <p class="text-slate-300 leading-relaxed">Operational modes control <em class="text-indigo-400 not-italic font-medium">how much authority</em> Maxim has. They map directly to autonomy levels:</p>
+    <p class="text-slate-300 leading-relaxed">The three operational modes control <em class="text-indigo-400 not-italic font-medium">how much authority</em> Maxim has. Each level sets a maximum initiative value between 0.0 (fully reactive) and 1.0 (fully proactive).</p>
 
     <!-- Passive -->
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-3">
@@ -219,7 +137,6 @@ MaximState:
         </table>
       </div>
       <p class="text-slate-400 text-xs">Forbidden tools: <code class="bg-slate-950 px-1 rounded">execute_file</code>, <code class="bg-slate-950 px-1 rounded">maxim_command</code>, <code class="bg-slate-950 px-1 rounded">request_directory_change</code></p>
-      <p class="text-slate-400 text-xs">Preferred strategies: observe, reflect, learn</p>
     </div>
 
     <!-- Active -->
@@ -240,7 +157,6 @@ MaximState:
         </table>
       </div>
       <p class="text-slate-400 text-xs">No forbidden tools (execution gated by approval)</p>
-      <p class="text-slate-400 text-xs">Preferred strategies: assist, explore, research</p>
     </div>
 
     <!-- Singularity -->
@@ -262,304 +178,36 @@ MaximState:
       </div>
       <p class="text-slate-400 text-xs">No forbidden tools, full tool access</p>
       <p class="text-slate-400 text-xs">Safety and ethical constraints (Constitution) still apply unconditionally</p>
-      <p class="text-slate-400 text-xs">Preferred strategies: explore, research, assist</p>
     </div>
   </section>
 
-  <!-- 4. Strategies -->
+  <!-- 3. Sleep -->
   <section class="space-y-4">
-    <h2 id="strategies" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Strategies</h2>
+    <h2 id="sleep" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Sleep</h2>
 
-    <p class="text-slate-300 leading-relaxed">Strategies determine <em class="text-indigo-400 not-italic font-medium">what Maxim focuses on</em> within its current operational mode. Each strategy has keywords that trigger it, tool preferences, and a maximum initiative level.</p>
+    <p class="text-slate-300 leading-relaxed">Sleep is a <em class="text-indigo-400 not-italic font-medium">processing state</em>, not a mode. The agent enters sleep by calling the <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">sleep</code> tool. It retains its operational mode but dramatically reduces processing:</p>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h4 class="text-indigo-400 font-semibold mb-2">Observe</h4>
-        <p class="text-sm text-slate-400 mb-2">Watch and understand without interfering. Process sensor data, track objects, record observations.</p>
-        <p class="text-xs text-slate-500"><strong class="text-slate-400">Initiative:</strong> 0.2 &middot; <strong class="text-slate-400">Keywords:</strong> observe, watch, look, see</p>
-        <p class="text-xs text-slate-500"><strong class="text-slate-400">Avoids:</strong> write_file, execute_file, speak</p>
-      </div>
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h4 class="text-indigo-400 font-semibold mb-2">Explore</h4>
-        <p class="text-sm text-slate-400 mb-2">Curiosity-driven discovery. Seek novel objects, research discoveries, track unusual phenomena.</p>
-        <p class="text-xs text-slate-500"><strong class="text-slate-400">Initiative:</strong> 0.8 &middot; <strong class="text-slate-400">Keywords:</strong> explore, discover, investigate, curious</p>
-        <p class="text-xs text-slate-500"><strong class="text-slate-400">No avoided tools</strong></p>
+        <h4 class="text-center text-white font-semibold mb-3 pb-3 border-b border-slate-700"><span class="state-badge badge-awake mr-2">awake</span> Full Processing</h4>
+        <ul class="space-y-2 text-slate-300 list-disc pl-5 text-sm">
+          <li>Full LLM processing active</li>
+          <li>All tools available (per mode constraints)</li>
+          <li>Default Network (orienting, social) enabled</li>
+          <li>Video and audio capture running</li>
+        </ul>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h4 class="text-indigo-400 font-semibold mb-2">Research</h4>
-        <p class="text-sm text-slate-400 mb-2">Deep information gathering. Multiple sources, synthesis, citations, fact vs interpretation.</p>
-        <p class="text-xs text-slate-500"><strong class="text-slate-400">Initiative:</strong> 0.7 &middot; <strong class="text-slate-400">Keywords:</strong> research, investigate, study, analyze</p>
-        <p class="text-xs text-slate-500"><strong class="text-slate-400">Avoids:</strong> execute_file</p>
-      </div>
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h4 class="text-indigo-400 font-semibold mb-2">Assist</h4>
-        <p class="text-sm text-slate-400 mb-2">Proactively help users. Anticipate needs, offer suggestions, complete tasks efficiently.</p>
-        <p class="text-xs text-slate-500"><strong class="text-slate-400">Initiative:</strong> 0.8 &middot; <strong class="text-slate-400">Keywords:</strong> help, assist, support, task</p>
-        <p class="text-xs text-slate-500"><strong class="text-slate-400">No avoided tools</strong></p>
-      </div>
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h4 class="text-indigo-400 font-semibold mb-2">Reflect</h4>
-        <p class="text-sm text-slate-400 mb-2">Internal analysis and memory consolidation. Review memories, identify patterns, generate insights.</p>
-        <p class="text-xs text-slate-500"><strong class="text-slate-400">Initiative:</strong> 0.3 &middot; <strong class="text-slate-400">Keywords:</strong> reflect, think, consider, review</p>
-        <p class="text-xs text-slate-500"><strong class="text-slate-400">Avoids:</strong> speak, track_target, execute_file</p>
-      </div>
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h4 class="text-indigo-400 font-semibold mb-2">Learn</h4>
-        <p class="text-sm text-slate-400 mb-2">Incorporate feedback and demonstrations. Watch carefully, request feedback, incorporate corrections.</p>
-        <p class="text-xs text-slate-500"><strong class="text-slate-400">Initiative:</strong> 0.3 &middot; <strong class="text-slate-400">Keywords:</strong> learn, train, teach, show me</p>
-        <p class="text-xs text-slate-500"><strong class="text-slate-400">Avoids:</strong> execute_file, maxim_command</p>
+        <h4 class="text-center text-white font-semibold mb-3 pb-3 border-b border-slate-700"><span class="state-badge badge-sleep mr-2">sleep</span> Background Only</h4>
+        <ul class="space-y-2 text-slate-300 list-disc pl-5 text-sm">
+          <li>LLM processing <strong class="text-white">skipped</strong></li>
+          <li>Background tasks: memory consolidation, pattern extraction</li>
+          <li>Only <code class="bg-slate-950 px-1.5 py-0.5 rounded text-xs">respond</code> tool available</li>
+          <li>Default Network disabled</li>
+          <li>Wakes automatically on user input</li>
+        </ul>
       </div>
     </div>
-
-    <p class="text-slate-300 leading-relaxed">Each strategy includes a <em class="text-indigo-400 not-italic font-medium">context_prompt</em> injected into the LLM system prompt, guiding the agent's reasoning style and behavior for that strategy.</p>
-  </section>
-
-  <!-- 5. Live Mode -->
-  <section class="space-y-4">
-    <h2 id="live-mode" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Live Mode: The Embodied Runtime</h2>
-
-    <div class="rounded-xl bg-gradient-to-br from-indigo-700 via-purple-700 to-indigo-800 p-6 text-white shadow-lg">
-      <h3 class="text-lg font-semibold mb-3">What Is Live Mode?</h3>
-      <p class="leading-relaxed">Live mode is the full embodied runtime&mdash;the <code class="bg-white/10 px-1.5 rounded">Maxim.live()</code> method that orchestrates video capture, audio recording, motor control, and transcription while the agentic runtime makes decisions in parallel. It maps to <span class="state-badge badge-active badge-sm">active</span> + <span class="font-semibold">assist</span> strategy in the new architecture.</p>
-    </div>
-
-    <p class="text-slate-300 leading-relaxed">Live mode isn't just another behavioral configuration. It's the <em class="text-indigo-400 not-italic font-medium">container</em> that runs everything else. When you call <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">maxim --mode live</code>, it:</p>
-
-    <ol class="space-y-2 text-slate-300 list-decimal pl-5">
-      <li>Configures logging (transcripts, video, audio, CLI input, vision events)</li>
-      <li>Creates thread synchronization primitives (media lock, stop event)</li>
-      <li>Spawns the <strong class="text-white">agentic runtime</strong> in a background thread</li>
-      <li>Sets up frame observation and saving queues</li>
-      <li>Initializes audio capture and transcription</li>
-      <li>Awakens the robot hardware (motor init, video stream, audio stream)</li>
-      <li>Enters the main perception-action loop</li>
-    </ol>
-
-    <h3 class="text-lg font-semibold text-indigo-400">The Live() Architecture</h3>
-
-    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Pseudocode</span>
-Maxim.live()
-│
-├── Agentic Runtime Thread
-│   └── Agent pipeline: Perception → Memory → Exec → Goal
-│       └── Tools executed via ToolRegistry
-│
-├── Video Capture Thread
-│   └── Camera → frame queues (observation + save)
-│
-├── Audio Capture Thread
-│   └── Microphone → Whisper transcription → transcript log
-│
-├── Video Writer Thread
-│   └── Consumes save queue → MP4 files
-│
-├── Motor Executor Thread
-│   └── Exclusive RobotController access
-│
-└── Main Thread (observation loop)
-    └── Process frames, run YOLO, compute salience/attention</div>
-
-    <h3 class="text-lg font-semibold text-indigo-400">Self-Evolving Intent</h3>
-
-    <p class="text-slate-300 leading-relaxed">What makes live mode unique is the <em class="text-indigo-400 not-italic font-medium">LiveModeIntent</em> system. The agent can modify its own behavioral intent through reflection and experience, evolving how it behaves across sessions.</p>
-
-    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6">
-      <h3 class="text-lg font-semibold text-indigo-400 mb-2">Immutable Constraint</h3>
-      <p class="text-slate-300">No matter how much the agent evolves its intent, the primary goal is fixed: <em class="text-white font-semibold">"Understand reality and help people."</em> Initiative is bounded to [0.3, 0.8]. The agent can shape <em class="text-indigo-400 not-italic">how</em> it helps but not <em class="text-indigo-400 not-italic">whether</em> it helps.</p>
-    </div>
-
-    <p class="text-slate-300 leading-relaxed">The agent customizes live mode through four tools:</p>
-
-    <div class="space-y-3">
-      <div class="intent-field">
-        <span class="text-indigo-400 font-mono text-sm shrink-0">define_live_intent</span>
-        <span class="text-sm text-slate-400">Modify behavioral parameters: context prompt extension, goal extension, initiative level (0.3&ndash;0.8), preferred/avoided strategies.</span>
-      </div>
-      <div class="intent-field">
-        <span class="text-indigo-400 font-mono text-sm shrink-0">review_live_intent</span>
-        <span class="text-sm text-slate-400">Inspect current intent, version history, and historical outcomes with success rates.</span>
-      </div>
-      <div class="intent-field">
-        <span class="text-indigo-400 font-mono text-sm shrink-0">record_live_outcome</span>
-        <span class="text-sm text-slate-400">Record action outcomes (action, success, context, reasoning). Keeps last 50 entries.</span>
-      </div>
-      <div class="intent-field">
-        <span class="text-indigo-400 font-mono text-sm shrink-0">record_live_insight</span>
-        <span class="text-sm text-slate-400">Record reflection insights from self-analysis. Keeps last 20 entries.</span>
-      </div>
-    </div>
-
-    <h3 class="text-lg font-semibold text-indigo-400">LiveModeIntent Structure</h3>
-
-    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Data structure</span>
-LiveModeIntent:
-  context_prompt_extension: ""     # Extends base context (doesn't replace)
-  goal_extension: ""               # Additional goal context
-  max_initiative: 0.6              # Bounded [0.3, 0.8]
-  preferred_strategies: []         # Strategy names to prefer
-  avoid_strategies: []             # Strategy names to avoid
-  historical_outcomes: []          # Last 50 action results
-  reflection_insights: []          # Last 20 self-generated insights
-  version: 1                       # Increments on each modification
-  modification_count: 0            # Total changes made</div>
-
-    <p class="text-slate-300 leading-relaxed">Intent is persisted to <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">data/agents/MaximAgent/modes/live_intent.json</code> and loaded on startup. The <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">get_live_mode_with_intent()</code> function merges the agent's customizations with the base live mode definition, extending (never replacing) the context prompt and goal.</p>
-
-    <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
-      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Example: Intent Evolution Over Time</h3>
-      <div class="space-y-2 text-slate-300">
-        <p><strong class="text-white">Day 1:</strong> Default intent. Agent responds to all interactions equally.</p>
-        <p><strong class="text-white">Day 3:</strong> After several successful face-tracking interactions, agent calls <code class="bg-slate-950 px-1 rounded text-xs">define_live_intent</code> with <code class="bg-slate-950 px-1 rounded text-xs">goal_extension: "Prioritize human interaction"</code>.</p>
-        <p><strong class="text-white">Day 7:</strong> Agent records insight: "Morning interactions are more successful than evening." Adjusts <code class="bg-slate-950 px-1 rounded text-xs">preferred_strategies: ["assist"]</code>.</p>
-        <p><strong class="text-white">Day 14:</strong> Intent version 8. The agent has organically developed a preference for social interaction in mornings and quiet observation in evenings.</p>
-        <p class="text-indigo-400 font-medium mt-3">The robot shaped its own personality through experience. No human configured it.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- 6. Exploration Mode -->
-  <section class="space-y-4">
-    <h2 id="exploration" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Exploration Mode</h2>
-
-    <p class="text-slate-300 leading-relaxed">Exploration maps to <span class="state-badge badge-active badge-sm">active</span> + <strong class="text-indigo-400">explore</strong> strategy, but with substantial additional infrastructure: an <em class="text-indigo-400 not-italic font-medium">ExplorationPolicy</em> controlling capabilities, an <em class="text-indigo-400 not-italic font-medium">ExplorationBudget</em> enforcing limits, a <em class="text-indigo-400 not-italic font-medium">CuriosityManager</em> modeling engagement, and <em class="text-indigo-400 not-italic font-medium">ExplorationSession</em> objects for persistence.</p>
-
-    <h3 class="text-lg font-semibold text-indigo-400">Exploration Policy</h3>
-
-    <p class="text-slate-300 leading-relaxed">The policy gates what capabilities are available during exploration:</p>
-
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm text-left">
-        <thead>
-          <tr class="bg-indigo-700 text-white">
-            <th class="px-4 py-3 rounded-tl-lg">Capability</th>
-            <th class="px-4 py-3">Default</th>
-            <th class="px-4 py-3 rounded-tr-lg">Effect When Disabled</th>
-          </tr>
-        </thead>
-        <tbody class="text-slate-300">
-          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
-            <td class="px-4 py-3">Internet access</td>
-            <td class="px-4 py-3 text-emerald-400">Enabled</td>
-            <td class="px-4 py-3">Blocks <code class="text-xs">internet_search</code>, <code class="text-xs">http_fetch</code></td>
-          </tr>
-          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
-            <td class="px-4 py-3">Script execution</td>
-            <td class="px-4 py-3 text-red-400">Disabled</td>
-            <td class="px-4 py-3">Blocks <code class="text-xs">write_sandbox_script</code>, <code class="text-xs">execute_sandbox_script</code></td>
-          </tr>
-          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
-            <td class="px-4 py-3">Model training</td>
-            <td class="px-4 py-3 text-red-400">Disabled</td>
-            <td class="px-4 py-3">Blocks <code class="text-xs">start_training</code></td>
-          </tr>
-          <tr class="hover:bg-slate-800/50">
-            <td class="px-4 py-3">GPU for agentic</td>
-            <td class="px-4 py-3 text-emerald-400">Required</td>
-            <td class="px-4 py-3">Falls back to non-agentic exploration</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3 class="text-lg font-semibold text-indigo-400">Curiosity &amp; Budget</h3>
-
-    <p class="text-slate-300 leading-relaxed">The <em class="text-indigo-400 not-italic font-medium">CuriosityManager</em> models the robot's engagement level using exponential decay with discovery boosts:</p>
-
-    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Formula</span>
-curiosity = initial_curiosity &times; decay_rate ^ elapsed_minutes
-
-Defaults:
-  initial_curiosity: 1.0
-  decay_rate: 0.95 per minute
-  min_curiosity_threshold: 0.2 (suggest stopping below this)
-  boost_on_discovery: +0.1 (capped at 1.0)</div>
-
-    <p class="text-slate-300 leading-relaxed">When curiosity drops below the threshold, the system suggests stopping or refocusing. The <em class="text-indigo-400 not-italic font-medium">ExplorationBudget</em> enforces hard limits:</p>
-
-    <ul class="space-y-2 text-slate-300 list-disc pl-5">
-      <li><strong class="text-white">Max searches:</strong> 50 per session</li>
-      <li><strong class="text-white">Max scripts:</strong> 20 per session</li>
-      <li><strong class="text-white">Max training runs:</strong> 3 per session</li>
-      <li><strong class="text-white">Duration and action caps:</strong> configurable per session</li>
-    </ul>
-
-    <h3 class="text-lg font-semibold text-indigo-400">Safety Constraints</h3>
-
-    <p class="text-slate-300 leading-relaxed">Hard limits enforced regardless of policy:</p>
-
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div class="bg-slate-950 rounded-lg p-4">
-        <h5 class="text-white font-medium text-sm mb-2">Movement</h5>
-        <p class="text-xs text-slate-400">Max 45&deg;/sec head movement, 0.5s cooldown between moves</p>
-      </div>
-      <div class="bg-slate-950 rounded-lg p-4">
-        <h5 class="text-white font-medium text-sm mb-2">Internet</h5>
-        <p class="text-xs text-slate-400">10 searches/min, 20 fetches/min, content type filtering</p>
-      </div>
-      <div class="bg-slate-950 rounded-lg p-4">
-        <h5 class="text-white font-medium text-sm mb-2">Scripts</h5>
-        <p class="text-xs text-slate-400">60s timeout, 512MB memory, 1MB output, 50 scripts/hour</p>
-      </div>
-      <div class="bg-slate-950 rounded-lg p-4">
-        <h5 class="text-white font-medium text-sm mb-2">Data</h5>
-        <p class="text-xs text-slate-400">1000 frames, 10 recordings (24h TTL), 1GB sandbox</p>
-      </div>
-    </div>
-
-    <h3 class="text-lg font-semibold text-indigo-400">Adversarial Focus Validation</h3>
-
-    <p class="text-slate-300 leading-relaxed">When users provide a focus topic for exploration (e.g., <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">maxim --explore "kitchen objects"</code>), the input is validated against adversarial patterns. The <em class="text-indigo-400 not-italic font-medium">AdversarialFocusValidator</em> blocks:</p>
-
-    <ul class="space-y-1 text-slate-300 list-disc pl-5 text-sm">
-      <li>Direct instruction injection ("ignore previous instructions...")</li>
-      <li>Code injection (shell expansion, SQL injection, code blocks)</li>
-      <li>Hidden instructions ("[SYSTEM: ...]")</li>
-      <li>Prompt leaking ("repeat your system prompt")</li>
-      <li>Social engineering ("my supervisor authorized...")</li>
-      <li>Unicode tricks (zero-width characters, null bytes)</li>
-      <li>Length attacks (truncated to 200 characters)</li>
-    </ul>
-
-    <h3 class="text-lg font-semibold text-indigo-400">Session Persistence</h3>
-
-    <p class="text-slate-300 leading-relaxed"><em class="text-indigo-400 not-italic font-medium">ExplorationSession</em> objects track the state of an exploration run (explored objects, seen classes, discoveries, sub-goals, curiosity level) and can be serialized to JSON for resumption:</p>
-
-    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">CLI</span>
-# List previous sessions
-maxim --list-sessions
-
-# Resume a specific session
-maxim --resume-session abc123</div>
-  </section>
-
-  <!-- 7. Sleep Mode -->
-  <section class="space-y-4">
-    <h2 id="sleep" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Sleep Mode</h2>
-
-    <p class="text-slate-300 leading-relaxed">Sleep is a <em class="text-indigo-400 not-italic font-medium">processing state</em>, not a mode. When Maxim sleeps, it retains its operational mode and strategy but dramatically reduces processing:</p>
-
-    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Pseudocode</span>
-Maxim.sleep():
-  1. Set mode to "sleep"
-  2. Force audio = True (always listen)
-  3. Move robot to sleep pose
-  4. Call live() with vision=False, motor=False, wake_up=False
-     └── Agentic runtime NOT started (non-active mode)
-     └── Audio-only monitoring loop
-     └── Background tasks run:
-         - memory_consolidation
-         - model_training_updates
-         - pattern_extraction</div>
-
-    <p class="text-slate-300 leading-relaxed">When a wake keyword is detected:</p>
-
-    <ol class="space-y-2 text-slate-300 list-decimal pl-5">
-      <li>Voice-agentic mode is enabled</li>
-      <li>Robot hardware wakes up (motors, camera)</li>
-      <li>Sleep flag is cleared</li>
-      <li>System requests exploration mode (default wake target)</li>
-      <li>Agentic runtime starts</li>
-    </ol>
 
     <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6">
       <h3 class="text-lg font-semibold text-indigo-400 mb-2">Biological Parallel</h3>
@@ -567,187 +215,53 @@ Maxim.sleep():
     </div>
   </section>
 
-  <!-- 8. Legacy Modes -->
+  <!-- 4. Headless -->
   <section class="space-y-4">
-    <h2 id="legacy-modes" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Legacy Mode Names</h2>
+    <h2 id="headless" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Headless Mode</h2>
 
-    <p class="text-slate-300 leading-relaxed">For backward compatibility, Maxim accepts legacy mode names via the CLI (<code class="bg-slate-950 px-2 py-0.5 rounded text-sm">--mode</code>). Each maps to a combination of operational mode and strategy:</p>
+    <p class="text-slate-300 leading-relaxed mb-3">When no robot hardware is detected, Maxim automatically enters <em class="text-indigo-400 not-italic font-medium">headless mode</em> &mdash; the full agentic loop runs without media capture, motor control, or Default Network overhead. Detection uses mDNS: if the robot's hostname doesn't resolve within 5 seconds, Maxim skips the SDK connection and starts immediately.</p>
 
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm text-left">
-        <thead>
-          <tr class="bg-indigo-700 text-white">
-            <th class="px-4 py-3 rounded-tl-lg">CLI Name</th>
-            <th class="px-4 py-3">Operational Mode</th>
-            <th class="px-4 py-3">Strategy</th>
-            <th class="px-4 py-3 rounded-tr-lg">Effective Initiative</th>
-          </tr>
-        </thead>
-        <tbody class="text-slate-300">
-          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
-            <td class="px-4 py-3 font-mono text-xs">exploration</td>
-            <td class="px-4 py-3"><span class="state-badge badge-active badge-sm">active</span></td>
-            <td class="px-4 py-3">explore</td>
-            <td class="px-4 py-3">min(0.7, 0.8) = 0.7</td>
-          </tr>
-          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
-            <td class="px-4 py-3 font-mono text-xs">live</td>
-            <td class="px-4 py-3"><span class="state-badge badge-active badge-sm">active</span></td>
-            <td class="px-4 py-3">assist</td>
-            <td class="px-4 py-3">min(0.7, 0.8) = 0.7</td>
-          </tr>
-          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
-            <td class="px-4 py-3 font-mono text-xs">research</td>
-            <td class="px-4 py-3"><span class="state-badge badge-active badge-sm">active</span></td>
-            <td class="px-4 py-3">research</td>
-            <td class="px-4 py-3">min(0.7, 0.7) = 0.7</td>
-          </tr>
-          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
-            <td class="px-4 py-3 font-mono text-xs">observe</td>
-            <td class="px-4 py-3"><span class="state-badge badge-passive badge-sm">passive</span></td>
-            <td class="px-4 py-3">observe</td>
-            <td class="px-4 py-3">min(0.3, 0.2) = 0.2</td>
-          </tr>
-          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
-            <td class="px-4 py-3 font-mono text-xs">reflection</td>
-            <td class="px-4 py-3"><span class="state-badge badge-passive badge-sm">passive</span></td>
-            <td class="px-4 py-3">reflect</td>
-            <td class="px-4 py-3">min(0.3, 0.3) = 0.3</td>
-          </tr>
-          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
-            <td class="px-4 py-3 font-mono text-xs">train</td>
-            <td class="px-4 py-3"><span class="state-badge badge-passive badge-sm">passive</span></td>
-            <td class="px-4 py-3">learn</td>
-            <td class="px-4 py-3">min(0.3, 0.3) = 0.3</td>
-          </tr>
-          <tr class="hover:bg-slate-800/50">
-            <td class="px-4 py-3 font-mono text-xs">sleep</td>
-            <td class="px-4 py-3"><span class="state-badge badge-passive badge-sm">passive</span></td>
-            <td class="px-4 py-3">observe</td>
-            <td class="px-4 py-3">0.2 (+ sleep processing state)</td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h4 class="text-center text-white font-semibold mb-3 pb-3 border-b border-slate-700"><span class="state-badge badge-awake mr-2">headless</span> No Robot Connected</h4>
+      <ul class="space-y-2 text-slate-300 list-disc pl-5 text-sm">
+        <li>Full LLM processing and agentic loop active</li>
+        <li>CLI input and file-change perception only (no video/audio)</li>
+        <li>Default Network <strong class="text-white">disabled</strong> (no motor commands)</li>
+        <li>Frame/audio capture workers <strong class="text-white">not started</strong></li>
+        <li>All bio memory systems active (Hippocampus, ATL, NAc, AG, EC)</li>
+        <li>Tools, provenance, and concept memory fully operational</li>
+      </ul>
     </div>
 
-    <p class="text-slate-300 leading-relaxed">The new architecture also exposes operational modes directly: <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">passive</code>, <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">active</code>, and <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">singularity</code> can be used as mode names.</p>
+    <p class="text-slate-300 leading-relaxed mt-3">Set <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">MAXIM_ROBOT_TIMEOUT=5</code> to reduce the mDNS timeout for faster headless startup. The system uses <em class="text-indigo-400 not-italic font-medium">capability detection, not mode flags</em> &mdash; like a biological organism adapting to sensory loss rather than requiring an explicit switch.</p>
   </section>
 
-  <!-- 9. Mode Switching -->
+  <!-- 5. Mode Switching -->
   <section class="space-y-4">
     <h2 id="switching" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Mode Switching</h2>
 
-    <p class="text-slate-300 leading-relaxed">Maxim supports three mechanisms for changing state:</p>
+    <p class="text-slate-300 leading-relaxed">Maxim supports multiple mechanisms for changing state at runtime:</p>
 
     <h3 class="text-lg font-semibold text-indigo-400">Voice Commands</h3>
-    <p class="text-slate-300 leading-relaxed">Voice commands change individual dimensions of state:</p>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div class="bg-slate-950 rounded-lg p-4">
-        <h5 class="text-white font-medium text-sm mb-2">Strategy Switches</h5>
-        <ul class="text-xs text-slate-400 space-y-1">
-          <li>"Maxim observe" &rarr; observe strategy</li>
-          <li>"Maxim explore" &rarr; explore strategy</li>
-          <li>"Maxim research" &rarr; research strategy</li>
-          <li>"Maxim assist" &rarr; assist strategy</li>
-          <li>"Maxim reflect" &rarr; reflect strategy</li>
-          <li>"Maxim learn" &rarr; learn strategy</li>
-        </ul>
-      </div>
-      <div class="bg-slate-950 rounded-lg p-4">
-        <h5 class="text-white font-medium text-sm mb-2">Processing &amp; Mode</h5>
-        <ul class="text-xs text-slate-400 space-y-1">
-          <li>"Maxim sleep" &rarr; sleep processing state</li>
-          <li>"Maxim wake up" &rarr; awake processing state</li>
-          <li>"Maxim passive" &rarr; passive operational mode</li>
-          <li>"Maxim active" &rarr; active operational mode</li>
-          <li>"Maxim singularity" &rarr; singularity mode</li>
-        </ul>
-      </div>
+    <div class="bg-slate-950 rounded-lg p-4">
+      <ul class="text-xs text-slate-400 space-y-1">
+        <li>"Maxim sleep" &rarr; enter sleep (calls sleep tool)</li>
+        <li>"Maxim wake up" &rarr; awake processing state</li>
+        <li>"Maxim passive" &rarr; passive operational mode</li>
+        <li>"Maxim active" &rarr; active operational mode</li>
+        <li>"Maxim singularity" &rarr; singularity mode</li>
+      </ul>
     </div>
 
-    <h3 class="text-lg font-semibold text-indigo-400">Agent-Initiated Switching</h3>
+    <h3 class="text-lg font-semibold text-indigo-400">Agent Tools</h3>
     <p class="text-slate-300 leading-relaxed">The agent can change modes through tools:</p>
 
     <ul class="space-y-2 text-slate-300 list-disc pl-5">
-      <li><strong class="text-white"><code class="bg-slate-950 px-1 rounded text-xs">mode_switch</code></strong> &mdash; Switch between legacy mode names. Logs switches with timestamps and reasoning.</li>
-      <li><strong class="text-white"><code class="bg-slate-950 px-1 rounded text-xs">autonomy_level</code></strong> &mdash; Request autonomy changes. Escalation (e.g., autonomous &rarr; planning) is always allowed. De-escalation (e.g., planning &rarr; autonomous) requires human approval via a proposal queue.</li>
+      <li><strong class="text-white"><code class="bg-slate-950 px-1 rounded text-xs">mode_switch</code></strong> &mdash; Switch between operational modes. Logs switches with timestamps and reasoning.</li>
+      <li><strong class="text-white"><code class="bg-slate-950 px-1 rounded text-xs">autonomy_level</code></strong> &mdash; Request autonomy changes. Escalation is always allowed. De-escalation requires human approval via a proposal queue.</li>
+      <li><strong class="text-white"><code class="bg-slate-950 px-1 rounded text-xs">sleep</code></strong> &mdash; Enter the sleep processing state. The agent wakes automatically when user input arrives.</li>
     </ul>
-
-    <h3 class="text-lg font-semibold text-indigo-400">Auto-Wake Behavior</h3>
-    <p class="text-slate-300 leading-relaxed">The <em class="text-indigo-400 not-italic font-medium">StateManager</em> provides configurable auto-wake: when a strategy or mode change is requested while sleeping, the robot can automatically wake first (controlled by <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">auto_wake_on_strategy_change</code> and <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">auto_wake_on_mode_change</code>, both default true).</p>
-
-    <h3 class="text-lg font-semibold text-indigo-400">CLI Mode Chaining</h3>
-    <p class="text-slate-300 leading-relaxed">After a run completes, the CLI checks for <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">maxim.requested_mode</code>. If the agent requested a mode switch, the CLI re-executes with the new mode after a configurable delay (default 1.5s, adjustable via <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">MAXIM_MODE_SWITCH_DELAY_S</code>).</p>
-  </section>
-
-  <!-- 10. Initiative -->
-  <section class="space-y-4">
-    <h2 id="initiative" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Initiative Calculation</h2>
-
-    <p class="text-slate-300 leading-relaxed">How proactive Maxim is depends on three factors combined:</p>
-
-    <div class="bg-slate-950 rounded-lg px-6 py-3 font-serif text-lg text-slate-200 inline-block">
-      effective_initiative = min(mode.max_initiative, strategy.max_initiative)
-    </div>
-
-    <p class="text-slate-300 leading-relaxed">The operational mode sets the ceiling; the strategy can only lower it. This means a passive robot never becomes proactive regardless of strategy, and an active robot with the observe strategy stays reactive.</p>
-
-    <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
-      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Example Combinations</h3>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm text-left">
-          <thead>
-            <tr class="text-indigo-400">
-              <th class="pr-4 py-2">Configuration</th>
-              <th class="pr-4 py-2">Mode Init.</th>
-              <th class="pr-4 py-2">Strategy Init.</th>
-              <th class="py-2">Effective</th>
-            </tr>
-          </thead>
-          <tbody class="text-slate-300">
-            <tr class="border-t border-slate-700">
-              <td class="pr-4 py-2">Passive + Observe</td>
-              <td class="pr-4 py-2">0.3</td>
-              <td class="pr-4 py-2">0.2</td>
-              <td class="py-2 text-white font-semibold">0.2</td>
-            </tr>
-            <tr class="border-t border-slate-700">
-              <td class="pr-4 py-2">Passive + Reflect</td>
-              <td class="pr-4 py-2">0.3</td>
-              <td class="pr-4 py-2">0.3</td>
-              <td class="py-2 text-white font-semibold">0.3</td>
-            </tr>
-            <tr class="border-t border-slate-700">
-              <td class="pr-4 py-2">Active + Observe</td>
-              <td class="pr-4 py-2">0.7</td>
-              <td class="pr-4 py-2">0.2</td>
-              <td class="py-2 text-white font-semibold">0.2</td>
-            </tr>
-            <tr class="border-t border-slate-700">
-              <td class="pr-4 py-2">Active + Explore</td>
-              <td class="pr-4 py-2">0.7</td>
-              <td class="pr-4 py-2">0.8</td>
-              <td class="py-2 text-white font-semibold">0.7</td>
-            </tr>
-            <tr class="border-t border-slate-700">
-              <td class="pr-4 py-2">Singularity + Explore</td>
-              <td class="pr-4 py-2">1.0</td>
-              <td class="pr-4 py-2">0.8</td>
-              <td class="py-2 text-white font-semibold">0.8</td>
-            </tr>
-            <tr class="border-t border-slate-700">
-              <td class="pr-4 py-2">Singularity + Research</td>
-              <td class="pr-4 py-2">1.0</td>
-              <td class="pr-4 py-2">0.7</td>
-              <td class="py-2 text-white font-semibold">0.7</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <p class="text-slate-300 leading-relaxed">For live mode specifically, the LiveModeIntent adds a third factor: the agent's self-tuned initiative (bounded 0.3&ndash;0.8). This creates a three-way minimum that the agent can adjust based on experience.</p>
   </section>
 
   <div class="pt-6 border-t border-slate-700 space-y-5">

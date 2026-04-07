@@ -78,15 +78,6 @@ class ModeInfo:
         return available
 
 
-@dataclass
-class StrategyInfo:
-    """Minimal strategy information for LLM prompts."""
-
-    name: str
-    description: str
-    approach_prompt: str
-
-
 @dataclass(order=True)
 class LLMRequest:
     """Request for LLM processing."""
@@ -98,7 +89,6 @@ class LLMRequest:
     context: StructuredContext = field(compare=False)
     mode: ModeInfo = field(compare=False)
     autonomy_level: AutonomyLevel = field(compare=False)
-    strategies: list[StrategyInfo] = field(compare=False)
     internet_access: bool = field(compare=False)
     internet_policy_summary: str = field(compare=False)
     timestamp: float = field(default_factory=time.time, compare=False)
@@ -134,9 +124,6 @@ class LLMRequest:
 
     # Pending modification request (action that user wants to revise)
     pending_modification: dict[str, Any] | None = field(default=None, compare=False)
-
-    # Current strategy name (from new architecture: observe, explore, research, assist, reflect, learn)
-    current_strategy: str = field(default="", compare=False)
 
     # Processing state (awake or sleep)
     is_sleeping: bool = field(default=False, compare=False)

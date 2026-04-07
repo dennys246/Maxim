@@ -27,7 +27,6 @@ from maxim.agents.llm_types import (  # noqa: F401
     LLMProposal,
     LLMRequest,
     ModeInfo,
-    StrategyInfo,
 )
 from maxim.agents.llm_context import (  # noqa: F401
     _COST_BRIDGE_DEFAULTS,
@@ -542,7 +541,6 @@ class LLMWorker:
         context: StructuredContext,
         mode: ModeInfo,
         autonomy_level: AutonomyLevel,
-        strategies: list[StrategyInfo],
         internet_access: bool,
         internet_policy_summary: str,
         priority: int = 0,
@@ -558,7 +556,6 @@ class LLMWorker:
         pending_modification: dict[str, Any] | None = None,
         prefetch_context: str = "",
         skip_exploration: bool = False,
-        current_strategy: str = "",
         is_sleeping: bool = False,
         protocol_context: str = "",
     ) -> bool:
@@ -572,7 +569,6 @@ class LLMWorker:
             context: Structured context from memory agent
             mode: Current mode information
             autonomy_level: Current autonomy level
-            strategies: Available strategies
             internet_access: Whether internet is available
             internet_policy_summary: Summary of internet policy
             priority: Request priority (higher = more urgent)
@@ -590,7 +586,6 @@ class LLMWorker:
             context=context,
             mode=mode,
             autonomy_level=autonomy_level,
-            strategies=strategies,
             internet_access=internet_access,
             internet_policy_summary=internet_policy_summary,
             priority=priority,
@@ -605,7 +600,6 @@ class LLMWorker:
             pending_modification=pending_modification,
             prefetch_context=prefetch_context,
             skip_exploration=skip_exploration,
-            current_strategy=current_strategy,
             is_sleeping=is_sleeping,
             protocol_context=protocol_context,
         )

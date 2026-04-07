@@ -227,7 +227,7 @@ src/maxim/
   mesh/             # Agent mesh: identity, protocol, transport, admission, knowledge sharing, delegation, clock sync
   tools/            # 40+ tools (filesystem, introspection, math, communication)
   default_network/  # Reactive behavior layer (thalamic gate, arbiter, behaviors)
-  modes/            # Operating modes, strategies, exploration policy
+  modes/            # Operating modes (passive/active/singularity), sleep tool
   skills/           # Protocol/skill system for operational composition
   provenance/       # Decision tracing (2-tier: cycle traces + activity log)
   proprioception/   # Pain detection, movement tracking, focus learning
@@ -258,7 +258,7 @@ data/util/          # Runtime config (llm.json, cost_state.json)
 - **Agent loop** lives in `runtime/agent_loop.py` with `LoopController` in `runtime/loop_controller.py`
 - **LLM routing** lives in `models/language/router.py` (config in `models/language/config.py`)
 - **Simulation** orchestrator in `simulation/orchestrator.py`, bridge in `simulation/bridge.py`
-- **Mode system**: ProcessingState (awake/sleep) x OperationalMode (passive/active/singularity) x Strategy (6 types)
+- **Mode system**: ProcessingState (awake/sleep) x OperationalMode (passive/active/singularity). Sleep is a tool the agent calls; it wakes automatically on user input.
 - **Memory tiers**: FORMING -> WORKING -> SHORT_TERM -> LONG_TERM
 - **Lane tier system**: Functions route to capability tiers (large/medium/small) via `FunctionRouter` in `runtime/function_router.py`. Legacy lane names (infer/review/record) are aliased to tier names. `detect_tiers()` in `lane_models.py` auto-detects from hardware.
 - **Thread model**: Main loop at 2-30Hz + WorkerPool (tier-based lanes: large/medium/small, owned by LLMWorker) + Hippocampus capture thread (owned + shut down by MemoryHub.on_session_end)

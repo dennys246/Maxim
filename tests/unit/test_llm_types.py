@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 
 from maxim.agents.autonomy import AutonomyLevel
-from maxim.agents.llm_types import LLMProposal, LLMRequest, ModeInfo, StrategyInfo
+from maxim.agents.llm_types import LLMProposal, LLMRequest, ModeInfo
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -118,19 +118,6 @@ class TestModeInfoGetAvailableTools:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# StrategyInfo
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestStrategyInfo:
-    def test_construction(self):
-        s = StrategyInfo(name="explore", description="look around", approach_prompt="be curious")
-        assert s.name == "explore"
-        assert s.description == "look around"
-        assert s.approach_prompt == "be curious"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # LLMRequest
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -141,7 +128,6 @@ def _make_request(priority=0, timestamp=None, **kwargs):
         context=MagicMock(),
         mode=ModeInfo(name="m", goal="g", context_prompt="p"),
         autonomy_level=AutonomyLevel.SUPERVISED,
-        strategies=[],
         internet_access=False,
         internet_policy_summary="none",
     )
@@ -170,7 +156,6 @@ class TestLLMRequestDefaults:
         assert req.triggering_input == ""
         assert req.lane == ""
         assert req.conversation_history_text == ""
-        assert req.current_strategy == ""
         assert req.prefetch_context == ""
 
     def test_default_bools(self):

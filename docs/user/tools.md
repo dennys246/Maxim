@@ -140,10 +140,13 @@ Evaluate mathematical expressions safely. Supports arithmetic, statistics, and s
 ## Mode and Autonomy
 
 ### ModeSwitchTool
-Switch operating mode at runtime.
+Switch operating mode at runtime (passive/active/singularity).
 
 ### AutonomyLevelTool
 Adjust the autonomy level (planning/supervised/autonomous).
+
+### SleepTool
+Enter the sleep processing state. The agent calls this to sleep; it wakes automatically when user input arrives. During sleep, background tasks run (memory consolidation, pattern extraction) but LLM processing is skipped.
 
 ---
 
@@ -151,22 +154,6 @@ Adjust the autonomy level (planning/supervised/autonomous).
 
 ### ExplainTool
 Query the provenance system. Shows what happened during a cycle, why a decision was made, or concept history.
-
----
-
-## Live Mode
-
-### DefineLiveModeIntentTool
-Define a new behavioral intent for live mode self-evolution.
-
-### ReviewLiveModeIntentTool
-Review and refine a live mode intent.
-
-### RecordLiveIntentInsightTool
-Record an insight from live mode execution.
-
-### RecordLiveOutcomeTool
-Record the outcome of a live mode intent.
 
 ---
 

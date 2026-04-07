@@ -123,16 +123,9 @@ def _normalize_args(args: argparse.Namespace) -> None:
     else:
         raise SystemExit(f"Invalid --interactive value: {args.interactive!r} (expected True/False)")
 
-    if str(getattr(args, "mode", "exploration")).strip().lower() == "sleep":
+    if str(getattr(args, "mode", "active")).strip().lower() == "sleep":
         args.audio = True
     args.epochs = _normalize_epoch_value(getattr(args, "epochs", 0))
-
-    # Handle --explore shortcut: sets mode to exploration
-    explore_focus = getattr(args, "explore", None)
-    if explore_focus is not None:
-        args.mode = "exploration"
-        # Store sanitized focus (empty string means general exploration)
-        args.exploration_focus = str(explore_focus).strip() if explore_focus else ""
 
     language_model = getattr(args, "language_model", None)
     if language_model is not None:
@@ -1002,7 +995,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.exit(0)
 
     build_home(args.home_dir)
-    mode = str(getattr(args, "mode", "exploration")).strip().lower()
+    mode = str(getattr(args, "mode", "active")).strip().lower()
     while True:
         run_id = time.strftime("%Y-%m-%d_%H%M%S")
         log_path = os.path.join(args.home_dir, "logs", f"reachy_log_{run_id}.log")
@@ -1476,124 +1469,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
                 return 0
 
-            # ─────────────────────────────────────────────────────────────────
-            # Exploration mode - uses full Maxim with live camera + agentic brain
-            # ─────────────────────────────────────────────────────────────────
-            if mode == "exploration":
-                # Handle --list-sessions
-                if bool(getattr(args, "list_sessions", False)):
-                    from maxim.modes.exploration import ExplorationSession
-
-                    sessions_dir = os.path.join(args.home_dir, "exploration_sessions")
-                    sessions = ExplorationSession.list_sessions(sessions_dir)
-                    if not sessions:
-                        print("No exploration sessions found.")
-                    else:
-                        print(f"Found {len(sessions)} exploration session(s):")
-                        for session_id in sessions:
-                            print(f"  - {session_id}")
-                    return 0
-
-                if not _gpu_available():
-                    _configure_cpu_fallback_model(logger, args.home_dir)
-
-                from maxim.modes.exploration import (
-                    AdversarialFocusValidator,
-                    ExplorationConstraints,
-                    ExplorationPolicy,
-                    ExplorationSession,
-                )
-
-                # Build exploration policy from CLI args
-                # Internet is enabled by default unless --no-internet is passed
-                allow_internet = not bool(getattr(args, "no_internet", False))
-                exploration_policy = ExplorationPolicy(
-                    require_gpu_for_agentic=True,
-                    allow_internet=allow_internet,
-                    allow_scripts=bool(getattr(args, "exploration_allow_scripts", False)),
-                    allow_training=bool(getattr(args, "exploration_allow_training", False)),
-                )
-
-                # Validate focus text if provided
-                exploration_focus = str(getattr(args, "exploration_focus", "") or "").strip()
-                if exploration_focus:
-                    validator = AdversarialFocusValidator()
-                    is_valid, reason = validator.validate(exploration_focus)
-                    if not is_valid:
-                        logger.error("Invalid exploration focus: %s", reason)
-                        return 1
-
-                # Handle session resume
-                resume_session_id = getattr(args, "resume_session", None)
-                sessions_dir = os.path.join(args.home_dir, "exploration_sessions")
-                session: ExplorationSession | None = None
-
-                if resume_session_id:
-                    session = ExplorationSession.load(sessions_dir, resume_session_id)
-                    if session is None:
-                        logger.error("Session %s not found.", resume_session_id)
-                        return 1
-                    logger.info("Resuming exploration session: %s", resume_session_id)
-                    # Override focus from session if not provided
-                    if not exploration_focus and session.focus:
-                        exploration_focus = session.focus
-                else:
-                    # Create new session
-                    session = ExplorationSession(
-                        focus=exploration_focus,
-                        policy=exploration_policy,
-                        constraints=ExplorationConstraints(),
-                    )
-                    session.save(sessions_dir)
-                    logger.info("Created exploration session: %s", session.session_id)
-
-                logger.info(
-                    "Starting exploration mode (focus=%r, session=%s, internet=%s, scripts=%s, training=%s)",
-                    exploration_focus or "(general)",
-                    session.session_id,
-                    exploration_policy.allow_internet,
-                    exploration_policy.allow_scripts,
-                    exploration_policy.allow_training,
-                )
-
-                # Use the full Maxim class with live camera - exploration runs as "live" mode
-                # with exploration context stored for the agentic runtime
-                from maxim.conscience.selfy import Maxim
-
-                audio_enabled = bool(getattr(args, "audio", True))
-
-                maxim = Maxim(
-                    robot_name=args.robot_name,
-                    home_dir=args.home_dir,
-                    timeout=args.timeout,
-                    epochs=epochs_value,
-                    verbosity=args.verbosity,
-                    mode="exploration",  # Use exploration mode for novelty-driven discovery
-                    audio=audio_enabled,
-                    audio_len=float(getattr(args, "audio_len", 5.0) or 5.0),
-                    interactive=bool(getattr(args, "interactive", True)),
-                )
-
-                # Store exploration context in Maxim's state for the agentic runtime
-                # This will be picked up by _start_agentic_runtime() in selfy.py
-                maxim._exploration_mode = True
-                maxim._exploration_focus = exploration_focus
-                maxim._exploration_session_id = session.session_id
-                maxim._exploration_policy = exploration_policy.to_dict()
-
-                try:
-                    logger.info("✅ Maxim exploration mode active!")
-                    maxim.live(home_dir=args.home_dir, run_id=run_id)
-                finally:
-                    # Save session state
-                    if session:
-                        session.save(sessions_dir)
-                    try:
-                        maxim.shutdown()
-                    except Exception:
-                        pass
-
-                return 0
 
             from maxim.conscience.selfy import Maxim
 
@@ -1647,7 +1522,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if requested == "shutdown":
             logger.info("Shutdown requested.")
             break
-        if requested in ("sleep", "reflection", "train", "live", "agentic", "exploration"):
+        if requested in ("sleep", "live", "agentic", "passive", "active", "singularity"):
             logger.info("Switching mode: %s -> %s", mode, requested)
             delay_s = 0.0
             try:

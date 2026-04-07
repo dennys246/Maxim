@@ -1,46 +1,19 @@
-"""Modes package for goal-driven mode execution.
+"""Modes package — autonomy levels and processing states.
 
-Modes define goals and constraints rather than fixed procedures.
-The agent selects strategies to achieve mode goals.
+Modes define safety constraints and permissions (passive/active/singularity).
+The agent pipeline handles behavioral flexibility naturally.
 """
 
 from maxim.modes.definitions import (
     ModeDefinition,
     MODES,
+    OPERATIONAL_MODES,
     get_mode,
-    get_exploration_mode_with_policy,
-)
-from maxim.modes.strategies import Strategy, StrategyLibrary, get_strategy_library
-from maxim.modes.exploration import (
-    ExplorationPolicy,
-    ExplorationConstraints,
-    ExplorationBudget,
-    ExplorationSession,
-    ExplorationSubGoal,
-    CuriosityManager,
-    AdversarialFocusValidator,
-    FocusDecomposer,
-    parse_explore_command,
 )
 
 __all__ = [
-    # Definitions
     "ModeDefinition",
     "MODES",
+    "OPERATIONAL_MODES",
     "get_mode",
-    "get_exploration_mode_with_policy",
-    # Strategies
-    "Strategy",
-    "StrategyLibrary",
-    "get_strategy_library",
-    # Exploration
-    "ExplorationPolicy",
-    "ExplorationConstraints",
-    "ExplorationBudget",
-    "ExplorationSession",
-    "ExplorationSubGoal",
-    "CuriosityManager",
-    "AdversarialFocusValidator",
-    "FocusDecomposer",
-    "parse_explore_command",
 ]

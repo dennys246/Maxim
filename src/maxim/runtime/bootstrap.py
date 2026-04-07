@@ -60,6 +60,7 @@ def build_tool_registry(
     operational_mode: str = "passive",
     gateway: object | None = None,
     allowed_dirs_override: list[str] | None = None,
+    state_manager: object | None = None,
 ) -> ToolRegistry:
     """Build the tool registry with mode-based filesystem containment.
 
@@ -186,35 +187,12 @@ def build_tool_registry(
         except Exception:
             pass
 
-    # Register live mode intent tools
-    if autonomy_controller is not None:
+    # Register sleep tool
+    if state_manager is not None:
         try:
-            from maxim.modes.live_intent import LiveModeIntentStore
-            from maxim.tools.define_live_intent import (
-                DefineLiveModeIntentTool,
-                RecordLiveIntentInsightTool,
-                RecordLiveOutcomeTool,
-                ReviewLiveModeIntentTool,
-            )
+            from maxim.tools.sleep import SleepTool
 
-            # Determine agent data directory
-            if maxim is not None and hasattr(maxim, "home_dir"):
-                home_dir = getattr(maxim, "home_dir", "data/")
-                agent_data_dir = os.path.join(home_dir, "agents", "MaximAgent")
-            else:
-                agent_data_dir = "data/agents/MaximAgent"
-
-            intent_store = LiveModeIntentStore(agent_data_dir)
-
-            registry.register(
-                DefineLiveModeIntentTool(
-                    intent_store=intent_store,
-                    autonomy_controller=autonomy_controller,
-                )
-            )
-            registry.register(ReviewLiveModeIntentTool(intent_store))
-            registry.register(RecordLiveIntentInsightTool(intent_store))
-            registry.register(RecordLiveOutcomeTool(intent_store))
+            registry.register(SleepTool(state_manager=state_manager))
         except Exception:
             pass
 

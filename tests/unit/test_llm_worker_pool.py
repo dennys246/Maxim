@@ -61,12 +61,6 @@ def _make_mode_info():
     )
 
 
-def _make_strategies():
-    from maxim.agents.llm_worker import StrategyInfo
-
-    return [StrategyInfo(name="assist", description="Help the user", approach_prompt="Be helpful")]
-
-
 def _submit_test_context(worker, triggering_input: str = "maxim hello", priority: int = 0) -> bool:
     """Submit a minimal context to the worker."""
     from maxim.agents.autonomy import AutonomyLevel
@@ -75,7 +69,6 @@ def _submit_test_context(worker, triggering_input: str = "maxim hello", priority
         context=FakeContext(cli_inputs=[triggering_input]),
         mode=_make_mode_info(),
         autonomy_level=AutonomyLevel.SUPERVISED,
-        strategies=_make_strategies(),
         internet_access=False,
         internet_policy_summary="",
         priority=priority,
@@ -235,7 +228,6 @@ class TestLLMWorkerPoolMode:
                 context=FakeContext(cli_inputs=["maxim hello"]),
                 mode=_make_mode_info(),
                 autonomy_level=AutonomyLevel.SUPERVISED,
-                strategies=_make_strategies(),
                 internet_access=False,
                 internet_policy_summary="",
                 triggering_input="maxim hello",
@@ -466,7 +458,6 @@ class TestLLMPerRequestTimeout:
                 context=FakeContext(cli_inputs=["maxim hello"]),
                 mode=_make_mode_info(),
                 autonomy_level=AutonomyLevel.SUPERVISED,
-                strategies=_make_strategies(),
                 internet_access=False,
                 internet_policy_summary="",
                 triggering_input="maxim hello",
@@ -495,7 +486,6 @@ class TestLLMPerRequestTimeout:
                 context=FakeContext(cli_inputs=["maxim hello"]),
                 mode=_make_mode_info(),
                 autonomy_level=AutonomyLevel.SUPERVISED,
-                strategies=_make_strategies(),
                 internet_access=False,
                 internet_policy_summary="",
                 triggering_input="maxim hello",
@@ -520,7 +510,6 @@ class TestLLMPerRequestTimeout:
             context=FakeContext(cli_inputs=["maxim hello"]),
             mode=_make_mode_info(),
             autonomy_level=AutonomyLevel.SUPERVISED,
-            strategies=_make_strategies(),
             internet_access=False,
             internet_policy_summary="",
             triggering_input="maxim hello",
