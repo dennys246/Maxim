@@ -12,7 +12,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 |------|--------|-----------|
 | Tool Refactoring | **Complete** | All 10 phases done: say, think, examine, introspection, aliases, tracking, proactive list. [Plan](tool_refactoring_plan.md) |
 | Introspection API | **Phases 1-4 done** | `AUTIntrospector` + standalone `run_campaign()` shipped. Remaining: Ph5 self-introspection (needs discussion). |
-| Lane Tier Architecture | **Not started** | Size-based model routing (large/medium/small) replacing function-based lanes. ~550 LOC. Prerequisite for benchmarks. [Plan](lane_tier_plan.md) |
+| Lane Tier Architecture | **Complete** | Size-based model routing (large/medium/small). FunctionRouter, detect_tiers, doctor check, config loader, LaneMetrics aliases. `infer_net` absorbed. [Plan](lane_tier_plan.md) |
 | Simulation Benchmark | **Not started** | Phase 0 (sim improvements, ~220 LOC) + Phases 1-9 (benchmark runner, ~910 LOC). [Plan](benchmark_plan.md) |
 | Docker Sandbox | **Complete** | Phase A (TmpdirSandbox + pain) + Phase B (DockerSandbox + ContainerRunner + CLI) both shipped |
 | Research Protocol | **Complete** | All phases: mesh primitives, research tools, Writer + Reviewer agents, Research Orchestrator. CLI: `maxim --sim research`. |
@@ -27,6 +27,8 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Dungeon Master Extensions | **Deferred** | Optional follow-ons layered onto DM MVP. Each extension gated on MVP usage pain. |
 | Interactive Sim Prompts | **Not started** | `ask_user` tool with timeout + replay (~180 LOC). Needed for DM architect extension. |
 | Peer Inference Retry on Leader Restart | **Not started** | Retry with backoff on 502/503 during leader restart. ~30 LOC in openai_backend.py. |
+| Python API | **Not started** | Verb-based public interface (`run`, `imagine`, `connect`, `diagnose`, `observe`, `configure`). Rename AUTIntrospector -> Observer. ~400 LOC facade + ~100 LOC rename. [Plan](python_api_plan.md) |
+| PyPI Publication | **Phase 0 done** | Metadata + name (`pymaxim`) done. Dep restructuring, multi-robot plugins, CI/CD, README rewrite remain. Depends on Python API plan. [Plan](pypi_publication_plan.md) |
 
 ### Completed Plans
 
@@ -73,14 +75,19 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
      │  (per-lane metrics) │  │   │  Phase 0 MVP         │
      └──────────┬──────────┘  │   └──────────┬───────────┘
                 ↓             │              ↓
-     [Refinement closure]     │   ┌──────────┴───────────┐
-                              │   │  Embodiment Core     │
-                              │   │  (further phases)    │
-                              │   └──────────┬───────────┘
-                              │              ↓
-                              │   ┌──────────┴───────────┐
-                              │   │  Hardware Adapter    │
-                              │   └──────────────────────┘
+     ┌──────────┴──────────┐  │   ┌──────────┴───────────┐
+     │  Lane Tier Arch     │  │   │  Embodiment Core     │
+     │  (function routing, │  │   │  (further phases)    │
+     │   absorbs infer_net,│  │   └──────────┬───────────┘
+     │   doctor check)     │  │              ↓
+     └──────────┬──────────┘  │   ┌──────────┴───────────┐
+                ↓             │   │  Hardware Adapter    │
+     ┌──────────┴──────────┐  │   └──────────────────────┘
+     │  Sim Benchmark      │  │
+     │  (uses small tier)  │  │
+     └──────────┬──────────┘  │
+                ↓             │
+     [Refinement closure]     │
                               │
                               ▼
                     ┌─────────────────────┐
@@ -97,7 +104,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
               └───────────────────────────────────┘
 
 Optional / independent (ship when demand surfaces):
-  Interactive Sim Prompts, Simulation Benchmark, test_record_plan_outcome fix
+  Interactive Sim Prompts, test_record_plan_outcome fix
 
 Low-priority (fold into future work when relevant):
   Stdlib OpenAI-Compat Client, GitHub Repo Management
@@ -111,7 +118,7 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 
 | # | Work | LOC | Rationale |
 |---|------|-----|-----------|
-| 1 | **Lane Tier Architecture** | ~700 | Size-based model routing. Prerequisite for benchmarks (small tier for transcriber). Unlocks clean function routing for all downstream plans. |
+| 1 | **Lane Tier Architecture** | ~820 | Size-based model routing. Absorbs `infer_net`, adds doctor tier check, mesh hooks. Prerequisite for benchmarks. Unlocks clean function routing for all downstream plans. |
 | 2 | **Benchmark Phase 0 (Sim improvements)** | ~220 | Enrich SimulationResult + activate full bio-stack in sim + bio-system expectations + scenario metadata. Benefits all sim modes. |
 | 3 | **Benchmark Phases 1-2 (Core runner)** | ~330 | BenchmarkRunner wrapping run_campaign() + CLI. End-to-end `--sim benchmark` working. |
 | 4 | **Benchmark Phases 3-5 (Scenarios + output)** | ~400+YAML | Unified YAML loader + tiered output + live progress + cognitive_suite scenarios. First real benchmark runs. |

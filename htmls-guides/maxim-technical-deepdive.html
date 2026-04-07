@@ -192,10 +192,10 @@ Main Thread (observation loop)
 │     Runs Whisper inference
 │     Writes JSONL to data/transcript/
 │
-├─ WorkerPool (typed lanes)
-│  ├─ infer lane  (1 worker, GPU) &mdash; LLM inference
-│  ├─ review lane (1 worker, CPU) &mdash; evaluation
-│  └─ record lane (2 workers)     &mdash; memory writes, I/O
+├─ WorkerPool (tier-based lanes)
+│  ├─ large tier  (1 worker, GPU) &mdash; agent inference, fear review
+│  ├─ medium tier (1 worker, CPU) &mdash; analysis, fallback
+│  └─ small tier  (2 workers)     &mdash; extraction, transcription, JSON repair
 │
 ├─ Hippocampus Capture Thread
 │  └─ Own FIFO queue (bounded, 100 items)
@@ -547,10 +547,10 @@ Agent proposes intent → Planner decomposes into tools
     <p class="text-slate-300 leading-relaxed">Maxim runs LLMs locally using <em class="text-indigo-400 not-italic font-medium">llama-cpp-python</em> (GGUF format) for CPU + GPU acceleration, or remotely via a peer-to-peer mesh. The LLM routing layer supports multiple backends, multi-lane inference, and distributed compute.</p>
 
     <h3 class="text-lg font-semibold text-indigo-400">Multi-LLM Architecture</h3>
-    <p class="text-slate-300 leading-relaxed">Inference is organized into <span class="text-indigo-400 font-semibold">lanes</span> (infer, review, record), each of which can be backed by a different model or remote server. The <span class="text-indigo-400 font-semibold">LaneBackendManager</span> owns lane-to-backend mappings, while the <span class="text-indigo-400 font-semibold">LLMRouter</span> handles provider selection, cost gates, and failover within each lane.</p>
+    <p class="text-slate-300 leading-relaxed">Inference is organized into capability <span class="text-indigo-400 font-semibold">tiers</span> (large, medium, small), each backed by a different model or remote server. Named functions (agent_inference, concept_extraction, etc.) route to tiers via the <span class="text-indigo-400 font-semibold">FunctionRouter</span> with configurable fallback chains. The <span class="text-indigo-400 font-semibold">LaneBackendManager</span> owns tier-to-backend mappings, while the <span class="text-indigo-400 font-semibold">LLMRouter</span> handles provider selection, cost gates, and failover within each tier.</p>
 
     <div class="bg-slate-900 rounded-lg p-4 font-mono text-sm text-green-400 overflow-x-auto whitespace-pre">
-Peer's infer lane  →  OpenAI client  →  https://tunnel-url/v1/chat/completions
+Peer's large tier  →  OpenAI client  →  https://tunnel-url/v1/chat/completions
                                              │ (Cloudflare tunnel)
                                              ▼
                                         LeaderProxy (:8099) — auth, logging, GPU metrics

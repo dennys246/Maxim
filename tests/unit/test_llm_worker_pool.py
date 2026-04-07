@@ -105,7 +105,7 @@ class TestLLMWorkerPoolMode:
         worker.start()
         try:
             assert worker._pool is not None
-            assert "infer" in worker._pool._lanes
+            assert "large" in worker._pool._lanes
         finally:
             worker.stop()
 
@@ -283,7 +283,7 @@ class TestLLMWorkerPoolMode:
         # Create pool with tiny queue
         pool = WorkerPool(
             lane_configs={
-                "infer": LaneConfig(name="infer", max_workers=1, queue_size=2),
+                "large": LaneConfig(name="large", max_workers=1, queue_size=2),
             }
         )
         pool.start()
@@ -320,7 +320,7 @@ class TestLLMWorkerExternalPool:
 
         pool = WorkerPool(
             lane_configs={
-                "infer": LaneConfig(name="infer", max_workers=1),
+                "large": LaneConfig(name="large", max_workers=1),
             }
         )
         pool.start()
@@ -346,7 +346,7 @@ class TestLLMWorkerExternalPool:
 
         pool = WorkerPool(
             lane_configs={
-                "infer": LaneConfig(name="infer", max_workers=1),
+                "large": LaneConfig(name="large", max_workers=1),
             }
         )
         pool.start()
@@ -408,7 +408,7 @@ class TestLLMWorkerPriority:
         # Don't start the pool yet (let jobs queue up)
         pool = WorkerPool(
             lane_configs={
-                "infer": LaneConfig(name="infer", max_workers=1),
+                "large": LaneConfig(name="large", max_workers=1),
             }
         )
 

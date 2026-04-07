@@ -162,8 +162,8 @@ episodic memories:
 Piggybacks on concept recall for numerical enrichment:
 
 - **Sync path**: Extract numerics from episodes, compute IPS/AG stats, cache results
-- **Async path** (review lane): Jaccard co-occurrence scoring, relationship modulation
-- **Async path** (record lane): AG MathMemory stores, QUANTIFIES edges
+- **Async path** (small tier): Jaccard co-occurrence scoring, relationship modulation
+- **Async path** (small tier): AG MathMemory stores, QUANTIFIES edges
 
 Falls back to sync when no WorkerPool available.
 

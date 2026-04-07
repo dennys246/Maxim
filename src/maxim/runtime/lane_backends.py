@@ -138,7 +138,11 @@ class BackendGateError(RuntimeError):
 
 
 class LaneBackendManager:
-    """Owns the lane → backend mapping for multi-LLM operation."""
+    """Owns the lane → backend mapping for multi-LLM operation.
+
+    Lanes are now tier-based (large/medium/small). The optional
+    ``function_router`` maps function names to tiers with fallback chains.
+    """
 
     def __init__(
         self,
@@ -147,11 +151,13 @@ class LaneBackendManager:
         max_backends: int | None = None,
         max_cloud_lanes: int | None = None,
         peer_owned: bool = False,
+        function_router: Any | None = None,
     ) -> None:
         self._configs: dict[str, LaneConfig] = dict(lane_configs)
         self._backends: dict[str, Any] = {}
         self._cloud_lanes: set[str] = set()
         self._peer_owned = peer_owned
+        self._function_router = function_router
         self._lock = threading.Lock()
         self._max_backends = (
             max_backends
@@ -234,6 +240,35 @@ class LaneBackendManager:
                 if kind == "cloud":
                     self._cloud_lanes.add(lane)
             return backend
+
+    @property
+    def function_router(self) -> Any | None:
+        """The FunctionRouter attached to this manager (if any)."""
+        return self._function_router
+
+    def set_function_router(self, router: Any) -> None:
+        """Attach or replace the FunctionRouter."""
+        self._function_router = router
+
+    def get_backend_for_function(self, function: str) -> tuple[Any | None, str]:
+        """Resolve a function name to a tier and return (backend, tier_name).
+
+        Uses the attached ``FunctionRouter`` to map function → tier.
+        Falls back to ``get_backend(function)`` if no router is set (treats
+        the function name as a literal lane name — backward compat).
+
+        Returns:
+            (backend, tier_name) tuple. Backend may be None if the tier
+            has no model configured.
+
+        Raises:
+            TierRestrictionError / TierUnavailableError from FunctionRouter
+            if the function's tier isn't available.
+        """
+        if self._function_router is not None:
+            tier, _boost = self._function_router.resolve(function)
+            return self.get_backend(tier), tier
+        return self.get_backend(function), function
 
     def unload_all(self) -> None:
         """Release all cached backends. Best-effort; swallows exceptions."""
@@ -324,7 +359,7 @@ class LaneBackendManager:
         so the router tries the primary (local/self-hosted) first and falls
         back to cloud on failure, rate-limit, or timeout.
         """
-        if cfg.name != "infer":
+        if cfg.name not in ("infer", "large"):
             return llm_config
         fallback_model = os.environ.get("MAXIM_CLOUD_FALLBACK_MODEL", "").strip()
         if not fallback_model:
@@ -518,8 +553,12 @@ def build_primary_router(
         user; it means their configuration exceeds the declared limits.
     """
     from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
-    from maxim.runtime.lane_models import apply_lane_env_overrides, build_lane_model_config
-    from maxim.runtime.worker_pool import DEFAULT_LANES
+    from maxim.runtime.lane_models import (
+        apply_lane_env_overrides,
+        apply_tier_config_overrides,
+        detect_tiers,
+        load_function_overrides,
+    )
 
     # Peer-config auto-load: if ~/.config/maxim/peer.yml exists and env vars
     # aren't already set, populate them from the file. Set by
@@ -558,26 +597,32 @@ def build_primary_router(
             ram_gb=ram_gb,
         )
 
-    lane_configs = {name: dataclasses.replace(cfg) for name, cfg in DEFAULT_LANES.items()}
-
     try:
-        lane_models = build_lane_model_config(
+        lane_configs = detect_tiers(
             capabilities,
             profile_available=_profile_has_local_file,
         )
-        for lane_name, lm in lane_models.items():
-            base = lane_configs.get(lane_name)
-            if base is None:
-                continue
-            lane_configs[lane_name] = dataclasses.replace(
-                base,
-                model_profile=lm.profile,
-                device=lm.device,
-                n_gpu_layers=lm.n_gpu_layers,
-            )
     except Exception as e:
         if logger is not None:
-            logger.warning("Lane model assignment failed (using defaults): %s", e)
+            logger.warning("Tier detection failed (using defaults): %s", e)
+        from maxim.runtime.worker_pool import DEFAULT_TIERS
+
+        lane_configs = {name: dataclasses.replace(cfg) for name, cfg in DEFAULT_TIERS.items()}
+
+    # Apply tier/function config from llm.json if present
+    _llm_json_tier_config: dict = {}
+    _llm_json_func_config: dict = {}
+    try:
+        from maxim.models.language.config import load_llm_config as _load_cfg
+
+        _raw_cfg = _load_cfg()
+        _raw = getattr(_raw_cfg, "_raw", {}) or {}
+        _llm_json_tier_config = _raw.get("tiers", {})
+        _llm_json_func_config = _raw.get("functions", {})
+    except Exception:
+        pass
+    if _llm_json_tier_config:
+        lane_configs = apply_tier_config_overrides(lane_configs, _llm_json_tier_config)
 
     lane_configs = apply_lane_env_overrides(lane_configs)
     lane_configs = _apply_cloud_cli_overrides(lane_configs, logger)
@@ -595,7 +640,20 @@ def build_primary_router(
     # When it fires, the infer lane is rewritten to point at the spawned server.
     lane_configs = _maybe_auto_spawn_server(capabilities, lane_configs, logger)
 
-    manager = LaneBackendManager(lane_configs, peer_owned=_has_peer_config)
+    # Build FunctionRouter with available tiers derived from lane_configs
+    from maxim.runtime.function_router import DEFAULT_FUNCTIONS, FunctionRouter
+
+    available_tiers = set(lane_configs.keys())
+    functions = dict(DEFAULT_FUNCTIONS)
+    if _llm_json_func_config:
+        functions.update(load_function_overrides(_llm_json_func_config))
+    fn_router = FunctionRouter(functions=functions, available_tiers=available_tiers)
+
+    manager = LaneBackendManager(
+        lane_configs,
+        peer_owned=_has_peer_config,
+        function_router=fn_router,
+    )
 
     if logger is not None:
         logger.info("Lane assignments: %s", manager.describe())
@@ -611,7 +669,9 @@ def build_primary_router(
     except Exception:
         pass
 
-    router = manager.get_backend("infer")
+    # Primary inference backend: try "large" tier first, fall back to "infer"
+    # (backward compat for callers that pass explicit lane_configs with old names).
+    router = manager.get_backend("large") or manager.get_backend("infer")
     return router, manager
 
 
@@ -713,7 +773,10 @@ def _maybe_auto_spawn_server(
     if capabilities is None or not getattr(capabilities, "has_gpu", False):
         return lane_configs
 
-    infer_cfg = lane_configs.get("infer")
+    # Tier-based: primary inference tier is "large"; fall back to "infer"
+    # for backward compat with custom lane_configs.
+    _infer_tier = "large" if "large" in lane_configs else "infer"
+    infer_cfg = lane_configs.get(_infer_tier)
     if infer_cfg is None or infer_cfg.remote_url or not infer_cfg.model_profile:
         return lane_configs
 
@@ -798,7 +861,7 @@ def _maybe_auto_spawn_server(
         _active_model = effective_profile
         _llm_start_time = time.time()
         out = dict(lane_configs)
-        out["infer"] = dataclasses.replace(
+        out[_infer_tier] = dataclasses.replace(
             infer_cfg,
             remote_url=existing_url,
             remote_model=effective_profile,
@@ -849,11 +912,11 @@ def _maybe_auto_spawn_server(
     _active_model = effective_profile
     _llm_start_time = time.time()
 
-    # Rewrite the infer lane to point at the spawned server. Auto-wire the
-    # API key for the leader's own client so local inference doesn't 401.
+    # Rewrite the primary inference tier to point at the spawned server.
+    # Auto-wire the API key for the leader's own client so local inference doesn't 401.
     out = dict(lane_configs)
     infer_api_key = infer_cfg.remote_api_key or api_key
-    out["infer"] = dataclasses.replace(
+    out[_infer_tier] = dataclasses.replace(
         infer_cfg,
         remote_url=url,
         remote_model=effective_profile,
@@ -962,7 +1025,7 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
         try:
             from maxim.models.language.lane_metrics import get_metrics_registry
 
-            metrics = get_metrics_registry().get("infer")
+            metrics = get_metrics_registry().get("large") or get_metrics_registry().get("infer")
             deadline = _time.time() + 5.0
             while metrics.current_in_flight > 0 and _time.time() < deadline:
                 _time.sleep(0.25)

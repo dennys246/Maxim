@@ -23,7 +23,7 @@ Companion doc: the multi-LLM scaling work (now complete).
 Peer → leader inference currently flows like this:
 
 ```
-peer's infer lane  →  openai-python client  →  https://<tunnel-url>/v1/chat/completions
+peer's large tier  →  openai-python client  →  https://<tunnel-url>/v1/chat/completions
                                                     │ (Cloudflare tunnel = dumb HTTP proxy)
                                                     ▼
                                               localhost:8100  (llama-cpp-server, spawned by leader)

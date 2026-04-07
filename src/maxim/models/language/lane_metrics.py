@@ -257,18 +257,35 @@ class MetricsRegistry:
 
     One instance per process, shared between LaneBackendManager and
     LeaderProxy. Thread-safe creation of per-lane metrics on first access.
+
+    Supports legacy lane name aliases (infer→large, review→small, etc.)
+    for backward compatibility during the tier migration.
     """
+
+    # Legacy lane names → tier names. Callers using old names get
+    # redirected to the tier's metrics transparently.
+    _LANE_ALIASES: dict[str, str] = {
+        "infer": "large",
+        "infer_net": "large",
+        "review": "small",
+        "record": "small",
+    }
 
     def __init__(self) -> None:
         self._metrics: dict[str, LaneMetrics] = {}
         self._lock = threading.Lock()
 
     def get(self, lane_name: str) -> LaneMetrics:
-        """Get or create metrics for a lane. Thread-safe."""
+        """Get or create metrics for a lane. Thread-safe.
+
+        Accepts tier names (large/medium/small) or legacy lane names
+        (infer/review/record), which are resolved via alias.
+        """
+        resolved = self._LANE_ALIASES.get(lane_name, lane_name)
         with self._lock:
-            if lane_name not in self._metrics:
-                self._metrics[lane_name] = LaneMetrics(lane_name=lane_name)
-            return self._metrics[lane_name]
+            if resolved not in self._metrics:
+                self._metrics[resolved] = LaneMetrics(lane_name=resolved)
+            return self._metrics[resolved]
 
     def all_metrics(self) -> dict[str, LaneMetrics]:
         """Snapshot of all lane metrics."""

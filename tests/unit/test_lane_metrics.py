@@ -171,24 +171,24 @@ class TestMetricsRegistry:
 
     def test_get_creates_on_first_access(self) -> None:
         r = MetricsRegistry()
-        m = r.get("infer")
-        assert m.lane_name == "infer"
-        assert r.get("infer") is m  # same instance
+        m = r.get("large")
+        assert m.lane_name == "large"
+        assert r.get("large") is m  # same instance
 
     def test_all_metrics(self) -> None:
         r = MetricsRegistry()
-        r.get("infer")
-        r.get("review")
+        r.get("large")
+        r.get("small")
         all_m = r.all_metrics()
-        assert "infer" in all_m
-        assert "review" in all_m
+        assert "large" in all_m
+        assert "small" in all_m
 
     def test_snapshot(self) -> None:
         r = MetricsRegistry()
-        m = r.get("infer")
+        m = r.get("large")
         m.record_call(100, input_tokens=50)
         snap = r.snapshot()
-        assert snap["infer"]["jobs_completed"] == 1
+        assert snap["large"]["jobs_completed"] == 1
 
     def test_thread_safe_creation(self) -> None:
         """Concurrent get() for the same lane returns the same instance."""
@@ -196,7 +196,7 @@ class TestMetricsRegistry:
         instances: list[LaneMetrics] = []
 
         def worker() -> None:
-            instances.append(r.get("infer"))
+            instances.append(r.get("large"))
 
         threads = [threading.Thread(target=worker) for _ in range(20)]
         for t in threads:
@@ -206,3 +206,45 @@ class TestMetricsRegistry:
 
         assert len(instances) == 20
         assert all(inst is instances[0] for inst in instances)
+
+
+# ─── MetricsRegistry alias support ──────────────────────────────────────
+
+
+class TestMetricsRegistryAliases:
+    def test_infer_resolves_to_large(self):
+        """Legacy 'infer' name should return the same metrics as 'large'."""
+        registry = MetricsRegistry()
+        large_metrics = registry.get("large")
+        infer_metrics = registry.get("infer")
+        assert large_metrics is infer_metrics
+        assert large_metrics.lane_name == "large"
+
+    def test_review_resolves_to_small(self):
+        registry = MetricsRegistry()
+        small_metrics = registry.get("small")
+        review_metrics = registry.get("review")
+        assert small_metrics is review_metrics
+
+    def test_record_resolves_to_small(self):
+        registry = MetricsRegistry()
+        small_metrics = registry.get("small")
+        record_metrics = registry.get("record")
+        assert small_metrics is record_metrics
+
+    def test_infer_net_resolves_to_large(self):
+        registry = MetricsRegistry()
+        large_metrics = registry.get("large")
+        infer_net_metrics = registry.get("infer_net")
+        assert large_metrics is infer_net_metrics
+
+    def test_direct_tier_names_unaffected(self):
+        registry = MetricsRegistry()
+        large = registry.get("large")
+        medium = registry.get("medium")
+        small = registry.get("small")
+        assert large is not medium
+        assert medium is not small
+        assert large.lane_name == "large"
+        assert medium.lane_name == "medium"
+        assert small.lane_name == "small"

@@ -413,16 +413,18 @@ class TestBuildPrimaryRouter:
             mock_load.return_value = LLMConfig()
             mock_router.return_value = "router-instance"
             router, manager = build_primary_router()
-            assert router == "router-instance"
+            # No GPU + 8GB RAM → medium + small tiers, no large.
+            # Large tier backend is None; router may be None or medium backend.
             assert manager is not None
-            assert "infer" in manager.lanes
+            # Tier-based lanes: should have at least "small"
+            assert "small" in manager.lanes
 
     def test_uses_provided_capabilities(self, monkeypatch):
         """When capabilities passed, factory does not call detect_compute_resources."""
         monkeypatch.delenv("MAXIM_LANE_INFER_REMOTE_URL", raising=False)
         from maxim.runtime.capabilities import RuntimeCapabilities
 
-        caps = RuntimeCapabilities(has_gpu=True, vram_gb=15.9, ram_gb=32.0)
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="NVIDIA RTX 5080", vram_gb=15.9, ram_gb=32.0)
         with (
             patch("maxim.runtime.capabilities.detect_compute_resources") as mock_detect,
             patch("maxim.models.language.config.load_llm_config") as mock_load,
@@ -436,12 +438,14 @@ class TestBuildPrimaryRouter:
             mock_detect.assert_not_called()
 
     def test_env_override_applied(self, monkeypatch):
-        """MAXIM_LANE_INFER_REMOTE_URL must flow through to the LaneBackendManager."""
-        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_URL", "http://127.0.0.1:8000/v1")
-        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_MODEL", "mistral-7b")
+        """MAXIM_LANE_LARGE_REMOTE_URL must flow through to the LaneBackendManager."""
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://127.0.0.1:8000/v1")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_MODEL", "mistral-7b")
+        # Clean out old-style env vars
+        monkeypatch.delenv("MAXIM_LANE_INFER_REMOTE_URL", raising=False)
         from maxim.runtime.capabilities import RuntimeCapabilities
 
-        caps = RuntimeCapabilities(has_gpu=True, vram_gb=15.9, ram_gb=32.0)
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="NVIDIA RTX 5080", vram_gb=15.9, ram_gb=32.0)
         with (
             patch("maxim.models.language.config.load_llm_config") as mock_load,
             patch("maxim.models.language.router.LLMRouter"),
@@ -451,7 +455,7 @@ class TestBuildPrimaryRouter:
 
             mock_load.return_value = LLMConfig()
             _, manager = build_primary_router(capabilities=caps)
-            info = manager.describe()["infer"]
+            info = manager.describe()["large"]
             assert info["remote_url"] == "http://127.0.0.1:8000/v1"
             assert info["kind"] == "self-hosted"
 

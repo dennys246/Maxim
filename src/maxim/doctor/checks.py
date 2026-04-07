@@ -69,6 +69,50 @@ def check_gpu() -> CheckResult:
     )
 
 
+def check_tier_detection() -> CheckResult:
+    """Report which capability tiers are available on this hardware."""
+    try:
+        from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
+        from maxim.runtime.lane_models import detect_tiers
+
+        has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
+        caps = RuntimeCapabilities(
+            has_gpu=has_gpu,
+            gpu_type=gpu_type,
+            vram_gb=vram_gb,
+            ram_gb=ram_gb,
+        )
+        tiers = detect_tiers(caps)
+    except Exception as e:
+        return CheckResult(
+            name="LLM Tiers",
+            status="warn",
+            message=f"Tier detection failed: {e}",
+        )
+
+    tier_names = sorted(tiers.keys())
+    profiles = {name: cfg.model_profile for name, cfg in tiers.items()}
+
+    if "large" in tiers or "medium" in tiers:
+        return CheckResult(
+            name="LLM Tiers",
+            status="ok",
+            message=f"Tiers: {', '.join(tier_names)}. Profiles: {profiles}",
+        )
+    return CheckResult(
+        name="LLM Tiers",
+        status="warn",
+        message=f"Only 'small' tier detected ({ram_gb:.0f}GB RAM, GPU: {gpu_type or 'none'})",
+        fix=(
+            "Agent inference needs a large or medium tier. Options:\n"
+            "  --language-model mistral-7b          # if you have 8+ GB RAM\n"
+            "  --cloud-fallback claude-sonnet       # use cloud for inference\n"
+            "  --tier-model large=<remote-url>      # point to a remote leader"
+        ),
+        retry_id="tier_detection",
+    )
+
+
 def check_llama_cpp_server_installed() -> CheckResult:
     try:
         import llama_cpp.server  # noqa: F401
@@ -511,6 +555,7 @@ def run_all_checks(info: PlatformInfo) -> list[tuple[str, list[CheckResult]]]:
                 CheckResult(name="Platform", status="ok", message=info.display_name),
                 CheckResult(name="Architecture", status="ok", message=info.arch),
                 check_gpu(),
+                check_tier_detection(),
             ],
         ),
         (

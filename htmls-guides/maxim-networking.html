@@ -251,7 +251,7 @@
   <section class="space-y-4">
     <h2 id="lane-metrics" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Lane Metrics (Phase 8)</h2>
 
-    <p class="text-slate-300 leading-relaxed">The WorkerPool routes inference requests through three lanes: <span class="text-indigo-400 font-semibold">infer</span>, <span class="text-indigo-400 font-semibold">review</span>, and <span class="text-indigo-400 font-semibold">record</span>. Phase 8 adds per-lane performance counters that track how each lane is performing in real time.</p>
+    <p class="text-slate-300 leading-relaxed">The WorkerPool routes inference requests through capability tiers: <span class="text-indigo-400 font-semibold">large</span> (14B+ GPU), <span class="text-indigo-400 font-semibold">medium</span> (7B CPU/GPU), and <span class="text-indigo-400 font-semibold">small</span> (1.7B CPU). Functions declare which tier they need via a FunctionRouter with fallback chains. Per-tier performance counters track throughput and latency in real time.</p>
 
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
       <h3 class="text-lg font-semibold text-indigo-400 mb-3">Tracked Counters</h3>

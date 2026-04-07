@@ -139,8 +139,8 @@ class TestSyncFallback:
 
 
 class TestAsyncPath:
-    def test_ground_concept_submits_to_review_lane(self, grounder_async, atl, mock_pool):
-        """With WorkerPool, ground_concept() should submit to review lane."""
+    def test_ground_concept_submits_to_small_tier(self, grounder_async, atl, mock_pool):
+        """With WorkerPool, ground_concept() should submit to small tier."""
         concept = _make_concept(atl)
         episodes = _make_episodes(5)
 
@@ -149,7 +149,7 @@ class TestAsyncPath:
         assert "salience" in stats
         mock_pool.submit.assert_called_once()
         call_kwargs = mock_pool.submit.call_args
-        assert call_kwargs[1]["lane"] == "review" or call_kwargs[0][0] == "review"
+        assert call_kwargs[1]["lane"] == "small" or call_kwargs[0][0] == "small"
 
     def test_does_not_call_modulate_or_store_inline(self, grounder_async, atl, ag, mock_pool):
         """With WorkerPool, should NOT run _modulate_relationships or _store_quantifications inline."""
@@ -235,13 +235,13 @@ class TestReviewConcept:
 
         stats = {"salience": {"mean": 0.7, "n": 6, "min": 0.5, "max": 0.9}}
 
-        # Call _review_concept directly (simulating review lane execution)
+        # Call _review_concept directly (simulating small tier execution)
         grounder_async._review_concept(concept_a.id, stats)
 
-        # Should have submitted to record lane
+        # Should have submitted to small tier for writes
         assert mock_pool.submit.call_count == 1
         call_kwargs = mock_pool.submit.call_args
-        assert call_kwargs[1]["lane"] == "record" or call_kwargs[0][0] == "record"
+        assert call_kwargs[1]["lane"] == "small" or call_kwargs[0][0] == "small"
 
     def test_review_handles_evicted_concept(self, grounder_async, atl, mock_pool):
         """_review_concept should return early if concept was evicted."""

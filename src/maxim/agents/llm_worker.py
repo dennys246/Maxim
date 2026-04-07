@@ -260,7 +260,7 @@ class LLMWorker:
 
             try:
                 self._pool.submit(
-                    lane="infer",
+                    lane="large",
                     job_id=f"{request.request_id}-retry",
                     fn=_retry_fn,
                     priority=-request.priority,
@@ -285,11 +285,9 @@ class LLMWorker:
         if self._owns_pool:
             from maxim.runtime.worker_pool import LaneConfig, WorkerPool
 
-            net_workers = self._init_provider_semaphores()
             self._pool = WorkerPool(
                 lane_configs={
-                    "infer": LaneConfig(name="infer", max_workers=1, requires_gpu=True),
-                    "infer_net": LaneConfig(name="infer_net", max_workers=net_workers, requires_gpu=False),
+                    "large": LaneConfig(name="large", max_workers=1, requires_gpu=True),
                 }
             )
 
@@ -487,7 +485,7 @@ class LLMWorker:
             max_tokens,
         )
 
-        lane_name = lane or ("infer_net" if is_cloud else "infer")
+        lane_name = lane or "large"
         if provider_hint and provider_hint in self._provider_semaphores:
             provider_semaphore = self._provider_semaphores[provider_hint]
 
@@ -613,12 +611,7 @@ class LLMWorker:
         )
 
         if self._pool is not None:
-            lane = "infer"
-            if self._has_cloud_providers():
-                for cfg in self._llm.get_provider_configs().values():
-                    if _is_cloud_provider_type(cfg.get("type", "")):
-                        lane = "infer_net"
-                        break
+            lane = "large"
             request.lane = lane
 
             # WorkerPool mode: wrap _process_request in a job
@@ -653,19 +646,16 @@ class LLMWorker:
                 )
                 return False
 
-    # Lanes the LLM worker may dispatch to. Cloud-backed requests
-    # (Anthropic, OpenAI) are sent to ``infer_net``; local GPU-backed
-    # requests go to ``infer``. Poll both so proposals aren't stranded.
-    _INFER_LANES = ("infer", "infer_net")
+    # Tier lanes the LLM worker dispatches to. Cloud/local dispatch is
+    # handled internally by the tier's backend (LaneBackendManager).
+    _INFER_LANES = ("large",)
 
     def get_latest_proposal(self) -> LLMProposal | None:
         """
         Get the most recent proposal (non-blocking).
 
         Main loop calls this each iteration to check for LLM output.
-        Returns None if no proposal available. Polls every infer lane
-        since cloud-backed requests land on ``infer_net`` while local
-        GPU requests land on ``infer``.
+        Returns None if no proposal available.
         """
         if self._pool is None:
             return None
@@ -676,7 +666,7 @@ class LLMWorker:
         return None
 
     def get_all_proposals(self) -> list[LLMProposal]:
-        """Get all pending proposals (non-blocking) across infer lanes."""
+        """Get all pending proposals (non-blocking) from the large tier."""
         if self._pool is None:
             return []
         proposals = []

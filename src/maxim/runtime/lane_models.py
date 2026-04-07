@@ -11,9 +11,12 @@ backends. That happens in Phase 3.
 from __future__ import annotations
 
 import dataclasses
+import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 from maxim.runtime.capabilities import RuntimeCapabilities
 from maxim.runtime.worker_pool import LaneConfig
@@ -122,6 +125,83 @@ def build_lane_model_config(
     return assignments
 
 
+def detect_tiers(
+    caps: RuntimeCapabilities | None = None,
+    *,
+    profile_available: ProfileAvailabilityCheck | None = None,
+) -> dict[str, LaneConfig]:
+    """Auto-detect available tiers based on hardware.
+
+    Delegates VRAM-based profile selection to :func:`_pick_infer_profile`
+    (reuses ``_INFER_VRAM_TIERS``). Does NOT duplicate hardware detection —
+    :class:`RuntimeCapabilities` is the single source of truth.
+
+    Called at startup by ``LaneBackendManager``. Also called by
+    ``maxim doctor`` to report tier availability (``check_tier_detection``).
+
+    Returns:
+        Dict of tier name → LaneConfig.  Always includes ``"small"``.
+        Includes ``"large"`` when a CUDA GPU is available (VRAM ≥ 4GB).
+        Includes ``"medium"`` on Mac MPS or CPU-only boxes with >= 8GB RAM.
+    """
+    if caps is None:
+        from maxim.runtime.capabilities import RuntimeCapabilities as _RC
+        from maxim.runtime.capabilities import detect_compute_resources
+
+        has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
+        caps = _RC(has_gpu=has_gpu, gpu_type=gpu_type, vram_gb=vram_gb, ram_gb=ram_gb)
+
+    tiers: dict[str, LaneConfig] = {}
+
+    # Always available: small (CPU, ~2GB RAM)
+    tiers["small"] = LaneConfig(
+        name="small",
+        max_workers=2,
+        model_profile="smollm-1.7b-instruct",
+        device="cpu",
+        n_gpu_layers=0,
+    )
+
+    # CUDA GPU with enough VRAM → large tier (profile selected by VRAM)
+    if caps.has_gpu and caps.gpu_type not in ("mps", None) and caps.vram_gb >= 4.0:
+        profile = _pick_infer_profile(caps.vram_gb, profile_available=profile_available)
+        tiers["large"] = LaneConfig(
+            name="large",
+            max_workers=1,
+            requires_gpu=True,
+            model_profile=profile,
+            device="gpu",
+            n_gpu_layers=-1,
+        )
+    elif caps.has_gpu and caps.gpu_type == "mps":
+        # Mac with MPS: unified memory GPU — treat as medium-capable
+        tiers["medium"] = LaneConfig(
+            name="medium",
+            max_workers=1,
+            model_profile="mistral-7b-instruct-v0.2",
+            device="auto",
+        )
+
+    # No GPU (or GPU with unknown type) + enough RAM for a 7B model → medium tier
+    if "medium" not in tiers and "large" not in tiers and caps.ram_gb >= 8:
+        tiers["medium"] = LaneConfig(
+            name="medium",
+            max_workers=1,
+            model_profile="mistral-7b-instruct-v0.2",
+            device="cpu",
+            n_gpu_layers=0,
+        )
+
+    if len(tiers) == 1:
+        logger.warning(
+            "Only 'small' tier detected (no GPU, %.0fGB RAM). "
+            "Agent inference requires --language-model or --cloud-fallback.",
+            caps.ram_gb,
+        )
+
+    return tiers
+
+
 def apply_lane_env_overrides(lane_configs: dict[str, LaneConfig]) -> dict[str, LaneConfig]:
     """Patch lane configs with env-var overrides for remote URLs.
 
@@ -155,4 +235,78 @@ def apply_lane_env_overrides(lane_configs: dict[str, LaneConfig]) -> dict[str, L
     return out
 
 
-__all__ = ["LaneModelConfig", "build_lane_model_config", "apply_lane_env_overrides"]
+def apply_tier_config_overrides(
+    tiers: dict[str, LaneConfig],
+    tier_config: dict[str, dict],
+) -> dict[str, LaneConfig]:
+    """Apply tier overrides from llm.json ``"tiers"`` section.
+
+    Each key in ``tier_config`` is a tier name (``large``, ``medium``, ``small``).
+    Values are dicts with optional keys: ``model_profile``, ``device``,
+    ``max_workers``, ``n_gpu_layers``.
+
+    Only overrides fields that are present in the config — missing fields
+    keep their hardware-detected defaults. Creates new tiers if the key
+    doesn't exist yet (e.g., adding a ``medium`` tier via config on a
+    two-tier deployment).
+
+    Returns a new dict — does not mutate the input.
+    """
+    out = dict(tiers)
+    for name, overrides in tier_config.items():
+        if not isinstance(overrides, dict):
+            continue
+        base = out.get(name) or LaneConfig(name=name, max_workers=1)
+        replacements = {}
+        if "model_profile" in overrides:
+            replacements["model_profile"] = overrides["model_profile"]
+        if "device" in overrides:
+            replacements["device"] = overrides["device"]
+        if "max_workers" in overrides:
+            replacements["max_workers"] = int(overrides["max_workers"])
+        if "n_gpu_layers" in overrides:
+            replacements["n_gpu_layers"] = int(overrides["n_gpu_layers"])
+        if replacements:
+            out[name] = dataclasses.replace(base, **replacements)
+        elif name not in out:
+            out[name] = base
+    return out
+
+
+def load_function_overrides(
+    function_config: dict[str, dict],
+) -> dict:
+    """Load function routing overrides from llm.json ``"functions"`` section.
+
+    Returns a dict of function name → FunctionSpec. Merged with
+    DEFAULT_FUNCTIONS by the caller (overrides take precedence).
+    """
+    from maxim.runtime.function_router import FunctionSpec
+
+    overrides: dict[str, FunctionSpec] = {}
+    for name, cfg in function_config.items():
+        if not isinstance(cfg, dict):
+            continue
+        tier = cfg.get("tier")
+        if not tier:
+            continue
+        fallback_raw = cfg.get("fallback", ())
+        if isinstance(fallback_raw, list):
+            fallback_raw = tuple(fallback_raw)
+        overrides[name] = FunctionSpec(
+            name=name,
+            tier=tier,
+            fallback=fallback_raw if isinstance(fallback_raw, tuple) else (),
+            description=cfg.get("description", ""),
+        )
+    return overrides
+
+
+__all__ = [
+    "LaneModelConfig",
+    "apply_lane_env_overrides",
+    "apply_tier_config_overrides",
+    "build_lane_model_config",
+    "detect_tiers",
+    "load_function_overrides",
+]

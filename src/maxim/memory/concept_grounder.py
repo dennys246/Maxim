@@ -159,7 +159,7 @@ class ConceptGrounder:
 
         try:
             self._pool.submit(
-                lane="review",
+                lane="small",
                 job_id=f"concept-review-{concept_id}-{time.monotonic_ns()}",
                 fn=partial(self._review_concept, concept_id, dict(stats)),
                 priority=5,
@@ -171,9 +171,9 @@ class ConceptGrounder:
                 self._pending_reviews.pop(concept_id, None)
 
     def _review_concept(self, concept_id: str, stats: dict[str, Any], prefetched: Any = None) -> None:
-        """REVIEW LANE: Compute relationship changes + quantification proposals.
+        """Compute relationship changes + quantification proposals (small tier).
 
-        Read-heavy, no writes. Hands off proposed changes to record lane.
+        Read-heavy, no writes. Hands off proposed changes to small tier for writes.
         """
         # Clear pending flag after execution starts
         with self._pending_lock:
@@ -192,10 +192,10 @@ class ConceptGrounder:
         if not edge_updates and not quant_proposals:
             return
 
-        # Hand off writes to record lane
+        # Hand off writes to small tier
         try:
             self._pool.submit(
-                lane="record",
+                lane="small",
                 job_id=f"concept-record-{concept_id}-{time.monotonic_ns()}",
                 fn=partial(self._apply_updates, concept_id, edge_updates, quant_proposals),
                 priority=7,

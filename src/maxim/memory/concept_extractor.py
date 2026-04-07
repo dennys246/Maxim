@@ -181,7 +181,7 @@ class ConceptExtractor:
         if self._pool is not None and len(concept_ids) >= 2:
             try:
                 self._pool.submit(
-                    lane="review",
+                    lane="small",
                     job_id=f"rel-formation-{memory_id}-{_time.monotonic_ns()}",
                     fn=partial(self._form_inline_relationships, list(concept_ids)),
                     priority=8,  # Lower priority than concept grounding reviews
