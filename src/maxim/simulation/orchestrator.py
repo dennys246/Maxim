@@ -479,10 +479,40 @@ def start_simulation_mode(
         from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
         from maxim.decisions.nac import NAc
         from maxim.integration.memory_hub import MemoryHub
+        from maxim.time.scn import SCN
+        from maxim.similarity.ec import EntorhinalCortex
 
         aut_hippocampus = Hippocampus(config=HippocampusConfig())
         aut_nac = NAc()
-        aut_memory_hub = MemoryHub(hippocampus=aut_hippocampus, nac=aut_nac)
+        aut_scn = SCN()
+        aut_ec = EntorhinalCortex()
+
+        # Optional multi-layer memory (ATL + AngularGyrus)
+        aut_atl = None
+        aut_angular_gyrus = None
+        try:
+            from maxim.memory.atl import ATL, ATLConfig
+
+            aut_atl = ATL(config=ATLConfig())
+        except Exception:
+            logger.debug("ATL not available for AUT")
+        try:
+            from maxim.math.angular_gyrus import AngularGyrus, AngularGyrusConfig
+
+            aut_angular_gyrus = AngularGyrus(config=AngularGyrusConfig())
+        except Exception:
+            logger.debug("AngularGyrus not available for AUT")
+
+        aut_memory_hub = MemoryHub(
+            hippocampus=aut_hippocampus,
+            scn=aut_scn,
+            nac=aut_nac,
+            ec=aut_ec,
+            atl=aut_atl,
+            angular_gyrus=aut_angular_gyrus,
+        )
+        # Cerebellum is initialized later (after memory section); wire it lazily
+        # via _wire_cerebellum() call below
         aut_agent.wire_memory_hub(aut_memory_hub)
 
         # Restore AUT state from previous session if resuming
@@ -504,7 +534,12 @@ def start_simulation_mode(
                 except Exception as e:
                     logger.debug("Failed to restore AUT NAc: %s", e)
 
-        logger.info("AUT memory wired (hippocampus + NAc)")
+        systems = ["hippocampus", "NAc", "SCN", "EC"]
+        if aut_atl is not None:
+            systems.append("ATL")
+        if aut_angular_gyrus is not None:
+            systems.append("AngularGyrus")
+        logger.info("AUT memory wired (%s)", " + ".join(systems))
 
         # Attach bio-system tracers based on --debug flags / env vars
         def _env_trace(var: str) -> bool:
@@ -537,6 +572,18 @@ def start_simulation_mode(
                 logger.debug("ATL tracer not available: %s", e)
     except Exception as e:
         logger.debug("AUT memory not available: %s", e)
+
+    # ── Cerebellum (forward models + motor learning) ────────────────────
+    aut_cerebellum = None
+    try:
+        from maxim.embodiment.cerebellum import Cerebellum, CerebellumConfig
+
+        aut_cerebellum = Cerebellum(config=CerebellumConfig())
+        if aut_memory_hub is not None:
+            aut_memory_hub.cerebellum = aut_cerebellum
+        logger.info("AUT Cerebellum initialized (forward models + motor programs)")
+    except Exception as e:
+        logger.debug("AUT Cerebellum not available: %s", e)
 
     # --- AUT introspection tools ---
     # Give the AUT access to its own cognitive subsystems so it can
@@ -623,11 +670,14 @@ def start_simulation_mode(
     # Subscribe AUT PainBus to hippocampus (bus itself was created earlier
     # so the sandbox could route pain percepts through it).
     try:
-        from maxim.proprioception.pain_bus import create_pain_memory_subscriber
+        from maxim.proprioception.pain_bus import create_pain_memory_subscriber, create_pain_nac_subscriber
 
         if aut_pain_bus is not None and aut_hippocampus is not None:
             aut_pain_bus.subscribe(create_pain_memory_subscriber(aut_hippocampus))
-            logger.info("AUT PainBus wired")
+            logger.info("AUT PainBus → Hippocampus wired")
+        if aut_pain_bus is not None and aut_nac is not None:
+            aut_pain_bus.subscribe(create_pain_nac_subscriber(aut_nac))
+            logger.info("AUT PainBus → NAc wired")
     except Exception as e:
         logger.debug("AUT PainBus subscription failed: %s", e)
 
@@ -992,6 +1042,15 @@ def start_simulation_mode(
         logger.info("AUT FearGatedExecutor active — all tool calls reviewed by FearAgent")
     except Exception as e:
         logger.warning("Failed to wire FearGatedExecutor for AUT: %s", e)
+
+    # ── Wire MemoryHub bridges to external systems ────────────────────────
+    if aut_memory_hub is not None:
+        try:
+            _fear = locals().get("fear_agent")
+            aut_memory_hub.connect(fear_agent=_fear)
+            logger.info("AUT MemoryHub bridges connected")
+        except Exception as e:
+            logger.debug("Failed to connect MemoryHub bridges: %s", e)
 
     # ── Print simulation banner ──────────────────────────────────────────
     print(f"\n{'=' * 60}")

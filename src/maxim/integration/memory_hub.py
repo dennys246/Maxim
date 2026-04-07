@@ -137,6 +137,9 @@ class MemoryHub:
     # WorkerPool for background concept memory processing (optional)
     worker_pool: "WorkerPool | None" = None
 
+    # Motor learning (optional)
+    cerebellum: Any = None  # Cerebellum for forward models + motor programs
+
     # Long-horizon planning (optional)
     _plan_manager: Any = None
 
@@ -150,6 +153,9 @@ class MemoryHub:
 
         # Register NAc for memory deletion cleanup
         self.hippocampus.register_deletion_callback(self.nac.remove_memory)
+
+        # Register SCN for temporal indexing on capture (not just consolidation)
+        self.hippocampus.register_capture_callback(self._on_memory_captured_scn)
 
         # Phase 4: Register for semantic embedding on capture
         if self.ec.semantic_enabled:
@@ -635,6 +641,29 @@ class MemoryHub:
     # ─────────────────────────────────────────────────────────────────────────
     # Phase 4: Semantic Embedding
     # ─────────────────────────────────────────────────────────────────────────
+
+    def _on_memory_captured_scn(self, memory_id: str, memory: Any) -> None:
+        """Register newly captured memory in SCN temporal bins.
+
+        Without this, SCN bins are only populated during consolidation
+        (sleep), leaving temporal queries empty during active sessions.
+        """
+        try:
+            from maxim.time.temporal_signature import TemporalSignature
+
+            ts = getattr(memory, "timestamp", None)
+            if ts is None and hasattr(memory, "perception"):
+                ts = getattr(memory.perception, "timestamp", None)
+            if ts is None:
+                ts = time.time()
+
+            sig = TemporalSignature.from_timestamp(ts)
+            salience = 0.5
+            if hasattr(memory, "perception") and hasattr(memory.perception, "salience"):
+                salience = memory.perception.salience or 0.5
+            self.scn.register(memory_id, sig, significance=salience)
+        except Exception:
+            pass  # Don't let SCN errors block memory capture
 
     def _on_memory_captured(self, memory_id: str, memory: Any) -> None:
         """Handle memory capture for semantic embedding.

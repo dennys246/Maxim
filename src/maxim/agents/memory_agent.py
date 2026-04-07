@@ -968,6 +968,27 @@ class MemoryAgent(Agent, AgentOutputMixin):
         sync_fields["concept_context"] = fut_concepts.result(timeout=2.0)
         sync_fields["causal_context"] = fut_causal.result(timeout=2.0)
 
+        # Motor programs from Cerebellum (if available via memory_hub)
+        try:
+            cerebellum = getattr(self._memory_hub, "cerebellum", None) if self._memory_hub else None
+            if cerebellum is not None and cerebellum.programs is not None:
+                goal_query = sync_fields.get("active_goal", "") or ""
+                programs = cerebellum.programs.find_related(goal_query)
+                if programs:
+                    sync_fields["motor_programs"] = [
+                        {
+                            "name": p.name,
+                            "confidence": p.confidence,
+                            "total_executions": p.total_executions,
+                            "success_rate": p.total_successes / max(p.total_executions, 1),
+                            "steps": [f"{s.entity_path}.{s.affordance}({s.params})" for s in (p.steps or [])[:5]],
+                            "known_risks": p.known_failure_modes or [],
+                        }
+                        for p in programs[:8]
+                    ]
+        except Exception:
+            pass  # Cerebellum not critical for context building
+
         context = StructuredContext(**sync_fields)
 
         # Persist snapshot to shared outputs if requested

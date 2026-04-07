@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.proprioception.pain import PainSignal, PainType
 
@@ -212,5 +212,41 @@ def create_pain_memory_subscriber(
             )
         except Exception:
             pass
+
+    return _on_pain
+
+
+def create_pain_nac_subscriber(
+    nac: Any,
+    intensity_threshold: float = 0.3,
+) -> Callable[[PainSignal], None]:
+    """Create a PainBus subscriber that records pain as causal observations in NAc.
+
+    When pain fires, NAc learns "action/entity → pain" so the agent can
+    predict and avoid painful situations in the future.
+
+    Args:
+        nac: NAc instance for causal learning.
+        intensity_threshold: Minimum pain intensity to trigger observation.
+    """
+    from maxim.decisions.causal_link import Valence
+
+    def _on_pain(signal: PainSignal) -> None:
+        if signal.intensity < intensity_threshold:
+            return
+
+        entity = signal.context.get("entity_path", "unknown")
+        try:
+            nac.observe(
+                event_type="pain",
+                event_signature=f"pain:{signal.pain_type.name}:{entity}",
+                outcome_type="pain",
+                outcome_signature=f"intensity:{signal.intensity:.2f}",
+                outcome_valence=Valence.NEGATIVE,
+                delta_seconds=0.0,
+                context=signal.context,
+            )
+        except Exception:
+            pass  # Don't let NAc errors disrupt pain processing
 
     return _on_pain

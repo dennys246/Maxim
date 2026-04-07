@@ -93,6 +93,28 @@ class ThreadSafeNoveltyTracker:
         with self._lock:
             self._tracker.update_batch(track_ids)
 
+    def update_with_entity(self, entity_name: str, entity_type: str) -> float:
+        """Track novelty for a named entity (text-mode, no vision).
+
+        Maps entity name/type to pseudo track_id/class_id so the same
+        novelty and habituation mechanics work for DM campaign entities,
+        SEM entities, and any other non-vision sources.
+
+        Args:
+            entity_name: Unique entity name (e.g., "guard_captain", "longsword").
+            entity_type: Entity type for class-level habituation (e.g., "npc", "weapon").
+
+        Returns:
+            Current novelty score for this entity (before update).
+        """
+        # Stable hash → pseudo IDs (positive ints, deterministic)
+        pseudo_track = hash(entity_name) & 0x7FFFFFFF
+        pseudo_class = hash(entity_type) & 0x7FFFFFFF
+        with self._lock:
+            novelty = self._tracker.get_novelty(pseudo_track, class_id=pseudo_class)
+            self._tracker.update_with_class(pseudo_track, pseudo_class)
+            return novelty
+
     def get_novelty_batch(self, track_ids: list[Any], class_ids: dict[Any, int] | None = None) -> dict[Any, float]:
         """Get novelty scores for multiple track_ids in one lock acquisition.
 

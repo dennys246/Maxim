@@ -528,6 +528,23 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             detections = getattr(percept, "detections", [])
             self._latest_detections = list(detections)
 
+        # Track novelty for named entities in text percepts (non-vision)
+        # This enables novelty/habituation for DM campaigns and SEM entities
+        sensory = getattr(percept, "sensory", None)
+        if sensory is not None and self._novelty_tracker is not None:
+            entity_source = getattr(sensory, "entity_source", "")
+            if entity_source:
+                modality = getattr(sensory, "modality", None)
+                entity_type = modality.value if modality else "unknown"
+                self._novelty_tracker.update_with_entity(entity_source, entity_type)
+        elif self._novelty_tracker is not None:
+            # Fallback: check percept metadata for entity hints
+            metadata = getattr(percept, "metadata", None) or {}
+            entity_source = metadata.get("entity_source", "")
+            if entity_source:
+                entity_type = metadata.get("entity_type", "unknown")
+                self._novelty_tracker.update_with_entity(entity_source, entity_type)
+
         with self._stats_lock:
             self._stats["percepts_received"] += 1
 
