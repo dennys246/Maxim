@@ -464,6 +464,11 @@ class StructuredContext:
     #              "confidence": float, "context_match": float}
     causal_context: list[dict] = field(default_factory=list)
 
+    # Motor programs from Cerebellum (Phase 1b)
+    # Each entry: {"name": str, "goal": str, "confidence": float,
+    #              "success_rate": float, "steps": list[str], "risks": list[str]}
+    motor_programs: list[dict] = field(default_factory=list)
+
     # Provenance: compact trace markdown for LLM context (P7)
     provenance_context: str = ""
 

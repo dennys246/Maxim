@@ -1,0 +1,93 @@
+# Engram Cycle Test — validates the full cross-system loop
+#
+# Tests: execute → engram capture → re-execute in same context →
+#        engram recall modifies behavior → different outcome
+#
+# Scenario:
+# 1. Execute reach_forward with shoulder at safe angle → success
+# 2. Execute reach_forward with shoulder near limit → overextension pain
+# 3. Engram should capture the painful context
+# 4. Re-execute reach_forward with shoulder near limit → engram should
+#    tighten pain gates and either abort or modify params
+#
+# Success criteria:
+# - Engram forms on painful outcome (step 2)
+# - Engram recall finds matching context (step 4)
+# - Pain gate tightens after engram recall
+# - Behavior differs between step 2 and step 4
+
+name: engram_cycle_test
+description: "Cross-system engram cycle: execute → capture → recall → modified behavior"
+
+body:
+  name: test_arm
+  entity_type: arm
+  children:
+    - name: shoulder
+      entity_type: joint
+      sensors:
+        angle:
+          unit: degrees
+          range: [0, 180]
+          initial: 90
+        strain:
+          unit: ratio
+          range: [0, 1]
+          initial: 0.0
+      modulators:
+        motor:
+          affordances:
+            rotate_angle:
+              params: {degrees: float, speed: float}
+              description: "Rotate shoulder joint"
+      failure_modes:
+        - name: overextension
+          trigger: {field: angle, op: ">", value: 170, pain: 0.8}
+
+    - name: elbow
+      entity_type: joint
+      sensors:
+        angle:
+          unit: degrees
+          range: [0, 150]
+          initial: 45
+      modulators:
+        motor:
+          affordances:
+            rotate_angle:
+              params: {degrees: float, speed: float}
+              description: "Rotate elbow joint"
+
+test_sequence:
+  # Phase 1: Safe execution (no engram expected)
+  - action: {entity: shoulder, affordance: rotate_angle, params: {degrees: 90, speed: 1.0}}
+    expect: {pain: false, description: "Safe rotation — no engram"}
+
+  - action: {entity: elbow, affordance: rotate_angle, params: {degrees: 60, speed: 1.0}}
+    expect: {pain: false, description: "Safe elbow — no engram"}
+
+  # Phase 2: Painful execution (engram should form)
+  - action: {entity: shoulder, affordance: rotate_angle, params: {degrees: 175, speed: 1.0}}
+    expect:
+      pain: true
+      min_intensity: 0.5
+      engram_formed: true
+      description: "Overextension — engram captures context"
+
+  # Phase 3: Return to safe
+  - action: {entity: shoulder, affordance: rotate_angle, params: {degrees: 90, speed: 1.0}}
+    expect: {pain: false, description: "Return to safe"}
+
+  # Phase 4: Re-approach limit (engram should recall and modify behavior)
+  - action: {entity: shoulder, affordance: rotate_angle, params: {degrees: 175, speed: 1.0}}
+    expect:
+      engram_recalled: true
+      gate_tightened: true
+      description: "Engram recall should tighten pain gate or modify params"
+
+expectations:
+  - type: nac_convergence
+    event_type: "motor_program"
+    event_signature: "shoulder_rotate_angle"
+    min_confidence: 0.3
+    max_repetitions: 3

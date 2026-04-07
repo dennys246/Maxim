@@ -1003,6 +1003,32 @@ class PromptBuilder:
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
             )
 
+        if context.motor_programs:
+            motor_lines = ["=== Available Motor Programs ==="]
+            for prog in context.motor_programs[:8]:
+                name = prog.get("name", "?")
+                conf = prog.get("confidence", 0)
+                rate = prog.get("success_rate", 0)
+                execs = prog.get("executions", 0)
+                steps_str = " → ".join(prog.get("steps", [])[:5])
+                motor_lines.append(
+                    f"- {name} (confidence={conf:.2f}, {execs} runs, "
+                    f"success={rate:.0%})"
+                )
+                if steps_str:
+                    motor_lines.append(f"  Steps: {steps_str}")
+                risks = prog.get("risks", [])
+                if risks:
+                    motor_lines.append(f"  Known risks: {', '.join(risks)}")
+            budgeter.add(
+                "motor_programs",
+                "\n".join(motor_lines),
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=30,
+                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+            )
+
         if context.statistical_context and context.active_pattern_count > 0:
             stat_lines = [
                 f"=== Statistical Patterns ({context.active_pattern_count} active) ===",

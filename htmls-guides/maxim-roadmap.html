@@ -113,8 +113,8 @@
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Embodiment Core</td>
-            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-600/40 text-slate-400">Not Started</span></td>
-            <td class="py-3">Independent track; no blockers. MVP ~400 LOC</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Complete</span></td>
+            <td class="py-3">All software phases shipped: SEM protocol, Cerebellum forward models, motor programs + engrams, composed failures, virtual entities. 164 tests. Hardware adapter deferred to future.</td>
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Generative Campaigns</td>
@@ -135,7 +135,7 @@
   <section class="space-y-4">
     <h2 id="recently-shipped" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What We Just Shipped</h2>
 
-    <p class="text-slate-300 leading-relaxed">The most recent wave shipped <span class="text-indigo-400 font-semibold">Tool Refactoring + Introspection API</span>&mdash;narrative tools (say, think, examine), tool alias map, usage tracking, proactive tool list, and <code class="bg-slate-950 px-1 rounded text-xs">AUTIntrospector</code> class for clean programmatic access to AUT cognitive state. Before that: <span class="text-indigo-400 font-semibold">Research Protocol</span> and <span class="text-indigo-400 font-semibold">Multi-LLM Scaling</span> gave Maxim distributed inference and structured experiment pipelines.</p>
+    <p class="text-slate-300 leading-relaxed">The most recent wave shipped <span class="text-indigo-400 font-semibold">Embodiment Core (Phases 0-1b)</span>&mdash;the Sensor-Entity-Modulator (SEM) protocol for composable hardware/world abstraction, Cerebellum forward models with R-W learning, motor programs (learned action sequences), hippocampal engrams for context-dependent motor execution, and virtual entity support (swords, NPCs, environments). 151 tests across 5 test files. Before that: <span class="text-indigo-400 font-semibold">Tool Refactoring + Introspection API</span>, <span class="text-indigo-400 font-semibold">Research Protocol</span>, and <span class="text-indigo-400 font-semibold">Multi-LLM Scaling</span>.</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
@@ -190,8 +190,8 @@
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">2</span>
         <div>
-          <h3 class="text-white font-semibold">Embodiment Core MVP</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">ATL-grounded body-state primitives (~400 LOC). No upstream deps, standalone-valuable, establishes patterns that DM campaigns and Agent Mesh inherit.</p>
+          <h3 class="text-white font-semibold">Embodiment Hardware Adapter (When Needed)</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Wrap real robot SDKs (Reachy Mini, custom arms) as SEM `HardwareSensor`/`HardwareModulator` backends. All software phases complete&mdash;this only ships when deploying to physical hardware.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">

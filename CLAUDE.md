@@ -228,6 +228,7 @@ src/maxim/
   comms/            # Communication gateway (Twilio SMS/voice)
   integration/      # MemoryHub cross-system coordinator
   bridges/          # 8 cross-system integration bridges
+  embodiment/       # SEM protocol (Sensor-Entity-Modulator), body runtime, auto-tools
   doctor/           # `maxim doctor` — platform-aware diagnostics + peer test
   tunnel/           # `maxim tunnel` — Cloudflare tunnel + API key management
 
@@ -279,6 +280,17 @@ data/util/          # Runtime config (llm.json, cost_state.json)
 | Standalone experiment runner | `simulation/experiment.py` (`run_campaign()` → `ExperimentResult`) |
 | Benchmark runner | `simulation/benchmark.py` (`BenchmarkRunner` — multi-model comparison, tiered metrics) |
 | Experiment run notes | `docs/experiments/` (per-run findings + methodology) |
+| Embodiment SEM protocol | `embodiment/sem.py` (Entity, Sensor, Modulator, FailureMode) |
+| Embodiment YAML loading | `embodiment/spec.py` (load_spec, SpecSensor, SpecModulator, attach_backends) |
+| Embodiment auto-tool generation | `embodiment/tool_bridge.py` (generate_tools_for_entity, collision detection) |
+| Embodiment runtime | `embodiment/body.py` (Embodiment, failure eval, vital drift, prompt state) |
+| Embodiment LLM/narrative backends | `embodiment/llm_backend.py` (LLMSensor, LLMModulator, NarrativeSensor, NarrativeModulator) |
+| Embodiment YAML reference | `docs/embodiment_yaml_reference.md` |
+| Cerebellum forward models | `embodiment/cerebellum.py` (Cerebellum, ForwardModel, ModelKey, bucket_params, ProgramRegistry) |
+| Motor programs + registry | `embodiment/motor.py` (MotorProgram, MotorStep, ProgramRegistry, entity_state_similarity) |
+| Motor engrams | `embodiment/engrams.py` (MotorEngram, formation thresholds, graph node naming) |
+| Program executor | `embodiment/program_executor.py` (step-by-step runner, pain gates, PainBus interrupt) |
+| CerebellumModulator | `embodiment/backends/cerebellum_modulator.py` (predict/fallback/train + factory) |
 
 ## Environment Variables
 

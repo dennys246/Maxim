@@ -304,6 +304,13 @@ Trial N: Gain=0.82, Commanded=20°, Actual=20.2° → nearly perfect
     </ul>
 
     <p class="text-slate-300 leading-relaxed">The result: a robot that moves smoothly, avoids harmful patterns, and improves with experience. Not because we programmed every case, but because we gave it the machinery to learn.</p>
+
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6 mt-4">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-2">Embodiment &amp; SEM Protocol</h3>
+      <p class="text-slate-300 text-sm leading-relaxed mb-2">Building on these proprioceptive foundations, the <em class="text-indigo-400 not-italic font-medium">Sensor-Entity-Modulator (SEM)</em> protocol provides a composable abstraction for any interactive entity&mdash;robot joints, cameras, and even virtual objects like swords or NPCs. Each entity has <em class="text-indigo-400 not-italic font-medium">Sensors</em> (readable state), <em class="text-indigo-400 not-italic font-medium">Modulators</em> (executable actions), and <em class="text-indigo-400 not-italic font-medium">Failure Modes</em> (pain triggers).</p>
+      <p class="text-slate-300 text-sm leading-relaxed mb-2">The <em class="text-indigo-400 not-italic font-medium">Cerebellum</em> stores learned forward models: after observing that rotating a shoulder by 45 degrees consistently produces a specific angle reading, it caches this prediction and skips the LLM entirely for future calls. Rescorla-Wagner updates tune predictions from error, exactly like the FocusLearner above.</p>
+      <p class="text-slate-300 text-sm leading-relaxed"><em class="text-indigo-400 not-italic font-medium">Motor programs</em> crystallize when the agent repeats the same action sequence 3+ times for the same goal. These are reusable, pain-gated, and linked to hippocampal engrams that provide context-dependent execution. A reaching sequence that hurt near a wall is remembered differently from one that succeeded in open space.</p>
+    </div>
   </section>
 
   <div class="pt-6 border-t border-slate-700 space-y-5">

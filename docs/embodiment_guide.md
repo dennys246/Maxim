@@ -1,0 +1,237 @@
+# Embodiment System Guide
+
+## What Is the SEM Protocol?
+
+The Sensor-Entity-Modulator (SEM) protocol is Maxim's composable hardware/world abstraction. Every interactive thing — a robot joint, a camera, a sword, an NPC — is described as a triple:
+
+- **Entity**: the thing (shoulder joint, wrist camera, rusty sword, ferryman)
+- **Sensor**: reads state from the entity (angle, temperature, durability, trust)
+- **Modulator**: changes state of the entity (rotate, restart, slash, threaten)
+
+Entities compose into trees. A robot arm is an entity with child entities for each joint, each with their own sensors and modulators. Tools are auto-generated, pain triggers auto-fire, and the cognitive stack (Cerebellum, NAc, ATL) learns from the interactions.
+
+## Quick Start
+
+### 1. Define your body in YAML
+
+```yaml
+# scenarios/embodiment/my_robot.yaml
+body:
+  name: my_robot
+  entity_type: robot
+  children:
+    - name: arm
+      entity_type: joint
+      sensors:
+        angle: {unit: degrees, range: [0, 180], initial: 90}
+      modulators:
+        motor:
+          affordances:
+            rotate: {params: {degrees: float}, description: "Rotate arm"}
+      failure_modes:
+        - name: overextension
+          trigger: {field: angle, op: ">", value: 170, pain: 0.7}
+```
+
+### 2. Load and run
+
+```python
+from maxim.embodiment.spec import load_spec
+from maxim.embodiment.body import Embodiment
+from maxim.embodiment.tool_bridge import generate_tools_for_entity
+from maxim.tools.registry import ToolRegistry
+
+# Load
+spec = load_spec("scenarios/embodiment/my_robot.yaml")
+
+# Generate tools
+registry = ToolRegistry()
+tools = generate_tools_for_entity(spec.root_entity, registry)
+print(f"Generated {len(tools)} tools: {[t.name for t in tools]}")
+
+# Create runtime
+emb = Embodiment(spec.root_entity)
+
+# Check body state
+print(emb.format_body_state_for_prompt())
+
+# Evaluate failures
+events = emb.evaluate_failures()
+print(f"Failures: {events}")
+```
+
+### 3. Add virtual entities for campaigns
+
+```yaml
+# scenarios/embodiment/dungeon.yaml
+world_entities:
+  - name: rusty_sword
+    entity_type: weapon
+    sensors:
+      durability: {unit: ratio, range: [0, 1], initial: 0.3}
+    modulators:
+      combat:
+        affordances:
+          slash: {params: {target: str}, description: "Slash at target"}
+    failure_modes:
+      - name: shatter
+        trigger: {field: durability, op: "<", value: 0.1, pain: 0.6}
+```
+
+## Architecture
+
+```
+YAML Spec ──→ Entity Tree ──→ Auto-Generated Tools ──→ Agent
+                  │                                       │
+                  │                                       ↓
+                  ├──→ Failure Triggers ──→ PainBus ──→ NAc (causal learning)
+                  │                                       │
+                  ├──→ ATL Body Concepts ──→ Grounded LLM predictions
+                  │                                       │
+                  └──→ Cerebellum (Phase 1a) ──→ Forward models
+```
+
+### Module Map
+
+| File | Purpose |
+|------|---------|
+| `embodiment/sem.py` | Core protocols: Sensor, Modulator, Entity, FailureMode |
+| `embodiment/spec.py` | YAML loader, SpecSensor/SpecModulator stubs |
+| `embodiment/tool_bridge.py` | Auto-tool generation with collision detection |
+| `embodiment/body.py` | Embodiment runtime (failure eval, vital drift, prompt state) |
+| `embodiment/percepts.py` | EmbodimentPerceptSource (1Hz polling, demand mode) |
+| `embodiment/llm_backend.py` | LLM/Narrative sensor and modulator backends |
+| `embodiment/cerebellum.py` | Cerebellum forward models + motor program registry + engram formation/recall |
+| `embodiment/motor.py` | MotorProgram, MotorStep, ProgramRegistry, entity_state_similarity |
+| `embodiment/engrams.py` | MotorEngram, salience computation, formation decision logic |
+| `embodiment/program_executor.py` | Step-by-step program runner with pain gates |
+| `embodiment/backends/cerebellum_modulator.py` | CerebellumModulator (predict/fallback/train loop) |
+| `embodiment/atl_integration.py` | Auto-register ATL body_part concepts |
+
+### Scenario Files
+
+| File | Purpose |
+|------|---------|
+| `scenarios/embodiment/robot_arm_3dof.yaml` | Demo robot arm (3 joints + camera) |
+| `scenarios/embodiment/embodiment_baseline.yaml` | Regression test with bounds violations |
+| `scenarios/embodiment/sword_npc_demo.yaml` | Virtual entities (sword + NPC) |
+
+## Concepts
+
+### Failure Modes
+
+Six base modes: `overextension`, `overheating`, `strain`, `fatigue`, `impact`, `exhaustion`.
+
+Custom failures compose from base modes:
+
+```yaml
+- name: tennis_elbow
+  composes: [strain, fatigue]
+  trigger:
+    all:
+      - {field: strain, op: ">", value: 0.6}
+      - {field: fatigue, op: ">", value: 0.5}
+```
+
+### Pain-Proximity Warnings
+
+When a sensor value approaches a failure threshold (within 20% of range), the body state prompt promotes it to IMPORTANT priority:
+
+```
+=== Body State (pain-relevant) ===
+- robot_arm.shoulder.angle: 172° (WARN: overextension threshold at 175°, pain 0.8)
+```
+
+### Sensor Polling
+
+Default: 1Hz. Pain-relevant sensors are promoted to every-tick. Configurable:
+
+```python
+# Via environment variable:
+MAXIM_EMBODIMENT_POLL_HZ=5
+
+# Via code:
+source = EmbodimentPerceptSource(emb, poll_hz=5)
+
+# Demand mode (during motor programs):
+source.set_demand_mode(True, hz=30)
+```
+
+### Tool Name Collision Handling
+
+Two entities with the same name get progressively prefixed:
+
+1. `shoulder_rotate_angle` (first)
+2. `robot2_shoulder_rotate_angle` (second — parent name prepended)
+3. Full path if still colliding
+
+### Virtual Entities (Beyond Robotics)
+
+SEM works for any interactive entity. A sword, NPC, or door is just an Entity with sensors and modulators backed by `NarrativeModulator` instead of hardware. The cognitive stack (Cerebellum, NAc, engrams) learns from these interactions exactly as it learns from robot joints.
+
+## Cerebellum (Phase 1a — Shipped)
+
+The Cerebellum stores learned forward models: after observing that `rotate_angle(degrees=45)` on a shoulder consistently produces `angle=45.0`, it caches this prediction and skips the LLM entirely for future calls.
+
+```python
+from maxim.embodiment.cerebellum import Cerebellum
+from maxim.embodiment.backends.cerebellum_modulator import cerebellum_modulator_factory
+
+cb = Cerebellum()
+factory = cerebellum_modulator_factory(cb, fallback_factory=llm_mod_factory)
+attach_backends(root, modulator_factory=factory)
+```
+
+Key properties:
+- **Rescorla-Wagner learning**: `expected += lr * (actual - expected)`
+- **Confidence threshold**: below 0.3 → LLM fallback, above 0.3 → cached prediction
+- **High-variance fallback**: uncertain models fall back to LLM
+- **Per-key locks**: thread-safe concurrent predict/observe
+- **Param bucketing**: similar params (within 10% of range) share a model
+- **Persistence**: `data/embodiment/cerebellum.json`
+
+## Motor Programs (Phase 1b — Shipped)
+
+Motor programs are learned SEM action sequences. When the agent repeats the same sequence 3+ times for the same goal, the Cerebellum crystallizes it as a reusable program.
+
+The `ProgramRegistry` indexes programs in three directions:
+- **By goal**: "I want to reach forward" → matching programs
+- **By entity**: "I'm holding a sword" → programs involving swords
+- **By affordance**: "I want to slash" → programs with slash steps
+
+```python
+# Query by entity → get all programs for that entity
+programs = cb.find_programs_for_entity("sword")
+
+# Query by affordance → get all entities that can do it
+programs = cb.find_programs_for_affordance("slash")
+
+# Unified search
+programs = cb.find_related_programs("attack")
+```
+
+### Motor Engrams
+
+Engrams are ephemeral hippocampal memories linked to motor programs via the associative graph. They form on significant outcomes (pain, surprise, novelty) and decay after ~2 days unless reinforced.
+
+- Cerebellum stores the **how** (motor program steps)
+- Hippocampus stores the **when/where/what** (contextual episode)
+- The engram links them so context modulates future motor execution
+
+### Program Executor
+
+Executes motor programs step by step with:
+- **Pain gate checks** before each step (abort if sensor near threshold)
+- **PainBus subscription** for mid-sequence interrupts
+- **Gate tightening** after painful executions (10% per failure)
+
+## What's Next
+
+- **Phase 2**: Composable failure modes — persistent failures with recovery conditions
+- **Phase 3**: Hardware adapter — wrap real robot SDKs as SEM backends
+
+See [embodiment_core_plan.md](plans/embodiment_core_plan.md) for the full roadmap.
+
+## Troubleshooting
+
+See [troubleshooting/embodiment.md](troubleshooting/embodiment.md) for common issues.

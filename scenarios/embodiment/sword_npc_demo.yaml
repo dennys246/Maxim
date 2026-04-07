@@ -1,0 +1,119 @@
+# Sword + NPC Demo — Virtual entity SEM scenario
+#
+# Demonstrates SEM protocol applied to non-robotic entities:
+# a rusty sword (item) and a ferryman NPC in a narrative context.
+# Uses NarrativeSensor/NarrativeModulator backends.
+#
+# Tests:
+# - Auto-tool generation for virtual entities
+# - Failure mode triggers on items (sword shatters)
+# - Social interaction sensors on NPCs (trust, mood)
+# - Cerebellum forward model learning (Phase 1a, when available)
+
+name: sword_npc_demo
+description: "Virtual entity SEM demo — sword + ferryman NPC"
+
+world_entities:
+  - name: rusty_sword
+    entity_type: weapon
+    sensors:
+      durability:
+        unit: ratio
+        range: [0, 1]
+        initial: 0.3
+      sharpness:
+        unit: ratio
+        range: [0, 1]
+        initial: 0.5
+      weight:
+        unit: kg
+        range: [0.5, 5]
+        initial: 1.2
+    modulators:
+      combat:
+        affordances:
+          slash:
+            params: {target: str, force: float}
+            description: "Slash at a target with the sword"
+          parry:
+            params: {}
+            description: "Parry an incoming attack"
+          throw:
+            params: {target: str}
+            description: "Throw the weapon at a target"
+      maintenance:
+        affordances:
+          sharpen:
+            params: {}
+            description: "Sharpen the blade"
+          repair:
+            params: {material: str}
+            description: "Repair the sword with materials"
+    failure_modes:
+      - name: shatter
+        trigger: {field: durability, op: "<", value: 0.1, pain: 0.6}
+      - name: dulled
+        trigger: {field: sharpness, op: "<", value: 0.15, pain: 0.2}
+
+  - name: grim_ferryman
+    entity_type: npc
+    sensors:
+      trust:
+        unit: ratio
+        range: [0, 1]
+        initial: 0.3
+      mood:
+        unit: ratio
+        range: [-1, 1]
+        initial: 0.0
+      health:
+        unit: ratio
+        range: [0, 1]
+        initial: 1.0
+    modulators:
+      social:
+        affordances:
+          speak:
+            params: {message: str}
+            description: "Say something to the ferryman"
+          offer_payment:
+            params: {amount: float}
+            description: "Offer coins for river passage"
+          threaten:
+            params: {}
+            description: "Threaten the ferryman"
+      physical:
+        affordances:
+          punch:
+            params: {force: float}
+            description: "Punch the ferryman"
+          shove:
+            params: {}
+            description: "Shove the ferryman aside"
+    failure_modes:
+      - name: hostility
+        trigger: {field: trust, op: "<", value: 0.1, pain: 0.4}
+      - name: refusal
+        trigger: {field: mood, op: "<", value: -0.5, pain: 0.3}
+
+# Demo interaction sequence
+test_sequence:
+  - action: {entity: rusty_sword, affordance: slash, params: {target: "training_dummy", force: 0.5}}
+    expect: {pain: false, description: "Light slash — durability drops slightly"}
+
+  - action: {entity: rusty_sword, affordance: slash, params: {target: "stone_wall", force: 1.0}}
+    expect: {pain: false, description: "Hard slash against stone — durability drops more"}
+    repeat: 5
+
+  - action: {entity: rusty_sword, affordance: slash, params: {target: "stone_wall", force: 1.0}}
+    expect: {pain: true, description: "Sword should shatter after repeated abuse"}
+
+  - action: {entity: grim_ferryman, affordance: offer_payment, params: {amount: 5.0}}
+    expect: {pain: false, description: "Payment should increase trust"}
+
+  - action: {entity: grim_ferryman, affordance: threaten, params: {}}
+    expect: {pain: false, description: "Threatening drops trust"}
+    repeat: 3
+
+  - action: {entity: grim_ferryman, affordance: threaten, params: {}}
+    expect: {pain: true, description: "Ferryman becomes hostile after repeated threats"}

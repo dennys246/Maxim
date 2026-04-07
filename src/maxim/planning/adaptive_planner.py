@@ -167,10 +167,15 @@ class AdaptivePlanner(Planner):
         self._ccb = concept_context_builder
         self._retrieval = retrieval_orchestrator
         self._llm = llm
+        self._cerebellum = None  # Set via set_cerebellum() when embodiment is active
         self._max_depth = max_depth
         self._nac_veto_confidence = nac_veto_confidence
         self._nac_veto_threshold = nac_veto_threshold
         self._context_budget_ms = context_budget_ms
+
+    def set_cerebellum(self, cerebellum: Any) -> None:
+        """Attach a Cerebellum instance for motor program lookup."""
+        self._cerebellum = cerebellum
 
     # ── Public interface ──────────────────────────────────────
 
@@ -183,6 +188,25 @@ class AdaptivePlanner(Planner):
         pctx = self._gather_context(goal_dict, tool_name, context, state)
 
         candidates: list[PlanCandidate] = []
+
+        # 0. Motor program lookup (Cerebellum Phase 1b)
+        if self._cerebellum is not None:
+            goal_desc = goal_dict.get("description", goal_dict.get("goal", ""))
+            if goal_desc:
+                motor_programs = self._cerebellum.find_related_programs(str(goal_desc))
+                for prog in motor_programs[:2]:
+                    if prog.confidence > 0.6:
+                        candidates.append(PlanCandidate(
+                            source="motor_program",
+                            tool_name=f"motor_program:{prog.name}",
+                            confidence=prog.confidence,
+                            context={
+                                "program": prog.to_prompt_dict(),
+                                "from_cerebellum": True,
+                            },
+                        ))
+                if candidates:
+                    return candidates  # Short-circuit — motor program available
 
         # 1. NAc veto: does past experience strongly predict failure?
         nac_vetoes = (

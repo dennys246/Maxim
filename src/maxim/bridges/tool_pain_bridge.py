@@ -162,7 +162,12 @@ class ToolPainBridge:
         return 0.0
 
     def _on_pain(self, signal: PainSignal) -> None:
-        """Handle pain signals from tool failures."""
+        """Handle pain signals from tool failures and embodiment failures."""
+        # Embodiment-sourced failures (SEM entities)
+        if signal.context.get("source") == "embodiment":
+            self._on_embodiment_pain(signal)
+            return
+
         if signal.pain_type not in (
             PainType.TOOL_FAILURE,
             PainType.TOOL_TIMEOUT,
@@ -205,6 +210,53 @@ class ToolPainBridge:
                     )
                 except Exception:
                     pass  # SCN registration is best-effort
+
+    def _on_embodiment_pain(self, signal: PainSignal) -> None:
+        """Handle pain signals from embodiment failures (SEM entities).
+
+        Records the failure as a NAc causal link with composition metadata,
+        registers temporal context with SCN, and creates causal edges.
+        """
+        entity_path = signal.context.get("entity", "")
+        failure_mode = signal.context.get("failure_mode", "")
+        composes = signal.context.get("composes", [])
+        entity_type = signal.context.get("entity_type", "")
+
+        # Build event signature from entity + failure
+        event_signature = f"embodiment:{entity_path}:{failure_mode}"
+
+        # Record in NAc as a causal observation
+        links = self._nac.record_outcome_full(
+            outcome_type="embodiment_failure",
+            outcome_signature=event_signature,
+            outcome_valence=Valence.NEGATIVE,
+            context={
+                "source": "embodiment",
+                "entity": entity_path,
+                "entity_type": entity_type,
+                "failure_mode": failure_mode,
+                "composes": composes,
+                "intensity": signal.intensity,
+                "sensor_readings": signal.context.get("sensor_readings", {}),
+            },
+        )
+
+        rpe = max((lnk.last_rpe or 0.0 for lnk in links), default=0.0) if links else 0.0
+        self._last_rpe = rpe
+        self._create_causal_edges(links)
+
+        # Register temporal context with SCN
+        if self._scn is not None:
+            try:
+                from maxim.time.temporal_signature import TemporalSignature
+
+                self._scn.register(
+                    event_signature,
+                    TemporalSignature.now(),
+                    significance=signal.intensity,
+                )
+            except Exception:
+                pass
 
     def _create_causal_edges(self, links: list) -> None:
         """Create CAUSES edges for surprising outcomes (RPE > 0.3).

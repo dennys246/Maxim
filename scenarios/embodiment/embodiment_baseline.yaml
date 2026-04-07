@@ -1,0 +1,90 @@
+# Embodiment Baseline — Regression test scenario for Phase 0
+#
+# Runs a fixed sequence of actions that force bounds violations,
+# testing that pain fires, NAc learns, and ATL grounding reduces
+# pain intensity variance.
+#
+# Success criteria:
+# - Pain sigma across 10 reps >= 50% lower with ATL grounding
+# - NAc learns (action -> pain) with confidence > 0.5 in 3 reps
+# - Percept generation p95 < 2s
+
+name: embodiment_baseline
+description: "Embodiment Phase 0 regression test — bounds violations and pain learning"
+
+body:
+  name: test_arm
+  entity_type: arm
+
+  children:
+    - name: shoulder
+      entity_type: joint
+      sensors:
+        angle:
+          unit: degrees
+          range: [-180, 180]
+          initial: 0
+        temperature:
+          unit: celsius
+          range: [20, 80]
+          initial: 25
+      modulators:
+        motor:
+          affordances:
+            rotate_angle:
+              params: {degrees: float, speed: float}
+              description: "Rotate shoulder joint"
+      failure_modes:
+        - name: overextension
+          trigger: {field: angle, op: ">", value: 170, pain: 0.8}
+
+    - name: elbow
+      entity_type: joint
+      sensors:
+        angle:
+          unit: degrees
+          range: [0, 150]
+          initial: 45
+        strain:
+          unit: ratio
+          range: [0, 1]
+          initial: 0.0
+      modulators:
+        motor:
+          affordances:
+            rotate_angle:
+              params: {degrees: float, speed: float}
+              description: "Rotate elbow joint"
+      failure_modes:
+        - name: overextension
+          trigger: {field: angle, op: ">", value: 145, pain: 0.7}
+
+# Test sequence — forces bounds violations for NAc learning
+test_sequence:
+  - action: {entity: shoulder, affordance: rotate_angle, params: {degrees: 90, speed: 1.0}}
+    expect: {pain: false, description: "Normal rotation — no pain"}
+
+  - action: {entity: shoulder, affordance: rotate_angle, params: {degrees: 175, speed: 1.0}}
+    expect: {pain: true, min_intensity: 0.5, description: "Overextension — should trigger pain"}
+    repeat: 3
+
+  - action: {entity: shoulder, affordance: rotate_angle, params: {degrees: 0, speed: 1.0}}
+    expect: {pain: false, description: "Return to safe — no pain"}
+
+  - action: {entity: shoulder, affordance: rotate_angle, params: {degrees: 175, speed: 1.0}}
+    expect:
+      pain: true
+      nac_prediction: {min_confidence: 0.5, description: "NAc should predict pain by now"}
+
+  - action: {entity: elbow, affordance: rotate_angle, params: {degrees: 148, speed: 0.5}}
+    expect: {pain: true, description: "Elbow overextension"}
+
+expectations:
+  - type: nac_convergence
+    event_type: "embodiment_action"
+    event_signature: "shoulder.rotate_angle.175"
+    min_confidence: 0.5
+    max_repetitions: 3
+
+  - type: response_latency_ms
+    p95_max: 2000

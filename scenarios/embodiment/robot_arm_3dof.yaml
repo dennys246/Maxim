@@ -1,0 +1,78 @@
+# Robot Arm 3-DOF — Demo body spec for embodiment Phase 0
+#
+# A simple articulated arm with shoulder, elbow, and wrist camera.
+# Used as the primary test fixture for SEM protocol validation.
+
+body:
+  name: robot_arm
+  entity_type: arm
+
+  children:
+    - name: shoulder
+      entity_type: joint
+      sensors:
+        angle:
+          unit: degrees
+          range: [-180, 180]
+          initial: 0
+        temperature:
+          unit: celsius
+          range: [20, 80]
+          initial: 25
+      modulators:
+        motor:
+          affordances:
+            rotate_angle:
+              params: {degrees: float, speed: float}
+              description: "Rotate shoulder joint to target angle"
+            brake:
+              params: {}
+              description: "Engage shoulder brake"
+      failure_modes:
+        - name: overextension
+          trigger: {field: angle, op: ">", value: 175, pain: 0.8}
+        - name: overextension_neg
+          trigger: {field: angle, op: "<", value: -175, pain: 0.8}
+        - name: overheating
+          trigger: {field: temperature, op: ">", value: 70, pain: 0.6}
+
+    - name: elbow
+      entity_type: joint
+      sensors:
+        angle:
+          unit: degrees
+          range: [0, 150]
+          initial: 45
+        strain:
+          unit: ratio
+          range: [0, 1]
+          initial: 0.0
+      modulators:
+        motor:
+          affordances:
+            rotate_angle:
+              params: {degrees: float, speed: float}
+              description: "Rotate elbow joint to target angle"
+      failure_modes:
+        - name: overextension
+          trigger: {field: angle, op: ">", value: 145, pain: 0.7}
+        - name: strain_overload
+          trigger: {field: strain, op: ">", value: 0.8, pain: 0.6}
+
+    - name: wrist_camera
+      entity_type: camera
+      sensors:
+        frame:
+          unit: rgb_frame
+          shape: [480, 640, 3]
+          dtype: uint8
+      modulators:
+        lifecycle:
+          affordances:
+            capture_frame:
+              params: {}
+              description: "Capture a single frame from wrist camera"
+              timeout: 5.0
+            restart:
+              params: {}
+              description: "Restart the wrist camera"

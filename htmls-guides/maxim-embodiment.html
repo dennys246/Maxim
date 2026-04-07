@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+
+{% block title %}Embodiment — Maxim Docs | Sensor-Entity-Modulator Protocol{% endblock %}
+
+{% block meta_description %}The SEM (Sensor-Entity-Modulator) protocol — Maxim's composable abstraction for robot joints, cameras, swords, NPCs, and any interactive entity. Auto-generated tools, Cerebellum forward models, motor programs, and cross-system engrams.{% endblock %}
+
+{% block meta_keywords %}Maxim embodiment, SEM protocol, sensor entity modulator, robot abstraction, cerebellum forward models, motor programs, hippocampal engrams, virtual entities, composable robotics{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Embodiment — The SEM Protocol for Composable Hardware & World Abstraction",
+  "description": "How Maxim models interactive entities through the Sensor-Entity-Modulator protocol, with Cerebellum forward models and motor programs.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/embodiment",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["embodiment", "SEM protocol", "sensor", "entity", "modulator", "cerebellum", "motor programs"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Embodiment", "item": "https://www.dennyschaedig.com/maxim/embodiment" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Embodiment</h1>
+    <p class="text-slate-400 text-lg">Composable hardware &amp; world abstraction through Sensor-Entity-Modulator triples</p>
+  </header>
+
+  <!-- Core Concept -->
+  <section class="space-y-4">
+    <h2 id="sem-protocol" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The SEM Protocol</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Core Insight</h3>
+      <p class="text-slate-300">Hardware varies wildly &mdash; cameras, joints, wheels, grippers, IMUs, swords, NPCs. Rather than building monolithic abstractions per robot type, every interactive thing is described as a <strong class="text-white">composable triple</strong>: an Entity (the thing), its Sensors (how you read it), and its Modulators (how you change it).</p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Entity</h3>
+        <p class="text-slate-300 text-sm">The physical or virtual thing. Entities compose into trees: <code class="bg-slate-950 px-1 rounded text-xs">arm &rarr; elbow &rarr; wrist &rarr; gripper</code>. Each entity is self-describing.</p>
+        <p class="text-slate-500 text-xs mt-2">Examples: joint, camera, wheel, sword, NPC, door</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Sensor</h3>
+        <p class="text-slate-300 text-sm">Reads state from an entity. One sensor = one readable quantity. Returns structured <code class="bg-slate-950 px-1 rounded text-xs">SensorReading</code> with value, unit, and timestamp.</p>
+        <p class="text-slate-500 text-xs mt-2">Examples: angle, temperature, durability, trust, frame</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Modulator</h3>
+        <p class="text-slate-300 text-sm">Changes state of an entity. Exposes named <em class="text-indigo-400 not-italic">affordances</em> &mdash; each with typed parameters, description, and timeout.</p>
+        <p class="text-slate-500 text-xs mt-2">Examples: rotate_angle, slash, speak, restart, sharpen</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Auto-Tool Generation -->
+  <section class="space-y-4">
+    <h2 id="auto-tools" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Auto-Generated Tools</h2>
+
+    <p class="text-slate-300 leading-relaxed">When an entity tree loads from YAML, tools are automatically created and registered. No hand-written tool classes per hardware component.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto">
+      <table class="w-full text-left">
+        <thead><tr class="text-indigo-400 border-b border-slate-700">
+          <th class="pb-2">Tool Name</th><th class="pb-2">Type</th><th class="pb-2">Description</th>
+        </tr></thead>
+        <tbody class="text-slate-300">
+          <tr><td class="py-1">sense_shoulder</td><td class="text-slate-500">EntitySense</td><td>Read all sensors on shoulder</td></tr>
+          <tr><td class="py-1">read_shoulder_angle</td><td class="text-slate-500">SensorRead</td><td>Read angle sensor</td></tr>
+          <tr><td class="py-1">shoulder_rotate_angle</td><td class="text-slate-500">Affordance</td><td>Rotate shoulder joint</td></tr>
+          <tr><td class="py-1">rusty_sword_slash</td><td class="text-slate-500">Affordance</td><td>Slash at a target</td></tr>
+          <tr><td class="py-1">grim_ferryman_speak</td><td class="text-slate-500">Affordance</td><td>Say something to the ferryman</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Name collisions are handled by progressive prefixing: <code class="bg-slate-950 px-1 rounded text-xs">shoulder_rotate_angle</code> &rarr; <code class="bg-slate-950 px-1 rounded text-xs">robot2_shoulder_rotate_angle</code> if two robots share the same entity name.</p>
+  </section>
+
+  <!-- Cerebellum -->
+  <section class="space-y-4">
+    <h2 id="cerebellum" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Cerebellum: Forward Models</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Biological Inspiration</h3>
+      <p class="text-slate-300">The biological cerebellum stores forward models that predict sensory consequences of motor commands. Climbing-fiber complex spikes carry prediction error; massive microcircuit specialization enables fast, accurate motor control without conscious thought.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Maxim's Cerebellum stores lightweight predictors per <code class="bg-slate-950 px-1 rounded text-xs">(entity, modulator, affordance, param_bucket)</code>. Each learns via <em class="text-indigo-400 not-italic">Rescorla-Wagner</em> prediction error:</p>
+
+    <div class="bg-slate-950 rounded-lg px-6 py-3 font-serif text-lg text-slate-200 inline-block">
+      expected += &alpha; &times; (actual &minus; expected)
+    </div>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">Confidence &lt; 0.3</strong> &rarr; LLM fallback (teaches the Cerebellum)</li>
+      <li><strong class="text-white">Confidence &ge; 0.3</strong> &rarr; cached prediction (no LLM call)</li>
+      <li><strong class="text-white">High variance</strong> &rarr; LLM fallback (uncertain predictions need grounding)</li>
+    </ul>
+
+    <p class="text-slate-300 leading-relaxed">The LLM is a <strong class="text-white">teacher</strong>, not a per-tick oracle. After enough observations, the Cerebellum handles predictions deterministically. In testing, LLM calls drop from 100 to &le;40 over 100 actions.</p>
+  </section>
+
+  <!-- Motor Programs -->
+  <section class="space-y-4">
+    <h2 id="motor-programs" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Motor Programs</h2>
+
+    <p class="text-slate-300 leading-relaxed">A reach-and-grasp isn't three separate LLM decisions. It's one <em class="text-indigo-400 not-italic">motor program</em> &mdash; an ordered sequence of SEM actions that fires as a unit. Programs crystallize when the agent repeats the same sequence 3+ times for the same goal.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Example: reach_forward</span>
+Step 1: shoulder.motor.rotate_angle(degrees=45, speed=1.0)
+Step 2: elbow.motor.rotate_angle(degrees=30, speed=1.0)
+
+Crystallized after 3 repetitions. Confidence: 0.82
+Known risks: overextension if shoulder.angle > 160 at start</div>
+
+    <h3 class="text-white font-semibold mt-4">Triple-Indexed Registry</h3>
+    <p class="text-slate-300 leading-relaxed">The <em class="text-indigo-400 not-italic">ProgramRegistry</em> indexes programs in three directions:</p>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">By goal</strong> &mdash; "I want to reach forward" &rarr; matching programs</li>
+      <li><strong class="text-white">By entity</strong> &mdash; "I'm holding a sword" &rarr; all programs involving swords</li>
+      <li><strong class="text-white">By affordance</strong> &mdash; "I want to slash" &rarr; programs for sword, axe, arm, claws</li>
+    </ul>
+
+    <h3 class="text-white font-semibold mt-4">Pain-Gated Execution</h3>
+    <p class="text-slate-300 leading-relaxed">Each step has an optional <em class="text-indigo-400 not-italic">pain gate</em> &mdash; a sensor threshold that aborts the program before damage occurs. Gates tighten by 10% after each painful execution. The PainBus is subscribed for real-time mid-sequence interrupts.</p>
+  </section>
+
+  <!-- Motor Engrams -->
+  <section class="space-y-4">
+    <h2 id="engrams" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Motor Engrams</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Biological Inspiration</h3>
+      <p class="text-slate-300">Hippocampal-cerebellar interactions are well-documented: the hippocampus provides contextual scaffolding for motor learning ("where and when did I learn this movement?"), while the cerebellum stores the procedural knowledge itself.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Motor engrams are <strong class="text-white">ephemeral cross-system traces</strong> linking motor programs to situational context:</p>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">Cerebellum</strong> stores the <em class="text-indigo-400 not-italic">how</em> (motor program steps)</li>
+      <li><strong class="text-white">Hippocampus</strong> stores the <em class="text-indigo-400 not-italic">when/where/what</em> (contextual episode)</li>
+      <li><strong class="text-white">The engram</strong> links them via the associative graph</li>
+    </ul>
+
+    <p class="text-slate-300 leading-relaxed">Engrams form only on <strong class="text-white">significant outcomes</strong> &mdash; pain &gt; 0.3, surprising results (RPE &gt; 0.3), or novel programs. Routine successes don't need episodic context. Engrams decay after ~2 days unless reinforced, using the standard hippocampal consolidation cycle.</p>
+
+    <h3 class="text-white font-semibold mt-4">The Cyclical Feedback Loop</h3>
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Cross-System Loop</span>
+Cerebellum &rarr; Hippocampus:  Motor program outcome &rarr; engram captured
+Hippocampus &rarr; Cerebellum:  Engram recall &rarr; context-dependent gating
+Hippocampus &rarr; NAc:         Engram triggers causal observation
+NAc &rarr; Cerebellum:          Prediction vetoes/greenlights program
+Hippocampus &rarr; SCN:         Temporal index &rarr; rhythmic patterns
+SCN &rarr; Cerebellum:          Time-of-day threshold adjustment</div>
+  </section>
+
+  <!-- Virtual Entities -->
+  <section class="space-y-4">
+    <h2 id="virtual-entities" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Virtual Entities: Beyond Robotics</h2>
+
+    <p class="text-slate-300 leading-relaxed">The SEM protocol is hardware-agnostic. A sword is just an Entity with sensors (durability, sharpness) and modulators (slash, parry) backed by <code class="bg-slate-950 px-1 rounded text-xs">NarrativeModulator</code> instead of hardware. The same cognitive stack that learns about robot joints also learns about swords, NPCs, and doors.</p>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Rusty Sword</h3>
+        <p class="text-slate-300 text-sm">Sensors: durability, sharpness, weight</p>
+        <p class="text-slate-300 text-sm">Modulators: slash, parry, throw, sharpen, repair</p>
+        <p class="text-slate-300 text-sm">Failure: shatter (durability &lt; 0.1), dulled (sharpness &lt; 0.15)</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Grim Ferryman (NPC)</h3>
+        <p class="text-slate-300 text-sm">Sensors: trust, mood, health</p>
+        <p class="text-slate-300 text-sm">Modulators: speak, offer_payment, threaten, punch</p>
+        <p class="text-slate-300 text-sm">Failure: hostility (trust &lt; 0.1), refusal (mood &lt; -0.5)</p>
+      </div>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The Cerebellum learns "swinging a damaged sword at a stone golem reduces durability by ~0.15" the same way it learns "rotating an elbow at 90&deg;/s increases strain by ~0.1." Same Rescorla-Wagner update, same forward model, same pain triggers.</p>
+  </section>
+
+  <!-- Failure Modes -->
+  <section class="space-y-4">
+    <h2 id="failure-modes" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Composable Failure Modes</h2>
+
+    <p class="text-slate-300 leading-relaxed">Six base failure modes: <code class="bg-slate-950 px-1 rounded text-xs">overextension</code>, <code class="bg-slate-950 px-1 rounded text-xs">overheating</code>, <code class="bg-slate-950 px-1 rounded text-xs">strain</code>, <code class="bg-slate-950 px-1 rounded text-xs">fatigue</code>, <code class="bg-slate-950 px-1 rounded text-xs">impact</code>, <code class="bg-slate-950 px-1 rounded text-xs">exhaustion</code>. Custom failures compose from these without taxonomy explosion:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Composed Failure: Tennis Elbow</span>
+composes: [strain, fatigue]
+trigger:
+  all:
+    - {field: strain, op: ">", value: 0.6}
+    - {field: fatigue, op: ">", value: 0.5}
+pain_intensity: 0.5
+persistent: true
+recovery_condition: {field: fatigue, op: "<", value: 0.2}</div>
+
+    <p class="text-slate-300 leading-relaxed">Failures route through the existing <em class="text-indigo-400 not-italic">PainBus</em> and <em class="text-indigo-400 not-italic">ToolPainBridge</em>. NAc learns <code class="bg-slate-950 px-1 rounded text-xs">(affordance, entity_state) &rarr; failure</code> causal links. Persistent failures stay active until recovery conditions are met. All failure state persists across sessions.</p>
+  </section>
+
+  <!-- Architecture Diagram -->
+  <section class="space-y-4">
+    <h2 id="architecture" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Architecture</h2>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">
+YAML Spec ──&rarr; Entity Tree ──&rarr; Auto-Generated Tools ──&rarr; Agent
+                  │                                       │
+                  ├──&rarr; Failure Triggers ──&rarr; PainBus ──&rarr; NAc (causal learning)
+                  │                                       │
+                  ├──&rarr; ATL Body Concepts ──&rarr; Grounded LLM predictions
+                  │                                       │
+                  ├──&rarr; Cerebellum ──&rarr; Forward models + Motor programs
+                  │                                       │
+                  └──&rarr; Hippocampus ──&rarr; Motor engrams (context-dependent gating)</div>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-xs text-slate-400 overflow-x-auto">
+      <table class="w-full text-left">
+        <thead><tr class="text-indigo-400 border-b border-slate-700">
+          <th class="pb-2 pr-4">Module</th><th class="pb-2">Purpose</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/sem.py</td><td>Core protocols: Sensor, Modulator, Entity, FailureMode</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/spec.py</td><td>YAML loader, SpecSensor/SpecModulator stubs</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/tool_bridge.py</td><td>Auto-tool generation with collision detection</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/body.py</td><td>Embodiment runtime, failure eval, vital drift, prompt state</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/cerebellum.py</td><td>Forward models, motor program registry, engram formation/recall</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/motor.py</td><td>MotorProgram, MotorStep, ProgramRegistry (triple-indexed)</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/engrams.py</td><td>MotorEngram, salience computation, formation logic</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/program_executor.py</td><td>Step-by-step runner, pain gates, PainBus interrupt</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/llm_backend.py</td><td>LLM + Narrative sensor/modulator backends</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/percepts.py</td><td>EmbodimentPerceptSource (1Hz polling, demand mode)</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/atl_integration.py</td><td>Auto-register ATL body_part concepts</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Navigation -->
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/proprioception" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Body Awareness</span>
+      </a>
+      <a href="/maxim/communication" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Communication</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math Cognition</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/embodiment" class="text-xs text-indigo-400 font-medium transition px-2 py-1 rounded bg-slate-800 no-underline">Embodiment</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking</a>
+        <a href="/maxim/simulation" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Simulation</a>
+        <a href="/maxim/benchmarks" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Benchmarks</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
