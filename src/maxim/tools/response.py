@@ -136,9 +136,9 @@ class SpeakTool(Tool):
         Returns:
             ToolResult with success status.
         """
-        # Accept 'message' as alias for 'text' (LLMs often use 'message')
-        if not text and kwargs.get("message"):
-            text = kwargs["message"]
+        # Accept common LLM param aliases for the text to speak
+        if not text:
+            text = kwargs.get("message") or kwargs.get("phrase") or ""
         if not text or not text.strip():
             return ToolResult(
                 success=False,

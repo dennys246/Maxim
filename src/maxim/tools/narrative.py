@@ -37,7 +37,8 @@ class SayTool(Tool):
     }
 
     def execute(self, **kwargs: Any) -> ToolResult:
-        text = kwargs.get("text", "")
+        # Accept common LLM param aliases for the text to say
+        text = kwargs.get("text") or kwargs.get("message") or kwargs.get("phrase") or ""
         if not text:
             return ToolResult(success=False, error="Nothing to say")
         return ToolResult(
@@ -68,7 +69,8 @@ class ThinkTool(Tool):
     }
 
     def execute(self, **kwargs: Any) -> ToolResult:
-        thought = kwargs.get("thought", "")
+        # Accept common LLM param aliases for the thought content
+        thought = kwargs.get("thought") or kwargs.get("text") or kwargs.get("prompt") or ""
         if not thought:
             return ToolResult(success=False, error="Empty thought")
         return ToolResult(
