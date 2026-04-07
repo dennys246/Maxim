@@ -168,6 +168,9 @@ class AdaptivePlanner(Planner):
         self._retrieval = retrieval_orchestrator
         self._llm = llm
         self._cerebellum = None  # Set via set_cerebellum() when embodiment is active
+        self._peer_registry = None  # Set via set_mesh_context() when mesh starts
+        self._admission = None
+        self._local_tools: set[str] = set()
         self._max_depth = max_depth
         self._nac_veto_confidence = nac_veto_confidence
         self._nac_veto_threshold = nac_veto_threshold
@@ -176,6 +179,21 @@ class AdaptivePlanner(Planner):
     def set_cerebellum(self, cerebellum: Any) -> None:
         """Attach a Cerebellum instance for motor program lookup."""
         self._cerebellum = cerebellum
+
+    def set_mesh_context(
+        self,
+        peer_registry: Any = None,
+        admission: Any = None,
+        local_tools: list[str] | None = None,
+    ) -> None:
+        """Attach mesh context for distributed planning (Phase 6).
+
+        Called when the mesh layer starts. Without this, _decompose()
+        skips delegation tagging — the planner works purely locally.
+        """
+        self._peer_registry = peer_registry
+        self._admission = admission
+        self._local_tools: set[str] = set(local_tools) if local_tools else set()
 
     # ── Public interface ──────────────────────────────────────
 
@@ -196,15 +214,19 @@ class AdaptivePlanner(Planner):
                 motor_programs = self._cerebellum.find_related_programs(str(goal_desc))
                 for prog in motor_programs[:2]:
                     if prog.confidence > 0.6:
-                        candidates.append(PlanCandidate(
-                            source="motor_program",
-                            actions=[{
-                                "tool_name": f"motor_program:{prog.name}",
-                                "program": prog.to_prompt_dict(),
-                                "from_cerebellum": True,
-                            }],
-                            planning_context=pctx,
-                        ))
+                        candidates.append(
+                            PlanCandidate(
+                                source="motor_program",
+                                actions=[
+                                    {
+                                        "tool_name": f"motor_program:{prog.name}",
+                                        "program": prog.to_prompt_dict(),
+                                        "from_cerebellum": True,
+                                    }
+                                ],
+                                planning_context=pctx,
+                            )
+                        )
                 if candidates:
                     return candidates  # Short-circuit — motor program available
 
@@ -460,6 +482,10 @@ class AdaptivePlanner(Planner):
         if not sub_actions:
             return None
 
+        # Phase 6: tag sub-goals that a peer could handle better
+        if self._peer_registry is not None:
+            sub_actions = self._tag_delegatable_subgoals(sub_actions)
+
         return PlanCandidate(
             actions=sub_actions,
             source="reflection_informed" if pctx.reflections else "decomposed",
@@ -467,6 +493,58 @@ class AdaptivePlanner(Planner):
             relevant_reflections=[getattr(r, "id", "") for r in pctx.reflections],
             depth=depth + 1,
         )
+
+    def _tag_delegatable_subgoals(
+        self,
+        sub_actions: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Tag sub-goals with _preferred_node if a peer is better suited.
+
+        Conditions for delegation:
+        - Peer has the tool and we don't → always delegate
+        - Peer has better success rate (>0.8) and local NAc predicts poorly → delegate
+
+        Skips dead, identity-less, and gated peers.
+        """
+        if self._peer_registry is None:
+            return sub_actions
+
+        for action in sub_actions:
+            tool_name = action.get("tool_name")
+            if not tool_name:
+                continue
+
+            local_prediction = None
+            if self._nac:
+                try:
+                    local_prediction = self._nac.predict("tool", f"tool:{tool_name}")
+                except Exception:
+                    pass
+
+            for peer in self._peer_registry.all_peers():
+                if not peer.is_alive or peer.identity is None:
+                    continue
+                if self._admission and self._admission.is_peer_gated(peer.peer_id):
+                    continue
+
+                peer_tools = peer.identity.available_tools
+
+                # Case 1: peer has the tool, we don't
+                if tool_name not in self._local_tools and tool_name in peer_tools:
+                    action["_preferred_node"] = peer.peer_id
+                    break
+
+                # Case 2: peer has better success rate for this tool
+                if tool_name in peer_tools:
+                    for t in peer.identity.top_tools:
+                        if t.get("name") == tool_name and t.get("success_rate", 0) > 0.8:
+                            if local_prediction and local_prediction.predicted_value < 0.5:
+                                action["_preferred_node"] = peer.peer_id
+                                break
+                    if "_preferred_node" in action:
+                        break
+
+        return sub_actions
 
 
 # ---------------------------------------------------------------------------

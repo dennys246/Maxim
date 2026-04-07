@@ -688,6 +688,17 @@ class NAc:
         except Exception:
             pass  # EC registration is best-effort
 
+    def _register_imported_link(self, link: CausalLink) -> None:
+        """Register an externally-imported CausalLink.
+
+        The link should already have transfer discount applied to confidence,
+        predicted_value reset, and provenance tagged in event_context.
+        """
+        event_links = self._links.setdefault(link.event_signature, [])
+        event_links.append(link)
+        self._outcome_index.setdefault(link.outcome_signature, set()).add(link.id)
+        self._register_causal_in_ec(link)
+
     def _deregister_causal_from_ec(self, link_id: str) -> None:
         """Remove a causal pattern from EC when link is evicted."""
         if self._ec is not None:

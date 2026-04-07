@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}Agent Mesh &amp; Cooperative Intelligence &mdash; Maxim Docs | Peer-to-Peer Knowledge Sharing{% endblock %}
+
+{% block meta_description %}How Maxim agents discover peers, share learned knowledge, delegate tasks, and coordinate temporal reasoning across a cooperative mesh network. Sovereign agents, cooperative network.{% endblock %}
+
+{% block meta_keywords %}Maxim agent mesh, peer-to-peer AI, knowledge sharing, cooperative agents, task delegation, distributed planning, causal link transfer, motor program sharing, SCN clock sync, agentic robotics{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Agent Mesh & Cooperative Intelligence in Maxim",
+  "description": "How Maxim agents discover peers, share learned knowledge, delegate tasks, and coordinate temporal reasoning across a cooperative mesh network.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/agent-mesh",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["agent mesh", "knowledge sharing", "task delegation", "distributed planning", "cooperative AI"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Agent Mesh", "item": "https://www.dennyschaedig.com/maxim/agent-mesh" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Agent Mesh &amp; Cooperative Intelligence</h1>
+    <p class="text-indigo-400 font-medium">Sovereign Agents, Cooperative Network</p>
+  </header>
+
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
+    <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+      <li><a href="#design-philosophy" class="text-indigo-400 hover:text-indigo-300 no-underline">Design Philosophy</a></li>
+      <li><a href="#identity" class="text-indigo-400 hover:text-indigo-300 no-underline">Identity &amp; Discovery</a></li>
+      <li><a href="#transport" class="text-indigo-400 hover:text-indigo-300 no-underline">Transport Layer</a></li>
+      <li><a href="#admission" class="text-indigo-400 hover:text-indigo-300 no-underline">Admission Control</a></li>
+      <li><a href="#knowledge-sharing" class="text-indigo-400 hover:text-indigo-300 no-underline">Knowledge Sharing</a></li>
+      <li><a href="#task-delegation" class="text-indigo-400 hover:text-indigo-300 no-underline">Task Delegation</a></li>
+      <li><a href="#distributed-planning" class="text-indigo-400 hover:text-indigo-300 no-underline">Distributed Planning</a></li>
+      <li><a href="#clock-sync" class="text-indigo-400 hover:text-indigo-300 no-underline">Clock Synchronization</a></li>
+      <li><a href="#trust-model" class="text-indigo-400 hover:text-indigo-300 no-underline">Trust Model</a></li>
+    </ol>
+  </div>
+
+  <!-- 1. Design Philosophy -->
+  <section class="space-y-4">
+    <h2 id="design-philosophy" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Design Philosophy</h2>
+
+    <p class="text-slate-300 leading-relaxed">Every Maxim instance is a <span class="text-indigo-400 font-semibold">sovereign agent</span>. It owns its hippocampus, its causal models (NAc), its semantic concepts (ATL), its learned significance weights, and its tool registry. No other agent can modify its state directly.</p>
+
+    <p class="text-slate-300 leading-relaxed">Cooperation happens through four verbs:</p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h3 class="text-indigo-400 font-semibold mb-1">Sharing</h3>
+        <p class="text-slate-300 text-sm">"Here's what I learned" &mdash; serialized CausalLinks, reflections, or motor programs sent as gifts. The receiver decides what to keep.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h3 class="text-indigo-400 font-semibold mb-1">Requesting</h3>
+        <p class="text-slate-300 text-sm">"Can you do this?" &mdash; delegated goals with results returned. The receiver evaluates with its own planner.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h3 class="text-indigo-400 font-semibold mb-1">Querying</h3>
+        <p class="text-slate-300 text-sm">"What do you know about X?" &mdash; read-only queries against peer memory. Never returns raw dumps.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h3 class="text-indigo-400 font-semibold mb-1">Advertising</h3>
+        <p class="text-slate-300 text-sm">"Here's what I can do" &mdash; capability broadcasts via heartbeat. Statistics only, not the actual data.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Identity -->
+  <section class="space-y-4">
+    <h2 id="identity" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Identity &amp; Discovery</h2>
+
+    <p class="text-slate-300 leading-relaxed">Each agent carries two layers of identity. <span class="text-indigo-400 font-semibold">AgentProfile</span> is the lightweight local identity (nickname, role, capabilities) used by in-process agents like the research protocol's Writer and Reviewer. <span class="text-indigo-400 font-semibold">AgentIdentity</span> extends it with hardware capabilities, knowledge statistics, and inference info for network coordination.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">What's Broadcast</h3>
+      <ul class="space-y-2 text-slate-300">
+        <li><span class="text-indigo-400 font-semibold">Node ID</span> &mdash; persistent across restarts (saved to disk), stable address for peer tracking</li>
+        <li><span class="text-indigo-400 font-semibold">Available tools &amp; skills</span> &mdash; what this agent can do (used for delegation routing)</li>
+        <li><span class="text-indigo-400 font-semibold">Knowledge statistics</span> &mdash; episodic memory count, causal link count, top tools by success rate</li>
+        <li><span class="text-indigo-400 font-semibold">Inference models</span> &mdash; what LLMs are loaded, whether inference is available</li>
+        <li><span class="text-indigo-400 font-semibold">Embodiment summary</span> &mdash; body modalities and affordances (when embodied)</li>
+      </ul>
+      <p class="text-slate-400 text-sm mt-3">The identity shares <em>statistics</em> about knowledge, not the knowledge itself. A peer sees "500 episodes, high-confidence grasp patterns" &mdash; not the actual memories.</p>
+    </div>
+  </section>
+
+  <!-- 3. Transport -->
+  <section class="space-y-4">
+    <h2 id="transport" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Transport Layer</h2>
+
+    <p class="text-slate-300 leading-relaxed">The <span class="text-indigo-400 font-semibold">PeerChannel</span> implements the same Channel interface as SMS and voice, so mesh messages flow through CommunicationGateway. Sends are queued to a background thread &mdash; callers never block on network I/O.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Send Path</span>
+send_mesh() &rarr; Queue (maxsize=1000) &rarr; Background Thread &rarr; HTTP POST /v1/mesh/message
+                                                  &darr; retry on failure
+                                          Exponential backoff: 1s, 2s, 4s (3 attempts)
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Receive Path</span>
+POST /v1/mesh/message &rarr; MeshMessage.from_dict() &rarr; protocol_version check
+                                                       &darr;
+                                              PeerChannel.receive()
+                                                       &darr;
+                                              Percept on agent bus (salience=0.7)</div>
+
+    <p class="text-slate-300 leading-relaxed">The wire protocol uses <span class="text-indigo-400 font-semibold">MeshMessage</span> &mdash; a typed envelope with 24 message types covering discovery, delegation, knowledge sharing, prediction, and inference routing. A <code class="text-indigo-400">protocol_version</code> field ensures peers running different Maxim versions can detect incompatibilities.</p>
+  </section>
+
+  <!-- 4. Admission -->
+  <section class="space-y-4">
+    <h2 id="admission" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Admission Control</h2>
+
+    <p class="text-slate-300 leading-relaxed"><span class="text-indigo-400 font-semibold">MeshAdmissionControl</span> protects agents from flooding. Every incoming message is checked before dispatch. Peers that exceed rate limits accumulate violations with escalating gate durations.</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-slate-300 text-sm">
+        <thead><tr class="border-b border-slate-700"><th class="py-2 text-indigo-400">Trust Level</th><th class="py-2 text-indigo-400">Rate Limit</th><th class="py-2 text-indigo-400">How Established</th></tr></thead>
+        <tbody>
+          <tr class="border-b border-slate-800"><td class="py-2">Verified</td><td>120 msg/min</td><td>Pre-shared key</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2">Discovered</td><td>60 msg/min</td><td>mDNS (future)</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2">Remote</td><td>60 msg/min</td><td>Tunnel auth</td></tr>
+          <tr><td class="py-2">Unknown</td><td>20 msg/min</td><td>No auth</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Burst detection triggers at 20 messages in 5 seconds. Gate durations escalate: 30s &rarr; 2min &rarr; 10min &rarr; 1hr. Gated peers receive 429 responses and are skipped by the distributed planner.</p>
+  </section>
+
+  <!-- 5. Knowledge Sharing -->
+  <section class="space-y-4">
+    <h2 id="knowledge-sharing" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Knowledge Sharing</h2>
+
+    <p class="text-slate-300 leading-relaxed">Knowledge sharing uses a <span class="text-indigo-400 font-semibold">provider/receiver protocol</span>. Any subsystem can participate by implementing two simple interfaces. The <span class="text-indigo-400 font-semibold">ExperienceBroker</span> routes between them without knowing subsystem specifics.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Protocol</span>
+KnowledgeProvider &mdash; get_shareable(limit, **filters) &rarr; list[dict]
+KnowledgeReceiver &mdash; import_knowledge(data, source, trust) &rarr; bool
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Broker</span>
+ExperienceBroker.register_provider(nac_provider)
+ExperienceBroker.register_receiver(nac_receiver)
+ExperienceBroker.get_shareable("causal_link") &rarr; [{knowledge_type: ..., ...}]
+ExperienceBroker.import_knowledge("causal_link", data, "peer-A", "verified")</div>
+
+    <h3 class="text-lg font-semibold text-white mt-4">Built-in Adapters</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h4 class="text-indigo-400 font-semibold mb-1">Causal Links</h4>
+        <p class="text-slate-300 text-sm">Wraps NAc. Exports high-confidence links (&ge;0.6, 3+ observations). Imports with trust-level transfer discount (0.5&times; for verified, 0.1&times; for unknown).</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h4 class="text-indigo-400 font-semibold mb-1">Reflections</h4>
+        <p class="text-slate-300 text-sm">Wraps Hippocampus. Exports memories with reflection text. Imports with trust-level salience caps (0.5 for verified, 0.15 for unknown).</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h4 class="text-indigo-400 font-semibold mb-1">Motor Programs</h4>
+        <p class="text-slate-300 text-sm">Wraps ProgramRegistry. Exports battle-tested programs (3+ executions, &ge;50% success). Requires verified/discovered trust. Validates entity paths against local embodiment.</p>
+      </div>
+    </div>
+
+    <p class="text-slate-400 text-sm mt-3">Future adapters (DN thresholds, forward models, contacts) register the same way &mdash; no broker changes needed.</p>
+  </section>
+
+  <!-- 6. Task Delegation -->
+  <section class="space-y-4">
+    <h2 id="task-delegation" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Task Delegation</h2>
+
+    <p class="text-slate-300 leading-relaxed">One agent can propose a goal to another. The <span class="text-indigo-400 font-semibold">TaskDelegator</span> picks the best peer by tool availability and success rate. The <span class="text-indigo-400 font-semibold">TaskReceiver</span> evaluates proposals using local NAc predictions and queue depth.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Safety Mechanisms</h3>
+      <ul class="space-y-2 text-slate-300">
+        <li><span class="text-indigo-400 font-semibold">Loop detection</span> &mdash; Goals carry <code class="text-indigo-400">delegation_depth</code> (max 2) and <code class="text-indigo-400">delegation_chain</code> (cycle detection)</li>
+        <li><span class="text-indigo-400 font-semibold">Queue limits</span> &mdash; Max 5 concurrent delegations per agent</li>
+        <li><span class="text-indigo-400 font-semibold">NAc veto</span> &mdash; Rejects if local NAc predicts failure with &gt;70% confidence</li>
+        <li><span class="text-indigo-400 font-semibold">Gated peer skip</span> &mdash; Misbehaving peers are excluded from delegation routing</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 7. Distributed Planning -->
+  <section class="space-y-4">
+    <h2 id="distributed-planning" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Distributed Planning</h2>
+
+    <p class="text-slate-300 leading-relaxed">The AdaptivePlanner's <code class="text-indigo-400">_tag_delegatable_subgoals()</code> runs after LLM decomposition. It checks each sub-goal against peer capabilities and tags actions with <code class="text-indigo-400">_preferred_node</code> when a peer is better suited:</p>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><span class="text-indigo-400 font-semibold">Remote-only tools</span> &mdash; peer has the tool, we don't &rarr; always delegate</li>
+      <li><span class="text-indigo-400 font-semibold">Better success rate</span> &mdash; peer has &gt;80% success and local NAc predicts &lt;50% &rarr; delegate</li>
+    </ul>
+  </section>
+
+  <!-- 8. Clock Sync -->
+  <section class="space-y-4">
+    <h2 id="clock-sync" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Clock Synchronization</h2>
+
+    <p class="text-slate-300 leading-relaxed">The <span class="text-indigo-400 font-semibold">PeerClockEstimator</span> learns per-peer clock offsets using heartbeat round-trip times (NTP-lite). Offsets are smoothed with an EMA and stabilize after ~10 sync points.</p>
+
+    <p class="text-slate-300 leading-relaxed">The SCN's <code class="text-indigo-400">register_external()</code> corrects incoming TemporalSignatures before registration, ensuring temporal bins align across agents with different system clocks. The phase-normalized indexing is naturally resistant to small offsets &mdash; skew only matters when it shifts a memory into the wrong hour bin (&gt;30 minutes).</p>
+  </section>
+
+  <!-- 9. Trust Model -->
+  <section class="space-y-4">
+    <h2 id="trust-model" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Trust Model</h2>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-slate-300 text-sm">
+        <thead><tr class="border-b border-slate-700"><th class="py-2 text-indigo-400">Trust</th><th class="py-2 text-indigo-400">Knowledge Discount</th><th class="py-2 text-indigo-400">Motor Programs</th><th class="py-2 text-indigo-400">Rate Limit</th></tr></thead>
+        <tbody>
+          <tr class="border-b border-slate-800"><td class="py-2">Verified</td><td>0.5&times;</td><td>Accepted</td><td>120/min</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2">Discovered</td><td>0.3&times;</td><td>Accepted</td><td>60/min</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2">Remote</td><td>0.3&times;</td><td>Rejected</td><td>60/min</td></tr>
+          <tr><td class="py-2">Unknown</td><td>0.1&times;</td><td>Rejected</td><td>20/min</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Locally-learned knowledge always dominates. Imported data is a <em>prior</em>, not a replacement &mdash; as the local agent observes the same patterns, confidence grows organically through its own experience.</p>
+  </section>
+
+  <!-- Footer nav -->
+  <div class="space-y-6 pt-4 border-t border-slate-700/50">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/networking" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Networking</span>
+      </a>
+      <a href="/maxim/simulation" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Simulation</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking</a>
+        <a href="/maxim/agent-mesh" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Agent Mesh</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -2,7 +2,7 @@
 
 Master roadmap for Maxim development. Individual plan files remain as detailed design references.
 
-**Last updated:** 2026-04-06
+**Last updated:** 2026-04-07
 
 ---
 
@@ -17,15 +17,15 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Docker Sandbox | **Complete** | Phase A (TmpdirSandbox + pain) + Phase B (DockerSandbox + ContainerRunner + CLI) both shipped |
 | Research Protocol | **Complete** | All phases: mesh primitives, research tools, Writer + Reviewer agents, Research Orchestrator. CLI: `maxim --sim research`. |
 | Multi-LLM Scaling | **Complete** | All phases done. mDNS + InferenceRouter moved to Agent Mesh as Phases 0a-0b. |
-| Agent Mesh | **Phase 1a-1b foundations** | AgentProfile + UMR implemented in `src/maxim/mesh/`. Phases 0a-0b (mDNS + InferenceRouter) next, then full protocol. |
+| Agent Mesh | **Phases Pre-7 COMPLETE** | All core mesh shipped: identity, protocol, transport, admission, knowledge sharing (provider/receiver protocol), task delegation, distributed planning, SCN temporal coordination. Remaining: Phase 0a (mDNS) + 0b (InferenceRouter) deferred until multiple LAN machines. |
 | Realtime Refinement | **Core done** | InspectAUTTool, 8 personas, 3 metric expectations, baseline scenario. Per-lane LLM metrics deferred to Multi-LLM Phase 8 |
-| Embodiment Core | **Not started** | Phase 0 MVP + ATL grounding (~400 LOC) is the gate; Cerebellum + structured failures follow. Designed and scoped. |
-| Embodiment Hardware Adapter | **Not started** | Folded into Embodiment Core as Phase 3. Blocked on Phases 0-2. |
-| Generative Campaign Mode | **Not started** | LLM-generated narrative campaigns (~1,210 LOC in 4 stages). CLI simplification (`--sim <goal>`), lane-tiered cascade (Option B/C), AdaptivePlanner-driven arc decomposition with memory context, continuous dynamic arcs with bridge-and-compress, bio-skill learning arc, entity naming (AgentProfile ext), `ask_user` tool (`--interactive`), tiered `--benchmark` promotion, YAML export. [Plan](generative_campaign_plan.md) |
-| Dungeon Master Persona (MVP) | **Deferred** | Hand-authored D&D campaigns as ultimate bio-system stress test (~840 LOC). Held until Multi-LLM + Agent Mesh + Embodiment Core land. Gated on choice-classifier spike. |
-| DM Choice Classifier Spike | **Not started** | Half-day spike validating ATL+NAc classification path. Runs before DM MVP commits. |
-| Dungeon Master Extensions | **Deferred** | Optional follow-ons layered onto DM MVP. Each extension gated on MVP usage pain. |
-| Interactive Sim Prompts | **Folded** | `ask_user` tool folded into Generative Campaign Mode plan (`--interactive` flag). DM extensions reference it there. |
+| Embodiment Core | **Complete** | All phases shipped: SEM protocol, PainBus, Cerebellum, motor programs, NarrativeModulator, auto-tool generation. 164 tests. Hardware adapter deferred. |
+| Embodiment Hardware Adapter | **Not started** | Deferred to future when deploying to real hardware. |
+| Generative Campaign Mode | **Complete** | All stages shipped: arc system, narrator, planner integration, `ask_user` tool, benchmark tiers, YAML export. 71 tests. [Plan](generative_campaign_plan.md) |
+| Dungeon Master Persona (MVP) | **Ready to start** | Bundled SEM characters + cascade DAG + generative infra reuse (~730 LOC). All prerequisites satisfied. Gated on choice classifier spike with bio-system observability. [Plan](dungeon_master_persona.md) |
+| DM Choice Classifier Spike | **Not started** | ~2 day spike: classification accuracy + bio-system ablation study. Merged into DM plan as Phase 0. |
+| Dungeon Master Extensions | **Deferred** | Optional follow-ons layered onto DM MVP. Each extension gated on MVP usage pain. Needs update for SEM character model. |
+| Interactive Sim Prompts | **Complete (folded)** | `ask_user` tool shipped as part of Generative Campaign Mode. |
 | Capability Agent | **Not started** | Continuous runtime awareness — live model availability, gate actions by hardware, proactive routing suggestions. ~500 LOC across 5 phases. Wraps detect_tiers + FunctionRouter + LaneMetrics + peer registry. [Design notes in doctor_upgrade_plan.md](doctor_upgrade_plan.md#capability-agent--continuous-runtime-awareness-300500-loc) |
 | Peer Inference Retry on Leader Restart | **Not started** | Retry with backoff on 502/503 during leader restart. ~30 LOC in openai_backend.py. |
 | Python API | **Complete** | Verb-based public interface (`run`, `imagine`, `connect`, `diagnose`, `observe`, `configure`). Observer rename done. `src/maxim/api.py` + lazy `__init__.py`. [Plan](python_api_plan.md) |
@@ -56,63 +56,42 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 ## Dependency Graph
 
 ```
-                    ┌─────────────────────────────────┐
-                    │  Research Protocol Phase 0-1   │ ✅ DONE (mesh primitives + research tools)
-                    └──────────────┬──────────────────┘
-                                   ↓
-     ┌─────────────────────┐    ┌──┴──────────────────┐
-     │  Multi-LLM P1-3     │    │  Research Protocol  │
-     │  (local dual-model) │    │  Phases 2-4         │
-     └──────────┬──────────┘    └─────────────────────┘
-                ↓
-     ┌──────────┴──────────┐
-     │  Multi-LLM P4-6     │
-     │  (remote/tunnel)    │
-     └──────────┬──────────┘
-                ↓
-     ┌──────────┴──────────┐      ┌──────────────────────┐
-     │  Multi-LLM P7       │──┬──►│  Agent Mesh P1+      │
-     │  (PeerRegistry)     │  │   │                      │
-     └──────────┬──────────┘  │   └──────────────────────┘
-                ↓             │
-     ┌──────────┴──────────┐  │   ┌──────────────────────┐
-     │  Multi-LLM P8       │  │   │  Embodiment Core     │ (parallel track, independent)
-     │  (per-lane metrics) │  │   │  Phase 0 MVP         │
-     └──────────┬──────────┘  │   └──────────┬───────────┘
-                ↓             │              ↓
-     ┌──────────┴──────────┐  │   ┌──────────┴───────────┐
-     │  Lane Tier Arch     │  │   │  Embodiment Core     │
-     │  (function routing, │  │   │  (further phases)    │
-     │   absorbs infer_net,│  │   └──────────┬───────────┘
-     │   doctor check)     │  │              ↓
-     └──────────┬──────────┘  │   ┌──────────┴───────────┐
-                ↓             │   │  Hardware Adapter    │
-     ┌──────────┴──────────┐  │   └──────────────────────┘
-     │  Sim Benchmark      │  │
-     │  (uses small tier)  │  │
-     └──────────┬──────────┘  │
-                ↓             │
-     [Refinement closure]     │
-                              │
-                              ▼
-                    ┌─────────────────────┐
-                    │  DM prerequisites   │
-                    │  all satisfied      │
-                    └──────────┬──────────┘
-                               ↓
-              ┌────────────────┴──────────────────┐
-              │  DM Choice Classifier Spike       │
-              └────────────────┬──────────────────┘
-                               ↓
-              ┌────────────────┴──────────────────┐
-              │  DM MVP → DM Extensions (demand)  │
-              └───────────────────────────────────┘
+     ┌─────────────────────────────────────────────────────────┐
+     │  COMPLETED FOUNDATION                                    │
+     │                                                          │
+     │  Research Protocol ✅    Multi-LLM (all phases) ✅       │
+     │  Lane Tier Arch ✅       Sim Benchmark (0-6) ✅          │
+     │  Embodiment Core ✅      Generative Campaigns ✅         │
+     │  Tool Refactoring ✅     Python API ✅                   │
+     └──────────────────────────┬──────────────────────────────┘
+                                │
+          ┌─────────────────────┼──────────────────────┐
+          ↓                     ↓                      ↓
+  ┌───────────────────┐  ┌─────────────────┐  ┌──────────────────┐
+  │  Agent Mesh P2+   │  │  DM Classifier  │  │  PyPI Pub Ph3-6  │
+  │  (network transp) │  │  Spike (~2 days)│  │  (independent)   │
+  └───────┬───────────┘  └────────┬────────┘  └──────────────────┘
+          │                       ↓
+          │              ┌────────┴────────┐
+          │              │  DM MVP (~730)  │
+          │              │  Bundled SEM +  │
+          │              │  cascade DAG    │
+          │              └────────┬────────┘
+          │                       ↓
+          │              ┌────────┴────────┐
+          ├─────────────►│  DM Extensions  │
+          │              │  (demand-driven)│
+          │              └─────────────────┘
+          ↓
+  ┌───────────────────┐
+  │  Multi-AUT party  │  (requires Mesh P2+ AND DM MVP)
+  └───────────────────┘
 
 Optional / independent (ship when demand surfaces):
   test_record_plan_outcome fix
-
-Low-priority (fold into future work when relevant):
-  Stdlib OpenAI-Compat Client, GitHub Repo Management
+  Stdlib OpenAI-Compat Client
+  Capability Agent
+  Hardware Adapter (when deploying to real robots)
 ```
 
 ---
@@ -123,29 +102,25 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 
 | # | Work | LOC | Rationale |
 |---|------|-----|-----------|
-| 1 | **Lane Tier Architecture** | ~820 | Size-based model routing. Absorbs `infer_net`, adds doctor tier check, mesh hooks. Prerequisite for benchmarks. Unlocks clean function routing for all downstream plans. |
-| 2 | **Benchmark Phase 0 (Sim improvements)** | ~220 | Enrich SimulationResult + activate full bio-stack in sim + bio-system expectations + scenario metadata. Benefits all sim modes. |
-| 3 | **Benchmark Phases 1-2 (Core runner)** | ~330 | BenchmarkRunner wrapping run_campaign() + CLI. End-to-end `--sim benchmark` working. |
-| 4 | **Benchmark Phases 3-5 (Scenarios + output)** | ~400+YAML | Unified YAML loader + tiered output + live progress + cognitive_suite scenarios. First real benchmark runs. |
-| 5 | **Embodiment Core Phase 0 MVP** | ~400 | ATL-grounded body-state primitives. Run benchmarks before/after. |
-| 6 | **Generative Campaign Mode** | ~1,210 | 4 stages: (A) CLI + generative runner + entity naming + YAML export (~600), (B) AdaptivePlanner integration + plan-to-arc translation + continuous dynamic arcs + bridge-and-compress (~280), (C) `--interactive` + `ask_user` + timeout escalation (~250), (D) `--benchmark` tiered promotion (~80). |
-| 7 | **Embodiment Core remaining phases** | per plan | Cerebellum forward models, structured failures, hardware adapter |
-| 8 | **Agent Mesh Phase 2+** | per plan | Network transport, distributed planning |
-| 9 | **DM Choice Classifier Spike** | ~150 scratch | Validates ATL+NAc classification on small tier |
-| 10 | **DM MVP** | ~840 | Capstone bio-system stress test |
-| 11 | **DM Extensions** | per-extension | Demand-driven, never speculative |
+| ~~1~~ | ~~Lane Tier Architecture~~ | ~~820~~ | ✅ Complete |
+| ~~2-4~~ | ~~Simulation Benchmark (Phases 0-6)~~ | ~~950~~ | ✅ Complete |
+| ~~5~~ | ~~Embodiment Core (all phases)~~ | ~~per plan~~ | ✅ Complete (SEM, PainBus, Cerebellum, motor programs, 164 tests) |
+| ~~6~~ | ~~Generative Campaign Mode~~ | ~~1,210~~ | ✅ Complete (arcs, narrator, ask_user, benchmark tiers, 71 tests) |
+| 7 | **Bio-System Wiring Hardening** | ~1,010 | Fix 7 disconnected bio-systems in sim mode + pipeline correctness bugs + percept abstraction (entity-modulated SensoryGate) + sensory ablation campaign. All fixes in main codebase — benefits all modes. [Plan](biosystem_wiring_hardening.md) |
+| 8 | **DM MVP** | ~1,020 + YAMLs | Bundled SEM characters, cascade DAG, generative infra reuse, 4 showcase campaigns with pipeline health checks + ablation. [Plan](dungeon_master_persona.md) |
+| ~~9~~ | ~~Agent Mesh Phases Pre-7~~ | ~~per plan~~ | ✅ Complete (identity, protocol, transport, admission, knowledge sharing, delegation, planning, SCN temporal). Phase 0a-0b (mDNS + InferenceRouter) deferred. |
+| 10 | **DM Extensions** | per-extension | Demand-driven, never speculative. Needs update for SEM character model. |
+| 11 | **Multi-AUT Party Mode** | per plan | Requires Agent Mesh P2+ AND DM MVP. Civilization-scale stress test. |
 
 **Why this order:**
-- Lane tiers first: infrastructure that every downstream plan benefits from
-- Benchmark Phase 0 (sim improvements) next: enriches SimulationResult + activates full bio-stack — benefits all sim modes, not just benchmarks
-- Benchmark core: validates tool refactoring + creates baselines before embodiment
-- Embodiment Core before DM so DM's `CharacterState` inherits established patterns
-- Generative campaigns exercise narrative tools at scale with small-tier transcription
-- DM comes last as the capstone that validates everything below it
+- DM spike first: validates that bio-systems actually influence AUT behavior (foundational assumption for DM as stress test)
+- DM MVP next: exercises the full bio-stack with embodiment, generative campaigns, and SEM protocol working together
+- Agent Mesh is independent — can be worked in parallel with DM
+- Multi-AUT party mode is the ultimate capstone, combining mesh + DM
 
-**Parallelism opportunities (if capacity allows):**
-- Embodiment track is fully independent from benchmark/lane-tier tracks
-- Benchmark Phase 0 (sim improvements) can run in parallel with lane tier work
+**Parallelism opportunities:**
+- Agent Mesh Phase 2+ is fully independent from DM track
+- PyPI Publication (Ph3-6) is independent from everything
 
 ---
 
@@ -237,9 +212,9 @@ CLI: `maxim --sim research --goal "does the agent block code execution?" [--camp
 
 ## 4. Agent Mesh
 
-> **Status:** Phase 1a-1b foundations implemented. AgentProfile, UMR, MeshMessage, LocalMessageBus live in `src/maxim/mesh/`.
-> **Effort:** ~4,500 LOC across 10 phases (~200 LOC shipped via Research Protocol Phase 0)
-> **Design:** [agent_mesh.md](agent_mesh.md)
+> **Status:** Phases Pre-7 COMPLETE (2026-04-07). All core mesh infrastructure shipped. Phase 0a (mDNS) + 0b (InferenceRouter) deferred.
+> **Effort:** ~1,800 LOC shipped across Pre + Phases 1-7, plus ~600 LOC tests
+> **Design:** [agent_mesh.md](../archive/agent_mesh.md)
 
 Cooperative peer-to-peer network of sovereign Maxim instances. Phases 1a-1b (AgentProfile + UMR) and Phase 2-3 foundations (MeshMessage + LocalMessageBus) are implemented via Research Protocol. Remaining phases add network discovery (mDNS), PeerChannel, knowledge sharing with transfer discount, and distributed planning.
 
@@ -293,7 +268,7 @@ Full catalog, design principles, lifecycle policy, and deprecation log live in t
 | 9 | Any type overuse (Protocols) | Before Multi-LLM Phase 3 |
 | 13 | Stale re-exports in llm_worker | Next time touching llm_worker |
 | 27 | Consolidate env bool parsing | Anytime (12 files) |
-| 29 | Standardize serialization | Before Agent Mesh Phase 8 |
+| ~~29~~ | ~~Standardize serialization~~ | ~~Done (Agent Mesh Pre-work)~~ |
 | 41 | Movement step-clamping helper | Next time touching movement.py |
 | 44 | Merge DNActionProposal | Next time touching default_network |
 

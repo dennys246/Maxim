@@ -224,7 +224,7 @@ src/maxim/
   decisions/        # NAc causal learning, adaptive planner
   models/language/  # LLM router, backends (llama-cpp, anthropic, openai, transformers)
   simulation/       # SimulationBridge, orchestrator, tools, personas, report system
-  mesh/             # Agent mesh primitives (AgentProfile, UMR naming, MeshMessage, LocalMessageBus)
+  mesh/             # Agent mesh: identity, protocol, transport, admission, knowledge sharing, delegation, clock sync
   tools/            # 40+ tools (filesystem, introspection, math, communication)
   default_network/  # Reactive behavior layer (thalamic gate, arbiter, behaviors)
   modes/            # Operating modes, strategies, exploration policy
@@ -279,7 +279,12 @@ data/util/          # Runtime config (llm.json, cost_state.json)
 | Cross-layer wiring | `integration/memory_hub.py` (the single coordinator) |
 | Adding an env var | Put it here in the env table + touch whatever reads it |
 | Atomic JSON persistence | `utils/atomic_io.py` |
-| Mesh primitives (identity, messaging) | `mesh/` (AgentProfile, UMR, MeshMessage, LocalMessageBus) |
+| Mesh identity + protocol | `mesh/identity.py` (AgentProfile), `mesh/agent_identity.py` (AgentIdentity), `mesh/message.py` (MeshMessage, 24 types) |
+| Mesh transport + admission | `mesh/peer_channel.py` (PeerChannel), `mesh/peer_registry.py` (PeerRegistry), `mesh/admission.py` (MeshAdmissionControl) |
+| Mesh knowledge sharing | `mesh/knowledge.py` (ExperienceBroker, KnowledgeProvider/Receiver protocol, CausalLink + Reflection + MotorProgram adapters) |
+| Mesh task delegation | `mesh/task_delegation.py` (TaskDelegator, TaskReceiver) |
+| Mesh distributed planning | `planning/adaptive_planner.py` (`set_mesh_context()`, `_tag_delegatable_subgoals()`) |
+| Mesh clock synchronization | `mesh/clock.py` (PeerClockEstimator), `time/scn.py` (`register_external()`) |
 | Research experiment tracking | `simulation/research_tools.py` (ExperimentLog, record/query tools) |
 | Function → tier routing | `runtime/function_router.py` (FunctionRouter, FunctionSpec, DEFAULT_FUNCTIONS) |
 | Tier auto-detection | `runtime/lane_models.py` (detect_tiers, _INFER_VRAM_TIERS) |
@@ -464,7 +469,11 @@ maxim.introspect("causal")                                      # alias for obse
 See `docs/plans/future_plans.md` for the full roadmap. Current state:
 
 - **Multi-LLM scaling** — COMPLETE. All phases done (LeaderProxy, admission control, LaneMetrics, heartbeat, remote update). Archived at `docs/plans/agent_mesh.md`. mDNS + InferenceRouter moved to Agent Mesh.
-- **Agent Mesh** (`docs/plans/agent_mesh.md`) — Phase 1a-1b foundations in place (AgentProfile, UMR in `src/maxim/mesh/`). Phases 0a-0b (mDNS discovery + InferenceRouter) are next, then full protocol.
-- **Research Protocol** (`docs/plans/research_protocol_plan.md`) — All phases complete. Mesh primitives (`src/maxim/mesh/`), research tools (`src/maxim/simulation/research_tools.py`), Writer + Reviewer agents (`src/maxim/simulation/research_agents.py`), Research Orchestrator (`src/maxim/simulation/research_orchestrator.py`). CLI: `maxim --sim research --goal "..." [--campaign <yaml>] [--aut-model <model>]`.
+- **Agent Mesh** — COMPLETE (Phases Pre-7). All core mesh shipped: identity, protocol, transport, admission control, knowledge sharing (provider/receiver protocol with CausalLink + Reflection + MotorProgram adapters), task delegation, distributed planning, SCN temporal coordination. Phase 0a (mDNS) + 0b (InferenceRouter) deferred. Archived at `docs/archive/agent_mesh.md`.
+- **Embodiment Core** — COMPLETE. All phases shipped: SEM protocol, PainBus, Cerebellum forward models, motor programs + engrams, NarrativeModulator, auto-tool generation. 164 tests.
+- **Generative Campaign Mode** — COMPLETE. All stages shipped: arc system, narrator, planner integration, `ask_user` tool, benchmark tiers, YAML export. 71 tests. CLI: `--sim "goal"` = generative, `--sim path.yaml` = direct injection.
+- **Bio-System Wiring Hardening** (`docs/plans/biosystem_wiring_hardening.md`) — Next up. Audit found 7/11 bio-systems disconnected in sim mode. Fixes critical wiring (NAc observe, SCN/EC init, PainBus→NAc, Cerebellum, motor programs, novelty) + pipeline correctness + percept abstraction (entity-modulated SensoryGate). ~1,010 LOC, gate for DM MVP.
+- **Dungeon Master MVP** (`docs/plans/dungeon_master_persona.md`) — Ready after hardening. Characters as Bundled SEM entities with cascade DAG resolution. Reuses generative campaign infra. 4 showcase campaigns. ~1,020 LOC.
+- **Research Protocol** (`docs/plans/research_protocol_plan.md`) — All phases complete. CLI: `maxim --sim research --goal "..." [--campaign <yaml>] [--aut-model <model>]`.
 - **Realtime Refinement** (`docs/plans/realtime_refinement_plan.md`) — ~90% done; remaining ~50 LOC (6th persona + metric expectation types).
 - **Docker Sandbox** (`docs/plans/docker_sandbox_plan.md`) — Phase A (TmpdirSandbox + pain triggers) + Phase B (DockerSandbox + ContainerRunner protocol + image catalog + autonomy-scaled resource limits + unprivileged `maxim` user) DONE.

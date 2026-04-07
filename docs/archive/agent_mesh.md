@@ -1,14 +1,25 @@
 # Agent Mesh Plan
 
-> **Status:** Phase 0 foundations implemented via Research Protocol. AgentProfile, UMR, MeshMessage, and LocalMessageBus live in `src/maxim/mesh/`. All multi-LLM infrastructure prerequisites are complete (Phases 1-8, 7a, 7a-ext, 7b — LeaderProxy, LaneMetrics, admission control, remote update). RuntimeCapabilities and CommunicationGateway channel system also implemented.
+> **Status:** Phases Pre through 7 COMPLETE (2026-04-07). All core mesh infrastructure is implemented and tested. Remaining: Phase 0a (mDNS) and 0b (InferenceRouter) are deferred until multiple LAN machines exist.
 >
-> **What the Research Protocol proved:**
+> **What shipped:**
+> - **Pre-work:** Serialization (ProposedGoal, SubGoal, ToolResult, RuntimeCapabilities) + NAc._register_imported_link()
+> - **Phase 1:** AgentIdentity (extends AgentProfile, persistent node_id, build_from_subsystems)
+> - **Phase 2:** MeshMessage expansion (16 new types, protocol_version, correlation_id, GOAL_PROPOSAL payload schema)
+> - **Phase 3:** PeerRegistry (from peer config), PeerChannel (async send queue, retry, Channel ABC), mesh API endpoint design
+> - **Phase 3b:** MeshAdmissionControl (trust-level rate limits, burst detection, escalating gates)
+> - **Phase 4:** ExperienceBroker + KnowledgeProvider/KnowledgeReceiver protocol (CausalLink, Reflection, MotorProgram adapters)
+> - **Phase 5:** TaskDelegator (find_best_peer, sync delegation, loop detection) + TaskReceiver (depth/cycle/queue/tool/NAc checks)
+> - **Phase 6:** AdaptivePlanner._tag_delegatable_subgoals (peer capability routing, gated peer skip)
+> - **Phase 7:** PeerClockEstimator (NTP-lite EMA offset learning) + SCN.register_external (clock-corrected temporal bins)
+>
+> **What the Research Protocol proved (Phase 0):**
 > - LocalMessageBus delivery works (synchronous, in-process, thread-safe)
 > - MeshMessage serialization round-trips correctly (to_dict/from_dict)
 > - AgentProfile identity is sufficient for local multi-agent coordination
 > - UMR references enable cross-agent resource naming (`researcher.hippo.exp_001`)
 > - Typed message enums (PAPER_DRAFT, REVIEW_RESULT) prevent protocol confusion
-> - **Limitation exposed:** synchronous bus delivery blocks sender thread — network transport will need async/queued dispatch (see Phase 3 notes)
+> - **Limitation exposed and resolved:** synchronous bus delivery blocks sender thread — PeerChannel uses async send queue (Phase 3)
 >
 > **Prerequisites completed (from multi-LLM scaling, now archived):**
 > - Phases 1-3: LaneBackendManager, lane configs, safety gates
@@ -463,146 +474,258 @@ async def mesh_receive(request: Request):
 
 ### Phase 4: Knowledge Sharing — Sovereign Exchange
 
-The core cooperation mechanism. Agents share learned CausalLinks and reflections, but the receiving agent applies a **transfer discount** — peer knowledge starts at reduced confidence because it was learned in a different context.
+The core cooperation mechanism. Any subsystem can share knowledge with peers through a generic **provider/receiver protocol**. The broker handles routing; each subsystem owns its own filtering, discounting, and import logic.
 
-#### 4a. Experience offer/request
+#### 4a. Design: KnowledgeProvider / KnowledgeReceiver protocol
+
+The old design hardcoded CausalLinks and Reflections as the only shareable types, requiring a new method pair per type. The new design uses a registry of providers and receivers:
 
 ```python
-class ExperienceSharer:
-    """Manages knowledge exchange between agents.
+class KnowledgeProvider(Protocol):
+    """Any subsystem that can export shareable knowledge."""
+    def knowledge_type(self) -> str: ...
+    def get_shareable(self, limit: int = 10, **filters) -> list[dict]: ...
 
-    Respects sovereignty: the local agent decides what to share
-    and what to accept. Imported knowledge gets reduced confidence.
+class KnowledgeReceiver(Protocol):
+    """Any subsystem that can import knowledge from peers."""
+    def knowledge_type(self) -> str: ...
+    def import_knowledge(self, data: dict, source: str, trust: str) -> bool: ...
+```
+
+**Each subsystem owns its own logic:**
+- NAc knows how to filter by confidence and apply transfer discounts
+- Hippocampus knows how to cap salience on imported reflections
+- DN could blend imported thresholds with local ones (future)
+- Motor programs would check embodiment-spec similarity (future)
+
+#### 4b. ExperienceBroker — generic registry
+
+```python
+class ExperienceBroker:
+    """Routes knowledge between subsystems and peers.
+
+    Subsystems register as providers and/or receivers. The broker
+    dispatches EXPERIENCE_* messages to the right subsystem without
+    knowing the specifics of each knowledge type.
     """
 
-    # Default transfer discounts by trust level (overridable per-peer)
-    TRANSFER_DISCOUNTS: dict[str, float] = {
-        "verified": 0.5,    # Same owner, pre-shared key
-        "discovered": 0.3,  # LAN mDNS, no verification
-        "remote": 0.3,      # Cloudflare tunnel (tunnel auth = verification)
-        "unknown": 0.1,     # Unsolicited contact
-    }
+    def __init__(self) -> None:
+        self._providers: dict[str, KnowledgeProvider] = {}
+        self._receivers: dict[str, KnowledgeReceiver] = {}
 
-    # Only share links above this confidence threshold
+    def register_provider(self, provider: KnowledgeProvider) -> None:
+        self._providers[provider.knowledge_type()] = provider
+
+    def register_receiver(self, receiver: KnowledgeReceiver) -> None:
+        self._receivers[receiver.knowledge_type()] = receiver
+
+    def get_shareable(
+        self,
+        knowledge_type: str | None = None,
+        limit: int = 10,
+        **filters,
+    ) -> list[dict]:
+        """Get shareable knowledge, optionally filtered by type."""
+        if knowledge_type:
+            provider = self._providers.get(knowledge_type)
+            if provider is None:
+                return []
+            items = provider.get_shareable(limit=limit, **filters)
+            return [{"knowledge_type": knowledge_type, **item} for item in items]
+        # All types
+        result = []
+        for kt, provider in self._providers.items():
+            items = provider.get_shareable(limit=limit, **filters)
+            result.extend({"knowledge_type": kt, **item} for item in items)
+        return result[:limit]
+
+    def import_knowledge(
+        self,
+        knowledge_type: str,
+        data: dict,
+        source: str,
+        trust: str,
+    ) -> bool:
+        """Route imported knowledge to the right receiver."""
+        receiver = self._receivers.get(knowledge_type)
+        if receiver is None:
+            return False
+        return receiver.import_knowledge(data, source, trust)
+
+    @property
+    def registered_types(self) -> list[str]:
+        """Knowledge types that can be shared and/or received."""
+        return sorted(set(self._providers) | set(self._receivers))
+```
+
+#### 4c. Built-in adapters (ship with Phase 4)
+
+**CausalLinkProvider / CausalLinkReceiver** — wraps NAc:
+
+```python
+class CausalLinkProvider:
     SHARE_MIN_CONFIDENCE = 0.6
+    SHARE_MIN_OBSERVATIONS = 3
 
-    def __init__(self, nac: NAc, hippocampus: Hippocampus) -> None:
+    def __init__(self, nac: NAc) -> None:
         self._nac = nac
-        self._hippocampus = hippocampus
 
-    def _get_discount(self, peer_trust: str) -> float:
-        """Look up transfer discount for a peer's trust level."""
-        return self.TRANSFER_DISCOUNTS.get(peer_trust, 0.1)
+    def knowledge_type(self) -> str:
+        return "causal_link"
 
-    def get_shareable_links(self, tool_name: str | None = None) -> list[dict]:
-        """Get high-confidence causal links suitable for sharing.
-
-        Only shares links with confidence > SHARE_MIN_CONFIDENCE
-        and observation_count >= 3 (not one-off events).
-        """
+    def get_shareable(self, limit: int = 10, **filters) -> list[dict]:
+        tool_name = filters.get("tool_name")
         if tool_name:
             links = self._nac.get_links_for_event(f"tool:{tool_name}")
             return [
                 link.to_dict() for link in links
-                if link.confidence >= self.SHARE_MIN_CONFIDENCE and link.observation_count >= 3
-            ]
-        else:
-            # get_promotion_candidates returns PromotionCandidate, not CausalLink
-            candidates = self._nac.get_promotion_candidates(
-                min_confidence=self.SHARE_MIN_CONFIDENCE,
-                min_observations=3,
-            )
-            return [c.link.to_dict() for c in candidates]
+                if link.confidence >= self.SHARE_MIN_CONFIDENCE
+                and link.observation_count >= self.SHARE_MIN_OBSERVATIONS
+            ][:limit]
+        candidates = self._nac.get_promotion_candidates(
+            min_confidence=self.SHARE_MIN_CONFIDENCE,
+            min_observations=self.SHARE_MIN_OBSERVATIONS,
+        )
+        return [c.link.to_dict() for c in candidates[:limit]]
 
-    def import_causal_link(self, link_data: dict, source_agent: str, peer_trust: str = "unknown") -> bool:
-        """Import a CausalLink from a peer agent.
 
-        Applies trust-level transfer discount and tags with source.
-        Returns True if imported (novel), False if already known.
-        """
+class CausalLinkReceiver:
+    TRANSFER_DISCOUNTS: dict[str, float] = {
+        "verified": 0.5,
+        "discovered": 0.3,
+        "remote": 0.3,
+        "unknown": 0.1,
+    }
+
+    def __init__(self, nac: NAc) -> None:
+        self._nac = nac
+
+    def knowledge_type(self) -> str:
+        return "causal_link"
+
+    def import_knowledge(self, data: dict, source: str, trust: str) -> bool:
         from maxim.decisions.causal_link import CausalLink
+        link = CausalLink.from_dict(data)
 
-        link = CausalLink.from_dict(link_data)
-
-        # Check if we already know this pattern
+        # Deduplicate: skip if we already know this event→outcome
         existing = self._nac.get_links_for_event(link.event_signature)
         for ex in existing:
             if ex.outcome_signature == link.outcome_signature:
-                # Already known — skip import
                 return False
 
         # Apply trust-level transfer discount
-        discount = self._get_discount(peer_trust)
+        discount = self.TRANSFER_DISCOUNTS.get(trust, 0.1)
         link.confidence *= discount
-        link.predicted_value = 0.5  # Reset R-W to neutral — let local experience refine
-        link.observation_count = 1  # Treat as single observation locally
+        link.predicted_value = 0.5  # Reset R-W — local experience refines
+        link.observation_count = 1
 
         # Tag provenance
-        link.event_context["_imported_from"] = source_agent
+        link.event_context["_imported_from"] = source
         link.event_context["_import_timestamp"] = time.time()
-        link.event_context["_import_trust"] = peer_trust
+        link.event_context["_import_trust"] = trust
 
-        # Register in local NAc
-        # NOTE: NAc._register_imported_link() must be implemented (pre-work).
-        # It should append the link to self._links[event_signature] and
-        # register it in the EC index via _register_causal_in_ec().
         self._nac._register_imported_link(link)
         return True
+```
 
-    def get_shareable_reflections(self, tool_name: str | None = None) -> list[dict]:
-        """Get reflections suitable for sharing."""
-        memories = self._hippocampus.recall(
-            limit=10,
-            tool=tool_name,
-        )
-        reflections = []
+**ReflectionProvider / ReflectionReceiver** — wraps Hippocampus:
+
+```python
+class ReflectionProvider:
+    def __init__(self, hippocampus: Hippocampus) -> None:
+        self._hippocampus = hippocampus
+
+    def knowledge_type(self) -> str:
+        return "reflection"
+
+    def get_shareable(self, limit: int = 10, **filters) -> list[dict]:
+        memories = self._hippocampus.recall(limit=limit, tool=filters.get("tool_name"))
+        result = []
         for m in memories:
             outcome = getattr(m, 'outcome', None)
-            ref_text = None
             if hasattr(outcome, 'result') and isinstance(outcome.result, dict):
-                ref_text = outcome.result.get("reflection")
-            if ref_text:
-                reflections.append(m.to_dict())
-        return reflections
+                if outcome.result.get("reflection"):
+                    result.append(m.to_dict())
+        return result
 
-    # Salience caps per trust level for imported reflections
-    REFLECTION_SALIENCE_CAPS: dict[str, float] = {
+
+class ReflectionReceiver:
+    SALIENCE_CAPS: dict[str, float] = {
         "verified": 0.5,
         "discovered": 0.35,
         "remote": 0.35,
         "unknown": 0.15,
     }
 
-    def import_reflection(self, memory_data: dict, source_agent: str, peer_trust: str = "unknown") -> str | None:
-        """Import a reflection from a peer as a low-salience episodic memory.
+    def __init__(self, hippocampus: Hippocampus) -> None:
+        self._hippocampus = hippocampus
 
-        Salience cap is trust-level aware (verified=0.5, unknown=0.15)
-        so untrusted reflections are evicted first during consolidation.
-        """
+    def knowledge_type(self) -> str:
+        return "reflection"
+
+    def import_knowledge(self, data: dict, source: str, trust: str) -> bool:
         from maxim.memory.types import EpisodicMemory
+        memory = EpisodicMemory.from_dict(data)
 
-        memory = EpisodicMemory.from_dict(memory_data)
-
-        # Reduce salience based on trust level
-        cap = self.REFLECTION_SALIENCE_CAPS.get(peer_trust, 0.15)
+        cap = self.SALIENCE_CAPS.get(trust, 0.15)
         memory.perception.salience = min(memory.perception.salience, cap)
-        memory.perception.observations["_imported_from"] = source_agent
-        memory.perception.observations["_import_trust"] = peer_trust
+        memory.perception.observations["_imported_from"] = source
+        memory.perception.observations["_import_trust"] = trust
 
-        # Capture into local hippocampus
-        return self._hippocampus.capture(record=memory)
+        return self._hippocampus.capture(record=memory) is not None
 ```
 
-#### 4b. Transfer discount rationale
+#### 4d. Wire protocol: EXPERIENCE_* payload schema
 
-| Source | Confidence multiplier | Why |
-|--------|----------------------|-----|
+```python
+# EXPERIENCE_OFFER payload:
+{
+    "knowledge_type": "causal_link",       # Required: which subsystem
+    "items": [{ ... }, { ... }],           # Serialized knowledge items
+    "count": 5,                            # How many items offered
+}
+
+# EXPERIENCE_REQUEST payload:
+{
+    "knowledge_type": "causal_link",       # What you want
+    "filters": {"tool_name": "grasp"},     # Optional filters
+    "limit": 10,                           # Max items requested
+}
+
+# EXPERIENCE_RESPONSE payload:
+{
+    "knowledge_type": "causal_link",
+    "items": [{ ... }],
+    "count": 3,
+}
+```
+
+#### 4e. Future adapters (register when their subsystems ship)
+
+| Knowledge type | Provider source | Receiver import logic | Trust floor |
+|---|---|---|---|
+| `causal_link` | NAc high-confidence links | Transfer discount + R-W reset | 0.1 |
+| `reflection` | Hippocampus reflections | Salience cap by trust level | 0.1 |
+| `adaptive_threshold` | DN threshold state | Blend with local (EMA, not replace) | 0.3 |
+| `motor_program` | Embodiment ProgramRegistry | Spec-similarity gate before accept | 0.5 |
+| `forward_model` | Cerebellum model params | Only accept if same entity type | 0.5 |
+| `cascade_dynamics` | DM campaign cascade stats | Accept if entity types match; merge via EMA with local stats | 0.3 |
+| `component_tuning` | SEM component DB tuned params | Accept if `verified_in` campaign list non-empty; merge with local component | 0.3 |
+| `capability_snapshot` | CapabilityAgent | Read-only (no import — just routing info) | — |
+| `contact` | CommunicationGateway | Merge into local contact registry | 0.5 |
+
+Each future type is ~30-50 LOC (a provider class + a receiver class). The broker and wire protocol stay unchanged.
+
+#### 4f. Transfer discount rationale
+
+| Source | Default discount | Why |
+|--------|-----------------|-----|
 | Local experience | 1.0 | First-hand observation in this context |
-| Peer on same hardware | 0.5 | Same tools, but different context/state |
-| Peer on different hardware | 0.3 | Different capabilities may invalidate patterns |
-| Remote (untrusted) | 0.1 | Unknown provenance |
+| Verified peer (same owner) | 0.5 | Same tools, but different context/state |
+| Discovered/remote peer | 0.3 | Different capabilities may invalidate patterns |
+| Unknown | 0.1 | Unknown provenance |
 
-The AdaptivePlanner already uses NAc confidence in its scoring. Imported links with low confidence will naturally rank below locally-learned links — the agent prefers its own experience but considers peer knowledge as a prior.
+Per-type overrides are possible (e.g., motor programs require 0.5 minimum trust). The AdaptivePlanner already uses NAc confidence in its scoring — imported links with low confidence naturally rank below locally-learned links.
 
 ### Phase 5: Task Delegation
 
@@ -1082,7 +1205,7 @@ def register_external(
 | **2** | `MeshMessage` protocol expansion + `protocol_version` + `correlation_id` + GOAL_PROPOSAL payload schema | Small | None |
 | **3** | `PeerChannel` (async send queue) + `PeerRegistry` (from peer config) + mesh endpoints on `/v1/mesh/*` | Medium | Phase 2 |
 | **3b** | `MeshAdmissionControl` — per-peer rate limiting, burst detection, gating | Small | Phase 3 |
-| **4** | `ExperienceSharer` — causal link + reflection import/export with trust-level discount | Medium | Pre, Phase 2 |
+| **4** | `ExperienceBroker` + `KnowledgeProvider`/`KnowledgeReceiver` protocol + CausalLink + Reflection adapters | Medium | Pre, Phase 2 |
 | **5** | `TaskDelegator` + `TaskReceiver` — goal delegation with queue depth check | Medium | Pre, Phases 2, 3 |
 | **6** | Distributed planning — `_tag_delegatable_subgoals()` in AdaptivePlanner (skips gated peers) | Small | Phases 3b, 5 |
 | **7** | SCN temporal coordination — `PeerClockEstimator`, `register_external()` | Medium | Phase 3 |
@@ -1140,12 +1263,18 @@ These discounts are defined in `ExperienceSharer.TRANSFER_DISCOUNTS` and used by
 | Phase 3 (PeerChannel) | `peer/config.py` (existing tunnel config) | PeerRegistry bootstraps from existing peer config; Phase 0a adds mDNS |
 | Phase 3b (admission control) | Multi-LLM Phase 7b (admission control) | Same pattern as LeaderProxy rate limiting, extended to mesh messages |
 | Phase 5 (task delegation) | Decision Engine (AdaptivePlanner) | Delegated goals evaluated by same planner |
-| Phase 4 (knowledge sharing) | Causal Memory (NAc links) | CausalLinks are the primary shared knowledge type; requires new `_register_imported_link()` on NAc |
-| Phase 4 (reflection sharing) | Decision Engine Phase 4 (reflections) | Reflections from peers imported as episodic memories |
+| Phase 4 (knowledge sharing) | Causal Memory (NAc links) | CausalLinkProvider/Receiver wraps NAc; uses `_register_imported_link()` |
+| Phase 4 (knowledge sharing) | Hippocampus (reflections) | ReflectionProvider/Receiver wraps recall/capture |
+| Phase 4 (knowledge sharing) | Default Network (future) | AdaptiveThresholdProvider — registers when DN MVP ships |
+| Phase 4 (knowledge sharing) | Embodiment (complete) | MotorProgramProvider — Cerebellum forward models, gated by entity-type similarity |
+| Phase 4 (knowledge sharing) | DM MVP (ready) | CascadeDynamicsProvider — shares observed cascade resolution stats across campaign runs. ComponentTuningProvider — propagates simulation-tuned SEM component parameters. See [DM plan](dungeon_master_persona.md) cross-plan section. |
+| Phase 5-6 (delegation + planning) | DM Extensions — multi-AUT party mode | Multiple AUTs control party characters; DM delegates encounter choices via TaskDelegator; cascade resolves across all AUT actions |
+| Phase 7 (temporal coordination) | DM campaign timelines | Campaign events have natural temporal structure; PeerClockEstimator keeps multi-AUT SCN bins aligned for shared timeline queries |
+| Phase 4 (knowledge sharing) | Doctor/CapabilityAgent (future) | CapabilityProvider — read-only broadcast, no import |
 | Phase 7 (temporal coordination) | SCN (`time/scn.py`) | `PeerClockEstimator` corrects incoming TemporalSignatures; SCN gains `register_external()` |
 | Phase 7 (temporal coordination) | Kuramoto oscillator (`time/oscillator.py`) | Future: treat peer clocks as coupled oscillators for drift learning |
 | Phase 1 (AgentIdentity) | Adaptive Runtime (RuntimeCapabilities) | Identity includes serialized capabilities |
-| Phase 1 (AgentIdentity) | Embodiment Core (EmbodimentCapability) | `AgentIdentity.embodiment_summary` advertises body: modalities, affordances, hardware-backed vs. imagined. Populated when Embodiment Core ships. |
+| Phase 1 (AgentIdentity) | Embodiment Core (complete) | `AgentIdentity.embodiment_summary` advertises body: modalities, affordances, hardware-backed vs. imagined. SEM entities (characters, objects) share the same protocol. |
 | Pre-work (serialization) | `agents/bus.py` (ProposedGoal, SubGoal, ToolResult) | Add to_dict/from_dict to existing dataclasses — no behavioral changes |
 | Future (not scheduled) | Embodiment — federation, affordance delegation, NAc transfer | Cross-agent affordance invocation, federated bodies (components from multiple peers), CausalLink transfer gated by spec similarity. Tracked in `future_plans.md`. |
 

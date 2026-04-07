@@ -1,7 +1,9 @@
 """Runtime capability detection for adaptive behavior."""
 
 from __future__ import annotations
-from dataclasses import dataclass, field
+
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -21,6 +23,13 @@ class RuntimeCapabilities:
     # Compute resources (populated by detect_compute_resources(), 0.0 when unknown).
     vram_gb: float = 0.0
     ram_gb: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> RuntimeCapabilities:
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
 def detect_compute_resources() -> tuple[bool, str | None, float, float]:

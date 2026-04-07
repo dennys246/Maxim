@@ -556,6 +556,46 @@ class SubGoal:
             return False
         return self.attempts < self.max_retries
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "description": self.description,
+            "tool_name": self.tool_name,
+            "tool_params": self.tool_params,
+            "status": self.status.name,
+            "result": self.result,
+            "error": self.error,
+            "attempts": self.attempts,
+            "max_retries": self.max_retries,
+            "priority_override": self.priority_override.name if self.priority_override else None,
+            "on_failure": self.on_failure.name,
+            "depends_on": self.depends_on,
+            "created_at": self.created_at,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> SubGoal:
+        pri = d.get("priority_override")
+        return cls(
+            id=d["id"],
+            description=d["description"],
+            tool_name=d["tool_name"],
+            tool_params=d.get("tool_params", {}),
+            status=SubGoalStatus[d.get("status", "PENDING")],
+            result=d.get("result"),
+            error=d.get("error"),
+            attempts=d.get("attempts", 0),
+            max_retries=d.get("max_retries", 2),
+            priority_override=GoalPriority[pri] if pri else None,
+            on_failure=FailureStrategy[d.get("on_failure", "RETRY")],
+            depends_on=d.get("depends_on", []),
+            created_at=d.get("created_at", 0.0),
+            started_at=d.get("started_at"),
+            completed_at=d.get("completed_at"),
+        )
+
 
 @dataclass
 class ProposedGoal:
@@ -633,6 +673,37 @@ class ProposedGoal:
         """Check if goal failed due to sub-goal failures."""
         return any(sg.status == SubGoalStatus.FAILED and not sg.should_retry() for sg in self.sub_goals)
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "description": self.description,
+            "priority": self.priority.name,
+            "tool_name": self.tool_name,
+            "tool_params": self.tool_params,
+            "reasoning": self.reasoning,
+            "confidence": self.confidence,
+            "parent_goal": self.parent_goal,
+            "expires_at": self.expires_at,
+            "created_at": self.created_at,
+            "sub_goals": [sg.to_dict() for sg in self.sub_goals],
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ProposedGoal:
+        return cls(
+            id=d["id"],
+            description=d["description"],
+            priority=GoalPriority[d["priority"]],
+            tool_name=d.get("tool_name"),
+            tool_params=d.get("tool_params", {}),
+            reasoning=d.get("reasoning", ""),
+            confidence=d.get("confidence", 1.0),
+            parent_goal=d.get("parent_goal"),
+            expires_at=d.get("expires_at"),
+            created_at=d.get("created_at", 0.0),
+            sub_goals=[SubGoal.from_dict(sg) for sg in d.get("sub_goals", [])],
+        )
+
 
 @dataclass
 class GoalAccepted:
@@ -676,6 +747,27 @@ class ToolResult:
     result: Any = None
     error: str | None = None
     params: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tool_call_id": self.tool_call_id,
+            "tool_name": self.tool_name,
+            "success": self.success,
+            "result": self.result,
+            "error": self.error,
+            "params": self.params,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ToolResult:
+        return cls(
+            tool_call_id=d["tool_call_id"],
+            tool_name=d["tool_name"],
+            success=d["success"],
+            result=d.get("result"),
+            error=d.get("error"),
+            params=d.get("params", {}),
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

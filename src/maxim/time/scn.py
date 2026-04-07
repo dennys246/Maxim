@@ -207,6 +207,33 @@ class SCN:
         if self._oscillator is not None:
             self._oscillator.observe(signature)
 
+    def register_external(
+        self,
+        memory_id: str,
+        signature: TemporalSignature,
+        peer_id: str,
+        clock_estimator: Any,
+        significance: float = 0.5,
+    ) -> None:
+        """Register a memory from a peer with clock skew correction.
+
+        Corrects the TemporalSignature using the PeerClockEstimator before
+        registering, so bins align with local time. If no clock estimate
+        is available yet, registers with the uncorrected signature.
+
+        Args:
+            memory_id: Unique memory identifier (should include peer prefix)
+            signature: Peer's TemporalSignature (uncorrected)
+            peer_id: The peer's node_id
+            clock_estimator: PeerClockEstimator instance
+            significance: Significance score (0-1)
+        """
+        try:
+            corrected = clock_estimator.correct_signature(peer_id, signature)
+        except Exception:
+            corrected = signature  # Fall back to uncorrected
+        self.register(memory_id, corrected, significance)
+
     def unregister(self, memory_id: str) -> None:
         """Remove a memory from all temporal indices.
 
