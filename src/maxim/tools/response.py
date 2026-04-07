@@ -123,7 +123,7 @@ class SpeakTool(Tool):
 
     def execute(
         self,
-        text: str,
+        text: str = "",
         also_print: bool = True,
         **kwargs: Any,
     ) -> ToolResult:
@@ -136,6 +136,9 @@ class SpeakTool(Tool):
         Returns:
             ToolResult with success status.
         """
+        # Accept 'message' as alias for 'text' (LLMs often use 'message')
+        if not text and kwargs.get("message"):
+            text = kwargs["message"]
         if not text or not text.strip():
             return ToolResult(
                 success=False,

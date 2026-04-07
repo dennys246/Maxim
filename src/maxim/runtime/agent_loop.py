@@ -804,6 +804,14 @@ def run_agentic_loop(
                 logger.info("Sim mode: skipping fallback proposal, waiting for real LLM")
                 sim.log("EXEC", "DROPPED: fallback proposal (sim mode)")
                 new_proposal = None
+                # Clear pending input so the loop doesn't block on a
+                # response that will never come.  Without this, the
+                # has_pending_llm_input guard (30s timeout) prevents
+                # propose_intent from running AND prevents the bridge
+                # send_and_wait from timing out, causing a 120s stall.
+                state.data.pop("pending_user_input", None)
+                state.data.pop("pending_user_input_time", None)
+                state.data.pop("pending_user_input_source", None)
             if new_proposal:
                 if callable(on_event):
                     try:

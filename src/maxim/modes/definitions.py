@@ -218,6 +218,7 @@ class DefaultNetworkModeConfig:
 
     Controls how DN behaves in different modes.
     """
+
     enabled: bool = True
     active_behaviors: frozenset[str] = field(
         default_factory=lambda: frozenset({"orienting", "social", "idle_scan", "motion"})
@@ -412,7 +413,8 @@ OPERATIONAL_MODES: dict[str, ModeDefinition] = {
             "Maintained awareness of environment",
         ],
         # Read-only + observation tools, plus sandbox write for journaling
-        allowed_tools=CORE_TOOLS | {"read_file", "glob", "list_directory", "internet_search", "http_fetch", "write_file"},
+        allowed_tools=CORE_TOOLS
+        | {"read_file", "glob", "list_directory", "internet_search", "http_fetch", "write_file"},
         forbidden_tools={"execute_file", "maxim_command", "request_directory_change"},
         max_initiative=0.3,  # Low proactivity - mostly reactive
         can_access_filesystem=True,  # Read CWD, write workspace
@@ -493,6 +495,13 @@ FILESYSTEM PERMISSIONS:
 - Additional folders: Check accessible_folders for any extra granted access
 - Execution: Sandbox execution requires approval
 - Directory changes: Use 'request_directory_change' tool if you need to work elsewhere
+
+COGNITIVE TOOLS:
+- If you need to REMEMBER something from earlier, use 'memory_recall' (not read_file)
+- If you want to REASON before acting, use 'think' to organize your thoughts
+- If you want to SPEAK aloud in the scene, use 'say' (not respond)
+- If you want to CHECK what will happen, use 'predict_outcome'
+- Do NOT invent tools that don't exist. Only use tools from the Available Tools list.
 
 When in active mode:
 - You CAN: read/write workspace freely, read CWD, search, respond, use robot tools
@@ -947,6 +956,7 @@ def list_operational_modes() -> list[str]:
 
 class FollowupType:
     """Constants for tool followup types."""
+
     NONE = None
     PROCESS = "process"
     RESPOND = "respond"
@@ -1012,7 +1022,10 @@ CRITICAL RULES:
             "content": "The COMPLETE content to write to the file",
             "overwrite": "(Optional) Set to True to replace an existing file. REQUIRED when updating existing files.",
         },
-        "example": {"tool_name": "write_file", "params": {"path": ".maxim_workspace/hello.py", "content": "print('Hello world')", "overwrite": True}},
+        "example": {
+            "tool_name": "write_file",
+            "params": {"path": ".maxim_workspace/hello.py", "content": "print('Hello world')", "overwrite": True},
+        },
         "followup_type": None,  # Terminal action
     },
     "edit_file": {
@@ -1023,7 +1036,10 @@ CRITICAL RULES:
             "new_text": "Text to replace it with",
             "expected_count": "(Optional, default 1) Number of expected replacements",
         },
-        "example": {"tool_name": "edit_file", "params": {"path": "src/main.py", "old_text": "def old_name(", "new_text": "def new_name("}},
+        "example": {
+            "tool_name": "edit_file",
+            "params": {"path": "src/main.py", "old_text": "def old_name(", "new_text": "def new_name("},
+        },
         "followup_type": "process",
     },
     "list_directory": {
@@ -1034,7 +1050,9 @@ CRITICAL RULES:
     },
     "internet_search": {
         "description": "Search the internet for REAL-TIME information. USE THIS for: sports scores, weather, news, current events, prices, or anything requiring up-to-date data. IMPORTANT: Always include the CURRENT DATE in queries for time-sensitive information!",
-        "params": {"query": "Search query - MUST include current date for time-sensitive queries (e.g., 'Broncos score January 25 2025')"},
+        "params": {
+            "query": "Search query - MUST include current date for time-sensitive queries (e.g., 'Broncos score January 25 2025')"
+        },
         "example": {"tool_name": "internet_search", "params": {"query": "Denver Broncos game score January 25 2025"}},
         "followup_type": "engage",  # Synthesize results AND offer follow-ups
     },
@@ -1191,6 +1209,54 @@ SAFETY: Some dangerous commands are blocked. If a command fails, check the error
         "example": {"tool_name": "bash", "params": {"command": "ls -la", "cwd": "src/"}},
         "followup_type": "process",  # LLM processes command output
     },
+    # ── Narrative tools (simulation mode) ────────────────────────────────
+    "say": {
+        "description": "Say something aloud in the current scene. USE THIS to speak to NPCs, answer riddles, say passwords or names when prompted. This is an IN-WORLD action — it does NOT talk to the user.",
+        "params": {"text": "The words to say aloud"},
+        "example": {"tool_name": "say", "params": {"text": "Verath"}},
+        "followup_type": None,
+    },
+    "think": {
+        "description": "Pause and reason about the current situation before acting. USE THIS when you need to consider options, recall what you know, or plan your next move. Does not produce any visible action.",
+        "params": {"thought": "Your reasoning about the current situation"},
+        "example": {
+            "tool_name": "think",
+            "params": {"thought": "The door needs a name. I remember Elara mentioned something..."},
+        },
+        "followup_type": "process",  # LLM should act on the thought
+    },
+    # ── Introspection tools ──────────────────────────────────────────────
+    "memory_recall": {
+        "description": "Search your own memories for relevant information. USE THIS when you need to remember something from earlier — a name, instruction, warning, or detail. Supports spreading activation with expand=true to find associated memories.",
+        "params": {
+            "query": "(optional) What to search for — a keyword, name, or topic",
+            "expand": "(optional) true to find associated memories via spreading activation",
+            "limit": "(optional) Max results, default 5",
+        },
+        "example": {"tool_name": "memory_recall", "params": {"query": "door password", "expand": True}},
+        "followup_type": "process",  # LLM should act on recalled memories
+    },
+    "predict_outcome": {
+        "description": "Ask the causal learning system what it predicts will happen if you use a specific tool. Useful before risky actions.",
+        "params": {"tool_name": "The tool to predict outcomes for", "context": "(optional) Current situation context"},
+        "example": {
+            "tool_name": "predict_outcome",
+            "params": {"tool_name": "bash", "context": "running unknown script"},
+        },
+        "followup_type": "process",
+    },
+    "causal_links": {
+        "description": "Inspect cause-effect relationships learned from past actions.",
+        "params": {"event": "(optional) Filter by event/action", "limit": "(optional) Max results"},
+        "example": {"tool_name": "causal_links", "params": {"event": "respond"}},
+        "followup_type": "process",
+    },
+    "system_stats": {
+        "description": "Get an aggregate health summary of all cognitive subsystems (memory count, causal links, energy, etc.).",
+        "params": {},
+        "example": {"tool_name": "system_stats", "params": {}},
+        "followup_type": None,
+    },
 }
 
 
@@ -1229,6 +1295,7 @@ def get_tool_prompt_section(available_tools: set[str]) -> str:
         Formatted string describing each tool for LLM context
     """
     import json
+
     lines = ["Available tools:"]
     for tool_name in sorted(available_tools):
         if tool_name in TOOL_DESCRIPTIONS:
