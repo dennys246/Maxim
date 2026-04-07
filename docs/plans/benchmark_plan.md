@@ -236,6 +236,118 @@ TTR = 15 unique / 21 total = 0.71  (good — varied)
 
 ---
 
+## Narrative Percept Transcriber
+
+> **Depends on:** [Lane tier architecture](lane_tier_plan.md) (small tier) + DefaultNetwork activation in sim mode.
+
+Narrative text currently bypasses the bio-stack — `ConversationalSource` creates a `Percept` with `cli_input` but empty `detections`, so SalienceNetwork, NoveltyTracker, and AttentionNetwork have nothing to process. The transcriber converts narrative text into the same structured detections that the camera pipeline produces, activating the full bio-stack.
+
+### How it works
+
+```
+"A massive silver elm with a stone door and a carved face"
+    ↓
+NarrativeTranscriber.transcribe(text)  [runs on small tier — smollm 1.7B]
+    ↓
+[
+  {track_id: "elm_1", class_id: 900, label: "silver_elm", conf: 0.9, position: "center"},
+  {track_id: "door_1", class_id: 901, label: "stone_door", conf: 0.85, position: "center-bottom"},
+  {track_id: "face_1", class_id: 902, label: "carved_face", conf: 0.7, position: "center"},
+]
+    ↓
+Percept(source="narrative", cli_input=text, detections=[...])
+    ↓
+DefaultNetwork processes normally:
+  SalienceNetwork scores entities → NoveltyTracker tracks first-seen →
+  AttentionNetwork records gaze → Hippocampus captures with context →
+  LLM receives enriched percept → NAc learns from action
+```
+
+### Implementation (~100 LOC)
+
+**File:** `src/maxim/simulation/narrative_transcriber.py`
+
+```python
+class NarrativeTranscriber:
+    """Convert narrative text into structured perceptual detections.
+
+    Uses the small-tier LLM to extract entities, objects, characters,
+    and sounds from narrative text, producing detection dicts compatible
+    with SalienceNetwork.update_from_detections().
+    """
+
+    # Narrative class IDs start at 900 to avoid collision with COCO classes (0-80)
+    _NEXT_CLASS_ID = 900
+    _class_registry: dict[str, int] = {}
+
+    def __init__(self, router, *, function: str = "narrative_transcription"):
+        self._router = router
+        self._function = function
+        self._entity_ids: dict[str, str] = {}  # label → stable track_id
+
+    def transcribe(self, text: str) -> list[dict]:
+        """Extract structured detections from narrative text."""
+        result = self._router.generate_json(
+            f"Extract entities from this scene description. "
+            f"Return a JSON list of objects with: label (snake_case), "
+            f"type (object/character/sound/location), "
+            f"confidence (0-1), spatial_hint (left/center/right/background).\n\n"
+            f"Scene: {text}",
+            function=self._function,  # routes to small tier
+            max_tokens=200,
+        )
+        return self._to_detections(result)
+
+    def _to_detections(self, raw: list[dict]) -> list[dict]:
+        """Convert LLM output to SalienceNetwork-compatible detections."""
+        detections = []
+        for entity in raw:
+            label = entity.get("label", "unknown")
+            track_id = self._get_stable_id(label)
+            class_id = self._get_class_id(label)
+            detections.append({
+                "track_id": track_id,
+                "class_id": class_id,
+                "label": label,
+                "conf": entity.get("confidence", 0.5),
+                "bbox_xyxy": self._position_to_bbox(entity.get("spatial_hint", "center")),
+            })
+        return detections
+
+    def _get_stable_id(self, label: str) -> str:
+        """Return a stable track_id for an entity across turns."""
+        if label not in self._entity_ids:
+            self._entity_ids[label] = f"{label}_{len(self._entity_ids)}"
+        return self._entity_ids[label]
+```
+
+The transcriber maintains **stable entity IDs** across turns — when "silver elm" appears in Turn 1 and Turn 9, NoveltyTracker sees the same `track_id` and correctly computes novelty decay. This is the same mechanism that IoU tracking uses for camera detections across frames.
+
+### Engagement cascade (bio-driven measurement)
+
+With the transcriber active, narrative engagement is measured as an **engagement cascade** — how far each percept propagates through the bio-stack:
+
+```
+Level 0: Percept delivered (always true)
+Level 1: SalienceNetwork scored entities above threshold
+Level 2: NoveltyTracker flagged novel entities
+Level 3: Hippocampus captured scene content as episodic memory
+Level 4: AUT action referenced a detected entity (by track_id or label)
+Level 5: NAc formed causal link from interaction with scene entity
+```
+
+**Engagement depth** = highest level reached per turn. **Engagement rate** = mean depth / max depth across turns.
+
+A model that consistently hits Level 3 (captures memories) but not Level 4 (doesn't act on them) has a *memory-action gap* — the bio-systems work but the LLM doesn't use their output. This is a diagnostic signal that TTR or token overlap can't provide.
+
+### Fallback for unannotated scenarios
+
+When the transcriber is unavailable (no small-tier model, pre-lane-tier deployment), engagement falls back to:
+1. **Type-token ratio** (always available, catches degenerate loops)
+2. **Scene-element metadata** (if annotated in YAML — deterministic, no LLM)
+
+---
+
 ## Unified Scenario YAML Format
 
 > **Design goal:** One schema for all scenario types — benchmarks, campaigns, refinement baselines, safety tests, and future DM campaigns. Optional sections add capability when present, like argparse optional arguments. The loader ignores sections it doesn't need; the runner uses what's relevant.
@@ -737,8 +849,14 @@ else:
 7. **Should `scene_elements` annotation be required for engagement scoring?**
    - No. If absent, fall back to TTR-only. Scene elements improve accuracy but shouldn't block benchmark runs on unannotated scenarios.
 
+## Prerequisites
+
+- **[Lane tier architecture](lane_tier_plan.md)** — size-based model routing. The narrative transcriber runs on `small` tier (`function="narrative_transcription"`). The benchmark runner swaps `large` model between runs while `small` stays constant. Must be implemented first.
+- **DefaultNetwork activation in sim mode** — salience, novelty, and attention subsystems need to be wired to the AUT in sim mode for full engagement cascade metrics. Currently only Hippocampus/NAc/ATL/SCN are wired. PainDetector also needs activation. (~50 LOC in orchestrator.py.)
+
 ## Related Plans
 
+- [Lane tier plan](lane_tier_plan.md) — **prerequisite.** Small tier for narrative transcription, large tier for model-under-test
 - [Tool refinement plan](tool_refinement_plan.md) — tool aliases and hallucination tracking that feed into Tier 1 metrics
 - [Embodiment core plan](embodiment_core_plan.md) — defines Tier 3 metric sources and success criteria
 - [Generative campaign plan](generative_campaign_plan.md) — LLM-generated campaigns could auto-create benchmark scenarios

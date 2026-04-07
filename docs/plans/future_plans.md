@@ -12,7 +12,8 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 |------|--------|-----------|
 | Tool Refactoring | **Complete** | All 10 phases done: say, think, examine, introspection, aliases, tracking, proactive list. [Plan](tool_refactoring_plan.md) |
 | Introspection API | **Phases 1-4 done** | `AUTIntrospector` + standalone `run_campaign()` shipped. Remaining: Ph5 self-introspection (needs discussion). |
-| Simulation Benchmark | **Not started** | Multi-model comparative testing (`--sim benchmark`). ~680 LOC. [Plan](benchmark_plan.md) |
+| Lane Tier Architecture | **Not started** | Size-based model routing (large/medium/small) replacing function-based lanes. ~550 LOC. Prerequisite for benchmarks. [Plan](lane_tier_plan.md) |
+| Simulation Benchmark | **Not started** | Multi-model comparative testing (`--sim benchmark`). ~910 LOC. Depends on lane tiers. [Plan](benchmark_plan.md) |
 | Docker Sandbox | **Complete** | Phase A (TmpdirSandbox + pain) + Phase B (DockerSandbox + ContainerRunner + CLI) both shipped |
 | Research Protocol | **Complete** | All phases: mesh primitives, research tools, Writer + Reviewer agents, Research Orchestrator. CLI: `maxim --sim research`. |
 | Multi-LLM Scaling | **Complete** | All phases done. mDNS + InferenceRouter moved to Agent Mesh as Phases 0a-0b. |
@@ -110,22 +111,22 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 
 | # | Work | LOC | Rationale |
 |---|------|-----|-----------|
-| 1 | **Simulation Benchmark (Phases 1-2)** | ~280 | BenchmarkRunner + CLI. Validates tool refactoring and model comparison. Reuses existing campaign + report infra. |
-| 2 | **Embodiment Core Phase 0 MVP** | ~400 | No upstream deps, standalone-valuable, establishes body-state primitives that DM/Mesh inherit |
-| 3 | **Generative Campaign Mode** | ~600 | Dynamic narrative + entity naming (folded in). Exercises new examine/say/think tools. |
-| 4 | **Embodiment Core remaining phases** | per plan | Cerebellum forward models, structured failures |
-| 5 | **Agent Mesh Phase 2+** | per plan | Network transport, distributed planning |
-| 6 | **Introspection API Ph 4-5** | ~150 | Standalone experiment runner + AUT self-introspection |
-| 7 | **Embodiment Hardware Adapter** | ~300 | Wraps RobotController for hardware |
-| 8 | **Interactive Sim Prompts** | ~180 | Ship when DM architect or other consumer surfaces |
-| 9 | **DM Choice Classifier Spike** | ~150 scratch | Validates ATL+NAc classification path |
-| 10 | **DM MVP** | ~840 | Capstone bio-system stress test |
-| 11 | **DM Extensions** | per-extension | Demand-driven, never speculative |
+| 1 | **Lane Tier Architecture** | ~550 | Size-based model routing. Prerequisite for benchmarks (small tier for transcriber). Unlocks clean function routing for all downstream plans. |
+| 2 | **Simulation Benchmark (Phases 1-2)** | ~400 | BenchmarkRunner + CLI + narrative transcriber on small tier. First real multi-model comparison. |
+| 3 | **Benchmark Phases 3-5** | ~300+YAML | Tiered output + scenarios. Establish baselines before embodiment changes. |
+| 4 | **Embodiment Core Phase 0 MVP** | ~400 | ATL-grounded body-state primitives. Run benchmarks before/after. |
+| 5 | **Generative Campaign Mode** | ~600 | Dynamic narrative + entity naming. Uses small tier for transcription + naming. |
+| 6 | **Embodiment Core remaining phases** | per plan | Cerebellum forward models, structured failures, hardware adapter |
+| 7 | **Agent Mesh Phase 2+** | per plan | Network transport, distributed planning |
+| 8 | **DM Choice Classifier Spike** | ~150 scratch | Validates ATL+NAc classification on small tier |
+| 9 | **DM MVP** | ~840 | Capstone bio-system stress test |
+| 10 | **DM Extensions** | per-extension | Demand-driven, never speculative |
 
 **Why this order:**
-- Benchmark first: validates newly shipped tool refactoring + creates baseline for model comparison
+- Lane tiers first: infrastructure that every downstream plan benefits from (clean function→tier routing)
+- Benchmark next: validates tool refactoring + creates baselines for embodiment changes
 - Embodiment Core before DM so DM's `CharacterState` inherits established body-state patterns
-- Generative campaigns exercise the new narrative tools (say, think, examine) at scale
+- Generative campaigns exercise narrative tools at scale with small-tier transcription
 - Agent Mesh Phase 2+ drives distributed coordination
 - DM comes last as the capstone that validates everything below it
 
