@@ -704,8 +704,74 @@ def main(argv: Sequence[str] | None = None) -> int:
         if _debug_all or "atl" in _debug_subs:
             os.environ["MAXIM_ATL_TRACE"] = "1"
 
-        # Check for agent mode (autonomous orchestrator)
-        _sim_agent = str(sim_path).strip().lower() == "agent"
+        # -- Detect sim mode from --sim value ---------------------------------
+        _sim_val = str(sim_path).strip()
+        _sim_val_lower = _sim_val.lower()
+
+        # New unified detection:
+        # - "agent", "research", "benchmark" → legacy aliases
+        # - ends with .yaml/.yml → YAML campaign/scenario
+        # - "interactive" or empty → REPL
+        # - anything else → goal string for generative campaign
+        _is_yaml = _sim_val.endswith((".yaml", ".yml"))
+        _is_legacy_agent = _sim_val_lower == "agent"
+        _is_legacy_research = _sim_val_lower == "research"
+        _is_legacy_benchmark = _sim_val_lower == "benchmark"
+        _is_interactive = _sim_val_lower == "interactive"
+        _is_goal_string = not (
+            _is_yaml or _is_legacy_agent or _is_legacy_research
+            or _is_legacy_benchmark or _is_interactive
+        )
+
+        # If --research flag is set with a goal string, use research mode
+        _wants_research = getattr(args, "research", False)
+        # If --goal is set explicitly, it overrides the --sim value as goal
+        _explicit_goal = getattr(args, "sim_goal", None)
+
+        # ── Generative campaign mode (new default for goal strings) ──
+        if _is_goal_string and not _is_legacy_agent:
+            goal = _explicit_goal or _sim_val
+            if _wants_research:
+                # Generative + research report
+                from maxim.simulation.research_orchestrator import start_research_mode
+
+                campaign = getattr(args, "campaign", None)
+                language_model = str(getattr(args, "language_model", "") or "").strip() or None
+                result = start_research_mode(
+                    goal=goal,
+                    campaign=campaign,
+                    language_model=language_model,
+                    aut_model=getattr(args, "aut_model", None),
+                    debug=bool(_debug_raw),
+                    sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+                )
+                sys.exit(0 if result.review_verdict != "reject" else 1)
+            else:
+                # Pure generative campaign — use the orchestrator with generative runner
+                # For now, delegate to start_simulation_mode with the goal
+                # The generative runner will be wired in as the default persona
+                from maxim.simulation.orchestrator import start_simulation_mode
+
+                persona = getattr(args, "sim_persona", "campaign")
+                debug = bool(_debug_raw)
+                resume_sim = getattr(args, "resume_sim", None)
+
+                result = start_simulation_mode(
+                    goal=goal,
+                    persona=persona,
+                    debug=debug,
+                    resume_session=resume_sim,
+                    continuous=bool(getattr(args, "continuous", False)),
+                    no_sim_env=bool(getattr(args, "no_sim_env", False)),
+                    sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+                    sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
+                    sandbox_network=getattr(args, "sandbox_network", "none"),
+                    aut_model=getattr(args, "aut_model", None),
+                )
+                sys.exit(0 if result.finish_reason != "error" else 1)
+
+        # ── Legacy: agent mode (deprecated alias) ──
+        _sim_agent = _is_legacy_agent
         if _sim_agent:
             from maxim.simulation.orchestrator import start_simulation_mode
 
@@ -778,8 +844,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             all_passed = all(mr.passed for mr in report.results.values())
             sys.exit(0 if all_passed else 1)
 
-        # Check for research mode (multi-agent research protocol)
-        _sim_research = str(sim_path).strip().lower() == "research"
+        # Check for research mode (legacy alias — deprecated, use --research flag)
+        _sim_research = _is_legacy_research
         if _sim_research:
             from maxim.simulation.research_orchestrator import start_research_mode
 
@@ -799,9 +865,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.exit(0 if result.review_verdict != "reject" else 1)
 
         # Check for interactive mode
-        _sim_interactive = str(sim_path).strip().lower() == "interactive"
-
-        if _sim_interactive:
+        if _is_interactive:
             scenario_files = []  # No files — interactive REPL handles everything
         else:
             sim_path = Path(sim_path).resolve()  # Resolve to absolute before CWD change
@@ -810,7 +874,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             else:
                 scenario_files = [sim_path]
 
-        if not scenario_files and not _sim_interactive:
+        if not scenario_files and not _is_interactive:
             print(f"No scenario files found at {sim_path}")
             sys.exit(1)
 
@@ -824,7 +888,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         # Create a temporary sandbox directory within the workspace
         # All filesystem operations are confined here, destroyed after the run
-        if not _sim_interactive:
+        if not _is_interactive:
             # Single/batch scenario mode: set up sandbox and load scenario
             import tempfile
 

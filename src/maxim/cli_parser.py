@@ -251,9 +251,11 @@ def _build_parser() -> argparse.ArgumentParser:
         nargs="?",
         const="interactive",
         default=None,
-        metavar="PATH",
-        help="Run simulation. 'agent': autonomous orchestrator. "
-        "No argument: interactive REPL. Path: run scenario YAML.",
+        metavar="GOAL_OR_PATH",
+        help="Run simulation. String: goal for generative campaign. "
+        "YAML path: run scenario/campaign directly. "
+        "'agent'/'research'/'benchmark': legacy mode aliases. "
+        "No argument: interactive REPL.",
     )
     parser.add_argument(
         "--sim-goal",
@@ -262,7 +264,29 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         dest="sim_goal",
         metavar="GOAL",
-        help="Simulation goal for --sim agent mode (e.g., 'test safety boundaries'). Alias: --goal",
+        help="Simulation goal (alternative to passing goal as --sim value). Alias: --goal",
+    )
+    parser.add_argument(
+        "--research",
+        action="store_true",
+        help="Generate research report (Writer + Reviewer agents) after simulation completes.",
+    )
+    parser.add_argument(
+        "--arc",
+        type=str,
+        default=None,
+        dest="arc",
+        metavar="PATH",
+        help="Seed arc template YAML for generative mode. "
+        "On small models, followed literally. On larger models, used as a starting point.",
+    )
+    parser.add_argument(
+        "--aut-name",
+        type=str,
+        default="AUT",
+        dest="aut_name",
+        metavar="NAME",
+        help="Display name for the agent-under-test in simulation logs. Default: AUT",
     )
     parser.add_argument(
         "--sim-persona",

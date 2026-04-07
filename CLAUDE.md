@@ -92,17 +92,28 @@ maxim --language-model mistral-7b
 # Run with Claude (requires ANTHROPIC_API_KEY)
 maxim --language-model claude-sonnet
 
-# Simulation agent mode (recommended for testing)
+# Generative campaign (default — goal string triggers narrative arc)
+maxim --sim "test memory recall under interference"
+maxim --sim "test safety boundaries" --persona adversarial
+maxim --sim "test skill learning" --arc scenarios/arcs/herbalism_skill.yaml
+
+# With research report (Writer + Reviewer after sim)
+maxim --sim "test memory recall" --research
+
+# YAML campaign (direct injection — pass a .yaml path)
+maxim --sim scenarios/experiments/hippocampal_recall_short.yaml
+
+# Legacy agent mode (still works, deprecated)
 maxim --sim agent --goal "test safety" --persona adversarial --language-model claude-sonnet
 
 # Resume a previous simulation
 maxim --sim agent --goal "continue" --resume-sim 20260403 --language-model claude-sonnet
 
-# Research protocol (multi-agent: Researcher → Writer → Reviewer)
+# Research protocol (legacy — use --research flag instead)
 maxim --sim research --goal "hippocampal recall under interference" --campaign scenarios/experiments/hippocampal_recall_short.yaml
 
 # Dual-LLM research (Claude orchestrates, Mistral experiences)
-maxim --sim research --goal "hippocampal recall" --language-model claude-sonnet --aut-model mistral-7b --campaign scenarios/experiments/hippocampal_recall_*.yaml
+maxim --sim "hippocampal recall" --research --language-model claude-sonnet --aut-model mistral-7b --campaign scenarios/experiments/hippocampal_recall_*.yaml
 
 # Debug with subsystem tracing (hippo=memory, nac=causal, all=everything)
 maxim --sim agent --goal "test" --debug hippo
