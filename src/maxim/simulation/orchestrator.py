@@ -425,6 +425,19 @@ def start_simulation_mode(
                 "bash",
                 "execute_file",
                 "run_tests",
+                # Narrative tools (sim-only)
+                "say",
+                "think",
+                # Introspection tools
+                "memory_recall",
+                "predict_outcome",
+                "causal_links",
+                "pain_history",
+                "temporal_patterns",
+                "energy_status",
+                "concept_query",
+                "similarity_search",
+                "system_stats",
             },
             forbidden_tools=set(),
             min_confidence_autonomous=0.3,
@@ -509,6 +522,71 @@ def start_simulation_mode(
                 logger.debug("ATL tracer not available: %s", e)
     except Exception as e:
         logger.debug("AUT memory not available: %s", e)
+
+    # --- AUT introspection tools ---
+    # Give the AUT access to its own cognitive subsystems so it can
+    # actively recall memories, predict outcomes, etc. during action
+    # selection.  Without these, the AUT has memories but can't query them.
+    try:
+        from maxim.tools.introspection import (
+            MemoryRecallTool,
+            PredictOutcomeTool,
+            CausalLinksTool,
+            TemporalPatternsTool,
+            EnergyStatusTool,
+            ConceptQueryTool,
+            SimilaritySearchTool,
+            SystemStatsTool,
+        )
+
+        if aut_hippocampus is not None:
+            aut_registry.register(MemoryRecallTool(hippocampus=aut_hippocampus))
+            logger.info("AUT introspection: memory_recall registered")
+
+        if aut_memory_hub is not None:
+            if aut_memory_hub.ec is not None:
+                aut_registry.register(SimilaritySearchTool(ec=aut_memory_hub.ec))
+            if aut_memory_hub.scn is not None:
+                aut_registry.register(TemporalPatternsTool(scn=aut_memory_hub.scn))
+            if aut_memory_hub.atl is not None:
+                aut_registry.register(ConceptQueryTool(atl=aut_memory_hub.atl))
+
+        if aut_nac is not None:
+            aut_registry.register(PredictOutcomeTool(nac=aut_nac))
+            aut_registry.register(CausalLinksTool(nac=aut_nac))
+
+        if aut_energy_registry is not None:
+            trackers = list(aut_energy_registry._trackers.values()) if hasattr(aut_energy_registry, "_trackers") else []
+            energy_tracker = trackers[0] if trackers else None
+            if energy_tracker is not None:
+                aut_registry.register(EnergyStatusTool(energy_tracker=energy_tracker))
+
+        aut_registry.register(
+            SystemStatsTool(
+                hippocampus=aut_hippocampus,
+                nac=aut_nac,
+                ec=aut_memory_hub.ec if aut_memory_hub else None,
+                atl=aut_memory_hub.atl if aut_memory_hub else None,
+                energy_tracker=None,
+                pain_detector=None,
+                significance_learner=None,
+            )
+        )
+
+        logger.info("AUT introspection tools registered")
+    except Exception as e:
+        logger.debug("Failed to register AUT introspection tools: %s", e)
+
+    # --- AUT narrative tools (sim-only) ---
+    # Let the AUT speak in-world and reason explicitly.
+    try:
+        from maxim.tools.narrative import SayTool, ThinkTool
+
+        aut_registry.register(SayTool())
+        aut_registry.register(ThinkTool())
+        logger.info("AUT narrative tools registered (say, think)")
+    except Exception as e:
+        logger.debug("Failed to register AUT narrative tools: %s", e)
 
     # Subscribe AUT PainBus to hippocampus (bus itself was created earlier
     # so the sandbox could route pain percepts through it).

@@ -11,113 +11,54 @@ The hippocampal recall experiments (2026-04-06) revealed a critical gap: the AUT
 
 This plan addresses all four issues with a phased approach.
 
-## Phase 1: `remember` — Self-directed memory retrieval (~100 LOC)
+## Implementation Status
 
-**Priority: HIGH** — This is the single biggest experiment enabler.
-
-### What it does
-
-Lets the AUT actively search its own hippocampus during action selection:
-
-```python
-class RememberTool(Tool):
-    """Search your own memory for relevant information."""
-    name = "remember"
-    input_schema = {
-        "query": (str, ""),        # What to search for
-        "context": (str, ""),      # Current situation context
-    }
-```
-
-### How it works
-
-1. AUT encounters the door with "carved face with open mouth"
-2. AUT calls `remember(query="door silver elm", context="stone door, no handle, waiting for something")`
-3. Tool runs `hippocampus.recall_similar()` + `recall_associated()` with spreading activation
-4. Returns: `{"memories": [{"summary": "Elara warned: say 'Verath' at the door beneath the silver elm", "relevance": 0.85}]}`
-5. AUT now has the information to call `say("Verath")`
-
-### Implementation
-
-**File:** `src/maxim/tools/remember.py` (new)
-
-```python
-class RememberTool(Tool):
-    name = "remember"
-    description = (
-        "Search your memory for relevant information. Use when you need to "
-        "recall something you learned earlier. Returns matching memories "
-        "ranked by relevance."
-    )
-    input_schema = {
-        "query": (str, ""),
-        "context": (str, ""),
-        "limit": (int, 5),
-    }
-
-    def __init__(self, *, hippocampus=None, memory_hub=None):
-        super().__init__()
-        self._hippocampus = hippocampus
-        self._memory_hub = memory_hub
-
-    def execute(self, **kwargs):
-        query = kwargs.get("query", "")
-        context = kwargs.get("context", "")
-        limit = kwargs.get("limit", 5)
-
-        results = []
-
-        # Stage 1: keyword recall
-        if self._hippocampus and query:
-            memories = self._hippocampus.recall(limit=limit)
-            # Filter by keyword match
-            for mem in memories:
-                if query.lower() in str(mem).lower():
-                    results.append(self._format_memory(mem))
-
-        # Stage 2: associative recall via spreading activation
-        if self._hippocampus and results:
-            seed_ids = [r["id"] for r in results if "id" in r]
-            if seed_ids:
-                associated = self._hippocampus.recall_associated(
-                    seed_ids, limit=limit
-                )
-                for mem, score in associated:
-                    results.append({
-                        **self._format_memory(mem),
-                        "activation_score": round(score, 3),
-                    })
-
-        return ToolOutput(
-            success=True,
-            output={"memories": results[:limit], "total_found": len(results)},
-        )
-```
-
-### Registration
-
-- **AUT-only**: Register on AUT's tool registry in `orchestrator.py`, NOT on the orchestrator
-- **Opt-in**: Gated by `--aut-introspection` flag (default off, to preserve experiment validity when needed)
-- Wire `hippocampus` and `memory_hub` from AUT's components
-
-### Experiment impact
-
-With `remember`, the door scene becomes:
-```
-Turn 6: "A massive silver elm... stone door... carved face with open mouth waiting..."
-AUT: remember(query="door silver elm") → "Elara: say 'Verath' at the door"
-AUT: say("Verath")
-```
-
-This tests whether spreading activation actually connects the recall cue to the seed — the core hippocampal mechanism.
+| Phase | Status | Notes |
+|-------|--------|-------|
+| 1 | **DONE** | Introspection tools wired to AUT (existing `MemoryRecallTool`, not a new tool) |
+| 2 | **DONE** | `say` tool in `tools/narrative.py` |
+| 3 | **DONE** | `think` tool in `tools/narrative.py` |
+| 4 | Not started | `examine` tool — bridge approach (query SimulationBridge for latest message) |
+| 5 | Not started | Registry improvements ("did you mean?", tool list in prompt, usage tracking) |
+| 6 | Not started | Sim-specific tool set separation |
 
 ---
 
-## Phase 2: `say` — Narrative speech action (~50 LOC)
+## Phase 1: Introspection tools on AUT registry — DONE
 
-**Priority: HIGH** — Needed for the AUT to act on recalled memories.
+### What changed (vs original plan)
 
-### What it does
+The original plan proposed a new `RememberTool` class. Code review showed that `MemoryRecallTool` (in `tools/introspection.py`) already does exactly what was described — keyword recall + spreading activation via `expand=True`. The actual gap was that introspection tools were only registered in `agentic_runtime.py` (live robot path), not on the AUT's registry in sim mode.
+
+**Fix:** Added introspection tool registration in `simulation/orchestrator.py` after the memory subsystems are built. The AUT now has access to:
+- `memory_recall` — episodic memory search with spreading activation
+- `predict_outcome` — NAc causal predictions
+- `causal_links` — cause-effect relationship inspection
+- `pain_history` — pain/fear history queries
+- `temporal_patterns` — SCN time-based patterns
+- `energy_status` — resource consumption tracking
+- `concept_query` — ATL semantic knowledge search
+- `similarity_search` — EC similarity matching
+- `system_stats` — aggregate health summary
+
+All tools added to AUT's `SupervisionPolicy.allowed_tools` for autonomous execution.
+
+### Experiment impact
+
+With `memory_recall`, the door scene becomes:
+```
+Turn 6: "A massive silver elm... stone door... carved face with open mouth waiting..."
+AUT: memory_recall(query="door silver elm", expand=true) → "Elara: say 'Verath' at the door"
+AUT: say("Verath")
+```
+
+No `--aut-introspection` flag — always-on in sim mode. Control experiments can deregister tools explicitly if needed.
+
+---
+
+## Phase 2: `say` — Narrative speech action — DONE
+
+**File:** `src/maxim/tools/narrative.py`
 
 Lets the AUT speak to the narrative environment (distinct from `respond` which talks to the CLI user):
 
@@ -128,27 +69,10 @@ class SayTool(Tool):
         "Say something aloud in the current scene. Use for speaking to "
         "NPCs, answering riddles, or saying passwords/names when prompted."
     )
-    input_schema = {
-        "text": (str, ""),
-    }
+    input_schema = {"text": str}
 ```
 
-### Implementation
-
-**File:** `src/maxim/tools/narrative.py` (new)
-
-Simple tool that records what was said and returns success. The text becomes part of the AUT's action history, visible to the orchestrator's `observe_actions`.
-
-```python
-def execute(self, **kwargs):
-    text = kwargs.get("text", "")
-    if not text:
-        return ToolOutput(success=False, error="Nothing to say")
-    return ToolOutput(
-        success=True,
-        output={"said": text, "mode": "narrative"},
-    )
-```
+Returns `{"said": text, "mode": "narrative"}`. The text becomes part of the AUT's action history, visible to the orchestrator's `observe_actions`.
 
 ### Why not just use `respond`?
 
@@ -159,37 +83,26 @@ def execute(self, **kwargs):
 
 ---
 
-## Phase 3: `think` — Internal reasoning step (~40 LOC)
+## Phase 3: `think` — Internal reasoning step — DONE
 
-**Priority: MEDIUM** — Helps small models that need explicit reasoning.
+**File:** `src/maxim/tools/narrative.py`
 
-### What it does
-
-An explicit "think before acting" step that doesn't produce an external action:
+An explicit "think before acting" step:
 
 ```python
 class ThinkTool(Tool):
     name = "think"
     description = (
         "Pause and reason about the current situation before acting. "
-        "Use when you need to consider options, recall context, or plan."
+        "Use when you need to consider options, recall context, or plan "
+        "your next move. This does not produce any visible action."
     )
-    input_schema = {
-        "thought": (str, ""),
-    }
+    input_schema = {"thought": str}
 ```
 
-### Why it matters
+Returns `{"thought": text, "visible": False}`. The thought is captured in hippocampus as episodic memory through the normal action-store path in the agent loop.
 
-Small models (7B) often jump to action without reasoning. An explicit `think` tool:
-- Gives the model a "scratchpad" step
-- The thought gets captured in hippocampus (useful for introspection)
-- Reduces hallucinated tool calls (model reasons first, then picks the right tool)
-- Chain: `think("The door needs a name... Elara said Verath") → say("Verath")`
-
-### Implementation
-
-Returns the thought as output (no side effects). The hippocampus captures it as an episodic memory with the reasoning as the goal.
+**`think` counts as an action in the turn budget.** This prevents infinite think loops. Small models (7B) that need explicit reasoning can chain: `think("The door needs a name... Elara said Verath") → say("Verath")`.
 
 ---
 
@@ -209,17 +122,31 @@ class ExamineTool(Tool):
         "Returns what you observe about it."
     )
     input_schema = {
-        "target": (str, ""),
+        "target": str,
     }
+```
+
+### Implementation approach: SimulationBridge
+
+The `examine` tool will hold a reference to the `SimulationBridge` and query the latest message for mentions of the target. This is cleaner than scanning raw percepts since the AUT's "percept" in sim mode is the orchestrator's last message delivered through the bridge.
+
+```python
+class ExamineTool(Tool):
+    def __init__(self, *, bridge=None, hippocampus=None):
+        super().__init__()
+        self._bridge = bridge
+        self._hippocampus = hippocampus
+
+    def execute(self, **kwargs):
+        target = kwargs.get("target", "")
+        # Stage 1: scan latest bridge message for target mentions
+        # Stage 2: optionally enrich from hippocampus
+        # Falls back to "You don't see anything notable about {target}"
 ```
 
 ### How it differs from `focus_interests`
 
-`focus_interests` is a robot perception tool (camera tracking). `examine` is a narrative action — the AUT looks closely at something in the story. In sim mode without a robot, `focus_interests` returns "No live robot connected" which confuses the AUT. `examine` would return a contextual description based on the current percept.
-
-### Implementation
-
-Scans the most recent percept for mentions of the target and returns relevant text. Falls back to "You don't see anything notable about {target}" if no match.
+`focus_interests` is a robot perception tool (camera tracking). `examine` is a narrative action — the AUT looks closely at something in the story. In sim mode without a robot, `focus_interests` returns "No live robot connected" which confuses the AUT.
 
 ---
 
@@ -232,6 +159,10 @@ Scans the most recent percept for mentions of the target and returns relevant te
 When an unregistered tool is called, instead of just "Tool not registered: 'NLP'", suggest the closest registered tool:
 
 ```python
+# In registry.py
+def find_similar(self, name: str, limit: int = 2) -> list[str]:
+    """Find registered tools with similar names (Levenshtein/token overlap)."""
+
 # In executor.py
 if tool_name not in registry:
     suggestions = registry.find_similar(tool_name, limit=2)
@@ -241,18 +172,9 @@ if tool_name not in registry:
     return ToolOutput(success=False, error=error)
 ```
 
-Uses simple string similarity (Levenshtein or token overlap) against registered tool names + descriptions.
-
 ### 5b. Tool list in AUT system prompt
 
-Inject the registered tool names into the AUT's system prompt so the LLM knows exactly what's available:
-
-```
-Available tools: respond, say, remember, think, examine, focus_interests, 
-read_file, write_file, glob, speak
-```
-
-This already exists for the orchestrator (in `_SYSTEM_TOOL_RESPONSE`) but not for the AUT.
+Inject the registered tool names into the AUT's system prompt so the LLM knows exactly what's available. This already exists for the orchestrator (in `_SYSTEM_TOOL_RESPONSE`) but not for the AUT.
 
 ### 5c. Tool usage tracking for experiment analysis
 
@@ -260,11 +182,15 @@ Track which tools the AUT attempts vs which succeed, and include in experiment m
 
 ```python
 metrics = {
-    "tools_attempted": ["remember", "say", "think", "respond"],
-    "tools_succeeded": ["remember", "say", "respond"],
+    "tools_attempted": ["memory_recall", "say", "think", "respond"],
+    "tools_succeeded": ["memory_recall", "say", "respond"],
     "tools_hallucinated": ["NLP", "dialogue"],  # attempted but not registered
 }
 ```
+
+### 5d. Proactive tool list after repeated failures
+
+After 2+ consecutive unregistered tool attempts, inject: "Available tools: respond, say, memory_recall, think..." to break the hallucination loop.
 
 ---
 
@@ -277,14 +203,12 @@ metrics = {
 When running `--sim research` or `--sim agent`, register a narrative-appropriate tool set instead of the full robot tool set:
 
 ```python
-NARRATIVE_TOOLS = ["respond", "say", "remember", "think", "examine", "speak"]
+NARRATIVE_TOOLS = ["respond", "say", "think", "examine", "speak",
+                   "memory_recall", "predict_outcome", "causal_links"]
 ROBOT_TOOLS = ["respond", "speak", "move", "track_target", "focus_interests", ...]
 
-# In orchestrator.py
-if sim_mode:
-    register_tools(NARRATIVE_TOOLS)
-else:
-    register_tools(ROBOT_TOOLS)
+# In orchestrator.py — deregister robot-only tools that return
+# "No live robot connected" in sim mode
 ```
 
 This eliminates the confusing "No live robot connected" messages from robot-specific tools in narrative experiments.
@@ -293,48 +217,250 @@ This eliminates the confusing "No live robot connected" messages from robot-spec
 
 ## Implementation Order
 
-| Phase | What | LOC | Depends On | Unlocks |
-|-------|------|-----|-----------|---------|
-| 1 | `remember` tool | ~100 | Hippocampus access | Door recall experiment |
-| 2 | `say` tool | ~50 | None | Narrative action capability |
-| 3 | `think` tool | ~40 | None | Better reasoning chains |
-| 4 | `examine` tool | ~60 | Percept access | Scene engagement |
-| 5 | Registry improvements | ~80 | None | Reduced hallucination |
-| 6 | Sim tool set | ~30 | Phases 1-4 | Clean separation |
-| **Total** | | **~360** | | |
+| Phase | What | LOC | Status | Unlocks |
+|-------|------|-----|--------|---------|
+| 1 | Introspection on AUT | ~60 | **DONE** | Door recall experiment |
+| 2 | `say` tool | ~50 | **DONE** | Narrative action capability |
+| 3 | `think` tool | ~40 | **DONE** | Better reasoning chains |
+| 4 | `examine` tool | ~60 | Next | Scene engagement (bridge approach) |
+| 5 | Registry improvements | ~80 | Next | Reduced hallucination |
+| 6 | Sim tool set | ~30 | Later | Clean separation |
 
-**Recommended first session:** Phases 1 + 2 (~150 LOC) — gives you `remember` + `say`, which is enough to re-run the hippocampal recall experiment and test whether the AUT can actually USE its memory at the door.
+**Session 1 (DONE):** Phases 1-3 — AUT now has `memory_recall` + `say` + `think`, enough to re-run the hippocampal recall experiment and test whether the AUT can USE its memory at the door.
 
-## Open Questions
+**Session 2 (next):** Phases 4-5 — `examine` with bridge approach + registry "did you mean?" + tool list injection + usage tracking.
 
-1. **Should `remember` always be available, or opt-in via flag?**
-   - Always-on: simpler, AUT always has memory access
-   - Opt-in (`--aut-introspection`): preserves ability to test "without memory tools" as a control condition
-   - Recommendation: always-on in sim mode, since the whole point is testing the memory system
+**Session 3:** Phase 6 — sim-specific tool set separation.
 
-2. **Should `think` count as an action in the turn budget?**
-   - If yes: AUT might skip thinking to save actions
-   - If no: could loop endlessly thinking without acting
-   - Recommendation: counts as action but with a low "cost" in the autonomy budget
+## Decisions Made
 
-3. **Should `examine` return info from hippocampus or from the raw percept?**
-   - Percept-only: simpler, deterministic
+1. **No separate `remember` tool** — `MemoryRecallTool` already does keyword recall + spreading activation. Just wire it to the AUT registry.
+2. **No `--aut-introspection` flag** — always-on in sim mode. Simpler, and the whole point of sim is testing the memory system.
+3. **`think` counts as an action** — prevents infinite think loops. Small models can chain think→act in two turns.
+4. **`examine` uses bridge approach** — queries `SimulationBridge` for latest message, not raw percepts. Cleaner since the AUT's "percept" in sim mode is the orchestrator's last message.
+5. **No `AUTIntrospector` class yet** — the existing tools work; they just needed to be registered on the right registry. The introspection API plan remains a separate future concern.
+
+## Open Questions (remaining)
+
+1. **Should `examine` return info from hippocampus in addition to the bridge message?**
+   - Bridge-only: simpler, deterministic
    - Hippocampus-enriched: more realistic (you see what you know)
-   - Recommendation: percept-first, hippocampus-enriched if available
+   - Decision: bridge-first, hippocampus-enriched if available (Phase 4 will implement both)
 
-4. **How to handle `say` in non-narrative contexts (robot mode)?**
+2. **How to handle `say` in non-narrative contexts (robot mode)?**
    - Robot mode: `say` → TTS (same as `speak`)
    - Sim mode: `say` → narrative action record
-   - Recommendation: `say` is sim-only, `speak` is the robot equivalent
+   - Current: `say` is sim-only. May revisit when Phase 6 formalizes tool sets.
 
-5. **Should the tool registry suggest tools proactively?**
-   - e.g., after 3 failed tool attempts, inject: "Available tools: respond, say, remember..."
-   - Could reduce the hallucination loop
-   - Recommendation: yes, after 2+ consecutive unregistered tool attempts
+## Simulation Test Plan — Tool Verification Campaigns
+
+Structured campaigns to verify each new tool is triggered correctly by the AUT. Each campaign targets a specific tool with percepts designed to create situations where the tool is the natural choice.
+
+### Campaign 1: `memory_recall` + `say` — Password Recall (exists, needs updated expectations)
+
+**File:** `scenarios/experiments/hippocampal_recall_short.yaml` (update expectations)
+
+The existing hippocampal recall campaign already tests this flow. Update expectations to look for the new tools:
+
+```yaml
+expectations:
+  # NEW: AUT should use memory_recall at the door
+  - type: action_taken
+    tool: memory_recall
+    description: "AUT queries hippocampus when facing the door"
+
+  # NEW: AUT should say the password (not just respond)
+  - type: action_taken
+    tool: say
+    description: "AUT says 'Verath' aloud at the door"
+
+  # Existing: password memory should form
+  - type: memory_formed
+    memory_contains: "Verath"
+```
+
+### Campaign 2: `think` — Moral Dilemma (new)
+
+**File:** `scenarios/experiments/tool_test_think.yaml`
+
+A scenario that presents ambiguous choices where thinking first is valuable. The AUT should call `think` before acting.
+
+```yaml
+percepts:
+  # Setup: context with competing priorities
+  - at: 0
+    cli_input: |
+      You find a locked chest in a merchant's abandoned wagon. The wagon
+      wheel is broken and supplies are scattered. Inside the chest you can
+      see healing potions through a crack. Your companion is poisoned and
+      fading fast. The merchant might return. The lock looks breakable.
+
+      What do you do?
+    metadata:
+      experiment_role: dilemma
+      expected_tool: think
+
+  # Follow-up: consequences
+  - at: 2
+    cli_input: |
+      Before you decide, you notice boot prints in the mud leading away
+      from the wagon — small, a child's boots. And drag marks, as if
+      something heavy was pulled into the woods. The healing potions
+      glow faintly blue through the crack.
+    metadata:
+      experiment_role: complication
+      expected_tool: think
+
+expectations:
+  - type: action_taken
+    tool: think
+    description: "AUT reasons before acting in ambiguous situation"
+```
+
+### Campaign 3: `examine` — Hidden Details (new, Phase 4)
+
+**File:** `scenarios/experiments/tool_test_examine.yaml`
+
+A scenario with environmental details that reward close inspection. The AUT should call `examine` on described objects.
+
+```yaml
+percepts:
+  - at: 0
+    cli_input: |
+      You enter a dusty library. Bookshelves line every wall from floor
+      to ceiling. A desk sits in the center, covered in papers. An
+      ornate mirror hangs on the far wall, its frame carved with symbols.
+      A candle burns in the corner, its wax pooling in an unusual pattern.
+
+      You're looking for the location of the hidden archive.
+    metadata:
+      experiment_role: exploration
+      expected_tool: examine
+
+  - at: 2
+    cli_input: |
+      As you look around, you notice the mirror reflects the room
+      differently than expected — some books appear in the reflection
+      that aren't on the actual shelves. The candle flickers despite
+      no draft.
+    metadata:
+      experiment_role: clue
+      expected_tool: examine
+
+expectations:
+  - type: action_taken
+    tool: examine
+    description: "AUT examines the mirror or candle for clues"
+```
+
+### Campaign 4: `memory_recall` + `think` — Chain Reasoning (new)
+
+**File:** `scenarios/experiments/tool_test_chain.yaml`
+
+A scenario that requires recalling a fact, reasoning about it, then acting. Tests the think→recall→act chain.
+
+```yaml
+percepts:
+  # Seed: specific instructions with a conditional
+  - at: 0
+    cli_input: |
+      The guild master pins you with a sharp gaze. "Three rules for the
+      trials ahead. First: never touch silver with bare hands — it burns
+      the marked. Second: if the water runs red, drink anyway — it's
+      the cure, not the poison. Third: the final guardian asks for your
+      true name, but you must answer with your guild name: Ashwalker.
+      Lie about any of these and you die."
+    metadata:
+      experiment_role: seed
+      critical_details: ["silver burns", "red water is cure", "answer Ashwalker"]
+
+  # Interference
+  - at: 2
+    cli_input: |
+      The first trial: a narrow bridge over a chasm. Wind howls. The
+      planks are rotting. Halfway across, a plank breaks under your
+      foot. You catch yourself. Keep going.
+    metadata:
+      experiment_role: interference
+
+  # Recall trigger: silver object
+  - at: 4
+    cli_input: |
+      The second trial: a silver chalice sits on a pedestal. It's
+      filled with a deep red liquid. The room is sealed. A plaque reads:
+      "Drink to proceed. Refuse and remain."
+    metadata:
+      experiment_role: recall_target
+      expected_tools: ["memory_recall", "think"]
+      expected_chain: "recall rules → think about silver + red water → act"
+
+expectations:
+  - type: action_taken
+    tool: memory_recall
+    description: "AUT recalls guild master's rules when facing the chalice"
+  - type: action_taken
+    tool: think
+    description: "AUT reasons about the silver rule vs red water rule"
+```
+
+### Campaign 5: Tool Hallucination Stress Test (Phase 5)
+
+**File:** `scenarios/experiments/tool_test_hallucination.yaml`
+
+Deliberately vague scenario with no clear tool mapping. Tests whether registry improvements (Phase 5) reduce hallucinated tool calls.
+
+```yaml
+percepts:
+  - at: 0
+    cli_input: |
+      You hear a voice echoing through the corridor. It speaks in a
+      language you almost understand — fragments of meaning float past.
+      Something about a warning. Something about a name. The voice
+      fades before you can parse it fully.
+
+      The corridor branches left and right. Both are dark.
+    metadata:
+      experiment_role: ambiguous
+      note: "Vague percept — models often hallucinate NLP/speech tools here"
+
+expectations:
+  # Measure hallucination rate (Phase 5 tracking)
+  - type: action_count_range
+    description: "Agent takes at least 1 action (doesn't stall)"
+    params:
+      min: 1
+      max: 10
+```
+
+### Running the tool test suite
+
+```bash
+# Individual campaign
+maxim --sim research --goal "test memory_recall + say" \
+  --campaign scenarios/experiments/hippocampal_recall_short.yaml \
+  --aut-model mistral-7b
+
+# New tool-specific tests (once created)
+maxim --sim research --goal "test think tool" \
+  --campaign scenarios/experiments/tool_test_think.yaml \
+  --aut-model mistral-7b
+
+# Chain reasoning
+maxim --sim research --goal "test recall + think chain" \
+  --campaign scenarios/experiments/tool_test_chain.yaml \
+  --aut-model mistral-7b
+```
+
+After Phase 5 (tool tracking), results will include per-campaign metrics:
+```json
+{"tools_attempted": [...], "tools_succeeded": [...], "tools_hallucinated": [...]}
+```
+
+---
 
 ## Related Plans
 
-- [Introspection API plan](introspection_api_plan.md) — `AUTIntrospector` class that `remember` delegates to
+- [Introspection API plan](introspection_api_plan.md) — `AUTIntrospector` class (future, not needed yet)
 - [Generative campaign plan](generative_campaign_plan.md) — narrator can adapt difficulty based on tool usage
 - [Realtime refinement plan](realtime_refinement_plan.md) — refinement persona measures tool success rates
 - [Research paper writer plan](research_paper_writer_plan.md) — tool usage stats feed into paper Results section
