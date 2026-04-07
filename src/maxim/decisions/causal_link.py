@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+import threading
 from enum import Enum
 from typing import Any
 
@@ -161,6 +162,9 @@ class CausalLink:
     # Most recent Rescorla-Wagner prediction error magnitude (set by update_prediction_rw)
     last_rpe: float | None = None
 
+    # Thread safety for concurrent record_observation calls
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
+
     def record_observation(
         self,
         delta_seconds: float,
@@ -170,12 +174,26 @@ class CausalLink:
     ) -> None:
         """Record a new observation of this causal relationship.
 
+        Thread-safe: uses RLock to prevent lost updates when multiple
+        threads call record_observation concurrently.
+
         Args:
             delta_seconds: Time between event and outcome
             valence: Quality of the outcome
             memory_id: Optional hippocampus memory ID
             context: Optional context for context-sensitive learning
         """
+        with self._lock:
+            self._record_observation_unlocked(delta_seconds, valence, memory_id, context)
+
+    def _record_observation_unlocked(
+        self,
+        delta_seconds: float,
+        valence: Valence,
+        memory_id: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        """Internal observation recording (caller must hold _lock)."""
         # Update temporal delta
         self.temporal_delta = self.temporal_delta.add_observation(delta_seconds)
 
@@ -259,7 +277,8 @@ class CausalLink:
 
     def decay(self, factor: float = 0.99) -> None:
         """Apply temporal decay to confidence (unused links fade)."""
-        self.confidence *= factor
+        with self._lock:
+            self.confidence *= factor
 
     def to_dict(self) -> dict:
         """Serialize to dictionary."""

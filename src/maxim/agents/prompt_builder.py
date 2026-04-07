@@ -1001,7 +1001,7 @@ class PromptBuilder:
             budgeter.add(
                 "causal_context",
                 "\n".join(causal_lines),
-                SectionPriority.IMPORTANT,
+                SectionPriority.CRITICAL,
                 truncatable=True,
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),

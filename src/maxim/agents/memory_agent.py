@@ -692,7 +692,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
             hid = getattr(entry, "_hippocampus_id", None)
             if hid and hid not in seen:
                 seen.add(hid)
-                combined.append((hid, self._salience.get(hid, 0.5) + 1.0))
+                combined.append((hid, self._salience.get(hid, 0.5) + 0.2))
 
         for mid, score in keyword_similar:
             if mid not in seen:
@@ -1243,7 +1243,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
                     event_signature=tool,
                     context=ctx,
                 )
-                if prediction and prediction.confidence >= 0.3:
+                if prediction and prediction.confidence >= 0.3 and prediction.context_match >= 0.2:
                     entries.append(
                         {
                             "event": prediction.event_signature,

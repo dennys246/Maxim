@@ -516,6 +516,11 @@ class NAc:
         scored_links.sort(key=lambda x: x[1], reverse=True)
         best_link, best_score = scored_links[0]
 
+        # Context match floor — don't surface predictions from completely wrong contexts
+        best_ctx_match = self._context_similarity(best_link.event_context, context)
+        if best_ctx_match < 0.2:
+            return None
+
         contributing_ids = [link.id for link, _ in scored_links[:5]]
         expected_delay, lower, upper = best_link.temporal_delta.predict_delay()
 
@@ -528,7 +533,7 @@ class NAc:
             delay_bounds=(lower, upper),
             confidence=best_score,
             contributing_links=contributing_ids,
-            context_match=self._context_similarity(best_link.event_context, context),
+            context_match=best_ctx_match,
         )
 
     def predict_all_outcomes(

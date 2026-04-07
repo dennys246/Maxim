@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections import deque
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -41,11 +42,15 @@ class PainBus:
         ))
     """
 
+    # Minimum interval between pain signals of the same type+entity (seconds)
+    REFRACTORY_S: float = 0.5
+
     def __init__(self, history_size: int = 200) -> None:
         self._subscribers: list[Callable[[PainSignal], None]] = []
         self._lock = threading.Lock()
         self._history: deque[PainSignal] = deque(maxlen=history_size)
         self._total_published: int = 0
+        self._last_published: dict[str, float] = {}  # (type:entity) → monotonic time
 
     def subscribe(self, callback: Callable[[PainSignal], None]) -> None:
         """Register a pain signal consumer."""
@@ -61,10 +66,19 @@ class PainBus:
     def publish(self, signal: PainSignal) -> None:
         """Publish a pain signal to all subscribers.
 
-        Callbacks are invoked outside the lock to prevent deadlocks
-        with subscribers that query the bus.
+        Applies a refractory period per (pain_type, entity) to prevent
+        spam from rapid repeated signals. Callbacks are invoked outside
+        the lock to prevent deadlocks with subscribers that query the bus.
         """
+        # Refractory check — skip if same type+entity fired too recently
+        entity = signal.context.get("entity_path", "") if signal.context else ""
+        refractory_key = f"{signal.pain_type.name}:{entity}"
+        now = time.monotonic()
         with self._lock:
+            last = self._last_published.get(refractory_key, 0.0)
+            if now - last < self.REFRACTORY_S:
+                return  # Still in refractory period
+            self._last_published[refractory_key] = now
             self._history.append(signal)
             self._total_published += 1
             subscribers = list(self._subscribers)

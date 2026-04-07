@@ -198,8 +198,12 @@ class SemanticMemory(MemoryRecord):
         self.reinforcement_count += 1
         if episode_id not in self.source_episode_ids:
             self.source_episode_ids.append(episode_id)
-        # Confidence: min(0.99, 0.5 + 0.1 * sqrt(reinforcement_count))
-        self.confidence = min(0.99, 0.5 + 0.1 * math.sqrt(self.reinforcement_count))
+        # Confidence grows with evidence. Below 3 episodes, growth rate is
+        # halved to prevent single-exposure concepts from appearing high-confidence.
+        if self.reinforcement_count < 3:
+            self.confidence = min(0.99, 0.5 + 0.05 * math.sqrt(self.reinforcement_count))
+        else:
+            self.confidence = min(0.99, 0.5 + 0.1 * math.sqrt(self.reinforcement_count))
         self.touch()
 
     def to_dict(self) -> dict[str, Any]:

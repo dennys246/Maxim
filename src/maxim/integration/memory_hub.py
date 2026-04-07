@@ -502,6 +502,13 @@ class MemoryHub:
             except Exception as e:
                 logger.warning("Spatial bridge cleanup failed: %s", e)
 
+        # Decay NAc confidence (stale patterns fade over time)
+        try:
+            self.nac.decay_all(factor=0.95)
+            results["nac_decayed"] = True
+        except Exception as e:
+            logger.debug("NAc decay failed: %s", e)
+
         # Phase 4: Save semantic embeddings
         if self.ec.semantic_enabled and self.ec._embedding_store is not None:
             try:
