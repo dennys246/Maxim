@@ -38,6 +38,29 @@ _swap_lock = threading.Lock()
 
 _MODEL_STATE_FILE = Path("data") / "util" / "active_llm_model.txt"
 
+# Weak references to active LLMRouter instances so swap_llm_server can
+# update cached n_ctx without importing the router at module level.
+import weakref
+
+_active_routers: list[weakref.ref] = []
+
+
+def register_router(router: Any) -> None:
+    """Register an LLMRouter for n_ctx updates on hot-swap."""
+    _active_routers.append(weakref.ref(router))
+
+
+def _find_active_routers() -> list[Any]:
+    """Return all still-alive routers, pruning dead refs."""
+    global _active_routers  # noqa: PLW0603
+    alive = []
+    for ref in _active_routers:
+        r = ref()
+        if r is not None:
+            alive.append(r)
+    _active_routers = [weakref.ref(r) for r in alive]
+    return alive
+
 
 def _read_persisted_model() -> str | None:
     """Read the last swapped model name from disk (survives restarts)."""
@@ -700,6 +723,8 @@ def build_primary_router(
     # Primary inference backend: try "large" tier first, fall back to "infer"
     # (backward compat for callers that pass explicit lane_configs with old names).
     router = manager.get_backend("large") or manager.get_backend("infer")
+    if router is not None and hasattr(router, "update_provider_n_ctx"):
+        register_router(router)
     return router, manager
 
 
@@ -1111,11 +1136,24 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
         _llm_start_time = time.time()
         _write_persisted_model(resolved)
 
+        # Update the LLM router's cached n_ctx so context_window_routing
+        # uses the new model's context window, not the startup value.
+        # Without this, hot-swapping from a 4k model to a 32k model
+        # still rejects requests that would fit in the new window.
+        try:
+            for router in _find_active_routers():
+                router.update_provider_n_ctx("local", n_ctx)
+                if logger is not None:
+                    logger.info("LLM swap: updated router n_ctx to %d", n_ctx)
+        except Exception:
+            pass  # Best-effort — router may not be accessible
+
         return {
             "status": "swapped",
             "model": resolved,
             "model_path": model_path,
             "port": port,
+            "n_ctx": n_ctx,
             "startup_s": startup_s,
             "previous_model": previous_model,
         }

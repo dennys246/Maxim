@@ -331,6 +331,16 @@ class LLMRouter:
         except Exception:
             return int(self.cfg.n_ctx)
 
+    def update_provider_n_ctx(self, provider_key: str, n_ctx: int) -> None:
+        """Update a provider's cached context window size after hot-swap.
+
+        Called by swap_llm_server() so the router's context_window_routing
+        filter uses the new model's n_ctx, not the startup value.
+        """
+        cfg = self._providers.get(provider_key)
+        if cfg is not None:
+            cfg["n_ctx"] = n_ctx
+
     def _provider_model(self, provider_cfg: dict[str, Any]) -> str:
         model = provider_cfg.get("model")
         if isinstance(model, str) and model.strip():

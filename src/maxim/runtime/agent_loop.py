@@ -557,7 +557,7 @@ def run_agentic_loop(
     _last_heartbeat_time = [0.0]
     _loop_name = _safe_agent_name(agent)
     _consecutive_llm_fallbacks = 0  # Track consecutive LLM failures for stall detection
-    _LLM_STALL_THRESHOLD = 3  # After N consecutive fallbacks, surface error to bridge
+    _LLM_STALL_THRESHOLD = 1  # Surface immediately — only one fallback per LLM request
 
     for step_num in step_iter:
         loop_start = time.time()
