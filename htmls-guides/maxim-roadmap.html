@@ -93,8 +93,8 @@
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Simulation Benchmark</td>
-            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Complete (Phases 0-6)</span></td>
-            <td class="py-3">Multi-model comparative testing, narrative transcriber, write-paper, Tier 3 hooks. <code class="bg-slate-950 px-1 rounded text-xs">maxim --sim benchmark --models X,Y --campaign Z</code></td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">All phases (0-6). Multi-model comparative testing, narrative transcriber, write-paper, Tier 3 hooks. <code class="bg-slate-950 px-1 rounded text-xs">maxim --sim benchmark --models X,Y --campaign Z</code></td>
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Python API</td>
@@ -123,8 +123,8 @@
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Introspection API</td>
-            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Phases 1-4 done</span></td>
-            <td class="py-3">Observer (renamed from AUTIntrospector) + standalone <code class="bg-slate-950 px-1 rounded text-xs">run_campaign()</code> shipped</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">All phases. Observer (renamed from AUTIntrospector) + standalone <code class="bg-slate-950 px-1 rounded text-xs">run_campaign()</code> shipped</td>
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Docker Sandbox</td>
@@ -155,7 +155,7 @@
   <section class="space-y-4">
     <h2 id="recently-shipped" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What We Just Shipped</h2>
 
-    <p class="text-slate-300 leading-relaxed">The most recent wave shipped <span class="text-indigo-400 font-semibold">DM MVP</span> (bundled SEM characters, cascade DAG, ChooseTool, 4 campaigns). Before that: <span class="text-indigo-400 font-semibold">Bio-System Wiring Hardening</span>, <span class="text-indigo-400 font-semibold">Mode System Refactor</span>, <span class="text-indigo-400 font-semibold">Agent Mesh</span>, <span class="text-indigo-400 font-semibold">Generative Campaign Mode</span>, <span class="text-indigo-400 font-semibold">Embodiment Core</span>, <span class="text-indigo-400 font-semibold">Lane Tier Architecture</span>, <span class="text-indigo-400 font-semibold">Simulation Benchmark</span>, <span class="text-indigo-400 font-semibold">Python API</span>, and <span class="text-indigo-400 font-semibold">Multi-LLM Scaling</span>.</p>
+    <p class="text-slate-300 leading-relaxed">The most recent completions were <span class="text-indigo-400 font-semibold">DM MVP</span> (bundled SEM characters, cascade DAG, ChooseTool, 4 campaigns) and <span class="text-indigo-400 font-semibold">Bio-System Wiring Hardening</span> (percept abstraction, pipeline correctness, energy&rarr;NAc metabolic cost learning, decision_rationale provenance). With those done, all 14 major initiatives have shipped&mdash;the full cognitive stack is exercised end-to-end through narrative campaigns.</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
@@ -209,28 +209,28 @@
   <section class="space-y-4">
     <h2 id="next-up" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Next Up</h2>
 
-    <p class="text-slate-300 leading-relaxed">Prioritized by dependency order. Items higher on the list unblock more downstream work.</p>
+    <p class="text-slate-300 leading-relaxed">All major initiatives are complete. These three priorities are independent and can ship in any order.</p>
 
     <div class="space-y-3">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">1</span>
         <div>
-          <h3 class="text-white font-semibold">DM Extensions</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Demand-driven campaign generation, architect persona for world-building, encounter library for reusable narrative modules.</p>
+          <h3 class="text-white font-semibold">Hippocampus AUT Memory Refinement <span class="text-slate-500 font-normal text-sm">(~300-500 LOC)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Improve recall precision for campaign-specific queries. Modality-aware recall ("what did I hear?" vs "what did I see?") using SensoryTag metadata. <code class="bg-slate-950 px-1 rounded text-xs">decision_rationale</code> search for why actions were chosen. Reduce observation capture spam.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">2</span>
         <div>
-          <h3 class="text-white font-semibold">Multi-AUT Party Mode</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Multiple AUT instances in a shared simulation. Requires DM + mesh infrastructure. Civilization-scale stress test for memory, causal learning, and coordination.</p>
+          <h3 class="text-white font-semibold">DM Generative Architect <span class="text-slate-500 font-normal text-sm">(~500 LOC)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">A <code class="bg-slate-950 px-1 rounded text-xs">--dm</code> flag with goal strings generates campaigns via an architect persona. The architect interviews the user via <code class="bg-slate-950 px-1 rounded text-xs">ask_user</code> tool, creates characters and encounters, and produces runnable campaign YAML. Builds on the shipped DM MVP.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">3</span>
         <div>
-          <h3 class="text-white font-semibold">Embodiment Hardware Adapter</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Wrap real robot SDKs (Reachy Mini, custom arms) as SEM <code class="bg-slate-950 px-1 rounded text-xs">HardwareSensor</code>/<code class="bg-slate-950 px-1 rounded text-xs">HardwareModulator</code> backends. Ships when deploying to physical hardware.</p>
+          <h3 class="text-white font-semibold">PyPI Publication Ph3-6 <span class="text-slate-500 font-normal text-sm">(~200 LOC)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Multi-robot plugins via entry-point discovery (Ph3), CI/CD pipeline (Ph4), README rewrite (Ph5), Test PyPI dry run (Ph6). Package <code class="bg-slate-950 px-1 rounded text-xs">pymaxim</code> phases 0-2 already shipped.</p>
         </div>
       </div>
     </div>
@@ -270,31 +270,25 @@
   <section class="space-y-4">
     <h2 id="dependency-graph" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Dependency Graph</h2>
 
-    <p class="text-slate-300 leading-relaxed">Not everything can run in parallel. This graph shows what blocks what&mdash;read arrows as "must finish before."</p>
+    <p class="text-slate-300 leading-relaxed">All major initiatives are complete. The three current priorities are independent of each other. Future work is demand-driven.</p>
 
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
       <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Dependencies</span>
 
-<span class="text-green-400">COMPLETE</span>  Multi-LLM Scaling, Agent Mesh, Research Protocol,
-          Embodiment Core, Lane Tiers, Sim Benchmark,
-          Generative Campaigns, Python API,
-          Bio-System Wiring Hardening, Mode System Refactor
-          │
-          ▼
-DM MVP (~1,020 LOC)  ◀── <span class="text-blue-400">NEXT</span>
-          │
-          ├──&gt; DM Extensions (demand-driven, architect, encounters)
-          │
-          ▼
-Multi-AUT Party Mode (requires DM + mesh)
-
-Embodiment Hardware Adapter
-  (independent track &mdash; ships when deploying to hardware)</div>
+<span class="text-green-400">COMPLETED FOUNDATION</span> (all major initiatives)
+  │
+  ├──&gt; Hippocampus Refinement (independent)  ◀── <span class="text-blue-400">NEXT</span>
+  ├──&gt; DM Architect (independent, builds on DM MVP)  ◀── <span class="text-blue-400">NEXT</span>
+  ├──&gt; PyPI Publication (independent)  ◀── <span class="text-blue-400">NEXT</span>
+  │
+  Future (demand-driven):
+    SEM Component DB, Hardware Adapter, Capability Agent,
+    DM Extensions, Multi-AUT Party Mode</div>
     </div>
 
-    <p class="text-slate-300 leading-relaxed">With Bio-System Wiring Hardening and Mode System Refactor complete, all 11 bio-systems are fully wired in simulation mode and the runtime is significantly leaner. The next priority is <span class="text-indigo-400 font-semibold">DM MVP</span>&mdash;bundled SEM characters, cascade DAG, and showcase campaigns.</p>
+    <p class="text-slate-300 leading-relaxed">With all 14 major initiatives shipped, the three current priorities are independent and can proceed in any order. <span class="text-indigo-400 font-semibold">Hippocampus Refinement</span> improves recall precision (the weakest link exposed by DM campaigns). <span class="text-indigo-400 font-semibold">DM Architect</span> builds on the shipped DM MVP to generate campaigns from goal strings. <span class="text-indigo-400 font-semibold">PyPI Publication</span> finishes getting the package into the ecosystem.</p>
 
-    <p class="text-slate-300 leading-relaxed"><span class="text-indigo-400 font-semibold">Embodiment Hardware Adapter</span> runs on an independent track. It doesn't depend on the DM or hardening work&mdash;it ships when there's a physical robot to deploy to.</p>
+    <p class="text-slate-300 leading-relaxed">Future work (SEM Component DB, Hardware Adapter, Capability Agent, DM encounter library, Multi-AUT Party Mode) ships when demand surfaces&mdash;none are blocked, just not yet prioritized.</p>
   </section>
 
   <!-- 6. Contributing -->

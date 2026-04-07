@@ -1,6 +1,6 @@
 # Dungeon Master Extensions Plan
 
-> **Status:** Not started. Depends on [Dungeon Master Persona MVP](dungeon_master_persona.md) shipping and accumulating real usage.
+> **Status:** Not started. Depends on [Dungeon Master Persona MVP](../archive/dungeon_master_persona.md) shipping and accumulating real usage.
 >
 > **Summary:** Optional follow-on capabilities for DM. Each extension is independently scoppable and should only ship if MVP usage reveals actual demand. Listed in rough priority order, but the *real* ordering comes from MVP pain points.
 
@@ -200,6 +200,6 @@ class AskUserTool(Tool):
 
 | Plan | Relationship |
 |------|-------------|
-| [DM MVP](dungeon_master_persona.md) | **Prerequisite** — extensions layer onto MVP |
+| [DM MVP](../archive/dungeon_master_persona.md) | **Prerequisite** — extensions layer onto MVP |
 | **Realtime Refinement** (done) | Extension C consumes `InspectAUTTool` / `AUTIntrospector` |
 | **Multi-LLM Scaling** (done) | Architect + classification use cheap-lane model; synergistic, not required |

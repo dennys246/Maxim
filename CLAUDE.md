@@ -471,19 +471,16 @@ maxim.introspect("causal")                                      # alias for obse
 - **Optional extras:** `llm-local`, `llm-anthropic`, `llm-openai`, `vision`, `audio`, `reachy`, `comms`, `search`, `temporal`, `training`, `tts`, `yolo`, `semantic`
 - **Robot plugins:** Auto-discovered via `maxim.robots` entry-point group. Third-party packages register controllers by declaring entry points.
 - **Build validation:** `python -m build && twine check dist/*` before any publish
-- Plans: [pypi_publication_plan.md](docs/plans/pypi_publication_plan.md), [python_api_plan.md](docs/plans/python_api_plan.md)
+- Plans: [pypi_publication_plan.md](docs/plans/pypi_publication_plan.md)
 
 ## Active initiatives
 
-See `docs/plans/future_plans.md` for the full roadmap. Current state:
+See `docs/plans/future_plans.md` for the full roadmap.
 
-- **Multi-LLM scaling** — COMPLETE. All phases done (LeaderProxy, admission control, LaneMetrics, heartbeat, remote update). Archived at `docs/plans/agent_mesh.md`. mDNS + InferenceRouter moved to Agent Mesh.
-- **Agent Mesh** — COMPLETE (Phases Pre-7). All core mesh shipped: identity, protocol, transport, admission control, knowledge sharing (provider/receiver protocol with CausalLink + Reflection + MotorProgram adapters), task delegation, distributed planning, SCN temporal coordination. Phase 0a (mDNS) + 0b (InferenceRouter) deferred. Archived at `docs/archive/agent_mesh.md`.
-- **Embodiment Core** — COMPLETE. All phases shipped: SEM protocol, PainBus, Cerebellum forward models, motor programs + engrams, NarrativeModulator, auto-tool generation. 164 tests.
-- **Generative Campaign Mode** — COMPLETE. All stages shipped: arc system, narrator, planner integration, `ask_user` tool, benchmark tiers, YAML export. 71 tests. CLI: `--sim "goal"` = generative, `--sim path.yaml` = direct injection.
-- **Bio-System Wiring Hardening** — COMPLETE. All phases shipped: 7 disconnected bio-systems wired, pipeline correctness fixes, percept abstraction (SensoryModality + SensoryTag + SensoryGate), cascade result surfacing, ~1,100 LOC dead code removed, pipeline audit 14/14 passing. Archived at `docs/archive/biosystem_wiring_hardening.md`.
-- **Mode System Refactor** — COMPLETE. Collapsed modes from 3 dimensions to autonomy levels, removed strategies/exploration/LiveModeIntent, ~1,800 LOC removed. Sleep is now a tool. Archived at `docs/plans/mode_refactor_plan.md`.
-- **Dungeon Master MVP** (`docs/plans/dungeon_master_persona.md`) — COMPLETE. All 3 slices shipped: dm_schema.py, dm_runtime.py, tools_dm.py. 4 campaigns (heist, poisoned_crown, arena, darkened_cavern). ChooseTool + alias system, bio-system expectations checker. CLI: `maxim --sim scenarios/campaigns/heist_v1.yaml`. `--dm` flag reserved for future generative DM mode.
-- **Research Protocol** (`docs/plans/research_protocol_plan.md`) — All phases complete. CLI: `maxim --sim research --goal "..." [--campaign <yaml>] [--aut-model <model>]`.
-- **Realtime Refinement** (`docs/plans/realtime_refinement_plan.md`) — ~90% done; remaining ~50 LOC (6th persona + metric expectation types).
-- **Docker Sandbox** (`docs/plans/docker_sandbox_plan.md`) — Phase A (TmpdirSandbox + pain triggers) + Phase B (DockerSandbox + ContainerRunner protocol + image catalog + autonomy-scaled resource limits + unprivileged `maxim` user) DONE.
+**Priorities:**
+- **Hippocampus AUT Memory Refinement** — Not started. Improve recall precision, modality-aware queries, decision_rationale search. ~300-500 LOC.
+- **DM Generative Architect** — Not started. `--dm` flag with goal strings generates campaigns via architect persona. [Plan](docs/plans/dungeon_master_extensions.md). ~500 LOC.
+- **PyPI Publication (Ph3-6)** — Phases 0-2 done. Remaining: multi-robot plugins, CI/CD, README, Test PyPI. [Plan](docs/plans/pypi_publication_plan.md).
+
+**Recently completed (all archived):**
+- Multi-LLM Scaling, Agent Mesh (Pre-7), Embodiment Core, Generative Campaigns, Bio-System Wiring Hardening, Mode Refactor, DM MVP, Research Protocol, Docker Sandbox, Python API, Tool Refactoring, Lane Tier Architecture, Simulation Benchmark (0-6), Realtime Refinement. See `docs/archive/` for plans.
