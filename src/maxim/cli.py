@@ -727,6 +727,39 @@ def main(argv: Sequence[str] | None = None) -> int:
             print('  Usage: maxim --sim agent --goal "continue" --resume-sim SESSION_ID')
             sys.exit(1)
 
+    # ── DM Campaign mode (--dm flag) ────────────────────────────────────────
+    dm_path = getattr(args, "dm", None)
+    if dm_path is not None:
+        from pathlib import Path
+
+        from maxim.simulation.dm_schema import load_campaign, validate_campaign
+        from maxim.simulation.orchestrator import start_simulation_mode
+
+        dm_path = Path(dm_path)
+        if not dm_path.exists():
+            print(f"Error: campaign file not found: {dm_path}")
+            sys.exit(1)
+
+        campaign = load_campaign(dm_path)
+        errors = validate_campaign(campaign)
+        if errors:
+            print(f"Campaign validation failed ({len(errors)} errors):")
+            for e in errors:
+                print(f"  - {e}")
+            sys.exit(1)
+
+        _debug_raw = getattr(args, "debug", None)
+        debug = bool(_debug_raw)
+        result = start_simulation_mode(
+            goal=f"dm:{campaign.name}",
+            persona="dungeon_master",
+            debug=debug,
+            no_sim_env=bool(getattr(args, "no_sim_env", False)),
+            sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+            dm_campaign=campaign,
+        )
+        sys.exit(0 if result.finish_reason != "error" else 1)
+
     # Simulation mode if requested — runs full agentic pipeline with fake percepts
     if sim_path is not None:
         import json as _json
@@ -945,6 +978,43 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sandbox_backend=getattr(args, "sandbox_backend", "auto"),
             )
             sys.exit(0 if result.review_verdict != "reject" else 1)
+
+        # ── Auto-detect DM campaigns from YAML ──
+        # If --sim points to a YAML with a top-level 'campaign:' key, treat as DM
+        if _is_yaml and not _is_dm:
+            _yaml_path = Path(sim_path).resolve()
+            if _yaml_path.exists():
+                try:
+                    import yaml as _yaml
+
+                    with open(_yaml_path) as _yf:
+                        _raw = _yaml.safe_load(_yf)
+                    if isinstance(_raw, dict) and "campaign" in _raw and "encounters" in _raw:
+                        _is_dm = True
+                        # Re-route to DM handler
+                        from maxim.simulation.dm_schema import load_campaign, validate_campaign
+                        from maxim.simulation.orchestrator import start_simulation_mode
+
+                        dm_campaign = load_campaign(_yaml_path)
+                        errors = validate_campaign(dm_campaign)
+                        if errors:
+                            print(f"Campaign validation failed ({len(errors)} errors):")
+                            for e in errors:
+                                print(f"  - {e}")
+                            sys.exit(1)
+
+                        debug = bool(_debug_raw)
+                        result = start_simulation_mode(
+                            goal=f"dm:{dm_campaign.name}",
+                            persona="dungeon_master",
+                            debug=debug,
+                            no_sim_env=bool(getattr(args, "no_sim_env", False)),
+                            sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+                            dm_campaign=dm_campaign,
+                        )
+                        sys.exit(0 if result.finish_reason != "error" else 1)
+                except Exception:
+                    pass  # Not a DM campaign — fall through to normal YAML handling
 
         # Check for interactive mode
         if _is_interactive:

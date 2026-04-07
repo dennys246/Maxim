@@ -267,6 +267,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Simulation goal (alternative to passing goal as --sim value). Alias: --goal",
     )
     parser.add_argument(
+        "--dm",
+        type=str,
+        default=None,
+        metavar="CAMPAIGN_YAML",
+        help="Run a DM campaign. Path to a campaign YAML file. Example: --dm scenarios/campaigns/heist_v1.yaml",
+    )
+    parser.add_argument(
         "--research",
         action="store_true",
         help="Generate research report (Writer + Reviewer agents) after simulation completes.",
