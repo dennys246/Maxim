@@ -215,30 +215,50 @@ class DMRuntime:
         if not encounter.choices:
             return ""
 
-        # Extract response text from the bridge result
+        # Extract response text and action names from the bridge result
         response_text = ""
+        action_names: list[str] = []
         if isinstance(response, dict):
-            response_text = response.get("raw", response.get("message", str(response)))
+            response_text = response.get("response", response.get("raw", response.get("message", "")))
+            # Also collect tool names the AUT called — these are implicit choices
+            for action in response.get("actions", []):
+                if hasattr(action, "tool_name"):
+                    action_names.append(action.tool_name)
+                elif isinstance(action, dict):
+                    action_names.append(action.get("tool_name", ""))
+                elif isinstance(action, str):
+                    action_names.append(action)
         if not response_text:
             response_text = str(response)
 
-        # Try keyword matching first (fast, no LLM call)
-        response_lower = response_text.lower()
-        for choice in encounter.choices:
-            if choice.lower() in response_lower:
-                return choice
+        # Combine all text for matching: response + tool names + tool reasoning
+        search_text = f"{response_text} {' '.join(action_names)}".lower()
 
-        # LLM fallback — one-shot classification
+        # Try keyword matching first (fast, no LLM call)
+        for choice in encounter.choices:
+            if choice.lower().replace("_", " ") in search_text or choice.lower() in search_text:
+                return choice
+            # Also check if an AUT tool name matches a choice (e.g., "accept_job" tool)
+            for action_name in action_names:
+                if choice.lower() in action_name.lower() or action_name.lower() in choice.lower():
+                    return choice
+
+        # LLM fallback — one-shot classification via generate_json
         if self._llm is not None:
             try:
                 choices_str = ", ".join(encounter.choices)
                 prompt = (
                     f"The player was given these choices: {choices_str}\n"
                     f'The player responded: "{response_text[:300]}"\n'
-                    f"Which choice did the player pick? Reply with ONLY the choice name, nothing else."
+                    f'Which choice did the player pick? Reply with JSON: {{"choice": "<choice_name>"}}'
                 )
-                llm_result = self._llm.generate(prompt, max_tokens=20)
-                if llm_result:
+                llm_result = self._llm.generate_json(prompt, max_tokens=30)
+                if isinstance(llm_result, dict):
+                    picked = llm_result.get("choice", "").lower()
+                    for choice in encounter.choices:
+                        if choice.lower() == picked or choice.lower() in picked:
+                            return choice
+                elif isinstance(llm_result, str):
                     result_lower = llm_result.strip().lower()
                     for choice in encounter.choices:
                         if choice.lower() in result_lower:

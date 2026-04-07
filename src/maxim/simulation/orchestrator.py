@@ -1129,6 +1129,10 @@ def start_simulation_mode(
             print(f"\n  DM Campaign error: {e}")
             dm_rollup = {"error": str(e)}
 
+        # DM campaign is done — stop the sim (don't let orchestrator LLM take over)
+        stop_event.set()
+        bridge.finish()
+
     # ── Pre-campaign turn delivery ────────────────────────────────────────
     # When campaign turns are provided, we bypass the orchestrator LLM for
     # turn delivery.  The bridge sends each turn to the AUT as a raw percept,
