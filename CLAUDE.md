@@ -112,6 +112,10 @@ maxim --sim agent --goal "test" --debug        # all subsystems
 # Run YAML scenario
 maxim --sim scenarios/malware_with_pain.yaml
 
+# Benchmark (multi-model comparison)
+maxim --sim benchmark --models mistral-7b,qwen2.5-14b --campaign scenarios/benchmarks/cognitive_suite.yaml
+maxim --sim benchmark --models mistral-7b --campaign scenarios/benchmarks/quick_check.yaml --runs 3
+
 # Run tests
 python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
 
@@ -143,9 +147,9 @@ maxim peer llm qwen2.5-14b    # swap leader's llama-cpp-server to Qwen2.5-14B
 maxim peer llm mistral-7b     # swap to Mistral-7B
 maxim peer llm --status        # show active model, uptime, GPU, lane metrics
 
-# Cloud provider integration (optional fallback/dedicated lanes)
+# Cloud provider integration (optional fallback/dedicated tiers)
 maxim --cloud-fallback claude-sonnet     # cloud fallback when self-hosted fails
-maxim --cloud-lane review claude-haiku   # dedicated cloud model for review lane
+maxim --cloud-lane small claude-haiku    # dedicated cloud model for small tier
 maxim --cloud-budget 2.00               # set max session cost for cloud providers
 ```
 
@@ -203,7 +207,7 @@ curl -s -H "User-Agent: maxim-peer/1.0" https://maxim.yourdomain.com/v1/debug/ve
 src/maxim/
   agents/           # 5-agent pipeline (perception, memory, exec, goal, statistician)
   conscience/       # Main Maxim class (selfy.py) + 6 mixins + agentic runtime
-  runtime/          # Agent loop, LoopController, SimulationAdapter, executor, worker pool
+  runtime/          # Agent loop, LoopController, SimulationAdapter, executor, worker pool, FunctionRouter (tier routing)
   memory/           # Hippocampus, ATL semantic memory, layer protocol
   math/             # IPS (fast stats) + Angular Gyrus (algebraic memory)
   decisions/        # NAc causal learning, adaptive planner
@@ -244,7 +248,8 @@ data/util/          # Runtime config (llm.json, cost_state.json)
 - **Simulation** orchestrator in `simulation/orchestrator.py`, bridge in `simulation/bridge.py`
 - **Mode system**: ProcessingState (awake/sleep) x OperationalMode (passive/active/singularity) x Strategy (6 types)
 - **Memory tiers**: FORMING -> WORKING -> SHORT_TERM -> LONG_TERM
-- **Thread model**: Main loop at 2-30Hz + WorkerPool (3 lanes: infer/review/record, owned by LLMWorker) + Hippocampus capture thread (owned + shut down by MemoryHub.on_session_end)
+- **Lane tier system**: Functions route to capability tiers (large/medium/small) via `FunctionRouter` in `runtime/function_router.py`. Legacy lane names (infer/review/record) are aliased to tier names. `detect_tiers()` in `lane_models.py` auto-detects from hardware.
+- **Thread model**: Main loop at 2-30Hz + WorkerPool (tier-based lanes: large/medium/small, owned by LLMWorker) + Hippocampus capture thread (owned + shut down by MemoryHub.on_session_end)
 
 ## Quick reference — where to look
 
@@ -264,9 +269,15 @@ data/util/          # Runtime config (llm.json, cost_state.json)
 | Atomic JSON persistence | `utils/atomic_io.py` |
 | Mesh primitives (identity, messaging) | `mesh/` (AgentProfile, UMR, MeshMessage, LocalMessageBus) |
 | Research experiment tracking | `simulation/research_tools.py` (ExperimentLog, record/query tools) |
+| Function → tier routing | `runtime/function_router.py` (FunctionRouter, FunctionSpec, DEFAULT_FUNCTIONS) |
+| Tier auto-detection | `runtime/lane_models.py` (detect_tiers, _INFER_VRAM_TIERS) |
 | LLM hot-swap + persistence | `runtime/lane_backends.py` (swap_llm_server, _active_spawner) |
 | Cloud provider profiles | `models/language/config.py` (_BUILTIN_PROFILES, cloud: True marker) |
-| JSON repair pipeline | `models/language/json_parser.py` (4-stage: parse → sanitize → json_repair → structural) |
+| JSON repair pipeline | `models/language/json_parser.py` (4-stage + compliance counters via `json_parse_stats()`) |
+| Scenario expectations (validation) | `simulation/validation.py` (15 types: behavioral, metric, bio-system) |
+| Scenario YAML loading + metadata | `simulation/scenario_source.py` (ScenarioDefinition with tags, benchmark, suite sections) |
+| Standalone experiment runner | `simulation/experiment.py` (`run_campaign()` → `ExperimentResult`) |
+| Benchmark runner | `simulation/benchmark.py` (`BenchmarkRunner` — multi-model comparison, tiered metrics) |
 | Experiment run notes | `docs/experiments/` (per-run findings + methodology) |
 
 ## Environment Variables
@@ -295,10 +306,11 @@ MAXIM_MAX_CLOUD_LANES=1          # Max lanes using cloud providers (default: 0)
 MAXIM_LLM_REDACTION_POLICY=standard  # Redaction policy for cloud dispatch (standard/relaxed/strict)
 MAXIM_CLOUD_SESSION_BUDGET=5.00  # Hard ceiling on cloud spending per session
 
-# Peer/lane remote configuration
-MAXIM_LANE_INFER_REMOTE_URL=     # Override infer lane to use remote server
-MAXIM_LANE_INFER_REMOTE_MODEL=   # Model name to request from remote server
-MAXIM_LANE_INFER_REMOTE_API_KEY= # Auth token for remote server
+# Peer/tier remote configuration (tier names: large, medium, small)
+MAXIM_LANE_LARGE_REMOTE_URL=     # Override large tier to use remote server
+MAXIM_LANE_LARGE_REMOTE_MODEL=   # Model name to request from remote server
+MAXIM_LANE_LARGE_REMOTE_API_KEY= # Auth token for remote server
+# Legacy names (infer/review/record) are aliased to tier names automatically
 ```
 
 ## Testing
@@ -375,6 +387,48 @@ Without `--campaign`, the orchestrator LLM drives the full simulation (probes, o
 **Experiment notes**: Run findings go in `docs/experiments/`. Current experiments:
 - `hippocampal_recall_experiment.md` — experiment design (seed/interference/recall)
 - `hippocampal_recall_run_notes.md` — per-run observations and findings
+
+## Python API (pymaxim)
+
+The package is published to PyPI as `pymaxim` (import name stays `maxim`). Users interact through six verb-based functions, all lazy-loaded from `src/maxim/api.py`:
+
+```python
+import maxim
+
+maxim.configure(verbosity=2)                                    # logging/debug setup
+maxim.run(model="mistral-7b")                                   # agentic cycle
+maxim.imagine(goal="test safety", persona="adversarial")        # simulation
+maxim.connect("reachy_mini")                                    # robot connection
+report = maxim.diagnose()                                       # doctor checks
+state = maxim.observe("memory")                                 # bio-subsystem introspection
+maxim.introspect("causal")                                      # alias for observe
+```
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `src/maxim/api.py` | All six verb implementations (thin facades over existing internals) |
+| `src/maxim/__init__.py` | Lazy `__getattr__` wiring — keeps `import maxim` fast |
+| `src/maxim/simulation/introspection.py` | `Observer` class (renamed from `AUTIntrospector`) — powers `observe()` |
+
+### Rules for maintaining the API
+
+- **Verbs are facades, not logic.** Each function in `api.py` bootstraps objects and delegates to existing internals (`run_agentic_loop`, `start_simulation_mode`, `RobotRegistry`, `run_all_checks`, `Observer`). Don't put business logic in `api.py`.
+- **Lazy imports only.** All heavy imports happen inside function bodies. `import maxim` must not trigger loading of optional dependencies.
+- **Return structured data, not prints.** `diagnose()` returns `DiagnosticReport`, `imagine()` returns `SimulationResult`, `observe()` returns dicts. Don't print to stdout from API functions.
+- **`introspect` is an alias for `observe`.** Both work. Don't add behavior to one without the other.
+- **`Observer`** is the canonical name for what was `AUTIntrospector`. The deprecated alias `AUTIntrospector = Observer` exists in `introspection.py` for backward compat — remove it in 0.2.0.
+
+### Package management
+
+- **Package name:** `pymaxim` on PyPI, `maxim` as import
+- **Version:** Defined in both `pyproject.toml` and `src/maxim/__init__.py` — keep in sync
+- **Core deps:** `numpy`, `scipy`, `pyyaml`, `json-repair` only. Everything else is optional extras.
+- **Optional extras:** `llm-local`, `llm-anthropic`, `llm-openai`, `vision`, `audio`, `reachy`, `comms`, `search`, `temporal`, `training`, `tts`, `yolo`, `semantic`
+- **Robot plugins:** Auto-discovered via `maxim.robots` entry-point group. Third-party packages register controllers by declaring entry points.
+- **Build validation:** `python -m build && twine check dist/*` before any publish
+- Plans: [pypi_publication_plan.md](docs/plans/pypi_publication_plan.md), [python_api_plan.md](docs/plans/python_api_plan.md)
 
 ## Active initiatives
 

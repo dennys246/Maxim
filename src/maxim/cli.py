@@ -728,6 +728,47 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             sys.exit(0 if result.finish_reason != "error" else 1)
 
+        # Check for benchmark mode (multi-model comparison)
+        _sim_benchmark = str(sim_path).strip().lower() == "benchmark"
+        if _sim_benchmark:
+            from maxim.simulation.benchmark import BenchmarkRunner
+
+            models_raw = getattr(args, "models", None)
+            if not models_raw:
+                print("  Error: --models is required for --sim benchmark")
+                print("  Example: maxim --sim benchmark --models mistral-7b,qwen2.5-14b --campaign suite.yaml")
+                sys.exit(1)
+
+            models = [m.strip() for m in models_raw.split(",") if m.strip()]
+            campaign = getattr(args, "campaign", None)
+            if not campaign:
+                print("  Error: --campaign is required for --sim benchmark")
+                print("  Example: maxim --sim benchmark --models mistral-7b --campaign scenarios/benchmarks/cognitive_suite.yaml")
+                sys.exit(1)
+
+            runner = BenchmarkRunner(
+                models=models,
+                suite_path=campaign,
+                runs=getattr(args, "runs", 1) or 1,
+                output_dir=getattr(args, "benchmark_output", "data/benchmarks"),
+                baseline_path=getattr(args, "baseline", None),
+                persona=getattr(args, "sim_persona", "campaign") or "campaign",
+                max_turns=50,
+                response_timeout=60.0,
+                debug=bool(_debug_raw),
+            )
+
+            report = runner.run()
+            print(report.summary_table())
+
+            # Save report
+            report_dir = runner.save_report(report)
+            print(f"\n  Report saved: {report_dir}\n")
+
+            # Exit with 0 if all models passed, 1 if any failed
+            all_passed = all(mr.passed for mr in report.results.values())
+            sys.exit(0 if all_passed else 1)
+
         # Check for research mode (multi-agent research protocol)
         _sim_research = str(sim_path).strip().lower() == "research"
         if _sim_research:

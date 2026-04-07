@@ -367,6 +367,37 @@ def _build_parser() -> argparse.ArgumentParser:
         "Subsystems: hippo (memory capture/recall/associations), nac (causal learning), "
         "all (everything). Also settable via MAXIM_HIPPO_TRACE=1, MAXIM_LANE_TRACE=1.",
     )
+    # ── Benchmark ───────────────────────────────────────────────────────
+    parser.add_argument(
+        "--models",
+        type=str,
+        default=None,
+        metavar="MODEL1,MODEL2,...",
+        help="Comma-separated model profiles for --sim benchmark. "
+        "Each model is tested against all scenarios in the suite.",
+    )
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Number of runs per model in --sim benchmark (default: 1). "
+        "Multiple runs enable variance measurement.",
+    )
+    parser.add_argument(
+        "--benchmark-output",
+        type=str,
+        default="data/benchmarks",
+        metavar="DIR",
+        help="Output directory for benchmark reports (default: data/benchmarks).",
+    )
+    parser.add_argument(
+        "--baseline",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Path to a previous benchmark_report.json for comparison.",
+    )
     parser.add_argument(
         "--generate-simulation",
         type=str,
