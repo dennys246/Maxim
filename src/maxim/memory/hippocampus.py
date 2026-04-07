@@ -368,6 +368,10 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                     context = Context()
                 context.state_ref = self._state_store.store(state_snapshot)
 
+            # Clamp salience to valid range
+            if perception is not None and perception.salience is not None:
+                perception.salience = max(0.0, min(1.0, perception.salience))
+
             # Create the memory
             memory = EpisodicMemory(
                 id=memory_id,

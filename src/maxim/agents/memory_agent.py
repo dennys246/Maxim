@@ -286,14 +286,26 @@ class MemoryAgent(Agent, AgentOutputMixin):
                     sources=refs,
                 )
 
-        # Also capture via Hippocampus
+        # Capture via Hippocampus — skip low-salience idle observations to prevent spam.
+        # Idle percepts (source="idle", no transcript, no detections) at salience=0.50
+        # would otherwise fill hippocampus at 2Hz loop rate (~120 captures/min).
         content = {
             "source": percept.source,
             "transcript": percept.raw_transcript_text or percept.content,
             "has_maxim": percept.has_maxim_keyword,
             "detections_count": len(percept.detections),
         }
-        memory_id = self._capture_to_hippocampus(content, salience, decay_rate, "percept", percept)
+        has_content = bool(
+            percept.raw_transcript_text
+            or percept.cli_input
+            or percept.content
+            or percept.detections
+            or percept.has_maxim_keyword
+        )
+        min_capture_salience = 0.55 if not has_content else 0.0
+        memory_id = None
+        if salience >= min_capture_salience:
+            memory_id = self._capture_to_hippocampus(content, salience, decay_rate, "percept", percept)
         if memory_id:
             entry._hippocampus_id = memory_id  # Cross-reference
 
@@ -663,7 +675,11 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
         # Stage 1: Keyword similarity via AssociationIndex
         # Lemmatize query to improve matching (e.g. "grasping" → "grasp")
-        raw_query = current.raw_transcript_text or str(current.detections)
+        raw_query = current.raw_transcript_text or current.content
+        if not raw_query and current.detections:
+            raw_query = " ".join(d.get("label", "") for d in current.detections if d.get("label"))
+        if not raw_query:
+            return []  # No semantic content to match against
         tokens = normalize_tokens(raw_query)
         query = " ".join(tokens) if tokens else raw_query
         keyword_similar = self._association_index.find_similar(query, top_k=self._context_window)
@@ -705,6 +721,19 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 seen.add(mid)
                 sal = self._salience.get(mid, 0.5)
                 combined.append((mid, activation * 0.4 + sal * 0.6))
+
+        # Echo filter: skip memories formed very recently (< 3s) unless they're
+        # from the forming pool (current episode context). Prevents immediate
+        # recall of just-captured observations.
+        now = time.time()
+        forming_ids = {getattr(e, "_hippocampus_id", None) for _, e in self._forming_pool.items()}
+        combined = [
+            (mid, score)
+            for mid, score in combined
+            if mid in forming_ids
+            or not self._hippocampus
+            or ((mem := self._hippocampus.get(mid)) is None or now - getattr(mem, "timestamp", 0) > 3.0)
+        ]
 
         combined.sort(key=lambda x: x[1], reverse=True)
 
