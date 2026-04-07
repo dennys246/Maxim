@@ -85,6 +85,22 @@ Should also check:
 - Statistical validity (sample size, confidence intervals)
 - Proper academic citation format
 
+## Known Issues from First Paper (2026-04-06 run)
+
+Issues observed in `data/sim_reports/research_20260406_182043/paper.md`:
+
+1. **Hallucinated references**: smollm-1.7b invented fake papers, arxiv URLs, and author names (e.g., Tulving citations with fabricated URLs). Writer should ONLY cite experiment UMRs, not fabricated literature. Add explicit instruction: "Do NOT invent references. Only cite experiment UMRs from the data."
+
+2. **Duplicate heading**: "## Introduction" appeared twice. Section rendering in `to_markdown()` adds `## Heading` but the LLM also generated one. Fix: strip any leading `#` headings from generated content.
+
+3. **Section ordering wrong**: Methods rendered before Introduction. Fix: enforce IMRAD order (Intro → Methods → Results → Discussion) in `PAPER_SECTIONS` constant.
+
+4. **Metrics partially incorrect**: Reported "total_memories: 0, graph_edges: 0" when AUT actually formed 14 memories and 5 causal links. Root cause: `system_stats` introspection returned `?` because the stat keys didn't match. Fix: improve programmatic analysis to read hippocampus stats directly.
+
+5. **Hallucinated acknowledgements**: Referenced "high-performance computing cluster" and "database management system" that don't exist. Fix: provide actual infrastructure details (Maxim architecture, model names, hardware) in the experiment data passed to the Writer.
+
+6. **Prose quality limited by smollm-1.7b**: The review model produces serviceable structure but weak academic writing. `--cloud-lane review claude-haiku` would dramatically improve quality. Consider making this the recommended setup for paper generation.
+
 ## Open Questions
 
 1. **Should the Writer use a dedicated cloud model (Claude) for prose quality?**
