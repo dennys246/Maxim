@@ -13,7 +13,7 @@ Master roadmap for Maxim development. Individual plan files remain as detailed d
 | Tool Refactoring | **Complete** | All 10 phases done: say, think, examine, introspection, aliases, tracking, proactive list. [Plan](tool_refactoring_plan.md) |
 | Introspection API | **Phases 1-4 done** | `AUTIntrospector` + standalone `run_campaign()` shipped. Remaining: Ph5 self-introspection (needs discussion). |
 | Lane Tier Architecture | **Not started** | Size-based model routing (large/medium/small) replacing function-based lanes. ~550 LOC. Prerequisite for benchmarks. [Plan](lane_tier_plan.md) |
-| Simulation Benchmark | **Not started** | Multi-model comparative testing (`--sim benchmark`). ~910 LOC. Depends on lane tiers. [Plan](benchmark_plan.md) |
+| Simulation Benchmark | **Not started** | Phase 0 (sim improvements, ~220 LOC) + Phases 1-9 (benchmark runner, ~910 LOC). [Plan](benchmark_plan.md) |
 | Docker Sandbox | **Complete** | Phase A (TmpdirSandbox + pain) + Phase B (DockerSandbox + ContainerRunner + CLI) both shipped |
 | Research Protocol | **Complete** | All phases: mesh primitives, research tools, Writer + Reviewer agents, Research Orchestrator. CLI: `maxim --sim research`. |
 | Multi-LLM Scaling | **Complete** | All phases done. mDNS + InferenceRouter moved to Agent Mesh as Phases 0a-0b. |
@@ -111,29 +111,29 @@ Reassess after each phase — this is a recommended order, not a rigid commitmen
 
 | # | Work | LOC | Rationale |
 |---|------|-----|-----------|
-| 1 | **Lane Tier Architecture** | ~550 | Size-based model routing. Prerequisite for benchmarks (small tier for transcriber). Unlocks clean function routing for all downstream plans. |
-| 2 | **Simulation Benchmark (Phases 1-2)** | ~400 | BenchmarkRunner + CLI + narrative transcriber on small tier. First real multi-model comparison. |
-| 3 | **Benchmark Phases 3-5** | ~300+YAML | Tiered output + scenarios. Establish baselines before embodiment changes. |
-| 4 | **Embodiment Core Phase 0 MVP** | ~400 | ATL-grounded body-state primitives. Run benchmarks before/after. |
-| 5 | **Generative Campaign Mode** | ~600 | Dynamic narrative + entity naming. Uses small tier for transcription + naming. |
-| 6 | **Embodiment Core remaining phases** | per plan | Cerebellum forward models, structured failures, hardware adapter |
-| 7 | **Agent Mesh Phase 2+** | per plan | Network transport, distributed planning |
-| 8 | **DM Choice Classifier Spike** | ~150 scratch | Validates ATL+NAc classification on small tier |
-| 9 | **DM MVP** | ~840 | Capstone bio-system stress test |
-| 10 | **DM Extensions** | per-extension | Demand-driven, never speculative |
+| 1 | **Lane Tier Architecture** | ~700 | Size-based model routing. Prerequisite for benchmarks (small tier for transcriber). Unlocks clean function routing for all downstream plans. |
+| 2 | **Benchmark Phase 0 (Sim improvements)** | ~220 | Enrich SimulationResult + activate full bio-stack in sim + bio-system expectations + scenario metadata. Benefits all sim modes. |
+| 3 | **Benchmark Phases 1-2 (Core runner)** | ~330 | BenchmarkRunner wrapping run_campaign() + CLI. End-to-end `--sim benchmark` working. |
+| 4 | **Benchmark Phases 3-5 (Scenarios + output)** | ~400+YAML | Unified YAML loader + tiered output + live progress + cognitive_suite scenarios. First real benchmark runs. |
+| 5 | **Embodiment Core Phase 0 MVP** | ~400 | ATL-grounded body-state primitives. Run benchmarks before/after. |
+| 6 | **Generative Campaign Mode** | ~600 | Dynamic narrative + entity naming. Uses small tier for transcription + naming. |
+| 7 | **Embodiment Core remaining phases** | per plan | Cerebellum forward models, structured failures, hardware adapter |
+| 8 | **Agent Mesh Phase 2+** | per plan | Network transport, distributed planning |
+| 9 | **DM Choice Classifier Spike** | ~150 scratch | Validates ATL+NAc classification on small tier |
+| 10 | **DM MVP** | ~840 | Capstone bio-system stress test |
+| 11 | **DM Extensions** | per-extension | Demand-driven, never speculative |
 
 **Why this order:**
-- Lane tiers first: infrastructure that every downstream plan benefits from (clean function→tier routing)
-- Benchmark next: validates tool refactoring + creates baselines for embodiment changes
-- Embodiment Core before DM so DM's `CharacterState` inherits established body-state patterns
+- Lane tiers first: infrastructure that every downstream plan benefits from
+- Benchmark Phase 0 (sim improvements) next: enriches SimulationResult + activates full bio-stack — benefits all sim modes, not just benchmarks
+- Benchmark core: validates tool refactoring + creates baselines before embodiment
+- Embodiment Core before DM so DM's `CharacterState` inherits established patterns
 - Generative campaigns exercise narrative tools at scale with small-tier transcription
-- Agent Mesh Phase 2+ drives distributed coordination
 - DM comes last as the capstone that validates everything below it
 
 **Parallelism opportunities (if capacity allows):**
-- Embodiment track (1, 4, 9) is fully independent from scaling/coordination tracks
-- Research Protocol (2, 6) can run in parallel to Multi-LLM (3, 5, 7, 8)
-- Optional plans (10, 11) ship opportunistically whenever pain surfaces
+- Embodiment track is fully independent from benchmark/lane-tier tracks
+- Benchmark Phase 0 (sim improvements) can run in parallel with lane tier work
 
 ---
 
