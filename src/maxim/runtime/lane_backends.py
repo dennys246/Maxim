@@ -578,14 +578,29 @@ def build_primary_router(
     # When peer config sets a remote URL for the infer lane AND the user
     # specified --language-model (MAXIM_LLM_PROFILE), the intent is
     # "run this model on the remote server" — not "load it locally."
-    # Redirect: copy the profile name into MAXIM_LANE_INFER_REMOTE_MODEL
+    # Redirect: copy the profile name into the remote model env var
     # and clear MAXIM_LLM_PROFILE so the local backend machinery doesn't
     # activate and try to load a local pytorch/llama_cpp backend.
+    #
+    # Peer config sets MAXIM_LANE_INFER_* (legacy name). Propagate to
+    # MAXIM_LANE_LARGE_* so detect_tiers() + apply_lane_env_overrides()
+    # pick it up on the new tier name.
     if _has_peer_config:
         _remote_url = os.environ.get("MAXIM_LANE_INFER_REMOTE_URL", "").strip()
+        if _remote_url:
+            # Mirror infer → large so tier-based env override picks it up
+            os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_URL", _remote_url)
+            _infer_key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY", "").strip()
+            if _infer_key:
+                os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_API_KEY", _infer_key)
+            _infer_model = os.environ.get("MAXIM_LANE_INFER_REMOTE_MODEL", "").strip()
+            if _infer_model:
+                os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_MODEL", _infer_model)
+
         _llm_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
         if _remote_url and _llm_profile:
             os.environ.setdefault("MAXIM_LANE_INFER_REMOTE_MODEL", _llm_profile)
+            os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_MODEL", _llm_profile)
             os.environ.pop("MAXIM_LLM_PROFILE", None)
 
     if capabilities is None:

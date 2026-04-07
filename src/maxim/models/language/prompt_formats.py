@@ -2,8 +2,10 @@ from __future__ import annotations
 
 
 def _mistral_instruct_prompt(system: str, user: str) -> str:
+    # Note: llama_cpp adds BOS (<s>) automatically during tokenization.
+    # Don't prepend it here or the model sees duplicate <s><s>.
     merged = (str(system or "").strip() + "\n\n" + str(user or "").strip()).strip()
-    return f"<s>[INST] {merged} [/INST]"
+    return f"[INST] {merged} [/INST]"
 
 
 def _chatml_prompt(system: str, user: str) -> str:
