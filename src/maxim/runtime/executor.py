@@ -13,6 +13,46 @@ if TYPE_CHECKING:
     from maxim.proprioception.pain import PainDetector
 
 
+# ── Tool alias map ────────────────────────────────────────────────────────
+# LLMs (especially small ones) hallucinate tool names from their training
+# data rather than using the registered tool list.  This map silently
+# redirects common hallucinations to the correct registered tool.
+#
+# How to expand: add entries mapping the hallucinated name (lowercase) to
+# the registered tool name.  The executor normalises the incoming name to
+# lowercase before lookup, so casing variations are handled automatically.
+#
+# See also: docs/troubleshooting/tool_aliases.md
+TOOL_ALIASES: dict[str, str] = {
+    # Memory / recall → memory_recall
+    "remember": "memory_recall",
+    "recall": "memory_recall",
+    "recall_memory": "memory_recall",
+    "search_memory": "memory_recall",
+    # Speech / dialogue → say
+    "speech_recognition": "say",
+    "speechrecognition": "say",
+    "speech": "say",
+    "dialogue": "say",
+    "talk": "say",
+    # NLP / analysis → think
+    "natural_language_processing": "think",
+    "nlp": "think",
+    "nlp_extractor": "think",
+    "nlp_understanding": "think",
+    "reflection": "think",
+    "analyze_text": "think",
+    "research": "think",
+    # Dialogue parsing → think
+    "dialogue_parser": "think",
+    "dialogueparser": "think",
+    "parse_dialogue": "think",
+    # Internet search → memory_recall (in sim, there's no internet)
+    "internet_search": "memory_recall",
+    "web_search": "memory_recall",
+}
+
+
 class Executor:
     def __init__(
         self,
@@ -26,6 +66,8 @@ class Executor:
         self._lock = threading.Lock()
         # (tool_name, start_time, invocation_id) or None
         self._running: tuple[str, float, str] | None = None
+        # Track alias redirects for experiment analysis
+        self.alias_redirects: list[tuple[str, str]] = []
 
     def execute(self, action: dict[str, Any]) -> ToolOutput:
         """Execute a tool action, returning raw ToolOutput.
@@ -33,11 +75,34 @@ class Executor:
         The caller (agent loop) is responsible for converting this to a
         bus ToolResult (agents.bus.ToolResult) with tool_call_id/tool_name/params
         before publishing on the bus.
+
+        If the requested tool name is not registered but matches an entry
+        in TOOL_ALIASES, the request is silently redirected to the correct
+        tool.  This is logged and tracked in ``self.alias_redirects`` for
+        experiment analysis.
         """
         tool_name = action.get("tool_name")
         params = action.get("params") if isinstance(action.get("params"), dict) else {}
         if not isinstance(tool_name, str) or not tool_name:
             return ToolOutput(success=False, error=f"Invalid action: {action!r}")
+
+        # ── Alias resolution ─────────────────────────────────────────
+        original_name = tool_name
+        if tool_name not in self.registry._tools:
+            alias_target = TOOL_ALIASES.get(tool_name.lower())
+            if alias_target and alias_target in self.registry._tools:
+                import logging
+
+                logging.getLogger(__name__).info(
+                    "Tool alias: %s → %s",
+                    tool_name,
+                    alias_target,
+                )
+                self.alias_redirects.append((tool_name, alias_target))
+                tool_name = alias_target
+                # Update the action so downstream (bus, hippocampus) sees
+                # the real tool name
+                action = {**action, "tool_name": tool_name}
 
         invocation_id = str(uuid.uuid4())
 
@@ -53,7 +118,7 @@ class Executor:
             with self._lock:
                 self._running = None
             error_msg = f"Tool not registered: {tool_name!r}."
-            suggestions = self.registry.find_similar(tool_name, limit=3)
+            suggestions = self.registry.find_similar(original_name, limit=3)
             if suggestions:
                 error_msg += f" Did you mean: {', '.join(suggestions)}?"
             error_msg += (

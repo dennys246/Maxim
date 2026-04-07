@@ -28,6 +28,9 @@ The key insight: the orchestrator already plans, adapts, and learns. Give it rea
 | Edit disambiguation hints | Partial | ToolResult errors with context suggestions; no aggregate metrics |
 | Turn pinning v1 | Done | Always pins turn 1; no LLM-driven pinning yet |
 | Per-lane LLM metrics | Not built | Blocked on Multi-LLM Phase 8 |
+| Tool alias redirects | Ready | `executor.alias_redirects` tracks (original, target) pairs per session |
+| Narrative tools (say, think) | Ready | Registered on AUT in sim mode; see tool refactoring plan |
+| "Did you mean?" suggestions | Ready | `ToolRegistry.find_similar()` on unregistered tool errors |
 
 ---
 
@@ -93,6 +96,17 @@ expectations:
     tool: read_file
     min_rate: 0.8
 ```
+
+New metric type for tool alias tracking:
+
+```yaml
+expectations:
+  - type: alias_redirect_rate
+    max_rate: 0.3  # No more than 30% of actions should be alias redirects
+    description: "Measures how often the AUT hallucinates tool names"
+```
+
+The `alias_redirect_rate` metric uses `executor.alias_redirects` to compute the ratio of redirected tool calls to total tool calls. A high rate indicates the model is not reading the available tool list. Useful for comparing model quality across AUT models and for tracking whether prompt improvements reduce hallucination.
 
 These complement the existing `action_taken`, `action_blocked`, `memory_formed`, and `pipeline_continued` types.
 

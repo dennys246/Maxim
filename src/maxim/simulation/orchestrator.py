@@ -1422,7 +1422,12 @@ def start_simulation_mode(
         aut_memory_hub=aut_memory_hub,
         llm_router=llm_router,
         language_model=(
-            getattr(llm_router, "last_used_model", "")
+            # Prefer AUT router's model name when dual-LLM mode is active,
+            # otherwise fall back to the shared router.
+            getattr(aut_router, "last_used_model", "")
+            or getattr(aut_router, "model_name", "")
+            or getattr(aut_router, "active_model", "")
+            or getattr(llm_router, "last_used_model", "")
             or getattr(llm_router, "model_name", "")
             or getattr(llm_router, "active_model", "")
         )

@@ -19,8 +19,12 @@ This plan addresses all four issues with a phased approach.
 | 2 | **DONE** | `say` tool in `tools/narrative.py` |
 | 3 | **DONE** | `think` tool in `tools/narrative.py` |
 | 4 | Not started | `examine` tool — bridge approach (query SimulationBridge for latest message) |
-| 5 | Not started | Registry improvements ("did you mean?", tool list in prompt, usage tracking) |
-| 6 | Not started | Sim-specific tool set separation |
+| 5a | **DONE** | "Did you mean?" suggestions via `ToolRegistry.find_similar()` |
+| 5b | **DONE** | Tool descriptions in `TOOL_DESCRIPTIONS` + cognitive tools guidance in system prompt |
+| 5c | Not started | Tool usage tracking for experiment analysis |
+| 5d | Not started | Proactive tool list after repeated failures |
+| 5e | **DONE** | Tool alias map — silently redirects hallucinated tool names to correct tools |
+| 6 | **DONE** | Robot tools deregistered in sim mode |
 
 ---
 
@@ -213,6 +217,67 @@ ROBOT_TOOLS = ["respond", "speak", "move", "track_target", "focus_interests", ..
 
 This eliminates the confusing "No live robot connected" messages from robot-specific tools in narrative experiments.
 
+**Status: DONE.** Robot tools (`focus_interests`, `track_target`, `move`, `novelty_track`, `maxim_command`, `autonomy_level`, `mode_switch`) are deregistered from the AUT registry in `orchestrator.py` during sim setup.
+
+---
+
+## Phase 5e: Tool Alias Map — DONE
+
+**Priority: HIGH** — Directly addresses the hallucination problem observed in experiments.
+
+### Problem
+
+LLMs (especially small ones) hallucinate tool names from their training data instead of using the registered tool list. Across Mistral-7B and Qwen 14B, we observed:
+- `speechRecognition`, `SpeechRecognition`, `speech_recognition` — all wanting to say something aloud
+- `natural_language_processing`, `nlp_extractor`, `nlp_understanding` — wanting to analyze text
+- `DialogueParser`, `dialogue_parser`, `dialogue` — wanting to parse conversation
+- `remember`, `reflection` — wanting to recall or reason
+- `internet_search` — wanting to look something up
+
+Each model uses different casing and variants. Renaming our tools wouldn't help because there's no universal convention.
+
+### Solution
+
+A `TOOL_ALIASES` dict in `runtime/executor.py` maps common hallucinated names (lowercase) to the correct registered tool. The executor normalizes the incoming name to lowercase before lookup, so all casing variants are handled automatically.
+
+```python
+TOOL_ALIASES: dict[str, str] = {
+    "remember": "memory_recall",
+    "speech_recognition": "say",
+    "natural_language_processing": "think",
+    "dialogue": "say",
+    "internet_search": "memory_recall",  # in sim, search your memory instead
+    # ... see executor.py for full list
+}
+```
+
+### How it works
+
+1. LLM proposes `speechRecognition(text="Verath")`
+2. Executor checks registry — not found
+3. Normalizes to lowercase: `speechrecognition`
+4. Checks `TOOL_ALIASES` — maps to `say`
+5. Executes `say(text="Verath")` — success
+6. NAc learns positive causal link for `say`
+7. Redirect logged and tracked in `executor.alias_redirects`
+
+### How to expand
+
+Add entries to `TOOL_ALIASES` in `src/maxim/runtime/executor.py`. Map the hallucinated name (lowercase) to the registered tool name. Run a sim and check the logs for `"Tool alias: X → Y"` to verify.
+
+Common patterns to watch for in sim logs:
+- `[MOTOR] [FAIL] <name>: Tool not registered` — candidate for aliasing
+- Same concept, different names across models — add all variants
+
+### Tracking for experiment analysis
+
+`executor.alias_redirects` is a list of `(original_name, target_name)` tuples. This can be included in experiment reports to measure:
+- How often each alias fires
+- Whether alias redirects lead to successful outcomes
+- Which models hallucinate which tool names
+
+See also: [docs/troubleshooting/tool_aliases.md](../troubleshooting/tool_aliases.md)
+
 ---
 
 ## Implementation Order
@@ -223,20 +288,27 @@ This eliminates the confusing "No live robot connected" messages from robot-spec
 | 2 | `say` tool | ~50 | **DONE** | Narrative action capability |
 | 3 | `think` tool | ~40 | **DONE** | Better reasoning chains |
 | 4 | `examine` tool | ~60 | Next | Scene engagement (bridge approach) |
-| 5 | Registry improvements | ~80 | Next | Reduced hallucination |
-| 6 | Sim tool set | ~30 | Later | Clean separation |
+| 5a | "Did you mean?" | ~40 | **DONE** | Helpful error messages |
+| 5b | Tool descriptions + guidance | ~50 | **DONE** | LLM sees tool list |
+| 5c | Tool usage tracking | ~30 | Next | Experiment metrics |
+| 5d | Proactive tool list | ~20 | Next | Break hallucination loops |
+| 5e | Tool alias map | ~50 | **DONE** | Silent hallucination redirect |
+| 6 | Sim tool set | ~15 | **DONE** | No robot tool waste |
 
-**Session 1 (DONE):** Phases 1-3 — AUT now has `memory_recall` + `say` + `think`, enough to re-run the hippocampal recall experiment and test whether the AUT can USE its memory at the door.
+**Session 1 (DONE):** Phases 1-3 — narrative tools + introspection wired to AUT.
 
-**Session 2 (next):** Phases 4-5 — `examine` with bridge approach + registry "did you mean?" + tool list injection + usage tracking.
+**Session 2 (DONE):** Phases 5a, 5b, 6 — "did you mean?", tool descriptions, robot tool deregistration.
 
-**Session 3:** Phase 6 — sim-specific tool set separation.
+**Session 3 (DONE):** Phase 5e — tool alias map for silent hallucination redirect.
+
+**Next:** Phase 4 (`examine` with bridge), 5c (usage tracking), 5d (proactive tool list).
 
 ## Decisions Made
 
 1. **No separate `remember` tool** — `MemoryRecallTool` already does keyword recall + spreading activation. Just wire it to the AUT registry.
 2. **No `--aut-introspection` flag** — always-on in sim mode. Simpler, and the whole point of sim is testing the memory system.
 3. **`think` counts as an action** — prevents infinite think loops. Small models can chain think→act in two turns.
+6. **Tool aliases over tool renaming** — LLMs hallucinate different names per model and even per run. No single naming convention would help. Alias map catches all variants and redirects silently.
 4. **`examine` uses bridge approach** — queries `SimulationBridge` for latest message, not raw percepts. Cleaner since the AUT's "percept" in sim mode is the orchestrator's last message.
 5. **No `AUTIntrospector` class yet** — the existing tools work; they just needed to be registered on the right registry. The introspection API plan remains a separate future concern.
 
