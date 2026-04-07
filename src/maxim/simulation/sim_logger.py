@@ -39,6 +39,10 @@ _COLORS = {
     "PIPELINE": "\033[37;2m",  # Dim white
     "RESULT": "\033[32;1m",  # Bold green
     "BLOCKED": "\033[31;1m",  # Bold red
+    "CEREBELLUM": "\033[34;1m",  # Bold blue
+    "ATL": "\033[35;1m",  # Bold magenta
+    "SENSORY": "\033[36;1m",  # Bold cyan
+    "BODY": "\033[37;1m",  # Bold white
 }
 _RESET = "\033[0m"
 
@@ -209,3 +213,34 @@ def sim_result(scenario_name: str, passed: bool, met: int, failed: int) -> None:
     status = "PASS" if passed else "FAIL"
     subsystem = "RESULT" if passed else "BLOCKED"
     sim_log(subsystem, f"{status}: {scenario_name} ({met} passed, {failed} failed)")
+
+
+def sim_nac(event: str, outcome: str, rpe: float, confidence: float) -> None:
+    """Log a NAc causal learning observation."""
+    sim_log("NAc", f"Causal link: {event} -> {outcome} (RPE={rpe:.2f}, confidence={confidence:.2f})")
+
+
+def sim_scn(memory_id: str, phase: str, significance: float) -> None:
+    """Log an SCN temporal bin registration."""
+    sim_log("SCN", f"Registered {memory_id[:8]} in {phase} (significance={significance:.2f})")
+
+
+def sim_cerebellum(entity: str, affordance: str, confidence: float, error: float | None = None) -> None:
+    """Log a Cerebellum forward model observation."""
+    if error is not None:
+        sim_log("CEREBELLUM", f"Observed {entity}.{affordance} (conf={confidence:.2f}, pred_error={error:.3f})")
+    else:
+        sim_log("CEREBELLUM", f"New model: {entity}.{affordance} (conf={confidence:.2f})")
+
+
+def sim_sensory(modality: str, entity: str, acuity: float, dropped: bool = False) -> None:
+    """Log a SensoryGate modulation event."""
+    if dropped:
+        sim_log("SENSORY", f"Dropped {modality} percept from {entity} (acuity={acuity:.2f})")
+    else:
+        sim_log("SENSORY", f"Modulated {modality} from {entity} (acuity={acuity:.2f})")
+
+
+def sim_body_state(entity_count: int, active_failures: int) -> None:
+    """Log body state injection into prompt."""
+    sim_log("BODY", f"State: {entity_count} entities, {active_failures} active failures")

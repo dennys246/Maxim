@@ -157,6 +157,19 @@ class ModulatorAffordanceTool(Tool):
                     actual_sensors=entity_state,
                     sensor_ranges=sensor_ranges,
                 )
+                try:
+                    from maxim.simulation.sim_logger import sim_cerebellum
+
+                    conf = self._cerebellum.get_confidence(
+                        self._entity.full_path,
+                        self._modulator.name,
+                        self._affordance_name,
+                        kwargs,
+                        sensor_ranges,
+                    )
+                    sim_cerebellum(self._entity.full_path, self._affordance_name, conf)
+                except Exception:
+                    pass
             except Exception:
                 pass
 

@@ -672,6 +672,12 @@ class MemoryHub:
             if hasattr(memory, "perception") and hasattr(memory.perception, "salience"):
                 salience = memory.perception.salience or 0.5
             self.scn.register(memory_id, sig, significance=salience)
+            try:
+                from maxim.simulation.sim_logger import sim_scn
+
+                sim_scn(memory_id, f"circadian={sig.circadian:.2f}", salience)
+            except Exception:
+                pass
         except Exception:
             pass  # Don't let SCN errors block memory capture
 

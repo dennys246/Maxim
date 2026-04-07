@@ -148,6 +148,9 @@ class Percept:
     raw_transcript_text: str | None = None
     maxim_runtime: dict[str, Any] | None = None
 
+    # Sensory modality tag (optional — None for legacy percepts)
+    sensory: Any = None  # SensoryTag | None
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize for session persistence. Omits large/internal fields."""
         return {
@@ -162,6 +165,7 @@ class Percept:
             "has_maxim_keyword": self.has_maxim_keyword,
             "hard_override": self.hard_override,
             "content": self.content,
+            "sensory": self.sensory.to_dict() if self.sensory and hasattr(self.sensory, "to_dict") else None,
         }
 
     @classmethod

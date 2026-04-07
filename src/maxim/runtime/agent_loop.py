@@ -109,15 +109,28 @@ def _record_outcome(
             from maxim.decisions.causal_link import Valence
 
             outcome_summary = (result_summary or error or "")[:50]
-            nac.observe(
+            valence = Valence.POSITIVE if success else Valence.NEGATIVE
+            link = nac.observe(
                 event_type="tool",
                 event_signature=f"tool:{tool_name}",
                 outcome_type="tool_result",
                 outcome_signature=f"{'success' if success else 'failure'}:{outcome_summary}",
-                outcome_valence=Valence.POSITIVE if success else Valence.NEGATIVE,
+                outcome_valence=valence,
                 delta_seconds=elapsed_s,
                 context={"goal": reasoning[:100]} if reasoning else {},
             )
+            # Sim trace
+            try:
+                from maxim.simulation.sim_logger import sim_nac
+
+                sim_nac(
+                    f"tool:{tool_name}",
+                    valence.value,
+                    getattr(link, "last_rpe", 0.0) or 0.0,
+                    getattr(link, "confidence", 0.5),
+                )
+            except Exception:
+                pass
         except Exception:
             pass  # Don't let NAc errors disrupt the loop
 
@@ -409,7 +422,7 @@ def run_agentic_loop(
         check_hard_stop,
     )
     from maxim.agents.context_pool import ContextPool, ContextPoolConfig
-    from maxim.agents.llm_worker import ModeInfo, StrategyInfo
+    from maxim.agents.llm_worker import ModeInfo
     from maxim.modes.definitions import get_mode, TOOL_DESCRIPTIONS
     from maxim.runtime.loop_controller import LoopController
     from maxim.runtime.loop_types import ActionFollowup
@@ -1859,11 +1872,9 @@ def run_agentic_loop(
 
                         context = StructuredContext(
                             timestamp=time.time(),
-                            mode=state.data.get("mode", "observe"),
+                            mode=state.data.get("mode", "active"),
                             autonomy_level=state.data.get("autonomy_level", "supervised"),
                             internet_access=state.data.get("internet_access", True),
-                            exploration_mode=state.data.get("exploration_mode", False),
-                            exploration_focus=state.data.get("exploration_focus", ""),
                         )
                         logger.info("Created minimal context for pending action followup")
 
@@ -1977,15 +1988,6 @@ def run_agentic_loop(
                         if context.current_percept and context.current_percept.hard_override:
                             has_meaningful_input = True
 
-                        # In exploration mode, check for high novelty (something interesting)
-                        is_exploration = state.data.get("exploration_mode", False)
-                        if is_exploration and context.current_percept:
-                            # Only trigger LLM in exploration if novelty is high
-                            if context.current_percept.novelty > 0.7:
-                                has_meaningful_input = True
-                            # Or if there's a new explore command
-                            if context.current_percept.explore_command:
-                                has_meaningful_input = True
 
                         # Check for pending action followup (tools that need LLM processing)
                         if pending_action_followup:
@@ -2060,92 +2062,21 @@ def run_agentic_loop(
                         # Get mode info
                         mode_name = state.data.get("mode", "observe")
 
-                        # Check if exploration mode
-                        is_exploration = state.data.get("exploration_mode", False)
-                        exploration_focus = state.data.get("exploration_focus", "")
+                        # Get mode definition for tool access
+                        mode_def = get_mode(mode_name)
+                        available_tools_for_mode = set()
+                        if mode_def and _all_tools:
+                            available_tools_for_mode = mode_def.get_available_tools(_all_tools)
 
-                        if is_exploration:
-                            from maxim.modes.definitions import get_exploration_mode_with_policy
-                            from maxim.modes.exploration import ExplorationPolicy
-                            from maxim.modes.strategies import get_strategy_library
-
-                            # Get exploration policy from state
-                            policy_dict = state.data.get("exploration_policy", {})
-                            policy = ExplorationPolicy.from_dict(policy_dict) if policy_dict else ExplorationPolicy()
-
-                            # Get the exploration mode definition
-                            exploration_mode_def = get_exploration_mode_with_policy(policy)
-
-                            # Build context prompt with focus
-                            context_prompt = exploration_mode_def.context_prompt.format(
-                                focus=exploration_focus or "general exploration"
-                            )
-
-                            # Get available tools for exploration
-                            exploration_tools = (
-                                exploration_mode_def.get_available_tools(_all_tools) if _all_tools else set()
-                            )
-
-                            mode_info = ModeInfo(
-                                name="exploration",
-                                goal=exploration_mode_def.goal,
-                                context_prompt=context_prompt,
-                                allowed_tools=exploration_tools,
-                                forbidden_tools=exploration_mode_def.forbidden_tools,
-                                can_access_filesystem=exploration_mode_def.can_access_filesystem,
-                                can_access_network=exploration_mode_def.can_access_network,
-                            )
-
-                            # Select exploration strategies
-                            strategy_library = get_strategy_library()
-                            selected_strategies = []
-                            if strategy_library:
-                                selected = strategy_library.select_strategies(
-                                    exploration_mode_def, context, max_strategies=4
-                                )
-                                selected_strategies = [
-                                    StrategyInfo(
-                                        name=s.name,
-                                        description=s.description,
-                                        approach_prompt=s.approach_prompt,
-                                    )
-                                    for s in selected
-                                ]
-
-                            # Update context with exploration fields
-                            if hasattr(context, "exploration_mode"):
-                                context.exploration_mode = True
-                                context.exploration_focus = exploration_focus
-                                context.exploration_session_id = state.data.get("exploration_session_id", "")
-                                context.exploration_policy = policy_dict
-
-                            # Log exploration context submission
-                            log_agentic(
-                                "agent_loop",
-                                "exploration_context",
-                                {
-                                    "focus": exploration_focus,
-                                    "session": state.data.get("exploration_session_id", ""),
-                                    "strategies": [s.name for s in selected_strategies],
-                                },
-                            )
-                        else:
-                            # Get mode definition for tool access
-                            mode_def = get_mode(mode_name)
-                            available_tools_for_mode = set()
-                            if mode_def and _all_tools:
-                                available_tools_for_mode = mode_def.get_available_tools(_all_tools)
-
-                            mode_info = ModeInfo(
-                                name=mode_name,
-                                goal=mode_def.goal if mode_def else "Respond to user requests",
-                                context_prompt=mode_def.context_prompt if mode_def else "",
-                                allowed_tools=available_tools_for_mode,
-                                forbidden_tools=mode_def.forbidden_tools if mode_def else set(),
-                                can_access_filesystem=mode_def.can_access_filesystem if mode_def else True,
-                                can_access_network=mode_def.can_access_network if mode_def else True,
-                            )
-                            selected_strategies = []
+                        mode_info = ModeInfo(
+                            name=mode_name,
+                            goal=mode_def.goal if mode_def else "Respond to user requests",
+                            context_prompt=mode_def.context_prompt if mode_def else "",
+                            allowed_tools=available_tools_for_mode,
+                            forbidden_tools=mode_def.forbidden_tools if mode_def else set(),
+                            can_access_filesystem=mode_def.can_access_filesystem if mode_def else True,
+                            can_access_network=mode_def.can_access_network if mode_def else True,
+                        )
 
                         # Get internet access status
                         internet_access = state.data.get("internet_access", False)
@@ -2227,7 +2158,6 @@ def run_agentic_loop(
                             context=context,
                             mode=mode_info,
                             autonomy_level=autonomy_controller.current_level,
-                            strategies=selected_strategies,
                             internet_access=internet_access,
                             internet_policy_summary=internet_policy_summary,
                             available_tools=available_tools,
@@ -2244,7 +2174,6 @@ def run_agentic_loop(
                             pending_modification=pending_modification,
                             prefetch_context=prefetch_context_text,
                             skip_exploration=skip_exploration,
-                            current_strategy=state.data.get("current_strategy", ""),
                             is_sleeping=is_sleeping,
                             protocol_context=_protocol_context,
                         )

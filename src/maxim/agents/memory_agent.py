@@ -295,6 +295,16 @@ class MemoryAgent(Agent, AgentOutputMixin):
             "has_maxim": percept.has_maxim_keyword,
             "detections_count": len(percept.detections),
         }
+        # Tag memory with sensory modality metadata for richer recall
+        sensory = getattr(percept, "sensory", None)
+        if sensory is not None:
+            content["modality"] = sensory.modality.value if hasattr(sensory, "modality") else "unknown"
+            if sensory.spatial_source:
+                content["spatial_source"] = sensory.spatial_source
+            if sensory.entity_source:
+                content["entity_source"] = sensory.entity_source
+            if sensory.perceived_intensity is not None:
+                content["perceived_intensity"] = sensory.perceived_intensity
         has_content = bool(
             percept.raw_transcript_text
             or percept.cli_input
