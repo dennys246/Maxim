@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+
+{% block title %}DM Campaigns — Maxim Docs | D&amp;D-Style Bio-System Stress Tests{% endblock %}
+
+{% block meta_description %}D&amp;D-style campaigns as bio-system stress tests. Branching encounters, seeded dice, cascade resolution, and automatic expectation checking against Hippocampus, NAc, SCN, and PainBus.{% endblock %}
+
+{% block meta_keywords %}Maxim DM campaigns, dungeon master, bio-system stress test, campaign YAML, choice classification, cascade resolution, hippocampus testing, NAc causal learning{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "DM Campaigns — D&D-Style Bio-System Stress Tests",
+  "description": "Branching narrative campaigns that stress-test Maxim's bio-inspired subsystems through structured encounters, dice checks, and cross-entity cascades.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/dm-campaigns",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["DM campaigns", "dungeon master", "bio-system testing", "campaign YAML", "choice classification", "cascade"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "DM Campaigns", "item": "https://www.dennyschaedig.com/maxim/dm-campaigns" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">DM Campaigns</h1>
+    <p class="text-slate-400 text-lg">D&amp;D-style branching narratives as structured bio-system stress tests</p>
+  </header>
+
+  <!-- Overview -->
+  <section class="space-y-4">
+    <h2 id="overview" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Overview</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Why D&amp;D?</h3>
+      <p class="text-slate-300">Tabletop RPG encounters are ideal stress tests for cognitive architectures. They require <strong class="text-white">episodic memory</strong> (remembering NPCs, clues, combinations), <strong class="text-white">causal reasoning</strong> (bribing a guard has consequences), <strong class="text-white">temporal awareness</strong> (events happen in sequence), and <strong class="text-white">pain response</strong> (combat hurts). A single campaign can exercise Hippocampus, NAc, SCN, PainBus, Cerebellum, and ATL in a controlled, reproducible way.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">DM campaigns are <strong class="text-white">hand-authored YAML scenarios</strong> with explicit structure: acts, encounters, NPC definitions, branching choices, dice checks, and bio-system expectations. The DM runtime drives the campaign as a state machine, delivering scenes through the simulation bridge and classifying the AUT's responses to determine which branch to follow.</p>
+
+    <h3 class="text-white font-semibold mt-4">DM Campaigns vs Generative Campaigns</h3>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">DM Campaigns</h3>
+        <ul class="text-slate-300 text-sm space-y-1 list-disc pl-4">
+          <li>Hand-authored YAML with explicit branching</li>
+          <li>Deterministic structure (seeded dice)</li>
+          <li>Built-in bio-system expectations</li>
+          <li>SEM entities with cascade resolution</li>
+          <li>Best for: <em class="text-indigo-400 not-italic">targeted subsystem testing</em></li>
+        </ul>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Generative Campaigns</h3>
+        <ul class="text-slate-300 text-sm space-y-1 list-disc pl-4">
+          <li>LLM narrator generates scenes dynamically</li>
+          <li>Non-deterministic, arc-guided progression</li>
+          <li>Story compression for long sessions</li>
+          <li>Goal string drives narrative direction</li>
+          <li>Best for: <em class="text-indigo-400 not-italic">open-ended exploration</em></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Start -->
+  <section class="space-y-4">
+    <h2 id="quick-start" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Quick Start</h2>
+
+    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300">maxim --sim scenarios/campaigns/heist_v1.yaml</div>
+
+    <p class="text-slate-300 leading-relaxed">When you pass a campaign YAML path to <code class="bg-slate-950 px-1 rounded text-xs">--sim</code>, Maxim detects the <code class="bg-slate-950 px-1 rounded text-xs">campaign:</code> block and launches the DM runtime instead of the generative narrator. Here is what happens:</p>
+
+    <ol class="space-y-2 text-slate-300 list-decimal pl-5">
+      <li>Campaign YAML is parsed and validated (reachability, termination, dangling refs)</li>
+      <li>SEM entities are created from <code class="bg-slate-950 px-1 rounded text-xs">player_character:</code>, <code class="bg-slate-950 px-1 rounded text-xs">npcs:</code>, and <code class="bg-slate-950 px-1 rounded text-xs">world_objects:</code> specs</li>
+      <li>Entity tools are auto-generated and registered (speak_to_marta, sense_guard_captain, etc.)</li>
+      <li>The DM delivers the first encounter scene through the simulation bridge</li>
+      <li>The AUT responds with tool calls and/or text; the DM classifies the choice</li>
+      <li>Effects are applied, branches are followed, dice are rolled as needed</li>
+      <li>After <code class="bg-slate-950 px-1 rounded text-xs">__END__</code>, bio-system expectations are checked and a report is saved</li>
+    </ol>
+
+    <p class="text-slate-300 leading-relaxed">Reports go to <code class="bg-slate-950 px-1 rounded text-xs">data/sim_reports/{session_id}/</code> with the standard <code class="bg-slate-950 px-1 rounded text-xs">report.json</code>, <code class="bg-slate-950 px-1 rounded text-xs">actions.jsonl</code>, and AUT memory snapshots, plus a <code class="bg-slate-950 px-1 rounded text-xs">campaign</code> section with choices made, dice rolls, flags, and entity snapshots.</p>
+  </section>
+
+  <!-- Campaign YAML Format -->
+  <section class="space-y-4">
+    <h2 id="yaml-format" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Campaign YAML Format</h2>
+
+    <p class="text-slate-300 leading-relaxed">A campaign YAML has six top-level sections:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Minimal Campaign Structure</span>
+campaign:
+  name: the_heist
+  goal: test memory recall and moral reasoning
+  seed: 42                        <span class="text-slate-500"># deterministic dice</span>
+
+player_character:
+  name: derek
+  entity_type: character
+  metadata:
+    race: human
+    class: paladin
+    backstory: "Former temple guard."
+
+npcs:
+  marta:
+    entity_type: npc
+    metadata:
+      role: fence
+      persona_prompt: "Cautious, mercenary."
+
+acts:
+  - name: setup
+    encounters: [tavern_meet]
+  - name: escape
+    encounters: [chase]
+
+encounters:
+  tavern_meet:
+    scene: &gt;
+      You enter the tavern. A half-elf slides
+      a map across the table...
+    active_npcs: [marta]
+    choices: [accept_job, decline]
+    branches:
+      accept_job: chase
+      decline: __END__
+    on_choice:
+      accept_job:
+        flags: [took_the_job]
+    dialogue_hints:
+      default: "Keep your voice down."
+
+  chase:
+    scene: &gt;
+      Alarms ring. You sprint for the exit...
+    choices: [flee, hide]
+    branches:
+      flee: __END__
+      hide: __END__
+
+expectations:
+  hippocampus:
+    min_episodic_captures: 5
+  nac:
+    min_observations: 3</div>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-xs text-slate-400 overflow-x-auto">
+      <table class="w-full text-left">
+        <thead><tr class="text-indigo-400 border-b border-slate-700">
+          <th class="pb-2 pr-4">Section</th><th class="pb-2">Purpose</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="py-1 pr-4 text-slate-300">campaign:</td><td>Name, goal string, seed for dice RNG</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">player_character:</td><td>SEM entity spec for the AUT's avatar</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">npcs:</td><td>Named NPC entity specs (sensors, modulators, persona)</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">world_objects:</td><td>Interactable objects (swords, doors, potions)</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">acts: / encounters:</td><td>Narrative structure with scenes, choices, branches, dice</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">expectations:</td><td>Bio-system assertions checked after campaign ends</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Available Campaigns -->
+  <section class="space-y-4">
+    <h2 id="available-campaigns" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Available Campaigns</h2>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">The Heist</h3>
+        <p class="text-slate-500 text-xs font-mono mb-2">scenarios/campaigns/heist_v1.yaml</p>
+        <p class="text-slate-300 text-sm">3 encounters, 2 NPCs, 1 dice check. A paladin is recruited for a vault robbery. Tests <strong class="text-white">Hippocampus</strong> (remembering the combination, NPC names), <strong class="text-white">NAc</strong> (causal links from choices), and <strong class="text-white">PainBus</strong> (combat damage).</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">The Poisoned Crown</h3>
+        <p class="text-slate-500 text-xs font-mono mb-2">scenarios/campaigns/poisoned_crown_v1.yaml</p>
+        <p class="text-slate-300 text-sm">5 encounters, 3 NPCs, multiple branch points. A royal investigator solves the king's illness. Tests <strong class="text-white">SCN</strong> (temporal bins), <strong class="text-white">ATL</strong> (concept formation), <strong class="text-white">relationships</strong> (trust), <strong class="text-white">visibility</strong> (contextual reveal), and <strong class="text-white">cascades</strong>.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">The Arena</h3>
+        <p class="text-slate-500 text-xs font-mono mb-2">scenarios/campaigns/arena_v1.yaml</p>
+        <p class="text-slate-300 text-sm">5 encounters, linear gauntlet. A gladiator fights for freedom through escalating opponents. Tests <strong class="text-white">Cerebellum</strong> (rapid prediction learning), <strong class="text-white">PainBus</strong> (sustained pain), <strong class="text-white">NAc</strong> (fast causal learning, RPE spikes), and <strong class="text-white">cascade</strong> (weapon degradation).</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">The Darkened Cavern</h3>
+        <p class="text-slate-500 text-xs font-mono mb-2">scenarios/campaigns/darkened_cavern_v1.yaml</p>
+        <p class="text-slate-300 text-sm">6 encounters, 3 acts. A ranger progressively loses senses in a cave. Tests <strong class="text-white">sensory gating</strong> (entity-modulated perception), <strong class="text-white">Cerebellum</strong> (prediction under sensory change), <strong class="text-white">PainBus</strong> (acuity threshold failures), and <strong class="text-white">novelty decay</strong>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="space-y-4">
+    <h2 id="how-it-works" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">How It Works</h2>
+
+    <p class="text-slate-300 leading-relaxed">The DM runtime (<code class="bg-slate-950 px-1 rounded text-xs">simulation/dm_runtime.py</code>) is a state machine that loops through encounters until it reaches <code class="bg-slate-950 px-1 rounded text-xs">__END__</code>.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">DM Turn Loop</span>
+1. Look up current encounter from campaign state
+2. Set up ChooseTool with encounter's valid choices
+3. Enter scene &mdash; register entity tools for active NPCs/objects
+4. Compose stimulus (scene text + NPC dialogue hints + choice prompt)
+5. Deliver stimulus via bridge.send_and_wait()
+6. AUT processes stimulus (LLM inference &rarr; tool calls &rarr; hippo capture)
+7. Classify AUT's response as one of the encounter's choices
+8. Apply on_choice effects (flags, loot)
+9. Evaluate reveal conditions (contextual visibility)
+10. Resolve dice checks if required
+11. Follow branch to next encounter (or __END__)
+12. Deregister departing entity tools, repeat</div>
+
+    <p class="text-slate-300 leading-relaxed">Each encounter can reference NPCs and objects by name. When an encounter starts, <strong class="text-white">SceneState</strong> registers SEM tools for entities entering the scene and deregisters them when they leave. The AUT only sees tools for entities currently present.</p>
+  </section>
+
+  <!-- Choice Classification -->
+  <section class="space-y-4">
+    <h2 id="choice-classification" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Choice Classification</h2>
+
+    <p class="text-slate-300 leading-relaxed">When an encounter offers choices (e.g., <code class="bg-slate-950 px-1 rounded text-xs">accept_job</code>, <code class="bg-slate-950 px-1 rounded text-xs">decline</code>, <code class="bg-slate-950 px-1 rounded text-xs">negotiate_pay</code>), the DM needs to figure out which one the AUT picked. There are three classification layers, tried in order:</p>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">ChooseTool (Preferred)</h3>
+      <p class="text-slate-300">A dynamic tool (<code class="bg-slate-950 px-1 rounded text-xs">tools_dm.py</code>) that updates its valid options per encounter. When the AUT calls <code class="bg-slate-950 px-1 rounded text-xs">choose(option="accept_job")</code>, the choice is unambiguous. Supports exact match, underscore/space normalization, and partial keyword matching.</p>
+    </div>
+
+    <h3 class="text-white font-semibold mt-4">Alias System</h3>
+    <p class="text-slate-300 leading-relaxed">Before each encounter, the DM registers choice names as <strong class="text-white">tool aliases</strong> in the executor. If the AUT calls a tool named <code class="bg-slate-950 px-1 rounded text-xs">accept_job</code>, <code class="bg-slate-950 px-1 rounded text-xs">acceptjob</code>, or <code class="bg-slate-950 px-1 rounded text-xs">accept job</code>, the executor redirects it to <code class="bg-slate-950 px-1 rounded text-xs">choose</code>. This catches cases where the LLM invents tool names matching the choice text.</p>
+
+    <h3 class="text-white font-semibold mt-4">Text / LLM Fallback</h3>
+    <p class="text-slate-300 leading-relaxed">If the AUT does not use <code class="bg-slate-950 px-1 rounded text-xs">choose</code> or a matching alias, the DM falls back to keyword matching on the response text and tool names. If that fails, a one-shot LLM classification prompt asks which choice the response most closely matches. As a last resort, the first choice is used as default.</p>
+  </section>
+
+  <!-- Bio-System Expectations -->
+  <section class="space-y-4">
+    <h2 id="expectations" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Bio-System Expectations</h2>
+
+    <p class="text-slate-300 leading-relaxed">The <code class="bg-slate-950 px-1 rounded text-xs">expectations:</code> block in a campaign YAML defines assertions that are checked after the campaign completes. This is the structured testing layer &mdash; each campaign targets specific subsystems.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Example Expectations Block</span>
+expectations:
+  hippocampus:
+    min_episodic_captures: 5       <span class="text-slate-500"># at least 5 memories formed</span>
+    recall_hit_on: ["marta", "vault"]  <span class="text-slate-500"># these terms must be recallable</span>
+  nac:
+    min_observations: 3            <span class="text-slate-500"># causal observation count</span>
+    prediction_confidence_above: 0.3   <span class="text-slate-500"># at least one link above 0.3</span>
+  scn:
+    temporal_bins_used: 2          <span class="text-slate-500"># circadian bins populated</span>
+  pain:
+    min_signals: 0                 <span class="text-slate-500"># total pain signals published</span></div>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-xs text-slate-400 overflow-x-auto">
+      <table class="w-full text-left">
+        <thead><tr class="text-indigo-400 border-b border-slate-700">
+          <th class="pb-2 pr-4">System</th><th class="pb-2 pr-4">Check</th><th class="pb-2">What It Validates</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="py-1 pr-4 text-slate-300">hippocampus</td><td class="pr-4">min_episodic_captures</td><td>Memory formation is working under narrative load</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">hippocampus</td><td class="pr-4">recall_hit_on</td><td>Specific terms are retrievable from memory</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">nac</td><td class="pr-4">min_observations</td><td>Causal learning is triggering on actions</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">nac</td><td class="pr-4">prediction_confidence_above</td><td>At least one causal link has meaningful confidence</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">scn</td><td class="pr-4">temporal_bins_used</td><td>Temporal indexing is recording encounter timestamps</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">pain</td><td class="pr-4">min_signals</td><td>PainBus is publishing signals from combat/failures</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Results appear in the campaign report as pass/fail per check, with expected vs actual values. This makes campaigns function as <strong class="text-white">regression tests for bio-system integration</strong>.</p>
+  </section>
+
+  <!-- Writing Your Own Campaigns -->
+  <section class="space-y-4">
+    <h2 id="authoring" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Writing Your Own Campaigns</h2>
+
+    <h3 class="text-white font-semibold">Encounters</h3>
+    <p class="text-slate-300 leading-relaxed">Each encounter needs a <code class="bg-slate-950 px-1 rounded text-xs">scene:</code> (narrative text delivered to the AUT), optional <code class="bg-slate-950 px-1 rounded text-xs">active_npcs:</code> and <code class="bg-slate-950 px-1 rounded text-xs">world_objects:</code> (which entities are present), and <code class="bg-slate-950 px-1 rounded text-xs">choices:</code> + <code class="bg-slate-950 px-1 rounded text-xs">branches:</code> for decision points. An encounter without choices auto-advances to the next one in act order.</p>
+
+    <h3 class="text-white font-semibold mt-4">Branches</h3>
+    <p class="text-slate-300 leading-relaxed">Map each choice to a target encounter name or <code class="bg-slate-950 px-1 rounded text-xs">__END__</code>. The validator checks that all branch targets exist and that every encounter can reach <code class="bg-slate-950 px-1 rounded text-xs">__END__</code> through some path. Cycles are allowed (e.g., returning to a hub encounter).</p>
+
+    <h3 class="text-white font-semibold mt-4">NPCs and Entities</h3>
+    <p class="text-slate-300 leading-relaxed">NPCs and objects use the standard SEM spec format. Add sensors (trust, health, durability), modulators (speak, slash, offer_payment), and metadata (persona_prompt, role). Entities are created once and persist across encounters &mdash; sensor values change as the campaign progresses.</p>
+
+    <h3 class="text-white font-semibold mt-4">Dice Checks</h3>
+    <p class="text-slate-300 leading-relaxed">Attach a <code class="bg-slate-950 px-1 rounded text-xs">dice:</code> block to any choice. Standard notation: <code class="bg-slate-950 px-1 rounded text-xs">1d20</code>, <code class="bg-slate-950 px-1 rounded text-xs">2d6+3</code>. The result is compared against a DC (difficulty class). On success, a flag is set. Dice rolls use the campaign's seeded RNG for reproducibility.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Dice Check Example</span>
+dice:
+  stealth:
+    roll: "1d20"
+    dc: 14
+    success_flag: clean_escape</div>
+
+    <h3 class="text-white font-semibold mt-4">Dialogue Hints</h3>
+    <p class="text-slate-300 leading-relaxed">Per-encounter <code class="bg-slate-950 px-1 rounded text-xs">dialogue_hints:</code> map flags to NPC lines. A <code class="bg-slate-950 px-1 rounded text-xs">default:</code> hint is used when no flags match. This lets NPC dialogue react to the player's earlier choices without LLM improvisation.</p>
+
+    <h3 class="text-white font-semibold mt-4">Flags and Effects</h3>
+    <p class="text-slate-300 leading-relaxed">The <code class="bg-slate-950 px-1 rounded text-xs">on_choice:</code> block lets you set flags when a choice is made. Flags persist across encounters and can influence dialogue hints, branch conditions, and reveal conditions. Flags are case-insensitive.</p>
+
+    <h3 class="text-white font-semibold mt-4">Validation</h3>
+    <p class="text-slate-300 leading-relaxed">Before running, the campaign is validated for: reachability (all encounters reachable from start), termination (all paths can reach <code class="bg-slate-950 px-1 rounded text-xs">__END__</code>), dangling branches, undefined NPC/object references, and unknown choice keys in <code class="bg-slate-950 px-1 rounded text-xs">on_choice</code>.</p>
+  </section>
+
+  <!-- Cascade System -->
+  <section class="space-y-4">
+    <h2 id="cascades" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Cascade System</h2>
+
+    <p class="text-slate-300 leading-relaxed">When an affordance fires (e.g., a sword slash), it may need to read from one entity and write to another. <strong class="text-white">CascadeSpec</strong> defines these cross-entity effects in three phases:</p>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">1. Reads</h3>
+        <p class="text-slate-300 text-sm">Gather values from entity sensors. Each read has a <code class="bg-slate-950 px-1 rounded text-xs">ref</code> path (e.g., <code class="bg-slate-950 px-1 rounded text-xs">wielder.strength.modifier</code>) and an optional <code class="bg-slate-950 px-1 rounded text-xs">role</code> name for use in expressions.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">2. Writes</h3>
+        <p class="text-slate-300 text-sm">Apply changes to entity sensors. Supports absolute <code class="bg-slate-950 px-1 rounded text-xs">value:</code>, additive <code class="bg-slate-950 px-1 rounded text-xs">delta:</code>, or computed <code class="bg-slate-950 px-1 rounded text-xs">expr:</code> (referencing read values).</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">3. Side Effects</h3>
+        <p class="text-slate-300 text-sm">Same mechanics as writes but semantically separate. Used for secondary consequences (e.g., alerting nearby NPCs, triggering environmental changes).</p>
+      </div>
+    </div>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Cascade Example: Sword Slash</span>
+cascade:
+  reads:
+    - ref: wielder.strength.modifier
+      role: damage_bonus
+    - ref: self.sharpness
+      role: sharpness
+  writes:
+    - ref: target.hp
+      expr: "-(roll + damage_bonus)"     <span class="text-slate-500"># computed from reads</span>
+    - ref: self.durability
+      delta: -0.05                        <span class="text-slate-500"># sword degrades</span>
+  side_effects:
+    - ref: target.alertness
+      value: 1.0                          <span class="text-slate-500"># target is now alert</span></div>
+
+    <p class="text-slate-300 leading-relaxed">Roles in ref paths (<code class="bg-slate-950 px-1 rounded text-xs">self</code>, <code class="bg-slate-950 px-1 rounded text-xs">wielder</code>, <code class="bg-slate-950 px-1 rounded text-xs">target</code>) are resolved at execution time by the <strong class="text-white">CascadeResolver</strong>, which maps role names to actual Entity objects based on context.</p>
+  </section>
+
+  <!-- Visibility System -->
+  <section class="space-y-4">
+    <h2 id="visibility" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Visibility System</h2>
+
+    <p class="text-slate-300 leading-relaxed">Entity sensors and details have three visibility levels:</p>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">visible</strong> &mdash; Always shown in scene prompts and tool output</li>
+      <li><strong class="text-white">hidden</strong> &mdash; Never shown to the AUT (internal state only)</li>
+      <li><strong class="text-white">contextual</strong> &mdash; Hidden until a <code class="bg-slate-950 px-1 rounded text-xs">reveal_when</code> condition is met</li>
+    </ul>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Contextual Reveal Example</span>
+metadata:
+  visibility:
+    poison_resistance: contextual
+  reveal_when:
+    poison_resistance:
+      ref: pc.social.rel_guard.trust
+      op: "&gt;="
+      value: 0.7          <span class="text-slate-500"># revealed when trust is high enough</span></div>
+
+    <p class="text-slate-300 leading-relaxed">After each choice, the DM evaluates all contextual reveal conditions across all entities. When a condition passes, the item becomes permanently visible. This lets campaigns model information the AUT must earn through social interaction or exploration &mdash; testing whether the AUT <em class="text-indigo-400 not-italic">uses</em> newly revealed information is a strong signal for memory and reasoning quality.</p>
+  </section>
+
+  <!-- Future: Generative DM -->
+  <section class="space-y-4">
+    <h2 id="generative-dm" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Future: Generative DM</h2>
+
+    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-amber-400 mb-2">Not Yet Implemented</h3>
+      <p class="text-slate-300">The <code class="bg-slate-950 px-1 rounded text-xs">--dm</code> flag with a goal string (e.g., <code class="bg-slate-950 px-1 rounded text-xs">maxim --dm "run a heist scenario"</code>) is planned but not yet built. It would use an <strong class="text-white">architect persona</strong> to generate campaign YAML on the fly from a goal string, then hand off to the existing DM runtime for execution.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The generative DM would combine the structured testing benefits of hand-authored campaigns (expectations, dice, branches) with the flexibility of goal-driven generation. The architect would produce valid campaign YAML &mdash; validated by the same reachability/termination checks &mdash; and the DM runtime would execute it unchanged. This is blocked on Agent Mesh Phase 2 (the architect needs to be a mesh agent) and a DM Spike to validate the approach.</p>
+  </section>
+
+  <!-- Architecture -->
+  <section class="space-y-4">
+    <h2 id="architecture" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Architecture</h2>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">
+Campaign YAML &rarr; load_campaign() &rarr; validate_campaign() &rarr; CampaignDef
+                                                                      |
+                         DMRuntime(campaign, bridge, llm_router)  &larr;---+
+                              |
+                              +&rarr; SceneState (entity tool register/deregister)
+                              +&rarr; ChooseTool (dynamic per-encounter choices)
+                              +&rarr; CascadeResolver (cross-entity reads/writes)
+                              +&rarr; bridge.send_and_wait() &rarr; AUT processes stimulus
+                              +&rarr; classify_choice() &rarr; follow branch &rarr; loop
+                              |
+                         check_expectations(hippo, nac, scn, pain_bus)
+                              |
+                         get_rollup() &rarr; report.json</div>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-xs text-slate-400 overflow-x-auto">
+      <table class="w-full text-left">
+        <thead><tr class="text-indigo-400 border-b border-slate-700">
+          <th class="pb-2 pr-4">Module</th><th class="pb-2">Purpose</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="py-1 pr-4 text-slate-300">simulation/dm_schema.py</td><td>Dataclasses, YAML loader, validator, dice roller, CascadeSpec, RevealCondition</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">simulation/dm_runtime.py</td><td>DMRuntime state machine, SceneState, CascadeResolver, choice classification</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">simulation/tools_dm.py</td><td>ChooseTool (dynamic per-encounter tool with fuzzy matching)</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">scenarios/campaigns/*.yaml</td><td>Campaign definitions (4 shipped)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Navigation -->
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/simulation" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Simulation</span>
+      </a>
+      <a href="/maxim/benchmarks" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Benchmarks</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/embodiment" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Embodiment</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking</a>
+        <a href="/maxim/agent-mesh" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Agent Mesh</a>
+        <a href="/maxim/simulation" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Simulation</a>
+        <a href="/maxim/dm-campaigns" class="text-xs text-indigo-400 font-medium transition px-2 py-1 rounded bg-slate-800 no-underline">DM Campaigns</a>
+        <a href="/maxim/benchmarks" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Benchmarks</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
