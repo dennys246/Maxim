@@ -817,12 +817,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         # ── DM campaign mode ──
         if _is_dm:
-            # Next positional arg should be the campaign YAML path
-            campaign_path = getattr(args, "sim_goal", None)
+            # Campaign path via --campaign or --sim-goal
+            campaign_path = getattr(args, "campaign", None) or getattr(args, "sim_goal", None)
             if not campaign_path:
                 print("Error: --sim dm requires a campaign YAML path")
-                print("Usage: maxim --sim dm scenarios/campaigns/heist_v1.yaml")
+                print("Usage: maxim --sim dm --campaign scenarios/campaigns/heist_v1.yaml")
+                print("   or: maxim --sim dm --goal scenarios/campaigns/heist_v1.yaml")
                 sys.exit(1)
+            # Handle glob patterns (campaign flag may be a list)
+            if isinstance(campaign_path, list):
+                campaign_path = campaign_path[0]
 
             from maxim.simulation.dm_schema import load_campaign, validate_campaign
             from maxim.simulation.orchestrator import start_simulation_mode
