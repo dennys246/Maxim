@@ -1,6 +1,6 @@
 # Bio-System Wiring Hardening Plan
 
-> **Status:** Not started. Gate for DM MVP — must ship first.
+> **Status:** COMPLETE. All phases shipped. Archived.
 >
 > **Last updated:** 2026-04-07
 >
@@ -1248,22 +1248,21 @@ Additionally:
 
 ---
 
-## Updated Summary
+## Final Summary
 
-| Phase | What | LOC | Days |
+| Phase | What | LOC | Status |
 |---|---|---|---|
-| **Phase 1** | Critical wiring (9 items) | 189 | **SHIPPED** |
-| **Phase 1.5** | Cascade result surfacing (5 items) | ~120 | ~1 |
-| **Phase 2** | Pipeline correctness (10 items) | ~150 | ~1 |
-| **Phase 3** | Percept abstraction + entity-modulated perception | ~180 | ~1 |
-| **Phase 4** | Design gap fixes (6 items) | ~80 | ~0.5 |
-| **Phase 5** | Pipeline audit script | ~250 | ~0.5 |
-| **Phase 6** | Sensory ablation campaign YAML | ~150 | ~0.5 |
-| **Phase 7** | Bio-system consolidation (absorb/remove dormant systems) | -720 net | ~1 |
-| **Phase 8** | Dead runtime code cleanup | -434 | ~0.5 |
-| **Total** | | **~576 net** (-1,154 removed, +578 added) | **~6.5** |
+| **Phase 1** | Critical wiring (9 items) | 189 | **SHIPPED** (6c262c5) |
+| **Phase 1.5** | Cascade result surfacing (5 items) | 120 | **SHIPPED** (8713500) |
+| **Phase 2** | Pipeline correctness (10 items) | 58 | **SHIPPED** (ce94cc8) |
+| **Phase 3** | Percept abstraction + SensoryGate | 613 | **SHIPPED** (6dddf54) |
+| **Phase 4** | Design gap fixes | 36 | **SHIPPED** (7c12b5c) |
+| **Phase 5** | Pipeline audit script (14/14 passing) | 507 | **SHIPPED** (b71a679) |
+| **Phase 6** | Sensory ablation campaign | — | **Moved to DM MVP** |
+| **Phase 7** | Bio-system consolidation | ~-700 net | **SHIPPED** |
+| **Phase 8** | Dead runtime code cleanup | ~-400 | **SHIPPED** |
 
-Phase 7 and 8 are pure cleanup — they can be done in any order relative to each other, and can be interleaved with the earlier phases. The only hard dependency is that Phase 7.3 (provenance → Hippocampus) should happen after Phase 1 (critical wiring) since it adds fields to the episodic memory system that Phase 1 initializes.
+**Net result:** ~1,100 LOC of dead code removed, ~1,500 LOC of bio-system wiring + percept abstraction added. Pipeline audit validates 14 checks, all passing.
 
 ---
 
