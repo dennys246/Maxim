@@ -132,29 +132,15 @@ def start_research_mode(
         except Exception as e:
             logger.warning("Failed to load campaign YAML: %s", e)
 
-    # Build the researcher goal — campaign turns are injected directly
-    # through the bridge (bypassing the LLM), so the orchestrator only
-    # needs to do post-campaign analysis.
+    # Build the researcher goal — for non-campaign runs only.
+    # Campaign runs bypass the orchestrator LLM entirely.
     researcher_goal = goal
-    if campaign_turns:
-        researcher_goal = (
-            f"{goal}\n\n"
-            f"CAMPAIGN COMPLETE — {len(campaign_turns)} narrative turns were delivered directly to the AUT.\n"
-            f"The campaign tested memory recall under narrative interference.\n\n"
-            f"YOUR TASK (analysis only — do NOT send any more narrative turns):\n"
-            f"1. Use inspect_aut(query='memory_recall', params={{'keyword': 'Verath'}}) to check if the seed memory survived\n"
-            f"2. Use inspect_aut(query='system_stats') for graph topology and memory count\n"
-            f"3. Use observe_actions to review the AUT's behavior during the campaign\n"
-            f"4. Record your findings with record_experiment (hypothesis, method, result, conclusion)\n"
-            f"5. Call finish_simulation with your analysis"
-        )
-    elif campaign:
+    if not campaign_turns and campaign:
         researcher_goal = f"{goal}\n\nCampaign file: {campaign} (failed to load — run manually with send_message)"
 
-    # Run the researcher via the existing simulation orchestrator.
-    # Campaign turns are injected directly through the bridge before the
-    # orchestrator LLM starts, ensuring verbatim delivery without JSON
-    # escaping issues.
+    # Run the simulation. Campaign turns are injected directly through
+    # the bridge, and post-campaign analysis runs programmatically.
+    # The orchestrator LLM is only used for non-campaign simulations.
     sim_result = start_simulation_mode(
         goal=researcher_goal,
         persona="researcher",
@@ -166,24 +152,35 @@ def start_research_mode(
         pre_campaign_turns=campaign_turns if campaign_turns else None,
     )
 
-    # The experiment log was populated by the researcher's record_experiment calls
-    # during the sim run. Reload it from disk (the sim writes to sim_tmpdir,
-    # and the report copies it to the session dir).
-    # Check multiple locations for the experiments file
-    exp_count = len(experiment_log)
-    if exp_count == 0:
-        # Try loading from the sim report directory
-        sim_reports = Path("data") / "sim_reports"
-        if sim_reports.exists():
-            for d in sorted(sim_reports.iterdir(), reverse=True):
-                exp_file = d / "experiments.jsonl"
-                if exp_file.exists() and d.name != f"research_{session_id}":
-                    experiment_log = ExperimentLog(session_dir=d, agent_nickname="researcher")
-                    exp_count = len(experiment_log)
-                    if exp_count > 0:
-                        logger.info("Loaded %d experiments from %s", exp_count, d)
-                        break
+    # For campaign runs, record the analysis as an experiment
+    if sim_result.campaign_analysis:
+        analysis = sim_result.campaign_analysis
+        recall_data = analysis.get("memory_recall_verath", {})
+        stats_data = analysis.get("system_stats", {})
+        turns_data = analysis.get("turns", [])
 
+        # Build a conclusion from the data
+        recall_found = bool(recall_data) and "error" not in recall_data
+        hippo_stats = stats_data.get("hippocampus", {}) if isinstance(stats_data, dict) else {}
+        mem_count = hippo_stats.get("total_memories", 0)
+        graph_edges = hippo_stats.get("graph_edges", 0)
+
+        experiment_log.record(
+            hypothesis="The seed detail 'Verath' survives in hippocampal memory after narrative interference turns",
+            method=f"Direct bridge injection of {len(turns_data)} campaign turns (short variant: 2 seed + 3 interference + 1 recall + 1 epilogue)",
+            result=f"Memory recall: {'found' if recall_found else 'not found'}. {mem_count} total memories, {graph_edges} graph edges. Recall data: {str(recall_data)[:200]}",
+            conclusion=f"Seed memory {'SURVIVED' if recall_found else 'DID NOT SURVIVE'} interference. AUT formed {mem_count} episodic memories with {graph_edges} associative edges.",
+            tags=["hippocampal_recall", "campaign", "short_variant"],
+            metrics={
+                "memory_survived": 1.0 if recall_found else 0.0,
+                "total_memories": mem_count,
+                "graph_edges": graph_edges,
+                "campaign_turns": len(turns_data),
+                "duration_s": sim_result.duration_s,
+            },
+        )
+
+    exp_count = len(experiment_log)
     print(f"  Researcher completed: {exp_count} experiments recorded")
     print(f"  Sim result: {sim_result.turns} turns, {sim_result.total_actions} actions")
 

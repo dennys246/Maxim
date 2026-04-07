@@ -19,7 +19,7 @@ import tempfile
 import threading
 import time
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +38,7 @@ class SimulationResult:
     duration_s: float
     finish_reason: str = "unknown"
     summary: str = ""
+    campaign_analysis: dict[str, Any] = field(default_factory=dict)
 
 
 def _load_resume_context(session_id: str) -> dict[str, Any] | None:
@@ -936,6 +937,70 @@ def start_simulation_mode(
                 campaign_results.append({"turn": i, "phase": phase, "error": str(e)})
         print(f"  Campaign delivery complete: {len(campaign_results)} turns delivered\n")
 
+        # ── Programmatic post-campaign analysis ─────────────────────────
+        # Run inspect_aut queries directly instead of relying on the
+        # orchestrator LLM (which fails on single-quote JSON params).
+        print("  Running post-campaign analysis...")
+        inspect_tool = None
+        for tool in orch_registry._tools.values() if hasattr(orch_registry, "_tools") else []:
+            if getattr(tool, "name", "") == "inspect_aut":
+                inspect_tool = tool
+                break
+
+        campaign_analysis: dict[str, Any] = {"turns": campaign_results}
+        if inspect_tool is not None:
+            # Memory recall check
+            try:
+                recall_result = inspect_tool.execute(query="memory_recall", params={"keyword": "Verath"})
+                campaign_analysis["memory_recall_verath"] = (
+                    recall_result.output if recall_result.success else {"error": recall_result.error}
+                )
+                print(f"    Memory recall (Verath): {'found' if recall_result.success else 'not found'}")
+            except Exception as e:
+                campaign_analysis["memory_recall_verath"] = {"error": str(e)}
+
+            # System stats
+            try:
+                stats_result = inspect_tool.execute(query="system_stats")
+                campaign_analysis["system_stats"] = (
+                    stats_result.output if stats_result.success else {"error": stats_result.error}
+                )
+                if stats_result.success and isinstance(stats_result.output, dict):
+                    mem_count = stats_result.output.get("hippocampus", {}).get("total_memories", "?")
+                    graph_edges = stats_result.output.get("hippocampus", {}).get("graph_edges", "?")
+                    print(f"    System stats: {mem_count} memories, {graph_edges} graph edges")
+            except Exception as e:
+                campaign_analysis["system_stats"] = {"error": str(e)}
+
+            # Causal links
+            try:
+                causal_result = inspect_tool.execute(query="causal_links")
+                campaign_analysis["causal_links"] = (
+                    causal_result.output if causal_result.success else {"error": causal_result.error}
+                )
+            except Exception as e:
+                campaign_analysis["causal_links"] = {"error": str(e)}
+        else:
+            print("    (inspect_aut not available — skipping introspection)")
+
+        # Save analysis to session dir
+        try:
+            import json as _json
+
+            analysis_path = Path("data") / "sim_reports" / f"campaign_analysis_{time.strftime('%Y%m%d_%H%M%S')}.json"
+            analysis_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(analysis_path, "w") as f:
+                _json.dump(campaign_analysis, f, indent=2, default=str)
+            print(f"    Analysis saved: {analysis_path}")
+        except Exception:
+            pass
+
+        print("  Post-campaign analysis complete.\n")
+
+        # For campaign mode, skip the orchestrator LLM entirely —
+        # all work is done. Signal stop and fall through to cleanup.
+        stop_event.set()
+
     # ── Inject initial goal (or resume context) into orchestrator ────────
     if resume_session:
         resume_data = _load_resume_context(resume_session)
@@ -1327,6 +1392,7 @@ def start_simulation_mode(
         duration_s=duration,
         finish_reason=finish_reason,
         summary=report.llm_summary,
+        campaign_analysis=campaign_analysis if pre_campaign_turns else {},
     )
 
     return result
