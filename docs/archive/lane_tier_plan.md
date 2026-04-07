@@ -1,7 +1,7 @@
 # Lane Tier Architecture — Size-Based Model Routing
 
-> **Status:** Complete. All 8 phases shipped across 2 sessions.
-> **Scope:** ~820 LOC refactor across 8 phases.
+> **Status:** Archived — complete. All 8 phases shipped across 2 sessions (2026-04-06).
+> **Scope:** ~820 LOC across 8 phases.
 > **Depends on:** Multi-LLM Scaling (done), WorkerPool + LaneConfig + LaneBackendManager (all exist).
 
 ---

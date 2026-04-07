@@ -45,7 +45,7 @@ Small, self-contained checks that add immediate diagnostic value.
 
 ### 0. Tier detection check (ships with Lane Tier Architecture)
 
-Added as part of the [lane tier plan](lane_tier_plan.md) Phase 7. `check_tier_detection()` reports which tiers (large/medium/small) are available based on `RuntimeCapabilities` + `detect_tiers()`. Warns when only `small` is detected and provides fix hints (`--language-model`, `--cloud-fallback`, `--tier-model`). Fits after `check_gpu()` in `run_all_checks()`. ~40 LOC.
+Added as part of the [lane tier plan](../archive/lane_tier_plan.md) Phase 7. `check_tier_detection()` reports which tiers (large/medium/small) are available based on `RuntimeCapabilities` + `detect_tiers()`. Warns when only `small` is detected and provides fix hints (`--language-model`, `--cloud-fallback`, `--tier-model`). Fits after `check_gpu()` in `run_all_checks()`. ~40 LOC.
 
 ### 1. Deeper GPU health
 - **VRAM free vs total** — `torch.cuda.memory_reserved()` / `torch.cuda.memory_allocated()` to show headroom during a sim run, not just capacity.
