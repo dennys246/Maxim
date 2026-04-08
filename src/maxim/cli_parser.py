@@ -227,6 +227,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="List available LLM model profiles and exit.",
     )
     parser.add_argument(
+        "--delete-model",
+        type=str,
+        default=None,
+        metavar="MODEL",
+        help="Delete a downloaded local LLM model to free disk space.",
+    )
+    parser.add_argument(
         "--clear-cache",
         action="store_true",
         help="Clear Python bytecode cache (__pycache__) before running.",

@@ -267,6 +267,34 @@ def download_model(name: str) -> bool:
         return False
 
 
+def delete_model(name: str) -> bool:
+    """Delete a downloaded local LLM model to free disk space.
+
+    Args:
+        name: Model profile name (e.g. ``"mistral-7b"``, ``"qwen2.5-14b-instruct"``).
+
+    Returns:
+        ``True`` if the file was deleted, ``False`` if not found.
+
+    Example::
+
+        models = maxim.list_models()
+        for m in models["local"]:
+            if m.downloaded and m.name != "smollm-1.7b-instruct":
+                maxim.delete_model(m.name)
+    """
+    from maxim.models.language.config import normalize_llm_profile
+
+    canonical = normalize_llm_profile(name) or name
+    try:
+        from maxim.models.download import delete_llm
+
+        return delete_llm(canonical)
+    except Exception as e:
+        logger.error("Failed to delete model %r: %s", canonical, e)
+        return False
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # run
 # ─────────────────────────────────────────────────────────────────────────────

@@ -26,10 +26,36 @@ print(report.summary)
 ```python
 models = maxim.list_models()
 for m in models["local"]:
-    print(f"  {m.name} (ctx: {m.context_length})")
+    status = "✓" if m.downloaded else "✗"
+    print(f"  {status} {m.name} (ctx: {m.context_length})")
 for m in models["cloud"]:
-    print(f"  {m.name} (needs {m.api_key_env})")
+    status = "✓" if m.ready else f"needs {m.api_key_env}"
+    print(f"  {status} {m.name}")
 ```
+
+## Download and Delete Models
+
+```python
+# Download a model
+maxim.download_model("qwen2.5-14b-instruct")
+
+# Delete a model to free disk space
+maxim.delete_model("llama-2-13b-chat")
+```
+
+## Model Persistence
+
+Your model choice persists across sessions automatically:
+
+```python
+# First session — sets qwen as default
+maxim.run(model="qwen2.5-14b-instruct")
+
+# Next session — remembers qwen, no need to specify
+maxim.run()  # uses qwen2.5-14b-instruct
+```
+
+From the CLI, `maxim --llm qwen2.5-14b-instruct` persists the same way.
 
 ## Run a Simulation
 

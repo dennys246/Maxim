@@ -92,11 +92,16 @@ Remaining enhancements tracked in [docs/plans/future_plans.md](docs/plans/future
 ## Key Commands
 
 ```bash
-# Run with local LLM
-maxim --language-model mistral-7b
+# Run with local LLM (persists across sessions)
+maxim --llm mistral-7b
 
 # Run with Claude (requires ANTHROPIC_API_KEY)
-maxim --language-model claude-sonnet
+maxim --llm claude-sonnet
+
+# Model management
+maxim --list-models                          # Show available models + download status
+maxim --delete-model llama-2-13b-chat        # Free disk space
+python -m maxim.models.download --llm qwen2.5-14b-instruct  # Download a model
 
 # Generative campaign (default — goal string triggers narrative arc)
 maxim --sim "test memory recall under interference"
@@ -481,6 +486,11 @@ maxim.connect("reachy_mini")                                    # robot connecti
 report = maxim.diagnose()                                       # doctor checks
 state = maxim.observe("memory")                                 # bio-subsystem introspection
 maxim.introspect("causal")                                      # alias for observe
+
+# Model management
+models = maxim.list_models()                                    # shows downloaded/ready status
+maxim.download_model("qwen2.5-14b-instruct")                   # download a GGUF
+maxim.delete_model("llama-2-13b-chat")                          # free disk space
 
 # Expanded verbs (buildout)
 maxim.campaign("scenarios/campaigns/heist_v1.yaml")             # DM campaign runner

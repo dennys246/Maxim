@@ -47,7 +47,9 @@ Top-level functions for common operations. All heavy imports are deferred.
 | `diagnose(peer, api_key)` | Environment diagnostics | `DiagnosticReport` |
 | `observe(subsystem, keyword, limit)` | Query cognitive state | `dict` |
 | `introspect(...)` | Alias for `observe()` | `dict` |
-| `list_models()` | Available LLM profiles | `dict[str, list[ModelInfo]]` |
+| `list_models()` | Available LLM profiles (with download/ready status) | `dict[str, list[ModelInfo]]` |
+| `download_model(name)` | Download a local LLM model | `bool` |
+| `delete_model(name)` | Delete a downloaded model to free disk space | `bool` |
 
 ### Simulation & Research Verbs
 

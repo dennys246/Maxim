@@ -623,7 +623,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"\n═══ Active: {current} ═══")
         print("\nSet model: maxim --llm <model-name>")
         print("Download:  python -m maxim.models.download --llm <model-name>")
-        print("Persist:   export MAXIM_LLM_PROFILE=<model-name>")
+        print("Delete:    maxim --delete-model <model-name>")
+        return 0
+
+    # Delete a downloaded model if requested
+    delete_model_name = getattr(args, "delete_model", None)
+    if delete_model_name:
+        from maxim.models.language.config import normalize_llm_profile
+
+        canonical = normalize_llm_profile(delete_model_name) or delete_model_name
+        from maxim.models.download import delete_llm
+
+        if delete_llm(canonical):
+            print("Done.")
+        else:
+            print("\nAvailable local models: python -m maxim.models.download --list")
         return 0
 
     # Clear Python cache if requested

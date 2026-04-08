@@ -35,6 +35,7 @@ _API_VERBS = frozenset(
         "tool",
         "list_models",
         "download_model",
+        "delete_model",
         # (get_session/list_sessions removed — use maxim.load.session/sessions)
     }
 )

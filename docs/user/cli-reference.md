@@ -34,7 +34,9 @@ maxim [OPTIONS]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--language-model` | str | None | LLM profile: `smollm-1.7b`, `mistral-7b`, `phi3-mini`, `llama3-8b`, `qwen2-7b` |
+| `--language-model`, `--llm` | str | None | LLM profile (e.g., `mistral-7b`, `qwen2.5-14b-instruct`, `claude-sonnet`). Persists across sessions. |
+| `--list-models` | bool | `False` | List all available models with download/key status and exit |
+| `--delete-model` | str | None | Delete a downloaded local model to free disk space |
 | `--prompt-profile` | str | `standard` | Prompt optimization (legacy; per-mode config in `llm.json` preferred) |
 | `--tts` | bool | `False` | Enable text-to-speech |
 | `--tts-model` | str | `en_US-lessac-medium` | TTS voice model |

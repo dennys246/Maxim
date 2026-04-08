@@ -289,6 +289,50 @@ def download_llm(
     return download_file(model_info["url"], dest_path, model_info["filename"])
 
 
+def delete_llm(
+    model_name: str,
+    models_dir: str | Path | None = None,
+) -> bool:
+    """Delete a downloaded LLM model to free disk space.
+
+    Args:
+        model_name: Name of the model to delete.
+        models_dir: Directory where models are stored.
+
+    Returns:
+        True if the file was deleted, False if not found or on error.
+    """
+    if models_dir is None:
+        models_dir = _llm_dir()
+    models_dir = Path(models_dir)
+
+    # Try the download registry first (exact filename)
+    if model_name in LLM_MODELS:
+        dest_path = models_dir / LLM_MODELS[model_name]["filename"]
+        if dest_path.is_file():
+            size_gb = dest_path.stat().st_size / (1024 ** 3)
+            dest_path.unlink()
+            print(f"Deleted {model_name}: {dest_path.name} ({size_gb:.1f} GB freed)")
+            return True
+
+    # Fallback: try resolving via build_model_path (handles case-insensitive matching)
+    try:
+        from maxim.models.language.config import load_llm_config
+
+        cfg = load_llm_config(profile_override=model_name)
+        model_path = Path(getattr(cfg, "model_path", "") or "")
+        if model_path.is_file():
+            size_gb = model_path.stat().st_size / (1024 ** 3)
+            model_path.unlink()
+            print(f"Deleted {model_name}: {model_path.name} ({size_gb:.1f} GB freed)")
+            return True
+    except Exception:
+        pass
+
+    print(f"Model not found on disk: {model_name}")
+    return False
+
+
 def download_tts(
     model_name: str = DEFAULT_TTS,
     models_dir: str | Path | None = None,
