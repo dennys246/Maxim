@@ -251,8 +251,17 @@ class DMRuntime:
         """Build the narrative text for an encounter.
 
         Combines scene text with NPC dialogue hints based on current flags.
+        When entities are instantiated (via init_entities), includes live
+        sensor state so the agent perceives the actual game state — not
+        just the static scene text.
         """
         parts = [encounter.scene]
+
+        # Add live entity sensor state if SceneState is active
+        if self._scene and self._entity_registry:
+            entity_state = self._format_entity_state(encounter)
+            if entity_state:
+                parts.append(f"\n[Game State]\n{entity_state}")
 
         # Add NPC dialogue based on current flags
         for npc_name in encounter.active_npcs:
@@ -277,6 +286,56 @@ class DMRuntime:
             parts.append(f"\n\nWhat do you do? Options: {choices_str}")
 
         return "\n".join(parts)
+
+    def _format_entity_state(self, encounter: EncounterDef) -> str:
+        """Format live entity sensor values for the stimulus.
+
+        Reads scalar sensors from active NPCs and world objects,
+        presenting them as observable game state the agent can perceive.
+        Only includes visible sensors (not hidden ones).
+        """
+        lines: list[str] = []
+
+        for npc_name in encounter.active_npcs:
+            entity = self._entity_registry.get(npc_name)
+            if entity is None:
+                continue
+            sensor_parts = []
+            for sensor_name, sensor in getattr(entity, "sensors", {}).items():
+                # Skip hidden sensors
+                vis = getattr(sensor, "_visibility", None)
+                if vis == "hidden":
+                    continue
+                try:
+                    reading = sensor.read()
+                    val = reading.value if hasattr(reading, "value") else reading
+                    if isinstance(val, (int, float)):
+                        sensor_parts.append(f"{sensor_name}={val:.1f}" if isinstance(val, float) else f"{sensor_name}={val}")
+                except Exception:
+                    pass
+            if sensor_parts:
+                lines.append(f"  {npc_name}: {', '.join(sensor_parts)}")
+
+        for obj_name in encounter.world_objects:
+            entity = self._entity_registry.get(obj_name)
+            if entity is None:
+                continue
+            sensor_parts = []
+            for sensor_name, sensor in getattr(entity, "sensors", {}).items():
+                vis = getattr(sensor, "_visibility", None)
+                if vis == "hidden":
+                    continue
+                try:
+                    reading = sensor.read()
+                    val = reading.value if hasattr(reading, "value") else reading
+                    if isinstance(val, (int, float)):
+                        sensor_parts.append(f"{sensor_name}={val:.1f}" if isinstance(val, float) else f"{sensor_name}={val}")
+                except Exception:
+                    pass
+            if sensor_parts:
+                lines.append(f"  {obj_name}: {', '.join(sensor_parts)}")
+
+        return "\n".join(lines)
 
     def _deliver_and_wait(self, stimulus: str) -> dict[str, Any]:
         """Send stimulus to AUT via bridge and wait for response."""

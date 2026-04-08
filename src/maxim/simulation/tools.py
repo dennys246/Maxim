@@ -451,8 +451,55 @@ class InspectAUTTool(Tool):
                 energy_registry=energy_registry,
             )
 
+    # Common parameter name aliases that Mistral-7B and similar models
+    # hallucinate instead of the correct "query" parameter.
+    _PARAM_ALIASES = {
+        "memory_sections": "query",
+        "memory_address": "query",
+        "memory_addresses": "query",
+        "section": "query",
+        "subsystem": "query",
+        "detail": "query",
+    }
+
     def execute(self, **kwargs: Any) -> ToolOutput:
         query = kwargs.get("query", "")
+
+        # Normalize hallucinated parameter names → "query"
+        if not query:
+            for alias, target in self._PARAM_ALIASES.items():
+                if alias in kwargs:
+                    val = kwargs[alias]
+                    if isinstance(val, str):
+                        query = val
+                    elif isinstance(val, list) and val:
+                        query = val[0] if isinstance(val[0], str) else str(val[0])
+                    break
+
+        # If query is still empty, try to infer from any string param
+        if not query:
+            for k, v in kwargs.items():
+                if k != "params" and isinstance(v, str) and v:
+                    query = v
+                    break
+
+        # Map common aliases to actual query names
+        query_aliases = {
+            "memory": "memory_recall",
+            "memories": "memory_recall",
+            "recent": "memory_recall",
+            "recall": "memory_recall",
+            "causal": "causal_links",
+            "links": "causal_links",
+            "pain": "pain_history",
+            "stats": "system_stats",
+            "energy": "energy_status",
+            "concepts": "concept_query",
+            "temporal": "temporal_patterns",
+            "default": "system_stats",
+        }
+        query = query_aliases.get(query.lower(), query) if query else "system_stats"
+
         params = kwargs.get("params") or {}
 
         if query not in self._introspector.ALLOWED_QUERIES:

@@ -993,10 +993,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             # (all_results / any_failed removed — unused; batch scenario
             # result aggregation is handled by ScenarioRunner directly)
 
-            from maxim.simulation.sim_logger import enable_sim_logging, disable_sim_logging
+            from maxim.simulation.sim_logger import enable_sim_logging, disable_sim_logging, set_show_channels
 
             sim_log_path = str(sim_workspace / f"sim_log_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
             enable_sim_logging(log_path=sim_log_path, debug=_sim_debug)
+
+            # Apply --show channel filter
+            show_channels = getattr(args, "show_channels", None)
+            if show_channels:
+                set_show_channels(show_channels)
 
             for scenario_file in scenario_files:
                 if _sim_debug:

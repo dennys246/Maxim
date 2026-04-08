@@ -420,6 +420,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "atl/semantic/concepts (concept memory), scn/temporal/clock (time rhythms), "
         "all (everything). Also settable via MAXIM_HIPPO_TRACE=1, MAXIM_LANE_TRACE=1.",
     )
+    parser.add_argument(
+        "--show",
+        dest="show_channels",
+        default=None,
+        metavar="CHANNELS",
+        help="Filter simulation output by channel. Comma-separated: "
+        "bio (hippocampus/NAc/SCN/ATL/pain/fear), exec (tool execution/LLM), "
+        "sim (percepts/scenes/NPC/choices), memory (hippo/NAc/SCN/ATL), "
+        "safety (fear/pain), all (everything, default). "
+        "Example: --show bio,exec",
+    )
     # ── Benchmark ───────────────────────────────────────────────────────
     parser.add_argument(
         "--benchmark",

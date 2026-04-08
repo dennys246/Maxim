@@ -52,6 +52,47 @@ _use_color = True
 _log_file = None
 _log_records: list[dict[str, Any]] = []
 _debug_mode = False
+_show_channels: set[str] | None = None  # None = show all, set = filter
+
+# Channel → subsystem mapping for --show flag
+_CHANNEL_MAP: dict[str, set[str]] = {
+    "bio": {"HIPPOCAMPUS", "NAc", "SCN", "ATL", "FEAR", "PAIN", "MOTOR", "SENSORY", "BODY_STATE"},
+    "exec": {"EXEC", "PIPELINE"},
+    "sim": {"PERCEPT", "SCENE", "NPC", "CHOICE"},
+    "memory": {"HIPPOCAMPUS", "NAc", "SCN", "ATL"},
+    "safety": {"FEAR", "PAIN"},
+}
+
+
+def set_show_channels(channels: str | None) -> None:
+    """Set which subsystem channels to show in terminal output.
+
+    Args:
+        channels: Comma-separated channel names (``"bio"``, ``"exec"``,
+            ``"sim"``, ``"memory"``, ``"safety"``, ``"all"``).
+            ``None`` or ``"all"`` shows everything.
+
+    Examples::
+
+        set_show_channels("bio")          # Only bio-system events
+        set_show_channels("bio,exec")     # Bio + execution
+        set_show_channels("all")          # Everything
+        set_show_channels(None)           # Everything (default)
+    """
+    global _show_channels
+    if channels is None or channels.strip().lower() == "all":
+        _show_channels = None
+        return
+
+    allowed: set[str] = set()
+    for ch in channels.split(","):
+        ch = ch.strip().lower()
+        if ch in _CHANNEL_MAP:
+            allowed |= _CHANNEL_MAP[ch]
+        else:
+            # Treat as a raw subsystem name (e.g., "HIPPOCAMPUS")
+            allowed.add(ch.upper())
+    _show_channels = allowed if allowed else None
 
 
 def _cleanup_log_file() -> None:
@@ -175,6 +216,10 @@ def sim_log(subsystem: str, message: str, data: dict[str, Any] | None = None) ->
 
     # Terminal output — skip debug-only subsystems unless debug mode
     if subsystem in _DEBUG_ONLY_SUBSYSTEMS and not _debug_mode:
+        return
+
+    # Channel filter — skip subsystems not in the active show set
+    if _show_channels is not None and subsystem not in _show_channels:
         return
 
     if _use_color:
