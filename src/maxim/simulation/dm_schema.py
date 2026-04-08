@@ -245,7 +245,10 @@ def load_campaign(
         if template_ref and encounter_library:
             template = encounter_library.get(template_ref)
             template_enc = template.get("encounter", template)
-            # Campaign fields override template fields (shallow per-field)
+            # Campaign fields override template at field level (intentionally
+            # shallow — a campaign `dice: {}` clears template dice, a campaign
+            # `choices: [...]` replaces template choices.  This differs from
+            # component inheritance which uses deep_merge for sensor overlays).
             merged = dict(template_enc)
             for k, v in enc_raw.items():
                 if k != "template":  # Don't include the template ref itself

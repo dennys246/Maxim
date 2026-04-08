@@ -9,6 +9,15 @@ from unittest import mock
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _reset_path_caches():
+    """Reset path caches between tests so env var mocks take effect."""
+    from maxim.utils.paths import _reset_caches
+    _reset_caches()
+    yield
+    _reset_caches()
+
+
 class TestBundledData:
     """Tests for bundled (read-only) data paths."""
 

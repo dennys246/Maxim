@@ -260,6 +260,7 @@ class ComponentRegistry:
         with self._lock:
             self._index[ref] = info
             self._spec_cache[ref] = spec
+            self._file_map[ref] = Path(source_path)
 
     # -- private ------------------------------------------------------------
 

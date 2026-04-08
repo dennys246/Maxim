@@ -61,6 +61,7 @@ class AgentPool:
         self._agents: dict[str, AgentInstance] = {}
         self._lock = threading.RLock()
         self._max_workers = max_workers
+        self._executor: ThreadPoolExecutor | None = None
 
         # Message bus for inter-agent communication
         if bus is not None:
@@ -147,10 +148,14 @@ class AgentPool:
         instance = self.get_agent(agent_id)
 
         try:
-            # Store percept in hippocampus
+            # Store percept in hippocampus (lightweight observation capture)
             if instance.hippocampus is not None:
                 try:
-                    instance.hippocampus.capture_observation(percept)
+                    # Hippocampus.capture() requires Perception/Context objects.
+                    # For NPC turns we store the raw text as a memory note instead.
+                    instance.hippocampus.store_raw(
+                        {"type": "npc_percept", "text": percept[:500], "agent_id": agent_id}
+                    )
                 except Exception:
                     pass
 
@@ -160,7 +165,15 @@ class AgentPool:
             # Record in NAc if learning enabled
             if instance.nac is not None and response:
                 try:
-                    instance.nac.observe("npc_respond", "response_generated", valence=0.5)
+                    from maxim.decisions.nac import Valence
+                    instance.nac.observe(
+                        event_type="npc_respond",
+                        event_signature=f"{agent_id}:respond",
+                        outcome_type="response",
+                        outcome_signature="generated",
+                        outcome_valence=Valence.NEUTRAL,
+                        delta_seconds=0.0,
+                    )
                 except Exception:
                     pass
 
@@ -203,19 +216,21 @@ class AgentPool:
                     results[agent_id] = self.run_turn(agent_id, percept)
             return results
 
-        # Concurrent execution via thread pool
-        with ThreadPoolExecutor(max_workers=min(self._max_workers, len(percepts))) as pool:
-            futures = {
-                pool.submit(self.run_turn, agent_id, percept): agent_id
-                for agent_id, percept in percepts.items()
-                if agent_id in self._agents
-            }
-            for future in as_completed(futures):
-                agent_id = futures[future]
-                try:
-                    results[agent_id] = future.result()
-                except Exception as e:
-                    results[agent_id] = TurnResult(agent_id=agent_id, error=str(e))
+        # Concurrent execution via persistent thread pool
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
+
+        futures = {
+            self._executor.submit(self.run_turn, agent_id, percept): agent_id
+            for agent_id, percept in percepts.items()
+            if agent_id in self._agents
+        }
+        for future in as_completed(futures):
+            agent_id = futures[future]
+            try:
+                results[agent_id] = future.result()
+            except Exception as e:
+                results[agent_id] = TurnResult(agent_id=agent_id, error=str(e))
 
         return results
 
@@ -259,6 +274,14 @@ class AgentPool:
                 self.remove(aid)
             except Exception as e:
                 log.warning("Failed to remove agent '%s' during shutdown: %s", aid, e)
+
+        # Shut down the persistent thread pool
+        if self._executor is not None:
+            try:
+                self._executor.shutdown(wait=False)
+            except Exception:
+                pass
+            self._executor = None
 
         log.info("AgentPool shutdown complete")
 

@@ -28,14 +28,21 @@ from pathlib import Path
 # Bundled data (read-only, shipped in wheel)
 # ---------------------------------------------------------------------------
 
+_bundled_data_cache: Path | None = None
+
+
 def bundled_data() -> Path:
     """Return path to package-bundled data directory (read-only defaults).
 
     This resolves to ``src/maxim/_data/`` during development and to the
     installed package's ``_data/`` directory after ``pip install``.
+    Result is cached after first call.
     """
-    import importlib.resources
-    return Path(str(importlib.resources.files("maxim") / "_data"))
+    global _bundled_data_cache
+    if _bundled_data_cache is None:
+        import importlib.resources
+        _bundled_data_cache = Path(str(importlib.resources.files("maxim") / "_data"))
+    return _bundled_data_cache
 
 
 def bundled_templates() -> Path:
@@ -47,15 +54,31 @@ def bundled_templates() -> Path:
 # User data (read-write, created on first use)
 # ---------------------------------------------------------------------------
 
+_data_home_cache: Path | None = None
+
+
 def data_home() -> Path:
     """Return user data directory, creating it on first access.
 
     Default: ``~/.maxim``.  Override with ``$MAXIM_DATA_HOME``.
+    Result is cached after first call.  Call :func:`_reset_caches`
+    to clear (used by tests that mock ``MAXIM_DATA_HOME``).
     """
+    global _data_home_cache
+    if _data_home_cache is not None:
+        return _data_home_cache
     raw = os.environ.get("MAXIM_DATA_HOME", "")
     base = Path(raw) if raw else Path.home() / ".maxim"
     base.mkdir(parents=True, exist_ok=True)
+    _data_home_cache = base
     return base
+
+
+def _reset_caches() -> None:
+    """Clear path caches.  Used by tests that mock ``MAXIM_DATA_HOME``."""
+    global _bundled_data_cache, _data_home_cache
+    _bundled_data_cache = None
+    _data_home_cache = None
 
 
 def user_config() -> Path:

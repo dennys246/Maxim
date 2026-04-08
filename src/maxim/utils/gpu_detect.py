@@ -15,12 +15,14 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 
 logger = logging.getLogger(__name__)
 
 _BLACKWELL_CACHE_ENV = "_MAXIM_BLACKWELL_CHECKED"
 
 _detected: bool | None = None  # None = not yet checked
+_detected_lock = threading.Lock()
 
 
 def _is_hide_cuda() -> bool:
@@ -41,61 +43,68 @@ def _apply_guards(*, hide_cuda: bool) -> None:
 def ensure_blackwell_guards() -> bool:
     """Detect Blackwell GPU and apply guards if needed.  Idempotent.
 
+    Thread-safe: double-checked locking pattern.
     Returns True if a Blackwell GPU was detected.
     """
     global _detected
 
+    # Fast path — no lock once detection is complete
     if _detected is not None:
         return _detected
 
-    hide_cuda = _is_hide_cuda()
-    cached = os.environ.get(_BLACKWELL_CACHE_ENV)
+    with _detected_lock:
+        # Re-check under lock (another thread may have completed detection)
+        if _detected is not None:
+            return _detected
 
-    if cached == "yes":
-        _detected = True
-        _apply_guards(hide_cuda=hide_cuda)
-        return True
+        hide_cuda = _is_hide_cuda()
+        cached = os.environ.get(_BLACKWELL_CACHE_ENV)
 
-    if cached == "no":
+        if cached == "yes":
+            _detected = True
+            _apply_guards(hide_cuda=hide_cuda)
+            return True
+
+        if cached == "no":
+            _detected = False
+            return False
+
+        # No cache — run detection
         _detected = False
-        return False
-
-    # No cache — run detection
-    _detected = False
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            timeout=0.5,
-        )
-        if result.returncode == 0:
-            gpu_names = result.stdout.strip().lower()
-            if "rtx 50" in gpu_names or "5080" in gpu_names or "5090" in gpu_names:
-                _detected = True
-                _apply_guards(hide_cuda=hide_cuda)
-                os.environ[_BLACKWELL_CACHE_ENV] = "yes"
-                if hide_cuda:
-                    print(
-                        "Blackwell GPU detected - CPU-only mode (MAXIM_BLACKWELL_HIDE_CUDA=1)",
-                        file=sys.stderr,
-                    )
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                timeout=0.5,
+            )
+            if result.returncode == 0:
+                gpu_names = result.stdout.strip().lower()
+                if "rtx 50" in gpu_names or "5080" in gpu_names or "5090" in gpu_names:
+                    _detected = True
+                    _apply_guards(hide_cuda=hide_cuda)
+                    os.environ[_BLACKWELL_CACHE_ENV] = "yes"
+                    if hide_cuda:
+                        print(
+                            "Blackwell GPU detected - CPU-only mode (MAXIM_BLACKWELL_HIDE_CUDA=1)",
+                            file=sys.stderr,
+                        )
+                    else:
+                        print(
+                            "Blackwell GPU detected - GStreamer CUDA disabled, "
+                            "LLM CUDA kept (set MAXIM_BLACKWELL_HIDE_CUDA=1 for CPU-only)",
+                            file=sys.stderr,
+                        )
                 else:
-                    print(
-                        "Blackwell GPU detected - GStreamer CUDA disabled, "
-                        "LLM CUDA kept (set MAXIM_BLACKWELL_HIDE_CUDA=1 for CPU-only)",
-                        file=sys.stderr,
-                    )
+                    os.environ[_BLACKWELL_CACHE_ENV] = "no"
             else:
                 os.environ[_BLACKWELL_CACHE_ENV] = "no"
-        else:
+        except subprocess.TimeoutExpired:
             os.environ[_BLACKWELL_CACHE_ENV] = "no"
-    except subprocess.TimeoutExpired:
-        os.environ[_BLACKWELL_CACHE_ENV] = "no"
-    except Exception:
-        pass  # nvidia-smi not found
+        except Exception:
+            pass  # nvidia-smi not found
 
-    return _detected
+        return _detected
 
 
 def is_blackwell_detected() -> bool:

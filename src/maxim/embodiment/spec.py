@@ -88,14 +88,21 @@ def resolve_entity_spec(
     if isinstance(spec, str):
         if registry is None:
             raise ValueError(f"Entity ref '{spec}' requires a ComponentRegistry")
-        resolved = registry.get(spec)
+        try:
+            resolved = registry.get(spec)
+        except KeyError as e:
+            raise KeyError(f"Failed to resolve entity ref '{spec}': {e}") from e
         return resolved.get("entity", resolved)
 
     # Dict with ref key: { ref: "npcs/guard", overrides: { name: "captain" } }
     if isinstance(spec, dict) and "ref" in spec:
+        ref_str = spec["ref"]
         if registry is None:
-            raise ValueError(f"Entity ref '{spec['ref']}' requires a ComponentRegistry")
-        resolved = registry.get(spec["ref"])
+            raise ValueError(f"Entity ref '{ref_str}' requires a ComponentRegistry")
+        try:
+            resolved = registry.get(ref_str)
+        except KeyError as e:
+            raise KeyError(f"Failed to resolve entity ref '{ref_str}': {e}") from e
         entity_spec = resolved.get("entity", resolved)
         overrides = spec.get("overrides")
         if overrides:
