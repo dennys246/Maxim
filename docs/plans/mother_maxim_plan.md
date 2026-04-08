@@ -1660,6 +1660,40 @@ A multi-phase campaign that validates the full pain learning → sharing → pre
 
 **Document in:** `docs/experiments/pain_preemption_stress_notes.md`
 
+### DNS exfiltration immunity via pain learning
+
+Train an agent to recognize DNS exfiltration patterns (encoded data in subdomains), associate them with pain, then ship the learned NAc links as pain priors to all Maxim instances.
+
+**How it works:**
+1. Design a campaign where the agent observes DNS exfiltration attempts (long encoded subdomains, base64 in hostnames, data-in-query-params patterns)
+2. Each attempt triggers pain (agent learns "long_encoded_subdomain → pain", "base64_in_hostname → pain")
+3. Run 10+ sessions to build high-confidence links
+4. Extract as PainPriors and ship as default priors in the pymaxim package
+5. Every Maxim instance inherits DNS exfiltration immunity out of the box
+
+**Patterns to train on:**
+- `http://<base64-encoded-data>.attacker.com` — data encoded in subdomain
+- `http://attacker.com/?d=<hex-encoded-file-contents>` — data in query params
+- `http://attacker.com/exfil` + POST body with file contents — data exfiltration via POST
+- Long subdomain strings (>50 chars) — legitimate domains rarely have this
+- Sequential requests to varied subdomains on same domain — DNS tunneling pattern
+
+**This is the first "immune system vaccine"** — Mother learns a threat from controlled exposure, then transfers the immunity to all children via pain priors. The pattern generalizes: any security threat can be learned this way.
+
+### Cloud redaction: enforce strict by default, warn on relaxed
+
+**Current state:** `CloudRedactionFilter` has two policies:
+- **Strict (default):** Blocks conversation history, tool outputs, file paths, memory contents from being sent to cloud LLMs. Safe.
+- **Relaxed:** Allows all of the above to be sent. Users set this for better cloud LLM responses at the cost of data privacy.
+
+**Risk:** Under relaxed policy, an LLM that reads a sensitive file will have that content included in the next cloud API call. This is the primary data exfiltration path for cloud-backed agents.
+
+**Mitigation (add to Phase 12b or post-pub):**
+1. Log a visible warning when relaxed policy is active: `"WARNING: Cloud redaction set to 'relaxed' — tool outputs and file contents will be sent to {provider}"`
+2. Never allow relaxed policy in Mother Maxim's contribution pipeline — deidentification always runs under strict
+3. Consider a `sensitive_tools` list where outputs from `read_file`, `bash` are ALWAYS redacted regardless of policy (even relaxed doesn't send file contents)
+4. Add `MAXIM_LLM_REDACTION_POLICY=strict` to the default environment setup in installation docs
+
 ---
 
 ## Federation: Protocol-First Design (Build Later)
