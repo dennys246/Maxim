@@ -1,21 +1,11 @@
 import os
 import threading
 
-# CRITICAL: Set multiprocessing start method to 'spawn' BEFORE any other imports.
-# On Linux, the default 'fork' method causes GStreamer segfaults because:
-# - Thread pools become invalid when accessed from different processes
-# - Mutexes become corrupted across process boundaries
-# - Memory allocators experience concurrent access corruption
-# See: https://www.blog.neudeep.com/howto/fixing-gstreamer-segmentation-faults-in-python-multiprocessing/
-import multiprocessing as mp
+# NOTE: Import-time side effects (mp.set_start_method, GPU detection,
+# PYOPENGL_PLATFORM) moved to _setup_hardware_env() — called from
+# Maxim.__init__() so that `import maxim.conscience.selfy` has no
+# subprocess or env-mutation side effects.
 
-try:
-    mp.set_start_method("spawn", force=True)
-except RuntimeError:
-    pass  # Already set, ignore
-
-# Detect Blackwell GPU and disable GStreamer/WebRTC BEFORE any other imports.
-from maxim.utils.gpu_compat import detect_blackwell
 from maxim.utils.thread_manager import ThreadRegistry
 from maxim.utils.response_config import (
     load_key_responses,
@@ -23,10 +13,6 @@ from maxim.utils.response_config import (
 )
 from maxim.modes.state_manager import StateManager
 from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
-
-_gpu_state = detect_blackwell()
-_blackwell_detected = _gpu_state.blackwell_detected
-_original_cuda_devices = _gpu_state.original_cuda_devices
 
 import json
 import time
@@ -52,7 +38,42 @@ from maxim.hardware import RobotRegistry
 from maxim.hardware.reachy import ReachyMiniController
 from maxim.hardware.simulation import SimulatedController
 
-os.environ["PYOPENGL_PLATFORM"] = "egl"
+# Module-level state — populated lazily by _setup_hardware_env()
+_blackwell_detected = False
+_original_cuda_devices: str | None = None
+_hardware_env_ready = False
+
+
+def _setup_hardware_env() -> None:
+    """Apply hardware environment guards (idempotent).
+
+    - Sets multiprocessing start method to 'spawn' (avoids GStreamer segfaults)
+    - Detects Blackwell GPU and applies GStreamer CUDA guards
+    - Sets PYOPENGL_PLATFORM=egl for headless OpenGL
+
+    Called from Maxim.__init__() — NOT at import time.
+    """
+    global _blackwell_detected, _original_cuda_devices, _hardware_env_ready
+    if _hardware_env_ready:
+        return
+
+    # 1. Multiprocessing start method (must be before any pool/process creation)
+    import multiprocessing as mp
+    try:
+        mp.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass  # Already set
+
+    # 2. Blackwell GPU detection + GStreamer guards
+    from maxim.utils.gpu_compat import detect_blackwell
+    gpu_state = detect_blackwell()
+    _blackwell_detected = gpu_state.blackwell_detected
+    _original_cuda_devices = gpu_state.original_cuda_devices
+
+    # 3. OpenGL platform for headless rendering
+    os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
+
+    _hardware_env_ready = True
 
 # Mixin classes (compartmentalized from this file)
 from maxim.conscience.connection import ConnectionMixin
@@ -78,7 +99,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         robot_name: str = "reachy_mini",
         timeout: float = 30.0,
         media_backend: str = "default",  # avoid WebRTC/GStreamer if signalling is down
-        home_dir: str = "data/",
+        home_dir: str = "",
         epochs: int | None = None,
         *,
         verbosity: int = 0,
@@ -92,7 +113,9 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         simulation: bool = False,
         robot_id: str | None = None,
     ):
-        #
+        # Apply hardware env guards (mp start method, GPU detection, OpenGL)
+        _setup_hardware_env()
+
         self.verbosity = int(verbosity or 0)
         if verbose and self.verbosity <= 0:
             self.verbosity = 1
@@ -142,6 +165,9 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         }
         self.start = time.time()
         self.duration = 1.0
+        if not home_dir:
+            from maxim.utils.paths import data_home
+            home_dir = str(data_home())
         self.home_dir = home_dir
 
         # Load Matplotlib before Reachy/GStreamer so ft2font binds to stable libs.
