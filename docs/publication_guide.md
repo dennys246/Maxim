@@ -60,15 +60,16 @@ Known items from Phase 12b that may be blocking:
 
 | Item | Status | Blocking? |
 |------|--------|-----------|
-| `maxim.run()` TypeError (api.py passes wrong kwarg to LLMWorker) | Open | **YES** — flagship API call is broken |
+| `maxim.run()` TypeError (api.py passes wrong kwarg to LLMWorker) | **FIXED** (2026-04-08) | No |
 | cv2 module-level imports | **FIXED** | No |
-| Error hierarchy exported | **FIXED** | No |
+| Error hierarchy exported | **FIXED** (2026-04-08, 7 category-level + RobotController) | No |
 | Security hardening (12a) | **FIXED** | No |
-| Error honesty audit (639 except blocks) | ~60 need fixing | **Maybe** — silent failures in API surface |
+| Error honesty audit (API surface: 14 silent catches) | **FIXED** (2026-04-08, security inversion + 13 warnings added) | No |
 | `--list-models` CLI flag | Not started | No — nice-to-have |
-| campaign()/research() return stubs | Open | **Maybe** — API works but returns empty |
-
-**Decision:** Fix the `maxim.run()` TypeError before publishing. The others can ship in 0.2.1.
+| campaign()/research()/benchmark() return stubs | **FIXED** (2026-04-08, emit UserWarning with CLI guidance) | No |
+| Hippocampus threading (queue race + flush polling) | **FIXED** (2026-04-08) | No |
+| Composable API (create/load/Session/Report) | **SHIPPED** (2026-04-08, 83 tests) | No |
+| Persistence fixes (NAc/SCN/AG atomic writes, Entity serialization) | **FIXED** (2026-04-08, 19 tests) | No |
 
 ### 5. Verify version consistency
 

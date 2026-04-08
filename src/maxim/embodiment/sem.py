@@ -261,6 +261,177 @@ class Entity:
         """Get visibility for a sensor or affordance. Default: 'visible'."""
         return self.metadata.get("visibility", {}).get(name, "visible")
 
+    # -- serialization ------------------------------------------------------
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize entity tree to a dict suitable for YAML/JSON persistence.
+
+        Captures the full entity tree including sensors (metadata only,
+        not live backends), modulators (affordance schemas), children,
+        vital metrics, failure modes, and metadata.
+
+        Round-trips with ``Entity.from_dict()``.
+        """
+        def _sensor_dict(s: Any) -> dict[str, Any]:
+            d: dict[str, Any] = {"name": s.name}
+            if hasattr(s, "unit"):
+                d["unit"] = s.unit
+            if hasattr(s, "reading_schema"):
+                d["reading_schema"] = s.reading_schema
+            if hasattr(s, "_initial"):
+                d["initial"] = s._initial
+            return d
+
+        def _modulator_dict(m: Any) -> dict[str, Any]:
+            d: dict[str, Any] = {"name": m.name}
+            if hasattr(m, "affordances"):
+                affs = {}
+                for aff_name, schema in m.affordances.items():
+                    affs[aff_name] = {
+                        "description": getattr(schema, "description", ""),
+                        "timeout": getattr(schema, "timeout", 30.0),
+                    }
+                d["affordances"] = affs
+            return d
+
+        def _trigger_dict(t: Any) -> dict[str, Any]:
+            return {
+                "field": t.field,
+                "op": t.op,
+                "value": t.value,
+                "pain": t.pain,
+            }
+
+        def _failure_dict(fm: Any) -> dict[str, Any]:
+            d: dict[str, Any] = {"name": fm.name}
+            if fm.composes:
+                d["composes"] = list(fm.composes)
+            if fm.triggers:
+                d["triggers"] = [_trigger_dict(t) for t in fm.triggers]
+            d["trigger_mode"] = fm.trigger_mode
+            d["pain_intensity"] = fm.pain_intensity
+            d["persistent"] = fm.persistent
+            if fm.recovery_condition:
+                d["recovery_condition"] = _trigger_dict(fm.recovery_condition)
+            return d
+
+        result: dict[str, Any] = {
+            "name": self.name,
+            "entity_type": self.entity_type,
+        }
+        if self.sensors:
+            result["sensors"] = {k: _sensor_dict(v) for k, v in self.sensors.items()}
+        if self.modulators:
+            result["modulators"] = {k: _modulator_dict(v) for k, v in self.modulators.items()}
+        if self.metadata:
+            result["metadata"] = dict(self.metadata)
+        if self.vital_metrics:
+            result["vital_metrics"] = dict(self.vital_metrics)
+        if self.failure_modes:
+            result["failure_modes"] = [_failure_dict(fm) for fm in self.failure_modes]
+        if self.children:
+            result["children"] = [child.to_dict() for child in self.children]
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any], parent: "Entity | None" = None) -> "Entity":
+        """Reconstruct an Entity tree from a dict (reverse of ``to_dict()``).
+
+        Sensors and modulators are restored as ``SpecSensor``/``SpecModulator``
+        stubs from ``maxim.embodiment.spec``.  These hold metadata and can
+        read from ``vital_metrics``.  Attach live backends (LLM, hardware)
+        with ``attach_backends()`` if needed.
+        """
+        entity = cls(
+            name=data["name"],
+            entity_type=data["entity_type"],
+            parent=parent,
+            metadata=data.get("metadata"),
+        )
+        if "vital_metrics" in data:
+            entity.vital_metrics = dict(data["vital_metrics"])
+
+        # Reconstruct sensors as SpecSensor stubs
+        if "sensors" in data:
+            try:
+                from maxim.embodiment.spec import SpecSensor
+                for sname, sdata in data["sensors"].items():
+                    entity.sensors[sname] = SpecSensor(
+                        _name=sdata.get("name", sname),
+                        _entity_name=data["name"],
+                        _unit=sdata.get("unit", ""),
+                        _schema=sdata.get("reading_schema", {"type": "float"}),
+                        _initial=sdata.get("initial"),
+                        _entity_ref=entity,
+                    )
+            except ImportError:
+                pass  # spec module not available — skip sensor reconstruction
+
+        # Reconstruct modulators as SpecModulator stubs
+        if "modulators" in data:
+            try:
+                from maxim.embodiment.spec import SpecModulator
+                for mname, mdata in data["modulators"].items():
+                    affs = {}
+                    for aff_name, aff_data in mdata.get("affordances", {}).items():
+                        affs[aff_name] = AffordanceSchema(
+                            description=aff_data.get("description", ""),
+                            timeout=aff_data.get("timeout", 30.0),
+                        )
+                    entity.modulators[mname] = SpecModulator(
+                        _name=mdata.get("name", mname),
+                        _entity_name=data["name"],
+                        _affordances=affs,
+                    )
+            except ImportError:
+                pass  # spec module not available — skip modulator reconstruction
+
+        # Reconstruct failure modes
+        if "failure_modes" in data:
+            for fm_data in data["failure_modes"]:
+                triggers = []
+                for t in fm_data.get("triggers", []):
+                    triggers.append(FailureTrigger(
+                        field=t["field"], op=t["op"],
+                        value=t["value"], pain=t.get("pain", 0.5),
+                    ))
+                recovery = None
+                if "recovery_condition" in fm_data:
+                    rc = fm_data["recovery_condition"]
+                    recovery = FailureTrigger(
+                        field=rc["field"], op=rc["op"],
+                        value=rc["value"], pain=rc.get("pain", 0.5),
+                    )
+                entity.failure_modes.append(
+                    FailureMode(
+                        name=fm_data.get("name", ""),
+                        composes=fm_data.get("composes", []),
+                        triggers=triggers,
+                        trigger_mode=fm_data.get("trigger_mode", "any"),
+                        pain_intensity=fm_data.get("pain_intensity", 0.5),
+                        persistent=fm_data.get("persistent", False),
+                        recovery_condition=recovery,
+                    )
+                )
+
+        # Reconstruct children recursively
+        for child_data in data.get("children", []):
+            cls.from_dict(child_data, parent=entity)
+        return entity
+
+    def save(self, path: str) -> None:
+        """Save entity tree to a JSON file."""
+        from maxim.utils.atomic_io import atomic_write_json
+        atomic_write_json(path, self.to_dict())
+
+    @classmethod
+    def load(cls, path: str) -> "Entity":
+        """Load entity tree from a JSON file."""
+        import json
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return cls.from_dict(data)
+
     # -- repr ---------------------------------------------------------------
 
     def __repr__(self) -> str:

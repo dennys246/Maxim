@@ -651,38 +651,44 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             queued_at=time.time(),
         )
         try:
-            self._capture_queue.put_nowait(request)
+            self._capture_queue.put(request, timeout=0.1)
         except queue.Full:
+            # Queue full — drop oldest to make room.  The get+put is not
+            # atomic, but the worst case is a dropped item (acceptable)
+            # rather than a crash (unacceptable).
             logger.warning("Hippocampus capture queue full, dropping oldest")
             try:
                 self._capture_queue.get_nowait()
                 self._capture_queue.task_done()
             except queue.Empty:
                 pass
-            self._capture_queue.put_nowait(request)
+            try:
+                self._capture_queue.put_nowait(request)
+            except queue.Full:
+                logger.warning("Hippocampus capture queue still full after drop — item lost")
 
     def flush(self, timeout: float = 10.0) -> bool:
         """Block until all queued captures are processed.
 
         Call before session-end consolidation or final save.
         Returns True if queue drained within timeout.
+
+        Uses the Queue's internal condition variable (``all_tasks_done``)
+        instead of polling ``empty()`` — this is both more reliable and
+        more efficient (no busy-wait).
         """
-        deadline = time.monotonic() + timeout
-        while not self._capture_queue.empty():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                logger.warning(
-                    "Hippocampus flush timed out, %d items remain",
-                    self._capture_queue.qsize(),
-                )
-                return False
-            time.sleep(0.05)
-        # Final check: all task_done() calls completed
+        if self._capture_queue.unfinished_tasks == 0:
+            return True
         with self._capture_queue.all_tasks_done:
-            remaining = max(0, deadline - time.monotonic())
             if self._capture_queue.unfinished_tasks > 0:
-                self._capture_queue.all_tasks_done.wait(timeout=remaining)
-        return self._capture_queue.unfinished_tasks == 0
+                self._capture_queue.all_tasks_done.wait(timeout=timeout)
+        if self._capture_queue.unfinished_tasks > 0:
+            logger.warning(
+                "Hippocampus flush timed out, %d items remain",
+                self._capture_queue.unfinished_tasks,
+            )
+            return False
+        return True
 
     def _capture_worker(self) -> None:
         """Background thread: drain capture queue, process each."""

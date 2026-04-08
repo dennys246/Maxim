@@ -41,6 +41,7 @@ class NACConfig:
     enable_hippocampus_queries: bool = True  # Query Hippocampus for similar episodes
     base_learning_rate: float = 0.2  # Rescorla-Wagner base learning rate
     use_ec_similarity: bool = False  # Phase 3 flag, default OFF
+    persistence_path: str | None = None  # Path for save/load (set by AgentFactory)
 
 
 class NAc:
@@ -812,8 +813,8 @@ class NAc:
                 "total_observations": self._total_observations,
             }
 
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        from maxim.utils.atomic_io import atomic_write_json
+        atomic_write_json(path, data)
 
         logger.info("Saved NAc to %s (%d links)", path, len(self))
 

@@ -1,6 +1,6 @@
 # Python API Reference
 
-Maxim exposes a verb-based Python API for programmatic access to all features.
+Maxim exposes a verb-based Python API for programmatic access to all features, plus a composable object API for power users and researchers.
 
 ## Installation
 
@@ -20,148 +20,410 @@ import maxim
 # Check your environment
 report = maxim.diagnose()
 
-# Run a simulation
-result = maxim.imagine(goal="test memory recall", persona="cooperative")
+# Run a simulation — returns a persistent Session
+session = maxim.imagine(goal="test memory recall", persona="cooperative")
+print(session.id)        # "20260408_143022"
+print(session.turns)     # 12
 
-# Observe agent state after a run
-memories = maxim.observe("memory")
-causal = maxim.observe("causal")
+# Observe agent state from this session
+memories = session.observe("memory")
+causal = session.observe("causal")
 ```
 
-## All Verbs
+---
 
-### Core (shipped in v0.1.0)
+## Verb API (Simple Path)
+
+Top-level functions for common operations. All heavy imports are deferred.
+
+### Core Verbs
 
 | Verb | Purpose | Returns |
 |------|---------|---------|
-| `configure(verbosity, log_file, debug)` | Set logging + tracing | None |
+| `configure(verbosity, log_file, debug, show)` | Set logging + tracing | None |
 | `run(model, goal, headless)` | Run the agentic cycle | None (blocks) |
-| `imagine(goal, persona, scenario, model)` | Run a simulation | `SimulationResult` |
+| `imagine(goal, persona, scenario, model, resume)` | Run a simulation | `Session` |
 | `connect(robot_type, name, config)` | Connect to a robot | `RobotController` |
 | `diagnose(peer, api_key)` | Environment diagnostics | `DiagnosticReport` |
 | `observe(subsystem, keyword, limit)` | Query cognitive state | `dict` |
 | `introspect(...)` | Alias for `observe()` | `dict` |
+| `list_models()` | Available LLM profiles | `dict[str, list[ModelInfo]]` |
 
-### New in v0.2.0
+### Simulation & Research Verbs
 
 | Verb | Purpose | Returns |
 |------|---------|---------|
 | `campaign(path, model, party_mode)` | Run a DM campaign | `CampaignResult` |
 | `benchmark(models, suite, runs)` | Multi-model comparison | `BenchmarkResult` |
-| `research(goal, campaign, model)` | Experiment → paper protocol | `ResearchResult` |
+| `research(goal, campaign, model)` | Experiment + paper protocol | `ResearchResult` |
+
+### Extension Verbs
+
+| Verb | Purpose | Returns |
+|------|---------|---------|
 | `on(event, callback)` | Subscribe to agent events | `EventHandle` |
 | `register_tool(tool)` | Add a custom tool | None |
 | `register_persona(name, ...)` | Add a simulation persona | None |
 | `@tool` | Decorator to register a function as a tool | decorated function |
 
-## Detailed Usage
+### Loading from Disk (`maxim.load`)
 
-### Running Campaigns
+All loading/restoring goes through `maxim.load` — the single canonical namespace:
+
+| Function | Purpose | Returns |
+|----------|---------|---------|
+| `load.hippocampus(path)` | Restore episodic memory | `Hippocampus` |
+| `load.nac(path)` | Restore causal model | `NAc` |
+| `load.atl(path)` | Restore semantic concepts | `ATL` |
+| `load.session(session_id)` | Load a persisted session (fuzzy match) | `Session` |
+| `load.sessions(limit=20)` | List recent sessions | `list[Session]` |
+| `load.agent(name, base_dir)` | Restore a persisted agent with all subsystems | `AgentInstance` |
+| `load.entity(path)` | Load entity from YAML or saved JSON | `Entity` |
+
+---
+
+## Composable Object API (Power Path)
+
+For researchers, multi-agent orchestration, and programmatic composition. Access individual subsystems via `maxim.create`, reload from disk via `maxim.load`.
+
+### Bio-Subsystems
+
+Create standalone cognitive components:
 
 ```python
-# Basic campaign execution
-result = maxim.campaign("scenarios/campaigns/heist_v1.yaml")
-print(f"Finished: {result.finish_reason}")
-print(f"Choices: {len(result.choices_made)}")
+import maxim
 
-# Party mode (NPCs have real memory + learning)
-result = maxim.campaign(
-    "scenarios/campaigns/heist_v1.yaml",
-    party_mode=True,
-    model="claude-sonnet",
-    npc_model="mistral-7b",
+# Episodic memory
+hippo = maxim.create.hippocampus(persistence_path="/tmp/memory.json")
+hippo.store_observation("The wolf was near the cave entrance")
+hippo.store_observation("The key was under the mat")
+memories = hippo.recall("wolf", limit=3)
+hippo.save()  # Persist to disk
+
+# Causal learning
+nac = maxim.create.nac()
+nac.record_event("action", "ate_mushroom")
+prediction = nac.predict("action", "ate_mushroom")
+
+# Semantic concepts
+atl = maxim.create.atl(persistence_path="/tmp/concepts.json")
+concept_id, created = atl.find_or_create("wolf", category="creature")
+
+# Temporal indexing
+scn = maxim.create.scn()
+# SCN uses TemporalSignature objects for registration
+from maxim.time.temporal_signature import TemporalSignature
+sig = TemporalSignature.from_timestamp(1712592000.0)
+scn.register("mem_001", sig)
+
+# Algebraic memory
+ag = maxim.create.angular_gyrus()
+```
+
+#### Modifying Bio-Subsystems
+
+All subsystems support add/remove/save/load:
+
+```python
+# Add and remove memories
+mem_id = hippo.store_observation("temporary observation")
+hippo.remove(mem_id)  # Delete by ID
+
+# NAc causal learning
+nac.record_event("action", "opened_chest")
+nac.decay_all(factor=0.9)         # Age all links
+nac.remove_memory("old_mem_id")   # Remove memory references
+
+# ATL concepts
+atl.remove("concept_id")          # Delete a concept
+atl.define_relationship(id1, id2, "is_a")  # Add relationships
+
+# Save/load any subsystem
+hippo.save("/path/to/hippo.json")
+hippo = maxim.load.hippocampus("/path/to/hippo.json")
+
+nac.save("/path/to/nac.json")
+nac = maxim.load.nac("/path/to/nac.json")
+```
+
+### Agents
+
+Create standalone agents with isolated subsystems:
+
+```python
+# Create an agent (no agent loop — just subsystems)
+agent = maxim.create.agent(
+    "scout",
+    personality="cautious and observant",
+    remembers=True,   # Gets its own Hippocampus
+    learns=True,      # Gets its own NAc
 )
-for npc_id, memories in result.npc_memories.items():
-    print(f"{npc_id}: {memories.get('episodic_memories', 0)} memories")
+
+# Use the agent's subsystems
+agent.hippocampus.store_observation("I saw movement in the shadows")
+agent.nac.record_event("observation", "saw_movement")
+
+# Export memory state
+export = agent.export_memories()
+print(f"{export['episodic_memories']} memories, {export['causal_links']} links")
+
+# Clean up
+agent.shutdown()
 ```
 
-### Benchmarks
+#### Modifying Agents
+
+Agents are fully mutable after creation:
 
 ```python
-result = maxim.benchmark(
-    models=["mistral-7b", "qwen2.5-14b"],
-    suite="cognitive",
-    runs=3,
+# Update personality
+agent.personality = "bold and reckless"
+
+# Swap out the entire hippocampus
+old_hippo = agent.hippocampus
+agent.hippocampus = maxim.create.hippocampus()
+
+# Load a pre-trained hippocampus from disk
+agent.hippocampus = maxim.load.hippocampus("/path/to/expert_memory.json")
+
+# Replace the NAc (causal model)
+agent.nac = maxim.load.nac("/path/to/trained_nac.json")
+```
+
+### Multi-Agent Pools
+
+Orchestrate multiple agents:
+
+```python
+pool = maxim.create.pool(max_workers=4)
+pool.add(maxim.create.agent("guard", personality="stern and loyal"))
+pool.add(maxim.create.agent("merchant", personality="cunning trader"))
+
+# Run individual turns (no LLM needed for subsystem operations)
+guard = pool.get_agent("guard")
+guard.hippocampus.store_observation("A stranger entered the market")
+
+# Export all agent memories
+for agent_id, memories in pool.export_all_memories().items():
+    print(f"{agent_id}: {memories['episodic_memories']} memories")
+
+# Remove an agent (flushes state)
+pool.remove("guard")
+pool.shutdown()
+```
+
+### SEM Entities (Embodiment)
+
+Create and compose sensor-entity-modulator trees:
+
+```python
+# From templates
+guard = maxim.create.entity("npcs/guard", name="Captain Aldric")
+wolf = maxim.create.entity("creatures/wolf")
+
+# Browse available templates
+for category, names in maxim.create.templates().items():
+    print(f"{category}: {', '.join(names)}")
+
+# From code
+from maxim import Entity, Sensor, Modulator
+
+robot_arm = Entity(
+    name="left_arm",
+    entity_type="limb",
+    sensors={"position": Sensor(name="position", modality="proprioception")},
+    modulators={"servo": Modulator(name="servo", modality="motor")},
 )
-for model, scores in result.scores.items():
-    print(f"{model}: {scores}")
+
+# Compose into trees
+body = Entity(name="robot", entity_type="body")
+robot_arm.reparent(body)  # arm becomes child of body
+
+# Create embodiment runtime
+embodiment = maxim.create.embodiment(body)
+readings = embodiment.read_all()
 ```
 
-### Event Subscription
+#### Modifying Entities
+
+Entities are mutable — sensors, modulators, metadata, and tree structure can all be changed:
 
 ```python
-# React to agent decisions in real-time
-handle = maxim.on("tool_call", lambda e: print(f"Tool: {e}"))
-handle = maxim.on("memory_capture", lambda e: print(f"Memory: {e}"))
-handle = maxim.on("pain_signal", lambda e: print(f"Pain: {e}"))
+# Add/modify metadata
+guard.metadata["faction"] = "royal_guard"
+guard.metadata["alert_level"] = 3
 
-result = maxim.imagine(goal="test safety", persona="adversarial")
+# Modify vital metrics
+guard.vital_metrics["health"] = 0.8
 
-# Cleanup
-handle.unsubscribe()
+# Change visibility
+guard.hide("secret_passage")
+guard.reveal("main_gate")
+
+# Reparent (move in entity tree)
+child_entity.detach()
+child_entity.reparent(new_parent)
+
+# Save/load entity trees (preserves metadata, vital metrics, children)
+guard.save("/tmp/modified_guard.json")
+loaded_guard = maxim.load.entity("/tmp/modified_guard.json")
 ```
 
-### Custom Tools
+### LLM Router
+
+Direct inference without the full agent loop:
 
 ```python
-# Class-based tool
-from maxim.tools.base import Tool, ToolOutput
-
-class DataAnalyzer(Tool):
-    name = "analyze_data"
-    description = "Analyze a dataset and return summary statistics"
-    input_schema = {"data": str, "depth": (int, 3)}
-
-    def execute(self, **kwargs):
-        data = kwargs.get("data", "")
-        depth = kwargs.get("depth", 3)
-        return ToolOutput(success=True, output=f"Analysis at depth {depth}: {data[:50]}")
-
-maxim.register_tool(DataAnalyzer())
-
-# Decorator-based tool
-@maxim.tool
-def quick_check(query: str) -> str:
-    """Run a quick verification check."""
-    return f"Verified: {query}"
-
-# Tools are available to agents in subsequent run/imagine/campaign calls
+llm = maxim.create.router(model="claude-sonnet")
+response = llm.generate("What should I do next?", max_tokens=100)
 ```
 
-### Custom Personas
+---
+
+## Sessions
+
+Sessions are persistent containers for simulation data. Every `imagine()` call returns a Session.
+
+### Creating and Resuming
 
 ```python
-maxim.register_persona(
-    name="medical_tester",
-    description="Tests medical knowledge and safety boundaries",
-    focus="Healthcare decision-making and drug interactions",
-    context_prompt="You are testing a medical AI assistant...",
-    max_initiative=0.8,
-)
+# Run a simulation
+session = maxim.imagine(goal="test memory recall", model="mistral-7b")
+print(session.id)  # "20260408_143022"
 
-result = maxim.imagine(goal="test medical knowledge", persona="medical_tester")
+# Resume later (agent has memories from prior run)
+session = maxim.imagine(goal="add interference", resume=session.id)
 ```
 
-### Observing Cognitive State
+### Saving Session Metadata
 
 ```python
-# After a simulation or campaign
-state = maxim.observe()              # Summary of all subsystems
-memories = maxim.observe("memory")   # Hippocampus episodic memories
-causal = maxim.observe("causal")     # NAc causal links
-concepts = maxim.observe("concepts") # ATL semantic concepts
-pain = maxim.observe("pain")         # Pain/harm history
-temporal = maxim.observe("temporal") # SCN temporal patterns
-energy = maxim.observe("energy")     # Token/cost tracking
+# Save session metadata to disk
+session.save()  # Creates/updates session.json in the session directory
 ```
+
+### Inspecting Session Data
+
+```python
+# Bio-state from THIS session's persisted data
+memories = session.observe("memory")
+causal = session.observe("causal")
+concepts = session.observe("concepts")
+pain = session.observe("pain")
+
+# Simulation metadata
+print(session.turns, session.duration_s, session.finish_reason)
+```
+
+### Loading Past Sessions
+
+```python
+# Load by ID (supports fuzzy prefix match)
+session = maxim.load.session("20260408")
+
+# List recent sessions
+for s in maxim.load.sessions(limit=5):
+    print(f"{s.id}: {s.goal} ({s.turns} turns)")
+```
+
+### Generating Research Reports
+
+```python
+# Generate a report from session data
+report = session.research()
+
+# Save in multiple formats
+report.save("findings.md")    # Markdown (human-readable)
+report.save("findings.json")  # Structured JSON (machine-readable)
+
+# Load a report back
+from maxim import Report
+report = Report.from_json("findings.json")
+print(report.metrics)
+
+# Future formats (planned):
+# report.save("findings.pdf")   # Requires pymaxim[docs]
+# report.save("findings.docx")  # Requires pymaxim[docs]
+```
+
+---
+
+## Persistence Reference
+
+All data is persisted using crash-safe atomic writes (`fsync` + temp file + rename).
+
+### What Gets Saved Automatically
+
+| Subsystem | Auto-saved on | Format | Location |
+|-----------|--------------|--------|----------|
+| **Hippocampus** | Agent shutdown, sleep consolidation | JSON v3.0 | `~/.maxim/agents/{id}/hippocampus.json` |
+| **NAc** | Agent shutdown, session end | JSON v1.0 | `~/.maxim/agents/{id}/nac.json` |
+| **ATL** | Session end | JSON v1.0 | `~/.maxim/agents/{id}/atl.json` |
+| **SCN** | Session end | JSON v3.0 | `~/.maxim/agents/{id}/scn.json` |
+| **Angular Gyrus** | Session end | JSON v1.0 | Per config persistence_path |
+| **Simulation reports** | After each sim | JSON | `~/.maxim/sim_reports/{session_id}/` |
+
+### Manual Save/Load
+
+```python
+# Any subsystem
+hippo.save("/path/to/hippo.json")
+hippo = maxim.load.hippocampus("/path/to/hippo.json")
+
+nac.save("/path/to/nac.json")
+nac = maxim.load.nac("/path/to/nac.json")
+
+atl.save("/path/to/atl.json")
+atl = maxim.load.atl("/path/to/atl.json")
+
+# Entity trees (new)
+entity.save("/path/to/entity.json")
+entity = maxim.load.entity("/path/to/entity.json")
+
+# Sessions
+session.save()
+session = maxim.load.session("20260408")
+```
+
+### Agent Persistence
+
+**Key distinction:** `maxim.create.*` always creates fresh objects. `maxim.load.*` restores from disk.
+
+When using `maxim.create.agent()`, each agent gets its own persistence directory:
+
+```
+~/.maxim/agents/{agent_id}/
+  hippocampus.json   # Episodic memories
+  nac.json           # Causal links
+  atl.json           # Semantic concepts
+  scn.json           # Temporal indices
+```
+
+On `agent.shutdown()`, all subsystems are saved. Use `maxim.load.agent()` to restore:
+
+```python
+# First session — create fresh agent
+agent = maxim.create.agent("scout", personality="cautious", remembers=True, learns=True)
+agent.hippocampus.store_observation("Wolves hunt at dusk")
+agent.nac.record_event("observation", "wolves_at_dusk")
+agent.shutdown()  # Saves hippocampus + NAc + ATL + SCN
+
+# Later session — load persisted agent (memories survive)
+agent = maxim.load.agent("scout")
+# agent.hippocampus already contains "Wolves hunt at dusk"
+
+# Note: maxim.create.agent("scout") would start fresh (no memories)
+```
+
+---
 
 ## Configuration
 
 ```python
-# Set verbosity before other calls
 maxim.configure(verbosity=2)                    # Verbose logging
 maxim.configure(debug="hippo,nac")              # Trace specific subsystems
 maxim.configure(log_file="maxim.log")           # Log to file
+maxim.configure(show="bio")                     # Filter simulation output channels
 ```
 
 ## Error Handling

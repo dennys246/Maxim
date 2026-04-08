@@ -72,94 +72,62 @@ She runs her own agent loop, processes contributions as percepts, and forms her 
 These items don't block publication but ensure the architecture stays Mother-compatible. Each is assigned to an existing buildout phase.
 
 **Status update (2026-04-08):**
-- M-0f (persistence paths): **DONE** — Phase 0 `paths.py` handles all data paths
-- M-0a, M-0b, M-0c: **Assigned to buildout Phase 9** (pre-publication deps + docs phase)
-- M-0d, M-0e: Nice-to-haves, can ship post-publication without breaking changes
+- M-0a (store protocols): **PROTOCOLS DEFINED** — `EpisodicStore`, `CausalStore`, `SemanticStore` + `File*Store` implementations in `memory/store.py`. **NOT YET WIRED** — bio-systems still use internal save/load, not store parameters. Wiring added to publication refinement plan Phase 1m.
+- M-0b (NAc thread safety): **DONE** — `threading.RLock` added at `nac.py:88` with comprehensive concurrent access documentation.
+- M-0c (metadata fields): **DONE** — `EpisodicMemory.metadata` (`types.py:388`) and `SemanticMemory.metadata` (`semantic_types.py:177`) both implemented with `to_dict`/`from_dict` round-trips.
+- M-0d (dream state memory retrieval): **RESOLVED** — no dedicated `sample()` needed; use `random.sample(list(hippo), k)` externally or `recall()` with filters. See updated section below.
+- M-0e: Nice-to-have, can ship post-publication without breaking changes.
+- M-0f (persistence paths): **DONE** — Phase 0 `paths.py` handles all data paths.
+- M-0g (memory module exports): **Added** — store protocols + `Concept` not yet exported from `maxim.memory`. Added to publication refinement plan Phase 1n.
 
-### M-0a. Split persistence protocols
+**Cross-plan dependency (publication refinement plan):**
+- Phase 0c/1a (error honesty) is load-bearing for Mother — silent `except Exception:` blocks in hippocampus/NAc will cause invisible data loss during 24/7 operation. Mother should not ship until these are fixed.
+- Phase 1e (atomic write bypasses) touches the same NAc save/load code that store protocol wiring needs — natural on-ramp for M-0a wiring.
+- Phase 0b (API verb stubs) must be wired before Mother's self-directed experiments can call `maxim.imagine()` or `maxim.campaign()` programmatically.
 
-**Assigned to: Buildout Phase 9 (Deps + Docs + Mother Pre-Pub)**
+### M-0a. Split persistence protocols — PROTOCOLS DEFINED, WIRING REMAINING
 
-**Why pre-pub:** The protocol *shape* is load-bearing for everything Mother does. If we publish with raw `save(path)`/`load(path)` on Hippocampus/NAc/ATL and users subclass or wrap those methods, changing to `EpisodicStore` post-publication is a breaking change. Define the protocols early, lock the interface before publishing.
+**Protocols: DONE** — `EpisodicStore`, `CausalStore`, `SemanticStore` protocols + `FileEpisodicStore`, `FileCausalStore`, `FileSemanticStore` implementations are complete in `src/maxim/memory/store.py` (committed during buildout Phase 9). All protocols are `@runtime_checkable`.
 
-Extract save/load into **three** protocols — one per subsystem. A single monolithic `MemoryStore` won't work because each subsystem has fundamentally different query patterns (similarity search vs event→outcome lookup vs concept type filtering).
+**Wiring: NOT DONE** — Bio-systems still use internal save/load methods, not store parameters:
+- Hippocampus `__init__` does not accept `store: EpisodicStore`
+- NAc `__init__` does not accept `store: CausalStore`
+- ATL `__init__` does not accept `store: SemanticStore`
 
+**Wiring is added to publication refinement plan Phase 1m** — the natural on-ramp is Phase 1e (atomic write bypasses), which already touches the same save/load code in NAc. When fixing `nac.py:~815` to use `atomic_write_json`, refactor to delegate to `FileCausalStore` at the same time. Same pattern for Hippocampus and ATL. ~80 LOC total across 3 files + `memory_hub.py`.
+
+**Why split protocols matter for M-1:** `DatabaseEpisodicStore` uses pgvector for `query_similar()`. `DatabaseCausalStore` uses indexed event_signature lookups. Completely different SQL — this is why we have three protocols, not one.
+
+### M-0b. NAc thread safety — DONE
+
+**DONE** — `threading.RLock` added at `nac.py:88` during buildout Phase 9. Comprehensive documentation about concurrent access from multi-agent party mode included. All mutations on `_links`, `_pending_events`, `_priors` are guarded.
+
+### M-0c. Dict serialization audit + metadata field — DONE
+
+**DONE** — Both metadata fields are implemented and serialized:
+- `EpisodicMemory.metadata: dict[str, Any]` at `types.py:388` with `to_dict`/`from_dict` (lines 472, 526). Comment references Mother Maxim use cases (domain_tags, contribution_source, witness_count, tenant_id, deidentification_model).
+- `SemanticMemory.metadata: dict[str, Any]` at `semantic_types.py:177` with `to_dict`/`from_dict` (lines 233, 263). Comment references Mother Maxim use cases (domain_tags, provenance_chain, drift_history).
+- `CausalLink` already has `event_context: dict` which serves the same purpose.
+
+### M-0d. Dream state memory retrieval — RESOLVED (no new method needed)
+
+**RESOLVED** — Hippocampus already provides sufficient retrieval for Mother's dream state:
+
+- `__iter__()` (line 966) + `__len__()` (line 961) enable `random.sample(list(hippo), k=5)` for cross-domain sampling
+- `recall(mode=X)` filters by operational mode for domain-specific retrieval
+- `recall(goal=X)` filters by goal context
+- `get_memories_by_index(index_key)` + `index_keys()` enable structured domain browsing
+- `recall_associated()` provides spreading activation for finding connected memories across domains
+
+The dream state implementation in `mother/agent.py` should use a ~5-line utility:
 ```python
-# src/maxim/memory/store.py (~80 LOC)
-
-class EpisodicStore(Protocol):
-    """Persistence for Hippocampus episodic memories."""
-    def save(self, memories: list[dict], *, namespace: str = "default") -> None: ...
-    def load(self, *, namespace: str = "default") -> list[dict]: ...
-    def query_similar(self, embedding: list[float], *, top_k: int = 5, namespace: str = "default") -> list[dict]: ...
-    def query_by_time(self, start: float, end: float, *, namespace: str = "default") -> list[dict]: ...
-
-class CausalStore(Protocol):
-    """Persistence for NAc causal links."""
-    def save(self, links: list[dict], *, namespace: str = "default") -> None: ...
-    def load(self, *, namespace: str = "default") -> list[dict]: ...
-    def query_by_event(self, event_sig: str, *, namespace: str = "default") -> list[dict]: ...
-    def query_by_outcome(self, outcome_sig: str, *, namespace: str = "default") -> list[dict]: ...
-
-class SemanticStore(Protocol):
-    """Persistence for ATL semantic concepts."""
-    def save(self, concepts: list[dict], *, namespace: str = "default") -> None: ...
-    def load(self, *, namespace: str = "default") -> list[dict]: ...
-    def query_by_type(self, concept_type: str, *, namespace: str = "default") -> list[dict]: ...
-
-class FileEpisodicStore:
-    """JSON file persistence for Hippocampus (current behavior, default)."""
-class FileCausalStore:
-    """JSON file persistence for NAc (current behavior, default)."""
-class FileSemanticStore:
-    """JSON file persistence for ATL (current behavior, default)."""
+def _sample_cross_domain(hippo: Hippocampus, n: int = 5) -> list:
+    """Sample memories across different domains for dream recombination."""
+    all_memories = list(hippo)
+    return random.sample(all_memories, min(n, len(all_memories)))
 ```
 
-**Why split:** In M-1, `DatabaseEpisodicStore` uses pgvector for `query_similar()`. `DatabaseCausalStore` uses indexed event_signature lookups. These are completely different SQL.
-
-### M-0b. NAc thread safety
-
-**Assigned to: Buildout Phase 9 (Deps + Docs + Mother Pre-Pub)**
-*Originally assigned to Phase 4 but not implemented — NAc's `_links`, `_pending_events`, `_priors` still lack locking.*
-
-NAc currently has no locking on `_links`, `_pending_events`, `_priors`. Multi-agent party mode (Phase 4) will have concurrent NAc access. Add `threading.RLock` around mutations.
-
-This is also required for Mother Maxim — database writes must be serialized.
-
-### M-0c. Dict serialization audit + metadata field
-
-**Assigned to: Buildout Phase 9 (Deps + Docs + Mother Pre-Pub)**
-*Originally assigned to Phase 1.1 — deferred because it's a schema change that's best done right before publication freeze.*
-
-Audit that all memory objects have clean `to_dict()` / `from_dict()` round-trips. These become the database row format in M-1.
-
-**Critical addition: Add `metadata: dict[str, Any]` field to EpisodicMemory and SemanticMemory.** Currently there's no extensible bag for contribution metadata, domain tags, witness_count, tenant_id. Adding a field to a serialized dataclass post-publication requires migration for every user who has persisted memories. Pre-publication it's 3 lines + updating to_dict/from_dict. CausalLink already has `event_context: dict` which serves this purpose.
-
-```python
-# In memory/types.py — EpisodicMemory
-metadata: dict[str, Any] = field(default_factory=dict)
-# Used by Mother for: domain_tags, contribution_source, witness_count, tenant_id, deidentification_model
-
-# In memory/semantic_types.py — SemanticMemory  
-metadata: dict[str, Any] = field(default_factory=dict)
-# Used by Mother for: domain_tags, provenance_chain, drift_history
-```
-
-### M-0d. Hippocampus.sample() method
-
-**Assigned to: Buildout Phase 5 (Hippocampus Recall Refinement)**
-
-All recall is currently query-based or graph-based. Mother's dream state needs "give me N random memories from different domains." Add:
-
-```python
-def sample(self, n: int = 5, *, domain: str | None = None,
-           exclude_ids: set[str] | None = None) -> list[EpisodicMemory]:
-    """Random sample of memories, optionally filtered by domain.
-    For cross-domain sampling, call with domain=None — implementation
-    ensures diversity across context.active_mode values."""
-```
-
-~30 LOC. Small method but defines an interface users might depend on.
+No new public method on Hippocampus is needed — this avoids adding an interface users might depend on for a use case that's purely internal to Mother.
 
 ### M-0e. SCN simple wall-clock path
 
@@ -182,11 +150,35 @@ def set_wall_clock(self, source: Callable[[], float]) -> None:
 
 `paths.py` abstraction handles `data_home()` vs `bundled_data()`. All 28+ source files migrated from CWD-relative `data/` paths to `~/.maxim/` via `resolve_user_state()`. Memory subsystems use `user_memory()` consistently.
 
+### M-0g. PyPI package structure — Mother-readiness audit
+
+**Status: MOSTLY READY** — verified 2026-04-08.
+
+The pymaxim package structure is compatible with Mother Maxim development. Key findings:
+
+| Item | Status | Notes |
+|------|--------|-------|
+| `[database]` optional extra | **DONE** | `psycopg[binary]>=3.1`, `pgvector>=0.3` in `pyproject.toml` |
+| `src/maxim/mother/` directory | **NOT CREATED** | Will be created when MVP fast-track begins |
+| Package discovery (`maxim*` glob) | **OK** | Will auto-include `maxim.mother` subpackage |
+| Store protocols importable | **Partial** | Importable from `maxim.memory.store` but not from `maxim.memory`. Fix in pub refinement Phase 1n. |
+| `Concept` importable | **Partial** | Importable from `maxim.memory.semantic_types` but not from `maxim.memory`. Fix in pub refinement Phase 1n. |
+| `EpisodicMemory.metadata` | **DONE** | Field + serialization at `types.py:388` |
+| `SemanticMemory.metadata` | **DONE** | Field + serialization at `semantic_types.py:177` |
+| `deidentify.py` module | **NOT CREATED** | Will be created during M-2 |
+| `Session` class | **DONE** | `src/maxim/session.py` — wraps `SimulationResult`, has `observe()`, `save()`, `from_disk()` |
+| `load.py` module | **DONE** | `src/maxim/load.py` — canonical deserialization for hippocampus, nac, atl, sessions, agents |
+| Exception hierarchy exported | **Partial** | 5 of 25 types exported. Mother-specific exceptions (M-5) will inherit from these. |
+
+**No blockers.** All Mother code will live in `src/maxim/mother/` which the existing package discovery will include automatically. The `[database]` extra is already defined. The two partial items (store protocol exports, exception hierarchy) are addressed in the publication refinement plan (Phases 1n and 0d).
+
 ---
 
 ## Phase M-1: Database Backend (~800 LOC)
 
-**Depends on:** Publication (v0.2.0), split store protocols (M-0a)
+**Depends on:** Publication (v0.2.0), store protocol wiring (publication refinement Phase 1m — bio-systems must delegate to store parameters before database backends can be swapped in).
+
+**Pre-requisite check:** After pub refinement Phase 1m lands, verify that `Hippocampus(store=FileEpisodicStore(...))`, `NAc(store=FileCausalStore(...))`, and `ATL(store=FileSemanticStore(...))` all work identically to the previous hardcoded behavior. If so, M-1 is purely additive — implement `Database*Store` classes and pass them instead.
 
 ### Design
 
@@ -560,20 +552,33 @@ Add `tenant_id` to all memory operations. Three memory scopes:
 | **Shared** | Coalescence engine (M-5) | All users | `tenant_id = "shared"` |
 | **Mother's own** | Mother's agent loop | Mother + query API | `tenant_id = "mother"` |
 
-**Session management:**
+**Session management — build on existing `Session` class:**
+
+The publication refinement buildout introduced `src/maxim/session.py` with a `Session` dataclass that already wraps `SimulationResult` with `observe()`, `save()`, `from_disk()`, and `list_sessions()`. Also `src/maxim/load.py` provides `load.session(id)` and `load.sessions(limit)` for deserialization.
+
+**Don't create a parallel session system.** Instead, extend the existing `Session` class:
+
 ```python
-class SessionManager:
-    """Manages user sessions with tenant isolation."""
+# Extend src/maxim/session.py — add tenant-aware fields
+@dataclass
+class Session:
+    # ... existing fields ...
+    tenant_id: str | None = None        # For Mother tenant isolation
+    contribution_status: str = "local"  # "local" | "contributed" | "rejected"
 
-    def create_session(self, user_id: str | None = None) -> Session:
-        """Create an isolated session with its own memory namespace."""
+    def contribute(self, mother_url: str) -> ContributionResult:
+        """Submit this session's memories to Mother. Runs client-side
+        deidentification (M-2) first, then POSTs to /v1/contribute."""
 
-    def contribute(self, session_id: str, memories: list[dict]) -> ContributionResult:
-        """Submit session memories. Memories enter deidentification pipeline (M-2)
-        before reaching the shared pool."""
+    def get_stores(self) -> tuple[EpisodicStore, CausalStore, SemanticStore]:
+        """Get tenant-scoped stores for this session."""
+```
 
-    def get_session_store(self, session_id: str) -> tuple[EpisodicStore, CausalStore, SemanticStore]:
-        """Get tenant-scoped stores for a session."""
+```python
+# NEW: src/maxim/mother/tenant.py (~150) — TenantStore wrappers
+class TenantEpisodicStore:
+    """Wraps any EpisodicStore with automatic tenant_id scoping."""
+    def __init__(self, inner: EpisodicStore, tenant_id: str): ...
 ```
 
 **Authentication:**
@@ -582,9 +587,12 @@ class SessionManager:
 - Anonymous sessions allowed with stricter rate limits + mandatory deidentification
 
 **New files:**
-- `src/maxim/memory/session.py` (~200) — SessionManager, Session, ContributionResult
-- `src/maxim/memory/tenant.py` (~150) — TenantStore wrappers (scopes each store protocol with tenant_id)
+- `src/maxim/mother/tenant.py` (~150) — TenantStore wrappers (scopes each store protocol with tenant_id)
 - Tests (~150)
+
+**Modified files:**
+- `src/maxim/session.py` — add `tenant_id`, `contribution_status`, `contribute()`, `get_stores()`
+- `src/maxim/load.py` — add `load.contributions()` for Mother-side contribution history
 
 ---
 
@@ -647,7 +655,29 @@ Mother runs her own agent loop (low frequency — once per minute or on contribu
 
 ## Phase M-5: Public API Layer (~600 LOC)
 
-**Depends on:** M-1, M-2, M-4. (M-3 tenant isolation is optional — enhances multi-user security but not architecturally required for single-operator deployment.)
+**Depends on:** M-1, M-2, M-4. Also:
+- Publication refinement Phase 0b (API verb wiring) must be complete — `POST /v1/campaign` delegates to `maxim.campaign()` internally, which must be wired to `PartyDMRuntime`, not a stub.
+- Publication refinement Phase 0d (exception exports) must be complete — Mother's API errors need to inherit from the exported exception hierarchy so users can catch them.
+
+(M-3 tenant isolation is optional — enhances multi-user security but not architecturally required for single-operator deployment.)
+
+### Mother-specific exceptions
+
+Define in `src/maxim/mother/exceptions.py` (~30 LOC), inheriting from the exported hierarchy:
+```python
+from maxim.exceptions import MaximError
+
+class ContributionRejected(MaximError):
+    """Contribution failed deidentification or quality gate."""
+class TenantSuspended(MaximError):
+    """Tenant rate-limited or flagged for abuse."""
+class DeidentificationFailed(MaximError):
+    """Client-side deidentification pipeline error."""
+class CoalescenceConflict(MaximError):
+    """Irreconcilable contradiction during memory merge."""
+```
+
+These should be importable from `maxim.mother` once the module exists. Add to `maxim.__init__.py:_API_TYPES` when Mother ships.
 
 ### Endpoints
 
@@ -716,8 +746,14 @@ maxim --mother --federation <hub_url> # Join an existing federation hub
 ## MVP Fast-Track: Mother Live on Leader (~500 LOC)
 
 > **Goal:** Get Mother running on the RTX 5080 leader behind the existing Cloudflare tunnel as fast as possible. JSON persistence, single-writer, trusted users only. Add safety/scale hardening incrementally while she's live.
-> **Depends on:** Buildout Phase 3 (Agent Factory) — **DONE** (committed `5595c4c`). Also needs store protocols from Phase 9 for clean interface.
-> **Timeline:** ~500 LOC after v0.2.0 publication (Phase 9 store protocols should be in place).
+> **Depends on:**
+> - Buildout Phase 3 (Agent Factory) — **DONE** (committed `5595c4c`)
+> - Store protocols defined — **DONE** (`memory/store.py`)
+> - Store protocol wiring into bio-systems — **publication refinement Phase 1m** (in progress). The JSON MVP doesn't strictly need this (Mother can use internal save/load with JSON files), but wiring now means M-1 database backend is a drop-in swap later.
+> - Publication refinement Phase 0c/1a (error honesty) — **critical for 24/7 operation**. Silent `except Exception:` in hippocampus/NAc will cause invisible data loss.
+> - Publication refinement Phase 0b (API verb wiring) — needed for Mother's self-directed experiments (`maxim.imagine()`, `maxim.campaign()` must work programmatically).
+> - `Session` class + `load.py` — **DONE** (new files from buildout). Mother's M-3 tenant isolation builds on these.
+> **Timeline:** ~500 LOC after v0.2.0 publication.
 
 ### What you build
 

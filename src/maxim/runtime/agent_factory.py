@@ -138,6 +138,14 @@ class AgentInstance:
             except Exception as e:
                 log.warning("Agent %s: hippocampus save failed: %s", self.agent_id, e)
 
+        if self.nac is not None:
+            try:
+                nac_path = getattr(getattr(self.nac, "config", None), "persistence_path", None)
+                if nac_path:
+                    self.nac.save(nac_path)
+            except Exception as e:
+                log.warning("Agent %s: NAc save failed: %s", self.agent_id, e)
+
 
 # ---------------------------------------------------------------------------
 # Factory
@@ -165,7 +173,7 @@ class AgentFactory:
             self._base_data_dir = data_home() / "agents"
         self._base_data_dir.mkdir(parents=True, exist_ok=True)
 
-    def create_agent(self, config: AgentConfig) -> AgentInstance:
+    def create_agent(self, config: AgentConfig, *, auto_load: bool = False) -> AgentInstance:
         """Create a fully independent agent with its own memory systems.
 
         Each agent gets:
@@ -174,6 +182,12 @@ class AgentFactory:
         - ATL (separate concept layer)
         - MemoryHub (independent coordinator)
         - ToolRegistry (scoped to role via tool_whitelist)
+
+        Args:
+            config: Agent configuration.
+            auto_load: If True, restore persisted state from the agent's
+                persistence directory.  Used by ``maxim.load.agent()``.
+                Default False = always start fresh (``maxim.create.agent()``).
         """
         agent_dir = self._resolve_persistence_dir(config)
 
@@ -184,13 +198,13 @@ class AgentFactory:
         memory_hub = None
 
         if config.remembers:
-            hippocampus = self._create_hippocampus(agent_dir)
+            hippocampus = self._create_hippocampus(agent_dir, auto_load=auto_load)
 
         if config.learns:
-            nac = self._create_nac()
+            nac = self._create_nac(agent_dir, auto_load=auto_load)
 
         atl = self._create_atl(agent_dir)
-        memory_hub = self._create_memory_hub(hippocampus, nac, atl)
+        memory_hub = self._create_memory_hub(hippocampus, nac, atl, agent_dir=agent_dir)
 
         # Create tool registry (scoped by whitelist)
         tool_registry = self._create_tool_registry(config.tool_whitelist)
@@ -261,24 +275,48 @@ class AgentFactory:
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-    def _create_hippocampus(self, agent_dir: Path) -> Any:
-        """Create a Hippocampus with per-agent persistence."""
+    def _create_hippocampus(self, agent_dir: Path, *, auto_load: bool = False) -> Any:
+        """Create a Hippocampus with per-agent persistence.
+
+        Args:
+            agent_dir: Directory for persistence files.
+            auto_load: If True, load existing state from disk (used by load.agent).
+                       If False, always create fresh (used by create.agent).
+        """
         try:
             from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
-            return Hippocampus(
+
+            hippo_path = agent_dir / "hippocampus.json"
+            hippo = Hippocampus(
                 HippocampusConfig(
-                    persistence_path=str(agent_dir / "hippocampus.json"),
+                    persistence_path=str(hippo_path),
                 )
             )
+            if auto_load and hippo_path.exists():
+                try:
+                    hippo.load(str(hippo_path))
+                except Exception:
+                    pass  # Start fresh if corrupt
+            return hippo
         except Exception as e:
             log.warning("Failed to create Hippocampus: %s", e)
             return None
 
-    def _create_nac(self) -> Any:
-        """Create a fresh NAc for causal learning."""
+    def _create_nac(self, agent_dir: Path, *, auto_load: bool = False) -> Any:
+        """Create a NAc with per-agent persistence.
+
+        Args:
+            agent_dir: Directory for persistence files.
+            auto_load: If True, load existing state from disk.
+        """
         try:
-            from maxim.decisions.nac import NAc
-            return NAc()
+            from maxim.decisions.nac import NAc, NACConfig
+
+            nac_path = str(agent_dir / "nac.json")
+            nac = NAc(NACConfig(persistence_path=nac_path))
+            if auto_load and (agent_dir / "nac.json").exists():
+                nac.load_safe(nac_path)
+            return nac
         except Exception as e:
             log.warning("Failed to create NAc: %s", e)
             return None
@@ -301,6 +339,7 @@ class AgentFactory:
         hippocampus: Any | None,
         nac: Any | None,
         atl: Any | None,
+        agent_dir: Path | None = None,
     ) -> Any:
         """Create a MemoryHub coordinating the agent's memory systems."""
         try:
@@ -308,9 +347,19 @@ class AgentFactory:
             from maxim.similarity.ec import EntorhinalCortex
             from maxim.time.scn import SCN
 
+            scn = SCN()
+            # Set persistence path so SCN can be saved on session end
+            if agent_dir is not None:
+                scn._persistence_path = str(agent_dir / "scn.json")  # type: ignore[attr-defined]
+                scn_file = agent_dir / "scn.json"
+                if scn_file.exists():
+                    try:
+                        scn.load(str(scn_file))
+                    except Exception:
+                        pass  # Start fresh if corrupt
             return MemoryHub(
                 hippocampus=hippocampus,
-                scn=SCN(),
+                scn=scn,
                 nac=nac,
                 ec=EntorhinalCortex(),
                 atl=atl,

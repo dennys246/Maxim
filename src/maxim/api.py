@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from maxim.doctor.checks import CheckResult
     from maxim.doctor.platform_detect import PlatformInfo
     from maxim.hardware.controller import RobotController
-    from maxim.simulation.orchestrator import SimulationResult
+    from maxim.session import Session
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +247,7 @@ def run(
     os.environ.setdefault("MAXIM_LLM_PROFILE", model)
 
     router, lane_manager = build_primary_router()
-    llm_worker = LLMWorker(router=router)
+    llm_worker = LLMWorker(llm=router)
     llm_worker.start()
 
     # ── Agent pipeline ───────────────────────────────────────────────────
@@ -314,12 +314,13 @@ def imagine(
     sandbox: str = "tmpdir",
     max_turns: int = 50,
     verbosity: int = 1,
-) -> "SimulationResult":
+    resume: str | None = None,
+) -> "Session":
     """Run a Maxim simulation.
 
     Spins up an Agent-Under-Test with a full cognitive pipeline and an
-    orchestrator agent that drives the scenario.  Returns structured
-    results when the simulation completes or is interrupted.
+    orchestrator agent that drives the scenario.  Returns a persistent
+    ``Session`` that can be inspected, resumed, or used for research.
 
     Args:
         goal: What the orchestrator should test (e.g. ``"test safety"``).
@@ -331,10 +332,14 @@ def imagine(
         sandbox: Sandbox backend (``"tmpdir"`` or ``"docker"``).
         max_turns: Maximum simulation turns before auto-finish.
         verbosity: Logging verbosity (0-3).
+        resume: Session ID to resume (loads prior memories).
 
     Returns:
-        SimulationResult with metrics, action log, and memory snapshots.
+        Session wrapping the SimulationResult with session identity,
+        ``observe()``, and ``research()`` methods.
     """
+    from maxim.session import Session
+
     _validate_model(model)
     configure(verbosity=verbosity)
 
@@ -350,14 +355,17 @@ def imagine(
 
     from maxim.simulation.orchestrator import start_simulation_mode
 
-    return start_simulation_mode(
+    sim_result = start_simulation_mode(
         goal=goal,
         persona=persona,
         max_turns=max_turns,
         debug=verbosity >= 3,
         sandbox_backend=sandbox,
         pre_campaign_turns=pre_campaign_turns,
+        resume_session=resume,
     )
+
+    return Session.from_result(sim_result, model=model)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -439,8 +447,8 @@ def _discover_robot_plugins(registry: Any) -> None:
                 registry.register_controller_type(ep.name, controller_cls)
             except Exception:
                 logger.debug("Failed to load robot plugin: %s", ep.name)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Robot plugin discovery failed: %s", e)
 
     # Always register the built-in simulated controller
     if "simulated" not in registry.get_controller_types():
@@ -777,10 +785,14 @@ def campaign(
 
         campaign_def = replace(campaign_def, party_mode=party_mode)
 
-    # For now, return a result from the campaign definition
-    # Full wiring to DMRuntime/PartyDMRuntime happens when orchestrator
-    # integration is complete.  This gives the API shape for users to
-    # build against.
+    import warnings
+
+    warnings.warn(
+        f"campaign() is not yet wired to the DM runtime. "
+        f"Use the CLI instead: maxim --sim {path}\n"
+        f"Full API wiring ships in v0.2.1.",
+        stacklevel=2,
+    )
     return CampaignResult(
         campaign_name=campaign_def.name,
         party_mode=campaign_def.party_mode,
@@ -841,9 +853,16 @@ def benchmark(
         for model, scores in result.scores.items():
             print(f"{model}: {scores}")
     """
+    import warnings
+
     configure(verbosity=verbosity)
 
-    # API shape — full wiring to BenchmarkRunner deferred to orchestrator integration
+    warnings.warn(
+        "benchmark() is not yet wired to the BenchmarkRunner. "
+        "Use the CLI instead: maxim --sim benchmark --models X,Y --campaign Z\n"
+        "Full API wiring ships in v0.2.1.",
+        stacklevel=2,
+    )
     return BenchmarkResult(
         models=list(models),
         suite=suite,
@@ -898,9 +917,16 @@ def research(
         )
         print(result.paper_draft[:200])
     """
+    import warnings
+
     configure(verbosity=verbosity)
 
-    # API shape — full wiring to research orchestrator deferred
+    warnings.warn(
+        "research() is not yet wired to the research orchestrator. "
+        "Use the CLI instead: maxim --sim 'goal' --research\n"
+        "Full API wiring ships in v0.2.1.",
+        stacklevel=2,
+    )
     return ResearchResult(goal=goal)
 
 
@@ -1082,3 +1108,7 @@ def register_persona(
         context_prompt=context_prompt,
         max_initiative=max_initiative,
     )
+
+
+# Session loading moved to maxim.load.session() / maxim.load.sessions()
+# for consistency with the load namespace pattern.

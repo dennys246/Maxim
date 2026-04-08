@@ -299,12 +299,19 @@ class AgentPool:
         (Party DM Runtime) will wire this to the LLM router for
         actual inference.
         """
-        # Phase 4 will replace this with actual LLM calls.
-        # For now, return personality-influenced placeholder or None.
+        # Currently returns a placeholder response. LLM-driven responses
+        # ship when Party DM Runtime wires this to the LLM router.
+        # Memory operations (hippocampus capture, NAc observation) still
+        # work fully — only the response text is placeholder.
+        import warnings
         personality = instance.personality or ""
         if not personality:
             return None
 
-        # Simple response template for testing.
-        # In Phase 4, this becomes an LLM call on the small/medium tier.
+        warnings.warn(
+            f"Agent '{instance.agent_id}' response is a placeholder — "
+            f"LLM inference for pool agents ships in a future release. "
+            f"Memory capture and causal learning still work.",
+            stacklevel=3,
+        )
         return f"[{instance.agent_id}] (responds based on personality)"

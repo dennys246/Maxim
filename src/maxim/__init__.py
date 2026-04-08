@@ -34,8 +34,15 @@ _API_VERBS = frozenset(
         "register_persona",
         "tool",
         "list_models",
+        # (get_session/list_sessions removed — use maxim.load.session/sessions)
     }
 )
+
+# Sub-module namespaces — lazy-loaded as ``maxim.create``, ``maxim.load``.
+_API_SUBMODULES = {
+    "create": "maxim.create",
+    "load": "maxim.load",
+}
 
 # Also expose key types for library users who need them directly.
 _API_TYPES = {
@@ -46,11 +53,25 @@ _API_TYPES = {
     "EventHandle": "maxim.api",
     "ModelInfo": "maxim.api",
     # Error hierarchy — users can catch these
+    # Error hierarchy — category-level exceptions users can catch
     "MaximError": "maxim.exceptions",
     "ConfigurationError": "maxim.exceptions",
+    "ConnectionError": "maxim.exceptions",
     "ModelError": "maxim.exceptions",
     "ModelLoadError": "maxim.exceptions",
     "ToolExecutionError": "maxim.exceptions",
+    "ToolNotFoundError": "maxim.exceptions",
+    "MemoryError": "maxim.exceptions",
+    "PlanningError": "maxim.exceptions",
+    "HardwareError": "maxim.exceptions",
+    "RuntimeError": "maxim.exceptions",
+    # Return types from API verbs
+    "RobotController": "maxim.hardware.controller",
+    # SEM types — stable public types for embodiment composition
+    "Entity": "maxim.embodiment.sem",
+    # Session + Report types
+    "Session": "maxim.session",
+    "Report": "maxim.report",
 }
 
 __all__ = [
@@ -80,12 +101,27 @@ __all__ = [
     "ResearchResult",
     "EventHandle",
     "ModelInfo",
-    # Errors
+    "Session",
+    "Report",
+    # SEM types (Entity is constructable; Sensor/Modulator are Protocols — import from maxim.embodiment.sem)
+    "Entity",
+    # Errors (category-level)
     "MaximError",
     "ConfigurationError",
+    "ConnectionError",
     "ModelError",
     "ModelLoadError",
     "ToolExecutionError",
+    "ToolNotFoundError",
+    "MemoryError",
+    "PlanningError",
+    "HardwareError",
+    "RuntimeError",
+    # Return types
+    "RobotController",
+    # Sub-module namespaces
+    "create",
+    "load",
 ]
 
 
@@ -119,14 +155,25 @@ def get_version_info() -> dict[str, str]:
     return info
 
 
+def __dir__():
+    """Expose all public names for tab-completion and dir()."""
+    return list(__all__) + list(globals().keys())
+
+
 def __getattr__(name: str):
-    """Lazy-load API verbs and types on first access."""
+    """Lazy-load API verbs, types, and sub-modules on first access."""
     if name in _API_VERBS:
         from maxim import api
 
         func = getattr(api, name)
         globals()[name] = func  # Cache for subsequent calls
         return func
+    if name in _API_SUBMODULES:
+        import importlib
+
+        mod = importlib.import_module(_API_SUBMODULES[name])
+        globals()[name] = mod
+        return mod
     if name in _API_TYPES:
         import importlib
 

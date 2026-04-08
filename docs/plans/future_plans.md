@@ -29,7 +29,8 @@ All pre-publication work is tracked in [foundational_buildout_plan.md](foundatio
 | 11 | Test PyPI (dry-run validation) | **In progress** |
 | 12a | Security Hardening | **DONE** |
 | 12b | [Pre-Publication Hardening](pre_publication_hardening_plan.md) — UX, errors, API fixes, tests, docs | **DONE** |
-| — | Manual publish (`twine upload`) | Blocked on 11 |
+| 13 | [Publication Refinement](publication_refinement_plan.md) — blockers, error honesty, threading, docs | Not started |
+| — | Manual publish (`twine upload`) | Blocked on 11 + 13 |
 
 ---
 

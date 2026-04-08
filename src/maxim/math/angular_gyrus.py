@@ -300,8 +300,8 @@ class AngularGyrus(MemoryLayer):
             }
 
         try:
-            with open(save_path, "w") as f:
-                json.dump(data, f, indent=2)
+            from maxim.utils.atomic_io import atomic_write_json
+            atomic_write_json(save_path, data)
             logger.debug("Angular gyrus saved %d records to %s", len(self._records), save_path)
         except OSError as e:
             logger.warning("Failed to save angular gyrus: %s", e)

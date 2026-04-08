@@ -1,9 +1,9 @@
 # GitHub Repo Management Plan — Agent-Driven Experiment Workflow
 
-> **Status:** Not started
+> **Status:** Phase 0 done. Remaining phases not started.
 > **Goal:** Give Maxim agents the ability to reason about, manage, and learn from git branches as part of their experimental methodology — not just CLI plumbing, but a bio-integrated experiment management system.
-> **Estimated scope:** ~850 LOC across 6 phases
-> **Sequence:** Security fixes (1) → Config (2) → Git tools (3) → Provenance injection (4) → Scientist persona (5) → Fork CLI (6)
+> **Estimated scope:** ~1,000 LOC across 7 phases (Phase 0 shipped)
+> **Sequence:** Security fixes (0 ✓) → Config (1) → Git tools + hardening (2) → Provenance injection (3) → Scientist persona (4) → Fork CLI (5) → Campaign (6)
 
 ---
 
@@ -205,6 +205,19 @@ _SENSITIVE_PATTERNS = {
 ```
 
 Any match raises `PainType.TOOL_INVALID_INPUT` with an explanation.
+
+All path checks must use `Path.resolve()` to defeat symlink confusion (see Security Review).
+
+### 2d. Security hardening (non-negotiable, ships with Phase 2)
+
+These are **mandatory** for Phase 2 to be considered complete. See Security Review section for full rationale.
+
+1. **Remote URL validation** — `_validate_remote_url()` blocks `file://`, `ftp://`, localhost, cloud metadata endpoints. Called before any push/pull.
+2. **Git config isolation** — all git subprocesses run with `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL=/dev/null` env vars. No tool may write to `.git/config` or `.git/hooks/`.
+3. **VCS action category in FearGate** — new `"vcs_operation"` category with per-tool review levels.
+4. **Commit message sanitization** — strip control chars, null bytes, cap at 2000 chars.
+5. **Freeze tool aliases** — `register_aliases()` must refuse after agent loop starts.
+6. **Implicit state tracking** — after git_commit/git_pull, run `git diff --name-only HEAD~1` and feed affected files to pain interceptor retroactively.
 
 ---
 
@@ -440,14 +453,163 @@ Phases 1, 2, 3 can run in parallel after Phase 0.
 
 | Phase | LOC | Complexity | Priority |
 |-------|-----|-----------|----------|
-| 0: Security fixes + tests | ~100 | Low | **Critical** |
+| 0: Security fixes + tests | ~100 | Low | **DONE** |
 | 1: Persistent branch/remote config | ~100 | Low | High |
-| 2: Git tool surface + safety | ~200 | Medium | High |
+| 2: Git tool surface + safety + security hardening (2d) | ~350 | High | High |
 | 3: Git provenance injection | ~150 | Low | Medium |
 | 4: Scientist persona | ~100 | Low | Medium |
 | 5: Fork CLI commands | ~200 | Medium | Low |
 | 6: Database recovery campaign | ~1 file | Low | Fun |
-| **Total** | **~850** | | |
+| **Total** | **~1,000** | | |
+
+---
+
+## Security Review (2026-04-08)
+
+Deep review of the existing safety infrastructure against what git tools would introduce. Phase 0 fixes are shipped. These are the **remaining gaps** that must be addressed during Phase 2 implementation.
+
+### Critical: Remote URL validation (Phase 2)
+
+`git_push` and `git_pull` accept a remote name which resolves to a URL. There is no URL validation anywhere in the codebase — `FilesystemPolicy` gates file I/O but has no `check_network_permission()`. An agent could:
+- Push to an arbitrary URL (data exfiltration)
+- Pull from a malicious repo (supply chain attack via hooks)
+- Use `file://` protocol to read local paths outside the repo
+
+**Fix (must ship with Phase 2):**
+```python
+_ALLOWED_PROTOCOLS = {"https", "ssh", "git"}
+_BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "169.254.169.254"}  # metadata service
+
+def _validate_remote_url(url: str) -> str:
+    """Reject file://, ftp://, localhost, metadata endpoints."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme and parsed.scheme not in _ALLOWED_PROTOCOLS:
+        raise ValueError(f"Protocol {parsed.scheme!r} not allowed")
+    if parsed.hostname and parsed.hostname in _BLOCKED_HOSTS:
+        raise ValueError(f"Host {parsed.hostname!r} blocked")
+    return url
+```
+
+Call this when resolving the remote URL from `git remote get-url <remote>` before any push/pull.
+
+### Critical: Git config injection (Phase 2)
+
+`git config` can set `core.hooksPath`, `core.fsmonitor`, `diff.*.textconv`, and other options that execute arbitrary commands on subsequent git operations. The agent must NEVER be able to modify `.git/config` or `.git/hooks/`.
+
+**Fix:**
+- `GitCommitTool` and all git tools: run with `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL=/dev/null` env vars to prevent reading global/system configs
+- Block any tool param that contains `.git/` as a path
+- FearGate: classify any attempt to write inside `.git/` as `code_execution` severity
+
+### High: No VCS action category in FearGate
+
+`fear_gate.py` classifies actions as `shell_exec`, `file_write`, `network_request`, or `tool_call`. Git operations span all four but aren't explicitly categorized.
+
+**Fix:** Add a `"vcs_operation"` category:
+```python
+_VCS_TOOLS = {"git_status", "git_branch", "git_commit", "git_push", "git_pull", "git_log"}
+
+# In _classify_action():
+if tool_name in _VCS_TOOLS:
+    return "vcs_operation"
+```
+
+FearAgent reviews:
+- `git_status`, `git_log` → auto-allow (read-only)
+- `git_branch` → allow with logging
+- `git_commit` → review paths being staged
+- `git_push` → elevated review (network + irreversible)
+- `git_pull` → review (could introduce malicious code)
+
+### High: Commit message injection
+
+`git commit -m <message>` where `message` comes from the agent's LLM output. While `subprocess.run(list_args)` prevents shell injection, the commit message itself could contain:
+- Escape sequences that corrupt terminal display
+- Extremely long messages that exhaust disk
+- Encoded payloads smuggled into git history
+
+**Fix:** Sanitize commit messages:
+```python
+def _sanitize_commit_message(msg: str, max_len: int = 2000) -> str:
+    msg = msg.replace("\x00", "")  # null bytes
+    msg = re.sub(r"[\x01-\x08\x0b\x0c\x0e-\x1f]", "", msg)  # control chars
+    return msg[:max_len]
+```
+
+### High: Tool alias injection
+
+`executor.py` `register_aliases()` has no validation. An agent could theoretically register aliases that redirect git tool calls to other tools or bypass safety checks.
+
+**Fix:** Aliases should be frozen after tool registry initialization. Add a `_frozen: bool` flag to the alias system and refuse runtime registration after the agent loop starts.
+
+### Medium: Pain interceptor doesn't track implicit git state
+
+`pain_interceptor.py` extracts paths from tool params to fire pain signals. But git commands modify implicit repo state — `git commit` affects every staged file, `git pull` can change arbitrary files. The interceptor doesn't see these.
+
+**Fix:** After `git_commit` and `git_pull` execute, run `git diff --name-only HEAD~1` to get the actual files affected, then retroactively evaluate pain signals. This is a post-execution check, not a gate — but it feeds the NAc so the agent learns consequences.
+
+### Medium: Symlink confusion in .git/
+
+`.git/` can contain symlinks (git worktrees, submodules). `os.path.realpath()` resolves them but the sensitive path blocklist in `GitCommitTool` (Phase 2c) must check the resolved path, not the input path.
+
+**Fix:** Always `Path.resolve()` before checking against `_SENSITIVE_PATTERNS`.
+
+### Low: Branch proliferation (long-term)
+
+Over time, the scientist persona will create many experiment branches. Without cleanup, the repo accumulates dead branches.
+
+**Fix (Phase 5, not Phase 2):**
+- `maxim peer fork prune` — delete merged/stale branches older than N days
+- Scientist persona: after pushing results, create a causal memory that branches should be cleaned up
+- NAc learns: "too many branches → longer fetch times → pain signal"
+
+---
+
+## Long-Term Repo Management
+
+### Branch naming convention
+
+Enforce a prefix convention so experiment branches are distinguishable from feature work:
+```
+experiments/<date>/<topic>     — scientist persona branches
+fix/<issue>                    — incident fix branches (broken-database campaign)
+research/<hypothesis>          — research protocol branches
+```
+
+The `git_branch` tool should enforce the prefix for agent-created branches. Human branches are unrestricted.
+
+### Repo size growth
+
+Experiment data (`data/sim_reports/`, `*.jsonl`) committed to branches grows the repo. Mitigation options:
+1. **`.gitignore` experiment data by default** — only the scientist persona explicitly stages it
+2. **Branch-level `.gitattributes`** — git LFS for `*.jsonl` and `*.json` over 1MB
+3. **Prune old branches** — merged experiment branches get deleted after results are extracted
+4. **Separate data repo** — experiment data in a separate repo, main repo stays lean
+
+Recommendation: Option 1 (`.gitignore` by default) + Option 3 (prune) for v1. Revisit LFS if repo exceeds 1GB.
+
+### Fork divergence strategy
+
+When a fork branch falls behind main by many commits, rebase becomes painful. Strategy:
+1. **< 20 commits behind:** auto-rebase via `maxim peer fork sync` (Phase 5c)
+2. **20-100 commits behind:** warn user, suggest rebase, don't auto-execute
+3. **> 100 commits behind:** suggest starting a fresh branch from main, cherry-pick experiment data only
+
+The scientist persona should track divergence via `git_status` and form a causal memory: "large divergence → painful rebase → branch from main more often."
+
+### Secret scanning
+
+Even with `_SENSITIVE_PATTERNS` in `GitCommitTool`, secrets can slip through in unexpected ways (hardcoded in source, pasted in commit messages, base64-encoded). Long-term:
+1. **Pre-commit hook integration** — if the repo has a `.pre-commit-config.yaml`, `GitCommitTool` should run `pre-commit run --files <staged>` before committing
+2. **Entropy scanning** — flag strings with high entropy (API keys, tokens) in staged diffs
+3. **Pain signal on secret detection** — even after commit, retroactive pain signal so the agent learns
+
+### Audit trail
+
+Every git operation the agent performs should be logged to the provenance system (Phase 3 handles this). But for long-term repo management, also consider:
+1. **Git notes** — attach provenance trace IDs to commits via `git notes add`
+2. **Commit message metadata** — append `[maxim:trace_id=<id>]` to commit messages so humans can trace agent decisions from git history
+3. **Session-level git log** — `data/sim_reports/{session}/git_operations.jsonl` recording every git command the agent ran, with timestamps and outcomes
 
 ---
 

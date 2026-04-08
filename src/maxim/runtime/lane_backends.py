@@ -103,8 +103,8 @@ def _write_persisted_model(profile: str | None) -> None:
         sf = _model_state_file()
         sf.parent.mkdir(parents=True, exist_ok=True)
         sf.write_text(profile or "")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to persist model state: %s", e)
 
 
 # ─── env var plumbing ─────────────────────────────────────────────────────
@@ -172,7 +172,8 @@ def _is_cloud_url(remote_url: str | None) -> bool:
     try:
         parsed = urlparse(remote_url)
     except Exception:
-        return True
+        logger.warning("Could not parse remote URL %r — treating as private (fail-closed)", remote_url)
+        return False
     host = parsed.hostname or ""
     return not _host_is_private(host)
 
@@ -377,28 +378,31 @@ class LaneBackendManager:
         try:
             from maxim.models.language.config import load_llm_config
             from maxim.models.language.router import LLMRouter
-        except Exception:
+        except Exception as e:
+            logger.warning("LLM modules not available: %s", e)
             return None
 
         env_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
         profile = env_profile or cfg.model_profile
         try:
             llm_config = load_llm_config(profile_override=profile)
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to load LLM config for profile %r: %s", profile, e)
             return None
 
         if "MAXIM_LLM_N_GPU_LAYERS" not in os.environ:
             try:
                 llm_config = dataclasses.replace(llm_config, n_gpu_layers=cfg.n_gpu_layers)
             except Exception:
-                pass
+                pass  # Non-fatal config tweak; original config is still usable
 
         # Inject cloud fallback provider if configured via --cloud-fallback
         llm_config = self._maybe_inject_cloud_fallback(cfg, llm_config)
 
         try:
             return LLMRouter(llm_config)
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to create LLM router: %s", e)
             return None
 
     def _maybe_inject_cloud_fallback(self, cfg: "LaneConfig", llm_config: Any) -> Any:
@@ -478,13 +482,15 @@ class LaneBackendManager:
         try:
             from maxim.models.language.config import load_llm_config
             from maxim.models.language.router import LLMRouter
-        except Exception:
+        except Exception as e:
+            logger.warning("LLM modules not available for remote lane %s: %s", cfg.name, e)
             return None
 
         kind = self._classify(cfg)
         try:
             base = load_llm_config()
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to load LLM config for remote lane %s: %s", cfg.name, e)
             return None
 
         provider_key = f"lane-{cfg.name}"
@@ -527,12 +533,14 @@ class LaneBackendManager:
                 # Self-hosted is not cloud; cloud lanes still require cloud_enabled.
                 cloud_enabled=(True if kind == "cloud" else base.cloud_enabled),
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to build remote lane config for %s: %s", cfg.name, e)
             return None
 
         try:
             return LLMRouter(remote_cfg)
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to create remote LLM router for %s: %s", cfg.name, e)
             return None
 
 
@@ -621,8 +629,8 @@ def build_primary_router(
         if peer_cfg is not None:
             apply_peer_config_to_env(peer_cfg)
             _has_peer_config = True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to load peer config: %s", e)
 
     # ── Reconcile --language-model with peer remote config ────────────
     # When peer config sets a remote URL for the infer lane AND the user
@@ -890,7 +898,8 @@ def _maybe_auto_spawn_server(
 
         profile_cfg = load_llm_config(profile_override=effective_profile)
         model_path = getattr(profile_cfg, "model_path", "")
-    except Exception:
+    except Exception as e:
+        logger.warning("Auto-spawn: failed to resolve model profile %r: %s", effective_profile, e)
         return lane_configs
     if not model_path or not Path(model_path).is_file():
         if logger is not None:
@@ -930,7 +939,8 @@ def _maybe_auto_spawn_server(
             from maxim.tunnel.keys import read_key
 
             api_key = read_key()
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to read tunnel API key: %s", e)
             api_key = None
 
     # Auto-discovery: if something already answers at port, reuse it and skip spawn.
@@ -1102,8 +1112,8 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
             from maxim.tunnel.keys import read_key
 
             api_key = read_key()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to read tunnel API key for swap: %s", e)
 
         previous_model = _active_model or "none"
 
@@ -1214,7 +1224,9 @@ def _maybe_auto_spawn_tunnel_daemon(logger: Any | None) -> None:
             cloudflared_already_running,
             resolve_config_path,
         )
-    except Exception:
+    except Exception as e:
+        if logger is not None:
+            logger.warning("Tunnel daemon spawner not available: %s", e)
         return
     if cloudflared_already_running():
         if logger is not None:
@@ -1255,7 +1267,9 @@ def _maybe_start_leader_proxy(
     """
     try:
         from maxim.runtime.leader_proxy import start_leader_proxy
-    except Exception:
+    except Exception as e:
+        if logger is not None:
+            logger.warning("Leader proxy module not available: %s", e)
         return
     start_leader_proxy(api_key=api_key, bind_host=bind_host)
 

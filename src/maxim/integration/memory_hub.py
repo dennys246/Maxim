@@ -574,6 +574,24 @@ class MemoryHub:
                 except Exception as e:
                     logger.warning("%s shutdown failed: %s", name, e)
 
+        # Save SCN state
+        if self.scn is not None:
+            scn_path = getattr(self.scn, "_persistence_path", None)
+            if scn_path:
+                try:
+                    self.scn.save(scn_path)
+                except Exception as e:
+                    logger.warning("Failed to save SCN state: %s", e)
+
+        # Save NAc state (if persistence path set in NACConfig)
+        if self.nac is not None:
+            nac_path = getattr(getattr(self.nac, "config", None), "persistence_path", None)
+            if nac_path:
+                try:
+                    self.nac.save(nac_path)
+                except Exception as e:
+                    logger.warning("Failed to save NAc state: %s", e)
+
         # Save ATL state
         if self.atl is not None:
             try:

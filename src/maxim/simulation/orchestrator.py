@@ -43,6 +43,9 @@ class SimulationResult:
     duration_s: float
     finish_reason: str = "unknown"
     summary: str = ""
+    # Session identity (set after report is built)
+    session_id: str = ""
+    session_dir: str = ""
     campaign_analysis: dict[str, Any] = field(default_factory=dict)
     introspector: Any = None
     # Tool usage stats (from Executor.tool_usage_stats())
@@ -1716,6 +1719,8 @@ def start_simulation_mode(
     except Exception:
         pass
 
+    _session_dir = str(Path(report_dir) / report.session_id)
+
     result = SimulationResult(
         goal=goal,
         persona=persona,
@@ -1725,6 +1730,8 @@ def start_simulation_mode(
         duration_s=duration,
         finish_reason=finish_reason,
         summary=report.llm_summary,
+        session_id=report.session_id,
+        session_dir=_session_dir,
         campaign_analysis=campaign_analysis if pre_campaign_turns else dm_rollup,
         introspector=aut_introspector,
         tool_stats=_tool_stats,
