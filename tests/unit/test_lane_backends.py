@@ -70,8 +70,12 @@ class TestLaneResolution:
 
 
 class TestLocalBackendBuild:
-    def test_build_invokes_load_llm_config_with_profile(self):
+    def test_build_invokes_load_llm_config_with_profile(self, monkeypatch):
         """The lane's model_profile should be passed as profile_override."""
+        # Earlier tests may set MAXIM_LLM_PROFILE via os.environ.setdefault(),
+        # which changes the code path in _build_local_backend.
+        monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
+        monkeypatch.delenv("MAXIM_LLM_ENABLED", raising=False)
         mgr = LaneBackendManager({"infer": _infer_lane(profile="mistral-7b-instruct-v0.2")})
         with (
             patch("maxim.models.language.config.load_llm_config") as mock_load,

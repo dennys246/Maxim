@@ -285,38 +285,50 @@ class TestPeerCLI:
 
 
 class TestCheckTierDetection:
+    """Tier detection tests.
+
+    check_tier_detection(caps=...) accepts pre-built RuntimeCapabilities
+    to bypass hardware probing. This avoids mock/patch fragility from
+    test-order-dependent module import caching.
+    """
+
     def test_gpu_available_reports_ok(self):
         """With GPU, check should report ok with large + small tiers."""
-        with patch("maxim.runtime.capabilities.detect_compute_resources") as mock:
-            mock.return_value = (True, "NVIDIA RTX 5080", 15.9, 16.0)
-            from maxim.doctor.checks import check_tier_detection
+        from maxim.doctor.checks import check_tier_detection
+        from maxim.runtime.capabilities import RuntimeCapabilities
 
-            result = check_tier_detection()
-            assert result.status == "ok"
-            assert "large" in result.message
-            assert "small" in result.message
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="NVIDIA RTX 5080", vram_gb=15.9, ram_gb=16.0)
+        result = check_tier_detection(caps=caps)
+        assert result.status == "ok"
+        assert "large" in result.message
+        assert "small" in result.message
 
     def test_no_gpu_high_ram_reports_ok(self):
         """CPU-only with 16GB RAM → ok with medium + small."""
-        with patch("maxim.runtime.capabilities.detect_compute_resources") as mock:
-            mock.return_value = (False, None, 0.0, 16.0)
-            from maxim.doctor.checks import check_tier_detection
+        from maxim.doctor.checks import check_tier_detection
+        from maxim.runtime.capabilities import RuntimeCapabilities
 
-            result = check_tier_detection()
-            assert result.status == "ok"
-            assert "medium" in result.message
+        caps = RuntimeCapabilities(has_gpu=False, gpu_type=None, vram_gb=0.0, ram_gb=16.0)
+        result = check_tier_detection(caps=caps)
+        assert result.status == "ok"
+        assert "medium" in result.message
 
-    def test_no_gpu_low_ram_reports_warn(self):
+    def test_no_gpu_low_ram_reports_warn(self, monkeypatch):
         """Low RAM, no GPU → warn with fix hints."""
-        with patch("maxim.runtime.capabilities.detect_compute_resources") as mock:
-            mock.return_value = (False, None, 0.0, 4.0)
-            from maxim.doctor.checks import check_tier_detection
+        # Earlier tests may have set MAXIM_LLM_PROFILE via os.environ.setdefault()
+        # (e.g. api.run(), api.imagine()). detect_tiers() reads it and would use
+        # it as the medium profile regardless of RAM, masking the warning.
+        monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
 
-            result = check_tier_detection()
-            assert result.status == "warn"
-            assert "small" in result.message
-            assert result.fix is not None
-            assert "--cloud-fallback" in result.fix
+        from maxim.doctor.checks import check_tier_detection
+        from maxim.runtime.capabilities import RuntimeCapabilities
+
+        caps = RuntimeCapabilities(has_gpu=False, gpu_type=None, vram_gb=0.0, ram_gb=4.0)
+        result = check_tier_detection(caps=caps)
+        assert result.status == "warn", f"Expected 'warn' but got '{result.status}': {result.message}"
+        assert "small" in result.message
+        assert result.fix is not None
+        assert "--cloud-fallback" in result.fix
 
     def test_tier_detection_in_run_all_checks(self):
         """check_tier_detection should be in the Environment section."""

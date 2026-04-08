@@ -10,13 +10,9 @@ Covers:
 
 from __future__ import annotations
 
-import queue
 import threading
 import time
 import warnings
-from unittest import mock
-
-import pytest
 
 
 # ── 0a: maxim.run() signature fix ─────────────────────────────────────

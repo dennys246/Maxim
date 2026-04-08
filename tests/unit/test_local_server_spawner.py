@@ -101,6 +101,7 @@ class TestTunnelEcho:
         with patch("subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.poll.return_value = 1  # exit immediately
+            mock_proc.pid = 99999
             mock_popen.return_value = mock_proc
             s.start(timeout_s=0.1)
         kwargs = mock_popen.call_args.kwargs
@@ -115,6 +116,7 @@ class TestTunnelEcho:
         with patch("subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.poll.return_value = 1
+            mock_proc.pid = 99999
             mock_popen.return_value = mock_proc
             s.start(timeout_s=0.1)
         kwargs = mock_popen.call_args.kwargs
@@ -135,6 +137,7 @@ class TestSignalIsolation:
         with patch("subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.poll.return_value = 1  # fake "exited" so start returns early
+            mock_proc.pid = 99999
             mock_popen.return_value = mock_proc
             s.start(timeout_s=0.1)
         kwargs = mock_popen.call_args.kwargs
@@ -174,29 +177,35 @@ class TestStop:
         s.stop()  # should not raise
         assert s.is_running is False
 
-    def test_stop_terminates_process(self):
+    @patch("maxim.runtime.local_server_spawner._kill_process_tree")
+    def test_stop_terminates_process(self, mock_kill_tree):
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None  # running
+        mock_proc.pid = 99999
         s._process = mock_proc
         s.stop()
         mock_proc.terminate.assert_called_once()
         assert s._process is None
 
-    def test_stop_kills_on_timeout(self):
+    @patch("maxim.runtime.local_server_spawner._kill_process_tree")
+    def test_stop_kills_on_timeout(self, mock_kill_tree):
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
+        mock_proc.pid = 99999
         mock_proc.wait.side_effect = [subprocess.TimeoutExpired(cmd="", timeout=5.0), None]
         s._process = mock_proc
         s.stop()
         mock_proc.terminate.assert_called_once()
         mock_proc.kill.assert_called_once()
 
-    def test_stop_swallows_exceptions(self):
+    @patch("maxim.runtime.local_server_spawner._kill_process_tree")
+    def test_stop_swallows_exceptions(self, mock_kill_tree):
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
+        mock_proc.pid = 99999
         mock_proc.terminate.side_effect = RuntimeError("oops")
         s._process = mock_proc
         s.stop()  # should not raise
