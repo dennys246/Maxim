@@ -1,0 +1,17 @@
+encounter:
+  name: merchant_negotiation
+  tags: [social, trade, indoor, peaceful]
+  category: social
+  difficulty_range: [1, 3]
+  narrative_role: exploration
+  suggested_npcs: 1
+  suggested_npc_roles: [merchant]
+
+  scene: >
+    The merchant spreads their wares across the counter — potions,
+    trinkets, and one item that catches your eye. They notice your
+    interest and smile. "Ah, you have a keen eye. That piece is...
+    not cheap. But for the right buyer, I might be persuaded."
+  choices: [buy_full_price, haggle, trade_item, walk_away]
+  dice:
+    haggle: { roll: "1d20", dc: 11 }

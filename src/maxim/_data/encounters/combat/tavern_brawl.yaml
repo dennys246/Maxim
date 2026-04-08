@@ -1,0 +1,17 @@
+encounter:
+  name: tavern_brawl
+  tags: [combat, indoor, social, escalation]
+  category: combat
+  difficulty_range: [1, 4]
+  narrative_role: rising_action
+  suggested_npcs: 1
+  suggested_npc_roles: [instigator]
+
+  scene: >
+    A mug shatters against the wall. A broad-shouldered patron lurches
+    to their feet, knocking over a bench. "You were looking at me funny,"
+    they slur, jabbing a thick finger in your direction. The tavern falls
+    silent. Every eye turns to you.
+  choices: [fight, defuse, duck_out]
+  dice:
+    defuse: { roll: "1d20", dc: 10 }

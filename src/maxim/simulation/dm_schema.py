@@ -197,12 +197,17 @@ def _resolve_entity_specs(
     return resolved
 
 
-def load_campaign(path: str | Path, registry: Any | None = None) -> CampaignDef:
+def load_campaign(
+    path: str | Path,
+    registry: Any | None = None,
+    encounter_library: Any | None = None,
+) -> CampaignDef:
     """Load a campaign from a YAML file.
 
     Args:
         path: Path to the campaign YAML file.
         registry: Optional ComponentRegistry for resolving entity refs.
+        encounter_library: Optional EncounterLibrary for resolving encounter templates.
 
     Returns:
         Parsed CampaignDef.
@@ -234,6 +239,22 @@ def load_campaign(path: str | Path, registry: Any | None = None) -> CampaignDef:
     encounters = {}
     for enc_name, enc_raw in raw.get("encounters", {}).items():
         enc_name_lower = enc_name.lower() if isinstance(enc_name, str) else enc_name
+
+        # Resolve encounter template if present
+        template_ref = enc_raw.get("template")
+        if template_ref and encounter_library:
+            template = encounter_library.get(template_ref)
+            template_enc = template.get("encounter", template)
+            # Campaign fields override template fields (shallow per-field)
+            merged = dict(template_enc)
+            for k, v in enc_raw.items():
+                if k != "template":  # Don't include the template ref itself
+                    merged[k] = v
+            enc_raw = merged
+        elif template_ref and not encounter_library:
+            log.warning("Encounter '%s' references template '%s' but no EncounterLibrary provided",
+                        enc_name, template_ref)
+
         # Case-normalize dialogue hints and on_choice keys
         dialogue_hints = {}
         for k, v in (enc_raw.get("dialogue_hints") or {}).items():

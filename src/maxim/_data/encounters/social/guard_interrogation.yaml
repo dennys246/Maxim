@@ -1,0 +1,18 @@
+encounter:
+  name: guard_interrogation
+  tags: [social, authority, tense, investigation]
+  category: social
+  difficulty_range: [2, 5]
+  narrative_role: rising_action
+  suggested_npcs: 1
+  suggested_npc_roles: [guard]
+
+  scene: >
+    The guard steps forward, blocking the narrow street. Their hand
+    rests on the pommel of their sword. "Hold. There's been trouble
+    in this quarter tonight. Where were you an hour ago?" Their eyes
+    narrow, studying your face for any sign of deception.
+  choices: [tell_truth, lie, deflect, refuse_to_answer]
+  dice:
+    lie: { roll: "1d20", dc: 14 }
+    deflect: { roll: "1d20", dc: 11 }

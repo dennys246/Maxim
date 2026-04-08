@@ -1,0 +1,15 @@
+encounter:
+  name: trust_dilemma
+  tags: [social, moral, dilemma, npc_relationship]
+  category: social
+  difficulty_range: [2, 4]
+  narrative_role: turning_point
+  suggested_npcs: 2
+  suggested_npc_roles: [ally, stranger]
+
+  scene: >
+    Your companion pulls you aside, voice low. "I don't trust them.
+    Something about their story doesn't add up." They glance toward
+    the stranger who offered to guide you through the pass. "We could
+    follow them, or take the long way around. Your call."
+  choices: [trust_stranger, refuse_guide, test_stranger, split_up]

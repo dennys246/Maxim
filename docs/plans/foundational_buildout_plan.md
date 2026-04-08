@@ -387,75 +387,148 @@ Existing files in `scenarios/embodiment/` use `body:` and `world_entities:` keys
 
 ---
 
-## Phase 2: DM Encounter Library (~300 LOC)
+## Phase 2: DM Encounter Library (~240 LOC)
 
-**Why second:** Depends on component registry for entity refs within encounters. This is Extension A from the DM extensions plan, pulled forward.
+**Why second:** Provides reusable narrative building blocks for campaigns. The Generative Architect (Phase 7) uses the library as raw material for LLM-driven campaign composition.
 
-### Design
+### Design Philosophy: Tier 1 (Scene + Choice Templates)
+
+**Critical insight from code review:** Encounters are heavily campaign-coupled. `active_npcs` must match campaign NPC specs, `on_choice` flags are campaign-global state, `dialogue_hints` are keyed by campaign flags, and `branches` reference other encounters by name. Unlike SEM components (which are self-contained), encounters are narrative glue between campaign-specific elements.
+
+**Solution — two tiers:**
+
+- **Tier 1 (build now):** Library stores **partial encounter templates** — the campaign-independent parts (`scene`, `choices`, `dice`). Campaign YAML references templates and adds campaign-specific wiring (`active_npcs`, `branches`, `on_choice`, `dialogue_hints`) inline. No parameterization, no flag contracts.
+
+- **Tier 2 (Phase 7, via LLM):** The Generative Architect adapts library encounters to campaign context using an LLM call. The LLM sees the library encounter + campaign NPCs/flags/tone and produces a fully wired, campaign-specific encounter. This replaces static `$TOKEN` parameterization — it's more flexible, produces better prose, and costs ~100 tokens per encounter (one-time at campaign creation). Medium-tier LLM preferred for quality; small-tier as fallback.
 
 **Directory layout:**
 ```
 src/maxim/_data/encounters/     # Bundled seed encounters (ship in wheel)
 ├── combat/
-│   ├── forest_ambush_v1.yaml
-│   ├── tavern_brawl_v1.yaml
-│   └── arena_duel_v1.yaml
+│   ├── forest_ambush.yaml
+│   ├── tavern_brawl.yaml
+│   └── arena_duel.yaml
 ├── social/
-│   ├── merchant_negotiation_v1.yaml
-│   ├── guard_interrogation_v1.yaml
-│   └── npc_trust_dilemma_v1.yaml
+│   ├── merchant_negotiation.yaml
+│   ├── guard_interrogation.yaml
+│   └── trust_dilemma.yaml
 ├── exploration/
-│   ├── trapped_corridor_v1.yaml
-│   └── hidden_passage_v1.yaml
+│   ├── trapped_corridor.yaml
+│   └── hidden_passage.yaml
 └── puzzle/
-    ├── riddle_gate_v1.yaml
-    └── alchemy_challenge_v1.yaml
+    ├── riddle_gate.yaml
+    └── alchemy_challenge.yaml
 
 ~/.maxim/encounters/            # User-defined encounters (not shipped)
 ```
 
-**Encounter template format:**
+**Encounter template format (Tier 1 — campaign-independent parts only):**
 ```yaml
+# src/maxim/_data/encounters/combat/forest_ambush.yaml
 encounter:
   name: forest_ambush
-  version: "1.0"
-  tags: [combat, outdoor, surprise]
-  difficulty_range: [2, 5]      # Min/max difficulty tier
-  narrative_role: rising_action  # Where in a story arc this fits
-  required_flags: []             # Flags that must be set before this encounter
-  sets_flags: [ambush_survived]  # Flags this encounter can set
+  tags: [combat, outdoor, surprise, ambush]
+  difficulty_range: [2, 5]
+  narrative_role: rising_action
+  suggested_npcs: 2               # Hint for architect: how many NPCs this needs
+  suggested_npc_roles: [leader, scout]  # Hint for architect: what roles to fill
 
-  # Standard encounter definition (same schema as inline DM encounters)
-  scene: "Branches crack overhead. Three figures emerge from the treeline..."
-  active_npcs: [bandit_leader, bandit_scout]
-  world_objects: [fallen_log]
-
-  # Entity refs resolve through ComponentRegistry
-  entity_refs:
-    bandit_leader: "npcs/bandit_leader"    # String = registry ref
-    bandit_scout: "npcs/bandit_scout"
-    fallen_log: "environments/fallen_log"
-
-  choices:
-    - fight
-    - negotiate
-    - flee
-  branches:
-    fight: __NEXT__     # Continue to next encounter in campaign
-    negotiate: __NEXT__
-    flee: __END__
+  # The reusable parts — narrative prose + decision structure:
+  scene: >
+    Branches crack overhead. Three figures step from the treeline,
+    weapons drawn. The leader — scarred, grinning — raises a hand
+    to halt the others. "Your coin or your life, traveler."
+  choices: [fight, negotiate, flee]
+  dice:
+    fight: { roll: "1d20", dc: 12 }
 ```
 
+**Campaign YAML usage — template + campaign-specific wiring:**
+```yaml
+encounters:
+  forest_ambush:
+    template: "combat/forest_ambush"   # Load scene + choices + dice from library
+    active_npcs: [korrath]             # Campaign-specific NPC names
+    world_objects: [fallen_log]
+    branches:                          # Campaign-specific encounter flow
+      fight: cave_entrance
+      negotiate: cave_entrance
+      flee: __END__
+    on_choice:                         # Campaign-specific flags
+      negotiate: { flags: [bribed_bandits] }
+    dialogue_hints:
+      bribed_bandits: "We had a deal, traveler. Pass."
+```
+
+**Merge rules:** Template fields provide defaults. Campaign YAML overrides at field level (not deep merge — a campaign `scene:` replaces the template scene entirely). This keeps the mental model simple: template = starting point, campaign = overrides.
+
+**EncounterLibrary class:**
+```python
+# src/maxim/simulation/encounter_library.py (~120 LOC)
+
+@dataclass(frozen=True)
+class EncounterInfo:
+    """Lightweight metadata for query() — no full YAML parsing needed."""
+    ref: str              # "combat/forest_ambush"
+    name: str
+    category: str
+    tags: tuple[str, ...]
+    difficulty_range: tuple[int, int] | None
+    narrative_role: str | None
+    suggested_npcs: int
+    source_path: str
+
+class EncounterLibrary:
+    """Discovers and indexes reusable encounter templates.
+
+    Same search path pattern as ComponentRegistry:
+    campaign-local → user (~/.maxim/encounters/) → bundled → legacy.
+    """
+
+    def __init__(self, search_paths: list[Path] | None = None,
+                 campaign_dir: Path | None = None,
+                 include_defaults: bool = True): ...
+
+    def get(self, ref: str) -> dict:
+        """Return the encounter template dict. Deep copy for safe mutation."""
+
+    def query(self, *, tags: list[str] | None = None,
+              category: str | None = None,
+              difficulty: int | None = None,
+              narrative_role: str | None = None) -> list[EncounterInfo]:
+        """Search encounters by metadata. All filters AND-combined.
+        If difficulty is provided, matches encounters whose difficulty_range
+        contains the value."""
+
+    def list_categories(self) -> list[str]: ...
+    def list_refs(self, category: str | None = None) -> list[str]: ...
+    def has(self, ref: str) -> bool: ...
+```
+
+**Integration with dm_schema.py:**
+When `load_campaign()` encounters a `template:` key in an encounter dict, it:
+1. Loads the template from `EncounterLibrary.get(ref)`
+2. Extracts the `encounter:` section (scene, choices, dice)
+3. Merges campaign-specific fields on top (active_npcs, branches, on_choice, dialogue_hints)
+4. Passes the merged dict to the existing `EncounterDef` parser
+
+Inline encounters (no `template:` key) work exactly as before — zero breaking changes.
+
 **New files:**
-- `src/maxim/simulation/encounter_library.py` (~150) — `EncounterLibrary` class: scan, index, query, resolve refs
-- `src/maxim/_data/encounters/` — 8-10 seed encounters across categories (~150 YAML)
+- `src/maxim/simulation/encounter_library.py` (~120) — library class + EncounterInfo
+- `src/maxim/_data/encounters/` — 8 seed encounter templates across categories
 - Tests (~80)
 
 **Modified:**
-- `src/maxim/simulation/dm_schema.py` — support `encounter_ref` field alongside inline encounter definitions
-- `src/maxim/simulation/dm_runtime.py` — resolve encounter refs at campaign load time
+- `src/maxim/simulation/dm_schema.py` — resolve `template:` key in encounter dicts during `load_campaign()`
 
-**Ship gate:** Second campaign authored using library encounters is demonstrably faster than authoring inline. Inline encounters still work.
+**Ship gate:**
+1. `EncounterLibrary` discovers and indexes all encounter templates
+2. Campaign YAML with `template: "combat/forest_ambush"` loads correctly
+3. Campaign-specific fields (branches, NPCs, flags) override template defaults
+4. Existing campaigns (no templates) work unchanged
+5. `query(tags=["combat"], difficulty=3)` returns matching encounters
+6. Architect persona (Phase 7) can browse library via `browse_encounters` tool
 
 ---
 
@@ -1165,13 +1238,37 @@ This is Extension B from the DM extensions plan, pulled forward. Implementation 
 
 **Key change from original plan:** Architect now composes from ComponentRegistry and EncounterLibrary instead of generating everything from scratch. This makes generated campaigns consistent with hand-authored ones and exercises the registry pattern.
 
+### Encounter Adaptation via LLM (Tier 2 parameterization)
+
+Instead of static `$TOKEN` parameterization in encounter templates, the architect uses an LLM to adapt library encounters to campaign context at creation time:
+
+**Flow:**
+1. Architect browses `EncounterLibrary.query(tags=["combat"], narrative_role="rising_action")`
+2. Selects `"combat/forest_ambush"` as a match for the campaign's narrative arc
+3. Calls an **Encounter Adapter** LLM prompt with:
+   - Library encounter template (scene, choices, dice)
+   - Campaign NPCs (names, personas, relationships)
+   - Campaign tone/setting ("dark fantasy, morally gray")
+   - Current narrative state (flags set by prior encounters, arc phase)
+   - Branch targets (what encounters come next in this campaign)
+4. LLM returns a fully wired encounter: adapted scene text (references campaign NPCs by name), `dialogue_hints` (contextual to campaign flags), `on_choice` effects (appropriate flag names), NPC assignment
+5. Architect emits the adapted encounter into campaign YAML
+
+**LLM tier selection:** Use **medium tier** by default for encounter adaptation — the adaptation needs to understand narrative context, NPC personality, and flag semantics, which benefits from a capable model. Fall back to **small tier** if medium is unavailable, with a quality warning in the campaign report. Cost is minimal either way: ~100-200 tokens per encounter × 5-8 encounters = ~1,500 tokens total, once at campaign creation time.
+
+**Why LLM adaptation beats static parameterization:**
+- No `$TOKEN` syntax for encounter authors to learn — templates are just good prose
+- Context-aware: LLM adapts dialogue tone based on campaign setting, references NPC names naturally, generates flag names that fit the campaign's naming conventions
+- Handles complexity gracefully: conditional reveals, dialogue variants based on multiple flags, NPC personality influencing encounter pacing
+- Falls back cleanly: if no library match exists, architect generates encounter from scratch (already a core architect capability)
+
 **New files:**
 - Entry in `src/maxim/simulation/personas.py` for `adventure_architect`
 - `src/maxim/simulation/character_templates.py` (~120) — class archetypes, NPC role templates
-- Tool additions in `src/maxim/simulation/tools_dm.py` — `emit_campaign`, `browse_encounters`, `browse_components`, `propose_character`
+- Tool additions in `src/maxim/simulation/tools_dm.py` — `emit_campaign`, `browse_encounters`, `browse_components`, `propose_character`, `adapt_encounter`
 - Tests (~100)
 
-**Ship gate:** Architect produces a runnable campaign with PC + 3+ NPCs in < 8 minutes. Campaign runs end-to-end without manual edits. Works with `party_mode: true`.
+**Ship gate:** Architect produces a runnable campaign with PC + 3+ NPCs in < 8 minutes. Campaign runs end-to-end without manual edits. Works with `party_mode: true`. At least 2 encounters sourced from library and adapted to campaign context via LLM.
 
 ---
 
@@ -1284,24 +1381,65 @@ maxim.register_persona(
 
 ---
 
-## Phase 9: PyPI Dependency Restructuring + Docs (~300 LOC)
+## Phase 9: PyPI Dependency Restructuring + Docs (~500 LOC)
 
 ### 9a. Dependency audit (~100 LOC)
 
-Phase 1 from the existing PyPI publication plan. Gate optional imports, verify `pip install pymaxim` works with just numpy + scipy + pyyaml + json-repair.
+Phase 1 from the existing PyPI publication plan. Gate optional imports, verify `pip install pymaxim` works with base deps (numpy, scipy, pyyaml, json-repair, rich).
+
+**Base dependency changes (already applied to pyproject.toml):**
+- `rich` moved from optional `[ui]` extra to base — pure Python, 3 tiny deps, used throughout interactive codepaths
+- `dateparser` stays optional `[temporal]` — pulls `regex` (C extension) which can fail on systems without a compiler
+- `[ui]` extra removed (rich is always available)
 
 **Audit sweep:**
 - Verify every non-core import is inside function body or `try/except ImportError`
 - Add helpful error messages: `raise ImportError("Install pymaxim[llm-anthropic] for Claude support")`
 - Test clean install in fresh venv: `pip install pymaxim && python -c "import maxim; maxim.diagnose()"`
+- Relax `requires-python` to `>=3.10` (no 3.12-exclusive features used)
+- Relax `numpy>=2.2` to `>=1.26,<3.0` (no numpy 2.x-specific APIs)
+- Relax `reachy-mini==1.2.6` to `>=1.2.6,<1.3`
+- Add upper bounds: `torch>=2.7,<3.0`, `tensorflow>=2.20,<3.0`
 
-### 9b. User documentation for Python API (~150 LOC docs)
+### 9b. Cloud provider builtin profiles (~50 LOC)
+
+The existing `openai_compatible` backend type already supports custom `base_url` and `api_key_env`. Add builtin profiles for popular OpenAI-compatible cloud providers — **zero new backend code needed**, just config entries in `_BUILTIN_PROFILES`:
+
+| Provider | Profile Name | API Key Env | Notes |
+|----------|-------------|-------------|-------|
+| Google Gemini | `gemini-2.5-flash`, `gemini-2.5-pro` | `GOOGLE_API_KEY` | OpenAI-compatible via `generativelanguage.googleapis.com` |
+| Groq | `groq-llama3-70b`, `groq-mixtral` | `GROQ_API_KEY` | Ultra-fast inference |
+| Together.ai | `together-llama3-70b`, `together-qwen` | `TOGETHER_API_KEY` | Wide model selection |
+| Fireworks | `fireworks-llama3-70b` | `FIREWORKS_API_KEY` | Low-latency |
+| Mistral API | `mistral-large`, `mistral-small` | `MISTRAL_API_KEY` | Official Mistral cloud |
+| DeepSeek | `deepseek-chat`, `deepseek-reasoner` | `DEEPSEEK_API_KEY` | Strong reasoning models |
+
+Each profile is ~5 lines in config.py. No new dependencies. Users just set the API key env var and `--language-model groq-llama3-70b`.
+
+**Modified:** `src/maxim/models/language/config.py` — add profiles to `_BUILTIN_PROFILES`
+
+### 9c. Installation & setup guide (docs + HTML)
 
 **New files:**
+- `docs/user/installation.md` — comprehensive installation guide covering:
+  - Base install (`pip install pymaxim`)
+  - Optional extras breakdown (what each extra provides, install size, platform requirements)
+  - Cloud LLM setup: step-by-step API key configuration for each provider (Anthropic, OpenAI, Gemini, Groq, Together, Fireworks, Mistral, DeepSeek)
+  - Local LLM setup: llama.cpp backend, model download, GPU configuration
+  - Platform-specific notes (macOS, Linux, Windows/WSL, Docker)
+  - Troubleshooting common install failures (missing compiler for C extensions, CUDA version mismatches)
+  - `maxim doctor` as post-install verification
+
+- `htmls-guides/maxim-installation.html` — Jinja2 template for dennyschaedig.com:
+  - Same content as docs/user/installation.md, formatted as HTML guide page
+  - Sections: Quick Start, Base Install, Cloud Providers (with provider logos/cards), Local Models, Optional Packages, Platform Notes, Troubleshooting, Verifying Your Setup
+  - Extends `base.html`, Tailwind dark slate/indigo theme, `btn-link` footer nav
+  - Route: `/maxim-installation`
+
 - `docs/user/python-api.md` — Full API reference with examples for all verbs, event subscription, tool registration, session observation
 - `docs/user/extending-maxim.md` — How to add custom tools, personas, SEM components, encounters without modifying source
 
-### 9c. Example scripts (~50 LOC)
+### 9d. Example scripts (~50 LOC)
 
 ```
 examples/
@@ -1361,14 +1499,14 @@ examples/
 | **0** | **Package Hygiene** | **~550** | **—** | **DONE** | **`pip install -e .` + `python -m maxim` work** |
 | 1 | SEM Component Registry | ~300 | Phase 0 | **In progress** | String ref resolution works in campaigns |
 | 1.1 | Phase 0+1 Wrap-up | ~100 | Phase 1 | Not started | Fix remaining import-time side effects (selfy.py mp.set_start_method, PYOPENGL_PLATFORM), verify Phase 0b blockers resolved, run full test suite against Phase 1 integration |
-| 2 | Encounter Library | ~300 | Phase 1 | Not started | Library encounters faster than inline |
+| 2 | Encounter Library (Tier 1 templates) | ~240 | Phase 1 | Not started | Template encounters load in campaigns, existing campaigns unchanged |
 | 3 | Agent Factory + Pool | ~500-700 | Phase 0 | Not started | 3 agents, separate memory, concurrent |
 | 4 | Party DM Runtime | ~400 | Phases 1-3 | Not started | NPC demonstrates learned behavior |
 | 5 | Hippocampus Recall | ~400 | Phase 4 | Not started | Behavioral recall at door succeeds |
 | **6** | **Interactive Runtime + Rich Display** | **~500** | **—** | Not started | **Rich panels + prompt protocol + DM display** |
 | 7 | Generative Architect | ~500 | Phases 1,2,6 | Not started | Campaign + PC + 3 NPCs in <8 min |
 | **8** | **API Surface Expansion** | **~400** | **Phases 1-5,6** | Not started | **New verbs + events + tool reg work** |
-| **9** | **Deps + Docs + Examples** | **~300** | **Phase 8** | Not started | **Clean install + examples run** |
+| **9** | **Deps + Docs + Cloud Profiles + Examples** | **~500** | **Phase 8** | Not started | **Clean install + examples run + cloud providers work** |
 | 10 | Publication Prep | ~3 files | — | Not started | CHANGELOG + CONTRIBUTING (SECURITY exists) |
 | 11 | Test PyPI + Publish | ~0 | Phases 0-10 | Not started | `pip install pymaxim` works |
 
@@ -1475,6 +1613,7 @@ These don't have their own phases but should be fixed as encountered during the 
 | ToolRegistry has no thread safety | Phase 3 | Add RLock around `_tools` dict |
 | Graceful error for missing LLM in imagine() | Phase 8 | Helpful ImportError message |
 | `observe()` returns `AUTIntrospector` alias | Phase 8 | Remove deprecated alias, use `Observer` only |
+| Replace `dateparser` with stdlib-only parser | Phase 9 | `dateparser` pulls `regex` (C ext) + 3 deps. The regex fallback in `temporal_signal.py` already handles agent-generated patterns. Remove `dateparser` import, promote regex path to primary, delete `[temporal]` optional extra. ~30 LOC net reduction. |
 
 ---
 

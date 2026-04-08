@@ -1,0 +1,17 @@
+encounter:
+  name: riddle_gate
+  tags: [puzzle, mental, gate, ancient]
+  category: puzzle
+  difficulty_range: [2, 4]
+  narrative_role: threshold
+  suggested_npcs: 0
+
+  scene: >
+    An ancient stone archway blocks the passage. Carved into its
+    keystone, weathered letters read: "I have cities, but no houses.
+    I have mountains, but no trees. I have water, but no fish.
+    What am I?" Below the riddle, three stone plates are set into
+    the wall, each engraved with a symbol.
+  choices: [answer_map, answer_painting, answer_dream, force_gate]
+  dice:
+    force_gate: { roll: "1d20", dc: 18 }

@@ -1,0 +1,16 @@
+encounter:
+  name: arena_duel
+  tags: [combat, indoor, formal, honor]
+  category: combat
+  difficulty_range: [3, 6]
+  narrative_role: climax
+  suggested_npcs: 1
+  suggested_npc_roles: [opponent]
+
+  scene: >
+    The crowd roars as you step onto the sand. Across the ring, your
+    opponent draws their weapon with practiced ease. The announcer's
+    voice booms: "To first blood — or to yield. Begin!"
+  choices: [attack, feint, defensive_stance]
+  dice:
+    feint: { roll: "1d20", dc: 13 }

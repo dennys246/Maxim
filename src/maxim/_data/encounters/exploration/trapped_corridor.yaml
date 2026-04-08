@@ -1,0 +1,17 @@
+encounter:
+  name: trapped_corridor
+  tags: [exploration, danger, dungeon, perception]
+  category: exploration
+  difficulty_range: [3, 5]
+  narrative_role: rising_action
+  suggested_npcs: 0
+
+  scene: >
+    The corridor stretches ahead, lined with cracked flagstones. Dust
+    motes drift in the torchlight. Something about the floor ahead
+    looks... wrong. A faint click echoes from somewhere in the walls.
+    The air smells of old oil.
+  choices: [proceed_carefully, search_for_traps, find_alternate_route, rush_through]
+  dice:
+    search_for_traps: { roll: "1d20", dc: 13 }
+    rush_through: { roll: "1d20", dc: 15 }
