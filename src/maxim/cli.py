@@ -1035,11 +1035,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.exit(0)
 
     # If no meaningful action was specified, show quick-start guidance
+    # Exception: MAXIM_ROLE=leader means this is a headless leader server — start normally
     _has_sim = sim_path is not None
     _has_explore = getattr(args, "explore", None) is not None
     _has_mode_override = "--mode" in (raw_argv or [])
     _has_robot = getattr(args, "robot_name", "reachy_mini") != "reachy_mini" or "--robot" in (raw_argv or [])
-    if not (_has_sim or _has_explore or _has_mode_override or _has_robot):
+    _is_leader = os.environ.get("MAXIM_ROLE", "").strip().lower() == "leader"
+    _has_llm = os.environ.get("MAXIM_LLM_ENABLED", "").strip() == "1"
+    if not (_has_sim or _has_explore or _has_mode_override or _has_robot or _is_leader or _has_llm):
         print("Maxim — bio-inspired cognitive architecture\n")
         print("Quick start:")
         print('  maxim --sim "test the agent\'s memory"   Run a generative simulation')
