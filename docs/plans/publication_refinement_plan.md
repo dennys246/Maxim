@@ -1,6 +1,6 @@
 # Publication Refinement Plan
 
-> **Status:** Not started
+> **Status:** Phase 0 DONE (2026-04-08). Phase 1+ not started.
 > **Goal:** Fix the blockers, code quality issues, and documentation gaps identified in a comprehensive repo review before publishing pymaxim v0.2.0 to PyPI.
 > **Estimated scope:** ~1,400 LOC of fixes + ~500 LOC of tests + ~400 LOC of docs changes across 5 phases (includes Mother Maxim on-ramp items 1m-1n)
 > **Sequence:** Blockers (0) → Code Quality + Data Integrity + UX + API Contract (1) → Test Depth (2) → Docs & Packaging (3) → Publish (4)
@@ -333,6 +333,55 @@ from maxim.memory.semantic_types import Concept
 **Files:** `src/maxim/memory/__init__.py`
 **Scope:** ~10 LOC
 **Verify:** `python -c "from maxim.memory import EpisodicStore, Concept, FileCausalStore"`
+
+---
+
+## Phase 1.5 — Data Directory Migration (~1-2 hours)
+
+Fully commit to `~/.maxim/` as the single data home. Eliminate the legacy `data/` directory in the repo root.
+
+### 1.5a. Migrate `data/util/` → `~/.maxim/util/`
+
+**Problem:** `data/util/llm.json` and `data/util/active_llm_model.txt` are the only actively-read files in `data/`. Both the leader and peer read from here.
+
+**Fix:**
+1. Update `models/language/config.py` to check `~/.maxim/util/llm.json` first, fall back to `data/util/llm.json` for backward compat
+2. Update `runtime/lane_backends.py` (`_read_persisted_model`/`_write_persisted_model`) to use `~/.maxim/util/`
+3. Copy existing `data/util/` files to `~/.maxim/util/` on first access (one-time migration)
+4. Update `maxim peer llm` hot-swap to write to new location
+
+**Files:** `src/maxim/models/language/config.py`, `src/maxim/runtime/lane_backends.py`
+
+### 1.5b. Move `data/motion/` → `src/maxim/_data/motion/`
+
+**Problem:** `data/motion/default_actions.json` is the only git-tracked file in `data/`. It's bundled seed data, not user data.
+
+**Fix:** Move to `src/maxim/_data/motion/`, update any references. Already included by `package-data` glob `_data/**/*`.
+
+### 1.5c. Migrate `data/models/` → `~/.maxim/models/`
+
+**Problem:** Downloaded GGUFs (4-14GB each) live in `data/models/`. Can't just delete — re-downloading takes hours.
+
+**Fix:**
+1. Update `download_models.sh` to target `~/.maxim/models/`
+2. On first run, if `~/.maxim/models/` is empty but `data/models/` has files, symlink or copy
+3. Update all model path resolution in `config.py` to use `~/.maxim/models/`
+
+### 1.5d. Clean up `data/` and gitignore
+
+After migration is verified:
+1. Delete: `data/sim_sandbox/` (~200 dirs), `data/agents/MagicMock_*` (~55 dirs), `data/sim_reports/`, `data/sim_orchestrator/`, `data/short_term_memory/`, `data/runtime/`
+2. Replace granular `.gitignore` entries with single `data/` line
+3. Add `data/` deprecation note: "Legacy directory. All runtime data lives in ~/.maxim/. Safe to delete after running maxim once (migrates automatically)."
+4. Clean test artifacts from `~/.maxim/agents/` (test_*, iso_*, pool_*, cross_*, vs_* dirs created by composable API tests)
+
+### 1.5e. Bugs found during testing (fix alongside migration)
+
+Two bugs identified during DM campaign testing:
+
+1. **Respond loop** — AUT enters infinite `respond` loop after dice roll results (61 actions on arena Turn 4). Needs a consecutive same-tool cap in the agent loop. Add `max_consecutive_same_tool: int = 5` to LoopController config; after N identical tool calls, force-advance to next turn.
+
+2. **Ctrl+C during DM campaign crashes without saving** — `KeyboardInterrupt` in `dm_runtime.run()` propagates through `bridge.send_and_wait()` → `time.sleep()` and bypasses the report/save code in the orchestrator. Fix: wrap `dm.run()` in `try/except KeyboardInterrupt` at line ~1167 of orchestrator.py, set `finish_reason = "cancel"`, and continue to the save/report section.
 
 ---
 
@@ -1208,27 +1257,32 @@ Shipped pre-publication to lock in the public API surface. All internal classes 
 **Docs:** `docs/user/python-api.md` fully rewritten with verb API + composable API + mutation examples. `docs/user/getting-started.md` updated with both API paths.
 
 **Key design decisions:**
-- `maxim.create.*` facades delegate to internal classes — internals can change freely
+- `maxim.create.*` = always fresh. `maxim.load.*` = restore from disk. Two namespaces, clear semantics.
 - `Session` wraps `SimulationResult` via delegation — backward compatible
-- `get_session`/`list_sessions` (not `session`/`sessions`) to avoid sub-module name clash
-- `Entity`, `Sensor`, `Modulator` are public types (names already declared permanent in CLAUDE.md)
-- Agent subsystems (hippocampus, nac, atl, personality) are mutable via direct field assignment — no setter ceremony
+- `Report` object with `.save("report.md")` / `.save("report.json")` — multi-format output
+- Only `Entity` exported as public type (not `Sensor`/`Modulator` — those are Protocols, not constructable)
+- `NACConfig.persistence_path` is a proper config field (not monkey-patched `_persistence_path`)
+- `create.router()` scopes env vars with save/restore (no global mutation)
+- `Entity.from_dict()` reconstructs SpecSensor/SpecModulator/FailureMode (full round-trip)
 
 **Fixed during review (2026-04-08):**
-- `dir(maxim)` now returns all 36 public names (added `__dir__()` to `__init__.py`)
+- `dir(maxim)` now returns all public names (added `__dir__()` to `__init__.py`)
 - `load.hippocampus()` raises `FileNotFoundError` on missing file (was silently returning empty)
-- Docstring examples fixed: `maxim.session()` → `maxim.get_session()`, `maxim.sessions()` → `maxim.list_sessions()`
-- `create.py` docstrings fixed: hippocampus `recall()` signature, NAc `observe()` 6-arg signature
-- `session.py` bare `except: pass` blocks upgraded to `logger.warning()`
 - `create.py` and `load.py` gained `__all__` to reduce namespace pollution
-- Error message in `session.py` fixed: `maxim.sessions()` → `maxim.list_sessions()`
+- `session.py` bare `except: pass` blocks upgraded to `logger.warning()`
+- Removed `get_session`/`list_sessions` verb duplicates — `maxim.load.session()`/`.sessions()` is canonical
+- Removed `Sensor`/`Modulator` from `__all__` (Protocols, not constructable)
+- Added `Report` type with `.save()` for md/json (future: pdf/docx via `pymaxim[docs]`)
+- Added `maxim.load.agent()` for restoring persisted agents
+- `session.research()` returns `Report` with warning if no data (not silent empty object)
+- `pool.run_turn()` emits warning that responses are placeholder (memory ops still work)
 
 **Remaining work (v0.2.1+):**
 - Wire `session.research()` to actual research_orchestrator (blocked on research pipeline fixes D-0a..D-0e)
+- Wire `campaign()` / `benchmark()` to actual runtimes (currently warn + return stub)
 - Add `maxim.create.router()` tests (requires LLM setup)
 - `@maxim.tool` decorator should infer `input_schema` from type annotations (Phase 3i)
-- Fix `create.router()` env mutation (Phase 1l)
-- Fix `python-api.md` examples: `recall()` signature, NAc `record_event` vs `observe` (Phase 3a)
+- Report `.save("report.pdf")` / `.save("report.docx")` via `pymaxim[docs]` extra
 
 ---
 
