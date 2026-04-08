@@ -42,6 +42,7 @@ def configure(
     verbosity: int = 1,
     log_file: str | None = None,
     debug: str | None = None,
+    show: str | None = None,
 ) -> None:
     """Configure Maxim runtime settings.
 
@@ -54,12 +55,28 @@ def configure(
         debug: Subsystem trace filter.  Comma-separated list of subsystem
             names (e.g. ``"hippo"``, ``"nac"``, ``"hippo,nac"``).
             ``None`` means no subsystem tracing; pass ``"all"`` for everything.
+        show: Channel filter for simulation output.  Comma-separated:
+            ``"bio"`` (hippocampus/NAc/SCN/ATL/pain/fear),
+            ``"exec"`` (tool execution/LLM), ``"sim"`` (percepts/scenes),
+            ``"memory"``, ``"safety"``, ``"all"`` (default).
+            Also settable via ``$MAXIM_SHOW_CHANNELS`` env var.
+
+    Example::
+
+        maxim.configure(show="bio")          # Only bio-system events
+        maxim.configure(show="bio,exec")     # Bio + execution
+        maxim.configure(show="all")          # Everything (default)
     """
     from maxim.utils.logging import configure_logging
     from maxim.utils.structured_logging import configure_agentic_verbosity
 
     configure_logging(verbosity, log_file=log_file, force=True)
     configure_agentic_verbosity(verbosity, console_output=verbosity >= 2)
+
+    # Channel filter for simulation output
+    if show is not None:
+        from maxim.simulation.sim_logger import set_show_channels
+        set_show_channels(show)
 
     # Subsystem trace env vars (read by individual subsystems at runtime)
     if debug is not None:

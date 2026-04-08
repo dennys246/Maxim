@@ -136,8 +136,14 @@ def enable_sim_logging(
     _debug_mode = debug
     _use_color = use_color and hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
+    # Apply env var channel filter if no explicit --show was set
+    import os
+    if _show_channels is None:
+        env_channels = os.environ.get("MAXIM_SHOW_CHANNELS", "").strip()
+        if env_channels:
+            set_show_channels(env_channels)
+
     if log_path:
-        import os
 
         try:
             os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
