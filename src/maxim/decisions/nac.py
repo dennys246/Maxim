@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -79,6 +80,11 @@ class NAc:
 
     def __init__(self, config: NACConfig | None = None, ec: Any = None):
         self.config = config or NACConfig()
+
+        # Thread safety: RLock for concurrent access from multi-agent party mode
+        # and Mother Maxim's contribution processing. RLock (not Lock) because
+        # record_outcome() calls _find_matching_link() which also reads _links.
+        self._lock = threading.RLock()
 
         # Primary storage: event_signature → list of CausalLinks
         self._links: dict[str, list[CausalLink]] = {}
@@ -174,31 +180,32 @@ class NAc:
         Returns:
             Event ID for later outcome attribution.
         """
-        now = time.time()
-        event_id = f"{event_signature}:{time.time_ns()}"
+        with self._lock:
+            now = time.time()
+            event_id = f"{event_signature}:{time.time_ns()}"
 
-        # Age-prune stale events (no outcome ever arrived within 2× the
-        # temporal window) so the buffer doesn't leak in failure-heavy runs.
-        stale_cutoff = now - (self.config.temporal_window_seconds * 2)
-        if self._pending_events and self._pending_events[0]["timestamp"] < stale_cutoff:
-            self._pending_events = [e for e in self._pending_events if e["timestamp"] >= stale_cutoff]
+            # Age-prune stale events (no outcome ever arrived within 2× the
+            # temporal window) so the buffer doesn't leak in failure-heavy runs.
+            stale_cutoff = now - (self.config.temporal_window_seconds * 2)
+            if self._pending_events and self._pending_events[0]["timestamp"] < stale_cutoff:
+                self._pending_events = [e for e in self._pending_events if e["timestamp"] >= stale_cutoff]
 
-        self._pending_events.append(
-            {
-                "id": event_id,
-                "type": event_type,
-                "signature": event_signature,
-                "context": context or {},
-                "memory_id": memory_id,
-                "timestamp": now,
-            }
-        )
+            self._pending_events.append(
+                {
+                    "id": event_id,
+                    "type": event_type,
+                    "signature": event_signature,
+                    "context": context or {},
+                    "memory_id": memory_id,
+                    "timestamp": now,
+                }
+            )
 
-        # Hard cap in case of pathological bursts (keep most recent).
-        if len(self._pending_events) > self.config.max_pending_events:
-            self._pending_events = self._pending_events[-self.config.max_pending_events :]
+            # Hard cap in case of pathological bursts (keep most recent).
+            if len(self._pending_events) > self.config.max_pending_events:
+                self._pending_events = self._pending_events[-self.config.max_pending_events :]
 
-        return event_id
+            return event_id
 
     def record_outcome(
         self,
@@ -255,6 +262,23 @@ class NAc:
         Returns:
             List of CausalLinks that were created or updated.
         """
+        with self._lock:
+            return self._record_outcome_impl(
+                outcome_type, outcome_signature, outcome_valence,
+                context, memory_id, attributed_event_id, attributed_event_signature,
+            )
+
+    def _record_outcome_impl(
+        self,
+        outcome_type: str,
+        outcome_signature: str,
+        outcome_valence: Valence,
+        context: dict[str, Any] | None = None,
+        memory_id: str | None = None,
+        attributed_event_id: str | None = None,
+        attributed_event_signature: str | None = None,
+    ) -> list[CausalLink]:
+        """Internal implementation — called under self._lock."""
         now = time.time()
         context = context or {}
         updated_links: list[CausalLink] = []
@@ -453,6 +477,16 @@ class NAc:
         Returns:
             OutcomePrediction if any relevant links exist, None otherwise.
         """
+        with self._lock:
+            return self._predict_impl(event_type, event_signature, context)
+
+    def _predict_impl(
+        self,
+        event_type: str,
+        event_signature: str,
+        context: dict[str, Any] | None = None,
+    ) -> OutcomePrediction | None:
+        """Internal implementation — called under self._lock."""
         context = context or {}
         event_links = self._links.get(event_signature, [])
 
@@ -769,13 +803,14 @@ class NAc:
 
     def save(self, path: str) -> None:
         """Save NAc state to JSON file."""
-        data = {
-            "version": "1.0",
-            "links": {event_sig: [link.to_dict() for link in links] for event_sig, links in self._links.items()},
-            "outcome_index": {k: list(v) for k, v in self._outcome_index.items()},
-            "priors": self._priors,
-            "total_observations": self._total_observations,
-        }
+        with self._lock:
+            data = {
+                "version": "1.0",
+                "links": {event_sig: [link.to_dict() for link in links] for event_sig, links in self._links.items()},
+                "outcome_index": {k: list(v) for k, v in self._outcome_index.items()},
+                "priors": self._priors,
+                "total_observations": self._total_observations,
+            }
 
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)

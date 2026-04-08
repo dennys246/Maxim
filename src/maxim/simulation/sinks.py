@@ -40,15 +40,47 @@ class ActionSink(Protocol):
 
 
 class RecordingSink:
-    """Stores all actions for post-run validation."""
+    """Stores all actions for post-run validation.
 
-    def __init__(self) -> None:
+    Bounded to MAX_ACTIONS. When the limit is reached, the oldest half of
+    actions are compressed (detail fields stripped, only tool_name + success
+    + timestamp retained) to free memory while preserving the audit trail.
+    """
+
+    MAX_ACTIONS = 10_000
+
+    def __init__(self, max_actions: int | None = None) -> None:
         self._actions: list[ActionRecord] = []
         self._lock = threading.Lock()
+        self._max = max_actions or self.MAX_ACTIONS
 
     def record(self, action: ActionRecord) -> None:
         with self._lock:
             self._actions.append(action)
+            if len(self._actions) > self._max:
+                self._compress_oldest()
+
+    def _compress_oldest(self) -> None:
+        """Compress the oldest half of actions — strip heavy fields, keep summary.
+
+        Called under self._lock. Replaces full ActionRecords with lightweight
+        copies (tool_args and result_output cleared) to free memory while
+        preserving the audit trail of what tools ran and whether they succeeded.
+        """
+        half = len(self._actions) // 2
+        compressed = []
+        for rec in self._actions[:half]:
+            compressed.append(ActionRecord(
+                timestamp=rec.timestamp,
+                tool_name=rec.tool_name,
+                tool_args={},  # Drop heavy args
+                result_success=rec.result_success,
+                result_output=None,  # Drop heavy output
+                result_error=rec.result_error[:100] if rec.result_error else None,
+                blocked=rec.blocked,
+                block_reason=rec.block_reason,
+            ))
+        self._actions = compressed + self._actions[half:]
 
     @property
     def actions(self) -> list[ActionRecord]:
