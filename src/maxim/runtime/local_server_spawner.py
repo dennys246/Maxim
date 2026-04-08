@@ -21,6 +21,7 @@ import os
 import subprocess
 import sys
 import threading
+from typing import Any
 import time
 from pathlib import Path
 
@@ -87,6 +88,96 @@ def _kill_process_tree(pid: int) -> None:
             os.killpg(os.getpgid(pid), signal.SIGKILL)
         except (ProcessLookupError, PermissionError, OSError):
             pass
+
+
+def find_stale_llm_servers(port: int = DEFAULT_PORT) -> list[dict[str, Any]]:
+    """Find llama-cpp-server processes that may be holding VRAM.
+
+    Returns a list of dicts with keys: pid, cmdline, port_match, status.
+    Works with or without psutil (degrades to port-only check without it).
+    """
+    results: list[dict[str, Any]] = []
+    try:
+        import psutil
+    except ImportError:
+        # No psutil — best-effort: check if something is listening on the port
+        try:
+            import urllib.request
+
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/models")
+            with urllib.request.urlopen(req, timeout=1.0) as resp:  # noqa: S310
+                if resp.status == 200:
+                    results.append({
+                        "pid": None,
+                        "cmdline": f"(unknown process on port {port})",
+                        "port_match": True,
+                        "status": "responding",
+                    })
+        except Exception:
+            pass
+        return results
+
+    for proc in psutil.process_iter(["pid", "cmdline", "status"]):
+        try:
+            cmdline = proc.info.get("cmdline") or []
+            cmd_str = " ".join(cmdline)
+            if "llama_cpp.server" in cmd_str or "llama_cpp/server" in cmd_str:
+                port_match = "--port" in cmd_str and str(port) in cmd_str
+                results.append({
+                    "pid": proc.info["pid"],
+                    "cmdline": cmd_str[:200],
+                    "port_match": port_match,
+                    "status": proc.info.get("status", "unknown"),
+                })
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return results
+
+
+def kill_stale_llm_servers(port: int = DEFAULT_PORT) -> int:
+    """Find and kill any stale llama-cpp-server processes holding VRAM.
+
+    Returns the number of processes killed. Safe to call at startup or
+    when VRAM appears stuck — only targets llama_cpp.server processes.
+    """
+    stale = find_stale_llm_servers(port)
+    killed = 0
+    for entry in stale:
+        pid = entry.get("pid")
+        if pid is None:
+            # No psutil — find PID from port listener, platform-specific
+            if sys.platform == "win32":
+                try:
+                    out = subprocess.check_output(  # noqa: S603, S607
+                        ["netstat", "-ano"], text=True, timeout=5,
+                    )
+                    for line in out.splitlines():
+                        if f":{port}" in line and "LISTENING" in line:
+                            parts = line.split()
+                            try:
+                                _kill_process_tree(int(parts[-1]))
+                                killed += 1
+                            except (ValueError, IndexError):
+                                pass
+                except Exception:
+                    pass
+            else:
+                try:
+                    out = subprocess.check_output(  # noqa: S603, S607
+                        ["lsof", "-ti", f":{port}"], text=True, timeout=5,
+                    )
+                    for lpid_str in out.strip().split():
+                        try:
+                            _kill_process_tree(int(lpid_str))
+                            killed += 1
+                        except (ValueError, OSError):
+                            pass
+                except Exception:
+                    pass
+        else:
+            _kill_process_tree(pid)
+            killed += 1
+    return killed
 
 
 class LocalServerSpawner:
@@ -299,4 +390,10 @@ class LocalServerSpawner:
             return False
 
 
-__all__ = ["LocalServerSpawner", "DEFAULT_PORT", "DEFAULT_N_CTX"]
+__all__ = [
+    "LocalServerSpawner",
+    "DEFAULT_PORT",
+    "DEFAULT_N_CTX",
+    "find_stale_llm_servers",
+    "kill_stale_llm_servers",
+]

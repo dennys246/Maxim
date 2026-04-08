@@ -965,6 +965,21 @@ def _maybe_auto_spawn_server(
         )
         return out
 
+    # Port not responding but may have a stale process holding VRAM.
+    # Kill it before attempting to spawn a new server.
+    try:
+        from maxim.runtime.local_server_spawner import kill_stale_llm_servers
+
+        n_killed = kill_stale_llm_servers(port)
+        if n_killed and logger is not None:
+            logger.info(
+                "Killed %d stale llama-cpp-server process(es) on port %d before spawn",
+                n_killed,
+                port,
+            )
+    except Exception:
+        pass
+
     try:
         from maxim.runtime.local_server_spawner import LocalServerSpawner
     except Exception:
