@@ -431,6 +431,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # imports.  This was previously at module-import time; moved here so that
     # ``import maxim`` has no subprocess side effects.
     from maxim.utils.gpu_detect import ensure_blackwell_guards
+
     ensure_blackwell_guards()
 
     from maxim.utils.last_run import (
@@ -542,6 +543,37 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Save this invocation if it's meaningful
     if should_save(raw_argv):
         save_last_run(raw_argv)
+
+    # List available models if requested
+    if bool(getattr(args, "list_models", False)):
+        from maxim.models.language.config import _BUILTIN_PROFILES, _PROFILE_ALIASES
+
+        local = []
+        cloud = []
+        for name, profile in sorted(_BUILTIN_PROFILES.items()):
+            aliases = [a for a, v in _PROFILE_ALIASES.items() if v == name and a != name]
+            alias_str = f"  (aliases: {', '.join(aliases)})" if aliases else ""
+            line = f"  {name}{alias_str}"
+            if profile.get("cloud"):
+                env = profile.get("api_key_env", "")
+                key_set = bool(os.environ.get(env)) if env else False
+                status = "ready" if key_set else f"needs {env}"
+                cloud.append(f"{line}  [{status}]")
+            else:
+                local.append(line)
+
+        print("Local models (requires GPU + downloaded GGUF):")
+        for line in local:
+            print(line)
+        print()
+        print("Cloud models (requires API key):")
+        for line in cloud:
+            print(line)
+
+        # Show current config
+        current = os.environ.get("MAXIM_LLM_PROFILE", "mistral-7b")
+        print(f"\nCurrently configured: {current}")
+        return 0
 
     # Clear Python cache if requested
     if bool(getattr(args, "clear_cache", False)):
@@ -660,9 +692,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         # Parse --debug subsystem selection
         _debug_raw = getattr(args, "debug", None)
         _debug_all = _debug_raw == "all"
+        # Human-readable aliases for bio-system debug subsystems
+        _DEBUG_ALIASES = {
+            "memory": "hippo",
+            "recall": "hippo",
+            "causal": "nac",
+            "reward": "nac",
+            "semantic": "atl",
+            "concepts": "atl",
+            "temporal": "scn",
+            "clock": "scn",
+        }
         _debug_subs = set()
         if _debug_raw and _debug_raw != "all":
-            _debug_subs = {s.strip().lower() for s in _debug_raw.split(",")}
+            raw_subs = {s.strip().lower() for s in _debug_raw.split(",")}
+            _debug_subs = {_DEBUG_ALIASES.get(s, s) for s in raw_subs}
         if _debug_all or "hippo" in _debug_subs:
             os.environ["MAXIM_HIPPO_TRACE"] = "1"
         if _debug_all or "nac" in _debug_subs:
@@ -683,6 +727,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         _is_legacy_agent = _sim_val_lower == "agent"
         _is_legacy_research = _sim_val_lower == "research"
         _is_legacy_benchmark = _sim_val_lower == "benchmark"
+
+        if _is_legacy_agent:
+            import warnings
+
+            warnings.warn(
+                '--sim agent is deprecated. Use: maxim --sim "your goal here"\nThis alias will be removed in v0.3.0.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if _is_legacy_research:
+            import warnings
+
+            warnings.warn(
+                '--sim research is deprecated. Use: maxim --sim "your goal" --research\n'
+                "This alias will be removed in v0.3.0.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if _is_legacy_benchmark:
+            import warnings
+
+            warnings.warn(
+                "--sim benchmark is deprecated. Use: maxim --benchmark\nThis alias will be removed in v0.3.0.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         _is_interactive = _sim_val_lower == "interactive"
         _is_goal_string = not (
             _is_yaml or _is_legacy_agent or _is_legacy_research or _is_legacy_benchmark or _is_interactive
@@ -958,6 +1028,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             print("No architecture violations found.")
             sys.exit(0)
+
+    # If no meaningful action was specified, show quick-start guidance
+    _has_sim = sim_path is not None
+    _has_explore = getattr(args, "explore", None) is not None
+    _has_mode_override = "--mode" in (raw_argv or [])
+    _has_robot = getattr(args, "robot_name", "reachy_mini") != "reachy_mini" or "--robot" in (raw_argv or [])
+    if not (_has_sim or _has_explore or _has_mode_override or _has_robot):
+        print("Maxim — bio-inspired cognitive architecture\n")
+        print("Quick start:")
+        print('  maxim --sim "test the agent\'s memory"   Run a generative simulation')
+        print("  maxim --sim scenarios/my_test.yaml       Run a YAML scenario")
+        print("  maxim doctor                             Check your environment")
+        print("  maxim --list-models                      See available LLM models")
+        print("  maxim --help                             Full option reference\n")
+        print("Python API:")
+        print("  import maxim")
+        print("  maxim.diagnose()                         Check environment from Python")
+        print("  maxim.list_models()                      List available models\n")
+        return 0
 
     build_home(args.home_dir)
     mode = str(getattr(args, "mode", "active")).strip().lower()
@@ -1433,7 +1522,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     return 0 if passed else 1
 
                 return 0
-
 
             from maxim.conscience.selfy import Maxim
 

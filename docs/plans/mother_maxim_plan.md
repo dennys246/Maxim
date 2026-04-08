@@ -2029,6 +2029,52 @@ Both paths expose Mother to external callers. Security requirements:
 
 ---
 
+## Mother Diagnostics (`maxim doctor` integration)
+
+When Mother ships, `maxim doctor` gains new check categories via `--as contributor`, `--as mother`, and `--as federation`. Same `CheckResult` pattern, new check functions.
+
+### Contributor diagnostics (`maxim doctor --as contributor`)
+
+| Check | What it verifies | Fix hint |
+|-------|-----------------|----------|
+| Mother reachability | DNS + HTTPS + `/v1/stats` responds | "Mother is at \<url\>. Check your network." |
+| API key valid | Auth against `/v1/session` | "Get a contributor key at \<url\>/register" |
+| Client version | `client_version >= MINIMUM_CLIENT_VERSION` | "Run `pip install --upgrade pymaxim`" |
+| Model tier sufficient | Session's LLM profile meets `MINIMUM_DEIDENTIFICATION_TIER` | "Your model (smollm-1.7b) is below minimum. Use mistral-7b or higher." |
+| Deidentification pipeline | Run `ContributionPreparer.prepare()` on a synthetic memory, verify it works | "Install pymaxim[semantic] for embedding support" |
+| Bio-system health | Hippocampus/ATL/NAc can save/load (store protocols working) | "Your memory state may be corrupted. Run maxim doctor --fix memory" |
+
+### Mother operator diagnostics (`maxim doctor --as mother`)
+
+| Check | What it verifies | Fix hint |
+|-------|-----------------|----------|
+| PostgreSQL reachable | Connect to configured DB, verify schema | "`docker compose up -d postgres`" |
+| pgvector extension | `CREATE EXTENSION IF NOT EXISTS vector` works | "`apt install postgresql-16-pgvector`" |
+| Mother agent running | Process alive, agent loop cycling | "`maxim mother start`" |
+| Memory stats | Total memories, growth rate, last contribution time | Informational |
+| Deidentification stats | Rejection rate, quarantine depth, flagged tenants | "High rejection rate (>30%) — check deidentification model quality" |
+| Coalescence health | Merge rate, consensus convergence, contradiction count | Informational |
+| Sleep/circadian | Last sleep time, consolidation stats, SCN accuracy | "Mother hasn't slept in 48h — check SCN configuration" |
+| Cognitive health | Recall precision trend, NAc confidence trend, ATL concept count | "Recall precision declining — investigate memory quality" |
+| Security | No host paths in API responses, auth enforced, rate limits active | "Security hardening incomplete. Run stress test." |
+| Disk/DB size | Database size, growth projection, backup recency | "Database at 80% of disk. Last backup: 7 days ago." |
+
+### Federation diagnostics (`maxim doctor --as federation`) — future
+
+| Check | What it verifies |
+|-------|-----------------|
+| Peer Mothers reachable | Each known Mother responds to `/v1/stats` |
+| Domain coverage | Which domains are covered, which have gaps |
+| Consensus health | Are peer Mothers converging or diverging? |
+| Clock sync | SCN drift between Mothers |
+| Cross-Mother latency | Round-trip p50 for knowledge sharing |
+
+### CapabilityAgent integration
+
+The CapabilityAgent (designed in [future_plans.md](future_plans.md)) absorbs Mother-awareness with `can_contribute()` (pre-flight: model tier, deidentification, Mother reachability) and `mother_health()` (live cognitive health metrics). Doctor provides formatting + fix hints + retry loop.
+
+---
+
 ## Open Questions (Resolve During Implementation)
 
 | Question | Options | Leaning |

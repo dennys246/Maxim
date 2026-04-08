@@ -465,3 +465,47 @@ def make_plan_manager(
         config=config or LongHorizonConfig(),
         services=services or PlanServices(),
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Mock LLM Fixture
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def mock_llm(monkeypatch):
+    """Mock LLM router that returns canned responses.
+
+    Patches build_primary_router() to return a fake router so tests
+    don't need a real LLM backend.
+
+    Usage::
+
+        def test_something(mock_llm):
+            router, manager = mock_llm
+            result = router.generate("hello")
+            assert result == '{"response": "mock"}'
+    """
+
+    class FakeRouter:
+        def generate(self, prompt, **kw):
+            return '{"response": "mock"}'
+
+        def generate_json(self, prompt, **kw):
+            return {"response": "mock"}
+
+        def stop(self):
+            pass
+
+    class FakeLaneManager:
+        def stop(self):
+            pass
+
+    router = FakeRouter()
+    manager = FakeLaneManager()
+
+    monkeypatch.setattr(
+        "maxim.runtime.lane_backends.build_primary_router",
+        lambda **kw: (router, manager),
+    )
+    return router, manager

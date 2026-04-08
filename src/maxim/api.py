@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -70,6 +71,103 @@ def configure(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Model validation + discovery
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _validate_model(model: str) -> None:
+    """Validate that a model profile is available, with actionable errors.
+
+    Raises ``ConfigurationError`` with install/export instructions if the
+    model is unknown, the required SDK is missing, or the API key is unset.
+    """
+    from maxim.exceptions import ConfigurationError
+    from maxim.models.language.config import _BUILTIN_PROFILES, normalize_llm_profile
+
+    canonical = normalize_llm_profile(model)
+    profile = _BUILTIN_PROFILES.get(canonical)
+
+    if profile is None:
+        from maxim.models.language.config import list_llm_profiles
+
+        available = list_llm_profiles()
+        raise ConfigurationError(
+            f"Unknown model '{model}'. Available profiles:\n"
+            f"  {', '.join(available[:15])}\n"
+            f"Run: maxim --list-models  (or maxim.list_models() from Python)"
+        )
+
+    # Cloud models: check SDK + API key
+    if profile.get("cloud"):
+        backend = profile.get("backend", "")
+        api_key_env = profile.get("api_key_env", "")
+
+        if backend == "anthropic":
+            try:
+                import anthropic  # noqa: F401
+            except ImportError:
+                raise ConfigurationError(
+                    f"Model '{model}' requires the Anthropic SDK.\n  Fix: pip install pymaxim[llm-anthropic]"
+                )
+        elif backend == "openai":
+            try:
+                import openai  # noqa: F401
+            except ImportError:
+                raise ConfigurationError(
+                    f"Model '{model}' requires the OpenAI SDK.\n  Fix: pip install pymaxim[llm-openai]"
+                )
+
+        if api_key_env and not os.environ.get(api_key_env):
+            raise ConfigurationError(
+                f"Model '{model}' requires {api_key_env} to be set.\n  Fix: export {api_key_env}=<your-key>"
+            )
+
+
+@dataclass
+class ModelInfo:
+    """Information about an available LLM profile."""
+
+    name: str
+    backend: str
+    cloud: bool = False
+    api_key_env: str = ""
+    context_length: int = 0
+
+
+def list_models() -> dict[str, list[ModelInfo]]:
+    """Return available models grouped by type.
+
+    Returns a dict with ``"local"`` and ``"cloud"`` keys, each containing
+    a list of :class:`ModelInfo` objects.
+
+    Example::
+
+        models = maxim.list_models()
+        for m in models["cloud"]:
+            print(f"{m.name} (requires {m.api_key_env})")
+    """
+    from maxim.models.language.config import _BUILTIN_PROFILES
+
+    local: list[ModelInfo] = []
+    cloud: list[ModelInfo] = []
+
+    for name, profile in sorted(_BUILTIN_PROFILES.items()):
+        info = ModelInfo(
+            name=name,
+            backend=profile.get("backend", "unknown"),
+            cloud=bool(profile.get("cloud")),
+            api_key_env=profile.get("api_key_env", ""),
+            context_length=profile.get("n_ctx", 0),
+        )
+        if info.cloud:
+            cloud.append(info)
+        else:
+            local.append(info)
+
+    return {"local": local, "cloud": cloud}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # run
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -103,6 +201,8 @@ def run(
         maxim.exceptions.MaximConfigurationError: If the requested model
             is not available (missing files or API key).
     """
+    _validate_model(model)
+
     import threading
 
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
@@ -218,6 +318,7 @@ def imagine(
     Returns:
         SimulationResult with metrics, action log, and memory snapshots.
     """
+    _validate_model(model)
     configure(verbosity=verbosity)
 
     os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
@@ -656,6 +757,7 @@ def campaign(
     # Override party_mode if specified
     if party_mode is not None:
         from dataclasses import replace
+
         campaign_def = replace(campaign_def, party_mode=party_mode)
 
     # For now, return a result from the campaign definition
@@ -805,7 +907,8 @@ class EventHandle:
     def unsubscribe(self) -> None:
         """Stop receiving events for this subscription."""
         self._active = False
-        _event_subscriptions.pop(self._handle_id, None)
+        with _api_lock:
+            _event_subscriptions.pop(self._handle_id, None)
 
     @property
     def active(self) -> bool:
@@ -813,6 +916,7 @@ class EventHandle:
 
 
 # Global event subscription registry
+_api_lock = threading.Lock()
 _event_subscriptions: dict[int, tuple[str, Any]] = {}
 _next_handle_id = 0
 
@@ -844,9 +948,10 @@ def on(event_name: str, callback: Any) -> EventHandle:
         handle.unsubscribe()
     """
     global _next_handle_id
-    handle_id = _next_handle_id
-    _next_handle_id += 1
-    _event_subscriptions[handle_id] = (event_name, callback)
+    with _api_lock:
+        handle_id = _next_handle_id
+        _next_handle_id += 1
+        _event_subscriptions[handle_id] = (event_name, callback)
     return EventHandle(event_name, callback, handle_id)
 
 
@@ -855,6 +960,7 @@ def on(event_name: str, callback: Any) -> EventHandle:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _pending_tools: list[Any] = []
+_pending_tools_lock = threading.Lock()
 
 
 def register_tool(tool: Any) -> None:
@@ -882,7 +988,8 @@ def register_tool(tool: Any) -> None:
         maxim.register_tool(MyTool())
         maxim.run(model="mistral-7b")  # MyTool is available to the agent
     """
-    _pending_tools.append(tool)
+    with _pending_tools_lock:
+        _pending_tools.append(tool)
 
 
 def tool(fn: Any) -> Any:

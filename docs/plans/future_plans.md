@@ -52,12 +52,48 @@ These are features, not architecture. Safe to add after PyPI publication without
 | Work | Trigger | Effort | Notes |
 |------|---------|--------|-------|
 | **Agent Mesh Phase 0a-0b** | Multiple LAN machines join | ~400 LOC | mDNS discovery + InferenceRouter. Current `LocalMessageBus` is sufficient for single-machine multi-agent. |
-| **Capability Agent** | Multi-machine setups need runtime awareness | ~500 LOC | [Design notes](doctor_upgrade_plan.md). Depends on lane tiers (done) + mesh Phase 0a. |
+| **Capability Agent** | Multi-machine setups need runtime awareness | ~500 LOC | See design below. Depends on lane tiers (done) + mesh Phase 0a. CA-1 (CapabilitySnapshot + model availability) → CA-2 (local + leader awareness) → CA-3 (benchmark/sim gates) → CA-4 (mesh) → CA-5 (FunctionRouter health_check). |
 | **Embodiment Hardware Adapter + selfy.py decomposition** | Deploying to physical hardware or adding new robots | ~800 LOC net (saves ~900) | Decompose `conscience/selfy.py` (858 LOC after mixin decomposition) into `ReachyController(RobotController)` plugin. Moves `AgenticRuntimeMixin` (~1,080 LOC) into standard runtime, eliminates ~650 LOC of orchestrator glue, moves ~276 LOC of generic input handling to interactive module. Enables multi-robot support via entry-point plugins (Atlas, Spot, etc.) without modifying core runtime. Currently behind lazy import — no PyPI impact, but blocks clean robot extensibility. |
 | **PyPI Multi-Robot Plugins** | External robot controllers need discovery | ~250 LOC | Entry-point based `maxim.robots` registration. Phase 3 of [PyPI plan](pypi_publication_plan.md). Depends on selfy.py decomposition above. |
 | **Full CI/CD Pipeline** | Need automated test + publish | ~2 files | GitHub Actions: lint, test, build, publish. Phase 4 of [PyPI plan](pypi_publication_plan.md). |
 | **Peer Inference Retry** | Leader restarts cause 502 errors | ~30 LOC | Exponential backoff in openai_backend.py |
 | **GitHub Fork Workflow** | Contributors need fork-based PRs | ~550 LOC | [Plan](github_repo_management_plan.md) |
+
+### Doctor Enhancements (v2 shipped, remaining items)
+
+`maxim doctor` v2 shipped with peer diagnostics, `--json`, key hygiene, inference coherence, disk/RAM checks, and role detection. Remaining items from the original upgrade plan:
+
+| Enhancement | Trigger | Effort | Notes |
+|-------------|---------|--------|-------|
+| **Tokens/sec + latency jitter** | Users need performance baselines | ~150 LOC | Extend coherence check into `maxim doctor benchmark` subcommand: 20 completions, p50/p95/p99, cold-start vs warm |
+| **Cloudflared loglevel warning** | Security hygiene | ~30 LOC | Parse config for `loglevel: debug`, warn about plaintext Bearer tokens in journal |
+| **`--diff <snapshot>`** | Detect regressions across runs | ~100 LOC | Compare against saved `--json` output |
+| **Model dir write permissions** | Download failures | ~30 LOC | Check `~/.maxim/models/` is writable |
+| **GGUF integrity** | Corrupted downloads | ~50 LOC | Size check or SHA-256 spot-check |
+| **`maxim doctor bundle`** | Support bundles | ~150 LOC | Zip platform info + logs + doctor JSON + config (secrets redacted). Local-file only. |
+| **`--fix` automation** | User requests auto-apply | ~300 LOC | Explicit opt-in flags per fix. Undo log. Gate behind `--fix lan`, `--fix install-cloudflared`, `--fix all`. |
+| **Network depth** | Tunnel debugging | ~300 LOC | Cloudflare edge latency, TLS cert validation, DNS resolver health, mDNS check |
+| **Sim-based checks** | End-to-end validation | ~200 LOC | `maxim doctor sim-check`: 30s cooperative sim, assert no tool failures, cost under threshold |
+| **Mesh health** | Agent Mesh Phase 7 | ~200 LOC | Peer discovery, latency matrix, key validity across peers, topology visualizer |
+| **Observability UI** | Phase 10 | ~200 LOC | `maxim doctor trace` (tail LLM trace), pressure history, failure dashboard |
+| **Learning loop** | Enough users to see patterns | ~200 LOC | Opt-in local telemetry: which fixes work per platform |
+
+**Cross-cutting uses** (no new code, just exposure): startup sanity (cheap checks on every `maxim` launch, quiet-success), sim pre-flight (`check_server_reachable` + `check_gpu` before sim), test fixture, CI guardrail (`--json --strict`).
+
+### Capability Agent Design (~500 LOC)
+
+A `CapabilityAgent` that maintains a live picture of what this system (and its peers) can do, and gates actions that exceed those capabilities. Wraps existing infrastructure (`detect_tiers()`, `FunctionRouter`, `LaneMetrics`, `RuntimeCapabilities`) — adds runtime updates, peer awareness, and proactive suggestions.
+
+**Core API:**
+- `can_run_model(profile)` → `ModelAvailability(where=local|remote|cloud|unavailable, ...)`
+- `available_models()` → all runnable models (local + peer + cloud)
+- `recommended_tier(function)` → best tier given current load
+- `gate_action(action, requirements)` → allow/deny with reason and alternatives
+- Event handlers: `on_peer_joined/left`, `on_model_swapped`, `on_heartbeat`, `on_thermal_throttle`
+
+**Consumers:** benchmark runner (filter `--models`), sim orchestrator (route to leader), FunctionRouter (dynamic health_check), `maxim doctor` (capability report), agent mesh (topology changes), CLI pre-flight (fail fast with fix hint).
+
+**Implementation:** CA-1 (CapabilitySnapshot + check_model_availability, ~100 LOC) → CA-2 (local + leader, ~150) → CA-3 (benchmark/sim gates, ~100) → CA-4 (mesh, ~100) → CA-5 (FunctionRouter + proactive suggestions, ~50). CA-1–3 ship before mesh. CA-4–5 integrate with mesh discovery.
 
 ### Mother Maxim (post-publication, priority track)
 
@@ -132,13 +168,16 @@ Everything below has shipped and is in production.
 ```
 docs/plans/
 ├── future_plans.md                 # This file — master roadmap
-├── foundational_buildout_plan.md   # Pre-publication buildout (current focus)
-├── mother_maxim_plan.md            # Mother Maxim — persistent shared instance (post-publication)
+├── mother_maxim_plan.md            # Mother Maxim — persistent shared instance (post-publication priority)
 ├── dungeon_master_extensions.md    # DM follow-ons (Extensions C-G, post-publication)
-├── pypi_publication_plan.md        # PyPI publication (reference; phases absorbed into buildout)
-├── doctor_upgrade_plan.md          # Doctor expansions + Capability Agent design
-├── github_repo_management_plan.md  # Fork-based workflow
+├── github_repo_management_plan.md  # Fork-based workflow (post-publication)
 └── tool_refinement_plan.md         # Living document — tool additions/deprecations
+
+docs/archive/  (completed plans)
+├── foundational_buildout_plan.md   # Phases 0-12a — ALL SHIPPED (2026-04-08)
+├── pre_publication_hardening_plan.md # Phase 12b — security + cv2 + docs DONE
+├── pypi_publication_plan.md        # Phases absorbed into buildout
+├── ... (14 other archived plans from prior initiatives)
 ```
 
 ## Research Directions: Agentic Enhancements

@@ -48,6 +48,7 @@ def _find_prompts_dir() -> Path:
     # 1. Bundled package data (works after pip install)
     try:
         from maxim.utils.paths import bundled_data
+
         bundled = bundled_data() / "prompts"
         if bundled.is_dir():
             _PROMPTS_DIR = bundled
@@ -72,6 +73,7 @@ def _find_prompts_dir() -> Path:
     # Fall back to user data home — never create directories in CWD
     try:
         from maxim.utils.paths import data_home
+
         fallback = data_home() / "prompts"
         fallback.mkdir(parents=True, exist_ok=True)
         _PROMPTS_DIR = fallback

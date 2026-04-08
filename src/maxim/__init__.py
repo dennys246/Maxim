@@ -33,6 +33,7 @@ _API_VERBS = frozenset(
         "register_tool",
         "register_persona",
         "tool",
+        "list_models",
     }
 )
 
@@ -43,6 +44,7 @@ _API_TYPES = {
     "BenchmarkResult": "maxim.api",
     "ResearchResult": "maxim.api",
     "EventHandle": "maxim.api",
+    "ModelInfo": "maxim.api",
     # Error hierarchy — users can catch these
     "MaximError": "maxim.exceptions",
     "ConfigurationError": "maxim.exceptions",
@@ -70,12 +72,14 @@ __all__ = [
     "register_tool",
     "register_persona",
     "tool",
+    "list_models",
     # Types
     "DiagnosticReport",
     "CampaignResult",
     "BenchmarkResult",
     "ResearchResult",
     "EventHandle",
+    "ModelInfo",
     # Errors
     "MaximError",
     "ConfigurationError",

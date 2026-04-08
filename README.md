@@ -148,6 +148,22 @@ Agents → Planning → Decision Engine → Runtime → Executor → Tools → E
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design rules.
 
+### Bio-System Glossary
+
+Maxim uses neuroscience-inspired names. Here's the translation:
+
+| Bio Name | Plain English | Module | What It Does |
+|----------|--------------|--------|--------------|
+| Hippocampus | Episodic memory | `memory/` | Stores and recalls experiences (events, conversations) |
+| ATL | Semantic memory | `memory/` | Extracts concepts, categories, and generalizations |
+| NAc | Reward / causal learning | `decisions/` | Learns cause-and-effect relationships ("what leads to what") |
+| SCN | Internal clock | `time/` | Tracks circadian-like temporal patterns and rhythms |
+| EC | Memory indexing | `similarity/` | Routes queries to the right memory store via similarity |
+| Angular Gyrus | Cross-modal algebra | `math/` | Combines memories across different modalities |
+| Cerebellum | Motor prediction | `embodiment/` | Predicts outcomes of physical actions, learns motor programs |
+| Amygdala / Fear | Threat detection | `proprioception/` | Detects harm, triggers pain signals, gates risky actions |
+| Default Network | Reactive behavior | `default_network/` | Background processing, idle behaviors, spontaneous thoughts |
+
 ---
 
 ## Operating Modes

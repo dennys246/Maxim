@@ -83,11 +83,11 @@ Companion: `maxim tunnel` subcommand in [src/maxim/tunnel/](src/maxim/tunnel/) (
 **`maxim peer test`** should stay self-contained — no imports from the agent runtime. It's run from peer machines that may not have the full dependency set installed.
 
 **Don't:**
-- Don't auto-execute fixes without the user asking (`--fix` flag is explicit opt-in; see doctor_upgrade_plan.md).
+- Don't auto-execute fixes without the user asking (`--fix` flag is explicit opt-in; see future_plans.md "Doctor Enhancements").
 - Don't make checks slow (> 1s). Network probes use short timeouts (1.5–2s). Long-running benchmarks belong in a future `maxim benchmark` subcommand.
 - Don't silently drop failures — any failing check needs a user-actionable `fix` string.
 
-Upgrade roadmap in [docs/plans/doctor_upgrade_plan.md](docs/plans/doctor_upgrade_plan.md).
+Remaining enhancements tracked in [docs/plans/future_plans.md](docs/plans/future_plans.md) under "Doctor Enhancements".
 
 ## Key Commands
 
@@ -517,20 +517,19 @@ def my_tool(query: str) -> str: ...
 - **Optional extras:** `llm-local`, `llm-anthropic`, `llm-openai`, `vision`, `audio`, `reachy`, `comms`, `search`, `temporal`, `training`, `tts`, `yolo`, `semantic`
 - **Robot plugins:** Auto-discovered via `maxim.robots` entry-point group. Third-party packages register controllers by declaring entry points.
 - **Build validation:** `python -m build && twine check dist/*` before any publish
-- Plans: [pypi_publication_plan.md](docs/plans/pypi_publication_plan.md)
+- Plans: [pypi_publication_plan.md](docs/archive/pypi_publication_plan.md)
+- Publication guide: [publication_guide.md](docs/publication_guide.md)
 
 ## Active initiatives
 
 See `docs/plans/future_plans.md` for the full roadmap.
 
 **Current:**
-- **Foundational Buildout Phase 11** — Test PyPI validation (dry-run). Phases 0-10 done. Publication delayed pending 12a (security hardening) + 12b (pre-pub hardening). [Plan](docs/plans/foundational_buildout_plan.md).
-- **Phase 12a: Security Hardening** — shell injection, path traversal, auth bypass, CORS, error sanitization. ~200 LOC. [Plan](docs/plans/foundational_buildout_plan.md).
-- **Phase 12b: Pre-Publication Hardening** — broken APIs, error honesty, CLI UX, test gaps, docs. ~2,500 LOC. [Plan](docs/plans/pre_publication_hardening_plan.md).
-- **Mother Maxim** — Post-publication. Persistent shared cognitive instance with bio-system-aware deidentification, MCP server, federation protocol. [Plan](docs/plans/mother_maxim_plan.md).
+- **PyPI Publication** — v0.2.0 wheel built + validated. Pending simulation/benchmark verification before `twine upload`. [Guide](docs/publication_guide.md).
+- **Mother Maxim** — Post-publication priority. Persistent shared cognitive instance with bio-system-aware deidentification, coalescence, circadian lifecycle. [Plan](docs/plans/mother_maxim_plan.md).
 
-**Recently completed (buildout Phases 0-10):**
-- Package Hygiene, SEM Component Registry, Encounter Library, Agent Factory + Pool, Party DM Runtime, Hippocampus Recall Refinement, Interactive Runtime + Rich Display, Generative Architect + Entity Designer, API Surface Expansion, Deps + Docs + Cloud Profiles, Publication Prep.
+**Recently completed (foundational buildout Phases 0-12a, 2026-04-08):**
+- Package Hygiene, SEM Component Registry, Encounter Library, Agent Factory + Pool, Party DM Runtime, Hippocampus Recall Refinement, Interactive Runtime + Rich Display, Generative Architect + Entity Designer, API Surface Expansion, Deps + Cloud Profiles + Store Protocols, Publication Prep, Security Hardening. See [archived plan](docs/archive/foundational_buildout_plan.md).
 
 **Previously completed (all archived):**
 - Multi-LLM Scaling, Agent Mesh (Pre-7), Embodiment Core, Generative Campaigns, Bio-System Wiring Hardening, Mode Refactor, DM MVP, Research Protocol, Docker Sandbox, Python API, Tool Refactoring, Lane Tier Architecture, Simulation Benchmark (0-6), Realtime Refinement. See `docs/archive/` for plans.

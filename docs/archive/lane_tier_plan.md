@@ -484,7 +484,7 @@ def check_tier_detection() -> CheckResult:
 
 This check fits into the existing "GPU / CUDA" section of `run_all_checks()`. It runs after `check_gpu()` and before the server checks, so users see the full picture: GPU → tiers → server → network.
 
-**Future doctor expansions tied to tiers** (from [doctor_upgrade_plan.md](doctor_upgrade_plan.md)):
+**Future doctor expansions tied to tiers** (from [future_plans.md](../plans/future_plans.md) "Doctor Enhancements"):
 - **Inference coherence** (§5): `maxim doctor benchmark` runs a fixed prompt on each tier, reports tokens/sec + coherence per tier
 - **Peer capability audit** (§9): compare tier availability across mesh peers, flag weak links
 - **Sim pre-flight** (cross-cutting): before launching a sim, verify the tiers needed by the sim's functions are available

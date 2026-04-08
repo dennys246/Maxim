@@ -241,7 +241,7 @@ maxim
 
 Then re-run `nvidia-smi` on the leader during a sim and confirm GPU utilization spikes. A 7B-Q4 model at ~5 GB VRAM should peg a modern GPU briefly on each inference call.
 
-> **TODO (leader-side doctor check):** `maxim doctor` on the leader should detect CPU-only llama-cpp-python and warn — currently it just checks that the server responds on port 8100. See [docs/plans/doctor_upgrade_plan.md](../plans/doctor_upgrade_plan.md#1-deeper-gpu-health) for the planned GPU health checks.
+> **Note:** `maxim doctor` now includes an inference coherence check that sends a test prompt and verifies the response. It also checks GPU/CUDA, tier detection, and disk/RAM. If the leader is running CPU-only, the tier detection check will warn. See [future_plans.md](../plans/future_plans.md) "Doctor Enhancements" for planned deeper GPU health checks (tokens/sec, latency jitter).
 
 ## Remote Updates
 

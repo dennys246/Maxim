@@ -221,6 +221,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="List available exploration sessions and exit.",
     )
     parser.add_argument(
+        "--list-models",
+        action="store_true",
+        help="List available LLM model profiles and exit.",
+    )
+    parser.add_argument(
         "--clear-cache",
         action="store_true",
         help="Clear Python bytecode cache (__pycache__) before running.",
@@ -410,8 +415,9 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="SUBSYSTEMS",
         help="Enable debug tracing. Without args: all subsystems. With args: "
-        "comma-separated subsystem names (e.g., --debug hippo, --debug hippo,nac). "
-        "Subsystems: hippo (memory capture/recall/associations), nac (causal learning), "
+        "comma-separated subsystem names (e.g., --debug memory, --debug memory,causal). "
+        "Subsystems: hippo/memory (capture/recall), nac/causal/reward (causal learning), "
+        "atl/semantic/concepts (concept memory), scn/temporal/clock (time rhythms), "
         "all (everything). Also settable via MAXIM_HIPPO_TRACE=1, MAXIM_LANE_TRACE=1.",
     )
     # ── Benchmark ───────────────────────────────────────────────────────
