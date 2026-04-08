@@ -387,7 +387,21 @@ verify_ssl: true</pre>
   <section class="space-y-4">
     <h2 id="troubleshooting" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Troubleshooting</h2>
 
-    <p class="text-slate-300 leading-relaxed">Most networking issues fall into a few categories. Start with <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim doctor</code> &mdash; it checks tunnel status, proxy reachability, and auth validity automatically.</p>
+    <p class="text-slate-300 leading-relaxed">Most networking issues fall into a few categories. Start with <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim doctor</code> &mdash; it checks tunnel status, proxy reachability, auth validity, key hygiene, inference coherence, and system resources automatically. Use <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">--json</code> for CI integration or <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">--as peer &lt;url&gt;</code> to diagnose from the peer's perspective.</p>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6 mb-4">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Peer-Mode Diagnostics</h3>
+      <p class="text-slate-300 leading-relaxed mb-2">When running Maxim as a <strong class="text-white">peer</strong> pointed at a remote leader, doctor auto-detects the role (or use <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">--as peer</code>) and runs connectivity-specific checks instead of tunnel/key setup:</p>
+      <pre class="bg-slate-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto"># Full peer diagnostic with retry support
+maxim doctor --as peer https://maxim.yourdomain.com/v1
+
+# JSON output for scripts
+maxim doctor --json --as peer https://maxim.yourdomain.com/v1
+
+# Quick connectivity test (minimal, no retry)
+maxim peer test https://maxim.yourdomain.com/v1</pre>
+      <p class="text-slate-300 leading-relaxed mt-2">Peer checks cover: DNS resolution, URL reachability, API key validation, auth verification, model availability, and round-trip latency (p50/p95 from 5 probes). Fix hints point at the <em class="text-indigo-400 not-italic font-medium">leader</em> machine, not the peer.</p>
+    </div>
 
     <div class="space-y-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
@@ -409,9 +423,19 @@ verify_ssl: true</pre>
         <h3 class="text-lg font-semibold text-indigo-400 mb-2">Stale DNS</h3>
         <p class="text-slate-300 leading-relaxed">After rotating the Cloudflare tunnel or changing the hostname, DNS propagation can take up to 5 minutes. If <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer test</code> times out but the leader's <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">cloudflared</code> shows no incoming connections, flush DNS on the peer machine and retry.</p>
       </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Key Hygiene</h3>
+        <p class="text-slate-300 leading-relaxed"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim doctor</code> now checks API key age (warns after 90 days), file permissions (fails if world-readable on POSIX), and runs an auth smoke test that verifies the server accepts the real key and rejects bogus ones. If auth smoke reports "server accepts ANY key," your tunnel is bypassing the LeaderProxy &mdash; route through port 8099 instead of 8100.</p>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Inference Coherence</h3>
+        <p class="text-slate-300 leading-relaxed">Doctor sends a fixed prompt ("What is 2+2?") and checks for "4" in the response. A wrong answer suggests the model is misconfigured, corrupted, or loaded in the wrong quantization. This catches silent failures where the server responds 200 but produces gibberish.</p>
+      </div>
     </div>
 
-    <p class="text-slate-300 leading-relaxed mt-3">For deeper diagnostic procedures, see <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">docs/troubleshooting/</code> in the repository.</p>
+    <p class="text-slate-300 leading-relaxed mt-3">For deeper diagnostic procedures, see <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">docs/troubleshooting/</code> in the repository. Use <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim doctor --json</code> to generate machine-readable output for support bundles or CI pipelines.</p>
   </section>
 
   <!-- 10. What's Next -->

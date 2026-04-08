@@ -8,7 +8,7 @@ import time
 from collections.abc import Sequence
 
 from maxim.doctor.checks import CheckResult, run_all_checks
-from maxim.doctor.platform_detect import detect_platform
+from maxim.doctor.platform_detect import PlatformInfo, detect_platform
 
 
 DOCTOR_USAGE = """\
@@ -89,9 +89,7 @@ def _print_report(sections: list[tuple[str, list[CheckResult]]]) -> None:
         print()
 
 
-def _json_report(
-    sections: list[tuple[str, list[CheckResult]]], info: "PlatformInfo"
-) -> None:
+def _json_report(sections: list[tuple[str, list[CheckResult]]], info: PlatformInfo) -> None:
     """Print machine-readable JSON to stdout."""
     output = {
         "platform": {
@@ -134,7 +132,7 @@ def _worst_status(sections: list[tuple[str, list[CheckResult]]]) -> str:
 
 def _retry_loop(
     sections: list[tuple[str, list[CheckResult]]],
-    info: "PlatformInfo",
+    info: PlatformInfo,
     *,
     role: str | None = None,
     peer_url: str | None = None,
@@ -142,13 +140,11 @@ def _retry_loop(
     """Walk through failing checks that have retry_id, wait for user fix, re-run."""
     from maxim.doctor.checks import (
         check_cloudflared,
-        check_inference_coherence,
         check_key_age,
         check_key_auth_smoke,
         check_key_permissions,
         check_peer_auth,
         check_peer_key_set,
-        check_peer_model,
         check_peer_url_reachable,
         check_server_reachable,
         check_tier_detection,
@@ -160,9 +156,7 @@ def _retry_loop(
     # Peer key is resolved once for peer checks.
     import os
 
-    peer_key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY") or os.environ.get(
-        "MAXIM_LANE_LARGE_REMOTE_API_KEY"
-    )
+    peer_key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY") or os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY")
     if not peer_key:
         try:
             from maxim.peer.config import read_peer_config

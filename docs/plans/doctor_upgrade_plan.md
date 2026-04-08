@@ -1,18 +1,18 @@
 # Doctor Upgrade Plan
 
-> **Status:** `maxim doctor` v1 shipped (platform detection + environment checks + platform-specific fix hints + retry loop + `maxim peer test`). This doc sketches where to take it next.
+> **Status:** `maxim doctor` v2 shipped. Wave 1 (bug fixes, `--json`, key hygiene) and Wave 2 (peer diagnostics, inference coherence, disk/RAM checks) are done. This doc sketches remaining future expansion.
 >
-> **Current surface:** GPU/CUDA, llama-cpp-server install, auto-spawn reachability, leader role, LAN access (WSL2/Linux/macOS/Windows), cloudflared install, tunnel config, API key presence.
+> **Current surface:** GPU/CUDA, tier detection, llama-cpp-server install, auto-spawn reachability, inference coherence probe, leader role, LAN access (WSL2/Linux/macOS/Windows), cloudflared install, tunnel config + sync, API key (presence + age + permissions + auth smoke), disk space, RAM headroom, lane metrics. Peer mode: URL reachability, key check, auth verification, model availability, latency measurement. CLI: `--json`, `--as peer/leader/solo`, `--retry` (data-driven).
+>
+> **75 tests** covering all checks, CLI flags, JSON output, peer mode, and role detection.
 
-Everything here is optional expansion — `maxim doctor` is already useful at v1. Use this as a menu; pick what matters when the need shows up.
+Everything here is optional expansion — `maxim doctor` is already useful at v2. Use this as a menu; pick what matters when the need shows up.
 
 ---
 
-## Peer-side diagnostics (~100–200 LOC)
+## ~~Peer-side diagnostics~~ (DONE — v2)
 
-Today `maxim doctor` assumes the invoking machine *is* or *wants to be* the leader — every check (LAN bind, tunnel config, API key) advises how to expose this box. When a user runs Maxim as a **peer** pointed at a remote leader, doctor's output is misleading: it flags missing tunnel config and an absent API key as warnings, when really the peer just needs to consume a remote URL.
-
-Add a peer-mode path so `maxim doctor` diagnoses *either* role correctly.
+Shipped: `--as peer <url>` / `--as leader` / `--as solo` flags. Auto-detects peer role from `MAXIM_LANE_INFER_REMOTE_URL`. Peer-mode replaces tunnel/key sections with connectivity checks: URL reachability, key set, auth smoke, model availability, latency (5 probes, p50/p95). Fix hints point at leader. `maxim peer test` remains as the minimal one-command path.
 
 **Detection — what role is this box playing?**
 - `MAXIM_ROLE=peer` env var (explicit)
@@ -43,9 +43,9 @@ Keep the existing `maxim peer test <url>` as the minimal one-command path — th
 
 Small, self-contained checks that add immediate diagnostic value.
 
-### 0. Tier detection check (ships with Lane Tier Architecture)
+### ~~0. Tier detection check~~ (DONE — shipped with Lane Tier Architecture)
 
-Added as part of the [lane tier plan](../archive/lane_tier_plan.md) Phase 7. `check_tier_detection()` reports which tiers (large/medium/small) are available based on `RuntimeCapabilities` + `detect_tiers()`. Warns when only `small` is detected and provides fix hints (`--language-model`, `--cloud-fallback`, `--tier-model`). Fits after `check_gpu()` in `run_all_checks()`. ~40 LOC.
+Already in v1. `check_tier_detection()` reports tiers from `RuntimeCapabilities` + `detect_tiers()`. v2 added better ImportError handling with fix hint.
 
 ### 1. Deeper GPU health
 - **VRAM free vs total** — `torch.cuda.memory_reserved()` / `torch.cuda.memory_allocated()` to show headroom during a sim run, not just capacity.
@@ -54,22 +54,21 @@ Added as part of the [lane tier plan](../archive/lane_tier_plan.md) Phase 7. `ch
 - **Multi-GPU enumeration** — list all devices when `device_count() > 1` with per-device VRAM, useful before Phase 6 selects a GPU per lane.
 - **Temperature + power state** — `nvidia-smi --query-gpu=temperature.gpu,power.draw` once, as a baseline. Useful in thermal-throttling debugging.
 
-### 2. Disk + memory sanity
+### ~~2. Disk + memory sanity~~ (PARTIALLY DONE — v2)
+
+Shipped: `check_disk_space()` (warn <10GB, fail <2GB) and `check_ram_headroom()` (psutil or /proc/meminfo/sysctl fallback). Remaining:
 - **Model directory write permissions** — can Maxim actually download a model here?
-- **Free disk space** — `data/sim_reports/` shouldn't silently fill the disk.
-- **RAM headroom at startup** — warn when free RAM is less than 2× the infer profile's expected size.
 - **GGUF file integrity** — quick SHA-256 spot-check against known hashes (or at least size check) to catch truncated downloads.
 
-### 3. Key hygiene
-- **Key file age warning** — nudge rotation when `api_key` file is older than 90 days.
-- **Permissions check** — fail loud if `~/.config/maxim/api_key` is mode 644/666 (not 0600).
-- **Auth smoke test** — with the key set, hit the local server's `/v1/models` using the actual Bearer token to verify auth is wired correctly.
-- **Unauth smoke test** — send a request with a bogus key, expect 401. If it succeeds, server isn't enforcing auth.
-- **Cloudflared loglevel warning** — parse `~/.cloudflared/config.yml` (or `/etc/cloudflared/config.yml`); if `loglevel: debug` is set, warn that Bearer tokens will be logged in plaintext to systemd journal. Suggest `loglevel: info` for production, with `journalctl --vacuum-time=1d` to purge the history. Discovered during Stage A peer-leader debugging.
+### ~~3. Key hygiene~~ (MOSTLY DONE — v2)
 
-### 4. JSON output
-- **`maxim doctor --json`** — machine-readable output for CI scripts, log pipelines, and support-bundle tooling.
-- **`maxim doctor --diff <snapshot>`** — compare against a saved-state snapshot to flag regressions ("last week this worked, now it doesn't").
+Shipped: `check_key_age()` (warns >90 days), `check_key_permissions()` (fails if world-readable on POSIX), `check_key_auth_smoke()` (verifies valid key accepted AND bogus key rejected; warns if auth not enforced). Remaining:
+- **Cloudflared loglevel warning** — parse config for `loglevel: debug`, warn about plaintext Bearer tokens in journal.
+
+### ~~4. JSON output~~ (PARTIALLY DONE — v2)
+
+Shipped: `maxim doctor --json` outputs structured JSON with platform info, sections, checks, and worst_status. Remaining:
+- **`maxim doctor --diff <snapshot>`** — compare against a saved-state snapshot to flag regressions.
 
 ---
 
@@ -77,10 +76,10 @@ Added as part of the [lane tier plan](../archive/lane_tier_plan.md) Phase 7. `ch
 
 Bigger checks that need more infrastructure but unlock meaningful capabilities.
 
-### 5. Inference behavior probes
-Go beyond "server responds to /v1/models" into "server generates sensible output."
+### 5. Inference behavior probes (PARTIALLY DONE — v2)
 
-- **Coherence check** — send a fixed prompt, verify response contains expected tokens (e.g., "What is 2+2? Answer in one word." → must contain "four" or "4"). Catches gibberish models.
+**Shipped:** `check_inference_coherence()` — sends "What is 2+2?" and verifies "4" in response. Reports timing. Included in Local LLM section for leader/solo mode. **Remaining:**
+
 - **Tokens/sec benchmark** — standard prompt, measure throughput. Track over time to catch silent regressions (thermal throttle, model swap, quantization change).
 - **Latency jitter measurement** — 20 sequential short completions, report mean/p50/p95/p99. High p99 = GPU contention or thermal issues.
 - **Concurrency ceiling** — ramp up parallel requests, find where queuing dominates. Informs mesh load-balancing later.
@@ -337,15 +336,16 @@ These all reuse the existing checks — no new infrastructure needed, just expos
 
 ## Sequencing suggestion
 
-If I had to pick a next-three from this list to build:
+**Wave 1 + 2 shipped (2026-04-08):** Bug fixes, `--json`, key hygiene, peer diagnostics, inference coherence, disk/RAM checks. ~500 LOC + 38 new tests.
 
-1. **Inference coherence + tokens/sec benchmark** (#5 subset) — gives users a quick "is my LLM actually working well?" answer without reading the sim output. ~200 LOC.
-2. **`maxim doctor --json`** (#4) — tiny, unlocks scripting + support bundles. ~30 LOC.
-3. **Key hygiene checks** (#3 — age warning, permissions, auth smoke test) — rounds out the security story. ~100 LOC.
+**Next recommended picks:**
 
-Together ~330 LOC + tests + docs. A focused session's worth of work, high per-LOC value.
+1. **Tokens/sec + latency jitter benchmark** (#5 remainder) — extends the coherence check into a proper performance baseline. ~150 LOC.
+2. **Cloudflared loglevel warning** (#3 remainder) — security hygiene, tiny. ~30 LOC.
+3. **`maxim doctor --diff <snapshot>`** (#4 remainder) — detect regressions across runs. ~100 LOC.
+4. **Diagnostic bundle** (#11) — zip up platform info + logs + doctor JSON for support. ~150 LOC.
 
-The sim-based checks (#7) and mesh health (#9) are bigger and should wait for Phase 7 so they're built against a real mesh substrate.
+The sim-based checks (#7), mesh health (#9), and CapabilityAgent are bigger and should wait for their respective phases.
 
 ---
 

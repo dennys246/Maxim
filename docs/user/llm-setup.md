@@ -146,7 +146,7 @@ Add a profile to `~/.maxim/config/llm.json`:
 
 ### Cost Tracking & Enforcement
 
-All cloud API calls are automatically tracked in `data/util/cost_state.json` with:
+All cloud API calls are automatically tracked in `~/.maxim/util/cost_state.json` with:
 - Per-model pricing (input, output, cached tokens)
 - Rolling windows (hourly, daily, monthly)
 - Spend rate estimates (3h, 24h, 7d EMAs)

@@ -27,9 +27,9 @@ All pre-publication work is tracked in [foundational_buildout_plan.md](foundatio
 | 9 | Deps + Docs + Cloud Profiles + Pre-Pub Hardening (incl. Mother M-0a/b/c) | **DONE** |
 | 10 | Publication Prep (CHANGELOG, CONTRIBUTING) | **DONE** |
 | 11 | Test PyPI (dry-run validation) | **In progress** |
-| 12a | Security Hardening | Not started |
-| 12b | [Pre-Publication Hardening](pre_publication_hardening_plan.md) — UX, errors, API fixes, tests, docs | Not started |
-| — | Manual publish (`twine upload`) | Blocked on 11 + 12a + 12b |
+| 12a | Security Hardening | **DONE** |
+| 12b | [Pre-Publication Hardening](pre_publication_hardening_plan.md) — UX, errors, API fixes, tests, docs | **DONE** |
+| — | Manual publish (`twine upload`) | Blocked on 11 |
 
 ---
 

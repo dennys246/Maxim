@@ -109,7 +109,7 @@ maxim --sim benchmark \
 maxim --sim benchmark \
   --models qwen2.5-14b \
   --campaign scenarios/benchmarks/cognitive_suite.yaml \
-  --baseline data/benchmarks/20260401_mistral-7b/</div>
+  --baseline ~/.maxim/benchmarks/20260401_mistral-7b/</div>
 
     <p class="text-slate-300 mt-4">Or use the Python API for programmatic access:</p>
 
@@ -328,7 +328,7 @@ result = maxim.imagine(
     <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">maxim --sim benchmark \
   --models qwen2.5-14b \
   --campaign scenarios/benchmarks/cognitive_suite.yaml \
-  --baseline data/benchmarks/20260401_mistral-7b/</div>
+  --baseline ~/.maxim/benchmarks/20260401_mistral-7b/</div>
 
     <p class="text-slate-300 mt-4">The delta report uses directional arrows to show improvement or regression:</p>
 
@@ -351,7 +351,7 @@ result = maxim.imagine(
 <span class="text-white font-semibold">Result: PASS (7/8 expectations met)</span></div>
 
     <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-6 mt-4">
-      <p class="text-slate-300"><strong class="text-amber-400">Tip:</strong> Baselines are saved automatically after each run. To create a named baseline for long-term tracking, copy the output directory: <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">cp -r data/benchmarks/latest/ data/benchmarks/v0.9.0_mistral-7b/</code></p>
+      <p class="text-slate-300"><strong class="text-amber-400">Tip:</strong> Baselines are saved automatically after each run. To create a named baseline for long-term tracking, copy the output directory: <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">cp -r ~/.maxim/benchmarks/latest/ ~/.maxim/benchmarks/v0.9.0_mistral-7b/</code></p>
     </div>
   </section>
 
@@ -359,7 +359,7 @@ result = maxim.imagine(
   <section class="space-y-4">
     <h2 id="output" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Output &amp; Reports</h2>
 
-    <p class="text-slate-300">Benchmark results are saved to <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">data/benchmarks/{timestamp}_{model}/</code> with a structured JSON report and a human-readable Markdown summary.</p>
+    <p class="text-slate-300">Benchmark results are saved to <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">~/.maxim/benchmarks/{timestamp}_{model}/</code> with a structured JSON report and a human-readable Markdown summary.</p>
 
     <div class="overflow-x-auto">
       <table class="w-full text-sm text-left">

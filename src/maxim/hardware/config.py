@@ -19,9 +19,8 @@ logger = logging.getLogger(__name__)
 
 # Default config paths (searched in order)
 DEFAULT_CONFIG_PATHS = [
-    "data/util/robots.yaml",
-    "robots.yaml",
     "~/.maxim/robots.yaml",
+    "robots.yaml",
 ]
 
 

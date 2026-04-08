@@ -2,7 +2,7 @@
 
 > **Status:** Phase 0 done (metadata + name). Phase 1 next.
 > **Scope:** Packaging, dependency restructuring, metadata, CI, multi-robot generalization.
-> **Depends on:** [Python API Plan](python_api_plan.md) (Phase 2 of this plan requires the verb-based API surface).
+> **Depends on:** [Python API Plan](../archive/python_api_plan.md) (Phase 2 of this plan requires the verb-based API surface).
 > **Blocks:** Community adoption, external contributors, downstream integrations.
 
 ---
@@ -161,7 +161,7 @@ Most lazy imports already exist. Audit and add guards for:
 
 ## Phase 2: Public API Surface
 
-**Defined in:** [Python API Plan](python_api_plan.md)
+**Defined in:** [Python API Plan](../archive/python_api_plan.md)
 
 **Summary:** Six verb-based top-level functions (`maxim.run()`, `maxim.imagine()`, `maxim.connect()`, `maxim.diagnose()`, `maxim.observe()`, `maxim.configure()`) implemented as thin facades over existing internals. Includes renaming `AUTIntrospector` -> `Observer` for LLM-friendliness, and registering `introspect` as an alias for `observe` via the existing alias pattern.
 

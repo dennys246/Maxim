@@ -7,7 +7,7 @@
 - **AUT**: Mistral-7B (self-hosted, same leader)
 - **Campaign**: `hippocampal_recall_short.yaml` (7 turns, 3 interference)
 - **Delivery**: Direct bridge injection (bypassed orchestrator LLM for turns)
-- **Session**: `data/sim_reports/20260406_172631/`
+- **Session**: `~/.maxim/sim_reports/20260406_172631/`
 
 ### Campaign Delivery: SUCCESS
 All 7 turns delivered verbatim via direct injection. No JSON issues.
@@ -75,7 +75,7 @@ Then failed:
 ### Setup
 - Same as Run #1 but with miller warning softened ("Be safe on the road" instead of "Don't trust the miller")
 - Programmatic post-campaign analysis (no orchestrator LLM for analysis phase)
-- **Session**: `data/sim_reports/research_20260406_182043/`
+- **Session**: `~/.maxim/sim_reports/research_20260406_182043/`
 
 ### Results: SUCCESS — Full pipeline completed
 

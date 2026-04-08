@@ -1,6 +1,6 @@
 # Foundational Buildout Plan
 
-> **Status:** In progress. Phases 0-10 done/shipped. Phase 11 in progress (Test PyPI). Phase 12b not started.
+> **Status:** In progress. Phases 0-12a done/shipped. Phase 11 in progress (Test PyPI). Phase 12b partially done.
 > **Goal:** Ship the architectural foundations that Multi-AUT Party Mode, SEM Component Database, and DM Encounter Library require — plus fix packaging, API surface, and code quality issues — before locking the public API via PyPI publication.
 > **Total scope:** ~6,650 LOC across 13 phases.
 > **Sequence:** Hygiene (0 ✓) → Foundation (1 → 1.1 → 2-3 → 4 → 5) → DM polish (6-7) → API + Packaging (8-9) → Publication prep (10) → Test PyPI (11) ∥ Hardening (12b) → Manual publish.
@@ -1620,7 +1620,7 @@ Add `metadata: dict[str, Any] = field(default_factory=dict)` to both dataclasses
 4. Verify examples work: run each script in `examples/`
 5. Verify headless: `python -c "import maxim; maxim.diagnose()"`
 
-**Publication delayed.** Real PyPI upload (`twine upload dist/*`) blocked on Phase 12a (security hardening) + Phase 12b (pre-publication hardening). Test PyPI validation (steps 1-5) proceeds in parallel.
+**Publication delayed.** Real PyPI upload (`twine upload dist/*`) blocked on Phase 11 completion. Phases 12a (security hardening) and 12b (pre-publication hardening) are done. Test PyPI validation (steps 1-5) proceeds.
 
 ---
 
@@ -1672,10 +1672,10 @@ Security fixes identified via pre-publication audit. All are in existing files �
 | **9** | **Deps + Docs + Cloud Profiles + Mother Pre-Pub** | **~700** | **Phase 8** | **DONE** | **Clean install + store protocols + metadata fields** |
 | 10 | Publication Prep | ~2 files | — | **DONE** | CHANGELOG + CONTRIBUTING (SECURITY already exists) |
 | 11 | Test PyPI + Publish | ~0 | Phases 0-10 | **In progress** | `pip install pymaxim` works |
-| **12a** | **Security Hardening** | **~200** | **Phase 11** | Not started | **P0 fixes: shell injection, path traversal, schema validation, auth, CORS, error sanitization** |
-| **12b** | **[Pre-Publication Hardening](pre_publication_hardening_plan.md)** | **~2,500** | **∥ Phase 11** | Not started | **Broken API fixes, error honesty, CLI UX, tests for public surface, user docs** |
+| **12a** | **Security Hardening** | **~200** | **Phase 11** | **DONE** | **P0 fixes: shell injection, path traversal, schema validation, auth, CORS, error sanitization** |
+| **12b** | **[Pre-Publication Hardening](pre_publication_hardening_plan.md)** | **~2,500** | **∥ Phase 11** | **DONE** | **Broken API fixes, error honesty, CLI UX, tests for public surface, user docs** |
 
-**Parallelization:** Phases 0-10 done. Phase 11 (Test PyPI) in progress. Phases 12a (security) and 12b (hardening) run in parallel with 11. Real publish blocked on 12a + 12b.
+**Parallelization:** Phases 0-12a done, 12b done. Phase 11 (Test PyPI) in progress. Real publish blocked on 11.
 
 **Total LOC:** ~4,150 (Phases 0-10) + ~200 (12a security) + ~2,500 (12b hardening) = ~6,850 total pre-publication
 

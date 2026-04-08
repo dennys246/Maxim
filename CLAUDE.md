@@ -54,8 +54,12 @@ Runs platform-aware checks + prints fix hints with the user's actual IPs filled 
 Lives in [src/maxim/doctor/](src/maxim/doctor/) — three modules:
 
 - `platform_detect.py` — OS + runtime (native/WSL1/WSL2/docker) + Linux distro
-- `checks.py` — individual check functions, each returns a `CheckResult`
+- `checks.py` — individual check functions, each returns a `CheckResult` (status: ok/warn/fail/info)
 - `cli.py` — `maxim doctor` and `maxim peer test` subcommands
+
+**Check surface (v2):** GPU/CUDA, tier detection, llama-cpp-server, auto-spawn reachability, inference coherence, leader role, LAN access, cloudflared, tunnel config/sync, API key (presence + age + permissions + auth smoke), disk space, RAM headroom, lane metrics. Peer mode: URL reachability, key check, auth, model availability, latency.
+
+**CLI flags:** `--retry` (interactive fix loop), `--json` (machine-readable output), `--as peer <url>` / `--as leader` / `--as solo` (role override).
 
 Companion: `maxim tunnel` subcommand in [src/maxim/tunnel/](src/maxim/tunnel/) (cloudflared wrapping + API key management).
 
@@ -63,14 +67,16 @@ Companion: `maxim tunnel` subcommand in [src/maxim/tunnel/](src/maxim/tunnel/) (
 
 **Adding a new check:**
 1. Write a pure function in `doctor/checks.py` that takes `PlatformInfo` (if platform-aware) and returns a `CheckResult`.
-2. Add it to the correct section in `run_all_checks()`.
+2. Add it to the correct section in `run_all_checks()`. For peer-only checks, add to the `detected_role == "peer"` branch; for leader/solo checks, add to the `else` branch.
 3. If the fix differs per platform, branch on `info.runtime` / `info.os` / `info.distro` inside the check and produce platform-specific `fix` strings with user-visible commands (users copy-paste, so make them runnable as-is).
 4. Use actual detected values (IPs, paths) in fix strings — call `detect_wsl_ip()` / `detect_lan_ip()` rather than `<your-ip>` placeholders when possible.
 5. Add a unit test in `tests/unit/test_doctor.py`; mock out network/process calls so tests run offline.
 
 **When a check references another module's function** (e.g., `find_cloudflared`, `_llm_server_responding_at`), import inside the function body (not module-level) to keep `maxim doctor` fast when unused features aren't installed. Tests must patch the **original** module path (`maxim.tunnel.cloudflared.find_cloudflared`), not `maxim.doctor.checks.find_cloudflared`.
 
-**Retry loop** (`maxim doctor --retry`): add `retry_id` on any `CheckResult` the user can fix iteratively, then register the retry callable in `cli._retry_loop.retryable`.
+**Retry loop** (`maxim doctor --retry`): the loop is data-driven — any `CheckResult` with a `retry_id` and non-ok status is automatically included. Add the retry_id to the `retryable_fns` dict in `cli._retry_loop` with a callable that re-runs the check.
+
+**Role detection** (`_detect_doctor_role()`): auto-detects from `MAXIM_LANE_INFER_REMOTE_URL` / `MAXIM_LANE_LARGE_REMOTE_URL`. Non-localhost URLs trigger peer mode. Override with `--as peer/leader/solo`.
 
 **Adding a new platform:** extend `PlatformInfo`'s `OSName` / `Runtime` / `Distro` Literal types + the detection branches in `platform_detect.py`, and add fix-hint branches in every platform-aware check.
 
@@ -139,6 +145,9 @@ python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
 # Environment diagnostics (platform-aware, with fix hints)
 maxim doctor
 maxim doctor --retry          # walk through failures, retest after each fix
+maxim doctor --json           # machine-readable output for CI/scripts
+maxim doctor --as peer https://maxim.yourdomain.com/v1  # peer-mode checks
+maxim doctor --as leader      # force leader-mode checks
 
 # Cloudflare tunnel for remote access
 maxim tunnel setup            # one-time guided setup

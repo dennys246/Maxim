@@ -176,7 +176,7 @@ Main Thread (observation loop)
 │
 ├─ Video Writer Thread
 │  └─ Consumes video_save_queue
-│     Writes MP4 to data/videos/
+│     Writes MP4 to ~/.maxim/videos/
 │
 ├─ Audio Capture Thread
 │  └─ Reads from RobotController.get_audio_stream()
@@ -185,12 +185,12 @@ Main Thread (observation loop)
 │
 ├─ Audio Writer Thread
 │  └─ Consumes audio_save_queue
-│     Writes WAV to data/audio/
+│     Writes WAV to ~/.maxim/audio/
 │
 ├─ Transcription Process
 │  └─ Consumes audio chunks
 │     Runs Whisper inference
-│     Writes JSONL to data/transcript/
+│     Writes JSONL to ~/.maxim/transcript/
 │
 ├─ WorkerPool (tier-based lanes)
 │  ├─ large tier  (1 worker, GPU) &mdash; agent inference, fear review
@@ -505,7 +505,7 @@ Agent proposes intent → Planner decomposes into tools
     </div>
 
     <h3 class="text-lg font-semibold text-white mt-5 mb-3">Session-Aware Persistence</h3>
-    <p class="text-slate-300 leading-relaxed mb-3">Each Maxim session gets a UUID session_id. Traces and activities are written to per-session JSONL files (<span class="font-mono text-slate-400">data/provenance/{session_id}.jsonl</span>) with an atomic <span class="font-mono text-slate-400">sessions.json</span> manifest. Cross-run queries enable concept lineage: "When did Maxim first learn about kitchens? How has confidence evolved?"</p>
+    <p class="text-slate-300 leading-relaxed mb-3">Each Maxim session gets a UUID session_id. Traces and activities are written to per-session JSONL files (<span class="font-mono text-slate-400">~/.maxim/provenance/{session_id}.jsonl</span>) with an atomic <span class="font-mono text-slate-400">sessions.json</span> manifest. Cross-run queries enable concept lineage: "When did Maxim first learn about kitchens? How has confidence evolved?"</p>
 
     <h3 class="text-lg font-semibold text-white mt-5 mb-3">Verbosity Levels</h3>
     <div class="overflow-x-auto">
@@ -899,7 +899,7 @@ tree, config, budgets = persistence.recover(checkpoint_id)</div>
           <tr class="border-b border-slate-700 hover:bg-slate-800/50">
             <td class="px-4 py-3">1. Stage</td>
             <td class="px-4 py-3">SignificanceWeightLearner evaluates 6 heuristics</td>
-            <td class="px-4 py-3">JSON sidecar written to data/short_term_memory/</td>
+            <td class="px-4 py-3">JSON sidecar written to ~/.maxim/short_term_memory/</td>
           </tr>
           <tr class="border-b border-slate-700 hover:bg-slate-800/50">
             <td class="px-4 py-3">2. Wave Score</td>

@@ -277,7 +277,7 @@ Check that `persistence_path` is set:
 ```python
 from maxim.embodiment.cerebellum import Cerebellum, CerebellumConfig
 
-cb = Cerebellum(CerebellumConfig(persistence_path="data/embodiment/cerebellum.json"))
+cb = Cerebellum(CerebellumConfig(persistence_path="~/.maxim/embodiment/cerebellum.json"))
 cb.save()  # Explicit save
 cb.load()  # Explicit load
 ```

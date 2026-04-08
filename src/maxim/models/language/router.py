@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 from maxim.utils.logging import info, warn
@@ -281,7 +282,7 @@ class LLMRouter:
     def _load_cost_config(cfg: LLMConfig) -> CostTrackerConfig:
         raw = cfg.routing if isinstance(cfg.routing, dict) else {}
         return CostTrackerConfig(
-            state_path=str(raw.get("cost_state_path", "data/util/cost_state.json")),
+            state_path=str(raw.get("cost_state_path", str(Path.home() / ".maxim" / "util" / "cost_state.json"))),
             persistence_interval_s=float(raw.get("cost_persistence_interval_s", 10.0) or 10.0),
             persistence_interval_n=int(raw.get("cost_persistence_interval_n", 5) or 5),
             reserved_budget_ratio=float(raw.get("reserved_budget_ratio", 0.2) or 0.2),

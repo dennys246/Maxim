@@ -261,6 +261,9 @@ MAXIM_PROXY_RATE_LIMIT_RPM=0           # Per-peer rate limit (0=unlimited)</div>
 
 maxim doctor                           # Platform-aware health checks
 maxim doctor --retry                   # Walk through failures interactively
+maxim doctor --json                    # Machine-readable output (CI/scripts)
+maxim doctor --as peer https://...     # Peer-mode connectivity checks
+maxim doctor --as leader               # Force leader-mode checks
 
 <span class="text-indigo-400 text-xs uppercase tracking-wider">Tunnel setup (leader machine)</span>
 
@@ -693,7 +696,7 @@ maxim --clear-memory pain,fear       # Safety learning only</div>
 
     <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Directory structure</span>
 
-data/
+~/.maxim/
 ├── util/               # Learned state (JSON)
 │   ├── hippocampus.json
 │   ├── nac_state.json
@@ -779,7 +782,7 @@ for sig, pred in nac._learned_associations.items():
 
     <h3 class="text-lg font-semibold text-indigo-400">Log Files</h3>
 
-    <p class="text-slate-300 leading-relaxed">Session logs are written to <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">data/logs/reachy_log_YYYY-MM-DD_HHMMSS.log</code> with timestamps, thread IDs, and structured event data.</p>
+    <p class="text-slate-300 leading-relaxed">Session logs are written to <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">~/.maxim/logs/reachy_log_YYYY-MM-DD_HHMMSS.log</code> with timestamps, thread IDs, and structured event data.</p>
 
     <div class="rounded-xl bg-gradient-to-br from-indigo-700 via-purple-700 to-indigo-800 p-6 text-white shadow-lg">
       <h3 class="text-lg font-semibold mb-3">Getting Help</h3>

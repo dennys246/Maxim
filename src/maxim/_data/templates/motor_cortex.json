@@ -1,7 +1,7 @@
 {
-  "save_dir": "data/models/MotorCortex",
-  "checkpoint_path": "data/models/MotorCortex/motor_cortex.keras",
-  "dataset": "data/images/",
+  "save_dir": "~/.maxim/models/MotorCortex",
+  "checkpoint_path": "~/.maxim/models/MotorCortex/motor_cortex.keras",
+  "dataset": "~/.maxim/data/images/",
   "input_shape": 256,
   "output_dim": 7,
   "epochs": 10,

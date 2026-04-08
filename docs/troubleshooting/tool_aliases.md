@@ -64,7 +64,7 @@ for original, target in executor.alias_redirects:
 
 Or in the sim logs, search for `Tool alias:`:
 ```bash
-grep "Tool alias:" data/sim_reports/SESSION_ID/sim.log
+grep "Tool alias:" ~/.maxim/sim_reports/SESSION_ID/sim.log
 ```
 
 ## Interaction with other systems

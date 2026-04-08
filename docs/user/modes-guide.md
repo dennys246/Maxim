@@ -6,9 +6,9 @@ Maxim's mode system controls what the robot can do and how proactive it is. This
 
 | Mode | What it Does | Max Initiative |
 |------|-------------|:--------------:|
-| `passive` | Propose actions, wait for approval | 0.3 |
-| `active` | Act within defined boundaries | 0.7 |
-| `singularity` | Full autonomy, self-correcting | 1.0 |
+| `planning` | Propose actions, wait for approval | 0.3 |
+| `supervised` | Act within defined boundaries | 0.7 |
+| `autonomous` | Full autonomy, self-correcting | 1.0 |
 
 Sleep is not a mode -- it is a processing state the agent enters by calling the `sleep` tool and exits automatically when user input arrives.
 
@@ -19,9 +19,9 @@ Sleep is not a mode -- it is a processing state the agent enters by calling the 
 Maxim's behavior is controlled by two independent dimensions:
 
 1. **ProcessingState** -- `awake` or `sleep`. Determines whether the agent loop is running.
-2. **OperationalMode** -- `passive`, `active`, or `singularity`. Controls permissions (what tools are available, whether code execution is allowed, filesystem access).
+2. **OperationalMode** -- `planning`, `supervised`, or `autonomous`. Controls permissions (what tools are available, whether code execution is allowed, filesystem access).
 
-### Passive
+### Planning
 
 The default mode. The agent proposes actions and waits for your approval before executing. Good for supervised operation.
 
@@ -55,14 +55,14 @@ Full autonomy. The agent decides and acts on its own. Safety and ethical constra
 - **No forbidden tools**, full tool access
 
 ```bash
-# Start in passive mode (default)
+# Start in planning mode (default)
 maxim --language-model mistral-7b
 
 # Start in active mode
 maxim --autonomy active --language-model mistral-7b
 
-# Time-boxed singularity mode
-maxim --autonomy singularity --autonomy-duration 600
+# Time-boxed autonomous mode
+maxim --autonomy autonomous --autonomy-duration 600
 ```
 
 ---
@@ -93,9 +93,9 @@ You do not have to restart Maxim to change modes.
 
 - "Maxim sleep" -- agent enters sleep
 - "Maxim wake up" -- wake from sleep
-- "Maxim passive" -- switch to passive mode
+- "Maxim planning" -- switch to planning mode
 - "Maxim active" -- switch to active mode
-- "Maxim singularity" -- switch to singularity mode
+- "Maxim autonomous" -- switch to autonomous mode
 
 ### Agent Tools
 

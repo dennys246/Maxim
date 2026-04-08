@@ -32,7 +32,7 @@ The report shows bio-system expectations (e.g., "3/4 passed"). Failed expectatio
 
 ```bash
 # Verify captures in a campaign:
-grep "Captured:" data/sim_reports/*/actions.jsonl | wc -l
+grep "Captured:" ~/.maxim/sim_reports/*/actions.jsonl | wc -l
 ```
 
 ### Symptom: Memories captured but never recalled

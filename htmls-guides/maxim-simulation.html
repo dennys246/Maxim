@@ -297,7 +297,7 @@ Thread 3 (stdin):         routes /cancel, /new, /persona, free text to orchestra
     <p class="text-slate-300">In simulation mode, the AUT auto-approves confirmation prompts, plan approvals, and timeout retries by default. This prevents deadlocks from missing stdin. Four policies: <strong class="text-white">auto_approve</strong> (default), <strong class="text-white">auto_reject</strong> (test refusals), <strong class="text-white">delayed</strong> (test timeouts), <strong class="text-white">ask_orchestrator</strong> (full confirmation testing).</p>
 
     <h3 class="text-lg font-semibold text-indigo-400 mt-4">Session Reports</h3>
-    <p class="text-slate-300">Every simulation run saves a complete report to <code class="bg-slate-950 px-1 rounded text-xs">data/sim_reports/{session_id}/</code>:</p>
+    <p class="text-slate-300">Every simulation run saves a complete report to <code class="bg-slate-950 px-1 rounded text-xs">~/.maxim/sim_reports/{session_id}/</code>:</p>
     <ul class="text-slate-300 text-sm space-y-1 list-disc pl-5 mt-1">
       <li><code class="text-indigo-400">report.json</code> &mdash; Metrics, tool usage, AUT cognitive state, cost, LLM analysis</li>
       <li><code class="text-indigo-400">actions.jsonl</code> &mdash; Every action record for post-hoc analysis</li>
@@ -719,7 +719,7 @@ Actions recorded: 3
 
     <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5 mt-3">
       <h4 class="text-indigo-400 font-semibold mb-1">Log Persistence</h4>
-      <p class="text-slate-300 text-sm">All simulation traces are saved to <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">data/sim_sandbox/sim_log_*.jsonl</code>. These logs persist after sandbox cleanup and can be used for system refinement, regression comparison, and as input to sleep mode's dream function for offline pattern analysis.</p>
+      <p class="text-slate-300 text-sm">All simulation traces are saved to <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">~/.maxim/sim_sandbox/sim_log_*.jsonl</code>. These logs persist after sandbox cleanup and can be used for system refinement, regression comparison, and as input to sleep mode's dream function for offline pattern analysis.</p>
     </div>
   </section>
 
@@ -734,7 +734,7 @@ Actions recorded: 3
         <span class="text-2xl">1</span>
         <div>
           <h4 class="text-white font-semibold">Pluggable Sandbox Backend</h4>
-          <p class="text-slate-400 text-sm">Two backends implement the <code class="bg-slate-950 px-1 rounded text-xs">SandboxEnvironment</code> ABC. <strong class="text-white">TmpdirSandbox</strong> uses a host-side temp directory under <code class="bg-slate-950 px-1 rounded text-xs">data/sim_sandbox/</code> — minimal overhead, relies on FilesystemPolicy + FearGatedExecutor for safety. <strong class="text-white">DockerSandbox</strong> adds full process, filesystem, and network isolation via a container running as an unprivileged <code class="bg-slate-950 px-1 rounded text-xs">maxim</code> user. Select via <code class="bg-slate-950 px-1 rounded text-xs">--sandbox=auto|docker|tmpdir</code> (auto picks Docker if available, falls back to tmpdir with a warning). Both are destroyed automatically after the run.</p>
+          <p class="text-slate-400 text-sm">Two backends implement the <code class="bg-slate-950 px-1 rounded text-xs">SandboxEnvironment</code> ABC. <strong class="text-white">TmpdirSandbox</strong> uses a host-side temp directory under <code class="bg-slate-950 px-1 rounded text-xs">~/.maxim/sim_sandbox/</code> — minimal overhead, relies on FilesystemPolicy + FearGatedExecutor for safety. <strong class="text-white">DockerSandbox</strong> adds full process, filesystem, and network isolation via a container running as an unprivileged <code class="bg-slate-950 px-1 rounded text-xs">maxim</code> user. Select via <code class="bg-slate-950 px-1 rounded text-xs">--sandbox=auto|docker|tmpdir</code> (auto picks Docker if available, falls back to tmpdir with a warning). Both are destroyed automatically after the run.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-start gap-3">

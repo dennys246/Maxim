@@ -166,7 +166,7 @@ DBG 200 OK connIndex=2 content-length=138
 
 **If you see the request + `ERR connection refused` →** port 8100 isn't listening:
 - Start `maxim` on the leader
-- Or start the server manually: `python -m llama_cpp.server --model data/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf --n_gpu_layers -1 --host 0.0.0.0 --port 8100 --n_ctx 8192 --api_key "$(cat ~/.config/maxim/api_key)"`
+- Or start the server manually: `python -m llama_cpp.server --model ~/.maxim/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf --n_gpu_layers -1 --host 0.0.0.0 --port 8100 --n_ctx 8192 --api_key "$(cat ~/.config/maxim/api_key)"`
 
 **If you see the request + `ERR 401` →** auth mismatch. Jump to Rung 4.
 
@@ -188,7 +188,7 @@ curl -i -H "Authorization: Bearer $(cat ~/.config/maxim/api_key)" http://127.0.0
 ```
 HTTP/2 200
 content-type: application/json
-{"object":"list","data":[{"id":"data/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",...}]}
+{"object":"list","data":[{"id":"~/.maxim/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",...}]}
 ```
 
 **If loopback 200 but tunnel 401 →** the key the peer is sending doesn't match. Common causes:

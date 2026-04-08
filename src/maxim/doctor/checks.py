@@ -736,23 +736,17 @@ def check_ram_headroom() -> CheckResult:
                 avail_gb = info.get("MemAvailable", 0) / (1024**2)
                 total_gb = info.get("MemTotal", 0) / (1024**2)
             except Exception:
-                return CheckResult(
-                    name="RAM", status="info", message="cannot read /proc/meminfo"
-                )
+                return CheckResult(name="RAM", status="info", message="cannot read /proc/meminfo")
         elif platform.system() == "Darwin":
             import subprocess
 
             try:
-                out = subprocess.check_output(
-                    ["sysctl", "-n", "hw.memsize"], timeout=5, text=True
-                )
+                out = subprocess.check_output(["sysctl", "-n", "hw.memsize"], timeout=5, text=True)
                 total_gb = int(out.strip()) / (1024**3)
                 # macOS doesn't expose "available" easily without psutil
                 avail_gb = -1
             except Exception:
-                return CheckResult(
-                    name="RAM", status="info", message="cannot read sysctl"
-                )
+                return CheckResult(name="RAM", status="info", message="cannot read sysctl")
         else:
             return CheckResult(
                 name="RAM",
@@ -793,9 +787,7 @@ def check_inference_coherence(port: int = 8100) -> CheckResult:
     url = f"http://127.0.0.1:{port}/v1/chat/completions"
     payload = {
         "model": "m",
-        "messages": [
-            {"role": "user", "content": "What is 2+2? Answer with just the number."}
-        ],
+        "messages": [{"role": "user", "content": "What is 2+2? Answer with just the number."}],
         "max_tokens": 8,
         "temperature": 0.0,
     }
@@ -911,9 +903,7 @@ def check_peer_key_set() -> CheckResult:
     """Check that the peer has a remote API key configured."""
     import os
 
-    key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY") or os.environ.get(
-        "MAXIM_LANE_LARGE_REMOTE_API_KEY"
-    )
+    key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY") or os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY")
     if not key:
         try:
             from maxim.peer.config import read_peer_config
@@ -999,9 +989,7 @@ def check_peer_auth(url: str, key: str | None) -> CheckResult:
     )
 
 
-def check_peer_model(
-    url: str, key: str | None, expected_model: str | None = None
-) -> CheckResult:
+def check_peer_model(url: str, key: str | None, expected_model: str | None = None) -> CheckResult:
     """Check if the leader advertises the expected model."""
     import json
     import urllib.error
@@ -1134,9 +1122,7 @@ def _check_lane_metrics() -> list["CheckResult"]:
     return results
 
 
-def _detect_doctor_role(
-    explicit: str | None = None, peer_url: str | None = None
-) -> tuple[str, str | None]:
+def _detect_doctor_role(explicit: str | None = None, peer_url: str | None = None) -> tuple[str, str | None]:
     """Detect whether this machine is peer/leader/solo for doctor purposes.
 
     Returns ``(role, peer_url)`` where role is ``"peer"``, ``"leader"``,
@@ -1146,18 +1132,12 @@ def _detect_doctor_role(
     from urllib.parse import urlparse
 
     if explicit == "peer":
-        url = (
-            peer_url
-            or os.environ.get("MAXIM_LANE_INFER_REMOTE_URL")
-            or os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL")
-        )
+        url = peer_url or os.environ.get("MAXIM_LANE_INFER_REMOTE_URL") or os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL")
         return "peer", url
     if explicit in ("leader", "solo"):
         return explicit, None
     # Auto-detect from env
-    url = os.environ.get("MAXIM_LANE_INFER_REMOTE_URL") or os.environ.get(
-        "MAXIM_LANE_LARGE_REMOTE_URL"
-    )
+    url = os.environ.get("MAXIM_LANE_INFER_REMOTE_URL") or os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL")
     if url:
         host = urlparse(url).hostname or ""
         if host not in ("127.0.0.1", "localhost", "::1"):
@@ -1220,16 +1200,18 @@ def run_all_checks(
                     peer_key = cfg.api_key
             except Exception:
                 pass
-        sections.append((
-            "Peer Connectivity",
-            [
-                check_peer_url_reachable(peer_url),
-                check_peer_key_set(),
-                check_peer_auth(peer_url, peer_key),
-                check_peer_model(peer_url, peer_key),
-                check_peer_latency(peer_url, peer_key),
-            ],
-        ))
+        sections.append(
+            (
+                "Peer Connectivity",
+                [
+                    check_peer_url_reachable(peer_url),
+                    check_peer_key_set(),
+                    check_peer_auth(peer_url, peer_key),
+                    check_peer_model(peer_url, peer_key),
+                    check_peer_latency(peer_url, peer_key),
+                ],
+            )
+        )
     else:
         # ── leader / solo sections ────────────────────────────────────────
         sections += [

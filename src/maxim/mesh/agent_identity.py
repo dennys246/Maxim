@@ -26,7 +26,7 @@ def _load_or_create_node_id(base_dir: str | Path | None = None) -> str:
         from maxim.utils.paths import resolve_user_state
         path = resolve_user_state("util/node_id.txt")
     else:
-        path = Path(base_dir) / "data/util/node_id.txt"
+        path = Path(base_dir) / "util/node_id.txt"
     try:
         text = path.read_text().strip()
         if text:

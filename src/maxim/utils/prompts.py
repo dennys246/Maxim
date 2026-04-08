@@ -69,10 +69,17 @@ def _find_prompts_dir() -> Path:
         _PROMPTS_DIR = cwd_candidate
         return _PROMPTS_DIR
 
-    # Create under CWD if nothing found
-    _PROMPTS_DIR = cwd_candidate
-    _PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
-    return _PROMPTS_DIR
+    # Fall back to user data home — never create directories in CWD
+    try:
+        from maxim.utils.paths import data_home
+        fallback = data_home() / "prompts"
+        fallback.mkdir(parents=True, exist_ok=True)
+        _PROMPTS_DIR = fallback
+        return _PROMPTS_DIR
+    except Exception:
+        # Last resort: return CWD candidate without creating it
+        _PROMPTS_DIR = cwd_candidate
+        return _PROMPTS_DIR
 
 
 def set_prompts_dir(path: Path | str) -> None:
