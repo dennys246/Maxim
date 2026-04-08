@@ -92,6 +92,7 @@ maxim [OPTIONS]
 | `--resume-sim` | str | None | Resume a previous simulation session by ID or date prefix |
 | `--sandbox` | str | `docker` | Sandbox type: `docker`, `tmpdir` |
 | `--debug` | str | None | Debug subsystems: `hippo`, `nac`, `all` (comma-separated) |
+| `--show` | str | None | Filter simulation output by channel: `bio` (hippocampus/NAc/SCN/ATL/pain/fear), `exec` (tool execution/LLM), `sim` (percepts/scenes/NPC/choices), `memory`, `safety`, `all`. Composable: `--show bio,exec` |
 | `--continuous` | bool | `False` | Continuous mode: never auto-complete, keep testing until `/cancel` |
 | `--no-sim-env` | bool | `False` | Skip simulated filesystem with pain-triggering files |
 | `--generate-simulation` | str | None | Generate a YAML scenario from a natural language description |

@@ -312,6 +312,33 @@ This means NPCs remember prior encounters, learn causal patterns from the PC's b
 
 Party mode requires more LLM inference (one call per NPC per encounter). Use `model_tier: small` on NPCs to keep costs manageable for ambient characters.
 
+## Live Entity State in Scenes
+
+When SEM entities are instantiated (via `init_entities()` or Party Mode), the DM runtime automatically includes live sensor values in the scene stimulus. This means the agent perceives the **actual game state** — not just static text:
+
+```
+[Game State]
+  guard_captain: hp=18.0, trust=0.3, suspicion=0.5
+  rusty_sword: durability=0.7, sharpness=0.5
+```
+
+Sensor values update after cascade resolution (e.g., sword durability drops after combat). Hidden sensors (visibility: hidden) are excluded.
+
+### Filtering Output with `--show`
+
+DM campaigns produce a lot of bio-system trace output. Use `--show` to focus on what matters:
+
+```bash
+# Only see the narrative flow (scene text, NPC dialogue, choices)
+maxim --sim scenarios/campaigns/heist_v1.yaml --show sim
+
+# See bio-system reactions (memory captures, causal learning)
+maxim --sim scenarios/campaigns/heist_v1.yaml --show bio
+
+# See everything
+maxim --sim scenarios/campaigns/heist_v1.yaml --show all
+```
+
 ## Tips for Effective Campaigns
 
 ### Make choices explicit

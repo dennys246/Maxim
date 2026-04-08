@@ -231,6 +231,40 @@ During `--sim` runs, the system logs bio-inspired subsystem activity in real tim
     0.54s [HIPPOCAMPUS ] Pain memory captured
 ```
 
+### Channel Filtering with `--show`
+
+Use `--show` to filter which subsystems appear in terminal output. All events are always persisted to the JSONL log regardless of the filter.
+
+```bash
+# Only bio-system events (memory, learning, pain, fear)
+maxim --sim "test safety" --show bio
+
+# Only tool execution and LLM proposals
+maxim --sim "test safety" --show exec
+
+# Bio-systems + execution (no simulation noise)
+maxim --sim "test safety" --show bio,exec
+
+# Only simulation flow (percepts, scenes, choices)
+maxim --sim scenarios/campaigns/heist_v1.yaml --show sim
+
+# Everything (default behavior)
+maxim --sim "test safety" --show all
+```
+
+Available channels:
+
+| Channel | Subsystems Shown |
+|---------|-----------------|
+| `bio` | HIPPOCAMPUS, NAc, SCN, ATL, FEAR, PAIN, MOTOR, SENSORY, BODY_STATE |
+| `exec` | EXEC, PIPELINE |
+| `sim` | PERCEPT, SCENE, NPC, CHOICE |
+| `memory` | HIPPOCAMPUS, NAc, SCN, ATL |
+| `safety` | FEAR, PAIN |
+| `all` | Everything (default) |
+
+### Subsystem Labels
+
 Subsystem labels map to biological systems:
 - **PERCEPT** -- incoming sensory input
 - **HIPPOCAMPUS** -- memory formation and recall
@@ -239,9 +273,19 @@ Subsystem labels map to biological systems:
 - **PAIN** -- pain signal detection and routing
 - **MOTOR** -- tool execution results
 - **EXEC** -- execution lifecycle events
-- **SALIENCE** -- attention and novelty
+- **SCN** -- temporal rhythm tracking
+- **ATL** -- semantic concept formation
+- **SENSORY** -- SEM entity sensor state changes
 
-Simulation logs are automatically saved to `~/.maxim/sim_sandbox/sim_log_*.jsonl` for future analysis. These logs can be used for system refinement and as input to sleep mode for offline pattern discovery.
+### Numeric Verbosity
+
+The `--verbosity` flag (0-3) controls overall logging detail:
+- `0` — errors only
+- `1` — normal (turn summaries, default)
+- `2` — detailed (≈ `--show exec,sim`)
+- `3` — debug (≈ `--show all` + pipeline internals)
+
+Simulation logs are automatically saved to `~/.maxim/sim_reports/{session_id}/sim_log_*.jsonl` for future analysis.
 
 ## Safety
 

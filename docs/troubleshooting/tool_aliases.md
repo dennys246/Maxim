@@ -75,13 +75,43 @@ grep "Tool alias:" ~/.maxim/sim_reports/SESSION_ID/sim.log
 - **Experiment reports:** The `Tool Usage` section in sim reports shows the redirected names. To see alias activity, check `executor.alias_redirects` or the logs.
 - **Realtime refinement:** The `refinement` persona can use alias redirect counts as a metric for model hallucination rates. See the realtime refinement plan for details.
 
+## inspect_aut Parameter Aliases (Orchestrator)
+
+The `inspect_aut` tool (used by the orchestrator to query AUT internal state) accepts a `query` parameter. Small models frequently hallucinate different parameter names, causing a `inspect_aut → send_message → _llm_unavailable` retry loop.
+
+**Parameter normalization (automatic):**
+
+| Hallucinated param | Normalized to |
+|---|---|
+| `memory_sections` | `query` |
+| `memory_address` | `query` |
+| `memory_addresses` | `query` |
+| `section` | `query` |
+| `subsystem` | `query` |
+| `detail` | `query` |
+
+**Query value aliases (automatic):**
+
+| Hallucinated value | Normalized to |
+|---|---|
+| `memory`, `memories`, `recent`, `recall` | `memory_recall` |
+| `causal`, `links` | `causal_links` |
+| `pain` | `pain_history` |
+| `stats` | `system_stats` |
+| `energy` | `energy_status` |
+| `concepts` | `concept_query` |
+| `temporal` | `temporal_patterns` |
+| `default` | `system_stats` |
+
+If no valid query is detected after alias resolution, falls back to `system_stats`.
+
 ## Known model-specific patterns
 
 | Model | Common hallucinations | Notes |
 |---|---|---|
-| Mistral-7B | `speechRecognition`, `natural_language_processing`, `nlp_extractor`, `DialogueParser`, `remember`, `reflection` | Strong NLP training priors. Uses `think` when prompted. |
+| Mistral-7B | `speechRecognition`, `natural_language_processing`, `nlp_extractor`, `DialogueParser`, `remember`, `reflection`, `inspect_aut(memory_address=...)` | Strong NLP training priors. Gets stuck in inspect_aut retry loops without aliases. |
 | Qwen 14B | `speechRecognition`, `SpeechRecognition`, `natural_language_processing`, `dialogue`, `dialogue_parser`, `reflection` | More varied casing. Tends to get stuck in loops. |
-| Both | `internet_search` | Models assume web access is available |
+| Both | `internet_search`, `rollDice` | Models assume web access / D&D tools available |
 
 ## Related docs
 
