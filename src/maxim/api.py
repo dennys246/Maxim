@@ -92,6 +92,37 @@ def configure(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+_API_DEFAULT_MODEL = "mistral-7b"
+
+
+def _resolve_model(model: str) -> str:
+    """Return the effective model, checking persisted choice when caller
+    passed the default.  Allows ``maxim.run()`` (no explicit model) to
+    reuse the last ``--llm`` / ``maxim.run(model=...)`` selection.
+    """
+    if model != _API_DEFAULT_MODEL:
+        # User explicitly chose — persist for next session
+        try:
+            from maxim.runtime.lane_backends import _write_persisted_model
+
+            from maxim.models.language.config import normalize_llm_profile
+
+            _write_persisted_model(normalize_llm_profile(model) or model)
+        except Exception:
+            pass
+        return model
+    # Default was used — check for a persisted preference
+    try:
+        from maxim.runtime.lane_backends import _read_persisted_model
+
+        persisted = _read_persisted_model()
+        if persisted:
+            return persisted
+    except Exception:
+        pass
+    return model
+
+
 def _validate_model(model: str) -> None:
     """Validate that a model profile is available, with actionable errors.
 
@@ -149,39 +180,91 @@ class ModelInfo:
     cloud: bool = False
     api_key_env: str = ""
     context_length: int = 0
+    downloaded: bool = False
+    ready: bool = False
+
+    def __repr__(self) -> str:
+        status = "ready" if self.ready else ("downloaded" if self.downloaded else "not downloaded")
+        return f"ModelInfo({self.name!r}, backend={self.backend!r}, [{status}])"
 
 
 def list_models() -> dict[str, list[ModelInfo]]:
     """Return available models grouped by type.
 
     Returns a dict with ``"local"`` and ``"cloud"`` keys, each containing
-    a list of :class:`ModelInfo` objects.
+    a list of :class:`ModelInfo` objects.  The ``downloaded`` and ``ready``
+    fields indicate whether local models have their GGUF on disk and
+    whether cloud models have their API key configured.
 
     Example::
 
         models = maxim.list_models()
+        for m in models["local"]:
+            status = "✓" if m.downloaded else "✗"
+            print(f"  {status} {m.name}")
         for m in models["cloud"]:
-            print(f"{m.name} (requires {m.api_key_env})")
+            status = "✓" if m.ready else "needs key"
+            print(f"  {status} {m.name}")
     """
     from maxim.models.language.config import _BUILTIN_PROFILES
+    from maxim.runtime.lane_backends import _profile_has_local_file
 
     local: list[ModelInfo] = []
     cloud: list[ModelInfo] = []
 
     for name, profile in sorted(_BUILTIN_PROFILES.items()):
-        info = ModelInfo(
-            name=name,
-            backend=profile.get("backend", "unknown"),
-            cloud=bool(profile.get("cloud")),
-            api_key_env=profile.get("api_key_env", ""),
-            context_length=profile.get("n_ctx", 0),
-        )
-        if info.cloud:
+        is_cloud = bool(profile.get("cloud"))
+        env = profile.get("api_key_env", "")
+        if is_cloud:
+            key_set = bool(os.environ.get(env)) if env else False
+            info = ModelInfo(
+                name=name,
+                backend=profile.get("backend", "unknown"),
+                cloud=True,
+                api_key_env=env,
+                context_length=profile.get("n_ctx", 0),
+                downloaded=True,  # cloud models don't need downloads
+                ready=key_set,
+            )
             cloud.append(info)
         else:
+            has_file = _profile_has_local_file(name)
+            info = ModelInfo(
+                name=name,
+                backend=profile.get("backend", "unknown"),
+                cloud=False,
+                context_length=profile.get("n_ctx", 0),
+                downloaded=has_file,
+                ready=has_file,
+            )
             local.append(info)
 
     return {"local": local, "cloud": cloud}
+
+
+def download_model(name: str) -> bool:
+    """Download a local LLM model by profile name.
+
+    Args:
+        name: Model profile name (e.g. ``"mistral-7b"``, ``"qwen2.5-14b-instruct"``).
+
+    Returns:
+        ``True`` if the download succeeded, ``False`` otherwise.
+
+    Example::
+
+        maxim.download_model("qwen2.5-14b-instruct")
+    """
+    from maxim.models.language.config import normalize_llm_profile
+
+    canonical = normalize_llm_profile(name) or name
+    try:
+        from maxim.models.download import download_llm
+
+        return download_llm(canonical)
+    except Exception as e:
+        logger.error("Failed to download model %r: %s", canonical, e)
+        return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -190,7 +273,7 @@ def list_models() -> dict[str, list[ModelInfo]]:
 
 
 def run(
-    model: str = "mistral-7b",
+    model: str = _API_DEFAULT_MODEL,
     *,
     goal: str | None = None,
     headless: bool = True,
@@ -218,6 +301,7 @@ def run(
         maxim.exceptions.MaximConfigurationError: If the requested model
             is not available (missing files or API key).
     """
+    model = _resolve_model(model)
     _validate_model(model)
 
     import threading
@@ -310,7 +394,7 @@ def imagine(
     *,
     persona: str = "cooperative",
     scenario: str | None = None,
-    model: str = "mistral-7b",
+    model: str = _API_DEFAULT_MODEL,
     sandbox: str = "tmpdir",
     max_turns: int = 50,
     verbosity: int = 1,
@@ -340,6 +424,7 @@ def imagine(
     """
     from maxim.session import Session
 
+    model = _resolve_model(model)
     _validate_model(model)
     configure(verbosity=verbosity)
 
@@ -736,7 +821,7 @@ class CampaignResult:
 def campaign(
     path: str,
     *,
-    model: str = "mistral-7b",
+    model: str = _API_DEFAULT_MODEL,
     party_mode: bool | None = None,
     npc_model: str | None = None,
     interactive: bool = False,
@@ -770,6 +855,7 @@ def campaign(
         for choice in result.choices_made:
             print(f"  {choice['encounter']}: {choice['choice']}")
     """
+    model = _resolve_model(model)
     configure(verbosity=verbosity)
 
     os.environ.setdefault("MAXIM_LLM_ENABLED", "1")

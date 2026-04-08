@@ -618,6 +618,15 @@ def build_primary_router(
         load_function_overrides,
     )
 
+    # Restore persisted model preference (from --llm or maxim.run(model=...))
+    # when no explicit MAXIM_LLM_PROFILE is set for this session.
+    if not os.environ.get("MAXIM_LLM_PROFILE", "").strip():
+        _persisted = _read_persisted_model()
+        if _persisted:
+            os.environ["MAXIM_LLM_PROFILE"] = _persisted
+            if logger is not None:
+                logger.info("Restored persisted model preference: %s", _persisted)
+
     # Peer-config auto-load: if ~/.config/maxim/peer.yml exists and env vars
     # aren't already set, populate them from the file. Set by
     # `maxim peer connect`. Env wins over file for per-session overrides.

@@ -58,6 +58,13 @@ def _normalize_args(args: argparse.Namespace) -> None:
                     print(f"  Did you mean: {', '.join(close)}?\n")
                 raise SystemExit(1)
             os.environ["MAXIM_LLM_PROFILE"] = selected
+            # Persist across sessions so the user doesn't need --llm every time
+            try:
+                from maxim.runtime.lane_backends import _write_persisted_model
+
+                _write_persisted_model(selected)
+            except Exception:
+                pass
         args.language_model = selected
 
     # ── Cloud provider CLI flags ──────────────────────────────────────────
@@ -530,6 +537,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # List available models if requested
     if bool(getattr(args, "list_models", False)):
         from maxim.models.language.config import _BUILTIN_PROFILES, _PROFILE_ALIASES
+        from maxim.runtime.lane_backends import _profile_has_local_file, _read_persisted_model
 
         # Group by type
         local_llama: list[str] = []
@@ -575,10 +583,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     cloud_openai.append(line)
                 else:
                     cloud_other.append(f"  {name:30s} {ctx_str:>6s} ctx  {provider:10s} [{status}]")
-            elif backend == "pytorch":
-                local_torch.append(f"  {name:30s} {ctx_str:>6s} ctx  (torch){alias_str}")
             else:
-                local_llama.append(f"  {name:30s} {ctx_str:>6s} ctx  (llama.cpp){alias_str}")
+                downloaded = _profile_has_local_file(name)
+                status = "✓ downloaded" if downloaded else "not downloaded"
+                backend_label = "torch" if backend == "pytorch" else "llama.cpp"
+                line = f"  {name:30s} {ctx_str:>6s} ctx  ({backend_label})  [{status}]{alias_str}"
+                if backend == "pytorch":
+                    local_torch.append(line)
+                else:
+                    local_llama.append(line)
 
         print("═══ Local Models (requires GPU + downloaded model) ═══\n")
         if local_llama:
@@ -605,9 +618,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(line)
 
         # Show current config
-        current = os.environ.get("MAXIM_LLM_PROFILE", "mistral-7b")
-        print(f"\n═══ Current: {current} ═══")
+        persisted = _read_persisted_model()
+        current = os.environ.get("MAXIM_LLM_PROFILE", "") or persisted or "mistral-7b"
+        print(f"\n═══ Active: {current} ═══")
         print("\nSet model: maxim --llm <model-name>")
+        print("Download:  python -m maxim.models.download --llm <model-name>")
         print("Persist:   export MAXIM_LLM_PROFILE=<model-name>")
         return 0
 

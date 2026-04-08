@@ -58,6 +58,7 @@ These are features, not architecture. Safe to add after PyPI publication without
 | **PyPI Multi-Robot Plugins** | External robot controllers need discovery | ~250 LOC | Entry-point based `maxim.robots` registration. Phase 3 of [PyPI plan](pypi_publication_plan.md). Depends on selfy.py decomposition above. |
 | **Full CI/CD Pipeline** | Need automated test + publish | ~2 files | GitHub Actions: lint, test, build, publish. Phase 4 of [PyPI plan](pypi_publication_plan.md). |
 | **Peer Inference Retry** | Leader restarts cause 502 errors | ~30 LOC | Exponential backoff in openai_backend.py |
+| **Multi-Node Admin (symmetric update/restart)** | 3+ nodes need coordinated deploys | ~200 LOC | Every node with `MAXIM_ALLOW_REMOTE_UPDATE=1` serves admin endpoints (`/v1/admin/update`, `restart`, `llm-swap`) regardless of leader/peer role. Peer nodes run a lightweight admin-only HTTP server (subset of LeaderProxy, no inference proxy). CLI: `maxim peer update --all` fans out to known nodes. Node registry: peers register their tunnel URL on connect, leader stores in `~/.maxim/config/nodes.json`. See design notes below. |
 | **Filesystem Mount System** | Users want Maxim to read/act on their projects | ~100 LOC | See design below. `FilesystemPolicy` + `PathPolicy` already support per-path permissions (READ/WRITE/EXECUTE/CREATE/DELETE). Needs: CLI `--mount /path:ro`, config file persistence, API verb `maxim.mount()`, per-directory autonomy levels. |
 | **Agent-Driven Git + Experiment Workflow** | Git tools, bio-provenance tagging, scientist persona, fork CLI, broken-database campaign | ~850 LOC | [Plan](github_repo_management_plan.md) |
 | **Hibernate Mode (no-LLM sleep)** | SEM comms wake triggers, broken-database campaign sleep→wake arc | ~200 LOC | Agent loop monitors only SEM sensors + wake keywords, zero LLM cost. Prerequisite for DM campaigns that start in sleep state. Needs: ProcessingState.HIBERNATE enum, agent_loop hibernate branch, DM schema `initial_state:` + `embodiment:` keys. |
@@ -83,6 +84,23 @@ These are features, not architecture. Safe to add after PyPI publication without
 | **Learning loop** | Enough users to see patterns | ~200 LOC | Opt-in local telemetry: which fixes work per platform |
 
 **Cross-cutting uses** (no new code, just exposure): startup sanity (cheap checks on every `maxim` launch, quiet-success), sim pre-flight (`check_server_reachable` + `check_gpu` before sim), test fixture, CI guardrail (`--json --strict`).
+
+### Multi-Node Admin Design (~200 LOC)
+
+Enable any Maxim node (not just the leader) to accept remote update/restart/llm-swap commands, so coordinated deploys work across a cluster without SSH.
+
+**Current state:** Only the leader runs `LeaderProxy` with admin endpoints. Peers are HTTP clients only — no inbound server. Communication is one-way: peer → leader.
+
+**Target state:** Every node with `MAXIM_ALLOW_REMOTE_UPDATE=1` exposes admin endpoints. Leader already does. Peers get a lightweight admin-only HTTP server (no inference proxy, no `/v1/chat/completions`).
+
+**Implementation:**
+1. **Admin server extraction** (~80 LOC): Factor admin handlers (`_handle_admin_update`, `_handle_admin_restart`, `_handle_admin_llm_swap`) out of `leader_proxy.py` into `runtime/admin_server.py`. LeaderProxy imports them. New `AdminOnlyServer` reuses the same handlers on a separate port (e.g., 8098) with auth.
+2. **Node registration** (~60 LOC): When a peer connects to the leader (any `/v1/` request), the leader records its tunnel URL in `~/.maxim/config/nodes.json` (deduped, TTL-based expiry). Read-only endpoint: `GET /v1/admin/nodes`.
+3. **Fan-out CLI** (~60 LOC): `maxim peer update --all` reads the node registry and POSTs `/v1/admin/update` to each URL in parallel. `--all` includes the leader itself. `maxim peer restart --all` does the same with sequenced restarts (leader last).
+
+**Pre-publication refactoring needed: none.** The admin endpoints, `detect_role()`, `MAXIM_ALLOW_REMOTE_UPDATE`, and `peer/cli.py` are all internal modules — not exposed via the public Python API (`maxim.api`). Renaming or restructuring them post-publish won't break downstream users. The CLI subcommand surface (`maxim peer ...`) is not a stability contract.
+
+**Trigger:** 3+ Maxim nodes that need coordinated deploys. Currently a single leader + Mac peer — `maxim peer update` one-way is sufficient.
 
 ### Capability Agent Design (~500 LOC)
 

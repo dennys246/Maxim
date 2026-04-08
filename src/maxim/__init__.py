@@ -34,6 +34,7 @@ _API_VERBS = frozenset(
         "register_persona",
         "tool",
         "list_models",
+        "download_model",
         # (get_session/list_sessions removed — use maxim.load.session/sessions)
     }
 )
@@ -94,6 +95,7 @@ __all__ = [
     "register_persona",
     "tool",
     "list_models",
+    "download_model",
     # Types
     "DiagnosticReport",
     "CampaignResult",
