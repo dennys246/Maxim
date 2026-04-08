@@ -49,31 +49,14 @@ def _normalize_args(args: argparse.Namespace) -> None:
         if selected:
             available = list_llm_profiles()
             if available and selected not in available:
-                opts = ", ".join(available)
-                # Check if they're trying to use a cloud provider
-                cloud_hints = {
-                    "claude": ("ANTHROPIC_API_KEY", "pip install anthropic"),
-                    "anthropic": ("ANTHROPIC_API_KEY", "pip install anthropic"),
-                    "sonnet": ("ANTHROPIC_API_KEY", "pip install anthropic"),
-                    "opus": ("ANTHROPIC_API_KEY", "pip install anthropic"),
-                    "haiku": ("ANTHROPIC_API_KEY", "pip install anthropic"),
-                    "gpt": ("OPENAI_API_KEY", "pip install openai"),
-                    "openai": ("OPENAI_API_KEY", "pip install openai"),
-                }
-                hint = ""
-                for keyword, (env_var, install) in cloud_hints.items():
-                    if keyword in language_model.lower():
-                        has_key = bool(os.environ.get(env_var))
-                        hint = (
-                            f"\n\n  To use cloud models ({keyword}):\n"
-                            f"    1. {install}\n"
-                            f"    2. export {env_var}=<your-key>\n"
-                            f"    3. Add the profile to data/util/llm.json"
-                        )
-                        if has_key:
-                            hint += f"\n\n  {env_var} is set, but the profile '{language_model}' isn't in llm.json."
-                        break
-                raise SystemExit(f"Unknown --language-model {language_model!r}. Available: {opts}{hint}")
+                print(f"\n  Unknown model: '{language_model}'\n")
+                print("  Run 'maxim --list-models' to see all available models.\n")
+                # Show a few close matches if possible
+                from difflib import get_close_matches
+                close = get_close_matches(language_model.lower(), [a.lower() for a in available], n=3, cutoff=0.4)
+                if close:
+                    print(f"  Did you mean: {', '.join(close)}?\n")
+                raise SystemExit(1)
             os.environ["MAXIM_LLM_PROFILE"] = selected
         args.language_model = selected
 
