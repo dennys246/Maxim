@@ -633,11 +633,14 @@ class SandboxExecutor:
             "MAXIM_SANDBOX_DIR": self.sandbox_dir,
         }
 
-        # Add allowed extra env vars (filter out dangerous ones)
+        # Whitelist approach: only allow known-safe env var prefixes.
+        # This prevents injection via LD_PRELOAD, DYLD_*, PYTHONPATH,
+        # RUST_BACKTRACE, MALLOC_CONF, or any other dangerous var.
         if extra_env:
-            blocked_env = {"LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_", "PYTHONPATH"}
+            allowed_prefixes = ("MAXIM_", "LANG", "LC_", "TZ", "TERM", "PYTHON_HASH")
+            allowed_exact = {"HOME", "TMPDIR", "PATH", "USER", "SHELL"}
             for key, value in extra_env.items():
-                if not any(key.startswith(b) for b in blocked_env):
+                if key in allowed_exact or any(key.startswith(p) for p in allowed_prefixes):
                     safe_env[key] = value
 
         return safe_env

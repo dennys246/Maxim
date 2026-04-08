@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -799,6 +800,23 @@ class NAc:
         self._total_observations = data.get("total_observations", 0)
 
         logger.info("Loaded NAc from %s (%d links)", path, len(self))
+
+    def load_safe(self, path: str) -> tuple[bool, str | None]:
+        """Load with recovery on failure. Returns (success, error_message)."""
+        if not os.path.exists(path):
+            logger.info("No existing NAc file at %s, starting fresh", path)
+            return True, None
+        try:
+            self.load(path)
+            return True, None
+        except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
+            error_msg = f"Corrupt NAc file ({type(e).__name__}): {e}"
+            logger.warning("%s — starting with empty causal model", error_msg)
+            self._links = {}
+            self._outcome_index = {}
+            self._priors = {}
+            self._total_observations = 0
+            return False, error_msg
 
     def get_version(self) -> str:
         """Return data format version."""

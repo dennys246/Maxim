@@ -416,7 +416,7 @@ def connect(
     )
 
     if controller is None:
-        from maxim.exceptions import MaximConnectionError
+        from maxim.exceptions import ConnectionError as MaximConnectionError
 
         available = registry.get_controller_types()
         raise MaximConnectionError(

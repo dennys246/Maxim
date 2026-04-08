@@ -857,23 +857,56 @@ class BashTool(Tool):
         "cwd": (str, None),  # Optional: working directory
     }
 
-    # Commands that are always blocked for safety
+    # Commands that are always blocked for safety (exact match)
     BLOCKED_COMMANDS = {
         "rm -rf /",
         "rm -rf /*",
-        "dd",
-        "mkfs",
-        "fdisk",
-        ":(){:|:&};:",
-        "chmod 777 /",  # Fork bombs, dangerous perms
+        ":(){:|:&};:",  # Fork bomb
+        "chmod 777 /",
     }
 
     # Patterns that indicate dangerous operations
     DANGEROUS_PATTERNS = [
-        r"rm\s+-rf\s+/",  # rm -rf starting from root
+        # Destructive filesystem operations
+        r"rm\s+.*-[rR].*\s+/",  # rm -r / (any flag order)
+        r"rm\s+--force|rm\s+--recursive",  # Long-form rm dangerous flags
         r">\s*/dev/sd",  # Writing directly to block devices
+        r"\bdd\b\s+",  # dd (always dangerous — disk/device operations)
         r"mv\s+/\s+",  # Moving root
         r"chmod\s+-R\s+777\s+/",  # Recursive chmod 777 from root
+        r"\bmkfs\b",  # Filesystem formatting
+        r"\bfdisk\b",  # Partition editing
+        # Shell injection / command substitution
+        r"\$\(",  # Command substitution $(...)
+        r"`[^`]+`",  # Backtick command substitution
+        r"\beval\b",  # eval in shell
+        r"\bexec\b",  # exec in shell
+        r"\bsource\b\s+/",  # source from absolute path
+        r"\.\s+/",  # . (dot) source from absolute path
+        # Alternative interpreters (bypass bash-specific blocks)
+        r"\bsh\b\s+-c",  # sh -c (alternative shell)
+        r"\bperl\b\s+-e",  # perl -e (inline code)
+        r"\bruby\b\s+-e",  # ruby -e (inline code)
+        r"\bpython[23]?\b\s+-c",  # python -c (inline code)
+        r"\bnode\b\s+-e",  # node -e (inline code)
+        # Network exfiltration / remote code exec
+        r"\bnc\b.*-[el]",  # netcat listen/exec mode
+        r"\bcurl\b.*\|\s*(?:bash|sh|python)",  # curl | shell
+        r"\bwget\b.*\|\s*(?:bash|sh|python)",  # wget | shell
+        r"&&\s*(?:bash|sh)\b",  # command chain to shell
+        r"\|\s*(?:sh|bash)\b",  # pipe to alternative shell
+        # Dangerous system operations
+        r"\bnohup\b",  # Background persistent processes
+        r"\bkill\b\s+-9\s+-1",  # Kill all processes
+        r"\bcrontab\b",  # Cron modification
+        r"\bsystemctl\b",  # systemd control
+        r"\bservice\b\s+\w+\s+(?:stop|restart|disable)",  # Service management
+        r"\bapt\b\s+install|pip\s+install",  # Package installation
+        r"find\s+.*-exec",  # find with exec (arbitrary command execution)
+        # Write to sensitive system paths
+        r">\s*/etc/",  # Writing to /etc/
+        r">\s*/proc/",  # Writing to /proc/
+        r">\s*/sys/",  # Writing to /sys/
     ]
 
     def __init__(
@@ -944,10 +977,13 @@ class BashTool(Tool):
             if not is_safe:
                 return ToolResult(success=False, error=reason)
 
-            # Execute command
+            # Execute command via explicit bash invocation (no shell=True).
+            # This prevents shell metacharacter injection ($(), ``, &&, ||, ;)
+            # from being interpreted by the parent shell. The command still runs
+            # in bash, but subprocess doesn't invoke an intermediate shell.
             result = subprocess.run(
-                command,
-                shell=True,
+                ["/bin/bash", "-c", command],
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=timeout,

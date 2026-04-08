@@ -262,6 +262,20 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             return self.lane_metrics.current_in_flight
         return 0
 
+    # Maximum request body size (1 MB). Prevents memory exhaustion from oversized payloads.
+    MAX_BODY_SIZE = 1_048_576
+
+    def _read_body(self, max_size: int | None = None) -> bytes | None:
+        """Read request body with size limit. Returns None if no body or over limit."""
+        limit = max_size or self.MAX_BODY_SIZE
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length <= 0:
+            return None
+        if content_length > limit:
+            self._send_json(413, {"error": f"Request body too large (max {limit} bytes)"})
+            return None
+        return self.rfile.read(content_length)
+
     # ─── auth ─────────────────────────────────────────────────────────
 
     def _check_auth(self) -> bool:
@@ -597,12 +611,12 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             )
             return
 
-        # Parse request body
-        content_length = int(self.headers.get("Content-Length", 0))
+        # Parse request body (small limit — admin requests are tiny)
+        raw = self._read_body(max_size=4096)
         body: dict[str, Any] = {}
-        if content_length > 0:
+        if raw:
             try:
-                body = json.loads(self.rfile.read(content_length))
+                body = json.loads(raw)
             except Exception:
                 pass
 
@@ -860,11 +874,11 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             return
 
         # Parse optional delay from body
-        content_length = int(self.headers.get("Content-Length", 0))
+        raw = self._read_body(max_size=4096)
         body: dict[str, Any] = {}
-        if content_length > 0:
+        if raw:
             try:
-                body = json.loads(self.rfile.read(content_length))
+                body = json.loads(raw)
             except Exception:
                 pass
 
@@ -922,11 +936,11 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             )
             return
 
-        content_length = int(self.headers.get("Content-Length", 0))
+        raw = self._read_body(max_size=4096)  # Admin body should be tiny
         body: dict[str, Any] = {}
-        if content_length > 0:
+        if raw:
             try:
-                body = json.loads(self.rfile.read(content_length))
+                body = json.loads(raw)
             except Exception:
                 self._send_json(400, {"error": "Invalid JSON body"})
                 return
@@ -948,22 +962,33 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         except FileNotFoundError as e:
             msg = str(e)
             parts = msg.split("|", 1)
-            resp: dict[str, Any] = {"error": parts[0]}
+            # Sanitize — don't leak file paths in error responses
+            safe_error = re.sub(r"/[\w./-]{5,}", "<path>", parts[0])
+            resp: dict[str, Any] = {"error": safe_error}
             if len(parts) > 1:
-                resp["hint"] = parts[1]
+                resp["hint"] = re.sub(r"/[\w./-]{5,}", "<path>", parts[1])
             self._send_json(404, resp)
         except RuntimeError as e:
             if "already in progress" in str(e):
-                self._send_json(409, {"error": str(e)})
+                self._send_json(409, {"error": "LLM swap already in progress"})
             else:
-                self._send_json(500, {"error": str(e)})
+                logger.error("LLM swap failed: %s", e)
+                self._send_json(500, {"error": "LLM swap failed. Check server logs."})
 
     # ─── HTTP method dispatchers ──────────────────────────────────────
 
+    def _is_localhost(self) -> bool:
+        """Check if the request originates from localhost."""
+        addr = self.client_address[0] if self.client_address else ""
+        return addr in ("127.0.0.1", "::1", "localhost")
+
     def do_GET(self) -> None:  # noqa: N802
-        # Debug endpoints are read-only diagnostics — serve without auth
+        # Debug endpoints: require auth OR restrict to localhost.
+        # Prevents information disclosure (GPU state, model info, logs) to
+        # unauthenticated remote callers via tunnel.
         if self._is_debug_path(self.path):
-            self._route_debug(self.path)
+            if self._is_localhost() or self._check_auth():
+                self._route_debug(self.path)
             return
         if not self._check_auth():
             return
@@ -1012,6 +1037,10 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
+        # Security headers
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Cache-Control", "no-store")
         cors_origin = os.environ.get("MAXIM_CORS_ORIGIN", "")
         if cors_origin:
             self.send_header("Access-Control-Allow-Origin", cors_origin)

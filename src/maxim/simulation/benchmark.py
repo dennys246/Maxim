@@ -769,7 +769,6 @@ class BenchmarkRunner:
 
     def save_report(self, report: BenchmarkReport) -> Path:
         """Save report to output directory. Returns the report path."""
-        import json as _json
 
         report_dir = self.output_dir / report.timestamp
         report_dir.mkdir(parents=True, exist_ok=True)
@@ -800,8 +799,9 @@ class BenchmarkRunner:
         }
         if report.baseline_comparison is not None:
             report_data["baseline_comparison"] = report.baseline_comparison
-        with open(report_path, "w") as f:
-            _json.dump(report_data, f, indent=2, default=str)
+        from maxim.utils.atomic_io import atomic_write_json
+
+        atomic_write_json(str(report_path), report_data)
 
         # Markdown summary
         summary_path = report_dir / "summary.md"

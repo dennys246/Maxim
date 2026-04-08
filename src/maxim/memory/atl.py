@@ -348,6 +348,25 @@ class ATL(MemoryLayer):
 
         logger.debug("ATL loaded from %s (%d concepts)", path, len(self._concepts))
 
+    def load_safe(self, path: str | None = None) -> tuple[bool, str | None]:
+        """Load with recovery on failure. Returns (success, error_message)."""
+        path = path or self.config.persistence_path
+        if path is None or not os.path.exists(path):
+            logger.info("No existing ATL file, starting fresh")
+            return True, None
+        try:
+            self.load(path)
+            return True, None
+        except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
+            error_msg = f"Corrupt ATL file ({type(e).__name__}): {e}"
+            logger.warning("%s — starting with empty concept store", error_msg)
+            with self._rwlock.write():
+                self._concepts.clear()
+                self._context_index.clear()
+                self._concept_contexts.clear()
+                self._compressed_count = 0
+            return False, error_msg
+
     def consolidate(self, **kwargs: Any) -> dict[str, int]:
         """Consolidation cycle: score concepts via MemoryStrategy, compress/remove."""
         strategy = self._get_memory_strategy()

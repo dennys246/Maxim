@@ -430,8 +430,9 @@ class EntorhinalCortex:
             "signatures": {k: v.to_dict() for k, v in self._signatures.items()},
         }
 
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        from maxim.utils.atomic_io import atomic_write_json
+
+        atomic_write_json(path, data)
 
         logger.info("Saved EC to %s (%d signatures)", path, len(self._signatures))
 

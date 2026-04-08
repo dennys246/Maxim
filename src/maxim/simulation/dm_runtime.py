@@ -12,7 +12,9 @@ Example:
 
 from __future__ import annotations
 
+import ast
 import logging
+import operator
 import random
 import time
 from dataclasses import dataclass, field
@@ -21,6 +23,54 @@ from typing import Any
 from maxim.simulation.dm_schema import CampaignDef, EncounterDef, roll_dice
 
 log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Safe arithmetic expression evaluator (replaces eval() for cascade exprs)
+# ---------------------------------------------------------------------------
+
+_SAFE_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod,
+    ast.Pow: operator.pow,
+    ast.USub: operator.neg,
+    ast.UAdd: operator.pos,
+}
+
+
+def _safe_eval_expr(expr: str, variables: dict[str, float]) -> float:
+    """Evaluate a simple arithmetic expression safely using AST parsing.
+
+    Supports: +, -, *, /, //, %, **, (), variable names from *variables* dict.
+    Rejects: attribute access, function calls, string ops, imports, subscripts.
+
+    Examples:
+        _safe_eval_expr("-(roll + damage_bonus)", {"roll": 4, "damage_bonus": 2})  → -6.0
+        _safe_eval_expr("hp * 0.5", {"hp": 20})  → 10.0
+    """
+    tree = ast.parse(expr, mode="eval")
+
+    def _eval_node(node: ast.expr) -> float:
+        if isinstance(node, ast.Expression):
+            return _eval_node(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return float(node.value)
+        if isinstance(node, ast.Name):
+            if node.id not in variables:
+                raise ValueError(f"Unknown variable: {node.id!r}")
+            return float(variables[node.id])
+        if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_OPS:
+            left = _eval_node(node.left)
+            right = _eval_node(node.right)
+            return float(_SAFE_OPS[type(node.op)](left, right))
+        if isinstance(node, ast.UnaryOp) and type(node.op) in _SAFE_OPS:
+            return float(_SAFE_OPS[type(node.op)](_eval_node(node.operand)))
+        raise ValueError(f"Unsupported expression node: {type(node).__name__}")
+
+    return _eval_node(tree)
 
 
 @dataclass
@@ -847,10 +897,12 @@ class CascadeResolver:
             current = entity.vital_metrics.get(sensor_name, 0.0)
             new_val = current + ref.delta
         elif ref.expr:
-            # Expression evaluation (simple — supports read_values substitution)
+            # Safe arithmetic expression evaluation — no eval().
+            # Supports: +, -, *, /, (), variable substitution from read_values.
+            # Rejects: attribute access, function calls, string ops, imports.
             try:
-                new_val = eval(ref.expr, {"__builtins__": {}}, read_values)  # noqa: S307
-            except Exception as e:
+                new_val = _safe_eval_expr(ref.expr, read_values)
+            except (ValueError, TypeError, ZeroDivisionError) as e:
                 log.debug("Cascade: expr '%s' failed: %s", ref.expr, e)
                 return
         else:

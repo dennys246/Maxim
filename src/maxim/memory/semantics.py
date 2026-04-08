@@ -268,11 +268,11 @@ class Semantics:
 
     def save_registry(self, path: str) -> None:
         """Save the relationship registry to a JSON file."""
-        import json
+
+        from maxim.utils.atomic_io import atomic_write_json
 
         data = self._registry.to_dict()
-        with open(path, "w") as f:
-            json.dump(data, f, indent=2)
+        atomic_write_json(path, data)
 
     def load_registry(self, path: str) -> None:
         """Load the relationship registry from a JSON file."""

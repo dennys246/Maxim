@@ -1264,12 +1264,12 @@ def start_simulation_mode(
 
         # Save analysis to session dir
         try:
-            import json as _json
 
             analysis_path = Path("data") / "sim_reports" / f"campaign_analysis_{time.strftime('%Y%m%d_%H%M%S')}.json"
             analysis_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(analysis_path, "w") as f:
-                _json.dump(campaign_analysis, f, indent=2, default=str)
+            from maxim.utils.atomic_io import atomic_write_json
+
+            atomic_write_json(str(analysis_path), campaign_analysis)
             print(f"    Analysis saved: {analysis_path}")
         except Exception:
             pass
