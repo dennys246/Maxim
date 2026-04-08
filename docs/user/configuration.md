@@ -22,11 +22,21 @@ Maxim is configured through three mechanisms: CLI flags, environment variables, 
 | `TWILIO_FROM_NUMBER` | Twilio phone number (for comms) | None |
 | `CUDA_VISIBLE_DEVICES` | GPU selection (empty string = CPU only) | auto |
 
+## Data Directory
+
+All runtime data lives under `~/.maxim/` by default. Override the base path by setting the `MAXIM_DATA_HOME` environment variable:
+
+```bash
+export MAXIM_DATA_HOME=/path/to/custom/maxim-data
+```
+
+When set, all subdirectories (`config/`, `util/`, `memory/`, `models/`, `sim_reports/`, `benchmarks/`, etc.) are resolved relative to `$MAXIM_DATA_HOME` instead of `~/.maxim/`.
+
 ## Config Files
 
-All config files are in `data/util/`. User-modifiable files:
+User-modifiable config files live under `~/.maxim/`:
 
-### llm.json -- LLM Configuration
+### ~/.maxim/config/llm.json -- LLM Configuration
 
 Controls which model runs, how it behaves per mode, token limits.
 
@@ -44,7 +54,7 @@ Three profiles ship by default:
 - mistral-7b-instruct-v0.2 (Mistral instruct, 8192 ctx)
 - smollm-1.7b-instruct (ChatML, 2048 ctx)
 
-### whisper.json -- Audio Transcription
+### ~/.maxim/util/whisper.json -- Audio Transcription
 
 Controls Whisper model, device, VAD settings.
 
@@ -56,7 +66,7 @@ Key fields:
 - `vad_filter` -- enable voice activity detection
 - `vad_threshold` -- 0.0-1.0, lower = more sensitive (default: 0.25)
 
-### phrase_responses.json -- Voice Commands
+### ~/.maxim/util/phrase_responses.json -- Voice Commands
 
 Maps spoken phrases to actions. Format:
 ```json
@@ -68,7 +78,7 @@ Maps spoken phrases to actions. Format:
 ```
 Users can add custom voice commands by adding entries.
 
-### key_responses.json -- Keyboard Shortcuts
+### ~/.maxim/util/key_responses.json -- Keyboard Shortcuts
 
 Maps key presses to actions:
 - `c` -- center vision
@@ -77,22 +87,29 @@ Maps key presses to actions:
 
 ## Auto-Generated Files (Do Not Edit)
 
-- `adaptive_thresholds.json` -- auto-tuned novelty/salience thresholds
-- `focus_learner.json` -- motor gain learning state
-- `learned_bounds.json` -- workspace safety bounds
-- `cost_state.json` -- resource usage tracking
+- `~/.maxim/util/adaptive_thresholds.json` -- auto-tuned novelty/salience thresholds
+- `~/.maxim/util/focus_learner.json` -- motor gain learning state
+- `~/.maxim/util/learned_bounds.json` -- workspace safety bounds
+- `~/.maxim/util/cost_state.json` -- resource usage tracking
 
-## Outputs Directory Structure
+## Directory Structure
 
 ```
-data/
+~/.maxim/
+├── config/         -- LLM config (llm.json)
+├── util/           -- Runtime config files (whisper.json, phrase_responses.json, etc.)
+├── memory/         -- Episodic memories (persistent)
+├── models/
+│   ├── LLM/        -- Downloaded GGUF model files
+│   ├── tts/        -- Text-to-speech models
+│   └── YOLO/       -- YOLO vision models
+├── sim_reports/    -- Simulation session reports
+├── benchmarks/     -- Benchmark output reports
 ├── audio/          -- WAV recordings
 ├── videos/         -- MP4 recordings
 ├── transcript/     -- JSONL transcripts with timestamps
-├── memory/         -- Episodic memories (persistent)
 ├── logs/           -- Run logs
-├── plans/
-│   ├── checkpoints/ -- Goal tree snapshots
-│   └── exports/     -- Exported plan files
-└── util/           -- Config files (see above)
+└── plans/
+    ├── checkpoints/ -- Goal tree snapshots
+    └── exports/     -- Exported plan files
 ```

@@ -36,36 +36,43 @@ _active_model: str | None = None
 _llm_start_time: float | None = None
 _swap_lock = threading.Lock()
 
-_MODEL_STATE_FILE = Path("data") / "util" / "active_llm_model.txt"
+def _model_state_file() -> Path:
+    from maxim.utils.paths import resolve_user_state
+    return resolve_user_state("util/active_llm_model.txt")
+
+_MODEL_STATE_FILE = None  # Lazy; use _model_state_file()
 
 # Weak references to active LLMRouter instances so swap_llm_server can
 # update cached n_ctx without importing the router at module level.
 import weakref
 
 _active_routers: list[weakref.ref] = []
+_active_routers_lock = threading.Lock()
 
 
 def register_router(router: Any) -> None:
     """Register an LLMRouter for n_ctx updates on hot-swap."""
-    _active_routers.append(weakref.ref(router))
+    with _active_routers_lock:
+        _active_routers.append(weakref.ref(router))
 
 
 def _find_active_routers() -> list[Any]:
     """Return all still-alive routers, pruning dead refs."""
     global _active_routers  # noqa: PLW0603
-    alive = []
-    for ref in _active_routers:
-        r = ref()
-        if r is not None:
-            alive.append(r)
-    _active_routers = [weakref.ref(r) for r in alive]
+    with _active_routers_lock:
+        alive = []
+        for ref in _active_routers:
+            r = ref()
+            if r is not None:
+                alive.append(r)
+        _active_routers = [weakref.ref(r) for r in alive]
     return alive
 
 
 def _read_persisted_model() -> str | None:
     """Read the last swapped model name from disk (survives restarts)."""
     try:
-        text = _MODEL_STATE_FILE.read_text().strip()
+        text = _model_state_file().read_text().strip()
         return text if text else None
     except Exception:
         return None
@@ -74,8 +81,9 @@ def _read_persisted_model() -> str | None:
 def _write_persisted_model(profile: str | None) -> None:
     """Persist the active model name so auto-spawn uses it after restart."""
     try:
-        _MODEL_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _MODEL_STATE_FILE.write_text(profile or "")
+        sf = _model_state_file()
+        sf.parent.mkdir(parents=True, exist_ok=True)
+        sf.write_text(profile or "")
     except Exception:
         pass
 

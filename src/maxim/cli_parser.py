@@ -399,7 +399,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--record-percepts",
         action="store_true",
-        help="Record all percepts during a live session to data/sessions/ for replay.",
+        help="Record all percepts during a live session to ~/.maxim/sessions/ for replay.",
     )
     parser.add_argument(
         "--debug",
@@ -444,9 +444,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--benchmark-output",
         type=str,
-        default="data/benchmarks",
+        default=None,
         metavar="DIR",
-        help="Output directory for benchmark reports (default: data/benchmarks).",
+        help="Output directory for benchmark reports (default: ~/.maxim/benchmarks).",
     )
     parser.add_argument(
         "--baseline",

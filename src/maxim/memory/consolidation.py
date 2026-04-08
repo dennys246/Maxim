@@ -286,11 +286,9 @@ class ConsolidationOrchestrator:
         )
 
     def _save_sidecar(self, path: str, sidecar: dict[str, Any]) -> None:
-        """Atomic write: temp file + rename."""
-        tmp = path + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(sidecar, f, indent=2)
-        os.replace(tmp, path)
+        """Atomic write via shared utility."""
+        from maxim.utils.atomic_io import atomic_write_json
+        atomic_write_json(path, sidecar)
 
     def _load_sidecars(self) -> list[tuple[str, dict[str, Any]]]:
         """Load all sidecar JSON files from staging dir."""

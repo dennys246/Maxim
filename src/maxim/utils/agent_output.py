@@ -115,16 +115,17 @@ class AgentOutputManager:
             instance_id: This instance's ID
             base_data_dir: Base data directory
             sandbox_dir: Sandbox directory
-            shared_outputs_dir: Shared outputs directory (default: data/shared/outputs)
+            shared_outputs_dir: Shared outputs directory (default: ~/.maxim/shared/outputs)
             policy: Optional filesystem policy for permission checks
             abstraction_buffer: Optional abstraction buffer (uses global if None)
         """
         self.instance_id = instance_id
         self.base_data_dir = os.path.abspath(base_data_dir)
         self.sandbox_dir = os.path.abspath(sandbox_dir)
-        self.shared_outputs_dir = os.path.abspath(
-            shared_outputs_dir or os.path.join(base_data_dir, "shared", "outputs")
-        )
+        if shared_outputs_dir is None:
+            from maxim.utils.paths import resolve_user_state
+            shared_outputs_dir = str(resolve_user_state("shared/outputs"))
+        self.shared_outputs_dir = os.path.abspath(shared_outputs_dir)
         self._policy = policy
         self._abstraction = abstraction_buffer or get_abstraction_buffer()
 

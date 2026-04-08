@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import random
 import statistics
 import time
@@ -334,11 +333,8 @@ class SignificanceWeightLearner:
             d["weight_snapshots"] = list(w.weight_snapshots)
             data["weights"][name] = d
 
-        os.makedirs(os.path.dirname(self.weights_path) or ".", exist_ok=True)
-        tmp_path = self.weights_path + ".tmp"
-        with open(tmp_path, "w") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp_path, self.weights_path)
+        from maxim.utils.atomic_io import atomic_write_json
+        atomic_write_json(self.weights_path, data)
 
 
 __all__ = [

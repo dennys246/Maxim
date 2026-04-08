@@ -85,15 +85,13 @@ class PiperTTS:
     - LRU phrase caching for common phrases
     """
 
-    # Default model paths relative to repo root
-    DEFAULT_MODEL_DIR = "data/models/tts"
     DEFAULT_MODEL_NAME = "en_US-lessac-medium"
 
     def __init__(
         self,
         model_path: str | Path | None = None,
         model_name: str = DEFAULT_MODEL_NAME,
-        models_dir: str | Path = DEFAULT_MODEL_DIR,
+        models_dir: str | Path | None = None,
         cache_phrases: bool = True,
     ) -> None:
         """Initialize Piper TTS engine.
@@ -118,6 +116,9 @@ class PiperTTS:
         if model_path:
             self.model_path = Path(model_path)
         else:
+            if models_dir is None:
+                from maxim.utils.paths import model_dir
+                models_dir = str(model_dir() / "tts")
             self.model_path = Path(models_dir) / f"{model_name}.onnx"
 
         self.config_path = self.model_path.with_suffix(".onnx.json")

@@ -93,8 +93,13 @@ class WorkspaceBoundsConfig:
     boundary_threshold: float = 0.85  # Consider at boundary if > 85% of limit
 
     # Persistence
-    persist_path: str = "data/util/learned_bounds.json"
+    persist_path: str = ""  # resolved via maxim.utils.paths at runtime
     save_interval: float = 60.0  # Save every 60 seconds if changed
+
+    def __post_init__(self) -> None:
+        if not self.persist_path:
+            from maxim.utils.paths import resolve_user_state
+            self.persist_path = str(resolve_user_state("util/learned_bounds.json"))
 
 
 # Dimension names and their initial limit config keys

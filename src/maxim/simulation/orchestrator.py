@@ -57,10 +57,12 @@ class SimulationResult:
 
 def _load_resume_context(session_id: str) -> dict[str, Any] | None:
     """Load a previous session's report and action log for resumption."""
-    report_path = Path("data/sim_reports") / session_id / "report.json"
+    from maxim.utils.paths import sim_reports as _sim_reports_dir
+    _reports_base = _sim_reports_dir()
+    report_path = _reports_base / session_id / "report.json"
     if not report_path.exists():
         # Try fuzzy match — session_id might be a prefix
-        reports_dir = Path("data/sim_reports")
+        reports_dir = _reports_base
         if reports_dir.exists():
             matches = sorted(
                 [d for d in reports_dir.iterdir() if d.is_dir() and d.name.startswith(session_id)],
@@ -518,7 +520,8 @@ def start_simulation_mode(
 
         # Restore AUT state from previous session if resuming
         if resume_session:
-            prev_dir = Path("data/sim_reports") / resume_session
+            from maxim.utils.paths import sim_reports as _sim_reports_dir
+            prev_dir = _sim_reports_dir() / resume_session
             hippo_path = prev_dir / "aut_hippocampus.json"
             nac_path = prev_dir / "aut_nac.json"
             if hippo_path.exists():
@@ -1585,8 +1588,9 @@ def start_simulation_mode(
     )
 
     # Persist everything to session directory
-    report_dir = "data/sim_reports"
-    print(f"  Saving report to data/sim_reports/{report.session_id}/...")
+    from maxim.utils.paths import sim_reports as _sim_reports_dir
+    report_dir = str(_sim_reports_dir())
+    print(f"  Saving report to {report_dir}/{report.session_id}/...")
     save_report(report, base_dir=report_dir)
 
     action_count = len(bridge.get_all_actions())

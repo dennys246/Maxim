@@ -94,7 +94,9 @@ def _redact_hostname(hostname: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-DEFAULT_INTERNET_ACCESS_PATH = Path("data/util/internet_access.json")
+def _default_internet_access_path() -> Path:
+    from maxim.utils.paths import resolve_user_state
+    return resolve_user_state("util/internet_access.json")
 
 
 @dataclass
@@ -125,7 +127,7 @@ class InternetAccessState:
 
 def load_internet_access(path: Path | str | None = None) -> InternetAccessState:
     """Load internet access state from persistent storage."""
-    path = Path(path) if path else DEFAULT_INTERNET_ACCESS_PATH
+    path = Path(path) if path else _default_internet_access_path()
 
     if not path.exists():
         return InternetAccessState()
@@ -141,7 +143,7 @@ def load_internet_access(path: Path | str | None = None) -> InternetAccessState:
 
 def save_internet_access(state: InternetAccessState, path: Path | str | None = None) -> bool:
     """Save internet access state to persistent storage."""
-    path = Path(path) if path else DEFAULT_INTERNET_ACCESS_PATH
+    path = Path(path) if path else _default_internet_access_path()
 
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -382,7 +384,9 @@ class InternetAccessPolicy:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-DEFAULT_POLICY_PATH = Path("data/util/internet_policy.json")
+def _default_policy_path() -> Path:
+    from maxim.utils.paths import resolve_user_state
+    return resolve_user_state("util/internet_policy.json")
 
 # Policy cache with mtime validation
 _cached_policy: InternetAccessPolicy | None = None
@@ -398,7 +402,7 @@ def load_internet_policy(path: Path | str | None = None) -> InternetAccessPolicy
     or the internet access enabled state has changed.
     """
     global _cached_policy, _cached_policy_mtime, _cached_policy_enabled
-    path = Path(path) if path else DEFAULT_POLICY_PATH
+    path = Path(path) if path else _default_policy_path()
 
     # First load the access state to get enabled flag
     access_state = load_internet_access()
@@ -442,7 +446,7 @@ def load_internet_policy(path: Path | str | None = None) -> InternetAccessPolicy
 
 def save_internet_policy(policy: InternetAccessPolicy, path: Path | str | None = None) -> bool:
     """Save internet access policy to file."""
-    path = Path(path) if path else DEFAULT_POLICY_PATH
+    path = Path(path) if path else _default_policy_path()
 
     try:
         path.parent.mkdir(parents=True, exist_ok=True)

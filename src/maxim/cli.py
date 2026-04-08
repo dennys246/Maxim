@@ -1,95 +1,9 @@
 from __future__ import annotations
 
-# CRITICAL: Detect Blackwell GPU and force CPU-only mode BEFORE any other imports
-# Blackwell GPUs (RTX 50 series, sm_120 / compute capability 12.0) cause GStreamer crashes:
-#
-# The reachy_mini SDK uses WebRTC/GStreamer for video streaming, and GLib.MainLoop
-# crashes in native code when CUDA is active on Blackwell GPUs. This appears to be
-# a driver/GStreamer incompatibility that cannot be worked around.
-#
-# Solution: Force CPU-only mode by hiding all GPUs from CUDA
-# See: github_issue.md for details on reporting this to pollen-robotics
-import os
-import subprocess
-import sys
-
-_blackwell_detected = False
-
-# Performance optimization: Check cache first to avoid subprocess on every startup
-# Cache is stored in env var (persists for shell session) or temp file
-_BLACKWELL_CACHE_ENV = "_MAXIM_BLACKWELL_CHECKED"
-_cached_result = os.environ.get(_BLACKWELL_CACHE_ENV)
-
-# Blackwell CUDA policy: by default, keep CUDA visible for LLM backends
-# (llama-cpp-python, torch) and only disable CUDA inside GStreamer (GST_CUDA_NO_CUDA=1)
-# to avoid the reachy-mini media-pipeline segfault.
-#
-# Opt-out: set MAXIM_BLACKWELL_HIDE_CUDA=1 to hide CUDA from the entire process
-# (CPU-only mode). Use this if you hit a GStreamer crash despite the GST guard.
-_hide_cuda = os.environ.get("MAXIM_BLACKWELL_HIDE_CUDA", "").strip().lower() in (
-    "1",
-    "true",
-    "t",
-    "yes",
-    "y",
-    "on",
-)
-
-
-def _apply_blackwell_guards(*, hide_cuda: bool) -> None:
-    """Apply GStreamer guards, and optionally hide CUDA from all libraries."""
-    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-    os.environ["GST_CUDA_NO_CUDA"] = "1"
-    os.environ.setdefault("REACHY_MEDIA_BACKEND", "default")
-    if hide_cuda:
-        os.environ["CUDA_VISIBLE_DEVICES"] = ""
-
-
-if _cached_result == "yes":
-    # Cached: Blackwell was detected previously
-    _blackwell_detected = True
-    _apply_blackwell_guards(hide_cuda=_hide_cuda)
-elif _cached_result == "no":
-    # Cached: No Blackwell GPU, skip detection
-    pass
-else:
-    # No cache - run detection (with shorter 500ms timeout)
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            timeout=0.5,  # Reduced from 2s to 500ms
-        )
-        if result.returncode == 0:
-            gpu_names = result.stdout.strip().lower()
-            if "rtx 50" in gpu_names or "5080" in gpu_names or "5090" in gpu_names:
-                _blackwell_detected = True
-                _apply_blackwell_guards(hide_cuda=_hide_cuda)
-                os.environ[_BLACKWELL_CACHE_ENV] = "yes"  # Cache for next run
-                if _hide_cuda:
-                    print(
-                        "Blackwell GPU detected - CPU-only mode (MAXIM_BLACKWELL_HIDE_CUDA=1)",
-                        file=sys.stderr,
-                    )
-                else:
-                    print(
-                        "Blackwell GPU detected - GStreamer CUDA disabled, "
-                        "LLM CUDA kept (set MAXIM_BLACKWELL_HIDE_CUDA=1 for CPU-only)",
-                        file=sys.stderr,
-                    )
-            else:
-                os.environ[_BLACKWELL_CACHE_ENV] = "no"  # Cache: no Blackwell
-        else:
-            os.environ[_BLACKWELL_CACHE_ENV] = "no"  # No nvidia-smi or no GPU
-    except subprocess.TimeoutExpired:
-        os.environ[_BLACKWELL_CACHE_ENV] = "no"  # Timeout = assume no NVIDIA GPU
-    except Exception:
-        pass  # nvidia-smi not found, no NVIDIA GPU
-
-# Import everything else
 import argparse
 import logging
+import os
+import sys
 import time
 from collections.abc import Sequence
 
@@ -247,6 +161,7 @@ def _check_gpu_status(logger: logging.Logger) -> None:
     - CPU fallback status
     """
     import os
+    from maxim.utils import gpu_detect
 
     # Check if GPU is globally disabled
     cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
@@ -264,7 +179,7 @@ def _check_gpu_status(logger: logging.Logger) -> None:
 
         # Check visible devices (respects set_visible_devices configuration)
         tf_gpus = tf.config.get_visible_devices("GPU")
-        if not tf_gpus and _blackwell_detected:
+        if not tf_gpus and gpu_detect.is_blackwell_detected():
             tf_on_cpu = True  # TensorFlow GPU disabled for Blackwell
         elif tf_gpus:
             for gpu in tf_gpus:
@@ -312,7 +227,7 @@ def _check_gpu_status(logger: logging.Logger) -> None:
         for i, info in enumerate(tf_gpu_info):
             logger.info(f"     [{i}] {info}")
     else:
-        if _blackwell_detected:
+        if gpu_detect.is_blackwell_detected():
             logger.info("Running in CPU-only mode (Blackwell GPU workaround)")
             logger.info("   RTX 5080/5090 detected but CUDA disabled to avoid GStreamer crash")
             logger.info("   See github_issue.md for details on this reachy_mini SDK issue")
@@ -443,36 +358,37 @@ def _clear_python_cache(base_dir: str | None = None) -> int:
     return removed
 
 
-# Memory file paths for --clear-memory
+# Memory file paths for --clear-memory (relative to data_home / ~/.maxim/)
 MEMORY_PATHS = {
-    "focus": "data/util/focus_learner.json",
-    "bounds": "data/util/workspace_bounds.json",
-    "escalation": "data/util/escalation_learning.json",
-    "fear": "data/util/fear_learning.json",
-    "threshold": "data/util/adaptive_thresholds.json",
-    "nac": "data/util/nac_state.json",
-    "scn": "data/util/scn_state.json",
-    "hippo": "data/util/hippocampus.json",
-    "pain": "data/util/pain_detector.json",
-    "semantic": "data/util/semantic_embeddings.npz",  # Phase 4 semantic embeddings
-    "statistician": "data/util/statistician_state.json",
-    "atl": "data/util/atl_state.json",
-    "cross_layer": "data/util/cross_layer_graph.json",
-    "planning": "data/planning",
+    "focus": "util/focus_learner.json",
+    "bounds": "util/workspace_bounds.json",
+    "escalation": "util/escalation_learning.json",
+    "fear": "util/fear_learning.json",
+    "threshold": "util/adaptive_thresholds.json",
+    "nac": "util/nac_state.json",
+    "scn": "util/scn_state.json",
+    "hippo": "util/hippocampus.json",
+    "pain": "util/pain_detector.json",
+    "semantic": "util/semantic_embeddings.npz",  # Phase 4 semantic embeddings
+    "statistician": "util/statistician_state.json",
+    "atl": "util/atl_state.json",
+    "cross_layer": "util/cross_layer_graph.json",
+    "planning": "planning",
 }
 
 
-def _clear_memory(memory_types: str, home_dir: str = "data") -> dict[str, bool]:
+def _clear_memory(memory_types: str, home_dir: str | None = None) -> dict[str, bool]:
     """Clear persistent memory files.
 
     Args:
         memory_types: Comma-separated memory types or 'all'.
-        home_dir: Base data directory.
+        home_dir: Base data directory (deprecated, uses ~/.maxim/ by default).
 
     Returns:
         Dict mapping memory type to success (True if cleared, False if not found).
     """
     from pathlib import Path
+    from maxim.utils.paths import resolve_user_state
 
     results: dict[str, bool] = {}
 
@@ -489,12 +405,11 @@ def _clear_memory(memory_types: str, home_dir: str = "data") -> dict[str, bool]:
             results[mem_type] = False
             continue
 
-        # Get path relative to home_dir
         rel_path = MEMORY_PATHS[mem_type]
-        # Extract just the filename portion (after data/util/)
-        if rel_path.startswith("data/"):
-            rel_path = rel_path[5:]  # Remove "data/" prefix
-        full_path = Path(home_dir) / rel_path
+        if home_dir is not None:
+            full_path = Path(home_dir) / rel_path
+        else:
+            full_path = resolve_user_state(rel_path)
 
         if full_path.exists():
             try:
@@ -512,6 +427,12 @@ def _clear_memory(memory_types: str, home_dir: str = "data") -> dict[str, bool]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
+    # imports.  This was previously at module-import time; moved here so that
+    # ``import maxim`` has no subprocess side effects.
+    from maxim.utils.gpu_detect import ensure_blackwell_guards
+    ensure_blackwell_guards()
+
     from maxim.utils.last_run import (
         should_save,
         save_last_run,
@@ -683,7 +604,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             models=models,
             suite_path=campaign,
             runs=getattr(args, "runs", 1) or 1,
-            output_dir=getattr(args, "benchmark_output", "data/benchmarks"),
+            output_dir=getattr(args, "benchmark_output", None),
             baseline_path=getattr(args, "baseline", None),
             persona=getattr(args, "sim_persona", "campaign") or "campaign",
             max_turns=50,
@@ -862,7 +783,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 models=models,
                 suite_path=campaign,
                 runs=getattr(args, "runs", 1) or 1,
-                output_dir=getattr(args, "benchmark_output", "data/benchmarks"),
+                output_dir=getattr(args, "benchmark_output", None),
                 baseline_path=getattr(args, "baseline", None),
                 persona=getattr(args, "sim_persona", "campaign") or "campaign",
                 max_turns=50,

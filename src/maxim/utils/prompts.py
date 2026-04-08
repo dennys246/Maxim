@@ -33,13 +33,29 @@ class ResponseFormat(Enum):
 
 
 def _find_prompts_dir() -> Path:
-    """Find the prompts directory, searching up from current file."""
+    """Find the prompts directory.
+
+    Search order:
+    1. Bundled package data (src/maxim/_data/prompts/)
+    2. Repo checkout (walk up from this file to find data/prompts/)
+    3. CWD/data/prompts/ (legacy fallback)
+    """
     global _PROMPTS_DIR
 
     if _PROMPTS_DIR is not None:
         return _PROMPTS_DIR
 
-    # Try relative to this file first (src/maxim/utils/prompts.py -> data/prompts)
+    # 1. Bundled package data (works after pip install)
+    try:
+        from maxim.utils.paths import bundled_data
+        bundled = bundled_data() / "prompts"
+        if bundled.is_dir():
+            _PROMPTS_DIR = bundled
+            return _PROMPTS_DIR
+    except Exception:
+        pass
+
+    # 2. Repo checkout (walk up from this file → data/prompts/)
     current = Path(__file__).resolve()
     for parent in current.parents:
         candidate = parent / "data" / "prompts"
@@ -47,13 +63,13 @@ def _find_prompts_dir() -> Path:
             _PROMPTS_DIR = candidate
             return _PROMPTS_DIR
 
-    # Fallback to cwd
+    # 3. CWD fallback (legacy)
     cwd_candidate = Path.cwd() / "data" / "prompts"
     if cwd_candidate.is_dir():
         _PROMPTS_DIR = cwd_candidate
         return _PROMPTS_DIR
 
-    # Create if doesn't exist
+    # Create under CWD if nothing found
     _PROMPTS_DIR = cwd_candidate
     _PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
     return _PROMPTS_DIR

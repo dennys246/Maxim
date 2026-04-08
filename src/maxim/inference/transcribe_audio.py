@@ -54,18 +54,12 @@ def load_whisper_config() -> WhisperConfig:
     default = WhisperConfig()
 
     # Find config file
+    from maxim.utils.paths import resolve_user_state
     candidates = [
         os.getenv("MAXIM_WHISPER_CONFIG", ""),
-        os.path.join(os.getcwd(), "data", "util", "whisper.json"),
+        str(resolve_user_state("util/whisper.json")),
         os.path.join(os.getcwd(), "whisper.json"),
     ]
-
-    # Try to find repo root
-    try:
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-        candidates.append(os.path.join(repo_root, "data", "util", "whisper.json"))
-    except Exception:
-        pass
 
     raw: dict[str, Any] = {}
     for path in candidates:

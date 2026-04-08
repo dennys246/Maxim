@@ -73,8 +73,13 @@ class FocusLearnerConfig:
     gain_decay_rate: float = 0.01  # per second
     min_result_delay: float = 0.3  # Wait at least 300ms for movement to complete
     max_correction: float = 1.5  # Don't increase gain by more than 50% per step
-    persist_path: str = "data/util/focus_learner.json"
+    persist_path: str = ""  # resolved via maxim.utils.paths at runtime
     auto_save_interval: float = 60.0  # Save every 60 seconds
+
+    def __post_init__(self) -> None:
+        if not self.persist_path:
+            from maxim.utils.paths import resolve_user_state
+            self.persist_path = str(resolve_user_state("util/focus_learner.json"))
 
 
 @dataclass

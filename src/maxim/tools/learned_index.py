@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import threading
 from dataclasses import dataclass
@@ -112,7 +111,7 @@ class LearnedToolIndex:
         index = LearnedToolIndex()
         for tool in registry.all_tools():
             index.register_tool(tool)
-        index.load("data/memory/tool_index.json")
+        index.load(str(user_memory() / "tool_index.json"))  # from maxim.utils.paths
 
         # At prompt build time:
         relevant, background = index.get_relevant_tools("pick up the red cup")
@@ -323,12 +322,9 @@ class LearnedToolIndex:
                 }
                 for tool_name, keywords in self._tool_keywords.items()
             }
-        tmp = f"{path}.tmp"
         try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(tmp, "w") as f:
-                json.dump(data, f, indent=2)
-            os.replace(tmp, path)
+            from maxim.utils.atomic_io import atomic_write_json
+            atomic_write_json(path, data)
         except Exception as e:
             logger.debug("Failed to save tool index: %s", e)
 

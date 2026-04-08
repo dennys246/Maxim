@@ -101,7 +101,7 @@ Because this check runs before execution, there is zero latency between detectio
 The robot builds a model of its safe workspace over time:
 
 - As the robot explores without triggering pain or collisions, safe movement zones expand.
-- Bounds are persisted across sessions in `data/util/learned_bounds.json`.
+- Bounds are persisted across sessions in `~/.maxim/util/learned_bounds.json`.
 - Movements that would go outside learned bounds are attenuated (scaled down, not simply dropped).
 - You can reset learned bounds if needed (see "What You Can Reset" below).
 

@@ -636,13 +636,8 @@ class SCN:
         if self._oscillator is not None:
             data["oscillator"] = self._oscillator.to_dict()
 
-        tmp_path = path + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-
-        import os
-
-        os.replace(tmp_path, path)
+        from maxim.utils.atomic_io import atomic_write_json
+        atomic_write_json(path, data)
         logger.info("Saved SCN to %s (%d signatures)", path, len(self._signatures))
 
     def load(self, path: str) -> None:

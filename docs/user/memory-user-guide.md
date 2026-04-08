@@ -27,10 +27,10 @@ Memories are promoted based on: access frequency, emotional significance (surpri
 ## Where Memory Lives
 
 ```
-data/memory/memories.json          -- Episodic memories (main store)
-data/util/learned_bounds.json      -- Workspace safety bounds
-data/util/focus_learner.json       -- Motor gain learning
-data/util/adaptive_thresholds.json -- Auto-tuned thresholds
+~/.maxim/memory/memories.json          -- Episodic memories (main store)
+~/.maxim/util/learned_bounds.json      -- Workspace safety bounds
+~/.maxim/util/focus_learner.json       -- Motor gain learning
+~/.maxim/util/adaptive_thresholds.json -- Auto-tuned thresholds
 ```
 
 ## Memory and Sleep

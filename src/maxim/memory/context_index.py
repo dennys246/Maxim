@@ -13,7 +13,6 @@ Phase 3e of the consolidation expansion plan.
 from __future__ import annotations
 
 import json
-import os
 from typing import Any
 
 
@@ -124,11 +123,8 @@ class SimilarityIndex:
             "signatures": self.signatures,
             "bands": [{json.dumps(list(k)): list(v) for k, v in band.items()} for band in self.bands],
         }
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        tmp_path = path + ".tmp"
-        with open(tmp_path, "w") as f:
-            json.dump(data, f)
-        os.replace(tmp_path, path)
+        from maxim.utils.atomic_io import atomic_write_json
+        atomic_write_json(path, data, indent=None)
 
     @classmethod
     def load(cls, path: str) -> SimilarityIndex:

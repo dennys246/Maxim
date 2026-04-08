@@ -320,7 +320,7 @@ def list_llm_profiles() -> list[str]:
 def build_model_path(
     model_base: str,
     quantization: str = DEFAULT_QUANTIZATION,
-    models_dir: str = "data/models/LLM",
+    models_dir: str | None = None,
 ) -> str:
     """Build the model path from base name and quantization level.
 
@@ -328,6 +328,9 @@ def build_model_path(
     search in the models directory. This handles mismatches between
     profile model_base casing and downloader output filenames.
     """
+    if models_dir is None:
+        from maxim.utils.paths import model_dir
+        models_dir = str(model_dir() / "LLM")
     quant = str(quantization or DEFAULT_QUANTIZATION).strip().upper().replace("-", "_")
     if quant not in QUANTIZATION_LEVELS:
         quant = DEFAULT_QUANTIZATION
@@ -366,7 +369,7 @@ class LLMConfig:
     profile: str = "mistral-7b-instruct-v0.2"
     model: str = "mistral-7b-instruct-v0.2"
     model_base: str = "mistral-7b-instruct-v0.2"
-    model_path: str = "data/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+    model_path: str = ""  # resolved at runtime via build_model_path()
     quantization: str = "Q4_K_M"
     prompt_style: str = "mistral_instruct"
     stop: tuple[str, ...] = ("</s>",)

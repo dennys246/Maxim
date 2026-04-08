@@ -85,12 +85,17 @@ class RollingWindow:
 class CostTrackerConfig:
     """Configuration for CostTracker."""
 
-    state_path: str = "data/util/cost_state.json"
+    state_path: str = ""  # resolved via maxim.utils.paths at runtime
     persistence_interval_s: float = 10.0
     persistence_interval_n: int = 5
     reserved_budget_ratio: float = 0.2
     min_spend_samples: int = 5
     max_events_per_window: int = 5000
+
+    def __post_init__(self) -> None:
+        if not self.state_path:
+            from maxim.utils.paths import resolve_user_state
+            self.state_path = str(resolve_user_state("util/cost_state.json"))
 
 
 class CostTracker:
@@ -232,12 +237,9 @@ class CostTracker:
 
     def _persist_state(self) -> None:
         path = self._config.state_path
-        os.makedirs(os.path.dirname(path), exist_ok=True)
         data = self.to_dict()
-        tmp_path = f"{path}.tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp_path, path)
+        from maxim.utils.atomic_io import atomic_write_json
+        atomic_write_json(path, data)
         self._pending_writes = 0
         self._last_persist_time = time.time()
 

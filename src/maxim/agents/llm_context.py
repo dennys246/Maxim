@@ -17,9 +17,12 @@ _COST_BRIDGE_DEFAULTS: dict[str, float] = {
 }
 
 
-def _load_cost_bridge_config(path: str = "data/util/energy.json") -> dict[str, float]:
+def _load_cost_bridge_config(path: str = "") -> dict[str, float]:
     cfg = dict(_COST_BRIDGE_DEFAULTS)
-    if not path or not os.path.exists(path):
+    if not path:
+        from maxim.utils.paths import resolve_user_state
+        path = str(resolve_user_state("util/energy.json"))
+    if not os.path.exists(path):
         return cfg
     try:
         with open(path, "r", encoding="utf-8") as f:

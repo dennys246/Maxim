@@ -719,11 +719,8 @@ class StatisticianAgent(Agent):
             }
 
         try:
-            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-            tmp_path = path + ".tmp"
-            with open(tmp_path, "w") as f:
-                json.dump(data, f, indent=2)
-            os.replace(tmp_path, path)
+            from maxim.utils.atomic_io import atomic_write_json
+            atomic_write_json(path, data)
             logger.debug(
                 "StatisticianAgent saved %d metrics to %s",
                 len(self._metric_series),

@@ -162,23 +162,25 @@ class AgenticRuntimeMixin:
             from maxim.similarity.ec import EntorhinalCortex
             from maxim.time.scn import SCN
 
-            data_dir = str(getattr(self, "home_dir", "data") or "data")
+            from maxim.utils.paths import user_memory
+
+            _mem_dir = user_memory()
 
             hippocampus = Hippocampus(
                 HippocampusConfig(
-                    persistence_path=f"{data_dir}/memory/hippocampus.json",
+                    persistence_path=str(_mem_dir / "hippocampus.json"),
                 )
             )
             scn = SCN()
             ec = EntorhinalCortex()
             atl = ATL(
                 ATLConfig(
-                    persistence_path=f"{data_dir}/memory/atl.json",
+                    persistence_path=str(_mem_dir / "atl.json"),
                 )
             )
             angular_gyrus = AngularGyrus(
                 AngularGyrusConfig(
-                    persistence_path=f"{data_dir}/memory/angular_gyrus.json",
+                    persistence_path=str(_mem_dir / "angular_gyrus.json"),
                 )
             )
 
@@ -365,8 +367,8 @@ class AgenticRuntimeMixin:
                 tool_obj = registry.get(tool) if isinstance(tool, str) else tool
                 if tool_obj is not None:
                     tool_index.register_tool(tool_obj)
-            data_dir = str(getattr(self, "home_dir", "data") or "data")
-            tool_index.load(f"{data_dir}/memory/tool_index.json")
+            from maxim.utils.paths import user_memory as _user_memory
+            tool_index.load(str(_user_memory() / "tool_index.json"))
             self._tool_index = tool_index
             self.log.debug("LearnedToolIndex: %s", tool_index.stats())
         except Exception as e:
@@ -1017,8 +1019,8 @@ class AgenticRuntimeMixin:
         tool_index = getattr(self, "_tool_index", None)
         if tool_index is not None:
             try:
-                data_dir = str(getattr(self, "home_dir", "data") or "data")
-                tool_index.save(f"{data_dir}/memory/tool_index.json")
+                from maxim.utils.paths import user_memory as _user_memory
+                tool_index.save(str(_user_memory() / "tool_index.json"))
             except Exception as e:
                 warn("Failed to save tool index: %s", e, logger=self.log)
         self._tool_index = None

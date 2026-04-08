@@ -561,8 +561,6 @@ class ContextPool:
             return
 
         try:
-            os.makedirs(os.path.dirname(self.config.persistence_path) or ".", exist_ok=True)
-
             with self._lock:
                 data = {
                     "entries": [e.to_dict() for e in self._entries],
@@ -572,10 +570,8 @@ class ContextPool:
                     "saved_at": time.time(),
                 }
 
-            temp_path = f"{self.config.persistence_path}.tmp"
-            with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            os.replace(temp_path, self.config.persistence_path)
+            from maxim.utils.atomic_io import atomic_write_json
+            atomic_write_json(self.config.persistence_path, data)
 
         except Exception as e:
             logger.warning(f"Failed to save context pool: {e}")

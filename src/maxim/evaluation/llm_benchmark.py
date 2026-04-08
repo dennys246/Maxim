@@ -21,7 +21,7 @@ def _normalize(text: str) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="python -m maxim.evaluation.llm_benchmark")
-    p.add_argument("--transcript-dir", default="data/transcript")
+    p.add_argument("--transcript-dir", default=None)
     p.add_argument("--limit", type=int, default=50)
     args = p.parse_args(argv)
 
@@ -41,7 +41,11 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     results: list[dict] = []
-    for path in sorted(Path(args.transcript_dir).glob("*.jsonl")):
+    transcript_dir = args.transcript_dir
+    if transcript_dir is None:
+        from maxim.utils.paths import resolve_user_state
+        transcript_dir = str(resolve_user_state("transcript"))
+    for path in sorted(Path(transcript_dir).glob("*.jsonl")):
         try:
             for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
                 if len(results) >= int(args.limit):

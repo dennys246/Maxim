@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Default persistence path
-DEFAULT_THRESHOLD_PERSIST_PATH = "data/util/adaptive_thresholds.json"
+DEFAULT_THRESHOLD_PERSIST_PATH = ""  # resolved via __post_init__
 
 # COCO class names for goal matching (subset for common objects)
 COCO_CLASSES: dict[int, str] = {
@@ -74,8 +74,13 @@ class AdaptiveThresholdConfig:
     window_seconds: float = 60.0
     adaptation_interval: float = 5.0  # How often to adapt
     # Persistence
-    persist_path: str = DEFAULT_THRESHOLD_PERSIST_PATH
+    persist_path: str = ""  # resolved via maxim.utils.paths at runtime
     auto_save_interval: float = 60.0  # Save every 60 seconds
+
+    def __post_init__(self) -> None:
+        if not self.persist_path:
+            from maxim.utils.paths import resolve_user_state
+            self.persist_path = str(resolve_user_state("util/adaptive_thresholds.json"))
 
 
 class AdaptiveThresholdController:

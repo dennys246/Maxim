@@ -160,10 +160,45 @@ DEFAULT_LLM = "smollm-1.7b-instruct"
 DEFAULT_TTS = "en_US-lessac-medium"
 DEFAULT_VISION = "rtmdet-m"
 
-# Default paths
-DEFAULT_LLM_DIR = "data/models/LLM"
-DEFAULT_TTS_DIR = "data/models/tts"
-DEFAULT_VISION_DIR = "data/models/YOLO"
+# Default paths — resolved lazily via helpers below
+_DEFAULT_LLM_DIR: str | None = None
+_DEFAULT_TTS_DIR: str | None = None
+_DEFAULT_VISION_DIR: str | None = None
+
+
+def _llm_dir() -> str:
+    global _DEFAULT_LLM_DIR
+    if _DEFAULT_LLM_DIR is None:
+        from maxim.utils.paths import model_dir
+        _DEFAULT_LLM_DIR = str(model_dir() / "LLM")
+    return _DEFAULT_LLM_DIR
+
+
+def _tts_dir() -> str:
+    global _DEFAULT_TTS_DIR
+    if _DEFAULT_TTS_DIR is None:
+        from maxim.utils.paths import model_dir
+        _DEFAULT_TTS_DIR = str(model_dir() / "tts")
+    return _DEFAULT_TTS_DIR
+
+
+def _vision_dir() -> str:
+    global _DEFAULT_VISION_DIR
+    if _DEFAULT_VISION_DIR is None:
+        from maxim.utils.paths import model_dir
+        _DEFAULT_VISION_DIR = str(model_dir() / "YOLO")
+    return _DEFAULT_VISION_DIR
+
+
+# Backward-compatible module-level names (lazy property via __getattr__)
+def __getattr__(name: str) -> str:
+    if name == "DEFAULT_LLM_DIR":
+        return _llm_dir()
+    if name == "DEFAULT_TTS_DIR":
+        return _tts_dir()
+    if name == "DEFAULT_VISION_DIR":
+        return _vision_dir()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -225,7 +260,7 @@ def download_file(url: str, dest_path: Path, desc: str = "") -> bool:
 
 def download_llm(
     model_name: str = DEFAULT_LLM,
-    models_dir: str | Path = DEFAULT_LLM_DIR,
+    models_dir: str | Path | None = None,
 ) -> bool:
     """Download an LLM model.
 
@@ -236,6 +271,8 @@ def download_llm(
     Returns:
         True if download succeeded, False otherwise.
     """
+    if models_dir is None:
+        models_dir = _llm_dir()
     if model_name not in LLM_MODELS:
         print(f"Unknown LLM model: {model_name}")
         print(f"Available models: {', '.join(LLM_MODELS.keys())}")
@@ -254,7 +291,7 @@ def download_llm(
 
 def download_tts(
     model_name: str = DEFAULT_TTS,
-    models_dir: str | Path = DEFAULT_TTS_DIR,
+    models_dir: str | Path | None = None,
 ) -> bool:
     """Download a TTS model.
 
@@ -265,6 +302,8 @@ def download_tts(
     Returns:
         True if all files downloaded successfully, False otherwise.
     """
+    if models_dir is None:
+        models_dir = _tts_dir()
     if model_name not in TTS_MODELS:
         print(f"Unknown TTS model: {model_name}")
         print(f"Available models: {', '.join(TTS_MODELS.keys())}")
@@ -288,7 +327,7 @@ def download_tts(
 
 def download_vision(
     model_name: str = DEFAULT_VISION,
-    models_dir: str | Path = DEFAULT_VISION_DIR,
+    models_dir: str | Path | None = None,
 ) -> bool:
     """Download a vision model (RTMDet or RTMPose ONNX).
 
@@ -299,6 +338,8 @@ def download_vision(
     Returns:
         True if download succeeded, False otherwise.
     """
+    if models_dir is None:
+        models_dir = _vision_dir()
     if model_name not in VISION_MODELS:
         print(f"Unknown vision model: {model_name}")
         print(f"Available models: {', '.join(VISION_MODELS.keys())}")
@@ -385,18 +426,18 @@ def list_models() -> None:
 
 
 def check_models(
-    llm_dir: str | Path = DEFAULT_LLM_DIR,
-    tts_dir: str | Path = DEFAULT_TTS_DIR,
-    vision_dir: str | Path = DEFAULT_VISION_DIR,
+    llm_dir: str | Path | None = None,
+    tts_dir: str | Path | None = None,
+    vision_dir: str | Path | None = None,
 ) -> dict[str, bool]:
     """Check which models are already downloaded.
 
     Returns:
         Dict mapping model names to whether they exist.
     """
-    llm_dir = Path(llm_dir)
-    tts_dir = Path(tts_dir)
-    vision_dir = Path(vision_dir)
+    llm_dir = Path(llm_dir or _llm_dir())
+    tts_dir = Path(tts_dir or _tts_dir())
+    vision_dir = Path(vision_dir or _vision_dir())
 
     status = {}
 
@@ -417,9 +458,9 @@ def check_models(
 
 
 def print_status(
-    llm_dir: str | Path = DEFAULT_LLM_DIR,
-    tts_dir: str | Path = DEFAULT_TTS_DIR,
-    vision_dir: str | Path = DEFAULT_VISION_DIR,
+    llm_dir: str | Path | None = None,
+    tts_dir: str | Path | None = None,
+    vision_dir: str | Path | None = None,
 ) -> None:
     """Print status of downloaded models."""
     status = check_models(llm_dir, tts_dir, vision_dir)
@@ -449,7 +490,7 @@ def print_status(
 
 def enable_llm_config(
     model_name: str = DEFAULT_LLM,
-    config_path: str | Path = "data/util/llm.json",
+    config_path: str | Path | None = None,
 ) -> bool:
     """Enable LLM in config and set the model.
 
@@ -462,6 +503,13 @@ def enable_llm_config(
     """
     import json
 
+    if config_path is None:
+        from maxim.utils.paths import resolve_config
+        try:
+            config_path = resolve_config("llm.json")
+        except FileNotFoundError:
+            from maxim.utils.paths import user_config
+            config_path = user_config() / "llm.json"
     config_path = Path(config_path)
 
     if not config_path.exists():
@@ -553,20 +601,20 @@ Examples:
     parser.add_argument(
         "--llm-dir",
         type=str,
-        default=DEFAULT_LLM_DIR,
-        help=f"LLM models directory (default: {DEFAULT_LLM_DIR})",
+        default=None,
+        help="LLM models directory (default: ~/.maxim/models/LLM)",
     )
     parser.add_argument(
         "--tts-dir",
         type=str,
-        default=DEFAULT_TTS_DIR,
-        help=f"TTS models directory (default: {DEFAULT_TTS_DIR})",
+        default=None,
+        help="TTS models directory (default: ~/.maxim/models/tts)",
     )
     parser.add_argument(
         "--vision-dir",
         type=str,
-        default=DEFAULT_VISION_DIR,
-        help=f"Vision models directory (default: {DEFAULT_VISION_DIR})",
+        default=None,
+        help="Vision models directory (default: ~/.maxim/models/YOLO)",
     )
 
     args = parser.parse_args()

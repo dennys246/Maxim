@@ -746,10 +746,8 @@ class ExecAgent(Agent):
         filename = f"{int(now)}_rpe-{rpe_raw:.2f}_{label}.json"
         filepath = os.path.join(self._staging_dir, filename)
         try:
-            tmp = filepath + ".tmp"
-            with open(tmp, "w") as f:
-                json.dump(sidecar, f, indent=2)
-            os.replace(tmp, filepath)
+            from maxim.utils.atomic_io import atomic_write_json
+            atomic_write_json(filepath, sidecar)
         except Exception as e:
             self.log.warning("Failed to write staging sidecar: %s", e)
 

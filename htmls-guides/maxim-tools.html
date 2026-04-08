@@ -319,7 +319,7 @@
         <li><strong class="text-white">Auto-extraction:</strong> Keywords extracted from each tool's name, description, and parameters at startup.</li>
         <li><strong class="text-white">Scoring:</strong> Goal text is tokenized and matched against the index. Matched tools get full schemas (CRITICAL priority), unmatched get name-only (NICE_TO_HAVE, dropped under token pressure).</li>
         <li><strong class="text-white">Learning:</strong> On tool success, matched keyword weights strengthen and new keywords are discovered from goal text. On tool surfaced-but-unused, keyword weights decay. Failure does NOT weaken keywords (tool failure &ne; wrong tool).</li>
-        <li><strong class="text-white">Persistence:</strong> Learned weights saved across sessions to <code class="text-indigo-400">data/memory/tool_index.json</code>.</li>
+        <li><strong class="text-white">Persistence:</strong> Learned weights saved across sessions to <code class="text-indigo-400">~/.maxim/memory/tool_index.json</code>.</li>
       </ol>
     </div>
   </section>

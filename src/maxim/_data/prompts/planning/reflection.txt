@@ -1,0 +1,18 @@
+GOAL: {goal_description}
+PLAN: {plan_summary}
+RESULT: {result_summary}
+PROGRESS: {completed}/{total}
+
+Evaluate:
+1. Did the result advance the goal?
+2. Are there blockers or surprises?
+3. Should we continue, adapt, retry, abort, or escalate to user?
+
+Output JSON:
+{
+  "progress": "none|partial|substantial|complete",
+  "blockers": [str],
+  "action": "CONTINUE|ADAPT|RETRY|ABORT|ESCALATE",
+  "adaptation": str | null,
+  "confidence": float
+}

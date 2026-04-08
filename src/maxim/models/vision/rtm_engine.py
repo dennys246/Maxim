@@ -397,10 +397,11 @@ def _resolve_model_path(filename: str, model_dir: str) -> str:
     if os.path.exists(local):
         return local
 
-    # Legacy / alternate paths
-    repo_root = Path(__file__).resolve().parents[4]
-    for subdir in ("data/models/YOLO", "data/models/vision"):
-        alt = (repo_root / subdir / filename).as_posix()
+    # Legacy / alternate paths — check ~/.maxim/models/ tree
+    from maxim.utils.paths import model_dir as _model_dir
+    _mdir = _model_dir()
+    for subdir in ("YOLO", "vision"):
+        alt = str(_mdir / subdir / filename)
         if os.path.exists(alt):
             return alt
 
@@ -451,8 +452,8 @@ class RTMEngine(VisionEngine):
         pose_input_size: tuple[int, int] = (192, 256),
     ) -> None:
         if model_dir is None:
-            repo_root = Path(__file__).resolve().parents[4]
-            model_dir = (repo_root / "data" / "models" / "YOLO").as_posix()
+            from maxim.utils.paths import model_dir as _model_dir
+            model_dir = str(_model_dir() / "YOLO")
 
         det_path = _resolve_model_path(det_model, model_dir)
         self._det_session = _OnnxSession(det_path)

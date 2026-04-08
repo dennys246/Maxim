@@ -706,8 +706,6 @@ class PlanDocument:
         if not save_path:
             return
 
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
         self.updated_at = time.time()
 
         payload = {
@@ -732,10 +730,8 @@ class PlanDocument:
             "replan_history": [r.to_dict() for r in self.replan_history],
         }
 
-        tmp_path = f"{save_path}.tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, default=str)
-        os.replace(tmp_path, save_path)
+        from maxim.utils.atomic_io import atomic_write_json
+        atomic_write_json(save_path, payload)
 
         # Update persistence path for future saves
         self._persistence_path = save_path
@@ -845,13 +841,10 @@ class PlanDocument:
 
     @classmethod
     def _write_pointer(cls, plans_dir: str, filename: str) -> None:
-        """Write active plan pointer. Atomic via tmp+replace."""
-        os.makedirs(plans_dir, exist_ok=True)
+        """Write active plan pointer. Atomic via shared utility."""
+        from maxim.utils.atomic_io import atomic_write_text
         pointer_path = os.path.join(plans_dir, cls.ACTIVE_POINTER)
-        tmp = f"{pointer_path}.tmp"
-        with open(tmp, "w") as f:
-            f.write(filename)
-        os.replace(tmp, pointer_path)
+        atomic_write_text(pointer_path, filename)
 
     @classmethod
     def _clear_pointer(cls, plans_dir: str) -> None:

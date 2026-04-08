@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Default persistence path
-DEFAULT_FEAR_PERSIST_PATH = "data/util/fear_learning.json"
+DEFAULT_FEAR_PERSIST_PATH = ""  # resolved via __post_init__
 
 
 @dataclass
@@ -114,7 +114,7 @@ class FearCircuitBridge:
     false_positive_threshold: float = 0.7  # High FP rate triggers adjustment
 
     # Persistence
-    persist_path: str = DEFAULT_FEAR_PERSIST_PATH
+    persist_path: str = ""  # resolved via maxim.utils.paths at runtime
     auto_save_interval: float = 60.0  # Save every 60 seconds
 
     # Health tracking
@@ -125,6 +125,9 @@ class FearCircuitBridge:
 
     def __post_init__(self) -> None:
         """Initialize default factory fields."""
+        if not self.persist_path:
+            from maxim.utils.paths import resolve_user_state
+            self.persist_path = str(resolve_user_state("util/fear_learning.json"))
         if not hasattr(self, "_adjustments") or self._adjustments is None:
             self._adjustments = {}
         if not hasattr(self, "_recent_events") or self._recent_events is None:

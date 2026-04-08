@@ -120,7 +120,7 @@ class MemoryHub:
     _deletion_callbacks: list[Callable[[str], None]] = field(default_factory=list)
 
     # Semantic embedding settings (Phase 4)
-    embedding_persist_path: str = "data/util/semantic_embeddings.npz"
+    embedding_persist_path: str = ""  # resolved lazily via _resolve_embedding_path()
 
     # Multi-layer memory (optional)
     atl: "ATL | None" = None
@@ -148,6 +148,11 @@ class MemoryHub:
 
     def __post_init__(self) -> None:
         """Initialize and wire core systems."""
+        # Resolve default embedding persist path lazily
+        if not self.embedding_persist_path:
+            from maxim.utils.paths import resolve_user_state
+            self.embedding_persist_path = str(resolve_user_state("util/semantic_embeddings.npz"))
+
         # Connect SCN to Hippocampus for temporal-aware consolidation
         self.hippocampus.connect_scn(self.scn)
 

@@ -238,7 +238,7 @@ class BenchmarkRunner:
         suite_path: str,
         *,
         runs: int = 1,
-        output_dir: str = "data/benchmarks",
+        output_dir: str | None = None,
         baseline_path: str | None = None,
         seed_keywords: list[str] | None = None,
         persona: str = "campaign",
@@ -249,7 +249,11 @@ class BenchmarkRunner:
         self.models = models
         self.suite_path = suite_path
         self.runs = max(runs, 1)
-        self.output_dir = Path(output_dir)
+        if output_dir is None:
+            from maxim.utils.paths import benchmarks_dir
+            self.output_dir = benchmarks_dir()
+        else:
+            self.output_dir = Path(output_dir)
         self.baseline_path = baseline_path
         self.seed_keywords = seed_keywords or []
         self.persona = persona

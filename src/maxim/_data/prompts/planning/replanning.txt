@@ -1,0 +1,23 @@
+GOAL: {goal_description}
+ORIGINAL_PLAN: {original_plan}
+COMPLETED: {completed_summary}
+ISSUE: {blockers}
+ADAPTATION_HINT: {adaptation_hint}
+
+Generate revised sub-goals for remaining work.
+Preserve completed work. Address identified issues.
+
+Output JSON:
+{
+  "revised_sub_goals": [
+    {
+      "description": str,
+      "tool_hint": str | null,
+      "depends_on": [int],
+      "requires_decomposition": bool,
+      "can_parallel": bool,
+      "priority": "critical|high|normal|low"
+    }
+  ],
+  "reasoning": str
+}

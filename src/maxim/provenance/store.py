@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -31,22 +30,25 @@ logger = logging.getLogger(__name__)
 class ProvenanceStore:
     """Session-aware, crash-safe provenance persistence."""
 
-    def __init__(self, base_dir: str = "data/provenance") -> None:
-        self._base_dir = Path(base_dir)
-        self._base_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, base_dir: str | None = None) -> None:
+        if base_dir is None:
+            from maxim.utils.paths import provenance_dir
+            self._base_dir = provenance_dir()
+        else:
+            self._base_dir = Path(base_dir)
+            self._base_dir.mkdir(parents=True, exist_ok=True)
         self._manifest_path = self._base_dir / "sessions.json"
         self._current_file: Any = None  # TextIOWrapper when open
         self._current_session_id: str | None = None
+
+    def __del__(self) -> None:
+        self.close()
 
     def _ensure_session_file(self, session_id: str) -> None:
         """Open or reuse the JSONL file for this session."""
         if self._current_session_id == session_id and self._current_file:
             return
-        if self._current_file:
-            try:
-                self._current_file.close()
-            except Exception:
-                pass
+        self.close()
         path = self._base_dir / f"{session_id}.jsonl"
         self._current_file = open(path, "a", encoding="utf-8")
         self._current_session_id = session_id
@@ -111,10 +113,8 @@ class ProvenanceStore:
                 "file": f"{session_id}.jsonl",
                 **stats,
             }
-            tmp = self._manifest_path.with_suffix(".tmp")
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(manifest, f, indent=2, default=str)
-            os.replace(tmp, self._manifest_path)
+            from maxim.utils.atomic_io import atomic_write_json
+            atomic_write_json(str(self._manifest_path), manifest)
         except Exception as e:
             logger.warning("Failed to update manifest: %s", e)
 

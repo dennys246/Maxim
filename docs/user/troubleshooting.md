@@ -28,8 +28,8 @@ maxim --mode agentic --agentic-verbosity 3
 | "Model not found" | Run `./scripts/download_models.sh --llm --enable` |
 | Out of memory | Use `smollm-1.7b` or lower quantization (`Q3_K_M`) |
 | Slow inference | Use smaller model (`smollm-1.7b`) or lower quantization |
-| Gibberish output | Check `prompt_style` matches model in `data/util/llm.json` |
-| No LLM response | Ensure `MAXIM_LLM_ENABLED=1` or `enabled: true` in llm.json |
+| Gibberish output | Check `prompt_style` matches model in `~/.maxim/config/llm.json` |
+| No LLM response | Ensure `MAXIM_LLM_ENABLED=1` or `enabled: true` in `~/.maxim/config/llm.json` |
 
 ### Vision Issues
 | Issue | Solution |
@@ -43,7 +43,7 @@ maxim --mode agentic --agentic-verbosity 3
 | Issue | Solution |
 |-------|----------|
 | Whisper segfaults | `MAXIM_WHISPER_COMPUTE_TYPE=float32 maxim` |
-| Speech not detected | Lower `vad_threshold` in `data/util/whisper.json` (try 0.15) |
+| Speech not detected | Lower `vad_threshold` in `~/.maxim/util/whisper.json` (try 0.15) |
 | Too much noise | Raise `vad_threshold` (try 0.4) |
 | No microphone | Check audio device, ensure `--audio True` |
 

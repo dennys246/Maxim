@@ -34,9 +34,9 @@ Repository = "https://github.com/dennys246/Maxim.git"
 Issues = "https://github.com/dennys246/Maxim/issues"
 
 [project.optional-dependencies]
-# LLM local inference (alias for llm-llama)
-llm-local = [
-    "llama-cpp-python>=0.3.8",
+# Rich terminal UI (interactive display, DM campaign panels)
+ui = [
+    "rich>=13.0.0",
 ]
 # Vision perception (OpenCV + ONNX Runtime)
 vision = [
@@ -120,7 +120,7 @@ temporal = [
     "dateparser>=1.2.0",
 ]
 all = [
-    "pymaxim[llm-local,llm-server,llm-anthropic,llm-openai,vision,audio,reachy,comms,search,temporal]",
+    "pymaxim[ui,llm-llama,llm-server,llm-anthropic,llm-openai,vision,audio,reachy,comms,search,temporal]",
 ]
 # Test dependencies
 test = [
@@ -139,6 +139,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["maxim*"]
+
+[tool.setuptools.package-data]
+maxim = ["_data/**/*", "py.typed"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Testing Configuration

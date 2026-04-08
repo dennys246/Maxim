@@ -6,57 +6,62 @@ Master roadmap for Maxim development.
 
 ---
 
-## Priorities
+## Current Focus: Foundational Buildout
 
-### 1. Hippocampus AUT Memory Refinement
+All pre-publication work is tracked in [foundational_buildout_plan.md](foundational_buildout_plan.md).
 
-**Status:** Not started
-**Effort:** ~300-500 LOC
-**Why now:** DM campaigns exposed that recall precision is the weakest link. The AUT repeats early memories and fails to recall cross-encounter details.
+**Summary:** Ship package hygiene, architectural foundations (multi-agent runtime, SEM component registry, encounter library, party DM mode), expanded public API, and publication prep. ~4,000 LOC across 12 phases.
 
-Improve how the AUT queries its own memories:
-- Semantic filtering and relevance ranking for `memory_recall` tool
-- Modality-aware recall ("what did I hear?" vs "what did I see?") using SensoryTag metadata
-- `decision_rationale` search (why was this action chosen?)
-- Reduce observation capture spam further
-- Improve recall precision for campaign-specific queries
-
-### 2. DM Extensions: Generative Architect Persona
-
-**Status:** Not started. [Plan](dungeon_master_extensions.md)
-**Effort:** ~500 LOC
-**Why now:** Hand-authoring campaign YAMLs is the primary friction. The `--dm` boolean flag is reserved.
-
-An architect persona interviews the user via `ask_user` tool and generates campaign YAML:
-- `maxim --sim "run a heist adventure" --dm` → architect generates campaign → DM runs it
-- Character creation sub-flow (PC + NPCs)
-- Composes from SEM component templates
-- Ship gate: architect produces a runnable campaign in < 8 minutes
-
-### 3. PyPI Publication (Phases 3-6)
-
-**Status:** Phase 0-2 done. [Plan](pypi_publication_plan.md)
-**Effort:** ~200 LOC + config
-**Why now:** Package is ready (`pymaxim`), API shipped, deps clean. Gets the project into the ecosystem.
-
-Remaining: multi-robot plugins (Ph3), CI/CD (Ph4), README rewrite (Ph5), Test PyPI (Ph6).
+| Phase | Work | Status |
+|-------|------|--------|
+| 0 | Package Hygiene (data paths, imports, globals, file handles) | Not started |
+| 1 | SEM Component Registry | Not started |
+| 2 | DM Encounter Library | Not started |
+| 3 | Agent Factory + Agent Pool | Not started |
+| 4 | Party DM Runtime | Not started |
+| 5 | Hippocampus Recall Refinement | Not started |
+| 6 | ask_user Tool | Not started |
+| 7 | Generative Architect Persona | Not started |
+| 8 | API Surface Expansion (campaign, benchmark, research, events, tools) | Not started |
+| 9 | PyPI Deps + User Docs + Examples | Not started |
+| 10 | Publication Prep (CHANGELOG, CONTRIBUTING, SECURITY) | Not started |
+| 11 | Test PyPI + Publish | Not started |
 
 ---
 
-## Future Work (ship when demand surfaces)
+## Post-Publication Work (ship when demand surfaces)
 
-| Work | Trigger | Plan |
-|------|---------|------|
-| **SEM Component Database** | Campaign authoring becomes repetitive | Designed in [DM plan](../archive/dungeon_master_persona.md) |
-| **Embodiment Hardware Adapter** | Deploying to physical hardware (Reachy Mini) | ~300 LOC, wraps SDKs as SEM backends |
-| **Capability Agent** | Multi-machine setups need runtime awareness | [Design notes](doctor_upgrade_plan.md) |
-| **DM: Encounter Library** | Hand-authored encounters become repetitive | [Extensions plan](dungeon_master_extensions.md) |
-| **DM: Adaptive Difficulty** | Campaigns feel too easy/hard | [Extensions plan](dungeon_master_extensions.md) |
-| **Multi-AUT Party Mode** | Agent Mesh P2+ ships | Requires mesh network transport + DM |
-| **Agent Mesh Phase 0a-0b** | Multiple LAN machines join | mDNS discovery + InferenceRouter |
+These are features, not architecture. Safe to add after PyPI publication without breaking the public API.
+
+### DM Extensions (conditional on usage data)
+
+| Extension | Trigger | Effort | Notes |
+|-----------|---------|--------|-------|
+| **C — Adaptive Difficulty** | Campaigns feel too easy/hard | ~200 LOC | Run 5-10 party campaigns first, collect metric data, *then* write adaptation rules. Uses InspectAUTTool (shipped). [Details](dungeon_master_extensions.md) |
+| **D — Encounter Isolation** | State corruption between encounters | ~?? LOC | DO NOT START until party mode reveals actual corruption. Options: nested goal scopes, serialized state, or recap-only. [Details](dungeon_master_extensions.md) |
+| **E — True-Random RNG** | Users need non-reproducible dice | ~15 LOC | Trivial. Ship anytime. `randomness: true_random` in campaign YAML. |
+| **F — Encounter Merging** | Users request dynamic composition | ~180 LOC | Defer indefinitely. Merge semantics are hard, use case is speculative. |
+| **G — Chained Pipeline** | Architect persona is stable | ~50 LOC | `dm_full_pipeline` chains architect → DM runner in one CLI invocation. |
+
+### Infrastructure
+
+| Work | Trigger | Effort | Notes |
+|------|---------|--------|-------|
+| **Agent Mesh Phase 0a-0b** | Multiple LAN machines join | ~400 LOC | mDNS discovery + InferenceRouter. Current `LocalMessageBus` is sufficient for single-machine multi-agent. |
+| **Capability Agent** | Multi-machine setups need runtime awareness | ~500 LOC | [Design notes](doctor_upgrade_plan.md). Depends on lane tiers (done) + mesh Phase 0a. |
+| **Embodiment Hardware Adapter** | Deploying to physical hardware (Reachy Mini) | ~300 LOC | Wraps real robot SDKs as SEM backends. Phase 3 of embodiment plan. |
+| **PyPI Multi-Robot Plugins** | External robot controllers need discovery | ~250 LOC | Entry-point based `maxim.robots` registration. Phase 3 of [PyPI plan](pypi_publication_plan.md). |
+| **Full CI/CD Pipeline** | Need automated test + publish | ~2 files | GitHub Actions: lint, test, build, publish. Phase 4 of [PyPI plan](pypi_publication_plan.md). |
+| **Peer Inference Retry** | Leader restarts cause 502 errors | ~30 LOC | Exponential backoff in openai_backend.py |
+| **GitHub Fork Workflow** | Contributors need fork-based PRs | ~550 LOC | [Plan](github_repo_management_plan.md) |
+
+### Benchmark & Research
+
+| Work | Trigger | Notes |
+|------|---------|-------|
 | **Benchmark Phases 7-9** | Paper generation or narrative transcription needed | [Benchmark plan](../archive/benchmark_plan.md) |
-| **Peer Inference Retry** | Leader restarts cause 502 errors | ~30 LOC in openai_backend.py |
-| **GitHub Fork Workflow** | Contributors need fork-based PRs | [Plan](github_repo_management_plan.md) |
+| **Multi-model memory experiments** | Party mode generates interesting comparison data | Run same campaign with different NPC model tiers, compare memory quality |
+| **Cross-agent learning experiments** | ExperienceBroker wired in party mode | Test whether NAc causal links transfer meaningfully between agents |
 
 ---
 
@@ -88,12 +93,13 @@ Everything below has shipped and is in production.
 
 ```
 docs/plans/
-├── future_plans.md              # This file — master roadmap
-├── dungeon_master_extensions.md # DM follow-ons (architect, library, adaptation)
-├── pypi_publication_plan.md     # PyPI publication (Ph3-6 remaining)
-├── doctor_upgrade_plan.md       # Doctor expansions + Capability Agent design
-├── github_repo_management_plan.md # Fork-based workflow
-└── tool_refinement_plan.md      # Living document — tool additions/deprecations
+├── future_plans.md                 # This file — master roadmap
+├── foundational_buildout_plan.md   # Pre-publication buildout (current focus)
+├── dungeon_master_extensions.md    # DM follow-ons (Extensions C-G, post-publication)
+├── pypi_publication_plan.md        # PyPI publication (reference; phases absorbed into buildout)
+├── doctor_upgrade_plan.md          # Doctor expansions + Capability Agent design
+├── github_repo_management_plan.md  # Fork-based workflow
+└── tool_refinement_plan.md         # Living document — tool additions/deprecations
 ```
 
 ## Research Directions (Not Scheduled)
@@ -103,3 +109,5 @@ docs/plans/
 - **Cross-Agent Affordance Delegation** — Sovereign delegation between mesh peers
 - **Uncertainty-as-Pain** — Map prediction uncertainty to PainDetector
 - **Curriculum Embodiment Learning** — Graduate agents through progressively complex bodies
+- **NPC Personality Emergence** — After many campaigns, NPCs develop emergent personality traits from accumulated memories
+- **Campaign Memory Continuity** — Same NPCs remember events across multiple campaign runs (persistent NPC agents)

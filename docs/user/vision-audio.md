@@ -98,7 +98,7 @@ English-only variants (`.en` suffix, e.g. `small.en`) are slightly more accurate
 
 ### Configuration
 
-Edit `data/util/whisper.json` to configure the transcription engine:
+Edit `~/.maxim/util/whisper.json` to configure the transcription engine:
 
 ```json
 {
@@ -148,15 +148,15 @@ The robot responds to voice commands prefixed with a wake word. Recognized wake 
 | "Maxim observe" | Switch strategy to observe |
 | "center" | Center the robot's gaze (available in agentic mode) |
 
-Custom voice commands can be added by editing `data/util/phrase_responses.json`.
+Custom voice commands can be added by editing `~/.maxim/util/phrase_responses.json`.
 
 ### Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
 | Whisper segfaults | Run with float32: `MAXIM_WHISPER_COMPUTE_TYPE=float32 maxim` |
-| Speech not detected | Lower `vad_threshold` in `data/util/whisper.json` |
-| Too much noise transcribed | Raise `vad_threshold` in `data/util/whisper.json` |
+| Speech not detected | Lower `vad_threshold` in `~/.maxim/util/whisper.json` |
+| Too much noise transcribed | Raise `vad_threshold` in `~/.maxim/util/whisper.json` |
 | Slow transcription | Use a smaller model or set `compute_type` to `"int8"` |
 | No microphone detected | Ensure the audio device is accessible and that `--audio True` is set |
 
@@ -164,5 +164,5 @@ Custom voice commands can be added by editing `data/util/phrase_responses.json`.
 
 Audio and transcription data are saved to disk:
 
-- `data/audio/` -- Raw WAV recordings of each audio chunk.
-- `data/transcript/` -- JSONL transcripts with timestamps for each detected utterance.
+- `~/.maxim/audio/` -- Raw WAV recordings of each audio chunk.
+- `~/.maxim/transcript/` -- JSONL transcripts with timestamps for each detected utterance.

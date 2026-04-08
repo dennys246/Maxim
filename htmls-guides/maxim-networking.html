@@ -392,7 +392,7 @@ verify_ssl: true</pre>
     <div class="space-y-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
         <h3 class="text-lg font-semibold text-indigo-400 mb-2">Provider Priority</h3>
-        <p class="text-slate-300 leading-relaxed">If inference is unexpectedly hitting a cloud API (Anthropic/OpenAI) instead of the peer leader, check the provider priority in <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">data/util/llm.json</code>. The router picks the highest-priority provider that's available. Ensure the local/peer provider is ranked above cloud providers for the model you're using.</p>
+        <p class="text-slate-300 leading-relaxed">If inference is unexpectedly hitting a cloud API (Anthropic/OpenAI) instead of the peer leader, check the provider priority in <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">~/.maxim/config/llm.json</code>. The router picks the highest-priority provider that's available. Ensure the local/peer provider is ranked above cloud providers for the model you're using.</p>
       </div>
 
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">

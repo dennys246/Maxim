@@ -184,7 +184,7 @@ source maxim-env/bin/activate</div>
     <h2 id="configuration" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Configuration</h2>
 
     <h3 class="text-lg font-semibold text-indigo-400">Configuration Files</h3>
-    <p class="text-slate-300 leading-relaxed">All configuration lives in <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">data/util/</code>:</p>
+    <p class="text-slate-300 leading-relaxed">All configuration lives in <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">~/.maxim/</code> (override with <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">$MAXIM_DATA_HOME</code>):</p>
 
     <div class="overflow-x-auto">
       <table class="w-full text-sm text-left">
@@ -525,7 +525,7 @@ maxim [OPTIONS]
 
     <p class="text-slate-300 leading-relaxed">See the <a href="/maxim/operating-modes#switching" class="text-indigo-400 hover:text-indigo-300">Operating Modes</a>
         <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking &amp; Mesh</a>
-        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a> page for the full list. Custom voice commands can be added in <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">data/util/phrase_responses.json</code>.</p>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a> page for the full list. Custom voice commands can be added in <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">~/.maxim/util/phrase_responses.json</code>.</p>
   </section>
 
   <!-- 7. Keyboard Controls -->
@@ -757,7 +757,7 @@ data/
 from maxim.memory.hippocampus import Hippocampus
 
 hippo = Hippocampus()
-hippo.load("data/util/hippocampus.json")
+hippo.load(str(Path.home() / ".maxim" / "memory" / "hippocampus.json"))
 print(f"Total memories: {len(hippo.memories)}")
 
 for mem_id, mem in list(hippo.memories.items())[:5]:
@@ -767,7 +767,7 @@ for mem_id, mem in list(hippo.memories.items())[:5]:
 
 from maxim.decisions.nac import NAc
 
-nac = NAc.load_from_file("data/util/nac_state.json")
+nac = NAc.load_from_file(str(Path.home() / ".maxim" / "util" / "nac_state.json"))
 for sig, pred in nac._learned_associations.items():
     print(f"  {sig}: conf={pred.confidence:.2f}, val={pred.valence}")</div>
 

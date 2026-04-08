@@ -31,7 +31,7 @@ maxim --sim benchmark \
 | `--models` | Yes | -- | Comma-separated list of model profile names |
 | `--campaign` | Yes | -- | Path to a benchmark scenario or suite YAML |
 | `--runs` | No | 1 | Number of runs per model per scenario (for variance estimation) |
-| `--benchmark-output` | No | `data/benchmarks` | Directory for output reports |
+| `--benchmark-output` | No | `~/.maxim/benchmarks` | Directory for output reports |
 | `--baseline` | No | -- | Path to a previous `benchmark_report.json` for delta comparison |
 | `--sim-persona` | No | `adversarial` | Orchestrator persona to use during the run |
 
@@ -162,7 +162,7 @@ Run once to establish a baseline:
 maxim --sim benchmark \
   --models mistral-7b \
   --campaign scenarios/benchmarks/cognitive_suite.yaml \
-  --benchmark-output data/benchmarks
+  --benchmark-output ~/.maxim/benchmarks
 ```
 
 Then compare a new model (or the same model after changes) against it:
@@ -171,7 +171,7 @@ Then compare a new model (or the same model after changes) against it:
 maxim --sim benchmark \
   --models qwen2.5-14b \
   --campaign scenarios/benchmarks/cognitive_suite.yaml \
-  --baseline data/benchmarks/20260401_143022/benchmark_report.json
+  --baseline ~/.maxim/benchmarks/20260401_143022/benchmark_report.json
 ```
 
 The report will include per-metric deltas showing improvement or regression relative to the baseline.
@@ -181,7 +181,7 @@ The report will include per-metric deltas showing improvement or regression rela
 Each benchmark run creates a timestamped directory:
 
 ```
-data/benchmarks/YYYYMMDD_HHMMSS/
+~/.maxim/benchmarks/YYYYMMDD_HHMMSS/
   benchmark_report.json    # Full structured results
   summary.md               # Human-readable summary table
   per_model/

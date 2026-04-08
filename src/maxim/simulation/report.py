@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -181,16 +180,17 @@ def build_report(
     )
 
 
-def save_report(report: SimulationReport, base_dir: str = "data/sim_reports") -> Path:
+def save_report(report: SimulationReport, base_dir: str | None = None) -> Path:
     """Persist the full report as JSON to a session directory."""
+    if base_dir is None:
+        from maxim.utils.paths import sim_reports
+        base_dir = str(sim_reports())
     session_dir = Path(base_dir) / report.session_id
     session_dir.mkdir(parents=True, exist_ok=True)
 
     report_path = session_dir / "report.json"
-    tmp = str(report_path) + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(asdict(report), f, indent=2, default=str)
-    os.replace(tmp, str(report_path))
+    from maxim.utils.atomic_io import atomic_write_json
+    atomic_write_json(str(report_path), asdict(report))
 
     logger.info("Simulation report saved: %s", report_path)
     return report_path

@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Default persistence path
-DEFAULT_ESCALATION_PERSIST_PATH = "data/util/escalation_learning.json"
+DEFAULT_ESCALATION_PERSIST_PATH = ""  # resolved via __post_init__
 
 
 @dataclass
@@ -110,7 +110,7 @@ class EscalationLearningBridge:
     max_adjustment: float = 0.3
 
     # Persistence
-    persist_path: str = DEFAULT_ESCALATION_PERSIST_PATH
+    persist_path: str = ""  # resolved via maxim.utils.paths at runtime
     auto_save_interval: float = 60.0  # Save every 60 seconds
 
     # Health tracking
@@ -121,6 +121,9 @@ class EscalationLearningBridge:
 
     def __post_init__(self) -> None:
         """Initialize default factory fields."""
+        if not self.persist_path:
+            from maxim.utils.paths import resolve_user_state
+            self.persist_path = str(resolve_user_state("util/escalation_learning.json"))
         if not hasattr(self, "_thresholds") or self._thresholds is None:
             self._thresholds = {}
         if not hasattr(self, "_recent_records") or self._recent_records is None:

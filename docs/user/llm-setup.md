@@ -30,7 +30,7 @@ maxim --mode agentic --language-model smollm-1.7b
 ./scripts/download_models.sh --llm --enable
 ```
 
-This downloads the default model (Mistral 7B) in Q4_K_M quantization. To download a specific model, edit the `model_path` field in `data/util/llm.json` before running the script.
+This downloads the default model (Mistral 7B) in Q4_K_M quantization. To download a specific model, edit the `model_path` field in `~/.maxim/config/llm.json` before running the script.
 
 ### Quantization
 
@@ -51,7 +51,7 @@ export MAXIM_LLM_QUANTIZATION=Q4_K_M
 
 ### Per-Mode Response Configuration
 
-LLM context windows and response lengths adapt automatically to the current operational mode. Configuration lives in `data/util/llm.json` under `mode_response_config`:
+LLM context windows and response lengths adapt automatically to the current operational mode. Configuration lives in `~/.maxim/config/llm.json` under `mode_response_config`:
 
 | Mode | Response Tokens | Context Window | Format |
 |------|----------------|----------------|--------|
@@ -69,7 +69,7 @@ Lower modes save tokens and latency; higher modes give the LLM more room to reas
 
 Cloud backends provide faster inference and higher quality reasoning than local models. They're especially useful for simulation agent mode where both the orchestrator and AUT need fast LLM access.
 
-Cloud calls are budgeted (token and cost limits enforced), audit-logged (every call recorded in `data/util/cost_state.json`), and persist cost data across sessions.
+Cloud calls are budgeted (token and cost limits enforced), audit-logged (every call recorded in `~/.maxim/util/cost_state.json`), and persist cost data across sessions.
 
 ### Anthropic (Claude)
 
@@ -95,7 +95,7 @@ echo 'export ANTHROPIC_API_KEY="sk-ant-api03-..."' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-**4. Add a Claude profile to `data/util/llm.json`** (under the `"profiles"` section):
+**4. Add a Claude profile to `~/.maxim/config/llm.json`** (under the `"profiles"` section):
 ```json
 "claude-sonnet": {
   "backend": "anthropic",
@@ -134,7 +134,7 @@ pip install -e '.[llm-openai]'
 export OPENAI_API_KEY="sk-..."
 ```
 
-Add a profile to `data/util/llm.json`:
+Add a profile to `~/.maxim/config/llm.json`:
 ```json
 "gpt-4o": {
   "backend": "openai",
@@ -166,7 +166,7 @@ The router enforces budget limits at multiple levels:
 | Monthly | $100.00 | Downgrades model, falls back to local |
 | **Session ceiling** | **$5.00** | **Hard reject -- ALL requests blocked** |
 
-The session ceiling is the only hard stop. All other limits degrade gracefully (cheaper model or local fallback). Configure in `data/util/llm.json`:
+The session ceiling is the only hard stop. All other limits degrade gracefully (cheaper model or local fallback). Configure in `~/.maxim/config/llm.json`:
 
 ```json
 {
@@ -183,7 +183,7 @@ Set `fallback_on_budget_exceeded` to `"reject"` for hard enforcement on all limi
 
 ## Configuration File
 
-Edit `data/util/llm.json` for fine-grained control over LLM behavior:
+Edit `~/.maxim/config/llm.json` for fine-grained control over LLM behavior:
 
 ```json
 {
@@ -295,7 +295,7 @@ conservative; raise them only as needed:
 
 Self-hosted servers (localhost / private-IP endpoints) are **not** counted as
 cloud, so they bypass `MAXIM_MAX_CLOUD_LANES`. The session-cost ceiling in
-`llm.json` (`max_session_cost`, default $5.00) provides a second layer.
+`~/.maxim/config/llm.json` (`max_session_cost`, default $5.00) provides a second layer.
 
 ### Auto-spawn (Phase 6) — zero-terminal setup
 
@@ -390,7 +390,7 @@ Keep that terminal running. The server exposes an OpenAI-compatible API at
 `http://<host>:8000/v1`.
 
 On the client machine, point a lane at the server via environment overrides
-(temporary) or `llm.json` (persistent):
+(temporary) or `~/.maxim/config/llm.json` (persistent):
 
 ```bash
 # Quick test — one-shot remote lane
@@ -399,7 +399,7 @@ MAXIM_LANE_INFER_REMOTE_MODEL=mistral-7b-instruct-v0.2 \
 maxim --language-model mistral-7b
 ```
 
-Or pin it in `data/util/llm.json`:
+Or pin it in `~/.maxim/config/llm.json`:
 
 ```json
 {
@@ -673,11 +673,11 @@ can handle auth if you need it (no Maxim-side API key required for tunnel access
 
 Cloud providers need **three** things enabled explicitly:
 
-1. `cloud_enabled: true` in `llm.json` (or `MAXIM_LLM_CLOUD_ENABLED=1`)
+1. `cloud_enabled: true` in `~/.maxim/config/llm.json` (or `MAXIM_LLM_CLOUD_ENABLED=1`)
 2. `MAXIM_MAX_CLOUD_LANES=1` (or higher) — gate on the number of cloud lanes
 3. API key in env — `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
 
-Example `llm.json` for a Claude cloud lane:
+Example `~/.maxim/config/llm.json` for a Claude cloud lane:
 
 ```json
 {
@@ -729,4 +729,4 @@ result = agent.generate_json("Extract name and age from: 'John is 25'")
 | Model not found | Run `./scripts/download_models.sh --llm --enable` |
 | Out of memory | Use a smaller model or lower quantization level |
 | Slow inference | Use smaller model (`smollm-1.7b`) or lower quantization (`Q3_K_M`) |
-| Gibberish output | Check that `prompt_style` matches the model family in `llm.json` |
+| Gibberish output | Check that `prompt_style` matches the model family in `~/.maxim/config/llm.json` |

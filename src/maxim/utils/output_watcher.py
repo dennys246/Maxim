@@ -117,7 +117,7 @@ class OutputWatcher:
         """Initialize watcher.
 
         Args:
-            outputs_dir: Path to shared outputs directory (data/shared/outputs)
+            outputs_dir: Path to shared outputs directory (~/.maxim/shared/outputs)
             own_instance_id: This instance's ID (to filter out own files)
             poll_interval: Seconds between polls
             on_new_file: Callback for new files

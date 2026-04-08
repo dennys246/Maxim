@@ -194,27 +194,28 @@ class TestEmitTrace:
 
 
 class TestStartupWarning:
-    def test_silent_when_no_flags(self, monkeypatch, capsys):
+    def test_silent_when_no_flags(self, monkeypatch, caplog):
         monkeypatch.delenv("MAXIM_LANE_TRACE", raising=False)
         monkeypatch.delenv("MAXIM_PEER_LOG_REQUESTS", raising=False)
-        print_startup_warning_if_enabled()
-        assert capsys.readouterr().err == ""
+        with caplog.at_level(logging.WARNING, logger="maxim.mesh.trace"):
+            print_startup_warning_if_enabled()
+        assert caplog.text == ""
 
-    def test_loud_when_flag_set(self, monkeypatch, capsys):
+    def test_loud_when_flag_set(self, monkeypatch, caplog):
         monkeypatch.setenv("MAXIM_LANE_TRACE", "1")
-        print_startup_warning_if_enabled()
-        err = capsys.readouterr().err
-        assert "DEBUG FLAGS ACTIVE" in err
-        assert "MAXIM_LANE_TRACE" in err
-        assert "!" in err  # attention-grabbing banner
+        with caplog.at_level(logging.WARNING, logger="maxim.mesh.trace"):
+            print_startup_warning_if_enabled()
+        assert "DEBUG FLAGS ACTIVE" in caplog.text
+        assert "MAXIM_LANE_TRACE" in caplog.text
+        assert "!" in caplog.text  # attention-grabbing banner
 
-    def test_mentions_both_flags(self, monkeypatch, capsys):
+    def test_mentions_both_flags(self, monkeypatch, caplog):
         monkeypatch.setenv("MAXIM_LANE_TRACE", "1")
         monkeypatch.setenv("MAXIM_PEER_LOG_REQUESTS", "1")
-        print_startup_warning_if_enabled()
-        err = capsys.readouterr().err
-        assert "MAXIM_LANE_TRACE" in err
-        assert "MAXIM_PEER_LOG_REQUESTS" in err
+        with caplog.at_level(logging.WARNING, logger="maxim.mesh.trace"):
+            print_startup_warning_if_enabled()
+        assert "MAXIM_LANE_TRACE" in caplog.text
+        assert "MAXIM_PEER_LOG_REQUESTS" in caplog.text
 
 
 class TestStartCall:

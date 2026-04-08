@@ -103,7 +103,8 @@ def run_interactive_sim(
     from maxim.simulation.sinks import RecordingSink
 
     if sim_workspace is None:
-        sim_workspace = Path("data/sim_sandbox")
+        from maxim.utils.paths import resolve_user_state
+        sim_workspace = resolve_user_state("sim_sandbox")
     sim_workspace.mkdir(parents=True, exist_ok=True)
 
     # Pre-load the generator and continuation LLMs so first input is fast
@@ -353,7 +354,8 @@ def _run_scenario_turn(
     from maxim.runtime.agent_loop import run_agentic_loop
 
     # Create sandbox for this turn
-    sim_workspace = kwargs.pop("sim_workspace", Path("data/sim_sandbox"))
+    from maxim.utils.paths import resolve_user_state
+    sim_workspace = kwargs.pop("sim_workspace", resolve_user_state("sim_sandbox"))
     run_tmpdir = Path(
         tempfile.mkdtemp(
             prefix=f"sim_turn_{turn:03d}_",

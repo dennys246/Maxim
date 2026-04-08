@@ -179,7 +179,7 @@ class MediaLoopMixin:
                 from maxim.data.audio._file_based_transcription import watch_and_transcribe
                 from maxim.models.audio.transcription import load_whisper_config
 
-                # Load whisper config from data/util/whisper.json
+                # Load whisper config (from ~/.maxim/util/whisper.json)
                 whisper_cfg = load_whisper_config()
                 self.log.info(
                     "Whisper config: model=%s, device=%s, compute_type=%s",

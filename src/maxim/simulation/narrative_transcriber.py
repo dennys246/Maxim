@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 # Narrative class IDs start at 900 to avoid collision with COCO classes (0-80)
 _NEXT_CLASS_ID = 900
 _class_registry: dict[str, int] = {}
+_class_registry_lock = threading.Lock()
 
 # Spatial positions mapped to approximate pixel coordinates (640x480 frame)
 _POSITION_MAP = {
@@ -44,12 +46,16 @@ _POSITION_MAP = {
 
 
 def _get_class_id(label: str) -> int:
-    """Get or assign a stable class ID for a narrative entity label."""
+    """Get or assign a stable class ID for a narrative entity label.
+
+    Thread-safe: multiple agents may call this concurrently.
+    """
     global _NEXT_CLASS_ID
-    if label not in _class_registry:
-        _class_registry[label] = _NEXT_CLASS_ID
-        _NEXT_CLASS_ID += 1
-    return _class_registry[label]
+    with _class_registry_lock:
+        if label not in _class_registry:
+            _class_registry[label] = _NEXT_CLASS_ID
+            _NEXT_CLASS_ID += 1
+        return _class_registry[label]
 
 
 def _position_to_bbox(hint: str) -> list[int]:

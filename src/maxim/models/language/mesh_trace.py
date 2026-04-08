@@ -241,7 +241,6 @@ def print_startup_warning_if_enabled() -> None:
     """
     if not any_trace_enabled():
         return
-    import sys
 
     flags = []
     if lane_trace_enabled():
@@ -249,11 +248,11 @@ def print_startup_warning_if_enabled() -> None:
     if peer_log_enabled():
         flags.append("MAXIM_PEER_LOG_REQUESTS")
     bar = " " + "!" * 62
-    print(bar, file=sys.stderr)
-    print("  DEBUG FLAGS ACTIVE:", ", ".join(flags), file=sys.stderr)
-    print("  Peer inference calls will be logged with request IDs + URLs.", file=sys.stderr)
-    print("  Unset these env vars to silence.", file=sys.stderr)
-    print(bar, file=sys.stderr)
+    _trace_logger.warning("%s", bar)
+    _trace_logger.warning("  DEBUG FLAGS ACTIVE: %s", ", ".join(flags))
+    _trace_logger.warning("  Peer inference calls will be logged with request IDs + URLs.")
+    _trace_logger.warning("  Unset these env vars to silence.")
+    _trace_logger.warning("%s", bar)
 
 
 def start_call() -> tuple[str, float]:

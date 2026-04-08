@@ -53,6 +53,21 @@ _log_file = None
 _log_records: list[dict[str, Any]] = []
 _debug_mode = False
 
+
+def _cleanup_log_file() -> None:
+    """atexit handler — close log file if still open."""
+    global _log_file
+    if _log_file is not None:
+        try:
+            _log_file.close()
+        except Exception:
+            pass
+        _log_file = None
+
+
+import atexit
+atexit.register(_cleanup_log_file)
+
 # Subsystems that only print in debug mode (always persisted to JSONL log)
 _DEBUG_ONLY_SUBSYSTEMS = {"PIPELINE"}
 

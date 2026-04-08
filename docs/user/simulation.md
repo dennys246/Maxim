@@ -113,7 +113,7 @@ This restores the AUT's memory and causal links from the previous run, and tells
 
 ### Session Reports
 
-Every simulation run produces a report in `data/sim_reports/{session_id}/`:
+Every simulation run produces a report in `~/.maxim/sim_reports/{session_id}/`:
 - `report.json` -- Full metrics: tool usage, success rates, AUT cognitive state, cost, LLM analysis
 - `actions.jsonl` -- Every action record for post-hoc analysis
 - `aut_hippocampus.json` -- AUT's episodic memories from this run
@@ -136,7 +136,7 @@ Four policies are available (set on `SimulationBridge`):
 
 ### Cost Ceiling
 
-Cloud API costs are capped at **$5.00 per session** by default. Once reached, all further LLM requests are rejected with a clear warning. Adjust in `data/util/llm.json`:
+Cloud API costs are capped at **$5.00 per session** by default. Once reached, all further LLM requests are rejected with a clear warning. Adjust in `~/.maxim/config/llm.json`:
 
 ```json
 {
@@ -241,7 +241,7 @@ Subsystem labels map to biological systems:
 - **EXEC** -- execution lifecycle events
 - **SALIENCE** -- attention and novelty
 
-Simulation logs are automatically saved to `data/sim_sandbox/sim_log_*.jsonl` for future analysis. These logs can be used for system refinement and as input to sleep mode for offline pattern discovery.
+Simulation logs are automatically saved to `~/.maxim/sim_sandbox/sim_log_*.jsonl` for future analysis. These logs can be used for system refinement and as input to sleep mode for offline pattern discovery.
 
 ## Safety
 

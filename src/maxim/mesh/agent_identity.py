@@ -16,18 +16,17 @@ from typing import Any
 from maxim.mesh.identity import AgentProfile
 
 
-_NODE_ID_FILE = "data/util/node_id.txt"
-
-
 def _load_or_create_node_id(base_dir: str | Path | None = None) -> str:
     """Load persistent node ID from disk, or create one.
 
     The node_id is stable across restarts — peers use it to track each other.
-    Stored in data/util/node_id.txt relative to base_dir (or cwd).
+    Stored in ``~/.maxim/util/node_id.txt`` (or under *base_dir* if given).
     """
     if base_dir is None:
-        base_dir = Path.cwd()
-    path = Path(base_dir) / _NODE_ID_FILE
+        from maxim.utils.paths import resolve_user_state
+        path = resolve_user_state("util/node_id.txt")
+    else:
+        path = Path(base_dir) / "data/util/node_id.txt"
     try:
         text = path.read_text().strip()
         if text:

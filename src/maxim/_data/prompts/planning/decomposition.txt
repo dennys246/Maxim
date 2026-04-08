@@ -1,0 +1,27 @@
+GOAL: {goal_description}
+DEPTH: {depth}/{max_depth}
+CONTEXT: Mode={mode}, Active goal={active_goal}
+TOOLS: {available_tools}
+
+First decide: Can this goal be achieved with a SINGLE tool call?
+- If YES: provide direct_tool and direct_params
+- If NO: break into 1-5 sub-goals
+
+Output JSON:
+{
+  "can_execute_directly": bool,
+  "confidence": float,
+  "direct_tool": str | null,
+  "direct_params": dict | null,
+  "sub_goals": [
+    {
+      "description": str,
+      "tool_hint": str | null,
+      "depends_on": [int],
+      "requires_decomposition": bool,
+      "can_parallel": bool,
+      "priority": "critical|high|normal|low"
+    }
+  ],
+  "reasoning": str
+}
