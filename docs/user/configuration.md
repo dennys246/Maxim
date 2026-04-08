@@ -85,6 +85,43 @@ Maps key presses to actions:
 - `u` -- mark trainable moment
 - `0-9` -- label outcome (for training mode)
 
+## Cloud Provider Profiles
+
+Maxim ships with built-in profiles for 10 cloud LLM providers. All use the OpenAI-compatible backend, so no extra dependencies are needed beyond `pip install -e ".[llm-openai]"`. Set the corresponding API key environment variable to enable a profile.
+
+| Profile | Provider | Model | API Key Env Var |
+|---------|----------|-------|-----------------|
+| `claude-sonnet` | Anthropic | claude-sonnet-4-20250514 | `ANTHROPIC_API_KEY` |
+| `claude-haiku` | Anthropic | claude-haiku | `ANTHROPIC_API_KEY` |
+| `gpt-4o` | OpenAI | gpt-4o | `OPENAI_API_KEY` |
+| `gemini-2.5-flash` | Google | gemini-2.5-flash-preview-05-20 | `GOOGLE_API_KEY` |
+| `gemini-2.5-pro` | Google | gemini-2.5-pro-preview-05-06 | `GOOGLE_API_KEY` |
+| `groq-llama3-70b` | Groq | llama-3.3-70b-versatile | `GROQ_API_KEY` |
+| `groq-mixtral` | Groq | mixtral-8x7b-32768 | `GROQ_API_KEY` |
+| `together-llama3-70b` | Together | Llama-3.3-70B-Instruct-Turbo | `TOGETHER_API_KEY` |
+| `fireworks-llama3-70b` | Fireworks | llama-v3p3-70b-instruct | `FIREWORKS_API_KEY` |
+| `mistral-large` | Mistral | mistral-large-latest | `MISTRAL_API_KEY` |
+| `mistral-small` | Mistral | mistral-small-latest | `MISTRAL_API_KEY` |
+| `deepseek-chat` | DeepSeek | deepseek-chat | `DEEPSEEK_API_KEY` |
+| `deepseek-reasoner` | DeepSeek | deepseek-reasoner | `DEEPSEEK_API_KEY` |
+
+Use any profile with `--language-model`:
+
+```bash
+maxim --sim "test safety" --language-model gemini-2.5-flash
+maxim --sim "test memory" --language-model groq-llama3-70b
+```
+
+Cloud providers can also be used as fallback or dedicated lane backends:
+
+```bash
+maxim --cloud-fallback claude-sonnet         # Fallback when self-hosted fails
+maxim --cloud-lane small gemini-2.5-flash    # Dedicated cloud model for small tier
+maxim --cloud-budget 2.00                    # Max session cost for cloud providers
+```
+
+Cloud dispatch requires `MAXIM_LLM_CLOUD_ENABLED=1`. See the environment variables table for related settings.
+
 ## Auto-Generated Files (Do Not Edit)
 
 - `~/.maxim/util/adaptive_thresholds.json` -- auto-tuned novelty/salience thresholds

@@ -87,8 +87,9 @@ def validate_path_traversal(
         # Resolve symlinks if not allowed
         check_path = os.path.realpath(path) if not allow_symlinks else path
 
-        # Verify containment
-        if not (check_path.startswith(base_dir + os.sep) or check_path == base_dir):
+        # Verify containment (is_relative_to handles symlink edge cases)
+        from pathlib import Path as _Path
+        if not _Path(check_path).is_relative_to(base_dir):
             raise PathValidationError(f"Path escapes base directory: {base_dir}")
 
         return check_path

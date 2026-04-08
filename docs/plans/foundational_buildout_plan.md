@@ -1,9 +1,9 @@
 # Foundational Buildout Plan
 
-> **Status:** In progress. Phase 0 done. Phases 1, 3, 6 in progress.
+> **Status:** In progress. Phases 0-10 done/shipped. Phase 11 in progress (Test PyPI). Phase 12b not started.
 > **Goal:** Ship the architectural foundations that Multi-AUT Party Mode, SEM Component Database, and DM Encounter Library require — plus fix packaging, API surface, and code quality issues — before locking the public API via PyPI publication.
-> **Total scope:** ~4,150 LOC across 12 phases.
-> **Sequence:** Hygiene (0 ✓) → Foundation (1 → 1.1 → 2-3 → 4 → 5) → DM polish (6-7) → API + Packaging (8-9) → Publication (10-11).
+> **Total scope:** ~6,650 LOC across 13 phases.
+> **Sequence:** Hygiene (0 ✓) → Foundation (1 → 1.1 → 2-3 → 4 → 5) → DM polish (6-7) → API + Packaging (8-9) → Publication prep (10) → Test PyPI (11) ∥ Hardening (12b) → Manual publish.
 
 ---
 
@@ -1471,7 +1471,7 @@ maxim.register_persona(
 
 ---
 
-## Phase 9: PyPI Dependency Restructuring + Docs + Mother Pre-Pub (~600 LOC)
+## Phase 9: PyPI Dependency Restructuring + Docs + Pre-Pub Hardening (~900 LOC)
 
 ### 9a. Dependency audit (~100 LOC)
 
@@ -1584,7 +1584,7 @@ Add `metadata: dict[str, Any] = field(default_factory=dict)` to both dataclasses
 
 ---
 
-## Phase 10: Publication Prep (3 files + version bump)
+## Phase 10: Publication Prep (2 files + version bump)
 
 **CHANGELOG.md** — Version history covering 0.1.0 → 0.2.0 changes:
 - Package hygiene (data paths, import cleanup, `__main__`)
@@ -1612,14 +1612,46 @@ Add `metadata: dict[str, Any] = field(default_factory=dict)` to both dataclasses
 
 ---
 
-## Phase 11: Test PyPI + Publish
+## Phase 11: Test PyPI (dry-run validation) — IN PROGRESS
 
 1. `python -m build && twine check dist/*`
 2. `twine upload --repository testpypi dist/*`
 3. Test install in clean venv: `pip install --index-url https://test.pypi.org/simple/ pymaxim`
 4. Verify examples work: run each script in `examples/`
 5. Verify headless: `python -c "import maxim; maxim.diagnose()"`
-6. Real PyPI: `twine upload dist/*`
+
+**Publication delayed.** Real PyPI upload (`twine upload dist/*`) blocked on Phase 12a (security hardening) + Phase 12b (pre-publication hardening). Test PyPI validation (steps 1-5) proceeds in parallel.
+
+---
+
+## Phase 12a: Security Hardening (~200 LOC)
+
+Security fixes identified via pre-publication audit. All are in existing files — no new modules.
+
+**P0 — Must fix before publish (CRITICAL/HIGH):**
+
+| Fix | File | LOC | Issue |
+|-----|------|-----|-------|
+| Remove `shell=True` from BashTool | `tools/filesystem.py:949` | ~20 | Shell injection via LLM-generated commands. Switch to `subprocess.run(["/bin/bash", "-c", cmd], shell=False)` or restricted shell. Harden `_is_command_safe()` with whitelist, not regex blacklist. |
+| Fix path traversal in `sandbox._resolve()` | `simulation/sandbox.py:191` | ~10 | `lstrip("/")` doesn't prevent `../../` escape. Use `os.path.realpath()` + verify result starts with sandbox root. |
+| Add tool parameter schema validation | `runtime/executor.py` | ~40 | Validate LLM-generated tool params against each tool's `input_schema` before execution. Currently only FearAgent reviews — add structural validation. |
+| Require auth when admin endpoints enabled | `runtime/leader_proxy.py:235` | ~10 | `if not self.api_key: return True` bypasses ALL auth. If admin endpoints are active AND no key is set, refuse to start. |
+| Authenticate debug endpoints | `runtime/leader_proxy.py:910` | ~15 | Debug routes execute before auth check. Move auth before debug dispatch, or restrict debug to localhost. |
+| Restrict CORS origins | `runtime/leader_proxy.py:946` | ~10 | Replace `Access-Control-Allow-Origin: *` with configurable origin or `null`. |
+| Sanitize error responses | `runtime/leader_proxy.py` (multiple) | ~30 | Replace `f"error: {e}"` patterns with generic messages. Log full exception server-side only. ~8 locations. |
+| Whitelist subprocess env vars | `utils/sandbox_executor.py:625` | ~15 | Flip blacklist to whitelist: `PATH`, `HOME`, `TMPDIR`, `LANG`, `LC_ALL`, `MAXIM_*` only. |
+
+**P1 — Fix before Mother goes public:**
+
+| Fix | File | LOC | Issue |
+|-----|------|-----|-------|
+| Enforce cloud redaction | `models/language/router.py:295` | ~10 | Fail-hard if cloud provider has no redaction_policy. |
+| Temp file TOCTOU | `utils/sandbox_executor.py:553` | ~10 | Hash wrapper file content before execution. |
+| API key chmod warning | `tunnel/keys.py:68` | ~5 | Log warning instead of `except OSError: pass`. |
+| Pin json-repair | `pyproject.toml` | ~1 | Add upper bound: `json-repair>=0.30,<1.0`. |
+| Path validation edge case | `tools/filesystem.py:84` | ~5 | Use `Path.is_relative_to()` instead of `startswith()`. |
+
+**Ship gate:** No host paths, IPs, or stack traces in any HTTP response. Auth enforced on all endpoints when API key is configured. `shell=True` eliminated.
 
 ---
 
@@ -1628,22 +1660,24 @@ Add `metadata: dict[str, Any] = field(default_factory=dict)` to both dataclasses
 | Phase | Work | LOC | Depends On | Status | Ship Gate |
 |-------|------|-----|------------|--------|-----------|
 | **0** | **Package Hygiene** | **~550** | **—** | **DONE** | **`pip install -e .` + `python -m maxim` work** |
-| 1 | SEM Component Registry | ~300 | Phase 0 | **In progress** | String ref resolution works in campaigns |
-| 1.1 | Phase 0+1 Wrap-up | ~100 | Phase 1 | Not started | Fix remaining import-time side effects (selfy.py mp.set_start_method, PYOPENGL_PLATFORM), verify Phase 0b blockers resolved, run full test suite against Phase 1 integration |
-| 2 | Encounter Library (Tier 1 templates) | ~240 | Phase 1 | Not started | Template encounters load in campaigns, existing campaigns unchanged |
-| 3 | Agent Factory + Pool | ~500-700 | Phase 0 | **In progress** | 3 agents, separate memory, concurrent |
-| 4 | Party DM Runtime | ~400 | Phases 1-3 | Not started | NPC demonstrates learned behavior |
-| 5 | Hippocampus Recall | ~400 | Phase 4 | Not started | Behavioral recall at door succeeds |
-| **6** | **Interactive Runtime + Rich Display** | **~500** | **—** | **In progress** | **Rich panels + prompt protocol + DM display** |
-| 7 | Generative Architect + Entity Designer | ~600 | Phases 1,2,6 | Not started | Campaign + PC + 3 NPCs in <8 min, entities from natural language |
-| **8** | **API Surface Expansion** | **~400** | **Phases 1-5,6** | Not started | **New verbs + events + tool reg work** |
-| **9** | **Deps + Docs + Cloud Profiles + Mother Pre-Pub** | **~600** | **Phase 8** | Not started | **Clean install + store protocols + metadata fields + NAc locks** |
-| 10 | Publication Prep | ~3 files | — | Not started | CHANGELOG + CONTRIBUTING (SECURITY exists) |
-| 11 | Test PyPI + Publish | ~0 | Phases 0-10 | Not started | `pip install pymaxim` works |
+| 1 | SEM Component Registry | ~300 | Phase 0 | **DONE** | String ref resolution works in campaigns |
+| 1.1 | Phase 0+1 Wrap-up | ~100 | Phase 1 | **DONE** | Import-time side effects, test suite verification |
+| 2 | Encounter Library | ~240 | Phase 1 | **DONE** | Template encounters load in campaigns |
+| 3 | Agent Factory + Pool | ~500-700 | Phase 0 | **DONE** | 3 agents, separate memory, concurrent |
+| 4 | Party DM Runtime | ~400 | Phases 1-3 | **DONE** | NPC demonstrates learned behavior |
+| 5 | Hippocampus Recall | ~400 | Phase 4 | **DONE** | Behavioral recall at door succeeds |
+| **6** | **Interactive Runtime + Rich Display** | **~500** | **—** | **DONE** | **Rich panels + prompt protocol + DM display** |
+| 7 | Generative Architect + Entity Designer | ~600 | Phases 1,2,6 | **DONE** | Campaign + PC + 3 NPCs in <8 min |
+| **8** | **API Surface Expansion** | **~400** | **Phases 1-5,6** | **DONE** | **New verbs + events + tool reg work** |
+| **9** | **Deps + Docs + Cloud Profiles + Mother Pre-Pub** | **~700** | **Phase 8** | **DONE** | **Clean install + store protocols + metadata fields** |
+| 10 | Publication Prep | ~2 files | — | **DONE** | CHANGELOG + CONTRIBUTING (SECURITY already exists) |
+| 11 | Test PyPI + Publish | ~0 | Phases 0-10 | **In progress** | `pip install pymaxim` works |
+| **12a** | **Security Hardening** | **~200** | **Phase 11** | Not started | **P0 fixes: shell injection, path traversal, schema validation, auth, CORS, error sanitization** |
+| **12b** | **[Pre-Publication Hardening](pre_publication_hardening_plan.md)** | **~2,500** | **∥ Phase 11** | Not started | **Broken API fixes, error honesty, CLI UX, tests for public surface, user docs** |
 
-**Parallelization:** Phase 0 done. Phase 1 in progress. Phase 1.1 wraps up loose ends. Then Phases 2, 3, 6 can run in parallel. Phase 4 blocks on 1-3. Phase 5 follows Phase 4 (need party mode running to know if recall is the real bottleneck). Phase 7 blocks on 1, 2, 6. Phase 8 blocks on 1-5 and 6. Phases 9-10 can overlap.
+**Parallelization:** Phases 0-10 done. Phase 11 (Test PyPI) in progress. Phases 12a (security) and 12b (hardening) run in parallel with 11. Real publish blocked on 12a + 12b.
 
-**Total pre-publication LOC:** ~4,150 + ~300 docs/examples (spread across 11 implementation phases)
+**Total LOC:** ~4,150 (Phases 0-10) + ~200 (12a security) + ~2,500 (12b hardening) = ~6,850 total pre-publication
 
 ---
 
@@ -1749,11 +1783,15 @@ These don't have their own phases but should be fixed as encountered during the 
 | **No sandbox in `maxim.run()` API path** | **Phase 8** | CLI wires sandbox via bootstrap; Python API skips it. `maxim.run()` should default to a safe mode (PLANNING or SUPERVISED) and optionally accept `sandbox="docker"` / `sandbox="tmpdir"`. Users who want full access opt in explicitly. |
 | **TmpdirSandbox symlink escape** | **Phase 9** | Agent can create symlinks inside tmpdir pointing outside. Add `os.path.realpath()` check that resolved target stays within sandbox root. Docker sandbox is unaffected. |
 | **`_accessible_folders` global is mutable at runtime** | **Phase 4** | `add_accessible_folder()` has no auth gate. In multi-agent, one agent could expand access for all. Fix: per-agent folder policy, set at init, immutable after. Phase 3 builds the factory/pool — Phase 4 (party DM) is where multi-agent actually runs and exposes this. |
-| **Mother Maxim M-0a: Split store protocols** | **Phase 1.1** | **Moved from Phase 5.** The protocol *shape* is load-bearing — if we publish with raw `save(path)`/`load(path)` and users wrap them, changing to `EpisodicStore` is breaking. Extract into `EpisodicStore`, `CausalStore`, `SemanticStore` protocols + File implementations. ~80 LOC. Define early, lock the interface. See [mother_maxim_plan.md](mother_maxim_plan.md). |
-| **Mother Maxim M-0b: NAc thread safety** | **Phase 4** | NAc has no locking on `_links`, `_pending_events`, `_priors`. Multi-agent party mode will have concurrent NAc access. Add `threading.RLock`. Also required for future database writes. |
-| **Mother Maxim M-0c: dict serialization audit + metadata field** | **Phase 1.1** | Verify `to_dict()`/`from_dict()` round-trip cleanly. **Add `metadata: dict[str, Any]` field to EpisodicMemory and SemanticMemory.** Currently no extensible bag for contribution metadata, domain tags, witness_count, tenant_id. Adding a field to a serialized dataclass post-publication requires migration for every user. Pre-publication it's 3 lines. CausalLink already has `event_context: dict` which serves this purpose. |
-| **Mother Maxim M-0d: Hippocampus.sample() method** | **Phase 5** | All recall is currently query-based or graph-based. Mother's dream state needs "give me N random memories from different domains." Add `sample(n, *, domain: str | None, exclude_ids: set) -> list[EpisodicMemory]`. Small method (~30 LOC) but defines an interface users might depend on. |
-| **Mother Maxim M-0e: SCN simple wall-clock path** | **Phase 1.1** | `register_external()` currently requires a `PeerClockEstimator` object. Add `set_wall_clock(source: Callable[[], float])` for simple real-time registration. Mother needs `scn.set_wall_clock(lambda: time.time())` for circadian lifecycle. ~10 LOC. |
+| **Mother Maxim M-0a: Split store protocols** | **Phase 9e** | Protocol shape is load-bearing — locks persistence interface before publication. See 9e section for details. ~80 LOC. |
+| **Mother Maxim M-0b: NAc thread safety** | **Phase 9e** | NAc has no locking on `_links`, `_pending_events`, `_priors`. ~30 LOC. |
+| **Mother Maxim M-0c: metadata field** | **Phase 9e** | Add `metadata: dict[str, Any]` to EpisodicMemory + SemanticMemory. ~20 LOC. Breaking post-pub. |
+| **Mother Maxim M-0d: Hippocampus.sample()** | **Post-pub** | Additive method, non-breaking. Ship in 0.2.1 when Mother needs it for dream state. |
+| **Mother Maxim M-0e: SCN set_wall_clock()** | **Post-pub** | Additive method, non-breaking. Ship in 0.2.1 when circadian lifecycle ships. |
+| **Narrative concept extraction (lemmatization)** | **Post-pub** | Apply existing `normalize_tokens()` to freeform observation text, query ATL index. ~20 LOC. Additive, non-breaking. |
+| **ProcessingState.HIBERNATE** | **Post-pub** | New enum value + HibernateTool + SEM wake triggers. ~120 LOC. Non-breaking addition. See [mother_maxim_plan.md](mother_maxim_plan.md). |
+| **Narrative concept extraction via lemmatization** | **Phase 5** | `ConceptExtractor` only extracts from structured perception fields. For Mother's narrative contributions, apply existing `normalize_tokens()` (with built-in lemmatization from `memory/text.py`) to freeform observation text, then query ATL concept index. ~20 LOC. Zero deps, zero LLM. |
+| **ProcessingState.HIBERNATE** | **Post-publication** | Add `HIBERNATE` to ProcessingState enum (alongside `AWAKE`/`SLEEP`). Hibernation unloads LLM from VRAM, persists bio-state, frees GPU for external tasks (training, benchmarks). Wake via SEM failure mode triggers. Not needed pre-publication but the enum should be designed to be extensible. See [mother_maxim_plan.md](mother_maxim_plan.md). |
 
 ---
 

@@ -1,29 +1,33 @@
 # Maxim User Guide
 
-Documentation for users of Maxim — a robotics framework for Reachy Mini with local LLM inference, multi-modal perception, and adaptive planning.
+Documentation for users of Maxim (pymaxim) — a bio-inspired cognitive architecture with adaptive planning, biological memory systems, and local/cloud LLM inference. Works headless, with simulation, with DM campaigns, or connected to robots.
 
 ## Start Here
 
 - [Getting Started](getting-started.md) — Installation, first run, prerequisites
+- [Python API](python-api.md) — All 13 API verbs with examples **(new in v0.2.0)**
 
 ## Core Guides
 
 - [Modes Guide](modes-guide.md) — Choosing the right operating mode
 - [CLI Reference](cli-reference.md) — All command-line flags
-- [Configuration](configuration.md) — Environment variables, config files, outputs
-- [Tools Reference](tools.md) — What the agent can do (40+ tools)
+- [Configuration](configuration.md) — Environment variables, config files, data paths (`~/.maxim/`)
+- [Tools Reference](tools.md) — What the agent can do (40+ tools + custom tool registration)
+
+## Simulation & Campaigns
+
+- [Simulation Guide](simulation.md) — Running and recording simulated scenarios
+- [Writing Scenarios](writing-scenarios.md) — Authoring YAML test scenarios
+- [DM Campaigns](dm-campaigns.md) — D&D-style campaigns with NPC agents, party mode, encounter templates
+- [Benchmarks](benchmarks.md) — Multi-model comparison testing
 
 ## Subsystems
 
-- [LLM Setup](llm-setup.md) — Local models, cloud backends, tuning
+- [LLM Setup](llm-setup.md) — Local models, 12+ cloud providers (Anthropic, OpenAI, Gemini, Groq, etc.)
 - [Peer Setup](peer-setup.md) — Connecting to a remote leader via Cloudflare tunnel
 - [Vision & Audio](vision-audio.md) — Camera, Whisper, VAD, voice commands
-- [Memory](memory-user-guide.md) — What persists, lifecycle, clearing
+- [Memory](memory-user-guide.md) — What persists, lifecycle, recall improvements
 - [Safety](safety.md) — Autonomy levels, FearAgent, pain detection, harm prediction
-- [Simulation Guide](simulation.md) — Running and recording simulated scenarios
-- [Writing Scenarios](writing-scenarios.md) — Authoring YAML test scenarios
-- [DM Campaigns](dm-campaigns.md) — Writing and running D&D-style bio-system stress tests
-- [Benchmarks](benchmarks.md) — Multi-model comparison testing
 
 ## Setup & Support
 
@@ -36,4 +40,5 @@ For internal architecture and design decisions, see:
 
 - [Architecture](../../ARCHITECTURE.md)
 - [Design Decisions](../../DECISIONS.md)
+- [Contributing](../../CONTRIBUTING.md) — Code style, testing, PR process
 - [Internal Docs](../index.md)

@@ -450,8 +450,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             resp_body = e.read()
             resp_headers = dict(e.headers)
         except Exception as e:
+            logger.exception("Upstream connection error: %s", e)
             resp_code = 502
-            resp_body = json.dumps({"error": f"Upstream error: {e}"}).encode()
+            resp_body = json.dumps({"error": "Upstream connection failed"}).encode()
 
         elapsed_ms = (time.time() - t0) * 1000
 
@@ -620,7 +621,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     )
                     return
         except Exception as e:
-            self._send_json(500, {"error": f"git status failed: {e}"})
+            logger.exception("git status failed: %s", e)
+            self._send_json(500, {"error": "git status check failed"})
             return
 
         # Fetch latest
@@ -634,7 +636,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 check=True,
             )
         except Exception as e:
-            self._send_json(500, {"error": f"git fetch failed: {e}"})
+            logger.exception("git fetch failed: %s", e)
+            self._send_json(500, {"error": "git fetch failed"})
             return
 
         # Preview: what commits are pending?
@@ -746,7 +749,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 )
                 return
         except Exception as e:
-            self._send_json(500, {"error": f"pip install failed: {e}"})
+            logger.exception("pip install failed: %s", e)
+            self._send_json(500, {"error": "pip install failed"})
             return
 
         # Log to request ring buffer
@@ -943,10 +947,12 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:  # noqa: N802
         """Handle CORS preflight."""
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Maxim-Request-Id")
-        self.send_header("Access-Control-Max-Age", "86400")
+        cors_origin = os.environ.get("MAXIM_CORS_ORIGIN", "")
+        if cors_origin:
+            self.send_header("Access-Control-Allow-Origin", cors_origin)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Maxim-Request-Id")
+            self.send_header("Access-Control-Max-Age", "86400")
         self.end_headers()
 
     # ─── helpers ──────────────────────────────────────────────────────
@@ -956,7 +962,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        cors_origin = os.environ.get("MAXIM_CORS_ORIGIN", "")
+        if cors_origin:
+            self.send_header("Access-Control-Allow-Origin", cors_origin)
         self.end_headers()
         self.wfile.write(data)
 

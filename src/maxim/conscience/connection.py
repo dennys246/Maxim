@@ -120,7 +120,15 @@ class FailureTracker:
 # ConnectionMixin — extracted from selfy.py for compartmentalization
 # ─────────────────────────────────────────────────────────────────────────────
 
-import cv2
+def _import_cv2():
+    try:
+        import cv2
+        return cv2
+    except ImportError:
+        raise ImportError(
+            "OpenCV is required for display features. "
+            "Install with: pip install pymaxim[vision]"
+        ) from None
 
 
 class ConnectionMixin:
@@ -132,6 +140,7 @@ class ConnectionMixin:
 
     def _release_cv2(self) -> None:
         try:
+            cv2 = _import_cv2()
             cv2.destroyAllWindows()
             cv2.waitKey(1)
         except Exception:

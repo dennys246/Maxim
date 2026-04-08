@@ -43,6 +43,12 @@ _API_TYPES = {
     "BenchmarkResult": "maxim.api",
     "ResearchResult": "maxim.api",
     "EventHandle": "maxim.api",
+    # Error hierarchy — users can catch these
+    "MaximError": "maxim.exceptions",
+    "ConfigurationError": "maxim.exceptions",
+    "ModelError": "maxim.exceptions",
+    "ModelLoadError": "maxim.exceptions",
+    "ToolExecutionError": "maxim.exceptions",
 }
 
 __all__ = [
@@ -70,6 +76,12 @@ __all__ = [
     "BenchmarkResult",
     "ResearchResult",
     "EventHandle",
+    # Errors
+    "MaximError",
+    "ConfigurationError",
+    "ModelError",
+    "ModelLoadError",
+    "ToolExecutionError",
 ]
 
 

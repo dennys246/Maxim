@@ -17,8 +17,18 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
+
+
+def _import_cv2():
+    try:
+        import cv2
+        return cv2
+    except ImportError:
+        raise ImportError(
+            "OpenCV is required for vision features. "
+            "Install with: pip install pymaxim[vision]"
+        ) from None
 
 from maxim.models.vision.engine import (
     COCO_KEYPOINTS,
@@ -187,6 +197,7 @@ class UltralyticsEngine(VisionEngine):
         frames: list[np.ndarray],
         conf: float = 0.5,
     ) -> list[list[Detection]]:
+        cv2 = _import_cv2()
         all_detections: list[list[Detection]] = []
 
         for frame_idx, photo in enumerate(frames):
@@ -319,6 +330,7 @@ class UltralyticsEngine(VisionEngine):
         keypoint_conf: float = 0.25,
         min_iou: float = 0.1,
     ) -> PoseResult | None:
+        cv2 = _import_cv2()
         if not self._try_load_pose():
             return None
 

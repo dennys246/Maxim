@@ -12,13 +12,24 @@ from maxim.doctor.platform_detect import detect_platform
 
 
 DOCTOR_USAGE = """\
-Usage: maxim doctor [--retry]
+Usage: maxim doctor [OPTIONS]
 
 Diagnose your Maxim environment + print platform-specific fix suggestions.
 
 Options:
-  --retry   After printing, offer to re-run failed checks one at a time
-            (press Enter after you've applied each fix).
+  --retry           After printing, offer to re-run failed checks one at a time
+  --json            Output results as machine-readable JSON
+  --as peer <url>   Run peer-mode checks against a remote leader URL
+  --as leader       Force leader-mode checks (skip peer auto-detection)
+  --as solo         Force solo-mode checks (no peer/leader wiring)
+  -h, --help        Show this help message
+
+Examples:
+  maxim doctor                           Check local environment
+  maxim doctor --retry                   Interactive fix loop
+  maxim doctor --json                    JSON output for CI/scripts
+  maxim doctor --as peer https://maxim.example.com/v1
+                                         Check peer connectivity
 """
 
 
@@ -27,17 +38,43 @@ def run_doctor_subcommand(argv: Sequence[str]) -> int:
         print(DOCTOR_USAGE)
         return 0
     retry = "--retry" in argv
+    as_json = "--json" in argv
+
+    # Parse --as <role> [url]
+    role, peer_url = _parse_as_flag(list(argv))
 
     info = detect_platform()
-    sections = run_all_checks(info)
-    _print_report(sections)
+    sections = run_all_checks(info, role=role, peer_url=peer_url)
 
-    if retry:
-        return _retry_loop(info)
+    if as_json:
+        _json_report(sections, info)
+    else:
+        _print_report(sections)
+
+    if retry and not as_json:
+        return _retry_loop(sections, info, role=role, peer_url=peer_url)
 
     # Exit code reflects the worst status seen
     worst = _worst_status(sections)
-    return {"ok": 0, "warn": 0, "fail": 1}[worst]
+    return {"ok": 0, "warn": 0, "fail": 1, "info": 0}[worst]
+
+
+def _parse_as_flag(argv: list[str]) -> tuple[str | None, str | None]:
+    """Extract ``--as <role> [url]`` from argv."""
+    try:
+        idx = argv.index("--as")
+    except ValueError:
+        return None, None
+    if idx + 1 >= len(argv):
+        return None, None
+    role_str = argv[idx + 1].lower()
+    if role_str not in ("peer", "leader", "solo"):
+        print(f"Unknown role: {role_str!r} (expected peer, leader, or solo)", file=sys.stderr)
+        return None, None
+    peer_url = None
+    if role_str == "peer" and idx + 2 < len(argv) and not argv[idx + 2].startswith("-"):
+        peer_url = argv[idx + 2]
+    return role_str, peer_url
 
 
 def _print_report(sections: list[tuple[str, list[CheckResult]]]) -> None:
@@ -52,6 +89,38 @@ def _print_report(sections: list[tuple[str, list[CheckResult]]]) -> None:
         print()
 
 
+def _json_report(
+    sections: list[tuple[str, list[CheckResult]]], info: "PlatformInfo"
+) -> None:
+    """Print machine-readable JSON to stdout."""
+    output = {
+        "platform": {
+            "os": info.os,
+            "runtime": info.runtime,
+            "distro": info.distro,
+            "arch": info.arch,
+            "display_name": info.display_name,
+        },
+        "sections": [
+            {
+                "name": name,
+                "checks": [
+                    {
+                        "name": r.name,
+                        "status": r.status,
+                        "message": r.message,
+                        "fix": r.fix,
+                    }
+                    for r in results
+                ],
+            }
+            for name, results in sections
+        ],
+        "worst_status": _worst_status(sections),
+    }
+    print(json.dumps(output, indent=2))
+
+
 def _worst_status(sections: list[tuple[str, list[CheckResult]]]) -> str:
     worst = "ok"
     for _, results in sections:
@@ -63,29 +132,81 @@ def _worst_status(sections: list[tuple[str, list[CheckResult]]]) -> str:
     return worst
 
 
-def _retry_loop(info) -> int:
-    """Walk through failing checks, wait for user Enter, re-run each."""
+def _retry_loop(
+    sections: list[tuple[str, list[CheckResult]]],
+    info: "PlatformInfo",
+    *,
+    role: str | None = None,
+    peer_url: str | None = None,
+) -> int:
+    """Walk through failing checks that have retry_id, wait for user fix, re-run."""
     from maxim.doctor.checks import (
         check_cloudflared,
+        check_inference_coherence,
+        check_key_age,
+        check_key_auth_smoke,
+        check_key_permissions,
+        check_peer_auth,
+        check_peer_key_set,
+        check_peer_model,
+        check_peer_url_reachable,
         check_server_reachable,
+        check_tier_detection,
         check_tunnel_config,
         check_tunnel_config_sync,
     )
 
-    retryable = {
+    # Map retry_id → callable that re-runs the check.
+    # Peer key is resolved once for peer checks.
+    import os
+
+    peer_key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY") or os.environ.get(
+        "MAXIM_LANE_LARGE_REMOTE_API_KEY"
+    )
+    if not peer_key:
+        try:
+            from maxim.peer.config import read_peer_config
+
+            cfg = read_peer_config()
+            if cfg is not None:
+                peer_key = cfg.api_key
+        except Exception:
+            pass
+
+    retryable_fns: dict[str, object] = {
         "server": check_server_reachable,
         "cloudflared": lambda: check_cloudflared(info),
         "tunnel-config": check_tunnel_config,
         "tunnel-config-sync": check_tunnel_config_sync,
+        "tier_detection": check_tier_detection,
+        "key-age": check_key_age,
+        "key-permissions": check_key_permissions,
+        "key-auth": check_key_auth_smoke,
+        # Peer checks
+        "peer-url": lambda: check_peer_url_reachable(peer_url) if peer_url else None,
+        "peer-key": check_peer_key_set,
+        "peer-auth": lambda: check_peer_auth(peer_url, peer_key) if peer_url else None,
     }
+
+    # Collect failing checks that have retry_id, in section order
+    retryable_results: list[tuple[str, CheckResult]] = []
+    for _, results in sections:
+        for r in results:
+            if r.retry_id and r.status not in ("ok", "info") and r.retry_id in retryable_fns:
+                retryable_results.append((r.retry_id, r))
+
+    if not retryable_results:
+        print("━━━ Retry loop ━━━")
+        print("All retryable checks passed.")
+        return 0
+
     print("━━━ Retry loop ━━━")
     print("Press Enter after each fix to re-test. Ctrl+C to exit.")
     print()
-    for retry_id, check_fn in retryable.items():
-        result = check_fn()
-        if result.status == "ok":
-            continue
-        while result.status != "ok":
+    for retry_id, initial_result in retryable_results:
+        check_fn = retryable_fns[retry_id]
+        result = initial_result
+        while result.status not in ("ok", "info"):
             print(f"  {result.symbol} {result.name}: {result.message}")
             if result.fix:
                 for line in result.fix.splitlines():
@@ -95,7 +216,10 @@ def _retry_loop(info) -> int:
             except KeyboardInterrupt:
                 print("\n  Exiting retry loop.")
                 return 1
-            result = check_fn()
+            new_result = check_fn()
+            if new_result is None:
+                break
+            result = new_result
             print()
         print(f"  ✓ {result.name}: {result.message}")
         print()
@@ -119,6 +243,9 @@ Options:
   --model M     Model name to send (default: auto-detect from /v1/models)
 
 Returns 0 on full success, 1 on any failure.
+
+Tip: For comprehensive peer diagnostics with retry support, use:
+  maxim doctor --as peer <url>
 """
 
 

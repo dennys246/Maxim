@@ -189,11 +189,18 @@ class TmpdirSandbox(SandboxEnvironment):
             self._root = None
 
     def _resolve(self, path: str) -> str:
-        """Resolve a path relative to sandbox root."""
+        """Resolve a path relative to sandbox root, preventing traversal escape."""
+        root = self._root or ""
         if os.path.isabs(path):
             # Map absolute paths into the sandbox
-            return os.path.join(self._root or "", path.lstrip("/"))
-        return os.path.join(self._root or "", path)
+            candidate = os.path.join(root, path.lstrip("/"))
+        else:
+            candidate = os.path.join(root, path)
+        resolved = os.path.realpath(candidate)
+        real_root = os.path.realpath(root)
+        if not (resolved == real_root or resolved.startswith(real_root + os.sep)):
+            raise ValueError(f"Path escapes sandbox: {path}")
+        return resolved
 
 
 # ─────────────────────────────────────────────────────────────────────────────

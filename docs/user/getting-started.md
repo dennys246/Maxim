@@ -111,6 +111,42 @@ For verbose output during startup and runtime:
 maxim --mode agentic --language-model smollm-1.7b --verbosity 2
 ```
 
+## Python API
+
+Maxim 0.2.0 exposes a verb-based Python API via the `pymaxim` package (import name: `maxim`). Install from PyPI with `pip install pymaxim` or use the local editable install.
+
+```python
+import maxim
+
+# Environment diagnostics
+report = maxim.diagnose()
+
+# Run a simulation
+result = maxim.imagine(goal="test safety", persona="adversarial")
+
+# Run a DM campaign
+result = maxim.campaign("scenarios/campaigns/heist_v1.yaml")
+
+# Run a benchmark
+result = maxim.benchmark(models=["mistral-7b", "qwen2.5-14b"],
+                         campaign="scenarios/benchmarks/cognitive_suite.yaml")
+
+# Research protocol
+result = maxim.research(goal="hippocampal recall", model="claude-sonnet")
+
+# Register custom tools and personas
+@maxim.tool
+def my_sensor(reading: float) -> dict:
+    return {"value": reading}
+
+maxim.register_persona("cautious", system_prompt="Be very careful.")
+
+# Event hooks
+maxim.on("pain_signal", lambda ev: print(f"Pain: {ev}"))
+```
+
+All 13 API verbs: `configure`, `run`, `imagine`, `connect`, `diagnose`, `observe`, `introspect`, `campaign`, `benchmark`, `research`, `on`, `register_tool`, `register_persona`. The `@maxim.tool` decorator is a shorthand for `register_tool`.
+
 ## Next Steps
 
 - **Simulation Guide** -- testing without hardware using interactive mode or YAML scenarios

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import cv2
 import numpy as np
 
 from maxim.models.vision.engine import VisionEngine
@@ -24,6 +23,13 @@ from maxim.models.vision.engine import VisionEngine
 
 
 def _ensure_bgr(photo: np.ndarray) -> np.ndarray:
+    try:
+        import cv2
+    except ImportError:
+        raise ImportError(
+            "OpenCV is required for vision features. "
+            "Install with: pip install pymaxim[vision]"
+        ) from None
     if photo.ndim == 2:
         return cv2.cvtColor(photo, cv2.COLOR_GRAY2BGR)
     if photo.ndim == 3 and photo.shape[2] == 1:

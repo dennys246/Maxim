@@ -287,6 +287,42 @@ DM campaigns define characters as bundled SEM entities with cascade DAGs for nar
 
 The `--dm` flag is reserved for a future generative DM mode. Today, all 4 shipped campaigns run through the auto-detect path.
 
+### Party Mode
+
+Enable `party_mode: true` in campaign YAML to run with NPC agents that have real memory and learning. Each NPC gets its own Hippocampus and NAc instance, receives scene narrative alongside the PC, generates dialogue, and adapts based on prior encounters.
+
+```yaml
+campaign:
+  name: haunted_manor
+  goal: test multi-agent memory
+  party_mode: true
+
+npcs:
+  torchbearer:
+    ref: "npcs/torchbearer"
+    remembers: true
+    learns: true
+    model_tier: small
+```
+
+During each encounter: NPC agents react first (generating dialogue and updating internal state), then the PC observes NPC reactions alongside the scene and makes a choice. All agents witness the outcome, which feeds into their hippocampus. After the campaign, per-NPC memory exports are available in the report.
+
+### Encounter Templates
+
+Campaigns can reference reusable encounter templates from the encounter library instead of defining every encounter inline. Use the `template:` key in an encounter definition:
+
+```yaml
+encounters:
+  forest_fight:
+    template: "combat/forest_ambush"
+    active_npcs: [torchbearer]
+    branches:
+      fight: throne_room
+      flee: __END__
+```
+
+Templates store campaign-independent parts (scene prose, choices, dice mechanics). Campaign YAML adds the wiring (active_npcs, branches, on_choice, dialogue_hints). Templates are discovered from three search paths: campaign-local directory, `~/.maxim/encounters/`, and bundled encounters.
+
 For full details on campaign authoring, character definitions, and the encounter system, see [DM Campaigns Guide](../dm_campaigns_guide.md).
 
 ## Research Protocol

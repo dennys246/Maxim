@@ -122,6 +122,39 @@ encounter_name:
     found_clue: "Ah, you found it!"
 ```
 
+#### Encounter Templates
+
+Instead of defining every encounter inline, reference reusable templates from the encounter library:
+
+```yaml
+encounters:
+  forest_fight:
+    template: "combat/forest_ambush"   # Pulls scene, choices, dice from library
+    active_npcs: [guard, torchbearer]  # Campaign-specific wiring
+    branches:
+      fight: throne_room
+      flee: __END__
+    dialogue_hints:
+      default: "Stand your ground!"
+```
+
+Templates store the campaign-independent parts (scene prose, choices, dice mechanics). Campaign YAML adds the wiring (active_npcs, branches, on_choice, dialogue_hints) that connects the encounter to the rest of the campaign. Campaign-specific keys override template keys.
+
+Templates are discovered from three search paths (highest priority first):
+1. Campaign-local directory (same folder as the campaign YAML)
+2. User encounters (`~/.maxim/encounters/`)
+3. Bundled encounters (`src/maxim/_data/encounters/`)
+
+Query available templates programmatically:
+
+```python
+from maxim.simulation.encounter_library import EncounterLibrary
+
+library = EncounterLibrary()
+combats = library.query(tags=["combat"], difficulty=3)
+template = library.get("combat/forest_ambush")
+```
+
 ### Choices and Branching
 
 - **Choices** are the options presented to the AUT at the end of each scene
@@ -148,6 +181,47 @@ encounters:
     dialogue_hints:
       default: "State your business."
       has_permit: "Ah, you have a permit. Pass through."
+```
+
+#### Component Registry References
+
+Instead of defining NPC specs inline, reference reusable templates from the SEM Component Registry:
+
+```yaml
+npcs:
+  guard:
+    ref: "npcs/guard"                  # Resolved from component registry
+  captain:
+    ref: "npcs/guard"                  # Same template, different instance
+    name: captain_aldric               # Override fields inline
+    sensors:
+      hp: { initial: 25 }
+```
+
+Bare string values also work: `guard: "npcs/guard"`. Templates are discovered from `~/.maxim/components/`, bundled components, and the campaign-local directory. Use `extends:` within component YAML to inherit from a parent template.
+
+#### NPC Fields for Party Mode
+
+When `party_mode: true` is set on the campaign, NPCs support additional fields that control their cognitive capabilities:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `remembers` | bool | `true` | NPC gets its own Hippocampus for episodic memory |
+| `learns` | bool | `true` | NPC gets its own NAc for causal learning |
+| `model_tier` | str | `"small"` | LLM tier for NPC reasoning (`small`, `medium`, `large`) |
+
+```yaml
+npcs:
+  torchbearer:
+    ref: "npcs/torchbearer"
+    remembers: true
+    learns: true
+    model_tier: small
+  crowd_extra:
+    ref: "npcs/commoner"
+    remembers: false        # No memory — ambient NPC
+    learns: false
+    model_tier: small
 ```
 
 ### Dice Checks
@@ -213,6 +287,30 @@ Results appear in the campaign report:
 ```
   Bio-system expectations: 3/4 passed
 ```
+
+## Party Mode (Multi-Agent Campaigns)
+
+Enable `party_mode: true` on the campaign to run with NPC agents that have real Hippocampus and NAc instances. Each NPC receives scene narrative, generates dialogue, learns causal patterns, and remembers prior encounters.
+
+```yaml
+campaign:
+  name: haunted_manor
+  goal: test multi-agent memory and social dynamics
+  seed: 42
+  party_mode: true
+```
+
+The encounter loop changes when party mode is active:
+
+1. DM delivers scene narrative to ALL agents (PC + active NPCs)
+2. NPC agents react first (generate dialogue, update internal state)
+3. PC agent observes NPC reactions alongside the scene, then makes a choice
+4. DM resolves the choice and applies effects
+5. All agents witness the outcome (feeds into their hippocampus)
+
+This means NPCs remember prior encounters, learn causal patterns from the PC's behavior, and adapt their dialogue accordingly. After the campaign, per-NPC memory exports are available via `party.get_agent_memories()`.
+
+Party mode requires more LLM inference (one call per NPC per encounter). Use `model_tier: small` on NPCs to keep costs manageable for ambient characters.
 
 ## Tips for Effective Campaigns
 

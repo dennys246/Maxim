@@ -16,7 +16,6 @@ import time
 import wave
 from typing import Any
 
-import cv2
 import numpy as np
 
 from maxim.utils.audio import resample_audio, to_int16
@@ -340,6 +339,14 @@ def video_writer_worker(
     video_path: str,
 ) -> None:
     """Drain *frame_save_queue* and write frames to a video file on disk."""
+
+    try:
+        import cv2
+    except ImportError:
+        raise ImportError(
+            "OpenCV is required for video recording. "
+            "Install with: pip install pymaxim[vision]"
+        ) from None
 
     writer = None
     opened = False

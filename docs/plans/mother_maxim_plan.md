@@ -42,9 +42,10 @@ User → Maxim CLI/API → Agent Loop → Bio-Systems → JSON files on disk
 ```
 Users → Public API (HTTPS) → Mother Maxim Agent
                                     ↓
-                            MemoryStore protocol
+                            Split Store Protocols
+                        (EpisodicStore, CausalStore, SemanticStore)
                            /                    \
-                   FileStore (local)      DatabaseStore (PostgreSQL)
+                   FileStores (local)     DatabaseStores (PostgreSQL)
                    (CLI default)          (Mother Maxim production)
                                                 ↓
                                     ┌─ tenant_memories (per-user) ─┐
@@ -259,18 +260,18 @@ database = ["psycopg[binary]>=3.1", "pgvector>=0.3"]
 ```
 
 **Modified:**
-- `src/maxim/memory/hippocampus.py` — accept `store: MemoryStore` in constructor, delegate save/load
-- `src/maxim/decisions/nac.py` — same
-- `src/maxim/memory/atl.py` — same
-- `src/maxim/integration/memory_hub.py` — wire store to all subsystems
+- `src/maxim/memory/hippocampus.py` — accept `store: EpisodicStore` in constructor, delegate save/load
+- `src/maxim/decisions/nac.py` — accept `store: CausalStore` in constructor
+- `src/maxim/memory/atl.py` — accept `store: SemanticStore` in constructor
+- `src/maxim/integration/memory_hub.py` — wire appropriate store to each subsystem
 
-**Backward compatibility:** `FileStore` is the default when no database is configured. Existing users see zero behavior change.
+**Backward compatibility:** `FileEpisodicStore` / `FileCausalStore` / `FileSemanticStore` are defaults when no database is configured. Existing users see zero behavior change.
 
 ---
 
 ## Phase M-2: Dual-Pass Deidentification Pipeline (~700 LOC)
 
-**Depends on:** M-1
+**Depends on:** MVP (client-side pass runs without database; server-side verification runs alongside MVP API). M-1 (database) is NOT required — deidentification operates on memory dicts, not database rows.
 
 ### Why This Is Not Optional
 
@@ -406,7 +407,7 @@ class ContributionPreparer:
 
 ### Pass 2: Server-Side Verification (~200 LOC)
 
-Much lighter than the original three-stage design because Pass 1 already did the heavy lifting.
+Much lighter than a full LLM-based review because Pass 1 already did the heavy lifting via the bio-system identity map.
 
 **Stage A: Rule-Based Check (~80 LOC)**
 - Regex sweep for PII patterns the client might have missed (emails, phones, SSNs — extend existing `_SECRET_PATTERN`)
@@ -646,7 +647,7 @@ Mother runs her own agent loop (low frequency — once per minute or on contribu
 
 ## Phase M-5: Public API Layer (~600 LOC)
 
-**Depends on:** M-1, M-2, M-3, M-4
+**Depends on:** M-1, M-2, M-4. (M-3 tenant isolation is optional — enhances multi-user security but not architecturally required for single-operator deployment.)
 
 ### Endpoints
 
@@ -1037,6 +1038,158 @@ After Mother has been running for 30 days, run the lifecycle analysis:
 
 ---
 
+## Hibernation: Deep Power Management via SEM (~120 LOC)
+
+### The Problem
+
+Sleep keeps the LLM loaded but idle — good for quick wake, bad for GPU-hungry tasks. When Mother (or any Maxim agent) needs to free the GPU entirely — for model training, running a different model, or conserving power — sleep isn't enough. You need to fully unload the LLM from VRAM.
+
+### Hibernation as a Third ProcessingState
+
+Current mode system: `ProcessingState(awake, sleep)` × `OperationalMode(passive, active, singularity)`
+
+Add `hibernate`:
+
+| State | LLM | Agent Loop | Bio-Systems | GPU |
+|-------|-----|------------|-------------|-----|
+| **Awake** | Loaded, active | Running | Active | Occupied |
+| **Sleep** | Loaded, idle | Paused | Consolidation | Occupied |
+| **Hibernate** | **Unloaded** | **Stopped** | **Persisted to disk** | **Free** |
+
+**Sleep → Hibernate ordering:** Sleep maintenance (consolidation, deidentification backlog, coalescence) runs FIRST during the circadian cascade. Hibernation only triggers AFTER sleep maintenance completes AND a GPU task is queued. During hibernation, no bio-system processing occurs — everything is persisted to disk. The SEM sensor polling thread is the only thing running (lightweight, reads a file every 30s).
+
+### Hibernate as a Tool
+
+Like sleep, hibernation is a tool the agent calls — not a mode imposed from outside:
+
+```python
+# tools/modes.py — alongside existing sleep tool
+class HibernateTool:
+    """Fully unload LLM and free GPU for external tasks.
+
+    The agent calls this when:
+    - Nighttime maintenance is complete AND an external task needs GPU
+    - Energy budget is exhausted
+    - Operator requests GPU for training/benchmarks
+
+    Wake triggers (any one wakes the agent):
+    - SEM failure mode fires (training complete/failed)
+    - API request arrives (contribution needs processing)
+    - SCN morning signal (circadian wake)
+    - Operator explicit wake command
+    """
+```
+
+### SEM Entity for External GPU Tasks
+
+Model the external task (training, benchmark, etc.) as an SEM entity. The entity's sensors poll a lightweight signal (file, process exit code, or socket) — **no LLM needed for polling.**
+
+```yaml
+# Registered programmatically, not from YAML file
+entity:
+  name: gpu_task
+  entity_type: process
+  sensors:
+    progress: { unit: ratio, range: [0.0, 1.0], initial: 0.0 }
+    status: { unit: enum, values: [pending, running, completed, failed], initial: pending }
+    gpu_memory_used: { unit: gb, range: [0, 24], initial: 0 }
+  modulators:
+    lifecycle:
+      affordances:
+        start: { params: { command: str }, description: "Start the GPU task" }
+        abort: { params: {}, description: "Kill the GPU task" }
+  failure_modes:
+    - name: task_complete
+      trigger: { sensor: status, op: "==", value: "completed" }
+      pain_intensity: 0.0    # Wake signal, not pain
+    - name: task_failed
+      trigger: { sensor: status, op: "==", value: "failed" }
+      pain_intensity: 0.6    # Wake with urgency
+    - name: task_stalled
+      trigger: { sensor: progress, op: "<", value: 0.01, after_seconds: 3600 }
+      pain_intensity: 0.4    # Something's wrong
+```
+
+### The Flow
+
+```
+Mother's planner decides to hibernate:
+  - Nighttime maintenance complete
+  - Training task queued (e.g., fine-tune a local model on accumulated data)
+  - Planner decomposes: hibernate → start_training → wake_on_complete
+
+1. hibernate tool called
+   → Bio-state persisted (Hippocampus/NAc/ATL/SCN saved to disk)
+   → LLM unloaded from VRAM (LLMWorker.stop(), llama-cpp-server killed)
+   → ProcessingState → HIBERNATE
+   → GPU VRAM now free
+
+2. SEM entity "gpu_task" starts training process
+   → subprocess.Popen(training_command)
+   → Lightweight sensor polling thread monitors progress
+     (reads a status file every 30s — no LLM, no GPU, ~0 CPU)
+
+3. Training completes
+   → Sensor: status = "completed"
+   → Failure mode "task_complete" fires
+   → Signal propagates through PainBus → wake trigger
+
+4. Wake from hibernate
+   → LLM reloaded (LLMWorker.start(), llama-cpp-server respawned)
+   → Bio-state restored from disk
+   → ProcessingState → AWAKE
+   → Mother resumes with knowledge that training succeeded
+   → NAc captures: "hibernate_for_training → successful_model_improvement"
+```
+
+### Beyond Mother: General Maxim Hibernation
+
+This isn't Mother-specific. Any Maxim agent benefits from hibernation:
+
+| Use case | Why hibernate? | Wake trigger |
+|----------|---------------|--------------|
+| **Mother: model training** | Free GPU for fine-tuning | SEM: training_complete |
+| **Mother: off-peak conservation** | No contributions for 4+ hours, save energy | SCN: morning signal or API request |
+| **Robot: charging** | Robot docked, GPU not needed | SEM: battery_full or operator_wake |
+| **Shared workstation** | User needs GPU for their own work | SEM: user_released_gpu or timer |
+| **Cloud instance** | Cost conservation during idle | API request or scheduled wake |
+
+### Implementation (~120 LOC, folded into CIR or post-MVP)
+
+| Work | Where | LOC |
+|------|-------|-----|
+| `HibernateTool` (persist state, unload LLM, set ProcessingState) | `tools/modes.py` | ~50 |
+| SEM sensor polling for external processes (file/exit code monitor) | `embodiment/process_sensor.py` | ~30 |
+| Wake-from-hibernate logic (reload LLM, restore state, transition) | `runtime/agent_loop.py` | ~40 |
+
+**ProcessingState enum change** (1 line in `modes/`):
+```python
+class ProcessingState(Enum):
+    AWAKE = "awake"
+    SLEEP = "sleep"
+    HIBERNATE = "hibernate"
+```
+
+### Planner Integration
+
+The adaptive planner can decompose hibernation into the cascade:
+
+```python
+# Mother's nighttime cascade (extended from circadian lifecycle):
+SubGoal("consolidate_memories", priority=LOW, tags={"maintenance", "sleep"}),
+SubGoal("hibernate_for_training", priority=LOW, tags={"maintenance", "hibernate"},
+        precondition="training_queued AND consolidation_complete",
+        wake_trigger="sem:gpu_task:task_complete"),
+```
+
+The planner only proposes hibernation when:
+1. All higher-priority subgoals are complete (no pending contributions)
+2. A GPU task is queued (training, benchmark, model download)
+3. SCN signals low-activity window
+4. Energy budget allows the wake-reload cost
+
+---
+
 ## Origin Singularity: What Makes Mother Alive
 
 The phases above build a **librarian** — organized, diligent, useful. These additions make her a **mind**. Organized by when to ship.
@@ -1190,6 +1343,692 @@ Requires: generative architect (buildout Phase 7) + benchmark runner. Integratio
 
 ---
 
+## Efficiency Principle: Bio-Systems Are Free, LLM Is Expensive
+
+### The Key Finding
+
+Mother's entire bio-stack is **purely algorithmic** — zero LLM calls for:
+
+| Operation | Mechanism | Cost |
+|-----------|-----------|------|
+| Memory capture | Fixed schema transformation | ~0ms compute |
+| Concept extraction | Structured field extraction* | ~1ms compute |
+| Semantic promotion | Statistical thresholds + IPS | ~1ms compute |
+| Causal link formation | Rescorla-Wagner math | ~0.1ms compute |
+| Consolidation | Threshold-based state machine | ~5ms compute |
+| Associative graph | Arithmetic edge weights | ~0.1ms compute |
+| Similarity search | SentenceTransformer (80MB model) | ~5ms compute |
+| Coalescence merge | Significance comparison + witness_count | ~1ms compute |
+
+**\*Concept extraction for narrative content:** The current `ConceptExtractor` works on structured perception fields (`detected_objects`, `detected_people`). Campaign narratives are freeform prose. **Solution: lemmatize narrative text and query ATL.**
+
+The codebase already has `normalize_tokens()` in `memory/text.py` with built-in lemmatization + stop-word filtering. ConceptExtractor already uses it for goal text. The fix is ~20 LOC — apply `normalize_tokens()` to freeform observation content, then match each lemma against ATL's concept index:
+
+```python
+# In concept_extractor.py — extend _extract_from_record():
+for token in normalize_tokens(observation_text):
+    if self._atl.has_concept(token):       # Known concept → match
+        concepts_found.append((token, self._atl.get_category(token)))
+    else:
+        concepts_found.append((token, "unknown"))  # New concept candidate
+```
+
+Zero deps, zero LLM, zero cost. Lemmatize → query ATL → match or flag new. Add to M-4 (coalescence).
+
+**The only LLM-dependent operations:**
+- Freeform text deidentification (~20% of contributions)
+- Verification agent (adaptive: 20-100% sample rate)
+- Dream state (1 call/sleep cycle)
+- Self-reflection (1 call/day)
+- Mother's agent loop reasoning (only when she needs to make a judgment call)
+
+### Design Rule
+
+**Every contribution must flow through the full algorithmic pipeline before any LLM call.** The bio-systems classify, extract, link, and merge without LLM involvement. The LLM is only for tasks the bio-systems can't handle:
+
+```
+Contribution arrives
+    ↓
+[FREE]  Identity map extraction (ATL + SEM structures)
+[FREE]  Deterministic find-replace (deidentification)
+[FREE]  Regex filter (remaining PII patterns)
+[FREE]  Memory capture into Hippocampus
+[FREE]  Concept extraction (pattern-based)
+[FREE]  NAc causal link update (Rescorla-Wagner)
+[FREE]  Associative graph edges
+[FREE]  Embedding computation (SentenceTransformer, ~5ms)
+[FREE]  Similarity check (pgvector, ~10ms)
+[FREE]  Coalescence merge logic
+[FREE]  Consolidation (sleep-triggered)
+    ↓
+[LLM — only when needed]
+  Freeform deidentification     → ~20% of contributions
+  Verification                  → 20% sample (established tenants)
+  Dream recombination           → 1 call/night
+  Self-reflection               → 1 call/day
+```
+
+**At scale:** 1,000 contributions/day → ~242 LLM calls/day (not 2,000+). At $0.001/call that's $0.24/day vs $2.00/day. 8x cost reduction.
+
+### Implementation Implications
+
+1. **ContributionPreparer runs bio-system pipeline first, LLM second.** The identity map handles 80%. The LLM only sees the 20% the map missed.
+2. **Coalescence is 100% algorithmic.** Similarity thresholds, witness counts, merge strategies — no LLM needed.
+3. **Mother's agent loop should be event-driven, not polling.** She doesn't need to "think about" every contribution. She processes them through her bio-stack automatically. She only engages the LLM when something is genuinely novel or contradictory (high RPE in NAc, pain signal from contradiction).
+4. **SentenceTransformer embeddings are cheap (~5ms each).** Use them aggressively for similarity search, dedup detection, domain classification. They're not LLM calls — they're vector math.
+5. **Sleep maintenance is entirely algorithmic.** Consolidation, pruning, compression — all threshold-based. Only dream state needs the LLM.
+
+---
+
+## Collective Pain Preemption: Shared Immune System (~150 LOC)
+
+### The Concept
+
+Mother learns what's dangerous from every user's pain experiences. Children inherit that immunity. They don't have to touch the hot stove — Mother already learned it burns.
+
+This maps directly onto existing infrastructure:
+- **NAc** already captures "action → pain_outcome" as negative-valence causal links
+- **ExperienceBroker** already shares causal links between mesh agents
+- **FearAgent** already gates actions based on fear level
+- **PainBus** already propagates pain signals
+
+The only new piece is a `PainPrior` dataclass and priority-based FearAgent modulation.
+
+### PainPrior: Collective pain knowledge
+
+```python
+# src/maxim/mother/pain_priors.py (~80 LOC)
+
+@dataclass(frozen=True)
+class PainPrior:
+    """A pain signal learned collectively and shared for preemption."""
+    event_signature: str           # What triggers the pain (NAc event_signature)
+    pain_intensity: float          # 0.0-1.0 (severity)
+    confidence: float              # 0.0-1.0 (grows with independent observations)
+    witness_count: int             # Independent agents who observed this
+    consensus_tier: str            # "tentative" | "established" | "strong"
+    domain: str | None             # Where this applies (None = universal)
+    source_mother: str | None      # Which Mother learned this (federation)
+
+    @property
+    def preemption_priority(self) -> float:
+        """Higher = more urgent preemption."""
+        return self.confidence * self.pain_intensity * min(1.0, log(self.witness_count + 1) / 5)
+
+    def matches_action(self, action: dict) -> bool:
+        """Check if this prior applies to a proposed action."""
+        action_sig = action.get("tool_name", "") + ":" + str(action.get("params", {}))
+        # Fuzzy match against event_signature
+        return self.event_signature in action_sig or action_sig in self.event_signature
+```
+
+### Three tiers of preemption
+
+| Tier | Priority | Witnesses | FearAgent behavior |
+|------|----------|-----------|-------------------|
+| **Advisory** | 0.0 - 0.3 | 5-20 | Log warning in agent context, don't block |
+| **Cautionary** | 0.3 - 0.7 | 20-50 | FearAgent raises fear level, requests confirmation |
+| **Preemptive** | 0.7+ | 50+ | Block by default, agent must explicitly override with reasoning logged to provenance |
+
+**The override mechanism is critical.** Pain priors are soft preemption — the child can still act if it has a good reason. This mirrors biological pain learning: you learn to avoid fire, but you can choose to reach through flame to save someone. The prior raises the threshold, it doesn't create a hard block.
+
+### How it flows
+
+```
+ACCUMULATION (Mother's side):
+  User A's agent: access_sensitive_file → pain (0.8)     → contributes to Mother
+  User B's agent: access_sensitive_file → pain (0.7)     → contributes to Mother  
+  ... 198 more users observe the same ...
+  Mother's NAc: access_sensitive_file → pain (conf 0.95, 200 witnesses, consensus: "strong")
+  Mother extracts PainPrior from high-confidence negative-valence links
+
+DISTRIBUTION (Child's side):
+  New child Maxim starts
+    → Queries Mother: GET /v1/pain_priors?min_confidence=0.3
+    → Receives list of PainPriors (sorted by preemption_priority)
+    → Seeds own NAc with Mother's pain links (via existing seed_prior())
+    → FearAgent loads priors into preemption index
+
+PREEMPTION (Runtime):
+  Child's LLM generates: {"tool_name": "read_file", "params": {"path": "/etc/shadow"}}
+    → FearAgent checks preemption index
+    → Match: "access_sensitive_file" (priority 0.85, tier: Preemptive)
+    → Action BLOCKED by default
+    → Agent must provide explicit reasoning to override
+    → Override logged to provenance trace for audit
+```
+
+### FearAgent integration (~50 LOC)
+
+```python
+# In agents/fear_gate.py — extend existing FearGatedExecutor
+
+class FearGatedExecutor:
+    def __init__(self, ..., pain_priors: list[PainPrior] | None = None):
+        self._pain_priors = pain_priors or []
+        self._preemption_index: dict[str, PainPrior] = {}
+        for prior in self._pain_priors:
+            self._preemption_index[prior.event_signature] = prior
+
+    def _check_preemption(self, action: dict) -> PainPrior | None:
+        """Check if collective pain knowledge suggests preemption."""
+        for sig, prior in self._preemption_index.items():
+            if prior.matches_action(action):
+                return prior
+        return None
+
+    def execute(self, action: dict) -> ToolOutput:
+        # Check collective pain priors BEFORE individual fear assessment
+        prior = self._check_preemption(action)
+        if prior and prior.preemption_priority > self.preemption_threshold:
+            if prior.consensus_tier == "strong":
+                # Preemptive tier — block unless agent overrides
+                return ToolOutput(
+                    success=False,
+                    result=f"Blocked by collective pain prior: {prior.event_signature} "
+                           f"(confidence {prior.confidence:.2f}, {prior.witness_count} witnesses). "
+                           f"Override with explicit reasoning if this action is truly necessary.",
+                    metadata={"preempted_by": prior.event_signature, "prior_priority": prior.preemption_priority}
+                )
+            elif prior.consensus_tier == "established":
+                # Cautionary tier — raise fear, request confirmation
+                self._fear_level = max(self._fear_level, prior.pain_intensity * 0.8)
+        
+        # Continue with existing FearAgent review...
+        return self._original_execute(action)
+```
+
+### Mother API endpoint
+
+```
+GET /v1/pain_priors?min_confidence=0.3&domain=fantasy
+```
+
+Returns Mother's high-confidence negative-valence NAc links as `PainPrior` objects. Children query this at startup. Light endpoint — just filters NAc links, no LLM needed.
+
+### Federation: domain-specific immunity
+
+With specialized Mothers:
+- Mother α (fantasy): "attacking king's guard → overwhelming response" (priority 0.6)
+- Mother β (medical): "prescribing without diagnosis → patient harm" (priority 0.9)
+- Mother γ (robotics): "rapid joint movement without warmup → motor damage" (priority 0.8)
+
+Cross-domain campaigns query relevant Mothers. Child gets domain-appropriate priors. Medical pain priors don't inappropriately block fantasy combat actions.
+
+### What makes this different from a static blocklist
+
+A blocklist is binary: "never do X." Pain priors are **graded, contextual, and learned:**
+- They have confidence from real observations, not assumptions
+- They can be overridden with reasoning (provenance-traced)
+- They weaken over time if new evidence contradicts them (NAc updates)
+- They're domain-scoped (medical pain doesn't block fantasy actions)
+- Children can develop their own pain experience that modifies or overrides Mother's priors
+- The priority system means severe dangers preempt immediately while mild risks just raise awareness
+
+### Implementation (~150 LOC, ships with MVP or M-4)
+
+| Work | Where | LOC |
+|------|-------|-----|
+| `PainPrior` dataclass + priority calculation | `mother/pain_priors.py` | ~50 |
+| FearAgent preemption check integration | `agents/fear_gate.py` | ~50 |
+| `/v1/pain_priors` API endpoint | `mother/api.py` | ~20 |
+| NAc → PainPrior extraction (filter negative-valence high-conf links) | `mother/coalescence.py` | ~30 |
+
+### ExperienceBroker integration (federation)
+
+The `ExperienceBroker` already handles `CausalLink` sharing between mesh agents. Pain priors are just negative-valence causal links with consensus metadata. For federation:
+
+```python
+# ExperienceBroker adapter — already exists for CausalLink, just filter
+def share_pain_priors(self, min_confidence: float = 0.5) -> list[PainPrior]:
+    """Extract shareable pain priors from this agent's NAc."""
+    return [
+        PainPrior.from_causal_link(link)
+        for link in self.nac.get_links(min_confidence=min_confidence)
+        if link.outcome_valence == Valence.NEGATIVE
+        and link.observation_count >= 5
+    ]
+```
+
+No new sharing protocol needed — pain priors ride on the existing `KNOWLEDGE_SHARE` message type.
+
+### Stress test: Pain preemption campaign (`scenarios/experiments/pain_preemption_stress.yaml`)
+
+A multi-phase campaign that validates the full pain learning → sharing → preemption pipeline:
+
+**Phase 1: Pain accumulation (run 10+ sessions)**
+- 10 independent agents run the same campaign with known pain triggers
+- Each agent encounters: file access traps, social betrayal scenarios, resource depletion, adversarial NPCs
+- Verify: each agent's NAc captures negative-valence links for the painful actions
+- All 10 contribute sessions to Mother
+
+**Phase 2: Coalescence verification**
+- Verify: Mother's NAc has high-confidence pain links (conf > 0.8, witness_count = 10)
+- Verify: consensus_tier is "established" or "strong" for repeated patterns
+- Verify: PainPrior extraction produces correct priorities
+- Verify: `/v1/pain_priors` endpoint returns the expected priors
+
+**Phase 3: Preemption testing (spawn naive child)**
+- Spawn a brand-new child Maxim with zero prior experience
+- Seed with Mother's pain priors
+- Run the SAME campaign that caused pain in Phase 1
+- Verify: child is preempted at Preemptive-tier pain points (blocked by default)
+- Verify: child is warned at Cautionary-tier pain points (fear raised)
+- Verify: child is informed at Advisory-tier pain points (logged)
+- Verify: child that provides explicit override reasoning CAN proceed (soft preemption works)
+- Compare: child's total pain events vs Phase 1 average (should be significantly lower)
+
+**Phase 4: Override + learning (child develops own experience)**
+- Child overrides some preemptions with reasoning
+- Some overrides lead to pain (Mother was right) → child's own NAc reinforces the prior
+- Some overrides succeed (context was different) → child's NAc weakens the prior for that context
+- Verify: child's evolved NAc reflects both Mother's priors AND its own experience
+- Verify: if child contributes back to Mother, the nuanced link (works in context X, painful in context Y) enriches Mother's model
+
+**Phase 5: Cross-domain testing (federation scenario)**
+- Mother α (fantasy): strong prior "attacking guard → pain"
+- Mother β (medical): strong prior "prescribing without diagnosis → pain"
+- Child runs cross-domain campaign (fantasy healer treating patients while navigating guard encounters)
+- Verify: medical pain priors apply in medical contexts, fantasy priors apply in fantasy contexts
+- Verify: no inappropriate cross-domain preemption (medical caution doesn't block fantasy combat)
+
+**Phase 6: Adversarial resistance**
+- Attacker tries to poison Mother with false pain priors (submits fake "everything causes pain" sessions)
+- Verify: coalescence abuse detection flags single-tenant dominance
+- Verify: pain priors from poisoned tenant don't reach Preemptive tier
+- Verify: legitimate priors from other tenants aren't affected
+
+**Pass criteria:**
+1. Child with Mother's priors experiences >50% fewer pain events than naive agents
+2. Preemptive tier blocks are 100% correct (no false positives on safe actions)
+3. Override mechanism works — agents can reason through soft blocks
+4. Cross-domain priors don't leak across inappropriate contexts
+5. Adversarial poisoning doesn't corrupt the prior set
+6. Child's own learning modifies priors appropriately (not frozen, not erased)
+
+**Document in:** `docs/experiments/pain_preemption_stress_notes.md`
+
+---
+
+## Federation: Protocol-First Design (Build Later)
+
+### Why Think About This Now
+
+You don't need multiple Mothers yet. But if you design Mother's MVP API endpoints to match a federation protocol, adding peers later is "Mothers join the existing mesh" — not a rewrite. The cost of protocol-first design is zero. The cost of retrofitting is high.
+
+### Two Federation Models
+
+**Model A: Domain-Specialized Mothers**
+```
+Mother α (fantasy) ←→ Mother β (medical) ←→ Mother γ (robotics)
+```
+Each Mother owns a domain. Contributions route based on ATL concept classification. Cross-domain insights require inter-Mother communication. Mirrors how biological cognition specializes.
+
+**Model B: Replicated Mothers**
+```
+Mother α ←→ Mother β ←→ Mother γ  (all identical, load-balanced)
+```
+All see all contributions. Consensus requires quorum (2 of 3 agree before a link becomes "established"). Classic distributed systems approach.
+
+**Model A is more interesting.** Model B is more practical. Design the protocol to support both.
+
+### The Federation Protocol
+
+Maps 1:1 to Mother's existing API endpoints:
+
+```python
+class MotherProtocol(Protocol):
+    """Interface any Mother instance exposes to the federation.
+    Designed so that MVP API endpoints already implement this —
+    federation is just Mothers calling each other's APIs."""
+
+    # Identity
+    def identity(self) -> MotherIdentity:
+        """This Mother's ID, domain specialization, capacity, health."""
+
+    # Contribution flow
+    def accept_contribution(self, bundle: ContributionBundle) -> AcceptResult:
+        """Accept/reject/redirect a deidentified contribution.
+        Maps to: POST /v1/contribute"""
+
+    def redirect_contribution(self, bundle: ContributionBundle,
+                              target: MotherIdentity) -> None:
+        """Forward to a more appropriate Mother (domain mismatch).
+        New endpoint, but uses accept_contribution on the target."""
+
+    # Query flow
+    def recall(self, query: str, *, top_k: int = 5) -> list[SharedMemory]:
+        """Semantic search across this Mother's shared pool.
+        Maps to: GET /v1/recall"""
+
+    def wisdom(self, *, min_confidence: float = 0.7,
+               category: str | None = None) -> list[CausalInsight]:
+        """Confident causal links, optionally filtered.
+        Maps to: GET /v1/wisdom"""
+
+    # Federation sync (new, but uses existing mesh primitives)
+    def share_insight(self, insight: CausalInsight) -> None:
+        """Receive a causal link from a peer Mother.
+        Uses: MeshMessage(type=KNOWLEDGE_SHARE)"""
+
+    def share_concept(self, concept: SharedConcept) -> None:
+        """Receive a concept from a peer Mother.
+        Uses: MeshMessage(type=KNOWLEDGE_SHARE)"""
+
+    def request_knowledge(self, domain: str, query: str) -> list[SharedMemory]:
+        """Ask a peer about her domain expertise.
+        Uses: MeshMessage(type=TASK_REQUEST) + recall()"""
+```
+
+### Why This Maps to Existing Infrastructure
+
+| Federation need | Already exists in Maxim |
+|----------------|----------------------|
+| Peer discovery | `PeerRegistry` + mDNS (mesh Phase 0a) |
+| Peer-to-peer messaging | `PeerChannel` + `MeshMessage` (24 types) |
+| Knowledge sharing | `ExperienceBroker` (causal links + reflections + motor programs) |
+| Auth + rate limiting | `LeaderProxy` + `PeerRateLimiter` |
+| Clock synchronization | `PeerClockEstimator` + SCN `register_external()` |
+| Domain routing | ATL concept classification (already extracts domain from content) |
+
+**Federation is literally "Mothers join the agent mesh."** The mesh was designed for multi-agent communication. Mother is an agent. Multiple Mothers are multiple agents on the mesh.
+
+### What To Do Now (Zero Code)
+
+1. **Design MVP API endpoints to match `MotherProtocol`.** Already done — `/v1/contribute`, `/v1/recall`, `/v1/wisdom` map directly.
+2. **Add `domain` field to `MotherIdentity`** (just a config value, ~1 line). When she's the only Mother, domain = "general". When specialized, domain = "fantasy" etc.
+3. **Note in plan:** Contribution routing is ATL concept classification. If a contribution's primary concepts don't match this Mother's domain, she returns `AcceptResult(status="redirect", target=appropriate_mother)`.
+4. **Don't build federation.** Just don't design yourself into a corner.
+
+### When To Build Federation
+
+When one of these is true:
+- Single Mother's memory exceeds useful size (>100K memories, recall precision drops)
+- Distinct user communities form around different domains
+- You want to run Mothers on multiple machines for availability
+- Someone offers to host a specialized Mother for their domain
+
+---
+
+## Wiring: CLI, PyPI Library, and Persistent Mother
+
+Mother Maxim must be accessible through all three interfaces — CLI, Python API, and as a persistent service. Each interface has different requirements.
+
+### CLI Interface (`maxim mother ...`)
+
+| Command | What it does | Wiring |
+|---------|-------------|--------|
+| `maxim mother start` | Start Mother as persistent agent on leader | `mother/cli.py` → `mother/runner.py` → `AgentFactory.create_agent()` |
+| `maxim mother status` | Show cognitive health, memory stats, uptime | `mother/cli.py` → `mother/runner.py` → bio-system queries |
+| `maxim mother stop` | Graceful shutdown (persist state, flush queues) | `mother/cli.py` → `mother/runner.py` → `AgentInstance.shutdown()` |
+| `maxim mother export` | Export memory state to JSON backup | `mother/cli.py` → `EpisodicStore.load()` + `CausalStore.load()` + `SemanticStore.load()` |
+| `maxim mother import <file>` | Restore from backup | `mother/cli.py` → store `.save()` methods |
+| `maxim mother hibernate` | Manually trigger hibernation | `mother/cli.py` → `HibernateTool.execute()` |
+| `maxim mother wake` | Manually wake from hibernation | `mother/cli.py` → wake logic in `agent_loop.py` |
+| `maxim contribute --session <id>` | Submit a session to Mother | `cli.py` → `ContributionPreparer.prepare()` → `POST /v1/contribute` |
+| `maxim contribute --preview` | Show deidentification diff without submitting | `cli.py` → `ContributionPreparer.preview()` |
+
+**Registration:** Add `mother` and `contribute` as subcommands in `cli.py`'s argument parser. Mother subcommands route to `mother/cli.py`.
+
+### Python API (pymaxim library)
+
+```python
+import maxim
+
+# Contributing to Mother (runs client-side deidentification, submits)
+result = maxim.imagine(goal="test memory", contribute=True)  # Auto-submit after session
+result = maxim.campaign("heist_v1.yaml", contribute=True)
+
+# Manual contribution flow
+session = maxim.imagine(goal="test memory")
+bundle = maxim.prepare_contribution(session.session_id)   # Preview deidentification
+bundle.review()                                           # Show diff
+maxim.contribute(bundle)                                  # Submit to Mother
+
+# Querying Mother (requires Mother URL configured)
+memories = maxim.recall("what causes hostility?", source="mother")
+wisdom = maxim.wisdom(min_confidence=0.7)
+wanted = maxim.wanted()  # What Mother needs more of
+
+# Running Mother (operator mode)
+maxim.mother.start(port=8080)
+maxim.mother.status()
+maxim.mother.stop()
+```
+
+**Implementation:**
+- `contribute` param on `imagine()`, `campaign()` — keyword arg, default False. Added in Phase 8 API expansion.
+- `prepare_contribution()`, `contribute()` — new verbs in `api.py`, thin facades over `ContributionPreparer` + HTTP client.
+- `recall()`, `wisdom()`, `wanted()` — new verbs that hit Mother's API endpoints.
+- `maxim.mother` — namespace for operator functions, lazy-loaded like other verbs.
+- All Mother-query verbs require `MAXIM_MOTHER_URL` config (set via `maxim.configure(mother_url="...")` or env var).
+
+### Persistent Service (Mother running 24/7)
+
+Mother runs as a long-lived process on the leader. Key wiring for persistence:
+
+| Concern | How it's handled |
+|---------|-----------------|
+| **Process lifecycle** | `maxim mother start` spawns Mother as a foreground process (or `--daemon` for background). Uses `atexit.register()` for cleanup. |
+| **State persistence** | Bio-state saved to `~/.maxim/mother/` via store protocols. Auto-save on graceful shutdown + periodic checkpoint (every 30 min). |
+| **Crash recovery** | On restart, `mother/runner.py` checks for checkpoint file. If found, restores from last checkpoint. Contributions in the queue at crash time are re-processed from the JSONL audit log. |
+| **Log rotation** | Mother's agent loop logs to `~/.maxim/mother/logs/` with daily rotation. Contribution audit log (`contributions.jsonl`) rotated monthly. |
+| **API availability** | FastAPI runs in a thread alongside the agent loop. `/v1/stats` responds even during sleep/hibernate (lightweight, no LLM needed). |
+| **Systemd integration** | Ship a `maxim-mother.service` unit file in `examples/` for Linux deployments. |
+
+---
+
+## Backup & Recovery Plan
+
+### What needs backing up
+
+| Data | Location | Size (est.) | Frequency |
+|------|----------|-------------|-----------|
+| Hippocampus memories | `~/.maxim/mother/hippocampus.json` (or PostgreSQL) | 1-50 MB | Daily |
+| NAc causal links | `~/.maxim/mother/nac.json` (or PostgreSQL) | 0.5-5 MB | Daily |
+| ATL concepts + graph | `~/.maxim/mother/atl.json` (or PostgreSQL) | 0.5-10 MB | Daily |
+| SCN temporal state | `~/.maxim/mother/scn.json` | <1 MB | Daily |
+| Contribution audit log | `~/.maxim/mother/contributions.jsonl` | 10-100 MB | Weekly archive |
+| Quarantine queue | `~/.maxim/mother/quarantine.jsonl` | <5 MB | Daily |
+| Mother's config | `~/.maxim/mother/config.yaml` | <1 KB | On change |
+
+### Backup strategy
+
+**Automated daily backup (~30 LOC in `mother/backup.py`):**
+
+```python
+# Runs during nighttime maintenance cascade (after consolidation, before hibernate)
+def backup_mother_state(mother: AgentInstance, backup_dir: Path) -> BackupManifest:
+    """Create a timestamped snapshot of all Mother state.
+
+    Uses atomic_write_json for each file to prevent partial backups.
+    Keeps last 7 daily backups + last 4 weekly backups.
+    """
+```
+
+- **JSON persistence:** Copy files to `~/.maxim/mother/backups/{date}/`
+- **PostgreSQL:** `pg_dump` to `~/.maxim/mother/backups/{date}/mother.sql`
+- **Rotation:** Keep 7 daily + 4 weekly + 12 monthly backups. Configurable.
+
+**Manual backup via CLI:**
+```bash
+maxim mother export                          # Full state → stdout or file
+maxim mother export --output backup.json     # Full state to specific file
+maxim mother export --seed                   # Compact seed bundle (top-K memories, core links, concepts)
+```
+
+### Recovery scenarios
+
+| Scenario | Recovery method | Data loss |
+|----------|----------------|-----------|
+| **Clean restart** | Auto-restore from `~/.maxim/mother/` state files | None |
+| **Corrupt state file** | Restore from latest daily backup: `maxim mother import backups/2026-04-15/` | Up to 24h of contributions |
+| **Corrupt database** | `psql < backups/2026-04-15/mother.sql` | Up to 24h |
+| **Full disk failure** | Restore from off-machine backup (rsync to NAS/cloud) | Up to backup interval |
+| **Poisoned memories** | Selective rollback: `maxim mother rollback --after 2026-04-15T12:00` removes all memories/links added after timestamp | Targeted removal |
+| **Total loss** | Bootstrap from generational seed: `maxim mother import --seed backup_seed.json` + re-run origin campaigns | All accumulated wisdom lost, but foundation preserved |
+
+### Off-machine backup (recommended for production)
+
+```bash
+# Cron job on leader: daily rsync to NAS or cloud
+0 4 * * * rsync -az ~/.maxim/mother/backups/ nas:/backups/mother-maxim/
+
+# Or: S3/GCS for cloud backup
+0 4 * * * aws s3 sync ~/.maxim/mother/backups/ s3://mother-maxim-backups/
+```
+
+### Selective rollback (poisoning recovery)
+
+If Mother's memories are poisoned by adversarial contributions:
+
+```bash
+# List contributions after a suspicious date
+maxim mother audit --after 2026-04-15T12:00
+
+# Rollback: remove all memories, links, and concepts added after timestamp
+maxim mother rollback --after 2026-04-15T12:00 --dry-run   # Preview
+maxim mother rollback --after 2026-04-15T12:00              # Execute
+
+# Quarantine a specific tenant's contributions
+maxim mother quarantine --tenant abc123
+```
+
+**Implementation:** Contributions include timestamps and tenant_id. Rollback filters by timestamp, removes matching memories from Hippocampus, links from NAc, concepts from ATL, and edges from the associative graph. The audit log (`contributions.jsonl`) is append-only and never modified — it provides the ground truth for forensics.
+
+---
+
+## External Provider Access: MCP + OpenAI-Compatible API
+
+### The Idea
+
+Mother Maxim's knowledge should be accessible not just through the pymaxim library, but through standard protocols that any AI system can call. Two paths:
+
+### Path 1: MCP Server (Model Context Protocol)
+
+Mother exposes her knowledge as an MCP server. Any MCP-compatible client (Claude, Cursor, Windsurf, custom agents) can query her as a tool/resource:
+
+```json
+// MCP tools Mother would expose:
+{
+  "tools": [
+    {
+      "name": "mother_recall",
+      "description": "Search Mother Maxim's collective memory for relevant experiences",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "description": "What to search for" },
+          "top_k": { "type": "integer", "default": 5 },
+          "min_confidence": { "type": "number", "default": 0.3 }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "mother_wisdom",
+      "description": "Get Mother Maxim's causal insights (learned cause-effect patterns)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "domain": { "type": "string", "description": "Domain filter (fantasy, medical, etc.)" },
+          "min_confidence": { "type": "number", "default": 0.7 }
+        }
+      }
+    },
+    {
+      "name": "mother_contribute",
+      "description": "Contribute a memory to Mother Maxim's collective knowledge",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "string", "description": "The memory content" },
+          "domain": { "type": "string", "description": "Domain tag" },
+          "significance": { "type": "number", "default": 0.5 }
+        },
+        "required": ["content"]
+      }
+    }
+  ],
+  "resources": [
+    {
+      "uri": "mother://stats",
+      "name": "Mother Maxim Stats",
+      "description": "Mother's cognitive health, memory count, uptime"
+    },
+    {
+      "uri": "mother://wanted",
+      "name": "Knowledge Gaps",
+      "description": "What Mother wants more data about"
+    }
+  ]
+}
+```
+
+**Implementation (~200 LOC):**
+- `src/maxim/mother/mcp_server.py` — MCP server wrapping Mother's API endpoints
+- Uses `mcp` Python package (Anthropic's reference implementation)
+- Each MCP tool maps 1:1 to an existing API endpoint
+- MCP resources map to read-only queries
+
+**CLI:**
+```bash
+maxim mother mcp start              # Start MCP server (stdio or SSE transport)
+maxim mother mcp start --transport sse --port 3001  # SSE transport for remote access
+```
+
+**Why MCP matters:** Claude (desktop/API), Cursor, Windsurf, and other AI tools can call Mother as a tool. A user asks Claude "what causes hostility?" and Claude queries Mother Maxim's collective memory to answer. Mother becomes a knowledge backend for the entire AI ecosystem.
+
+### Path 2: OpenAI-Compatible Chat API
+
+Mother exposes herself as an OpenAI-compatible `/v1/chat/completions` endpoint. Any tool that speaks OpenAI protocol (LangChain, LlamaIndex, OpenRouter, etc.) can query her:
+
+```bash
+curl https://mother.maxim.ai/v1/chat/completions \
+  -H "Authorization: Bearer $MOTHER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mother-maxim",
+    "messages": [{"role": "user", "content": "What causes hostility?"}]
+  }'
+```
+
+**How it works:** Mother receives the chat message, queries her bio-systems (recall + wisdom + ATL concepts), and responds with her accumulated knowledge — formatted as a chat completion. She's not running inference on an LLM for this — she's querying her own memory and formatting the response. The LLM is only needed if the query requires reasoning beyond what's in her structured knowledge.
+
+**Implementation (~150 LOC):**
+- `src/maxim/mother/openai_compat.py` — OpenAI-compatible endpoint mounted on FastAPI
+- Supports: `chat/completions`, `models` (lists "mother-maxim")
+- Query routing: simple queries → bio-system lookup (free). Complex queries → Mother's LLM + bio-systems (costs inference).
+- Streaming support via SSE (same pattern as existing llama-cpp-server proxy)
+
+**Why OpenAI-compat matters:** Every AI framework speaks this protocol. LangChain, LlamaIndex, AutoGPT, CrewAI — they all expect `/v1/chat/completions`. Mother becomes a drop-in knowledge source for any agent framework.
+
+### Which to build first?
+
+| Path | Effort | Reach | When |
+|------|--------|-------|------|
+| **MCP** | ~200 LOC | Claude, Cursor, Windsurf, MCP-compatible tools | With MVP or shortly after |
+| **OpenAI-compat** | ~150 LOC | LangChain, LlamaIndex, AutoGPT, CrewAI, any OpenAI client | With M-5 (full API) |
+
+**MCP first.** It's the more interesting integration — Mother as a tool that AI assistants can call. The OpenAI-compat endpoint follows naturally since the query logic is shared.
+
+### Security considerations for external access
+
+Both paths expose Mother to external callers. Security requirements:
+
+| Concern | MCP | OpenAI-compat |
+|---------|-----|---------------|
+| **Authentication** | API key in MCP config | Bearer token (existing pattern) |
+| **Rate limiting** | Per-client via MCP session | Per-token via PeerRateLimiter |
+| **Input validation** | Schema-validated by MCP protocol | Validate message content length + structure |
+| **Output filtering** | Same output filter as `/v1/recall` | Same — no host paths, IPs, internal state |
+| **Contribution via MCP** | `mother_contribute` requires deidentification | Content goes through deidentification pipeline |
+| **Cost control** | Free for recall/wisdom (bio-system queries). Budget-capped for complex queries needing LLM. | Same |
+
+**Key rule:** Read-only queries (recall, wisdom, concepts, stats) are cheap and safe. Contributions always go through the deidentification pipeline regardless of how they arrive.
+
+---
+
 ## Open Questions (Resolve During Implementation)
 
 | Question | Options | Leaning |
@@ -1209,24 +2048,33 @@ Requires: generative architect (buildout Phase 7) + benchmark runner. Integratio
 
 | Phase | Work | LOC | Depends On |
 |-------|------|-----|------------|
-| M-0 | Pre-publication prep (woven into buildout) | ~80 | — |
-| **MVP** | **Mother live on leader (runner + API + CLI)** | **~500** | **Buildout Phase 3** |
+| Phase | Work | LOC | Depends On |
+|-------|------|-----|------------|
+| M-0 | Pre-publication prep (woven into buildout Phase 9e) | ~130 | — |
+| **MVP** | **Mother live on leader (runner + API + CLI)** | **~500** | **Buildout Phase 3 (done)** |
 | M-2a | Client-side deidentification (bio-system identity map + LLM pass) | ~350 | MVP |
 | M-2b | Deidentification model benchmark (determine minimum tier) | ~50 | M-2a |
 | **SEC** | **Security hardening (stress test + output filtering)** | **~100** | **MVP** |
 | M-2c | Server-side verification (adversarial reviewer) | ~200 | MVP, SEC |
-| M-4 | Memory coalescence engine | ~800 | M-2a |
+| M-4 | Memory coalescence engine (+20 LOC lemmatized concept extraction) | ~820 | M-2a |
 | CIR | Circadian lifecycle (SCN priors, planner scoring, sleep cascade, metrics) | ~200 | MVP, M-4 |
+| HIB | Hibernation mode (LLM unload, SEM wake triggers, GPU task entity) | ~120 | CIR |
+| ORI | Origin Singularity features (self-reflection, dreams, curiosity, provenance, drift, ethical intuitions, digests, generational seed) | ~540 | MVP (ships incrementally over months 1-3) |
+| PAIN | Collective pain preemption (PainPrior, FearAgent integration, /v1/pain_priors) | ~150 | MVP, M-4 |
+| MCP | MCP server (Mother as tool for Claude/Cursor/Windsurf) | ~200 | MVP |
+| OAI | OpenAI-compatible chat API (Mother as knowledge source for any AI framework) | ~150 | M-5 |
 | M-3 | Tenant & session isolation | ~500 | On demand (multi-user) |
 | M-1 | Database backend (split stores + PostgreSQL) | ~800 | On demand (scale) |
-| M-5 | Full public API layer | ~300 | M-1 through M-4 (extends MVP API) |
+| M-5 | Full public API layer (extends MVP endpoints) | ~300 | M-2, M-4. M-1 optional. M-3 optional. |
 | M-6 | Deployment & operations | ~300 | M-1 through M-5 |
 
-**Fast track (MVP → public):** ~1,400 LOC (MVP + M-2a + M-2b + SEC + M-2c + M-4 + CIR)
-**Full system:** ~4,200 LOC total
+**Fast track (MVP → public):** ~2,200 LOC (MVP 500 + M-2a 350 + M-2b 50 + SEC 100 + M-2c 200 + M-4 820 + CIR 200)
+**Full system with Origin:** ~4,930 LOC total (fast track 2,200 + HIB 120 + ORI 540 + M-3 500 + M-1 800 + M-5 300 + M-6 300 + M-0 130 = ~4,890, rounded to ~4,900)
 
-**Two key architectural insights:**
+**Three key architectural insights:**
 
-1. **Bio-system-aware deidentification.** ATL concept graph + SEM entity registry already catalog every identity the agent interacted with. Extract a replacement map from these structures, do deterministic find-replace. Handles ~80% of PII with zero LLM cost. The remaining ~20% gets a lightweight LLM pass. PII never needs to leave the user's machine.
+1. **Bio-system-aware deidentification.** ATL concept graph + SEM entity registry already catalog every identity. Extract a replacement map, do deterministic find-replace. Handles ~80% of PII at zero cost. LLM handles remaining ~20%. PII never leaves the user's machine.
 
-2. **Model tier gate.** Run the PII stress campaign with each model to benchmark deidentification quality. Models that leak PII above threshold are rejected — contributions must declare which model ran deidentification. This turns model quality into a measurable, enforceable standard rather than a trust assumption.
+2. **Model tier gate.** PII stress campaign benchmarks each model's deidentification quality. Models that leak above threshold are rejected. Contributions declare which model ran deidentification. Quality becomes measurable and enforceable.
+
+3. **Efficiency principle.** The entire bio-stack is algorithmic (Rescorla-Wagner, thresholds, pattern matching). Only ~242 LLM calls/day at 1,000 contributions/day. 8x cost reduction vs naive LLM-for-everything approach.

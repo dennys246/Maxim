@@ -213,6 +213,32 @@ Aggregate health summary of all biological subsystems in one query. Returns stat
 
 ---
 
+## Adventure Architect Tools
+
+These tools are available when using the `adventure_architect` persona. They let the orchestrator browse reusable content, generate entities from natural language, and emit complete campaign YAML.
+
+### BrowseComponentsTool (`browse_components`)
+Query the SEM Component Registry for reusable entity templates. Filter by category (e.g., `"npcs"`, `"weapons"`, `"environments"`) or tags. Returns component metadata (ref, name, category, tags, extends chain).
+
+**Parameters:** `category`, `tags`, `query`
+
+### BrowseEncountersTool (`browse_encounters`)
+Query the Encounter Library for reusable scene templates. Filter by tags (e.g., `["combat", "social"]`), difficulty range, or narrative role (`"rising_action"`, `"climax"`, etc.). Returns encounter metadata with suggested NPC counts.
+
+**Parameters:** `tags`, `difficulty`, `narrative_role`, `query`
+
+### DesignEntityTool (`design_entity`)
+Generate a complete SEM entity spec from a natural language description. Uses the LLM to produce sensors, modulators, cascade DAGs, and metadata. The output is a valid component YAML that can be saved to `~/.maxim/components/`.
+
+**Parameters:** `description` (required), `category`, `name`
+
+### EmitCampaignTool (`emit_campaign`)
+Emit a complete campaign YAML file from the architect's accumulated design state. Assembles acts, encounters, NPC references, and expectations into a valid campaign definition ready to run with `maxim --sim`.
+
+**Parameters:** `name`, `output_path`
+
+---
+
 ## Learned Tool Index
 
 With 20+ tools registered, the full tool registry wastes hundreds of prompt tokens on irrelevant tool schemas. The **LearnedToolIndex** is a keyword-weighted hashtable that learns which tools match which goals:
@@ -221,7 +247,7 @@ With 20+ tools registered, the full tool registry wastes hundreds of prompt toke
 - **Learned keywords:** Successful tool executions discover new keyword associations from goal text (e.g., "mug" → GrabTool after successful grab of a mug)
 - **Scoring:** Goal text tokenized and matched against index. Matched tools get full schemas (CRITICAL priority), unmatched get name-only listing (NICE_TO_HAVE, dropped first under token pressure)
 - **Learning signals:** Success strengthens keywords. Surfaced-but-unused decays keywords. Failure does NOT weaken (failure ≠ wrong tool choice)
-- **Persistence:** Weights saved to `data/memory/tool_index.json` across sessions
+- **Persistence:** Weights saved to `~/.maxim/memory/tool_index.json` across sessions
 
 Expected savings: ~370 tokens per prompt (74% of tool context) with 20 tools.
 

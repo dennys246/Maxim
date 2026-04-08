@@ -15,8 +15,18 @@ import logging
 import os
 from pathlib import Path
 
-import cv2
 import numpy as np
+
+
+def _import_cv2():
+    try:
+        import cv2
+        return cv2
+    except ImportError:
+        raise ImportError(
+            "OpenCV is required for vision features. "
+            "Install with: pip install pymaxim[vision]"
+        ) from None
 
 from maxim.models.vision.engine import (
     COCO_KEYPOINTS,
@@ -48,6 +58,7 @@ def _det_preprocess(
         (blob, ratio, (pad_w, pad_h))
         where *blob* has shape (1, 3, H, W) float32.
     """
+    cv2 = _import_cv2()
     h, w = img.shape[:2]
     target_h, target_w = input_size
     ratio = min(target_h / h, target_w / w)
@@ -240,6 +251,7 @@ def _get_warp_matrix(
     output_size: tuple[int, int],
 ) -> np.ndarray:
     """Compute 2×3 affine matrix that maps *center*/*scale* ROI → *output_size*."""
+    cv2 = _import_cv2()
     dst_w, dst_h = output_size
     src_w, src_h = scale
 
@@ -269,6 +281,7 @@ def _pose_preprocess(
     Returns:
         (blob, center, scale)
     """
+    cv2 = _import_cv2()
     center, scale = _bbox_xyxy2cs(bbox, padding=1.25)
     warp_mat = _get_warp_matrix(center, scale, input_size)
 
@@ -491,6 +504,7 @@ class RTMEngine(VisionEngine):
         frames: list[np.ndarray],
         conf: float = 0.5,
     ) -> list[list[Detection]]:
+        cv2 = _import_cv2()
         all_detections: list[list[Detection]] = []
 
         for frame_idx, frame in enumerate(frames):
@@ -555,6 +569,7 @@ class RTMEngine(VisionEngine):
         keypoint_conf: float = 0.25,
         min_iou: float = 0.1,
     ) -> PoseResult | None:
+        cv2 = _import_cv2()
         if not self._load_pose():
             return None
 

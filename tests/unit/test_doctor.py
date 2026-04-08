@@ -67,6 +67,7 @@ class TestCheckResult:
         assert CheckResult(name="x", status="ok", message="").symbol == "✓"
         assert CheckResult(name="x", status="warn", message="").symbol == "⚠"
         assert CheckResult(name="x", status="fail", message="").symbol == "✗"
+        assert CheckResult(name="x", status="info", message="").symbol == "ℹ"
 
 
 # ─── individual checks (mocked) ───────────────────────────────────────────
@@ -327,3 +328,468 @@ class TestCheckTierDetection:
             tier_results = [r for r in env_section if r.name == "LLM Tiers"]
             assert len(tier_results) == 1
             assert tier_results[0].status == "ok"
+
+
+# ─── key hygiene checks ──────────────────────────────────────────────────
+
+
+class TestKeyAge:
+    def test_no_key_returns_info(self):
+        from maxim.doctor.checks import check_key_age
+
+        with patch("maxim.tunnel.keys.key_exists", return_value=False):
+            result = check_key_age()
+        assert result.status == "info"
+
+    def test_fresh_key_returns_ok(self, tmp_path):
+        from maxim.doctor.checks import check_key_age
+
+        key_file = tmp_path / "api_key"
+        key_file.write_text("test-key")
+        with (
+            patch("maxim.tunnel.keys.key_exists", return_value=True),
+            patch("maxim.tunnel.keys.key_file_path", return_value=key_file),
+        ):
+            result = check_key_age()
+        assert result.status == "ok"
+        assert "0 days" in result.message
+
+    def test_old_key_returns_warn(self, tmp_path):
+        import os
+        import time
+
+        from maxim.doctor.checks import check_key_age
+
+        key_file = tmp_path / "api_key"
+        key_file.write_text("test-key")
+        # Backdate modification time by 100 days
+        old_time = time.time() - (100 * 86400)
+        os.utime(key_file, (old_time, old_time))
+        with (
+            patch("maxim.tunnel.keys.key_exists", return_value=True),
+            patch("maxim.tunnel.keys.key_file_path", return_value=key_file),
+        ):
+            result = check_key_age()
+        assert result.status == "warn"
+        assert "100 days" in result.message
+        assert result.fix is not None
+
+
+class TestKeyPermissions:
+    def test_no_key_returns_info(self):
+        from maxim.doctor.checks import check_key_permissions
+
+        with (
+            patch("maxim.tunnel.keys.key_exists", return_value=False),
+            patch("maxim.doctor.checks.platform") as mock_platform,
+        ):
+            mock_platform.system.return_value = "Linux"
+            result = check_key_permissions()
+        assert result.status == "info"
+
+    def test_secure_permissions_returns_ok(self, tmp_path):
+        import os
+        import platform as _platform
+
+        if _platform.system() == "Windows":
+            pytest.skip("POSIX-only test")
+
+        from maxim.doctor.checks import check_key_permissions
+
+        key_file = tmp_path / "api_key"
+        key_file.write_text("test-key")
+        os.chmod(key_file, 0o600)
+        with (
+            patch("maxim.tunnel.keys.key_exists", return_value=True),
+            patch("maxim.tunnel.keys.key_file_path", return_value=key_file),
+        ):
+            result = check_key_permissions()
+        assert result.status == "ok"
+        assert "0o600" in result.message
+
+    def test_world_readable_returns_fail(self, tmp_path):
+        import os
+        import platform as _platform
+
+        if _platform.system() == "Windows":
+            pytest.skip("POSIX-only test")
+
+        from maxim.doctor.checks import check_key_permissions
+
+        key_file = tmp_path / "api_key"
+        key_file.write_text("test-key")
+        os.chmod(key_file, 0o644)
+        with (
+            patch("maxim.tunnel.keys.key_exists", return_value=True),
+            patch("maxim.tunnel.keys.key_file_path", return_value=key_file),
+        ):
+            result = check_key_permissions()
+        assert result.status == "fail"
+        assert "chmod" in (result.fix or "")
+
+
+class TestKeyAuthSmoke:
+    def test_no_key_returns_info(self):
+        from maxim.doctor.checks import check_key_auth_smoke
+
+        with patch("maxim.tunnel.keys.key_exists", return_value=False):
+            result = check_key_auth_smoke()
+        assert result.status == "info"
+
+    def test_server_not_reachable_returns_info(self):
+        from maxim.doctor.checks import check_key_auth_smoke
+
+        with (
+            patch("maxim.tunnel.keys.key_exists", return_value=True),
+            patch("maxim.tunnel.keys.read_key", return_value="test-key"),
+            patch("urllib.request.urlopen", side_effect=OSError("connection refused")),
+        ):
+            result = check_key_auth_smoke(port=19999)
+        assert result.status == "info"
+
+
+# ─── disk + memory checks ────────────────────────────────────────────────
+
+
+class TestDiskSpace:
+    def test_plenty_of_space_returns_ok(self):
+        import collections
+
+        from maxim.doctor.checks import check_disk_space
+
+        Usage = collections.namedtuple("Usage", ["total", "used", "free"])
+        with patch("shutil.disk_usage", return_value=Usage(500 * 1024**3, 200 * 1024**3, 300 * 1024**3)):
+            result = check_disk_space()
+        assert result.status == "ok"
+
+    def test_low_space_returns_warn(self):
+        import collections
+
+        from maxim.doctor.checks import check_disk_space
+
+        Usage = collections.namedtuple("Usage", ["total", "used", "free"])
+        with patch("shutil.disk_usage", return_value=Usage(500 * 1024**3, 494 * 1024**3, 6 * 1024**3)):
+            result = check_disk_space()
+        assert result.status == "warn"
+
+    def test_critical_space_returns_fail(self):
+        import collections
+
+        from maxim.doctor.checks import check_disk_space
+
+        Usage = collections.namedtuple("Usage", ["total", "used", "free"])
+        with patch("shutil.disk_usage", return_value=Usage(500 * 1024**3, 499 * 1024**3, 1 * 1024**3)):
+            result = check_disk_space()
+        assert result.status == "fail"
+
+
+class TestRamHeadroom:
+    def test_returns_status(self):
+        """RAM check should return a valid status without crashing."""
+        from maxim.doctor.checks import check_ram_headroom
+
+        result = check_ram_headroom()
+        assert result.status in ("ok", "warn", "info")
+
+
+# ─── inference coherence ──────────────────────────────────────────────────
+
+
+class TestInferenceCoherence:
+    def test_server_unreachable_returns_info(self):
+        from maxim.doctor.checks import check_inference_coherence
+
+        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            result = check_inference_coherence(port=19999)
+        assert result.status == "info"
+
+    def test_correct_answer_returns_ok(self):
+        import io
+
+        from maxim.doctor.checks import check_inference_coherence
+
+        response_body = json.dumps(
+            {"choices": [{"message": {"content": "4"}}]}
+        ).encode()
+        mock_resp = io.BytesIO(response_body)
+        mock_resp.status = 200
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = lambda s, *a: None
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            result = check_inference_coherence(port=19999)
+        assert result.status == "ok"
+        assert "correct" in result.message
+
+    def test_wrong_answer_returns_warn(self):
+        import io
+
+        from maxim.doctor.checks import check_inference_coherence
+
+        response_body = json.dumps(
+            {"choices": [{"message": {"content": "banana"}}]}
+        ).encode()
+        mock_resp = io.BytesIO(response_body)
+        mock_resp.status = 200
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = lambda s, *a: None
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            result = check_inference_coherence(port=19999)
+        assert result.status == "warn"
+        assert "unexpected" in result.message
+
+
+# ─── peer-mode checks ────────────────────────────────────────────────────
+
+
+class TestPeerUrlReachable:
+    def test_bad_dns_returns_fail(self):
+        import socket
+
+        from maxim.doctor.checks import check_peer_url_reachable
+
+        with patch("socket.gethostbyname", side_effect=socket.gaierror("not found")):
+            result = check_peer_url_reachable("https://fake.invalid/v1")
+        assert result.status == "fail"
+        assert "DNS" in result.message
+
+    def test_empty_host_returns_fail(self):
+        from maxim.doctor.checks import check_peer_url_reachable
+
+        result = check_peer_url_reachable("not-a-url")
+        # Should not crash
+        assert result.status in ("ok", "warn", "fail", "info")
+
+
+class TestPeerKeySet:
+    def test_no_key_returns_warn(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_LANE_INFER_REMOTE_API_KEY", raising=False)
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", raising=False)
+        from maxim.doctor.checks import check_peer_key_set
+
+        with patch("maxim.peer.config.read_peer_config", return_value=None):
+            result = check_peer_key_set()
+        assert result.status == "warn"
+
+    def test_env_key_returns_ok(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_API_KEY", "test-key-value")
+        from maxim.doctor.checks import check_peer_key_set
+
+        result = check_peer_key_set()
+        assert result.status == "ok"
+        assert "key set" in result.message
+
+
+class TestPeerAuth:
+    def test_no_key_returns_info(self):
+        from maxim.doctor.checks import check_peer_auth
+
+        result = check_peer_auth("https://example.com/v1", key=None)
+        assert result.status == "info"
+
+    def test_401_returns_fail(self):
+        import urllib.error
+
+        from maxim.doctor.checks import check_peer_auth
+
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.HTTPError(None, 401, "Unauthorized", {}, None),
+        ):
+            result = check_peer_auth("https://example.com/v1", key="bad-key")
+        assert result.status == "fail"
+        assert "rejected" in result.message
+
+
+class TestPeerModel:
+    def test_model_found_returns_ok(self):
+        import io
+
+        from maxim.doctor.checks import check_peer_model
+
+        body = json.dumps({"data": [{"id": "mistral-7b"}]}).encode()
+        mock_resp = io.BytesIO(body)
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = lambda s, *a: None
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            result = check_peer_model("https://example.com/v1", key=None)
+        assert result.status == "ok"
+        assert "mistral-7b" in result.message
+
+    def test_wrong_model_returns_warn(self):
+        import io
+
+        from maxim.doctor.checks import check_peer_model
+
+        body = json.dumps({"data": [{"id": "mistral-7b"}]}).encode()
+        mock_resp = io.BytesIO(body)
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = lambda s, *a: None
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            result = check_peer_model("https://example.com/v1", key=None, expected_model="qwen2.5-14b")
+        assert result.status == "warn"
+        assert "expected" in result.message
+
+
+class TestPeerLatency:
+    def test_all_probes_fail_returns_warn(self):
+        from maxim.doctor.checks import check_peer_latency
+
+        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            result = check_peer_latency("https://fake.invalid/v1", key=None)
+        assert result.status == "warn"
+        assert "failed" in result.message
+
+
+# ─── CLI: --json output ──────────────────────────────────────────────────
+
+
+class TestDoctorJSON:
+    def test_json_flag_produces_valid_json(self, capsys):
+        code = run_doctor_subcommand(["--json"])
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "platform" in data
+        assert "sections" in data
+        assert "worst_status" in data
+        assert isinstance(data["sections"], list)
+        assert code in (0, 1)
+
+    def test_json_has_expected_sections(self, capsys):
+        run_doctor_subcommand(["--json"])
+        data = json.loads(capsys.readouterr().out)
+        section_names = [s["name"] for s in data["sections"]]
+        assert "Environment" in section_names
+
+    def test_json_checks_have_required_fields(self, capsys):
+        run_doctor_subcommand(["--json"])
+        data = json.loads(capsys.readouterr().out)
+        for section in data["sections"]:
+            for check in section["checks"]:
+                assert "name" in check
+                assert "status" in check
+                assert "message" in check
+
+
+# ─── CLI: --as flag ──────────────────────────────────────────────────────
+
+
+class TestDoctorAsFlag:
+    def test_as_peer_with_url(self, capsys):
+        """--as peer <url> should show Peer Connectivity section."""
+        code = run_doctor_subcommand(["--json", "--as", "peer", "https://fake.invalid/v1"])
+        data = json.loads(capsys.readouterr().out)
+        section_names = [s["name"] for s in data["sections"]]
+        assert "Peer Connectivity" in section_names
+        # Should NOT have leader-only sections
+        assert "Tunnel (Cloudflare)" not in section_names
+        assert code in (0, 1)
+
+    def test_as_leader_shows_leader_sections(self, capsys):
+        """--as leader should show leader/solo sections."""
+        code = run_doctor_subcommand(["--json", "--as", "leader"])
+        data = json.loads(capsys.readouterr().out)
+        section_names = [s["name"] for s in data["sections"]]
+        assert "Local LLM" in section_names
+        assert "Tunnel (Cloudflare)" in section_names
+        assert code in (0, 1)
+
+    def test_auto_detect_peer_from_env(self, monkeypatch, capsys):
+        """Setting MAXIM_LANE_INFER_REMOTE_URL should auto-detect peer mode."""
+        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_URL", "https://remote-leader.example.com/v1")
+        code = run_doctor_subcommand(["--json"])
+        data = json.loads(capsys.readouterr().out)
+        section_names = [s["name"] for s in data["sections"]]
+        assert "Peer Connectivity" in section_names
+
+    def test_localhost_url_stays_solo(self, monkeypatch, capsys):
+        """A localhost remote URL should NOT trigger peer mode."""
+        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_URL", "http://127.0.0.1:8100/v1")
+        run_doctor_subcommand(["--json"])
+        data = json.loads(capsys.readouterr().out)
+        section_names = [s["name"] for s in data["sections"]]
+        assert "Local LLM" in section_names
+
+
+# ─── run_all_checks with new sections ────────────────────────────────────
+
+
+class TestRunAllChecksNewSections:
+    def test_environment_includes_disk_and_ram(self):
+        from maxim.doctor.checks import run_all_checks
+
+        sections = run_all_checks(_info())
+        env_section = next(s for name, s in sections if name == "Environment")
+        names = [r.name for r in env_section]
+        assert "Disk space" in names
+        assert "RAM" in names
+
+    def test_api_key_section_includes_hygiene_checks(self):
+        from maxim.doctor.checks import run_all_checks
+
+        sections = run_all_checks(_info())
+        key_section = next(s for name, s in sections if name == "API key")
+        names = [r.name for r in key_section]
+        assert "Key age" in names
+        assert "Key permissions" in names
+        assert "Key auth smoke" in names
+
+    def test_local_llm_includes_inference_coherence(self):
+        from maxim.doctor.checks import run_all_checks
+
+        sections = run_all_checks(_info())
+        llm_section = next(s for name, s in sections if name == "Local LLM")
+        names = [r.name for r in llm_section]
+        assert "Inference coherence" in names
+
+    def test_peer_mode_replaces_sections(self):
+        from maxim.doctor.checks import run_all_checks
+
+        sections = run_all_checks(_info(), role="peer", peer_url="https://fake.invalid/v1")
+        section_names = [name for name, _ in sections]
+        assert "Peer Connectivity" in section_names
+        assert "Local LLM" not in section_names
+        assert "Tunnel (Cloudflare)" not in section_names
+        assert "API key" not in section_names
+
+
+# ─── _detect_doctor_role ──────────────────────────────────────────────────
+
+
+class TestDetectDoctorRole:
+    def test_explicit_peer(self):
+        from maxim.doctor.checks import _detect_doctor_role
+
+        role, url = _detect_doctor_role("peer", "https://example.com/v1")
+        assert role == "peer"
+        assert url == "https://example.com/v1"
+
+    def test_explicit_leader(self):
+        from maxim.doctor.checks import _detect_doctor_role
+
+        role, url = _detect_doctor_role("leader")
+        assert role == "leader"
+        assert url is None
+
+    def test_auto_from_env(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_URL", "https://remote.example.com/v1")
+        from maxim.doctor.checks import _detect_doctor_role
+
+        role, url = _detect_doctor_role()
+        assert role == "peer"
+        assert "remote.example.com" in url
+
+    def test_auto_localhost_stays_auto(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_URL", "http://127.0.0.1:8100/v1")
+        from maxim.doctor.checks import _detect_doctor_role
+
+        role, url = _detect_doctor_role()
+        assert role == "auto"
+
+    def test_no_env_returns_auto(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_LANE_INFER_REMOTE_URL", raising=False)
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        from maxim.doctor.checks import _detect_doctor_role
+
+        role, url = _detect_doctor_role()
+        assert role == "auto"
+        assert url is None

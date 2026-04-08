@@ -15,17 +15,21 @@ All pre-publication work is tracked in [foundational_buildout_plan.md](foundatio
 | Phase | Work | Status |
 |-------|------|--------|
 | 0 | Package Hygiene (data paths, imports, globals, file handles) | **DONE** |
-| 1 | SEM Component Registry | **In progress** |
-| 2 | DM Encounter Library | Not started |
-| 3 | Agent Factory + Agent Pool | **In progress** |
-| 4 | Party DM Runtime | Not started |
-| 5 | Hippocampus Recall Refinement | Not started |
-| 6 | Interactive Runtime + Rich Display | **In progress** |
-| 7 | Generative Architect Persona | Not started |
-| 8 | API Surface Expansion (campaign, benchmark, research, events, tools) | Not started |
-| 9 | PyPI Deps + User Docs + Examples | Not started |
-| 10 | Publication Prep (CHANGELOG, CONTRIBUTING, SECURITY) | Not started |
-| 11 | Test PyPI + Publish | Not started |
+| 1 | SEM Component Registry | **DONE** |
+| 1.1 | Phase 0+1 Wrap-up | **DONE** |
+| 2 | DM Encounter Library | **DONE** |
+| 3 | Agent Factory + Agent Pool | **DONE** |
+| 4 | Party DM Runtime | **DONE** |
+| 5 | Hippocampus Recall Refinement | **DONE** |
+| 6 | Interactive Runtime + Rich Display | **DONE** |
+| 7 | Generative Architect + Entity Designer | **DONE** |
+| 8 | API Surface Expansion (campaign, benchmark, research, events, tools) | **DONE** |
+| 9 | Deps + Docs + Cloud Profiles + Pre-Pub Hardening (incl. Mother M-0a/b/c) | **DONE** |
+| 10 | Publication Prep (CHANGELOG, CONTRIBUTING) | **DONE** |
+| 11 | Test PyPI (dry-run validation) | **In progress** |
+| 12a | Security Hardening | Not started |
+| 12b | [Pre-Publication Hardening](pre_publication_hardening_plan.md) — UX, errors, API fixes, tests, docs | Not started |
+| — | Manual publish (`twine upload`) | Blocked on 11 + 12a + 12b |
 
 ---
 
@@ -49,7 +53,7 @@ These are features, not architecture. Safe to add after PyPI publication without
 |------|---------|--------|-------|
 | **Agent Mesh Phase 0a-0b** | Multiple LAN machines join | ~400 LOC | mDNS discovery + InferenceRouter. Current `LocalMessageBus` is sufficient for single-machine multi-agent. |
 | **Capability Agent** | Multi-machine setups need runtime awareness | ~500 LOC | [Design notes](doctor_upgrade_plan.md). Depends on lane tiers (done) + mesh Phase 0a. |
-| **Embodiment Hardware Adapter + selfy.py decomposition** | Deploying to physical hardware or adding new robots | ~800 LOC net (saves ~900) | Decompose `conscience/selfy.py` (5,189 LOC monolith) into `ReachyController(RobotController)` plugin. Moves `AgenticRuntimeMixin` (~1,080 LOC) into standard runtime, eliminates ~650 LOC of orchestrator glue, moves ~276 LOC of generic input handling to interactive module. Enables multi-robot support via entry-point plugins (Atlas, Spot, etc.) without modifying core runtime. Currently behind lazy import — no PyPI impact, but blocks clean robot extensibility. |
+| **Embodiment Hardware Adapter + selfy.py decomposition** | Deploying to physical hardware or adding new robots | ~800 LOC net (saves ~900) | Decompose `conscience/selfy.py` (858 LOC after mixin decomposition) into `ReachyController(RobotController)` plugin. Moves `AgenticRuntimeMixin` (~1,080 LOC) into standard runtime, eliminates ~650 LOC of orchestrator glue, moves ~276 LOC of generic input handling to interactive module. Enables multi-robot support via entry-point plugins (Atlas, Spot, etc.) without modifying core runtime. Currently behind lazy import — no PyPI impact, but blocks clean robot extensibility. |
 | **PyPI Multi-Robot Plugins** | External robot controllers need discovery | ~250 LOC | Entry-point based `maxim.robots` registration. Phase 3 of [PyPI plan](pypi_publication_plan.md). Depends on selfy.py decomposition above. |
 | **Full CI/CD Pipeline** | Need automated test + publish | ~2 files | GitHub Actions: lint, test, build, publish. Phase 4 of [PyPI plan](pypi_publication_plan.md). |
 | **Peer Inference Retry** | Leader restarts cause 502 errors | ~30 LOC | Exponential backoff in openai_backend.py |
@@ -59,10 +63,12 @@ These are features, not architecture. Safe to add after PyPI publication without
 
 A persistent, public Maxim instance that accumulates collective memory across all users and sessions. Full plan: [mother_maxim_plan.md](mother_maxim_plan.md).
 
-**Pre-publication items (folded into Phase 9):**
-- M-0a: Split persistence protocols (`EpisodicStore`, `CausalStore`, `SemanticStore`) — ~80 LOC
-- M-0b: NAc thread safety (`_links`, `_pending_events` locking) — ~30 LOC
-- M-0c: `metadata: dict` field on `EpisodicMemory` + `SemanticMemory` — ~20 LOC
+**Pre-publication items (distributed across buildout phases):**
+- M-0a: Split persistence protocols — Phase 1.1 (~80 LOC, locks interface before publication)
+- M-0b: NAc thread safety — Phase 4 (~30 LOC, needed for multi-agent party mode)
+- M-0c: `metadata: dict` field on EpisodicMemory + SemanticMemory — Phase 1.1 (~20 LOC, avoids post-pub migration)
+- M-0d: `Hippocampus.sample()` for dream state — Phase 5 (~30 LOC)
+- M-0e: `SCN.set_wall_clock()` simple path — Phase 1.1 (~10 LOC)
 
 **Post-publication rollout:**
 

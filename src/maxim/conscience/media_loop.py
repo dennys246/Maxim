@@ -6,7 +6,6 @@ import threading
 import time
 import wave
 from typing import Optional
-import cv2
 import numpy as np
 from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.data_management import CLIInputLogger, TrainingSampleLogger, build_home
@@ -780,6 +779,7 @@ class MediaLoopMixin:
             if save_file is not None:
                 os.makedirs(os.path.dirname(save_file) or ".", exist_ok=True)
                 try:
+                    import cv2
                     ok = cv2.imwrite(save_file, frame)
                     if not ok:
                         warn("Failed to write image to '%s'.", save_file, logger=self.log)

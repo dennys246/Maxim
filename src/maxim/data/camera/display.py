@@ -9,8 +9,18 @@ import sys
 import queue as queue_module
 import threading
 
-import cv2
 import numpy as np
+
+
+def _import_cv2():
+    try:
+        import cv2
+        return cv2
+    except ImportError:
+        raise ImportError(
+            "OpenCV is required for display features. "
+            "Install with: pip install pymaxim[vision]"
+        ) from None
 
 _IMSHOW_FAILED = False
 _IMSHOW_DISABLED_WARNED = False
@@ -70,6 +80,7 @@ def _warn_display_disabled(reason: str) -> None:
 
 
 def _display_process_main(frame_queue) -> None:
+    cv2 = _import_cv2()
     window_names: set[str] = set()
     while True:
         try:
@@ -163,6 +174,7 @@ def prepare_display() -> None:
 
 
 def ensure_bgr(frame: np.ndarray) -> np.ndarray:
+    cv2 = _import_cv2()
     if frame.ndim == 2:
         return cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
     if frame.ndim == 3 and frame.shape[2] == 1:
@@ -174,6 +186,7 @@ def ensure_bgr(frame: np.ndarray) -> np.ndarray:
 
 def close_windows() -> None:
     try:
+        cv2 = _import_cv2()
         cv2.destroyAllWindows()
         cv2.waitKey(1)
     except Exception:
@@ -196,6 +209,7 @@ def show_photo(photo: np.ndarray, window_name: str = "Camera", wait: bool = True
         if threading.current_thread() is not threading.main_thread():
             _warn_display_disabled("non-main thread")
             return
+        cv2 = _import_cv2()
         frame = ensure_bgr(photo)
         cv2.imshow(window_name, frame)
         if wait:
@@ -339,6 +353,7 @@ def annotate_frame(
     target_point: tuple[float, float] | None = None,
     text_lines: list[str] | None = None,
 ) -> np.ndarray:
+    cv2 = _import_cv2()
     frame = ensure_bgr(frame)
     height, width = frame.shape[:2]
 
@@ -449,6 +464,7 @@ def show_frame(
         if _display_disabled():
             _warn_display_disabled("headless or MAXIM_DISABLE_IMSHOW=1")
             return
+        cv2 = _import_cv2()
         mode = _imshow_mode()
         annotated = annotate_frame(
             frame,

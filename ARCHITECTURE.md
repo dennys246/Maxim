@@ -39,6 +39,7 @@ Paths refer to the `src/maxim/` package layout.
   - `strategies.py`: Pluggable memory management strategies (AccessBased, ImportanceBased, TemporalAware).
   - `consolidation.py`: ConsolidationOrchestrator - wave-based sleep consolidation with path-dependent thresholds (acute/chronic).
   - `context_index.py`: SimilarityIndex - MinHash + LSH for O(1) context/percept similarity lookup.
+  - `store.py`: Split persistence protocols (`EpisodicStore`, `CausalStore`, `SemanticStore`) with `File*Store` defaults. Database backends via `[database]` extra.
 - `src/maxim/time/`: owns temporal indexing and rhythm tracking.
   - `scn.py`: Suprachiasmatic Nucleus - temporal bin indexing for circadian/weekly/monthly patterns. BoundedBin for capacity-managed bins with significance-based eviction.
   - `temporal_signature.py`: Phase-based temporal fingerprinting.
@@ -80,6 +81,7 @@ Paths refer to the `src/maxim/` package layout.
   - `engrams.py`: MotorEngram — contextual links between programs and episodic memories.
   - `llm_backend.py`: LLMSensor, LLMModulator, NarrativeSensor, NarrativeModulator.
   - `program_executor.py`: Step-by-step motor program execution with pain gates.
+  - `component_registry.py`: ComponentRegistry — template catalog for reusable SEM entity specs. Multi-path discovery (campaign-local → `~/.maxim/components/` → `_data/components/`). 9 seed components across 5 categories (bodies, creatures, environments, npcs, weapons).
 - `src/maxim/mesh/`: owns cooperative peer-to-peer agent networking. Each Maxim instance is sovereign (owns its memories, causal models, behaviors) but can share cooperatively.
   - `identity.py`: AgentProfile — lightweight identity for local multi-agent coordination.
   - `agent_identity.py`: AgentIdentity — extends AgentProfile with hardware capabilities and knowledge statistics for network-level coordination.
@@ -93,7 +95,7 @@ Paths refer to the `src/maxim/` package layout.
 - `src/maxim/integration/`: owns central coordination.
   - `memory_hub.py`: MemoryHub coordinates all bridges, manages session lifecycle, and wires multi-layer memory (ATL concept extraction, grounding, promotion). Connects 11 bio-systems in production; now also fully wired in simulation mode.
 - `src/maxim/state/` (reserved): owns authoritative runtime truth; must **not** contain long-term storage logic or planning.
-- `src/maxim/runtime/`: owns agentic orchestration/main execution loop; must **not** do domain reasoning. Includes `RuntimeCapabilities` for hardware detection and graceful degradation (headless mode without robot), and `StreamEvent`/`on_event` callback for fine-grained streaming events from the agent loop. ADaPT-style replan loop: `FailureStrategy.REPLAN` triggers `planner.decompose()` at depth+1.
+- `src/maxim/runtime/`: owns agentic orchestration/main execution loop; must **not** do domain reasoning. Includes `RuntimeCapabilities` for hardware detection and graceful degradation (headless mode without robot), and `StreamEvent`/`on_event` callback for fine-grained streaming events from the agent loop. ADaPT-style replan loop: `FailureStrategy.REPLAN` triggers `planner.decompose()` at depth+1. `AgentFactory` creates independent agent instances with isolated subsystems (Hippocampus, NAc, ATL, MemoryHub). `AgentPool` orchestrates concurrent multi-agent execution with `LocalMessageBus` for inter-agent communication.
 - `src/maxim/conscience/`: owns robot orchestration/main loop (Reachy capture/inference/control); must **not** do agentic decision making. `ConnectionState` enum with callback system for runtime capability degradation/restoration on robot disconnect/reconnect. `_run_headless_loop()` for event-driven operation without media capture.
 
 ### Absolute Separation Rules
@@ -155,10 +157,34 @@ If a component cannot be tested in isolation, the architecture is violated.
 - `src/maxim/models/movement/`: MotorCortex model (ConvNeXt-Tiny head-movement prediction).
 - `src/maxim/models/audio/`: Whisper wrapper (transcription backend).
 - `src/maxim/models/language/`: optional local LLM routing (transcript → agentic action).
+- `src/maxim/interactive/`: universal prompt protocol and rich terminal display.
+  - `prompts.py`: PromptRequest, PromptHandler ABC, PromptType enum. Every user interaction flows through this protocol (DM choices, architect interviews, freeform chat, confirmations).
+  - `display.py`: Rich-based split-panel terminal UI with scrolling agent log, status bar, and input area. Graceful degradation without `rich`.
+  - `dm_display.py`: DM-specific display extensions (encounter info panels, character sheet).
+- `src/maxim/simulation/dm_party.py`: PartyDMRuntime — multi-agent campaign execution. NPC agents have real memory (Hippocampus, NAc) via AgentFactory. NPCs witness outcomes, remember encounters, and adapt dialogue.
+- `src/maxim/simulation/encounter_library.py`: EncounterLibrary — reusable encounter template catalog. Multi-path discovery (campaign-local → `~/.maxim/encounters/` → `_data/encounters/`). 8 seed encounters across 4 categories (combat, exploration, puzzle, social). Tag-based queries, difficulty filtering.
+- `src/maxim/simulation/entity_designer.py`: EntityDesigner — LLM-driven SEM spec generation from natural language descriptions. Uses ComponentRegistry templates as bases; generates only the delta.
+- `src/maxim/memory/store.py`: Split persistence protocols — `EpisodicStore`, `CausalStore`, `SemanticStore`. Each protocol matches its subsystem's query patterns. `File*Store` defaults wrap current JSON persistence. Database implementations (PostgreSQL + pgvector) provided by `[database]` extra.
+- `src/maxim/_data/`: Bundled seed data shipped with the package.
+  - `components/`: SEM entity templates (bodies, creatures, environments, npcs, weapons).
+  - `encounters/`: Encounter templates (combat, exploration, puzzle, social).
+  - `prompts/`: System prompt templates.
+  - `templates/`: Report/output templates.
 - `src/maxim/data/`: camera/audio utilities and file outputs.
 - `src/maxim/utils/`: config, logging, plotting, filesystem helpers (and reusable small helpers).
+  - `paths.py`: Data path resolution — bundled `_data/` for read-only seed data, `~/.maxim/` for user-generated data (memory, sessions, benchmarks, config).
 
 ## Output Layout (Default)
+
+User data now lives at `~/.maxim/` by default (resolved via `utils/paths.py`). Legacy `data/` paths still work but are deprecated.
+
+- `~/.maxim/memory/`: Persistent memory files (hippocampus, nac, scn, atl)
+- `~/.maxim/sessions/`: Per-session recordings and replays
+- `~/.maxim/benchmarks/`: Benchmark run reports
+- `~/.maxim/components/`: User-created SEM entity templates
+- `~/.maxim/encounters/`: User-created encounter templates
+- `~/.maxim/config/`: User config overrides
+- `~/.maxim/models/`: Downloaded LLM/TTS/vision models
 - `data/videos/`: `reachy_video_<YYYY-MM-DD_HHMMSS>.mp4`
 - `data/audio/`: `reachy_audio_<YYYY-MM-DD_HHMMSS>.wav` and optional `audio/chunks/*.wav`
 - `data/transcript/`: `reachy_transcript_<YYYY-MM-DD_HHMMSS>.jsonl`

@@ -208,7 +208,7 @@ class TestVersionInfo:
 
         info = get_version_info()
         assert "version" in info
-        assert info["version"] == "0.1.0"
+        assert info["version"] == "0.2.0"
 
     def test_includes_git_hash(self):
         from maxim import get_version_info
@@ -230,7 +230,7 @@ class TestVersionInfo:
 
         with patch("subprocess.run", side_effect=FileNotFoundError):
             info = get_version_info()
-        assert info["version"] == "0.1.0"
+        assert info["version"] == "0.2.0"
         assert "git_hash" not in info
 
 

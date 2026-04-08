@@ -28,7 +28,7 @@ dependencies = [
     "numpy>=1.26,<3.0",
     "scipy>=1.11,<2.0",
     "pyyaml>=6.0",
-    "json-repair>=0.30",
+    "json-repair>=0.30,<1.0",
     "rich>=13.0.0",
 ]
 
