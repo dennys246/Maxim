@@ -1,6 +1,6 @@
 # Foundational Buildout Plan
 
-> **Status:** In progress. Phase 0 done. Phase 1 in progress.
+> **Status:** In progress. Phase 0 done. Phases 1, 3, 6 in progress.
 > **Goal:** Ship the architectural foundations that Multi-AUT Party Mode, SEM Component Database, and DM Encounter Library require — plus fix packaging, API surface, and code quality issues — before locking the public API via PyPI publication.
 > **Total scope:** ~4,150 LOC across 12 phases.
 > **Sequence:** Hygiene (0 ✓) → Foundation (1 → 1.1 → 2-3 → 4 → 5) → DM polish (6-7) → API + Packaging (8-9) → Publication (10-11).
@@ -532,7 +532,7 @@ Inline encounters (no `template:` key) work exactly as before — zero breaking 
 
 ---
 
-## Phase 3: Agent Factory + Agent Pool (~500-700 LOC)
+## Phase 3: Agent Factory + Agent Pool (~500-700 LOC) — IN PROGRESS
 
 **Why third:** The architectural change that's hardest to retrofit. Enables multi-agent sims, party mode, and NPC agents with real memory.
 
@@ -790,7 +790,7 @@ Improve `memory_recall` tool and hippocampus query pipeline:
 
 ---
 
-## Phase 6: Interactive Runtime + Rich Display (~500 LOC)
+## Phase 6: Interactive Runtime + Rich Display (~500 LOC) — IN PROGRESS
 
 **Why sixth:** The user currently has no clean way to interact with a running agent. `AskUserTool` already exists (`tools_user.py`, ~420 LOC) and handles structured prompts with timeout/replay/audit. But it uses bare `print()` + `input()`, and there's no generalized prompt protocol, no display framework, and no DM-specific UI. This phase builds three layers: a universal prompt protocol, a `rich`-based display, and a DM campaign extension.
 
@@ -1221,7 +1221,7 @@ ui = ["rich>=13.0.0"]
 ```
 
 ### Ship gate
-1. `pip install pymaxim[ui]` → rich display works with scrolling log + input panel
+1. `pip install pymaxim[ui]` → rich display works with scrolling log + input panel <--- probably should ship with ui always and just be used if user requests --interactive, should be noted somewhere else, ask if confused. --dm should turn --interactive True by default but allow the user to turn off with --interactive False or whatever to run the dm automatically
 2. `pip install pymaxim` (no ui) → falls back to plain print/input (current behavior)
 3. DM campaign shows character sheet, inventory, encounter info in side panels
 4. Generative Architect interview uses SINGLE_CHOICE, MULTI_CHOICE, SHORT_TEXT, LONG_TEXT prompts
@@ -1471,7 +1471,7 @@ maxim.register_persona(
 
 ---
 
-## Phase 9: PyPI Dependency Restructuring + Docs (~500 LOC)
+## Phase 9: PyPI Dependency Restructuring + Docs + Mother Pre-Pub (~600 LOC)
 
 ### 9a. Dependency audit (~100 LOC)
 
@@ -1541,6 +1541,47 @@ examples/
 └── post_hoc_analysis.py       # observe() with session linking
 ```
 
+### 9e. Mother Maxim pre-publication prep (~100 LOC)
+
+Items from [Mother Maxim Plan](mother_maxim_plan.md) M-0 that MUST ship before publication because they define interfaces that users and Mother will depend on. Changing them post-pub would be a breaking change.
+
+**M-0a: Split persistence protocols (~80 LOC)**
+
+Extract save/load into three protocols — one per subsystem. Each has different query patterns (similarity search vs event→outcome lookup vs concept type filtering).
+
+```python
+# src/maxim/memory/store.py (~80 LOC)
+
+class EpisodicStore(Protocol):
+    """Persistence for Hippocampus episodic memories."""
+    def save(self, memories: list[dict], *, namespace: str = "default") -> None: ...
+    def load(self, *, namespace: str = "default") -> list[dict]: ...
+    def query_similar(self, embedding: list[float], *, top_k: int = 5, namespace: str = "default") -> list[dict]: ...
+    def query_by_time(self, start: float, end: float, *, namespace: str = "default") -> list[dict]: ...
+
+class CausalStore(Protocol):
+    """Persistence for NAc causal links."""
+    def save(self, links: list[dict], *, namespace: str = "default") -> None: ...
+    def load(self, *, namespace: str = "default") -> list[dict]: ...
+    def query_by_event(self, event_sig: str, *, namespace: str = "default") -> list[dict]: ...
+
+class SemanticStore(Protocol):
+    """Persistence for ATL semantic concepts."""
+    def save(self, concepts: list[dict], *, namespace: str = "default") -> None: ...
+    def load(self, *, namespace: str = "default") -> list[dict]: ...
+    def query_by_type(self, concept_type: str, *, namespace: str = "default") -> list[dict]: ...
+```
+
+Plus `FileEpisodicStore`, `FileCausalStore`, `FileSemanticStore` wrapping current JSON behavior. Hippocampus/NAc/ATL gain optional `store` constructor parameter (defaults to File variant for backward compat).
+
+**M-0b: NAc thread safety (~30 LOC)**
+
+Add `threading.RLock` around `_links`, `_pending_events`, `_priors` mutations in NAc. Required for multi-agent party mode (already shipped) and Mother's concurrent processing.
+
+**M-0c: Metadata field on EpisodicMemory + SemanticMemory (~20 LOC)**
+
+Add `metadata: dict[str, Any] = field(default_factory=dict)` to both dataclasses + update `to_dict()`/`from_dict()`. Pre-pub this is trivial. Post-pub it requires migration for every user's persisted memories. Mother uses this for: `domain_tags`, `contribution_source`, `witness_count`, `tenant_id`, `deidentification_model`.
+
 ---
 
 ## Phase 10: Publication Prep (3 files + version bump)
@@ -1590,13 +1631,13 @@ examples/
 | 1 | SEM Component Registry | ~300 | Phase 0 | **In progress** | String ref resolution works in campaigns |
 | 1.1 | Phase 0+1 Wrap-up | ~100 | Phase 1 | Not started | Fix remaining import-time side effects (selfy.py mp.set_start_method, PYOPENGL_PLATFORM), verify Phase 0b blockers resolved, run full test suite against Phase 1 integration |
 | 2 | Encounter Library (Tier 1 templates) | ~240 | Phase 1 | Not started | Template encounters load in campaigns, existing campaigns unchanged |
-| 3 | Agent Factory + Pool | ~500-700 | Phase 0 | Not started | 3 agents, separate memory, concurrent |
+| 3 | Agent Factory + Pool | ~500-700 | Phase 0 | **In progress** | 3 agents, separate memory, concurrent |
 | 4 | Party DM Runtime | ~400 | Phases 1-3 | Not started | NPC demonstrates learned behavior |
 | 5 | Hippocampus Recall | ~400 | Phase 4 | Not started | Behavioral recall at door succeeds |
-| **6** | **Interactive Runtime + Rich Display** | **~500** | **—** | Not started | **Rich panels + prompt protocol + DM display** |
+| **6** | **Interactive Runtime + Rich Display** | **~500** | **—** | **In progress** | **Rich panels + prompt protocol + DM display** |
 | 7 | Generative Architect + Entity Designer | ~600 | Phases 1,2,6 | Not started | Campaign + PC + 3 NPCs in <8 min, entities from natural language |
 | **8** | **API Surface Expansion** | **~400** | **Phases 1-5,6** | Not started | **New verbs + events + tool reg work** |
-| **9** | **Deps + Docs + Cloud Profiles + Examples** | **~500** | **Phase 8** | Not started | **Clean install + examples run + cloud providers work** |
+| **9** | **Deps + Docs + Cloud Profiles + Mother Pre-Pub** | **~600** | **Phase 8** | Not started | **Clean install + store protocols + metadata fields + NAc locks** |
 | 10 | Publication Prep | ~3 files | — | Not started | CHANGELOG + CONTRIBUTING (SECURITY exists) |
 | 11 | Test PyPI + Publish | ~0 | Phases 0-10 | Not started | `pip install pymaxim` works |
 
@@ -1704,6 +1745,15 @@ These don't have their own phases but should be fixed as encountered during the 
 | Graceful error for missing LLM in imagine() | Phase 8 | Helpful ImportError message |
 | `observe()` returns `AUTIntrospector` alias | Phase 8 | Remove deprecated alias, use `Observer` only |
 | Replace `dateparser` with stdlib-only parser | Phase 9 | `dateparser` pulls `regex` (C ext) + 3 deps. The regex fallback in `temporal_signal.py` already handles agent-generated patterns. Remove `dateparser` import, promote regex path to primary, delete `[temporal]` optional extra. ~30 LOC net reduction. |
+| **`AutonomyLevel.FULL` crash in api.py:154** | **Phase 1.1** | **CRITICAL.** `maxim.run()` references `AutonomyLevel.FULL` which doesn't exist in the enum. Change to `AutonomyLevel.AUTONOMOUS` or add a `mode` parameter with safe default. |
+| **No sandbox in `maxim.run()` API path** | **Phase 8** | CLI wires sandbox via bootstrap; Python API skips it. `maxim.run()` should default to a safe mode (PLANNING or SUPERVISED) and optionally accept `sandbox="docker"` / `sandbox="tmpdir"`. Users who want full access opt in explicitly. |
+| **TmpdirSandbox symlink escape** | **Phase 9** | Agent can create symlinks inside tmpdir pointing outside. Add `os.path.realpath()` check that resolved target stays within sandbox root. Docker sandbox is unaffected. |
+| **`_accessible_folders` global is mutable at runtime** | **Phase 4** | `add_accessible_folder()` has no auth gate. In multi-agent, one agent could expand access for all. Fix: per-agent folder policy, set at init, immutable after. Phase 3 builds the factory/pool — Phase 4 (party DM) is where multi-agent actually runs and exposes this. |
+| **Mother Maxim M-0a: Split store protocols** | **Phase 1.1** | **Moved from Phase 5.** The protocol *shape* is load-bearing — if we publish with raw `save(path)`/`load(path)` and users wrap them, changing to `EpisodicStore` is breaking. Extract into `EpisodicStore`, `CausalStore`, `SemanticStore` protocols + File implementations. ~80 LOC. Define early, lock the interface. See [mother_maxim_plan.md](mother_maxim_plan.md). |
+| **Mother Maxim M-0b: NAc thread safety** | **Phase 4** | NAc has no locking on `_links`, `_pending_events`, `_priors`. Multi-agent party mode will have concurrent NAc access. Add `threading.RLock`. Also required for future database writes. |
+| **Mother Maxim M-0c: dict serialization audit + metadata field** | **Phase 1.1** | Verify `to_dict()`/`from_dict()` round-trip cleanly. **Add `metadata: dict[str, Any]` field to EpisodicMemory and SemanticMemory.** Currently no extensible bag for contribution metadata, domain tags, witness_count, tenant_id. Adding a field to a serialized dataclass post-publication requires migration for every user. Pre-publication it's 3 lines. CausalLink already has `event_context: dict` which serves this purpose. |
+| **Mother Maxim M-0d: Hippocampus.sample() method** | **Phase 5** | All recall is currently query-based or graph-based. Mother's dream state needs "give me N random memories from different domains." Add `sample(n, *, domain: str | None, exclude_ids: set) -> list[EpisodicMemory]`. Small method (~30 LOC) but defines an interface users might depend on. |
+| **Mother Maxim M-0e: SCN simple wall-clock path** | **Phase 1.1** | `register_external()` currently requires a `PeerClockEstimator` object. Add `set_wall_clock(source: Callable[[], float])` for simple real-time registration. Mother needs `scn.set_wall_clock(lambda: time.time())` for circadian lifecycle. ~10 LOC. |
 
 ---
 

@@ -17,10 +17,10 @@ All pre-publication work is tracked in [foundational_buildout_plan.md](foundatio
 | 0 | Package Hygiene (data paths, imports, globals, file handles) | **DONE** |
 | 1 | SEM Component Registry | **In progress** |
 | 2 | DM Encounter Library | Not started |
-| 3 | Agent Factory + Agent Pool | Not started |
+| 3 | Agent Factory + Agent Pool | **In progress** |
 | 4 | Party DM Runtime | Not started |
 | 5 | Hippocampus Recall Refinement | Not started |
-| 6 | ask_user Tool | Not started |
+| 6 | Interactive Runtime + Rich Display | **In progress** |
 | 7 | Generative Architect Persona | Not started |
 | 8 | API Surface Expansion (campaign, benchmark, research, events, tools) | Not started |
 | 9 | PyPI Deps + User Docs + Examples | Not started |
@@ -54,6 +54,38 @@ These are features, not architecture. Safe to add after PyPI publication without
 | **Full CI/CD Pipeline** | Need automated test + publish | ~2 files | GitHub Actions: lint, test, build, publish. Phase 4 of [PyPI plan](pypi_publication_plan.md). |
 | **Peer Inference Retry** | Leader restarts cause 502 errors | ~30 LOC | Exponential backoff in openai_backend.py |
 | **GitHub Fork Workflow** | Contributors need fork-based PRs | ~550 LOC | [Plan](github_repo_management_plan.md) |
+
+### Mother Maxim (post-publication, priority track)
+
+A persistent, public Maxim instance that accumulates collective memory across all users and sessions. Full plan: [mother_maxim_plan.md](mother_maxim_plan.md).
+
+**Pre-publication items (folded into Phase 9):**
+- M-0a: Split persistence protocols (`EpisodicStore`, `CausalStore`, `SemanticStore`) — ~80 LOC
+- M-0b: NAc thread safety (`_links`, `_pending_events` locking) — ~30 LOC
+- M-0c: `metadata: dict` field on `EpisodicMemory` + `SemanticMemory` — ~20 LOC
+
+**Post-publication rollout:**
+
+| Step | What | LOC | Depends On |
+|------|------|-----|------------|
+| **MVP** | Mother runner + API + CLI (JSON persistence, leader-hosted) | ~500 | v0.2.0 published |
+| **M-2a** | Client-side deidentification (bio-system identity map + LLM pass) | ~350 | MVP |
+| **M-2b** | Deidentification model benchmark (determine minimum tier) | ~50 | M-2a |
+| **SEC** | Security hardening (stress test + output filtering) | ~100 | MVP |
+| **M-2c** | Server-side verification (adversarial reviewer) | ~200 | MVP + SEC |
+| **M-4** | Memory coalescence engine (merge, consensus, contradiction handling) | ~800 | M-2a |
+| **CIR** | Circadian lifecycle (SCN priors, planner scoring, sleep cascade) | ~200 | MVP + M-4 |
+| **M-3** | Tenant & session isolation | ~500 | On demand (multi-user) |
+| **M-1** | Database backend (PostgreSQL + pgvector, replaces JSON) | ~800 | On demand (scale) |
+| **M-5** | Full public API layer (extends MVP endpoints) | ~300 | M-1 through M-4 |
+
+**Key architectural decisions:**
+- Mother is a full agent (her own bio-stack, not a passive database) — she forms opinions from collective input
+- Bio-system-aware deidentification: ATL+SEM identity map handles ~80% of PII deterministically, LLM handles remaining ~20%
+- Model tier gate: contributions declare which model ran deidentification, Mother rejects weak models
+- Opt-in contributions: `maxim.imagine(..., contribute=True)` — never default
+- Origin memories (curated campaigns) shape her foundational personality
+- Dream state during sleep: cross-domain insight discovery via random memory sampling + LLM connection finding
 
 ### Benchmark & Research
 
@@ -95,6 +127,7 @@ Everything below has shipped and is in production.
 docs/plans/
 ├── future_plans.md                 # This file — master roadmap
 ├── foundational_buildout_plan.md   # Pre-publication buildout (current focus)
+├── mother_maxim_plan.md            # Mother Maxim — persistent shared instance (post-publication)
 ├── dungeon_master_extensions.md    # DM follow-ons (Extensions C-G, post-publication)
 ├── pypi_publication_plan.md        # PyPI publication (reference; phases absorbed into buildout)
 ├── doctor_upgrade_plan.md          # Doctor expansions + Capability Agent design
@@ -155,6 +188,22 @@ When validating any agentic enhancement, design campaigns that:
 4. **Test degradation gracefully** — run with small-tier fallback and with LLM unavailable. Enhancement should never make the system *worse* than baseline.
 5. **Use the benchmark runner** — `maxim --sim benchmark` already compares models. Extend benchmark scenarios to include enhancement A/B comparisons.
 6. **Document in `docs/experiments/`** — each enhancement test produces a run note with methodology, metrics, and findings (same format as hippocampal_recall_experiment.md).
+
+## Mother Maxim — Persistent Shared Cognitive Instance (Post-Publication)
+
+A persistent, public Maxim instance that accumulates collective memory across all users and sessions. Full plan: [mother_maxim_plan.md](mother_maxim_plan.md).
+
+**Summary:** ~3,800 LOC across 6 phases (M-1 through M-6). Pre-publication prep items (M-0) woven into foundational buildout. Requires PostgreSQL + pgvector. Mother is a full Maxim agent with her own bio-stack, not a passive database. Dual-pass deidentification leverages bio-system structures for targeted PII removal — client-side pass uses ATL/SEM identity maps (80% deterministic), server-side pass verifies.
+
+| Phase | Work | Depends On |
+|-------|------|------------|
+| M-0 | Pre-pub prep: split store protocols, NAc locking, dict serialization audit | Buildout Phases 1.1, 4, 5 |
+| M-1 | Database backend (split stores + PostgreSQL + pgvector) | Publication (v0.2.0) |
+| M-2 | Dual-pass deidentification (bio-system-aware client-side + server verification) | M-1 |
+| M-3 | Tenant/session isolation (private → shared → Mother's own) | M-1 |
+| M-4 | Memory coalescence engine (consensus confidence, cross-user dedup, merge strategy) | M-1, M-2 |
+| M-5 | Public API (`/v1/contribute`, `/v1/recall`, `/v1/wisdom`, `/v1/campaign`) | M-1 through M-4 |
+| M-6 | Deployment (Docker Compose, monitoring, abuse tracking, backup/restore) | M-1 through M-5 |
 
 ## Research Directions: Other (Not Scheduled)
 
