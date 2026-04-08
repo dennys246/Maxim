@@ -70,6 +70,8 @@ Known items from Phase 12b that may be blocking:
 | Hippocampus threading (queue race + flush polling) | **FIXED** (2026-04-08) | No |
 | Composable API (create/load/Session/Report) | **SHIPPED** (2026-04-08, 83 tests) | No |
 | Persistence fixes (NAc/SCN/AG atomic writes, Entity serialization) | **FIXED** (2026-04-08, 19 tests) | No |
+| Phase 1 code quality (atomic writes, rate limits, env parsing, blocklist, type annotations, error logging) | **FIXED** (2026-04-08, 19 tests) | No |
+| Store protocol wiring (1m) | **DEFERRED** to v0.2.1 (interface mismatch needs redesign with M-1) | No |
 
 ### 5. Verify version consistency
 

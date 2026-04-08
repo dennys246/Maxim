@@ -29,8 +29,10 @@ All pre-publication work is tracked in [foundational_buildout_plan.md](foundatio
 | 11 | Test PyPI (dry-run validation) | **In progress** |
 | 12a | Security Hardening | **DONE** |
 | 12b | [Pre-Publication Hardening](pre_publication_hardening_plan.md) — UX, errors, API fixes, tests, docs | **DONE** |
-| 13 | [Publication Refinement](publication_refinement_plan.md) — blockers, error honesty, threading, docs | Not started |
-| — | Manual publish (`twine upload`) | Blocked on 11 + 13 |
+| 13 | [Publication Refinement](publication_refinement_plan.md) — blockers, error honesty, threading, docs | Phase 0 **DONE** |
+| 13a | [API Surface Hardening](api_surface_hardening_plan.md) — wire stub verbs, fix research protocol, error handling, integration tests, README | Not started |
+| 13b | [Module Compartmentalization](module_compartmentalization_plan.md) — break up 5 god-modules (agent_loop, orchestrator, cli, router, lane_backends) | Not started |
+| — | Manual publish (`twine upload`) | Blocked on 13 + 13a + 13b |
 
 ---
 
@@ -250,16 +252,19 @@ Everything below has shipped and is in production.
 
 ```
 docs/plans/
-├── future_plans.md                 # This file — master roadmap
-├── mother_maxim_plan.md            # Mother Maxim — persistent shared instance (post-publication priority)
-├── dungeon_master_extensions.md    # DM follow-ons (Extensions C-G, post-publication)
-├── github_repo_management_plan.md  # Fork-based workflow (post-publication)
-└── tool_refinement_plan.md         # Living document — tool additions/deprecations
+├── future_plans.md                    # This file — master roadmap
+├── publication_refinement_plan.md     # Phase 13 — blockers (DONE), code quality, packaging
+├── api_surface_hardening_plan.md      # Phase 13a — wire stubs, fix research, error handling, README
+├── module_compartmentalization_plan.md # Phase 13b — break up god-modules
+├── mother_maxim_plan.md               # Mother Maxim — persistent shared instance (post-publication priority)
+├── dungeon_master_extensions.md       # DM follow-ons (Extensions C-G, post-publication)
+├── github_repo_management_plan.md     # Fork-based workflow (post-publication)
+└── tool_refinement_plan.md            # Living document — tool additions/deprecations
 
 docs/archive/  (completed plans)
-├── foundational_buildout_plan.md   # Phases 0-12a — ALL SHIPPED (2026-04-08)
-├── pre_publication_hardening_plan.md # Phase 12b — security + cv2 + docs DONE
-├── pypi_publication_plan.md        # Phases absorbed into buildout
+├── foundational_buildout_plan.md      # Phases 0-12a — ALL SHIPPED (2026-04-08)
+├── pre_publication_hardening_plan.md  # Phase 12b — security + cv2 + docs DONE
+├── pypi_publication_plan.md           # Phases absorbed into buildout
 ├── ... (14 other archived plans from prior initiatives)
 ```
 

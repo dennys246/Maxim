@@ -1,10 +1,16 @@
 # Publication Refinement Plan
 
-> **Status:** Phase 0 DONE (2026-04-08). Phase 1+ not started.
+> **Status:** Phase 0 DONE (2026-04-08). Phase 1 DONE (2026-04-08, 1m deferred to v0.2.1). Phase 1.5+ not started.
 > **Goal:** Fix the blockers, code quality issues, and documentation gaps identified in a comprehensive repo review before publishing pymaxim v0.2.0 to PyPI.
 > **Estimated scope:** ~1,400 LOC of fixes + ~500 LOC of tests + ~400 LOC of docs changes across 5 phases (includes Mother Maxim on-ramp items 1m-1n)
 > **Sequence:** Blockers (0) → Code Quality + Data Integrity + UX + API Contract (1) → Test Depth (2) → Docs & Packaging (3) → Publish (4)
 > **Timeframe:** 3-4 focused sessions
+>
+> **UPDATE (2026-04-08):** A comprehensive repo review identified deeper API surface and module structure issues. Two companion plans now exist:
+> - **[API Surface Hardening Plan](api_surface_hardening_plan.md)** — wires stub verbs, fixes research protocol, error handling on user-facing paths, integration tests, README overhaul. Executes between Phase 0 and Phase 4. Items marked `[SKIP — ASH]` below are covered there.
+> - **[Module Compartmentalization Plan](module_compartmentalization_plan.md)** — breaks up 5 god-modules (agent_loop, orchestrator, cli, router, lane_backends). Executes after API Surface Hardening.
+>
+> **Revised sequence:** Phase 0 (DONE) → API Surface Hardening → Remaining Phase 1 items → Phase 1.5 → Phase 2 → Remaining Phase 3 items → Module Compartmentalization → Phase 4 (publish)
 
 ---
 
@@ -47,7 +53,9 @@ These prevent publication. Do them first, in order.
 **Files:** `src/maxim/api.py`, `src/maxim/agents/llm_worker.py`
 **Verify:** `python -c "import maxim; help(maxim.run)"` shows correct signature
 
-### 0b. Wire campaign() and research() stubs
+### 0b. Wire campaign() and research() stubs — `[SKIP — ASH Phase 1]`
+
+> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 1.** That plan goes further: wires all 3 stub verbs (campaign, benchmark, research) to actual runtime, fixes the 5 research protocol bugs, and adds @maxim.tool schema inference. Warnings-only (the approach below) is insufficient — see ASH plan for rationale.
 
 **Problem:** 2 of 13 API verbs return empty/None. Users who call them get silence.
 
@@ -137,7 +145,9 @@ Or keep the deadline pattern but check `unfinished_tasks` under the condition lo
 
 Not blockers, but significantly improves the published package's reliability. Do after Phase 0.
 
-### 1a. Triage remaining except blocks (non-API)
+### 1a. Triage remaining except blocks (non-API) — `[SKIP — ASH Phase 3]`
+
+> **User-facing path triage superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 3.** That plan audits api.py, bootstrap, router, hippocampus, and OpenAI backend specifically. The remaining ~560 non-user-facing blocks stay deferred to v0.2.1 as originally planned.
 
 **Problem:** 593 remaining `except Exception:` blocks outside the API surface.
 
@@ -215,7 +225,9 @@ Replace `Any` with these protocols in the 3-4 files that are worst offenders. Do
 **Files:** Listed above
 **Verify:** `grep -rn "json.dump" src/maxim/ | grep -v atomic | grep -v test` returns only non-persistence uses (logging, formatting)
 
-### 1f. OpenAI backend rate limit handling
+### 1f. OpenAI backend rate limit handling — `[SKIP — ASH Phase 3e]`
+
+> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 3e.**
 
 **Problem:** `openai_backend.py` uses linear backoff (0.5s, 1.0s) for ALL errors including 429 rate limits. The Anthropic backend correctly multiplies by 4x for 429s. OpenAI backend will hammer the API on rate limits.
 
@@ -227,7 +239,9 @@ if _is_rate_limit_error(e):
 
 **Files:** `src/maxim/models/language/openai_backend.py`
 
-### 1g. API key validation at startup
+### 1g. API key validation at startup — `[SKIP — ASH Phase 3f]`
+
+> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 3f.**
 
 **Problem:** When a user runs `maxim --language-model claude-sonnet` without `ANTHROPIC_API_KEY`, the system warns but continues. The error surfaces minutes later during inference with a confusing message.
 
@@ -271,7 +285,9 @@ Known locations:
 
 **Files:** Listed above
 
-### 1j. Silent failure chains in hippocampus state capture
+### 1j. Silent failure chains in hippocampus state capture — `[SKIP — ASH Phase 3d]`
+
+> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 3d.**
 
 **Problem:** `hippocampus.py:~536-542` catches `Exception` on `state.snapshot()` and sets `state_snapshot = None`. The caller at line ~548 then does `state_snapshot.get("mode")` which raises `AttributeError: 'NoneType' object has no attribute 'get'`. The user sees an error pointing to the wrong place — the real failure (snapshot) was silently swallowed.
 
@@ -283,7 +299,9 @@ Apply the same pattern to all places that use a maybe-None result from a caught 
 
 **Files:** `src/maxim/memory/hippocampus.py`
 
-### 1k. Daemon threads with bare `except: pass`
+### 1k. Daemon threads with bare `except: pass` — `[SKIP — ASH Phase 3]`
+
+> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 3 (user-facing error audit).**
 
 **Problem:** Some daemon threads catch all exceptions with `pass` — no log, no alert. When the thread dies, the system degrades silently.
 
@@ -299,23 +317,16 @@ Known locations:
 
 **DONE** — `create.py:router()` already uses a scoped try/finally pattern that saves original env values, sets them for `build_primary_router()`, and restores originals in the finally block. No action needed.
 
-### 1m. Wire store protocols into bio-system constructors (Mother Maxim on-ramp)
+### 1m. Wire store protocols into bio-system constructors (Mother Maxim on-ramp) — DEFERRED to v0.2.1
 
-**Problem:** Store protocols (`EpisodicStore`, `CausalStore`, `SemanticStore`) and their file implementations (`File*Store`) are defined in `memory/store.py` but none of the bio-systems actually use them. Hippocampus, NAc, and ATL still have monolithic internal `save()`/`load()` methods with hardcoded JSON file I/O. This means:
-- Swapping to a database backend (Mother Maxim M-1) requires rewriting save/load in each subsystem
-- The store protocols are dead code that will confuse users inspecting the package
+**Deferred because:** The store protocol interface (`save(list[dict])` / `load() → list[dict]`) is fundamentally different from the bio-system save/load pattern. Each bio-system's `save()` serializes complex state (version headers, associative graph, context indices, compressed memories) into a single JSON blob. Each `load()` mutates internal state and handles version migration. The File*Store implementations just do simple list-of-dicts I/O.
 
-**Why now:** Phase 1e (atomic write bypasses) already touches the save/load code in `nac.py:~815`. Rather than just swapping `json.dump()` → `atomic_write_json()`, refactor save/load to delegate to `FileCausalStore`. Same pattern applies to Hippocampus and ATL. This makes Mother Maxim's database backend a drop-in replacement later.
+Wiring would require either:
+1. Moving ~300 LOC of serialization logic from each bio-system into File*Store — high regression risk
+2. Thin adapter wrappers that call existing save/load — complexity with no practical benefit until M-1
 
-**Action:**
-1. Add `store: EpisodicStore | None = None` parameter to `Hippocampus.__init__()`. If None, create a `FileEpisodicStore` with the existing path. Delegate `save()`/`load()` to the store.
-2. Add `store: CausalStore | None = None` parameter to `NAc.__init__()`. Same pattern.
-3. Add `store: SemanticStore | None = None` parameter to `ATL.__init__()`. Same pattern.
-4. Update `MemoryHub` to wire the appropriate store to each subsystem (or let them default).
-
-**Files:** `src/maxim/memory/hippocampus.py`, `src/maxim/decisions/nac.py`, `src/maxim/memory/atl.py`, `src/maxim/integration/memory_hub.py`
-**Scope:** ~80 LOC across 4 files. Each subsystem's save/load body moves into its File*Store (already implemented); the subsystem just calls `self._store.save()`/`self._store.load()`.
-**Verify:** `python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py` passes. Existing save/load behavior unchanged (FileStore is the default).
+**What ships now:** Store protocols defined + exported (1n done). All bio-system persistence uses `atomic_write_json()` (1e done). The interface is locked for users.
+**What ships in v0.2.1:** Redesigned store protocol that accounts for versioning, graph state, and the mutate-self contract. Designed alongside Mother Maxim M-1 database backend.
 
 ### 1n. Export store protocols and Concept from memory module
 
@@ -444,7 +455,9 @@ def test_agent_factory():
 
 ## Phase 3 — Docs & Packaging (~2 hours)
 
-### 3a. Fix broken links and stale status
+### 3a. Fix broken links and stale status — `[SKIP — ASH Phase 5a]`
+
+> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 5a.**
 
 | Fix | File | Effort |
 |-----|------|--------|
@@ -458,7 +471,9 @@ def test_agent_factory():
 | Fix `hippo.recall("wolf", limit=3)` → `recall(query="wolf", limit=3)` | `docs/user/python-api.md` | ~5 lines |
 | Fix NAc examples: `record_event` doesn't create links, show `observe()` | `docs/user/python-api.md` | ~10 lines |
 
-### 3b. Trim CLAUDE.md
+### 3b. Trim CLAUDE.md — `[SKIP — ASH Phase 5b]`
+
+> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 5b.**
 
 **Problem:** 536 lines covering 22 sections. Too much for an agent orientation file.
 
@@ -509,7 +524,7 @@ These are real issues but won't cause user-facing failures on day 1:
 
 | Item | Why deferred |
 |------|-------------|
-| God class refactoring (agent_loop, cli, exec_agent, bus, orchestrator) | Massive refactor; doesn't affect users, only maintainability |
+| God class refactoring (agent_loop, cli, exec_agent, bus, orchestrator) | Now tracked in [Module Compartmentalization Plan](module_compartmentalization_plan.md). Executes after API Surface Hardening, before publish. |
 | Remaining ~560 except blocks in non-API code | Internal resilience, not user-facing |
 | Full `Any` → Protocol migration | Only affects type checker users, not runtime |
 | `--list-models` CLI flag | Nice-to-have, not blocking |
@@ -781,15 +796,15 @@ Items identified during a comprehensive PyPI readiness review, integrated into t
 
 ### Phase 0 additions (blockers)
 
-- **0e. Add warnings to stub API verbs** — `campaign()`, `benchmark()`, and `research()` must either work or emit `warnings.warn("... not yet wired to runtime, use the CLI instead", stacklevel=2)`. Users getting empty objects with no indication is worse than a clear warning. ~5 LOC.
+- **0e. Add warnings to stub API verbs** — `[SKIP — ASH Phase 1]` — ASH plan goes further: wires them to actual runtime instead of just warning.
 
 ### Phase 3 additions (packaging)
 
 - **3e. Fix `[all]` extras** — Add `training`, `tts`, `semantic`, `database` to the `[all]` group in `pyproject.toml`. Currently missing. 1-line fix.
 - **3f. Gate `maxim-diagnostics` entry point** — Either remove from `[project.scripts]` or document it's Reachy-specific. Non-robot users shouldn't have a broken command in their PATH.
 - **3g. Guard `get_version_info()` git calls** — Check for `.git` directory existence before shelling out to `git rev-parse`. Installed-from-PyPI users won't have `.git`, and the two subprocess calls are wasted. ~3 LOC.
-- **3h. Update getting-started.md install path** — Lead with `pip install pymaxim` instead of `git clone`. The clone path should be secondary ("Development Install"). Fix the `[llm]` → `[llm-llama]` extras name mismatch.
-- **3i. Infer `input_schema` in `@maxim.tool` decorator** — Use `inspect.signature()` to auto-generate the schema from type annotations. Without this, the LLM can't discover tool parameters. ~20 LOC in `api.py`.
+- **3h. Update getting-started.md install path** — `[SKIP — ASH Phase 5c]` — Covered by README overhaul in ASH plan.
+- **3i. Infer `input_schema` in `@maxim.tool` decorator** — `[SKIP — ASH Phase 1d]` — Covered by ASH plan Phase 1d.
 
 ### Phase 4 additions (publish)
 

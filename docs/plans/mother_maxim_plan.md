@@ -89,12 +89,7 @@ These items don't block publication but ensure the architecture stays Mother-com
 
 **Protocols: DONE** — `EpisodicStore`, `CausalStore`, `SemanticStore` protocols + `FileEpisodicStore`, `FileCausalStore`, `FileSemanticStore` implementations are complete in `src/maxim/memory/store.py` (committed during buildout Phase 9). All protocols are `@runtime_checkable`.
 
-**Wiring: NOT DONE** — Bio-systems still use internal save/load methods, not store parameters:
-- Hippocampus `__init__` does not accept `store: EpisodicStore`
-- NAc `__init__` does not accept `store: CausalStore`
-- ATL `__init__` does not accept `store: SemanticStore`
-
-**Wiring is added to publication refinement plan Phase 1m** — the natural on-ramp is Phase 1e (atomic write bypasses), which already touches the same save/load code in NAc. When fixing `nac.py:~815` to use `atomic_write_json`, refactor to delegate to `FileCausalStore` at the same time. Same pattern for Hippocampus and ATL. ~80 LOC total across 3 files + `memory_hub.py`.
+**Wiring: DEFERRED to v0.2.1 / M-1** — Bio-systems still use internal save/load methods. Publication refinement plan Phase 1m was deferred because the store protocol interface (`save(list[dict])` / `load() → list[dict]`) doesn't match the bio-system contract (complex serialization with versioning, graph state, context indices + mutate-self). The store protocols need to be redesigned alongside the M-1 database backend to properly account for this gap. All bio-system persistence now uses `atomic_write_json()` (Phase 1e done), so crash safety is handled.
 
 **Why split protocols matter for M-1:** `DatabaseEpisodicStore` uses pgvector for `query_similar()`. `DatabaseCausalStore` uses indexed event_signature lookups. Completely different SQL — this is why we have three protocols, not one.
 
