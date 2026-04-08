@@ -7,7 +7,7 @@ name = "pymaxim"
 version = "0.1.0"
 description = "Bio-inspired cognitive architecture with adaptive planning, biological memory systems, and local LLM inference. Works headless, with simulation, or connected to robots."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [{name = "Denny Schaedig"}]
 keywords = ["cognitive-architecture", "llm", "agentic", "planning", "embodied-ai", "robotics", "memory", "simulation", "bio-inspired"]
@@ -16,16 +16,20 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Robotics",
 ]
 
 dependencies = [
-    "numpy>=2.2,<3.0",
-    "scipy>=1.15,<2.0",
+    "numpy>=1.26,<3.0",
+    "scipy>=1.11,<2.0",
     "pyyaml>=6.0",
     "json-repair>=0.30",
+    "rich>=13.0.0",
 ]
 
 [project.urls]
@@ -34,10 +38,6 @@ Repository = "https://github.com/dennys246/Maxim.git"
 Issues = "https://github.com/dennys246/Maxim/issues"
 
 [project.optional-dependencies]
-# Rich terminal UI (interactive display, DM campaign panels)
-ui = [
-    "rich>=13.0.0",
-]
 # Vision perception (OpenCV + ONNX Runtime)
 vision = [
     "opencv-python>=4.12,<5.0",
@@ -51,7 +51,7 @@ audio = [
 ]
 # Reachy Mini robot hardware
 reachy = [
-    "reachy-mini[gstreamer]==1.2.6",
+    "reachy-mini[gstreamer]>=1.2.6,<1.3",
 ]
 # Web search
 search = [
@@ -119,8 +119,13 @@ semantic = [
 temporal = [
     "dateparser>=1.2.0",
 ]
+# Database backend for Mother Maxim (PostgreSQL + pgvector)
+database = [
+    "psycopg[binary]>=3.1",
+    "pgvector>=0.3",
+]
 all = [
-    "pymaxim[ui,llm-llama,llm-server,llm-anthropic,llm-openai,vision,audio,reachy,comms,search,temporal]",
+    "pymaxim[llm-llama,llm-server,llm-anthropic,llm-openai,vision,audio,reachy,comms,search,temporal]",
 ]
 # Test dependencies
 test = [

@@ -382,6 +382,11 @@ class EpisodicMemory(MemoryRecord):
     action: Action = field(default_factory=Action)
     outcome: Outcome = field(default_factory=Outcome)
 
+    # Extensible metadata bag — used by Mother Maxim for domain_tags,
+    # contribution_source, witness_count, tenant_id, deidentification_model.
+    # Adding this pre-publication avoids migration for persisted memories.
+    metadata: dict[str, Any] = field(default_factory=dict)
+
     @property
     def duration_ms(self) -> float:
         return self.action.execution_time_ms
@@ -464,6 +469,7 @@ class EpisodicMemory(MemoryRecord):
                 "error": self.outcome.error,
                 "evaluations": self.outcome.evaluations,
             },
+            "metadata": self.metadata,
         }
 
     @classmethod
@@ -517,6 +523,7 @@ class EpisodicMemory(MemoryRecord):
                 error=o.get("error"),
                 evaluations=o.get("evaluations", []),
             ),
+            metadata=data.get("metadata", {}),
         )
 
 
