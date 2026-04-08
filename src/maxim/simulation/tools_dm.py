@@ -100,3 +100,185 @@ class ChooseTool(Tool):
             success=False,
             error=f"Invalid choice '{option}'. Valid choices are: {opts}",
         )
+
+
+# ---------------------------------------------------------------------------
+# Architect tools — used by adventure_architect persona
+# ---------------------------------------------------------------------------
+
+
+class BrowseComponentsTool(Tool):
+    """Browse the SEM Component Registry for entity templates."""
+
+    name = "browse_components"
+    description = "Search the component library for entity templates (NPCs, weapons, creatures, environments)."
+    input_schema: dict[str, Any] = {
+        "category": (str, None),
+        "tags": (str, None),
+    }
+
+    def __init__(self, component_registry: Any = None) -> None:
+        self._registry = component_registry
+        super().__init__()
+
+    def execute(self, **kwargs: Any) -> Any:
+        if self._registry is None:
+            return ToolOutput(success=False, error="No ComponentRegistry available")
+
+        category = kwargs.get("category")
+        tags_str = kwargs.get("tags", "")
+        tags = [t.strip() for t in tags_str.split(",") if t.strip()] if tags_str else None
+
+        results = self._registry.query(category=category, tags=tags)
+        return {
+            "count": len(results),
+            "components": [
+                {"ref": r.ref, "name": r.name, "category": r.category, "tags": list(r.tags)}
+                for r in results[:20]
+            ],
+        }
+
+
+class BrowseEncountersTool(Tool):
+    """Browse the Encounter Library for scene templates."""
+
+    name = "browse_encounters"
+    description = "Search the encounter library for reusable scene templates."
+    input_schema: dict[str, Any] = {
+        "category": (str, None),
+        "tags": (str, None),
+        "difficulty": (int, None),
+        "narrative_role": (str, None),
+    }
+
+    def __init__(self, encounter_library: Any = None) -> None:
+        self._library = encounter_library
+        super().__init__()
+
+    def execute(self, **kwargs: Any) -> Any:
+        if self._library is None:
+            return ToolOutput(success=False, error="No EncounterLibrary available")
+
+        category = kwargs.get("category")
+        tags_str = kwargs.get("tags", "")
+        tags = [t.strip() for t in tags_str.split(",") if t.strip()] if tags_str else None
+        difficulty = kwargs.get("difficulty")
+        narrative_role = kwargs.get("narrative_role")
+
+        results = self._library.query(
+            category=category, tags=tags,
+            difficulty=difficulty, narrative_role=narrative_role,
+        )
+        return {
+            "count": len(results),
+            "encounters": [
+                {
+                    "ref": r.ref, "name": r.name, "category": r.category,
+                    "tags": list(r.tags), "difficulty_range": r.difficulty_range,
+                    "narrative_role": r.narrative_role,
+                }
+                for r in results[:20]
+            ],
+        }
+
+
+class DesignEntityTool(Tool):
+    """Generate an NPC/item/creature from a natural language description."""
+
+    name = "design_entity"
+    description = (
+        "Design an entity from a description. Returns a valid SEM entity spec. "
+        "Use browse_components first to check if a base template exists."
+    )
+    input_schema: dict[str, Any] = {
+        "description": str,
+        "base_ref": (str, None),
+        "entity_type": (str, None),
+    }
+
+    def __init__(self, entity_designer: Any = None) -> None:
+        self._designer = entity_designer
+        super().__init__()
+
+    def execute(self, **kwargs: Any) -> Any:
+        if self._designer is None:
+            return ToolOutput(success=False, error="No EntityDesigner available")
+
+        description = kwargs.get("description", "")
+        base_ref = kwargs.get("base_ref")
+        entity_type = kwargs.get("entity_type")
+
+        try:
+            spec = self._designer.design(
+                description=description,
+                base_ref=base_ref,
+                entity_type=entity_type,
+            )
+
+            # Validate
+            from maxim.simulation.entity_designer import validate_entity_spec
+            errors = validate_entity_spec(spec)
+            if errors:
+                return {
+                    "spec": spec,
+                    "valid": False,
+                    "errors": errors,
+                    "message": "Entity generated but has validation issues",
+                }
+
+            return {
+                "spec": spec,
+                "valid": True,
+                "message": f"Entity '{spec.get('name', '?')}' designed successfully",
+            }
+        except Exception as e:
+            return ToolOutput(success=False, error=f"Entity design failed: {e}")
+
+
+class EmitCampaignTool(Tool):
+    """Output the final campaign YAML for the architect to emit."""
+
+    name = "emit_campaign"
+    description = (
+        "Emit a complete campaign YAML. Provide the full campaign structure "
+        "including acts, encounters, NPCs, and player character."
+    )
+    input_schema: dict[str, Any] = {
+        "campaign_yaml": str,
+    }
+
+    def __init__(self, output_dir: str | None = None) -> None:
+        self._output_dir = output_dir
+        self._emitted: str | None = None
+        super().__init__()
+
+    @property
+    def last_emitted(self) -> str | None:
+        """The last emitted campaign YAML string."""
+        return self._emitted
+
+    def execute(self, **kwargs: Any) -> Any:
+        yaml_content = kwargs.get("campaign_yaml", "")
+        if not yaml_content:
+            return ToolOutput(success=False, error="No campaign_yaml provided")
+
+        self._emitted = yaml_content
+
+        # Optionally save to file
+        if self._output_dir:
+            import time
+            from pathlib import Path
+            output_path = Path(self._output_dir) / f"generated_campaign_{int(time.time())}.yaml"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(yaml_content)
+            log.info("Architect: campaign saved to %s", output_path)
+            return {
+                "success": True,
+                "saved_to": str(output_path),
+                "message": "Campaign YAML emitted and saved",
+            }
+
+        return {
+            "success": True,
+            "message": "Campaign YAML emitted (not saved to disk)",
+        }
