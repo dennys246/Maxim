@@ -139,6 +139,8 @@ class CampaignDef:
     npc_specs: dict[str, dict[str, Any]]  # name → raw SEM entity YAML
     object_specs: dict[str, dict[str, Any]] = field(default_factory=dict)
     expectations: dict[str, Any] = field(default_factory=dict)  # Bio-system expectations
+    party_mode: bool = False  # Enable PartyDMRuntime with NPC agents
+    choice_resolution: str = "pc_decides"  # How conflicting choices resolve
 
     @property
     def encounter_order(self) -> list[str]:
@@ -224,6 +226,8 @@ def load_campaign(
     name = campaign.get("name", path.stem)
     goal = campaign.get("goal", "")
     seed = campaign.get("seed", 42)
+    party_mode = campaign.get("party_mode", False)
+    choice_resolution = campaign.get("choice_resolution", "pc_decides")
 
     # Parse acts
     acts = []
@@ -302,6 +306,8 @@ def load_campaign(
         npc_specs=npc_specs,
         object_specs=object_specs,
         expectations=expectations,
+        party_mode=party_mode,
+        choice_resolution=choice_resolution,
     )
 
 
