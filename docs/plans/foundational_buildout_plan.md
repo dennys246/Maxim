@@ -138,9 +138,18 @@ Don't fix *all* globals (EnergyRegistry, MetricsRegistry can stay shared for now
 
 ---
 
-## Phase 1: SEM Component Registry (~300 LOC)
+## Phase 1: SEM Component Registry (~350 LOC)
 
 **Why first:** Defines the storage/sharing pattern that Encounter Library, Generative Architect, and Multi-AUT all depend on. Every NPC in party mode needs to load from a shared component definition.
+
+### Critical Design Decision: Templates, Not Instances
+
+**The registry stores raw YAML spec dicts — NOT Entity objects.** This is critical because:
+- Two encounters referencing `"npcs/guard"` must get **independent** Entity instances (separate HP, separate trust sensors). Returning the same Entity would cause shared-state bugs.
+- The current DM system already works this way: `CampaignDef.npc_specs` stores raw dicts, and `SceneState` instantiates Entity objects at runtime via `_parse_entity()`.
+- Entity objects have no `clone()` or `to_dict()` method, and deep-copying entity trees with parent-child references is fragile.
+
+The registry is a **template catalog**: it stores specs, resolves inheritance, and returns resolved dicts. Callers instantiate via `_parse_entity()` as they already do.
 
 ### Design
 
@@ -152,7 +161,7 @@ src/maxim/_data/components/     # Bundled seed components (ship in wheel)
 │   ├── longbow.yaml
 │   └── staff_of_healing.yaml
 ├── npcs/
-│   ├── base_humanoid.yaml      # Base template
+│   ├── base_humanoid.yaml      # Base template (shared sensors/modulators)
 │   ├── guard.yaml              # extends: npcs/base_humanoid
 │   ├── merchant.yaml
 │   └── ferryman.yaml
@@ -174,7 +183,6 @@ src/maxim/_data/components/     # Bundled seed components (ship in wheel)
 # src/maxim/_data/components/weapons/rusty_sword.yaml
 component:
   name: rusty_sword
-  version: "1.0"
   tags: [weapon, melee, degradable]
   category: weapons
   extends: null  # or "weapons/base_sword" for inheritance
@@ -197,67 +205,185 @@ entity:
       pain_intensity: 0.7
 ```
 
-**Inheritance via `extends`:**
+**No version pinning in v1.** Ref format is just `"category/name"` (e.g., `"npcs/guard"`). If versioning becomes needed later, use colon syntax (`"npcs/guard:1.0"`, like Docker tags) and add a `version` field to the `component:` header. For now, latest-wins by search path priority.
+
+**Inheritance via `extends` (deep merge):**
 - Child components inherit all sensors, modulators, failure_modes from parent
-- Child overrides merge (add new sensors, override values, add affordances)
+- **Deep merge, not shallow** — child overrides at the leaf level:
+  ```yaml
+  # base_humanoid.yaml: sensors: { hp: { unit: points, range: [0, 20], initial: 20 } }
+  # guard.yaml extends base_humanoid: sensors: { hp: { initial: 15 } }
+  # Resolved: sensors: { hp: { unit: points, range: [0, 20], initial: 15 } }
+  ```
 - Single-level inheritance only (no diamond chains — keep it simple)
+- Inheritance resolution happens at `get()` time, result is cached
+
+**Utility: `deep_merge(parent, child) -> dict`**
+```python
+def deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge override into base. Lists are replaced, not appended."""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+```
+
+**Search path priority (4 levels):**
+1. **Campaign-local** — same directory as the campaign YAML file (for campaign-specific entities)
+2. **User components** — `~/.maxim/components/` (user's custom library)
+3. **Bundled components** — `src/maxim/_data/components/` (shipped in wheel)
+4. **Legacy path** — `scenarios/embodiment/` (backward compat during transition, searched relative to repo root)
+
+Higher-priority paths shadow lower ones. If `~/.maxim/components/npcs/guard.yaml` exists, it takes precedence over the bundled version.
 
 **Registry class:**
 ```python
-# src/maxim/embodiment/component_registry.py (~200 LOC)
+# src/maxim/embodiment/component_registry.py (~250 LOC)
+
+@dataclass(frozen=True)
+class ComponentInfo:
+    """Lightweight metadata returned by query() — no full spec parsing needed."""
+    ref: str              # "weapons/rusty_sword"
+    name: str             # "rusty_sword"
+    category: str         # "weapons"
+    tags: tuple[str, ...]
+    extends: str | None   # Parent ref or None
+    source_path: str      # Absolute path to the YAML file
 
 class ComponentRegistry:
-    """Discovers, indexes, and resolves SEM component definitions."""
+    """Discovers, indexes, and resolves SEM component templates.
 
-    def __init__(self, search_paths: list[Path] | None = None):
-        """Scan search_paths for component YAML files, build index.
+    Stores raw YAML spec dicts — NOT Entity objects. Callers instantiate
+    entities via _parse_entity() to get independent instances with separate
+    sensor state.
+    """
 
-        Default search_paths: [bundled_data()/components, data_home()/components]
+    def __init__(self, search_paths: list[Path] | None = None,
+                 campaign_dir: Path | None = None):
+        """Build component index by scanning search paths.
+
+        Two-phase loading:
+        1. Index scan (at init) — reads only the ``component:`` header
+           from each YAML for metadata (name, tags, category, extends).
+        2. Full parse (on get()) — loads the complete spec on first access,
+           resolves extends, and caches the result.
         """
 
-    def get(self, ref: str) -> Entity:
-        """Resolve ref like 'weapons/rusty_sword' or 'npcs/guard@1.0'."""
+    def get(self, ref: str) -> dict:
+        """Return the resolved entity spec dict for a component ref.
 
-    def query(self, *, tags: list[str] = None, category: str = None,
-              has_sensor: str = None, has_affordance: str = None) -> list[ComponentInfo]:
-        """Search components by metadata."""
+        If the component has ``extends``, deep-merges parent spec first.
+        Result is cached after first resolution.
+
+        Returns a **copy** of the cached dict so callers can mutate freely
+        (e.g., override ``name`` for a specific NPC instance).
+
+        Raises KeyError if ref not found in any search path.
+        """
+
+    def instantiate(self, ref: str, **overrides) -> "Entity":
+        """Convenience: get() + _parse_entity() in one call.
+
+        Creates a fresh, independent Entity instance from the template.
+        Optional overrides are deep-merged into the spec before parsing
+        (e.g., instantiate("npcs/guard", name="captain", sensors={"hp": {"initial": 25}})).
+        """
+
+    def query(self, *, tags: list[str] | None = None, category: str | None = None,
+              has_sensor: str | None = None, has_affordance: str | None = None) -> list[ComponentInfo]:
+        """Search components by metadata. All filters are AND-combined."""
 
     def list_categories(self) -> list[str]:
-        """Return available categories."""
+        """Return sorted list of available categories."""
 
-    def resolve_extends(self, spec: dict) -> dict:
-        """Merge parent spec into child, return resolved spec."""
+    def list_refs(self, category: str | None = None) -> list[str]:
+        """Return all known refs, optionally filtered by category."""
+
+    def has(self, ref: str) -> bool:
+        """Check if a ref exists without loading the full spec."""
 ```
 
-**YAML ref resolution (important: `!ref` won't work with `yaml.safe_load`):**
+**Thread safety:** `threading.Lock` around `_spec_cache` writes. Index reads are lock-free (built at init, only appended via `register()`).
 
-`yaml.safe_load` rejects custom tags for security. Two options:
-- **Option A (recommended):** Use a plain string convention instead of a YAML tag: `ref: "weapons/rusty_sword"` with a `component:` wrapper key that the loader recognizes. No custom YAML machinery needed.
-- **Option B:** Register a custom constructor on a subclassed SafeLoader. Adds complexity but looks cleaner in YAML.
-
-Go with Option A — the `component:` header already distinguishes component refs from inline entities. The registry resolves any `ref:` string field it encounters during campaign loading.
+**YAML ref resolution in campaigns (string = ref, dict = inline):**
 
 ```yaml
-# Instead of: entity_refs: { bandit: !ref npcs/bandit }
-# Use:        entity_refs: { bandit: { ref: "npcs/bandit" } }
-# Or simply:  entity_refs: { bandit: "npcs/bandit" }  (string = ref, dict = inline)
+# In campaign YAML:
+npcs:
+  guard_captain:
+    ref: "npcs/guard"                    # Resolved through registry
+    overrides:                           # Optional per-instance overrides
+      name: captain_aldric
+      sensors: { hp: { initial: 25 } }
+      metadata: { persona_prompt: "Loyal to the crown, suspicious of strangers" }
+
+  # OR inline (no registry lookup):
+  mysterious_stranger:
+    name: stranger
+    entity_type: npc
+    metadata: { persona_prompt: "Speaks in riddles" }
 ```
 
-**Integration with existing `load_spec()`:**
-- `spec.py` gains a `registry` parameter; when present, string entity refs like `"weapons/rusty_sword"` resolve through registry
-- Standalone YAML (no `component:` header) still loads as before — fully backwards compatible
-- Campaign YAML can mix inline entities (dicts) and registry refs (strings)
+**Integration with existing `load_spec()` (spec.py):**
+- `spec.py` gains an optional `registry` parameter
+- When present, any entity dict with a `ref` key is resolved through the registry before parsing
+- Standalone YAML without `component:` header still loads as before — fully backward compatible
+- Campaign YAML can mix inline entities and registry refs
+
+**Integration with `dm_schema.py`:**
+- `load_campaign()` accepts optional `registry` parameter
+- NPC/object specs with `ref` key are resolved through registry
+- `overrides` are deep-merged into the resolved spec before storing in `CampaignDef`
+- Existing campaigns (inline specs only) work unchanged
 
 **New files:**
-- `src/maxim/embodiment/component_registry.py` (~200)
+- `src/maxim/embodiment/component_registry.py` (~250) — registry + deep_merge + ComponentInfo
 - `src/maxim/_data/components/` — migrate existing specs + 8-10 seed components (~100 YAML)
 - Tests (~100)
 
 **Modified:**
-- `src/maxim/embodiment/spec.py` — add `registry` param to `load_spec()`, support `!ref` resolution
-- `src/maxim/simulation/dm_schema.py` — support component refs in NPC/object definitions
+- `src/maxim/embodiment/spec.py` — add optional `registry` param to `load_spec()`, resolve `ref` entries
+- `src/maxim/simulation/dm_schema.py` — support `ref` + `overrides` in NPC/object definitions
 
-**Ship gate:** Campaign YAML can reference `"weapons/rusty_sword"` (string ref) and get a fully resolved entity with tools, sensors, failure modes. Existing campaigns still work unchanged.
+**Ship gate:**
+1. `ComponentRegistry` discovers and indexes all components across search paths
+2. `get("npcs/guard")` returns a resolved spec dict (with inheritance applied)
+3. Two calls to `instantiate("npcs/guard")` produce independent Entity instances (separate sensor state)
+4. Campaign YAML with `ref: "npcs/guard"` loads and runs correctly
+5. Existing campaigns (no refs) still work unchanged
+6. `query(tags=["weapon"])` returns all weapon components
+7. `extends` inheritance produces correct deep-merged specs
+8. Circular inheritance detection raises clear error
+
+### Critical Implementation Notes (from code review)
+
+**Finding 1: DM runtime doesn't actually instantiate entities yet.**
+`CampaignDef` stores `npc_specs` / `object_specs` as raw dicts (dm_schema.py:138-140). The `DMRuntime.init_entities()` method exists but is **never called** anywhere. NPC specs are only used to extract `metadata.persona_prompt` for dialogue hints (dm_runtime.py:259-272). `SceneState._entity_registry` expects pre-instantiated Entity objects, but nothing populates it from campaign specs.
+
+**Impact:** The registry's `instantiate()` fills this gap. When integrating, we need to wire `DMRuntime` to call `registry.instantiate()` for each active NPC/object in an encounter. This is a larger integration than originally planned — add ~50 LOC to dm_runtime.py.
+
+**Finding 2: Entity state must survive between encounters.**
+`SceneState.enter_encounter()` deregisters/re-registers **tools** but the Entity object itself persists in `_entity_registry` (dm_runtime.py:534). This means an NPC's HP/trust state carries across encounters — which is the correct behavior (a guard who lost HP in encounter 1 is still damaged in encounter 3).
+
+**Impact:** Don't re-instantiate entities each encounter. Instantiate once at campaign start, cache in `SceneState._entity_registry`, and reuse. The registry provides **templates** for initial instantiation; the runtime owns the live instances.
+
+**Finding 3: Two different entity loading paths exist.**
+- DM runtime: entities from `CampaignDef.npc_specs` (raw dicts, currently unused)
+- Generative runner: entities from `arc.metadata.world_entities` (calls `_parse_entity()` directly, generative_runner.py:78-84)
+
+**Impact:** Both paths need registry support. The generative runner already calls `_parse_entity()` — make it call `registry.instantiate()` when a registry is available and the entity dict has a `ref` key.
+
+**Finding 4: Circular inheritance detection needed.**
+If component A extends B which extends A, `resolve_extends()` would infinite-loop. Track a `visited` set during resolution and raise `ValueError` on cycle detection.
+
+**Finding 5: Legacy YAML auto-detection.**
+Existing files in `scenarios/embodiment/` use `body:` and `world_entities:` keys (no `component:` header). The registry should auto-detect these as legacy format: if a YAML file has `body:` or `world_entities:` but no `component:` header, treat the root entity as a component with `name` derived from the filename and `category` derived from the parent directory.
+
+**Finding 6: `_parse_entity` is safe to import from registry.**
+`spec.py._parse_entity()` imports only from `maxim.embodiment.sem` — no circular dependency risk. The registry can safely import and call it.
 
 ---
 
@@ -456,6 +582,7 @@ class AgentPool:
 - `src/maxim/runtime/agent_loop.py` — extract single-turn execution into `run_single_turn()` callable from pool. **Note:** `run_agentic_loop()` is ~1,700 lines with heavy instrumentation (autonomy checks, LLM worker async, context pool, sim logging). The loop is a `for step_num in step_iter:` iterator, not a while-loop, so extraction is feasible but requires careful stripping of per-session setup from per-turn logic. Expect ~200 LOC for the extraction itself.
 - `src/maxim/mesh/bus.py` — `LocalMessageBus` currently routes by **nickname string**, not agent_id. Add `agent_id`-based registration so agents can subscribe with their unique ID. The existing nickname routing stays for backward compat.
 - `src/maxim/tools/registry.py` — add `threading.RLock` around `_tools` dict mutations
+- `src/maxim/simulation/sim_logger.py` — de-globalize into `SimLogger` class with thread-local default (~200 LOC, 29 call sites). Per-agent loggers become possible once agents own their own SimLogger instance.
 
 **Ship gate:** Can spawn 3 independent agents, run concurrent turns, verify each has separate hippocampus memories. Knowledge sharing via ExperienceBroker works between agents.
 
@@ -550,7 +677,13 @@ campaign:
 - `src/maxim/simulation/dm_schema.py` — add `party_mode`, `choice_resolution`, `model_tier`, `remembers`, `learns` fields
 - `src/maxim/simulation/orchestrator.py` — route to `PartyDMRuntime` when `party_mode: true`
 
-**Ship gate:** Run a 3-encounter campaign with 1 PC + 2 NPC agents. NPCs produce independent memories. At least one NPC demonstrates learned behavior (changes response based on prior PC actions).
+**Campaign save/load for resume (~150 LOC, folded in from Phase 0.1):**
+- `save_campaign_state(session_id)` — persists campaign YAML path + `CampaignState` dict + per-agent memory snapshots + entity sensor states to `~/.maxim/sim_reports/{session_id}/campaign_checkpoint.json`
+- `load_campaign_state(session_id)` — reconstructs `AgentPool` from checkpoint, restores each agent's Hippocampus/NAc/ATL state, resumes from last completed encounter
+- CLI: `maxim --sim campaign.yaml --resume-campaign <session_id>`
+- Uses `atomic_write_json` for checkpoint persistence
+
+**Ship gate:** Run a 3-encounter campaign with 1 PC + 2 NPC agents. NPCs produce independent memories. At least one NPC demonstrates learned behavior (changes response based on prior PC actions). Campaign can be interrupted and resumed from checkpoint.
 
 ---
 
@@ -1300,21 +1433,21 @@ These don't have their own phases but should be fixed as encountered during the 
 |-------|-----------|-------|
 | `test_record_plan_outcome` failure | Phase 5 | NAc observation tracking from plan outcomes |
 | `tool_stats={}` TODO in benchmark.py | Phase 8 | Propagate tool stats through ExperimentResult |
-| `llm-local` / `llm-llama` duplicate dep | Phase 0g | Remove `llm-local`, keep `llm-llama` |
+| ~~`llm-local` / `llm-llama` duplicate dep~~ | ~~Phase 0g~~ | **DONE** — removed in Phase 0 |
 | ToolRegistry has no thread safety | Phase 3 | Add RLock around `_tools` dict |
 | Graceful error for missing LLM in imagine() | Phase 8 | Helpful ImportError message |
 | `observe()` returns `AUTIntrospector` alias | Phase 8 | Remove deprecated alias, use `Observer` only |
 
 ---
 
-## Phase 0.1: Cleanup Items Found During Implementation
+## Cleanup Items Distributed Into Phases
 
-Items discovered during Phase 0 implementation. Not blocking for the main buildout, but should be cleaned up before publication. Can be done in a focused sweep after Phase 0 completes.
+Items discovered during Phase 0 implementation. Each has been assigned to the phase where it naturally fits:
 
-| Item | Context | Effort |
-|------|---------|--------|
-| **Merge `gpu_compat.py` + `gpu_detect.py`** | `gpu_compat.py` (used by `selfy.py`) and `gpu_detect.py` (new, used by `cli.py`) overlap. Keep `gpu_detect.py`'s lazy pattern, absorb `GPUCompatState` dataclass, update `selfy.py` to import from `gpu_detect`. | ~50 LOC |
-| **Decompose `selfy.py` → `ReachyController`** | `selfy.py` is a monolithic hardware runtime. Should become `ReachyController(RobotController)` with `AgenticRuntimeMixin` moved to standard runtime. Currently behind lazy import (no PyPI impact), but blocks clean multi-robot support. Only 2 call sites. | ~500 LOC, post-publication |
-| **De-globalize `sim_logger` fully** | Added atexit handler in Phase 0, but 29 files import `sim_log()`. Full refactor to `SimLogger` class with thread-local default is ~150-200 LOC. Can be done incrementally. | ~200 LOC |
-| **Duplicate path-resolution patterns** | Several modules have their own `_find_config()` that searches CWD/parents. Should all delegate to `paths.resolve_config()`. Found in: `prompts.py` (updated), `models/language/config.py` (agent handling), `hardware/config.py`. | ~30 LOC per module |
-| **Campaign save/load for resume** | Multi-AUT party mode needs campaign state + per-agent memory snapshots for `--resume-campaign`. Fits in Phase 4 (Party DM Runtime). Schema: campaign YAML path + CampaignState dict + per-agent memory exports + entity state. | ~150 LOC |
+| Item | Assigned To | Notes |
+|------|------------|-------|
+| Merge `gpu_compat.py` + `gpu_detect.py` (~50 LOC) | Phase 9 (Deps audit) | Consolidate during the dependency/import audit sweep |
+| De-globalize `sim_logger` fully (~200 LOC) | Phase 3 (Agent Factory) | Needs per-agent loggers — refactor when the requirement is concrete |
+| Duplicate path-resolution patterns (~60 LOC) | Phase 9 (Deps audit) | Consolidate remaining `_find_config()` during import audit |
+| Campaign save/load for resume (~150 LOC) | Phase 4 (Party DM Runtime) | Needs AgentPool + per-agent memory export to exist first |
+| Decompose `selfy.py` → `ReachyController` (~500 LOC) | Post-publication | See [future_plans.md](future_plans.md) — Embodiment Hardware Adapter |
