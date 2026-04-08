@@ -432,20 +432,20 @@ Rejected memories go to a quarantine queue:
 ### Integration with Existing Infrastructure
 
 - **`CloudRedactionFilter`** stays for its current purpose (LLM prompt redaction). Shares `_SECRET_PATTERN` and `_PATH_PATTERN` with the deidentification filter.
-- **`ContributionPreparer`** ships in the main package (not just Mother server) since it runs client-side. Gated behind `contribute=True` flag.
-- **API integration:** `maxim.imagine(..., contribute=True)` runs `ContributionPreparer.prepare()` after the session completes, then submits to `/v1/contribute`.
+- **`ContributionPreparer`** ships in the main package (not just Mother server) since it runs client-side. Gated behind `share=True` flag.
+- **API integration:** `maxim.imagine(..., share=True)` runs `ContributionPreparer.prepare()` after the session completes, then submits to `/v1/contribute`.
 
 ### CLI integration
 
 ```bash
 # Preview what would be deidentified (doesn't submit)
-maxim contribute --preview --session 20260410_143022
+maxim share --preview --session 20260410_143022
 
 # Submit with full LLM pass
-maxim contribute --session 20260410_143022
+maxim share --session 20260410_143022
 
 # Submit without LLM pass (deterministic only, free)
-maxim contribute --session 20260410_143022 --no-llm-pass
+maxim share --session 20260410_143022 --no-llm-pass
 ```
 
 ### New files
@@ -679,12 +679,24 @@ GET  /v1/stats            → Mother's vital signs (memory count, concept count,
 
 **New CLI:**
 ```bash
+# Operator commands (managing your own Mother instance)
 maxim mother start                    # Start Mother Maxim (PostgreSQL required)
 maxim mother start --port 8080        # Custom port
 maxim mother status                   # Show memory stats, active sessions, uptime
 maxim mother export                   # Export Mother's memory state to JSON (backup)
 maxim mother import state.json        # Restore from backup
+
+# Shorthand: --mother flag on any maxim command starts Mother mode
+maxim --mother                        # Start Mother with defaults (equivalent to `maxim mother start`)
+maxim --mother --port 8080            # With options
+
+# Federation: anyone can spawn a federated Mother
+maxim --mother --domain fantasy       # Spawn a domain-specialized Mother
+maxim --mother --domain medical       # Medical-domain Mother
+maxim --mother --federation <hub_url> # Join an existing federation hub
 ```
+
+**`--mother` flag design:** Works like `--sim` — it's a top-level mode flag that changes what `maxim` does. Without it, Maxim runs as a normal agent. With it, Maxim runs as a persistent Mother instance. This makes spawning a federated node as simple as `maxim --mother --domain <x>` on any machine with the package installed.
 
 ---
 
@@ -1765,8 +1777,8 @@ Mother Maxim must be accessible through all three interfaces — CLI, Python API
 | `maxim mother import <file>` | Restore from backup | `mother/cli.py` → store `.save()` methods |
 | `maxim mother hibernate` | Manually trigger hibernation | `mother/cli.py` → `HibernateTool.execute()` |
 | `maxim mother wake` | Manually wake from hibernation | `mother/cli.py` → wake logic in `agent_loop.py` |
-| `maxim contribute --session <id>` | Submit a session to Mother | `cli.py` → `ContributionPreparer.prepare()` → `POST /v1/contribute` |
-| `maxim contribute --preview` | Show deidentification diff without submitting | `cli.py` → `ContributionPreparer.preview()` |
+| `maxim share --session <id>` | Submit a session to Mother | `cli.py` → `ContributionPreparer.prepare()` → `POST /v1/contribute` |
+| `maxim share --preview` | Show deidentification diff without submitting | `cli.py` → `ContributionPreparer.preview()` |
 
 **Registration:** Add `mother` and `contribute` as subcommands in `cli.py`'s argument parser. Mother subcommands route to `mother/cli.py`.
 
@@ -1776,14 +1788,14 @@ Mother Maxim must be accessible through all three interfaces — CLI, Python API
 import maxim
 
 # Contributing to Mother (runs client-side deidentification, submits)
-result = maxim.imagine(goal="test memory", contribute=True)  # Auto-submit after session
-result = maxim.campaign("heist_v1.yaml", contribute=True)
+result = maxim.imagine(goal="test memory", share=True)  # Auto-submit after session
+result = maxim.campaign("heist_v1.yaml", share=True)
 
-# Manual contribution flow
+# Manual sharing flow
 session = maxim.imagine(goal="test memory")
-bundle = maxim.prepare_contribution(session.session_id)   # Preview deidentification
+bundle = maxim.prepare_share(session.session_id)          # Preview deidentification
 bundle.review()                                           # Show diff
-maxim.contribute(bundle)                                  # Submit to Mother
+maxim.share(bundle)                                       # Submit to Mother
 
 # Querying Mother (requires Mother URL configured)
 memories = maxim.recall("what causes hostility?", source="mother")
@@ -1798,7 +1810,7 @@ maxim.mother.stop()
 
 **Implementation:**
 - `contribute` param on `imagine()`, `campaign()` — keyword arg, default False. Added in Phase 8 API expansion.
-- `prepare_contribution()`, `contribute()` — new verbs in `api.py`, thin facades over `ContributionPreparer` + HTTP client.
+- `prepare_share()`, `share()` — new verbs in `api.py`, thin facades over `ContributionPreparer` + HTTP client.
 - `recall()`, `wisdom()`, `wanted()` — new verbs that hit Mother's API endpoints.
 - `maxim.mother` — namespace for operator functions, lazy-loaded like other verbs.
 - All Mother-query verbs require `MAXIM_MOTHER_URL` config (set via `maxim.configure(mother_url="...")` or env var).
@@ -2081,7 +2093,7 @@ The CapabilityAgent (designed in [future_plans.md](future_plans.md)) absorbs Mot
 |----------|---------|---------|
 | Mother as full agent vs passive accumulator? | Full agent (runs bio-stack) / Passive (just merges) | Full agent — more interesting, she develops personality |
 | Memory promotion: automatic vs LLM-reviewed? | Auto (similarity threshold) / LLM (Mother reviews each contribution) | Hybrid — auto for high-quality, LLM review for edge cases. Deidentification is always LLM-reviewed. |
-| User privacy: opt-in vs opt-out contributions? | Opt-in (explicit flag) / Opt-out (default share) | Opt-in — `maxim.imagine(..., contribute=True)` |
+| User privacy: opt-in vs opt-out contributions? | Opt-in (explicit flag) / Opt-out (default share) | Opt-in — `maxim.imagine(..., share=True)` |
 | Database: PostgreSQL vs SQLite? | PostgreSQL (scalable) / SQLite (simpler) | PostgreSQL — need concurrent writes, pgvector for search |
 | Embedding model for semantic search? | sentence-transformers / OpenAI embeddings / local model | Local sentence-transformers — no API dependency for core feature |
 | Cost model for public API? | Free tier + paid / Fully free / Token-gated | Free tier with rate limits, generous for contributors |
