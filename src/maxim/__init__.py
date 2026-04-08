@@ -25,17 +25,30 @@ _API_VERBS = frozenset(
         "introspect",
         "observe",
         "run",
+        # Phase 8 additions:
+        "campaign",
+        "benchmark",
+        "research",
+        "on",
+        "register_tool",
+        "register_persona",
+        "tool",
     }
 )
 
 # Also expose key types for library users who need them directly.
 _API_TYPES = {
     "DiagnosticReport": "maxim.api",
+    "CampaignResult": "maxim.api",
+    "BenchmarkResult": "maxim.api",
+    "ResearchResult": "maxim.api",
+    "EventHandle": "maxim.api",
 }
 
 __all__ = [
     "__version__",
     "get_version_info",
+    # Original verbs
     "configure",
     "connect",
     "diagnose",
@@ -43,7 +56,20 @@ __all__ = [
     "introspect",
     "observe",
     "run",
+    # Phase 8 verbs
+    "campaign",
+    "benchmark",
+    "research",
+    "on",
+    "register_tool",
+    "register_persona",
+    "tool",
+    # Types
     "DiagnosticReport",
+    "CampaignResult",
+    "BenchmarkResult",
+    "ResearchResult",
+    "EventHandle",
 ]
 
 

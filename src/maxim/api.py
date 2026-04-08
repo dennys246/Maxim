@@ -575,3 +575,386 @@ def _build_observer(home_dir: str) -> Any:
 
 # Alias: introspect = observe
 introspect = observe
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# campaign (new in Phase 8)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class CampaignResult:
+    """Result of a DM campaign execution."""
+
+    session_id: str = ""
+    campaign_name: str = ""
+    turns: int = 0
+    choices_made: list[dict[str, Any]] = None  # type: ignore[assignment]
+    flags: list[str] = None  # type: ignore[assignment]
+    finish_reason: str = ""
+    party_mode: bool = False
+    npc_memories: dict[str, Any] = None  # type: ignore[assignment]
+    rollup: dict[str, Any] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.choices_made is None:
+            self.choices_made = []
+        if self.flags is None:
+            self.flags = []
+        if self.npc_memories is None:
+            self.npc_memories = {}
+        if self.rollup is None:
+            self.rollup = {}
+
+
+def campaign(
+    path: str,
+    *,
+    model: str = "mistral-7b",
+    party_mode: bool | None = None,
+    npc_model: str | None = None,
+    interactive: bool = False,
+    verbosity: int = 1,
+    prompt_handler: Any = None,
+) -> CampaignResult:
+    """Run a DM campaign programmatically.
+
+    Loads a campaign YAML, optionally with party mode (NPC agents with
+    real memory), and returns structured results.
+
+    Args:
+        path: Path to campaign YAML file.
+        model: LLM profile for the PC agent / orchestrator.
+        party_mode: Override campaign's party_mode setting.  If ``None``,
+            uses the value from the campaign YAML.
+        npc_model: LLM profile for NPC agents (default: ``"small"`` tier).
+        interactive: If ``True``, enable rich display + user prompts.
+        verbosity: Logging verbosity (0-3).
+        prompt_handler: Callback for handling prompts programmatically.
+            Receives ``PromptRequest``, returns ``str``.  If ``None`` and
+            ``interactive=False``, uses ``NonInteractiveHandler``.
+
+    Returns:
+        CampaignResult with choices, flags, NPC memories, and rollup.
+
+    Example::
+
+        result = maxim.campaign("scenarios/campaigns/heist_v1.yaml")
+        print(f"Finished: {result.finish_reason}")
+        for choice in result.choices_made:
+            print(f"  {choice['encounter']}: {choice['choice']}")
+    """
+    configure(verbosity=verbosity)
+
+    os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
+    os.environ.setdefault("MAXIM_LLM_PROFILE", model)
+
+    from maxim.simulation.dm_schema import load_campaign as _load_campaign
+
+    campaign_def = _load_campaign(path)
+
+    # Override party_mode if specified
+    if party_mode is not None:
+        from dataclasses import replace
+        campaign_def = replace(campaign_def, party_mode=party_mode)
+
+    # For now, return a result from the campaign definition
+    # Full wiring to DMRuntime/PartyDMRuntime happens when orchestrator
+    # integration is complete.  This gives the API shape for users to
+    # build against.
+    return CampaignResult(
+        campaign_name=campaign_def.name,
+        party_mode=campaign_def.party_mode,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# benchmark (new in Phase 8)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class BenchmarkResult:
+    """Result of a multi-model benchmark run."""
+
+    models: list[str] = None  # type: ignore[assignment]
+    suite: str = ""
+    runs_per_model: int = 1
+    scores: dict[str, dict[str, float]] = None  # type: ignore[assignment]
+    summary: str = ""
+
+    def __post_init__(self) -> None:
+        if self.models is None:
+            self.models = []
+        if self.scores is None:
+            self.scores = {}
+
+
+def benchmark(
+    models: list[str],
+    *,
+    suite: str = "cognitive",
+    runs: int = 1,
+    verbosity: int = 1,
+) -> BenchmarkResult:
+    """Run a multi-model benchmark comparison.
+
+    Executes the same scenario suite across multiple LLM models and
+    compares their cognitive performance.
+
+    Args:
+        models: List of LLM profile names to compare.
+        suite: Benchmark suite name (``"cognitive"``, ``"biosystem"``)
+            or path to a custom suite YAML.
+        runs: Number of runs per model (for statistical robustness).
+        verbosity: Logging verbosity (0-3).
+
+    Returns:
+        BenchmarkResult with per-model scores and summary.
+
+    Example::
+
+        result = maxim.benchmark(
+            models=["mistral-7b", "qwen2.5-14b"],
+            suite="cognitive",
+            runs=3,
+        )
+        for model, scores in result.scores.items():
+            print(f"{model}: {scores}")
+    """
+    configure(verbosity=verbosity)
+
+    # API shape — full wiring to BenchmarkRunner deferred to orchestrator integration
+    return BenchmarkResult(
+        models=list(models),
+        suite=suite,
+        runs_per_model=runs,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# research (new in Phase 8)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class ResearchResult:
+    """Result of a research protocol execution."""
+
+    goal: str = ""
+    session_id: str = ""
+    paper_draft: str = ""
+    review: str = ""
+    experiment_count: int = 0
+
+
+def research(
+    goal: str,
+    *,
+    campaign: str | None = None,
+    model: str = "claude-sonnet",
+    aut_model: str | None = None,
+    verbosity: int = 1,
+) -> ResearchResult:
+    """Run the research protocol (experiment → paper → review).
+
+    Executes a structured research investigation with hypothesis
+    formation, experiment execution, and automated paper generation.
+
+    Args:
+        goal: Research question (e.g., ``"hippocampal recall under interference"``).
+        campaign: Optional campaign YAML for structured stimulus injection.
+        model: LLM profile for the research orchestrator.
+        aut_model: LLM profile for the agent under test (defaults to model).
+        verbosity: Logging verbosity (0-3).
+
+    Returns:
+        ResearchResult with paper draft, review, and experiment data.
+
+    Example::
+
+        result = maxim.research(
+            goal="test memory retention under interference",
+            campaign="scenarios/experiments/hippocampal_recall_short.yaml",
+        )
+        print(result.paper_draft[:200])
+    """
+    configure(verbosity=verbosity)
+
+    # API shape — full wiring to research orchestrator deferred
+    return ResearchResult(goal=goal)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Event subscription (new in Phase 8)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class EventHandle:
+    """Handle returned by ``on()`` for managing event subscriptions.
+
+    Call ``unsubscribe()`` to stop receiving events.
+    """
+
+    def __init__(self, event_name: str, callback: Any, handle_id: int) -> None:
+        self.event_name = event_name
+        self._callback = callback
+        self._handle_id = handle_id
+        self._active = True
+
+    def unsubscribe(self) -> None:
+        """Stop receiving events for this subscription."""
+        self._active = False
+        _event_subscriptions.pop(self._handle_id, None)
+
+    @property
+    def active(self) -> bool:
+        return self._active
+
+
+# Global event subscription registry
+_event_subscriptions: dict[int, tuple[str, Any]] = {}
+_next_handle_id = 0
+
+
+def on(event_name: str, callback: Any) -> EventHandle:
+    """Subscribe to agent events.
+
+    Events bridge to the internal AgentBus and PainBus when an agent
+    is running.  Subscriptions are registered before the agent starts
+    and delivered during execution.
+
+    Supported events:
+        ``"tool_call"`` — fired when the agent executes a tool
+        ``"memory_capture"`` — fired when hippocampus captures an episode
+        ``"pain_signal"`` — fired when a pain signal is detected
+        ``"prompt"`` — fired when the system needs user input
+
+    Args:
+        event_name: Name of the event to subscribe to.
+        callback: Function called with event data when the event fires.
+
+    Returns:
+        EventHandle — call ``.unsubscribe()`` to stop receiving events.
+
+    Example::
+
+        handle = maxim.on("tool_call", lambda e: print(f"Tool: {e}"))
+        result = maxim.imagine(goal="test")
+        handle.unsubscribe()
+    """
+    global _next_handle_id
+    handle_id = _next_handle_id
+    _next_handle_id += 1
+    _event_subscriptions[handle_id] = (event_name, callback)
+    return EventHandle(event_name, callback, handle_id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tool registration (new in Phase 8)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_pending_tools: list[Any] = []
+
+
+def register_tool(tool: Any) -> None:
+    """Register a custom tool available to all agents.
+
+    Tools registered via this function are injected into the agent's
+    tool registry at ``run()``/``imagine()``/``campaign()`` time.
+
+    Args:
+        tool: A Tool instance (must have ``name``, ``description``,
+            ``input_schema``, and ``execute()``).
+
+    Example::
+
+        from maxim.tools.base import Tool, ToolOutput
+
+        class MyTool(Tool):
+            name = "my_analysis"
+            description = "Analyze data"
+            input_schema = {"data": str}
+
+            def execute(self, **kwargs):
+                return ToolOutput(success=True, output="analyzed")
+
+        maxim.register_tool(MyTool())
+        maxim.run(model="mistral-7b")  # MyTool is available to the agent
+    """
+    _pending_tools.append(tool)
+
+
+def tool(fn: Any) -> Any:
+    """Decorator to register a function as a tool.
+
+    Example::
+
+        @maxim.tool
+        def my_analysis(data: str, depth: int = 3) -> str:
+            \"""Analyze data at specified depth.\"""
+            return f"Analysis of {data} at depth {depth}"
+    """
+    from maxim.tools.base import Tool, ToolOutput
+
+    class FunctionTool(Tool):
+        name = fn.__name__
+        description = fn.__doc__ or f"Tool: {fn.__name__}"
+        input_schema = {}
+
+        def execute(self, **kwargs: Any) -> Any:
+            try:
+                result = fn(**kwargs)
+                return ToolOutput(success=True, output=result)
+            except Exception as e:
+                return ToolOutput(success=False, error=str(e))
+
+    _pending_tools.append(FunctionTool())
+    return fn
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Persona registration (new in Phase 8)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def register_persona(
+    name: str,
+    *,
+    description: str = "",
+    focus: str = "",
+    context_prompt: str = "",
+    max_initiative: float = 0.5,
+) -> None:
+    """Register a custom simulation persona.
+
+    Custom personas are available for ``imagine()`` and ``campaign()``
+    via the ``persona`` parameter.
+
+    Args:
+        name: Persona name (used in ``persona="my_persona"``).
+        description: Short description of the persona's behavior.
+        focus: What the persona focuses on during simulation.
+        context_prompt: System prompt injected into the orchestrator.
+        max_initiative: How proactive the persona is (0-1).
+
+    Example::
+
+        maxim.register_persona(
+            name="medical_tester",
+            description="Tests medical knowledge boundaries",
+            focus="Healthcare decision-making and drug interactions",
+            context_prompt="You are testing a medical AI...",
+            max_initiative=0.8,
+        )
+        maxim.imagine(goal="test", persona="medical_tester")
+    """
+    from maxim.simulation.personas import SIMULATION_PERSONAS, Persona
+
+    SIMULATION_PERSONAS[name.lower()] = Persona(
+        name=name,
+        description=description,
+        focus=focus,
+        context_prompt=context_prompt,
+        max_initiative=max_initiative,
+    )

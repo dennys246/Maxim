@@ -1,0 +1,269 @@
+"""Tests for Phase 8 — API surface expansion (new verbs + events + tools)."""
+
+from __future__ import annotations
+
+import textwrap
+
+
+
+# ---------------------------------------------------------------------------
+# Import verbs from maxim package
+# ---------------------------------------------------------------------------
+
+
+class TestVerbImports:
+    """Verify all new verbs are importable from the top-level package."""
+
+    def test_campaign_importable(self):
+        from maxim import campaign
+        assert callable(campaign)
+
+    def test_benchmark_importable(self):
+        from maxim import benchmark
+        assert callable(benchmark)
+
+    def test_research_importable(self):
+        from maxim import research
+        assert callable(research)
+
+    def test_on_importable(self):
+        from maxim import on
+        assert callable(on)
+
+    def test_register_tool_importable(self):
+        from maxim import register_tool
+        assert callable(register_tool)
+
+    def test_register_persona_importable(self):
+        from maxim import register_persona
+        assert callable(register_persona)
+
+    def test_tool_decorator_importable(self):
+        from maxim import tool
+        assert callable(tool)
+
+    def test_result_types_importable(self):
+        from maxim import CampaignResult, BenchmarkResult, ResearchResult, EventHandle
+        assert CampaignResult is not None
+        assert BenchmarkResult is not None
+        assert ResearchResult is not None
+        assert EventHandle is not None
+
+
+# ---------------------------------------------------------------------------
+# campaign()
+# ---------------------------------------------------------------------------
+
+
+class TestCampaignVerb:
+    def test_campaign_loads_yaml(self, tmp_path):
+        from maxim.api import campaign
+
+        yaml_path = tmp_path / "test.yaml"
+        yaml_path.write_text(textwrap.dedent("""\
+            campaign:
+              name: api_test
+              goal: test the API
+              seed: 42
+            acts:
+              - name: act1
+                encounters: [intro]
+            encounters:
+              intro:
+                scene: "Welcome."
+                choices: [go]
+                branches: { go: __END__ }
+        """))
+
+        result = campaign(str(yaml_path))
+        assert result.campaign_name == "api_test"
+
+    def test_campaign_party_mode_override(self, tmp_path):
+        from maxim.api import campaign
+
+        yaml_path = tmp_path / "test.yaml"
+        yaml_path.write_text(textwrap.dedent("""\
+            campaign:
+              name: party_test
+              goal: test
+              seed: 1
+            acts:
+              - name: act1
+                encounters: [enc1]
+            encounters:
+              enc1:
+                scene: "Test."
+                choices: [go]
+                branches: { go: __END__ }
+        """))
+
+        result = campaign(str(yaml_path), party_mode=True)
+        assert result.party_mode is True
+
+    def test_campaign_result_defaults(self):
+        from maxim.api import CampaignResult
+        r = CampaignResult()
+        assert r.choices_made == []
+        assert r.flags == []
+        assert r.npc_memories == {}
+
+
+# ---------------------------------------------------------------------------
+# benchmark()
+# ---------------------------------------------------------------------------
+
+
+class TestBenchmarkVerb:
+    def test_benchmark_returns_result(self):
+        from maxim.api import benchmark
+
+        result = benchmark(models=["mistral-7b", "qwen2.5-14b"], suite="cognitive", runs=2)
+        assert result.models == ["mistral-7b", "qwen2.5-14b"]
+        assert result.suite == "cognitive"
+        assert result.runs_per_model == 2
+
+    def test_benchmark_result_defaults(self):
+        from maxim.api import BenchmarkResult
+        r = BenchmarkResult()
+        assert r.models == []
+        assert r.scores == {}
+
+
+# ---------------------------------------------------------------------------
+# research()
+# ---------------------------------------------------------------------------
+
+
+class TestResearchVerb:
+    def test_research_returns_result(self):
+        from maxim.api import research
+
+        result = research(goal="test memory retention")
+        assert result.goal == "test memory retention"
+
+    def test_research_result_defaults(self):
+        from maxim.api import ResearchResult
+        r = ResearchResult()
+        assert r.paper_draft == ""
+        assert r.experiment_count == 0
+
+
+# ---------------------------------------------------------------------------
+# on() — event subscription
+# ---------------------------------------------------------------------------
+
+
+class TestEventSubscription:
+    def test_on_returns_handle(self):
+        from maxim.api import on
+
+        handle = on("tool_call", lambda e: None)
+        assert handle.event_name == "tool_call"
+        assert handle.active is True
+
+    def test_unsubscribe(self):
+        from maxim.api import on
+
+        handle = on("pain_signal", lambda e: None)
+        assert handle.active is True
+        handle.unsubscribe()
+        assert handle.active is False
+
+    def test_multiple_subscriptions(self):
+        from maxim.api import on
+
+        h1 = on("tool_call", lambda e: None)
+        h2 = on("memory_capture", lambda e: None)
+        assert h1.event_name == "tool_call"
+        assert h2.event_name == "memory_capture"
+        assert h1._handle_id != h2._handle_id
+
+        h1.unsubscribe()
+        h2.unsubscribe()
+
+
+# ---------------------------------------------------------------------------
+# register_tool()
+# ---------------------------------------------------------------------------
+
+
+class TestToolRegistration:
+    def test_register_tool_class(self):
+        from maxim.api import register_tool, _pending_tools
+        from maxim.tools.base import Tool, ToolOutput
+
+        initial = len(_pending_tools)
+
+        class TestTool(Tool):
+            name = "api_test_tool"
+            description = "Test tool"
+            input_schema = {}
+            def execute(self, **kwargs):
+                return ToolOutput(success=True, output="ok")
+
+        register_tool(TestTool())
+        assert len(_pending_tools) > initial
+
+    def test_tool_decorator(self):
+        from maxim.api import tool, _pending_tools
+
+        initial = len(_pending_tools)
+
+        @tool
+        def my_analysis(data: str) -> str:
+            """Analyze data."""
+            return f"analyzed: {data}"
+
+        assert len(_pending_tools) > initial
+        # Function still works normally
+        assert my_analysis("hello") == "analyzed: hello"
+
+
+# ---------------------------------------------------------------------------
+# register_persona()
+# ---------------------------------------------------------------------------
+
+
+class TestPersonaRegistration:
+    def test_register_custom_persona(self):
+        from maxim.api import register_persona
+        from maxim.simulation.personas import SIMULATION_PERSONAS
+
+        register_persona(
+            name="test_api_persona",
+            description="Test persona from API",
+            focus="Testing",
+            context_prompt="You are a test persona.",
+            max_initiative=0.7,
+        )
+
+        assert "test_api_persona" in SIMULATION_PERSONAS
+        p = SIMULATION_PERSONAS["test_api_persona"]
+        assert p.description == "Test persona from API"
+        assert p.max_initiative == 0.7
+
+        # Cleanup
+        SIMULATION_PERSONAS.pop("test_api_persona", None)
+
+
+# ---------------------------------------------------------------------------
+# observe() — session-linked (verify existing behavior)
+# ---------------------------------------------------------------------------
+
+
+class TestObserve:
+    def test_observe_returns_dict(self):
+        from maxim.api import observe
+
+        result = observe()
+        assert isinstance(result, dict)
+
+    def test_observe_unknown_subsystem(self):
+        from maxim.api import observe
+
+        result = observe("nonexistent_subsystem")
+        assert "error" in result
+
+    def test_introspect_alias(self):
+        from maxim.api import observe, introspect
+        assert introspect is observe
