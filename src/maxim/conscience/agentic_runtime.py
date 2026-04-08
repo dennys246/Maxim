@@ -1036,6 +1036,24 @@ class AgenticRuntimeMixin:
         self._numerical_workspace = None
         self._skill_matcher = None
 
+        # Stop LLM backends and kill the auto-spawned server so it releases
+        # VRAM immediately rather than lingering until the atexit handler fires
+        # (which may not run if shutdown hangs elsewhere).
+        mgr = getattr(self, "_lane_backend_manager", None)
+        if mgr is not None:
+            try:
+                mgr.unload_all()
+            except Exception:
+                pass
+        self._lane_backend_manager = None
+
+        try:
+            from maxim.runtime.lane_backends import stop_active_spawner
+
+            stop_active_spawner()
+        except Exception:
+            pass
+
         self._stop_vision_event_stream(timeout=2.0)
 
     def wake_up_agentic(self) -> None:

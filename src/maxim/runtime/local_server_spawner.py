@@ -27,6 +27,8 @@ from pathlib import Path
 from maxim.utils.gpu_compat import get_original_cuda_devices
 
 
+import signal
+
 DEFAULT_PORT = 8100
 DEFAULT_N_CTX = 8192
 # 120s default — llama-cpp-server loads the model BEFORE binding HTTP, so
@@ -36,6 +38,55 @@ DEFAULT_N_CTX = 8192
 # Override with MAXIM_AUTO_SPAWN_TIMEOUT_S.
 READINESS_TIMEOUT_S = 120.0
 READINESS_POLL_INTERVAL_S = 0.5
+
+
+def _kill_process_tree(pid: int) -> None:
+    """Best-effort kill of a process and all its children.
+
+    Uses psutil when available (handles the full tree reliably on all
+    platforms). Falls back to os.kill / taskkill for the common case
+    where psutil isn't installed.
+    """
+    try:
+        import psutil
+
+        try:
+            parent = psutil.Process(pid)
+        except psutil.NoSuchProcess:
+            return
+        children = parent.children(recursive=True)
+        # Kill children first, then parent
+        for child in children:
+            try:
+                child.kill()
+            except psutil.NoSuchProcess:
+                pass
+        try:
+            parent.kill()
+        except psutil.NoSuchProcess:
+            pass
+        # Reap zombies
+        psutil.wait_procs(children + [parent], timeout=3)
+        return
+    except ImportError:
+        pass
+
+    # Fallback: no psutil — platform-specific best-effort.
+    # Use os-level APIs to avoid going through subprocess.Popen (which may
+    # be mocked in tests and is heavier than needed here).
+    if sys.platform == "win32":
+        # taskkill /F /T /PID kills the process tree on Windows.
+        # Use os.system to avoid subprocess.Popen (keeps test mocks clean).
+        try:
+            os.system(f"taskkill /F /T /PID {int(pid)} >nul 2>&1")  # noqa: S605
+        except Exception:
+            pass
+    else:
+        # Unix: kill the process group if it was started with start_new_session
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
 
 
 class LocalServerSpawner:
@@ -153,17 +204,25 @@ class LocalServerSpawner:
         return None
 
     def stop(self) -> None:
-        """Terminate the subprocess if it's running. Idempotent, swallows errors."""
+        """Terminate the subprocess if it's running. Idempotent, swallows errors.
+
+        Kills the entire process tree so child workers (uvicorn, CUDA kernels)
+        release GPU memory even when the top-level process exits cleanly but
+        its children linger.
+        """
         with self._lock:
             proc = self._process
             self._process = None
         if proc is None:
             return
+        pid = proc.pid
         try:
+            # Phase 1: graceful SIGTERM (or TerminateProcess on Windows)
             proc.terminate()
             try:
                 proc.wait(timeout=5.0)
             except subprocess.TimeoutExpired:
+                # Phase 2: SIGKILL the main process
                 proc.kill()
                 try:
                     proc.wait(timeout=2.0)
@@ -171,6 +230,10 @@ class LocalServerSpawner:
                     pass
         except Exception:
             pass
+
+        # Phase 3: kill any orphaned children that survived the top-level
+        # kill (e.g. uvicorn workers holding CUDA contexts).  Best-effort.
+        _kill_process_tree(pid)
 
     # ─── internals ────────────────────────────────────────────────────────
 

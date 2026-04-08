@@ -42,6 +42,25 @@ def _model_state_file() -> Path:
 
 _MODEL_STATE_FILE = None  # Lazy; use _model_state_file()
 
+
+def stop_active_spawner() -> None:
+    """Stop the global auto-spawned server, releasing VRAM.
+
+    Called during Maxim shutdown so the server doesn't linger until
+    the atexit handler fires (which may never run if shutdown hangs).
+    """
+    global _active_spawner, _active_model, _llm_start_time  # noqa: PLW0603
+    with _swap_lock:
+        spawner = _active_spawner
+        _active_spawner = None
+        _active_model = None
+        _llm_start_time = None
+    if spawner is not None:
+        try:
+            spawner.stop()
+        except Exception:
+            pass
+
 # Weak references to active LLMRouter instances so swap_llm_server can
 # update cached n_ctx without importing the router at module level.
 import weakref
@@ -854,9 +873,15 @@ def _maybe_auto_spawn_server(
     # Check for a persisted model from a previous `maxim peer llm` swap.
     # This survives os.execv restarts so the leader comes back with the
     # same model the user selected, not the default profile.
+    # Explicit --language-model / MAXIM_LLM_PROFILE takes priority over
+    # persisted model — the user's CLI flag is the strongest signal.
+    cli_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
     persisted = _read_persisted_model()
-    effective_profile = persisted or infer_cfg.model_profile
-    if persisted and logger is not None:
+    if cli_profile:
+        effective_profile = cli_profile
+    else:
+        effective_profile = persisted or infer_cfg.model_profile
+    if persisted and not cli_profile and logger is not None:
         logger.info("Auto-spawn: using persisted model '%s' from previous swap", persisted)
 
     # Resolve the profile's GGUF path

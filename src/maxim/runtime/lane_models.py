@@ -191,8 +191,10 @@ def detect_tiers(
     )
 
     # CUDA GPU with enough VRAM → large tier (profile selected by VRAM)
+    # Respect --language-model / MAXIM_LLM_PROFILE if set by the user.
+    env_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
     if caps.has_gpu and caps.gpu_type not in ("mps", None) and caps.vram_gb >= 4.0:
-        profile = _pick_infer_profile(caps.vram_gb, profile_available=profile_available)
+        profile = env_profile or _pick_infer_profile(caps.vram_gb, profile_available=profile_available)
         tiers["large"] = LaneConfig(
             name="large",
             max_workers=1,
@@ -203,7 +205,7 @@ def detect_tiers(
         )
     elif caps.has_gpu and caps.gpu_type == "mps":
         # Mac with MPS: unified memory — pick model by RAM (shared with GPU)
-        m_profile = _pick_medium_profile(caps.ram_gb, profile_available)
+        m_profile = env_profile or _pick_medium_profile(caps.ram_gb, profile_available)
         if m_profile is not None:
             tiers["medium"] = LaneConfig(
                 name="medium",
@@ -214,7 +216,7 @@ def detect_tiers(
 
     # No GPU (or GPU with unknown type) — pick CPU model by RAM
     if "medium" not in tiers and "large" not in tiers:
-        m_profile = _pick_medium_profile(caps.ram_gb, profile_available)
+        m_profile = env_profile or _pick_medium_profile(caps.ram_gb, profile_available)
         if m_profile is not None:
             tiers["medium"] = LaneConfig(
                 name="medium",
