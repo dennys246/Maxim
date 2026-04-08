@@ -159,11 +159,50 @@ class CampaignDef:
 # ---------------------------------------------------------------------------
 
 
-def load_campaign(path: str | Path) -> CampaignDef:
+def _resolve_entity_specs(
+    specs: dict[str, Any],
+    registry: Any | None,
+) -> dict[str, dict[str, Any]]:
+    """Resolve entity specs that may contain registry refs.
+
+    Each value can be:
+    - A dict with ``ref`` key → resolved through registry + overrides merged
+    - A plain string → treated as a registry ref
+    - A plain dict → used as-is (inline spec)
+    """
+    resolved = {}
+    for name, spec in specs.items():
+        if isinstance(spec, str):
+            # Bare string ref: "npcs/guard"
+            if registry is None:
+                raise ValueError(f"Entity '{name}' uses ref '{spec}' but no ComponentRegistry provided")
+            full = registry.get(spec)
+            resolved[name] = full.get("entity", full)
+        elif isinstance(spec, dict) and "ref" in spec:
+            # Dict with ref + optional overrides
+            if registry is None:
+                raise ValueError(f"Entity '{name}' uses ref '{spec['ref']}' but no ComponentRegistry provided")
+            full = registry.get(spec["ref"])
+            entity_spec = full.get("entity", full)
+            overrides = spec.get("overrides")
+            if overrides:
+                from maxim.embodiment.component_registry import deep_merge
+                entity_spec = deep_merge(entity_spec, overrides)
+            resolved[name] = entity_spec
+        elif isinstance(spec, dict):
+            # Inline spec — use as-is
+            resolved[name] = spec
+        else:
+            resolved[name] = spec
+    return resolved
+
+
+def load_campaign(path: str | Path, registry: Any | None = None) -> CampaignDef:
     """Load a campaign from a YAML file.
 
     Args:
         path: Path to the campaign YAML file.
+        registry: Optional ComponentRegistry for resolving entity refs.
 
     Returns:
         Parsed CampaignDef.
@@ -215,11 +254,19 @@ def load_campaign(path: str | Path) -> CampaignDef:
             dialogue_hints=dialogue_hints,
         )
 
-    # Entity specs (raw dicts — loaded via load_spec() at runtime)
+    # Entity specs — resolve registry refs if present
     pc_spec = raw.get("player_character", {})
     npc_specs = raw.get("npcs", {})
     object_specs = raw.get("world_objects", {}) if isinstance(raw.get("world_objects"), dict) else {}
     expectations = raw.get("expectations", {})
+
+    # Resolve refs through registry (if provided)
+    if registry:
+        npc_specs = _resolve_entity_specs(npc_specs, registry)
+        object_specs = _resolve_entity_specs(object_specs, registry)
+        if isinstance(pc_spec, (str, dict)) and (isinstance(pc_spec, str) or "ref" in pc_spec):
+            resolved = _resolve_entity_specs({"pc": pc_spec}, registry)
+            pc_spec = resolved["pc"]
 
     return CampaignDef(
         name=name,

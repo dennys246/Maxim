@@ -1,0 +1,46 @@
+component:
+  name: rusty_sword
+  tags: [weapon, melee, degradable]
+  category: weapons
+
+entity:
+  name: rusty_sword
+  entity_type: weapon
+  sensors:
+    durability:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    sharpness:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    weight:
+      unit: kg
+      range: [0.5, 5]
+      initial: 1.2
+  modulators:
+    combat:
+      affordances:
+        slash:
+          params: {target: str, force: float}
+          description: "Slash at a target with the sword"
+        parry:
+          params: {}
+          description: "Parry an incoming attack"
+        throw:
+          params: {target: str}
+          description: "Throw the weapon at a target"
+    maintenance:
+      affordances:
+        sharpen:
+          params: {}
+          description: "Sharpen the blade"
+        repair:
+          params: {material: str}
+          description: "Repair the sword with materials"
+  failure_modes:
+    - name: shatter
+      trigger: {field: durability, op: "<", value: 0.1, pain: 0.6}
+    - name: dulled
+      trigger: {field: sharpness, op: "<", value: 0.15, pain: 0.2}

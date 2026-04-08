@@ -1,0 +1,33 @@
+component:
+  name: tavern_interior
+  tags: [environment, indoor, social, rest]
+  category: environments
+
+entity:
+  name: tavern_interior
+  entity_type: environment
+  sensors:
+    noise_level:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.4
+    crowd_size:
+      unit: count
+      range: [0, 50]
+      initial: 12
+    lighting:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+  modulators:
+    interaction:
+      affordances:
+        look_around:
+          params: {}
+          description: "Survey the tavern interior"
+        listen:
+          params: {}
+          description: "Listen to nearby conversations"
+        order_drink:
+          params: {drink: str}
+          description: "Order a drink from the bar"

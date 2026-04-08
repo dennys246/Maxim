@@ -62,7 +62,52 @@ class EmbodimentSpec:
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
-def load_spec(path: str | Path) -> EmbodimentSpec:
+def resolve_entity_spec(
+    spec: dict[str, Any] | str,
+    registry: Any | None = None,
+) -> dict[str, Any]:
+    """Resolve an entity spec, looking up registry refs as needed.
+
+    Parameters
+    ----------
+    spec : dict or str
+        If a dict, returned as-is (inline entity).
+        If a string, treated as a registry ref (e.g. ``"npcs/guard"``).
+        If a dict with a ``ref`` key, the ref is resolved and any
+        ``overrides`` are deep-merged on top.
+    registry : ComponentRegistry or None
+        Component registry for ref resolution.  Required if *spec*
+        contains a ref.
+
+    Returns
+    -------
+    dict
+        Resolved entity spec dict ready for ``_parse_entity()``.
+    """
+    # String ref: "npcs/guard"
+    if isinstance(spec, str):
+        if registry is None:
+            raise ValueError(f"Entity ref '{spec}' requires a ComponentRegistry")
+        resolved = registry.get(spec)
+        return resolved.get("entity", resolved)
+
+    # Dict with ref key: { ref: "npcs/guard", overrides: { name: "captain" } }
+    if isinstance(spec, dict) and "ref" in spec:
+        if registry is None:
+            raise ValueError(f"Entity ref '{spec['ref']}' requires a ComponentRegistry")
+        resolved = registry.get(spec["ref"])
+        entity_spec = resolved.get("entity", resolved)
+        overrides = spec.get("overrides")
+        if overrides:
+            from maxim.embodiment.component_registry import deep_merge
+            entity_spec = deep_merge(entity_spec, overrides)
+        return entity_spec
+
+    # Plain inline dict
+    return spec
+
+
+def load_spec(path: str | Path, registry: Any | None = None) -> EmbodimentSpec:
     """Load an EmbodimentSpec from a YAML file.
 
     The YAML must have a top-level ``body`` key and/or ``world_entities`` key.
@@ -71,6 +116,9 @@ def load_spec(path: str | Path) -> EmbodimentSpec:
     ----------
     path : str or Path
         Path to the YAML file.
+    registry : ComponentRegistry or None
+        Optional component registry for resolving entity refs in
+        ``world_entities`` entries.
 
     Returns
     -------
@@ -102,11 +150,11 @@ def load_spec(path: str | Path) -> EmbodimentSpec:
 
     root: Entity | None = None
     if body_data is not None:
-        root = _parse_entity(body_data)
+        root = _parse_entity(resolve_entity_spec(body_data, registry))
 
     world_entities: list[Entity] = []
     for ent_data in world_data:
-        world_entities.append(_parse_entity(ent_data))
+        world_entities.append(_parse_entity(resolve_entity_spec(ent_data, registry)))
 
     if root is None and world_entities:
         root = world_entities[0]

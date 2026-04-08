@@ -1,0 +1,36 @@
+component:
+  name: merchant
+  tags: [npc, humanoid, trade, social]
+  category: npcs
+  extends: npcs/base_humanoid
+
+entity:
+  name: merchant
+  entity_type: npc
+  metadata:
+    race: human
+    class: commoner
+    persona_prompt: "You are a shrewd but fair merchant."
+  sensors:
+    hp:
+      initial: 12
+    trust:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    gold:
+      unit: coins
+      range: [0, 1000]
+      initial: 200
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Talk to the merchant"
+        trade:
+          params: {offer: str, request: str}
+          description: "Propose a trade"
+        haggle:
+          params: {item: str, price: float}
+          description: "Negotiate a price"

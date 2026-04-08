@@ -14,8 +14,8 @@ All pre-publication work is tracked in [foundational_buildout_plan.md](foundatio
 
 | Phase | Work | Status |
 |-------|------|--------|
-| 0 | Package Hygiene (data paths, imports, globals, file handles) | Not started |
-| 1 | SEM Component Registry | Not started |
+| 0 | Package Hygiene (data paths, imports, globals, file handles) | **DONE** |
+| 1 | SEM Component Registry | **In progress** |
 | 2 | DM Encounter Library | Not started |
 | 3 | Agent Factory + Agent Pool | Not started |
 | 4 | Party DM Runtime | Not started |

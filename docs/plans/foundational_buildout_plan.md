@@ -1,9 +1,9 @@
 # Foundational Buildout Plan
 
-> **Status:** Not started.
+> **Status:** In progress. Phase 0 done. Phase 1 in progress.
 > **Goal:** Ship the architectural foundations that Multi-AUT Party Mode, SEM Component Database, and DM Encounter Library require — plus fix packaging, API surface, and code quality issues — before locking the public API via PyPI publication.
 > **Total scope:** ~4,150 LOC across 12 phases.
-> **Sequence:** Hygiene (0) → Foundation (1-5) → DM polish (6-7) → API + Packaging (8-9) → Publication (10-12).
+> **Sequence:** Hygiene (0 ✓) → Foundation (1 → 1.1 → 2-3 → 4 → 5) → DM polish (6-7) → API + Packaging (8-9) → Publication (10-11).
 
 ---
 
@@ -21,7 +21,7 @@ Publishing to PyPI would lock us into an architecture that makes multi-agent, sh
 
 ---
 
-## Phase 0: Package Hygiene (~550 LOC)
+## Phase 0: Package Hygiene (~550 LOC) — DONE
 
 **Why first:** None of the later phases matter if `pip install pymaxim` doesn't work or `import maxim` has side effects. This is the boring work that makes everything else possible.
 
@@ -138,7 +138,7 @@ Don't fix *all* globals (EnergyRegistry, MetricsRegistry can stay shared for now
 
 ---
 
-## Phase 1: SEM Component Registry (~350 LOC)
+## Phase 1: SEM Component Registry (~350 LOC) — IN PROGRESS
 
 **Why first:** Defines the storage/sharing pattern that Encounter Library, Generative Architect, and Multi-AUT all depend on. Every NPC in party mode needs to load from a shared component definition.
 
@@ -689,7 +689,7 @@ campaign:
 
 ## Phase 5: Hippocampus Recall Refinement (~400 LOC)
 
-**Why fifth:** NPC agents need good memory to be interesting. Also the #1 priority from experiments — behavioral recall failed at the door challenge.
+**Why after Phase 4:** NPC agents need good memory to be interesting. Also the #1 priority from experiments — behavioral recall failed at the door challenge. Moved after Party DM (Phase 4) because running real multi-agent campaigns will reveal whether recall is actually the bottleneck vs. other issues. The experiment failure at the door challenge might not reproduce with the new multi-agent setup.
 
 This was already Priority #1 in future_plans.md. Pulling it into the buildout because multi-agent NPCs amplify the problem: if one agent's memory is weak, it's a curiosity; if every NPC has weak memory, the whole party mode feels broken.
 
@@ -1337,10 +1337,7 @@ examples/
 - PR process
 - How to add: tools, personas, SEM components, encounters
 
-**SECURITY.md** — Vulnerability disclosure:
-- Supported versions
-- Reporting process
-- Safety-critical components (FearAgent, PainDetector, HarmRegistry)
+**SECURITY.md** — Already exists (11.2 KB). Review for completeness, no rewrite needed.
 
 **Version bump:** 0.1.0 → 0.2.0 in `pyproject.toml` + `src/maxim/__init__.py`
 
@@ -1359,24 +1356,65 @@ examples/
 
 ## Summary Table
 
-| Phase | Work | LOC | Depends On | Ship Gate |
-|-------|------|-----|------------|-----------|
-| **0** | **Package Hygiene** | **~550** | **—** | **`pip install -e .` + `python -m maxim` work** |
-| 1 | SEM Component Registry | ~300 | Phase 0 | String ref resolution works in campaigns |
-| 2 | Encounter Library | ~300 | Phase 1 | Library encounters faster than inline |
-| 3 | Agent Factory + Pool | ~500-700 | Phase 0 | 3 agents, separate memory, concurrent |
-| 4 | Party DM Runtime | ~400 | Phases 1-3 | NPC demonstrates learned behavior |
-| 5 | Hippocampus Recall | ~400 | — | Behavioral recall at door succeeds |
-| **6** | **Interactive Runtime + Rich Display** | **~500** | **—** | **Rich panels + prompt protocol + DM display** |
-| 7 | Generative Architect | ~500 | Phases 1,2,6 | Campaign + PC + 3 NPCs in <8 min |
-| **8** | **API Surface Expansion** | **~400** | **Phases 1-4,6** | **New verbs + events + tool reg work** |
-| **9** | **Deps + Docs + Examples** | **~300** | **Phase 8** | **Clean install + examples run** |
-| 10 | Publication Prep | ~3 files | — | CHANGELOG + CONTRIBUTING + SECURITY |
-| 11 | Test PyPI + Publish | ~0 | Phases 0-10 | `pip install pymaxim` works |
+| Phase | Work | LOC | Depends On | Status | Ship Gate |
+|-------|------|-----|------------|--------|-----------|
+| **0** | **Package Hygiene** | **~550** | **—** | **DONE** | **`pip install -e .` + `python -m maxim` work** |
+| 1 | SEM Component Registry | ~300 | Phase 0 | **In progress** | String ref resolution works in campaigns |
+| 1.1 | Phase 0+1 Wrap-up | ~100 | Phase 1 | Not started | Fix remaining import-time side effects (selfy.py mp.set_start_method, PYOPENGL_PLATFORM), verify Phase 0b blockers resolved, run full test suite against Phase 1 integration |
+| 2 | Encounter Library | ~300 | Phase 1 | Not started | Library encounters faster than inline |
+| 3 | Agent Factory + Pool | ~500-700 | Phase 0 | Not started | 3 agents, separate memory, concurrent |
+| 4 | Party DM Runtime | ~400 | Phases 1-3 | Not started | NPC demonstrates learned behavior |
+| 5 | Hippocampus Recall | ~400 | Phase 4 | Not started | Behavioral recall at door succeeds |
+| **6** | **Interactive Runtime + Rich Display** | **~500** | **—** | Not started | **Rich panels + prompt protocol + DM display** |
+| 7 | Generative Architect | ~500 | Phases 1,2,6 | Not started | Campaign + PC + 3 NPCs in <8 min |
+| **8** | **API Surface Expansion** | **~400** | **Phases 1-5,6** | Not started | **New verbs + events + tool reg work** |
+| **9** | **Deps + Docs + Examples** | **~300** | **Phase 8** | Not started | **Clean install + examples run** |
+| 10 | Publication Prep | ~3 files | — | Not started | CHANGELOG + CONTRIBUTING (SECURITY exists) |
+| 11 | Test PyPI + Publish | ~0 | Phases 0-10 | Not started | `pip install pymaxim` works |
 
-**Parallelization:** Phase 0 first (everything depends on it). Then Phases 1-2, 3, 5, 6 can all run in parallel. Phase 4 blocks on 1-3. Phase 7 blocks on 1, 2, 6. Phase 8 blocks on 1-4 and 6 (needs prompt protocol for API integration). Phases 9-10 can overlap.
+**Parallelization:** Phase 0 done. Phase 1 in progress. Phase 1.1 wraps up loose ends. Then Phases 2, 3, 6 can run in parallel. Phase 4 blocks on 1-3. Phase 5 follows Phase 4 (need party mode running to know if recall is the real bottleneck). Phase 7 blocks on 1, 2, 6. Phase 8 blocks on 1-5 and 6. Phases 9-10 can overlap.
 
 **Total pre-publication LOC:** ~4,150 + ~300 docs/examples (spread across 11 implementation phases)
+
+---
+
+## Pre-Publication Audit Findings (2026-04-08)
+
+Deep review of the codebase surfaced these items. Each is assigned to the phase where it fits.
+
+### Blockers (must fix before PyPI upload)
+
+| Finding | Fix In | Details |
+|---------|--------|---------|
+| `mp.set_start_method("spawn", force=True)` at import time (selfy.py:10) | Phase 0b | Mutates global process state on import. Will break users with their own multiprocessing setup. Make lazy or conditional. |
+| `os.environ["PYOPENGL_PLATFORM"] = "egl"` at import time (selfy.py:55) | Phase 0b | Same category — modifies global env on import. Defer to first use. |
+| GPU env vars set at init (gpu_compat.py:60-75, agentic_runtime.py:79) | Phase 0b | `GST_CUDA_NO_CUDA`, `CUDA_VISIBLE_DEVICES`, `MAXIM_LLM_PROFILE` set during init without opt-out. Defer to function call. |
+| `data/` directory (~1.3GB runtime artifacts) must not ship in wheel | Phase 11 | Verify with `python -m build && unzip -l dist/*.whl`. Add exclusion to MANIFEST.in or pyproject.toml if needed. |
+
+### Warnings (should fix before publication)
+
+| Finding | Fix In | Details |
+|---------|--------|---------|
+| `requires-python >= 3.12` is unnecessarily restrictive | Phase 9 | Code uses `match` (3.10+) but no 3.12-exclusive features. Lowering to `>=3.10` doubles potential user base. |
+| `numpy>=2.2` cuts off numpy 1.x users | Phase 9 | No numpy 2.x-specific APIs used. Relax to `>=1.26,<3.0`. |
+| `reachy-mini[gstreamer]==1.2.6` exact pin | Phase 9 | Change to `>=1.2.6,<1.3` (compatible release). |
+| `torch>=2.7` has no upper bound | Phase 9 | Add `torch>=2.7,<3.0`. Same for tensorflow. |
+| Missing CHANGELOG.md | Phase 10 | Already planned. |
+| Missing CONTRIBUTING.md | Phase 10 | Already planned. |
+| SECURITY.md already exists (11.2 KB) | Phase 10 | Remove from Phase 10 deliverables — already shipped. |
+
+### Positive findings (no action needed)
+
+- **Zero ruff violations** across 400 modules, 819 classes, 786 functions
+- **3,199 tests** across 138 test files — comprehensive coverage
+- **No TODO/FIXME/HACK comments** in codebase
+- **No secrets committed** — .env properly gitignored, API keys via os.environ.get()
+- **No circular imports** — extensive TYPE_CHECKING + lazy imports
+- **Public API is clean** — 6 lazy-loaded verbs, proper type hints, structured returns, py.typed marker
+- **Optional deps well-managed** — 65+ graceful ImportError catches, heavy imports all deferred
+- **Subprocess calls properly sanitized** — all use list-form (no shell injection risk)
+- **No bare `except:` blocks** — all catch `Exception` with logging
+- **selfy.py is 858 LOC** (not 5,189 as previously documented — mixin decomposition already done)
 
 ---
 

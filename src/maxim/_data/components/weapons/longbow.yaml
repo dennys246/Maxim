@@ -1,0 +1,40 @@
+component:
+  name: longbow
+  tags: [weapon, ranged, degradable]
+  category: weapons
+
+entity:
+  name: longbow
+  entity_type: weapon
+  sensors:
+    durability:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    tension:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    arrows:
+      unit: count
+      range: [0, 30]
+      initial: 20
+  modulators:
+    combat:
+      affordances:
+        shoot:
+          params: {target: str, draw_strength: float}
+          description: "Shoot an arrow at a target"
+        nock:
+          params: {}
+          description: "Nock an arrow and prepare to fire"
+    maintenance:
+      affordances:
+        restring:
+          params: {}
+          description: "Replace the bowstring"
+  failure_modes:
+    - name: snapped_string
+      trigger: {field: tension, op: "<", value: 0.1, pain: 0.3}
+    - name: out_of_arrows
+      trigger: {field: arrows, op: "<=", value: 0, pain: 0.1}

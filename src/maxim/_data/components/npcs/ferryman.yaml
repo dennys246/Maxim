@@ -1,0 +1,37 @@
+component:
+  name: ferryman
+  tags: [npc, humanoid, transport, social]
+  category: npcs
+  extends: npcs/base_humanoid
+
+entity:
+  name: ferryman
+  entity_type: npc
+  metadata:
+    persona_prompt: "A grim, weathered ferryman who speaks little and trusts less."
+  sensors:
+    trust:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    health:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Say something to the ferryman"
+        offer_payment:
+          params: {amount: float}
+          description: "Offer coins for river passage"
+        threaten:
+          params: {}
+          description: "Threaten the ferryman"
+  failure_modes:
+    - name: hostility
+      trigger: {field: trust, op: "<", value: 0.1, pain: 0.4}
+    - name: refusal
+      trigger: {field: mood, op: "<", value: -0.5, pain: 0.3}

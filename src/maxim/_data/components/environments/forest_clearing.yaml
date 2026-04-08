@@ -1,0 +1,33 @@
+component:
+  name: forest_clearing
+  tags: [environment, outdoor, nature, ambush]
+  category: environments
+
+entity:
+  name: forest_clearing
+  entity_type: environment
+  sensors:
+    visibility:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    ambient_noise:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    cover_available:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+  modulators:
+    interaction:
+      affordances:
+        survey:
+          params: {}
+          description: "Survey the clearing for threats"
+        hide:
+          params: {location: str}
+          description: "Take cover behind something"
+        forage:
+          params: {}
+          description: "Search for useful plants or materials"

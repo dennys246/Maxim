@@ -1,0 +1,44 @@
+component:
+  name: guard
+  tags: [npc, humanoid, military, authority]
+  category: npcs
+  extends: npcs/base_humanoid
+
+entity:
+  name: guard
+  entity_type: npc
+  metadata:
+    race: human
+    class: warrior
+    persona_prompt: "You are a stern town guard, loyal to your post."
+  sensors:
+    hp:
+      initial: 18
+    trust:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.4
+    suspicion:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.2
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Speak to the guard"
+        interrogate:
+          params: {subject: str}
+          description: "Question someone about a subject"
+    combat:
+      affordances:
+        attack:
+          params: {target: str}
+          description: "Attack with a weapon"
+        block:
+          params: {}
+          description: "Raise shield to block"
+  failure_modes:
+    - name: hostility
+      trigger: {field: trust, op: "<", value: 0.1, pain: 0.4}

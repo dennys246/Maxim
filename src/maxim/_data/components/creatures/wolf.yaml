@@ -1,0 +1,46 @@
+component:
+  name: wolf
+  tags: [creature, animal, predator, hostile]
+  category: creatures
+
+entity:
+  name: wolf
+  entity_type: creature
+  sensors:
+    hp:
+      unit: points
+      range: [0, 12]
+      initial: 12
+    aggression:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    hunger:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+  modulators:
+    combat:
+      affordances:
+        bite:
+          params: {target: str}
+          description: "Bite a target"
+        lunge:
+          params: {target: str}
+          description: "Lunge at a target"
+        growl:
+          params: {}
+          description: "Growl threateningly"
+    movement:
+      affordances:
+        circle:
+          params: {target: str}
+          description: "Circle around prey"
+        flee:
+          params: {}
+          description: "Flee from danger"
+  failure_modes:
+    - name: death
+      trigger: {field: hp, op: "<=", value: 0, pain: 1.0}
+    - name: cowed
+      trigger: {field: aggression, op: "<", value: 0.15, pain: 0.2}

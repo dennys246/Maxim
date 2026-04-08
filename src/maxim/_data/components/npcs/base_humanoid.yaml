@@ -1,0 +1,42 @@
+component:
+  name: base_humanoid
+  tags: [npc, humanoid, character]
+  category: npcs
+
+entity:
+  name: humanoid
+  entity_type: npc
+  metadata:
+    race: human
+  sensors:
+    hp:
+      unit: points
+      range: [0, 20]
+      initial: 20
+    stamina:
+      unit: points
+      range: [0, 10]
+      initial: 10
+    mood:
+      unit: ratio
+      range: [-1, 1]
+      initial: 0.0
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Say something to this character"
+    physical:
+      affordances:
+        punch:
+          params: {force: float}
+          description: "Punch this character"
+        shove:
+          params: {}
+          description: "Shove this character"
+  failure_modes:
+    - name: exhaustion
+      trigger: {field: stamina, op: "<=", value: 0, pain: 0.5}
+    - name: death
+      trigger: {field: hp, op: "<=", value: 0, pain: 1.0}
