@@ -1230,13 +1230,84 @@ ui = ["rich>=13.0.0"]
 
 ---
 
-## Phase 7: Generative Architect Persona (~500 LOC)
+## Phase 7: Generative Architect Persona (~600 LOC)
 
 **Why seventh:** Makes the system usable without hand-authoring YAML. Uses component registry (Phase 1), encounter library (Phase 2), and ask_user (Phase 6).
 
 This is Extension B from the DM extensions plan, pulled forward. Implementation as designed there — multi-phase interview, character creation sub-flow, campaign generation.
 
-**Key change from original plan:** Architect now composes from ComponentRegistry and EncounterLibrary instead of generating everything from scratch. This makes generated campaigns consistent with hand-authored ones and exercises the registry pattern.
+**Key change from original plan:** Architect now composes from ComponentRegistry and EncounterLibrary instead of generating everything from scratch. Three internal LLM sub-personas handle the heavy lifting: Entity Designer, Encounter Adapter, and the Architect orchestrator itself.
+
+### The Architect's Campaign Creation Flow
+
+```
+User: "maxim --sim 'run a dark fantasy heist' --dm"
+
+1. INTERVIEW (ask_user, Phase 6)
+   → Theme, setting, tone, PC concept, desired difficulty
+
+2. ENTITY DESIGNER (medium-tier LLM)
+   → Generate PC from user description → valid SEM spec
+   → Generate 3-5 NPCs from roles → valid SEM specs (using ComponentRegistry bases)
+   → Generate items/objects → valid SEM specs (cursed sword, healing potion, etc.)
+
+3. ENCOUNTER ADAPTER (medium-tier LLM)
+   → Browse EncounterLibrary for narrative arc matches
+   → Adapt 3-5 library encounters to campaign NPCs/flags/tone
+   → Generate 1-2 original encounters for campaign-specific moments
+
+4. ARCHITECT ORCHESTRATOR (medium-tier LLM)
+   → Assemble acts + encounter order + branch graph
+   → Wire flags across encounters (flag set in enc A read in enc B)
+   → Generate bio-system expectations
+   → Emit complete campaign YAML
+
+Total: ~8-10 LLM calls × ~200 tokens = ~2,000 tokens. Under $0.02.
+```
+
+### Entity Designer — LLM-driven SEM spec generation
+
+The primary friction in campaign creation is authoring valid SEM entity YAML (sensors with ranges, modulators with affordances, failure modes with thresholds). The Entity Designer eliminates this:
+
+**Input:** Natural language description + optional ComponentRegistry base
+**Output:** Valid SEM entity spec dict ready for `_parse_entity()`
+
+```
+User: "A guard captain, suspicious and battle-hardened"
+
+Entity Designer:
+  1. Selects base: "npcs/guard" from ComponentRegistry
+  2. Generates overrides from description:
+     - name: captain_aldric
+     - Adds sensor: battle_scars (flavor, ratio 0-1, initial 0.8)
+     - Adjusts: hp.initial=25, trust.initial=0.2
+     - Adds combat affordance: rally_troops
+     - Adds failure_mode: paranoia (suspicion > 0.9, pain 0.3)
+  3. Validates against SEM schema (sensors have unit+range, affordances have params)
+  4. Returns valid spec dict
+```
+
+**Same pattern for items:**
+```
+"A cursed sword that grows stronger as it drinks blood"
+  → Base: weapons/rusty_sword
+  → Adds sensor: blood_charge (count 0-10, initial 0)
+  → Modifies slash description to mention scaling damage
+  → Adds failure_mode: curse_takeover (blood_charge > 8, pain 0.9)
+```
+
+**And environments:**
+```
+"A dimly lit underground marketplace, crowded and dangerous"
+  → Base: environments/tavern_interior
+  → Adjusts: lighting.initial=0.2, noise_level.initial=0.7
+  → Adds sensor: danger_level (ratio 0-1, initial 0.6)
+  → Adds affordance: blend_in_crowd
+```
+
+**LLM tier:** Medium by default (needs to understand SEM schema semantics). Small as fallback with quality warning. The designer's system prompt includes the SEM schema spec (sensor format, modulator/affordance format, failure_mode format) so the LLM knows what valid output looks like.
+
+**Validation:** Designer output is validated against the SEM schema before use. If validation fails, the designer retries once with the error message. If retry fails, falls back to the base template without overrides.
 
 ### Encounter Adaptation via LLM (Tier 2 parameterization)
 
@@ -1245,30 +1316,49 @@ Instead of static `$TOKEN` parameterization in encounter templates, the architec
 **Flow:**
 1. Architect browses `EncounterLibrary.query(tags=["combat"], narrative_role="rising_action")`
 2. Selects `"combat/forest_ambush"` as a match for the campaign's narrative arc
-3. Calls an **Encounter Adapter** LLM prompt with:
+3. Calls the **Encounter Adapter** LLM with:
    - Library encounter template (scene, choices, dice)
-   - Campaign NPCs (names, personas, relationships)
+   - Campaign NPCs (names, personas, relationships — from Entity Designer output)
    - Campaign tone/setting ("dark fantasy, morally gray")
    - Current narrative state (flags set by prior encounters, arc phase)
    - Branch targets (what encounters come next in this campaign)
 4. LLM returns a fully wired encounter: adapted scene text (references campaign NPCs by name), `dialogue_hints` (contextual to campaign flags), `on_choice` effects (appropriate flag names), NPC assignment
 5. Architect emits the adapted encounter into campaign YAML
 
-**LLM tier selection:** Use **medium tier** by default for encounter adaptation — the adaptation needs to understand narrative context, NPC personality, and flag semantics, which benefits from a capable model. Fall back to **small tier** if medium is unavailable, with a quality warning in the campaign report. Cost is minimal either way: ~100-200 tokens per encounter × 5-8 encounters = ~1,500 tokens total, once at campaign creation time.
+**LLM tier:** Medium by default. Small as fallback. Cost: ~100-200 tokens per encounter × 5-8 encounters = ~1,500 tokens total, once at campaign creation.
 
 **Why LLM adaptation beats static parameterization:**
 - No `$TOKEN` syntax for encounter authors to learn — templates are just good prose
-- Context-aware: LLM adapts dialogue tone based on campaign setting, references NPC names naturally, generates flag names that fit the campaign's naming conventions
-- Handles complexity gracefully: conditional reveals, dialogue variants based on multiple flags, NPC personality influencing encounter pacing
-- Falls back cleanly: if no library match exists, architect generates encounter from scratch (already a core architect capability)
+- Context-aware: adapts dialogue tone based on setting, references NPCs naturally
+- Handles complexity gracefully: conditional reveals, multi-flag dialogue variants
+- Falls back cleanly: if no library match, architect generates encounter from scratch
 
-**New files:**
+### Dynamic NPC Dialogue (replaces static dialogue_hints)
+
+Currently, `dialogue_hints` in campaigns are static text keyed by flags. With Party Mode (Phase 4) giving NPCs real memory and learning, static hints become a bottleneck.
+
+**Enhancement:** When delivering dialogue to the AUT, the DM runtime can optionally pass the hint through a **small-tier LLM** that enriches it with:
+- NPC's personality (from entity metadata.persona_prompt)
+- NPC's current sensor state (trust, mood, hp)
+- Campaign flag context
+- NPC's hippocampus memories (if Party Mode is active — the NPC *remembers* prior interactions)
+
+Static hints remain the fallback when LLM is unavailable or `--non-interactive` is set.
+
+### New files
 - Entry in `src/maxim/simulation/personas.py` for `adventure_architect`
-- `src/maxim/simulation/character_templates.py` (~120) — class archetypes, NPC role templates
-- Tool additions in `src/maxim/simulation/tools_dm.py` — `emit_campaign`, `browse_encounters`, `browse_components`, `propose_character`, `adapt_encounter`
+- `src/maxim/simulation/entity_designer.py` (~150) — Entity Designer LLM sub-persona with SEM schema prompt + validation
+- `src/maxim/simulation/character_templates.py` (~120) — class archetypes, NPC role templates (fallback when LLM unavailable)
+- Tool additions in `src/maxim/simulation/tools_dm.py` — `emit_campaign`, `browse_encounters`, `browse_components`, `design_entity`, `adapt_encounter`
 - Tests (~100)
 
-**Ship gate:** Architect produces a runnable campaign with PC + 3+ NPCs in < 8 minutes. Campaign runs end-to-end without manual edits. Works with `party_mode: true`. At least 2 encounters sourced from library and adapted to campaign context via LLM.
+**Ship gate:**
+1. Architect produces a runnable campaign with PC + 3+ NPCs in < 8 minutes
+2. Entity Designer generates valid SEM specs from natural language descriptions
+3. At least 2 encounters sourced from library and adapted via LLM
+4. Campaign runs end-to-end without manual YAML edits
+5. Works with `party_mode: true`
+6. Fallback: works with small-tier LLM (lower quality but functional)
 
 ---
 
@@ -1504,7 +1594,7 @@ examples/
 | 4 | Party DM Runtime | ~400 | Phases 1-3 | Not started | NPC demonstrates learned behavior |
 | 5 | Hippocampus Recall | ~400 | Phase 4 | Not started | Behavioral recall at door succeeds |
 | **6** | **Interactive Runtime + Rich Display** | **~500** | **—** | Not started | **Rich panels + prompt protocol + DM display** |
-| 7 | Generative Architect | ~500 | Phases 1,2,6 | Not started | Campaign + PC + 3 NPCs in <8 min |
+| 7 | Generative Architect + Entity Designer | ~600 | Phases 1,2,6 | Not started | Campaign + PC + 3 NPCs in <8 min, entities from natural language |
 | **8** | **API Surface Expansion** | **~400** | **Phases 1-5,6** | Not started | **New verbs + events + tool reg work** |
 | **9** | **Deps + Docs + Cloud Profiles + Examples** | **~500** | **Phase 8** | Not started | **Clean install + examples run + cloud providers work** |
 | 10 | Publication Prep | ~3 files | — | Not started | CHANGELOG + CONTRIBUTING (SECURITY exists) |
