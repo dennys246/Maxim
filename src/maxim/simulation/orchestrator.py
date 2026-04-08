@@ -264,6 +264,8 @@ def start_simulation_mode(
     aut_model: str | None = None,
     pre_campaign_turns: list[dict[str, Any]] | None = None,
     dm_campaign: Any = None,
+    generative: bool = False,
+    arc_yaml: str | None = None,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -1096,6 +1098,38 @@ def start_simulation_mode(
 
     aut_thread = threading.Thread(target=_aut_worker, name="sim.aut", daemon=True)
     aut_thread.start()
+
+    # ── Generative campaign mode — narrator drives multi-turn story ──────
+    # When generative=True, the generative campaign runner creates a
+    # narrative arc and drives multi-turn story encounters through the bridge.
+    generative_result = None
+    if generative:
+        import time as _gen_time
+
+        print(f"\n  Generative Campaign: {goal}")
+        print(f"  Max turns: {max_turns}")
+        if arc_yaml:
+            print(f"  Arc: {arc_yaml}")
+        _gen_time.sleep(0.5)  # Let AUT start up
+
+        try:
+            from maxim.simulation.generative_runner import run_generative_campaign
+
+            generative_result = run_generative_campaign(
+                goal=goal,
+                bridge=bridge,
+                llm=llm_router,
+                arc_yaml=arc_yaml,
+                max_turns=max_turns,
+                tool_registry=aut_registry,
+                session_dir=str(_sim_reports_dir() / time.strftime("%Y%m%d_%H%M%S")),
+            )
+            print(f"\n  Generative campaign complete: {generative_result.turns_completed} turns")
+        except Exception as e:
+            logger.warning("Generative campaign failed: %s", e)
+            print(f"\n  Generative campaign error: {e}")
+
+        stop_event.set()
 
     # ── Pre-campaign: inject turns directly through bridge ───────────────
     # ── DM Campaign mode — DM runtime drives encounters ────────────────────

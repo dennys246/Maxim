@@ -548,31 +548,84 @@ def main(argv: Sequence[str] | None = None) -> int:
     if bool(getattr(args, "list_models", False)):
         from maxim.models.language.config import _BUILTIN_PROFILES, _PROFILE_ALIASES
 
-        local = []
-        cloud = []
+        # Group by type
+        local_llama: list[str] = []
+        local_torch: list[str] = []
+        cloud_anthropic: list[str] = []
+        cloud_openai: list[str] = []
+        cloud_other: list[str] = []
+
         for name, profile in sorted(_BUILTIN_PROFILES.items()):
             aliases = [a for a, v in _PROFILE_ALIASES.items() if v == name and a != name]
-            alias_str = f"  (aliases: {', '.join(aliases)})" if aliases else ""
-            line = f"  {name}{alias_str}"
+            alias_str = f"  (also: {', '.join(aliases[:2])})" if aliases else ""
+            backend = profile.get("backend", "")
+            n_ctx = profile.get("n_ctx", 0)
+            ctx_str = f"{n_ctx // 1000}K" if n_ctx >= 1000 else str(n_ctx)
+
             if profile.get("cloud"):
                 env = profile.get("api_key_env", "")
                 key_set = bool(os.environ.get(env)) if env else False
-                status = "ready" if key_set else f"needs {env}"
-                cloud.append(f"{line}  [{status}]")
-            else:
-                local.append(line)
+                status = "✓ ready" if key_set else f"needs {env}"
+                base_url = profile.get("base_url", "")
+                provider = ""
+                if "anthropic" in backend:
+                    provider = "Anthropic"
+                elif "generativelanguage.googleapis" in base_url:
+                    provider = "Google"
+                elif "groq.com" in base_url:
+                    provider = "Groq"
+                elif "together.xyz" in base_url:
+                    provider = "Together"
+                elif "fireworks.ai" in base_url:
+                    provider = "Fireworks"
+                elif "mistral.ai" in base_url:
+                    provider = "Mistral"
+                elif "deepseek.com" in base_url:
+                    provider = "DeepSeek"
+                elif "openai" in backend:
+                    provider = "OpenAI"
 
-        print("Local models (requires GPU + downloaded GGUF):")
-        for line in local:
-            print(line)
-        print()
-        print("Cloud models (requires API key):")
-        for line in cloud:
-            print(line)
+                line = f"  {name:30s} {ctx_str:>6s} ctx  [{status}]"
+                if backend == "anthropic":
+                    cloud_anthropic.append(line)
+                elif backend == "openai" and not base_url:
+                    cloud_openai.append(line)
+                else:
+                    cloud_other.append(f"  {name:30s} {ctx_str:>6s} ctx  {provider:10s} [{status}]")
+            elif backend == "pytorch":
+                local_torch.append(f"  {name:30s} {ctx_str:>6s} ctx  (torch){alias_str}")
+            else:
+                local_llama.append(f"  {name:30s} {ctx_str:>6s} ctx  (llama.cpp){alias_str}")
+
+        print("═══ Local Models (requires GPU + downloaded model) ═══\n")
+        if local_llama:
+            print(" llama.cpp backend:")
+            for line in local_llama:
+                print(line)
+        if local_torch:
+            print("\n PyTorch/Transformers backend:")
+            for line in local_torch:
+                print(line)
+
+        print("\n═══ Cloud Models (requires API key) ═══\n")
+        if cloud_anthropic:
+            print(" Anthropic (Claude):")
+            for line in cloud_anthropic:
+                print(line)
+        if cloud_openai:
+            print("\n OpenAI:")
+            for line in cloud_openai:
+                print(line)
+        if cloud_other:
+            print("\n Other providers:")
+            for line in cloud_other:
+                print(line)
 
         # Show current config
         current = os.environ.get("MAXIM_LLM_PROFILE", "mistral-7b")
-        print(f"\nCurrently configured: {current}")
+        print(f"\n═══ Current: {current} ═══")
+        print("\nSet model: maxim --llm <model-name>")
+        print("Persist:   export MAXIM_LLM_PROFILE=<model-name>")
         return 0
 
     # Clear Python cache if requested
@@ -938,12 +991,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 except Exception:
                     pass  # Not a DM campaign — fall through to normal YAML handling
 
-        # --dm flag with a goal string = generative DM (future)
+        # --dm flag with a goal string = generative narrative campaign
         if _wants_dm and _is_goal_string:
-            print("Generative DM mode (--dm with a goal) is not yet implemented.")
-            print("For now, use a hand-authored campaign YAML:")
-            print("  maxim --sim scenarios/campaigns/heist_v1.yaml")
-            sys.exit(1)
+            from maxim.simulation.orchestrator import start_simulation_mode
+
+            debug = bool(_debug_raw)
+            result = start_simulation_mode(
+                goal=sim_path,  # The goal string
+                persona="dungeon_master",
+                debug=debug,
+                no_sim_env=bool(getattr(args, "no_sim_env", False)),
+                sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+                generative=True,  # Use generative campaign runner
+                arc_yaml=getattr(args, "arc", None),
+                max_turns=int(getattr(args, "sim_max_turns", 0) or 20),
+            )
+            sys.exit(0 if result.finish_reason != "error" else 1)
 
         # Check for interactive mode
         if _is_interactive:

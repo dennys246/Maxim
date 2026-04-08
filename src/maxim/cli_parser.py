@@ -61,9 +61,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--language-model",
+        "--llm",
         type=str,
         default=None,
-        help="LLM profile name (overrides data/util/llm.json and $MAXIM_LLM_PROFILE).",
+        help="LLM profile name (overrides ~/.maxim/config/llm.json and $MAXIM_LLM_PROFILE).",
     )
     parser.add_argument(
         "--cloud-fallback",
