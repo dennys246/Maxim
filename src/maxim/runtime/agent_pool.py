@@ -151,10 +151,9 @@ class AgentPool:
             # Store percept in hippocampus (lightweight observation capture)
             if instance.hippocampus is not None:
                 try:
-                    # Hippocampus.capture() requires Perception/Context objects.
-                    # For NPC turns we store the raw text as a memory note instead.
-                    instance.hippocampus.store_raw(
-                        {"type": "npc_percept", "text": percept[:500], "agent_id": agent_id}
+                    instance.hippocampus.store_observation(
+                        text=percept[:500],
+                        metadata={"agent_id": agent_id, "type": "npc_percept"},
                     )
                 except Exception:
                     pass

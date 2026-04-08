@@ -61,8 +61,10 @@ class MemoryRecallTool(Tool):
 
         limit = min(int(kwargs.get("limit", 5)), 20)
         filters: dict[str, Any] = {}
-        if kwargs.get("query"):
-            filters["goal"] = kwargs["query"]
+        query_text = kwargs.get("query")
+        if query_text:
+            # Pass as query for relevance ranking (not just goal filter)
+            filters["query"] = query_text
         if kwargs.get("tool_name"):
             filters["tool"] = kwargs["tool_name"]
         if kwargs.get("success") is not None:

@@ -14,6 +14,60 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _rank_by_relevance(
+    memories: list[EpisodicMemory | CompressedMemory],
+    query: str,
+    limit: int,
+) -> list[EpisodicMemory | CompressedMemory]:
+    """Rank memories by keyword overlap with a free-text query.
+
+    Scores each memory by how many query tokens appear in its goal,
+    tool name, detected objects/people, and observation text.
+    Results are sorted by score descending, with recency as tiebreaker.
+    """
+    query_tokens = set(query.lower().split())
+    if not query_tokens:
+        memories.sort(key=lambda m: m.timestamp, reverse=True)
+        return memories[:limit]
+
+    scored: list[tuple[float, float, EpisodicMemory | CompressedMemory]] = []
+    for mem in memories:
+        tokens: set[str] = set()
+
+        # Extract searchable text from memory
+        if isinstance(mem, CompressedMemory):
+            tokens.update((mem.goal or "").lower().split())
+            tokens.add((mem.tool_name or "").lower())
+        else:
+            # Full EpisodicMemory
+            if mem.context and mem.context.active_goal:
+                tokens.update(mem.context.active_goal.lower().split())
+            if mem.action:
+                tokens.add((mem.action.tool_name or "").lower())
+            if mem.perception:
+                for obj in (mem.perception.detected_objects or []):
+                    tokens.update(obj.lower().split())
+                for person in (mem.perception.detected_people or []):
+                    tokens.update(person.lower().split())
+                # Also check observation text
+                obs_text = mem.perception.observations.get("text", "")
+                if isinstance(obs_text, str):
+                    tokens.update(obs_text.lower().split()[:50])  # Cap to avoid huge scans
+                # Check decision_rationale
+                rationale = getattr(mem.perception, "decision_rationale", "")
+                if rationale:
+                    tokens.update(rationale.lower().split())
+
+        # Score = fraction of query tokens found
+        overlap = query_tokens & tokens
+        score = len(overlap) / len(query_tokens) if query_tokens else 0.0
+        scored.append((score, mem.timestamp, mem))
+
+    # Sort by score descending, then recency as tiebreaker
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return [mem for _, _, mem in scored[:limit]]
+
+
 class RetrievalMixin:
     """Retrieval methods for Hippocampus.
 
@@ -25,6 +79,7 @@ class RetrievalMixin:
         self,
         limit: int = 10,
         *,
+        query: str | None = None,
         goal: str | None = None,
         tool: str | None = None,
         success: bool | None = None,
@@ -39,8 +94,14 @@ class RetrievalMixin:
 
         All filters are AND-ed together. Use None to skip a filter.
 
+        When *query* is provided, results are ranked by keyword relevance
+        instead of recency.  The query is tokenized and scored against each
+        memory's goal text, tool name, detected objects/people, and
+        observation text.
+
         Args:
             limit: Maximum number of memories to return.
+            query: Free-text query for relevance ranking (keyword overlap).
             goal: Match memories with this goal text.
             tool: Match memories that used this tool.
             success: Match memories with this success status.
@@ -52,7 +113,8 @@ class RetrievalMixin:
             include_compressed: Include CompressedMemory results (default True).
 
         Returns:
-            List of matching memories (EpisodicMemory or CompressedMemory), most recent first.
+            List of matching memories, ranked by relevance if *query* is
+            provided, or most recent first otherwise.
         """
         # Phase 1: Read lock for scanning (allows concurrent readers)
         with self._rwlock.read():
@@ -116,9 +178,12 @@ class RetrievalMixin:
 
                     results.append(memory)
 
-                # Sort by timestamp (most recent first) and limit
-                results.sort(key=lambda m: m.timestamp, reverse=True)
-                results = results[:limit]
+                # Rank by relevance if query provided, else by recency
+                if query and results:
+                    results = _rank_by_relevance(results, query, limit)
+                else:
+                    results.sort(key=lambda m: m.timestamp, reverse=True)
+                    results = results[:limit]
 
         # Phase 2: Brief write lock for stats update only
         with self._rwlock.write():

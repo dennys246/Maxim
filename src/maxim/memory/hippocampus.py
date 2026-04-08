@@ -119,6 +119,10 @@ class HippocampusConfig:
     # Minimum similarity score to form an edge (0-1)
     association_threshold: float = 0.5
 
+    # Observation dedup window — reject near-identical observations within this
+    # time window to reduce memory spam from repetitive percepts.
+    dedup_window_s: float = 30.0
+
     # Spreading activation defaults
     spreading_activation_decay: float = 0.5
     spreading_activation_max_depth: int = 3
@@ -249,6 +253,9 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         self._capture_queue: queue.Queue[_CaptureRequest] = queue.Queue(maxsize=self.config.capture_queue_size)
         self._capture_worker_thread: threading.Thread | None = None
         self._capture_stop = threading.Event()
+
+        # Dedup tracking: hash of recent observations → timestamp
+        self._recent_observations: dict[int, float] = {}
 
     # ─────────────────────────────────────────────────────────────────────────
     # Factory class methods
@@ -457,6 +464,48 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 logger.warning("Memory capture callback failed: %s", e)
 
         return memory_id
+
+    def store_observation(self, text: str, metadata: dict[str, Any] | None = None) -> str:
+        """Lightweight observation capture for NPC agents.
+
+        Stores a text percept as a minimal EpisodicMemory without full
+        decision/action/outcome structure.  Suitable for NPC agents that
+        witness events but don't make complex tool-based decisions.
+
+        Applies dedup: near-identical observations within ``dedup_window_s``
+        (default 30s) are silently dropped to reduce memory spam.
+
+        Args:
+            text: The observation text (scene narrative, outcome description).
+            metadata: Optional dict with extra context (agent_id, encounter, etc.).
+
+        Returns:
+            Memory ID (UUID string), or empty string if deduped.
+        """
+        # Dedup check — reject near-identical observations within window
+        obs_hash = hash(text.strip().lower()[:200])
+        now = time.time()
+        window = self.config.dedup_window_s
+        last_seen = self._recent_observations.get(obs_hash)
+        if last_seen is not None and (now - last_seen) < window:
+            return ""  # Deduped
+
+        # Update dedup tracker (prune old entries)
+        self._recent_observations[obs_hash] = now
+        cutoff = now - window
+        self._recent_observations = {
+            h: t for h, t in self._recent_observations.items() if t > cutoff
+        }
+
+        perception = Perception(
+            observations={"text": text, **(metadata or {})},
+            detected_objects=[],
+            detected_people=[],
+            tool_alternatives=[],
+            salience=0.5,
+            novelty=0.3,
+        )
+        return self.capture(perception=perception)
 
     def capture_from_loop(
         self,
