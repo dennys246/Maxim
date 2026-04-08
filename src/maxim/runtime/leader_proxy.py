@@ -1102,7 +1102,11 @@ def start_leader_proxy(
         pass
 
     # Phase 7b: concurrency cap + per-peer rate limiter
-    max_concurrent = int(os.environ.get("MAXIM_PROXY_MAX_CONCURRENT", "4"))
+    try:
+        max_concurrent = int(os.environ.get("MAXIM_PROXY_MAX_CONCURRENT", "4"))
+    except (ValueError, TypeError):
+        logger.warning("Invalid MAXIM_PROXY_MAX_CONCURRENT value, using default 4")
+        max_concurrent = 4
     semaphore = threading.Semaphore(max_concurrent) if max_concurrent > 0 else None
 
     peer_rate_limiter = None

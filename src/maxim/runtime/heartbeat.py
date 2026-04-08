@@ -108,7 +108,7 @@ class HeartbeatMonitor:
                 self._emit(data)
                 self._check_stall(data)
             except Exception as e:
-                logger.debug("Heartbeat error: %s", e)
+                logger.warning("Heartbeat error: %s", e)
             self._stop_event.wait(self._interval)
 
     def _collect(self) -> dict[str, Any]:

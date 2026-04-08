@@ -365,7 +365,10 @@ def build_comms_stack(
         gateway.register_channel("twilio", channel)
 
         host = os.environ.get("MAXIM_COMMS_HOST", "127.0.0.1")
-        port = int(os.environ.get("MAXIM_COMMS_PORT", "5000"))
+        try:
+            port = int(os.environ.get("MAXIM_COMMS_PORT", "5000"))
+        except (ValueError, TypeError):
+            port = 5000
         start_api_server(
             bus=bus,
             gateway=gateway,

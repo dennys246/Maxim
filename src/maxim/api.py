@@ -108,8 +108,8 @@ def _resolve_model(model: str) -> str:
             from maxim.models.language.config import normalize_llm_profile
 
             _write_persisted_model(normalize_llm_profile(model) or model)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not persist model preference: %s", e)
         return model
     # Default was used — check for a persisted preference
     try:
@@ -118,8 +118,8 @@ def _resolve_model(model: str) -> str:
         persisted = _read_persisted_model()
         if persisted:
             return persisted
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Could not read persisted model preference: %s", e)
     return model
 
 
@@ -786,7 +786,8 @@ def _build_observer(home_dir: str) -> Any:
             hippocampus.load(hippo_file)
         else:
             hippocampus = None
-    except Exception:
+    except Exception as e:
+        logger.warning("Could not load hippocampus for observation: %s", e)
         hippocampus = None
 
     # Attempt to load NAc
@@ -800,7 +801,8 @@ def _build_observer(home_dir: str) -> Any:
             nac.load(nac_file)
         else:
             nac = None
-    except Exception:
+    except Exception as e:
+        logger.warning("Could not load NAc for observation: %s", e)
         nac = None
 
     if hippocampus is None and nac is None:

@@ -69,7 +69,15 @@ def data_home() -> Path:
         return _data_home_cache
     raw = os.environ.get("MAXIM_DATA_HOME", "")
     base = Path(raw) if raw else Path.home() / ".maxim"
-    base.mkdir(parents=True, exist_ok=True)
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        import sys
+
+        sys.exit(
+            f"Error: Cannot create data directory: {base}\n"
+            f"Fix: Check permissions, or set MAXIM_DATA_HOME to a writable path."
+        )
     _data_home_cache = base
     return base
 

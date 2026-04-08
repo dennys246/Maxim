@@ -200,8 +200,9 @@ class build:
         dest_dir = os.path.dirname(self.config_filepath) or "."
         os.makedirs(dest_dir, exist_ok=True)
 
-        with open(self.config_filepath, "w", encoding="utf-8") as config_file:
-            json.dump(self.dump(), config_file, indent=4)
+        from maxim.utils.atomic_io import atomic_write_json
+
+        atomic_write_json(self.config_filepath, self.dump(), indent=4)
 
     def load_config(self, config_path: str) -> dict[str, Any]:
         with open(config_path, "r", encoding="utf-8") as config_file:

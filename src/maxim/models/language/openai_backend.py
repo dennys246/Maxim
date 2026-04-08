@@ -18,6 +18,11 @@ def _is_auth_error(err: Exception) -> bool:
     return "401" in msg or "403" in msg or "unauthorized" in msg or "forbidden" in msg
 
 
+def _is_rate_limit_error(err: Exception) -> bool:
+    msg = str(err).lower()
+    return "429" in msg or "rate" in msg
+
+
 def _http_status_of(err: Exception | None) -> int | None:
     """Best-effort extraction of HTTP status code from an openai client error."""
     if err is None:
@@ -272,7 +277,10 @@ class _OpenAIBackend:
                 if _is_auth_error(e):
                     self._client = None
                 if attempt < self._get_max_retries():
-                    time.sleep(0.5 * (attempt + 1))
+                    backoff = 0.5 * (attempt + 1)
+                    if _is_rate_limit_error(e):
+                        backoff = min(backoff * 4, 30.0)
+                    time.sleep(backoff)
                     continue
                 break
 

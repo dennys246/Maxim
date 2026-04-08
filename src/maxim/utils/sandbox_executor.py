@@ -288,6 +288,10 @@ exec(open({script_path!r}).read())
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+# Defense-in-depth blocklist — works alongside the builtins override in
+# _make_safe_globals() which restricts Python builtins.  This catches
+# shell commands that the builtins override can't see (e.g. os.system calls
+# that embed shell syntax).  Not a standalone security boundary.
 BLOCKED_SHELL_COMMANDS = {
     # System modification
     "rm -rf /",
@@ -310,6 +314,16 @@ BLOCKED_SHELL_COMMANDS = {
     "su",
     "doas",
     "pkexec",
+    # Shell invocation / eval
+    "bash -c",
+    "sh -c",
+    "zsh -c",
+    "eval ",
+    "source ",
+    ". /",  # dot-source
+    "find -exec",
+    "find . -exec",
+    "xargs",
     # Sensitive data
     "/etc/passwd",
     "/etc/shadow",

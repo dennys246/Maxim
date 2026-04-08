@@ -67,7 +67,9 @@ def save_last_run(argv: list[str]) -> None:
         # Keep only last N
         runs = runs[:_MAX_SAVED_RUNS]
 
-        _LAST_RUNS_PATH.write_text(json.dumps(runs, indent=2))
+        from maxim.utils.atomic_io import atomic_write_json
+
+        atomic_write_json(str(_LAST_RUNS_PATH), runs)
     except Exception:
         pass  # Best-effort
 

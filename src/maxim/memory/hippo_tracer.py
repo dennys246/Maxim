@@ -108,7 +108,7 @@ class HippocampusTracer:
             edges = self._hippo._graph.get_outgoing(memory_id)
             edge_count = len(edges) if edges else 0
         except Exception:
-            pass
+            pass  # graph may not be initialized yet — display best-effort
 
         success_str = f"{'✓' if success else '✗'}" if success is not None else "?"
 

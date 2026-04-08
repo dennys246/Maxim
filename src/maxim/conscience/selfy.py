@@ -14,7 +14,6 @@ from maxim.utils.response_config import (
 from maxim.modes.state_manager import StateManager
 from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
 
-import json
 import time
 import atexit
 import logging
@@ -820,16 +819,15 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
                         )
 
                     os.makedirs(os.path.dirname(history_path) or ".", exist_ok=True)
-                    tmp_path = f"{history_path}.tmp"
                     payload = {
                         "time": time.time(),
                         "checkpoint_path": checkpoint_path,
                         "train_step": int(getattr(movement_model, "_train_step", 0) or 0),
                         "records": history,
                     }
-                    with open(tmp_path, "w", encoding="utf-8") as fp:
-                        json.dump(payload, fp, indent=2, default=str)
-                    os.replace(tmp_path, history_path)
+                    from maxim.utils.atomic_io import atomic_write_json
+
+                    atomic_write_json(str(history_path), payload)
                     try:
                         num_records = len(history)
                     except Exception:

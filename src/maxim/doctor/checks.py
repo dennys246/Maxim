@@ -69,19 +69,20 @@ def check_gpu() -> CheckResult:
     )
 
 
-def check_tier_detection() -> CheckResult:
+def check_tier_detection(caps=None) -> CheckResult:
     """Report which capability tiers are available on this hardware."""
     try:
         from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
         from maxim.runtime.lane_models import detect_tiers
 
-        has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
-        caps = RuntimeCapabilities(
-            has_gpu=has_gpu,
-            gpu_type=gpu_type,
-            vram_gb=vram_gb,
-            ram_gb=ram_gb,
-        )
+        if caps is None:
+            has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
+            caps = RuntimeCapabilities(
+                has_gpu=has_gpu,
+                gpu_type=gpu_type,
+                vram_gb=vram_gb,
+                ram_gb=ram_gb,
+            )
         tiers = detect_tiers(caps)
     except ImportError as e:
         return CheckResult(
@@ -109,7 +110,7 @@ def check_tier_detection() -> CheckResult:
     return CheckResult(
         name="LLM Tiers",
         status="warn",
-        message=f"Only 'small' tier detected ({ram_gb:.0f}GB RAM, GPU: {gpu_type or 'none'})",
+        message=f"Only 'small' tier detected ({caps.ram_gb:.0f}GB RAM, GPU: {caps.gpu_type or 'none'})",
         fix=(
             "Agent inference needs a large or medium tier. Options:\n"
             "  --language-model mistral-7b          # if you have 8+ GB RAM\n"

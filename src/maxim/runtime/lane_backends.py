@@ -19,6 +19,7 @@ Remote/cloud classification:
 from __future__ import annotations
 
 import dataclasses
+import logging
 import os
 import socket
 import threading
@@ -27,7 +28,21 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+logger = logging.getLogger(__name__)
+
 from maxim.runtime.worker_pool import LaneConfig
+
+
+def _safe_int_env(name: str, default: int) -> int:
+    """Parse an integer env var, returning *default* on invalid input."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        logger.warning("Invalid %s=%r, using default %d", name, raw, default)
+        return default
 
 
 # ─── active server tracking (for hot-swap) ────────────────────────────────
@@ -1002,7 +1017,7 @@ def _maybe_auto_spawn_server(
         model_path=model_path,
         port=port,
         bind_host=role_decision.bind_host,
-        n_ctx=int(os.environ.get("MAXIM_AUTO_SPAWN_N_CTX", "8192")),
+        n_ctx=_safe_int_env("MAXIM_AUTO_SPAWN_N_CTX", 8192),
         n_gpu_layers=infer_cfg.n_gpu_layers,
         api_key=api_key,
     )

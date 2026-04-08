@@ -130,9 +130,9 @@ def _record_outcome(
                     getattr(link, "confidence", 0.5),
                 )
             except Exception:
-                pass
-        except Exception:
-            pass  # Don't let NAc errors disrupt the loop
+                pass  # sim trace is best-effort
+        except Exception as e:
+            logger.warning("NAc reward signal failed for tool %s: %s", tool_name, e)
 
     # Energy → NAc: learn which tools are expensive (metabolic budget)
     if nac is not None and elapsed_s > 0:
@@ -299,7 +299,8 @@ def run_agent_loop(
         for evaluator in evaluators:
             try:
                 eval_results.append(evaluator.evaluate(ctx))
-            except Exception:
+            except Exception as e:
+                logger.warning("Evaluator %s failed: %s", type(evaluator).__name__, e)
                 continue
         try:
             if callable(on_step):

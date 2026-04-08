@@ -42,6 +42,19 @@ from maxim.memory.semantic_types import (
 from maxim.memory.semantics import Semantics
 from maxim.memory.atl import ATL, ATLConfig
 
+# Store protocols and file backends
+from maxim.memory.store import (
+    CausalStore,
+    EpisodicStore,
+    FileCausalStore,
+    FileEpisodicStore,
+    FileSemanticStore,
+    SemanticStore,
+)
+
+# Concept type (extends SemanticMemory)
+from maxim.memory.semantic_types import Concept
+
 # Cross-layer and promotion
 from maxim.memory.cross_layer import (
     CrossLayerEdge,
@@ -85,6 +98,15 @@ __all__ = [
     "ImportanceBasedStrategy",
     "MemoryStrategy",
     "TemporalAwareStrategy",
+    # Store protocols and file backends
+    "CausalStore",
+    "EpisodicStore",
+    "FileCausalStore",
+    "FileEpisodicStore",
+    "FileSemanticStore",
+    "SemanticStore",
+    # Concept type
+    "Concept",
     # Semantic memory (ATL)
     "ATL",
     "ATLConfig",

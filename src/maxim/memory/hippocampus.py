@@ -444,7 +444,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             memory.outcome.success,
         )
 
-        # Simulation verbosity
+        # Simulation verbosity (best-effort trace)
         try:
             from maxim.simulation.sim_logger import sim_memory
 
@@ -454,7 +454,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 success=memory.outcome.success,
             )
         except Exception:
-            pass
+            pass  # sim logger is optional — not loaded outside simulations
 
         # Notify capture callbacks (e.g., for semantic embedding)
         for callback in self._on_memory_captured:
@@ -538,8 +538,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         if hasattr(state, "snapshot") and callable(state.snapshot):
             try:
                 state_snapshot = state.snapshot()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("State snapshot failed during capture: %s", e)
         elif hasattr(state, "data"):
             state_snapshot = dict(state.data) if hasattr(state.data, "items") else {}
 
@@ -635,8 +635,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         if hasattr(state, "snapshot") and callable(state.snapshot):
             try:
                 state_snapshot = state.snapshot()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("State snapshot failed during capture: %s", e)
         elif hasattr(state, "data") and hasattr(state.data, "items"):
             state_snapshot = dict(state.data)
 

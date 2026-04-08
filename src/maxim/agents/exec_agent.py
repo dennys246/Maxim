@@ -12,7 +12,12 @@ import os
 import threading
 import time
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from maxim.decisions.nac import NucleusAccumbens
+    from maxim.memory.hippocampus import Hippocampus
+    from maxim.time.scn import SCN
 
 from maxim.agents.base import Agent
 from maxim.agents.bus import (
@@ -122,14 +127,14 @@ class ExecAgent(Agent):
             "uncontemplated_success": 0,
             "uncontemplated_total": 0,
         }
-        self._nac: Any = None  # Late-wired via wire_nac()
+        self._nac: NucleusAccumbens | None = None  # Late-wired via wire_nac()
 
         # Phase 3b: Acute staging
         self._staging_dir: str | None = None  # Set via wire_staging()
         self._weight_learner: SignificanceWeightLearner | None = None
         self._significance_config = SignificanceConfig()
-        self._hippocampus: Any = None  # Late-wired via wire_staging()
-        self._scn: Any = None  # Late-wired via wire_staging()
+        self._hippocampus: Hippocampus | None = None  # Late-wired via wire_staging()
+        self._scn: SCN | None = None  # Late-wired via wire_staging()
 
         # Subscribe to percepts and filtered percepts (from Default Network)
         self._bus.subscribe(Percept, self._on_percept)
@@ -607,15 +612,15 @@ class ExecAgent(Agent):
 
     # ── Contemplation quality metrics (Phase 2) ──────────────────────
 
-    def wire_nac(self, nac: Any) -> None:
+    def wire_nac(self, nac: NucleusAccumbens) -> None:
         """Late-wire NAc for contemplation outcome learning."""
         self._nac = nac
 
     def wire_staging(
         self,
         staging_dir: str,
-        hippocampus: Any,
-        scn: Any,
+        hippocampus: Hippocampus,
+        scn: SCN,
         weights_path: str | None = None,
     ) -> None:
         """Late-wire acute staging dependencies.

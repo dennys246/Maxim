@@ -149,8 +149,9 @@ def save_internet_access(state: InternetAccessState, path: Path | str | None = N
         path.parent.mkdir(parents=True, exist_ok=True)
         state.updated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(state.to_dict(), f, indent=2)
+        from maxim.utils.atomic_io import atomic_write_json
+
+        atomic_write_json(str(path), state.to_dict())
         return True
     except Exception as e:
         logger.error(f"Failed to save internet access state: {e}")

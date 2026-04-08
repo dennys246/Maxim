@@ -308,8 +308,9 @@ class WebCache:
             entries.append(entry.to_dict())
 
             # Save
-            with open(self._persistence_path, "w", encoding="utf-8") as f:
-                json.dump(entries, f, indent=2)
+            from maxim.utils.atomic_io import atomic_write_json
+
+            atomic_write_json(str(self._persistence_path), entries)
 
         except Exception as e:
             logger.error(f"Failed to persist cache entry: {e}")

@@ -58,6 +58,17 @@ def _normalize_args(args: argparse.Namespace) -> None:
                     print(f"  Did you mean: {', '.join(close)}?\n")
                 raise SystemExit(1)
             os.environ["MAXIM_LLM_PROFILE"] = selected
+            # Validate API key early for cloud models
+            from maxim.models.language.config import _BUILTIN_PROFILES
+
+            profile = _BUILTIN_PROFILES.get(selected, {})
+            if profile.get("cloud"):
+                api_key_env = profile.get("api_key_env", "")
+                if api_key_env and not os.environ.get(api_key_env):
+                    raise SystemExit(
+                        f"Error: {language_model} requires {api_key_env}.\n"
+                        f"  Fix: export {api_key_env}=<your-key>"
+                    )
             # Persist across sessions so the user doesn't need --llm every time
             try:
                 from maxim.runtime.lane_backends import _write_persisted_model
