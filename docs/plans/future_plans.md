@@ -57,6 +57,7 @@ These are features, not architecture. Safe to add after PyPI publication without
 | **PyPI Multi-Robot Plugins** | External robot controllers need discovery | ~250 LOC | Entry-point based `maxim.robots` registration. Phase 3 of [PyPI plan](pypi_publication_plan.md). Depends on selfy.py decomposition above. |
 | **Full CI/CD Pipeline** | Need automated test + publish | ~2 files | GitHub Actions: lint, test, build, publish. Phase 4 of [PyPI plan](pypi_publication_plan.md). |
 | **Peer Inference Retry** | Leader restarts cause 502 errors | ~30 LOC | Exponential backoff in openai_backend.py |
+| **Filesystem Mount System** | Users want Maxim to read/act on their projects | ~100 LOC | See design below. `FilesystemPolicy` + `PathPolicy` already support per-path permissions (READ/WRITE/EXECUTE/CREATE/DELETE). Needs: CLI `--mount /path:ro`, config file persistence, API verb `maxim.mount()`, per-directory autonomy levels. |
 | **Agent-Driven Git + Experiment Workflow** | Git tools, bio-provenance tagging, scientist persona, fork CLI, broken-database campaign | ~850 LOC | [Plan](github_repo_management_plan.md) |
 | **Hibernate Mode (no-LLM sleep)** | SEM comms wake triggers, broken-database campaign sleep→wake arc | ~200 LOC | Agent loop monitors only SEM sensors + wake keywords, zero LLM cost. Prerequisite for DM campaigns that start in sleep state. Needs: ProcessingState.HIBERNATE enum, agent_loop hibernate branch, DM schema `initial_state:` + `embodiment:` keys. |
 | **DM Schema: Embodiment + Initial State** | Campaigns need SEM entities + sleep start | ~150 LOC | Extend `dm_schema.py` with `embodiment:` (loads Entity tree) and `initial_state:` (sets processing_state/mode at campaign start). Blocked on hibernate mode. |
@@ -96,6 +97,67 @@ A `CapabilityAgent` that maintains a live picture of what this system (and its p
 **Consumers:** benchmark runner (filter `--models`), sim orchestrator (route to leader), FunctionRouter (dynamic health_check), `maxim doctor` (capability report), agent mesh (topology changes), CLI pre-flight (fail fast with fix hint).
 
 **Implementation:** CA-1 (CapabilitySnapshot + check_model_availability, ~100 LOC) → CA-2 (local + leader, ~150) → CA-3 (benchmark/sim gates, ~100) → CA-4 (mesh, ~100) → CA-5 (FunctionRouter + proactive suggestions, ~50). CA-1–3 ship before mesh. CA-4–5 integrate with mesh discovery.
+
+### Filesystem Mount System (~100 LOC)
+
+Let users give Maxim controlled access to external directories (GitHub repos, project folders, data directories) with per-path permission levels — like file system permissions but for an AI agent.
+
+**What already exists:** `FilesystemPolicy` + `PathPolicy` in `utils/filesystem_policy.py` already supports per-path `Permission` flags (READ, WRITE, EXECUTE, CREATE, DELETE) with glob patterns, instance scoping, and ordered matching. The system is fully functional — it just needs a convenience layer.
+
+**What to build:**
+
+1. **CLI mount flag** (~20 LOC):
+   ```bash
+   maxim --mount /path/to/repo:ro                    # Read-only
+   maxim --mount /path/to/repo/scripts:rx             # Read + execute
+   maxim --mount /path/to/repo:rw --mount /data:ro    # Multiple mounts
+   ```
+   Parses `path:permissions` syntax, creates `PathPolicy` entries, inserts at top of policy list.
+
+2. **Persistent mount config** (~15 LOC): `~/.maxim/config/mounts.yaml`
+   ```yaml
+   mounts:
+     - path: /Users/denny/Projects/my-app
+       permissions: read
+       description: "My app repo"
+     - path: /Users/denny/Projects/my-app/scripts
+       permissions: read,execute
+       description: "Runnable scripts"
+     - path: /data/datasets
+       permissions: read
+       description: "Training data"
+   ```
+   Loaded at startup, merged with default policies.
+
+3. **API verb** (~15 LOC):
+   ```python
+   maxim.mount("/path/to/repo", permissions="read")
+   maxim.mount("/path/to/repo/scripts", permissions="read,execute")
+   maxim.unmount("/path/to/repo")
+   ```
+
+4. **Per-directory autonomy levels** (~50 LOC): Different folders get different FearAgent thresholds:
+   ```yaml
+   mounts:
+     - path: /Projects/my-app/src
+       permissions: read,write
+       autonomy: supervised          # FearAgent reviews writes
+     - path: /Projects/my-app/scripts
+       permissions: read,execute
+       autonomy: planning            # Requires explicit approval to run
+     - path: /Projects/my-app/docs
+       permissions: read,write
+       autonomy: autonomous          # Auto-approved reads/writes
+   ```
+   FearAgent checks the mount's autonomy level before allowing the action. This is the key insight — you don't just control *what* Maxim can access, you control *how much oversight* each area gets.
+
+**Use cases:**
+- Maxim reads a GitHub repo, understands the codebase, runs tests, reports issues
+- Maxim monitors a data pipeline directory, alerts on anomalies
+- Maxim executes approved scripts on a schedule (via SCN temporal triggers)
+- Mother Maxim reads contributed campaign YAMLs from a shared folder
+
+**No refactoring needed before publication.** The `FilesystemPolicy` system is clean and extensible. Mount system is purely additive.
 
 ### Mother Maxim (post-publication, priority track)
 
