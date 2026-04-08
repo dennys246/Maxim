@@ -57,7 +57,9 @@ These are features, not architecture. Safe to add after PyPI publication without
 | **PyPI Multi-Robot Plugins** | External robot controllers need discovery | ~250 LOC | Entry-point based `maxim.robots` registration. Phase 3 of [PyPI plan](pypi_publication_plan.md). Depends on selfy.py decomposition above. |
 | **Full CI/CD Pipeline** | Need automated test + publish | ~2 files | GitHub Actions: lint, test, build, publish. Phase 4 of [PyPI plan](pypi_publication_plan.md). |
 | **Peer Inference Retry** | Leader restarts cause 502 errors | ~30 LOC | Exponential backoff in openai_backend.py |
-| **GitHub Fork Workflow** | Contributors need fork-based PRs | ~550 LOC | [Plan](github_repo_management_plan.md) |
+| **Agent-Driven Git + Experiment Workflow** | Git tools, bio-provenance tagging, scientist persona, fork CLI, broken-database campaign | ~850 LOC | [Plan](github_repo_management_plan.md) |
+| **Hibernate Mode (no-LLM sleep)** | SEM comms wake triggers, broken-database campaign sleep→wake arc | ~200 LOC | Agent loop monitors only SEM sensors + wake keywords, zero LLM cost. Prerequisite for DM campaigns that start in sleep state. Needs: ProcessingState.HIBERNATE enum, agent_loop hibernate branch, DM schema `initial_state:` + `embodiment:` keys. |
+| **DM Schema: Embodiment + Initial State** | Campaigns need SEM entities + sleep start | ~150 LOC | Extend `dm_schema.py` with `embodiment:` (loads Entity tree) and `initial_state:` (sets processing_state/mode at campaign start). Blocked on hibernate mode. |
 
 ### Doctor Enhancements (v2 shipped, remaining items)
 

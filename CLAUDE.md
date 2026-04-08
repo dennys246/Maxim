@@ -134,6 +134,7 @@ maxim --sim scenarios/campaigns/heist_v1.yaml
 maxim --sim scenarios/campaigns/poisoned_crown_v1.yaml
 maxim --sim scenarios/campaigns/arena_v1.yaml
 maxim --sim scenarios/campaigns/darkened_cavern_v1.yaml
+maxim --sim scenarios/campaigns/broken_database_v1.yaml
 
 # Benchmark (multi-model comparison)
 maxim --sim benchmark --models mistral-7b,qwen2.5-14b --campaign scenarios/benchmarks/cognitive_suite.yaml

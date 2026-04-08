@@ -1,4 +1,4 @@
-"""Tests for leader proxy — LogBuffer, debug endpoints, admin endpoints."""
+"""Tests for leader proxy — LogBuffer, debug endpoints, admin endpoints, security."""
 
 from __future__ import annotations
 
@@ -8,6 +8,113 @@ import time
 from unittest.mock import patch
 
 import pytest
+
+
+# ── Branch validation + output sanitization ──────────────────────────────────
+
+
+class TestBranchValidation:
+    """Test _validate_branch rejects dangerous input."""
+
+    def test_valid_branches(self):
+        from maxim.runtime.leader_proxy import _validate_branch
+
+        assert _validate_branch("main") == "main"
+        assert _validate_branch("develop") == "develop"
+        assert _validate_branch("feature/my-branch") == "feature/my-branch"
+        assert _validate_branch("experiments/denny") == "experiments/denny"
+        assert _validate_branch("v1.2.3") == "v1.2.3"
+        assert _validate_branch("fix_underscore") == "fix_underscore"
+        assert _validate_branch("release/2026.04") == "release/2026.04"
+
+    def test_rejects_empty(self):
+        from maxim.runtime.leader_proxy import _validate_branch
+
+        with pytest.raises(ValueError, match="Empty"):
+            _validate_branch("")
+        with pytest.raises(ValueError, match="Empty"):
+            _validate_branch("   ")
+
+    def test_rejects_path_traversal(self):
+        from maxim.runtime.leader_proxy import _validate_branch
+
+        with pytest.raises(ValueError, match="\\.\\."):
+            _validate_branch("../../../etc/passwd")
+        with pytest.raises(ValueError, match="\\.\\."):
+            _validate_branch("main/../refs/heads/evil")
+        with pytest.raises(ValueError, match="\\.\\."):
+            _validate_branch("HEAD..origin/main")
+
+    def test_rejects_flag_injection(self):
+        from maxim.runtime.leader_proxy import _validate_branch
+
+        with pytest.raises(ValueError, match="starts with"):
+            _validate_branch("-X")
+        with pytest.raises(ValueError, match="starts with"):
+            _validate_branch("--upload-pack=evil")
+
+    def test_rejects_shell_metacharacters(self):
+        from maxim.runtime.leader_proxy import _validate_branch
+
+        with pytest.raises(ValueError, match="Invalid"):
+            _validate_branch("main; rm -rf /")
+        with pytest.raises(ValueError, match="Invalid"):
+            _validate_branch("main$(whoami)")
+        with pytest.raises(ValueError, match="Invalid"):
+            _validate_branch("main`id`")
+        with pytest.raises(ValueError, match="Invalid"):
+            _validate_branch("branch with spaces")
+
+    def test_rejects_special_git_refs(self):
+        from maxim.runtime.leader_proxy import _validate_branch
+
+        with pytest.raises(ValueError, match="Invalid"):
+            _validate_branch("@{upstream}")
+        with pytest.raises(ValueError, match="Invalid"):
+            _validate_branch("HEAD~1")
+
+    def test_strips_whitespace(self):
+        from maxim.runtime.leader_proxy import _validate_branch
+
+        assert _validate_branch("  main  ") == "main"
+
+
+class TestSanitizeGitOutput:
+    """Test _sanitize_git_output removes sensitive info."""
+
+    def test_removes_absolute_paths(self):
+        from maxim.runtime.leader_proxy import _sanitize_git_output
+
+        text = "fatal: '/home/denny/Scripts/Maxim' is not a git repository"
+        result = _sanitize_git_output(text)
+        assert "/home/denny" not in result
+        assert "<path>" in result
+
+    def test_truncates_long_output(self):
+        from maxim.runtime.leader_proxy import _sanitize_git_output
+
+        text = "x" * 1000
+        result = _sanitize_git_output(text, max_len=300)
+        assert len(result) == 300
+
+    def test_handles_none(self):
+        from maxim.runtime.leader_proxy import _sanitize_git_output
+
+        assert _sanitize_git_output(None) == ""
+        assert _sanitize_git_output("") == ""
+
+    def test_preserves_short_safe_text(self):
+        from maxim.runtime.leader_proxy import _sanitize_git_output
+
+        text = "Already up to date."
+        assert _sanitize_git_output(text) == text
+
+    def test_removes_nested_paths(self):
+        from maxim.runtime.leader_proxy import _sanitize_git_output
+
+        text = "error: could not open '/usr/local/lib/python3.12/site-packages/maxim/foo.py'"
+        result = _sanitize_git_output(text)
+        assert "/usr/local" not in result
 
 
 # ── LogBuffer ────────────────────────────────────────────────────────────────

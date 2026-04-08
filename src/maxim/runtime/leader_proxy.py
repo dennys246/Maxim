@@ -22,12 +22,46 @@ import collections
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
 import time
 import urllib.error
 import urllib.request
+
+# ── Input validation ─────────────────────────────────────────────────────────
+
+_BRANCH_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]*$")
+
+
+def _validate_branch(branch: str) -> str:
+    """Validate and return a sanitized branch name.
+
+    Raises ``ValueError`` for names that could cause unexpected git behavior:
+    path traversal (``..``), flag injection (leading ``-``), or invalid chars.
+    """
+    branch = str(branch).strip()
+    if not branch:
+        raise ValueError("Empty branch name")
+    if ".." in branch:
+        raise ValueError(f"Branch name contains '..': {branch!r}")
+    if branch.startswith("-"):
+        raise ValueError(f"Branch name starts with '-': {branch!r}")
+    if not _BRANCH_RE.match(branch):
+        raise ValueError(f"Invalid branch name: {branch!r}")
+    return branch
+
+
+def _sanitize_git_output(text: str | None, max_len: int = 300) -> str:
+    """Remove file system paths and truncate for safe error reporting."""
+    if not text:
+        return ""
+    # Replace absolute paths that could leak system info
+    text = re.sub(r"/[\w./-]{5,}", "<path>", text)
+    return text[-max_len:] if len(text) > max_len else text
+
+
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from pathlib import Path
@@ -572,7 +606,12 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
-        branch = body.get("branch", "main")
+        raw_branch = body.get("branch", "main")
+        try:
+            branch = _validate_branch(raw_branch)
+        except ValueError as e:
+            self._send_json(400, {"error": f"Invalid branch: {e}"})
+            return
         dry_run = body.get("dry_run", True)
         force = body.get("force", False)
 
@@ -608,7 +647,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                         timeout=10,
                         cwd=repo_root,
                     )
-                    stashed = "No local changes" not in (stash_result.stdout or "")
+                    stashed = stash_result.returncode == 0 and bool(stash_result.stdout.strip())
                     logger.info("admin/update: stashed dirty tree (stashed=%s)", stashed)
                 else:
                     self._send_json(
@@ -699,8 +738,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 500,
                 {
                     "error": "git pull failed",
-                    "stdout": e.stdout,
-                    "stderr": e.stderr,
+                    "stdout": _sanitize_git_output(e.stdout),
+                    "stderr": _sanitize_git_output(e.stderr),
                 },
             )
             return
@@ -727,24 +766,35 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             )
             pip_output = pip_result.stdout[-500:] if pip_result.stdout else ""
             if pip_result.returncode != 0:
-                # Rollback
-                subprocess.run(
+                # Rollback: revert git and reinstall
+                rollback = subprocess.run(
                     ["git", "checkout", "HEAD~1"],
                     capture_output=True,
                     timeout=10,
                     cwd=repo_root,
                 )
-                subprocess.run(
+                rollback_ok = rollback.returncode == 0
+                reinstall = subprocess.run(
                     [sys.executable, "-m", "pip", "install", "-e", "."],
                     capture_output=True,
                     timeout=120,
                     cwd=repo_root,
                 )
+                reinstall_ok = reinstall.returncode == 0
+                if not rollback_ok or not reinstall_ok:
+                    logger.error(
+                        "admin/update: ROLLBACK INCOMPLETE — git=%s pip=%s",
+                        "ok" if rollback_ok else "FAILED",
+                        "ok" if reinstall_ok else "FAILED",
+                    )
+                rollback_status = "complete" if (rollback_ok and reinstall_ok) else "INCOMPLETE"
                 self._send_json(
                     500,
                     {
-                        "error": "pip install failed, rolled back",
-                        "pip_stderr": pip_result.stderr[-500:],
+                        "error": f"pip install failed, rollback {rollback_status}",
+                        "pip_stderr": _sanitize_git_output(pip_result.stderr),
+                        "rollback_git": "ok" if rollback_ok else "failed",
+                        "rollback_pip": "ok" if reinstall_ok else "failed",
                     },
                 )
                 return

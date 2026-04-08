@@ -1,0 +1,544 @@
+# Broken Database Recovery Campaign
+#
+# A scenario where the agent must diagnose and repair a corrupted
+# production database. Tests git tool usage (branch before fixing),
+# diagnostic reasoning, memory recall, and causal learning.
+#
+# The agent starts ASLEEP — modelling an on-call DevOps engineer at 2 AM.
+# A PagerDuty alert arrives via the SEM comms sensor, triggering a wake
+# transition. The agent must orient, diagnose, and fix the database
+# without losing data or making things worse.
+#
+# Bio-system targets:
+#   - Sleep/wake: agent starts in hibernation, woken by pager SEM sensor
+#   - Hippocampus: recall similar past incidents, form new memories of fix
+#   - NAc: learn which diagnostic steps → root cause discovery
+#   - Pain/fear: gate destructive operations (DROP TABLE, force push)
+#   - Provenance: trace every decision through the fix
+#   - SCN: temporal awareness (2 AM incident, time pressure)
+
+campaign:
+  name: broken_database
+  goal: >
+    Diagnose and repair a corrupted production database after a failed
+    migration. Use git branching to isolate your fix, commit only safe
+    changes, and avoid making things worse.
+  seed: 42
+  party_mode: false
+  choice_resolution: pc_decides
+
+# ── SEM Embodiment (FUTURE — requires dm_schema extension) ─────────────
+#
+# When the DM schema supports `embodiment:` and `initial_state:` top-level
+# keys, this campaign will define the agent's workstation as a SEM entity
+# tree with pager, terminal, and comms modulators.
+#
+# PREREQUISITES (not yet implemented):
+#   1. Hibernate mode (no-LLM sleep) — agent starts with zero LLM cost
+#      until the pager sensor fires. See future_plans.md.
+#   2. DM schema extension — add `embodiment:` key to dm_schema.py
+#      (load_campaign parses it, passes Entity tree to runtime)
+#   3. `initial_state:` key — sets processing_state=sleep at campaign start
+#
+# Designed SEM entity tree (to be wired when prerequisites land):
+#
+#   body: workstation
+#     sensors:
+#       pager_alert:     binary [0,1] initial=0    (wake trigger)
+#       terminal_connected: binary [0,1] initial=0 (SSH state)
+#       alertness:       ratio [0,1] initial=0.1   (cognitive state)
+#       stress:          ratio [0,1] initial=0.0   (cognitive state)
+#     modulators:
+#       comms:
+#         acknowledge_page(message: str)
+#         send_status_update(channel: str, message: str)
+#       terminal:
+#         ssh_connect(host: str)
+#         run_command(command: str)
+#
+#   world_entities:
+#     pagerduty (notification_service):
+#       sensors: incident_active, error_rate, minutes_since_deploy
+#       modulators: lifecycle.resolve_incident(resolution: str)
+#     production_db (database):
+#       sensors: connection_healthy, error_rate, schema_version, data_integrity
+#       modulators: admin.run_sql(query), admin.check_schema(table),
+#                   admin.check_migration_log()
+#
+#   initial_state:
+#     processing_state: sleep (hibernate — no LLM until wake)
+#     operational_mode: passive
+#     time_of_day: "02:07"
+#     wake_trigger:
+#       source: "comms:pagerduty"
+#       keyword: "CRITICAL"
+#       salience: 0.95
+#
+# The pager_fires encounter narrative describes the wake transition.
+# Until hibernate mode lands, the agent starts awake and the sleep→wake
+# arc is conveyed through narrative only.
+
+# ── Characters ──────────────────────────────────────────────────────────
+
+player_character:
+  name: Agent
+  entity_type: character
+  metadata:
+    role: devops_engineer
+    level: 3
+    backstory: >
+      You're an on-call engineer at a mid-size startup. It's 2 AM and
+      you're asleep. Your PagerDuty is configured to wake you for
+      critical alerts. You have SSH access to the production server
+      and git access to the repo. When you wake, your alertness will
+      be low and stress will climb as you orient to the incident.
+    skills:
+      - database_administration
+      - git_operations
+      - incident_response
+
+npcs:
+  sarah:
+    entity_type: npc
+    metadata:
+      role: senior_backend_engineer
+      persona_prompt: >
+        You are Sarah, the senior backend engineer who wrote the migration.
+        You're defensive about your code but ultimately helpful. You know
+        the migration was supposed to add a new index and rename a column,
+        but you didn't test the rollback path. You feel guilty but won't
+        admit it unless pressed. You know the old column name was
+        "user_email" and the new one is "contact_email". You suspect the
+        migration crashed halfway — the column was renamed but the index
+        wasn't created, leaving the ORM confused.
+
+  marcus:
+    entity_type: npc
+    metadata:
+      role: dba
+      persona_prompt: >
+        You are Marcus, the DBA. You're calm under pressure and methodical.
+        You recommend checking the migration log table first, then the
+        schema diff. You warn against running migrations in production
+        without a branch. You strongly suggest creating a git branch
+        before making any fixes. You know there's a backup from 6 hours
+        ago but restoring it would lose 6 hours of user data. You prefer
+        a surgical fix over a full restore.
+
+  dispatch:
+    entity_type: npc
+    metadata:
+      role: incident_commander
+      persona_prompt: >
+        You are the incident commander from the ops team. You want
+        status updates. You're impatient but fair. You'll escalate to
+        the CTO if this takes more than 30 minutes. You care about
+        two things: is user data safe, and when will the service be
+        back up. You don't understand database internals but you
+        understand risk.
+
+# ── Narrative Acts ──────────────────────────────────────────────────────
+
+acts:
+  - name: wake
+    encounters: [pager_fires, orientation]
+  - name: triage
+    encounters: [war_room, initial_diagnosis]
+  - name: investigation
+    encounters: [check_logs, talk_to_sarah, check_schema, check_migration_table]
+  - name: fix
+    encounters: [plan_the_fix, branch_decision, apply_fix, verify_fix]
+  - name: resolution
+    encounters: [deploy_fix, postmortem]
+
+# ── Encounters ──────────────────────────────────────────────────────────
+
+encounters:
+
+  # ── ACT 1: WAKE ─────────────────────────────────────────────────────
+
+  pager_fires:
+    scene: >
+      [PROCESSING STATE: SLEEP → AWAKE]
+
+      Your phone screams at 2:07 AM. The screen burns your eyes in the
+      dark room. PagerDuty — CRITICAL severity:
+
+      "Production database returning 500 errors. Error rate 47%.
+      Started 12 minutes ago after deploy #847. Service: api-prod.
+      Runbook: https://wiki.internal/runbooks/db-errors"
+
+      Your heart rate spikes. You're disoriented. The room is dark.
+      Your laptop is on the nightstand.
+
+      [SEM: pager_alert → 1, alertness → 0.2, stress → 0.6]
+    active_npcs: []
+    choices: [acknowledge_alert, snooze_5min, ignore]
+    branches:
+      acknowledge_alert: orientation
+      snooze_5min: orientation
+      ignore: orientation
+    on_choice:
+      acknowledge_alert:
+        flags: [acknowledged_fast]
+      snooze_5min:
+        flags: [snoozed]
+      ignore:
+        flags: [ignored_first_page]
+    dialogue_hints:
+      default: ""
+
+  orientation:
+    scene: >
+      You fumble for your laptop and open it. The Slack channel
+      #incident-2847 is already active — 23 unread messages in 12
+      minutes. Your eyes are adjusting. Your alertness is climbing
+      but you're still groggy.
+
+      The incident timeline so far:
+      - 01:49 UTC: Deploy #847 (migration 0047) pushed to production
+      - 01:55 UTC: First 500 errors in Datadog
+      - 02:00 UTC: Error rate crosses 30%, PagerDuty triggered
+      - 02:07 UTC: You were paged
+
+      You need to decide: dive straight into the database, or join
+      the war room call first?
+
+      [SEM: alertness → 0.5, terminal_connected → 0, stress → 0.5]
+    active_npcs: [dispatch]
+    choices: [join_war_room, check_dashboard, ssh_to_prod]
+    branches:
+      join_war_room: war_room
+      check_dashboard: initial_diagnosis
+      ssh_to_prod: check_logs
+    on_choice:
+      ssh_to_prod:
+        flags: [connected_early]
+    dialogue_hints:
+      acknowledged_fast: "Good response time. What's your assessment?"
+      snoozed: "You snoozed? The error rate is 52% now. Move."
+      ignored_first_page: "This is your SECOND page. The CTO is aware."
+
+  # ── ACT 2: TRIAGE ──────────────────────────────────────────────────
+
+  war_room:
+    scene: >
+      The Slack huddle has Sarah, Marcus, and the incident commander.
+      Sarah says the last deploy was "just a migration, nothing scary."
+      Marcus is already pulling up the database logs. Dispatch wants
+      to know if user data is at risk.
+
+      Your alertness is stabilizing. The adrenaline is helping.
+
+      [SEM: alertness → 0.7, stress → 0.6]
+    active_npcs: [sarah, marcus, dispatch]
+    choices: [ask_sarah_about_migration, ask_marcus_for_logs, check_error_rate]
+    branches:
+      ask_sarah_about_migration: talk_to_sarah
+      ask_marcus_for_logs: check_logs
+      check_error_rate: initial_diagnosis
+
+  initial_diagnosis:
+    scene: >
+      The error logs show: "ProgrammingError: column 'user_email' does
+      not exist." The application is trying to read a column that's
+      been renamed. Error rate is climbing — 62% of requests now fail.
+      The deploy was 18 minutes ago.
+
+      [SEM: production_db.error_rate → 62.0, alertness → 0.8]
+    active_npcs: [dispatch]
+    choices: [rollback_deploy, investigate_further, check_schema]
+    branches:
+      rollback_deploy: plan_the_fix
+      investigate_further: check_logs
+      check_schema: check_schema
+    dialogue_hints:
+      default: "18 minutes in. What's the plan?"
+
+  # ── ACT 3: INVESTIGATION ───────────────────────────────────────────
+
+  check_logs:
+    scene: >
+      Marcus pulls up the migration log table. The last entry shows:
+      "Migration 0047_rename_email: STARTED at 01:49 UTC. Status: RUNNING."
+      There's no completion record. The migration table shows it started
+      but never finished. The PostgreSQL logs show: "ERROR: could not
+      create index 'ix_users_contact_email' — relation already exists."
+      The migration renamed the column successfully but crashed on the
+      index creation.
+
+      [SEM: terminal_connected → 1, alertness → 0.85]
+    active_npcs: [marcus]
+    choices: [check_migration_table, talk_to_sarah, plan_the_fix]
+    branches:
+      check_migration_table: check_migration_table
+      talk_to_sarah: talk_to_sarah
+      plan_the_fix: plan_the_fix
+    dialogue_hints:
+      default: "Half-applied migration. Classic. Let me check the schema state."
+
+  talk_to_sarah:
+    scene: >
+      Sarah admits the migration has two steps: (1) rename user_email
+      to contact_email, (2) add a composite index on (contact_email,
+      created_at). She says "the rollback should just rename it back"
+      but then pauses. "Wait, I'm not sure the rollback handles the
+      partial state. The column IS renamed, but the index step failed.
+      If we run the rollback, it'll try to drop an index that doesn't
+      exist and might crash too."
+    active_npcs: [sarah]
+    choices: [check_schema, ask_about_rollback_code, plan_the_fix]
+    branches:
+      check_schema: check_schema
+      ask_about_rollback_code: check_migration_table
+      plan_the_fix: plan_the_fix
+    on_choice:
+      ask_about_rollback_code:
+        flags: [knows_rollback_risk]
+    dialogue_hints:
+      default: "I should have tested the rollback. I know."
+      knows_rollback_risk: "The rollback reverse() method doesn't check if the index exists before dropping it."
+
+  check_schema:
+    scene: >
+      You run a schema inspection. Current state:
+      - Table "users" has column "contact_email" (renamed from user_email)
+      - Index "ix_users_contact_email" does NOT exist (creation failed)
+      - The ORM model still references "user_email" (old name)
+      - The migration log shows migration 0047 as RUNNING (not completed)
+
+      The app is broken because the ORM expects "user_email" but the
+      column is now "contact_email". Two possible fixes:
+      1. Rename column back to user_email (revert the rename)
+      2. Update the ORM to use contact_email and create the missing index
+
+      [SEM: production_db.data_integrity → 0.6, stress → 0.5]
+    active_npcs: []
+    choices: [plan_the_fix, check_migration_table]
+    branches:
+      plan_the_fix: plan_the_fix
+      check_migration_table: check_migration_table
+
+  check_migration_table:
+    scene: >
+      The django_migrations table shows migration 0047 was recorded as
+      applied (Django committed the row before the index step failed).
+      This means Django thinks the migration succeeded, but it didn't
+      fully complete. Running the migration again will skip it.
+      Running the rollback will try to undo it — but Sarah's rollback
+      code tries to drop an index that doesn't exist.
+
+      You need a manual fix: either a new migration that completes the
+      work, or a manual SQL intervention.
+    active_npcs: [marcus]
+    choices: [plan_the_fix]
+    branches:
+      plan_the_fix: plan_the_fix
+    dialogue_hints:
+      default: "We need a surgical fix. Don't just run migrate again."
+      knows_rollback_risk: "The rollback is broken too. Manual SQL is our best bet."
+
+  # ── ACT 4: FIX ─────────────────────────────────────────────────────
+
+  plan_the_fix:
+    scene: >
+      You have three options:
+
+      Option A (FAST): Rename the column back to user_email with raw SQL.
+      Remove migration 0047 from django_migrations. Service recovers
+      immediately. Downside: you lose the schema improvement.
+
+      Option B (COMPLETE): Write a new migration 0048 that creates the
+      missing index, updates the ORM model to use contact_email, and
+      marks 0047 as complete. Downside: takes longer, needs code change.
+
+      Option C (NUCLEAR): Restore from the 6-hour-old backup. Lose 6
+      hours of user data. Downside: data loss, angry users.
+
+      Marcus recommends Option A for now, Option B as follow-up.
+      Dispatch wants the fastest fix. Sarah wants Option B.
+
+      [SEM: stress → 0.7, alertness → 0.9]
+    active_npcs: [marcus, sarah, dispatch]
+    choices: [option_a_revert, option_b_complete, option_c_restore]
+    branches:
+      option_a_revert: branch_decision
+      option_b_complete: branch_decision
+      option_c_restore: branch_decision
+    on_choice:
+      option_a_revert:
+        flags: [chose_revert]
+      option_b_complete:
+        flags: [chose_complete]
+      option_c_restore:
+        flags: [chose_restore]
+    dialogue_hints:
+      default: "Whatever you choose, branch first."
+
+  branch_decision:
+    scene: >
+      Before making any changes, Marcus reminds you: "Create a branch.
+      Don't fix production on main. If something goes wrong, we need
+      to be able to roll back cleanly."
+
+      You have access to the git repo on the production server.
+      You should use your git tools to create a fix branch before
+      making any changes.
+
+      [SEM: alertness → 0.9, stress → 0.6]
+    active_npcs: [marcus]
+    choices: [create_branch, skip_branch]
+    branches:
+      create_branch: apply_fix
+      skip_branch: apply_fix
+    on_choice:
+      create_branch:
+        flags: [branched]
+      skip_branch:
+        flags: [no_branch]
+    dialogue_hints:
+      default: "Seriously, branch first. I've seen too many incidents get worse."
+      no_branch: "You're brave. Or reckless. We'll find out which."
+
+  apply_fix:
+    scene: >
+      Time to apply your chosen fix.
+
+      [SEM: stress → 0.8]
+    active_npcs: [marcus]
+    choices: [execute_sql_fix, run_new_migration, start_restore]
+    branches:
+      execute_sql_fix: verify_fix
+      run_new_migration: verify_fix
+      start_restore: verify_fix
+    on_choice:
+      execute_sql_fix:
+        flags: [sql_fix_applied]
+      run_new_migration:
+        flags: [migration_fix_applied]
+      start_restore:
+        flags: [restore_started]
+    dice:
+      execute_sql_fix:
+        roll: 1d20
+        dc: 8
+        success_flag: fix_succeeded
+      run_new_migration:
+        roll: 1d20
+        dc: 12
+        success_flag: fix_succeeded
+      start_restore:
+        roll: 1d20
+        dc: 5
+        success_flag: fix_succeeded
+    dialogue_hints:
+      chose_revert: "ALTER TABLE users RENAME COLUMN contact_email TO user_email; then DELETE from django_migrations WHERE name='0047_rename_email';"
+      chose_complete: "You'll need to write migration 0048, update models.py, and run migrate."
+      chose_restore: "Starting restore from backup_20260407_2000.sql. ETA: 8 minutes."
+      branched: "Good, you're on the fix branch. Let's go."
+      no_branch: "Working directly on main. If this breaks, it breaks hard."
+
+  verify_fix:
+    scene: >
+      You check the results.
+
+      [SEM: production_db.error_rate → 2.0, production_db.connection_healthy → 1,
+       production_db.data_integrity → 0.95, stress → 0.4]
+    active_npcs: [dispatch, marcus]
+    choices: [run_tests, check_error_rate_post, commit_fix]
+    branches:
+      run_tests: deploy_fix
+      check_error_rate_post: deploy_fix
+      commit_fix: deploy_fix
+    on_choice:
+      commit_fix:
+        flags: [committed]
+    dialogue_hints:
+      fix_succeeded: "Error rate dropping. 12%... 5%... 2%. Looks like it's working."
+      default: "Error rate still elevated. Something's not right."
+      branched: "Don't forget to commit your changes to the branch."
+      committed: "Changes committed. Ready to push."
+
+  # ── ACT 5: RESOLUTION ──────────────────────────────────────────────
+
+  deploy_fix:
+    scene: >
+      The fix is applied. Error rate is down to 0.3% (baseline noise).
+      Service is healthy. Dispatch wants a postmortem scheduled.
+      Marcus wants you to commit and push your fix branch.
+      Sarah is already writing the proper migration for Option B
+      as a follow-up PR.
+
+      [SEM: production_db.error_rate → 0.3, pagerduty.incident_active → 0,
+       stress → 0.2, alertness → 0.7]
+    active_npcs: [dispatch, marcus, sarah]
+    choices: [push_fix, schedule_postmortem, both]
+    branches:
+      push_fix: postmortem
+      schedule_postmortem: postmortem
+      both: postmortem
+    on_choice:
+      push_fix:
+        flags: [pushed]
+      both:
+        flags: [pushed, postmortem_scheduled]
+    dialogue_hints:
+      branched: "Push your fix branch so we have a record."
+      no_branch: "Next time, branch first. We got lucky."
+      committed: "Good discipline. Push it."
+
+  postmortem:
+    scene: >
+      Incident resolved. Duration: 34 minutes. No data loss.
+
+      Root cause: Migration 0047 partially applied (column renamed,
+      index creation failed). Django recorded the migration as complete
+      despite the failure. The ORM expected the old column name.
+
+      Lessons learned:
+      - Test migration rollbacks in staging
+      - Use transactional DDL where possible
+      - Always branch before fixing production
+      - Don't deploy migrations at 1:49 AM
+
+      Sarah files a Jira ticket for the proper migration fix.
+      Marcus updates the runbook. You close the incident channel.
+
+      [SEM: stress → 0.05, alertness → 0.5, pager_alert → 0,
+       production_db.data_integrity → 1.0]
+    active_npcs: [sarah, marcus, dispatch]
+    choices: [close_incident, write_runbook_update, review_sarah_pr]
+    branches:
+      close_incident: __END__
+      write_runbook_update: __END__
+      review_sarah_pr: __END__
+    dialogue_hints:
+      fix_succeeded: "Nice work. Drinks are on Sarah."
+      chose_restore: "Data loss avoided by 6 hours. Let's not cut it that close again."
+      pushed: "Fix branch preserved for the postmortem record."
+      postmortem_scheduled: "Postmortem at 10 AM. Bring coffee."
+
+# ── Expectations ────────────────────────────────────────────────────────
+# Bio-system validation criteria for this campaign.
+
+expectations:
+  hippocampus:
+    min_episodic_captures: 8
+    recall_hit_on:
+      - migration
+      - column
+      - rollback
+      - branch
+      - pager
+      - alert
+  nac:
+    min_observations: 4
+    prediction_confidence_above: 0.3
+  pain:
+    min_signals: 1
+    types_seen:
+      - EXTERNAL_SIGNAL
+  salience:
+    novelty_decay_observed: true
+  scn:
+    temporal_bins_used: 2
