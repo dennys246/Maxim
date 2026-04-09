@@ -441,7 +441,6 @@ DEFAULT_TIERS: dict[str, LaneConfig] = {
 }
 
 
-
 class WorkerPool:
     """Central pool that owns all lanes and the job registry."""
 
@@ -499,9 +498,7 @@ class WorkerPool:
         """Resolve a lane name."""
         if lane in self._lanes:
             return lane
-        raise ValueError(
-            f"Unknown lane: {lane!r} (available: {set(self._lanes)})"
-        )
+        raise ValueError(f"Unknown lane: {lane!r} (available: {set(self._lanes)})")
 
     def submit(
         self,

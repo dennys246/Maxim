@@ -133,8 +133,7 @@ class BrowseComponentsTool(Tool):
         return {
             "count": len(results),
             "components": [
-                {"ref": r.ref, "name": r.name, "category": r.category, "tags": list(r.tags)}
-                for r in results[:20]
+                {"ref": r.ref, "name": r.name, "category": r.category, "tags": list(r.tags)} for r in results[:20]
             ],
         }
 
@@ -166,15 +165,20 @@ class BrowseEncountersTool(Tool):
         narrative_role = kwargs.get("narrative_role")
 
         results = self._library.query(
-            category=category, tags=tags,
-            difficulty=difficulty, narrative_role=narrative_role,
+            category=category,
+            tags=tags,
+            difficulty=difficulty,
+            narrative_role=narrative_role,
         )
         return {
             "count": len(results),
             "encounters": [
                 {
-                    "ref": r.ref, "name": r.name, "category": r.category,
-                    "tags": list(r.tags), "difficulty_range": r.difficulty_range,
+                    "ref": r.ref,
+                    "name": r.name,
+                    "category": r.category,
+                    "tags": list(r.tags),
+                    "difficulty_range": r.difficulty_range,
                     "narrative_role": r.narrative_role,
                 }
                 for r in results[:20]
@@ -217,6 +221,7 @@ class DesignEntityTool(Tool):
 
             # Validate
             from maxim.simulation.entity_designer import validate_entity_spec
+
             errors = validate_entity_spec(spec)
             if errors:
                 return {
@@ -268,6 +273,7 @@ class EmitCampaignTool(Tool):
         if self._output_dir:
             import time
             from pathlib import Path
+
             output_path = Path(self._output_dir) / f"generated_campaign_{int(time.time())}.yaml"
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(yaml_content)

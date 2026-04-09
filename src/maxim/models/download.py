@@ -170,6 +170,7 @@ def _llm_dir() -> str:
     global _DEFAULT_LLM_DIR
     if _DEFAULT_LLM_DIR is None:
         from maxim.utils.paths import model_dir
+
         _DEFAULT_LLM_DIR = str(model_dir() / "LLM")
     return _DEFAULT_LLM_DIR
 
@@ -178,6 +179,7 @@ def _tts_dir() -> str:
     global _DEFAULT_TTS_DIR
     if _DEFAULT_TTS_DIR is None:
         from maxim.utils.paths import model_dir
+
         _DEFAULT_TTS_DIR = str(model_dir() / "tts")
     return _DEFAULT_TTS_DIR
 
@@ -186,6 +188,7 @@ def _vision_dir() -> str:
     global _DEFAULT_VISION_DIR
     if _DEFAULT_VISION_DIR is None:
         from maxim.utils.paths import model_dir
+
         _DEFAULT_VISION_DIR = str(model_dir() / "YOLO")
     return _DEFAULT_VISION_DIR
 
@@ -310,7 +313,7 @@ def delete_llm(
     if model_name in LLM_MODELS:
         dest_path = models_dir / LLM_MODELS[model_name]["filename"]
         if dest_path.is_file():
-            size_gb = dest_path.stat().st_size / (1024 ** 3)
+            size_gb = dest_path.stat().st_size / (1024**3)
             dest_path.unlink()
             print(f"Deleted {model_name}: {dest_path.name} ({size_gb:.1f} GB freed)")
             return True
@@ -322,7 +325,7 @@ def delete_llm(
         cfg = load_llm_config(profile_override=model_name)
         model_path = Path(getattr(cfg, "model_path", "") or "")
         if model_path.is_file():
-            size_gb = model_path.stat().st_size / (1024 ** 3)
+            size_gb = model_path.stat().st_size / (1024**3)
             model_path.unlink()
             print(f"Deleted {model_name}: {model_path.name} ({size_gb:.1f} GB freed)")
             return True
@@ -549,10 +552,12 @@ def enable_llm_config(
 
     if config_path is None:
         from maxim.utils.paths import resolve_config
+
         try:
             config_path = resolve_config("llm.json")
         except FileNotFoundError:
             from maxim.utils.paths import user_config
+
             config_path = user_config() / "llm.json"
     config_path = Path(config_path)
 

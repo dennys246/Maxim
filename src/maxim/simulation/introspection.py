@@ -339,5 +339,3 @@ class Observer:
             parts.append(f"{causal.get('link_count', 0)} total causal links")
 
         return "; ".join(parts) if parts else "No subsystem data available."
-
-

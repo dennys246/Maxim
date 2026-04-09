@@ -75,6 +75,7 @@ class FileEpisodicStore:
 
     def save(self, memories: list[dict], *, namespace: str = "default") -> None:
         from maxim.utils.atomic_io import atomic_write_json
+
         self._path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(str(self._path), memories)
 
@@ -102,6 +103,7 @@ class FileCausalStore:
 
     def save(self, links: list[dict], *, namespace: str = "default") -> None:
         from maxim.utils.atomic_io import atomic_write_json
+
         self._path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(str(self._path), links)
 
@@ -125,6 +127,7 @@ class FileSemanticStore:
 
     def save(self, concepts: list[dict], *, namespace: str = "default") -> None:
         from maxim.utils.atomic_io import atomic_write_json
+
         self._path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(str(self._path), concepts)
 

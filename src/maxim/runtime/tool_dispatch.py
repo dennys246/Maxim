@@ -165,9 +165,7 @@ def execute_parallel_actions(
         tool_name = parallel_action.get("tool_name", "unknown")
         try:
             # Check autonomy for each action
-            can_exec, reason = autonomy_controller.can_execute_action(
-                parallel_action, confidence=confidence
-            )
+            can_exec, reason = autonomy_controller.can_execute_action(parallel_action, confidence=confidence)
             if not can_exec:
                 logger.warning("Parallel action %s rejected: %s", tool_name, reason)
                 parallel_results.append(

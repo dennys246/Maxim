@@ -184,15 +184,17 @@ class SalienceNetwork:
                     w = where_dict.get("w", 0.0)
                     h = where_dict.get("h", 0.0)
 
-                detections.append({
-                    "track_id": item.id,
-                    "class_id": item.class_id,
-                    "label": item.label,
-                    "confidence": item.confidence,
-                    "bbox": (u - w / 2, v - h / 2, w, h),
-                    "_salience_item": item,  # Preserve for modality-aware formatting
-                    "_where": where,
-                })
+                detections.append(
+                    {
+                        "track_id": item.id,
+                        "class_id": item.class_id,
+                        "label": item.label,
+                        "confidence": item.confidence,
+                        "bbox": (u - w / 2, v - h / 2, w, h),
+                        "_salience_item": item,  # Preserve for modality-aware formatting
+                        "_where": where,
+                    }
+                )
             elif isinstance(item, dict):
                 detections.append(item)
 
@@ -638,8 +640,7 @@ class SalienceNetwork:
                         pos = obj["position"]
                         location = f"({pos[0]:.0f},{pos[1]:.0f})"
                     lines.append(
-                        f" {marker}{obj['label']} at {location} "
-                        f"sal={obj['salience']:.2f} nov={obj['novelty']:.2f}"
+                        f" {marker}{obj['label']} at {location} sal={obj['salience']:.2f} nov={obj['novelty']:.2f}"
                     )
 
             # Interest summary

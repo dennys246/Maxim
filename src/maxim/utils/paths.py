@@ -41,6 +41,7 @@ def bundled_data() -> Path:
     global _bundled_data_cache
     if _bundled_data_cache is None:
         import importlib.resources
+
         _bundled_data_cache = Path(str(importlib.resources.files("maxim") / "_data"))
     return _bundled_data_cache
 
@@ -155,6 +156,7 @@ def planning_dir() -> Path:
 # ---------------------------------------------------------------------------
 # Convenience: resolve a config file with bundled fallback
 # ---------------------------------------------------------------------------
+
 
 def resolve_config(filename: str) -> Path:
     """Find a config file: check user config first, fall back to bundled.

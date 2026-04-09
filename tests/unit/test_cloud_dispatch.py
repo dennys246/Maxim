@@ -65,10 +65,12 @@ class TestLoadRoutingPolicy:
         assert policy.require_cloud_opt_in is True
 
     def test_overrides(self):
-        policy = load_routing_policy({
-            "fallback_on_rate_limit": False,
-            "max_cost_per_request": 1.50,
-        })
+        policy = load_routing_policy(
+            {
+                "fallback_on_rate_limit": False,
+                "max_cost_per_request": 1.50,
+            }
+        )
         assert policy.fallback_on_rate_limit is False
         assert policy.max_cost_per_request == 1.50
 
@@ -83,9 +85,7 @@ class TestLoadPricingTable:
 
     def test_config_overrides(self):
         cfg = MagicMock()
-        cfg.pricing = {
-            "custom-model": {"input_price": 1.0, "output_price": 2.0}
-        }
+        cfg.pricing = {"custom-model": {"input_price": 1.0, "output_price": 2.0}}
         result = load_pricing_table(cfg)
         assert "custom-model" in result
         assert result["custom-model"].input_price == 1.0
@@ -103,12 +103,14 @@ class TestLoadCostConfig:
 class TestImportPaths:
     def test_constants_from_cloud_dispatch(self):
         from maxim.models.language.cloud_dispatch import JSON_RULES, DEFAULT_PRICING, MODEL_DOWNGRADE_MAP
+
         assert "CRITICAL" in JSON_RULES
         assert "gpt-4o" in DEFAULT_PRICING
         assert "gpt-4o" in MODEL_DOWNGRADE_MAP
 
     def test_system_prompts_from_cloud_dispatch(self):
         from maxim.models.language.cloud_dispatch import SYSTEM_TOOL_RESPONSE, SYSTEM_JSON_ONLY, SYSTEM_ROUTE
+
         assert "Maxim" in SYSTEM_TOOL_RESPONSE
         assert "JSON" in SYSTEM_JSON_ONLY
         assert "JSON" in SYSTEM_ROUTE

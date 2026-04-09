@@ -127,6 +127,7 @@ class FearCircuitBridge:
         """Initialize default factory fields."""
         if not self.persist_path:
             from maxim.utils.paths import resolve_user_state
+
             self.persist_path = str(resolve_user_state("util/fear_learning.json"))
         if not hasattr(self, "_adjustments") or self._adjustments is None:
             self._adjustments = {}

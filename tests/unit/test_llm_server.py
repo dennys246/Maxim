@@ -18,6 +18,7 @@ from maxim.runtime.llm_server import (
 class TestStopActiveSpawner:
     def test_stops_spawner(self):
         import maxim.runtime.llm_server as mod
+
         mock_spawner = MagicMock()
         mod._active_spawner = mock_spawner
         mod._active_model = "test-model"
@@ -32,12 +33,14 @@ class TestStopActiveSpawner:
 
     def test_noop_when_no_spawner(self):
         import maxim.runtime.llm_server as mod
+
         mod._active_spawner = None
         # Should not raise
         stop_active_spawner()
 
     def test_stop_failure_nonfatal(self):
         import maxim.runtime.llm_server as mod
+
         mock_spawner = MagicMock()
         mock_spawner.stop.side_effect = RuntimeError("oops")
         mod._active_spawner = mock_spawner
@@ -49,6 +52,7 @@ class TestStopActiveSpawner:
 class TestRouterRegistry:
     def test_register_and_find(self):
         import maxim.runtime.llm_server as mod
+
         # Reset
         mod._active_routers.clear()
 
@@ -64,6 +68,7 @@ class TestRouterRegistry:
 
     def test_prunes_dead_refs(self):
         import maxim.runtime.llm_server as mod
+
         mod._active_routers.clear()
 
         router1 = MagicMock()
@@ -75,6 +80,7 @@ class TestRouterRegistry:
         del router2
 
         import gc
+
         gc.collect()
 
         found = _find_active_routers()
@@ -144,6 +150,7 @@ class TestImportPaths:
             _llm_server_responding_at,
             _profile_has_local_file,
         )
+
         assert callable(stop_active_spawner)
         assert callable(register_router)
         assert callable(_read_persisted_model)
@@ -153,5 +160,6 @@ class TestImportPaths:
 
     def test_globals_accessible(self):
         from maxim.runtime.lane_backends import _swap_lock
+
         # These are module-level state — just verify they're importable
         assert _swap_lock is not None

@@ -190,6 +190,7 @@ def _resolve_entity_specs(
             overrides = spec.get("overrides")
             if overrides:
                 from maxim.embodiment.component_registry import deep_merge
+
                 entity_spec = deep_merge(entity_spec, overrides)
             resolved[name] = entity_spec
         elif isinstance(spec, dict):
@@ -261,8 +262,9 @@ def load_campaign(
                     merged[k] = v
             enc_raw = merged
         elif template_ref and not encounter_library:
-            log.warning("Encounter '%s' references template '%s' but no EncounterLibrary provided",
-                        enc_name, template_ref)
+            log.warning(
+                "Encounter '%s' references template '%s' but no EncounterLibrary provided", enc_name, template_ref
+            )
 
         # Case-normalize dialogue hints and on_choice keys
         dialogue_hints = {}

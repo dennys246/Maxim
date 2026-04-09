@@ -17,7 +17,6 @@ import os
 import tempfile
 
 
-
 # ── NAc atomic writes ─────────────────────────────────────────────────
 
 
@@ -26,6 +25,7 @@ class TestNAcPersistence:
 
     def test_nac_save_creates_file(self):
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "nac.json")
             nac = maxim.create.nac()
@@ -38,6 +38,7 @@ class TestNAcPersistence:
 
     def test_nac_save_load_roundtrip(self):
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "nac.json")
             nac = maxim.create.nac()
@@ -51,6 +52,7 @@ class TestNAcPersistence:
     def test_nac_atomic_write(self):
         """NAc.save() should use atomic_write_json (not raw json.dump)."""
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "nac.json")
             nac = maxim.create.nac()
@@ -92,6 +94,7 @@ class TestAngularGyrusPersistence:
 
     def test_angular_gyrus_save_creates_file(self):
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "ag.json")
             ag = maxim.create.angular_gyrus(persistence_path=path)
@@ -107,6 +110,7 @@ class TestEntitySerialization:
 
     def test_entity_to_dict_basic(self):
         from maxim import Entity
+
         e = Entity(name="arm", entity_type="limb")
         d = e.to_dict()
         assert d["name"] == "arm"
@@ -114,6 +118,7 @@ class TestEntitySerialization:
 
     def test_entity_to_dict_with_metadata(self):
         from maxim import Entity
+
         e = Entity(name="guard", entity_type="npc", metadata={"faction": "rebels"})
         e.vital_metrics["health"] = 0.8
         d = e.to_dict()
@@ -122,6 +127,7 @@ class TestEntitySerialization:
 
     def test_entity_to_dict_with_children(self):
         from maxim import Entity
+
         parent = Entity(name="body", entity_type="body")
         Entity(name="arm", entity_type="limb", parent=parent)
         Entity(name="leg", entity_type="limb", parent=parent)
@@ -132,6 +138,7 @@ class TestEntitySerialization:
 
     def test_entity_from_dict_basic(self):
         from maxim import Entity
+
         d = {"name": "arm", "entity_type": "limb"}
         e = Entity.from_dict(d)
         assert e.name == "arm"
@@ -139,6 +146,7 @@ class TestEntitySerialization:
 
     def test_entity_from_dict_with_metadata(self):
         from maxim import Entity
+
         d = {
             "name": "guard",
             "entity_type": "npc",
@@ -151,6 +159,7 @@ class TestEntitySerialization:
 
     def test_entity_from_dict_with_children(self):
         from maxim import Entity
+
         d = {
             "name": "body",
             "entity_type": "body",
@@ -167,6 +176,7 @@ class TestEntitySerialization:
     def test_entity_roundtrip(self):
         """to_dict → from_dict should preserve structure."""
         from maxim import Entity
+
         parent = Entity(name="robot", entity_type="body")
         arm = Entity(name="arm", entity_type="limb", parent=parent)
         arm.vital_metrics["position"] = 45.0
@@ -186,6 +196,7 @@ class TestEntitySerialization:
     def test_entity_save_load_json(self):
         """Entity.save() / Entity.load() via JSON file."""
         from maxim import Entity
+
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "entity.json")
             e = Entity(name="test_bot", entity_type="robot")
@@ -204,6 +215,7 @@ class TestEntitySerialization:
         """maxim.load.entity() should handle JSON files."""
         import maxim
         from maxim import Entity
+
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "guard.json")
             e = Entity(name="guard", entity_type="npc")
@@ -221,6 +233,7 @@ class TestSessionSave:
 
     def test_session_save_creates_file(self):
         from maxim.session import Session
+
         with tempfile.TemporaryDirectory() as tmpdir:
             session = Session(
                 id="20260408_test",
@@ -247,6 +260,7 @@ class TestAgentShutdownPersistence:
 
     def test_agent_shutdown_saves_hippocampus(self):
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = maxim.create.agent("persist_test", persistence_dir=tmpdir)
             if agent.hippocampus:
@@ -258,6 +272,7 @@ class TestAgentShutdownPersistence:
 
     def test_agent_shutdown_saves_nac(self):
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = maxim.create.agent("persist_nac", persistence_dir=tmpdir, learns=True)
             if agent.nac:
@@ -270,9 +285,11 @@ class TestAgentShutdownPersistence:
     def test_agent_shutdown_roundtrip(self):
         """Agent data should survive shutdown + load.agent()."""
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create agent and add data
             import os
+
             pdir = os.path.join(tmpdir, "roundtrip")
             agent = maxim.create.agent("roundtrip", persistence_dir=pdir, remembers=True, learns=True)
             agent.hippocampus.store_observation("important memory")
@@ -293,6 +310,7 @@ class TestPersistenceIsolation:
 
     def test_two_agents_isolated_persistence(self):
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             dir_a = os.path.join(tmpdir, "agent_a")
             dir_b = os.path.join(tmpdir, "agent_b")

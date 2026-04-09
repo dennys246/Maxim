@@ -58,6 +58,7 @@ def _setup_hardware_env() -> None:
 
     # 1. Multiprocessing start method (must be before any pool/process creation)
     import multiprocessing as mp
+
     try:
         mp.set_start_method("spawn", force=True)
     except RuntimeError:
@@ -65,6 +66,7 @@ def _setup_hardware_env() -> None:
 
     # 2. Blackwell GPU detection + GStreamer guards
     from maxim.utils.gpu_compat import detect_blackwell
+
     gpu_state = detect_blackwell()
     _blackwell_detected = gpu_state.blackwell_detected
     _original_cuda_devices = gpu_state.original_cuda_devices
@@ -73,6 +75,7 @@ def _setup_hardware_env() -> None:
     os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
 
     _hardware_env_ready = True
+
 
 # Mixin classes (compartmentalized from this file)
 from maxim.conscience.connection import ConnectionMixin
@@ -166,6 +169,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         self.duration = 1.0
         if not home_dir:
             from maxim.utils.paths import data_home
+
             home_dir = str(data_home())
         self.home_dir = home_dir
 

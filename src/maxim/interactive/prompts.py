@@ -146,6 +146,7 @@ class PlainPromptHandler(PromptHandler):
 
         try:
             import select
+
             ready, _, _ = select.select([sys.stdin], [], [], request.timeout_sec)
             if ready:
                 response = sys.stdin.readline().strip()
@@ -197,6 +198,7 @@ class RichPromptHandler(PromptHandler):
         self._fallback = PlainPromptHandler()
         try:
             from rich.console import Console
+
             self._console = Console()
             self._rich_available = True
         except ImportError:
@@ -206,7 +208,6 @@ class RichPromptHandler(PromptHandler):
     def prompt(self, request: PromptRequest) -> PromptResponse:
         if not self._rich_available:
             return self._fallback.prompt(request)
-
 
         start = time.time()
 
@@ -220,6 +221,7 @@ class RichPromptHandler(PromptHandler):
 
     def _prompt_confirm(self, request: PromptRequest, start: float) -> PromptResponse:
         from rich.prompt import Confirm
+
         try:
             default_bool = request.default and request.default.lower() in ("y", "yes", "true")
             result = Confirm.ask(f"  {request.question}", default=default_bool)
@@ -243,15 +245,18 @@ class RichPromptHandler(PromptHandler):
             for i, opt in enumerate(request.options, 1):
                 table.add_row(f"  {i}.", opt)
 
-        self._console.print(Panel(
-            table,
-            title=f"[bold]{request.question}[/bold]",
-            border_style="blue",
-        ))
+        self._console.print(
+            Panel(
+                table,
+                title=f"[bold]{request.question}[/bold]",
+                border_style="blue",
+            )
+        )
 
         # Collect input
         try:
             from rich.prompt import Prompt
+
             choice_str = Prompt.ask(
                 "  Choose",
                 default=request.default or (request.options[0] if request.options else ""),
@@ -275,6 +280,7 @@ class RichPromptHandler(PromptHandler):
 
     def _prompt_text(self, request: PromptRequest, start: float) -> PromptResponse:
         from rich.prompt import Prompt
+
         try:
             result = Prompt.ask(f"  {request.question}", default=request.default or "")
         except (EOFError, KeyboardInterrupt):

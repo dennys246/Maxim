@@ -683,6 +683,7 @@ All files MUST be written to '.maxim_workspace/' directory:
 Workspace structure: drafts/ (code drafts), notes/ (thinking), plans/ (proposals), scratch/ (temp files)
 """
 
+
 def build_coding_context(
     user_request: str,
     include_sandbox_reminder: bool = True,

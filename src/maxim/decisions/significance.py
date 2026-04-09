@@ -334,6 +334,7 @@ class SignificanceWeightLearner:
             data["weights"][name] = d
 
         from maxim.utils.atomic_io import atomic_write_json
+
         atomic_write_json(self.weights_path, data)
 
 

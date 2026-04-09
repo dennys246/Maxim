@@ -831,9 +831,9 @@ def _build_observer(home_dir: str) -> Any:
     # Attempt to load NAc
     nac = None
     try:
-        from maxim.decisions.nac import NucleusAccumbens
+        from maxim.decisions.nac import NAc
 
-        nac = NucleusAccumbens()
+        nac = NAc()
         nac_file = os.path.join(memory_path, "nac.json")
         if os.path.isfile(nac_file):
             nac.load(nac_file)

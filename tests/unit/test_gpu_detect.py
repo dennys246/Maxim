@@ -12,6 +12,7 @@ import pytest
 def _reset_detection_state():
     """Reset module-level detection state between tests."""
     from maxim.utils import gpu_detect
+
     gpu_detect._detected = None
     yield
     gpu_detect._detected = None
@@ -93,10 +94,13 @@ class TestEnsureBlackwellGuards:
     def test_hide_cuda_sets_visible_devices(self):
         from maxim.utils.gpu_detect import ensure_blackwell_guards
 
-        with mock.patch.dict(os.environ, {
-            "_MAXIM_BLACKWELL_CHECKED": "yes",
-            "MAXIM_BLACKWELL_HIDE_CUDA": "1",
-        }):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "_MAXIM_BLACKWELL_CHECKED": "yes",
+                "MAXIM_BLACKWELL_HIDE_CUDA": "1",
+            },
+        ):
             ensure_blackwell_guards()
             assert os.environ.get("CUDA_VISIBLE_DEVICES") == ""
 

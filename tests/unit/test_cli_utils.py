@@ -129,19 +129,23 @@ class TestMemoryPaths:
 class TestImportPaths:
     def test_import_from_cli(self):
         from maxim.cli import _normalize_epoch_value, _normalize_args
+
         assert callable(_normalize_epoch_value)
         assert callable(_normalize_args)
 
     def test_import_gpu_from_cli(self):
         from maxim.cli import _gpu_available, _check_gpu_status
+
         assert callable(_gpu_available)
         assert callable(_check_gpu_status)
 
     def test_import_clear_from_cli(self):
         from maxim.cli import _clear_python_cache, _clear_memory
+
         assert callable(_clear_python_cache)
         assert callable(_clear_memory)
 
     def test_import_memory_paths_from_cli(self):
         from maxim.cli import MEMORY_PATHS as mp
+
         assert isinstance(mp, dict)

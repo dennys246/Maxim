@@ -17,6 +17,7 @@ from maxim.embodiment.component_registry import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def components_dir(tmp_path):
     """Create a temporary component directory with test YAML files."""
@@ -27,7 +28,8 @@ def components_dir(tmp_path):
     npcs.mkdir()
 
     # Simple weapon
-    (weapons / "iron_sword.yaml").write_text(textwrap.dedent("""\
+    (weapons / "iron_sword.yaml").write_text(
+        textwrap.dedent("""\
         component:
           name: iron_sword
           tags: [weapon, melee]
@@ -53,10 +55,12 @@ def components_dir(tmp_path):
           failure_modes:
             - name: broken
               trigger: {field: durability, op: "<=", value: 0, pain: 0.8}
-    """))
+    """)
+    )
 
     # Base NPC template
-    (npcs / "base_npc.yaml").write_text(textwrap.dedent("""\
+    (npcs / "base_npc.yaml").write_text(
+        textwrap.dedent("""\
         component:
           name: base_npc
           tags: [npc, humanoid]
@@ -79,10 +83,12 @@ def components_dir(tmp_path):
                 speak:
                   params: {message: str}
                   description: "Say something"
-    """))
+    """)
+    )
 
     # Guard extends base_npc
-    (npcs / "guard.yaml").write_text(textwrap.dedent("""\
+    (npcs / "guard.yaml").write_text(
+        textwrap.dedent("""\
         component:
           name: guard
           tags: [npc, humanoid, military]
@@ -104,7 +110,8 @@ def components_dir(tmp_path):
                 attack:
                   params: {target: str}
                   description: "Attack a target"
-    """))
+    """)
+    )
 
     return tmp_path
 
@@ -118,6 +125,7 @@ def registry(components_dir):
 # ---------------------------------------------------------------------------
 # deep_merge
 # ---------------------------------------------------------------------------
+
 
 class TestDeepMerge:
     def test_shallow_override(self):
@@ -155,6 +163,7 @@ class TestDeepMerge:
 # ---------------------------------------------------------------------------
 # _read_component_header
 # ---------------------------------------------------------------------------
+
 
 class TestReadComponentHeader:
     def test_reads_explicit_header(self, tmp_path):
@@ -194,6 +203,7 @@ class TestReadComponentHeader:
 # ComponentRegistry — discovery & indexing
 # ---------------------------------------------------------------------------
 
+
 class TestRegistryDiscovery:
     def test_discovers_components(self, registry):
         assert registry.has("weapons/iron_sword")
@@ -222,6 +232,7 @@ class TestRegistryDiscovery:
 # ---------------------------------------------------------------------------
 # ComponentRegistry — get & resolve
 # ---------------------------------------------------------------------------
+
 
 class TestRegistryGet:
     def test_get_simple_component(self, registry):
@@ -260,7 +271,8 @@ class TestRegistryGet:
     def test_circular_extends_raises(self, tmp_path):
         d = tmp_path / "loop"
         d.mkdir()
-        (d / "a.yaml").write_text(textwrap.dedent("""\
+        (d / "a.yaml").write_text(
+            textwrap.dedent("""\
             component:
               name: a
               category: loop
@@ -268,8 +280,10 @@ class TestRegistryGet:
             entity:
               name: a
               entity_type: test
-        """))
-        (d / "b.yaml").write_text(textwrap.dedent("""\
+        """)
+        )
+        (d / "b.yaml").write_text(
+            textwrap.dedent("""\
             component:
               name: b
               category: loop
@@ -277,7 +291,8 @@ class TestRegistryGet:
             entity:
               name: b
               entity_type: test
-        """))
+        """)
+        )
         reg = ComponentRegistry(search_paths=[tmp_path])
         with pytest.raises(ValueError, match="Circular inheritance"):
             reg.get("loop/a")
@@ -285,7 +300,8 @@ class TestRegistryGet:
     def test_missing_parent_raises(self, tmp_path):
         d = tmp_path / "orphan"
         d.mkdir()
-        (d / "child.yaml").write_text(textwrap.dedent("""\
+        (d / "child.yaml").write_text(
+            textwrap.dedent("""\
             component:
               name: child
               category: orphan
@@ -293,7 +309,8 @@ class TestRegistryGet:
             entity:
               name: child
               entity_type: test
-        """))
+        """)
+        )
         reg = ComponentRegistry(search_paths=[tmp_path])
         with pytest.raises(KeyError, match="missing_parent"):
             reg.get("orphan/child")
@@ -303,9 +320,11 @@ class TestRegistryGet:
 # ComponentRegistry — instantiate
 # ---------------------------------------------------------------------------
 
+
 class TestRegistryInstantiate:
     def test_instantiate_returns_entity(self, registry):
         from maxim.embodiment.sem import Entity
+
         entity = registry.instantiate("weapons/iron_sword")
         assert isinstance(entity, Entity)
         assert entity.name == "iron_sword"
@@ -349,6 +368,7 @@ class TestRegistryInstantiate:
 # ComponentRegistry — query
 # ---------------------------------------------------------------------------
 
+
 class TestRegistryQuery:
     def test_query_by_category(self, registry):
         results = registry.query(category="weapons")
@@ -384,12 +404,16 @@ class TestRegistryQuery:
 # ComponentRegistry — register (manual)
 # ---------------------------------------------------------------------------
 
+
 class TestRegistryRegister:
     def test_register_inline(self, registry):
-        registry.register("misc/test_item", {
-            "component": {"name": "test_item", "tags": ["test"]},
-            "entity": {"name": "test_item", "entity_type": "item"},
-        })
+        registry.register(
+            "misc/test_item",
+            {
+                "component": {"name": "test_item", "tags": ["test"]},
+                "entity": {"name": "test_item", "entity_type": "item"},
+            },
+        )
         assert registry.has("misc/test_item")
         spec = registry.get("misc/test_item")
         assert spec["entity"]["name"] == "test_item"
@@ -399,6 +423,7 @@ class TestRegistryRegister:
 # ComponentRegistry — search path priority
 # ---------------------------------------------------------------------------
 
+
 class TestSearchPathPriority:
     def test_higher_priority_shadows(self, tmp_path):
         low = tmp_path / "low" / "items"
@@ -406,7 +431,8 @@ class TestSearchPathPriority:
         high = tmp_path / "high" / "items"
         high.mkdir(parents=True)
 
-        (low / "potion.yaml").write_text(textwrap.dedent("""\
+        (low / "potion.yaml").write_text(
+            textwrap.dedent("""\
             component:
               name: potion
               category: items
@@ -415,8 +441,10 @@ class TestSearchPathPriority:
               entity_type: item
               sensors:
                 charges: { unit: count, range: [0, 3], initial: 1 }
-        """))
-        (high / "potion.yaml").write_text(textwrap.dedent("""\
+        """)
+        )
+        (high / "potion.yaml").write_text(
+            textwrap.dedent("""\
             component:
               name: potion
               category: items
@@ -425,7 +453,8 @@ class TestSearchPathPriority:
               entity_type: item
               sensors:
                 charges: { unit: count, range: [0, 3], initial: 3 }
-        """))
+        """)
+        )
 
         # high-priority path listed first
         reg = ComponentRegistry(search_paths=[high.parent, low.parent], include_defaults=False)
@@ -437,10 +466,12 @@ class TestSearchPathPriority:
 # Integration: bundled components load correctly
 # ---------------------------------------------------------------------------
 
+
 class TestBundledComponents:
     def test_bundled_components_exist(self):
         """Verify the seed components shipped in _data/ are discoverable."""
         from maxim.utils.paths import bundled_data
+
         components_dir = bundled_data() / "components"
         if not components_dir.is_dir():
             pytest.skip("Bundled components not found (not installed?)")
@@ -454,6 +485,7 @@ class TestBundledComponents:
     def test_bundled_guard_extends_base(self):
         """Verify inheritance works on real bundled components."""
         from maxim.utils.paths import bundled_data
+
         components_dir = bundled_data() / "components"
         if not components_dir.is_dir():
             pytest.skip("Bundled components not found")

@@ -484,8 +484,6 @@ def ensure_workspace_exists(cwd: str | None = None) -> str:
     return workspace_path
 
 
-
-
 def get_mode_filesystem_config(
     mode: str,
     cwd: str | None = None,
@@ -723,8 +721,6 @@ def is_path_in_workspace(path: str, cwd: str | None = None) -> bool:
     workspace = get_workspace_path(cwd)
     real_path = os.path.realpath(path)
     return real_path.startswith(workspace + os.sep) or real_path == workspace
-
-
 
 
 def is_path_in_cwd(path: str, cwd: str | None = None) -> bool:

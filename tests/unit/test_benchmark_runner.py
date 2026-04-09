@@ -737,9 +737,7 @@ class TestBaselineComparison:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
-            return BenchmarkRunner(
-                models=["test"], suite_path=f.name, baseline_path=baseline_path
-            )
+            return BenchmarkRunner(models=["test"], suite_path=f.name, baseline_path=baseline_path)
 
     def _make_baseline_json(self, results_data):
         """Write a baseline JSON file and return its path."""

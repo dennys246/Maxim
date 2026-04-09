@@ -104,6 +104,7 @@ def run_interactive_sim(
 
     if sim_workspace is None:
         from maxim.utils.paths import resolve_user_state
+
         sim_workspace = resolve_user_state("sim_sandbox")
     sim_workspace.mkdir(parents=True, exist_ok=True)
 
@@ -355,6 +356,7 @@ def _run_scenario_turn(
 
     # Create sandbox for this turn
     from maxim.utils.paths import resolve_user_state
+
     sim_workspace = kwargs.pop("sim_workspace", resolve_user_state("sim_sandbox"))
     run_tmpdir = Path(
         tempfile.mkdtemp(

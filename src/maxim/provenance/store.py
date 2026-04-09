@@ -33,6 +33,7 @@ class ProvenanceStore:
     def __init__(self, base_dir: str | None = None) -> None:
         if base_dir is None:
             from maxim.utils.paths import provenance_dir
+
             self._base_dir = provenance_dir()
         else:
             self._base_dir = Path(base_dir)
@@ -114,6 +115,7 @@ class ProvenanceStore:
                 **stats,
             }
             from maxim.utils.atomic_io import atomic_write_json
+
             atomic_write_json(str(self._manifest_path), manifest)
         except Exception as e:
             logger.warning("Failed to update manifest: %s", e)

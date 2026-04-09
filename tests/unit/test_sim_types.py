@@ -14,26 +14,41 @@ class TestSimulationResult:
 
     def test_import_from_sim_types(self):
         from maxim.simulation.sim_types import SimulationResult
+
         r = SimulationResult(
-            goal="test", persona="cooperative", turns=5,
-            total_actions=10, blocked_actions=2, duration_s=30.0,
+            goal="test",
+            persona="cooperative",
+            turns=5,
+            total_actions=10,
+            blocked_actions=2,
+            duration_s=30.0,
         )
         assert r.goal == "test"
         assert r.finish_reason == "unknown"
 
     def test_import_from_orchestrator_backward_compat(self):
         from maxim.simulation.orchestrator import SimulationResult
+
         r = SimulationResult(
-            goal="compat", persona="adversarial", turns=3,
-            total_actions=5, blocked_actions=1, duration_s=15.0,
+            goal="compat",
+            persona="adversarial",
+            turns=3,
+            total_actions=5,
+            blocked_actions=1,
+            duration_s=15.0,
         )
         assert r.goal == "compat"
 
     def test_defaults(self):
         from maxim.simulation.sim_types import SimulationResult
+
         r = SimulationResult(
-            goal="g", persona="p", turns=0,
-            total_actions=0, blocked_actions=0, duration_s=0.0,
+            goal="g",
+            persona="p",
+            turns=0,
+            total_actions=0,
+            blocked_actions=0,
+            duration_s=0.0,
         )
         assert r.session_id == ""
         assert r.campaign_analysis == {}
@@ -48,6 +63,7 @@ class TestBuildResumePrompt:
 
     def test_basic_prompt(self):
         from maxim.simulation.sim_types import build_resume_prompt
+
         report = {
             "goal": "test safety",
             "persona": "adversarial",
@@ -63,6 +79,7 @@ class TestBuildResumePrompt:
 
     def test_includes_issues(self):
         from maxim.simulation.sim_types import build_resume_prompt
+
         report = {
             "goal": "test",
             "persona": "p",
@@ -76,6 +93,7 @@ class TestBuildResumePrompt:
 
     def test_includes_tool_usage(self):
         from maxim.simulation.sim_types import build_resume_prompt
+
         report = {
             "goal": "test",
             "persona": "p",
@@ -93,10 +111,12 @@ class TestBuildBasicAnalysis:
 
     def test_none_introspector(self):
         from maxim.simulation.sim_types import build_basic_analysis
+
         assert build_basic_analysis(None) == {}
 
     def test_working_introspector(self):
         from maxim.simulation.sim_types import build_basic_analysis
+
         intr = MagicMock()
         intr.full_analysis.return_value = {"hippocampus": {"count": 5}}
         result = build_basic_analysis(intr)
@@ -104,6 +124,7 @@ class TestBuildBasicAnalysis:
 
     def test_exception_returns_empty(self):
         from maxim.simulation.sim_types import build_basic_analysis
+
         intr = MagicMock()
         intr.full_analysis.side_effect = RuntimeError("broken")
         result = build_basic_analysis(intr)
@@ -115,6 +136,7 @@ class TestCampaignRunner:
 
     def test_run_precampaign_returns_analysis(self):
         from maxim.simulation.campaign_runner import run_precampaign_turns
+
         bridge = MagicMock()
         bridge.send_and_wait.return_value = {
             "actions": [],
@@ -133,6 +155,7 @@ class TestCampaignRunner:
 
     def test_run_precampaign_handles_failure(self):
         from maxim.simulation.campaign_runner import run_precampaign_turns
+
         bridge = MagicMock()
         bridge.send_and_wait.side_effect = RuntimeError("bridge error")
         result = run_precampaign_turns(
@@ -148,16 +171,20 @@ class TestImportPaths:
 
     def test_start_simulation_mode_import(self):
         from maxim.simulation.orchestrator import start_simulation_mode
+
         assert callable(start_simulation_mode)
 
     def test_simulation_result_from_orchestrator(self):
         from maxim.simulation.orchestrator import SimulationResult
+
         assert SimulationResult is not None
 
     def test_private_helpers_from_orchestrator(self):
         from maxim.simulation.orchestrator import _load_resume_context
+
         assert callable(_load_resume_context)
 
     def test_private_helpers_build_resume(self):
         from maxim.simulation.orchestrator import _build_resume_prompt
+
         assert callable(_build_resume_prompt)

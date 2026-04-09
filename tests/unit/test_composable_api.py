@@ -31,48 +31,60 @@ class TestLazyLoading:
     def test_import_maxim_is_fast(self):
         """import maxim should not import heavy deps."""
         import maxim
+
         assert hasattr(maxim, "__version__")
 
     def test_create_is_module(self):
         import maxim
+
         assert hasattr(maxim, "create")
         import types
+
         assert isinstance(maxim.create, types.ModuleType)
 
     def test_load_is_module(self):
         import maxim
+
         assert hasattr(maxim, "load")
         import types
+
         assert isinstance(maxim.load, types.ModuleType)
 
     def test_session_type_accessible(self):
         from maxim import Session
+
         assert Session.__name__ == "Session"
 
     def test_entity_type_accessible(self):
         from maxim import Entity
+
         assert Entity.__name__ == "Entity"
 
     def test_report_type_accessible(self):
         from maxim import Report
+
         assert Report.__name__ == "Report"
 
     def test_load_sessions_accessible(self):
         import maxim
+
         assert callable(maxim.load.sessions)
 
     def test_load_agent_accessible(self):
         import maxim
+
         assert callable(maxim.load.agent)
 
     def test_all_contains_new_exports(self):
         import maxim
+
         for name in ("create", "load", "Session", "Report", "Entity"):
             assert name in maxim.__all__, f"{name} missing from __all__"
 
     def test_sensor_modulator_not_in_all(self):
         """Protocols should NOT be in __all__ (they're not constructable)."""
         import maxim
+
         assert "Sensor" not in maxim.__all__
         assert "Modulator" not in maxim.__all__
 
@@ -85,6 +97,7 @@ class TestCreateBioSubsystems:
 
     def test_create_hippocampus(self):
         import maxim
+
         hippo = maxim.create.hippocampus()
         assert hippo is not None
         assert hasattr(hippo, "capture")
@@ -94,6 +107,7 @@ class TestCreateBioSubsystems:
 
     def test_create_hippocampus_with_persistence(self):
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "hippo.json")
             hippo = maxim.create.hippocampus(persistence_path=path)
@@ -101,6 +115,7 @@ class TestCreateBioSubsystems:
 
     def test_create_nac(self):
         import maxim
+
         nac = maxim.create.nac()
         assert nac is not None
         assert hasattr(nac, "predict")
@@ -109,6 +124,7 @@ class TestCreateBioSubsystems:
 
     def test_create_atl(self):
         import maxim
+
         atl = maxim.create.atl()
         assert atl is not None
         assert hasattr(atl, "store")
@@ -117,12 +133,14 @@ class TestCreateBioSubsystems:
 
     def test_create_scn(self):
         import maxim
+
         scn = maxim.create.scn()
         assert scn is not None
         assert hasattr(scn, "register")
 
     def test_create_angular_gyrus(self):
         import maxim
+
         ag = maxim.create.angular_gyrus()
         assert ag is not None
 
@@ -135,6 +153,7 @@ class TestHippocampusOperations:
 
     def test_store_observation_and_recall(self):
         import maxim
+
         hippo = maxim.create.hippocampus()
         mem_id = hippo.store_observation("The wolf was near the cave entrance")
         assert mem_id is not None
@@ -142,6 +161,7 @@ class TestHippocampusOperations:
 
     def test_multiple_observations(self):
         import maxim
+
         hippo = maxim.create.hippocampus()
         id1 = hippo.store_observation("The door was locked")
         id2 = hippo.store_observation("The key was under the mat")
@@ -149,6 +169,7 @@ class TestHippocampusOperations:
 
     def test_save_and_load_roundtrip(self):
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "hippo.json")
             hippo = maxim.create.hippocampus(persistence_path=path)
@@ -161,6 +182,7 @@ class TestHippocampusOperations:
 
     def test_remove_memory(self):
         import maxim
+
         hippo = maxim.create.hippocampus()
         mem_id = hippo.store_observation("temporary memory")
         hippo.remove(mem_id)
@@ -174,12 +196,14 @@ class TestNAcOperations:
 
     def test_record_event_and_outcome(self):
         import maxim
+
         nac = maxim.create.nac()
         event_id = nac.record_event("action", "ate_mushroom")
         assert event_id is not None
 
     def test_save_and_load_roundtrip(self):
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "nac.json")
             nac = maxim.create.nac()
@@ -192,6 +216,7 @@ class TestNAcOperations:
 
     def test_stats(self):
         import maxim
+
         nac = maxim.create.nac()
         stats = nac.stats()
         assert isinstance(stats, dict)
@@ -206,6 +231,7 @@ class TestCreateAgent:
 
     def test_create_agent_basic(self):
         import maxim
+
         agent = maxim.create.agent("test_scout")
         assert agent is not None
         assert agent.agent_id == "test_scout"
@@ -213,6 +239,7 @@ class TestCreateAgent:
 
     def test_agent_has_subsystems(self):
         import maxim
+
         agent = maxim.create.agent("test_full", remembers=True, learns=True)
         assert agent.hippocampus is not None
         assert agent.nac is not None
@@ -220,6 +247,7 @@ class TestCreateAgent:
 
     def test_agent_without_memory(self):
         import maxim
+
         agent = maxim.create.agent("test_no_mem", remembers=False, learns=False)
         assert agent.hippocampus is None
         assert agent.nac is None
@@ -227,6 +255,7 @@ class TestCreateAgent:
 
     def test_agent_personality(self):
         import maxim
+
         agent = maxim.create.agent("test_person", personality="cautious and observant")
         assert agent.personality == "cautious and observant"
         agent.shutdown()
@@ -234,6 +263,7 @@ class TestCreateAgent:
     def test_agent_personality_mutable(self):
         """Personality should be directly assignable after creation."""
         import maxim
+
         agent = maxim.create.agent("test_mut", personality="shy")
         assert agent.personality == "shy"
         agent.personality = "bold and reckless"
@@ -243,6 +273,7 @@ class TestCreateAgent:
     def test_agent_subsystem_swappable(self):
         """Should be able to replace an agent's hippocampus."""
         import maxim
+
         agent = maxim.create.agent("test_swap", remembers=True)
         old_hippo = agent.hippocampus
         new_hippo = maxim.create.hippocampus()
@@ -254,6 +285,7 @@ class TestCreateAgent:
     def test_create_agent_always_fresh(self):
         """create.agent should NOT auto-load existing state."""
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             # persistence_dir=tmpdir/fresh_test (matches AgentFactory's default layout)
             pdir = os.path.join(tmpdir, "fresh_test")
@@ -268,6 +300,7 @@ class TestCreateAgent:
     def test_load_agent_restores_state(self):
         """load.agent should restore persisted state."""
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create with default layout (base_dir/agent_id/)
             pdir = os.path.join(tmpdir, "load_test")
@@ -281,6 +314,7 @@ class TestCreateAgent:
 
     def test_agent_export_memories(self):
         import maxim
+
         agent = maxim.create.agent("test_export", remembers=True)
         if agent.hippocampus:
             agent.hippocampus.store_observation("test memory for export")
@@ -298,12 +332,14 @@ class TestCreatePool:
 
     def test_create_pool(self):
         import maxim
+
         pool = maxim.create.pool()
         assert pool is not None
         pool.shutdown()
 
     def test_pool_add_remove(self):
         import maxim
+
         pool = maxim.create.pool()
         agent = maxim.create.agent("pool_test_1", remembers=False, learns=False)
         pool.add(agent)
@@ -312,6 +348,7 @@ class TestCreatePool:
 
     def test_pool_multiple_agents(self):
         import maxim
+
         pool = maxim.create.pool()
         a1 = maxim.create.agent("pool_a1", remembers=False, learns=False)
         a2 = maxim.create.agent("pool_a2", remembers=False, learns=False)
@@ -330,24 +367,28 @@ class TestCreateEntity:
 
     def test_entity_from_code(self):
         from maxim import Entity
+
         e = Entity(name="test_arm", entity_type="limb")
         assert e.name == "test_arm"
         assert e.entity_type == "limb"
 
     def test_entity_sensors_mutable(self):
         from maxim import Entity
+
         e = Entity(name="test", entity_type="limb", sensors={})
         # Direct dict mutation should work
         assert isinstance(e.sensors, dict)
 
     def test_entity_metadata_mutable(self):
         from maxim import Entity
+
         e = Entity(name="test", entity_type="npc", metadata={})
         e.metadata["faction"] = "rebels"
         assert e.metadata["faction"] == "rebels"
 
     def test_entity_reparent(self):
         from maxim import Entity
+
         parent = Entity(name="body", entity_type="body")
         child = Entity(name="arm", entity_type="limb")
         child.reparent(parent)
@@ -355,6 +396,7 @@ class TestCreateEntity:
 
     def test_entity_detach(self):
         from maxim import Entity
+
         parent = Entity(name="body", entity_type="body")
         child = Entity(name="arm", entity_type="limb")
         child.reparent(parent)
@@ -363,6 +405,7 @@ class TestCreateEntity:
 
     def test_templates_returns_dict(self):
         import maxim
+
         result = maxim.create.templates()
         assert isinstance(result, dict)
         # Should have at least one category from bundled data
@@ -378,6 +421,7 @@ class TestCrossObjectInteractions:
     def test_agent_hippo_captures_and_recalls(self):
         """Agent's hippocampus should function independently."""
         import maxim
+
         agent = maxim.create.agent("cross_test", remembers=True)
         assert agent.hippocampus is not None
         agent.hippocampus.store_observation("saw a dragon")
@@ -390,6 +434,7 @@ class TestCrossObjectInteractions:
     def test_two_agents_have_isolated_memory(self):
         """Two agents should NOT share memory."""
         import maxim
+
         a1 = maxim.create.agent("iso_a1", remembers=True)
         a2 = maxim.create.agent("iso_a2", remembers=True)
         a1.hippocampus.store_observation("only a1 knows this")
@@ -402,6 +447,7 @@ class TestCrossObjectInteractions:
     def test_standalone_hippo_vs_agent_hippo(self):
         """Standalone hippocampus and agent hippocampus are independent."""
         import maxim
+
         standalone = maxim.create.hippocampus()
         agent = maxim.create.agent("vs_test", remembers=True)
         standalone.store_observation("standalone memory")
@@ -517,6 +563,7 @@ class TestSession:
 
     def test_session_repr(self):
         from maxim.session import Session
+
         s = Session(id="20260408_143022", goal="test memory recall")
         r = repr(s)
         assert "20260408_143022" in r
@@ -525,6 +572,7 @@ class TestSession:
     def test_session_delegated_properties_without_result(self):
         """Properties should return defaults when no result is attached."""
         from maxim.session import Session
+
         s = Session(id="test")
         assert s.turns == 0
         assert s.duration_s == 0.0
@@ -540,6 +588,7 @@ class TestLoad:
 
     def test_load_hippocampus(self):
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "hippo.json")
             h = maxim.create.hippocampus()
@@ -552,6 +601,7 @@ class TestLoad:
 
     def test_load_nac(self):
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "nac.json")
             n = maxim.create.nac()
@@ -564,6 +614,7 @@ class TestLoad:
     def test_load_session(self):
         """maxim.load.session delegates to Session.from_disk."""
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir) / "20260408_999999"
             d.mkdir()
@@ -577,6 +628,7 @@ class TestLoad:
     def test_load_sessions(self):
         """maxim.load.sessions should list sessions."""
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             for sid in ["20260408_100000", "20260408_200000"]:
                 d = Path(tmpdir) / sid
@@ -590,6 +642,7 @@ class TestLoad:
     def test_load_agent(self):
         """maxim.load.agent restores persisted agent state."""
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             pdir = os.path.join(tmpdir, "persist_me")
             agent = maxim.create.agent("persist_me", persistence_dir=pdir, remembers=True)
@@ -603,6 +656,7 @@ class TestLoad:
     def test_load_agent_not_found(self):
         """maxim.load.agent should raise FileNotFoundError."""
         import maxim
+
         with tempfile.TemporaryDirectory() as tmpdir:
             with pytest.raises(FileNotFoundError):
                 maxim.load.agent("nonexistent_agent", base_dir=tmpdir)
@@ -616,6 +670,7 @@ class TestReport:
 
     def test_report_save_markdown(self):
         from maxim import Report
+
         with tempfile.TemporaryDirectory() as tmpdir:
             report = Report(
                 title="Test Report",
@@ -632,6 +687,7 @@ class TestReport:
 
     def test_report_save_json(self):
         from maxim import Report
+
         with tempfile.TemporaryDirectory() as tmpdir:
             report = Report(
                 title="Test Report",
@@ -647,18 +703,21 @@ class TestReport:
 
     def test_report_save_unsupported_format(self):
         from maxim import Report
+
         report = Report(title="Test")
         with pytest.raises(ValueError, match="Unsupported format"):
             report.save("/tmp/report.xyz")
 
     def test_report_save_future_format_hint(self):
         from maxim import Report
+
         report = Report(title="Test")
         with pytest.raises(ValueError, match="pymaxim"):
             report.save("/tmp/report.pdf")
 
     def test_report_from_json_roundtrip(self):
         from maxim import Report
+
         with tempfile.TemporaryDirectory() as tmpdir:
             original = Report(
                 title="Roundtrip",
@@ -678,6 +737,7 @@ class TestReport:
 
     def test_report_repr(self):
         from maxim import Report
+
         r = Report(title="My Report", session_id="123", content="x" * 100)
         rep = repr(r)
         assert "My Report" in rep

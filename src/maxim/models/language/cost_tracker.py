@@ -95,6 +95,7 @@ class CostTrackerConfig:
     def __post_init__(self) -> None:
         if not self.state_path:
             from maxim.utils.paths import resolve_user_state
+
             self.state_path = str(resolve_user_state("util/cost_state.json"))
 
 
@@ -239,6 +240,7 @@ class CostTracker:
         path = self._config.state_path
         data = self.to_dict()
         from maxim.utils.atomic_io import atomic_write_json
+
         atomic_write_json(path, data)
         self._pending_writes = 0
         self._last_persist_time = time.time()

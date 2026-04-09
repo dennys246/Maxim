@@ -68,6 +68,7 @@ SYSTEM_ROUTE = (
 
 # ─── Static config loaders (called from LLMRouter.__init__) ──────────────
 
+
 def normalize_providers(cfg: Any) -> dict[str, dict[str, Any]]:
     """Normalize the providers dict from LLMConfig."""
     providers = cfg.providers if isinstance(cfg.providers, dict) else {}

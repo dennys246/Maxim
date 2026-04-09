@@ -70,16 +70,18 @@ class RecordingSink:
         half = len(self._actions) // 2
         compressed = []
         for rec in self._actions[:half]:
-            compressed.append(ActionRecord(
-                timestamp=rec.timestamp,
-                tool_name=rec.tool_name,
-                tool_args={},  # Drop heavy args
-                result_success=rec.result_success,
-                result_output=None,  # Drop heavy output
-                result_error=rec.result_error[:100] if rec.result_error else None,
-                blocked=rec.blocked,
-                block_reason=rec.block_reason,
-            ))
+            compressed.append(
+                ActionRecord(
+                    timestamp=rec.timestamp,
+                    tool_name=rec.tool_name,
+                    tool_args={},  # Drop heavy args
+                    result_success=rec.result_success,
+                    result_output=None,  # Drop heavy output
+                    result_error=rec.result_error[:100] if rec.result_error else None,
+                    blocked=rec.blocked,
+                    block_reason=rec.block_reason,
+                )
+            )
         self._actions = compressed + self._actions[half:]
 
     @property

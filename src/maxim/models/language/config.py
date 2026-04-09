@@ -433,6 +433,7 @@ def build_model_path(
     """
     if models_dir is None:
         from maxim.utils.paths import model_dir
+
         models_dir = str(model_dir() / "LLM")
     quant = str(quantization or DEFAULT_QUANTIZATION).strip().upper().replace("-", "_")
     if quant not in QUANTIZATION_LEVELS:

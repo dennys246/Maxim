@@ -368,6 +368,7 @@ class AgenticRuntimeMixin:
                 if tool_obj is not None:
                     tool_index.register_tool(tool_obj)
             from maxim.utils.paths import user_memory as _user_memory
+
             tool_index.load(str(_user_memory() / "tool_index.json"))
             self._tool_index = tool_index
             self.log.debug("LearnedToolIndex: %s", tool_index.stats())
@@ -1020,6 +1021,7 @@ class AgenticRuntimeMixin:
         if tool_index is not None:
             try:
                 from maxim.utils.paths import user_memory as _user_memory
+
                 tool_index.save(str(_user_memory() / "tool_index.json"))
             except Exception as e:
                 warn("Failed to save tool index: %s", e, logger=self.log)

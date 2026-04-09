@@ -637,6 +637,7 @@ class SCN:
             data["oscillator"] = self._oscillator.to_dict()
 
         from maxim.utils.atomic_io import atomic_write_json
+
         atomic_write_json(path, data)
         logger.info("Saved SCN to %s (%d signatures)", path, len(self._signatures))
 

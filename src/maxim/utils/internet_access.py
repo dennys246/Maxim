@@ -96,6 +96,7 @@ def _redact_hostname(hostname: str) -> str:
 
 def _default_internet_access_path() -> Path:
     from maxim.utils.paths import resolve_user_state
+
     return resolve_user_state("util/internet_access.json")
 
 
@@ -387,7 +388,9 @@ class InternetAccessPolicy:
 
 def _default_policy_path() -> Path:
     from maxim.utils.paths import resolve_user_state
+
     return resolve_user_state("util/internet_policy.json")
+
 
 # Policy cache with mtime validation
 _cached_policy: InternetAccessPolicy | None = None

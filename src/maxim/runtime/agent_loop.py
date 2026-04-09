@@ -16,6 +16,7 @@ from maxim.runtime.tool_dispatch import (
     record_outcome as _record_outcome,
     execute_parallel_actions as _execute_parallel,
 )
+
 # Extracted to bio_integration.py
 from maxim.runtime.bio_integration import (
     capture_episodic_memory as _capture_episodic,
@@ -1042,7 +1043,11 @@ def run_agentic_loop(
                                             observation=observation,
                                             state=state,
                                             intent=intent,
-                                            action={"tool_name": action["tool_name"], "params": action.get("params", {}), "confidence": confidence},
+                                            action={
+                                                "tool_name": action["tool_name"],
+                                                "params": action.get("params", {}),
+                                                "confidence": confidence,
+                                            },
                                             result=result,
                                             run_id=run_id or "",
                                         )
@@ -1482,7 +1487,11 @@ def run_agentic_loop(
                             observation=observation,
                             state=state,
                             intent={"goal": pending_proposal.reasoning, "source": "llm_worker"},
-                            action={"tool_name": action.get("tool_name"), "params": action.get("params", {}), "confidence": confidence},
+                            action={
+                                "tool_name": action.get("tool_name"),
+                                "params": action.get("params", {}),
+                                "confidence": confidence,
+                            },
                             result=result,
                             run_id=run_id or "",
                         )

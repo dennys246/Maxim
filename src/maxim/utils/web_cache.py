@@ -360,6 +360,7 @@ def get_web_cache(
 
     if cache is None and create_if_missing:
         from maxim.utils.paths import resolve_user_state
+
         default_path = resolve_user_state("internet/web_cache.json")
         cache = WebCache(persistence_path=persistence_path or default_path)
         singleton.set(cache)

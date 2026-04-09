@@ -224,16 +224,19 @@ class TestCreateHandler:
 class TestDisplay:
     def test_create_display_off(self):
         from maxim.interactive.display import create_display
+
         d = create_display("off")
         assert d is None
 
     def test_create_display_on(self):
         from maxim.interactive.display import create_display, MaximDisplay
+
         d = create_display("on")
         assert isinstance(d, MaximDisplay)
 
     def test_display_log_no_crash(self):
         from maxim.interactive.display import MaximDisplay
+
         d = MaximDisplay()
         d.log("hippo", "Test memory capture")
         d.log("nac", "Causal link formed")
@@ -241,6 +244,7 @@ class TestDisplay:
 
     def test_display_status(self):
         from maxim.interactive.display import MaximDisplay
+
         d = MaximDisplay()
         d.set_status(mode="simulation", turn="5")
         assert d._status["mode"] == "simulation"
@@ -248,6 +252,7 @@ class TestDisplay:
 
     def test_display_prompt(self):
         from maxim.interactive.display import MaximDisplay
+
         d = MaximDisplay()
         d.set_prompt("What do you do? [fight / flee]")
         assert "fight" in d._prompt_text

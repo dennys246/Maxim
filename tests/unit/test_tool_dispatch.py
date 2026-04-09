@@ -27,6 +27,7 @@ class TestSafeAgentName:
     def test_uses_class_name_if_no_attrs(self):
         class CustomAgent:
             pass
+
         agent = CustomAgent()
         assert safe_agent_name(agent) == "CustomAgent"
 
@@ -240,6 +241,7 @@ class TestExecuteParallelActions:
 
     def test_executes_all_actions(self):
         from maxim.runtime.tool_dispatch import execute_parallel_actions
+
         actions = [
             {"tool_name": "look", "params": {"target": "room"}},
             {"tool_name": "examine", "params": {"target": "door"}},
@@ -261,6 +263,7 @@ class TestExecuteParallelActions:
 
     def test_rejected_action_recorded(self):
         from maxim.runtime.tool_dispatch import execute_parallel_actions
+
         actions = [{"tool_name": "delete", "params": {}}]
         results, _ = execute_parallel_actions(
             actions=actions,
@@ -279,6 +282,7 @@ class TestExecuteParallelActions:
 
     def test_execution_failure_captured(self):
         from maxim.runtime.tool_dispatch import execute_parallel_actions
+
         ex = MagicMock()
         ex.execute.side_effect = RuntimeError("crash")
         actions = [{"tool_name": "boom", "params": {}}]
@@ -299,6 +303,7 @@ class TestExecuteParallelActions:
 
     def test_records_outcomes_for_each_action(self):
         from maxim.runtime.tool_dispatch import execute_parallel_actions
+
         outcomes: list = []
         actions = [
             {"tool_name": "a", "params": {}},
@@ -323,12 +328,15 @@ class TestImportPaths:
 
     def test_import_record_outcome_from_agent_loop(self):
         from maxim.runtime.agent_loop import _record_outcome
+
         assert callable(_record_outcome)
 
     def test_import_safe_agent_name_from_agent_loop(self):
         from maxim.runtime.agent_loop import _safe_agent_name
+
         assert callable(_safe_agent_name)
 
     def test_loop_controller_import_still_works(self):
         from maxim.runtime.loop_controller import LoopController
+
         assert LoopController is not None

@@ -124,6 +124,7 @@ class AgentOutputManager:
         self.sandbox_dir = os.path.abspath(sandbox_dir)
         if shared_outputs_dir is None:
             from maxim.utils.paths import resolve_user_state
+
             shared_outputs_dir = str(resolve_user_state("shared/outputs"))
         self.shared_outputs_dir = os.path.abspath(shared_outputs_dir)
         self._policy = policy

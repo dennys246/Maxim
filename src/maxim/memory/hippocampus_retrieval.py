@@ -45,9 +45,9 @@ def _rank_by_relevance(
             if mem.action:
                 tokens.add((mem.action.tool_name or "").lower())
             if mem.perception:
-                for obj in (mem.perception.detected_objects or []):
+                for obj in mem.perception.detected_objects or []:
                     tokens.update(obj.lower().split())
-                for person in (mem.perception.detected_people or []):
+                for person in mem.perception.detected_people or []:
                     tokens.update(person.lower().split())
                 # Also check observation text
                 obs_text = mem.perception.observations.get("text", "")

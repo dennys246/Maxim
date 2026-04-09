@@ -89,15 +89,17 @@ def load_campaign_turns(campaign_path: str) -> list[dict[str, Any]]:
         if not text:
             continue
         meta = p.get("metadata", {})
-        turns.append({
-            "at": p.get("at", i),
-            "text": text,
-            "cli_input": text,  # backward compat for ExperimentResult consumers
-            "phase": meta.get("phase", ""),
-            "salience": p.get("salience", 0.8),
-            "novelty": p.get("novelty", 0.7),
-            "metadata": meta,
-        })
+        turns.append(
+            {
+                "at": p.get("at", i),
+                "text": text,
+                "cli_input": text,  # backward compat for ExperimentResult consumers
+                "phase": meta.get("phase", ""),
+                "salience": p.get("salience", 0.8),
+                "novelty": p.get("novelty", 0.7),
+                "metadata": meta,
+            }
+        )
     return turns
 
 

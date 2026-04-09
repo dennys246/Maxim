@@ -107,12 +107,14 @@ def find_stale_llm_servers(port: int = DEFAULT_PORT) -> list[dict[str, Any]]:
             req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/models")
             with urllib.request.urlopen(req, timeout=1.0) as resp:  # noqa: S310
                 if resp.status == 200:
-                    results.append({
-                        "pid": None,
-                        "cmdline": f"(unknown process on port {port})",
-                        "port_match": True,
-                        "status": "responding",
-                    })
+                    results.append(
+                        {
+                            "pid": None,
+                            "cmdline": f"(unknown process on port {port})",
+                            "port_match": True,
+                            "status": "responding",
+                        }
+                    )
         except Exception:
             pass
         return results
@@ -123,12 +125,14 @@ def find_stale_llm_servers(port: int = DEFAULT_PORT) -> list[dict[str, Any]]:
             cmd_str = " ".join(cmdline)
             if "llama_cpp.server" in cmd_str or "llama_cpp/server" in cmd_str:
                 port_match = "--port" in cmd_str and str(port) in cmd_str
-                results.append({
-                    "pid": proc.info["pid"],
-                    "cmdline": cmd_str[:200],
-                    "port_match": port_match,
-                    "status": proc.info.get("status", "unknown"),
-                })
+                results.append(
+                    {
+                        "pid": proc.info["pid"],
+                        "cmdline": cmd_str[:200],
+                        "port_match": port_match,
+                        "status": proc.info.get("status", "unknown"),
+                    }
+                )
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
     return results
@@ -149,7 +153,9 @@ def kill_stale_llm_servers(port: int = DEFAULT_PORT) -> int:
             if sys.platform == "win32":
                 try:
                     out = subprocess.check_output(  # noqa: S603, S607
-                        ["netstat", "-ano"], text=True, timeout=5,
+                        ["netstat", "-ano"],
+                        text=True,
+                        timeout=5,
                     )
                     for line in out.splitlines():
                         if f":{port}" in line and "LISTENING" in line:
@@ -164,7 +170,9 @@ def kill_stale_llm_servers(port: int = DEFAULT_PORT) -> int:
             else:
                 try:
                     out = subprocess.check_output(  # noqa: S603, S607
-                        ["lsof", "-ti", f":{port}"], text=True, timeout=5,
+                        ["lsof", "-ti", f":{port}"],
+                        text=True,
+                        timeout=5,
                     )
                     for lpid_str in out.strip().split():
                         try:

@@ -377,15 +377,17 @@ class TestSalienceNetworkUpdate:
 
         net = SalienceNetwork()
         where = NarrativeWhere("entrance", "tavern")
-        net.update([
-            SalienceItem(
-                id="guard_0",
-                label="guard",
-                source=PerceptSource.NARRATIVE,
-                confidence=0.8,
-                where=where,
-            ),
-        ])
+        net.update(
+            [
+                SalienceItem(
+                    id="guard_0",
+                    label="guard",
+                    source=PerceptSource.NARRATIVE,
+                    confidence=0.8,
+                    where=where,
+                ),
+            ]
+        )
 
         top = net.get_top_salient(n=1, min_salience=0.0)
         assert len(top) == 1
@@ -396,15 +398,17 @@ class TestSalienceNetworkUpdate:
         from maxim.salience import SalienceNetwork
 
         net = SalienceNetwork()
-        net.update([
-            SalienceItem(
-                id="guard_0",
-                label="guard",
-                source=PerceptSource.NARRATIVE,
-                confidence=0.8,
-                where=NarrativeWhere("entrance", "tavern"),
-            ),
-        ])
+        net.update(
+            [
+                SalienceItem(
+                    id="guard_0",
+                    label="guard",
+                    source=PerceptSource.NARRATIVE,
+                    confidence=0.8,
+                    where=NarrativeWhere("entrance", "tavern"),
+                ),
+            ]
+        )
 
         ctx = net.to_context_str()
         # Should use region() not pixel coords
@@ -416,9 +420,11 @@ class TestSalienceNetworkUpdate:
         from maxim.salience import SalienceNetwork
 
         net = SalienceNetwork()
-        net.update([
-            {"track_id": "det_0", "class_id": 0, "label": "person", "confidence": 0.9, "bbox": (100, 200, 50, 60)},
-        ])
+        net.update(
+            [
+                {"track_id": "det_0", "class_id": 0, "label": "person", "confidence": 0.9, "bbox": (100, 200, 50, 60)},
+            ]
+        )
 
         stats = net.get_stats()
         assert stats["total_unique_objects"] == 1
@@ -427,15 +433,17 @@ class TestSalienceNetworkUpdate:
         from maxim.salience import SalienceNetwork
 
         net = SalienceNetwork()
-        net.update([
-            SalienceItem(
-                id="g",
-                label="guard",
-                source=PerceptSource.NARRATIVE,
-                confidence=0.8,
-                where=NarrativeWhere("entrance"),
-            ),
-        ])
+        net.update(
+            [
+                SalienceItem(
+                    id="g",
+                    label="guard",
+                    source=PerceptSource.NARRATIVE,
+                    confidence=0.8,
+                    where=NarrativeWhere("entrance"),
+                ),
+            ]
+        )
         assert len(net._where_coords) == 1
         net.clear()
         assert len(net._where_coords) == 0

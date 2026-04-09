@@ -752,6 +752,7 @@ class ExecAgent(Agent):
         filepath = os.path.join(self._staging_dir, filename)
         try:
             from maxim.utils.atomic_io import atomic_write_json
+
             atomic_write_json(filepath, sidecar)
         except Exception as e:
             self.log.warning("Failed to write staging sidecar: %s", e)

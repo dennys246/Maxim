@@ -118,6 +118,7 @@ class PiperTTS:
         else:
             if models_dir is None:
                 from maxim.utils.paths import model_dir
+
                 models_dir = str(model_dir() / "tts")
             self.model_path = Path(models_dir) / f"{model_name}.onnx"
 

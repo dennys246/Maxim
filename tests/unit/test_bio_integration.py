@@ -121,19 +121,13 @@ class TestRecordPlanOutcome:
 
     def test_records_success(self):
         hub = MagicMock()
-        record_plan_outcome(
-            memory_hub=hub, goal="explore the room", tool_name="look", success=True
-        )
-        hub.record_plan_outcome.assert_called_once_with(
-            goal="explore the room", tool_sequence=["look"], success=True
-        )
+        record_plan_outcome(memory_hub=hub, goal="explore the room", tool_name="look", success=True)
+        hub.record_plan_outcome.assert_called_once_with(goal="explore the room", tool_sequence=["look"], success=True)
 
     def test_truncates_long_goal(self):
         hub = MagicMock()
         long_goal = "x" * 300
-        record_plan_outcome(
-            memory_hub=hub, goal=long_goal, tool_name="look", success=True
-        )
+        record_plan_outcome(memory_hub=hub, goal=long_goal, tool_name="look", success=True)
         call_kwargs = hub.record_plan_outcome.call_args[1]
         assert len(call_kwargs["goal"]) == 200
 
@@ -141,9 +135,7 @@ class TestRecordPlanOutcome:
         hub = MagicMock()
         hub.record_plan_outcome.side_effect = RuntimeError("db error")
         # Should not raise
-        record_plan_outcome(
-            memory_hub=hub, goal="test", tool_name="look", success=True
-        )
+        record_plan_outcome(memory_hub=hub, goal="test", tool_name="look", success=True)
 
 
 class TestStartBioSession:
@@ -193,8 +185,10 @@ class TestEndBioSession:
         hippo.config.persistence_path = "/tmp/test.json"
         hippo.__len__ = MagicMock(return_value=10)
         end_bio_session(
-            memory_hub=None, memory_hub_enabled=False,
-            hippocampus=hippo, is_sim_mode=False,
+            memory_hub=None,
+            memory_hub_enabled=False,
+            hippocampus=hippo,
+            is_sim_mode=False,
         )
         hippo.flush.assert_called_once_with(timeout=5.0)
         hippo.stop_capture_worker.assert_called_once()
@@ -204,24 +198,30 @@ class TestEndBioSession:
         hub = MagicMock()
         hub.on_session_end.return_value = {"consolidated": 5}
         end_bio_session(
-            memory_hub=hub, memory_hub_enabled=True,
-            hippocampus=None, is_sim_mode=False,
+            memory_hub=hub,
+            memory_hub_enabled=True,
+            hippocampus=None,
+            is_sim_mode=False,
         )
         hub.on_session_end.assert_called_once()
 
     def test_skips_hub_in_sim_mode(self):
         hub = MagicMock()
         end_bio_session(
-            memory_hub=hub, memory_hub_enabled=True,
-            hippocampus=None, is_sim_mode=True,
+            memory_hub=hub,
+            memory_hub_enabled=True,
+            hippocampus=None,
+            is_sim_mode=True,
         )
         hub.on_session_end.assert_not_called()
 
     def test_skips_hub_when_not_enabled(self):
         hub = MagicMock()
         end_bio_session(
-            memory_hub=hub, memory_hub_enabled=False,
-            hippocampus=None, is_sim_mode=False,
+            memory_hub=hub,
+            memory_hub_enabled=False,
+            hippocampus=None,
+            is_sim_mode=False,
         )
         hub.on_session_end.assert_not_called()
 
@@ -235,6 +235,8 @@ class TestEndBioSession:
         hub.on_session_end.side_effect = RuntimeError("end error")
         # Should not raise
         end_bio_session(
-            memory_hub=hub, memory_hub_enabled=True,
-            hippocampus=hippo, is_sim_mode=False,
+            memory_hub=hub,
+            memory_hub_enabled=True,
+            hippocampus=hippo,
+            is_sim_mode=False,
         )

@@ -265,8 +265,13 @@ class NAc:
         """
         with self._lock:
             return self._record_outcome_impl(
-                outcome_type, outcome_signature, outcome_valence,
-                context, memory_id, attributed_event_id, attributed_event_signature,
+                outcome_type,
+                outcome_signature,
+                outcome_valence,
+                context,
+                memory_id,
+                attributed_event_id,
+                attributed_event_signature,
             )
 
     def _record_outcome_impl(
@@ -814,6 +819,7 @@ class NAc:
             }
 
         from maxim.utils.atomic_io import atomic_write_json
+
         atomic_write_json(path, data)
 
         logger.info("Saved NAc to %s (%d links)", path, len(self))

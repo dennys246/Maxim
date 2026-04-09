@@ -55,6 +55,7 @@ def load_whisper_config() -> WhisperConfig:
 
     # Find config file
     from maxim.utils.paths import resolve_user_state
+
     candidates = [
         os.getenv("MAXIM_WHISPER_CONFIG", ""),
         str(resolve_user_state("util/whisper.json")),

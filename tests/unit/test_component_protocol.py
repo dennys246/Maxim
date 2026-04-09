@@ -57,9 +57,7 @@ class TestInstantiation:
         valid_types = {"npc", "creature", "weapon", "body_part", "environment", "character", "robot", "item", "vehicle"}
         for ref in component_refs:
             entity = registry.instantiate(ref)
-            assert entity.entity_type in valid_types, (
-                f"{ref}: entity_type '{entity.entity_type}' not in {valid_types}"
-            )
+            assert entity.entity_type in valid_types, f"{ref}: entity_type '{entity.entity_type}' not in {valid_types}"
 
 
 # ---------------------------------------------------------------------------
@@ -95,8 +93,7 @@ class TestSensorReadWrite:
                     reading = sensor.read()
                     val = reading.value if hasattr(reading, "value") else reading
                     assert range_min <= val <= range_max, (
-                        f"{info.ref}.{sensor_name}: initial value {val} outside "
-                        f"range [{range_min}, {range_max}]"
+                        f"{info.ref}.{sensor_name}: initial value {val} outside range [{range_min}, {range_max}]"
                     )
 
     def test_sensors_respond_to_writes(self, registry, component_refs):
@@ -107,9 +104,7 @@ class TestSensorReadWrite:
                 entity.vital_metrics[sensor_name] = 42.0
                 reading = sensor.read()
                 val = reading.value if hasattr(reading, "value") else reading
-                assert val == pytest.approx(42.0), (
-                    f"{ref}.{sensor_name}: wrote 42.0 but read {val}"
-                )
+                assert val == pytest.approx(42.0), f"{ref}.{sensor_name}: wrote 42.0 but read {val}"
 
 
 # ---------------------------------------------------------------------------
@@ -126,9 +121,7 @@ class TestAffordances:
             modulators = entity_spec.get("modulators", {})
             for mod_name, mod in modulators.items():
                 affordances = mod.get("affordances", {})
-                assert len(affordances) >= 1, (
-                    f"{info.ref}: modulator '{mod_name}' has no affordances"
-                )
+                assert len(affordances) >= 1, f"{info.ref}: modulator '{mod_name}' has no affordances"
 
     def test_affordances_have_descriptions(self, registry, all_components):
         """Every affordance has a non-empty description."""
@@ -138,9 +131,7 @@ class TestAffordances:
             for mod_name, mod in entity_spec.get("modulators", {}).items():
                 for aff_name, aff in mod.get("affordances", {}).items():
                     desc = aff.get("description", "")
-                    assert desc.strip(), (
-                        f"{info.ref}: {mod_name}.{aff_name} has no description"
-                    )
+                    assert desc.strip(), f"{info.ref}: {mod_name}.{aff_name} has no description"
 
     def test_affordance_params_are_typed(self, registry, all_components):
         """Affordance params have string type annotations."""
@@ -166,6 +157,7 @@ class TestToolGeneration:
     @pytest.fixture()
     def tool_registry(self):
         from maxim.tools.registry import ToolRegistry
+
         return ToolRegistry()
 
     def test_all_components_generate_tools(self, registry, component_refs, tool_registry):
@@ -213,13 +205,9 @@ class TestFailureModes:
                     f"Available: {list(sensors.keys())}"
                 )
                 op = trigger.get("op", "")
-                assert op in valid_ops, (
-                    f"{info.ref}: failure trigger op '{op}' not in {valid_ops}"
-                )
+                assert op in valid_ops, f"{info.ref}: failure trigger op '{op}' not in {valid_ops}"
                 pain = trigger.get("pain", 0)
-                assert 0 <= pain <= 1, (
-                    f"{info.ref}: failure pain {pain} outside [0, 1]"
-                )
+                assert 0 <= pain <= 1, f"{info.ref}: failure pain {pain} outside [0, 1]"
 
 
 # ---------------------------------------------------------------------------
@@ -263,9 +251,7 @@ class TestCascadeCompatibility:
             resolver = CascadeResolver({entity.name: entity})
             for sensor_name in entity.sensors:
                 val = resolver._read_sensor(f"{entity.name}.{sensor_name}", {})
-                assert val is not None, (
-                    f"{ref}: CascadeResolver can't read {entity.name}.{sensor_name}"
-                )
+                assert val is not None, f"{ref}: CascadeResolver can't read {entity.name}.{sensor_name}"
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +279,4 @@ class TestInheritance:
             child_sensors = set(child_entity_spec.get("sensors", {}).keys())
 
             missing = parent_sensors - child_sensors
-            assert not missing, (
-                f"{info.ref} extends {info.extends} but is missing sensors: {missing}"
-            )
+            assert not missing, f"{info.ref} extends {info.extends} but is missing sensors: {missing}"

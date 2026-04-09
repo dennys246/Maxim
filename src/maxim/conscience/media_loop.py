@@ -780,6 +780,7 @@ class MediaLoopMixin:
                 os.makedirs(os.path.dirname(save_file) or ".", exist_ok=True)
                 try:
                     import cv2
+
                     ok = cv2.imwrite(save_file, frame)
                     if not ok:
                         warn("Failed to write image to '%s'.", save_file, logger=self.log)

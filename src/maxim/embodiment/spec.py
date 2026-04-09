@@ -107,6 +107,7 @@ def resolve_entity_spec(
         overrides = spec.get("overrides")
         if overrides:
             from maxim.embodiment.component_registry import deep_merge
+
             entity_spec = deep_merge(entity_spec, overrides)
         return entity_spec
 

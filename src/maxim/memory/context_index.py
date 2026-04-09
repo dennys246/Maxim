@@ -124,6 +124,7 @@ class SimilarityIndex:
             "bands": [{json.dumps(list(k)): list(v) for k, v in band.items()} for band in self.bands],
         }
         from maxim.utils.atomic_io import atomic_write_json
+
         atomic_write_json(path, data, indent=None)
 
     @classmethod

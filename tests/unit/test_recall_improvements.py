@@ -34,10 +34,12 @@ def _em(**kwargs) -> EpisodicMemory:
 @pytest.fixture
 def hippo(tmp_path):
     """Create a hippocampus with short dedup window for testing."""
-    return Hippocampus(HippocampusConfig(
-        persistence_path=str(tmp_path / "hippo.json"),
-        dedup_window_s=2.0,  # Short window for testing
-    ))
+    return Hippocampus(
+        HippocampusConfig(
+            persistence_path=str(tmp_path / "hippo.json"),
+            dedup_window_s=2.0,  # Short window for testing
+        )
+    )
 
 
 def _make_memory(
@@ -154,15 +156,19 @@ class TestRelevanceRanking:
     def test_respects_limit(self):
         mems = []
         for i in range(10):
-            mems.append(_em(
-                perception=Perception(
-                    observations={"text": f"memory {i}"},
-                    detected_objects=[], detected_people=[], tool_alternatives=[],
-                ),
-                context=Context(active_goal="test"),
-                action=Action(tool_name="tool"),
-                outcome=Outcome(success=True),
-            ))
+            mems.append(
+                _em(
+                    perception=Perception(
+                        observations={"text": f"memory {i}"},
+                        detected_objects=[],
+                        detected_people=[],
+                        tool_alternatives=[],
+                    ),
+                    context=Context(active_goal="test"),
+                    action=Action(tool_name="tool"),
+                    outcome=Outcome(success=True),
+                )
+            )
         results = _rank_by_relevance(mems, "memory", limit=3)
         assert len(results) == 3
 
@@ -183,7 +189,7 @@ class TestRecallWithQuery:
         # Sword memory should rank first
         assert len(results) >= 1
         first = results[0]
-        assert hasattr(first, 'context')
+        assert hasattr(first, "context")
         if first.context and first.context.active_goal:
             assert "sword" in first.context.active_goal.lower()
 
@@ -207,5 +213,5 @@ class TestRecallWithQuery:
         assert len(results) >= 1
         # All results should be successful
         for r in results:
-            if hasattr(r, 'outcome') and r.outcome:
+            if hasattr(r, "outcome") and r.outcome:
                 assert r.outcome.success is True

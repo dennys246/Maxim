@@ -731,6 +731,7 @@ class PlanDocument:
         }
 
         from maxim.utils.atomic_io import atomic_write_json
+
         atomic_write_json(save_path, payload)
 
         # Update persistence path for future saves
@@ -843,6 +844,7 @@ class PlanDocument:
     def _write_pointer(cls, plans_dir: str, filename: str) -> None:
         """Write active plan pointer. Atomic via shared utility."""
         from maxim.utils.atomic_io import atomic_write_text
+
         pointer_path = os.path.join(plans_dir, cls.ACTIVE_POINTER)
         atomic_write_text(pointer_path, filename)
 

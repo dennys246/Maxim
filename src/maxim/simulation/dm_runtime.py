@@ -364,7 +364,9 @@ class DMRuntime:
                     reading = sensor.read()
                     val = reading.value if hasattr(reading, "value") else reading
                     if isinstance(val, (int, float)):
-                        sensor_parts.append(f"{sensor_name}={val:.1f}" if isinstance(val, float) else f"{sensor_name}={val}")
+                        sensor_parts.append(
+                            f"{sensor_name}={val:.1f}" if isinstance(val, float) else f"{sensor_name}={val}"
+                        )
                 except Exception:
                     pass
             if sensor_parts:
@@ -383,7 +385,9 @@ class DMRuntime:
                     reading = sensor.read()
                     val = reading.value if hasattr(reading, "value") else reading
                     if isinstance(val, (int, float)):
-                        sensor_parts.append(f"{sensor_name}={val:.1f}" if isinstance(val, float) else f"{sensor_name}={val}")
+                        sensor_parts.append(
+                            f"{sensor_name}={val:.1f}" if isinstance(val, float) else f"{sensor_name}={val}"
+                        )
                 except Exception:
                     pass
             if sensor_parts:

@@ -324,6 +324,7 @@ class LearnedToolIndex:
             }
         try:
             from maxim.utils.atomic_io import atomic_write_json
+
             atomic_write_json(path, data)
         except Exception as e:
             logger.debug("Failed to save tool index: %s", e)

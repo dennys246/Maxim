@@ -272,6 +272,7 @@ class Entity:
 
         Round-trips with ``Entity.from_dict()``.
         """
+
         def _sensor_dict(s: Any) -> dict[str, Any]:
             d: dict[str, Any] = {"name": s.name}
             if hasattr(s, "unit"):
@@ -355,6 +356,7 @@ class Entity:
         if "sensors" in data:
             try:
                 from maxim.embodiment.spec import SpecSensor
+
                 for sname, sdata in data["sensors"].items():
                     entity.sensors[sname] = SpecSensor(
                         _name=sdata.get("name", sname),
@@ -371,6 +373,7 @@ class Entity:
         if "modulators" in data:
             try:
                 from maxim.embodiment.spec import SpecModulator
+
                 for mname, mdata in data["modulators"].items():
                     affs = {}
                     for aff_name, aff_data in mdata.get("affordances", {}).items():
@@ -391,16 +394,22 @@ class Entity:
             for fm_data in data["failure_modes"]:
                 triggers = []
                 for t in fm_data.get("triggers", []):
-                    triggers.append(FailureTrigger(
-                        field=t["field"], op=t["op"],
-                        value=t["value"], pain=t.get("pain", 0.5),
-                    ))
+                    triggers.append(
+                        FailureTrigger(
+                            field=t["field"],
+                            op=t["op"],
+                            value=t["value"],
+                            pain=t.get("pain", 0.5),
+                        )
+                    )
                 recovery = None
                 if "recovery_condition" in fm_data:
                     rc = fm_data["recovery_condition"]
                     recovery = FailureTrigger(
-                        field=rc["field"], op=rc["op"],
-                        value=rc["value"], pain=rc.get("pain", 0.5),
+                        field=rc["field"],
+                        op=rc["op"],
+                        value=rc["value"],
+                        pain=rc.get("pain", 0.5),
                     )
                 entity.failure_modes.append(
                     FailureMode(
@@ -422,12 +431,14 @@ class Entity:
     def save(self, path: str) -> None:
         """Save entity tree to a JSON file."""
         from maxim.utils.atomic_io import atomic_write_json
+
         atomic_write_json(path, self.to_dict())
 
     @classmethod
     def load(cls, path: str) -> "Entity":
         """Load entity tree from a JSON file."""
         import json
+
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_dict(data)

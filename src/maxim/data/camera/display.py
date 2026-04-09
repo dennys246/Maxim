@@ -15,12 +15,13 @@ import numpy as np
 def _import_cv2():
     try:
         import cv2
+
         return cv2
     except ImportError:
         raise ImportError(
-            "OpenCV is required for display features. "
-            "Install with: pip install pymaxim[vision]"
+            "OpenCV is required for display features. Install with: pip install pymaxim[vision]"
         ) from None
+
 
 _IMSHOW_FAILED = False
 _IMSHOW_DISABLED_WARNED = False

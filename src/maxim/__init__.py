@@ -181,7 +181,7 @@ def get_version_info() -> dict[str, str]:
 
 def __dir__():
     """Expose all public names for tab-completion and dir()."""
-    return list(__all__) + list(globals().keys())
+    return sorted(set(__all__) | set(globals().keys()))
 
 
 def __getattr__(name: str):

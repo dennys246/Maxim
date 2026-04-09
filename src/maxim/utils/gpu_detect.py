@@ -27,7 +27,12 @@ _detected_lock = threading.Lock()
 
 def _is_hide_cuda() -> bool:
     return os.environ.get("MAXIM_BLACKWELL_HIDE_CUDA", "").strip().lower() in (
-        "1", "true", "t", "yes", "y", "on",
+        "1",
+        "true",
+        "t",
+        "yes",
+        "y",
+        "on",
     )
 
 

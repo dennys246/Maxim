@@ -571,6 +571,7 @@ class ContextPool:
                 }
 
             from maxim.utils.atomic_io import atomic_write_json
+
             atomic_write_json(self.config.persistence_path, data)
 
         except Exception as e:

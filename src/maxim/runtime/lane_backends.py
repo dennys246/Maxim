@@ -1042,7 +1042,11 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
 
     try:
         # Same model = no-op
-        if _server_mod._active_model and _server_mod._active_model == resolved and _server_mod._active_spawner is not None:
+        if (
+            _server_mod._active_model
+            and _server_mod._active_model == resolved
+            and _server_mod._active_spawner is not None
+        ):
             if _server_mod._active_spawner.is_running:
                 return {
                     "status": "already_running",

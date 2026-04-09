@@ -130,9 +130,7 @@ class AgentInstance:
 
         if self.hippocampus is not None:
             try:
-                persist_path = getattr(
-                    getattr(self.hippocampus, "config", None), "persistence_path", None
-                )
+                persist_path = getattr(getattr(self.hippocampus, "config", None), "persistence_path", None)
                 if persist_path:
                     self.hippocampus.save(persist_path)
             except Exception as e:
@@ -170,6 +168,7 @@ class AgentFactory:
             self._base_data_dir = Path(base_data_dir)
         else:
             from maxim.utils.paths import data_home
+
             self._base_data_dir = data_home() / "agents"
         self._base_data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -215,8 +214,7 @@ class AgentFactory:
             try:
                 entity = self._component_registry.instantiate(config.entity_spec)
             except Exception as e:
-                log.warning("Agent %s: failed to instantiate entity '%s': %s",
-                            config.agent_id, config.entity_spec, e)
+                log.warning("Agent %s: failed to instantiate entity '%s': %s", config.agent_id, config.entity_spec, e)
 
         instance = AgentInstance(
             agent_id=config.agent_id,
@@ -231,8 +229,13 @@ class AgentFactory:
             personality=config.personality,
         )
 
-        log.info("Created agent '%s' (role=%s, remembers=%s, learns=%s)",
-                 config.agent_id, config.role, config.remembers, config.learns)
+        log.info(
+            "Created agent '%s' (role=%s, remembers=%s, learns=%s)",
+            config.agent_id,
+            config.role,
+            config.remembers,
+            config.learns,
+        )
         return instance
 
     def create_npc_agent(
@@ -325,6 +328,7 @@ class AgentFactory:
         """Create an ATL with per-agent persistence."""
         try:
             from maxim.memory.atl import ATL, ATLConfig
+
             return ATL(
                 ATLConfig(
                     persistence_path=str(agent_dir / "atl.json"),
@@ -372,6 +376,7 @@ class AgentFactory:
         """Create a ToolRegistry, optionally filtered by whitelist."""
         try:
             from maxim.tools.registry import ToolRegistry
+
             registry = ToolRegistry()
 
             # If whitelist is set, we'll filter tools at registration time.

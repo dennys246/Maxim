@@ -21,12 +21,11 @@ import numpy as np
 def _import_cv2():
     try:
         import cv2
+
         return cv2
     except ImportError:
-        raise ImportError(
-            "OpenCV is required for vision features. "
-            "Install with: pip install pymaxim[vision]"
-        ) from None
+        raise ImportError("OpenCV is required for vision features. Install with: pip install pymaxim[vision]") from None
+
 
 from maxim.models.vision.engine import (
     COCO_KEYPOINTS,
@@ -412,6 +411,7 @@ def _resolve_model_path(filename: str, model_dir: str) -> str:
 
     # Legacy / alternate paths — check ~/.maxim/models/ tree
     from maxim.utils.paths import model_dir as _model_dir
+
     _mdir = _model_dir()
     for subdir in ("YOLO", "vision"):
         alt = str(_mdir / subdir / filename)
@@ -466,6 +466,7 @@ class RTMEngine(VisionEngine):
     ) -> None:
         if model_dir is None:
             from maxim.utils.paths import model_dir as _model_dir
+
             model_dir = str(_model_dir() / "YOLO")
 
         det_path = _resolve_model_path(det_model, model_dir)

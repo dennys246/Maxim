@@ -79,6 +79,7 @@ class FocusLearnerConfig:
     def __post_init__(self) -> None:
         if not self.persist_path:
             from maxim.utils.paths import resolve_user_state
+
             self.persist_path = str(resolve_user_state("util/focus_learner.json"))
 
 

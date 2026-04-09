@@ -251,6 +251,7 @@ class BenchmarkRunner:
         self.runs = max(runs, 1)
         if output_dir is None:
             from maxim.utils.paths import benchmarks_dir
+
             self.output_dir = benchmarks_dir()
         else:
             self.output_dir = Path(output_dir)
