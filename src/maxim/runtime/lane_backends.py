@@ -902,24 +902,27 @@ def _maybe_auto_spawn_server(
             try:
                 from maxim.runtime.local_server_spawner import kill_stale_llm_servers
 
-                kill_stale_llm_servers(port)
-                # Give the port a moment to release
-                time.sleep(1.0)
+                _ghost_killed = kill_stale_llm_servers(port)
+                if _ghost_killed:
+                    # Only sleep if we actually killed something — give the port a moment to release
+                    time.sleep(1.0)
             except Exception:
                 pass
 
     # Port not responding or ghost was just killed — may have a stale
-    # process holding VRAM.
+    # process holding VRAM.  Only kill+sleep if something was actually found.
     try:
         from maxim.runtime.local_server_spawner import kill_stale_llm_servers
 
         n_killed = kill_stale_llm_servers(port)
-        if n_killed and logger is not None:
-            logger.info(
-                "Killed %d stale llama-cpp-server process(es) on port %d before spawn",
-                n_killed,
-                port,
-            )
+        if n_killed:
+            if logger is not None:
+                logger.info(
+                    "Killed %d stale llama-cpp-server process(es) on port %d before spawn",
+                    n_killed,
+                    port,
+                )
+            time.sleep(0.5)  # Brief pause for port release
     except Exception:
         pass
 
