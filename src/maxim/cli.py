@@ -1129,10 +1129,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     _has_llm = os.environ.get("MAXIM_LLM_ENABLED", "").strip() == "1"
     _has_action = _has_sim or _has_explore or _has_mode_override or _has_robot
 
-    # Leader/LLM-enabled without explicit action: start proxy, wait for commands
+    # Leader/LLM-enabled without explicit action: start LLM server + proxy, wait
     if not _has_action and (_is_leader or _has_llm):
-        print("Maxim — leader mode (proxy running)")
-        print("  Accepting peer commands (update, restart, llm, version, logs)")
+        print("Maxim — leader mode")
+
+        # Spawn the LLM server so peers can send inference requests
+        try:
+            from maxim.runtime.lane_backends import build_primary_router
+
+            _router, _mgr = build_primary_router()
+            if _router is not None:
+                _router.warmup()
+                print("  LLM server started — ready for peer inference")
+            else:
+                print("  WARNING: LLM server failed to start (check model config)")
+        except Exception as _llm_err:
+            print(f"  WARNING: LLM server init failed: {_llm_err}")
+
+        print("  Proxy running — accepting peer commands (update, restart, llm, version, logs)")
         print("  Use --sim or --mode to start a session, or Ctrl+C to stop.\n")
         try:
             import threading
