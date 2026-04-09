@@ -498,9 +498,19 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             resp_body = e.read()
             resp_headers = dict(e.headers)
         except Exception as e:
-            logger.exception("Upstream connection error: %s", e)
+            # Log connection errors as a single line, not a full traceback.
+            # During server respawn these are expected and transient.
+            err_type = type(e).__name__
+            err_msg = str(e)
+            if "Connection refused" in err_msg or "Connection reset" in err_msg:
+                logger.warning("Upstream unavailable: %s (server may be restarting)", err_type)
+            else:
+                logger.warning("Upstream connection error: %s: %s", err_type, err_msg)
             resp_code = 502
-            resp_body = json.dumps({"error": "Upstream connection failed"}).encode()
+            resp_body = json.dumps({
+                "error": "Upstream connection failed — LLM server may be restarting",
+                "retry_after_s": 5,
+            }).encode()
 
         elapsed_ms = (time.time() - t0) * 1000
 
