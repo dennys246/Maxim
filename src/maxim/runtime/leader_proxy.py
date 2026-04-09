@@ -421,13 +421,23 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         """Check if the upstream LLM server is responding to /v1/models.
 
         A fast probe (1.5s timeout) — returns True only if the upstream
-        returns HTTP 200. Returns False on connection refused, timeout,
-        or any error (model still loading).
+        returns HTTP 200 or 401 (auth-gated but alive). Returns False on
+        connection refused, timeout, or any error (model still loading).
+
+        Sends the same API key the proxy uses — the upstream llama-cpp-server
+        may have been started with --api_key, in which case unauthenticated
+        probes get 401 and would never report ready.
         """
         probe = f"{self.upstream_url}/v1/models"
         try:
-            with urllib.request.urlopen(probe, timeout=1.5) as resp:  # noqa: S310
+            req = urllib.request.Request(probe, method="GET")
+            if self.api_key:
+                req.add_header("Authorization", f"Bearer {self.api_key}")
+            with urllib.request.urlopen(req, timeout=1.5) as resp:  # noqa: S310
                 return resp.status == 200
+        except urllib.error.HTTPError as e:
+            # 401 means the server is up but auth failed — still "ready"
+            return e.code == 401
         except Exception:
             return False
 
