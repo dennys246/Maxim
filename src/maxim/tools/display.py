@@ -1,0 +1,163 @@
+"""Display and interaction tools — agent-driven output/input switching.
+
+These tools let the agent adjust what the user sees and request
+user input at runtime, within the constraints set by the user's
+``--display`` and ``--interactive`` flags.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from maxim.tools.base import Tool, ToolOutput
+
+logger = logging.getLogger(__name__)
+
+
+class DisplayModeTool(Tool):
+    """Adjust the display verbosity tier at runtime.
+
+    The agent can escalate display (clean → bio → debug) to surface
+    important information, but cannot suppress below the user's
+    ``--display`` floor.  Escalations auto-revert after a few turns.
+    """
+
+    name = "display_mode"
+    description = (
+        "Adjust what the user sees. Use 'bio' to surface memory and "
+        "learning activity when something important is happening. Use "
+        "'clean' to return to narrative-only output. Use 'debug' only "
+        "when diagnosing issues."
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "level": {
+                "type": "string",
+                "enum": ["clean", "bio", "debug"],
+                "description": "Display tier to switch to",
+            },
+            "reason": {
+                "type": "string",
+                "description": "Why the display change is needed",
+            },
+        },
+        "required": ["level"],
+    }
+
+    def execute(self, level: str = "bio", reason: str = "", **kwargs: Any) -> ToolOutput:
+        from maxim.simulation.sim_logger import (
+            DisplayTier,
+            agent_escalate_display,
+            get_display_tier,
+        )
+
+        try:
+            target = DisplayTier[level.upper()]
+        except KeyError:
+            return ToolOutput(
+                success=False,
+                error=f"Invalid display level '{level}'. Use: clean, bio, debug",
+            )
+
+        current = get_display_tier()
+        applied = agent_escalate_display(target)
+
+        if applied:
+            msg = f"Display changed to {level}"
+            if reason:
+                msg += f" ({reason})"
+            logger.info("Agent adjusted display: %s → %s (%s)", current.name, level, reason or "no reason")
+            return ToolOutput(success=True, output=msg)
+        else:
+            return ToolOutput(
+                success=False,
+                error=f"Cannot set display below user's floor ({current.name.lower()})",
+            )
+
+
+class RequestInteractionTool(Tool):
+    """Request user input for an important decision.
+
+    The agent calls this when it encounters a situation where human
+    judgment would be valuable.  The prompt fires if ``--interactive``
+    is ``auto`` or ``on``.  If ``off``, the agent gets a response
+    indicating interaction is disabled.
+    """
+
+    name = "request_interaction"
+    description = (
+        "Request user input for an important decision. Only use when "
+        "the decision has significant consequences and the agent is "
+        "not confident about the right choice."
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "question": {
+                "type": "string",
+                "description": "The question to ask the user",
+            },
+            "options": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional list of choices",
+            },
+            "reason": {
+                "type": "string",
+                "description": "Why user input is needed",
+            },
+        },
+        "required": ["question"],
+    }
+
+    def __init__(self, prompt_handler: Any = None) -> None:
+        self._handler = prompt_handler
+
+    def execute(
+        self,
+        question: str = "",
+        options: list[str] | None = None,
+        reason: str = "",
+        **kwargs: Any,
+    ) -> ToolOutput:
+        from maxim.simulation.sim_logger import should_prompt
+
+        if not should_prompt("agent_request"):
+            return ToolOutput(
+                success=True,
+                output="Interaction disabled — make your best judgment.",
+            )
+
+        # Use PromptHandler if available
+        if self._handler is not None:
+            from maxim.interactive.prompts import PromptRequest, PromptType
+
+            prompt_type = PromptType.SINGLE_CHOICE if options else PromptType.FREEFORM
+            request = PromptRequest(
+                prompt_type=prompt_type,
+                question=question,
+                options=tuple(options) if options else None,
+            )
+            try:
+                response = self._handler.prompt(request)
+                return ToolOutput(
+                    success=True,
+                    output=f"User responded: {response.value}",
+                )
+            except Exception as e:
+                logger.warning("Prompt handler failed: %s — falling back to default", e)
+
+        # Fallback: print to console
+        from maxim.simulation.sim_logger import display_scene
+
+        display_scene(f"\n  Agent asks: {question}")
+        if options:
+            for i, opt in enumerate(options, 1):
+                display_scene(f"    [{i}] {opt}")
+
+        return ToolOutput(
+            success=True,
+            output="Question displayed to user. Response will come on next turn.",
+        )

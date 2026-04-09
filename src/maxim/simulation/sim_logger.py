@@ -4,26 +4,270 @@ When simulation mode is active, this logger prints human-readable traces
 of what each biological subsystem is doing, making it easy to follow the
 percept → memory → goal → action pipeline.
 
-Subsystem labels use bio-inspired naming:
-  [PERCEPT]       Incoming sensory input (ScenarioSource)
-  [HIPPOCAMPUS]   Memory formation, recall, consolidation
-  [NAc]           Reward prediction, causal learning
-  [FEAR]          FearAgent safety review
-  [PAIN]          Pain signal detection and routing
-  [EXEC]          ExecAgent goal proposal
-  [MOTOR]         Motor command / tool execution
-  [SALIENCE]      Attention and novelty tracking
-  [SCN]           Temporal indexing
+Display tier system (v1.0):
+  CLEAN       Scenes, agent actions, prompts only (default)
+  BIO         + condensed bio-system annotations (memory, causal, pain)
+  DEBUG       + full subsystem traces (same as legacy --show all)
+
+Interactive mode (orthogonal to display tier):
+  AUTO        DM campaigns → prompt, generative sims → no prompt (default)
+  ON          Always prompt at choice/confirmation points
+  OFF         Never prompt — use policy defaults
 """
 
 from __future__ import annotations
 
+import enum
 import logging
 import sys
 import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Display tier — controls what appears on the user's console
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class DisplayTier(enum.IntEnum):
+    """Output detail level for the user's console.
+
+    CLEAN: narrative only — scenes, actions, prompts, summaries.
+    BIO: + condensed bio annotations (memory, causal learning, pain).
+    DEBUG: + full subsystem traces, pipeline timing, internal state.
+    """
+
+    CLEAN = 0
+    BIO = 1
+    DEBUG = 2
+
+
+class InteractiveMode(enum.Enum):
+    """Whether the system pauses for user input.
+
+    AUTO: context-dependent (DM campaigns → yes, generative → no).
+    ON: always prompt at choice/confirmation points.
+    OFF: never prompt — use policy defaults (NonInteractiveHandler).
+    """
+
+    AUTO = "auto"
+    ON = "on"
+    OFF = "off"
+
+
+# Global display state
+_display_tier: DisplayTier = DisplayTier.CLEAN
+_interactive_mode: InteractiveMode = InteractiveMode.AUTO
+_display_floor: DisplayTier = DisplayTier.CLEAN  # User's --display setting (agent can't go below)
+_display_revert_turn: int | None = None  # Turn number to revert agent escalation
+
+
+def set_display_tier(tier: DisplayTier | str) -> None:
+    """Set the display tier globally."""
+    global _display_tier, _display_floor
+    if isinstance(tier, str):
+        tier = DisplayTier[tier.upper()]
+    _display_tier = tier
+    _display_floor = tier  # User-set tier is also the floor
+
+
+def get_display_tier() -> DisplayTier:
+    """Get the current display tier."""
+    return _display_tier
+
+
+def set_interactive_mode(mode: InteractiveMode | str) -> None:
+    """Set the interactive mode globally."""
+    global _interactive_mode
+    if isinstance(mode, str):
+        mode = InteractiveMode(mode.lower())
+    _interactive_mode = mode
+
+
+def get_interactive_mode() -> InteractiveMode:
+    """Get the current interactive mode."""
+    return _interactive_mode
+
+
+def agent_escalate_display(tier: DisplayTier, revert_after_turns: int = 3) -> bool:
+    """Allow the agent to temporarily escalate display tier.
+
+    Returns True if escalation was applied, False if tier is below floor.
+    """
+    global _display_tier, _display_revert_turn
+    if tier < _display_floor:
+        return False  # Agent can't suppress below user's floor
+    _display_tier = tier
+    # revert_after_turns is tracked by the caller (dm_runtime / orchestrator)
+    return True
+
+
+def revert_display_to_floor() -> None:
+    """Revert display tier to user's --display setting."""
+    global _display_tier
+    _display_tier = _display_floor
+
+
+def should_prompt(context: str = "") -> bool:
+    """Determine whether to prompt the user for input.
+
+    Args:
+        context: What's requesting the prompt — "dm_campaign",
+            "agentic_mode", "autonomy_escalation", "agent_request",
+            "confirmation", etc.
+
+    Returns:
+        True if the prompt should be shown to the user.
+    """
+    if _interactive_mode == InteractiveMode.ON:
+        return True
+    if _interactive_mode == InteractiveMode.OFF:
+        return False
+    # AUTO: derive from context
+    return context in (
+        "dm_campaign",
+        "agentic_mode",
+        "autonomy_escalation",
+        "agent_request",
+        "confirmation",
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Display output functions — tier-aware
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DISPLAY_COLORS = {
+    "scene": "\033[37;1m",  # Bold white
+    "action": "\033[32m",  # Green
+    "response": "\033[36m",  # Cyan
+    "turn": "\033[37;2m",  # Dim white
+    "summary": "\033[33m",  # Yellow
+    "bio": "\033[35;2m",  # Dim magenta
+    "entity": "\033[34;2m",  # Dim blue
+}
+
+
+def _emit(text: str, color_key: str | None = None) -> None:
+    """Print a line to stdout with optional ANSI color."""
+    if color_key and _use_color:
+        c = _DISPLAY_COLORS.get(color_key, "")
+        print(f"{c}{text}{_RESET}", flush=True)
+    else:
+        print(text, flush=True)
+
+
+def display_scene(text: str) -> None:
+    """Show scene/percept text (CLEAN tier)."""
+    if _display_tier >= DisplayTier.CLEAN:
+        _emit(text, "scene")
+
+
+def display_action(tool: str, params: dict[str, Any] | None = None) -> None:
+    """Show agent action (CLEAN tier)."""
+    if _display_tier >= DisplayTier.CLEAN:
+        if params:
+            param_str = ", ".join(f'{k}="{v}"' if isinstance(v, str) else f"{k}={v}" for k, v in params.items())
+            _emit(f"  > Agent uses {tool}({param_str})", "action")
+        else:
+            _emit(f"  > Agent uses {tool}()", "action")
+
+
+def display_response(text: str) -> None:
+    """Show agent response text (CLEAN tier)."""
+    if _display_tier >= DisplayTier.CLEAN:
+        _emit(f"  Agent: {text}", "response")
+
+
+def display_entity_state(name: str, sensors: dict[str, Any]) -> None:
+    """Show entity sensor state (CLEAN tier)."""
+    if _display_tier >= DisplayTier.CLEAN and sensors:
+        parts = ", ".join(f"{k}={v:.1f}" if isinstance(v, float) else f"{k}={v}" for k, v in sensors.items())
+        _emit(f"  [{name}: {parts}]", "entity")
+
+
+def display_turn(n: int) -> None:
+    """Show turn marker (CLEAN tier)."""
+    if _display_tier >= DisplayTier.CLEAN:
+        _emit(f"\n{'─' * 2} Turn {n} {'─' * 40}", "turn")
+
+
+def display_summary(lines: list[str]) -> None:
+    """Show final summary (CLEAN tier)."""
+    if _display_tier >= DisplayTier.CLEAN:
+        for line in lines:
+            _emit(line, "summary")
+
+
+def display_status(message: str) -> None:
+    """Show system status message (DEBUG tier only)."""
+    if _display_tier >= DisplayTier.DEBUG:
+        _emit(f"  {message}", "turn")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bio-tier condensed annotations
+# ─────────────────────────────────────────────────────────────────────────────
+
+_BIO_PREFIX = "  \u25cb "  # ○ prefix
+
+
+def display_memory_capture(content: str) -> None:
+    """Show memory capture annotation (BIO tier)."""
+    if _display_tier >= DisplayTier.BIO:
+        _emit(f'{_BIO_PREFIX}memory: Captured "{content}"', "bio")
+
+
+def display_memory_recall(query: str, count: int) -> None:
+    """Show memory recall annotation (BIO tier)."""
+    if _display_tier >= DisplayTier.BIO:
+        _emit(f'{_BIO_PREFIX}memory: Recalled {count} memories matching "{query}"', "bio")
+
+
+def display_causal_learn(event: str, outcome: str, confidence: float) -> None:
+    """Show causal learning annotation (BIO tier)."""
+    if _display_tier >= DisplayTier.BIO:
+        _emit(f"{_BIO_PREFIX}causal: {event} \u2192 {outcome} (confidence {confidence:.2f})", "bio")
+
+
+def display_pain_signal(source: str, intensity: float) -> None:
+    """Show pain signal annotation (BIO tier)."""
+    if _display_tier >= DisplayTier.BIO:
+        _emit(f"{_BIO_PREFIX}pain: {source} (intensity {intensity:.1f})", "bio")
+
+
+def display_fear_gate(tool: str, approved: bool) -> None:
+    """Show fear gate decision annotation (BIO tier)."""
+    if _display_tier >= DisplayTier.BIO:
+        if approved:
+            _emit(f"{_BIO_PREFIX}safety: Approved {tool}", "bio")
+        else:
+            _emit(f"{_BIO_PREFIX}safety: Blocked {tool}", "bio")
+
+
+def display_concept(name: str, category: str) -> None:
+    """Show concept formation annotation (BIO tier)."""
+    if _display_tier >= DisplayTier.BIO:
+        _emit(f'{_BIO_PREFIX}concept: "{name}" \u2192 {category}', "bio")
+
+
+def display_temporal(pattern: str) -> None:
+    """Show temporal pattern annotation (BIO tier)."""
+    if _display_tier >= DisplayTier.BIO:
+        _emit(f"{_BIO_PREFIX}temporal: {pattern}", "bio")
+
+
+def display_default_net(message: str) -> None:
+    """Show Default Network escalation (BIO tier)."""
+    if _display_tier >= DisplayTier.BIO:
+        _emit(f"{_BIO_PREFIX}default_net: {message}", "bio")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Legacy sim_log system (DEBUG tier) — full subsystem traces
+# ─────────────────────────────────────────────────────────────────────────────
 
 # ANSI color codes for terminal output
 _COLORS = {
@@ -227,6 +471,10 @@ def sim_log(
 
         _log_file.write(json.dumps(record) + "\n")
         _log_file.flush()
+
+    # Display tier gate — full subsystem traces only at DEBUG tier
+    if _display_tier < DisplayTier.DEBUG:
+        return
 
     # Terminal output — skip debug-only subsystems/events unless debug mode
     if (subsystem in _DEBUG_ONLY_SUBSYSTEMS or _force_debug) and not _debug_mode:

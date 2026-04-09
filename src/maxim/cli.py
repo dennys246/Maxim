@@ -437,31 +437,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         _is_legacy_research = _sim_val_lower == "research"
         _is_legacy_benchmark = _sim_val_lower == "benchmark"
 
-        if _is_legacy_agent:
-            import warnings
-
-            warnings.warn(
-                '--sim agent is deprecated. Use: maxim --sim "your goal here"\nThis alias will be removed in v0.3.0.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        if _is_legacy_research:
-            import warnings
-
-            warnings.warn(
-                '--sim research is deprecated. Use: maxim --sim "your goal" --research\n'
-                "This alias will be removed in v0.3.0.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        if _is_legacy_benchmark:
-            import warnings
-
-            warnings.warn(
-                "--sim benchmark is deprecated. Use: maxim --benchmark\nThis alias will be removed in v0.3.0.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+        # Legacy aliases: --sim agent/research/benchmark still work
+        # but the preferred forms are --sim "goal" / --research / --benchmark
         _is_interactive = _sim_val_lower == "interactive"
         _is_goal_string = not (
             _is_yaml or _is_legacy_agent or _is_legacy_research or _is_legacy_benchmark or _is_interactive
@@ -715,12 +692,29 @@ def main(argv: Sequence[str] | None = None) -> int:
             # (all_results / any_failed removed — unused; batch scenario
             # result aggregation is handled by ScenarioRunner directly)
 
-            from maxim.simulation.sim_logger import enable_sim_logging, disable_sim_logging, set_show_channels
+            from maxim.simulation.sim_logger import (
+                enable_sim_logging,
+                disable_sim_logging,
+                set_show_channels,
+                set_display_tier,
+                set_interactive_mode,
+            )
 
             sim_log_path = str(sim_workspace / f"sim_log_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
             enable_sim_logging(log_path=sim_log_path, debug=_sim_debug)
 
-            # Apply --show channel filter
+            # Apply --display tier
+            display_arg = getattr(args, "display", "clean")
+            set_display_tier(display_arg)
+            # --display debug implies full sim logging
+            if display_arg == "debug":
+                set_show_channels("all")
+
+            # Apply --interactive mode
+            interactive_arg = getattr(args, "interactive", "auto")
+            set_interactive_mode(interactive_arg)
+
+            # Apply --show channel filter (legacy, overrides if explicit)
             show_channels = getattr(args, "show_channels", None)
             if show_channels:
                 set_show_channels(show_channels)

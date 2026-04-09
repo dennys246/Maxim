@@ -108,6 +108,11 @@ class ModeDefinition:
     # Default Network configuration for this mode
     default_network: DefaultNetworkModeConfig = field(default_factory=DefaultNetworkModeConfig)
 
+    # Display and interaction hints (v1.0)
+    # These are defaults — user's --display and --interactive flags override.
+    default_display: str = "clean"  # "clean", "bio", or "debug"
+    confirmations_required: bool = True  # False for autonomous modes
+
     def get_available_tools(self, all_tools: set[str]) -> set[str]:
         """Get the set of tools available in this mode.
 
@@ -386,7 +391,6 @@ In singularity mode:
 With great power comes great responsibility. Act wisely.""",
     ),
 }
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────

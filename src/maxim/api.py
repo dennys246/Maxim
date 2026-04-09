@@ -1,6 +1,6 @@
 """Public verb-based API for pymaxim.
 
-Six top-level functions that map directly to user intent:
+Verb-based functions that map directly to user intent:
 
     import maxim
 
@@ -43,6 +43,8 @@ def configure(
     log_file: str | None = None,
     debug: str | None = None,
     show: str | None = None,
+    display: str | None = None,
+    interactive: str | None = None,
 ) -> None:
     """Configure Maxim runtime settings.
 
@@ -61,11 +63,17 @@ def configure(
             ``"memory"``, ``"safety"``, ``"all"`` (default).
             Also settable via ``$MAXIM_SHOW_CHANNELS`` env var.
 
+        display: Output detail level.  ``"clean"`` (narrative only, default),
+            ``"bio"`` (+ memory/learning annotations), ``"debug"``
+            (+ full system traces).
+        interactive: Input mode.  ``"auto"`` (context-dependent, default),
+            ``"on"`` (always prompt), ``"off"`` (never prompt).
+
     Example::
 
-        maxim.configure(show="bio")          # Only bio-system events
-        maxim.configure(show="bio,exec")     # Bio + execution
-        maxim.configure(show="all")          # Everything (default)
+        maxim.configure(display="bio")       # Show bio annotations
+        maxim.configure(display="clean")     # Narrative only (default)
+        maxim.configure(interactive="off")   # Headless — no prompts
     """
     # ── Validate inputs ────────────────────────────────────────────────
     if not isinstance(verbosity, int) or not (0 <= verbosity <= 3):
@@ -102,7 +110,18 @@ def configure(
     configure_logging(verbosity, log_file=log_file, force=True)
     configure_agentic_verbosity(verbosity, console_output=verbosity >= 2)
 
-    # Channel filter for simulation output
+    # Display tier and interactive mode
+    if display is not None:
+        from maxim.simulation.sim_logger import set_display_tier
+
+        set_display_tier(display)
+
+    if interactive is not None:
+        from maxim.simulation.sim_logger import set_interactive_mode
+
+        set_interactive_mode(interactive)
+
+    # Channel filter for simulation output (legacy — --display is preferred)
     if show is not None:
         from maxim.simulation.sim_logger import set_show_channels
 

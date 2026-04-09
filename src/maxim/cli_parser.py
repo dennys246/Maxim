@@ -15,6 +15,22 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── Core ───────────────────────────────────────────────────────────
     core = parser.add_argument_group("core", "Runtime and model configuration")
     core.add_argument(
+        "--display",
+        type=str,
+        default="clean",
+        choices=["clean", "bio", "debug"],
+        help="Output detail: clean (narrative only, DEFAULT), "
+        "bio (+ memory/learning annotations), debug (+ full system traces).",
+    )
+    core.add_argument(
+        "--interactive",
+        type=str,
+        default="auto",
+        choices=["auto", "on", "off"],
+        help="Input mode: auto (DM campaigns prompt, generative sims don't, DEFAULT), "
+        "on (always prompt), off (never prompt — use policy defaults).",
+    )
+    core.add_argument(
         "--verbosity",
         type=int,
         default=1,
@@ -322,13 +338,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Display name for the agent-under-test in simulation logs. Default: AUT",
     )
     sim.add_argument(
-        "--sim-interactive",
-        action="store_true",
-        dest="sim_interactive",
-        help="Enable human-in-the-loop interaction during simulation. "
-        "The narrator can pause for player choices, dice rolls, etc.",
-    )
-    sim.add_argument(
         "--replay-from",
         type=str,
         default=None,
@@ -416,6 +425,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── Debug/Trace ────────────────────────────────────────────────────
     dbg = parser.add_argument_group("debug", "Debug tracing and output filtering")
     dbg.add_argument(
+        "--trace",
         "--debug",
         "--sim-debug",
         dest="debug",
@@ -423,10 +433,10 @@ def _build_parser() -> argparse.ArgumentParser:
         const="all",
         default=None,
         metavar="SUBSYSTEMS",
-        help="Enable debug tracing. Without args: all subsystems. With args: "
-        "comma-separated (e.g., --debug hippo,nac). "
+        help="Enable detailed bio-system traces to stderr. Without args: all. "
+        "With args: comma-separated (e.g., --trace hippo,nac). "
         "Subsystems: hippo/memory, nac/causal/reward, atl/semantic, "
-        "scn/temporal, all. --sim-debug is a synonym.",
+        "scn/temporal, all. --debug and --sim-debug are synonyms.",
     )
     dbg.add_argument(
         "--show",
