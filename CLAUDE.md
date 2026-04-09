@@ -24,6 +24,22 @@ Additional guardrails:
 - Prefer editing existing modules over creating new ones — this codebase favors many small files already
 - Don't rename bio-system classes (Hippocampus, ATL, NAc, SCN, EC, AngularGyrus) — names are load-bearing for the mental model
 - If you touch provenance, run a sim with `MAXIM_PROVENANCE_VERBOSITY=2` and eyeball the trace
+- **Run `mypy` on public API files** after changing api.py, session.py, create.py, load.py, or __init__.py: `mypy src/maxim/__init__.py src/maxim/api.py src/maxim/session.py src/maxim/create.py src/maxim/load.py --ignore-missing-imports`
+- **Run `ruff format`** after any changes: `ruff format src/ tests/`
+
+## Lessons learned (bugs that bit us)
+
+**Mutable globals + module extraction:** When extracting module-level mutable globals (like `_active_spawner`) into a new file, do NOT re-import them by name (`from new_module import _active_spawner`). Python binds by value at import time — assignments in the importing module diverge from the source. Use module reference instead: `import new_module as _mod; _mod._active_spawner = value`. Functions are safe to re-import (they close over their own module's namespace).
+
+**Auth in health probes:** Any HTTP health check that probes an endpoint behind API key auth MUST include the auth header. The leader's `_probe_upstream_ready()` was silently getting 401s from an auth-gated llama-cpp-server, causing `llm_ready` to be permanently false. Always send auth in probes, and treat 401 as "server is up" (auth-gated but alive).
+
+**NAc class name:** The class is `NAc` (in `decisions/nac.py`), NOT `NucleusAccumbens`. Old code may reference the wrong name — always grep for `NucleusAccumbens` after touching NAc-related code.
+
+**Lane tier names:** The canonical tier names are `"large"`, `"medium"`, `"small"`. The old names `"infer"`, `"review"`, `"record"` have been fully removed. Do not re-introduce them.
+
+**Startup ordering in cli.py:** The LeaderProxy MUST start BEFORE `_normalize_args()` because arg normalization can trigger heavy CUDA imports (5-15s on GPU systems). Peers polling for the proxy during restart will time out if the proxy starts after these imports.
+
+**Dead code accumulates silently:** Before publishing or after major refactors, grep for orphan modules: `.py` files whose basename doesn't appear in any `import` statement. We found 15 dead modules (~8,500 LOC) shipping in the wheel.
 
 ## Running simulations — keep them small
 
@@ -143,12 +159,12 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 - **Agent loop** lives in `runtime/agent_loop.py` with `LoopController` in `runtime/loop_controller.py`
 - **Multi-agent runtime**: `AgentFactory` in `runtime/agent_factory.py` creates independent agent instances (NPC agents with isolated Hippocampus, NAc, ATL). `AgentPool` in `runtime/agent_pool.py` orchestrates concurrent multi-agent execution with `LocalMessageBus`.
 - **LLM routing** lives in `models/language/router.py` (config in `models/language/config.py`). 10 cloud provider profiles: Gemini, Groq, Together, Fireworks, Mistral, DeepSeek (plus Anthropic, OpenAI, local llama-cpp, transformers).
-- **Simulation** orchestrator in `simulation/orchestrator.py`, bridge in `simulation/bridge.py`. Party DM runtime in `simulation/dm_party.py` for multi-agent campaigns. Encounter library in `simulation/encounter_library.py` with seed templates.
+- **Simulation** orchestrator in `simulation/orchestrator.py`, bridge in `simulation/bridge.py`. Campaign runners in `simulation/campaign_runner.py`. Types in `simulation/sim_types.py`.
 - **Interactive runtime** in `interactive/` — universal prompt protocol (`PromptRequest`/`PromptHandler`), rich terminal display with split panels, DM display extensions.
-- **Mode system**: ProcessingState (awake/sleep) x OperationalMode (passive/active/singularity). Sleep is a tool the agent calls; it wakes automatically on user input.
+- **Mode system**: ProcessingState (awake/sleep) x OperationalMode (planning/supervised/autonomous). Sleep is a tool the agent calls; it wakes automatically on user input.
 - **Memory tiers**: FORMING -> WORKING -> SHORT_TERM -> LONG_TERM
 - **Memory store protocols**: `EpisodicStore`, `CausalStore`, `SemanticStore` in `memory/store.py` — split persistence protocols with `File*Store` defaults and database implementations for Mother Maxim.
-- **Lane tier system**: Functions route to capability tiers (large/medium/small) via `FunctionRouter` in `runtime/function_router.py`. Legacy lane names (infer/review/record) are aliased to tier names. `detect_tiers()` in `lane_models.py` auto-detects from hardware.
+- **Lane tier system**: Functions route to capability tiers (large/medium/small) via `FunctionRouter` in `runtime/function_router.py`. `detect_tiers()` in `lane_models.py` auto-detects from hardware.
 - **Data paths**: Bundled seed data in `src/maxim/_data/` (components, encounters, prompts, templates). User data at `~/.maxim/` (memory, sessions, benchmarks, config). Resolution via `utils/paths.py`.
 - **SEM Component Registry**: `embodiment/component_registry.py` discovers SEM entity templates from campaign-local, `~/.maxim/components/`, and `_data/components/`. 54 seed components across 7 categories (bodies, creatures, environments, items, npcs, vehicles, weapons). Genre-gated: fantasy, cyberpunk, scifi, horror, historical, modern, devops.
 - **Thread model**: Main loop at 2-30Hz + WorkerPool (tier-based lanes: large/medium/small, owned by LLMWorker) + Hippocampus capture thread (owned + shut down by MemoryHub.on_session_end)
@@ -166,7 +182,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Persistence | `utils/atomic_io.py`, `utils/paths.py` (data path resolution) |
 | Simulation | `simulation/orchestrator.py`, `simulation/bridge.py`, `simulation/personas.py` |
 | Generative campaigns | `simulation/arcs.py`, `simulation/narrator.py`, `simulation/generative_runner.py` |
-| DM campaigns | `simulation/dm_schema.py`, `simulation/dm_runtime.py`, `simulation/dm_party.py` |
+| DM campaigns | `simulation/dm_schema.py`, `simulation/dm_runtime.py` |
 | Benchmarks | `simulation/benchmark.py`, `simulation/validation.py` |
 | Research | `simulation/research_agents.py`, `simulation/research_orchestrator.py` |
 | Embodiment | `embodiment/sem.py`, `embodiment/body.py`, `embodiment/cerebellum.py`, `embodiment/motor.py` |
@@ -213,7 +229,7 @@ MAXIM_CLOUD_SESSION_BUDGET=5.00  # Hard ceiling on cloud spending per session
 MAXIM_LANE_LARGE_REMOTE_URL=     # Override large tier to use remote server
 MAXIM_LANE_LARGE_REMOTE_MODEL=   # Model name to request from remote server
 MAXIM_LANE_LARGE_REMOTE_API_KEY= # Auth token for remote server
-# Legacy names (infer/review/record) are aliased to tier names automatically
+# Tier names only: large, medium, small (legacy infer/review/record removed in v1.0)
 ```
 
 ## Testing
@@ -233,7 +249,7 @@ Known pre-existing failure: `tests/integration/test_memory_hub.py::TestPlanningB
 
 ### Testing efficiently
 
-**Run narrow first, then wide.** Test the specific module you changed before running the full suite (~3 min). The full suite has 2500+ tests; don't wait for all of them on every edit.
+**Run narrow first, then wide.** Test the specific module you changed before running the full suite (~3 min). The full suite has 3400+ tests; don't wait for all of them on every edit.
 
 **Kill stale sims before running tests.** A running `maxim --sim agent` process holds GPU + port resources and can cause test hangs:
 ```bash
@@ -255,14 +271,14 @@ Sim runs save to `~/.maxim/sessions/{session_id}/` (report.json, actions.jsonl, 
 
 ## Python API (pymaxim)
 
-Published to PyPI as `pymaxim` (import name stays `maxim`). 13 verb-based functions, all lazy-loaded from `src/maxim/api.py`. Key files: `api.py` (facades), `__init__.py` (lazy wiring), `simulation/introspection.py` (Observer).
+Published to PyPI as `pymaxim` (import name stays `maxim`). 17 verb-based functions, all lazy-loaded from `src/maxim/api.py`. Key files: `api.py` (facades), `__init__.py` (lazy wiring), `simulation/introspection.py` (Observer).
 
 **Rules for maintaining the API:**
 - **Verbs are facades, not logic.** Delegate to existing internals. Don't put business logic in `api.py`.
 - **Lazy imports only.** `import maxim` must not trigger loading of optional dependencies.
 - **Return structured data, not prints.** `diagnose()` returns `DiagnosticReport`, `imagine()` returns `SimulationResult`, etc.
 - **`introspect` is an alias for `observe`.** Don't add behavior to one without the other.
-- **`Observer`** is the canonical name (deprecated alias `AUTIntrospector` — remove in 0.2.0).
+- **`Observer`** is the canonical name (no aliases).
 
 **Package management:**
 - **Package name:** `pymaxim` on PyPI, `maxim` as import
@@ -274,4 +290,4 @@ Published to PyPI as `pymaxim` (import name stays `maxim`). 13 verb-based functi
 
 ## Active initiatives
 
-See `docs/plans/future_plans.md` for the full roadmap. Current priorities: PyPI publication (v0.2.0 pending verification, [guide](docs/publication_guide.md)) and Mother Maxim ([plan](docs/plans/mother_maxim_plan.md)). Previously completed work is archived in `docs/archive/`.
+See `docs/plans/future_plans.md` for the full roadmap. Current version: v1.0.0 ([publication guide](docs/publication_guide.md)). Post-publication priorities: Mother Maxim ([plan](docs/plans/mother_maxim_plan.md)) and Pecking Order Graph ([plan](docs/plans/pecking_order_graph_plan.md)). Previously completed work is archived in `docs/archive/`.

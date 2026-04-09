@@ -21,6 +21,24 @@ Maxim is a bio-inspired cognitive architecture for autonomous agents. Published 
 - If files or data are created in the `sandbox/` or `.maxim_workspace/`, delete old and un-necessary files and data if no longer being used.
 - Build code to handle both CPU and GPU execution paths; agentic runtime should only run when a GPU is available.
 
+## Module Extraction Rules (Learned the Hard Way)
+
+When refactoring code into new modules:
+
+1. **Never import mutable globals by name.** `from mod import _my_global` copies the value at import time. Subsequent assignments create two divergent copies. Use `import mod; mod._my_global = value` instead. Functions are safe to re-import (they capture their own module's namespace).
+
+2. **Always include auth in HTTP health probes.** If you add a health check that probes an endpoint (e.g., `/v1/models`), always send the API key. Auth-gated servers return 401 to unauthenticated probes — treat 401 as "server is up."
+
+3. **Run `mypy` on the public API surface** after any changes to api.py, session.py, create.py, load.py, or __init__.py. We caught runtime bugs (wrong function names, `.text` on dicts) that tests missed.
+
+4. **Startup ordering matters for leader proxy.** In cli.py, the LeaderProxy must bind BEFORE `_normalize_args()` runs. Arg normalization triggers heavy CUDA imports on GPU systems (5-15s). Peers polling during restart will time out if the proxy starts after these imports.
+
+5. **Grep for dead code after deletions.** After removing modules, check for orphan test files that import them. Also check for stale references in CLAUDE.md, docs/reference.md, and docs/index.md.
+
+6. **Lane tier names are `large`/`medium`/`small` only.** The old names (`infer`/`review`/`record`) have been fully removed. Do not re-introduce alias dicts.
+
+7. **The NAc class is `NAc`**, not `NucleusAccumbens`. The old name was removed. Always use `from maxim.decisions.nac import NAc`.
+
 ## Naming Conventions (Cross-System Consistency)
 
 When multiple systems share the same functional role, they **must** use the same method and property names. This ensures the codebase reads uniformly and that abstract protocols (ABCs) map cleanly to concrete implementations.
