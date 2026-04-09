@@ -1,6 +1,6 @@
 # Foundational Buildout Plan
 
-> **Status:** In progress. Phases 0-12a done/shipped. Phase 11 in progress (Test PyPI). Phase 12b partially done.
+> **Status:** In progress. Phases 0-12a done/shipped. Phase 11 in progress (Test PyPI). Phase 12b DONE.
 > **Goal:** Ship the architectural foundations that Multi-AUT Party Mode, SEM Component Database, and DM Encounter Library require — plus fix packaging, API surface, and code quality issues — before locking the public API via PyPI publication.
 > **Total scope:** ~6,650 LOC across 13 phases.
 > **Sequence:** Hygiene (0 ✓) → Foundation (1 → 1.1 → 2-3 → 4 → 5) → DM polish (6-7) → API + Packaging (8-9) → Publication prep (10) → Test PyPI (11) ∥ Hardening (12b) → Manual publish.

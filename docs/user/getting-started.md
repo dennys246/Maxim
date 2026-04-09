@@ -6,14 +6,22 @@ Maxim is a hardware-agnostic cognitive framework. It runs local LLM inference fo
 
 ## Prerequisites
 
-- **Python 3.12+**
+- **Python 3.10+**
 - **Reachy Mini on the same LAN/Wi-Fi** (optional -- headless mode works without a robot)
 - **Disk space:** ~2 GB for base install, ~6 GB with LLM models
 - **Pollen Robotics SDK:** follow the [official installation guide](https://github.com/pollen-robotics/reachy_mini/blob/develop/docs/SDK/installation.md)
 
 ## Installation
 
-### Base Install
+### Install from PyPI
+
+```bash
+pip install pymaxim
+```
+
+The package name on PyPI is `pymaxim`; the import name is `maxim`.
+
+### Developer Install (from source)
 
 ```bash
 git clone https://github.com/dennys246/Maxim.git
@@ -25,7 +33,7 @@ pip install -e .
 
 ### Optional Extras
 
-Install any combination with `pip install -e ".[extra1,extra2]"`.
+Install any combination with `pip install "pymaxim[extra1,extra2]"` (or `pip install -e ".[extra1,extra2]"` from a source checkout).
 
 | Extra | Command | What it adds |
 |-------|---------|--------------|

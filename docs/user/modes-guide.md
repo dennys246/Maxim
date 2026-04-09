@@ -32,7 +32,7 @@ The default mode. The agent proposes actions and waits for your approval before 
 - **Network:** Allowed
 - **Forbidden tools:** `execute_file`, `maxim_command`, `request_directory_change`
 
-### Active
+### Supervised
 
 The agent acts within defined boundaries. It can take actions but significant operations are gated by approval.
 
@@ -43,7 +43,7 @@ The agent acts within defined boundaries. It can take actions but significant op
 - **Network:** Allowed
 - **No forbidden tools** (execution gated by approval)
 
-### Singularity
+### Autonomous
 
 Full autonomy. The agent decides and acts on its own. Safety and ethical constraints (Constitution) still apply unconditionally.
 
@@ -58,8 +58,8 @@ Full autonomy. The agent decides and acts on its own. Safety and ethical constra
 # Start in planning mode (default)
 maxim --language-model mistral-7b
 
-# Start in active mode
-maxim --autonomy active --language-model mistral-7b
+# Start in supervised mode
+maxim --autonomy supervised --language-model mistral-7b
 
 # Time-boxed autonomous mode
 maxim --autonomy autonomous --autonomy-duration 600
@@ -94,7 +94,7 @@ You do not have to restart Maxim to change modes.
 - "Maxim sleep" -- agent enters sleep
 - "Maxim wake up" -- wake from sleep
 - "Maxim planning" -- switch to planning mode
-- "Maxim active" -- switch to active mode
+- "Maxim supervised" -- switch to supervised mode
 - "Maxim autonomous" -- switch to autonomous mode
 
 ### Agent Tools

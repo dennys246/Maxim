@@ -38,6 +38,22 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/math/` | Angular Gyrus mathematical cognition, IPS fast stats |
 | `src/maxim/default_network/` | Reactive behavior layer (thalamic gate, arbiter) |
 | `src/maxim/salience/` | Novelty tracking, interest matching |
+| `src/maxim/interactive/` | Interactive runtime: universal prompt protocol, rich terminal display, DM extensions |
+| `src/maxim/cli_utils.py` | CLI helper utilities (extracted from main CLI module) |
+| `src/maxim/runtime/tool_dispatch.py` | Tool execution dispatch (extracted from executor) |
+| `src/maxim/runtime/bio_integration.py` | Bio-system wiring for the agent loop |
+| `src/maxim/runtime/llm_server.py` | Local llama-cpp server lifecycle management |
+| `src/maxim/simulation/sim_types.py` | Shared type definitions for simulation subsystem |
+| `src/maxim/simulation/campaign_runner.py` | Campaign execution engine (generative + DM) |
+| `src/maxim/models/language/cloud_dispatch.py` | Cloud provider request routing and redaction |
+| `src/maxim/memory/store.py` | Split persistence protocols: EpisodicStore, CausalStore, SemanticStore |
+| `src/maxim/memory/atl.py` | ATL semantic concept memory (concepts, relationships, grounding) |
+| `src/maxim/memory/concept_extractor.py` | Concept extraction from episodic memories |
+| `src/maxim/memory/concept_grounder.py` | Concept grounding against perceptual evidence |
+| `src/maxim/memory/pattern_completer.py` | Pattern completion from partial cues |
+| `src/maxim/memory/semantic_promoter.py` | Promotion of recurring patterns to semantic concepts |
+| `src/maxim/memory/cross_layer.py` | CrossLayerGraph: associative edges between memory systems |
+| `src/maxim/memory/consolidation.py` | ConsolidationOrchestrator: wave-based sleep consolidation |
 
 See [ARCHITECTURE.md](../ARCHITECTURE.md) for detailed design rules.
 

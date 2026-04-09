@@ -30,7 +30,7 @@ All pre-publication work is tracked in [foundational_buildout_plan.md](foundatio
 | 12a | Security Hardening | **DONE** |
 | 12b | [Pre-Publication Hardening](pre_publication_hardening_plan.md) — UX, errors, API fixes, tests, docs | **DONE** |
 | 13 | [Publication Refinement](publication_refinement_plan.md) — blockers, error honesty, threading, docs | Phase 0 **DONE** |
-| 13a | [API Surface Hardening](api_surface_hardening_plan.md) — wire stub verbs, fix research protocol, error handling, integration tests, README | Not started |
+| 13a | [API Surface Hardening](api_surface_hardening_plan.md) — wire stub verbs, fix research protocol, error handling, integration tests, README | **ALL PHASES DONE (2026-04-08)** |
 | — | Manual publish (`twine upload`) | Blocked on 13 + 13a |
 
 ---

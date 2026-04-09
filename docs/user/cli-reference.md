@@ -16,7 +16,7 @@ maxim [OPTIONS]
 |------|------|---------|-------------|
 | `--mode` | str | `agentic` | Operating mode: `agentic` (recommended). Legacy aliases (`exploration`, `live`, `sleep`, `reflection`, `train`) still accepted. |
 | `--robot-name` | str | `reachy_mini` | Robot identifier for Zenoh discovery |
-| `--home-dir` | str | `data` | Directory for outputs and state |
+| `--home-dir` | str | `~/.maxim/` | Directory for outputs and state |
 | `--timeout` | int | `30` | Seconds to wait for robot connection |
 | `--epochs` | int | None (infinite) | Stop after N cycles |
 | `--verbosity` | int | `1` | Logging level: 0 (quiet), 1 (info), 2 (debug) |

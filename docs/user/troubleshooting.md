@@ -2,8 +2,11 @@
 
 ## Quick Diagnostics
 ```bash
+# Environment check (network, GPU, models, disk, etc.)
+maxim doctor
+
 # Check robot connection
-maxim-diagnostics --host <REACHY_IP>
+maxim --timeout 60 --verbosity 2
 
 # Verbose logging
 maxim --verbosity 2

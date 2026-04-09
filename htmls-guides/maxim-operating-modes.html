@@ -2,9 +2,9 @@
 
 {% block title %}Operating Modes — Maxim Docs | Autonomy Levels{% endblock %}
 
-{% block meta_description %}Explore Maxim's operating modes — three autonomy levels (passive, active, singularity) and sleep as a tool-invoked processing state.{% endblock %}
+{% block meta_description %}Explore Maxim's operating modes — three autonomy levels (planning, supervised, autonomous) and sleep as a tool-invoked processing state.{% endblock %}
 
-{% block meta_keywords %}Maxim operating modes, robot autonomy levels, passive mode, active mode, singularity mode, sleep tool, robot operational modes{% endblock %}
+{% block meta_keywords %}Maxim operating modes, autonomy levels, planning mode, supervised mode, autonomous mode, sleep tool, cognitive architecture{% endblock %}
 
 {% block meta_author %}Maxim Project{% endblock %}
 {% block og_site_name %}Maxim{% endblock %}
@@ -21,7 +21,7 @@
   "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
   "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/operating-modes",
   "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
-  "keywords": ["operating modes", "autonomy levels", "passive", "active", "singularity", "sleep"]
+  "keywords": ["operating modes", "autonomy levels", "planning", "supervised", "autonomous", "sleep"]
 }
 </script>
 <script type="application/ld+json">
@@ -49,9 +49,9 @@
   }
   .badge-awake { background: rgb(16 185 129 / 0.2); color: rgb(52 211 153); border: 1px solid rgb(52 211 153 / 0.3); }
   .badge-sleep { background: rgb(99 102 241 / 0.2); color: rgb(165 180 252); border: 1px solid rgb(165 180 252 / 0.3); }
-  .badge-passive { background: rgb(148 163 184 / 0.2); color: rgb(203 213 225); border: 1px solid rgb(203 213 225 / 0.3); }
-  .badge-active { background: rgb(59 130 246 / 0.2); color: rgb(147 197 253); border: 1px solid rgb(147 197 253 / 0.3); }
-  .badge-singularity { background: rgb(168 85 247 / 0.2); color: rgb(216 180 254); border: 1px solid rgb(216 180 254 / 0.3); }
+  .badge-planning { background: rgb(148 163 184 / 0.2); color: rgb(203 213 225); border: 1px solid rgb(203 213 225 / 0.3); }
+  .badge-supervised { background: rgb(59 130 246 / 0.2); color: rgb(147 197 253); border: 1px solid rgb(147 197 253 / 0.3); }
+  .badge-autonomous { background: rgb(168 85 247 / 0.2); color: rgb(216 180 254); border: 1px solid rgb(216 180 254 / 0.3); }
   .badge-sm { font-size: 0.65rem; }
 </style>
 {% endblock %}
@@ -88,7 +88,7 @@
     <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Data structure</span>
 MaximState:
   processing_state: awake | sleep           # Resource usage
-  operational_mode: passive | active | singularity  # Action authority</div>
+  operational_mode: planning | supervised | autonomous  # Action authority</div>
 
     <p class="text-slate-300 leading-relaxed">Sleep is a processing state the agent enters by calling the <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">sleep</code> tool. A sleeping agent retains its operational mode and wakes automatically when user input arrives, resuming exactly where it left off.</p>
 
@@ -105,9 +105,9 @@ MaximState:
         <h4 class="text-white font-semibold mb-2">Operational Mode</h4>
         <p class="text-sm text-slate-400 mb-3">Determines action authority</p>
         <div class="flex justify-center gap-2 flex-wrap">
-          <span class="state-badge badge-passive">passive</span>
-          <span class="state-badge badge-active">active</span>
-          <span class="state-badge badge-singularity">singularity</span>
+          <span class="state-badge badge-planning">planningspan>
+          <span class="state-badge badge-supervised">active</span>
+          <span class="state-badge badge-autonomous">autonomousspan>
         </div>
       </div>
     </div>
@@ -119,9 +119,9 @@ MaximState:
 
     <p class="text-slate-300 leading-relaxed">The three operational modes control <em class="text-indigo-400 not-italic font-medium">how much authority</em> Maxim has. Each level sets a maximum initiative value between 0.0 (fully reactive) and 1.0 (fully proactive).</p>
 
-    <!-- Passive -->
+    <!-- Planning -->
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-3">
-      <h4 class="text-white font-semibold flex items-center gap-2"><span class="state-badge badge-passive">passive</span> Planning Autonomy</h4>
+      <h4 class="text-white font-semibold flex items-center gap-2"><span class="state-badge badge-planning">planningspan> Planning Autonomy</h4>
       <p class="text-slate-300 text-sm"><strong class="text-indigo-400">Goal:</strong> Observe, understand, and propose actions without unilateral execution.</p>
       <p class="text-slate-300 text-sm"><strong class="text-indigo-400">Max Initiative:</strong> 0.3 (mostly reactive)</p>
 
@@ -141,7 +141,7 @@ MaximState:
 
     <!-- Active -->
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-3">
-      <h4 class="text-white font-semibold flex items-center gap-2"><span class="state-badge badge-active">active</span> Supervised Autonomy</h4>
+      <h4 class="text-white font-semibold flex items-center gap-2"><span class="state-badge badge-supervised">active</span> Supervised Autonomy</h4>
       <p class="text-slate-300 text-sm"><strong class="text-indigo-400">Goal:</strong> Execute tasks and take actions within defined boundaries.</p>
       <p class="text-slate-300 text-sm"><strong class="text-indigo-400">Max Initiative:</strong> 0.7 (proactive within bounds)</p>
 
@@ -159,9 +159,9 @@ MaximState:
       <p class="text-slate-400 text-xs">No forbidden tools (execution gated by approval)</p>
     </div>
 
-    <!-- Singularity -->
+    <!-- Autonomous -->
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-3">
-      <h4 class="text-white font-semibold flex items-center gap-2"><span class="state-badge badge-singularity">singularity</span> Full Autonomy</h4>
+      <h4 class="text-white font-semibold flex items-center gap-2"><span class="state-badge badge-autonomous">autonomousspan> Full Autonomy</h4>
       <p class="text-slate-300 text-sm"><strong class="text-indigo-400">Goal:</strong> Operate with full autonomy, self-correcting and learning continuously.</p>
       <p class="text-slate-300 text-sm"><strong class="text-indigo-400">Max Initiative:</strong> 1.0 (fully proactive)</p>
 
@@ -248,9 +248,9 @@ MaximState:
       <ul class="text-xs text-slate-400 space-y-1">
         <li>"Maxim sleep" &rarr; enter sleep (calls sleep tool)</li>
         <li>"Maxim wake up" &rarr; awake processing state</li>
-        <li>"Maxim passive" &rarr; passive operational mode</li>
+        <li>"Maxim planning" &rarr; planning operational mode</li>
         <li>"Maxim active" &rarr; active operational mode</li>
-        <li>"Maxim singularity" &rarr; singularity mode</li>
+        <li>"Maxim autonomous" &rarr; autonomous mode</li>
       </ul>
     </div>
 

@@ -1,14 +1,18 @@
 # Memory System
 
-The memory module provides episodic memory storage and retrieval through a biologically-inspired Hippocampus architecture.
+Maxim's memory system spans multiple bio-inspired subsystems, each handling a different kind of knowledge.
 
 ## Overview
 
-Maxim's memory system is modeled after the mammalian hippocampus and entorhinal cortex (EC):
-
-- **Hippocampus**: Episodic memory storage with associative indexing
-- **SCN Integration**: Temporal rhythm indexing for time-based retrieval
-- **EC Similarity**: Multi-modal similarity with Phase 4 neural semantic embeddings
+| Subsystem | Brain Region | What It Stores |
+|-----------|-------------|----------------|
+| **Hippocampus** | Hippocampus | Episodic memories (events, conversations) with associative indexing |
+| **ATL** | Anterior Temporal Lobe | Semantic concepts, entities, and typed relationships |
+| **Angular Gyrus** | Angular Gyrus / IPS | Mathematical cognition, cross-modal statistical summaries |
+| **NAc** | Nucleus Accumbens | Causal links and reward prediction errors |
+| **SCN** | Suprachiasmatic Nucleus | Temporal rhythm indexing for time-based retrieval |
+| **EC** | Entorhinal Cortex | Multi-modal similarity routing with Phase 4 neural embeddings |
+| **MemoryHub** | (integration layer) | Cross-system coordinator, event dispatch, lifecycle management |
 
 ## Components
 
@@ -372,6 +376,102 @@ results = index.query_similar("person at the table", min_similarity=0.3)
 ```
 
 The LSH index replaces the old keyword Jaccard approach in `AssociationIndex.find_similar()` and O(n) linear scans in `hippocampus.recall_similar()`.
+
+---
+
+## ATL (Anterior Temporal Lobe)
+
+The ATL is the semantic concept memory layer. While the Hippocampus stores *what happened* (episodes), the ATL stores *what things mean* (concepts, entities, relationships).
+
+### Architecture
+
+Concepts are promoted from episodes via NAc reward signals and StatisticianAgent pattern confirmation, or ingested directly (RAG). The ATL pipeline has four stages:
+
+| Stage | Module | Purpose |
+|-------|--------|---------|
+| Extraction | `concept_extractor.py` | Extract candidate concepts from episodic memories |
+| Grounding | `concept_grounder.py` | Validate concepts against perceptual evidence |
+| Pattern Completion | `pattern_completer.py` | Fill in missing attributes from partial cues |
+| Promotion | `semantic_promoter.py` | Promote recurring patterns to stable semantic concepts |
+
+### Data Model
+
+ATL stores `SemanticMemory` instances (via `MemoryLayer` ABC) with typed relationships between concepts. Compressed forms (`CompressedSemantic`) reduce storage for infrequently accessed concepts.
+
+### Integration
+
+- **Hippocampus**: Concepts are derived from episodic memories; ATL wires a `_pattern_completion_fn` back into the Hippocampus for predictive context during memory formation.
+- **NAc**: Reward signals gate which patterns are worth promoting to semantic status.
+- **AngularGyrus**: Math/statistical enrichment data attached to concepts via `MathContextEntry`.
+
+Clear with: `maxim --clear-memory atl`
+
+---
+
+## Angular Gyrus
+
+Mathematical and statistical cognition. Combines memories across modalities and provides quantitative reasoning. Includes IPS (Intraparietal Sulcus) for fast statistical summaries.
+
+Lives in `src/maxim/math/`. See the Math Cognition guide for details.
+
+Clear with: `maxim --clear-memory angular`
+
+---
+
+## MemoryHub
+
+`integration/memory_hub.py` is the central coordinator that wires all 11 bio-systems together. It owns the lifecycle connections between Hippocampus, ATL, NAc, SCN, EC, Salience, Attention, Fear, Spatial, Planning, and Escalation bridges.
+
+### Responsibilities
+
+- Routes perception, decision, action, and outcome events to the correct subsystems
+- Manages session start/end lifecycle (including Hippocampus capture thread shutdown)
+- Provides a single `on_cycle()` entry point for the agent loop
+- Coordinates sleep consolidation across systems
+
+The MemoryHub does not store memories itself -- it dispatches to the appropriate subsystem.
+
+---
+
+## CrossLayerGraph
+
+`memory/cross_layer.py` maintains associative edges *between* memory systems (e.g., linking an episodic memory in Hippocampus to a semantic concept in ATL). This is distinct from the intra-system associative graph inside Hippocampus.
+
+Edge weights combine perceptual (0.6), goal (0.25), and temporal (0.15) similarity. Spreading activation traverses cross-layer edges with configurable decay and depth.
+
+---
+
+## Store Protocols
+
+`memory/store.py` defines three persistence protocols, one per subsystem:
+
+| Protocol | Subsystem | Query Pattern |
+|----------|-----------|---------------|
+| `EpisodicStore` | Hippocampus | Similarity search, time-range queries |
+| `CausalStore` | NAc | Event-to-outcome lookups |
+| `SemanticStore` | ATL | Concept-type filtering |
+
+Default implementations (`FileEpisodicStore`, `FileCausalStore`, `FileSemanticStore`) wrap JSON persistence. Database implementations (PostgreSQL + pgvector) are provided by the `[database]` extra for Mother Maxim.
+
+---
+
+## NAc (Nucleus Accumbens)
+
+Not strictly a memory system, but tightly coupled. The NAc learns causal links (cause-and-effect relationships) from episodic sequences. It maintains reward prediction errors (RPE) that drive memory consolidation thresholds and concept promotion in the ATL.
+
+Lives in `src/maxim/decisions/nac.py`. See [decisions.md](decisions.md) for full documentation.
+
+Clear with: `maxim --clear-memory nac`
+
+---
+
+## SCN (Suprachiasmatic Nucleus)
+
+The internal clock. Provides temporal rhythm indexing so memories can be queried by time-of-day patterns and circadian-like cycles.
+
+Lives in `src/maxim/time/`. See [time.md](time.md) for full documentation.
+
+Clear with: `maxim --clear-memory scn`
 
 ---
 

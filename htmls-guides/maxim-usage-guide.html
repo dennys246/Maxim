@@ -104,7 +104,7 @@
     <h2 id="requirements" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Requirements</h2>
 
     <ul class="space-y-2 text-slate-300 list-disc pl-5">
-      <li><strong class="text-white">Python 3.12+</strong></li>
+      <li><strong class="text-white">Python 3.10+</strong></li>
       <li><strong class="text-white">Hardware:</strong> Reachy Mini robot (optional &mdash; runs in headless mode without one)</li>
       <li><strong class="text-white">RAM:</strong> 4GB minimum (8GB+ for larger LLMs)</li>
       <li><strong class="text-white">GPU:</strong> Optional. Metal (macOS) or CUDA (Linux) supported</li>
@@ -122,25 +122,29 @@
     <h2 id="installation" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Installation</h2>
 
     <ol class="step-list text-slate-300">
-      <li><strong class="text-white">Clone the repository</strong>
-        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre">git clone https://github.com/dennys246/Maxim.git
-cd Maxim</div>
+      <li><strong class="text-white">Install from PyPI</strong>
+        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre">pip install pymaxim</div>
+        <p class="text-sm text-slate-400 mt-1">The package is called <code class="bg-slate-950 px-1 rounded">pymaxim</code> on PyPI, but you import it as <code class="bg-slate-950 px-1 rounded">maxim</code>.</p>
       </li>
-      <li><strong class="text-white">Create a virtual environment</strong>
-        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre">python -m venv maxim-env
-source maxim-env/bin/activate</div>
+      <li><strong class="text-white">Add LLM support</strong> (pick one or more)
+        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre"># Local LLM via llama.cpp
+pip install 'pymaxim[llm-llama]'
+
+# Claude (Anthropic)
+pip install 'pymaxim[llm-anthropic]'
+
+# OpenAI / GPT
+pip install 'pymaxim[llm-openai]'</div>
       </li>
-      <li><strong class="text-white">Install core package</strong>
-        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre">pip install -e .</div>
-      </li>
-      <li><strong class="text-white">Install LLM support</strong> (enables the agentic runtime)
-        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre">pip install -e '.[llm]'</div>
-      </li>
-      <li><strong class="text-white">Download a language model</strong>
-        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre">./scripts/download_models.sh --llm</div>
-        <p class="text-sm text-slate-400 mt-1">This downloads SmolLM 1.7B (~1.1GB), the default CPU-friendly model.</p>
+      <li><strong class="text-white">Download a local model</strong> (optional &mdash; skip if using cloud)
+        <div class="bg-slate-950 rounded-lg px-4 py-2 mt-2 font-mono text-sm overflow-x-auto whitespace-pre">maxim --list-models          # see available models
+./scripts/download_models.sh --llm   # download SmolLM 1.7B (~1.1GB)</div>
       </li>
     </ol>
+
+    <div class="bg-slate-800/50 rounded-xl p-4 mt-4">
+      <p class="text-slate-400 text-sm"><strong class="text-slate-300">Developer install:</strong> To work on Maxim itself, clone the repo and use <code class="bg-slate-950 px-1 rounded text-xs">pip install -e '.[test]'</code> instead.</p>
+    </div>
 
     <h3 class="text-lg font-semibold text-indigo-400">Optional Extras</h3>
 
@@ -156,22 +160,22 @@ source maxim-env/bin/activate</div>
         <tbody class="text-slate-300">
           <tr class="border-b border-slate-700 hover:bg-slate-800/50">
             <td class="px-4 py-3">TTS</td>
-            <td class="px-4 py-3 font-mono text-xs">pip install -e '.[tts]'</td>
+            <td class="px-4 py-3 font-mono text-xs">pip install 'pymaxim[tts]'</td>
             <td class="px-4 py-3">Text-to-speech (Piper TTS)</td>
           </tr>
           <tr class="border-b border-slate-700 hover:bg-slate-800/50">
             <td class="px-4 py-3">Semantic</td>
-            <td class="px-4 py-3 font-mono text-xs">pip install -e '.[semantic]'</td>
+            <td class="px-4 py-3 font-mono text-xs">pip install 'pymaxim[semantic]'</td>
             <td class="px-4 py-3">Neural similarity (SentenceTransformer)</td>
           </tr>
           <tr class="border-b border-slate-700 hover:bg-slate-800/50">
             <td class="px-4 py-3">Torch LLM</td>
-            <td class="px-4 py-3 font-mono text-xs">pip install -e '.[llm-torch]'</td>
+            <td class="px-4 py-3 font-mono text-xs">pip install 'pymaxim[llm-torch]'</td>
             <td class="px-4 py-3">PyTorch transformers backend</td>
           </tr>
           <tr class="hover:bg-slate-800/50">
             <td class="px-4 py-3">YOLOv8</td>
-            <td class="px-4 py-3 font-mono text-xs">pip install -e '.[yolo]'</td>
+            <td class="px-4 py-3 font-mono text-xs">pip install 'pymaxim[yolo]'</td>
             <td class="px-4 py-3">YOLOv8 vision engine via Ultralytics (AGPL-3.0). Default engine is RTMDet-m (Apache 2.0)</td>
           </tr>
         </tbody>
@@ -417,7 +421,7 @@ maxim [OPTIONS]
 <span class="text-indigo-400 text-xs uppercase tracking-wider">Connection</span>
 
 --robot-name TEXT            Robot identifier (default: reachy_mini)
---home-dir PATH              Data directory (default: data)
+--home-dir PATH              Data directory (default: ~/.maxim/)
 --timeout FLOAT              Connection timeout in seconds (default: 30.0)
 
 <span class="text-indigo-400 text-xs uppercase tracking-wider">Execution</span>

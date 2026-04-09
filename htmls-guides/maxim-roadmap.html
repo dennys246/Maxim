@@ -144,7 +144,22 @@
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">DM MVP</td>
             <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
-            <td class="py-3">All 3 slices shipped: dm_schema.py, dm_runtime.py, tools_dm.py. 4 campaigns (heist, poisoned_crown, arena, darkened_cavern). ChooseTool + alias system, bio-system expectations checker. <code class="bg-slate-950 px-1 rounded text-xs">maxim --sim scenarios/campaigns/heist_v1.yaml</code></td>
+            <td class="py-3">All 3 slices shipped: dm_schema.py, dm_runtime.py, tools_dm.py. 7 campaigns (heist, poisoned_crown, arena, darkened_cavern, kings_duel, neon_gauntlet, broken_database). ChooseTool + alias system, bio-system expectations checker, mid-campaign entity swaps.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Foundational Buildout</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Phases 0-12a: package hygiene, SEM component registry, encounter library, agent factory + pool, party DM mode, hippocampus recall, interactive runtime, generative architect, API expansion, 10 cloud providers, store protocols, security hardening. ~16K LOC, 239 tests.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">API Surface Hardening</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">All phases: wired stub API verbs, fixed research protocol, error handling on user-facing paths, integration tests, README overhaul. ~75 new tests.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Module Compartmentalization</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">5 god-modules decomposed: agent_loop, orchestrator, cli, router, lane_backends. 7 new focused files extracted (~1,120 LOC moved). 125 new tests. All import paths preserved.</td>
           </tr>
         </tbody>
       </table>
@@ -209,28 +224,28 @@
   <section class="space-y-4">
     <h2 id="next-up" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Next Up</h2>
 
-    <p class="text-slate-300 leading-relaxed">All major initiatives are complete. These three priorities are independent and can ship in any order.</p>
+    <p class="text-slate-300 leading-relaxed">With the foundational buildout, API surface hardening, and module compartmentalization complete, these are the current priorities.</p>
 
     <div class="space-y-3">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">1</span>
         <div>
-          <h3 class="text-white font-semibold">Hippocampus AUT Memory Refinement <span class="text-slate-500 font-normal text-sm">(~300-500 LOC)</span></h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Improve recall precision for campaign-specific queries. Modality-aware recall ("what did I hear?" vs "what did I see?") using SensoryTag metadata. <code class="bg-slate-950 px-1 rounded text-xs">decision_rationale</code> search for why actions were chosen. Reduce observation capture spam.</p>
+          <h3 class="text-white font-semibold">PyPI Publication <span class="text-slate-500 font-normal text-sm">(pymaxim v0.2.0)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Final must-fix blockers (run() TypeError, API verb wiring, API key fail-fast), then <code class="bg-slate-950 px-1 rounded text-xs">twine upload</code>. Wheel built and validated. Module compartmentalization shipped (7 new focused files). 3,700+ tests passing.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">2</span>
         <div>
-          <h3 class="text-white font-semibold">DM Generative Architect <span class="text-slate-500 font-normal text-sm">(~500 LOC)</span></h3>
-          <p class="text-slate-300 text-sm leading-relaxed">A <code class="bg-slate-950 px-1 rounded text-xs">--dm</code> flag with goal strings generates campaigns via an architect persona. The architect interviews the user via <code class="bg-slate-950 px-1 rounded text-xs">ask_user</code> tool, creates characters and encounters, and produces runnable campaign YAML. Builds on the shipped DM MVP.</p>
+          <h3 class="text-white font-semibold">Mother Maxim MVP <span class="text-slate-500 font-normal text-sm">(~500 LOC)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">A persistent, public Maxim instance that accumulates collective memory. Runs on the RTX 5080 leader behind Cloudflare tunnel. Her own bio-stack (Hippocampus, NAc, ATL), not a passive database. JSON persistence initially, PostgreSQL + pgvector later.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">3</span>
         <div>
-          <h3 class="text-white font-semibold">PyPI Publication Ph3-6 <span class="text-slate-500 font-normal text-sm">(~200 LOC)</span></h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Multi-robot plugins via entry-point discovery (Ph3), CI/CD pipeline (Ph4), README rewrite (Ph5), Test PyPI dry run (Ph6). Package <code class="bg-slate-950 px-1 rounded text-xs">pymaxim</code> phases 0-2 already shipped.</p>
+          <h3 class="text-white font-semibold">Pecking Order Graph <span class="text-slate-500 font-normal text-sm">(~1,200 LOC)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Unified topology for all Maxim instances: a rooted directed graph with domain-scoped pecking relations (authority, compute, memory, knowledge, embodiment). Mother Maxim as root. Subsumes Capability Agent, Mesh Phase 0a/0b, Multi-Node Admin. Includes location-aware routing via SpatialContext.</p>
         </div>
       </div>
     </div>

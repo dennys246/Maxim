@@ -1,6 +1,6 @@
 # PyPI Publication Plan
 
-> **Status:** Phase 0 done (metadata + name). Phase 1 next.
+> **Status:** SUPERSEDED. Original packaging plan — problems identified here (name collision, hard deps, no public API) have all been resolved. Current publication tracking is in publication_refinement_plan.md.
 > **Scope:** Packaging, dependency restructuring, metadata, CI, multi-robot generalization.
 > **Depends on:** [Python API Plan](../archive/python_api_plan.md) (Phase 2 of this plan requires the verb-based API surface).
 > **Blocks:** Community adoption, external contributors, downstream integrations.

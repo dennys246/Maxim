@@ -1,6 +1,6 @@
 # API Surface Hardening Plan
 
-> **Status:** Not started
+> **Status:** ALL PHASES COMPLETE (2026-04-08)
 > **Goal:** Make every public interface honest — if it's in `__all__`, it works. If it doesn't work, it doesn't exist.
 > **Estimated scope:** ~600 LOC of fixes + ~200 LOC of integration tests + ~200 LOC of docs
 > **Sequence:** Executes BETWEEN Publication Refinement Plan Phase 0 (done) and Phase 4 (publish). **Replaces Phases 1-3** of the refinement plan for items covered here.

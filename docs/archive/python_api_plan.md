@@ -1,6 +1,6 @@
 # Python API Plan — Verb-Based Public Interface
 
-> **Status:** Not started.
+> **Status:** COMPLETE. All 13 API verbs shipped as part of foundational buildout (2026-04-08).
 > **Scope:** ~400 LOC new facade + ~100 LOC rename refactor across ~14 files.
 > **Depends on:** Nothing (existing internals are sufficient).
 > **Blocks:** PyPI publication (Phase 2 of pypi_publication_plan.md).

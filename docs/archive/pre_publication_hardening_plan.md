@@ -1,6 +1,6 @@
 # Phase 12b: Pre-Publication Hardening Plan
 
-> **Status:** Partially done (12b.0 cv2 imports + error hierarchy shipped, remaining items tracked)
+> **Status:** DONE. All sub-phases (12b.0–12b.6) complete.
 > **Parent plan:** [foundational_buildout_plan.md](foundational_buildout_plan.md) — this is Phase 12b, runs in parallel with Phase 11 (Test PyPI + Publish).
 > **Goal:** Fix every issue that would make a `pip install pymaxim` user's first 30 minutes frustrating, broken, or confusing. Ruthless triage — ship quality, not completeness.
 > **Estimated scope:** ~2,500 LOC across 7 sub-phases (12b.0 – 12b.6)

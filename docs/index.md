@@ -2,11 +2,16 @@
 
 Comprehensive documentation for Maxim's systems and subsystems.
 
+**Version:** 0.2.0 | **Last updated:** 2026-04-09
+
 ## Quick Links
 
-- [README](../README.md) - Getting started guide
-- [ARCHITECTURE.md](../ARCHITECTURE.md) - High-level architecture
-- [AGENTS.md](../AGENTS.md) - Agent system documentation
+- [README](../README.md) — Getting started guide
+- [ARCHITECTURE.md](../ARCHITECTURE.md) — High-level architecture
+- [AGENTS.md](../AGENTS.md) — Agent system documentation
+- [User Guides](user/index.md) — End-user documentation (install, CLI, API, modes)
+- [Troubleshooting](troubleshooting/index.md) — Runbooks and diagnostics
+- [Plans](plans/future_plans.md) — Active roadmap and future plans
 
 ---
 
@@ -17,11 +22,13 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | Document | Description |
 |----------|-------------|
 | [Default Network](default_network.md) | Reactive behavior layer, behaviors, thalamic gating |
-| [Memory](memory.md) | Hippocampus, episodic memory, state storage |
+| [Memory](memory.md) | Hippocampus, ATL, Angular Gyrus, MemoryHub, store protocols |
 | [Decisions](decisions.md) | NAc causal inference, outcome prediction |
 | [Time](time.md) | SCN temporal indexing, rhythmic patterns |
 | [Embodiment](embodiment_guide.md) | SEM protocol, entity specs, pain, motor learning |
 | [Simulation](simulation.md) | Simulation modes, scenarios, campaigns, benchmarks |
+| [Memory Layer Lifecycle](memory-layer-lifecycle.md) | Tier progression: FORMING -> WORKING -> SHORT_TERM -> LONG_TERM |
+| [Memory System Interactions](memory-system-interactions.md) | Threading model, RWLock, ContextPool, MemoryHub coordination |
 
 ### Perception & Attention
 
@@ -29,6 +36,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 |----------|-------------|
 | [Attention](attention.md) | Spatial attention, gaze control, scene context |
 | [Salience](salience.md) | Object-level salience, novelty tracking |
+| [Semantic Similarity](semantic_similarity_analysis.md) | Phase 4 neural embeddings, NeuralSemanticLSH |
 
 ### Safety & Learning
 
@@ -38,44 +46,45 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | [Harm](harm.md) | Predictive harm detection, risk assessment |
 | [Energy](energy.md) | Resource tracking, energy budgeting |
 
-### Embodiment & Motor Learning
+### Embodiment & Campaigns
 
 | Document | Description |
 |----------|-------------|
 | [Embodiment Guide](embodiment_guide.md) | SEM protocol, entity specs, sensors, modulators, failure modes |
 | [Embodiment YAML Reference](embodiment_yaml_reference.md) | YAML format for body/entity definitions |
 | [Generative Campaigns](generative_campaigns_guide.md) | Narrative arc system, narrator, campaign modes |
-| [DM Campaigns](user/dm-campaigns.md) | Bundled SEM characters, encounter choices, cascade DAG, 4 showcase campaigns |
+| [DM Campaigns](user/dm-campaigns.md) | Bundled SEM characters, encounter choices, cascade DAG, 7 campaigns |
 
-### Communication
-
-| Document | Description |
-|----------|-------------|
-| Communication | SMS/Voice via Twilio, webhook setup, Cloudflare Tunnel. See `src/maxim/comms/` and [tunnel setup](../docs/user/peer-setup.md). |
-
-### Planning & Workspace
+### Communication & Networking
 
 | Document | Description |
 |----------|-------------|
-| [ARCHITECTURE.md](../ARCHITECTURE.md#workspace-maxim_workspace) | Workspace structure, working notes, plan dashboard |
-
-### Media
-
-| Document | Description |
-|----------|-------------|
+| Communication | SMS/Voice via Twilio, webhook setup. See `src/maxim/comms/` |
+| [Peer Setup](user/peer-setup.md) | Leader/peer networking, Cloudflare Tunnel, remote LLM |
+| [LLM Setup](user/llm-setup.md) | Local models, 10 cloud providers, tunnels, LeaderProxy |
 | [MediaMTX](mediaMTX.md) | RTSP relay: auto-start, network topology, deployment scenarios |
 
-### Integration
+### Integration & Mesh
 
 | Document | Description |
 |----------|-------------|
 | [Bridges](bridges.md) | Cross-system integration, memory bridges |
+| Agent Mesh Guide ([HTML](../htmls-guides/maxim-agent-mesh.html)) | Identity, protocol, transport, knowledge sharing, delegation |
 
-### Agent Mesh
+### Publication & Development
 
 | Document | Description |
 |----------|-------------|
-| Agent Mesh Guide ([HTML](../htmls-guides/maxim-agent-mesh.html)) | Identity, protocol, transport, knowledge sharing, delegation |
+| [Publication Guide](publication_guide.md) | PyPI publication checklist for pymaxim v0.2.0 |
+| [Reference](reference.md) | Module layout, bio-system mappings, configuration |
+| [Skills (tombstone)](skills.md) | Removed module — replaced by Cerebellum/motor programs |
+
+### Experiments
+
+| Document | Description |
+|----------|-------------|
+| [Hippocampal Recall Experiment](experiments/hippocampal_recall_experiment.md) | Design and infrastructure for memory interference testing |
+| [Run Notes](experiments/hippocampal_recall_run_notes.md) | Results from 2026-04-06: Verath recall experiment |
 
 ---
 
@@ -248,29 +257,25 @@ Maxim's architecture draws inspiration from neuroscience:
 
 ## Persistence Overview
 
-Components that persist state:
+All user data persists under `~/.maxim/` (configurable via `MAXIM_DATA_HOME`). Bundled seed data lives in `src/maxim/_data/`.
 
-| Component | File | CLI Clear |
-|-----------|------|-----------|
-| FocusLearner | `data/util/focus_learner.json` | `--clear-memory focus` |
-| WorkspaceBoundsLearner | `data/util/workspace_bounds.json` | `--clear-memory bounds` |
-| EscalationLearningBridge | `data/util/escalation_learning.json` | `--clear-memory escalation` |
-| FearCircuitBridge | `data/util/fear_learning.json` | `--clear-memory fear` |
-| AdaptiveThresholdController | `data/util/adaptive_thresholds.json` | `--clear-memory threshold` |
-| NAc | `data/util/nac_state.json` | `--clear-memory nac` |
-| SCN | `data/util/scn_state.json` | `--clear-memory scn` |
-| Hippocampus | `data/util/hippocampus.json` | `--clear-memory hippo` |
-| ATL | `data/memory/atl.json` | `--clear-memory atl` |
-| AngularGyrus | `data/memory/angular_gyrus.json` | `--clear-memory angular` |
-| Cerebellum | `data/util/cerebellum.json` | `--clear-memory cerebellum` |
-| PainDetector | `data/util/pain_detector.json` | `--clear-memory pain` |
-| SemanticEmbeddings | `data/util/semantic_embeddings.npz` | `--clear-memory semantic` |
-| SignificanceWeights | `data/util/significance_weights.json` | `--clear-memory significance` |
-| SimilarityIndex (context) | `data/util/context_index.json` | `--clear-memory context_index` |
-| SimilarityIndex (percept) | `data/util/percept_index.json` | `--clear-memory percept_index` |
-| Staged Sidecars | `data/short_term_memory/*.json` | `--clear-memory staging` |
-| PlanDashboard | `.maxim_workspace/plans/ACTIVE_PLAN.md` | (auto-cleared on plan completion) |
-| PlanLogger | `.maxim_workspace/plans/history.md` | (manual delete) |
+| Component | File (under `~/.maxim/`) | CLI Clear |
+|-----------|--------------------------|-----------|
+| FocusLearner | `util/focus_learner.json` | `--clear-memory focus` |
+| WorkspaceBoundsLearner | `util/workspace_bounds.json` | `--clear-memory bounds` |
+| EscalationLearningBridge | `util/escalation_learning.json` | `--clear-memory escalation` |
+| FearCircuitBridge | `util/fear_learning.json` | `--clear-memory fear` |
+| AdaptiveThresholdController | `util/adaptive_thresholds.json` | `--clear-memory threshold` |
+| NAc | `util/nac_state.json` | `--clear-memory nac` |
+| SCN | `util/scn_state.json` | `--clear-memory scn` |
+| Hippocampus | `util/hippocampus.json` | `--clear-memory hippo` |
+| ATL | `util/atl_state.json` | `--clear-memory atl` |
+| PainDetector | `util/pain_detector.json` | `--clear-memory pain` |
+| SemanticEmbeddings | `util/semantic_embeddings.npz` | `--clear-memory semantic` |
+| Statistician | `util/statistician_state.json` | `--clear-memory statistician` |
+| Active LLM Model | `util/active_llm_model.txt` | (manual / hot-swap) |
+| Node ID | `util/node_id.txt` | (persistent mesh identity) |
+| Simulation Reports | `sessions/{session_id}/` | (per-session, not auto-cleared) |
 
 Clear all: `maxim --clear-memory all`
 
