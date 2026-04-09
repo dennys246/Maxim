@@ -302,7 +302,7 @@ def templates() -> dict[str, list[str]]:
 # ── LLM Router ─────────────────────────────────────────────────────────
 
 
-def router(model: str = "mistral-7b") -> "LLMRouter":
+def router(model: str = "mistral-7b") -> Any:
     """Create an LLM router for inference without the full agent loop.
 
     This is the most direct way to get LLM inference. The router handles

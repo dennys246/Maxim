@@ -18,7 +18,7 @@ Example::
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
@@ -216,7 +216,7 @@ def agent(name: str, *, base_dir: str | None = None) -> "AgentInstance":
     return factory.create_agent(config, auto_load=True)
 
 
-def entity(path: str) -> "Entity":
+def entity(path: str) -> Any:
     """Load a SEM entity from a YAML spec or saved JSON file.
 
     Supports both YAML specs (from component templates) and JSON files

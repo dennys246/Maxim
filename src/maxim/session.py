@@ -183,9 +183,8 @@ class Session:
     def __enter__(self) -> "Session":
         return self
 
-    def __exit__(self, exc_type: type | None, exc_val: BaseException | None, exc_tb: Any) -> bool:
+    def __exit__(self, exc_type: type | None, exc_val: BaseException | None, exc_tb: Any) -> None:
         self.save()
-        return False
 
     # ── Persistence ────────────────────────────────────────────────
 

@@ -408,6 +408,10 @@ def run(
     os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
 
     router, lane_manager = build_primary_router()
+    if router is None:
+        from maxim.exceptions import ConfigurationError
+
+        raise ConfigurationError("No LLM backend available. Set --language-model or MAXIM_LLM_PROFILE.")
     llm_worker = LLMWorker(llm=router)
     llm_worker.start()
 
@@ -515,9 +519,14 @@ def imagine(
     # Load pre-campaign turns from YAML scenario if provided
     pre_campaign_turns = None
     if scenario:
-        from maxim.simulation.scenario_source import load_scenario_turns
+        from maxim.simulation.scenario_source import load_scenario
+        from pathlib import Path as _Path
 
-        pre_campaign_turns = load_scenario_turns(scenario)
+        scenario_def = load_scenario(_Path(scenario))
+        pre_campaign_turns = [
+            {"text": p.get("text", ""), "phase": p.get("phase", ""), "salience": p.get("salience", 0.8)}
+            for p in scenario_def.percepts
+        ]
 
     from maxim.simulation.orchestrator import start_simulation_mode
 
@@ -946,7 +955,7 @@ def campaign(
     from maxim.embodiment.component_registry import ComponentRegistry
     from pathlib import Path as _Path
 
-    _registry = ComponentRegistry(campaign_dir=str(_Path(path).parent))
+    _registry = ComponentRegistry(campaign_dir=_Path(path).parent)
     campaign_def = _load_campaign(path, registry=_registry)
 
     # Override party_mode if specified
