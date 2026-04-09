@@ -668,24 +668,21 @@ def run_agentic_loop(
         #   - Pending action followup (tool result needs LLM processing)
         #   - Pending next_actions chain (multi-step plan in progress)
         #   - First iteration (startup — run initial cycle once)
-        _has_pending_input = bool(
-            state.data.get("pending_cli_input")
-            or state.data.get("pending_voice_input")
-        )
+        _has_pending_input = bool(state.data.get("pending_cli_input") or state.data.get("pending_voice_input"))
         _has_pending_work = bool(
-            pending_proposal
-            or pending_action_followup
-            or pending_next_actions
-            or pending_plan_proposal
+            pending_proposal or pending_action_followup or pending_next_actions or pending_plan_proposal
         )
         _has_sim_percept = (
-            sim.is_sim_mode
-            and percept_source is not None
-            and getattr(percept_source, "has_pending", lambda: True)()
+            sim.is_sim_mode and percept_source is not None and getattr(percept_source, "has_pending", lambda: True)()
         )
         _is_first_step = step_num == 0
+        # If we submitted to the LLM recently, we're awaiting a proposal —
+        # don't idle-gate or we'll never pick up the result.
+        _awaiting_llm = (
+            llm_worker is not None and pending_proposal is None and (time.time() - last_llm_submit_time) < 120.0
+        )
 
-        if not (_has_pending_input or _has_pending_work or _has_sim_percept or _is_first_step):
+        if not (_has_pending_input or _has_pending_work or _has_sim_percept or _is_first_step or _awaiting_llm):
             time.sleep(idle_sleep_s)
             continue
 
@@ -2044,7 +2041,6 @@ def run_agentic_loop(
                         # Check for hard override commands
                         if context.current_percept and context.current_percept.hard_override:
                             has_meaningful_input = True
-
 
                         # Check for pending action followup (tools that need LLM processing)
                         if pending_action_followup:
