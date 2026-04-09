@@ -107,6 +107,7 @@ def _cleanup_log_file() -> None:
 
 
 import atexit
+
 atexit.register(_cleanup_log_file)
 
 # Subsystems that only print in debug mode (always persisted to JSONL log)
@@ -138,13 +139,13 @@ def enable_sim_logging(
 
     # Apply env var channel filter if no explicit --show was set
     import os
+
     if _show_channels is None:
         env_channels = os.environ.get("MAXIM_SHOW_CHANNELS", "").strip()
         if env_channels:
             set_show_channels(env_channels)
 
     if log_path:
-
         try:
             os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
             _log_file = open(log_path, "w")
@@ -176,7 +177,13 @@ def get_sim_records() -> list[dict[str, Any]]:
     return list(_log_records)
 
 
-def sim_log(subsystem: str, message: str, data: dict[str, Any] | None = None) -> None:
+def sim_log(
+    subsystem: str,
+    message: str,
+    data: dict[str, Any] | None = None,
+    *,
+    _force_debug: bool = False,
+) -> None:
     """Log a simulation event with subsystem label and timestamp.
 
     Events are printed to the terminal AND persisted to a JSONL file
@@ -188,6 +195,7 @@ def sim_log(subsystem: str, message: str, data: dict[str, Any] | None = None) ->
         subsystem: Bio-inspired subsystem name (PERCEPT, HIPPOCAMPUS, etc.)
         message: Human-readable description of what happened
         data: Optional structured data for detailed inspection
+        _force_debug: If True, only show on terminal in debug mode
     """
     if not _sim_active:
         return
@@ -220,8 +228,8 @@ def sim_log(subsystem: str, message: str, data: dict[str, Any] | None = None) ->
         _log_file.write(json.dumps(record) + "\n")
         _log_file.flush()
 
-    # Terminal output — skip debug-only subsystems unless debug mode
-    if subsystem in _DEBUG_ONLY_SUBSYSTEMS and not _debug_mode:
+    # Terminal output — skip debug-only subsystems/events unless debug mode
+    if (subsystem in _DEBUG_ONLY_SUBSYSTEMS or _force_debug) and not _debug_mode:
         return
 
     # Channel filter — skip subsystems not in the active show set
@@ -253,6 +261,14 @@ def sim_percept(source: str, summary: str, **kwargs: Any) -> None:
 def sim_memory(action: str, **kwargs: Any) -> None:
     """Log a hippocampus/memory event."""
     sim_log("HIPPOCAMPUS", action, kwargs if kwargs else None)
+
+
+def sim_debug(subsystem: str, action: str, **kwargs: Any) -> None:
+    """Log an event that only appears in debug mode (--debug).
+
+    Always persisted to JSONL; terminal output suppressed unless debug=True.
+    """
+    sim_log(subsystem, action, kwargs if kwargs else None, _force_debug=True)
 
 
 def sim_pain(pain_type: str, intensity: float, **kwargs: Any) -> None:

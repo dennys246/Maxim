@@ -151,6 +151,7 @@ class MemoryHub:
         # Resolve default embedding persist path lazily
         if not self.embedding_persist_path:
             from maxim.utils.paths import resolve_user_state
+
             self.embedding_persist_path = str(resolve_user_state("util/semantic_embeddings.npz"))
 
         # Connect SCN to Hippocampus for temporal-aware consolidation
@@ -696,9 +697,19 @@ class MemoryHub:
                 salience = memory.perception.salience or 0.5
             self.scn.register(memory_id, sig, significance=salience)
             try:
-                from maxim.simulation.sim_logger import sim_scn
+                # Only log to terminal for real action captures (not settling observations)
+                has_action = hasattr(memory, "action") and getattr(memory.action, "tool_name", None)
+                if has_action:
+                    from maxim.simulation.sim_logger import sim_scn
 
-                sim_scn(memory_id, f"circadian={sig.circadian_phase:.2f}", salience)
+                    sim_scn(memory_id, f"circadian={sig.circadian_phase:.2f}", salience)
+                else:
+                    from maxim.simulation.sim_logger import sim_debug
+
+                    sim_debug(
+                        "SCN",
+                        f"Registered {memory_id[:8]} in circadian={sig.circadian_phase:.2f} (significance={salience:.2f})",
+                    )
             except Exception:
                 pass
         except Exception:

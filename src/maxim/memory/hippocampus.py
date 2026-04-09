@@ -444,15 +444,18 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             memory.outcome.success,
         )
 
-        # Simulation verbosity (best-effort trace)
+        # Simulation verbosity (best-effort trace).
+        # Low-salience observations (settling cycles) go to debug only —
+        # real action captures (tool_name set) always print.
         try:
-            from maxim.simulation.sim_logger import sim_memory
+            from maxim.simulation.sim_logger import sim_memory, sim_debug
 
-            sim_memory(
-                f"Captured: {memory.action.tool_name or 'observation'} (salience={memory.perception.salience:.2f})",
-                goal=memory.context.active_goal,
-                success=memory.outcome.success,
-            )
+            is_observation = not memory.action.tool_name
+            msg = f"Captured: {memory.action.tool_name or 'observation'} (salience={memory.perception.salience:.2f})"
+            if is_observation:
+                sim_debug("HIPPOCAMPUS", msg, goal=memory.context.active_goal, success=memory.outcome.success)
+            else:
+                sim_memory(msg, goal=memory.context.active_goal, success=memory.outcome.success)
         except Exception:
             pass  # sim logger is optional — not loaded outside simulations
 
@@ -493,9 +496,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # Update dedup tracker (prune old entries)
         self._recent_observations[obs_hash] = now
         cutoff = now - window
-        self._recent_observations = {
-            h: t for h, t in self._recent_observations.items() if t > cutoff
-        }
+        self._recent_observations = {h: t for h, t in self._recent_observations.items() if t > cutoff}
 
         perception = Perception(
             observations={"text": text, **(metadata or {})},
