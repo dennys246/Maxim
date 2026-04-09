@@ -5,6 +5,42 @@ All notable changes to pymaxim will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-04-09
+
+### Added
+
+- **Expanded SEM component library** — 54 seed components across 7 categories (bodies, creatures, environments, items, npcs, vehicles, weapons). Covers fantasy, cyberpunk, sci-fi, horror, historical, modern, and devops genres.
+- **SEM entity wiring in DM campaigns** — campaigns now instantiate live SEM entities at startup. NPCs and world objects have real sensors, affordances, and failure modes. Registry refs (`ref: npcs/guard`) with optional overrides.
+- **Event subscription system** — `maxim.on("tool_call", callback)` with typed payloads (`ToolCallEvent`, `PainSignalEvent`, `MemoryCaptureEvent`, `PromptEvent`). Bridged to internal AgentBus.
+- **Custom tool registration** — `@maxim.tool` decorator and `maxim.register_tool()` now wired into runtime. Tools injected into all `run()`/`imagine()`/`campaign()` calls.
+- **4 new DM campaigns** — Wizard's Tower (fantasy), Server Breach (devops), Haunted Manor (horror), Space Station Crisis (sci-fi).
+- **Context manager protocol** — `AgentPool` and `Session` support `with` statements for automatic cleanup.
+- **Return type annotations** — all `maxim.create.*` and `maxim.load.*` functions return typed objects instead of `Any`.
+- **`ComponentNotFoundError`** — custom exception for missing SEM templates (was generic `KeyError`).
+- **Exception renames** — `MaximConnectionError`, `MaximMemoryError`, `MaximRuntimeError` no longer shadow Python builtins. Old aliases removed.
+
+### Changed
+
+- **CLI restructured** — 70+ flags organized into 11 argparse groups (core, cloud, autonomy, memory, hardware, agentic, exploration, simulation, debug, benchmark, utilities). `--internet-access`/`--no-internet` now mutually exclusive.
+- **`configure()` validates inputs** — warns on out-of-range verbosity, unknown show channels, unknown debug subsystems.
+- **`model=` parameter now overrides env vars** — `setdefault` replaced with direct assignment in `run()`/`imagine()`/`campaign()`.
+- **Observe dispatch deduplicated** — shared `query_observer()` between `Session.observe()` and `maxim.observe()`.
+- **Atomic writes** — model persistence and markdown report saves now use tmp+fsync+replace.
+- **Deferred numpy/scipy imports** — `response_output.py` no longer eagerly loads scipy on `import maxim.utils`.
+- **`load.nac()`/`load.atl()` standardized** — both now check file existence before loading (was inconsistent).
+
+### Fixed
+
+- `maxim.on()` and `maxim.register_tool()` were no-ops — callbacks/tools never reached the runtime.
+- `@maxim.tool` decorator missing thread lock on `_pending_tools` append.
+- `_inject_pending_tools()` didn't clear the list — tools double-registered on subsequent calls.
+- Silent `except Exception: pass` in `session.research()` — now logs warning.
+- `--sim-report` silently ignored without `--sim` — now validated.
+- All `llm-local` references updated to `llm-llama` (7 locations across docs and source).
+- Stale CLI defaults in docs (wrong `--mode` default, wrong `--persona` default, non-existent `--prompt-profile`).
+- Deprecated `--sim agent` syntax updated to `--sim "goal"` across all active docs.
+- Broken `</span>` tags in maxim-operating-modes.html.
+
 ## [0.2.0] - 2026-04-08
 
 ### Added

@@ -36,7 +36,7 @@ from natural language descriptions.
 OUTPUT FORMAT — return ONLY a JSON object with this structure:
 {
   "name": "entity_name",
-  "entity_type": "npc|weapon|creature|environment|item",
+  "entity_type": "npc|weapon|creature|environment|item|vehicle",
   "metadata": {
     "persona_prompt": "personality description for NPCs",
     "race": "human|elf|dwarf|etc (for NPCs)",
@@ -111,7 +111,7 @@ class EntityDesigner:
         Args:
             description: Natural language description (e.g., "a suspicious guard").
             base_ref: Optional ComponentRegistry ref to use as template.
-            entity_type: Optional type hint (npc, weapon, creature, environment).
+            entity_type: Optional type hint (npc, weapon, creature, environment, item, vehicle).
             genre: Optional genre constraint. When set, only suggests base_refs
                 whose tags include this genre (or have no genre tag at all).
                 Prevents cross-genre contamination (e.g., cyberpunk drone in
@@ -256,6 +256,7 @@ class EntityDesigner:
             # Merge with base if provided
             if base_spec:
                 from maxim.embodiment.component_registry import deep_merge
+
                 result = deep_merge(base_spec, result)
 
             return result
@@ -291,36 +292,60 @@ class EntityDesigner:
         if etype in ("npc", "character", "humanoid"):
             spec["sensors"].setdefault("hp", {"unit": "points", "range": [0, 20], "initial": 20})
             spec["sensors"].setdefault("mood", {"unit": "ratio", "range": [-1, 1], "initial": 0.0})
-            spec["modulators"].setdefault("social", {
-                "affordances": {
-                    "speak": {"params": {"message": "str"}, "description": "Say something"},
-                }
-            })
+            spec["modulators"].setdefault(
+                "social",
+                {
+                    "affordances": {
+                        "speak": {"params": {"message": "str"}, "description": "Say something"},
+                    }
+                },
+            )
 
         elif etype in ("weapon", "item", "equipment"):
             spec["sensors"].setdefault("durability", {"unit": "ratio", "range": [0, 1], "initial": 0.8})
-            spec["modulators"].setdefault("use", {
-                "affordances": {
-                    "use": {"params": {"target": "str"}, "description": "Use this item"},
-                }
-            })
+            spec["modulators"].setdefault(
+                "use",
+                {
+                    "affordances": {
+                        "use": {"params": {"target": "str"}, "description": "Use this item"},
+                    }
+                },
+            )
 
         elif etype in ("creature", "animal", "monster"):
             spec["sensors"].setdefault("hp", {"unit": "points", "range": [0, 15], "initial": 15})
             spec["sensors"].setdefault("aggression", {"unit": "ratio", "range": [0, 1], "initial": 0.5})
-            spec["modulators"].setdefault("combat", {
-                "affordances": {
-                    "attack": {"params": {"target": "str"}, "description": "Attack a target"},
-                }
-            })
+            spec["modulators"].setdefault(
+                "combat",
+                {
+                    "affordances": {
+                        "attack": {"params": {"target": "str"}, "description": "Attack a target"},
+                    }
+                },
+            )
 
         elif etype in ("environment", "location", "room"):
             spec["sensors"].setdefault("visibility", {"unit": "ratio", "range": [0, 1], "initial": 0.7})
-            spec["modulators"].setdefault("interaction", {
-                "affordances": {
-                    "survey": {"params": {}, "description": "Survey the area"},
-                }
-            })
+            spec["modulators"].setdefault(
+                "interaction",
+                {
+                    "affordances": {
+                        "survey": {"params": {}, "description": "Survey the area"},
+                    }
+                },
+            )
+
+        elif etype in ("vehicle", "mount", "transport"):
+            spec["sensors"].setdefault("speed", {"unit": "ratio", "range": [0, 1], "initial": 0.0})
+            spec["sensors"].setdefault("fuel", {"unit": "ratio", "range": [0, 1], "initial": 0.8})
+            spec["modulators"].setdefault(
+                "movement",
+                {
+                    "affordances": {
+                        "move": {"params": {"destination": "str"}, "description": "Travel toward a destination"},
+                    }
+                },
+            )
 
         # Extract personality keywords from description
         if any(kw in description.lower() for kw in ("suspicious", "wary", "distrustful")):

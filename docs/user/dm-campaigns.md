@@ -15,12 +15,19 @@ The campaign runs end-to-end: scene delivery → AUT response → choice classif
 
 | Campaign | File | Genre | Encounters | Tests |
 |---|---|---|---|---|
-| **The Heist** | `scenarios/campaigns/heist_v1.yaml` | fantasy | 3 | Memory recall, causality, pain |
-| **The Poisoned Crown** | `scenarios/campaigns/poisoned_crown_v1.yaml` | fantasy | 5 | Temporal memory, semantic concepts, relationships |
-| **The Arena** | `scenarios/campaigns/arena_v1.yaml` | fantasy | 5 | Combat learning, Cerebellum predictions, pain saturation |
-| **The Darkened Cavern** | `scenarios/campaigns/darkened_cavern_v1.yaml` | fantasy | 6 | Sensory deprivation, perception recovery |
-| **Neon Gauntlet** | `scenarios/campaigns/neon_gauntlet_v1.yaml` | cyberpunk | 6 | Sensory overload, SEM component swap, betrayal recall |
-| **Broken Database** | `scenarios/campaigns/broken_database_v1.yaml` | devops | 4 | Sleep/wake, git workflow, tool usage |
+| **The Heist** | `heist_v1.yaml` | fantasy | 3 | Memory recall, causality, pain |
+| **The Poisoned Crown** | `poisoned_crown_v1.yaml` | fantasy | 5 | Temporal memory, semantic concepts, relationships |
+| **The Arena** | `arena_v1.yaml` | fantasy | 5 | Combat learning, Cerebellum predictions, pain saturation |
+| **The Darkened Cavern** | `darkened_cavern_v1.yaml` | fantasy | 6 | Sensory deprivation, perception recovery |
+| **The King's Duel** | `kings_duel_v1.yaml` | fantasy | 6 | Multi-NPC social dynamics, trust management |
+| **Wizard's Tower** | `wizards_tower_v1.yaml` | fantasy | 3 | Magic item management, phrase recall, SEM world objects |
+| **Neon Gauntlet** | `neon_gauntlet_v1.yaml` | cyberpunk | 6 | Sensory overload, SEM component swap, betrayal recall |
+| **Broken Database** | `broken_database_v1.yaml` | devops | 14 | Sleep/wake, git workflow, tool usage |
+| **Server Breach** | `server_breach_v1.yaml` | devops | 3 | Credential recall, incident response, time pressure |
+| **Haunted Manor** | `haunted_manor_v1.yaml` | horror | 3 | Fear, diary clue recall, cursed item management |
+| **Space Station Crisis** | `space_station_crisis_v1.yaml` | scifi | 3 | Cascading failures, code recall, resource trade-offs |
+
+All campaigns are in `scenarios/campaigns/`.
 
 ## Writing Your Own Campaign
 
