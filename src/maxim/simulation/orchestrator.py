@@ -18,128 +18,18 @@ import sys
 import tempfile
 import threading
 import time
-import json
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class SimulationResult:
-    """Result from a completed simulation session.
-
-    Carries all data needed for benchmarks, experiment analysis, and
-    programmatic inspection.  Previously, detailed data was only
-    persisted to session files; now it's available in-memory.
-    """
-
-    goal: str
-    persona: str
-    turns: int
-    total_actions: int
-    blocked_actions: int
-    duration_s: float
-    finish_reason: str = "unknown"
-    summary: str = ""
-    # Session identity (set after report is built)
-    session_id: str = ""
-    session_dir: str = ""
-    campaign_analysis: dict[str, Any] = field(default_factory=dict)
-    introspector: Any = None
-    # Tool usage stats (from Executor.tool_usage_stats())
-    tool_stats: dict[str, Any] = field(default_factory=dict)
-    # Serialized action history (ActionRecord dicts)
-    actions: list[dict[str, Any]] = field(default_factory=list)
-    # Subsystem snapshot (from AUTIntrospector.benchmark_snapshot())
-    subsystem_snapshot: dict[str, Any] = field(default_factory=dict)
-    # JSON parse compliance (from json_parser counters)
-    router_stats: dict[str, Any] = field(default_factory=dict)
-
-
-def _load_resume_context(session_id: str) -> dict[str, Any] | None:
-    """Load a previous session's report and action log for resumption."""
-    from maxim.utils.paths import sim_reports as _sim_reports_dir
-
-    _reports_base = _sim_reports_dir()
-    report_path = _reports_base / session_id / "report.json"
-    if not report_path.exists():
-        # Try fuzzy match — session_id might be a prefix
-        reports_dir = _reports_base
-        if reports_dir.exists():
-            matches = sorted(
-                [d for d in reports_dir.iterdir() if d.is_dir() and d.name.startswith(session_id)],
-                reverse=True,
-            )
-            if matches:
-                report_path = matches[0] / "report.json"
-
-    if not report_path.exists():
-        logger.warning("Resume session not found: %s", session_id)
-        return None
-
-    try:
-        with open(str(report_path), "r", encoding="utf-8") as f:
-            report_data = json.load(f)
-        logger.info("Loaded previous session: %s", report_path.parent.name)
-        return report_data
-    except Exception as e:
-        logger.warning("Failed to load resume session: %s", e)
-        return None
-
-
-def _build_resume_prompt(report_data: dict[str, Any], goal: str, persona: str) -> str:
-    """Build a context-rich prompt for resuming a previous simulation."""
-    prev_goal = report_data.get("goal", "unknown")
-    prev_persona = report_data.get("persona", "unknown")
-    prev_turns = report_data.get("turns", 0)
-    prev_actions = report_data.get("total_actions", 0)
-    prev_blocked = report_data.get("blocked_actions", 0)
-    prev_summary = report_data.get("llm_summary", "")
-    prev_issues = report_data.get("llm_issues_found", [])
-    prev_recommendations = report_data.get("llm_recommendations", [])
-    prev_tool_usage = report_data.get("tool_usage", {})
-
-    lines = [
-        f"SIMULATION GOAL: {goal}",
-        "",
-        "You are RESUMING a previous simulation session.",
-        f"You are the simulation orchestrator with the '{persona}' persona.",
-        "",
-        "## Previous Session Summary",
-        f"Goal: {prev_goal}",
-        f"Persona: {prev_persona}",
-        f"Completed {prev_turns} turns, {prev_actions} actions ({prev_blocked} blocked)",
-    ]
-
-    if prev_summary:
-        lines.append(f"Summary: {prev_summary}")
-
-    if prev_issues:
-        lines.append("Issues found:")
-        for issue in prev_issues[:5]:
-            lines.append(f"  - {issue}")
-
-    if prev_recommendations:
-        lines.append("Recommendations:")
-        for rec in prev_recommendations[:5]:
-            lines.append(f"  - {rec}")
-
-    if prev_tool_usage:
-        lines.append("Tool usage:")
-        for tool, count in sorted(prev_tool_usage.items(), key=lambda x: -x[1])[:10]:
-            lines.append(f"  {tool}: {count}")
-
-    lines.append("")
-    lines.append(
-        "Continue the simulation from where it left off. "
-        "Build on the previous findings — don't repeat probes that already worked. "
-        "Focus on areas the previous session identified as needing more testing. "
-        "Use send_message to continue probing the agent."
-    )
-
-    return "\n".join(lines)
+# Extracted to sim_types.py — re-export for backward compatibility
+from maxim.simulation.sim_types import (  # noqa: E402
+    SimulationResult,
+    load_resume_context as _load_resume_context,
+    build_resume_prompt as _build_resume_prompt,
+    build_basic_analysis as _build_basic_analysis,
+)
 
 
 def _setup_sim_sandbox(
@@ -249,21 +139,6 @@ def _setup_sim_sandbox(
         logger.warning("Sandbox creation failed: %s", e)
 
     return sim_sandbox, sandbox_root, aut_pain_bus
-
-
-def _build_basic_analysis(introspector: Any) -> dict[str, Any]:
-    """Build a basic analysis dict for non-campaign runs (D-0b fix).
-
-    Ensures research protocol always has analysis data to work with,
-    even without a --campaign YAML.
-    """
-    if introspector is None:
-        return {}
-    try:
-        return introspector.full_analysis(seed_keywords=[])
-    except Exception as e:
-        logger.debug("Basic analysis failed: %s", e)
-        return {}
 
 
 def start_simulation_mode(
@@ -1128,192 +1003,49 @@ def start_simulation_mode(
     aut_thread.start()
 
     # ── Generative campaign mode — narrator drives multi-turn story ──────
-    # When generative=True, the generative campaign runner creates a
-    # narrative arc and drives multi-turn story encounters through the bridge.
     generative_result = None
     if generative:
-        import time as _gen_time
+        from maxim.simulation.campaign_runner import run_generative_campaign as _run_gen
 
-        print(f"\n  Generative Campaign: {goal}")
-        print(f"  Max turns: {max_turns}")
-        if arc_yaml:
-            print(f"  Arc: {arc_yaml}")
-        _gen_time.sleep(0.5)  # Let AUT start up
-
-        try:
-            from maxim.simulation.generative_runner import run_generative_campaign
-
-            generative_result = run_generative_campaign(
-                goal=goal,
-                bridge=bridge,
-                llm=llm_router,
-                arc_yaml=arc_yaml,
-                max_turns=max_turns,
-                tool_registry=aut_registry,
-                session_dir=str(_sim_reports_dir() / time.strftime("%Y%m%d_%H%M%S")),
-            )
-            print(f"\n  Generative campaign complete: {generative_result.turns_completed} turns")
-        except Exception as e:
-            logger.warning("Generative campaign failed: %s", e)
-            print(f"\n  Generative campaign error: {e}")
-
+        generative_result = _run_gen(
+            goal=goal,
+            bridge=bridge,
+            llm_router=llm_router,
+            arc_yaml=arc_yaml,
+            max_turns=max_turns,
+            tool_registry=aut_registry,
+            session_dir_base=str(_sim_reports_dir() / time.strftime("%Y%m%d_%H%M%S")),
+        )
         stop_event.set()
 
-    # ── Pre-campaign: inject turns directly through bridge ───────────────
     # ── DM Campaign mode — DM runtime drives encounters ────────────────────
-    # When dm_campaign is provided, the DM runtime takes over instead of
-    # the orchestrator LLM. It drives encounters through the bridge, classifies
-    # AUT choices, resolves dice, and manages campaign state.
     dm_rollup: dict[str, Any] = {}
     if dm_campaign is not None:
-        import time as _dm_time
+        from maxim.simulation.campaign_runner import run_dm_campaign as _run_dm
 
-        print(f"\n  DM Campaign: {dm_campaign.name}")
-        print(f"  Goal: {dm_campaign.goal}")
-        print(f"  Encounters: {len(dm_campaign.encounters)}")
-        print(f"  Seed: {dm_campaign.seed}")
-        _dm_time.sleep(1.0)  # Let AUT start up
-
-        try:
-            from maxim.simulation.dm_runtime import DMRuntime
-            from maxim.simulation.tools_dm import ChooseTool
-
-            # Register ChooseTool for the AUT
-            dm_choose_tool = ChooseTool()
-            aut_registry.register(dm_choose_tool)
-
-            dm = DMRuntime(
-                campaign=dm_campaign,
-                bridge=bridge,
-                llm_router=llm_router,
-                choose_tool=dm_choose_tool,
-                executor=aut_executor,
-            )
-            try:
-                dm_state = dm.run()
-            except KeyboardInterrupt:
-                logger.info("DM Campaign interrupted by user")
-                print("\n  DM Campaign interrupted (Ctrl+C)")
-                dm_state = dm._state  # Partial state — campaign didn't finish
-                dm_state.finish_reason = "cancel"
-                finish_reason = "cancel"
-            dm_rollup = dm.get_rollup()
-
-            print(
-                f"\n  DM Campaign complete: {dm_state.turn_count} turns, "
-                f"{len(dm_state.choices_made)} choices, "
-                f"{len(dm_state.dice_rolls)} dice rolls"
-            )
-            print(f"  Finish: {dm_state.finish_reason}")
-
-            # Check bio-system expectations
-            exp_results = dm.check_expectations(
-                hippocampus=aut_hippocampus,
-                nac=aut_nac,
-                scn=getattr(aut_memory_hub, "scn", None) if aut_memory_hub else None,
-                pain_bus=aut_pain_bus,
-            )
-            dm_rollup["bio_systems"] = exp_results
-            if exp_results.get("checks"):
-                passed = sum(1 for c in exp_results["checks"].values() if c.get("pass"))
-                total = len(exp_results["checks"])
-                status = "ALL PASS" if exp_results["all_pass"] else f"{passed}/{total} passed"
-                print(f"  Bio-system expectations: {status}")
-        except Exception as e:
-            logger.error("DM Campaign failed: %s", e)
-            print(f"\n  DM Campaign error: {e}")
-            dm_rollup = {"error": str(e)}
-
-        # DM campaign is done — stop the sim (don't let orchestrator LLM take over)
+        dm_rollup = _run_dm(
+            dm_campaign=dm_campaign,
+            bridge=bridge,
+            llm_router=llm_router,
+            aut_registry=aut_registry,
+            aut_executor=aut_executor,
+            aut_hippocampus=aut_hippocampus,
+            aut_nac=aut_nac,
+            aut_memory_hub=aut_memory_hub,
+            aut_pain_bus=aut_pain_bus,
+        )
         stop_event.set()
-        bridge.finish()
 
     # ── Pre-campaign turn delivery ────────────────────────────────────────
-    # When campaign turns are provided, we bypass the orchestrator LLM for
-    # turn delivery.  The bridge sends each turn to the AUT as a raw percept,
-    # waits for the response, and records the result.  This avoids JSON
-    # escaping issues with narrative dialogue and ensures verbatim delivery.
-    campaign_results: list[dict[str, Any]] = []
+    campaign_analysis: dict[str, Any] = {}
     if pre_campaign_turns:
-        import time as _pc_time
+        from maxim.simulation.campaign_runner import run_precampaign_turns as _run_pre
 
-        print(f"\n  Delivering {len(pre_campaign_turns)} campaign turns directly to AUT...")
-        # Give AUT a moment to start up
-        _pc_time.sleep(1.0)
-        for i, turn in enumerate(pre_campaign_turns, 1):
-            text = turn.get("text", "")
-            phase = turn.get("phase", "")
-            sal = turn.get("salience", 0.8)
-            nov = turn.get("novelty", 0.7)
-            phase_label = f" [{phase}]" if phase else ""
-            print(f"  Turn {i}/{len(pre_campaign_turns)}{phase_label}: sending ({len(text)} chars)...")
-            try:
-                result = bridge.send_and_wait(text, salience=sal, novelty=nov)
-                actions = [a.tool_name for a in result.get("actions", [])]
-                blocked = len(result.get("blocked", []))
-                response = result.get("response", "")
-                resp_preview = (
-                    (response[:80] + "...") if response and len(response) > 80 else (response or "(no verbal response)")
-                )
-                print(
-                    f"    AUT: {len(actions)} action(s) {actions}, {blocked} blocked, {result.get('duration_ms', 0):.0f}ms"
-                )
-                print(f"    Response: {resp_preview}")
-                campaign_results.append(
-                    {
-                        "turn": i,
-                        "phase": phase,
-                        "text_len": len(text),
-                        "actions": actions,
-                        "blocked": blocked,
-                        "response": response,
-                        "timed_out": result.get("timed_out", False),
-                        "duration_ms": result.get("duration_ms", 0),
-                    }
-                )
-            except Exception as e:
-                logger.warning("Campaign turn %d failed: %s", i, e)
-                campaign_results.append({"turn": i, "phase": phase, "error": str(e)})
-        print(f"  Campaign delivery complete: {len(campaign_results)} turns delivered\n")
-
-        # ── Programmatic post-campaign analysis ─────────────────────────
-        # Use Observer directly — clean API, no registry hack.
-        print("  Running post-campaign analysis...")
-
-        campaign_analysis: dict[str, Any] = {"turns": campaign_results}
-        try:
-            analysis = aut_introspector.full_analysis(seed_keywords=["Verath"])
-            campaign_analysis.update(analysis)
-
-            recall = analysis.get("memory_recall", {}).get("Verath", {})
-            recall_count = recall.get("count", 0)
-            print(f"    Memory recall (Verath): {recall_count} hit(s)")
-
-            stats = analysis.get("system_stats", {})
-            mem_count = stats.get("hippocampus_memories", "?")
-            links = stats.get("nac_causal_links", "?")
-            print(f"    System stats: {mem_count} memories, {links} causal links")
-
-            print(f"    Summary: {aut_introspector.summarize(analysis)}")
-        except Exception as e:
-            logger.warning("Post-campaign analysis failed: %s", e)
-            print(f"    (analysis failed: {e})")
-
-        # Save analysis to session dir
-        try:
-            analysis_path = Path("data") / "sim_reports" / f"campaign_analysis_{time.strftime('%Y%m%d_%H%M%S')}.json"
-            analysis_path.parent.mkdir(parents=True, exist_ok=True)
-            from maxim.utils.atomic_io import atomic_write_json
-
-            atomic_write_json(str(analysis_path), campaign_analysis)
-            print(f"    Analysis saved: {analysis_path}")
-        except Exception:
-            pass
-
-        print("  Post-campaign analysis complete.\n")
-
-        # For campaign mode, skip the orchestrator LLM entirely —
-        # all work is done. Signal stop and fall through to cleanup.
+        campaign_analysis = _run_pre(
+            turns=pre_campaign_turns,
+            bridge=bridge,
+            introspector=aut_introspector,
+        )
         stop_event.set()
 
     # ── Inject initial goal (or resume context) into orchestrator ────────

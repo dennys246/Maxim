@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import time
 import itertools
 from typing import TYPE_CHECKING, Any
@@ -10,6 +9,20 @@ from typing import TYPE_CHECKING, Any
 from maxim.evaluation.base import Evaluator
 from maxim.utils.logging import log_swallowed_exception, warn
 from maxim.utils.structured_logging import log_agentic
+
+# Extracted to tool_dispatch.py — re-export for backward compatibility
+from maxim.runtime.tool_dispatch import (
+    safe_agent_name as _safe_agent_name,
+    record_outcome as _record_outcome,
+    execute_parallel_actions as _execute_parallel,
+)
+# Extracted to bio_integration.py
+from maxim.runtime.bio_integration import (
+    capture_episodic_memory as _capture_episodic,
+    record_plan_outcome as _record_plan_outcome,
+    start_bio_session as _start_bio_session,
+    end_bio_session as _end_bio_session,
+)
 
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController
@@ -33,125 +46,12 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def _safe_agent_name(agent: Any) -> str:
-    raw = None
-    try:
-        raw = getattr(agent, "state_name", None) or getattr(agent, "agent_name", None) or getattr(agent, "name", None)
-    except (AttributeError, TypeError) as e:
-        log_swallowed_exception(e, operation="get_agent_name")
-        raw = None
-    if not raw:
-        raw = type(agent).__name__
-    name = str(raw).strip() or "agent"
-    name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", name)
-    return name.strip("._-") or "agent"
-
-
 from maxim.runtime.loop_state import (
     _persist_state_json,
     _get_failure_strategy,
     _get_plan_depth,
     _build_replan_context,
 )
-
-
-def _record_outcome(
-    *,
-    tool_name: str,
-    success: bool,
-    result_summary: str | None,
-    error: str | None,
-    reasoning: str,
-    recent_outcomes: list[dict[str, Any]],
-    max_recent: int,
-    llm_worker: Any | None,
-    context_pool: Any,
-    nac: Any | None = None,
-    elapsed_s: float = 0.0,
-) -> None:
-    """Record a tool outcome to all sinks including NAc causal learning.
-
-    Appends to recent_outcomes, records reasoning carryover on llm_worker,
-    adds to context_pool, and (if NAc is wired) records a causal observation
-    so NAc learns tool → outcome patterns.
-    """
-    ts = time.time()
-    recent_outcomes.append(
-        {
-            "tool": tool_name,
-            "success": success,
-            "result": result_summary,
-            "error": error,
-            "timestamp": ts,
-        }
-    )
-    if len(recent_outcomes) > max_recent:
-        recent_outcomes.pop(0)
-
-    if llm_worker is not None:
-        llm_worker.record_outcome(
-            tool_name=tool_name,
-            reasoning=reasoning,
-            success=success,
-            result_summary=(result_summary or "")[:200],
-        )
-
-    context_pool.add_outcome(
-        tool_name=tool_name,
-        success=success,
-        result_summary=result_summary,
-        error=error,
-    )
-
-    # NAc causal learning: record tool → outcome so predictions improve
-    if nac is not None:
-        try:
-            from maxim.decisions.causal_link import Valence
-
-            outcome_summary = (result_summary or error or "")[:50]
-            valence = Valence.POSITIVE if success else Valence.NEGATIVE
-            link = nac.observe(
-                event_type="tool",
-                event_signature=f"tool:{tool_name}",
-                outcome_type="tool_result",
-                outcome_signature=f"{'success' if success else 'failure'}:{outcome_summary}",
-                outcome_valence=valence,
-                delta_seconds=elapsed_s,
-                context={"goal": reasoning[:100]} if reasoning else {},
-            )
-            # Sim trace
-            try:
-                from maxim.simulation.sim_logger import sim_nac
-
-                sim_nac(
-                    f"tool:{tool_name}",
-                    valence.value,
-                    getattr(link, "last_rpe", 0.0) or 0.0,
-                    getattr(link, "confidence", 0.5),
-                )
-            except Exception:
-                pass  # sim trace is best-effort
-        except Exception as e:
-            logger.warning("NAc reward signal failed for tool %s: %s", tool_name, e)
-
-    # Energy → NAc: learn which tools are expensive (metabolic budget)
-    if nac is not None and elapsed_s > 0:
-        try:
-            from maxim.decisions.causal_link import Valence as _V
-
-            # Expensive actions (>2s) get NEGATIVE energy valence; cheap ones NEUTRAL
-            energy_valence = _V.NEGATIVE if elapsed_s > 2.0 else _V.NEUTRAL
-            nac.observe(
-                event_type="energy",
-                event_signature=f"cost:{tool_name}",
-                outcome_type="energy_cost",
-                outcome_signature=f"elapsed:{elapsed_s:.1f}s",
-                outcome_valence=energy_valence,
-                delta_seconds=elapsed_s,
-                context={"tool": tool_name},
-            )
-        except Exception:
-            pass
 
 
 def run_agent_loop(
@@ -567,27 +467,8 @@ def run_agentic_loop(
     # Extract NAc reference for causal learning (passed to _record_outcome)
     _loop_nac = getattr(memory_hub, "nac", None) if memory_hub is not None else None
 
-    # Initialize MemoryHub session (restores priors from episodic memory)
-    memory_hub_enabled = memory_hub is not None
-    if memory_hub_enabled:
-        try:
-            startup_stats = memory_hub.on_session_start()
-            log_agentic(
-                "memory_hub",
-                "session_start",
-                startup_stats,
-                level="INFO",
-            )
-        except Exception as e:
-            logger.warning("Failed to start MemoryHub session: %s", e)
-            memory_hub_enabled = False
-
-    # Start hippocampus async capture worker (after session_start, which reads synchronously)
-    if hippocampus is not None:
-        try:
-            hippocampus.start_capture_worker()
-        except Exception as e:
-            logger.debug("Failed to start hippocampus capture worker: %s", e)
+    # Initialize bio-system session (MemoryHub + hippocampus capture worker)
+    memory_hub_enabled = _start_bio_session(memory_hub=memory_hub, hippocampus=hippocampus)
 
     # Diagnostic heartbeat: log once per agent on first iteration + every
     # ~10s thereafter so we can see if a loop is alive but stuck. Silent
@@ -1153,29 +1034,18 @@ def run_agentic_loop(
                                     except Exception as e:
                                         log_swallowed_exception(e, operation="memory.store_raw")
 
-                                    # Capture episodic memory to Hippocampus (async — fire-and-forget)
+                                    # Capture episodic memory to Hippocampus (async)
                                     if hippocampus is not None:
-                                        # Boost salience for surprising outcomes (high RPE)
-                                        if hasattr(executor, "get_last_rpe"):
-                                            rpe = executor.get_last_rpe()
-                                            if rpe > 0.0 and isinstance(observation, dict):
-                                                current_salience = observation.get("salience", 0.5)
-                                                observation["salience"] = min(1.0, current_salience + rpe * 0.5)
-                                        try:
-                                            hippocampus.capture_from_loop_async(
-                                                observation=observation if isinstance(observation, dict) else {},
-                                                state=state,
-                                                intent=intent,
-                                                decision={"action": action, "confidence": confidence},
-                                                action={
-                                                    "tool": action["tool_name"],
-                                                    "params": action.get("params", {}),
-                                                },
-                                                result=result,
-                                                run_id=run_id or "",
-                                            )
-                                        except Exception as e:
-                                            logger.debug("Hippocampus capture failed: %s", e)
+                                        _capture_episodic(
+                                            hippocampus=hippocampus,
+                                            executor=executor,
+                                            observation=observation,
+                                            state=state,
+                                            intent=intent,
+                                            action={"tool_name": action["tool_name"], "params": action.get("params", {}), "confidence": confidence},
+                                            result=result,
+                                            run_id=run_id or "",
+                                        )
 
                                 except Exception as e:
                                     log_agentic(
@@ -1259,109 +1129,21 @@ def run_agentic_loop(
             # ───────────────────────────────────────────────────────────────
             parallel_actions = getattr(pending_proposal, "parallel_actions", [])
             if parallel_actions:
-                # Collect all actions to execute (primary + parallel)
                 all_parallel_actions = pending_proposal.get_parallel_actions()
-                parallel_results: list[dict[str, Any]] = []
-                all_succeeded = True
-
-                logger.info("Executing %d parallel actions for batched exploration", len(all_parallel_actions))
-                log_agentic(
-                    "agent_loop",
-                    "parallel_batch_start",
-                    {"count": len(all_parallel_actions), "tools": [a.get("tool_name") for a in all_parallel_actions]},
+                _par_results, combined_results = _execute_parallel(
+                    actions=all_parallel_actions,
+                    executor=executor,
+                    autonomy_controller=autonomy_controller,
+                    confidence=confidence,
+                    reasoning=getattr(pending_proposal, "reasoning", "") if pending_proposal else "",
+                    recent_outcomes=recent_outcomes,
+                    max_recent=max_recent_outcomes,
+                    llm_worker=llm_worker,
+                    context_pool=context_pool,
+                    nac=_loop_nac,
                 )
 
-                for idx, parallel_action in enumerate(all_parallel_actions):
-                    tool_name = parallel_action.get("tool_name", "unknown")
-                    try:
-                        # Check autonomy for each action
-                        can_exec, reason = autonomy_controller.can_execute_action(
-                            parallel_action, confidence=confidence
-                        )
-                        if not can_exec:
-                            logger.warning("Parallel action %s rejected: %s", tool_name, reason)
-                            parallel_results.append(
-                                {
-                                    "tool": tool_name,
-                                    "success": False,
-                                    "error": f"Rejected: {reason}",
-                                    "result": None,
-                                }
-                            )
-                            continue
-
-                        # Execute the action
-                        result = executor.execute(parallel_action)
-                        success = getattr(result, "success", True)
-                        output = getattr(result, "output", None)
-                        error = getattr(result, "error", None)
-
-                        parallel_results.append(
-                            {
-                                "tool": tool_name,
-                                "params": parallel_action.get("params", {}),
-                                "success": success,
-                                "result": str(output)[:2000] if output else None,
-                                "error": error,
-                            }
-                        )
-
-                        if not success:
-                            all_succeeded = False
-
-                        log_agentic(
-                            "agent_loop",
-                            "parallel_action_complete",
-                            {"tool": tool_name, "index": idx, "success": success},
-                        )
-
-                    except Exception as e:
-                        logger.error("Parallel action %s failed: %s", tool_name, e)
-                        parallel_results.append(
-                            {
-                                "tool": tool_name,
-                                "success": False,
-                                "error": str(e),
-                                "result": None,
-                            }
-                        )
-                        all_succeeded = False
-
-                # Record individual outcomes so LLM has structured history
-                for pr in parallel_results:
-                    _record_outcome(
-                        tool_name=pr["tool"],
-                        success=pr["success"],
-                        result_summary=pr.get("result"),
-                        error=pr.get("error"),
-                        reasoning=getattr(pending_proposal, "reasoning", "") if pending_proposal else "",
-                        recent_outcomes=recent_outcomes,
-                        max_recent=max_recent_outcomes,
-                        llm_worker=llm_worker,
-                        context_pool=context_pool,
-                        nac=_loop_nac,
-                    )
-
-                # Combine results into a followup for the next LLM call
-                log_agentic(
-                    "agent_loop",
-                    "parallel_batch_complete",
-                    {"count": len(parallel_results), "all_succeeded": all_succeeded},
-                )
-
-                # Build combined result text for LLM context
-                combined_parts = ["=== BATCHED EXPLORATION RESULTS ==="]
-                for pr in parallel_results:
-                    tool = pr["tool"]
-                    if pr["success"]:
-                        result_text = pr["result"] or "[no output]"
-                        combined_parts.append(f"\n[{tool}] SUCCESS:\n{result_text}")
-                    else:
-                        combined_parts.append(f"\n[{tool}] FAILED: {pr.get('error', 'unknown error')}")
-                combined_parts.append("\n=== END BATCHED RESULTS ===")
-                combined_results = "\n".join(combined_parts)
-
-                # Queue this as a followup for the next LLM call
+                # Queue as a followup for the next LLM call
                 pending_action_followup = ActionFollowup(
                     tool="batched_exploration",
                     result=combined_results,
@@ -1624,15 +1406,12 @@ def run_agentic_loop(
 
                     # Record plan outcome in MemoryHub for learning
                     if memory_hub_enabled and memory_hub is not None:
-                        try:
-                            goal = pending_proposal.reasoning or ""
-                            memory_hub.record_plan_outcome(
-                                goal=goal[:200],  # Limit goal length
-                                tool_sequence=[tool_name],
-                                success=success,
-                            )
-                        except Exception as e:
-                            logger.debug(f"Failed to record plan outcome: {e}")
+                        _record_plan_outcome(
+                            memory_hub=memory_hub,
+                            goal=pending_proposal.reasoning or "",
+                            tool_name=tool_name,
+                            success=success,
+                        )
 
                     # If this tool has a followup_type, trigger a follow-up LLM cycle.
                     # The followup_type determines how the LLM should handle the results:
@@ -1695,26 +1474,18 @@ def run_agentic_loop(
                     except Exception as e:
                         log_swallowed_exception(e, operation="memory.store_raw")
 
-                    # Capture episodic memory to Hippocampus (async — fire-and-forget)
+                    # Capture episodic memory to Hippocampus (async)
                     if hippocampus is not None:
-                        # Boost salience for surprising outcomes (high RPE)
-                        if hasattr(executor, "get_last_rpe"):
-                            rpe = executor.get_last_rpe()
-                            if rpe > 0.0 and isinstance(observation, dict):
-                                current_salience = observation.get("salience", 0.5)
-                                observation["salience"] = min(1.0, current_salience + rpe * 0.5)
-                        try:
-                            hippocampus.capture_from_loop_async(
-                                observation=observation if isinstance(observation, dict) else {},
-                                state=state,
-                                intent={"goal": pending_proposal.reasoning, "source": "llm_worker"},
-                                decision={"action": action, "confidence": confidence},
-                                action={"tool": action.get("tool_name"), "params": action.get("params", {})},
-                                result=result,
-                                run_id=run_id or "",
-                            )
-                        except Exception as e:
-                            logger.debug("Hippocampus capture failed: %s", e)
+                        _capture_episodic(
+                            hippocampus=hippocampus,
+                            executor=executor,
+                            observation=observation,
+                            state=state,
+                            intent={"goal": pending_proposal.reasoning, "source": "llm_worker"},
+                            action={"tool_name": action.get("tool_name"), "params": action.get("params", {}), "confidence": confidence},
+                            result=result,
+                            run_id=run_id or "",
+                        )
 
                     # Handle failure
                     if success is False:
@@ -2340,34 +2111,13 @@ def run_agentic_loop(
     except Exception as e:
         logger.debug(f"Failed to save context pool: {e}")
 
-    # Drain async capture queue and save hippocampus
-    if hippocampus is not None:
-        try:
-            hippocampus.flush(timeout=5.0)
-            hippocampus.stop_capture_worker()
-        except Exception as e:
-            logger.debug(f"Failed to flush hippocampus: {e}")
-        try:
-            if hasattr(hippocampus, "config") and hippocampus.config.persistence_path:
-                hippocampus.save()
-                log_agentic("hippocampus", "saved", {"memories": len(hippocampus)}, level="INFO")
-        except Exception as e:
-            logger.debug(f"Failed to save hippocampus: {e}")
-
-    # End MemoryHub session (runs sleep consolidation and bridge cleanup)
-    # Skip session_end in simulation mode — it runs consolidation which
-    # can block for a long time and we'll start a new turn immediately
-    if memory_hub_enabled and memory_hub is not None and not sim.is_sim_mode:
-        try:
-            session_stats = memory_hub.on_session_end()
-            log_agentic(
-                "memory_hub",
-                "session_end",
-                session_stats,
-                level="INFO",
-            )
-        except Exception as e:
-            logger.debug(f"Failed to end MemoryHub session: {e}")
+    # End bio-system session (hippocampus flush/save + MemoryHub session_end)
+    _end_bio_session(
+        memory_hub=memory_hub,
+        memory_hub_enabled=memory_hub_enabled,
+        hippocampus=hippocampus,
+        is_sim_mode=sim.is_sim_mode,
+    )
 
     # Stop Default Network if running (skip in sim — no DN)
     if dn_enabled and not sim.is_sim_mode:

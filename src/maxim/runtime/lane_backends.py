@@ -45,81 +45,23 @@ def _safe_int_env(name: str, default: int) -> int:
         return default
 
 
-# ─── active server tracking (for hot-swap) ────────────────────────────────
-_active_spawner: Any | None = None
-_active_model: str | None = None
-_llm_start_time: float | None = None
-_swap_lock = threading.Lock()
-
-def _model_state_file() -> Path:
-    from maxim.utils.paths import resolve_user_state
-    return resolve_user_state("util/active_llm_model.txt")
-
-_MODEL_STATE_FILE = None  # Lazy; use _model_state_file()
-
-
-def stop_active_spawner() -> None:
-    """Stop the global auto-spawned server, releasing VRAM.
-
-    Called during Maxim shutdown so the server doesn't linger until
-    the atexit handler fires (which may never run if shutdown hangs).
-    """
-    global _active_spawner, _active_model, _llm_start_time  # noqa: PLW0603
-    with _swap_lock:
-        spawner = _active_spawner
-        _active_spawner = None
-        _active_model = None
-        _llm_start_time = None
-    if spawner is not None:
-        try:
-            spawner.stop()
-        except Exception:
-            pass
-
-# Weak references to active LLMRouter instances so swap_llm_server can
-# update cached n_ctx without importing the router at module level.
-import weakref
-
-_active_routers: list[weakref.ref] = []
-_active_routers_lock = threading.Lock()
-
-
-def register_router(router: Any) -> None:
-    """Register an LLMRouter for n_ctx updates on hot-swap."""
-    with _active_routers_lock:
-        _active_routers.append(weakref.ref(router))
-
-
-def _find_active_routers() -> list[Any]:
-    """Return all still-alive routers, pruning dead refs."""
-    global _active_routers  # noqa: PLW0603
-    with _active_routers_lock:
-        alive = []
-        for ref in _active_routers:
-            r = ref()
-            if r is not None:
-                alive.append(r)
-        _active_routers = [weakref.ref(r) for r in alive]
-    return alive
-
-
-def _read_persisted_model() -> str | None:
-    """Read the last swapped model name from disk (survives restarts)."""
-    try:
-        text = _model_state_file().read_text().strip()
-        return text if text else None
-    except Exception:
-        return None
-
-
-def _write_persisted_model(profile: str | None) -> None:
-    """Persist the active model name so auto-spawn uses it after restart."""
-    try:
-        sf = _model_state_file()
-        sf.parent.mkdir(parents=True, exist_ok=True)
-        sf.write_text(profile or "")
-    except Exception as e:
-        logger.warning("Failed to persist model state: %s", e)
+# Extracted to llm_server.py — re-export for backward compatibility
+from maxim.runtime.llm_server import (  # noqa: F401, E402
+    _active_spawner,
+    _active_model,
+    _llm_start_time,
+    _swap_lock,
+    _model_state_file,
+    stop_active_spawner,
+    register_router,
+    _find_active_routers,
+    _active_routers,
+    _active_routers_lock,
+    read_persisted_model as _read_persisted_model,
+    write_persisted_model as _write_persisted_model,
+    llm_server_responding_at as _llm_server_responding_at,
+    profile_has_local_file as _profile_has_local_file,
+)
 
 
 # ─── env var plumbing ─────────────────────────────────────────────────────
@@ -813,52 +755,6 @@ def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> d
             )
         out[name] = dataclasses.replace(cfg, remote_url=None, remote_model=None, remote_api_key=None)
     return out
-
-
-def _llm_server_responding_at(url: str, *, timeout_s: float = 1.5) -> bool:
-    """Return True iff an OpenAI-compatible server answers GET /v1/models at `url`.
-
-    Used for auto-discovery (reuse an already-running server) and for
-    validating env-supplied remote URLs before wiring a lane to them.
-
-    Treats both 200 and 401 as "server is up": 401 means an HTTP listener
-    with auth enabled is answering, which is still a valid signal the port
-    is in use by a real llama-cpp-server (we're just not authenticated).
-    """
-    if not url:
-        return False
-    # Normalize: strip trailing slashes, ensure /v1 path
-    base = url.rstrip("/")
-    probe = base + "/models" if base.endswith("/v1") else base + "/v1/models"
-    try:
-        import urllib.error
-        import urllib.request
-
-        with urllib.request.urlopen(probe, timeout=timeout_s) as resp:  # noqa: S310
-            return resp.status == 200
-    except urllib.error.HTTPError as e:
-        return e.code == 401  # server reachable, auth-gated
-    except Exception:
-        return False
-
-
-def _profile_has_local_file(profile_name: str) -> bool:
-    """Return True iff the profile's GGUF file actually exists on disk.
-
-    Used to filter the capability-driven tier table down to models the user
-    has actually downloaded. Returns False on any error (missing profile,
-    unbuildable path, etc.) — fail-closed so we fall back safely.
-    """
-    if not profile_name:
-        return False
-    try:
-        from maxim.models.language.config import load_llm_config
-
-        cfg = load_llm_config(profile_override=profile_name)
-        model_path = getattr(cfg, "model_path", "") or ""
-        return bool(model_path) and Path(model_path).is_file()
-    except Exception:
-        return False
 
 
 def _maybe_auto_spawn_server(

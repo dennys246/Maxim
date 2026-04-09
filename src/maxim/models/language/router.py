@@ -3,12 +3,11 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import replace
-from pathlib import Path
 from typing import Any
 
 from maxim.utils.logging import info, warn
 from maxim.utils.structured_logging import log_agentic
-from maxim.models.language.cost_tracker import CostTracker, CostTrackerConfig, ModelPricing
+from maxim.models.language.cost_tracker import CostTracker
 from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult
 from maxim.utils.cloud_audit import CloudAuditEntry, CloudAuditLogger
 
@@ -66,54 +65,18 @@ from maxim.models.language.types import (  # noqa: F401
 )
 
 
-_DEFAULT_PRICING: dict[str, ModelPricing] = {
-    "claude-sonnet-4-5-20250514": ModelPricing(3.00, 15.00, 0.30),
-    "claude-haiku-4-5-20251001": ModelPricing(0.80, 4.00, 0.08),
-    "claude-opus-4-5-20250514": ModelPricing(15.00, 75.00, 1.50),
-    "gpt-4o": ModelPricing(2.50, 10.00, 1.25),
-    "gpt-4o-mini": ModelPricing(0.15, 0.60, 0.075),
-    "local": ModelPricing(0.0, 0.0, 0.0),
-}
-
-_MODEL_DOWNGRADE_MAP: dict[str, str] = {
-    "claude-opus-4-5-20250514": "claude-sonnet-4-5-20250514",
-    "claude-sonnet-4-5-20250514": "claude-haiku-4-5-20251001",
-    "gpt-4o": "gpt-4o-mini",
-    "gpt-4-turbo": "gpt-4o-mini",
-}
-
-
-# ─── Centralized JSON instruction prompts ────────────────────────────────
-# Used across all LLM→JSON paths for consistency.  The quote-escaping
-# guidance is critical for small/medium models (7B–14B) that embed
-# narrative dialogue with unescaped double quotes.
-
-_JSON_RULES = (
-    "CRITICAL JSON RULES:\n"
-    "- Output ONLY valid JSON. No text before or after the JSON object.\n"
-    '- Escape ALL double quotes inside string values with backslash: \\"  \n'
-    '- Example: {"message": "She said \\"hello\\" to me"}\n'
-    "- Never use unescaped double quotes inside a JSON string value.\n"
-    "- If including dialogue or quotes, always backslash-escape them."
-)
-
-_SYSTEM_TOOL_RESPONSE = (
-    "You are Maxim, an intelligent robot assistant. "
-    "You MUST respond with valid JSON only. No explanations outside JSON. "
-    "Select the most appropriate tool based on the context and user request. "
-    "If unsure, use 'respond' to communicate with the user.\n\n" + _JSON_RULES
-)
-
-_SYSTEM_JSON_ONLY = (
-    "You are a JSON-only response system. "
-    "Output ONLY valid JSON. No explanations, no code, no markdown. "
-    "If the user prompt contains partial JSON, complete it. "
-    "Never explain how to create JSON - just output the JSON directly.\n\n" + _JSON_RULES
-)
-
-_SYSTEM_ROUTE = (
-    "You are Maxim, a local robot assistant. "
-    "Return ONLY a single JSON object (no prose) describing the next action.\n\n" + _JSON_RULES
+# Extracted to cloud_dispatch.py — re-export for backward compatibility
+from maxim.models.language.cloud_dispatch import (  # noqa: F401
+    DEFAULT_PRICING as _DEFAULT_PRICING,
+    MODEL_DOWNGRADE_MAP as _MODEL_DOWNGRADE_MAP,
+    JSON_RULES as _JSON_RULES,
+    SYSTEM_TOOL_RESPONSE as _SYSTEM_TOOL_RESPONSE,
+    SYSTEM_JSON_ONLY as _SYSTEM_JSON_ONLY,
+    SYSTEM_ROUTE as _SYSTEM_ROUTE,
+    normalize_providers as _normalize_providers_fn,
+    load_routing_policy as _load_routing_policy_fn,
+    load_pricing_table as _load_pricing_table_fn,
+    load_cost_config as _load_cost_config_fn,
 )
 
 
@@ -224,70 +187,11 @@ class LLMRouter:
                 return backend
         return None
 
-    @staticmethod
-    def _normalize_providers(cfg: LLMConfig) -> dict[str, dict[str, Any]]:
-        providers = cfg.providers if isinstance(cfg.providers, dict) else {}
-        if providers:
-            return {str(k): v for k, v in providers.items() if isinstance(k, str) and isinstance(v, dict)}
-        # Backward-compat: synthesize a local provider from base config
-        return {
-            "local": {
-                "type": cfg.backend or "llama_cpp",
-                "model": cfg.model,
-                "model_base": cfg.model_base,
-                "model_path": cfg.model_path,
-                "n_ctx": cfg.n_ctx,
-            }
-        }
-
-    @staticmethod
-    def _load_routing_policy(raw: dict[str, Any]) -> RoutingPolicy:
-        data = raw if isinstance(raw, dict) else {}
-        return RoutingPolicy(
-            provider_priority=list(data.get("provider_priority", []))
-            if isinstance(data.get("provider_priority"), list)
-            else [],
-            fallback_on_rate_limit=bool(data.get("fallback_on_rate_limit", True)),
-            fallback_on_timeout=bool(data.get("fallback_on_timeout", True)),
-            fallback_on_budget_exceeded=str(data.get("fallback_on_budget_exceeded", "local") or "local"),
-            require_cloud_opt_in=bool(data.get("require_cloud_opt_in", True)),
-            context_window_routing=bool(data.get("context_window_routing", True)),
-            max_cost_per_request=float(data.get("max_cost_per_request", 0.50) or 0.0),
-            max_cost_per_hour=float(data.get("max_cost_per_hour", 1.00) or 0.0),
-            max_cost_per_day=float(data.get("max_cost_per_day", 10.00) or 0.0),
-            max_cost_per_month=float(data.get("max_cost_per_month", 100.00) or 0.0),
-            max_session_cost=float(data.get("max_session_cost", 5.00) or 0.0),
-            cost_warning_threshold=float(data.get("cost_warning_threshold", 0.80) or 0.0),
-            cost_critical_threshold=float(data.get("cost_critical_threshold", 0.95) or 0.0),
-        )
-
-    @staticmethod
-    def _load_pricing_table(cfg: LLMConfig) -> dict[str, ModelPricing]:
-        pricing: dict[str, ModelPricing] = dict(_DEFAULT_PRICING)
-        raw = cfg.pricing if isinstance(cfg.pricing, dict) else {}
-        for model, entry in raw.items():
-            if not isinstance(model, str) or not isinstance(entry, dict):
-                continue
-            try:
-                pricing[model] = ModelPricing(
-                    input_price=float(entry.get("input_price", entry.get("input", 0.0)) or 0.0),
-                    output_price=float(entry.get("output_price", entry.get("output", 0.0)) or 0.0),
-                    cached_input_price=float(entry.get("cached_input_price", entry.get("cached_input", 0.0)) or 0.0),
-                )
-            except Exception:
-                continue
-        return pricing
-
-    @staticmethod
-    def _load_cost_config(cfg: LLMConfig) -> CostTrackerConfig:
-        raw = cfg.routing if isinstance(cfg.routing, dict) else {}
-        return CostTrackerConfig(
-            state_path=str(raw.get("cost_state_path", str(Path.home() / ".maxim" / "util" / "cost_state.json"))),
-            persistence_interval_s=float(raw.get("cost_persistence_interval_s", 10.0) or 10.0),
-            persistence_interval_n=int(raw.get("cost_persistence_interval_n", 5) or 5),
-            reserved_budget_ratio=float(raw.get("reserved_budget_ratio", 0.2) or 0.2),
-            min_spend_samples=int(raw.get("min_spend_samples", 5) or 5),
-        )
+    # Static config loaders — delegated to cloud_dispatch.py
+    _normalize_providers = staticmethod(_normalize_providers_fn)
+    _load_routing_policy = staticmethod(_load_routing_policy_fn)
+    _load_pricing_table = staticmethod(_load_pricing_table_fn)
+    _load_cost_config = staticmethod(_load_cost_config_fn)
 
     def _validate_cloud_config(self) -> tuple[bool, str]:
         if not self.cfg.cloud_enabled:
