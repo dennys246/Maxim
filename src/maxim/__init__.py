@@ -97,6 +97,7 @@ __all__ = [
     "tool",
     "list_models",
     "download_model",
+    "delete_model",
     # Types
     "DiagnosticReport",
     "CampaignResult",
