@@ -33,7 +33,7 @@ class LaneModelConfig:
     n_gpu_layers: int = -1  # -1 = all on GPU, 0 = CPU only
 
 
-# VRAM tiers for the "infer" lane (the hot-path LLM that benefits most from GPU).
+# VRAM tiers for the "large" tier (the hot-path LLM that benefits most from GPU).
 # Each tier names an existing profile from BUILTIN_PROFILES. Extend this table
 # when new profiles are added (e.g., a 14B / 24B GGUF for >16GB cards).
 #
@@ -94,63 +94,6 @@ def _pick_infer_profile(
     # Last tier (smollm) is the universal fallback — return it even if the
     # availability check fails, so callers always get a profile name.
     return _INFER_VRAM_TIERS[-1][1]
-
-
-def build_lane_model_config(
-    caps: RuntimeCapabilities,
-    *,
-    profile_available: ProfileAvailabilityCheck | None = None,
-) -> dict[str, LaneModelConfig]:
-    """Map WorkerPool lanes to LLM profiles based on detected hardware.
-
-    Returns a dict keyed by lane name (`infer`, `review`). The `record` lane
-    does no LLM work and is intentionally omitted — it stays with whatever
-    backend the caller provides as default.
-
-    Decisions:
-    - GPU present  → infer lane gets a GPU profile sized to VRAM.
-    - No GPU       → infer lane falls back to SmolLM on CPU.
-    - Enough RAM   → review lane gets its own CPU-side SmolLM.
-    - Tight RAM    → review lane falls back to the infer profile (shared backend).
-
-    The effective policy respects CUDA_VISIBLE_DEVICES: if CUDA was hidden by
-    the Blackwell workaround, `caps.has_gpu` should already be False and we'll
-    pick the CPU fallback.
-
-    Args:
-        profile_available: optional callback (profile_name) -> bool that filters
-            the tier search. Used to skip profiles whose GGUF files aren't
-            downloaded. Tests can omit it for a "trust-all" behavior.
-    """
-    check = profile_available or (lambda _: True)
-    assignments: dict[str, LaneModelConfig] = {}
-
-    if caps.has_gpu and caps.vram_gb >= _INFER_VRAM_TIERS[-1][0]:
-        infer_profile = _pick_infer_profile(caps.vram_gb, profile_available=check)
-        assignments["infer"] = LaneModelConfig(
-            profile=infer_profile,
-            device="gpu",
-            n_gpu_layers=-1,
-        )
-    else:
-        assignments["infer"] = LaneModelConfig(
-            profile="smollm-1.7b-instruct",
-            device="cpu",
-            n_gpu_layers=0,
-        )
-
-    if caps.ram_gb >= _REVIEW_MIN_RAM_GB and check(_REVIEW_PROFILE):
-        assignments["review"] = LaneModelConfig(
-            profile=_REVIEW_PROFILE,
-            device="cpu",
-            n_gpu_layers=0,
-        )
-    else:
-        # RAM is tight OR review profile unavailable — share the infer backend
-        # rather than loading a second model (or one that doesn't exist).
-        assignments["review"] = assignments["infer"]
-
-    return assignments
 
 
 def detect_tiers(
@@ -340,7 +283,6 @@ __all__ = [
     "LaneModelConfig",
     "apply_lane_env_overrides",
     "apply_tier_config_overrides",
-    "build_lane_model_config",
     "detect_tiers",
     "load_function_overrides",
 ]

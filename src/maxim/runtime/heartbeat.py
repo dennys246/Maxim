@@ -10,7 +10,7 @@ Enabled by:
   - Always on in leader mode
 
 Heartbeat line format:
-  [heartbeat] gpu=87% vram=6.2/16G 72C | cpu=23% ram=8.1/16G | infer: 5 calls/10s p50=280ms | loop: idle=2.1s
+  [heartbeat] gpu=87% vram=6.2/16G 72C | cpu=23% ram=8.1/16G | large: 5 calls/10s p50=280ms | loop: idle=2.1s
 
 Stall detection:
   If no LLM calls have been recorded for MAXIM_HEARTBEAT_STALL_S (default 30s),
@@ -168,14 +168,14 @@ class HeartbeatMonitor:
         if isinstance(wifi, dict) and wifi.get("rssi_dbm"):
             parts.append(f"wifi={wifi['rssi_dbm']:.0f}dBm")
 
-        # Lane metrics (infer lane if present)
+        # Lane metrics (large tier if present)
         lanes = data.get("lanes", {})
-        infer = lanes.get("infer")
-        if isinstance(infer, dict) and infer.get("jobs_completed", 0) > 0:
+        large = lanes.get("large")
+        if isinstance(large, dict) and large.get("jobs_completed", 0) > 0:
             parts.append(
-                f"infer: {infer['jobs_completed']}calls "
-                f"p50={infer['p50_latency_ms']:.0f}ms "
-                f"fail={infer['failure_rate']:.0%}"
+                f"large: {large['jobs_completed']}calls "
+                f"p50={large['p50_latency_ms']:.0f}ms "
+                f"fail={large['failure_rate']:.0%}"
             )
 
         # Agent loop state
@@ -191,11 +191,11 @@ class HeartbeatMonitor:
     def _check_stall(self, data: dict[str, Any]) -> None:
         """Warn if no LLM calls have happened within the stall threshold."""
         lanes = data.get("lanes", {})
-        infer = lanes.get("infer")
-        if not isinstance(infer, dict):
+        large = lanes.get("large")
+        if not isinstance(large, dict):
             return
 
-        total_calls = infer.get("jobs_completed", 0) + infer.get("jobs_failed", 0)
+        total_calls = large.get("jobs_completed", 0) + large.get("jobs_failed", 0)
         if total_calls == 0:
             return  # no calls yet, not a stall
 
@@ -210,13 +210,13 @@ class HeartbeatMonitor:
                     self._last_stall_warn = now
                     logger.warning(
                         "[heartbeat] STALL DETECTED — agent loop idle for %.0fs "
-                        "(state=%s, threshold=%ds). Last infer call: p50=%s ms, "
+                        "(state=%s, threshold=%ds). Last large-tier call: p50=%s ms, "
                         "failure_rate=%s",
                         idle_s,
                         loop.get("state", "?"),
                         int(self._stall_threshold),
-                        infer.get("p50_latency_ms", "?"),
-                        infer.get("failure_rate", "?"),
+                        large.get("p50_latency_ms", "?"),
+                        large.get("failure_rate", "?"),
                     )
 
 

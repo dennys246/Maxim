@@ -277,7 +277,7 @@ def analyze_simulation(
             ),
             temperature=0.2,
             max_tokens=2048,
-            request_context={"agent": "sim_roundup", "lane": "infer"},
+            request_context={"agent": "sim_roundup", "lane": "large"},
         )
 
         if isinstance(response, dict):

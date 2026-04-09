@@ -438,7 +438,7 @@ class ExecAgent(Agent):
                 temperature=0.2,
                 max_tokens=max_tokens,
                 system_override=system,
-                request_context={"agent": self.agent_name, "lane": "infer"},
+                request_context={"agent": self.agent_name, "lane": "large"},
             )
         else:
             llm = self._ensure_llm()
@@ -1220,7 +1220,7 @@ Based on this context, what goal should be proposed?"""
                     injected.user,
                     temperature=0.2,
                     system_override=injected.system,
-                    request_context={"agent": self.agent_name, "request_id": request_id, "lane": "infer"},
+                    request_context={"agent": self.agent_name, "request_id": request_id, "lane": "large"},
                     tools=tool_use_tools,
                     thinking=thinking_cfg,
                 )

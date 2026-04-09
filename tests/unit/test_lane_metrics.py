@@ -208,37 +208,11 @@ class TestMetricsRegistry:
         assert all(inst is instances[0] for inst in instances)
 
 
-# ─── MetricsRegistry alias support ──────────────────────────────────────
+# ─── MetricsRegistry tier names ────────────────────────────────────────
 
 
-class TestMetricsRegistryAliases:
-    def test_infer_resolves_to_large(self):
-        """Legacy 'infer' name should return the same metrics as 'large'."""
-        registry = MetricsRegistry()
-        large_metrics = registry.get("large")
-        infer_metrics = registry.get("infer")
-        assert large_metrics is infer_metrics
-        assert large_metrics.lane_name == "large"
-
-    def test_review_resolves_to_small(self):
-        registry = MetricsRegistry()
-        small_metrics = registry.get("small")
-        review_metrics = registry.get("review")
-        assert small_metrics is review_metrics
-
-    def test_record_resolves_to_small(self):
-        registry = MetricsRegistry()
-        small_metrics = registry.get("small")
-        record_metrics = registry.get("record")
-        assert small_metrics is record_metrics
-
-    def test_infer_net_resolves_to_large(self):
-        registry = MetricsRegistry()
-        large_metrics = registry.get("large")
-        infer_net_metrics = registry.get("infer_net")
-        assert large_metrics is infer_net_metrics
-
-    def test_direct_tier_names_unaffected(self):
+class TestMetricsRegistryTierNames:
+    def test_tier_names_create_distinct_metrics(self):
         registry = MetricsRegistry()
         large = registry.get("large")
         medium = registry.get("medium")

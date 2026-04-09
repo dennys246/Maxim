@@ -373,7 +373,7 @@ class LaneBackendManager:
         so the router tries the primary (local/self-hosted) first and falls
         back to cloud on failure, rate-limit, or timeout.
         """
-        if cfg.name not in ("infer", "large"):
+        if cfg.name != "large":
             return llm_config
         fallback_model = os.environ.get("MAXIM_CLOUD_FALLBACK_MODEL", "").strip()
         if not fallback_model:
@@ -558,10 +558,10 @@ def build_primary_router(
       3. Apply MAXIM_LANE_{NAME}_REMOTE_URL / _MODEL / _API_KEY env overrides
          (Phase 4).
       4. Construct LaneBackendManager with the gates (Phase 3 + 4 safety).
-      5. Return (manager.get_backend("infer"), manager).
+      5. Return (manager.get_backend("large"), manager).
 
-    Returns (None, manager) if the infer lane resolves to nothing — e.g. the
-    lane has no profile AND no remote URL, the backend build fails, or the
+    Returns (None, manager) if the large tier resolves to nothing — e.g. the
+    tier has no profile AND no remote URL, the backend build fails, or the
     LLMConfig ends up disabled. Callers should fall back to their own default
     LLMRouter construction in that case.
 
@@ -724,9 +724,8 @@ def build_primary_router(
     except Exception:
         pass
 
-    # Primary inference backend: try "large" tier first, fall back to "infer"
-    # (backward compat for callers that pass explicit lane_configs with old names).
-    router = manager.get_backend("large") or manager.get_backend("infer")
+    # Primary inference backend: "large" tier.
+    router = manager.get_backend("large")
     if router is not None and hasattr(router, "update_provider_n_ctx"):
         register_router(router)
     return router, manager
@@ -1082,7 +1081,7 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
         try:
             from maxim.models.language.lane_metrics import get_metrics_registry
 
-            metrics = get_metrics_registry().get("large") or get_metrics_registry().get("infer")
+            metrics = get_metrics_registry().get("large")
             deadline = _time.time() + 5.0
             while metrics.current_in_flight > 0 and _time.time() < deadline:
                 _time.sleep(0.25)

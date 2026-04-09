@@ -4,9 +4,6 @@ Provides a worker pool architecture where operations are categorized into
 tier-based lanes (large, medium, small), each with its own bounded thread
 pool. Jobs can declare dependencies on other jobs and prefetch data while
 waiting for those dependencies to resolve.
-
-Legacy lane names (infer, review, record) are supported via aliases that
-map to tier names. See ``_LEGACY_LANE_ALIASES``.
 """
 
 from __future__ import annotations
@@ -443,15 +440,6 @@ DEFAULT_TIERS: dict[str, LaneConfig] = {
     "small": LaneConfig(name="small", max_workers=2),
 }
 
-# Backward compat: old function-based lane names → tier names.
-# Used by WorkerPool.submit() to transparently resolve legacy callers.
-_LEGACY_LANE_ALIASES: dict[str, str] = {
-    "infer": "large",
-    "infer_net": "large",  # Cloud dispatch now internal to tier backend
-    "review": "small",  # Current callers: concept grounding/extraction
-    "record": "small",  # Current callers: concept extraction, DB writes
-}
-
 
 
 class WorkerPool:
@@ -508,14 +496,11 @@ class WorkerPool:
             lane.stop(timeout=per_lane)
 
     def _resolve_lane(self, lane: str) -> str:
-        """Resolve a lane name, applying legacy aliases if needed."""
+        """Resolve a lane name."""
         if lane in self._lanes:
             return lane
-        resolved = _LEGACY_LANE_ALIASES.get(lane)
-        if resolved and resolved in self._lanes:
-            return resolved
         raise ValueError(
-            f"Unknown lane: {lane!r} (available: {set(self._lanes)}, aliases: {set(_LEGACY_LANE_ALIASES)})"
+            f"Unknown lane: {lane!r} (available: {set(self._lanes)})"
         )
 
     def submit(
@@ -526,7 +511,7 @@ class WorkerPool:
         priority: int = 5,
         deps: DependencySpec | None = None,
     ) -> str:
-        """Submit a job to a lane (accepts tier names or legacy lane names). Returns job_id."""
+        """Submit a job to a lane. Returns job_id."""
         resolved = self._resolve_lane(lane)
         job = Job(job_id=job_id, fn=fn, priority=priority, deps=deps)
         self._lanes[resolved].submit(job)
@@ -566,22 +551,14 @@ class WorkerPool:
         return self._registry.get_result(job_id)
 
     def get_completed(self, lane: str) -> Job | None:
-        """Non-blocking poll: return the most recent completed job, or None.
-
-        Accepts tier names or legacy lane names (resolved via alias).
-        """
-        resolved = lane if lane in self._lanes else _LEGACY_LANE_ALIASES.get(lane, lane)
-        return self._registry.pop_completed(resolved)
+        """Non-blocking poll: return the most recent completed job, or None."""
+        return self._registry.pop_completed(lane)
 
     def cancel_lane(self, lane: str) -> int:
-        """Drain and discard all pending jobs in a lane.
-
-        Accepts tier names or legacy lane names.
-        """
-        resolved = lane if lane in self._lanes else _LEGACY_LANE_ALIASES.get(lane, lane)
-        if resolved not in self._lanes:
+        """Drain and discard all pending jobs in a lane."""
+        if lane not in self._lanes:
             return 0
-        return self._lanes[resolved].cancel_pending()
+        return self._lanes[lane].cancel_pending()
 
     def cancel_all(self) -> int:
         """Cancel everything across all lanes."""
@@ -618,5 +595,4 @@ __all__ = [
     "Lane",
     "LaneConfig",
     "WorkerPool",
-    "_LEGACY_LANE_ALIASES",
 ]

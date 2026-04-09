@@ -743,7 +743,7 @@ class LLMWorker:
             request_context = {
                 "request_id": request.request_id,
                 "agent": "llm_worker",
-                "lane": request.lane or "infer",
+                "lane": request.lane or "large",
                 "provider_hint": provider_hint or "",
             }
 
@@ -819,7 +819,7 @@ class LLMWorker:
                 response=response if isinstance(response, dict) else None,
                 latency_ms=latency_ms,
                 request_id=request.request_id,
-                lane=request.lane or "infer",
+                lane=request.lane or "large",
                 mode_name=request.mode.name if request.mode else "unknown",
             )
 

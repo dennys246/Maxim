@@ -203,7 +203,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     api_key: str | None = None
     upstream_url: str = "http://127.0.0.1:8100"
     request_log: _RequestLog | None = None
-    lane_metrics: Any = None  # LaneMetrics instance for the infer lane
+    lane_metrics: Any = None  # LaneMetrics instance for the large tier
     concurrency_semaphore: threading.Semaphore | None = None  # Phase 7b
     rate_limiter: Any = None  # PeerRateLimiter instance (Phase 7b)
     start_time: float = 0.0
@@ -318,7 +318,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         try:
             from maxim.models.language.lane_metrics import get_metrics_registry
 
-            m = get_metrics_registry().get("infer")
+            m = get_metrics_registry().get("large")
             lane_metrics = {
                 "total_requests": m.total_requests,
                 "in_flight": m.current_in_flight,
@@ -1150,12 +1150,12 @@ def start_leader_proxy(
     # Install log buffer handler so /v1/debug/logs can serve log lines
     _ensure_log_buffer()
 
-    # Phase 8: get the shared infer lane metrics for proxy traffic recording
+    # Phase 8: get the shared large tier metrics for proxy traffic recording
     infer_metrics = None
     try:
         from maxim.models.language.lane_metrics import get_metrics_registry
 
-        infer_metrics = get_metrics_registry().get("infer")
+        infer_metrics = get_metrics_registry().get("large")
     except Exception:
         pass
 

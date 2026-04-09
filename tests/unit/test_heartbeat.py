@@ -124,12 +124,12 @@ class TestHeartbeatMonitor:
         # Record some calls so stall detection activates
         from maxim.models.language.lane_metrics import LaneMetrics
 
-        infer = LaneMetrics(lane_name="infer")
-        infer.record_call(100, success=True)
+        large = LaneMetrics(lane_name="large")
+        large.record_call(100, success=True)
 
-        # Mock the registry to return our infer metrics
+        # Mock the registry to return our large tier metrics
         data = monitor._collect()
-        data["lanes"] = {"infer": infer.snapshot()}
+        data["lanes"] = {"large": large.snapshot()}
 
         # Check stall — should set _last_stall_warn
         monitor._check_stall(data)
