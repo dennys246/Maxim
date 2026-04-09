@@ -274,6 +274,51 @@ def _cmd_key_set(argv: list[str]) -> int:
 # ─── helpers ──────────────────────────────────────────────────────────────
 
 
+def _request_with_retry(
+    url: str,
+    *,
+    method: str = "GET",
+    headers: dict | None = None,
+    body: bytes | None = None,
+    timeout: float = 10.0,
+    max_retries: int = 3,
+    base_backoff: float = 1.0,
+) -> bytes | None:
+    """Make an HTTP request with exponential backoff on transient failures.
+
+    Returns response body on success, None on failure after all retries.
+    """
+    import time
+    import urllib.error
+    import urllib.request
+
+    for attempt in range(max_retries + 1):
+        req = urllib.request.Request(url, method=method, data=body)
+        req.add_header("User-Agent", "maxim-peer/1.0")
+        if headers:
+            for k, v in headers.items():
+                req.add_header(k, v)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+                return resp.read()
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 502, 503):
+                # Transient — retry with backoff
+                if attempt < max_retries:
+                    wait = base_backoff * (2**attempt)
+                    time.sleep(wait)
+                    continue
+            return None  # Permanent HTTP error
+        except (urllib.error.URLError, OSError):
+            # Connection refused, timeout, etc.
+            if attempt < max_retries:
+                wait = base_backoff * (2**attempt)
+                time.sleep(wait)
+                continue
+            return None
+    return None
+
+
 def _check_proxy_ping(base_url: str, key: str | None = None) -> dict | None:
     """Probe /v1/debug/ping to verify the tunnel reaches LeaderProxy.
 
@@ -567,9 +612,28 @@ def _cmd_restart(argv: list[str]) -> int:
     status = data.get("status", "unknown")
 
     if status == "restarting":
+        import time as _time
+
         uptime = data.get("uptime_s", "?")
         print(f"Leader is restarting (was up {uptime}s).")
-        print("  It will be back in a few seconds.")
+        print("  Waiting for leader to come back...", end="", flush=True)
+
+        # Poll until the leader responds again (exponential backoff, max 120s)
+        came_back = False
+        for attempt in range(10):
+            wait = min(2.0 * (1.5**attempt), 15.0)
+            _time.sleep(wait)
+            print(".", end="", flush=True)
+            ping = _check_proxy_ping(base, key)
+            if ping is not None:
+                came_back = True
+                break
+        print()
+        if came_back:
+            print("  Leader is back online.")
+        else:
+            print("  Leader did not respond within timeout. It may still be loading the LLM model.")
+            print("  Check with: maxim peer version")
         return 0
 
     print(f"Unexpected status: {status}")
@@ -895,14 +959,26 @@ def _cmd_logs(argv: list[str]) -> int:
     if not follow:
         return 0
 
-    # Follow mode — poll until Ctrl+C
+    # Follow mode — poll until Ctrl+C (with backoff on failure)
     print(f"\n--- Following (poll every {poll_interval}s, Ctrl+C to stop) ---\n")
+    consecutive_failures = 0
+    max_backoff = 30.0
     try:
         while True:
-            time.sleep(poll_interval)
+            if consecutive_failures > 0:
+                backoff = min(poll_interval * (2**consecutive_failures), max_backoff)
+                time.sleep(backoff)
+            else:
+                time.sleep(poll_interval)
             data = _fetch(since_seq, 200)
             if data is None:
+                consecutive_failures += 1
+                if consecutive_failures == 1:
+                    print("  (leader unreachable — backing off)")
                 continue
+            if consecutive_failures > 0:
+                print("  (reconnected)")
+            consecutive_failures = 0
             for entry in data.get("entries", []):
                 _print_entry(entry)
             since_seq = data.get("latest_seq", since_seq)

@@ -483,7 +483,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         server_ms: float | None = None
 
         try:
-            with urllib.request.urlopen(req, timeout=300) as resp:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
                 resp_code = resp.status
                 resp_headers = dict(resp.headers)
                 resp_body = resp.read()
@@ -507,10 +507,12 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             else:
                 logger.warning("Upstream connection error: %s: %s", err_type, err_msg)
             resp_code = 502
-            resp_body = json.dumps({
-                "error": "Upstream connection failed — LLM server may be restarting",
-                "retry_after_s": 5,
-            }).encode()
+            resp_body = json.dumps(
+                {
+                    "error": "Upstream connection failed — LLM server may be restarting",
+                    "retry_after_s": 5,
+                }
+            ).encode()
 
         elapsed_ms = (time.time() - t0) * 1000
 
@@ -916,6 +918,23 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         # is fully flushed before os.execv replaces the process image.
         def _do_restart() -> None:
             time.sleep(delay_s)
+            # Kill LLM server + cloudflared before replacing process image.
+            # os.execv() does NOT fire atexit handlers, so we must clean up
+            # child processes explicitly to prevent ghost servers.
+            try:
+                from maxim.runtime.lane_backends import stop_active_spawner
+
+                stop_active_spawner()
+                logger.info("admin/restart: LLM server stopped")
+            except Exception as e:
+                logger.warning("admin/restart: failed to stop LLM server: %s", e)
+            try:
+                from maxim.runtime.local_server_spawner import kill_stale_llm_servers
+
+                kill_stale_llm_servers()
+                logger.info("admin/restart: cleaned stale servers")
+            except Exception:
+                pass
             logger.info("admin/restart: executing os.execv — goodbye")
             # Re-exec with the original command line
             os.execv(sys.executable, [sys.executable] + sys.argv)

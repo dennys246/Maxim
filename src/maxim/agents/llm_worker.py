@@ -119,7 +119,7 @@ class LLMWorker:
         self,
         llm: LLMBackend,
         max_queue_size: int = 5,
-        stale_threshold_s: float = 2.0,
+        stale_threshold_s: float = 5.0,
         llm_timeout_s: float = 60.0,
         energy_tracker: "LLMEnergyTracker | None" = None,
         n_ctx: int = 4096,
