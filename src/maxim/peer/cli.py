@@ -644,7 +644,7 @@ def _cmd_restart(argv: list[str]) -> int:
                 proxy_up = True
                 if ping.get("llm_ready", False):
                     llm_ready = True
-                    break
+                break  # Proxy responded — move to phase 2 (LLM polling)
         print()
         if llm_ready:
             print("  Leader is back online.")
