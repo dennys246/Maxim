@@ -435,11 +435,174 @@ Everything from today's output, plus hippocampus operation traces on stderr.
 
 ---
 
+## Agentic Cycle Integration
+
+The display system doesn't just serve simulations — it must integrate with the full agentic loop where the agent is a persistent entity with autonomy levels, processing states, mode transitions, and a Default Network running in the background.
+
+### Hardcoded print() in the agent loop (must fix)
+
+The agent loop has ~15 direct `print()` calls that bypass all display control:
+
+| Location | What it prints | Fix |
+|----------|---------------|-----|
+| agent_loop.py:1583-1595 | Action confirmation prompt (supervised mode) | Guard with `should_prompt()` |
+| loop_controller.py:248-268 | Confirmation success/failure messages | Route through `display_action()` |
+| loop_controller.py:319-338 | Timeout retry notifications | Route through `display_log(BIO)` |
+
+These are the most critical because they fire during **live agentic operation**, not just simulation. A user in `--interactive off` mode must never see a blocking confirmation prompt.
+
+### Autonomy level ↔ display interaction
+
+The autonomy system already gates what the agent can do — display should respect this:
+
+| Autonomy | Current behavior | With display system |
+|----------|-----------------|-------------------|
+| PLANNING | Agent proposes, waits for approval | Proposal shown at CLEAN tier. If `--interactive off`, auto-approve with policy. |
+| SUPERVISED | Acts within bounds, escalates edge cases | Edge-case confirmations shown at CLEAN tier. If `--interactive off`, use `SupervisionPolicy` default. |
+| AUTONOMOUS | Full agency, safety only | No confirmations. Pain/fear signals shown at BIO tier only. |
+
+Key insight: **autonomy level already controls when the system needs human input.** The `--interactive` flag shouldn't duplicate this — it should control whether `auto` mode respects the autonomy level's natural prompting behavior or overrides it.
+
+### Processing state ↔ display
+
+| State | Display behavior |
+|-------|-----------------|
+| AWAKE | Normal display per `--display` tier |
+| SLEEP | Suppress all output except wake triggers. Bio annotations silenced. DN background activity hidden. |
+
+Sleep already skips LLM processing in the loop (agent_loop.py:1753), but confirmation prompts would still fire if an action was queued before sleep. The display system should suppress these — if the agent is sleeping, nothing should print.
+
+### Mode definitions should carry display hints
+
+Currently `ModeDefinition` (modes/definitions.py) specifies `allowed_tools`, `max_response_tokens`, etc. but has no display configuration. Extending it:
+
+```python
+@dataclass
+class ModeDefinition:
+    # ... existing fields ...
+    default_display: DisplayTier = DisplayTier.CLEAN
+    confirmations_required: bool = True  # False for AUTONOMOUS
+```
+
+This means mode transitions (via `mode_switch` tool or autonomy level changes) can automatically adjust display behavior. When the agent escalates to AUTONOMOUS, confirmations stop. When it de-escalates to PLANNING, they resume.
+
+### Default Network background output
+
+The DN runs during idle/sleep and produces reactive actions via callbacks (network.py:348-349). It does NOT currently produce console output — all output goes through the bus. This is already correct for the display system. DN activity should appear:
+
+- **CLEAN tier:** Not at all (it's background processing)
+- **BIO tier:** Only if DN escalates something to the LLM ("○ default_net: Escalated unfamiliar sound to conscious processing")
+- **DEBUG tier:** Full DN update cycle logs
+
+No changes needed to DN code — just add a `display_log(BIO, ...)` call at the escalation point.
+
+---
+
+## Runtime Display Switching
+
+### The case for a `display_mode` tool
+
+The agent should be able to adjust display verbosity at runtime. Consider:
+
+- Agent is running headless in AUTONOMOUS mode doing routine work (CLEAN display)
+- Agent encounters something novel or dangerous
+- Agent wants to surface detailed bio-system info to the user
+- Agent calls `display_mode(level="bio", reason="unusual pattern detected")`
+
+This is analogous to how the agent already calls `mode_switch` to change autonomy or `sleep` to enter low-power mode. Display is part of the agent's **communication with the user**.
+
+### DisplayModeTool
+
+```python
+class DisplayModeTool(Tool):
+    name = "display_mode"
+    description = (
+        "Adjust what the user sees. Use 'bio' to surface memory and learning "
+        "activity when something important is happening. Use 'clean' to return "
+        "to narrative-only output. Use 'debug' only when diagnosing issues."
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "level": {"type": "string", "enum": ["clean", "bio", "debug"]},
+            "reason": {"type": "string"},
+        },
+        "required": ["level"],
+    }
+```
+
+**Safety constraints:**
+- Can only escalate display tier (clean → bio → debug), not suppress it below the user's `--display` floor
+- Respects the user's minimum: if user set `--display bio`, agent can escalate to debug but can't drop to clean
+- Reverts to user's `--display` setting after N turns or on mode switch (prevents permanent debug spam)
+- Logged in agentic event buffer for auditability
+
+### InteractiveModeTool
+
+Similarly, the agent could request interactive mode changes:
+
+```python
+class InteractiveModeTool(Tool):
+    name = "request_interaction"
+    description = (
+        "Request user input for an important decision that the agent is not "
+        "confident about. Only use when the decision has significant consequences."
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "question": {"type": "string"},
+            "options": {"type": "array", "items": {"type": "string"}},
+            "reason": {"type": "string"},
+        },
+        "required": ["question"],
+    }
+```
+
+This is different from the existing `PromptHandler` system — it's the agent **choosing** to ask the user, not the system requiring confirmation. The prompt only fires if `--interactive` is `auto` or `on`. If `off`, the agent gets a response like "User interaction is disabled — make your best judgment."
+
+### When runtime switching makes sense
+
+| Scenario | Agent action | Display effect |
+|----------|-------------|---------------|
+| Novel entity encountered | `display_mode("bio")` | User sees memory/learning activity for this encounter |
+| Danger detected | `display_mode("bio")` + `request_interaction("Should I proceed?")` | Bio annotations + user prompt |
+| Routine travel | `display_mode("clean")` (if above user floor) | Back to narrative only |
+| System anomaly | `display_mode("debug")` | Full traces for this section |
+| Critical decision | `request_interaction("Which path?", options=["left", "right"])` | User prompted if interactive mode allows |
+
+### Revert behavior
+
+Runtime display escalation is temporary:
+- Reverts to user's `--display` setting after **3 turns** or on **encounter/scene change**
+- Agent can extend by calling `display_mode` again
+- User's CLI flag is the **floor** — agent can only go up, never below it
+
+---
+
+## Updated Phase Summary
+
+| Phase | What | LOC | Key outcome |
+|-------|------|-----|-------------|
+| D-0 | DisplayTier + InteractiveMode infrastructure | ~100 | Two-axis system with global state |
+| D-1 | Clean tier display functions | ~120 | Narrative-only output |
+| D-2 | Bio tier condensed annotations | ~100 | Human-readable bio events |
+| D-3 | Silence ~40 print() calls (sim + agent loop) | ~100 | Default is quiet everywhere |
+| D-4 | Auto-interactive wiring + autonomy integration | ~80 | Smart prompt defaults, sleep suppression |
+| D-5 | CLI + API flag wiring + backward compat | ~60 | Two flags replace six |
+| D-6 | DisplayModeTool + InteractiveModeTool | ~120 | Agent-driven display/input switching |
+| D-7 | Mode definition display hints | ~40 | Per-mode default tiers |
+| **Total** | | **~720** | |
+
+---
+
 ## Testing Strategy
 
 - **D-0:** Unit test tier filtering + interactive mode resolution for each context
 - **D-1:** Capture stdout during mock campaign at CLEAN tier, assert no subsystem labels
 - **D-2:** Capture at BIO tier, assert `○ memory:` annotations present, no raw `[HIPPOCAMPUS]`
 - **D-3:** Grep assert: zero bare `print()` in simulation/ and runtime/ (all replaced)
-- **D-4:** Test auto-interactive: DM campaign → prompts, generative → no prompts, override → respected
+- **D-4:** Test auto-interactive: DM campaign → prompts, generative → no prompts, AUTONOMOUS → no confirmations, SLEEP → suppress all
 - **D-5:** CLI: `--display bio --interactive off` works; `--verbosity 2` maps to `--display debug`
+- **D-6:** Test DisplayModeTool: agent escalates to bio, verify annotations appear; verify can't drop below user floor; verify auto-revert after 3 turns
+- **D-7:** Test mode transition carries display hint; AUTONOMOUS mode suppresses confirmations
