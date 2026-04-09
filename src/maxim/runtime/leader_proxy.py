@@ -305,11 +305,11 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         active_model = None
         llm_uptime_s = None
         try:
-            from maxim.runtime.lane_backends import _active_model, _llm_start_time
+            import maxim.runtime.llm_server as _srv
 
-            active_model = _active_model
-            if _llm_start_time is not None:
-                llm_uptime_s = round(time.time() - _llm_start_time, 1)
+            active_model = _srv._active_model
+            if _srv._llm_start_time is not None:
+                llm_uptime_s = round(time.time() - _srv._llm_start_time, 1)
         except Exception:
             pass
 

@@ -45,23 +45,26 @@ def _safe_int_env(name: str, default: int) -> int:
         return default
 
 
-# Extracted to llm_server.py — re-export for backward compatibility
+# Extracted to llm_server.py — mutable globals accessed via module reference
+# to avoid Python's import-by-value semantics splitting the state.
+import maxim.runtime.llm_server as _server_mod  # noqa: E402
+
+# Re-export functions for backward compatibility (functions are safe to re-export)
 from maxim.runtime.llm_server import (  # noqa: F401, E402
-    _active_spawner,
-    _active_model,
-    _llm_start_time,
-    _swap_lock,
-    _model_state_file,
     stop_active_spawner,
     register_router,
     _find_active_routers,
-    _active_routers,
-    _active_routers_lock,
+    _model_state_file,
     read_persisted_model as _read_persisted_model,
     write_persisted_model as _write_persisted_model,
     llm_server_responding_at as _llm_server_responding_at,
     profile_has_local_file as _profile_has_local_file,
 )
+
+# Mutable globals — access via _server_mod to keep a single source of truth.
+# DO NOT import these by name (e.g. `from llm_server import _active_spawner`)
+# because Python binds by value at import time and assignments diverge.
+_swap_lock = _server_mod._swap_lock  # Lock is safe (same object reference, never reassigned)
 
 
 # ─── env var plumbing ─────────────────────────────────────────────────────
@@ -772,7 +775,7 @@ def _maybe_auto_spawn_server(
     - llama_cpp.server isn't importable (user didn't install [llm-server])
     - resolving the profile to a GGUF file path fails or file doesn't exist
     """
-    global _active_spawner, _active_model, _llm_start_time  # noqa: PLW0603
+    # Mutable globals live in _server_mod (llm_server.py) — single source of truth
 
     auto_raw = os.environ.get("MAXIM_AUTO_SPAWN_LLM_SERVER", "").strip().lower()
     if auto_raw in ("0", "false", "f", "no", "n", "off"):
@@ -870,15 +873,15 @@ def _maybe_auto_spawn_server(
     # serve stale models.
     existing_url = f"http://127.0.0.1:{port}/v1"
     if _llm_server_responding_at(existing_url):
-        if _active_spawner is not None and _active_spawner.is_running:
+        if _server_mod._active_spawner is not None and _server_mod._active_spawner.is_running:
             # We spawned this server in this process — safe to reuse.
             if logger is not None:
                 logger.info(
                     "Auto-discovery: reusing our llama-cpp-server on port %d",
                     port,
                 )
-            _active_model = effective_profile
-            _llm_start_time = time.time()
+            _server_mod._active_model = effective_profile
+            _server_mod._llm_start_time = time.time()
             out = dict(lane_configs)
             out[_infer_tier] = dataclasses.replace(
                 infer_cfg,
@@ -959,9 +962,9 @@ def _maybe_auto_spawn_server(
         return lane_configs
 
     # Track active spawner for hot-swap via `maxim peer llm <model>`
-    _active_spawner = spawner
-    _active_model = effective_profile
-    _llm_start_time = time.time()
+    _server_mod._active_spawner = spawner
+    _server_mod._active_model = effective_profile
+    _server_mod._llm_start_time = time.time()
 
     # Rewrite the primary inference tier to point at the spawned server.
     # Auto-wire the API key for the leader's own client so local inference doesn't 401.
@@ -1008,7 +1011,7 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
     )
     from maxim.runtime.local_server_spawner import LocalServerSpawner
 
-    global _active_spawner, _active_model  # noqa: PLW0603
+    # Mutable globals live in _server_mod (llm_server.py) — single source of truth
 
     # Resolve profile name
     resolved = normalize_llm_profile(profile)
@@ -1037,8 +1040,8 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
 
     try:
         # Same model = no-op
-        if _active_model and _active_model == resolved and _active_spawner is not None:
-            if _active_spawner.is_running:
+        if _server_mod._active_model and _server_mod._active_model == resolved and _server_mod._active_spawner is not None:
+            if _server_mod._active_spawner.is_running:
                 return {
                     "status": "already_running",
                     "model": resolved,
@@ -1070,7 +1073,7 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
         except Exception as e:
             logger.warning("Failed to read tunnel API key for swap: %s", e)
 
-        previous_model = _active_model or "none"
+        previous_model = _server_mod._active_model or "none"
 
         # Drain in-flight requests (best-effort, 5s max)
         try:
@@ -1084,12 +1087,12 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
             pass
 
         # Stop current server
-        if _active_spawner is not None:
+        if _server_mod._active_spawner is not None:
             if logger is not None:
-                logger.info("LLM swap: stopping current server (model=%s)", _active_model)
-            _active_spawner.stop()
-            _active_spawner = None
-            _active_model = None
+                logger.info("LLM swap: stopping current server (model=%s)", _server_mod._active_model)
+            _server_mod._active_spawner.stop()
+            _server_mod._active_spawner = None
+            _server_mod._active_model = None
 
         # Detect bind host
         bind_host = "0.0.0.0"  # noqa: S104 — leader always binds all interfaces
@@ -1129,9 +1132,9 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
                 f"Server failed to start for model '{resolved}'. Check GPU memory — the model may be too large."
             )
 
-        _active_spawner = spawner
-        _active_model = resolved
-        _llm_start_time = time.time()
+        _server_mod._active_spawner = spawner
+        _server_mod._active_model = resolved
+        _server_mod._llm_start_time = time.time()
         _write_persisted_model(resolved)
 
         # Update the LLM router's cached n_ctx so context_window_routing
