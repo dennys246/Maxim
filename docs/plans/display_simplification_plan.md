@@ -1,10 +1,10 @@
 # Display Simplification Plan
 
-**Goal:** Replace 4 overlapping output systems and 5+ display flags with a single `--display` flag that controls what the user sees. Default should be clean narrative interaction, not a wall of system internals.
+**Goal:** Replace 4 overlapping output systems and 5+ display flags with two orthogonal flags that control what the user sees and how they interact. Default should be clean narrative with smart interactive behavior.
 
 **Status:** Planning  
 **Priority:** First post-publication UX improvement (v1.0.1)  
-**Estimated effort:** ~400 LOC across ~15 files
+**Estimated effort:** ~500 LOC across ~15 files
 
 ---
 
@@ -29,85 +29,98 @@
 --no-agentic-console       # Suppress agentic event output
 ```
 
-Users have to understand 4 systems and 5 flags to control what they see. Most just want "show me the story" or "show me everything."
+### Interactive mode is tangled into display
 
-### Result: noisy defaults
-
-A user running `maxim --sim "test memory"` sees:
-```
-  SIMULATION MODE — ADVERSARIAL persona
-  0.12s [PERCEPT     ] [ScenarioSource] You enter the tavern...
-  0.14s [HIPPOCAMPUS ] Captured memory id=abc123 (sal=0.8, nov=0.3)
-  0.15s [NAc         ] Link: see_merchant → approach (RPE=0.45, conf=0.91)
-  0.16s [SCN         ] Temporal bin: evening (sig=0.32)
-  0.17s [ATL         ] Concept: tavern (cat=location, conf=0.88)
-  0.18s [EXEC        ] Tool: speak(message="Hello, merchant")
-  0.19s [PIPELINE    ] LLM call: 847 tokens, 1.2s
-  0.20s [FEAR        ] Approved: speak — no safety concern
-  Saving orchestrator memory...
-  Building simulation report...
-```
-
-When they probably wanted:
-```
-  Scene: You enter the tavern. A merchant watches you from behind the counter.
-  Agent: "Hello, merchant. What do you have for sale?"
-  > What do you do? [browse / haggle / leave]
-```
+Currently `--sim-interactive` is a manual flag, but it should be automatic based on context. DM campaigns with choices should prompt the user. Generative sims shouldn't. And interactive mode is independent of how much system detail you want to see — you might want DM prompts + full bio output, or DM prompts + clean narrative only.
 
 ---
 
-## Proposed Design: One Flag, Three Tiers
+## Proposed Design: Two Orthogonal Axes
 
-### `--display` flag
+### Axis 1: `--display` (output verbosity)
+
+Controls **what you see** — how much system detail appears.
 
 ```
---display interaction   # (DEFAULT) Clean narrative — percepts, actions, prompts
---display bio           # + condensed bio-system annotations
---display debug         # + full system traces, timing, internal state
+--display clean     # (DEFAULT) Scenes, actions, prompts, summaries
+--display bio       # + condensed bio-system annotations
+--display debug     # + full system traces, timing, internal state
 ```
 
-That's it. One flag, three values, clear names.
+### Axis 2: `--interactive` (input mode)
 
-### What each tier shows
+Controls **whether the system pauses for user input**.
 
-#### `--display interaction` (default)
+```
+--interactive auto   # (DEFAULT) DM campaigns with choices → yes. Generative sims → no.
+--interactive on     # Always prompt for user input at choice points
+--interactive off    # Never prompt — use LLM/default choice resolution
+```
+
+### The two axes are fully independent
+
+| | `--display clean` | `--display bio` | `--display debug` |
+|---|---|---|---|
+| `--interactive auto` | Clean story + auto prompts | Bio annotations + auto prompts | Full trace + auto prompts |
+| `--interactive on` | Clean story + always prompt | Bio annotations + always prompt | Full trace + always prompt |
+| `--interactive off` | Clean story, headless | Bio annotations, headless | Full trace, headless |
+
+### Auto-interactive rules
+
+The `auto` mode determines interactivity from context:
+
+| Context | Interactive? | Why |
+|---------|-------------|-----|
+| DM campaign with choices in encounters | **Yes** | Choices are the point |
+| DM campaign with `party_mode: true` | **No** | NPCs decide, not the user |
+| Generative campaign (`--sim "goal"`) | **No** | Orchestrator drives |
+| `maxim.campaign(path, interactive=True)` | **Yes** | Explicit API request |
+| `maxim.imagine(goal=...)` | **No** | Programmatic use |
+| `maxim run` (agentic mode) | **Yes** | User is the input source |
+
+This replaces the current `--sim-interactive` flag with smarter defaults. The key insight: **DM campaigns are interactive by default, everything else isn't.**
+
+---
+
+## What each display tier shows
+
+### `--display clean` (default)
 
 The user sees only what matters for following the story:
 
 | What | Example |
 |------|---------|
-| Scene delivery | `Scene: You enter the tavern. A merchant watches you from behind the counter.` |
-| Agent actions | `Agent: speak("Hello, merchant")` |
+| Scene delivery | `You enter the tavern. A merchant watches you from the counter.` |
+| Agent actions | `> Agent uses speak("Hello, merchant")` |
 | Agent responses | `Agent: "I'd like to see your wares."` |
-| Choice prompts | `> What do you do? [browse / haggle / leave]` |
-| Entity state (if present) | `[guard: trust=0.4, suspicion=0.6]` |
-| Turn markers | `--- Turn 3 ---` |
-| Final summary | `Finished: 12 turns, 8 actions, completed` |
+| Choice prompts (if interactive) | `What do you do? [1] browse  [2] haggle  [3] leave` |
+| Entity state changes | `[guard: suspicion 0.2 → 0.6]` |
+| Turn markers | `── Turn 3 ──` |
+| Final summary | `Done: 12 turns, 8 actions, completed` |
 
 What's hidden:
 - All bio-system events (hippo, nac, scn, atl, fear, pain)
 - Pipeline internals (LLM calls, token counts, timing)
 - Orchestrator status messages ("Saving memory...", "Building report...")
-- System startup/shutdown messages
+- System startup/shutdown noise
 
-#### `--display bio`
+### `--display bio`
 
-Everything in `interaction`, plus condensed one-line bio annotations:
+Everything in `clean`, plus condensed one-line bio annotations:
 
 | What | Example |
 |------|---------|
-| Memory capture | `  [memory] Captured: "merchant offered healing potion"` |
-| Memory recall | `  [memory] Recalled: 3 memories about "merchant"` |
-| Causal learning | `  [causal] Learned: threaten → hostility (conf 0.82)` |
-| Pain signal | `  [pain] Weapon shattered — intensity 0.6` |
-| Fear gate | `  [safety] Blocked: rm -rf / (fear threshold exceeded)` |
-| Concept formed | `  [concept] New: "tavern" (category: location)` |
-| Temporal pattern | `  [temporal] Evening encounters tend to be hostile` |
+| Memory capture | `  ○ memory: Captured "merchant offered healing potion"` |
+| Memory recall | `  ○ memory: Recalled 3 memories matching "merchant"` |
+| Causal learning | `  ○ causal: threaten → hostility (confidence 0.82)` |
+| Pain signal | `  ○ pain: weapon shattered (intensity 0.6)` |
+| Fear gate | `  ○ safety: blocked rm -rf / (fear threshold exceeded)` |
+| Concept formed | `  ○ concept: "tavern" → location` |
+| Temporal pattern | `  ○ temporal: evening encounters correlate with hostility` |
 
-Format: indented, muted color, brief. Not the raw subsystem trace — a human-readable summary.
+Format: indented, prefixed with `○`, muted color. Human-readable summaries, not raw subsystem traces.
 
-#### `--display debug`
+### `--display debug`
 
 Everything in `bio`, plus full system output:
 
@@ -122,158 +135,184 @@ Everything in `bio`, plus full system output:
 
 This is what `--verbosity 2 --show all --debug all` produces today — just behind a single flag.
 
+### `--trace` (separate, unchanged)
+
+```
+--trace hippo|nac|atl|scn|all    # Detailed per-operation traces to stderr
+```
+
+This stays separate because it's:
+- Output to **stderr** (not stdout — doesn't interfere with display)
+- Per-subsystem **operation-level** detail (individual memory IDs, edge weights, etc.)
+- For **developers debugging specific subsystems**, not for users watching a sim
+
 ---
 
 ## Flag Consolidation
 
-### Before (5 flags)
+### Before (6 flags)
 
 ```
 --verbosity 0|1|2
 --agentic-verbosity 0|1|2|3
 --show bio|exec|sim|memory|safety|all
+--sim-interactive
 --debug hippo|nac|atl|scn|all
 --no-agentic-console
 ```
 
-### After (1 primary flag + 1 escape hatch)
+### After (2 primary flags + 1 escape hatch)
 
 ```
---display interaction|bio|debug     # Controls everything (default: interaction)
---trace hippo|nac|atl|scn|all       # Detailed bio-system traces to stderr (unchanged)
+--display clean|bio|debug     # Output detail (default: clean)
+--interactive auto|on|off     # Input mode (default: auto)
+--trace hippo|nac|atl|all     # Detailed subsystem traces to stderr
 ```
-
-The `--trace` flag survives because it's genuinely different — it produces detailed per-operation traces to stderr for debugging specific subsystems. Everything else collapses into `--display`.
 
 ### Backward compatibility
 
-The old flags continue to work but are hidden from `--help`:
+Old flags continue to work but are hidden from `--help` (shown in `--help-all` or similar):
 
 | Old flag | New equivalent | Behavior |
 |----------|---------------|----------|
-| `--verbosity 0` | `--display interaction` | Mapped internally |
+| `--verbosity 0` | `--display clean` | Mapped internally |
+| `--verbosity 1` | `--display clean` | Mapped (was default anyway) |
 | `--verbosity 2` | `--display debug` | Mapped internally |
 | `--show bio` | `--display bio` | Mapped internally |
 | `--show all` | `--display debug` | Mapped internally |
-| `--debug hippo` | `--trace hippo` | Renamed but same behavior |
-| `--agentic-verbosity N` | Removed | Controlled by display tier |
-| `--no-agentic-console` | Removed | `interaction` tier suppresses it |
+| `--show sim` | `--display clean` | Closest equivalent |
+| `--debug hippo` | `--trace hippo` | Renamed |
+| `--sim-interactive` | `--interactive on` | Renamed |
+| `--agentic-verbosity N` | Absorbed into display tier | Deprecated |
+| `--no-agentic-console` | `--display clean` suppresses it | Deprecated |
 
-If a user passes both `--display` and an old flag, `--display` wins with a deprecation warning.
+If a user passes both `--display` and an old flag, `--display` wins with a one-time deprecation warning.
+
+---
+
+## Python API Alignment
+
+```python
+import maxim
+
+# Display tier
+maxim.configure(display="clean")     # or "bio" or "debug"
+
+# Interactive mode
+session = maxim.imagine(goal="test", interactive=False)  # default for imagine
+result = maxim.campaign("heist.yaml", interactive=True)  # default for DM campaigns
+
+# Event subscriptions still work at all tiers
+# (they're programmatic callbacks, not display output)
+handle = maxim.on("tool_call", my_callback)
+```
+
+The `display` parameter in `configure()` sets the global tier. Individual verbs can override `interactive` per-call.
 
 ---
 
 ## Implementation Plan
 
-### Phase D-0: Display tier infrastructure (~80 LOC)
+### Phase D-0: Two-axis infrastructure (~100 LOC)
 
-Add `DisplayTier` enum and global state to sim_logger.py:
+Add `DisplayTier` enum and `InteractiveMode` enum to sim_logger.py:
 
 ```python
 class DisplayTier(enum.IntEnum):
-    INTERACTION = 0  # Percepts, actions, prompts only
+    CLEAN = 0        # Scenes, actions, prompts only
     BIO = 1          # + condensed bio annotations
     DEBUG = 2        # + full system traces
 
-_display_tier: DisplayTier = DisplayTier.INTERACTION
+class InteractiveMode(enum.Enum):
+    AUTO = "auto"    # Context-dependent
+    ON = "on"        # Always prompt
+    OFF = "off"      # Never prompt
 ```
 
-Add `display_log()` function that respects the tier:
+Add `display_log()` and `should_prompt()` functions.
+
+**Files:** sim_logger.py, interactive/prompts.py  
+**Tests:** Test tier filtering, test auto-interactive context detection
+
+### Phase D-1: Clean tier — narrative display functions (~120 LOC)
+
+New functions for clean narrative output:
 
 ```python
-def display_log(tier: DisplayTier, message: str, **kwargs):
-    """Log a message that only appears at the specified tier or above."""
-    if _display_tier >= tier:
-        _emit(message, **kwargs)
+def display_scene(text: str): ...
+def display_action(tool: str, params: dict): ...
+def display_response(text: str): ...
+def display_entity_change(name: str, sensor: str, old: float, new: float): ...
+def display_turn(n: int): ...
+def display_summary(result): ...
 ```
 
-**Files:** sim_logger.py  
-**Tests:** Test tier filtering, test default is INTERACTION
-
-### Phase D-1: Interaction tier — clean narrative output (~120 LOC)
-
-New display functions for the clean narrative layer:
-
-```python
-def display_scene(text: str): ...        # Scene delivery
-def display_action(tool: str, params: dict): ...  # Agent action
-def display_response(text: str): ...     # Agent response text
-def display_prompt(request: PromptRequest): ...   # Choice prompt
-def display_entity_state(entities: dict): ...     # Entity sensors
-def display_turn(n: int): ...            # Turn marker
-def display_summary(result: SimulationResult): ...  # Final summary
-```
-
-Wire these into:
-- `dm_runtime.py` — scene delivery, choice prompts, entity state
-- `orchestrator.py` — turn markers, final summary
-- Agent loop response path — action + response display
+Wire into dm_runtime.py (scene delivery, choice display), orchestrator.py (turn markers, summary).
 
 **Files:** sim_logger.py, dm_runtime.py, orchestrator.py, campaign_runner.py  
-**Tests:** Test each display function produces expected output
+**Tests:** Test each function produces expected format
 
 ### Phase D-2: Bio tier — condensed annotations (~100 LOC)
 
-Add condensed bio-system formatters:
+Add human-readable bio annotation formatters:
 
 ```python
 def display_memory_capture(content: str): ...
-def display_memory_recall(query: str, count: int): ...
 def display_causal_learn(event: str, outcome: str, confidence: float): ...
 def display_pain(source: str, intensity: float): ...
 def display_fear_gate(tool: str, approved: bool): ...
-def display_concept(name: str, category: str): ...
 ```
 
-Wire these as callbacks from the existing bio-system code — each subsystem already has logging points, we just need to add a `display_*` call alongside the existing `sim_log()` call.
+Wire as callbacks alongside existing `sim_log()` calls.
 
-**Files:** sim_logger.py, hippocampus.py (or capture path), nac.py (observe path), pain_bus.py, fear agent  
-**Tests:** Test bio annotations appear at BIO tier, hidden at INTERACTION
+**Files:** sim_logger.py, hippocampus capture path, nac observe path, pain_bus, fear agent  
+**Tests:** Test annotations appear at BIO, hidden at CLEAN
 
-### Phase D-3: Silence direct print() calls (~80 LOC, tedious but simple)
+### Phase D-3: Silence direct print() calls (~80 LOC)
 
-Audit all ~40 `print()` calls in simulation/runtime code. For each one:
-- **Is it narrative?** (scene, response, prompt) → Replace with `display_*()` call
-- **Is it status?** ("Saving memory...", "Building report...") → Replace with `display_log(DEBUG, ...)`
-- **Is it a report?** (final summary) → Replace with `display_summary()`
-
-This is the most tedious phase but the most impactful — it's what makes the default quiet.
+Audit all ~40 `print()` calls. Replace each with:
+- `display_*()` if it's narrative content
+- `display_log(DEBUG, ...)` if it's system status
+- `display_summary()` if it's the final report
 
 **Files:** orchestrator.py, campaign_runner.py, agent_loop.py, loop_controller.py, report.py, interactive.py, research_orchestrator.py  
-**Tests:** Test that INTERACTION tier produces no system status messages
+**Tests:** Assert CLEAN tier produces zero system status messages
 
-### Phase D-4: CLI flag wiring (~40 LOC)
+### Phase D-4: Auto-interactive wiring (~60 LOC)
 
-Add `--display` to cli_parser.py, wire into the tier system:
-
-```python
-core.add_argument(
-    "--display",
-    type=str,
-    default="interaction",
-    choices=["interaction", "bio", "debug"],
-    help="Output detail level: interaction (clean narrative, DEFAULT), "
-         "bio (+ memory/learning annotations), debug (+ full system traces).",
-)
-```
-
-Map old flags to new tier. Rename `--debug` to `--trace`. Hide deprecated flags from help.
-
-**Files:** cli_parser.py, cli.py, api.py (configure)  
-**Tests:** Test flag parsing, test backward compat mapping
-
-### Phase D-5: Python API alignment (~30 LOC)
-
-Update `maxim.configure()` to accept the new tier:
+Implement `should_prompt()` logic:
 
 ```python
-maxim.configure(display="interaction")  # or "bio" or "debug"
+def should_prompt(context: str, interactive_mode: InteractiveMode) -> bool:
+    if interactive_mode == InteractiveMode.ON:
+        return True
+    if interactive_mode == InteractiveMode.OFF:
+        return False
+    # AUTO: derive from context
+    return context in ("dm_campaign", "agentic_mode")
 ```
 
-Update `maxim.imagine()` and `maxim.campaign()` defaults to use INTERACTION tier.
+Wire into:
+- `dm_runtime.py` — check before prompting at choice points
+- `campaign_runner.py` — set context based on campaign type
+- `orchestrator.py` — set context based on sim mode
 
-**Files:** api.py  
-**Tests:** Test configure sets tier correctly
+**Files:** sim_logger.py, dm_runtime.py, campaign_runner.py, orchestrator.py  
+**Tests:** Test auto-detection for each context type
+
+### Phase D-5: CLI + API flag wiring (~60 LOC)
+
+Add new flags to cli_parser.py:
+
+```python
+core.add_argument("--display", choices=["clean", "bio", "debug"], default="clean")
+core.add_argument("--interactive", choices=["auto", "on", "off"], default="auto")
+```
+
+Map deprecated flags. Update `maxim.configure()`.
+
+**Files:** cli_parser.py, cli.py, api.py  
+**Tests:** Flag parsing, backward compat, deprecation warnings
 
 ---
 
@@ -281,59 +320,126 @@ Update `maxim.imagine()` and `maxim.campaign()` defaults to use INTERACTION tier
 
 | Phase | What | LOC | Key outcome |
 |-------|------|-----|-------------|
-| D-0 | DisplayTier enum + display_log() | ~80 | Infrastructure |
-| D-1 | Interaction display functions | ~120 | Clean narrative output |
-| D-2 | Bio-tier condensed annotations | ~100 | Human-readable bio events |
+| D-0 | DisplayTier + InteractiveMode infrastructure | ~100 | Two-axis system |
+| D-1 | Clean tier display functions | ~120 | Narrative-only output |
+| D-2 | Bio tier condensed annotations | ~100 | Human-readable bio events |
 | D-3 | Silence ~40 print() calls | ~80 | Default is quiet |
-| D-4 | CLI flag wiring + backward compat | ~40 | One flag to rule them all |
-| D-5 | Python API alignment | ~30 | configure(display=...) |
-| **Total** | | **~450** | |
+| D-4 | Auto-interactive wiring | ~60 | Smart prompt defaults |
+| D-5 | CLI + API flag wiring | ~60 | Two flags replace six |
+| **Total** | | **~520** | |
 
 ---
 
 ## User-Facing Result
 
-### Before
+### DM Campaign (default: clean + auto-interactive)
 
 ```bash
-maxim --sim "test memory"
-# 50+ lines of system output per turn
+maxim --sim scenarios/campaigns/heist_v1.yaml
+```
+```
+── Turn 1 ──
+You enter the Rusty Anchor tavern at dusk. The air is thick with
+pipe smoke. A half-elf woman slides a map across the table.
+
+"The vault combination is seven-three-nine. Are you in?"
+
+[guard: trust=0.4, suspicion=0.2]
+
+What do you do?  [1] accept_job  [2] decline  [3] negotiate_pay
+> 1
+
+── Turn 2 ──
+The magistrate's tower basement is cold. The guard captain steps
+forward. "Halt! State your business."
+
+> Agent uses choose("stealth")
+  Roll: 1d20 → 16 (DC 14) — success
+
+Done: 3 turns, 4 actions, completed
 ```
 
-### After
+### Same campaign with bio annotations
 
 ```bash
-maxim --sim "test memory"
-# Clean narrative: scenes, actions, prompts
-
-maxim --sim "test memory" --display bio
-# + memory captures, causal learning, pain signals
-
-maxim --sim "test memory" --display debug
-# Full system output (same as today)
-
-maxim --sim "test memory" --trace hippo
-# + detailed hippocampus operation trace to stderr
+maxim --sim scenarios/campaigns/heist_v1.yaml --display bio
 ```
+```
+── Turn 1 ──
+You enter the Rusty Anchor tavern...
+
+  ○ memory: Captured "tavern meeting, half-elf with map"
+  ○ memory: Captured "vault combination: seven-three-nine"
+  ○ concept: "marta" → fence (npc)
+
+What do you do?  [1] accept_job  [2] decline  [3] negotiate_pay
+> 1
+
+  ○ causal: accept_job → vault_access (confidence 0.65)
+
+── Turn 2 ──
+The guard captain steps forward...
+
+  ○ memory: Recalled 2 memories matching "vault"
+  ○ causal: stealth → escape (confidence 0.78)
+  ○ pain: none
+
+Done: 3 turns, 4 actions, completed
+```
+
+### Generative sim (default: clean + non-interactive)
+
+```bash
+maxim --sim "test memory recall under interference"
+```
+```
+── Turn 1 ──
+Scene: A merchant offers you a healing potion in exchange for a favor.
+> Agent uses speak("What kind of favor?")
+Agent: "I need you to deliver a package to the blacksmith."
+
+── Turn 2 ──
+Scene: A stranger approaches and tells you the merchant is a liar.
+> Agent uses memory_recall("merchant")
+> Agent uses speak("I'll make my own judgment.")
+
+Done: 8 turns, 12 actions, completed
+```
+
+### Force interactive on generative sim
+
+```bash
+maxim --sim "test memory" --interactive on
+```
+Now the user gets prompted at each turn to override or guide the agent.
+
+### Full debug (power user)
+
+```bash
+maxim --sim scenarios/campaigns/heist_v1.yaml --display debug --trace hippo
+```
+Everything from today's output, plus hippocampus operation traces on stderr.
 
 ---
 
 ## Invariants
 
-- **INTERACTION tier must never produce system-internal output.** If a user sees `[PIPELINE]` or "Saving orchestrator memory..." in interaction mode, that's a bug.
-- **BIO tier annotations must be human-readable.** Not `id=abc123 sal=0.82 nov=0.45` — instead `Captured: "merchant offered healing potion"`.
-- **DEBUG tier must produce everything current output produces.** No regression for power users.
-- **Old flags must not break.** Deprecation warning, then mapped to new tier.
-- **`--trace` stays separate.** It's stderr, detailed, per-subsystem — different from display tier.
-- **Python API and CLI must be consistent.** `maxim.configure(display="bio")` = `--display bio`.
+- **`--display` and `--interactive` are fully orthogonal.** Any combination works.
+- **`--interactive auto` is context-aware.** DM campaigns → on, generative → off, agentic → on.
+- **CLEAN tier never shows system internals.** If `[PIPELINE]` or "Saving memory..." appears, that's a bug.
+- **BIO annotations are human sentences, not raw traces.** "Captured: merchant's warning" not "id=abc123 sal=0.82".
+- **DEBUG tier is identical to today's full output.** No regression for power users.
+- **Old flags still work.** Deprecation warning, mapped to new axes.
+- **`--trace` stays separate on stderr.** For developer debugging, not user display.
+- **Python API matches CLI.** `configure(display="bio")` = `--display bio`.
 
 ---
 
 ## Testing Strategy
 
-- **D-0:** Unit test DisplayTier filtering (message at BIO tier hidden when INTERACTION active)
-- **D-1:** Integration test: run a mock campaign at INTERACTION tier, assert no subsystem labels in output
-- **D-2:** Integration test: run at BIO tier, assert bio annotations present, no raw traces
-- **D-3:** Grep test: assert zero `print()` calls in simulation/ and runtime/ (all replaced)
-- **D-4:** CLI test: `--display bio` sets correct tier; `--verbosity 2` maps to DEBUG; `--display` + `--show` warns
-- **D-5:** API test: `configure(display="interaction")` then `imagine()` produces clean output
+- **D-0:** Unit test tier filtering + interactive mode resolution for each context
+- **D-1:** Capture stdout during mock campaign at CLEAN tier, assert no subsystem labels
+- **D-2:** Capture at BIO tier, assert `○ memory:` annotations present, no raw `[HIPPOCAMPUS]`
+- **D-3:** Grep assert: zero bare `print()` in simulation/ and runtime/ (all replaced)
+- **D-4:** Test auto-interactive: DM campaign → prompts, generative → no prompts, override → respected
+- **D-5:** CLI: `--display bio --interactive off` works; `--verbosity 2` maps to `--display debug`
