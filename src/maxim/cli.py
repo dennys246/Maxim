@@ -1129,33 +1129,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     _has_llm = os.environ.get("MAXIM_LLM_ENABLED", "").strip() == "1"
     _has_action = _has_sim or _has_explore or _has_mode_override or _has_robot
 
-    # Leader/LLM-enabled without explicit action: start LLM server + proxy, wait
-    if not _has_action and (_is_leader or _has_llm):
-        print("Maxim — leader mode")
-
-        # Spawn the LLM server so peers can send inference requests
-        try:
-            from maxim.runtime.lane_backends import build_primary_router
-
-            _router, _mgr = build_primary_router()
-            if _router is not None:
-                _router.warmup()
-                print("  LLM server started — ready for peer inference")
-            else:
-                print("  WARNING: LLM server failed to start (check model config)")
-        except Exception as _llm_err:
-            print(f"  WARNING: LLM server init failed: {_llm_err}")
-
-        print("  Proxy running — accepting peer commands (update, restart, llm, version, logs)")
-        print("  Use --sim or --mode to start a session, or Ctrl+C to stop.\n")
-        try:
-            import threading
-
-            threading.Event().wait()  # Block until Ctrl+C; proxy runs as daemon thread
-        except KeyboardInterrupt:
-            print("\n  Shutting down.")
-        return 0
-
     if not (_has_action or _is_leader or _has_llm):
         print("Maxim — bio-inspired cognitive architecture\n")
         print("Quick start:")
@@ -1169,6 +1142,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("  maxim.diagnose()                         Check environment from Python")
         print("  maxim.list_models()                      List available models\n")
         return 0
+
+    # Leader/LLM-enabled without explicit action → server mode.
+    # Start the LLM server for peer inference, then block idle.
+    # The LeaderProxy (started earlier) handles peer commands.
+    # This avoids entering the agentic/exploration loop, which would
+    # burn GPU on agent inference cycles with no user interaction.
+    if not _has_action and (_is_leader or _has_llm):
+        args.mode = "server"
 
     build_home(args.home_dir)
     mode = str(getattr(args, "mode", "active")).strip().lower()
@@ -1643,6 +1624,35 @@ def main(argv: Sequence[str] | None = None) -> int:
 
                     return 0 if passed else 1
 
+                return 0
+
+            # ── Server mode: LLM server + proxy, no agent loop ──────────
+            if mode == "server":
+                print("Maxim — server mode")
+                try:
+                    from maxim.runtime.lane_backends import build_primary_router
+
+                    _srv_router, _srv_mgr = build_primary_router(logger=logger)
+                    if _srv_router is not None:
+                        _srv_router.warmup()
+                        _srv_router.wait_ready(timeout=180.0)
+                        logger.info("LLM server ready — accepting peer inference")
+                        print("  LLM server ready — accepting peer inference")
+                    else:
+                        logger.warning("LLM server did not start")
+                        print("  WARNING: LLM server failed to start (check model config)")
+                except Exception as _srv_err:
+                    logger.warning("LLM server init failed: %s", _srv_err)
+                    print(f"  WARNING: LLM server init failed: {_srv_err}")
+
+                print("  Proxy running — accepting peer commands")
+                print("  Use --sim or --mode to start a session, or Ctrl+C to stop.\n")
+                try:
+                    import threading
+
+                    threading.Event().wait()
+                except KeyboardInterrupt:
+                    print("\n  Shutting down.")
                 return 0
 
             from maxim.conscience.selfy import Maxim
