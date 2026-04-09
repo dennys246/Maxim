@@ -46,7 +46,7 @@ def normalize_args(args: argparse.Namespace) -> None:
 
     language_model = getattr(args, "language_model", None)
     if language_model is not None:
-        from maxim.models.language.router import list_llm_profiles, normalize_llm_profile
+        from maxim.models.language.config import list_llm_profiles, normalize_llm_profile
 
         selected = normalize_llm_profile(language_model)
         if selected:

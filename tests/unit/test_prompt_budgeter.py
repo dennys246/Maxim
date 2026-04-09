@@ -13,7 +13,7 @@ from maxim.agents.prompt_budgeter import (
     _truncate_reasoning_carryover,
 )
 from maxim.agents.llm_fallback import ReasoningCarryover, ReasoningEntry
-from maxim.models.language.router import (
+from maxim.models.language.token_counter import (
     CharEstimateCounter,
     LlamaCppTokenCounter,
     TokenCounter,

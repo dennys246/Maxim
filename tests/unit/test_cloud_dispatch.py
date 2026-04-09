@@ -101,14 +101,14 @@ class TestLoadCostConfig:
 
 
 class TestImportPaths:
-    def test_constants_from_router(self):
-        from maxim.models.language.router import _JSON_RULES, _DEFAULT_PRICING, _MODEL_DOWNGRADE_MAP
-        assert "CRITICAL" in _JSON_RULES
-        assert "gpt-4o" in _DEFAULT_PRICING
-        assert "gpt-4o" in _MODEL_DOWNGRADE_MAP
+    def test_constants_from_cloud_dispatch(self):
+        from maxim.models.language.cloud_dispatch import JSON_RULES, DEFAULT_PRICING, MODEL_DOWNGRADE_MAP
+        assert "CRITICAL" in JSON_RULES
+        assert "gpt-4o" in DEFAULT_PRICING
+        assert "gpt-4o" in MODEL_DOWNGRADE_MAP
 
-    def test_system_prompts_from_router(self):
-        from maxim.models.language.router import _SYSTEM_TOOL_RESPONSE, _SYSTEM_JSON_ONLY, _SYSTEM_ROUTE
-        assert "Maxim" in _SYSTEM_TOOL_RESPONSE
-        assert "JSON" in _SYSTEM_JSON_ONLY
-        assert "JSON" in _SYSTEM_ROUTE
+    def test_system_prompts_from_cloud_dispatch(self):
+        from maxim.models.language.cloud_dispatch import SYSTEM_TOOL_RESPONSE, SYSTEM_JSON_ONLY, SYSTEM_ROUTE
+        assert "Maxim" in SYSTEM_TOOL_RESPONSE
+        assert "JSON" in SYSTEM_JSON_ONLY
+        assert "JSON" in SYSTEM_ROUTE

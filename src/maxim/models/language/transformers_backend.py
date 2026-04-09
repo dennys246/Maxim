@@ -14,7 +14,7 @@ import threading
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from maxim.models.language.router import LLMConfig
+    from maxim.models.language.config import LLMConfig
 
 logger = logging.getLogger(__name__)
 

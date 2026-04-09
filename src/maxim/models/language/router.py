@@ -11,65 +11,18 @@ from maxim.models.language.cost_tracker import CostTracker
 from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult
 from maxim.utils.cloud_audit import CloudAuditEntry, CloudAuditLogger
 
-# Extracted modules — imported here for internal use and backward-compat re-exports
-from maxim.models.language.token_counter import (  # noqa: F401
+# Internal imports — only symbols actually used by LLMRouter
+from maxim.models.language.token_counter import (
     TokenCounter,
-    CharEstimateCounter,
-    LlamaCppTokenCounter,
     _LazyTokenCounter,
 )
-from maxim.models.language.prompt_formats import (  # noqa: F401
-    _mistral_instruct_prompt,
-    _chatml_prompt,
-    _llama2_chat_prompt,
-    _llama3_instruct_prompt,
-    _phi_prompt,
-    _phi3_prompt,
-    _gemma_prompt,
-    _alpaca_prompt,
-    _vicuna_prompt,
-    _PROMPT_BUILDERS,
-    list_prompt_styles,
-    _build_prompt,
-)
-from maxim.models.language.json_parser import (  # noqa: F401
-    _sanitize_json_string,
-    _find_first_json_object,
-    _extract_json_object,
-)
-from maxim.models.language.llama_backend import _LlamaCppBackend  # noqa: F401
-
-
-# Config and types — extracted to config.py and types.py for modularity.
-# Re-exported here for backward compatibility.
-from maxim.models.language.config import (  # noqa: F401
-    QUANTIZATION_LEVELS,
-    DEFAULT_QUANTIZATION,
-    _PROFILE_ALIASES,
-    _BUILTIN_PROFILES,
-    LLMConfig,
-    _as_bool,
-    _read_json,
-    _normalize_profile,
-    normalize_llm_profile,
-    list_quantization_levels,
-    get_quantization_info,
-    list_llm_profiles,
-    build_model_path,
-    load_llm_config,
-)
-from maxim.models.language.types import (  # noqa: F401
-    LLMResponse,
-    RoutingPolicy,
-    ProviderState,
-)
-
-
-# Extracted to cloud_dispatch.py — re-export for backward compatibility
-from maxim.models.language.cloud_dispatch import (  # noqa: F401
-    DEFAULT_PRICING as _DEFAULT_PRICING,
+from maxim.models.language.prompt_formats import _build_prompt
+from maxim.models.language.json_parser import _extract_json_object
+from maxim.models.language.llama_backend import _LlamaCppBackend
+from maxim.models.language.config import LLMConfig, load_llm_config
+from maxim.models.language.types import LLMResponse, RoutingPolicy, ProviderState
+from maxim.models.language.cloud_dispatch import (
     MODEL_DOWNGRADE_MAP as _MODEL_DOWNGRADE_MAP,
-    JSON_RULES as _JSON_RULES,
     SYSTEM_TOOL_RESPONSE as _SYSTEM_TOOL_RESPONSE,
     SYSTEM_JSON_ONLY as _SYSTEM_JSON_ONLY,
     SYSTEM_ROUTE as _SYSTEM_ROUTE,

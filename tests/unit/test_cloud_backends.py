@@ -7,7 +7,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 
-from maxim.models.language.router import LLMConfig
+from maxim.models.language.config import LLMConfig
 
 
 # ─────────────────────────────────────────────────────────────────────────────

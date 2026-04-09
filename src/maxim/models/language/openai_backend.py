@@ -13,7 +13,8 @@ from urllib.parse import urlparse
 from maxim.utils.logging import warn
 
 log = logging.getLogger(__name__)
-from maxim.models.language.router import LLMConfig, LLMResponse
+from maxim.models.language.config import LLMConfig
+from maxim.models.language.types import LLMResponse
 
 
 def _is_auth_error(err: Exception) -> bool:

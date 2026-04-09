@@ -7,19 +7,18 @@ from dataclasses import dataclass
 from typing import Any
 
 from maxim.agents.base import Agent
-from maxim.models.language.router import (
+from maxim.models.language.config import (
     DEFAULT_QUANTIZATION,
     LLMConfig,
     QUANTIZATION_LEVELS,
-    _LlamaCppBackend,
-    _build_prompt,
-    _extract_json_object,
     build_model_path,
     list_llm_profiles,
-    list_prompt_styles,
     list_quantization_levels,
     load_llm_config,
 )
+from maxim.models.language.json_parser import _extract_json_object
+from maxim.models.language.llama_backend import _LlamaCppBackend
+from maxim.models.language.prompt_formats import _build_prompt, list_prompt_styles
 from maxim.utils.logging import warn
 
 
@@ -154,7 +153,7 @@ class LLMAgent(Agent):
         model_path = self._agent_config.model_path
         if not model_path:
             # Build from profile and quantization
-            from maxim.models.language.router import _BUILTIN_PROFILES, _normalize_profile
+            from maxim.models.language.config import _BUILTIN_PROFILES, _normalize_profile
 
             profile = _normalize_profile(self._agent_config.profile)
             builtin = _BUILTIN_PROFILES.get(profile, {})
@@ -162,7 +161,7 @@ class LLMAgent(Agent):
             model_path = build_model_path(model_base, self._agent_config.quantization)
 
         # Get prompt style from profile
-        from maxim.models.language.router import _BUILTIN_PROFILES, _normalize_profile
+        from maxim.models.language.config import _BUILTIN_PROFILES, _normalize_profile
 
         profile = _normalize_profile(self._agent_config.profile)
         builtin = _BUILTIN_PROFILES.get(profile, {})

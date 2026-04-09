@@ -16,7 +16,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.autonomy import AutonomyLevel
-from maxim.models.language.router import CharEstimateCounter
+from maxim.models.language.token_counter import CharEstimateCounter
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Re-exports for backward compatibility

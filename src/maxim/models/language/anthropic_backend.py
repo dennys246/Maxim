@@ -7,7 +7,8 @@ import time
 from typing import Any
 
 from maxim.utils.logging import warn
-from maxim.models.language.router import LLMConfig, LLMResponse
+from maxim.models.language.config import LLMConfig
+from maxim.models.language.types import LLMResponse
 
 
 def _is_auth_error(err: Exception) -> bool:

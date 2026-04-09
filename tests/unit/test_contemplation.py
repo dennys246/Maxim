@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from maxim.models.language.router import LLMConfig
+from maxim.models.language.config import LLMConfig
 
 
 # ─────────────────────────────────────────────────────────────────────────────
