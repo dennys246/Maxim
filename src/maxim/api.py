@@ -376,18 +376,17 @@ def run(
     env = build_environment(root=effective_home)
     state = build_state()
     memory = build_memory()
-    decision_engine = build_decision_engine(memory=memory, env=env)
+    decision_engine = build_decision_engine()
     tool_registry = build_tool_registry(
         maxim=None,  # No live robot instance in headless mode
-        data_folder=os.path.join(effective_home, "data"),
     )
     _inject_pending_tools(tool_registry)
     executor = build_executor(tool_registry)
     evaluators = build_evaluators()
 
     autonomy = AutonomyController(
-        level=AutonomyLevel.FULL,
-        supervision=SupervisionPolicy(),
+        initial_level=AutonomyLevel.AUTONOMOUS,
+        supervision_policy=SupervisionPolicy(),
     )
 
     # ── Optional robot ───────────────────────────────────────────────────
