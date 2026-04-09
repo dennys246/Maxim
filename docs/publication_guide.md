@@ -2,7 +2,7 @@
 
 Step-by-step guide for publishing pymaxim to PyPI.
 
-**Current version:** 0.2.0
+**Current version:** 1.0.0
 **Package name:** pymaxim (import name: `maxim`)
 **Build system:** setuptools + wheel
 
@@ -76,7 +76,7 @@ Known items from Phase 12b that may be blocking:
 ### 5. Verify version consistency
 
 ```bash
-# Both must show 0.2.0
+# Both must show 1.0.0
 grep 'version = ' pyproject.toml
 python -c "import maxim; print(maxim.__version__)"
 ```
@@ -93,13 +93,13 @@ rm -rf dist/ build/ *.egg-info
 python -m build
 
 # 3. Validate package metadata
-twine check dist/pymaxim-0.2.0*
+twine check dist/pymaxim-1.0.0*
 # Expected: PASSED for both .whl and .tar.gz
 
 # 4. Verify bundled data is in the wheel
 python -c "
 import zipfile
-with zipfile.ZipFile('dist/pymaxim-0.2.0-py3-none-any.whl') as z:
+with zipfile.ZipFile('dist/pymaxim-1.0.0-py3-none-any.whl') as z:
     data = [f for f in z.namelist() if '_data/' in f]
     print(f'{len(data)} bundled data files')
     assert len(data) >= 25, 'Expected 25+ bundled files'
@@ -117,7 +117,7 @@ with zipfile.ZipFile('dist/pymaxim-0.2.0-py3-none-any.whl') as z:
 
 ```bash
 # 1. Upload to Test PyPI
-twine upload --repository testpypi dist/pymaxim-0.2.0*
+twine upload --repository testpypi dist/pymaxim-1.0.0*
 
 # 2. Test install in clean venv
 python -m venv /tmp/test-maxim-install
@@ -153,7 +153,7 @@ Only after Test PyPI verification passes:
 
 ```bash
 # The big moment
-twine upload dist/pymaxim-0.2.0*
+twine upload dist/pymaxim-1.0.0*
 
 # Verify real install
 pip install pymaxim
@@ -189,7 +189,7 @@ python -c "import maxim; print(maxim.__version__)"
 
 | Version | What |
 |---------|------|
-| 0.2.0 | Current release — foundational buildout, 13 API verbs, multi-agent |
+| 1.0.0 | Current release — foundational buildout, 13 API verbs, multi-agent |
 | 0.2.1 | Patch — fix `maxim.run()`, wire API stubs, error honesty |
 | 0.3.0 | Mother Maxim MVP + deidentification |
 | 0.4.0 | Coalescence + circadian lifecycle |

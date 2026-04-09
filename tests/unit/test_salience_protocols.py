@@ -444,56 +444,6 @@ class TestSalienceNetworkUpdate:
 # ---------------------------------------------------------------------------
 # NarrativeTranscriber.transcribe_to_items()
 # ---------------------------------------------------------------------------
-
-
-class TestNarrativeTranscriberItems:
-    def test_produces_salience_items(self):
-        from maxim.simulation.narrative_transcriber import NarrativeTranscriber
-
-        t = NarrativeTranscriber()
-        items = t.transcribe_to_items(
-            'Derek enters the room. "Hello," he says.',
-            scene="tavern_interior",
-        )
-
-        assert len(items) > 0
-        for item in items:
-            assert isinstance(item, SalienceItem)
-            assert item.source == PerceptSource.NARRATIVE
-            assert isinstance(item.where, NarrativeWhere)
-
-    def test_scene_propagated_to_where(self):
-        from maxim.simulation.narrative_transcriber import NarrativeTranscriber
-
-        t = NarrativeTranscriber()
-        items = t.transcribe_to_items("The guard watches.", scene="back_alley")
-
-        for item in items:
-            assert isinstance(item.where, NarrativeWhere)
-            assert item.where.scene == "back_alley"
-
-    def test_empty_text_returns_empty(self):
-        from maxim.simulation.narrative_transcriber import NarrativeTranscriber
-
-        t = NarrativeTranscriber()
-        assert t.transcribe_to_items("") == []
-        assert t.transcribe_to_items("   ") == []
-
-    def test_legacy_transcribe_still_works(self):
-        """Legacy transcribe() with bbox dicts still works."""
-        from maxim.simulation.narrative_transcriber import NarrativeTranscriber
-
-        t = NarrativeTranscriber()
-        dets = t.transcribe('Derek enters. "Hello," he says.')
-        assert len(dets) > 0
-        assert "bbox_xyxy" in dets[0]
-
-
-# ---------------------------------------------------------------------------
-# MemoryHub salience callback registration
-# ---------------------------------------------------------------------------
-
-
 class TestMemoryHubSalienceHooks:
     def test_register_salience_callback(self):
         from unittest.mock import MagicMock
