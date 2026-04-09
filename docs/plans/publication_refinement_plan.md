@@ -1,16 +1,32 @@
 # Publication Refinement Plan
 
-> **Status:** Phase 0 DONE (2026-04-08). Phase 1 DONE (2026-04-08, 1m deferred to v0.2.1). Phase 1.5+ not started.
+> **Status:** Phase 0 DONE. Phase 1 DONE (1m deferred). ASH ALL PHASES DONE. Module Compartmentalization IN PROGRESS. POG-0 DONE.
 > **Goal:** Fix the blockers, code quality issues, and documentation gaps identified in a comprehensive repo review before publishing pymaxim v0.2.0 to PyPI.
 > **Estimated scope:** ~1,400 LOC of fixes + ~500 LOC of tests + ~400 LOC of docs changes across 5 phases (includes Mother Maxim on-ramp items 1m-1n)
 > **Sequence:** Blockers (0) → Code Quality + Data Integrity + UX + API Contract (1) → Test Depth (2) → Docs & Packaging (3) → Publish (4)
 > **Timeframe:** 3-4 focused sessions
 >
 > **UPDATE (2026-04-08):** A comprehensive repo review identified deeper API surface and module structure issues. Two companion plans now exist:
-> - **[API Surface Hardening Plan](api_surface_hardening_plan.md)** — wires stub verbs, fixes research protocol, error handling on user-facing paths, integration tests, README overhaul. Executes between Phase 0 and Phase 4. Items marked `[SKIP — ASH]` below are covered there.
-> - **[Module Compartmentalization Plan](module_compartmentalization_plan.md)** — breaks up 5 god-modules (agent_loop, orchestrator, cli, router, lane_backends). Executes after API Surface Hardening.
+> - **[API Surface Hardening Plan](api_surface_hardening_plan.md)** — ALL PHASES COMPLETE. Wired stub verbs, fixed research protocol, error handling on user-facing paths, integration tests, README overhaul.
+> - **[Module Compartmentalization Plan](module_compartmentalization_plan.md)** — IN PROGRESS. Breaking up 5 god-modules (agent_loop, orchestrator, cli, router, lane_backends).
 >
-> **Revised sequence:** Phase 0 (DONE) → API Surface Hardening → Remaining Phase 1 items → Phase 1.5 → Phase 2 → Remaining Phase 3 items → Module Compartmentalization → Phase 4 (publish)
+> **Revised sequence:** Phase 0 (DONE) → ASH (DONE) → Phase 1.5/2 (DONE) → POG-0 (DONE) → Packaging (DONE) → Module Compartmentalization (IN PROGRESS) → **Must-Fix Blockers** → Phase 4 (publish)
+>
+> ## Pre-Publish Must-Fix Checklist
+>
+> These four items **block publication**. ~1-2 sessions of work.
+>
+> | Item | Source | Status | What |
+> |------|--------|--------|------|
+> | **Fix `maxim.run()` TypeError** | Refinement 0a | **NOT DONE** | Flagship API call is broken. First thing in getting-started guide. |
+> | **Wire 3 stub API verbs** | Refinement 0b / ASH Phase 1 | **VERIFY** | `campaign()`, `benchmark()`, `research()` — if ASH wired them, verify. If not, wire or raise `NotImplementedError` with CLI pointer. |
+> | **API key fail-fast** | Refinement 1g / ASH 3f | **NOT DONE** | Missing `ANTHROPIC_API_KEY` should fail at startup, not minutes later. ~15 LOC. |
+> | **Error type exports** | Refinement 0d | **PARTIAL** | 5 of 25 exception types exported. At minimum export the 7 category-level exceptions so `except maxim.ConfigurationError` works. |
+>
+> **Should-do but can defer to v0.2.1:**
+> - Research protocol bugs (D-0a through D-0e) — `--research` is broken but power-user only. Wire `research()` as `NotImplementedError` for v0.2.0.
+> - `@maxim.tool` schema inference — nice-to-have, 30 LOC.
+> - Error handling audit (ASH Phase 3 remaining) — silent `except Exception: pass` blocks are tech debt, not user-facing blockers.
 
 ---
 
@@ -515,6 +531,23 @@ After Phases 0-3 are complete:
 5. `twine upload --repository testpypi dist/*` → test install in clean venv
 6. `twine upload dist/*` → verify real install
 7. Tag release: `git tag v0.2.0 && git push origin v0.2.0`
+
+---
+
+## Pecking Order Graph Prep (POG-0) — weave into publication
+
+Three small, additive items that position the internal types for the [Pecking Order Graph](pecking_order_graph_plan.md) without changing any public API. These are optional for v0.2.0 but save rework post-publication.
+
+| Item | What | LOC | Risk |
+|------|------|-----|------|
+| **POG-0a** | Add `NodeLoad` (gpu_util, queue_depth, ram_pressure, thermal) to `RuntimeCapabilities` | ~30 | None — additive fields, not in public API |
+| **POG-0b** | Add optional `parent_id: str | None` to `AgentIdentity` | ~10 | None — optional field, backward-compatible serialization |
+| **POG-0c** | Define `GateResult` and `EdgeCapacity` shared types in new `mesh/gate_types.py` | ~60 | None — new file, no behavior changes |
+| **POG-0d** | Define `SpatialContext` frozen dataclass in new `memory/spatial.py` | ~40 | None — type only, no integration. Locks `Perception.location` serialization format |
+
+**Why do these now:** `RuntimeCapabilities` and `AgentIdentity` are serialized in heartbeat messages. Adding fields post-publication means dealing with version skew between nodes running different versions. Adding them now (as optional/defaulted fields) means the wire format is stable from v0.2.0 onward.
+
+**What does NOT need to happen before publication:** The graph itself (POG-1+), registration protocol (POG-2), cascades (POG-3), and Mother integration (POG-4) are all post-publication. The public Python API (`maxim.api`) is not affected by any POG work — it's all internal mesh/runtime infrastructure.
 
 ---
 

@@ -31,14 +31,41 @@ All pre-publication work is tracked in [foundational_buildout_plan.md](foundatio
 | 12b | [Pre-Publication Hardening](pre_publication_hardening_plan.md) — UX, errors, API fixes, tests, docs | **DONE** |
 | 13 | [Publication Refinement](publication_refinement_plan.md) — blockers, error honesty, threading, docs | Phase 0 **DONE** |
 | 13a | [API Surface Hardening](api_surface_hardening_plan.md) — wire stub verbs, fix research protocol, error handling, integration tests, README | Not started |
-| 13b | [Module Compartmentalization](module_compartmentalization_plan.md) — break up 5 god-modules (agent_loop, orchestrator, cli, router, lane_backends) | Not started |
-| — | Manual publish (`twine upload`) | Blocked on 13 + 13a + 13b |
+| — | Manual publish (`twine upload`) | Blocked on 13 + 13a |
 
 ---
 
 ## Post-Publication Work (ship when demand surfaces)
 
 These are features, not architecture. Safe to add after PyPI publication without breaking the public API.
+
+### v0.2.1 Deferred Items (ship shortly after publish)
+
+Items that improve quality but don't gate v0.2.0 publication — no public API breakage.
+
+| Item | Source Plan | Why Deferred | Effort |
+|------|-----------|-------------|--------|
+| **Module Compartmentalization** | [Plan](module_compartmentalization_plan.md) | Pure refactor, zero behavior change. Users don't see module sizes. Integration tests from ASH serve as safety net. | ~0 net LOC |
+| **Research protocol bugs (D-0a–D-0e)** | [ASH Phase 2](api_surface_hardening_plan.md) | `--research` is a power-user feature. `research()` API verb ships as `NotImplementedError` in v0.2.0. | ~200 LOC |
+| **Full integration test suite** | [ASH Phase 4](api_surface_hardening_plan.md) | 3500+ unit tests provide sufficient confidence. Integration tests are additive. | ~200 LOC |
+| **Error handling audit** (silent except blocks) | [ASH Phase 3](api_surface_hardening_plan.md) | Tech debt, not user-facing breakage. The 593 bare `except Exception:` blocks are noisy but not incorrect. | ~300 LOC |
+| **`@maxim.tool` schema inference** | [ASH Phase 1d](api_surface_hardening_plan.md) | Nice-to-have. Tools work without auto-inferred schemas. | ~30 LOC |
+| **README overhaul** | [ASH Phase 5](api_surface_hardening_plan.md) | Current README is functional. Polish for v0.2.1. | ~200 LOC |
+
+### Salience Abstraction + Bio-System Integration
+
+Decouple salience/attention from vision-specific assumptions (pixels, bounding boxes, saccades) and rebuild around modality-agnostic primitives with pluggable coordinate systems. Deep integration with ATL, EC, NAc, SCN, and Hippocampus. Full plan: [salience_abstraction_plan.md](salience_abstraction_plan.md).
+
+| Phase | Work | LOC | What it enables |
+|-------|------|-----|----------------|
+| S-0 | Core abstractions: `SalienceItem`, `WhereCoord` protocol, `PerceptSource` enum | +300 | Modality-agnostic salience primitives |
+| S-1 | Refactor SalienceNetwork to use `SalienceItem` + `WhereCoord` | -100 | NarrativeTranscriber stops faking pixel bboxes |
+| S-2 | Abstract `AttentionField`, `ChangeDetector`, `FocusController` with vision/narrative/SEM/null impls | -150 | Text and SEM modes get real attention dynamics |
+| S-3 | ATL ↔ Salience: concept recognition boost + salience-gated extraction | +200 | Agent notices things it has concepts for; only extracts concepts from salient percepts |
+| S-4 | NAc + EC + SCN → Salience: reward-driven attention, similarity priming, temporal modulation | +250 | Reward shapes what agent attends to; past experience primes attention; circadian awareness |
+| S-5 | SEM sensor change detection + cyberpunk campaign validation | +200 | Entity sensor deltas drive salience spikes; full-stack validation |
+
+**Trigger:** Post-publication. The vision system works for robots, but sim/DM/benchmark modes need proper salience. S-0 through S-2 are prerequisites for meaningful agentic enhancement A/B testing.
 
 ### DM Extensions (conditional on usage data)
 
@@ -54,8 +81,9 @@ These are features, not architecture. Safe to add after PyPI publication without
 
 | Work | Trigger | Effort | Notes |
 |------|---------|--------|-------|
-| **Agent Mesh Phase 0a-0b** | Multiple LAN machines join | ~400 LOC | mDNS discovery + InferenceRouter. Current `LocalMessageBus` is sufficient for single-machine multi-agent. |
-| **Capability Agent** | Multi-machine setups need runtime awareness | ~500 LOC | See design below. Depends on lane tiers (done) + mesh Phase 0a. CA-1 (CapabilitySnapshot + model availability) → CA-2 (local + leader awareness) → CA-3 (benchmark/sim gates) → CA-4 (mesh) → CA-5 (FunctionRouter health_check). |
+| **Pecking Order Graph** | Multi-machine topology + Mother Maxim federation | ~1,200 LOC | [Plan](pecking_order_graph_plan.md). Rooted directed graph with domain-scoped pecking (authority, compute, memory, knowledge, embodiment). Mother as root. **Subsumes:** Mesh Phase 0a/0b, Capability Agent, Multi-Node Admin. POG-0 (prep) weaves into publication; POG-1-4 post-publication. |
+| ~~Agent Mesh Phase 0a-0b~~ | ~~Multiple LAN machines join~~ | ~~~400 LOC~~ | **Absorbed into Pecking Order Graph** (POG-2c for discovery, POG-3c for inference routing). |
+| ~~Capability Agent~~ | ~~Multi-machine setups need runtime awareness~~ | ~~~500 LOC~~ | **Absorbed into Pecking Order Graph** (graph IS the capability map — `route_request()`, `check_gate()`, node load tracking replace all CA-1 through CA-5 phases). |
 | **Embodiment Hardware Adapter + selfy.py decomposition** | Deploying to physical hardware or adding new robots | ~800 LOC net (saves ~900) | Decompose `conscience/selfy.py` (858 LOC after mixin decomposition) into `ReachyController(RobotController)` plugin. Moves `AgenticRuntimeMixin` (~1,080 LOC) into standard runtime, eliminates ~650 LOC of orchestrator glue, moves ~276 LOC of generic input handling to interactive module. Enables multi-robot support via entry-point plugins (Atlas, Spot, etc.) without modifying core runtime. Currently behind lazy import — no PyPI impact, but blocks clean robot extensibility. |
 | **PyPI Multi-Robot Plugins** | External robot controllers need discovery | ~250 LOC | Entry-point based `maxim.robots` registration. Phase 3 of [PyPI plan](pypi_publication_plan.md). Depends on selfy.py decomposition above. |
 | **Full CI/CD Pipeline** | Need automated test + publish | ~2 files | GitHub Actions: lint, test, build, publish. Phase 4 of [PyPI plan](pypi_publication_plan.md). |
@@ -63,7 +91,7 @@ These are features, not architecture. Safe to add after PyPI publication without
 | **Proxy Connection Pooling** | High-throughput multi-peer scenarios | ~50 LOC | LeaderProxy uses stdlib `urlopen` (new connection per request). Switch to `urllib3` or `http.client` with keep-alive for connection reuse. Prevents ephemeral port exhaustion under load. |
 | **Process Ownership in _kill_process_tree** | Multiple Maxim instances on same machine | ~20 LOC | `_kill_process_tree()` uses `os.killpg()` without verifying PID ownership. Add PID-file or cmdline check before killing. Low risk (PIDs rarely reuse in practice). |
 | **Autonomy Reset on Restart** | Prevent stale autonomy level persisting across restarts | ~30 LOC | On process start, reset autonomy to the configured default (planning/supervised/autonomous) instead of inheriting whatever was active when the previous process died. Applies to both leader restart and peer restart. Touch: `AutonomyController.__init__()` + startup path in cli.py. |
-| **Multi-Node Admin (symmetric update/restart)** | 3+ nodes need coordinated deploys | ~200 LOC | Every node with `MAXIM_ALLOW_REMOTE_UPDATE=1` serves admin endpoints (`/v1/admin/update`, `restart`, `llm-swap`) regardless of leader/peer role. Peer nodes run a lightweight admin-only HTTP server (subset of LeaderProxy, no inference proxy). CLI: `maxim peer update --all` fans out to known nodes. Node registry: peers register their tunnel URL on connect, leader stores in `~/.maxim/config/nodes.json`. See design notes below. |
+| ~~Multi-Node Admin (symmetric update/restart)~~ | ~~3+ nodes need coordinated deploys~~ | ~~~200 LOC~~ | **Absorbed into Pecking Order Graph** (POG-3a — update cascade through authority domain). `maxim update --cascade` replaces `maxim peer update --all`. |
 | **Filesystem Mount System** | Users want Maxim to read/act on their projects | ~100 LOC | See design below. `FilesystemPolicy` + `PathPolicy` already support per-path permissions (READ/WRITE/EXECUTE/CREATE/DELETE). Needs: CLI `--mount /path:ro`, config file persistence, API verb `maxim.mount()`, per-directory autonomy levels. |
 | **Agent-Driven Git + Experiment Workflow** | Git tools, bio-provenance tagging, scientist persona, fork CLI, broken-database campaign | ~850 LOC | [Plan](github_repo_management_plan.md) |
 | **Hibernate Mode (no-LLM sleep)** | SEM comms wake triggers, broken-database campaign sleep→wake arc | ~200 LOC | Agent loop monitors only SEM sensors + wake keywords, zero LLM cost. Prerequisite for DM campaigns that start in sleep state. Needs: ProcessingState.HIBERNATE enum, agent_loop hibernate branch, DM schema `initial_state:` + `embodiment:` keys. |
@@ -90,37 +118,13 @@ These are features, not architecture. Safe to add after PyPI publication without
 
 **Cross-cutting uses** (no new code, just exposure): startup sanity (cheap checks on every `maxim` launch, quiet-success), sim pre-flight (`check_server_reachable` + `check_gpu` before sim), test fixture, CI guardrail (`--json --strict`).
 
-### Multi-Node Admin Design (~200 LOC)
+### ~~Multi-Node Admin Design~~ — ABSORBED into Pecking Order Graph
 
-Enable any Maxim node (not just the leader) to accept remote update/restart/llm-swap commands, so coordinated deploys work across a cluster without SSH.
+> **Superseded by [Pecking Order Graph Plan](pecking_order_graph_plan.md) Phase POG-3a.** Update cascades flow through the authority domain of the pecking order graph. `maxim update --cascade` replaces the fan-out registry approach. Each node validates + applies + cascades to children. See POG plan for details.
 
-**Current state:** Only the leader runs `LeaderProxy` with admin endpoints. Peers are HTTP clients only — no inbound server. Communication is one-way: peer → leader.
+### ~~Capability Agent Design~~ — ABSORBED into Pecking Order Graph
 
-**Target state:** Every node with `MAXIM_ALLOW_REMOTE_UPDATE=1` exposes admin endpoints. Leader already does. Peers get a lightweight admin-only HTTP server (no inference proxy, no `/v1/chat/completions`).
-
-**Implementation:**
-1. **Admin server extraction** (~80 LOC): Factor admin handlers (`_handle_admin_update`, `_handle_admin_restart`, `_handle_admin_llm_swap`) out of `leader_proxy.py` into `runtime/admin_server.py`. LeaderProxy imports them. New `AdminOnlyServer` reuses the same handlers on a separate port (e.g., 8098) with auth.
-2. **Node registration** (~60 LOC): When a peer connects to the leader (any `/v1/` request), the leader records its tunnel URL in `~/.maxim/config/nodes.json` (deduped, TTL-based expiry). Read-only endpoint: `GET /v1/admin/nodes`.
-3. **Fan-out CLI** (~60 LOC): `maxim peer update --all` reads the node registry and POSTs `/v1/admin/update` to each URL in parallel. `--all` includes the leader itself. `maxim peer restart --all` does the same with sequenced restarts (leader last).
-
-**Pre-publication refactoring needed: none.** The admin endpoints, `detect_role()`, `MAXIM_ALLOW_REMOTE_UPDATE`, and `peer/cli.py` are all internal modules — not exposed via the public Python API (`maxim.api`). Renaming or restructuring them post-publish won't break downstream users. The CLI subcommand surface (`maxim peer ...`) is not a stability contract.
-
-**Trigger:** 3+ Maxim nodes that need coordinated deploys. Currently a single leader + Mac peer — `maxim peer update` one-way is sufficient.
-
-### Capability Agent Design (~500 LOC)
-
-A `CapabilityAgent` that maintains a live picture of what this system (and its peers) can do, and gates actions that exceed those capabilities. Wraps existing infrastructure (`detect_tiers()`, `FunctionRouter`, `LaneMetrics`, `RuntimeCapabilities`) — adds runtime updates, peer awareness, and proactive suggestions.
-
-**Core API:**
-- `can_run_model(profile)` → `ModelAvailability(where=local|remote|cloud|unavailable, ...)`
-- `available_models()` → all runnable models (local + peer + cloud)
-- `recommended_tier(function)` → best tier given current load
-- `gate_action(action, requirements)` → allow/deny with reason and alternatives
-- Event handlers: `on_peer_joined/left`, `on_model_swapped`, `on_heartbeat`, `on_thermal_throttle`
-
-**Consumers:** benchmark runner (filter `--models`), sim orchestrator (route to leader), FunctionRouter (dynamic health_check), `maxim doctor` (capability report), agent mesh (topology changes), CLI pre-flight (fail fast with fix hint).
-
-**Implementation:** CA-1 (CapabilitySnapshot + check_model_availability, ~100 LOC) → CA-2 (local + leader, ~150) → CA-3 (benchmark/sim gates, ~100) → CA-4 (mesh, ~100) → CA-5 (FunctionRouter + proactive suggestions, ~50). CA-1–3 ship before mesh. CA-4–5 integrate with mesh discovery.
+> **Superseded by [Pecking Order Graph Plan](pecking_order_graph_plan.md).** The graph IS the capability map. `PeckingGraph.route_request()` replaces `can_run_model()` and `recommended_tier()`. `PeckingGraph.check_gate()` replaces `gate_action()`. Node load tracking on heartbeat replaces `CapabilitySnapshot`. All planned CA-1 through CA-5 phases are covered by POG-1 through POG-3.
 
 ### Filesystem Mount System (~100 LOC)
 
@@ -259,7 +263,9 @@ docs/plans/
 ├── publication_refinement_plan.md     # Phase 13 — blockers (DONE), code quality, packaging
 ├── api_surface_hardening_plan.md      # Phase 13a — wire stubs, fix research, error handling, README
 ├── module_compartmentalization_plan.md # Phase 13b — break up god-modules
+├── pecking_order_graph_plan.md        # Unified topology + routing (subsumes mesh 0a/0b, capability agent, multi-node admin)
 ├── mother_maxim_plan.md               # Mother Maxim — persistent shared instance (post-publication priority)
+├── salience_abstraction_plan.md        # Modality-agnostic salience + bio-system integration (S-0 through S-5)
 ├── dungeon_master_extensions.md       # DM follow-ons (Extensions C-G, post-publication)
 ├── github_repo_management_plan.md     # Fork-based workflow (post-publication)
 └── tool_refinement_plan.md            # Living document — tool additions/deprecations
@@ -325,11 +331,67 @@ When validating any agentic enhancement, design campaigns that:
 5. **Use the benchmark runner** — `maxim --sim benchmark` already compares models. Extend benchmark scenarios to include enhancement A/B comparisons.
 6. **Document in `docs/experiments/`** — each enhancement test produces a run note with methodology, metrics, and findings (same format as hippocampal_recall_experiment.md).
 
+### Cyberpunk Stress-Test Suite
+
+A themed stress-test suite that exercises the bio-stack in a cyberpunk setting. Serves two purposes: (1) validate agentic enhancements against a genre the system has never seen (cold-start), and (2) expand the SEM component library beyond fantasy into sci-fi.
+
+**SEM Components** — 13 new components in `src/maxim/_data/components/`:
+
+| Category | Component | Tags | What it tests |
+|----------|-----------|------|---------------|
+| environments | `neon_alley` | urban, outdoor, sensory-dense | Perception under high sensory noise (6 sensors including pollution, signal_interference) |
+| environments | `server_room` | indoor, tech, hazardous | Cerebellum forward models — environmental hazards (temperature, electrical_risk) change unpredictably |
+| environments | `megacorp_lobby` | indoor, social, corporate | Social dynamics — security_level and crowd_density affect affordance availability |
+| creatures | `patrol_drone` | machine, flying, hostile | Novel entity cold-start — no humanoid assumptions, mechanical sensors (battery, signal_strength) |
+| creatures | `cyberdog` | animal, augmented, semi-hostile | Hybrid organic/mechanical — tests whether bio-stack handles mixed sensor types |
+| npcs | `netrunner` | hacker, tech, ally-or-enemy | NAc causal learning — trust/betrayal dynamics with delayed consequences |
+| npcs | `corpo_guard` | military, augmented, authority | Extends base_humanoid — cybernetic sensors (armor_integrity, comms_status) layered on humanoid base |
+| npcs | `street_fixer` | social, broker, neutral | Abstract concept extraction — deals, favors, debts (non-combat social complexity) |
+| weapons | `shock_baton` | melee, electric, degradable | Cascade resolution — charge depletion triggers mode switch (electric → blunt) |
+| weapons | `neural_disruptor` | ranged, tech, degradable | Ammo-like resource (charge_cells) + overheatable — two interacting failure modes |
+| bodies | `cybernetic_arm` | augmentation, body, degradable | Baseline body component — tests SEM body-part composition and proprioceptive feedback |
+| bodies | `megarm_v3` | augmentation, body, military-grade | Upgrade target — stronger sensors, new affordances (mantis blade, neural jack), low initial proprioception |
+| environments | `ripperdoc_clinic` | indoor, medical, tech | Cybersurgery clinic — context for mid-campaign component swap |
+
+**Campaign: `neon_gauntlet_v1.yaml`** — 1 act, 6 encounters, linear escalation (mirrors arena_v1 structure but cyberpunk):
+
+| Encounter | Scene | Bio-System Target | Active NPCs/Entities |
+|-----------|-------|-------------------|---------------------|
+| `back_alley` | Navigate a sensory-overloaded neon alley, dodge a patrol drone | Perception (noise filtering), Cerebellum (evasion prediction) | patrol_drone |
+| `the_deal` | Meet a street fixer for intel — negotiate price, read intentions | NAc (causal: trust → betrayal?), ATL (social concepts) | street_fixer |
+| `ripperdoc_visit` | **SEM component swap** — upgrade cybernetic arm to Megarm V3 at a back-alley clinic | Cerebellum (proprioceptive recalibration), SEM composition (detach/attach), motor programs (new affordances) | ripperdoc |
+| `server_breach` | Break into a megacorp server room — use the new arm's capabilities | Cerebellum (forward models under hazard + new body), motor programs (novel affordances on upgraded arm) | corpo_guard |
+| `betrayal` | The fixer sold you out — cyberdog pack ambush in the alley | Hippocampus (recall the fixer's tells), NAc (RPE spike from betrayal) | cyberdog, street_fixer |
+| `extraction` | Fight through the megacorp lobby to escape — corpo guards + drone | All systems under load — memory recall, predictions, pain, causal learning | corpo_guard, patrol_drone |
+
+**Component swap stress test** (encounter 3 — `ripperdoc_visit`):
+- Uses new `swap_entity` key in `on_choice` to detach the old `cybernetic_arm` and instantiate a `megarm_v3` from the component registry at runtime
+- The V3 starts with **low proprioception** (0.3) — the agent must recalibrate in a new body before the server heist
+- Cerebellum forward models trained on the old arm become invalid — tests whether the system adapts to new affordance signatures (mantis blade, neural jack)
+- NAc must learn new causal links for the upgraded arm's different failure modes (proprioceptive drift replaces simpler grip malfunction)
+- If the agent keeps the old arm, none of this fires — control path for A/B comparison
+
+**Expectations** (bio-system validation):
+- Hippocampus: min 14 episodic captures, recall hit on ["server", "fixer", "betrayal", "arm"]
+- NAc: min 14 observations, prediction_confidence > 0.4, RPE events >= 4 (arm swap surprise + betrayal + combat)
+- Cerebellum: min 5 forward models (drone evasion, arm recalibration, server hazards, combat, lobby escape), confidence > 0.3
+- Pain: min 2 signals, types_seen: [EXTERNAL_SIGNAL] (combat damage + environmental hazard)
+- Salience: novelty_decay_observed: true (alley → similar alley in encounter 5 should decay)
+
+**Implementation:** Campaign YAML + 13 SEM components + ~50 LOC `swap_entity` handler in `dm_runtime.py`. Run with:
+```bash
+maxim --sim scenarios/campaigns/neon_gauntlet_v1.yaml
+```
+
+**Enhancement A/B testing:** Run the gauntlet twice per enhancement — once with enhancement enabled, once without. The cyberpunk domain is novel enough that cold-start enhancements (motor seeding, cerebellum bootstrap, NAc priors) should show measurable deltas. Track cost with the benchmark runner's `Cost:` line.
+
 ## Mother Maxim — Persistent Shared Cognitive Instance (Post-Publication)
 
 A persistent, public Maxim instance that accumulates collective memory across all users and sessions. Full plan: [mother_maxim_plan.md](mother_maxim_plan.md).
 
 **Summary:** ~3,800 LOC across 6 phases (M-1 through M-6). Pre-publication prep items (M-0) woven into foundational buildout. Requires PostgreSQL + pgvector. Mother is a full Maxim agent with her own bio-stack, not a passive database. Dual-pass deidentification leverages bio-system structures for targeted PII removal — client-side pass uses ATL/SEM identity maps (80% deterministic), server-side pass verifies.
+
+**Pecking Order Graph integration:** Mother sits at the root of the [Pecking Order Graph](pecking_order_graph_plan.md). Contributions cascade up through intermediate nodes (enriched at each level), wisdom cascades down with compounding trust discounts. The graph makes federation natural — domain Mothers become sub-roots. POG-4 ships alongside or shortly after Mother MVP.
 
 | Phase | Work | Depends On |
 |-------|------|------------|
@@ -338,7 +400,7 @@ A persistent, public Maxim instance that accumulates collective memory across al
 | M-2 | Dual-pass deidentification (bio-system-aware client-side + server verification) | M-1 |
 | M-3 | Tenant/session isolation (private → shared → Mother's own) | M-1 |
 | M-4 | Memory coalescence engine (consensus confidence, cross-user dedup, merge strategy) | M-1, M-2 |
-| M-5 | Public API (`/v1/contribute`, `/v1/recall`, `/v1/wisdom`, `/v1/campaign`) | M-1 through M-4 |
+| M-5 | Public API — `/v1/contribute`, `/v1/recall` become graph cascades (POG-4) | M-1 through M-4, POG-3 |
 | M-6 | Deployment (Docker Compose, monitoring, abuse tracking, backup/restore) | M-1 through M-5 |
 
 ## Research Directions: Other (Not Scheduled)

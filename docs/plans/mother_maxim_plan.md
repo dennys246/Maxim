@@ -37,22 +37,38 @@ User → Maxim CLI/API → Agent Loop → Bio-Systems → JSON files on disk
                               ATL         → atl.json
 ```
 
-### Target State (database-backed, multi-user)
+### Target State (Pecking Order Graph + database-backed, multi-user)
 
 ```
-Users → Public API (HTTPS) → Mother Maxim Agent
-                                    ↓
-                            Split Store Protocols
-                        (EpisodicStore, CausalStore, SemanticStore)
-                           /                    \
-                   FileStores (local)     DatabaseStores (PostgreSQL)
-                   (CLI default)          (Mother Maxim production)
-                                                ↓
-                                    ┌─ tenant_memories (per-user) ─┐
-                                    │  shared_memories (promoted)   │
-                                    │  mother_memories (her own)    │
-                                    └──────────────────────────────┘
+                        Mother Maxim [graph root]
+                        /           \
+                Leader-A             Leader-B
+                /     \                 |
+          Peer-1    Peer-2           Peer-3
+
+    Knowledge cascades UP (enriched at each level)
+    Wisdom cascades DOWN (trust discounts compound)
+    Compute routes ACROSS (by capability + capacity)
 ```
+
+Mother sits at the root of the **Pecking Order Graph** ([full plan](pecking_order_graph_plan.md)). Rather than receiving raw contributions via a flat REST API, knowledge percolates up through the graph — each intermediate node enriches contributions with its own observations before passing them up. Wisdom flows down with compounding trust discounts.
+
+```
+Users → Maxim instances (graph nodes) → cascade_up → Mother Maxim Agent
+                                                           ↓
+                                                   Split Store Protocols
+                                               (EpisodicStore, CausalStore, SemanticStore)
+                                                  /                    \
+                                          FileStores (local)     DatabaseStores (PostgreSQL)
+                                          (CLI default)          (Mother Maxim production)
+                                                                       ↓
+                                                           ┌─ tenant_memories (per-user) ─┐
+                                                           │  shared_memories (promoted)   │
+                                                           │  mother_memories (her own)    │
+                                                           └──────────────────────────────┘
+```
+
+**Key change from original plan:** `/v1/contribute` and `/v1/recall` become graph cascades (POG-4b/4c) instead of direct REST calls. Mother's coalescence engine (M-4) receives pre-enriched contributions instead of raw single-agent observations. This means consensus forms faster and with stronger evidence.
 
 ### Key Design Decision: Mother Is a Full Agent
 
@@ -715,10 +731,11 @@ maxim mother import state.json        # Restore from backup
 maxim --mother                        # Start Mother with defaults (equivalent to `maxim mother start`)
 maxim --mother --port 8080            # With options
 
-# Federation: anyone can spawn a federated Mother
+# Federation: anyone can spawn a federated Mother (see pecking_order_graph_plan.md)
+# Domain Mothers become sub-roots in the pecking order graph
 maxim --mother --domain fantasy       # Spawn a domain-specialized Mother
 maxim --mother --domain medical       # Medical-domain Mother
-maxim --mother --federation <hub_url> # Join an existing federation hub
+maxim --mother --federation <hub_url> # Join hub's pecking order graph as sub-root
 ```
 
 **`--mother` flag design:** Works like `--sim` — it's a top-level mode flag that changes what `maxim` does. Without it, Maxim runs as a normal agent. With it, Maxim runs as a persistent Mother instance. This makes spawning a federated node as simple as `maxim --mother --domain <x>` on any machine with the package installed.
@@ -781,6 +798,8 @@ src/maxim/mother/
                ├── ATL         → ~/.maxim/mother/atl.json
                └── Agent Loop  → low-freq (on contribution or 1/min idle)
 ```
+
+**Pecking Order Graph integration (POG-4):** Mother MVP ships first with direct REST endpoints. POG-4 (shipped alongside or shortly after) converts `/v1/contribute` and `/v1/recall` into graph cascade operations — contributions percolate up through intermediate nodes that enrich them, wisdom flows down with compounding trust discounts. Mother doesn't need the graph to start, but the graph makes federation natural. See [pecking_order_graph_plan.md](pecking_order_graph_plan.md).
 
 **Why JSON is fine for MVP:** Mother is the sole writer. Contributions queue through her agent loop sequentially — no concurrent writes, no race conditions. The RTX 5080 leader can handle hundreds of thousands of memories in JSON before it becomes a bottleneck. Switch to PostgreSQL (M-1) when she outgrows it.
 

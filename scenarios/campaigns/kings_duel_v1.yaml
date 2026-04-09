@@ -1,0 +1,449 @@
+# The Kings' Duel — DM Campaign
+#
+# Medieval duel between English and French kings with heirs and soldiers
+# observing. Tests how the court hierarchy reacts to the outcome —
+# cascading social dynamics, loyalty shifts, morale propagation.
+#
+# Bio-system targets: NAc (causal chains from duel outcome → court reactions),
+#   Hippocampus (recall who said what before/after the duel),
+#   ATL (concepts: honor, loyalty, succession, diplomacy),
+#   Cerebellum (combat predictions during the duel),
+#   Pain (tension/threat signals throughout),
+#   Salience (novelty spike at duel outcome, decay during formalities).
+#
+# Pecking order stress test: the NPC hierarchy (king → heir → champion → soldiers)
+#   mirrors the pecking order graph. When the king falls, the cascade of reactions
+#   tests whether the agent tracks authority transfer and morale propagation.
+#
+# Structure: 3 acts, 6 encounters, 8 NPCs, branching on duel outcome.
+
+campaign:
+  name: the_kings_duel
+  goal: test hierarchical social dynamics and cascading reactions to authority change
+  seed: 1066
+
+player_character:
+  name: herald
+  entity_type: character
+  metadata:
+    race: human
+    class: diplomat
+    level: 6
+    backstory: >
+      Royal herald of the English court, tasked with observing and recording
+      the duel between the two kings. Your testimony will shape history.
+      You serve the English crown but are bound by the code of heralds to
+      report truthfully.
+
+npcs:
+  english_king:
+    entity_type: npc
+    metadata:
+      race: human
+      role: monarch
+      persona_prompt: >
+        King Edmund III of England. Proud, battle-hardened, mid-forties.
+        Challenged the French king to single combat to settle a border dispute
+        rather than send thousands to die. Believes in leading from the front.
+        Speaks with quiet authority. Loves his heir but worries the boy is
+        too soft for the crown.
+    sensors:
+      hp: {unit: points, range: [0, 30], initial: 30}
+      morale: {unit: ratio, range: [0, 1], initial: 0.9}
+      honor: {unit: ratio, range: [0, 1], initial: 0.85}
+
+  english_prince:
+    entity_type: npc
+    metadata:
+      race: human
+      role: heir
+      persona_prompt: >
+        Prince Aldric, age 19. Terrified of watching his father fight but
+        hides it behind rigid posture. Trained in statecraft more than
+        swordplay. If his father falls, he must hold the English camp
+        together — and he knows he's not ready.
+    sensors:
+      morale: {unit: ratio, range: [0, 1], initial: 0.6}
+      composure: {unit: ratio, range: [0, 1], initial: 0.5}
+      trust: {unit: ratio, range: [0, 1], initial: 0.7}
+
+  english_champion:
+    entity_type: npc
+    metadata:
+      race: human
+      role: knight
+      persona_prompt: >
+        Sir Godfrey, the king's champion and bodyguard. Massive, scarred,
+        fiercely loyal. Sworn to protect the king but forbidden from
+        intervening in the duel. Barely containing his rage at having to
+        stand idle. If the king falls, he will want blood.
+    sensors:
+      morale: {unit: ratio, range: [0, 1], initial: 0.8}
+      restraint: {unit: ratio, range: [0, 1], initial: 0.4}
+
+  english_sergeant:
+    entity_type: npc
+    metadata:
+      race: human
+      role: soldier
+      persona_prompt: >
+        Sergeant Thomas. Veteran of three campaigns. Commands the English
+        honor guard of twenty men. Watches the duel with professional
+        detachment but his men are nervous. Takes cues from the prince
+        — if the prince holds, the men hold.
+    sensors:
+      morale: {unit: ratio, range: [0, 1], initial: 0.7}
+      discipline: {unit: ratio, range: [0, 1], initial: 0.8}
+
+  french_king:
+    entity_type: npc
+    metadata:
+      race: human
+      role: monarch
+      persona_prompt: >
+        King Philippe IV of France. Younger, faster, known as a brilliant
+        duelist. Accepted the challenge eagerly — he believes God favors
+        the righteous. Arrogant but not cruel. Would offer mercy to a
+        fallen opponent if it served French honor.
+    sensors:
+      hp: {unit: points, range: [0, 30], initial: 30}
+      morale: {unit: ratio, range: [0, 1], initial: 0.95}
+      honor: {unit: ratio, range: [0, 1], initial: 0.8}
+
+  french_prince:
+    entity_type: npc
+    metadata:
+      race: human
+      role: heir
+      persona_prompt: >
+        Prince Louis, age 22. Confident, almost cocky — his father rarely
+        loses. Already thinking about the victory feast. But beneath the
+        bravado, he watches the English prince with curiosity. If his
+        father somehow falls, his confidence would shatter completely.
+    sensors:
+      morale: {unit: ratio, range: [0, 1], initial: 0.9}
+      composure: {unit: ratio, range: [0, 1], initial: 0.8}
+
+  french_marshal:
+    entity_type: npc
+    metadata:
+      race: human
+      role: knight
+      persona_prompt: >
+        Marshal Beaumont. Cold, calculating, the true military mind behind
+        the French army. Doesn't care about honor — cares about winning.
+        If the duel goes wrong, he'll be the first to propose breaking the
+        truce. Watches everything, says little.
+    sensors:
+      morale: {unit: ratio, range: [0, 1], initial: 0.7}
+      restraint:
+        unit: ratio
+        range: [0, 1]
+        initial: 0.3
+        visibility: hidden
+
+  priest:
+    entity_type: npc
+    metadata:
+      race: human
+      role: cleric
+      persona_prompt: >
+        Father Bertrand, papal legate sent to sanctify the duel and ensure
+        both sides honor the outcome. Neutral party. Carries the treaty
+        that both kings signed. His authority comes from the Church, not
+        either crown. Will invoke excommunication if either side breaks
+        the terms.
+    sensors:
+      trust: {unit: ratio, range: [0, 1], initial: 0.6}
+
+acts:
+  - name: before_the_duel
+    encounters: [camp_morning, the_parley]
+  - name: the_duel
+    encounters: [combat]
+  - name: aftermath
+    encounters: [the_fallen, succession, treaty_or_war]
+
+encounters:
+  camp_morning:
+    scene: >
+      Dawn. The English camp on a muddy field outside Calais. Tents bear
+      the three lions of England. King Edmund is being armed by his squire
+      while Sir Godfrey tests the king's sword edge with his thumb.
+
+      Prince Aldric stands nearby, pale. Sergeant Thomas's men are
+      forming the honor guard in two ranks.
+
+      The king notices you. "Herald — make sure you see everything today.
+      Whatever happens, the truth of it must reach England."
+
+      Across the field, the French camp stirs. Their banners — golden
+      fleur-de-lis on blue — snap in the morning wind.
+
+      This is your last chance to speak with anyone before the procession
+      to the dueling ground.
+    active_npcs: [english_king, english_prince, english_champion, english_sergeant]
+    choices: [speak_to_king, speak_to_prince, speak_to_champion, observe_silently]
+    branches:
+      speak_to_king: the_parley
+      speak_to_prince: the_parley
+      speak_to_champion: the_parley
+      observe_silently: the_parley
+    on_choice:
+      speak_to_prince:
+        flags: [prince_confided]
+      speak_to_champion:
+        flags: [godfrey_warned]
+    dialogue_hints:
+      default: "God willing, this ends without a war."
+      prince_confided: "The prince whispered: 'What if he doesn't come back?'"
+      godfrey_warned: "Godfrey growled: 'Watch the French marshal. He has no honor.'"
+
+  the_parley:
+    scene: >
+      Mid-morning. Both courts meet at the dueling ground — a flat stretch
+      of earth between the camps, marked with stakes and rope. Father
+      Bertrand stands at the center holding the treaty scroll.
+
+      The English court assembles on the north side: King Edmund in full
+      plate, Prince Aldric at his right, Sir Godfrey two paces behind,
+      the honor guard in formation.
+
+      The French court mirrors them from the south: King Philippe in
+      gleaming armor, Prince Louis smirking, Marshal Beaumont scanning
+      the English lines with cold eyes.
+
+      Father Bertrand reads the terms aloud: "Single combat. To
+      submission or death. The loser's realm cedes the disputed lands.
+      No retribution. No further bloodshed. God judges the righteous."
+
+      Both kings step forward to clasp hands over the treaty.
+
+      You notice Marshal Beaumont's hand resting on his sword pommel.
+      Prince Aldric is gripping his own wrist to stop it trembling.
+    active_npcs: [english_king, french_king, english_prince, french_prince, priest]
+    choices: [study_french_king, study_marshal, reassure_prince, note_everything]
+    branches:
+      study_french_king: combat
+      study_marshal: combat
+      reassure_prince: combat
+      note_everything: combat
+    on_choice:
+      study_french_king:
+        flags: [assessed_philippe]
+      study_marshal:
+        flags: [noticed_marshal_tension]
+      reassure_prince:
+        flags: [steadied_aldric]
+    dialogue_hints:
+      default: "Both kings look resolved. The terms are read."
+      noticed_marshal_tension: "The marshal's knuckles are white on his sword."
+      steadied_aldric: "The prince's breathing steadies after your words."
+
+  combat:
+    scene: >
+      Noon. The sun breaks through the clouds as both kings enter the ring.
+
+      King Edmund draws his longsword — heavy, English steel. He moves
+      with the economy of a man who has fought for real, not for sport.
+
+      King Philippe draws a lighter blade, a hand-and-a-half sword. He
+      circles left, testing distance. He is faster.
+
+      The first exchange is brutal. Steel rings across the field. Edmund
+      absorbs a slash on his shield, drives Philippe back with a
+      shoulder charge. Philippe recovers with dancer's footwork.
+
+      Three minutes in, both men are bleeding from minor cuts. Edmund's
+      age is showing — he's breathing hard. Philippe presses the advantage.
+
+      Then Edmund catches Philippe's blade in a bind, forces it aside,
+      and slams his pommel into the French king's visor. Philippe
+      staggers.
+
+      But Philippe is young and fast. He recovers, feints low, and drives
+      his blade through a gap in Edmund's armor at the hip.
+
+      Edmund drops to one knee. Blood pools on the dirt.
+
+      The field goes silent. What do you do?
+    active_npcs: [english_king, french_king, english_champion, priest]
+    choices: [call_for_mercy, call_for_yield, stay_silent, rush_to_king]
+    branches:
+      call_for_mercy: the_fallen
+      call_for_yield: the_fallen
+      stay_silent: the_fallen
+      rush_to_king: the_fallen
+    on_choice:
+      call_for_mercy:
+        flags: [mercy_called]
+      call_for_yield:
+        flags: [yield_called]
+      rush_to_king:
+        flags: [herald_broke_protocol]
+    dice:
+      call_for_mercy:
+        roll: "1d20"
+        dc: 14
+        success_flag: philippe_grants_mercy
+    dialogue_hints:
+      default: "The crowd holds its breath."
+      mercy_called: "Philippe hesitates, sword raised. He looks to the priest."
+      herald_broke_protocol: "Gasps from both sides. A herald entering the ring is unprecedented."
+
+  the_fallen:
+    scene: >
+      King Edmund lies on the dueling ground. The wound at his hip is
+      deep. The king's champion, Sir Godfrey, is being held back by
+      three soldiers — his face is a mask of fury and grief.
+
+      Prince Aldric has not moved. He stares at his father's blood
+      on the dirt, frozen.
+
+      On the French side, Prince Louis has gone quiet — the smirk is
+      gone. Marshal Beaumont is already whispering to his officers.
+
+      Father Bertrand kneels beside Edmund, administering last rites.
+      The king's eyes find his son. "Aldric. Come here."
+
+      The English soldiers look to you, then to the prince, then to
+      Sir Godfrey. The chain of command is fracturing in real time.
+
+      What cascades from this moment depends on what you do next.
+    active_npcs: [english_prince, english_champion, english_sergeant, french_prince, french_marshal, priest]
+    choices: [go_to_prince, restrain_godfrey, address_soldiers, invoke_treaty]
+    branches:
+      go_to_prince: succession
+      restrain_godfrey: succession
+      address_soldiers: succession
+      invoke_treaty: succession
+    on_choice:
+      go_to_prince:
+        flags: [supported_prince]
+      restrain_godfrey:
+        flags: [godfrey_restrained]
+      address_soldiers:
+        flags: [soldiers_steadied]
+      invoke_treaty:
+        flags: [treaty_invoked]
+    dialogue_hints:
+      default: "The English camp teeters between grief and rage."
+      godfrey_restrained: "Godfrey snarls but does not draw. Not yet."
+      supported_prince: "The prince looks at you with desperate gratitude."
+      soldiers_steadied: "Sergeant Thomas barks: 'Hold formation! Hold!'"
+
+  succession:
+    scene: >
+      An hour after the duel. King Edmund is dead. His body lies in the
+      English pavilion under the three-lions banner.
+
+      Prince Aldric — now King Aldric — sits in his father's chair. He
+      looks like a boy wearing a man's crown. Sir Godfrey stands at his
+      right, hand on sword. Sergeant Thomas holds the tent flap.
+
+      Outside, you can hear the French camp celebrating. Inside, the
+      English court is fractured:
+
+      Sir Godfrey wants blood. "The marshal had his hand on his sword
+      during the parley. They planned this. We should attack tonight."
+
+      Sergeant Thomas disagrees. "Twenty men against their host? Suicide.
+      We need to get the prince — the king — home alive."
+
+      The priest enters. "Marshal Beaumont requests an audience. He
+      wishes to discuss the treaty terms. He says the disputed lands
+      are now settled."
+
+      Everyone looks at the new king. And the new king looks at you.
+
+      "Herald — you saw everything. You spoke with people. What do
+      you counsel?"
+    active_npcs: [english_prince, english_champion, english_sergeant, priest]
+    choices: [counsel_honor_treaty, counsel_retreat, counsel_negotiate, counsel_defy]
+    branches:
+      counsel_honor_treaty: treaty_or_war
+      counsel_retreat: treaty_or_war
+      counsel_negotiate: treaty_or_war
+      counsel_defy: treaty_or_war
+    on_choice:
+      counsel_honor_treaty:
+        flags: [counseled_peace]
+      counsel_retreat:
+        flags: [counseled_retreat]
+      counsel_negotiate:
+        flags: [counseled_negotiation]
+      counsel_defy:
+        flags: [counseled_war]
+    dialogue_hints:
+      default: "The new king awaits your counsel."
+      godfrey_warned: "You remember Godfrey's warning about the marshal."
+      prince_confided: "You remember the prince's fear — now you see it realized."
+      noticed_marshal_tension: "You recall the marshal's white knuckles at the parley."
+
+  treaty_or_war:
+    scene: >
+      Night falls. Torches flicker in the English pavilion.
+
+      Marshal Beaumont arrives with two guards and Prince Louis. The
+      French prince looks uncomfortable — the gravity of the day has
+      sobered him.
+
+      Beaumont lays the treaty on the table. "The terms were clear.
+      Your king agreed. The Church witnessed. The lands are ours."
+
+      Sir Godfrey's hand moves to his sword. Sergeant Thomas shifts
+      his weight. Father Bertrand watches from the corner.
+
+      King Aldric looks at the treaty, then at you.
+
+      Think carefully:
+      - What did you observe throughout the day?
+      - Who can you trust? Who is dangerous?
+      - What serves England — and what serves honor?
+      - What would King Edmund have wanted?
+
+      The young king speaks: "Herald, you carry the official record.
+      Before I decide, tell me — tell everyone here — what you witnessed
+      today. The whole truth."
+
+      This is the moment your testimony shapes history.
+    active_npcs: [english_prince, english_champion, french_prince, french_marshal, priest]
+    choices: [truthful_testimony, slanted_testimony, propose_compromise, refuse_to_speak]
+    branches:
+      truthful_testimony: __END__
+      slanted_testimony: __END__
+      propose_compromise: __END__
+      refuse_to_speak: __END__
+    on_choice:
+      truthful_testimony:
+        flags: [truth_told]
+      slanted_testimony:
+        flags: [testimony_biased]
+      propose_compromise:
+        flags: [compromise_offered]
+    dialogue_hints:
+      default: "All eyes are on you. The fate of two nations hangs on your words."
+      counseled_peace: "The young king seems inclined toward peace."
+      counseled_war: "Godfrey nods grimly. He's ready."
+      treaty_invoked: "Father Bertrand looks at you with approval."
+
+expectations:
+  hippocampus:
+    min_episodic_captures: 14
+    recall_hit_on: ["duel", "king", "prince", "treaty", "marshal"]
+  nac:
+    min_observations: 10
+    prediction_confidence_above: 0.35
+    rpe_events: 4
+  atl:
+    min_concepts: 5
+  scn:
+    temporal_bins_used: 3
+  cerebellum:
+    min_forward_models: 4
+    confidence_above: 0.3
+  pain:
+    min_signals: 2
+    types_seen: [EXTERNAL_SIGNAL]
+  salience:
+    novelty_decay_observed: true

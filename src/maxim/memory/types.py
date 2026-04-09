@@ -116,6 +116,35 @@ class Perception:
     decision_rationale: str = ""
     tool_alternatives: list[str] = field(default_factory=list)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for storage."""
+        return {
+            "observations": self.observations,
+            "cli_input": self.cli_input,
+            "transcript": self.transcript,
+            "detected_objects": self.detected_objects,
+            "detected_people": self.detected_people,
+            "salience": self.salience,
+            "novelty": self.novelty,
+            "decision_rationale": self.decision_rationale,
+            "tool_alternatives": self.tool_alternatives,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Perception:
+        """Deserialize from storage."""
+        return cls(
+            observations=data.get("observations", {}),
+            cli_input=data.get("cli_input"),
+            transcript=data.get("transcript"),
+            detected_objects=data.get("detected_objects", []),
+            detected_people=data.get("detected_people", []),
+            salience=data.get("salience", 0.5),
+            novelty=data.get("novelty", 0.5),
+            decision_rationale=data.get("decision_rationale", ""),
+            tool_alternatives=data.get("tool_alternatives", []),
+        )
+
 
 @dataclass
 class Context:
@@ -131,6 +160,27 @@ class Context:
     memory_context: str | None = None  # Summary from context pool
     fear_level: float = 0.0
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for storage."""
+        return {
+            "state_ref": self.state_ref,
+            "active_goal": self.active_goal,
+            "active_mode": self.active_mode,
+            "memory_context": self.memory_context,
+            "fear_level": self.fear_level,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Context:
+        """Deserialize from storage."""
+        return cls(
+            state_ref=data.get("state_ref"),
+            active_goal=data.get("active_goal"),
+            active_mode=data.get("active_mode", "observe"),
+            memory_context=data.get("memory_context"),
+            fear_level=data.get("fear_level", 0.0),
+        )
+
 
 @dataclass
 class Decision:
@@ -141,6 +191,27 @@ class Decision:
     alternatives_considered: list[dict[str, Any]] = field(default_factory=list)
     plan: list[dict[str, Any]] | None = None  # Multi-step plan if any
     confidence: float = 1.0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for storage."""
+        return {
+            "intent": self.intent,
+            "reasoning": self.reasoning,
+            "alternatives_considered": self.alternatives_considered,
+            "plan": self.plan,
+            "confidence": self.confidence,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Decision:
+        """Deserialize from storage."""
+        return cls(
+            intent=data.get("intent", {}),
+            reasoning=data.get("reasoning"),
+            alternatives_considered=data.get("alternatives_considered", []),
+            plan=data.get("plan"),
+            confidence=data.get("confidence", 1.0),
+        )
 
 
 @dataclass
@@ -156,6 +227,22 @@ class Action:
     def execution_time_ms(self) -> float:
         return (self.execution_end - self.execution_start) * 1000
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for storage."""
+        return {
+            "tool_name": self.tool_name,
+            "tool_params": self.tool_params,
+            "execution_time_ms": self.execution_time_ms,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Action:
+        """Deserialize from storage."""
+        return cls(
+            tool_name=data.get("tool_name", ""),
+            tool_params=data.get("tool_params", {}),
+        )
+
 
 @dataclass
 class Outcome:
@@ -165,6 +252,25 @@ class Outcome:
     result: Any = None
     error: str | None = None
     evaluations: list[dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for storage."""
+        return {
+            "success": self.success,
+            "result": self.result,
+            "error": self.error,
+            "evaluations": self.evaluations,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Outcome:
+        """Deserialize from storage."""
+        return cls(
+            success=data.get("success", False),
+            result=data.get("result"),
+            error=data.get("error"),
+            evaluations=data.get("evaluations", []),
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -435,52 +541,17 @@ class EpisodicMemory(MemoryRecord):
             "access_count": self.access_count,
             "long_term": self.long_term,
             "consolidated_at": self.consolidated_at,
-            "perception": {
-                "observations": self.perception.observations,
-                "cli_input": self.perception.cli_input,
-                "transcript": self.perception.transcript,
-                "detected_objects": self.perception.detected_objects,
-                "detected_people": self.perception.detected_people,
-                "salience": self.perception.salience,
-                "novelty": self.perception.novelty,
-            },
-            "context": {
-                "state_ref": self.context.state_ref,
-                "active_goal": self.context.active_goal,
-                "active_mode": self.context.active_mode,
-                "memory_context": self.context.memory_context,
-                "fear_level": self.context.fear_level,
-            },
-            "decision": {
-                "intent": self.decision.intent,
-                "reasoning": self.decision.reasoning,
-                "alternatives_considered": self.decision.alternatives_considered,
-                "plan": self.decision.plan,
-                "confidence": self.decision.confidence,
-            },
-            "action": {
-                "tool_name": self.action.tool_name,
-                "tool_params": self.action.tool_params,
-                "execution_time_ms": self.action.execution_time_ms,
-            },
-            "outcome": {
-                "success": self.outcome.success,
-                "result": self.outcome.result,
-                "error": self.outcome.error,
-                "evaluations": self.outcome.evaluations,
-            },
+            "perception": self.perception.to_dict(),
+            "context": self.context.to_dict(),
+            "decision": self.decision.to_dict(),
+            "action": self.action.to_dict(),
+            "outcome": self.outcome.to_dict(),
             "metadata": self.metadata,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EpisodicMemory:
         """Deserialize from storage."""
-        p = data.get("perception", {})
-        c = data.get("context", {})
-        d = data.get("decision", {})
-        a = data.get("action", {})
-        o = data.get("outcome", {})
-
         return cls(
             id=data["id"],
             timestamp=data["timestamp"],
@@ -490,39 +561,11 @@ class EpisodicMemory(MemoryRecord):
             access_count=data.get("access_count", 1),
             long_term=data.get("long_term", False),
             consolidated_at=data.get("consolidated_at"),
-            perception=Perception(
-                observations=p.get("observations", {}),
-                cli_input=p.get("cli_input"),
-                transcript=p.get("transcript"),
-                detected_objects=p.get("detected_objects", []),
-                detected_people=p.get("detected_people", []),
-                salience=p.get("salience", 0.5),
-                novelty=p.get("novelty", 0.5),
-            ),
-            context=Context(
-                state_ref=c.get("state_ref"),
-                active_goal=c.get("active_goal"),
-                active_mode=c.get("active_mode", "observe"),
-                memory_context=c.get("memory_context"),
-                fear_level=c.get("fear_level", 0.0),
-            ),
-            decision=Decision(
-                intent=d.get("intent", {}),
-                reasoning=d.get("reasoning"),
-                alternatives_considered=d.get("alternatives_considered", []),
-                plan=d.get("plan"),
-                confidence=d.get("confidence", 1.0),
-            ),
-            action=Action(
-                tool_name=a.get("tool_name", ""),
-                tool_params=a.get("tool_params", {}),
-            ),
-            outcome=Outcome(
-                success=o.get("success", False),
-                result=o.get("result"),
-                error=o.get("error"),
-                evaluations=o.get("evaluations", []),
-            ),
+            perception=Perception.from_dict(data.get("perception", {})),
+            context=Context.from_dict(data.get("context", {})),
+            decision=Decision.from_dict(data.get("decision", {})),
+            action=Action.from_dict(data.get("action", {})),
+            outcome=Outcome.from_dict(data.get("outcome", {})),
             metadata=data.get("metadata", {}),
         )
 
