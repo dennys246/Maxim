@@ -69,6 +69,7 @@ class AgentPool:
         else:
             try:
                 from maxim.mesh.bus import LocalMessageBus
+
                 self._bus = LocalMessageBus()
             except ImportError:
                 self._bus = None
@@ -84,7 +85,9 @@ class AgentPool:
             # Register with message bus if available
             if self._bus is not None and instance.agent_id:
                 try:
-                    self._bus.register(instance.agent_id, lambda msg, aid=instance.agent_id: self._handle_message(aid, msg))
+                    self._bus.register(
+                        instance.agent_id, lambda msg, aid=instance.agent_id: self._handle_message(aid, msg)
+                    )
                 except Exception:
                     pass
 
@@ -143,6 +146,7 @@ class AgentPool:
             TurnResult with the agent's response and actions.
         """
         import time
+
         start = time.time()
 
         instance = self.get_agent(agent_id)
@@ -165,6 +169,7 @@ class AgentPool:
             if instance.nac is not None and response:
                 try:
                     from maxim.decisions.nac import Valence
+
                     instance.nac.observe(
                         event_type="npc_respond",
                         event_signature=f"{agent_id}:respond",
@@ -263,6 +268,15 @@ class AgentPool:
 
     # -- shutdown -----------------------------------------------------------
 
+    # -- context manager -----------------------------------------------------
+
+    def __enter__(self) -> "AgentPool":
+        return self
+
+    def __exit__(self, exc_type: type | None, exc_val: BaseException | None, exc_tb: Any) -> bool:
+        self.shutdown()
+        return False
+
     def shutdown(self) -> None:
         """Stop all agents, flush memories, cleanup."""
         with self._lock:
@@ -304,6 +318,7 @@ class AgentPool:
         # Memory operations (hippocampus capture, NAc observation) still
         # work fully — only the response text is placeholder.
         import warnings
+
         personality = instance.personality or ""
         if not personality:
             return None

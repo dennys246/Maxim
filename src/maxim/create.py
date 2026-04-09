@@ -18,12 +18,31 @@ Example::
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from maxim.decisions.nac import NAc
+    from maxim.embodiment.body import Embodiment
+    from maxim.embodiment.sem import Entity
+    from maxim.math.angular_gyrus import AngularGyrus
+    from maxim.memory.atl import ATL
+    from maxim.memory.hippocampus import Hippocampus
+    from maxim.models.language.router import LLMRouter
+    from maxim.runtime.agent_factory import AgentInstance
+    from maxim.runtime.agent_pool import AgentPool
+    from maxim.time.scn import SCN
 
 __all__ = [
-    "hippocampus", "nac", "atl", "scn", "angular_gyrus",
-    "agent", "pool",
-    "entity", "embodiment", "templates",
+    "hippocampus",
+    "nac",
+    "atl",
+    "scn",
+    "angular_gyrus",
+    "agent",
+    "pool",
+    "entity",
+    "embodiment",
+    "templates",
     "router",
 ]
 
@@ -31,7 +50,7 @@ __all__ = [
 # ── Bio-subsystems ─────────────────────────────────────────────────────
 
 
-def hippocampus(*, persistence_path: str | None = None, **config_kw: Any) -> Any:
+def hippocampus(*, persistence_path: str | None = None, **config_kw: Any) -> "Hippocampus":
     """Create a standalone Hippocampus (episodic memory).
 
     Args:
@@ -54,7 +73,7 @@ def hippocampus(*, persistence_path: str | None = None, **config_kw: Any) -> Any
     return Hippocampus(config)
 
 
-def nac(**config_kw: Any) -> Any:
+def nac(**config_kw: Any) -> "NAc":
     """Create a standalone NAc (causal learning engine).
 
     Returns:
@@ -71,7 +90,7 @@ def nac(**config_kw: Any) -> Any:
     return NAc(NACConfig(**config_kw))
 
 
-def atl(*, persistence_path: str | None = None, **config_kw: Any) -> Any:
+def atl(*, persistence_path: str | None = None, **config_kw: Any) -> "ATL":
     """Create a standalone ATL (semantic concept memory).
 
     Args:
@@ -91,7 +110,7 @@ def atl(*, persistence_path: str | None = None, **config_kw: Any) -> Any:
     return ATL(config)
 
 
-def scn() -> Any:
+def scn() -> "SCN":
     """Create a standalone SCN (temporal rhythm indexing).
 
     Returns:
@@ -107,7 +126,7 @@ def scn() -> Any:
     return SCN()
 
 
-def angular_gyrus(**config_kw: Any) -> Any:
+def angular_gyrus(**config_kw: Any) -> "AngularGyrus":
     """Create a standalone AngularGyrus (algebraic memory + math).
 
     Returns:
@@ -131,7 +150,7 @@ def agent(
     learns: bool = True,
     tool_whitelist: set[str] | None = None,
     persistence_dir: str | None = None,
-) -> Any:
+) -> "AgentInstance":
     """Create a standalone agent with isolated bio-subsystems.
 
     Each agent gets its own Hippocampus, NAc, ATL, MemoryHub, and
@@ -174,7 +193,7 @@ def agent(
     return factory.create_agent(config)
 
 
-def pool(*, max_workers: int = 4) -> Any:
+def pool(*, max_workers: int = 4) -> "AgentPool":
     """Create a multi-agent pool for concurrent turn execution.
 
     Args:
@@ -201,7 +220,7 @@ def pool(*, max_workers: int = 4) -> Any:
 # ── SEM Entities ───────────────────────────────────────────────────────
 
 
-def entity(template_ref: str, *, name: str | None = None, **overrides: Any) -> Any:
+def entity(template_ref: str, *, name: str | None = None, **overrides: Any) -> "Entity":
     """Instantiate a SEM entity from a component template.
 
     Args:
@@ -228,7 +247,7 @@ def entity(template_ref: str, *, name: str | None = None, **overrides: Any) -> A
     return registry.instantiate(template_ref, **kw)
 
 
-def embodiment(root_entity: Any, **config_kw: Any) -> Any:
+def embodiment(root_entity: Any, **config_kw: Any) -> "Embodiment":
     """Create an Embodiment runtime from a SEM entity tree.
 
     Args:
@@ -283,7 +302,7 @@ def templates() -> dict[str, list[str]]:
 # ── LLM Router ─────────────────────────────────────────────────────────
 
 
-def router(model: str = "mistral-7b") -> Any:
+def router(model: str = "mistral-7b") -> "LLMRouter":
     """Create an LLM router for inference without the full agent loop.
 
     This is the most direct way to get LLM inference. The router handles

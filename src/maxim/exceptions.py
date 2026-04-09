@@ -3,6 +3,18 @@
 Provides specific exception types for different error categories,
 enabling more precise error handling and better debugging.
 
+.. note:: ``ConnectionError``, ``MemoryError``, and ``RuntimeError``
+   shadow Python builtins.  Import them qualified or aliased::
+
+       from maxim.exceptions import ConnectionError as MaximConnectionError
+       # or
+       import maxim
+       try: ...
+       except maxim.ConnectionError: ...
+
+   Avoid ``from maxim import *`` as it replaces the builtins.
+   A rename to ``Maxim*Error`` is planned for v0.3.0.
+
 Usage:
     from maxim.exceptions import ConnectionError, ToolExecutionError
 
@@ -50,7 +62,7 @@ class MaximError(Exception):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class ConnectionError(MaximError):
+class ConnectionError(MaximError):  # noqa: A001 — shadows builtin; rename planned for v0.3.0
     """Robot connection issues.
 
     Raised when:
@@ -179,7 +191,7 @@ class ModelConfigError(ModelError):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class MemoryError(MaximError):
+class MemoryError(MaximError):  # noqa: A001 — shadows builtin; rename planned for v0.3.0
     """Memory system errors.
 
     Raised when:
@@ -316,7 +328,7 @@ class AudioError(HardwareError):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class RuntimeError(MaximError):
+class RuntimeError(MaximError):  # noqa: A001 — shadows builtin; rename planned for v0.3.0
     """Runtime system errors.
 
     Raised for errors in the agent loop, thread management, etc.

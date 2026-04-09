@@ -54,6 +54,11 @@ _API_TYPES = {
     "ResearchResult": "maxim.api",
     "EventHandle": "maxim.api",
     "ModelInfo": "maxim.api",
+    # Event payload types (for on() callbacks)
+    "ToolCallEvent": "maxim.api",
+    "MemoryCaptureEvent": "maxim.api",
+    "PainSignalEvent": "maxim.api",
+    "PromptEvent": "maxim.api",
     # Error hierarchy — users can catch these
     # Error hierarchy — category-level exceptions users can catch
     "MaximError": "maxim.exceptions",
@@ -105,6 +110,11 @@ __all__ = [
     "ResearchResult",
     "EventHandle",
     "ModelInfo",
+    # Event payload types
+    "ToolCallEvent",
+    "MemoryCaptureEvent",
+    "PainSignalEvent",
+    "PromptEvent",
     "Session",
     "Report",
     # SEM types (Entity is constructable; Sensor/Modulator are Protocols — import from maxim.embodiment.sem)

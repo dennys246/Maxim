@@ -7,7 +7,9 @@ provides model persistence + health check utilities.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 import threading
 import weakref
 from pathlib import Path
@@ -26,6 +28,7 @@ _swap_lock = threading.Lock()
 def _model_state_file() -> Path:
     """Return the path to the persisted active model file."""
     from maxim.utils.paths import resolve_user_state
+
     return resolve_user_state("util/active_llm_model.txt")
 
 
@@ -87,7 +90,24 @@ def write_persisted_model(profile: str | None) -> None:
     try:
         sf = _model_state_file()
         sf.parent.mkdir(parents=True, exist_ok=True)
-        sf.write_text(profile or "")
+        # Atomic write: tmp file + os.replace to avoid partial reads
+        import tempfile
+
+        content = (profile or "").encode("utf-8")
+        fd, tmp = tempfile.mkstemp(dir=str(sf.parent), suffix=".tmp")
+        closed = False
+        try:
+            os.write(fd, content)
+            os.fsync(fd)
+            os.close(fd)
+            closed = True
+            os.replace(tmp, str(sf))
+        except BaseException:
+            if not closed:
+                os.close(fd)
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
     except Exception as e:
         logger.warning("Failed to persist model state: %s", e)
 

@@ -122,23 +122,7 @@ class Session:
         if observer is None:
             return {"error": "No persisted state found in session", "session_dir": self.dir}
 
-        dispatch = {
-            None: lambda: observer.system_stats(),
-            "memory": lambda: observer.memory_recall(keyword=keyword, limit=limit),
-            "causal": lambda: observer.causal_links(event_signature=keyword),
-            "concepts": lambda: observer.concept_query(name=keyword),
-            "pain": lambda: observer.pain_history(limit=limit),
-            "temporal": lambda: observer.temporal_patterns(),
-            "energy": lambda: observer.energy_status(),
-        }
-
-        handler = dispatch.get(subsystem)
-        if handler is None:
-            return {
-                "error": f"Unknown subsystem: {subsystem!r}",
-                "available": [k for k in dispatch if k is not None],
-            }
-        return handler()
+        return query_observer(observer, subsystem, keyword=keyword, limit=limit)
 
     def research(self, **kwargs: Any) -> Any:
         """Generate a research report from this session's accumulated data.
@@ -190,6 +174,15 @@ class Session:
 
         return report
 
+    # ── Context manager ───────────────────────────────────────────
+
+    def __enter__(self) -> "Session":
+        return self
+
+    def __exit__(self, exc_type: type | None, exc_val: BaseException | None, exc_tb: Any) -> bool:
+        self.save()
+        return False
+
     # ── Persistence ────────────────────────────────────────────────
 
     def save(self) -> str:
@@ -211,6 +204,7 @@ class Session:
         session_dir = Path(self.dir)
         if not self.dir:
             from maxim.utils.paths import sim_reports
+
             session_dir = sim_reports() / self.id
         session_dir.mkdir(parents=True, exist_ok=True)
 
@@ -224,6 +218,7 @@ class Session:
             "finish_reason": self.finish_reason,
         }
         from maxim.utils.atomic_io import atomic_write_json
+
         atomic_write_json(str(session_dir / "session.json"), meta)
 
         self.dir = str(session_dir)
@@ -297,6 +292,40 @@ class Session:
         if self.duration_s:
             parts.append(f"duration={self.duration_s:.1f}s")
         return ", ".join(parts) + ")"
+
+
+# ── Shared observer dispatch ───────────────────────────────────────────
+
+
+def query_observer(
+    observer: Any,
+    subsystem: str | None = None,
+    *,
+    keyword: str | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Dispatch a subsystem query to an Observer instance.
+
+    Single source of truth for the subsystem→method mapping used by
+    both ``Session.observe()`` and ``maxim.observe()``.
+    """
+    dispatch = {
+        None: lambda: observer.system_stats(),
+        "memory": lambda: observer.memory_recall(keyword=keyword, limit=limit),
+        "causal": lambda: observer.causal_links(event_signature=keyword),
+        "concepts": lambda: observer.concept_query(name=keyword),
+        "pain": lambda: observer.pain_history(limit=limit),
+        "temporal": lambda: observer.temporal_patterns(),
+        "energy": lambda: observer.energy_status(),
+    }
+
+    handler = dispatch.get(subsystem)
+    if handler is None:
+        return {
+            "error": f"Unknown subsystem: {subsystem!r}",
+            "available": [k for k in dispatch if k is not None],
+        }
+    return handler()
 
 
 # ── Module-level helpers ───────────────────────────────────────────────

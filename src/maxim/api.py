@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -357,7 +357,7 @@ def run(
 
     # ── LLM router ───────────────────────────────────────────────────────
     os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
-    os.environ.setdefault("MAXIM_LLM_PROFILE", model)
+    os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
 
     router, lane_manager = build_primary_router()
     llm_worker = LLMWorker(llm=router)
@@ -369,6 +369,10 @@ def run(
         memory_persistence_path=os.path.join(effective_home, "memory"),
         data_folder=os.path.join(effective_home, "data"),
     )
+    # Bridge user event subscriptions to the agent's bus
+    if hasattr(agent, "_bus"):
+        _bridge_event_subscriptions(agent._bus)
+
     env = build_environment(root=effective_home)
     state = build_state()
     memory = build_memory()
@@ -377,6 +381,7 @@ def run(
         maxim=None,  # No live robot instance in headless mode
         data_folder=os.path.join(effective_home, "data"),
     )
+    _inject_pending_tools(tool_registry)
     executor = build_executor(tool_registry)
     evaluators = build_evaluators()
 
@@ -458,7 +463,7 @@ def imagine(
     configure(verbosity=verbosity)
 
     os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
-    os.environ.setdefault("MAXIM_LLM_PROFILE", model)
+    os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
 
     # Load pre-campaign turns from YAML scenario if provided
     pre_campaign_turns = None
@@ -745,24 +750,9 @@ def observe(
     if observer is None:
         return {"error": "No persisted state found", "home_dir": effective_home}
 
-    dispatch = {
-        None: lambda: observer.system_stats(),
-        "memory": lambda: observer.memory_recall(keyword=keyword, limit=limit),
-        "causal": lambda: observer.causal_links(event_signature=keyword),
-        "concepts": lambda: observer.concept_query(name=keyword),
-        "pain": lambda: observer.pain_history(limit=limit),
-        "temporal": lambda: observer.temporal_patterns(),
-        "energy": lambda: observer.energy_status(),
-    }
+    from maxim.session import query_observer
 
-    handler = dispatch.get(subsystem)
-    if handler is None:
-        return {
-            "error": f"Unknown subsystem: {subsystem!r}",
-            "available": [k for k in dispatch if k is not None],
-        }
-
-    return handler()
+    return query_observer(observer, subsystem, keyword=keyword, limit=limit)
 
 
 def _build_observer(home_dir: str) -> Any:
@@ -848,6 +838,19 @@ class CampaignResult:
         if self.rollup is None:
             self.rollup = {}
 
+    def to_session(self) -> "Session":
+        """Load the underlying Session for post-hoc observation.
+
+        Example::
+
+            result = maxim.campaign("scenarios/campaigns/heist_v1.yaml")
+            session = result.to_session()
+            memories = session.observe("memory")
+        """
+        from maxim.session import Session
+
+        return Session.from_disk(self.session_id)
+
 
 def campaign(
     path: str,
@@ -890,7 +893,7 @@ def campaign(
     configure(verbosity=verbosity)
 
     os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
-    os.environ.setdefault("MAXIM_LLM_PROFILE", model)
+    os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
 
     from maxim.simulation.dm_schema import load_campaign as _load_campaign
 
@@ -916,6 +919,7 @@ def campaign(
     flags = rollup.get("flags", [])
 
     return CampaignResult(
+        session_id=sim_result.session_id,
         campaign_name=campaign_def.name,
         turns=sim_result.turns,
         choices_made=choices,
@@ -1113,6 +1117,57 @@ def research(
 # Event subscription (new in Phase 8)
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Public event payload types — these define the contract for on() callbacks.
+
+
+@dataclass
+class ToolCallEvent:
+    """Payload delivered to ``"tool_call"`` subscribers."""
+
+    tool_name: str
+    params: dict[str, Any]
+    success: bool
+    result: Any = None
+    error: str | None = None
+    timestamp: float = 0.0
+
+
+@dataclass
+class MemoryCaptureEvent:
+    """Payload delivered to ``"memory_capture"`` subscribers."""
+
+    content: str
+    memory_type: str = ""
+    timestamp: float = 0.0
+
+
+@dataclass
+class PainSignalEvent:
+    """Payload delivered to ``"pain_signal"`` subscribers."""
+
+    pain_type: str
+    intensity: float
+    timestamp: float = 0.0
+    context: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class PromptEvent:
+    """Payload delivered to ``"prompt"`` subscribers."""
+
+    prompt_text: str
+    prompt_type: str = ""
+    timestamp: float = 0.0
+
+
+# Supported event names → payload type (for documentation and validation)
+_EVENT_TYPES: dict[str, type] = {
+    "tool_call": ToolCallEvent,
+    "memory_capture": MemoryCaptureEvent,
+    "pain_signal": PainSignalEvent,
+    "prompt": PromptEvent,
+}
+
 
 class EventHandle:
     """Handle returned by ``on()`` for managing event subscriptions.
@@ -1146,29 +1201,47 @@ _next_handle_id = 0
 def on(event_name: str, callback: Any) -> EventHandle:
     """Subscribe to agent events.
 
-    Events bridge to the internal AgentBus and PainBus when an agent
-    is running.  Subscriptions are registered before the agent starts
-    and delivered during execution.
+    Events bridge to the internal AgentBus when an agent is running.
+    Subscriptions registered before ``run()``/``imagine()``/``campaign()``
+    are delivered during execution.
 
-    Supported events:
-        ``"tool_call"`` — fired when the agent executes a tool
-        ``"memory_capture"`` — fired when hippocampus captures an episode
-        ``"pain_signal"`` — fired when a pain signal is detected
-        ``"prompt"`` — fired when the system needs user input
+    Supported events and their payload types:
+
+        ``"tool_call"`` → :class:`ToolCallEvent`
+            Fired when the agent executes a tool.
+
+        ``"memory_capture"`` → :class:`MemoryCaptureEvent`
+            Fired when hippocampus captures an episode.
+
+        ``"pain_signal"`` → :class:`PainSignalEvent`
+            Fired when a pain signal is detected.
+
+        ``"prompt"`` → :class:`PromptEvent`
+            Fired when the system needs user input.
 
     Args:
         event_name: Name of the event to subscribe to.
-        callback: Function called with event data when the event fires.
+        callback: Function called with the event payload dataclass.
+            Runs on the publishing thread — keep handlers fast.
 
     Returns:
         EventHandle — call ``.unsubscribe()`` to stop receiving events.
 
     Example::
 
-        handle = maxim.on("tool_call", lambda e: print(f"Tool: {e}"))
+        def on_tool(event: maxim.ToolCallEvent):
+            print(f"Tool: {event.tool_name} → {event.success}")
+
+        handle = maxim.on("tool_call", on_tool)
         result = maxim.imagine(goal="test")
         handle.unsubscribe()
     """
+    if event_name not in _EVENT_TYPES:
+        logger.warning(
+            "Unknown event name %r. Supported: %s",
+            event_name,
+            ", ".join(sorted(_EVENT_TYPES)),
+        )
     global _next_handle_id
     with _api_lock:
         handle_id = _next_handle_id
@@ -1177,12 +1250,96 @@ def on(event_name: str, callback: Any) -> EventHandle:
     return EventHandle(event_name, callback, handle_id)
 
 
+def _bridge_event_subscriptions(bus: Any) -> None:
+    """Bridge API event subscriptions to an internal AgentBus.
+
+    Called by ``run()`` / orchestrator after the bus is available.
+    Subscribes to internal message types and forwards them to
+    user callbacks as public event payloads.
+    """
+    import time as _time
+
+    with _api_lock:
+        subs = dict(_event_subscriptions)
+    if not subs:
+        return
+
+    # Group callbacks by event name
+    by_event: dict[str, list[Any]] = {}
+    for _hid, (ename, cb) in subs.items():
+        by_event.setdefault(ename, []).append(cb)
+
+    # tool_call → ToolResult on the bus
+    if "tool_call" in by_event:
+        from maxim.agents.bus import ToolResult
+
+        callbacks = by_event["tool_call"]
+
+        def _on_tool_result(msg: Any) -> None:
+            evt = ToolCallEvent(
+                tool_name=msg.tool_name,
+                params=getattr(msg, "params", {}),
+                success=msg.success,
+                result=msg.result,
+                error=msg.error,
+                timestamp=_time.time(),
+            )
+            for cb in callbacks:
+                try:
+                    cb(evt)
+                except Exception as e:
+                    logger.debug("Event callback error (tool_call): %s", e)
+
+        bus.subscribe(ToolResult, _on_tool_result)
+
+    # pain_signal → PainSignal on the bus
+    if "pain_signal" in by_event:
+        from maxim.proprioception.pain import PainSignal
+
+        callbacks = by_event["pain_signal"]
+
+        def _on_pain(msg: Any) -> None:
+            evt = PainSignalEvent(
+                pain_type=str(getattr(msg, "pain_type", "")),
+                intensity=getattr(msg, "intensity", 0.0),
+                timestamp=getattr(msg, "timestamp", _time.time()),
+                context=getattr(msg, "context", {}),
+            )
+            for cb in callbacks:
+                try:
+                    cb(evt)
+                except Exception as e:
+                    logger.debug("Event callback error (pain_signal): %s", e)
+
+        bus.subscribe(PainSignal, _on_pain)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Tool registration (new in Phase 8)
 # ─────────────────────────────────────────────────────────────────────────────
 
 _pending_tools: list[Any] = []
 _pending_tools_lock = threading.Lock()
+
+
+def _inject_pending_tools(registry: Any) -> int:
+    """Inject all pending user-registered tools into a ToolRegistry.
+
+    Returns the number of tools injected.  Thread-safe — clears the
+    pending list after injection so tools aren't double-registered on
+    the next ``run()``/``imagine()``/``campaign()`` call.
+    """
+    with _pending_tools_lock:
+        tools = list(_pending_tools)
+    injected = 0
+    for t in tools:
+        try:
+            registry.register(t)
+            injected += 1
+            logger.debug("Injected user tool: %s", getattr(t, "name", t))
+        except Exception as e:
+            logger.warning("Failed to inject tool %s: %s", getattr(t, "name", t), e)
+    return injected
 
 
 def register_tool(tool: Any) -> None:

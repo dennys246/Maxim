@@ -319,8 +319,19 @@ def start_simulation_mode(
         allowed_dirs_override=sandbox_dirs,
         response_output=aut_response_output,
     )
+    # Inject user-registered tools from maxim.register_tool() / @maxim.tool
+    from maxim.api import _inject_pending_tools
+
+    _inject_pending_tools(aut_registry)
+
     aut_decision_engine = build_decision_engine()
     aut_agent = MaximAgent()
+
+    # Bridge user event subscriptions to the AUT agent's bus
+    if hasattr(aut_agent, "_bus"):
+        from maxim.api import _bridge_event_subscriptions
+
+        _bridge_event_subscriptions(aut_agent._bus)
 
     # AUT runs AUTONOMOUS — no human confirmation prompts (SUPERVISED would
     # deadlock because stdin is captured by the orchestrator's reader thread).

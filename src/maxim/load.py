@@ -18,12 +18,20 @@ Example::
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from maxim.decisions.nac import NAc
+    from maxim.embodiment.sem import Entity
+    from maxim.memory.atl import ATL
+    from maxim.memory.hippocampus import Hippocampus
+    from maxim.runtime.agent_factory import AgentInstance
+    from maxim.session import Session
 
 __all__ = ["hippocampus", "nac", "atl", "session", "sessions", "agent", "entity"]
 
 
-def hippocampus(path: str) -> Any:
+def hippocampus(path: str) -> "Hippocampus":
     """Load a Hippocampus from a persisted JSON file.
 
     Args:
@@ -52,7 +60,7 @@ def hippocampus(path: str) -> Any:
     return h
 
 
-def nac(path: str) -> Any:
+def nac(path: str) -> "NAc":
     """Load a NAc from a persisted JSON file.
 
     Args:
@@ -73,7 +81,7 @@ def nac(path: str) -> Any:
     return n
 
 
-def atl(path: str) -> Any:
+def atl(path: str) -> "ATL":
     """Load an ATL from a persisted JSON file.
 
     Args:
@@ -94,7 +102,7 @@ def atl(path: str) -> Any:
     return a
 
 
-def session(session_id: str) -> Any:
+def session(session_id: str) -> "Session":
     """Load a persisted simulation session by ID.
 
     This is the canonical way to access past sessions.  Supports fuzzy
@@ -121,7 +129,7 @@ def session(session_id: str) -> Any:
     return Session.from_disk(session_id)
 
 
-def sessions(*, limit: int = 20) -> list:
+def sessions(*, limit: int = 20) -> "list[Session]":
     """List recent simulation sessions.
 
     Returns Session objects with metadata loaded from report.json,
@@ -143,7 +151,7 @@ def sessions(*, limit: int = 20) -> list:
     return list_sessions(limit=limit)
 
 
-def agent(name: str, *, base_dir: str | None = None) -> Any:
+def agent(name: str, *, base_dir: str | None = None) -> "AgentInstance":
     """Load a persisted agent by name.
 
     Restores all subsystems (Hippocampus, NAc, ATL) from the agent's
@@ -180,8 +188,7 @@ def agent(name: str, *, base_dir: str | None = None) -> Any:
 
     if not agent_dir.exists():
         raise FileNotFoundError(
-            f"No persisted agent '{name}' found at {agent_dir}. "
-            f"Create one first with maxim.create.agent('{name}')."
+            f"No persisted agent '{name}' found at {agent_dir}. Create one first with maxim.create.agent('{name}')."
         )
 
     # Create agent with persistence_dir pointing at existing state.
@@ -193,7 +200,7 @@ def agent(name: str, *, base_dir: str | None = None) -> Any:
     return factory.create_agent(config, auto_load=True)
 
 
-def entity(path: str) -> Any:
+def entity(path: str) -> "Entity":
     """Load a SEM entity from a YAML spec or saved JSON file.
 
     Supports both YAML specs (from component templates) and JSON files

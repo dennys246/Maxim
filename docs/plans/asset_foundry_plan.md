@@ -13,25 +13,29 @@
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  maxim --foundry "cyberpunk weapons" --count 10                  │
-│                                                                  │
-│  ┌────────────┐   ┌────────────┐   ┌────────────┐   ┌────────┐  │
-│  │  GENERATE  │──→│  VALIDATE  │──→│    TEST    │──→│ CURATE │  │
-│  │            │   │            │   │            │   │        │  │
-│  │ Theme +    │   │ Schema     │   │ Gauntlet   │   │ Score  │  │
-│  │ genre +    │   │ Sensor     │   │ campaign   │   │ Rank   │  │
-│  │ category   │   │ ranges     │   │ per entity │   │ Report │  │
-│  │ → N specs  │   │ Genre tag  │   │ Bio-system │   │ Promote│  │
-│  │            │   │ Affordance │   │ expectations│  │ Flag   │  │
-│  └────────────┘   └────────────┘   └────────────┘   └────────┘  │
-│       │                │                │                │       │
-│       ▼                ▼                ▼                ▼       │
-│  candidates/       rejected/        results/         report.md  │
-│  *.yaml            *.yaml           *.json           scores.json │
-│                                                      promoted/   │
-│                                                      *.yaml      │
-└──────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│  maxim --foundry "cyberpunk weapons" --count 10                            │
+│                                                                            │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐  │
+│  │ GENERATE │→ │ VALIDATE │→ │SEM PROTO │→ │ GAUNTLET │→ │SCORE+CURATE │  │
+│  │          │  │          │  │  TESTS   │  │          │  │             │  │
+│  │ Theme +  │  │ Schema   │  │ 8 struct │  │ 3-enc    │  │ 11-dim      │  │
+│  │ genre +  │  │ Semantic │  │ tests per│  │ campaign │  │ rubric      │  │
+│  │ batch    │  │ EC dedup │  │ candidate│  │ per cand │  │ promote/    │  │
+│  │ JSON fix │  │ Genre    │  │ (no LLM) │  │ fresh    │  │ review/     │  │
+│  │ → N YAML │  │          │  │          │  │ MemoryHub│  │ reject      │  │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └─────────────┘  │
+│       │              │             │              │              │          │
+│       ▼              ▼             ▼              ▼              ▼          │
+│  candidates/     rejected/    rejected/      results/       report.md      │
+│  *.yaml          *.yaml       *.yaml         *.json         scores.json    │
+│                  (schema)     (structural)                  promoted/       │
+│                                                             *.yaml         │
+│                                                                            │
+│  Run-level state (persists across candidates):                             │
+│  ├── ec_index.json  — cross-candidate EC similarity for diversity checks   │
+│  └── tool_names.json — accumulated tool names for collision detection      │
+└────────────────────────────────────────────────────────────────────────────┘
 
 Output: ~/.maxim/foundry/{run_id}/
 ```
@@ -73,6 +77,8 @@ Sub-themes are either LLM-generated (medium tier, one call) or drawn from a seed
 
 **Batch efficiency:** Group generation into chunks of 3-5 per LLM call (one call produces multiple component specs in a JSON array) to reduce round-trips.
 
+**JSON repair:** Small LLMs (Mistral-7b) produce malformed JSON ~5% of the time (missing closing braces, trailing commas). Every batch response goes through the existing `json-repair` library pipeline (`models/language/json_parser.py`) before schema validation. If repair fails, the batch is re-requested with a simpler prompt (one spec at a time). If the single-spec call also fails repair after 2 retries, that candidate slot is logged as `generation_failure` and skipped — no infinite retry.
+
 **Files:**
 - **New:** `src/maxim/simulation/foundry.py` — `FoundryRunner` class, `generate_candidates()`
 - **Touch:** `src/maxim/simulation/entity_designer.py` — add `design_batch()` for multi-entity generation in one call
@@ -106,7 +112,8 @@ maxim --foundry "horror creatures" --count 5 --genre horror --model claude-sonne
 | **Failure mode sanity** | Trigger field exists in sensors, op is valid, pain in [0, 1] | Triggers referencing nonexistent sensors |
 | **Genre compliance** | Genre tag present and matches the requested genre | Cross-genre leaks |
 | **Duplicate detection** | Name not already in the component registry | Collisions with existing components |
-| **Diversity check** | Sensor/affordance names not too similar to other candidates in this batch | 5 variants of the same weapon |
+| **Semantic sanity** | Sensor ranges within reasonable bounds (warn if range span > 10,000), at least one failure mode triggerable within nominal operation, no contradictory failure modes | `range: [0, 1000000]`, untriggerable failures |
+| **Diversity check** | EC similarity distance from existing library + other candidates in batch | 5 variants of the same weapon, near-duplicates of existing components |
 
 **Validation result per candidate:**
 ```python
@@ -125,7 +132,7 @@ class ValidationResult:
 
 ---
 
-## Phase F-2: Test Gauntlet (~250 LOC)
+## Phase F-2: Test Gauntlet (~500 LOC)
 
 **Goal:** Run each validated candidate through a campaign that exercises the bio-stack and measures engagement.
 
@@ -174,14 +181,153 @@ Auto-generated from the spec:
 
 ### Execution
 
+Uses the cheapest available LLM (Mistral-7b or smollm) for testing — the point isn't quality reasoning, it's whether the entity spec produces bio-system engagement. See the isolated execution loop in "Gauntlet stochasticity and isolation" below.
+
+### Gauntlet stochasticity and isolation
+
+**Gauntlets are stochastic, not deterministic.** The campaign seed controls dice rolls and encounter order, but LLM responses vary between runs. The same entity spec can produce different bio-system engagement on different runs. To handle this:
+
+1. **Adaptive rerun policy (default):** Run 1 gauntlet. If the score falls within a threshold band (0.55-0.85 — near promote/review boundary), automatically trigger a second run. If the two runs diverge significantly (stddev > 0.25 on any stochastic dimension), trigger a third run. This minimizes cost for clear promotes and clear rejects.
+2. **Forced multi-run:** `--runs 3` overrides adaptive policy and always runs 3 gauntlets per candidate.
+3. **Deterministic fallback:** `--deterministic` flag uses a mock LLM that always picks the first choice and calls the first affordance. Useful for structural validation (does the entity produce any engagement at all?) but misses emergent behavior.
+
+**Stochastic vs deterministic scoring dimensions:**
+Not all scoring dimensions benefit from multi-run averaging. Some are structural and produce identical results on every run:
+
+| Dimension | Type | Why |
+|-----------|------|-----|
+| Schema quality | Deterministic | Same spec → same validation result |
+| EC indexing | Deterministic | Structural signature, not LLM-dependent |
+| Temporal coverage | Deterministic | SCN bins from fixed encounter times |
+| Diversity | Deterministic | EC distance from library, not LLM-dependent |
+| Hippocampal engagement | **Stochastic** | LLM response affects what gets captured |
+| Causal learning | **Stochastic** | LLM choices affect NAc observation count |
+| Cerebellum learning | **Stochastic** | Forward models depend on action sequences |
+| Motor program discovery | **Stochastic** | Crystallization depends on repeated use |
+| Pain/failure activation | **Stochastic** | Whether agent triggers failure modes |
+| Salience tracking | **Stochastic** | Novelty decay depends on LLM attention |
+| ATL concept grounding | **Stochastic** | Concept extraction depends on captured memories |
+
+Deterministic dimensions are measured once (first run only). Stochastic dimensions are averaged across runs. The final score formula weights both categories: `score = Σ(deterministic_i × weight_i) + Σ(mean(stochastic_i) × weight_i)`. Variance constant: `VARIANCE_THRESHOLD = 0.25` (stddev across runs for any stochastic dimension).
+
+**MemoryHub state isolation:** Each gauntlet gets a **fresh MemoryHub** instance (new Hippocampus, ATL, EC, NAc, SCN, AngularGyrus, Cerebellum). This prevents cross-contamination — memories from gauntlet 1 must not appear in gauntlet 2's recall.
+
+**Run-level EC for cross-candidate diversity:** A separate `EntorhinalCortex` instance persists across the entire foundry run. After each gauntlet scores, the candidate's `SituationSignature` is copied into the run-level EC. The F-1 diversity check queries this run-level EC (not the per-gauntlet EC) to detect near-duplicates. Persisted to `~/.maxim/foundry/{run_id}/ec_index.json`.
+
 ```python
+# Run-level state (persists across all candidates)
+run_ec = EntorhinalCortex()       # Cross-candidate diversity tracking
+batch_tool_names: set[str] = set() # Cross-entity tool collision tracking
+
 for candidate in validated_candidates:
-    gauntlet = generate_gauntlet(candidate)
-    result = run_campaign(gauntlet, model=test_model)
-    scores[candidate.name] = score_result(result, candidate)
+    try:
+        # Fresh bio-stack per candidate — zero state leakage
+        hub = MemoryHub(
+            hippocampus=Hippocampus(),
+            nac=NAc(),
+            scn=SCN(),
+            ec=EntorhinalCortex(),   # Per-gauntlet EC (isolated)
+            atl=ATL(),
+            angular_gyrus=AngularGyrus(),  # Needed for concept grounding
+            cerebellum=Cerebellum(),       # Needed for motor program scoring
+        )
+        # __post_init__ auto-calls _wire_multi_layer() when atl is not None
+
+        gauntlet = generate_gauntlet(candidate)
+        result = run_gauntlet(gauntlet, hub=hub, model=test_model)
+
+        # Copy signature to run-level EC for cross-candidate diversity
+        if result.situation_signature:
+            run_ec.register(candidate.name, result.situation_signature)
+
+        hub.on_session_end()
+        scores[candidate.name] = score_result(result, candidate)
+
+    except Exception as e:
+        # Distinguish infra failures from candidate failures
+        if is_infra_failure(e):  # Setup/teardown crash, import error, OOM
+            log.error("Infra failure for %s: %s — retrying once", candidate.name, e)
+            # Retry once; if it fails again, mark as infra_error (not scored)
+            scores[candidate.name] = InfraError(candidate.name, str(e))
+        else:
+            # Candidate-specific failure (encounter crash, assertion, timeout)
+            scores[candidate.name] = score_partial(result_so_far, candidate)
 ```
 
-Uses the cheapest available LLM (Mistral-7b or smollm) for testing — the point isn't quality reasoning, it's whether the entity spec produces bio-system engagement.
+**Concurrency:** Gauntlets run **sequentially by default** — DMRuntime and MemoryHub are not thread-safe. For parallel execution, use `--parallel N` which uses `concurrent.futures.ProcessPoolExecutor`:
+
+- F-1 validation (including EC diversity check) runs **sequentially first** — it needs the run-level EC
+- Gauntlet processes are then spawned in parallel, each with its own isolated MemoryHub
+- Results are collected via the shared `results/` filesystem directory
+- If a process crashes, others continue; the failed candidate is logged as `infra_error`
+- After all processes complete, run-level EC is updated with all signatures
+- `--resume` works with `--parallel` — it scans `results/` for missing final JSONs and re-spawns only those
+
+### Error recovery and partial results
+
+Crashes happen — LLM timeouts, OOM, specs that trigger unhandled edge cases. The foundry distinguishes **infra failures** (not the candidate's fault) from **candidate failures** (the spec is broken/adversarial):
+
+**Infra failures** (MemoryHub setup crash, import error, OOM, network timeout):
+1. Retry once with a fresh MemoryHub
+2. If retry fails, mark as `"status": "infra_error"` — not scored, not counted against the candidate
+3. Reported separately in the foundry report as infrastructure issues
+
+**Candidate failures** (encounter crash, assertion error in bio-stack, spec-triggered edge case):
+1. **Per-encounter checkpointing:** After each encounter completes, save a checkpoint to `results/{name}.partial.json` with encounters completed, bio-system state, and partial scores
+2. Save the partial result (encounters completed so far)
+3. Score the partial result with a penalty (incomplete encounters score 0 for their stochastic dimensions)
+4. Move to the next candidate (don't abort the foundry run)
+
+**SEM protocol test crashes:** Each of the 8 protocol tests is wrapped in its own try/except. A crash (as opposed to an assertion failure) counts as a test failure for that test. If tests 1-3 all crash (instantiation, sensor R/W, affordance enumeration), the candidate is rejected — it's fundamentally broken. If only tests 6-8 crash (composition, cascade, inheritance), the candidate proceeds to the gauntlet with the crash noted as a warning.
+
+**Resume:** `--resume` re-runs only candidates without a final `results/{name}.json`. Candidates with partial results or infra errors get re-run from scratch. `--resume` works with `--parallel`.
+
+### Full-stack integration during gauntlet
+
+The gauntlet doesn't just run a campaign — it exercises every system that a real campaign would touch. The following are **required integration points** in the gauntlet runner, not optional:
+
+**Narrative Transcriber → Salience pipeline:**
+Gauntlet scene text is routed through `NarrativeTranscriber.transcribe_to_items()` to produce `SalienceItem` objects with `NarrativeWhere` coordinates. These feed into `SalienceNetwork.update()` so the salience system tracks the generated entity properly. The gauntlet verifies:
+- Entity appears in `SalienceNetwork.get_top_salient()` after Encounter 1
+- Novelty decays between Encounter 1 and Encounter 3 (same entity seen multiple times)
+- `to_context_str()` uses `NarrativeWhere.region()` not pixel coordinates
+
+**ATL concept extraction:**
+The gauntlet runs with a full MemoryHub (Hippocampus + ATL + EC + NAc + SCN wired). When Hippocampus captures a memory containing the generated entity, ConceptExtractor fires and should:
+- Create (or find) an ATL concept for the entity's label and category
+- Form `INSTANCE_OF` edges between the episodic memory and the concept
+- If the entity has `extends` (e.g., extends `base_humanoid`), verify the parent concept also exists
+
+Gauntlet scoring tracks: `atl_concepts_created: int` — how many new concepts this entity introduced.
+
+**EC similarity indexing:**
+Gauntlet results are indexed in the EntorhinalCortex so that:
+- Future foundry runs can query EC for "have we already tested something similar?"
+- The diversity check in F-1 can use EC similarity (not just string matching) to detect near-duplicates
+- `SituationSignature` is computed from the gauntlet's structural/temporal/semantic context
+
+This prevents the foundry from generating 50 slight variations of the same weapon.
+
+**Motor program discovery:**
+For entity types with multiple affordances (weapons, body_parts), the gauntlet's Encounter 2 should present a sequence of related affordance uses. The scoring rubric tracks:
+- `motor_programs_formed: int` — did the Cerebellum crystallize any motor programs from repeated affordance sequences?
+- `motor_program_steps: int` — how many steps in the longest program?
+
+Motor programs indicate the entity's affordances compose well — a sign of good design.
+
+**SCN temporal context:**
+Each gauntlet encounter runs at a different simulated time (morning, afternoon, night) so that temporal bins are populated. This validates that generated entities don't break SCN indexing and provides richer temporal context for EC similarity queries.
+
+**Reveal conditions:**
+If the generated entity has `metadata.visibility` or `metadata.reveal_when` fields (from LLM generation), the gauntlet should test whether `evaluate_reveal_conditions()` correctly reveals hidden sensors/affordances when conditions are met. This validates the full contextual visibility system.
+
+**DM runtime entity lifecycle:**
+The gauntlet exercises the complete entity lifecycle:
+1. Entity registered in `_entity_registry` at campaign start
+2. `SceneState.enter_encounter()` registers/deregisters entity tools per encounter
+3. Live sensor state appears in `_format_entity_state()` stimulus
+4. If entity has failure modes, `CascadeResolver` drives sensor values toward triggers
+5. `swap_entity` tested for body_part types (detach old, instantiate new from same spec)
 
 **Files:**
 - **New:** `src/maxim/simulation/foundry_gauntlet.py` — `generate_gauntlet()`, `run_gauntlet()`, `score_result()`
@@ -231,16 +377,22 @@ assert len(affordances) >= 1  # At least one affordance
 ```
 Verifies all affordances have descriptions (LLM needs these) and typed parameters.
 
-**Test 4 — Tool Generation:**
+**Test 4 — Tool Generation + Cross-Entity Collision Check:**
 ```python
 from maxim.embodiment.tool_bridge import generate_tools_for_entity
 tools = generate_tools_for_entity(entity, tool_registry=None)
 assert len(tools) >= 1
-# Verify no name collisions
+# Verify no name collisions within this entity
 tool_names = [t.name for t in tools]
 assert len(tool_names) == len(set(tool_names))
+# Cross-entity collision check (accumulated across batch):
+# All tool names from this entity must not collide with tools from
+# previously tested entities in this foundry run.
+for name in tool_names:
+    assert name not in _batch_tool_names, f"Tool name collision: {name}"
+_batch_tool_names.update(tool_names)
 ```
-Verifies `tool_bridge` can auto-generate tools from the entity spec without errors or name collisions.
+Verifies `tool_bridge` can auto-generate tools from the entity spec without errors or name collisions — both within the entity and across all entities in the foundry batch.
 
 **Test 5 — Failure Mode Triggers:**
 ```python
@@ -329,15 +481,21 @@ Generate → Validate (schema) → SEM Protocol Tests → Gauntlet (bio-system) 
 
 ### Scoring Rubric
 
-| Dimension | Weight | How Measured |
-|-----------|--------|-------------|
-| **Schema quality** | 10% | Validation pass, no warnings |
-| **Hippocampal engagement** | 20% | Episodic captures / encounters |
-| **Causal learning** | 20% | NAc observations + link confidence |
-| **Cerebellum learning** | 15% | Forward models formed, prediction accuracy |
-| **Pain/failure activation** | 15% | Pain signals published, failure modes triggered |
-| **Novelty impact** | 10% | Salience decay observed (confirms entity is tracked) |
-| **Diversity** | 10% | How different from existing library components |
+| Dimension | Weight | Averaging | How Measured |
+|-----------|--------|-----------|-------------|
+| **Schema quality** | 5% | Single | Validation pass, no warnings |
+| **Hippocampal engagement** | 15% | Per-run avg | Episodic captures / encounters |
+| **Causal learning** | 15% | Per-run avg | NAc observations + link confidence |
+| **Cerebellum learning** | 10% | Per-run avg | Forward models formed, prediction accuracy |
+| **Motor program discovery** | 5% | Per-run avg | Motor programs crystallized from affordance sequences |
+| **Pain/failure activation** | 10% | Per-run avg | Pain signals published, failure modes triggered |
+| **Salience tracking** | 10% | Per-run avg | Entity tracked in SalienceNetwork, novelty decay observed, NarrativeWhere region populated |
+| **ATL concept grounding** | 10% | Per-run avg | Concepts created in ATL, INSTANCE_OF edges formed, parent concept inheritance |
+| **EC indexing** | 5% | Single | SituationSignature computed and indexed, no duplicate collision |
+| **Temporal coverage** | 5% | Single | SCN bins populated across encounters (morning/afternoon/night) |
+| **Diversity** | 10% | Single | EC similarity distance from run-level EC + existing library |
+
+**Score formula:** `score = Σ(single_i × weight_i) + Σ(mean(per_run_i) × weight_i)`. Single dimensions (25% total weight) measured on first run only. Per-run dimensions (75% total weight) averaged across all gauntlet runs.
 
 **Total score in [0, 1]. Thresholds:**
 - **Promote** (> 0.7): Auto-copied to `promoted/` directory, ready for human review and commit
@@ -502,7 +660,7 @@ maxim --foundry cyberpunk --resume 20260409_cyberpunk --count 5
 maxim --foundry --promote 20260409_cyberpunk/candidates/gravity_hammer.yaml
 ```
 
-`--promote` copies the YAML to `src/maxim/_data/components/{category}/` with proper formatting and prints a reminder to commit.
+`--promote` copies the YAML to `~/.maxim/components/{category}/` (user search path, always writable). The ComponentRegistry already discovers components from this path. For package maintainers working in the source tree, `--promote --dev` copies to `src/maxim/_data/components/{category}/` instead and prints a reminder to commit.
 
 ### CLI Help
 
@@ -527,18 +685,96 @@ Options:
 
 ---
 
+## Phase F-6: Downstream Integration (~200 LOC)
+
+**Goal:** Feed foundry outputs back into the broader system — encounter library, generative campaigns, and interactive curation.
+
+### Encounter Library Archival
+
+Each gauntlet micro-campaign is a valid 3-encounter campaign. The best ones (from promoted components) should be archived as reusable encounter templates:
+
+```python
+def archive_gauntlet_encounters(
+    candidate: dict,
+    gauntlet: CampaignDef,
+    score: float,
+) -> None:
+    """Archive a successful gauntlet as encounter templates.
+    
+    Writes to ~/.maxim/encounters/foundry/{genre}/{category}/
+    with metadata linking back to the source component.
+    """
+```
+
+This means a foundry run producing 5 promoted weapons also produces 5 reusable "weapon discovery" encounter templates that other campaigns can reference via the EncounterLibrary.
+
+### Generative Campaign Feeding
+
+Promoted components should be discoverable by the generative campaign system (narrator + arcs). When the narrator generates encounters for a genre, it should:
+
+1. Query `ComponentRegistry` for genre-matching components
+2. Use promoted foundry components as entity templates for generated NPCs/objects
+3. Reference the component's gauntlet results to inform encounter difficulty (a weapon with high pain activation = dangerous encounter)
+
+**Integration point:** `simulation/narrator.py` — add optional `registry: ComponentRegistry` parameter. When generating an entity description, check if a matching component exists and use it as a base.
+
+### Interactive Curation Mode
+
+For the "review" bucket (score 0.4-0.7), provide an interactive curation workflow:
+
+```bash
+maxim --foundry --curate 20260409_cyberpunk
+```
+
+This launches a PromptRequest-based review session:
+
+1. For each "review" candidate, show: component YAML, gauntlet results, scoring breakdown
+2. Ask: **Promote** (copy to library), **Edit** (open YAML for manual fixes, re-test), **Reject** (discard)
+3. Edited components get re-run through the SEM protocol tests + gauntlet
+4. Uses the existing `PromptHandler` protocol — works in terminal (rich display) or programmatically
+
+**Files:**
+- **Touch:** `src/maxim/simulation/foundry.py` — `curate_interactive()`
+- **Touch:** `src/maxim/simulation/encounter_library.py` — `register_from_foundry()`
+- **Touch:** `src/maxim/simulation/narrator.py` — component-aware entity generation
+
+### Benchmark Scenario Generation
+
+Promoted components can auto-generate benchmark scenarios. A foundry run that produces 5 cyberpunk weapons and 3 cyberpunk NPCs can generate a `cyberpunk_combat_suite.yaml` benchmark:
+
+```yaml
+# Auto-generated from foundry run 20260409_cyberpunk
+suite:
+  name: cyberpunk_combat
+  genre: cyberpunk
+  scenarios:
+    - name: plasma_cutter_stress
+      source_component: weapons/plasma_cutter
+      encounters: 3
+      expectations:
+        cerebellum: { min_forward_models: 2 }
+        pain: { min_signals: 1 }
+    # ...
+```
+
+This closes the loop: foundry generates components → components become benchmark scenarios → benchmarks validate model performance with those components.
+
+---
+
 ## Cost Model
 
 | Operation | Model | Tokens/call | Calls/component | Cost/component |
 |-----------|-------|------------|-----------------|---------------|
 | Generate | Medium (Mistral-7b) | ~500 | 0.3 (batched 3/call) | ~$0.00 (local) |
 | Generate | Medium (Claude) | ~500 | 0.3 | ~$0.005 |
-| Gauntlet (3 encounters) | Small (smollm) | ~300/turn × 6 turns | 1 | ~$0.00 (local) |
-| Gauntlet (3 encounters) | Small (Mistral-7b) | ~300/turn × 6 turns | 1 | ~$0.00 (local) |
-| Gauntlet (3 encounters) | Medium (Claude) | ~300/turn × 6 turns | 1 | ~$0.01 |
+| Gauntlet (3 encounters, 2-3 runs) | Small (smollm) | ~300 tok × 3-6 calls × 2-3 runs | 1 | ~$0.00 (local) |
+| Gauntlet (3 encounters, 2-3 runs) | Small (Mistral-7b) | ~300 tok × 3-6 calls × 2-3 runs | 1 | ~$0.00 (local) |
+| Gauntlet (3 encounters, 2-3 runs) | Medium (Claude) | ~300 tok × 3-6 calls × 2-3 runs | 1 | ~$0.02-0.03 |
 
-**Typical run (local models):** 20 components × (generate + validate + test) ≈ 2-5 minutes, $0.00
-**Typical run (Claude):** 20 components ≈ 5-10 minutes, ~$0.30
+Per encounter: 1 LLM call for AUT response + 0-1 for choice classification fallback = 1-2 calls. 3 encounters × 1-2 calls = 3-6 calls per gauntlet run. With 2-3 runs for averaging: 6-18 calls per candidate.
+
+**Typical run (local models):** 20 components × (generate + validate + 2 gauntlet runs) ≈ 5-10 minutes, $0.00
+**Typical run (Claude):** 20 components ≈ 10-20 minutes, ~$0.50-0.70
 
 Local models are the default for foundry work — it's about volume and diversity, not reasoning quality.
 
@@ -546,12 +782,18 @@ Local models are the default for foundry work — it's about volume and diversit
 
 ## Invariants
 
-- **Foundry never auto-commits to the component library.** `--promote` copies files, but the human must `git add` and commit.
+- **Foundry never auto-commits to the component library.** `--promote` copies to `~/.maxim/components/` (user path). `--promote --dev` copies to source tree for maintainers. Human must commit.
 - **Generated components must pass the same validation as hand-written ones.** No special treatment.
-- **The gauntlet campaign is deterministic for a given spec.** Same candidate → same campaign → reproducible results (seeded RNG).
-- **Genre gating applies during generation.** The theme's genre tag is enforced at every step.
-- **Foundry runs don't require the full Maxim runtime.** Generation needs only the LLM router. Testing needs the sim orchestrator but not the interactive display.
-- **No new dependencies.** Foundry uses existing EntityDesigner, ComponentRegistry, DM runtime, and BenchmarkRunner.
+- **Gauntlet campaign structure is deterministic; bio-system outcomes are stochastic.** Same spec → same encounters/choices/expectations. LLM responses vary. Adaptive rerun policy handles borderline candidates.
+- **Each gauntlet gets a fresh MemoryHub** (Hippocampus, ATL, EC, NAc, SCN, AngularGyrus, Cerebellum). Zero state leakage. `__post_init__` handles wiring — don't call `_wire_multi_layer()` explicitly.
+- **Run-level EC persists across candidates** for cross-candidate diversity. Per-gauntlet EC is isolated. Signatures copied to run-level EC after scoring.
+- **Infra failures ≠ candidate failures.** Setup crashes get one retry, then `infra_error` (not scored). Encounter crashes score as partial with penalty.
+- **SEM protocol test crashes are isolated.** Each test in its own try/except. Tests 1-3 crashing = reject. Tests 6-8 crashing = warn + proceed.
+- **Genre gating applies during generation.** Theme genre tag enforced at every step.
+- **Sequential by default, parallel by opt-in.** F-1 validation runs sequentially (needs run-level EC). Gauntlets parallelize via `ProcessPoolExecutor`. Results collected via filesystem.
+- **JSON repair before validation.** LLM output → `json-repair` → schema check. Malformed batches fall back to single-spec. Max 2 retries per candidate, then `generation_failure`.
+- **Scoring formula is explicit.** Single-measurement dimensions (25% weight) from first run. Per-run dimensions (75% weight) averaged. `VARIANCE_THRESHOLD = 0.25` triggers extra runs.
+- **No new dependencies.** Foundry uses existing EntityDesigner, ComponentRegistry, DM runtime, BenchmarkRunner, json-repair, and concurrent.futures.
 
 ---
 
@@ -559,19 +801,51 @@ Local models are the default for foundry work — it's about volume and diversit
 
 | Phase | Work | LOC | What it enables |
 |-------|------|-----|----------------|
-| F-0 | Generation engine + batch design | ~200 | `maxim --foundry "theme" --count N` produces candidate YAMLs |
-| F-1 | Validation pipeline | ~150 | Rejects malformed/nonsensical/cross-genre specs before testing |
-| F-2 | Test gauntlet (auto-generated micro-campaigns) | ~250 | Each candidate gets a 3-encounter bio-stack stress test |
-| F-3 | Scoring + curation + reports | ~200 | Rank, promote, flag interesting failures |
+| F-0 | Generation engine + batch design + JSON repair | ~220 | `maxim --foundry "theme" --count N` produces candidate YAMLs |
+| F-1 | Validation pipeline + semantic sanity + EC diversity | ~180 | Rejects malformed/nonsensical/cross-genre/duplicate specs before testing |
+| F-2 | Test gauntlet + SEM protocol tests + full-stack integration + isolation + error recovery | ~500 | Fresh MemoryHub per candidate, 8 structural tests, 3-encounter campaign with all 22 systems, checkpoint/crash handling, multi-run averaging |
+| F-3 | Scoring + curation + reports (11 dimensions, stochastic averaging) | ~250 | Rank by schema + bio-system + salience + ATL + EC + motor + temporal + diversity |
 | F-4 | Theme templates + theme CLI | ~150 | `maxim --foundry cyberpunk` with pre-built category distributions |
-| F-5 | CLI integration + session persistence + incremental runs | ~150 | Resume, re-test, promote workflow |
-| **Total** | | **~1,100** | Autonomous SEM component generation pipeline |
+| F-5 | CLI integration + session persistence + incremental runs + parallel mode | ~200 | Resume, re-test, promote, `--parallel N` for multi-process execution |
+| F-6 | Downstream integration — encounter library, narrator enhancement, interactive curation, benchmark generation | ~250 | Foundry outputs feed back into the broader system |
+| **Total** | | **~1,750** | Full-stack autonomous SEM component generation pipeline |
+
+## Systems Exercised
+
+Every system the foundry touches, and where in the pipeline:
+
+| System | Module | Exercised In | How |
+|--------|--------|-------------|-----|
+| SEM Entity tree | `embodiment/sem.py` | F-2 protocol tests | Instantiate, reparent, detach, find |
+| Spec parser | `embodiment/spec.py` | F-2 protocol test 1 | `_parse_entity()` from YAML |
+| Tool bridge | `embodiment/tool_bridge.py` | F-2 protocol test 4 | `generate_tools_for_entity()` + collision check |
+| Component Registry | `embodiment/component_registry.py` | F-0 through F-6 | Discovery, instantiate, extends, genre filter |
+| Cerebellum | `embodiment/cerebellum.py` | F-2 gauntlet enc. 2 | Forward model formation, prediction accuracy |
+| Motor programs | `embodiment/motor.py` | F-2 gauntlet enc. 2 | Program crystallization from repeated sequences |
+| PainBus | `embodiment/body.py` | F-2 gauntlet enc. 3 | Failure mode → pain signal routing |
+| Body runtime | `embodiment/body.py` | F-2 gauntlet | Failure eval, vital drift, prompt state |
+| Cascade resolver | `simulation/dm_runtime.py` | F-2 protocol test 7 + gauntlet | Reads, writes, safe_eval_expr |
+| NarrativeTranscriber | `simulation/narrative_transcriber.py` | F-2 gauntlet | `transcribe_to_items()` → SalienceItem + NarrativeWhere |
+| Salience protocols | `salience/protocols.py` + `where.py` | F-2 gauntlet | SalienceItem, NarrativeWhere, SalienceNetwork.update() |
+| SalienceNetwork | `salience/salience_network.py` | F-2 gauntlet | Entity tracking, novelty decay, to_context_str() |
+| ATL concepts | `memory/concept_extractor.py` | F-2 gauntlet | Concept creation, INSTANCE_OF edges, inheritance |
+| NAc causal learning | `decisions/nac.py` | F-2 gauntlet enc. 2-3 | Observation, link formation, confidence |
+| Hippocampus | `memory/hippocampus.py` | F-2 gauntlet all enc. | Capture, consolidation candidacy, recall |
+| SCN temporal | `time/scn.py` | F-2 gauntlet | Temporal bin indexing across encounters |
+| EC similarity | `similarity/ec.py` | F-1 diversity + F-2 | Signature indexing, duplicate detection |
+| DM runtime | `simulation/dm_runtime.py` | F-2 gauntlet | SceneState, entity lifecycle, swap_entity |
+| Reveal conditions | `simulation/dm_runtime.py` | F-2 gauntlet | `evaluate_reveal_conditions()` for hidden sensors |
+| Encounter library | `simulation/encounter_library.py` | F-6 | Archive promoted gauntlet encounters |
+| Generative campaigns | `simulation/narrator.py` | F-6 | Component-aware entity generation |
+| Benchmark system | `simulation/benchmark.py` | F-6 | Auto-generated benchmark suites from promoted components |
+| Interactive prompts | `interactive/prompts.py` | F-6 | `--curate` mode for human review |
 
 ## Testing Strategy
 
 - **F-0:** Test batch generation with mocked LLM. Verify output YAML is parseable.
-- **F-1:** Test each validation check in isolation with crafted good/bad specs.
-- **F-2:** Test gauntlet generation from a known spec. Verify campaign structure (3 encounters, expectations present). Run gauntlet with mock LLM and verify scoring inputs.
-- **F-3:** Test scoring rubric with crafted results (perfect score, zero score, edge cases). Test promote/review/reject bucketing.
+- **F-1:** Test each validation check in isolation with crafted good/bad specs. Test EC-based diversity scoring with mock signatures.
+- **F-2:** Test SEM protocol tests (8 tests) with crafted good/bad specs. Test gauntlet generation from a known spec — verify campaign structure (3 encounters, expectations present, NarrativeTranscriber wiring, MemoryHub initialization). Run gauntlet with mock LLM and verify: SalienceNetwork tracks entity, ATL concept created, NAc observations recorded, SCN bins populated, EC signature indexed.
+- **F-3:** Test scoring rubric with crafted results (perfect score, zero score, edge cases across all 11 dimensions). Test promote/review/reject bucketing. Test report generation.
 - **F-4:** Test theme loading from YAML. Test category distribution.
 - **F-5:** Test session persistence (write + resume). Test `--promote` file copy.
+- **F-6:** Test encounter archival. Test generative campaign component discovery. Test benchmark suite generation from promoted components. Test interactive curation flow with mock PromptHandler.
