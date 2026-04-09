@@ -319,7 +319,7 @@ def _request_with_retry(
     return None
 
 
-def _check_proxy_ping(base_url: str, key: str | None = None) -> dict | None:
+def _check_proxy_ping(base_url: str, key: str | None = None, *, verbose: bool = False) -> dict | None:
     """Probe /v1/debug/ping to verify the tunnel reaches LeaderProxy.
 
     Returns the ping response dict, or None if the probe fails.
@@ -339,7 +339,18 @@ def _check_proxy_ping(base_url: str, key: str | None = None) -> dict | None:
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
             return json.loads(resp.read())
-    except Exception:
+    except urllib.error.HTTPError as e:
+        if verbose:
+            print(f"[{e.code}]", end="", flush=True)
+        return None
+    except urllib.error.URLError as e:
+        if verbose:
+            reason = str(getattr(e, "reason", e))[:30]
+            print(f"[{reason}]", end="", flush=True)
+        return None
+    except Exception as e:
+        if verbose:
+            print(f"[{type(e).__name__}]", end="", flush=True)
         return None
 
 
@@ -622,11 +633,13 @@ def _cmd_restart(argv: list[str]) -> int:
         # Two-phase: first wait for proxy to respond, then wait for LLM ready.
         proxy_up = False
         llm_ready = False
-        for attempt in range(10):
-            wait = min(2.0 * (1.5**attempt), 15.0)
+        _restart_start = _time.time()
+        for attempt in range(15):  # 15 attempts, ~90s total
+            wait = min(2.0 * (1.5**attempt), 10.0)  # cap at 10s between polls
             _time.sleep(wait)
-            print(".", end="", flush=True)
-            ping = _check_proxy_ping(base, key)
+            elapsed = int(_time.time() - _restart_start)
+            print(f" {elapsed}s", end="", flush=True)
+            ping = _check_proxy_ping(base, key, verbose=True)
             if ping is not None:
                 proxy_up = True
                 if ping.get("llm_ready", False):
