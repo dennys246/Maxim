@@ -117,6 +117,11 @@ class DefaultNetworkConfig:
     salience_network_enabled: bool = True
     salience: SalienceConfig = field(default_factory=SalienceConfig)
 
+    # Percept source mode — determines which WhereCoord type is used.
+    # "auto" detects from available hardware (vision if camera, narrative if sim).
+    # Explicit values: "vision", "narrative", "sem", "null".
+    percept_source_mode: str = "auto"
+
     # MovementDetector - tracks object motion for salience boosting
     movement_detection_enabled: bool = True
     movement_detection: SalienceMovementConfig = field(default_factory=SalienceMovementConfig)

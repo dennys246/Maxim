@@ -1,0 +1,46 @@
+component:
+  name: shock_baton
+  tags: [weapon, melee, electric, degradable, cyberpunk]
+  category: weapons
+
+entity:
+  name: shock_baton
+  entity_type: weapon
+  sensors:
+    durability:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    charge:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    weight:
+      unit: kg
+      range: [0.5, 3]
+      initial: 0.8
+  modulators:
+    combat:
+      affordances:
+        shock_strike:
+          params: {target: str, force: float}
+          description: "Electrified strike — high damage, drains charge"
+        blunt_strike:
+          params: {target: str, force: float}
+          description: "Uncharged strike — lower damage, preserves charge"
+        parry:
+          params: {}
+          description: "Parry an incoming attack"
+    maintenance:
+      affordances:
+        recharge:
+          params: {source: str}
+          description: "Recharge from a power source"
+        repair:
+          params: {material: str}
+          description: "Repair structural damage"
+  failure_modes:
+    - name: charge_depleted
+      trigger: {field: charge, op: "<", value: 0.05, pain: 0.2}
+    - name: structural_failure
+      trigger: {field: durability, op: "<", value: 0.1, pain: 0.5}

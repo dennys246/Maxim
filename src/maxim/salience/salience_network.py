@@ -124,6 +124,9 @@ class SalienceNetwork:
         self._next_idx = 0
         self._object_count = 0
 
+        # WhereCoord storage (keyed by track_id, not numpy-indexable)
+        self._where_coords: dict[Any, Any] = {}
+
         # Statistics
         self._total_detections = 0
         self._total_unique_objects = 0
@@ -150,12 +153,60 @@ class SalienceNetwork:
             # Dict storage doesn't need slots
             return -1
 
+    def update(
+        self,
+        items: list[Any],
+        timestamp: float | None = None,
+    ) -> None:
+        """Update salience from SalienceItem objects (modality-agnostic).
+
+        Converts each ``SalienceItem`` to the internal detection dict format
+        and delegates to ``update_from_detections``.  This is the preferred
+        entry point for new code; ``update_from_detections`` remains for
+        backward compatibility with the vision pipeline.
+
+        Args:
+            items: List of ``SalienceItem`` instances.
+            timestamp: Detection timestamp (defaults to now).
+        """
+        from maxim.salience.protocols import SalienceItem
+
+        detections: list[dict[str, Any]] = []
+        for item in items:
+            if isinstance(item, SalienceItem):
+                where = item.where
+                # Extract pixel position if available, otherwise use (0, 0)
+                u, v, w, h = 0.0, 0.0, 0.0, 0.0
+                where_dict = where.as_dict()
+                if where_dict.get("type") == "pixel":
+                    u = where_dict.get("u", 0.0)
+                    v = where_dict.get("v", 0.0)
+                    w = where_dict.get("w", 0.0)
+                    h = where_dict.get("h", 0.0)
+
+                detections.append({
+                    "track_id": item.id,
+                    "class_id": item.class_id,
+                    "label": item.label,
+                    "confidence": item.confidence,
+                    "bbox": (u - w / 2, v - h / 2, w, h),
+                    "_salience_item": item,  # Preserve for modality-aware formatting
+                    "_where": where,
+                })
+            elif isinstance(item, dict):
+                detections.append(item)
+
+        if detections:
+            self.update_from_detections(detections, timestamp=timestamp)
+
     def update_from_detections(
         self,
         detections: list[dict[str, Any]],
         timestamp: float | None = None,
     ) -> None:
-        """Update salience from detection results.
+        """Update salience from detection results (legacy vision API).
+
+        Prefer ``update()`` with ``SalienceItem`` objects for new code.
 
         Args:
             detections: List of detection dicts with keys:
@@ -186,6 +237,11 @@ class SalienceNetwork:
                 pos_v = bbox[1] + bbox[3] / 2 if len(bbox) >= 4 else 0
 
                 is_interest = label.lower() in {lbl.lower() for lbl in self.config.interest_labels}
+
+                # Store WhereCoord if provided (from SalienceItem path)
+                where = det.get("_where")
+                if where is not None:
+                    self._where_coords[track_id] = where
 
                 seen_ids.add(track_id)
                 self._total_detections += 1
@@ -356,46 +412,44 @@ class SalienceNetwork:
                     if salience < threshold:
                         continue
 
-                    candidates.append(
-                        (
-                            salience,
-                            {
-                                "track_id": track_id,
-                                "class_id": int(self._class_ids[idx]),
-                                "label": str(self._labels[idx]),
-                                "confidence": float(self._confidence[idx]),
-                                "salience": salience,
-                                "novelty": self.get_novelty(track_id),
-                                "position": (float(self._position_u[idx]), float(self._position_v[idx])),
-                                "bbox_size": (float(self._bbox_w[idx]), float(self._bbox_h[idx])),
-                                "times_seen": int(self._times_seen[idx]),
-                                "interest_matched": bool(self._interest_matched[idx]),
-                            },
-                        )
-                    )
+                    result_dict: dict[str, Any] = {
+                        "track_id": track_id,
+                        "class_id": int(self._class_ids[idx]),
+                        "label": str(self._labels[idx]),
+                        "confidence": float(self._confidence[idx]),
+                        "salience": salience,
+                        "novelty": self.get_novelty(track_id),
+                        "position": (float(self._position_u[idx]), float(self._position_v[idx])),
+                        "bbox_size": (float(self._bbox_w[idx]), float(self._bbox_h[idx])),
+                        "times_seen": int(self._times_seen[idx]),
+                        "interest_matched": bool(self._interest_matched[idx]),
+                    }
+                    where = self._where_coords.get(track_id)
+                    if where is not None:
+                        result_dict["_where"] = where
+                    candidates.append((salience, result_dict))
             else:
                 for track_id, obj in self._objects.items():
                     salience = self.get_salience(track_id)
                     if salience < threshold:
                         continue
 
-                    candidates.append(
-                        (
-                            salience,
-                            {
-                                "track_id": track_id,
-                                "class_id": obj.class_id,
-                                "label": obj.label,
-                                "confidence": obj.confidence,
-                                "salience": salience,
-                                "novelty": self.get_novelty(track_id),
-                                "position": (obj.position_u, obj.position_v),
-                                "bbox_size": (obj.bbox_w, obj.bbox_h),
-                                "times_seen": obj.times_seen,
-                                "interest_matched": obj.interest_matched,
-                            },
-                        )
-                    )
+                    result_dict = {
+                        "track_id": track_id,
+                        "class_id": obj.class_id,
+                        "label": obj.label,
+                        "confidence": obj.confidence,
+                        "salience": salience,
+                        "novelty": self.get_novelty(track_id),
+                        "position": (obj.position_u, obj.position_v),
+                        "bbox_size": (obj.bbox_w, obj.bbox_h),
+                        "times_seen": obj.times_seen,
+                        "interest_matched": obj.interest_matched,
+                    }
+                    where = self._where_coords.get(track_id)
+                    if where is not None:
+                        result_dict["_where"] = where
+                    candidates.append((salience, result_dict))
 
             # Sort by salience descending
             candidates.sort(key=lambda x: x[0], reverse=True)
@@ -557,6 +611,9 @@ class SalienceNetwork:
     def to_context_str(self, max_items: int = 5) -> str:
         """Generate concise context string for LLM consumption.
 
+        Modality-aware: uses ``WhereCoord.region()`` when available,
+        falls back to pixel coordinates for vision detections.
+
         Returns a human-readable summary of salient objects.
         """
         time.time()
@@ -573,9 +630,15 @@ class SalienceNetwork:
                 lines.append(f"Top salient objects ({len(top)}):")
                 for obj in top:
                     marker = "*" if obj.get("interest_matched") else " "
-                    pos = obj["position"]
+                    # Modality-aware location formatting
+                    where = obj.get("_where")
+                    if where is not None and hasattr(where, "region"):
+                        location = where.region()
+                    else:
+                        pos = obj["position"]
+                        location = f"({pos[0]:.0f},{pos[1]:.0f})"
                     lines.append(
-                        f" {marker}{obj['label']} at ({pos[0]:.0f},{pos[1]:.0f}) "
+                        f" {marker}{obj['label']} at {location} "
                         f"sal={obj['salience']:.2f} nov={obj['novelty']:.2f}"
                     )
 
@@ -617,6 +680,7 @@ class SalienceNetwork:
                 self._objects.clear()
 
             self._track_id_to_idx.clear()
+            self._where_coords.clear()
             self._object_count = 0
             self._total_detections = 0
             self._total_unique_objects = 0

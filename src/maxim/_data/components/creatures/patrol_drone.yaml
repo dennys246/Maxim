@@ -1,0 +1,55 @@
+component:
+  name: patrol_drone
+  tags: [creature, machine, flying, hostile, cyberpunk]
+  category: creatures
+
+entity:
+  name: patrol_drone
+  entity_type: creature
+  sensors:
+    hp:
+      unit: points
+      range: [0, 10]
+      initial: 10
+    battery:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    signal_strength:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+    aggression:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+  modulators:
+    combat:
+      affordances:
+        tase:
+          params: {target: str}
+          description: "Fire taser prongs at a target"
+        spotlight:
+          params: {target: str}
+          description: "Lock spotlight on a target, alerting nearby units"
+        ram:
+          params: {target: str}
+          description: "Ram into a target at speed"
+    movement:
+      affordances:
+        patrol:
+          params: {area: str}
+          description: "Sweep a patrol pattern over an area"
+        pursue:
+          params: {target: str}
+          description: "Lock on and pursue a target"
+        retreat:
+          params: {}
+          description: "Return to charging station"
+  failure_modes:
+    - name: power_loss
+      trigger: {field: battery, op: "<", value: 0.05, pain: 0.3}
+    - name: signal_lost
+      trigger: {field: signal_strength, op: "<", value: 0.1, pain: 0.5}
+    - name: destroyed
+      trigger: {field: hp, op: "<=", value: 0, pain: 1.0}

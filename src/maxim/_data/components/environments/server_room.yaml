@@ -1,0 +1,44 @@
+component:
+  name: server_room
+  tags: [environment, indoor, tech, hazardous, cyberpunk]
+  category: environments
+
+entity:
+  name: server_room
+  entity_type: environment
+  sensors:
+    temperature:
+      unit: celsius
+      range: [15, 80]
+      initial: 22
+    electrical_risk:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    noise_level:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+    security_alert:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+    lighting:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+  modulators:
+    interaction:
+      affordances:
+        access_terminal:
+          params: {action: str}
+          description: "Interact with a server terminal"
+        splice_cable:
+          params: {target: str}
+          description: "Splice into a network cable for data access"
+        disable_alarm:
+          params: {}
+          description: "Attempt to disable the security alarm"
+        look_around:
+          params: {}
+          description: "Survey the server racks and cable runs"

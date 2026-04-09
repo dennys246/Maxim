@@ -619,20 +619,41 @@ def _cmd_restart(argv: list[str]) -> int:
         print("  Waiting for leader to come back...", end="", flush=True)
 
         # Poll until the leader responds again (exponential backoff, max 120s)
-        came_back = False
+        # Two-phase: first wait for proxy to respond, then wait for LLM ready.
+        proxy_up = False
+        llm_ready = False
         for attempt in range(10):
             wait = min(2.0 * (1.5**attempt), 15.0)
             _time.sleep(wait)
             print(".", end="", flush=True)
             ping = _check_proxy_ping(base, key)
             if ping is not None:
-                came_back = True
-                break
+                proxy_up = True
+                if ping.get("llm_ready", False):
+                    llm_ready = True
+                    break
         print()
-        if came_back:
+        if llm_ready:
             print("  Leader is back online.")
+        elif proxy_up:
+            # Proxy responded but LLM not ready yet — keep polling for LLM
+            print("  Proxy is up, waiting for LLM model to load...", end="", flush=True)
+            for attempt in range(12):
+                _time.sleep(5.0)
+                print(".", end="", flush=True)
+                ping = _check_proxy_ping(base, key)
+                if ping is not None and ping.get("llm_ready", False):
+                    llm_ready = True
+                    break
+            print()
+            if llm_ready:
+                print("  Leader is back online (LLM ready).")
+            else:
+                print("  Leader proxy is up but LLM model is still loading.")
+                print("  Inference requests will queue until the model is ready.")
+                print("  Check with: maxim peer llm --status")
         else:
-            print("  Leader did not respond within timeout. It may still be loading the LLM model.")
+            print("  Leader did not respond within timeout.")
             print("  Check with: maxim peer version")
         return 0
 

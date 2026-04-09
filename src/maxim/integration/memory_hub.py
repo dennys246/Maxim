@@ -146,6 +146,11 @@ class MemoryHub:
     # Long-horizon planning (optional)
     _plan_manager: Any = None
 
+    # Salience integration hooks (S-0 infrastructure, wired in S-3/S-4)
+    # Callbacks receive (memory_id, memory, salience, novelty) and can
+    # modify the dynamic interest set or trigger concept extraction.
+    _salience_callbacks: list[Callable] = field(default_factory=list)
+
     def __post_init__(self) -> None:
         """Initialize and wire core systems."""
         # Resolve default embedding persist path lazily
@@ -165,6 +170,9 @@ class MemoryHub:
 
         # Register SCN for temporal indexing on capture (not just consolidation)
         self.hippocampus.register_capture_callback(self._on_memory_captured_scn)
+
+        # Register salience-aware capture hook (fires S-3/S-4 callbacks)
+        self.hippocampus.register_capture_callback(self._fire_salience_callbacks)
 
         # Phase 4: Register for semantic embedding on capture
         if self.ec.semantic_enabled:
@@ -671,6 +679,39 @@ class MemoryHub:
             seed_ids=seed_ids,
             max_depth=2,
         )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Salience Integration (S-0 hooks for S-3/S-4 bio-system wiring)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def register_salience_callback(
+        self,
+        callback: Callable,
+    ) -> None:
+        """Register a callback for salience-aware memory processing.
+
+        Callbacks are invoked when a memory is captured with salience/novelty
+        data. Used by S-3 (ATL concept boost) and S-4 (NAc reward feedback)
+        to wire bio-system signals into the salience network.
+
+        Args:
+            callback: ``fn(memory_id: str, memory: Any, salience: float, novelty: float)``
+        """
+        self._salience_callbacks.append(callback)
+
+    def _fire_salience_callbacks(self, memory_id: str, memory: Any) -> None:
+        """Fire salience callbacks with the memory's salience/novelty data."""
+        salience = 0.5
+        novelty = 0.5
+        if hasattr(memory, "perception"):
+            salience = getattr(memory.perception, "salience", 0.5)
+            novelty = getattr(memory.perception, "novelty", 0.5)
+
+        for cb in self._salience_callbacks:
+            try:
+                cb(memory_id, memory, salience, novelty)
+            except Exception as e:
+                logger.debug("Salience callback error: %s", e)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Phase 4: Semantic Embedding

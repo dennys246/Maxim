@@ -1,0 +1,53 @@
+component:
+  name: corpo_guard
+  tags: [npc, humanoid, military, augmented, authority, cyberpunk]
+  category: npcs
+  extends: npcs/base_humanoid
+
+entity:
+  name: corpo_guard
+  entity_type: npc
+  metadata:
+    race: human
+    class: enforcer
+    persona_prompt: "You are a corporate security enforcer — augmented, disciplined, loyal to the company. Trespassers are neutralized, not negotiated with."
+  sensors:
+    hp:
+      initial: 22
+    armor_integrity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    comms_status:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+    suspicion:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Speak to the guard"
+        interrogate:
+          params: {subject: str}
+          description: "Question someone about a subject"
+    combat:
+      affordances:
+        attack:
+          params: {target: str}
+          description: "Attack with shock baton"
+        block:
+          params: {}
+          description: "Raise ballistic shield to block"
+        call_backup:
+          params: {}
+          description: "Radio for reinforcements"
+  failure_modes:
+    - name: armor_breach
+      trigger: {field: armor_integrity, op: "<", value: 0.15, pain: 0.5}
+    - name: comms_down
+      trigger: {field: comms_status, op: "<", value: 0.1, pain: 0.3}

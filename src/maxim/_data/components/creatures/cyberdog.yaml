@@ -1,0 +1,59 @@
+component:
+  name: cyberdog
+  tags: [creature, animal, augmented, semi-hostile, cyberpunk]
+  category: creatures
+
+entity:
+  name: cyberdog
+  entity_type: creature
+  sensors:
+    hp:
+      unit: points
+      range: [0, 15]
+      initial: 15
+    aggression:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+    armor_integrity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    hunger:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.4
+    thermal_vision:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+  modulators:
+    combat:
+      affordances:
+        bite:
+          params: {target: str}
+          description: "Bite with reinforced jaw"
+        lunge:
+          params: {target: str}
+          description: "Augmented-speed lunge at a target"
+        shock_bite:
+          params: {target: str}
+          description: "Deliver an electric shock through cybernetic fangs"
+        growl:
+          params: {}
+          description: "Growl threateningly — audio amplified"
+    movement:
+      affordances:
+        circle:
+          params: {target: str}
+          description: "Circle prey using thermal tracking"
+        flee:
+          params: {}
+          description: "Disengage and flee"
+  failure_modes:
+    - name: destroyed
+      trigger: {field: hp, op: "<=", value: 0, pain: 1.0}
+    - name: armor_breach
+      trigger: {field: armor_integrity, op: "<", value: 0.15, pain: 0.4}
+    - name: cowed
+      trigger: {field: aggression, op: "<", value: 0.1, pain: 0.2}

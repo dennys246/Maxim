@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
 import os
 import socket
 import time
@@ -10,6 +11,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 from maxim.utils.logging import warn
+
+log = logging.getLogger(__name__)
 from maxim.models.language.router import LLMConfig, LLMResponse
 
 
@@ -41,6 +44,12 @@ def _http_status_of(err: Exception | None) -> int | None:
         if candidate in msg:
             return int(candidate)
     return None
+
+
+def _is_bad_gateway_error(err: Exception) -> bool:
+    """Detect 502/503/504 — transient upstream errors (server restarting)."""
+    status = _http_status_of(err)
+    return status in (502, 503, 504)
 
 
 def _parse_processing_ms(headers: Any) -> float | None:
@@ -234,7 +243,16 @@ class _OpenAIBackend:
         extra_headers = {REQUEST_ID_HEADER: request_id}
 
         last_err: Exception | None = None
-        for attempt in range(self._get_max_retries() + 1):
+        # Extra retries for transient upstream errors (502/503/504 during
+        # leader restart).  Normal retries: 2.  Gateway retries: up to 4
+        # additional attempts with longer backoff, giving the LLM server
+        # time to finish loading the model.
+        max_retries = self._get_max_retries()
+        max_gateway_retries = 4
+        gateway_retries_used = 0
+
+        attempt = 0
+        while attempt <= max_retries:
             try:
                 if stream:
                     return self._stream_response(client, model, messages, temperature, max_tokens, stop, start)
@@ -276,13 +294,32 @@ class _OpenAIBackend:
                 last_err = e
                 if _is_auth_error(e):
                     self._client = None
-                if attempt < self._get_max_retries():
+
+                # 502/503/504: upstream server restarting — use longer backoff
+                # and grant extra retries beyond the normal limit.
+                if _is_bad_gateway_error(e) and gateway_retries_used < max_gateway_retries:
+                    gateway_retries_used += 1
+                    backoff = min(5.0 * gateway_retries_used, 20.0)
+                    log.warning(
+                        "Upstream unavailable (502/503/504), retry %d/%d in %.0fs [req=%s]",
+                        gateway_retries_used,
+                        max_gateway_retries,
+                        backoff,
+                        request_id,
+                    )
+                    time.sleep(backoff)
+                    # Don't consume a normal retry for gateway errors
+                    continue
+
+                if attempt < max_retries:
                     backoff = 0.5 * (attempt + 1)
                     if _is_rate_limit_error(e):
                         backoff = min(backoff * 4, 30.0)
                     time.sleep(backoff)
+                    attempt += 1
                     continue
                 break
+            attempt += 1
 
         # Final failure — emit a trace record with error details before returning
         emit_trace(

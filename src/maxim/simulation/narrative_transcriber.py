@@ -1,9 +1,9 @@
 """Narrative Percept Transcriber — convert text to structured detections.
 
-Converts narrative scene descriptions into the same structured detection
-format that the camera/YOLO pipeline produces, enabling the full bio-stack
+Converts narrative scene descriptions into structured ``SalienceItem``
+objects with ``NarrativeWhere`` coordinates, enabling the full bio-stack
 (SalienceNetwork, NoveltyTracker, AttentionNetwork) to process narrative
-content.
+content without faking pixel coordinates.
 
 Uses the small-tier LLM (smollm 1.7B) for entity extraction when
 available, with regex/keyword fallback when no LLM is configured.
@@ -11,13 +11,19 @@ available, with regex/keyword fallback when no LLM is configured.
 Example::
 
     transcriber = NarrativeTranscriber(router=llm_router)
-    detections = transcriber.transcribe(
-        "A massive silver elm with a stone door and a carved face"
+    items = transcriber.transcribe_to_items(
+        "A massive silver elm with a stone door and a carved face",
+        scene="forest_clearing",
     )
     # Returns: [
-    #   {"track_id": "silver_elm_0", "class_id": 900, "label": "silver_elm", ...},
-    #   {"track_id": "stone_door_1", "class_id": 901, "label": "stone_door", ...},
+    #   SalienceItem(id="silver_elm_0", label="silver_elm",
+    #                where=NarrativeWhere("center", "forest_clearing"), ...),
+    #   SalienceItem(id="stone_door_1", label="stone_door",
+    #                where=NarrativeWhere("center", "forest_clearing"), ...),
     # ]
+
+    # Legacy dict format still available via transcribe()
+    detections = transcriber.transcribe("A guard at the entrance")
 """
 
 from __future__ import annotations
@@ -34,7 +40,9 @@ _NEXT_CLASS_ID = 900
 _class_registry: dict[str, int] = {}
 _class_registry_lock = threading.Lock()
 
-# Spatial positions mapped to approximate pixel coordinates (640x480 frame)
+# Legacy pixel position map — kept for backward compatibility with
+# code that still calls transcribe() and expects bbox_xyxy dicts.
+# New code should use transcribe_to_items() which produces NarrativeWhere.
 _POSITION_MAP = {
     "left": [50, 100, 250, 400],
     "center": [200, 50, 440, 430],
@@ -155,13 +163,15 @@ class NarrativeTranscriber:
             label = entity.get("label", "unknown")
             track_id = self._get_stable_id(label)
             class_id = _get_class_id(label)
+            spatial_hint = entity.get("spatial_hint", "center")
             detections.append(
                 {
                     "track_id": track_id,
                     "class_id": class_id,
                     "label": label,
                     "conf": entity.get("confidence", 0.5),
-                    "bbox_xyxy": _position_to_bbox(entity.get("spatial_hint", "center")),
+                    "bbox_xyxy": _position_to_bbox(spatial_hint),
+                    "_spatial_hint": spatial_hint,  # Preserved for transcribe_to_items()
                 }
             )
         return detections
@@ -176,6 +186,74 @@ class NarrativeTranscriber:
         if label not in self._entity_ids:
             self._entity_ids[label] = f"{label}_{len(self._entity_ids)}"
         return self._entity_ids[label]
+
+    def transcribe_to_items(
+        self,
+        text: str,
+        *,
+        scene: str = "",
+    ) -> list:
+        """Extract structured SalienceItems from narrative text.
+
+        Produces ``SalienceItem`` objects with ``NarrativeWhere`` coordinates
+        instead of fake pixel bounding boxes.  This is the preferred path
+        for simulation/DM runtime code.
+
+        Args:
+            text: Narrative scene description.
+            scene: Scene identifier (e.g., encounter name) for the
+                ``NarrativeWhere`` coordinate.
+
+        Returns:
+            List of ``SalienceItem`` instances.
+        """
+        from maxim.salience.protocols import PerceptSource, SalienceItem
+        from maxim.salience.where import NarrativeWhere
+
+        if not text or not text.strip():
+            return []
+
+        # Use existing extraction pipeline (LLM or regex)
+        if self._router is not None:
+            try:
+                entities = self._transcribe_llm(text)
+            except Exception as e:
+                logger.debug("LLM transcription failed, using regex fallback: %s", e)
+                entities = self._transcribe_regex(text)
+        else:
+            entities = self._transcribe_regex(text)
+
+        # Convert to raw entity dicts (pre-detection format)
+        # _transcribe_llm/_transcribe_regex return detection dicts via _to_detections,
+        # but we want the intermediate entity list. Re-extract from text.
+        items = []
+        for det in entities:
+            label = det.get("label", "unknown")
+            track_id = det.get("track_id", self._get_stable_id(label))
+            class_id = det.get("class_id", _get_class_id(label))
+            confidence = det.get("conf", det.get("confidence", 0.5))
+
+            # Use spatial_hint if available from the entity dict, else "center"
+            position = "center"
+            # Check if the detection was built from an entity with spatial_hint
+            spatial = det.get("_spatial_hint", "center")
+            if spatial:
+                position = spatial
+
+            where = NarrativeWhere(position=position, scene=scene)
+
+            items.append(
+                SalienceItem(
+                    id=track_id,
+                    label=label,
+                    source=PerceptSource.NARRATIVE,
+                    confidence=confidence,
+                    where=where,
+                    class_id=class_id,
+                )
+            )
+
+        return items
 
     def reset(self) -> None:
         """Reset entity tracking (for new benchmark run)."""

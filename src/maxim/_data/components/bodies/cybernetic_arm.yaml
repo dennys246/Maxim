@@ -1,0 +1,59 @@
+component:
+  name: cybernetic_arm
+  tags: [augmentation, body, degradable, cyberpunk]
+  category: bodies
+
+entity:
+  name: cybernetic_arm
+  entity_type: body_part
+  sensors:
+    integrity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.95
+    grip_strength:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    power:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    proprioception:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    pain_feedback:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+  modulators:
+    physical:
+      affordances:
+        grip:
+          params: {target: str, force: float}
+          description: "Grip an object with adjustable force"
+        punch:
+          params: {target: str, force: float}
+          description: "Augmented-strength punch"
+        crush:
+          params: {target: str}
+          description: "Apply maximum grip force to crush an object"
+        fine_manipulate:
+          params: {object: str, action: str}
+          description: "Precise manipulation — wiring, lockpicking, surgery"
+    maintenance:
+      affordances:
+        recalibrate:
+          params: {}
+          description: "Recalibrate servo alignment and proprioceptive feedback"
+        emergency_detach:
+          params: {}
+          description: "Emergency detach — last resort if arm is compromised"
+  failure_modes:
+    - name: servo_failure
+      trigger: {field: integrity, op: "<", value: 0.15, pain: 0.6}
+    - name: power_loss
+      trigger: {field: power, op: "<", value: 0.05, pain: 0.4}
+    - name: grip_malfunction
+      trigger: {field: grip_strength, op: "<", value: 0.1, pain: 0.3}

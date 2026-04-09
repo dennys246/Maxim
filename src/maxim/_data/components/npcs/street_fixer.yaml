@@ -1,0 +1,60 @@
+component:
+  name: street_fixer
+  tags: [npc, humanoid, social, broker, neutral, cyberpunk]
+  category: npcs
+  extends: npcs/base_humanoid
+
+entity:
+  name: street_fixer
+  entity_type: npc
+  metadata:
+    race: human
+    class: broker
+    persona_prompt: "You are a street fixer — a broker of jobs, intel, and favors. Everyone owes you something. You smile too much and always know more than you let on. Loyalty is bad for business."
+  sensors:
+    hp:
+      initial: 12
+    trust:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.4
+    greed:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    reputation:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+    debt_owed:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Talk to the fixer"
+        negotiate:
+          params: {offer: str}
+          description: "Negotiate a deal — credits, favors, or intel"
+        intimidate:
+          params: {threat: str}
+          description: "Try to intimidate the fixer"
+        call_in_favor:
+          params: {favor: str}
+          description: "Call in a debt the fixer owes"
+    intel:
+      affordances:
+        buy_intel:
+          params: {topic: str, price: float}
+          description: "Purchase information on a topic"
+        sell_intel:
+          params: {topic: str}
+          description: "Offer information in exchange for payment"
+  failure_modes:
+    - name: betrayal
+      trigger: {field: trust, op: "<", value: 0.15, pain: 0.5}
+    - name: desperate
+      trigger: {field: greed, op: ">", value: 0.95, pain: 0.3}

@@ -1,0 +1,52 @@
+component:
+  name: neural_disruptor
+  tags: [weapon, ranged, tech, degradable, cyberpunk]
+  category: weapons
+
+entity:
+  name: neural_disruptor
+  entity_type: weapon
+  sensors:
+    durability:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    charge_cells:
+      unit: count
+      range: [0, 8]
+      initial: 6
+    heat:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+    accuracy:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+  modulators:
+    combat:
+      affordances:
+        fire:
+          params: {target: str}
+          description: "Fire a neural disruption pulse — staggers organic targets"
+        rapid_fire:
+          params: {target: str}
+          description: "Fire multiple pulses rapidly — high damage, generates heat"
+        pistol_whip:
+          params: {target: str}
+          description: "Strike with the weapon body as a last resort"
+    maintenance:
+      affordances:
+        reload:
+          params: {}
+          description: "Insert a fresh charge cell"
+        cool_down:
+          params: {}
+          description: "Vent heat to prevent overload"
+  failure_modes:
+    - name: overheated
+      trigger: {field: heat, op: ">", value: 0.9, pain: 0.4}
+    - name: empty
+      trigger: {field: charge_cells, op: "<=", value: 0, pain: 0.2}
+    - name: structural_failure
+      trigger: {field: durability, op: "<", value: 0.1, pain: 0.5}

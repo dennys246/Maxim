@@ -1,0 +1,48 @@
+component:
+  name: neon_alley
+  tags: [environment, outdoor, urban, sensory-dense, cyberpunk]
+  category: environments
+
+entity:
+  name: neon_alley
+  entity_type: environment
+  sensors:
+    noise_level:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    crowd_density:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+    lighting:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    pollution:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    signal_interference:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    visibility:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.4
+  modulators:
+    interaction:
+      affordances:
+        look_around:
+          params: {}
+          description: "Scan the alley through the neon haze"
+        listen:
+          params: {}
+          description: "Filter conversations from the noise"
+        blend_in:
+          params: {}
+          description: "Move through the crowd without drawing attention"
+        duck_into_cover:
+          params: {location: str}
+          description: "Hide behind a dumpster, stall, or doorway"

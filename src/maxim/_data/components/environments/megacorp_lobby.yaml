@@ -1,0 +1,44 @@
+component:
+  name: megacorp_lobby
+  tags: [environment, indoor, social, corporate, cyberpunk]
+  category: environments
+
+entity:
+  name: megacorp_lobby
+  entity_type: environment
+  sensors:
+    security_level:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    crowd_density:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    noise_level:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    lighting:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    camera_coverage:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+  modulators:
+    interaction:
+      affordances:
+        look_around:
+          params: {}
+          description: "Survey the lobby — exits, guards, cameras"
+        blend_in:
+          params: {}
+          description: "Walk through the lobby like you belong"
+        sprint_for_exit:
+          params: {exit: str}
+          description: "Make a run for a specific exit"
+        use_crowd:
+          params: {}
+          description: "Use the crowd as cover to move undetected"

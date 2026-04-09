@@ -1,0 +1,73 @@
+component:
+  name: megarm_v3
+  tags: [augmentation, body, degradable, cyberpunk, military-grade]
+  category: bodies
+
+entity:
+  name: megarm_v3
+  entity_type: body_part
+  metadata:
+    description: "Military-grade cybernetic arm. Stronger, faster, more durable than civilian models. Integrated micro-tools and neural feedback calibrated for combat."
+  sensors:
+    integrity:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+    grip_strength:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.95
+    power:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+    proprioception:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    pain_feedback:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+    micro_tools:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+  modulators:
+    physical:
+      affordances:
+        grip:
+          params: {target: str, force: float}
+          description: "Military-grade grip — crushes steel"
+        punch:
+          params: {target: str, force: float}
+          description: "Hydraulic-assisted punch — devastating force"
+        crush:
+          params: {target: str}
+          description: "Apply maximum hydraulic force"
+        fine_manipulate:
+          params: {object: str, action: str}
+          description: "Precision manipulation with integrated micro-tools"
+    tech:
+      affordances:
+        deploy_blade:
+          params: {}
+          description: "Extend concealed mantis blade from forearm"
+        interface_jack:
+          params: {target: str}
+          description: "Neural interface jack — direct-connect to systems"
+    maintenance:
+      affordances:
+        recalibrate:
+          params: {}
+          description: "Recalibrate servos — essential after install to build proprioception"
+        emergency_detach:
+          params: {}
+          description: "Emergency detach — last resort if arm is compromised"
+  failure_modes:
+    - name: servo_failure
+      trigger: {field: integrity, op: "<", value: 0.1, pain: 0.7}
+    - name: power_loss
+      trigger: {field: power, op: "<", value: 0.05, pain: 0.5}
+    - name: proprioceptive_drift
+      trigger: {field: proprioception, op: "<", value: 0.15, pain: 0.4}

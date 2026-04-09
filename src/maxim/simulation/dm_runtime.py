@@ -217,6 +217,10 @@ class DMRuntime:
                     for flag in effects["flags"]:
                         self._state.flags.add(flag.lower())
 
+                # Apply entity swaps (equip/unequip)
+                for swap in effects.get("swap_entity", []):
+                    self._apply_entity_swap(swap)
+
                 # Evaluate reveal conditions (contextual visibility)
                 if self._entity_registry:
                     revealed = evaluate_reveal_conditions(self._entity_registry)
@@ -503,6 +507,69 @@ class DMRuntime:
             self._bridge.send_and_wait(outcome_text, salience=0.6, novelty=0.3)
         except Exception:
             pass
+
+    def _apply_entity_swap(self, swap: dict[str, Any]) -> None:
+        """Swap an entity in the registry — detach old, instantiate + attach new.
+
+        Swap spec format (in campaign YAML ``on_choice``)::
+
+            swap_entity:
+              - old: cybernetic_arm        # entity name to remove
+                new_ref: bodies/megarm_v3  # component registry ref to instantiate
+                new_name: megarm_v3        # name for the new entity instance
+                parent: runner             # (optional) parent entity to attach to
+
+        Handles tool re-registration if SceneState is active.
+        """
+        old_name = swap.get("old", "")
+        new_ref = swap.get("new_ref", "")
+        new_name = swap.get("new_name", old_name)
+        parent_name = swap.get("parent", "")
+
+        if not new_ref:
+            log.warning("DM: swap_entity missing 'new_ref'")
+            return
+
+        # Detach + deregister old entity
+        old_entity = self._entity_registry.pop(old_name, None)
+        if old_entity is not None:
+            if hasattr(old_entity, "detach"):
+                old_entity.detach()
+            if self._scene:
+                self._scene._deregister_entity_tools(old_name)
+            log.info("DM: Detached entity '%s'", old_name)
+
+        # Instantiate new entity from component registry
+        try:
+            from maxim.embodiment.component_registry import ComponentRegistry
+
+            registry = ComponentRegistry()
+            new_entity = registry.instantiate(new_ref, name=new_name)
+        except Exception as e:
+            log.error("DM: Failed to instantiate '%s': %s", new_ref, e)
+            return
+
+        # Reparent if requested
+        if parent_name:
+            parent = self._entity_registry.get(parent_name)
+            if parent is not None and hasattr(new_entity, "reparent"):
+                new_entity.reparent(parent)
+
+        # Register in entity registry + scene
+        self._entity_registry[new_name] = new_entity
+        if self._scene:
+            self._scene._entity_registry[new_name] = new_entity
+            self._scene._register_entity_tools(new_name)
+        if self._cascade_resolver:
+            self._cascade_resolver._entities[new_name] = new_entity
+
+        log.info(
+            "DM: Swapped '%s' → '%s' (ref=%s)%s",
+            old_name,
+            new_name,
+            new_ref,
+            f" parent={parent_name}" if parent_name else "",
+        )
 
     def check_expectations(
         self,

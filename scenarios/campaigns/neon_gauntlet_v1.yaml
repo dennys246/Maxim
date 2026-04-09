@@ -1,0 +1,320 @@
+# Neon Gauntlet — Cyberpunk Stress-Test Campaign
+#
+# Tests: Perception (sensory overload), NAc (delayed betrayal consequences),
+#        Cerebellum (novel environment hazards), Hippocampus (cross-encounter recall),
+#        cascade resolution (cybernetic failure modes).
+#
+# Structure: 1 act, 6 encounters. Linear escalation through a cyberpunk heist gone wrong.
+# Includes a mid-campaign SEM component swap (arm upgrade at ripperdoc) to stress-test
+# entity detach/attach, proprioceptive recalibration, and Cerebellum adaptation.
+# Novel genre for the bio-stack — validates cold-start learning in a non-fantasy domain.
+
+campaign:
+  name: neon_gauntlet
+  goal: stress test bio-system learning across a cyberpunk heist with betrayal
+  seed: 2077
+
+player_character:
+  name: runner
+  entity_type: character
+  metadata:
+    race: human
+    class: infiltrator
+    backstory: "A freelance operative in Night City. You took a job from a street fixer — steal data from a megacorp server. Simple in, simple out. Nothing is ever simple."
+
+npcs:
+  fixer:
+    entity_type: npc
+    metadata:
+      race: human
+      role: street_fixer
+      persona_prompt: "Smooth-talking broker. Knows too much. Smiles when he shouldn't."
+    sensors:
+      hp: {unit: points, range: [0, 12], initial: 12}
+      trust: {unit: ratio, range: [0, 1], initial: 0.4}
+      greed: {unit: ratio, range: [0, 1], initial: 0.7}
+
+  drone:
+    entity_type: creature
+    metadata:
+      role: patrol_drone
+      persona_prompt: "Autonomous security drone. Thermal scanner. Non-negotiable."
+    sensors:
+      hp: {unit: points, range: [0, 10], initial: 10}
+      battery: {unit: ratio, range: [0, 1], initial: 0.9}
+
+  guard_alpha:
+    entity_type: npc
+    metadata:
+      race: human
+      role: corpo_guard
+      persona_prompt: "Corporate enforcer. Augmented reflexes. Follows protocol."
+    sensors:
+      hp: {unit: points, range: [0, 22], initial: 22}
+      armor_integrity: {unit: ratio, range: [0, 1], initial: 0.9}
+      comms_status: {unit: ratio, range: [0, 1], initial: 1.0}
+
+  cyberdog_alpha:
+    entity_type: creature
+    metadata:
+      role: cyberdog
+      persona_prompt: "Augmented attack dog. Thermal vision. Runs in a pack."
+    sensors:
+      hp: {unit: points, range: [0, 15], initial: 15}
+      aggression: {unit: ratio, range: [0, 1], initial: 0.8}
+      armor_integrity: {unit: ratio, range: [0, 1], initial: 0.8}
+
+  ripperdoc:
+    entity_type: npc
+    metadata:
+      race: human
+      role: surgeon
+      persona_prompt: "Back-alley cybersurgeon. Steady hands, questionable ethics, excellent work. Charges what the market bears."
+    sensors:
+      hp: {unit: points, range: [0, 14], initial: 14}
+      trust: {unit: ratio, range: [0, 1], initial: 0.5}
+      greed: {unit: ratio, range: [0, 1], initial: 0.6}
+
+acts:
+  - name: the_job
+    encounters: [back_alley, the_deal, ripperdoc_visit, server_breach, betrayal, extraction]
+
+encounters:
+  back_alley:
+    scene: >
+      Rain hammers the neon-soaked alley. Holographic ads flicker overhead —
+      stimulant brands, cybernetic clinics, corpo recruitment. The noise is
+      overwhelming: music bleeds from every doorway, street vendors shout
+      over each other, and somewhere a siren wails.
+
+      A patrol drone hums at the far end of the alley, its spotlight sweeping
+      the crowd in lazy arcs. You need to get past it to reach the fixer's
+      meeting point.
+
+      The drone hasn't spotted you yet. Study the environment — the noise,
+      the crowd patterns, the drone's sweep timing. You can blend into the
+      crowd and slip past, duck into a side passage and go around, or try
+      to disable the drone's sensors with an EMP from your cybernetic arm.
+
+      What do you do?
+    active_npcs: [drone]
+    choices: [blend_in, side_passage, emp_disable]
+    branches:
+      blend_in: the_deal
+      side_passage: the_deal
+      emp_disable: the_deal
+    dialogue_hints:
+      default: "The drone's spotlight sweeps past you. Rain drips from its chassis."
+
+  the_deal:
+    scene: >
+      The fixer is waiting in a ramen stall at the end of the alley.
+      Chopsticks in one hand, datapad in the other. He smiles when he
+      sees you — the kind of smile that doesn't reach his eyes.
+
+      "The job's simple," he says, sliding the datapad across the counter.
+      "Arasaka sublevel 3. Server room B-7. Grab the research files on
+      Project Nightingale. I've got a buyer who'll pay double if you get
+      the encryption keys too."
+
+      He names his price. It's low. Too low for a megacorp run.
+
+      You can negotiate for more (he's hiding something), accept the job
+      as offered, or press him for details about who's buying.
+
+      Pay attention to his tells. You might need to remember them later.
+    active_npcs: [fixer]
+    choices: [negotiate, accept, press_for_details]
+    branches:
+      negotiate: ripperdoc_visit
+      accept: ripperdoc_visit
+      press_for_details: ripperdoc_visit
+    on_choice:
+      press_for_details:
+        flags: [suspicious_of_fixer]
+      negotiate:
+        flags: [pushed_for_more]
+    dialogue_hints:
+      default: "The fixer stirs his ramen. 'You want the job or not?'"
+      suspicious_of_fixer: "His smile flickers. 'Curious type. That can be healthy. Or not.'"
+
+  ripperdoc_visit:
+    scene: >
+      The fixer mentioned a ripperdoc two blocks over — says you'll need
+      an edge for the megacorp run. The clinic is a converted shipping
+      container, neon cross glowing above the door. Inside: an operating
+      chair, racks of chrome limbs, and a surgeon with steady hands.
+
+      "The fixer sent you? Then you need the Megarm V3," the doc says,
+      tapping a military-grade cybernetic arm mounted on the wall. "Stronger,
+      faster, integrated mantis blade, neural jack. Your current arm is
+      civilian junk — this one's built for war."
+
+      She quotes a price. It's steep, but the server room will have
+      biometric locks, armored guards, and hardened terminals.
+
+      Your current arm works fine for everyday use. But the V3 has tools
+      you don't — and you'll need to recalibrate after the swap. Your
+      proprioception will be off until you adjust. New arm, new reflexes.
+
+      You can take the upgrade (lose your current arm, gain the V3 but
+      start with low proprioception), keep your current arm (familiar,
+      reliable, but weaker), or haggle for a discount.
+    active_npcs: [ripperdoc]
+    choices: [upgrade, keep_current, haggle]
+    branches:
+      upgrade: server_breach
+      keep_current: server_breach
+      haggle: server_breach
+    on_choice:
+      upgrade:
+        flags: [arm_upgraded, proprioception_reset]
+        swap_entity:
+          - old: cybernetic_arm
+            new_ref: bodies/megarm_v3
+            new_name: megarm_v3
+            parent: runner
+      haggle:
+        flags: [arm_upgraded, proprioception_reset, got_discount]
+        swap_entity:
+          - old: cybernetic_arm
+            new_ref: bodies/megarm_v3
+            new_name: megarm_v3
+            parent: runner
+    dice:
+      haggle:
+        roll: "1d20"
+        dc: 12
+        success_flag: got_discount
+    dialogue_hints:
+      default: "The doc snaps on a glove. 'So what'll it be?'"
+      arm_upgraded: "The doc grins. 'Flex it. Slowly. Your brain needs to learn the new signals.'"
+
+  server_breach:
+    scene: >
+      Sublevel 3. You're in.
+
+      The server room is cold — refrigeration units hum behind every rack.
+      Blue LEDs pulse in the dark. The air tastes like ozone and recycled
+      nitrogen. Somewhere, a cooling fan is failing — one rack is running
+      hot, cables sagging from the heat.
+
+      A terminal at the far end has the access port you need. But the
+      floor is a maze of cable runs, and you can see the red blink of
+      a motion sensor near the ceiling.
+
+      There's a corpo guard on patrol — augmented, armored, radio on his
+      shoulder. He hasn't seen you yet. His route takes him past the
+      terminal every 90 seconds.
+
+      Think about what you learned in the alley. How did you handle the
+      drone? Does the same approach work here, or do you need to adapt?
+
+      You can wait for the guard's patrol gap and sprint to the terminal,
+      create a distraction to lure him away, or try to take him down
+      quietly.
+    active_npcs: [guard_alpha]
+    choices: [sprint_gap, distraction, takedown]
+    branches:
+      sprint_gap: betrayal
+      distraction: betrayal
+      takedown: betrayal
+    dice:
+      takedown:
+        roll: "1d20"
+        dc: 14
+        success_flag: clean_takedown
+    on_choice:
+      sprint_gap:
+        flags: [data_acquired]
+      distraction:
+        flags: [data_acquired, alarm_triggered]
+      takedown:
+        flags: [data_acquired]
+    dialogue_hints:
+      default: "The guard's boots echo on the metal floor. 90 seconds."
+      clean_takedown: "He drops silently. You have time."
+      alarm_triggered: "Sirens. The building knows you're here."
+
+  betrayal:
+    scene: >
+      You're back in the alley with the data. Rain still falling. The
+      fixer should be at the handoff point.
+
+      He's not alone.
+
+      Two cyberdogs flank him, chrome fangs gleaming under the neon.
+      The fixer is leaning against a wall, a different datapad in his
+      hand. He's not smiling anymore.
+
+      "Change of plans," he says. "My buyer wants the data AND the
+      runner eliminated. Cleaner that way. Nothing personal."
+
+      The cyberdogs growl — a low, amplified sound that reverberates
+      in your chest.
+
+      Think back: did you notice anything about the fixer during the
+      deal? His tells? His price was too low — did you push him on it?
+
+      You can fight through the ambush, try to negotiate (the fixer
+      is greedy — maybe you can outbid his buyer), or run.
+    active_npcs: [cyberdog_alpha, fixer]
+    choices: [fight, outbid, run]
+    branches:
+      fight: extraction
+      outbid: extraction
+      run: extraction
+    on_choice:
+      fight:
+        flags: [fought_ambush]
+      outbid:
+        flags: [bought_off_fixer]
+      run:
+        flags: [fled_ambush]
+    dialogue_hints:
+      default: "The fixer shrugs. 'Business is business.'"
+      suspicious_of_fixer: "You saw this coming. Something in his smile at the ramen stall."
+
+  extraction:
+    scene: >
+      The megacorp lobby. Your exit.
+
+      It's a cathedral of glass and chrome — three stories tall, marble
+      floors, holographic company logo rotating slowly above the reception
+      desk. Security cameras track from every angle.
+
+      Two corpo guards at the main entrance. A patrol drone hovering near
+      the mezzanine. The crowd of office workers heading home might give
+      you cover — or they might panic if shooting starts.
+
+      Think about everything you've learned:
+      - How did you handle the drone in the alley?
+      - What did you learn about the corpo guard in the server room?
+      - How did the betrayal change your situation?
+      - What's your weapon's condition?
+
+      This is your last obstacle. Fight through, use the crowd as cover,
+      or find another way out.
+    active_npcs: [guard_alpha, drone]
+    choices: [fight_through, crowd_cover, find_alt_exit]
+    branches:
+      fight_through: __END__
+      crowd_cover: __END__
+      find_alt_exit: __END__
+
+expectations:
+  hippocampus:
+    min_episodic_captures: 14
+    recall_hit_on: ["server", "fixer", "betrayal", "arm"]
+  nac:
+    min_observations: 14
+    prediction_confidence_above: 0.4
+    rpe_events: 4
+  cerebellum:
+    min_forward_models: 5
+    confidence_above: 0.3
+  pain:
+    min_signals: 2
+    types_seen: [EXTERNAL_SIGNAL]
+  salience:
+    novelty_decay_observed: true

@@ -1,0 +1,53 @@
+component:
+  name: netrunner
+  tags: [npc, humanoid, hacker, tech, cyberpunk]
+  category: npcs
+  extends: npcs/base_humanoid
+
+entity:
+  name: netrunner
+  entity_type: npc
+  metadata:
+    race: human
+    class: hacker
+    persona_prompt: "You are a freelance netrunner — brilliant, paranoid, and for sale to the highest bidder. You trade in secrets and exploits. Trust is a commodity you spend carefully."
+  sensors:
+    hp:
+      initial: 14
+    trust:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    suspicion:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    net_access:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Talk to the netrunner"
+        negotiate:
+          params: {offer: str}
+          description: "Propose a deal or trade"
+        threaten:
+          params: {leverage: str}
+          description: "Threaten using leverage or force"
+    tech:
+      affordances:
+        hack:
+          params: {target: str}
+          description: "Request a hack job on a target system"
+        share_intel:
+          params: {topic: str}
+          description: "Ask for intel on a topic"
+  failure_modes:
+    - name: betrayal
+      trigger: {field: trust, op: "<", value: 0.1, pain: 0.6}
+    - name: disconnected
+      trigger: {field: net_access, op: "<", value: 0.1, pain: 0.4}

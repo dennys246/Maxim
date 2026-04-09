@@ -400,7 +400,11 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         this endpoint is ONLY served by LeaderProxy. Peers use it to confirm
         the tunnel is routing to the proxy (port 8099), not directly to the
         upstream inference server (port 8100).
+
+        Includes ``llm_ready`` field so peers can distinguish "proxy up" from
+        "LLM model loaded and ready to serve inference."
         """
+        llm_ready = self._probe_upstream_ready()
         self._send_json(
             200,
             {
@@ -409,8 +413,23 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 "upstream": self.upstream_url,
                 "auth_enabled": bool(self.api_key),
                 "uptime_s": round(time.time() - self.start_time, 1),
+                "llm_ready": llm_ready,
             },
         )
+
+    def _probe_upstream_ready(self) -> bool:
+        """Check if the upstream LLM server is responding to /v1/models.
+
+        A fast probe (1.5s timeout) — returns True only if the upstream
+        returns HTTP 200. Returns False on connection refused, timeout,
+        or any error (model still loading).
+        """
+        probe = f"{self.upstream_url}/v1/models"
+        try:
+            with urllib.request.urlopen(probe, timeout=1.5) as resp:  # noqa: S310
+                return resp.status == 200
+        except Exception:
+            return False
 
     def _handle_debug_last_requests(self) -> None:
         if self.request_log is None:

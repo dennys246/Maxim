@@ -1,0 +1,37 @@
+component:
+  name: ripperdoc_clinic
+  tags: [environment, indoor, medical, tech, cyberpunk]
+  category: environments
+
+entity:
+  name: ripperdoc_clinic
+  entity_type: environment
+  sensors:
+    lighting:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    noise_level:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.2
+    sterility:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    security_level:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+  modulators:
+    interaction:
+      affordances:
+        look_around:
+          params: {}
+          description: "Survey the clinic — augmentation racks, operating chair, tool trays"
+        browse_inventory:
+          params: {}
+          description: "Check available cybernetic upgrades"
+        sit_in_chair:
+          params: {}
+          description: "Sit in the operating chair for installation"
