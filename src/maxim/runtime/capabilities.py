@@ -24,6 +24,9 @@ class RuntimeCapabilities:
     vram_gb: float = 0.0
     ram_gb: float = 0.0
 
+    # Graph topology (POG-0 prep — wire format stability before v0.2.0)
+    node_role: str = "solo"  # "solo" | "leader" | "peer" | "mother"
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 

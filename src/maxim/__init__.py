@@ -130,15 +130,25 @@ __all__ = [
 
 def get_version_info() -> dict[str, str]:
     """Return version + git hash for debug/version endpoint."""
-    import subprocess
+    import os
 
     info: dict[str, str] = {"version": __version__}
+
+    # Guard: only shell out to git if we're in a repo (PyPI installs won't have .git)
+    _pkg_dir = os.path.dirname(os.path.abspath(__file__))
+    _repo_root = os.path.dirname(os.path.dirname(_pkg_dir))  # src/maxim -> src -> repo
+    if not os.path.isdir(os.path.join(_repo_root, ".git")):
+        return info
+
+    import subprocess
+
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
             timeout=3,
+            cwd=_repo_root,
         )
         if result.returncode == 0:
             info["git_hash"] = result.stdout.strip()
@@ -150,6 +160,7 @@ def get_version_info() -> dict[str, str]:
             capture_output=True,
             text=True,
             timeout=3,
+            cwd=_repo_root,
         )
         if result.returncode == 0:
             info["git_message"] = result.stdout.strip()

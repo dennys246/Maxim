@@ -24,6 +24,7 @@ def _load_or_create_node_id(base_dir: str | Path | None = None) -> str:
     """
     if base_dir is None:
         from maxim.utils.paths import resolve_user_state
+
         path = resolve_user_state("util/node_id.txt")
     else:
         path = Path(base_dir) / "util/node_id.txt"
@@ -78,6 +79,10 @@ class AgentIdentity:
     inference_models: list[dict[str, Any]] = field(default_factory=list)
     inference_available: bool = False
 
+    # Graph topology (POG-0 prep — wire format stability before v0.2.0)
+    parent_id: str | None = None  # node_id of the node that registered me (None = root)
+    node_role: str = "solo"  # "solo" | "leader" | "peer" | "mother"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "profile": self.profile.to_dict(),
@@ -96,6 +101,8 @@ class AgentIdentity:
             "recent_domains": self.recent_domains,
             "inference_models": self.inference_models,
             "inference_available": self.inference_available,
+            "parent_id": self.parent_id,
+            "node_role": self.node_role,
         }
 
     @classmethod
@@ -117,6 +124,8 @@ class AgentIdentity:
             recent_domains=d.get("recent_domains", []),
             inference_models=d.get("inference_models", []),
             inference_available=d.get("inference_available", False),
+            parent_id=d.get("parent_id"),
+            node_role=d.get("node_role", "solo"),
         )
 
     @classmethod
