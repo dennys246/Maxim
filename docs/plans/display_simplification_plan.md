@@ -439,17 +439,20 @@ Everything from today's output, plus hippocampus operation traces on stderr.
 
 The display system doesn't just serve simulations — it must integrate with the full agentic loop where the agent is a persistent entity with autonomy levels, processing states, mode transitions, and a Default Network running in the background.
 
-### Hardcoded print() in the agent loop (must fix)
+### BUG: Hardcoded print() in the agent loop blocks headless mode
+
+> **Severity: HIGH — fix before or alongside display simplification.**
+> `agent_loop.py:1583-1595` prints a confirmation prompt unconditionally to stdout and then waits for `input()`. If a user runs `--interactive off` or any headless/automated mode, this blocks forever. This is not a display preference issue — it's a runtime hang.
 
 The agent loop has ~15 direct `print()` calls that bypass all display control:
 
 | Location | What it prints | Fix |
 |----------|---------------|-----|
-| agent_loop.py:1583-1595 | Action confirmation prompt (supervised mode) | Guard with `should_prompt()` |
+| **agent_loop.py:1583-1595** | **Action confirmation prompt — BLOCKS on `input()`** | **Guard with `should_prompt()`, fall back to SupervisionPolicy default** |
 | loop_controller.py:248-268 | Confirmation success/failure messages | Route through `display_action()` |
 | loop_controller.py:319-338 | Timeout retry notifications | Route through `display_log(BIO)` |
 
-These are the most critical because they fire during **live agentic operation**, not just simulation. A user in `--interactive off` mode must never see a blocking confirmation prompt.
+The confirmation prompt fix is the most urgent: when `--interactive off` or the system is in a non-interactive context, the confirmation must auto-resolve using the `SupervisionPolicy` default (approve if within bounds, reject if not) instead of blocking on stdin.
 
 ### Autonomy level ↔ display interaction
 
@@ -462,6 +465,47 @@ The autonomy system already gates what the agent can do — display should respe
 | AUTONOMOUS | Full agency, safety only | No confirmations. Pain/fear signals shown at BIO tier only. |
 
 Key insight: **autonomy level already controls when the system needs human input.** The `--interactive` flag shouldn't duplicate this — it should control whether `auto` mode respects the autonomy level's natural prompting behavior or overrides it.
+
+### Autonomy transition consent
+
+When the agent requests an autonomy level change (via `AutonomyLevelTool`), the current behavior is:
+- **Escalation** (planning → supervised → autonomous): immediate, no approval
+- **De-escalation** (autonomous → supervised → planning): requires approval
+
+This is backwards for user safety. The user should consent to the agent gaining MORE autonomy, not less. The revised policy:
+
+| Transition | Current | Revised |
+|-----------|---------|---------|
+| Planning → Supervised | Immediate | **Prompt user**: "Agent requests supervised autonomy: {reason}. Allow? [yes/no]" |
+| Planning → Autonomous | Immediate | **Prompt user**: "Agent requests full autonomy: {reason}. Allow? [yes/no]" |
+| Supervised → Autonomous | Immediate | **Prompt user**: "Agent requests full autonomy: {reason}. Allow? [yes/no]" |
+| Autonomous → Supervised | Requires approval | **Immediate** (agent is voluntarily reducing power) |
+| Supervised → Planning | Requires approval | **Immediate** (agent is voluntarily reducing power) |
+| Any → same level | No-op | No-op |
+
+The consent prompt:
+- Uses the `PromptHandler` system (not raw `print()`/`input()`)
+- Respects `--interactive` mode: if `off`, use a configurable policy (`AutoEscalationPolicy`)
+- Shows the agent's `reason` so the user can make an informed decision
+- At **CLEAN** display tier, shows a one-line prompt: `Agent requests autonomous mode (reason: "novel situation requires rapid action"). Allow? [y/n]`
+- At **BIO** tier, also shows the current bio-state context that motivated the request
+- Logged in the agentic event buffer regardless of display tier
+
+```python
+class AutoEscalationPolicy:
+    """Policy for autonomy escalation when --interactive off."""
+    
+    allow_to_supervised: bool = True    # Low risk — bounded actions
+    allow_to_autonomous: bool = False   # High risk — default deny without human
+    max_autonomous_duration: float = 300.0  # 5 min cap if allowed
+```
+
+This gives users three modes:
+1. **`--interactive on`**: Always asked for consent on escalation
+2. **`--interactive auto`**: Asked in agentic/DM mode, policy-driven in headless sim mode
+3. **`--interactive off`**: `AutoEscalationPolicy` decides (supervised OK, autonomous denied by default)
+
+**Implementation:** Phase D-4 (auto-interactive wiring + autonomy integration). Modify `AutonomyLevelTool.execute()` to check interactive mode before escalation. Add `AutoEscalationPolicy` to `autonomy.py`.
 
 ### Processing state ↔ display
 
