@@ -392,6 +392,26 @@ class LLMRouter:
             warn("Unknown LLM provider type: %s (%s)", provider_type, provider_key)
             backend = LLMRouter._INIT_FAILED
 
+        # Validate that the backend initialized successfully
+        if backend is not LLMRouter._INIT_FAILED and backend is not None:
+            try:
+                # Quick sanity check — ensure the backend has the expected interface
+                if not hasattr(backend, "complete") and not hasattr(backend, "complete_with_usage"):
+                    warn(
+                        "Provider %s (%s) backend missing complete method — marking as failed",
+                        provider_key,
+                        provider_type,
+                    )
+                    backend = LLMRouter._INIT_FAILED
+            except Exception as e:
+                warn(
+                    "Provider %s (%s) init validation failed: %s. Check API key and provider configuration.",
+                    provider_key,
+                    provider_type,
+                    e,
+                )
+                backend = LLMRouter._INIT_FAILED
+
         self._backends[provider_key] = backend
         return None if backend is LLMRouter._INIT_FAILED else backend
 
@@ -795,7 +815,26 @@ class LLMRouter:
                         self._note_provider_success(provider_key, model=model_override or model)
                         return text, None
             except Exception as e:
-                warn("LLM complete failed (%s): %s", provider_key, e)
+                err_msg = str(e).lower()
+                # Distinguish permanent errors (don't retry other providers) from
+                # transient ones (try next provider in the priority list).
+                is_auth = "401" in err_msg or "403" in err_msg or "unauthorized" in err_msg
+                is_not_found = "404" in err_msg or "not found" in err_msg
+                if is_auth:
+                    warn(
+                        "LLM auth failed (%s): %s. Check API key for provider '%s'.",
+                        provider_key,
+                        e,
+                        provider_key,
+                    )
+                elif is_not_found:
+                    warn(
+                        "LLM model not found (%s): %s. Verify model name in config.",
+                        provider_key,
+                        e,
+                    )
+                else:
+                    warn("LLM complete failed (%s): %s", provider_key, e)
 
             self._note_provider_failure(provider_key, "call_failed")
 

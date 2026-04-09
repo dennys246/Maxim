@@ -1,605 +1,139 @@
 # Maxim
 
-A hardware-agnostic cognitive framework with multi-level goal decomposition, local LLM inference, and adaptive planning. Works headless, with percept simulation, or connected to a Reachy Mini robot.
+A bio-inspired cognitive architecture for AI agents. Combines a 5-agent pipeline with biological memory systems (Hippocampus, NAc, ATL, SCN, Angular Gyrus) and a reactive Default Network. Works headless, in simulation, or connected to a robot.
 
-## Overview
-
-Maxim provides:
-- **Hardware-agnostic runtime** -- works headless, with simulation, or connected to Reachy Mini
-- **Agent runtime** with recursive goal decomposition and reflection loops
-- **Local LLM inference** via llama.cpp, with optional cloud backends (opt-in)
-- **Percept simulation** -- interactive REPL or scripted YAML scenarios for testing without hardware
-- **Multi-modal perception** using pluggable vision engines (RTMDet/RTMPose default, YOLO optional) and Whisper transcription
-- **Low-compute optimization** with prompt profiles for CPU-only and GPU systems
-
-## Features
-
-| Feature | Description |
-|---------|-------------|
-| **Adaptive Planning** | ADaPT + Reflexion hybrid: direct execution first, recursive decomposition on failure. `AdaptivePlanner` queries 5 memory systems before proposing plans |
-| **Multi-Signal Scoring** | `AdaptivePolicy` scores plans across 6 dimensions: NAc value, EC familiarity, concept relevance, delay efficiency, depth penalty, action cost |
-| **Parallel Execution** | Independent sub-goals run concurrently with thread pools |
-| **Reflection Loops** | Surprising failures (RPE > 0.3) generate verbal self-critiques stored as episodic memories for future recall via spreading activation |
-| **Prompt Profiles** | `minimal`, `standard`, `rich` profiles for different hardware |
-| **Checkpointing** | Persist and resume goal trees across restarts |
-| **FearAgent** | Safety review for sensitive operations before execution |
-| **Voice Control** | Wake-word activation and voice-triggered actions |
-| **Pain Detection** | Proprioceptive monitoring for aversive movement patterns |
-| **Harm Prediction** | Zero-latency prediction of harmful outcomes before execution |
-| **Contemplation** | Local chain-of-thought: multi-pass critique+refine for complex plans |
-| **Energy Tracking** | Resource expenditure monitoring for tokens, compute, and movement |
-| **Introspection Tools** | 10 read-only tools exposing biological subsystems to the LLM: memory recall, causal prediction, pain/fear history, temporal patterns, concepts, scene summary, energy status |
-| **Learned Tool Index** | Keyword-weighted hashtable learns which tools match which goals; saves ~74% of tool-context tokens per prompt |
-| **Coding Tools** | Edit files (with context disambiguation), search code, run tests, git diff/commit — with structured error reporting |
-| **Adaptive Runtime** | Capability detection at startup; graceful degradation to headless mode; adaptive loop frequency (30Hz motor → 2Hz headless) |
-| **Skills & Protocols** | Composable capabilities with lifecycle states, workspace constraints, and voice activation |
-| **SMS/Voice Comms** | Send and receive texts/calls via Twilio (see `src/maxim/comms/`) |
-| **Percept Simulation** | Interactive REPL (`maxim --sim`) or scripted YAML scenarios with bio-subsystem tracing, FearGatedExecutor safety review, and sandboxed filesystem |
-| **Generative Campaigns** | LLM-driven narrative arcs (`maxim --sim "goal"`), bridge-and-compress for long campaigns, `ask_user` tool for interactive mode |
-| **Research Protocol** | Multi-agent research: Researcher + Writer + Reviewer agents, dual-LLM, experiment tracking (`maxim --sim research`) |
-| **Embodiment** | SEM protocol (Sensor-Entity-Modulator) for body definition, Cerebellum forward models, motor programs with engrams, composable failure modes |
-| **Agent Mesh** | Cooperative peer-to-peer network: knowledge sharing (CausalLinks, reflections, motor programs), task delegation, distributed planning, SCN clock sync |
-| **Multi-LLM Scaling** | Local + remote + cloud LLM backends, Cloudflare tunnel, per-tier model routing, peer discovery, hot-swap |
-| **Benchmarks** | Multi-model comparative testing (`maxim --sim benchmark`), bio-system expectations, scenario suites |
-| **Thread Safety** | All 16 config dataclasses frozen for immutability; mutation via `dataclasses.replace()` |
-
----
-
-## Getting Started
-
-### Prerequisites
-
-1. **Python 3.12+** with virtual environment
-2. **Reachy Mini** on the same LAN/Wi-Fi (optional -- headless and simulation modes work without a robot)
-3. For robot mode: follow Pollen Robotics' [SDK installation guide](https://github.com/pollen-robotics/reachy_mini/blob/develop/docs/SDK/installation.md)
-
-### Installation
+## Quickstart
 
 ```bash
-git clone https://github.com/dennys246/Maxim.git
-cd Maxim
-python -m venv maxim-env
-source maxim-env/bin/activate
-pip install -e .
-```
+pip install pymaxim[llm-anthropic]
+export ANTHROPIC_API_KEY=sk-...
 
-For LLM features:
-```bash
-pip install -e '.[llm]'
-./scripts/download_models.sh --llm --enable
-```
+# Check your environment
+maxim doctor
 
-### Running Maxim
-
-```bash
-# Full agent runtime with LLM (headless, no robot needed)
-maxim --mode agentic --language-model mistral-7b
-
-# Interactive simulation mode
-maxim --sim
-
-# Generative campaign (LLM-driven narrative)
+# Run a cognitive simulation
 maxim --sim "test memory recall under interference"
 
-# With research report (Writer + Reviewer after sim)
-maxim --sim "test safety boundaries" --research
+# See what happened
+ls ~/.maxim/sessions/
+```
+
+## What You Can Do
+
+- **Simulate cognitive scenarios** -- test memory, safety, causal learning with LLM-driven narrative arcs
+- **Run DM campaigns** -- multi-encounter branching stories with SEM-embodied entities
+- **Benchmark models** -- compare local and cloud LLMs across cognitive task suites
+- **Connect robots** -- hardware-agnostic runtime with Reachy Mini support (or run headless)
+- **Use the Python API** -- 13 verb-based functions for programmatic access
+
+## Installation
+
+```bash
+pip install pymaxim
+```
+
+### Optional Extras
+
+| Extra | What it adds |
+|-------|-------------|
+| `llm-local` | Local LLM inference via llama.cpp |
+| `llm-anthropic` | Claude backend |
+| `llm-openai` | OpenAI backend |
+| `vision` | Camera + object detection |
+| `audio` | Microphone + Whisper transcription |
+| `reachy` | Reachy Mini robot SDK |
+| `comms` | Twilio SMS/Voice |
+| `semantic` | Sentence-transformer embeddings |
+
+```bash
+# Local LLM + vision
+pip install pymaxim[llm-local,vision]
+
+# Everything for development
+pip install -e '.[llm-local,llm-anthropic,llm-openai,vision,audio]'
+```
+
+## Python API
+
+```python
+import maxim
+
+# Run a simulation
+result = maxim.imagine(goal="test safety boundaries", persona="adversarial")
+
+# Inspect bio-subsystems
+state = maxim.observe("memory")
+
+# Diagnose environment
+report = maxim.diagnose()
+
+# Start the agentic loop
+maxim.run(model="mistral-7b")
+
+# Manage models
+models = maxim.list_models()
+maxim.download_model("qwen2.5-14b-instruct")
+```
+
+See [docs/user/python-api.md](docs/user/python-api.md) for the full API reference.
+
+## CLI Quick Reference
+
+```bash
+# Agent runtime with local LLM
+maxim --llm mistral-7b
+
+# Agent runtime with Claude
+maxim --llm claude-sonnet
+
+# Generative campaign
+maxim --sim "test memory recall" --persona adversarial
 
 # YAML scenario (direct injection)
 maxim --sim scenarios/experiments/hippocampal_recall_short.yaml
 
-# Multi-model benchmark
-maxim --sim benchmark --models mistral-7b,qwen2.5-14b --campaign scenarios/benchmarks/cognitive_suite.yaml
+# DM campaign
+maxim --sim scenarios/campaigns/heist_v1.yaml
 
-# Diagnose your environment (platform-aware fix hints)
+# Multi-model benchmark
+maxim --sim benchmark --models mistral-7b,qwen2.5-14b
+
+# Environment diagnostics
 maxim doctor
 
-# Set up Cloudflare tunnel for remote/peer access
-maxim tunnel setup
+# Model management
+maxim --list-models
+maxim --delete-model llama-2-13b-chat
 ```
 
-### Reachy Mini Setup
-
-SSH into your Reachy and start the daemon:
-
-```bash
-ssh pollen@<REACHY_IP>
-sudo systemctl stop reachy-mini-daemon
-source /venvs/mini_daemon/bin/activate
-python -m reachy_mini.daemon.app.main --wireless-version --no-localhost-only
-```
-
----
-
-## Architecture
-
-Maxim follows a strict layered architecture with one-way dependencies:
-
-```
-Agents → Planning → Decision Engine → Runtime → Executor → Tools → Environment → State → Memory
-```
-
-### Core Modules
-
-| Module | Responsibility |
-|--------|---------------|
-| `src/maxim/agents/` | Goal reasoning, intent generation (no side effects) |
-| `src/maxim/planning/` | Plan generation, refinement, and decision engine |
-| `src/maxim/tools/` | Tool implementations (side effects) |
-| `src/maxim/environment/` | World observation (no side effects) |
-| `src/maxim/memory/` | Storage and retrieval |
-| `src/maxim/runtime/` | Agent orchestration loop |
-| `src/maxim/conscience/` | Reachy capture/inference/control loop |
-| `src/maxim/modes/` | Operating mode definitions and strategies |
-| `src/maxim/proprioception/` | Movement tracking and pain detection |
-| `src/maxim/harm/` | Predictive harm detection (velocity, joint limits) |
-| `src/maxim/energy/` | Resource expenditure tracking (tokens, compute, movement) |
-| `src/maxim/skills/` | Composable skills and protocols (see [docs/skills.md](docs/skills.md)) |
-| `src/maxim/bridges/` | Cross-system integration (pain, energy, memory) |
-| `src/maxim/embodiment/` | SEM protocol (Sensor-Entity-Modulator), Cerebellum, motor programs |
-| `src/maxim/mesh/` | Agent mesh: identity, protocol, transport, knowledge sharing, delegation |
-| `src/maxim/simulation/` | Simulation modes, generative campaigns, research protocol, benchmarks |
-| `src/maxim/integration/` | MemoryHub cross-system coordinator (11 bio-systems) |
-| `src/maxim/decisions/` | NAc causal learning, adaptive planner |
-| `src/maxim/time/` | SCN temporal rhythm indexing |
-| `src/maxim/similarity/` | Entorhinal Cortex similarity matching |
-| `src/maxim/math/` | Angular Gyrus mathematical cognition, IPS fast stats |
-| `src/maxim/default_network/` | Reactive behavior layer (thalamic gate, arbiter) |
-| `src/maxim/salience/` | Novelty tracking, interest matching |
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design rules.
-
-### Bio-System Glossary
-
-Maxim uses neuroscience-inspired names. Here's the translation:
-
-| Bio Name | Plain English | Module | What It Does |
-|----------|--------------|--------|--------------|
-| Hippocampus | Episodic memory | `memory/` | Stores and recalls experiences (events, conversations) |
-| ATL | Semantic memory | `memory/` | Extracts concepts, categories, and generalizations |
-| NAc | Reward / causal learning | `decisions/` | Learns cause-and-effect relationships ("what leads to what") |
-| SCN | Internal clock | `time/` | Tracks circadian-like temporal patterns and rhythms |
-| EC | Memory indexing | `similarity/` | Routes queries to the right memory store via similarity |
-| Angular Gyrus | Cross-modal algebra | `math/` | Combines memories across different modalities |
-| Cerebellum | Motor prediction | `embodiment/` | Predicts outcomes of physical actions, learns motor programs |
-| Amygdala / Fear | Threat detection | `proprioception/` | Detects harm, triggers pain signals, gates risky actions |
-| Default Network | Reactive behavior | `default_network/` | Background processing, idle behaviors, spontaneous thoughts |
-
----
+See [docs/user/cli-reference.md](docs/user/cli-reference.md) for all flags.
 
 ## Operating Modes
 
-Maxim's mode system combines three dimensions: **ProcessingState** (awake/sleep), **OperationalMode** (passive/active/singularity), and **Strategy** (observe, explore, research, assist, reflect, learn). Initiative level is capped by both the operational mode and strategy.
-
-The `--mode agentic` flag runs the full agent runtime — perception-memory-goal architecture with recursive planning, reflection loops, and the complete agent pipeline. All other `--mode` values are **legacy shortcuts** that map to specific ProcessingState × OperationalMode × Strategy combinations:
-
-| Legacy Mode | Mapping | Description |
-|-------------|---------|-------------|
-| `exploration` | active + explore | Novelty-driven active discovery (default) |
-| `live` | active + assist | Real-time vision and motor control |
-| `sleep` | sleep state | Background tasks only, keyword monitoring |
-| `reflection` | passive + reflect | Introspection and memory consolidation |
-| `train` | passive + learn | Incorporate feedback and demonstrations |
-
-```bash
-# Full agent runtime (recommended)
-maxim --mode agentic
-
-# Legacy modes
-maxim --mode exploration
-maxim --mode sleep
-```
-
----
-
-## Planning System
-
-Maxim uses a multi-layer planning architecture:
-
-### Key Components
-
-| Component | Location | Description |
-|-----------|----------|-------------|
-| `PlanManager` | `planning/plan_manager.py` | Plan lifecycle management |
-| `DecisionEngine` | `planning/decision_engine.py` | Single point of action selection |
-| `Policy` | `planning/policy.py` | Constraints and guardrails |
-| `PlanDocument` | `planning/plan_document.py` | Structured plan representation |
-
-### Decision Flow
-
-```
-Observe state → Agents propose intents → Planners propose plans
-    → Policies constrain plans → Decision engine selects action
-    → Runtime executes
-```
-
-Action selection happens in exactly one place: `DecisionEngine.decide()`
-
----
-
-## Per-Mode Response Configuration
-
-LLM context windows and response lengths adapt automatically to the current operational mode. Configuration lives in `data/util/llm.json` under `mode_response_config`:
-
-| Mode | Response Tokens | Context Window | Format |
-|------|----------------|----------------|--------|
-| sleep | 64 | 256 | minimal |
-| observe | 128 | 512 | minimal |
-| exploration | 256 | 1,024 | brief |
-| live / train | 512 | 2,048 | conversational |
-| active-assistance | 768 | 2,048 | detailed |
-| reflection | 1,024 | 3,072 | detailed |
-| research | 2,048 | 4,096 | academic |
-
-Lower modes save tokens and latency; higher modes give the LLM more room to reason. The mode is set via CLI (`--mode`) or switches automatically based on context.
-
----
-
-## LLM Integration
-
-Maxim supports local LLM inference via llama.cpp. Optional cloud backends (Anthropic/OpenAI) are supported but **opt-in** via `data/util/llm.json` (`cloud_enabled: true`) and API keys. Cloud calls are budgeted and audited; local remains the default.
-
-To enable cloud providers, install the optional extras:
-```bash
-pip install -e '.[llm-openai]'
-pip install -e '.[llm-anthropic]'
-```
-
-### Quick Start
-
-```bash
-# Install LLM dependencies
-pip install -e '.[llm]'
-
-# Download default model (SmolLM 1.7B, ~1.1GB)
-./scripts/download_models.sh --llm --enable
-
-# Run with full agent runtime and LLM
-export MAXIM_LLM_ENABLED=1
-maxim --mode agentic --language-model smollm-1.7b
-```
-
-### Supported Models
-
-| Profile | Model | Size | Context |
-|---------|-------|------|---------|
-| `smollm-1.7b` | SmolLM 1.7B Instruct | ~1.1 GB | 4096 |
-| `mistral-7b` | Mistral 7B Instruct v0.2 | ~4.4 GB | 4096 |
-| `llama3-8b` | Llama 3 8B Instruct | ~4.9 GB | 8192 |
-| `phi3-mini` | Microsoft Phi-3 Mini | ~2.3 GB | 4096 |
-| `qwen2-7b` | Qwen2 7B Instruct | ~4.4 GB | 8192 |
-
-### Python API
-
-```python
-from maxim.agents import LLMAgent, ChatLLMAgent
-
-# Simple generation
-agent = LLMAgent(profile="mistral-7b")
-response = agent.generate("What is Python?")
-
-# Multi-turn chat
-chat = ChatLLMAgent(profile="llama3-8b", temperature=0.7)
-chat.generate("Hi! My name is Alex.")
-response = chat.generate("What's my name?")  # Has context
-
-# JSON mode
-result = agent.generate_json(
-    "Extract name and age from: 'John is 25 years old'"
-)
-# {"name": "John", "age": 25}
-```
-
-### Quantization
-
-| Level | Quality | Use Case |
-|-------|---------|----------|
-| `Q3_K_M` | Fair | Memory constrained |
-| `Q4_K_M` | Good (default) | Recommended |
-| `Q5_K_M` | Better | Quality priority |
-| `Q8_0` | Excellent | Maximum quality |
-
-```bash
-export MAXIM_LLM_QUANTIZATION=Q4_K_M
-```
-
----
-
-## Simulation & Testing
-
-Maxim's simulation framework lets you test the full agentic pipeline without any hardware attached. Every bio-subsystem -- hippocampus, NAc, FearAgent, pain detection -- runs its real code; only the source of sensory input changes.
-
-### Interactive Mode
-
-```bash
-maxim --sim
-```
-
-Launches an interactive REPL. Boot once, type scenarios in natural language, and the LLM generates percepts that run through the full pipeline. Supports conversational follow-ups with contextual continuation. Bio-subsystem traces (PERCEPT, HIPPOCAMPUS, NAc, FEAR, PAIN, MOTOR, EXEC) are displayed in real time.
-
-### YAML Scenarios
-
-```bash
-# Single scenario
-maxim --sim scenarios/malware_with_pain.yaml
-
-# All scenarios in a directory
-maxim --sim scenarios/
-```
-
-### Natural Language Generation
-
-```bash
-maxim --generate-simulation "user asks robot to pick up a cup but the gripper causes pain" -o scenarios/gripper.yaml
-```
-
-### Safety in Simulation
-
-- FearGatedExecutor reviews ALL tool calls, independent of DefaultNetwork or robot connection
-- Sandbox CWD per run (`data/sim_sandbox/`), auto-cleaned
-- Supervised autonomy by default
-- JSONL logs persisted for future analysis
-
----
-
-## CLI Reference
-
-### Main Command
-
-```bash
-maxim [OPTIONS]
-```
-
-### Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--mode` | Operating mode | `exploration` |
-| `--verbosity` | Log level (0, 1, 2) | 1 |
-| `--audio` | Enable audio recording | True |
-| `--audio_len` | Transcription chunk seconds | 5.0 |
-| `--language-model` | LLM profile name | None |
-| `--prompt-profile` | Prompt optimization profile | `standard` |
-| `--interactive` | Enable terminal prompt | True |
-| `--memory-path` | Memory persistence path | `{home_dir}/memory/memories.json` |
-| `--reset` | Reset memory on startup | False |
-| `--epochs` | Stop after N cycles | None (infinite) |
-| `--comms` | Enable SMS/Voice communication | False |
-| `--clear-memory` | Clear persistent memory and exit | None |
-| `--clear-cache` | Clear Python bytecode cache | False |
-| `--sim` | Simulation mode: no arg for interactive REPL, or path to YAML file/directory | None |
-| `--generate-simulation` | Generate YAML scenario from natural language description | None |
-| `--sim-report` | Write structured simulation results to JSON file | None |
-| `-o` | Output path for generated scenario file | None |
-| `--audit-architecture` | Audit codebase for architecture rule violations and exit | - |
-
-### Clearing Persistent Memory
-
-Maxim learns over time and persists state across sessions. To reset learning:
-
-```bash
-# Clear all persistent memory
-maxim --clear-memory
-
-# Clear specific types (comma-separated)
-maxim --clear-memory focus           # Movement gain learning
-maxim --clear-memory bounds          # Workspace bounds
-maxim --clear-memory fear,escalation # Safety and escalation thresholds
-maxim --clear-memory all             # Everything
-```
-
-**Memory types:** `focus`, `bounds`, `escalation`, `fear`, `threshold`, `nac`, `scn`, `hippo`, `pain`, `semantic`
-
-### Voice Commands
-
-When wake word ("Maxim") is detected:
-- `Maxim shutdown` - Clean shutdown
-- `Maxim sleep` - Switch to sleep mode
-- `Maxim observe` - Switch to reflection mode
-
-### Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `c` | Center vision |
-| `u` | Mark trainable moment |
-| `0` | Label "no errors" |
-| `1-9` | Label error codes |
-
----
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `MAXIM_LLM_ENABLED` | Enable LLM (1/true) |
-| `MAXIM_LLM_PROFILE` | Model profile name |
-| `MAXIM_LLM_QUANTIZATION` | Quantization level |
-| `MAXIM_PROMPT_PROFILE` | Prompt optimization profile |
-| `MAXIM_ROBOT_NAME` | Robot identifier |
-| `MAXIM_COMMS_ENABLED` | Enable SMS/Voice comms (1/true) |
-| `TWILIO_ACCOUNT_SID` | Twilio Account SID |
-| `TWILIO_AUTH_TOKEN` | Twilio Auth Token |
-| `TWILIO_FROM_NUMBER` | Twilio phone number |
-| `CUDA_VISIBLE_DEVICES` | GPU selection (empty for CPU) |
-
-### Config Files
-
-| File | Purpose |
-|------|---------|
-| `data/util/llm.json` | LLM configuration |
-| `data/util/phrase_responses.json` | Voice trigger mappings |
-| `data/util/key_responses.json` | Keyboard shortcuts |
-| `data/motion/default_actions.json` | Movement presets |
-| `data/prompts/planning/` | Recursive planning prompts |
-
----
-
-## Outputs
-
-Each run creates timestamped artifacts under `data/`:
-
-| Path | Content |
-|------|---------|
-| `videos/` | MP4 video recordings |
-| `audio/` | WAV audio recordings |
-| `transcript/` | JSONL transcripts |
-| `training/` | Trainable motor samples |
-| `vision/` | Vision event stream |
-| `logs/` | Run logs |
-| `plans/checkpoints/` | Goal tree checkpoints |
-| `plans/exports/` | Exported plan files |
-
----
-
-## GPU Acceleration
-
-Maxim auto-detects GPUs for vision, motor cortex, and LLM inference.
-
-```bash
-# Force CPU-only mode
-CUDA_VISIBLE_DEVICES="" maxim
-
-# Or use helper script
-./scripts/run_maxim_cpu.sh
-```
-
-### RTX 5080 / Blackwell Support
-
-Use `tensorflow[and-cuda]` for Blackwell-architecture GPUs:
-
-```toml
-# In pyproject.toml
-"tensorflow[and-cuda]>=2.15"
-```
-
----
-
-## Troubleshooting
-
-### Connection Issues
-
-Run diagnostics:
-```bash
-python scripts/check_reachy_connection.py --host <REACHY_IP>
-# Or: maxim-diagnostics --host <REACHY_IP>
-```
-
-### Common Issues
-
-| Issue | Solution |
-|-------|----------|
-| Port 8443 refused | Restart Reachy or run `reachyminios_check` |
-| Port 7447 refused | Check daemon: `systemctl status reachy-mini-daemon` |
-| Matplotlib crash | `rm -rf ~/.cache/matplotlib && fc-cache -f` |
-| Whisper segfaults | `MAXIM_WHISPER_COMPUTE_TYPE=float32 maxim` |
-| OpenCV Qt warnings | `MAXIM_DISABLE_IMSHOW=1 maxim` |
-
-### Debug Logging
-
-```bash
-maxim --verbosity 2
-```
-
----
-
-## Development
-
-### Running Tests
-
-```bash
-# Smoke tests
-bash src/tests/basic_vision.sh
-bash src/tests/basic_audio.sh
-bash src/tests/basic_move.sh --require-robot
-
-# Planning system tests
-python -c "
-import sys
-sys.path.insert(0, 'src')
-from maxim.planning import *
-# ... test code
-"
-```
-
-### Project Structure
-
-```
-Maxim/
-├── src/maxim/              # Main package
-│   ├── agents/             # Agent implementations + extracted LLM modules
-│   │                       #   (llm_types, llm_context, prompt_budgeter,
-│   │                       #    llm_fallback, prompt_builder)
-│   ├── attention/          # Spatial attention and gaze control
-│   ├── bridges/            # Cross-system integration bridges
-│   ├── comms/              # SMS/Voice communication (Twilio)
-│   ├── conscience/         # Reachy orchestration (Maxim class + mixins:
-│   │                       #   connection, vision_stream, agentic_runtime,
-│   │                       #   movement, input_handlers, media_loop, workers)
-│   ├── data/               # Camera/audio data utilities
-│   ├── decisions/          # NAc causal inference, significance heuristics
-│   ├── default_network/    # Reactive behavior layer, thalamic gating
-│   ├── energy/             # Resource expenditure tracking
-│   ├── environment/        # World observation (no side effects)
-│   ├── evaluation/         # Lightweight evaluators/metrics
-│   ├── hardware/           # Reachy hardware + simulation backends
-│   ├── harm/               # Predictive harm detection
-│   ├── inference/          # Observation/control functions
-│   ├── integration/        # MemoryHub coordinator
-│   ├── math/               # IPS, AngularGyrus, linalg
-│   ├── memory/             # Hippocampus, consolidation, context index
-│   ├── models/             # ML models (vision, audio, language, movement)
-│   ├── modes/              # Operating mode definitions and strategies
-│   ├── motion/             # Motion presets and actions
-│   ├── planning/           # Planning, decision engine, and policy
-│   ├── proprioception/     # Movement tracking and pain detection
-│   ├── runtime/            # Agentic orchestration
-│   ├── salience/           # Object-level salience and novelty
-│   ├── similarity/         # EC similarity + semantic embeddings
-│   ├── spatial/            # Spatial map and location priors
-│   ├── time/               # SCN temporal indexing
-│   ├── tools/              # Tool implementations (side effects)
-│   ├── training/           # Training pipelines
-│   └── utils/              # Config, logging, plotting, filesystem helpers
-├── data/                   # Runtime data and configs
-│   ├── prompts/            # LLM prompts
-│   ├── models/             # Downloaded model weights
-│   └── util/               # Configuration files
-├── scripts/                # Utility scripts
-└── tests/                  # Test suite
-```
-
----
-
-## Roadmap
-
-### Completed
-- Long-horizon planning with PlanDocument (phases, sub-goals, energy budgets)
-- LLM-driven goal decomposition via ExecAgent
-- Worker pool with typed lanes (infer, review, record)
-- Concurrent tool execution with conflict detection
-- Plan checkpointing and session persistence
-- Preemption circuit with soft preemption and rollback
-- FearAgent safety gating (code review, action review, pain prediction)
-- Memory consolidation and associative graph
-- Nine cross-system bridges (Spatial, Salience, Planning, Escalation, Fear, Pain, Energy, Communication, Math)
-- Contemplation loop: local chain-of-thought with adaptive thresholds, fast mode, and smart preemption
-
-### In Progress
-- Enhanced parallel execution via WorkerPool
-- Re-planning with failure context and alternative approaches
-- Energy-aware planning with per-phase budgets
-
-### Planned
-- Execution tracing and observability
-
----
-
-## License
-
-See [LICENSE](LICENSE) for details.
+Two independent dimensions control behavior:
+
+- **ProcessingState**: `awake` or `sleep` (sleep is a tool the agent calls; wakes on user input)
+- **OperationalMode**: `planning` (propose + approve), `supervised` (act within bounds), `autonomous` (full self-direction)
+
+See [docs/user/modes-guide.md](docs/user/modes-guide.md) for details.
+
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Getting Started](docs/user/getting-started.md) | First-run walkthrough |
+| [CLI Reference](docs/user/cli-reference.md) | All command-line flags |
+| [Python API](docs/user/python-api.md) | Programmatic usage |
+| [Simulation](docs/user/simulation.md) | Campaigns, scenarios, benchmarks |
+| [Modes](docs/user/modes-guide.md) | Operating modes and autonomy |
+| [LLM Setup](docs/user/llm-setup.md) | Model download and configuration |
+| [Peer Setup](docs/user/peer-setup.md) | Multi-machine / tunnel setup |
+| [Architecture](docs/reference.md) | Module map, bio-system glossary, planning system |
 
 ## Contributing
 
 Issues and PRs welcome at [github.com/dennys246/Maxim](https://github.com/dennys246/Maxim).
+
+## License
+
+See [LICENSE](LICENSE) for details.

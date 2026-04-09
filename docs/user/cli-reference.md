@@ -14,7 +14,7 @@ maxim [OPTIONS]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--mode` | str | `exploration` | Operating mode: `exploration`, `live`, `sleep`, `reflection`, `train`, `agentic` |
+| `--mode` | str | `agentic` | Operating mode: `agentic` (recommended). Legacy aliases (`exploration`, `live`, `sleep`, `reflection`, `train`) still accepted. |
 | `--robot-name` | str | `reachy_mini` | Robot identifier for Zenoh discovery |
 | `--home-dir` | str | `data` | Directory for outputs and state |
 | `--timeout` | int | `30` | Seconds to wait for robot connection |
@@ -63,7 +63,7 @@ maxim [OPTIONS]
 | `--autonomy-duration` | int | None | Timed autonomy in seconds |
 | `--internet-access` / `--no-internet` | bool | `False` | Enable or disable internet tools |
 
-## Exploration Mode (Legacy)
+## Exploration (Legacy)
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|

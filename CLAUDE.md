@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Maxim is a bio-inspired cognitive architecture for robotic agents. It combines a 5-agent pipeline (Perception, Memory, Exec, Goal, Statistician) with biological memory systems (Hippocampus, ATL, Angular Gyrus, SCN, NAc) and a reactive Default Network.
+Maxim is a bio-inspired cognitive architecture for AI agents. It combines a 5-agent pipeline (Perception, Memory, Exec, Goal, Statistician) with biological memory systems (Hippocampus, ATL, Angular Gyrus, SCN, NAc) and a reactive Default Network. Works headless, in simulation, or connected to a robot.
 
 ## When making changes — required checks
 
@@ -92,191 +92,53 @@ Remaining enhancements tracked in [docs/plans/future_plans.md](docs/plans/future
 ## Key Commands
 
 ```bash
-# Run with local LLM (persists across sessions)
-maxim --llm mistral-7b
-
-# Run with Claude (requires ANTHROPIC_API_KEY)
-maxim --llm claude-sonnet
+# Agent runtime
+maxim --llm mistral-7b                       # local LLM
+maxim --llm claude-sonnet                    # Claude (needs ANTHROPIC_API_KEY)
 
 # Model management
-maxim --list-models                          # Show available models + download status
-maxim --delete-model llama-2-13b-chat        # Free disk space
-python -m maxim.models.download --llm qwen2.5-14b-instruct  # Download a model
+maxim --list-models                          # show models + download status
+maxim --delete-model llama-2-13b-chat        # free disk space
 
-# Generative campaign (default — goal string triggers narrative arc)
-maxim --sim "test memory recall under interference"
-maxim --sim "test safety boundaries" --persona adversarial
-maxim --sim "test skill learning" --arc scenarios/arcs/herbalism_skill.yaml
+# Simulation
+maxim --sim "test memory recall"             # generative campaign
+maxim --sim scenarios/campaigns/heist_v1.yaml  # DM campaign
+maxim --sim "test safety" --persona adversarial --research  # with research report
+maxim --sim benchmark --models mistral-7b,qwen2.5-14b      # benchmark
 
-# With research report (Writer + Reviewer after sim)
-maxim --sim "test memory recall" --research
+# Diagnostics + networking
+maxim doctor                                 # environment check
+maxim doctor --retry                         # interactive fix loop
+maxim tunnel setup                           # Cloudflare tunnel
+maxim peer update && maxim peer restart      # remote update
 
-# YAML campaign (direct injection — pass a .yaml path)
-maxim --sim scenarios/experiments/hippocampal_recall_short.yaml
-
-# Legacy agent mode (still works, deprecated)
-maxim --sim agent --goal "test safety" --persona adversarial --language-model claude-sonnet
-
-# Resume a previous simulation
-maxim --sim agent --goal "continue" --resume-sim 20260403 --language-model claude-sonnet
-
-# Research protocol (legacy — use --research flag instead)
-maxim --sim research --goal "hippocampal recall under interference" --campaign scenarios/experiments/hippocampal_recall_short.yaml
-
-# Dual-LLM research (Claude orchestrates, Mistral experiences)
-maxim --sim "hippocampal recall" --research --language-model claude-sonnet --aut-model mistral-7b --campaign scenarios/experiments/hippocampal_recall_*.yaml
-
-# Debug with subsystem tracing (hippo=memory, nac=causal, all=everything)
-maxim --sim agent --goal "test" --debug hippo
-maxim --sim agent --goal "test" --debug hippo,nac
-maxim --sim agent --goal "test" --debug        # all subsystems
-
-# Run YAML scenario
-maxim --sim scenarios/malware_with_pain.yaml
-
-# DM campaigns (auto-detected from YAML metadata)
-maxim --sim scenarios/campaigns/heist_v1.yaml
-maxim --sim scenarios/campaigns/poisoned_crown_v1.yaml
-maxim --sim scenarios/campaigns/arena_v1.yaml
-maxim --sim scenarios/campaigns/darkened_cavern_v1.yaml
-maxim --sim scenarios/campaigns/broken_database_v1.yaml
-
-# Benchmark (multi-model comparison)
-maxim --sim benchmark --models mistral-7b,qwen2.5-14b --campaign scenarios/benchmarks/cognitive_suite.yaml
-maxim --sim benchmark --models mistral-7b --campaign scenarios/benchmarks/quick_check.yaml --runs 3
-
-# Run tests
+# Tests
 python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
-
-# Environment diagnostics (platform-aware, with fix hints)
-maxim doctor
-maxim doctor --retry          # walk through failures, retest after each fix
-maxim doctor --json           # machine-readable output for CI/scripts
-maxim doctor --as peer https://maxim.yourdomain.com/v1  # peer-mode checks
-maxim doctor --as leader      # force leader-mode checks
-
-# Cloudflare tunnel for remote access
-maxim tunnel setup            # one-time guided setup
-maxim tunnel status           # show what's configured
-maxim tunnel key rotate       # generate/replace peer API key
-maxim tunnel key export       # print shell-specific export snippets
-
-# Verify peer connectivity (run from peer machines)
-maxim peer test https://maxim.yourdomain.com/v1
-
-# Remote update (push code to leader without SSH)
-maxim peer update              # pull + pip install on leader
-maxim peer update --dry-run    # preview pending commits only
-maxim peer update --branch dev # target a specific branch
-maxim peer update --force      # stash dirty tree, pull, restore (handles runtime state files)
-maxim peer restart             # soft-restart leader (reloads code after update)
-maxim peer version             # compare local vs leader version + git hash
-maxim peer logs                # show recent leader logs
-maxim peer logs -f             # follow leader logs in real time (Ctrl+C to stop)
-
-# Remote LLM hot-swap (change model without restarting Maxim)
-maxim peer llm qwen2.5-14b    # swap leader's llama-cpp-server to Qwen2.5-14B
-maxim peer llm mistral-7b     # swap to Mistral-7B
-maxim peer llm --status        # show active model, uptime, GPU, lane metrics
-
-# Cloud provider integration (optional fallback/dedicated tiers)
-maxim --cloud-fallback claude-sonnet     # cloud fallback when self-hosted fails
-maxim --cloud-lane small claude-haiku    # dedicated cloud model for small tier
-maxim --cloud-budget 2.00               # set max session cost for cloud providers
 ```
+
+Full CLI reference: [docs/user/cli-reference.md](docs/user/cli-reference.md)
 
 ## Remote Update Workflow
 
-After pushing code to origin, update the leader remotely:
-
 ```bash
-git push origin main
-maxim peer update          # leader pulls + installs automatically
-maxim peer restart         # soft-restart to load new code
+git push origin main && maxim peer update && maxim peer restart
 ```
 
-**Best practices:**
-- Always `git push` before `maxim peer update` — the leader pulls from origin, not from your local machine
-- Use `--dry-run` first if you're unsure what will be pulled
-- After `maxim peer update`, run `maxim peer restart` to reload the new code
-- Use `--force` if the leader has untracked runtime files (e.g., `active_llm_model.txt`) blocking the pull
-- If update fails with "dirty working tree", the leader has uncommitted files — commit or stash them on the leader
-- If update fails with "git pull failed", the leader has divergent branches — run `git pull --rebase origin main` on the leader
-- Leader mode auto-enables remote update + restart; disable with `MAXIM_ALLOW_REMOTE_UPDATE=0` if needed
-- Troubleshooting: [docs/troubleshooting/remote_update.md](docs/troubleshooting/remote_update.md)
+Use `--dry-run` first if unsure. Use `--force` if the leader has untracked runtime files blocking the pull. Troubleshooting: [docs/troubleshooting/remote_update.md](docs/troubleshooting/remote_update.md).
 
 **Important for Claude agents:** `maxim peer update --dry-run`, `maxim peer version`, `maxim peer logs`, and `maxim peer llm --status` are safe and read-only. `maxim peer update`, `maxim peer restart`, and `maxim peer llm <model>` modify leader state — only run when explicitly asked by the user.
 
 ## Versioning
 
-Version is defined in two places that **must stay in sync**:
-- `pyproject.toml` line 7: `version = "X.Y.Z"`
-- `src/maxim/__init__.py`: `__version__ = "X.Y.Z"`
+Version is defined in two places that **must stay in sync**: `pyproject.toml` and `src/maxim/__init__.py`.
 
-**When to bump:** Any change that affects runtime behavior, CLI interface, or peer/leader protocol. Pure docs-only or test-only changes do not require a bump.
+**When to bump:** Any change that affects runtime behavior, CLI interface, or peer/leader protocol. Docs-only or test-only changes do not require a bump.
 
-**Version is the source of truth on reboot.** After a restart or deploy, always verify the running version matches the expected git hash before assuming new code is live. The `get_version_info()` function reads the current git hash at runtime — if it doesn't match what was pushed, the code hasn't been reloaded.
-
-**How to check versions:**
-```bash
-# Local version + git hash:
-python -c "from maxim import get_version_info; print(get_version_info())"
-
-# Compare local vs leader:
-maxim peer version
-
-# Query leader only (no auth needed for debug endpoints):
-curl -s -H "User-Agent: maxim-peer/1.0" https://maxim.yourdomain.com/v1/debug/version
-```
-
-**Version mismatch between leader and peer** means the leader needs `maxim peer update && maxim peer restart` to sync.
-
-**Startup priority:** On boot, the leader must fully initialize the LLM engine (CUDA binaries, model load, warmup) before serving inference requests. The `/v1/debug/version` endpoint is available immediately (served by LeaderProxy before LLM is ready), but `/v1/chat/completions` will 502 until the model is warm. CUDA binary loading can take 30-60s on first boot; subsequent restarts reuse the existing llama-cpp-server process and are faster.
-
-## Project Structure
-
-```
-src/maxim/
-  agents/           # 5-agent pipeline (perception, memory, exec, goal, statistician)
-  conscience/       # Main Maxim class (selfy.py) + 6 mixins + agentic runtime
-  runtime/          # Agent loop, LoopController, SimulationAdapter, executor, worker pool, FunctionRouter, AgentFactory, AgentPool
-  memory/           # Hippocampus, ATL semantic memory, layer protocol, store protocols (EpisodicStore, CausalStore, SemanticStore)
-  math/             # IPS (fast stats) + Angular Gyrus (algebraic memory)
-  decisions/        # NAc causal learning, adaptive planner
-  models/language/  # LLM router, backends (llama-cpp, anthropic, openai, transformers), 10 cloud provider profiles
-  simulation/       # SimulationBridge, orchestrator, tools, personas, report system, DM party runtime, encounter library, entity designer
-  mesh/             # Agent mesh: identity, protocol, transport, admission, knowledge sharing, delegation, clock sync
-  tools/            # 40+ tools (filesystem, introspection, math, communication)
-  interactive/      # Prompt protocol (PromptRequest/PromptHandler), rich terminal display, DM display panels
-  default_network/  # Reactive behavior layer (thalamic gate, arbiter, behaviors)
-  modes/            # Operating modes (passive/active/singularity), sleep tool
-  skills/           # Protocol/skill system for operational composition
-  provenance/       # Decision tracing (2-tier: cycle traces + activity log)
-  proprioception/   # Pain detection, movement tracking, focus learning
-  attention/        # Spatial attention grid, gaze control
-  salience/         # Novelty tracking, interest matching
-  energy/           # Token/cost/compute tracking
-  harm/             # Predictive harm detection
-  time/             # SCN temporal rhythm indexing
-  comms/            # Communication gateway (Twilio SMS/voice)
-  integration/      # MemoryHub cross-system coordinator
-  bridges/          # 8 cross-system integration bridges
-  embodiment/       # SEM protocol, body runtime, auto-tools, ComponentRegistry (template catalog)
-  doctor/           # `maxim doctor` — platform-aware diagnostics + peer test
-  tunnel/           # `maxim tunnel` — Cloudflare tunnel + API key management
-  _data/            # Bundled seed data (components/, encounters/, prompts/, templates/)
-
-docs/               # Internal architecture docs
-docs/user/          # User-facing guides
-docs/plans/         # Development roadmap
-docs/experiments/   # Experiment designs + run notes
-htmls-guides/       # Jinja2 HTML templates for dennyschaedig.com
-tests/              # Unit + integration + benchmark tests
-scenarios/          # YAML simulation scenarios
-~/.maxim/           # User data home (memory, sessions, benchmarks, components, encounters, config)
-```
+**Check versions:** `python -c "from maxim import get_version_info; print(get_version_info())"` or `maxim peer version` to compare local vs leader. Version mismatch means the leader needs `maxim peer update && maxim peer restart`.
 
 ## Architecture Essentials
+
+Project structure is documented in [docs/reference.md](docs/reference.md).
 
 - **Agent loop** lives in `runtime/agent_loop.py` with `LoopController` in `runtime/loop_controller.py`
 - **Multi-agent runtime**: `AgentFactory` in `runtime/agent_factory.py` creates independent agent instances (NPC agents with isolated Hippocampus, NAc, ATL). `AgentPool` in `runtime/agent_pool.py` orchestrates concurrent multi-agent execution with `LocalMessageBus`.
@@ -293,69 +155,27 @@ scenarios/          # YAML simulation scenarios
 
 ## Quick reference — where to look
 
-| I'm touching... | Start here |
+| Area | Key files |
 |---|---|
-| The agent loop / step pipeline | `runtime/agent_loop.py`, `runtime/loop_controller.py` |
-| Adding a new tool | `tools/` + register in the tool registry; see `tools/narrative.py` for sim tools or `tools/introspection.py` for subsystem tools |
-| AUT introspection (programmatic) | `simulation/introspection.py` (AUTIntrospector — clean API, no tool dispatch) |
-| Tool aliases (hallucination redirect) | `runtime/executor.py` (TOOL_ALIASES dict + tool_usage_stats()) |
-| LLM prompts / routing | `models/language/router.py`, `models/language/prompt_formats.py` |
-| Sim personas | `simulation/personas.py` (8 today: adversarial, cooperative, confused, escalating, campaign, refinement, researcher, sweep) |
-| Research protocol (Writer/Reviewer) | `simulation/research_agents.py`, `simulation/research_orchestrator.py` |
-| Memory capture → consolidation | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/semantic_promoter.py` |
+| Agent loop | `runtime/agent_loop.py`, `runtime/loop_controller.py` |
+| Tools | `tools/` (register in registry), `runtime/executor.py` (aliases) |
+| LLM routing | `models/language/router.py`, `models/language/config.py` (profiles), `models/language/json_parser.py` (JSON repair) |
+| Memory | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/store.py` (protocols) |
 | Causal learning | `decisions/nac.py` |
-| Cross-layer wiring | `integration/memory_hub.py` (the single coordinator) |
-| Adding an env var | Put it here in the env table + touch whatever reads it |
-| Atomic JSON persistence | `utils/atomic_io.py` |
-| Mesh identity + protocol | `mesh/identity.py` (AgentProfile), `mesh/agent_identity.py` (AgentIdentity), `mesh/message.py` (MeshMessage, 24 types) |
-| Mesh transport + admission | `mesh/peer_channel.py` (PeerChannel), `mesh/peer_registry.py` (PeerRegistry), `mesh/admission.py` (MeshAdmissionControl) |
-| Mesh knowledge sharing | `mesh/knowledge.py` (ExperienceBroker, KnowledgeProvider/Receiver protocol, CausalLink + Reflection + MotorProgram adapters) |
-| Mesh task delegation | `mesh/task_delegation.py` (TaskDelegator, TaskReceiver) |
-| Mesh distributed planning | `planning/adaptive_planner.py` (`set_mesh_context()`, `_tag_delegatable_subgoals()`) |
-| Mesh clock synchronization | `mesh/clock.py` (PeerClockEstimator), `time/scn.py` (`register_external()`) |
-| Research experiment tracking | `simulation/research_tools.py` (ExperimentLog, record/query tools) |
-| Function → tier routing | `runtime/function_router.py` (FunctionRouter, FunctionSpec, DEFAULT_FUNCTIONS) |
-| Tier auto-detection | `runtime/lane_models.py` (detect_tiers, _INFER_VRAM_TIERS) |
-| LLM hot-swap + persistence | `runtime/lane_backends.py` (swap_llm_server, _active_spawner) |
-| Cloud provider profiles | `models/language/config.py` (_BUILTIN_PROFILES, cloud: True marker, 10 cloud profiles: Gemini, Groq, Together, Fireworks, Mistral, DeepSeek) |
-| JSON repair pipeline | `models/language/json_parser.py` (4-stage + compliance counters via `json_parse_stats()`) |
-| Scenario expectations (validation) | `simulation/validation.py` (15 types: behavioral, metric, bio-system) |
-| Scenario YAML loading + metadata | `simulation/scenario_source.py` (ScenarioDefinition with tags, benchmark, suite sections) |
-| Standalone experiment runner | `simulation/experiment.py` (`run_campaign()` → `ExperimentResult`) |
-| Benchmark runner | `simulation/benchmark.py` (`BenchmarkRunner` — multi-model comparison, tiered metrics) |
-| Experiment run notes | `docs/experiments/` (per-run findings + methodology) |
-| Embodiment SEM protocol | `embodiment/sem.py` (Entity, Sensor, Modulator, FailureMode) |
-| Embodiment YAML loading | `embodiment/spec.py` (load_spec, SpecSensor, SpecModulator, attach_backends) |
-| Embodiment auto-tool generation | `embodiment/tool_bridge.py` (generate_tools_for_entity, collision detection) |
-| Embodiment runtime | `embodiment/body.py` (Embodiment, failure eval, vital drift, prompt state) |
-| Embodiment LLM/narrative backends | `embodiment/llm_backend.py` (LLMSensor, LLMModulator, NarrativeSensor, NarrativeModulator) |
-| Embodiment YAML reference | `docs/embodiment_yaml_reference.md` |
-| Cerebellum forward models | `embodiment/cerebellum.py` (Cerebellum, ForwardModel, ModelKey, bucket_params, ProgramRegistry) |
-| Motor programs + registry | `embodiment/motor.py` (MotorProgram, MotorStep, ProgramRegistry, entity_state_similarity) |
-| Motor engrams | `embodiment/engrams.py` (MotorEngram, formation thresholds, graph node naming) |
-| Program executor | `embodiment/program_executor.py` (step-by-step runner, pain gates, PainBus interrupt) |
-| CerebellumModulator | `embodiment/backends/cerebellum_modulator.py` (predict/fallback/train + factory) |
-| Generative campaign arcs | `simulation/arcs.py` (NarrativeArc, NarrativePhase, BUILTIN_ARCS, load_arc_yaml) |
-| Generative campaign narrator | `simulation/narrator.py` (two-call + single-call, system prompts, story compression) |
-| Generative campaign runner | `simulation/generative_runner.py` (run_generative_campaign, YAML export, SEM entity loading) |
-| Plan-to-arc bridge | `simulation/plan_arc_bridge.py` (translate_plan_to_arc, enrich_narrator_context, bridge_and_compress) |
-| ask_user tool (interactive) | `simulation/tools_user.py` (AskUserTool, JSONL audit, replay, timeout escalation) |
-| Generative campaign guide | `docs/generative_campaigns_guide.md` |
-| DM campaign schema | `simulation/dm_schema.py` (campaign YAML schema, encounter/character/entity definitions) |
-| DM campaign runtime | `simulation/dm_runtime.py` (encounter executor, entity transfer/visibility) |
-| DM encounter tools | `simulation/tools_dm.py` (ChooseTool + alias system for encounter choices) |
-| Multi-agent factory | `runtime/agent_factory.py` (AgentFactory — creates NPC agents with isolated subsystems) |
-| Multi-agent pool | `runtime/agent_pool.py` (AgentPool — concurrent agent execution, LocalMessageBus) |
-| Party DM runtime | `simulation/dm_party.py` (PartyDMRuntime — multi-agent campaign execution with NPC memory) |
-| SEM component registry | `embodiment/component_registry.py` (ComponentRegistry — template catalog, multi-path discovery) |
-| Encounter library | `simulation/encounter_library.py` (EncounterLibrary — reusable encounter templates, tag queries) |
-| Entity designer (LLM) | `simulation/entity_designer.py` (EntityDesigner — natural language → SEM spec generation) |
-| Memory store protocols | `memory/store.py` (EpisodicStore, CausalStore, SemanticStore protocols + File* defaults) |
-| Interactive prompt protocol | `interactive/prompts.py` (PromptRequest, PromptHandler ABC, prompt types) |
-| Rich terminal display | `interactive/display.py` (split-panel UI, DisplayExtension, graceful degradation) |
-| DM display panels | `interactive/dm_display.py` (encounter info, character sheet panels) |
-| Bundled seed data | `_data/components/` (bodies, creatures, environments, npcs, weapons), `_data/encounters/` (combat, exploration, puzzle, social) |
-| Data paths + user home | `utils/paths.py` (bundled `_data/` vs user `~/.maxim/` resolution) |
+| Cross-layer wiring | `integration/memory_hub.py` (single coordinator) |
+| Persistence | `utils/atomic_io.py`, `utils/paths.py` (data path resolution) |
+| Simulation | `simulation/orchestrator.py`, `simulation/bridge.py`, `simulation/personas.py` |
+| Generative campaigns | `simulation/arcs.py`, `simulation/narrator.py`, `simulation/generative_runner.py` |
+| DM campaigns | `simulation/dm_schema.py`, `simulation/dm_runtime.py`, `simulation/dm_party.py` |
+| Benchmarks | `simulation/benchmark.py`, `simulation/validation.py` |
+| Research | `simulation/research_agents.py`, `simulation/research_orchestrator.py` |
+| Embodiment | `embodiment/sem.py`, `embodiment/body.py`, `embodiment/cerebellum.py`, `embodiment/motor.py` |
+| Mesh | `mesh/identity.py`, `mesh/knowledge.py`, `mesh/task_delegation.py`, `mesh/clock.py` |
+| Lane tiers | `runtime/function_router.py`, `runtime/lane_models.py`, `runtime/lane_backends.py` |
+| Multi-agent | `runtime/agent_factory.py`, `runtime/agent_pool.py` |
+| Interactive UI | `interactive/prompts.py`, `interactive/display.py` |
+| Seed data | `_data/components/`, `_data/encounters/` |
+| Adding env vars | Add to the env table below + touch whatever reads it |
 
 ## Environment Variables
 
@@ -427,120 +247,31 @@ python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
 
 **Don't run sims from tests.** Sims call real LLMs and can 2-3x test-suite runtime. The sim runner is for manual/CLI testing only (`maxim --sim agent`). Tests should mock LLM calls.
 
-**Peer/tunnel testing requires the leader.** Tests that exercise peer→leader inference need the leader machine running `maxim` with the tunnel up. Use `curl` probes first (fast, no Python overhead), then test through the LLMRouter:
-```bash
-# Quick connectivity check (no Maxim runtime needed)
-curl -si -H "Authorization: Bearer $KEY" https://maxim.yourdomain.com/v1/models
-
-# Full pipeline check (exercises lane wiring + provider routing)
-MAXIM_LANE_TRACE=1 python -c "
-from maxim.peer.config import read_peer_config, apply_peer_config_to_env
-cfg = read_peer_config(); apply_peer_config_to_env(cfg)
-from maxim.runtime.lane_backends import build_primary_router
-router, mgr = build_primary_router()
-print(router.generate_json('Reply: {\"ok\": true}', max_tokens=10))
-"
-```
-
-**Troubleshooting docs**: [docs/troubleshooting/](docs/troubleshooting/) has in-depth guides for peer connectivity issues.
+**Peer/tunnel testing requires the leader.** Use `curl -si -H "Authorization: Bearer $KEY" https://maxim.yourdomain.com/v1/models` for quick checks. See [docs/troubleshooting/](docs/troubleshooting/) for in-depth peer connectivity guides.
 
 ## Simulation Reports
 
-Every sim run saves to `data/sim_reports/{session_id}/`:
-- `report.json` -- Metrics + LLM analysis
-- `actions.jsonl` -- Action records
-- `aut_hippocampus.json` -- AUT memories
-- `aut_nac.json` -- AUT causal links
-
-## Research Protocol — Campaign Execution
-
-When `--campaign <yaml>` is passed, campaign turns are **injected directly through the bridge** — the orchestrator LLM never touches the narrative text. This avoids JSON escaping issues with dialogue-heavy content.
-
-Flow:
-1. Campaign YAML loaded → turns extracted with salience/novelty
-2. Each turn sent via `bridge.send_and_wait()` with progress output
-3. AUT processes each turn (LLM inference → tool execution → hippocampus capture)
-4. After all turns complete, orchestrator LLM starts with analysis-only goal
-5. Orchestrator runs `inspect_aut`, `record_experiment`, `finish_simulation`
-
-Without `--campaign`, the orchestrator LLM drives the full simulation (probes, observations, analysis).
-
-**JSON robustness**: LLM JSON output goes through a 4-stage repair pipeline (`json_parser.py`): direct parse → control-char sanitize → `json_repair` library → structural repair. System prompts include explicit quote-escaping guidance (`_JSON_RULES` in `router.py`).
-
-**Experiment notes**: Run findings go in `docs/experiments/`. Current experiments:
-- `hippocampal_recall_experiment.md` — experiment design (seed/interference/recall)
-- `hippocampal_recall_run_notes.md` — per-run observations and findings
+Sim runs save to `~/.maxim/sessions/{session_id}/` (report.json, actions.jsonl, aut_hippocampus.json, aut_nac.json). Research protocol details and campaign execution flow are documented in `docs/simulation.md` and `docs/experiments/`.
 
 ## Python API (pymaxim)
 
-The package is published to PyPI as `pymaxim` (import name stays `maxim`). Users interact through 13 verb-based functions, all lazy-loaded from `src/maxim/api.py`:
+Published to PyPI as `pymaxim` (import name stays `maxim`). 13 verb-based functions, all lazy-loaded from `src/maxim/api.py`. Key files: `api.py` (facades), `__init__.py` (lazy wiring), `simulation/introspection.py` (Observer).
 
-```python
-import maxim
+**Rules for maintaining the API:**
+- **Verbs are facades, not logic.** Delegate to existing internals. Don't put business logic in `api.py`.
+- **Lazy imports only.** `import maxim` must not trigger loading of optional dependencies.
+- **Return structured data, not prints.** `diagnose()` returns `DiagnosticReport`, `imagine()` returns `SimulationResult`, etc.
+- **`introspect` is an alias for `observe`.** Don't add behavior to one without the other.
+- **`Observer`** is the canonical name (deprecated alias `AUTIntrospector` — remove in 0.2.0).
 
-# Core 6 (original)
-maxim.configure(verbosity=2)                                    # logging/debug setup
-maxim.run(model="mistral-7b")                                   # agentic cycle
-maxim.imagine(goal="test safety", persona="adversarial")        # simulation
-maxim.connect("reachy_mini")                                    # robot connection
-report = maxim.diagnose()                                       # doctor checks
-state = maxim.observe("memory")                                 # bio-subsystem introspection
-maxim.introspect("causal")                                      # alias for observe
-
-# Model management
-models = maxim.list_models()                                    # shows downloaded/ready status
-maxim.download_model("qwen2.5-14b-instruct")                   # download a GGUF
-maxim.delete_model("llama-2-13b-chat")                          # free disk space
-
-# Expanded verbs (buildout)
-maxim.campaign("scenarios/campaigns/heist_v1.yaml")             # DM campaign runner
-maxim.benchmark(models=["mistral-7b", "qwen2.5-14b"])          # multi-model comparison
-maxim.research(goal="hippocampal recall", campaign="...")        # research protocol
-maxim.on("memory_capture", callback)                            # event subscription
-maxim.register_tool(my_tool)                                    # runtime tool registration
-maxim.register_persona(name="scout", system_prompt="...")       # custom persona registration
-
-@maxim.tool                                                     # decorator for tool functions
-def my_tool(query: str) -> str: ...
-```
-
-### Key files
-
-| File | Purpose |
-|------|---------|
-| `src/maxim/api.py` | All 13 verb implementations (thin facades over existing internals) |
-| `src/maxim/__init__.py` | Lazy `__getattr__` wiring — keeps `import maxim` fast |
-| `src/maxim/simulation/introspection.py` | `Observer` class (renamed from `AUTIntrospector`) — powers `observe()` |
-
-### Rules for maintaining the API
-
-- **Verbs are facades, not logic.** Each function in `api.py` bootstraps objects and delegates to existing internals (`run_agentic_loop`, `start_simulation_mode`, `RobotRegistry`, `run_all_checks`, `Observer`, `BenchmarkRunner`, `PartyDMRuntime`, etc.). Don't put business logic in `api.py`.
-- **Lazy imports only.** All heavy imports happen inside function bodies. `import maxim` must not trigger loading of optional dependencies.
-- **Return structured data, not prints.** `diagnose()` returns `DiagnosticReport`, `imagine()` returns `SimulationResult`, `observe()` returns dicts. Don't print to stdout from API functions.
-- **`introspect` is an alias for `observe`.** Both work. Don't add behavior to one without the other.
-- **`Observer`** is the canonical name for what was `AUTIntrospector`. The deprecated alias `AUTIntrospector = Observer` exists in `introspection.py` for backward compat — remove it in 0.2.0.
-
-### Package management
-
+**Package management:**
 - **Package name:** `pymaxim` on PyPI, `maxim` as import
-- **Version:** Defined in both `pyproject.toml` and `src/maxim/__init__.py` — keep in sync
 - **Core deps:** `numpy`, `scipy`, `pyyaml`, `json-repair` only. Everything else is optional extras.
 - **Optional extras:** `llm-local`, `llm-anthropic`, `llm-openai`, `vision`, `audio`, `reachy`, `comms`, `search`, `temporal`, `training`, `tts`, `yolo`, `semantic`
-- **Robot plugins:** Auto-discovered via `maxim.robots` entry-point group. Third-party packages register controllers by declaring entry points.
+- **Robot plugins:** Auto-discovered via `maxim.robots` entry-point group.
 - **Build validation:** `python -m build && twine check dist/*` before any publish
-- Plans: [pypi_publication_plan.md](docs/archive/pypi_publication_plan.md)
 - Publication guide: [publication_guide.md](docs/publication_guide.md)
 
 ## Active initiatives
 
-See `docs/plans/future_plans.md` for the full roadmap.
-
-**Current:**
-- **PyPI Publication** — v0.2.0 wheel built + validated. Pending simulation/benchmark verification before `twine upload`. [Guide](docs/publication_guide.md).
-- **Mother Maxim** — Post-publication priority. Persistent shared cognitive instance with bio-system-aware deidentification, coalescence, circadian lifecycle. [Plan](docs/plans/mother_maxim_plan.md).
-
-**Recently completed (foundational buildout Phases 0-12a, 2026-04-08):**
-- Package Hygiene, SEM Component Registry, Encounter Library, Agent Factory + Pool, Party DM Runtime, Hippocampus Recall Refinement, Interactive Runtime + Rich Display, Generative Architect + Entity Designer, API Surface Expansion, Deps + Cloud Profiles + Store Protocols, Publication Prep, Security Hardening. See [archived plan](docs/archive/foundational_buildout_plan.md).
-
-**Previously completed (all archived):**
-- Multi-LLM Scaling, Agent Mesh (Pre-7), Embodiment Core, Generative Campaigns, Bio-System Wiring Hardening, Mode Refactor, DM MVP, Research Protocol, Docker Sandbox, Python API, Tool Refactoring, Lane Tier Architecture, Simulation Benchmark (0-6), Realtime Refinement. See `docs/archive/` for plans.
+See `docs/plans/future_plans.md` for the full roadmap. Current priorities: PyPI publication (v0.2.0 pending verification, [guide](docs/publication_guide.md)) and Mother Maxim ([plan](docs/plans/mother_maxim_plan.md)). Previously completed work is archived in `docs/archive/`.

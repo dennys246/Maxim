@@ -337,6 +337,26 @@ BLOCKED_SHELL_COMMANDS = {
 }
 
 
+import re as _re
+
+# Regex patterns for shell constructs that the exact-string blocklist
+# above can miss (e.g. extra whitespace, quoting tricks).  This is
+# defense-in-depth alongside the builtins override — not a standalone
+# security boundary.
+_SHELL_PATTERN_BLOCKLIST: list[tuple[_re.Pattern[str], str]] = [
+    (_re.compile(r"\bbash\s+-c\b", _re.IGNORECASE), "bash -c shell invocation"),
+    (_re.compile(r"\bsh\s+-c\b", _re.IGNORECASE), "sh -c shell invocation"),
+    (_re.compile(r"\bzsh\s+-c\b", _re.IGNORECASE), "zsh -c shell invocation"),
+    (_re.compile(r"\beval\s+", _re.IGNORECASE), "eval shell invocation"),
+    (_re.compile(r"\bsource\s+", _re.IGNORECASE), "source shell invocation"),
+    (_re.compile(r"\bfind\b.*-exec\b", _re.IGNORECASE), "find -exec command execution"),
+    (_re.compile(r"\bxargs\b", _re.IGNORECASE), "xargs command execution"),
+    (_re.compile(r"\bpython[23]?\s+-c\b", _re.IGNORECASE), "python -c inline execution"),
+    (_re.compile(r"\bperl\s+-e\b", _re.IGNORECASE), "perl -e inline execution"),
+    (_re.compile(r"\bruby\s+-e\b", _re.IGNORECASE), "ruby -e inline execution"),
+]
+
+
 def _check_shell_script_safety(script_content: str) -> tuple[bool, str | None]:
     """Check if shell script is safe to execute.
 
@@ -348,6 +368,11 @@ def _check_shell_script_safety(script_content: str) -> tuple[bool, str | None]:
     for blocked in BLOCKED_SHELL_COMMANDS:
         if blocked.lower() in content_lower:
             return False, f"Script contains blocked command/pattern: {blocked}"
+
+    # Regex pattern checks (catch whitespace/quoting variations)
+    for pattern, description in _SHELL_PATTERN_BLOCKLIST:
+        if pattern.search(script_content):
+            return False, f"Script contains blocked pattern: {description}"
 
     # Check for network commands
     if any(cmd in content_lower for cmd in ["curl", "wget", "nc ", "netcat"]):

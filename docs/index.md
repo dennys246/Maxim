@@ -45,13 +45,13 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | [Embodiment Guide](embodiment_guide.md) | SEM protocol, entity specs, sensors, modulators, failure modes |
 | [Embodiment YAML Reference](embodiment_yaml_reference.md) | YAML format for body/entity definitions |
 | [Generative Campaigns](generative_campaigns_guide.md) | Narrative arc system, narrator, campaign modes |
-| [DM Campaigns](dm_campaigns_guide.md) | Bundled SEM characters, encounter choices, cascade DAG, 4 showcase campaigns |
+| [DM Campaigns](user/dm-campaigns.md) | Bundled SEM characters, encounter choices, cascade DAG, 4 showcase campaigns |
 
 ### Communication
 
 | Document | Description |
 |----------|-------------|
-| Communication | SMS/Voice via Twilio, webhook setup, Cloudflare Tunnel (doc not yet written; see `src/maxim/comms/`) |
+| Communication | SMS/Voice via Twilio, webhook setup, Cloudflare Tunnel. See `src/maxim/comms/` and [tunnel setup](../docs/user/peer-setup.md). |
 
 ### Planning & Workspace
 
@@ -75,7 +75,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 
 | Document | Description |
 |----------|-------------|
-| [Agent Mesh Guide](../htmls-guides/maxim-agent-mesh.html) | Identity, protocol, transport, knowledge sharing, delegation |
+| Agent Mesh Guide ([HTML](../htmls-guides/maxim-agent-mesh.html)) | Identity, protocol, transport, knowledge sharing, delegation |
 
 ---
 
@@ -190,7 +190,7 @@ src/maxim/
 ├── agents/          → AGENTS.md (+ modality.py SensoryModality/SensoryTag, sensory_gate.py SensoryGate)
 ├── attention/       → attention.md
 ├── bridges/         → bridges.md
-├── comms/           → (SMS/Voice communication; doc not yet written)
+├── comms/           → (SMS/Voice communication; see user/peer-setup.md for tunnel)
 ├── conscience/      → ARCHITECTURE.md (conscience section)
 ├── data/            → (camera/audio data utilities)
 ├── decisions/       → decisions.md (NAc causal learning, AdaptivePlanner, significance)

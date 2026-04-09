@@ -102,6 +102,34 @@ class TestShellBlocklist:
         for cmd in ["curl", "wget", "sudo", "rm -rf /", "/etc/passwd"]:
             assert cmd in BLOCKED_SHELL_COMMANDS, f"Missing original: {cmd}"
 
+    def test_pattern_blocklist_catches_whitespace_variants(self):
+        from maxim.utils.sandbox_executor import _check_shell_script_safety
+
+        # Exact match already works via BLOCKED_SHELL_COMMANDS;
+        # pattern blocklist catches whitespace/quoting variants
+        unsafe_scripts = [
+            "bash  -c 'echo pwned'",  # extra whitespace
+            "python3 -c 'import os'",
+            "perl -e 'system(\"rm -rf /\")'",
+            "ruby -e 'exec(\"sh\")'",
+        ]
+        for script in unsafe_scripts:
+            is_safe, reason = _check_shell_script_safety(script)
+            assert not is_safe, f"Should block: {script}"
+            assert reason is not None
+
+    def test_pattern_blocklist_allows_safe_scripts(self):
+        from maxim.utils.sandbox_executor import _check_shell_script_safety
+
+        safe_scripts = [
+            "echo hello world",
+            "ls -la /tmp",
+            "cat file.txt | grep pattern",
+        ]
+        for script in safe_scripts:
+            is_safe, reason = _check_shell_script_safety(script)
+            assert is_safe, f"Should allow: {script} (blocked: {reason})"
+
 
 # ── 1n: Memory module exports ────────────────────────────────────────────────
 

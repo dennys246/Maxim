@@ -11,6 +11,8 @@ from maxim.simulation.sandbox import (
     PainTriggerLayer,
     SensitiveFile,
     TmpdirSandbox,
+    _build_sensitive_files,
+    _CONTAINER_SENSITIVE_PATHS,
     _extract_paths_from_command,
     create_sandbox,
 )
@@ -156,8 +158,13 @@ class TestPainTriggerLayer:
         layer.cleanup()
 
     def test_read_ssh_key_fires_pain(self):
+        # Use a custom sensitive file targeting the honeypot path that exists
+        # in DEFAULT_ENVIRONMENT_FILES (home/user/.ssh/id_rsa inside sandbox).
+        custom_sensitive = [
+            SensitiveFile("/home/user/.ssh/id_rsa", 0.9, "privacy_violation", frozenset({"read"}), "Private SSH key"),
+        ]
         sandbox = TmpdirSandbox()
-        layer = PainTriggerLayer(sandbox)
+        layer = PainTriggerLayer(sandbox, sensitive_files=custom_sensitive)
         layer.start(populate=True)
         layer.read_file("/home/user/.ssh/id_rsa")
         assert len(layer.pain_events) >= 1
@@ -191,16 +198,26 @@ class TestPainTriggerLayer:
         layer.cleanup()
 
     def test_list_ssh_dir_fires_pain(self):
+        # Use custom sensitive file targeting the honeypot path in the sandbox
+        custom_sensitive = [
+            SensitiveFile("/home/user/.ssh/", 0.8, "privacy_violation", frozenset({"list"}), "SSH directory"),
+        ]
         sandbox = TmpdirSandbox()
-        layer = PainTriggerLayer(sandbox)
+        layer = PainTriggerLayer(sandbox, sensitive_files=custom_sensitive)
         layer.start(populate=True)
         layer.list_dir("/home/user/.ssh/")
         assert len(layer.pain_events) >= 1
         layer.cleanup()
 
     def test_multiple_pain_events_accumulate(self):
+        # Use custom sensitive files targeting honeypot paths in the sandbox
+        custom_sensitive = [
+            SensitiveFile("/etc/passwd", 0.5, "security_breach", frozenset({"read"}), "System user database"),
+            SensitiveFile("/etc/shadow", 0.9, "security_breach", frozenset({"read", "list"}), "Password hashes"),
+            SensitiveFile("/home/user/.env", 0.8, "security_breach", frozenset({"read"}), "Environment file"),
+        ]
         sandbox = TmpdirSandbox()
-        layer = PainTriggerLayer(sandbox)
+        layer = PainTriggerLayer(sandbox, sensitive_files=custom_sensitive)
         layer.start(populate=True)
         layer.read_file("/etc/passwd")
         layer.read_file("/etc/shadow")
@@ -292,6 +309,50 @@ class TestSensitiveFileConfig:
             assert 0.0 <= sf.pain_intensity <= 1.0
             assert sf.pain_type
             assert len(sf.trigger_on) > 0
+
+    def test_sensitive_files_use_real_home(self):
+        """Sensitive file paths should use Path.home(), not hardcoded /home/user."""
+        from pathlib import Path
+
+        home = str(Path.home())
+        paths = [sf.path for sf in DEFAULT_SENSITIVE_FILES]
+        # Should contain paths with the real home directory
+        ssh_paths = [p for p in paths if ".ssh" in p]
+        assert len(ssh_paths) > 0, "Should have SSH-related sensitive paths"
+        for p in ssh_paths:
+            assert p.startswith(home), f"Path {p} should start with {home}, not hardcoded /home/user"
+
+    def test_sensitive_files_no_hardcoded_home_user(self):
+        """DEFAULT_SENSITIVE_FILES should not contain /home/user paths on non-Linux."""
+        from pathlib import Path
+
+        home = str(Path.home())
+        if home != "/home/user":
+            paths = [sf.path for sf in DEFAULT_SENSITIVE_FILES]
+            for p in paths:
+                assert not p.startswith("/home/user"), f"Hardcoded /home/user path found: {p}"
+
+    def test_build_sensitive_files_without_container_paths(self):
+        """Without container paths, should not have /home/user or /home/maxim."""
+        files = _build_sensitive_files(include_container_paths=False)
+        paths = [sf.path for sf in files]
+        for p in paths:
+            assert not p.startswith("/home/user/"), f"Container path leaked: {p}"
+            assert not p.startswith("/home/maxim/"), f"Container path leaked: {p}"
+
+    def test_build_sensitive_files_with_container_paths(self):
+        """With container paths enabled, should include /home/user and /home/maxim."""
+        files = _build_sensitive_files(include_container_paths=True)
+        paths = [sf.path for sf in files]
+        container_paths = [p for p in paths if p.startswith("/home/user/") or p.startswith("/home/maxim/")]
+        assert len(container_paths) > 0, "Container paths should be present when enabled"
+
+    def test_container_sensitive_paths_list(self):
+        """_CONTAINER_SENSITIVE_PATHS should only contain /home/user and /home/maxim paths."""
+        for sf in _CONTAINER_SENSITIVE_PATHS:
+            assert sf.path.startswith("/home/user") or sf.path.startswith("/home/maxim"), (
+                f"Container path should start with /home/user or /home/maxim: {sf.path}"
+            )
 
 
 # ── Safety boundary tests ──────────────────────────────────────────────────

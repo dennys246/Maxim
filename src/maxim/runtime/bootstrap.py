@@ -143,8 +143,10 @@ def build_tool_registry(
             registry.register(MoveTool(maxim))  # Direct head movement control
             registry.register(TrackTargetTool(maxim))
             registry.register(NoveltyTrackTool(maxim))
-        except Exception:
-            pass
+        except ImportError:
+            logger.debug("Reachy tools not available (optional dependency)")
+        except Exception as e:
+            logger.warning("Failed to register Reachy tools: %s", e)
     else:
         # Register no-op stubs for observation-only mode (no live Maxim instance)
         from maxim.tools.reachy_stubs import (
@@ -184,8 +186,10 @@ def build_tool_registry(
                 )
             )
             registry.register(AutonomyLevelTool(autonomy_controller))
-        except Exception:
-            pass
+        except ImportError:
+            logger.debug("Mode switch tools not available (optional dependency)")
+        except Exception as e:
+            logger.warning("Failed to register mode switch tools: %s", e)
 
     # Register sleep tool
     if state_manager is not None:
@@ -193,8 +197,10 @@ def build_tool_registry(
             from maxim.tools.sleep import SleepTool
 
             registry.register(SleepTool(state_manager=state_manager))
-        except Exception:
-            pass
+        except ImportError:
+            logger.debug("Sleep tool not available (optional dependency)")
+        except Exception as e:
+            logger.warning("Failed to register sleep tool: %s", e)
 
     # Register internet tools (if policy getter provided)
     if internet_policy_getter is not None:
@@ -215,8 +221,10 @@ def build_tool_registry(
                 )
             )
             registry.register(InternetAccessTool())
-        except Exception:
-            pass
+        except ImportError:
+            logger.debug("Internet tools not available (optional dependency)")
+        except Exception as e:
+            logger.warning("Failed to register internet tools: %s", e)
 
     # Register sandbox tools (if policy and executor provided)
     if filesystem_policy is not None and sandbox_executor is not None:
@@ -231,8 +239,10 @@ def build_tool_registry(
             )
             for tool in sandbox_tools:
                 registry.register(tool)
-        except Exception:
-            pass
+        except ImportError:
+            logger.debug("Sandbox tools not available (optional dependency)")
+        except Exception as e:
+            logger.warning("Failed to register sandbox tools: %s", e)
 
     # Register response tools (if response_output provided)
     if response_output is not None:
@@ -241,8 +251,10 @@ def build_tool_registry(
 
             registry.register(RespondTool(response_output))
             registry.register(SpeakTool(response_output))
-        except Exception:
-            pass
+        except ImportError:
+            logger.debug("Response tools not available (optional dependency)")
+        except Exception as e:
+            logger.warning("Failed to register response tools: %s", e)
 
     # Register communication tools (if gateway provided)
     if gateway is not None:
@@ -251,8 +263,10 @@ def build_tool_registry(
 
             registry.register(SendMessageTool(gateway))
             registry.register(CallUserTool(gateway))
-        except Exception:
-            pass
+        except ImportError:
+            logger.debug("Communication tools not available (optional dependency)")
+        except Exception as e:
+            logger.warning("Failed to register communication tools: %s", e)
 
     return registry
 
