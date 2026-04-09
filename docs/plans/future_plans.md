@@ -67,6 +67,21 @@ Decouple salience/attention from vision-specific assumptions (pixels, bounding b
 
 **Trigger:** Post-publication. The vision system works for robots, but sim/DM/benchmark modes need proper salience. S-0 through S-2 are prerequisites for meaningful agentic enhancement A/B testing.
 
+### Asset Foundry — Autonomous SEM Component Generation
+
+An autonomous pipeline that generates, validates, tests, and curates SEM components — expanding the component library without manual YAML authoring. Full plan: [asset_foundry_plan.md](asset_foundry_plan.md).
+
+| Phase | Work | LOC | What it enables |
+|-------|------|-----|----------------|
+| F-0 | Generation engine — batch EntityDesigner with theme prompts | ~200 | `maxim --foundry "cyberpunk weapons" --count 10` |
+| F-1 | Validation pipeline — schema, sensor, affordance, genre, diversity checks | ~150 | Reject malformed specs before simulation cost |
+| F-2 | Test gauntlet + SEM protocol tests — per-candidate micro-campaigns, 8 structural SEM tests (sensor R/W, tool gen, failure triggers, cascade compat, composition) | ~250 | Bio-system engagement scoring + structural SEM validation |
+| F-3 | Scoring + curation — rank, promote, flag interesting failures | ~200 | Automated component triage with human-in-the-loop promotion |
+| F-4 | Theme templates — pre-built genre configurations | ~150 | `maxim --foundry cyberpunk` with category distributions |
+| F-5 | CLI integration + session persistence + incremental runs | ~150 | Resume, re-test, promote workflow |
+
+**Trigger:** Post-publication. Uses LLM tokens for generation and testing. Local models (Mistral-7b) keep costs at ~$0 per run.
+
 ### DM Extensions (conditional on usage data)
 
 | Extension | Trigger | Effort | Notes |
@@ -267,6 +282,7 @@ docs/plans/
 ├── pecking_order_graph_plan.md        # Unified topology + routing (subsumes mesh 0a/0b, capability agent, multi-node admin)
 ├── mother_maxim_plan.md               # Mother Maxim — persistent shared instance (post-publication priority)
 ├── salience_abstraction_plan.md        # Modality-agnostic salience + bio-system integration (S-0 through S-5)
+├── asset_foundry_plan.md              # Autonomous SEM component generation + testing (F-0 through F-5)
 ├── dungeon_master_extensions.md       # DM follow-ons (Extensions C-G, post-publication)
 ├── github_repo_management_plan.md     # Fork-based workflow (post-publication)
 └── tool_refinement_plan.md            # Living document — tool additions/deprecations

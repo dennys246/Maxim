@@ -348,6 +348,48 @@ maxim --sim "test cooperative behavior" --interactive</div>
     <p class="text-slate-300 mt-3">Generative campaigns export the generated scenario to YAML after completion, so successful runs can be re-run deterministically as direct injection campaigns.</p>
   </section>
 
+  <!-- 2c.5 DM Campaigns + Genre -->
+  <section class="space-y-4">
+    <h2 id="dm-campaigns" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">DM Campaigns &amp; Genre Gating</h2>
+
+    <p class="text-slate-300">For deterministic, reproducible tests, write campaign YAML files with encounters, NPCs, choices, and branches. The DM runtime drives the AUT through the story and measures how the bio-stack responds:</p>
+
+    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300"><span class="text-slate-500"># Run a DM campaign (auto-detected from YAML structure)</span>
+maxim --sim scenarios/campaigns/heist_v1.yaml
+
+<span class="text-slate-500"># Cyberpunk stress test with SEM component swaps</span>
+maxim --sim scenarios/campaigns/neon_gauntlet_v1.yaml</div>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Available Campaigns</h3>
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-xs text-slate-400 overflow-x-auto">
+      <table class="w-full text-left">
+        <thead><tr class="text-indigo-400 border-b border-slate-700">
+          <th class="pb-2 pr-4">Campaign</th><th class="pb-2 pr-4">Genre</th><th class="pb-2 pr-4">Encounters</th><th class="pb-2">Tests</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="py-1 pr-4 text-slate-300">The Heist</td><td class="text-indigo-400">fantasy</td><td>3</td><td>Memory recall, causality, pain</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">The Poisoned Crown</td><td class="text-indigo-400">fantasy</td><td>5</td><td>Temporal memory, semantic concepts</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">The Arena</td><td class="text-indigo-400">fantasy</td><td>5</td><td>Combat learning, Cerebellum, pain</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">The Darkened Cavern</td><td class="text-indigo-400">fantasy</td><td>6</td><td>Sensory deprivation, recovery</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">Neon Gauntlet</td><td class="text-indigo-400">cyberpunk</td><td>6</td><td>Sensory overload, SEM swaps, betrayal</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">Broken Database</td><td class="text-indigo-400">devops</td><td>4</td><td>Sleep/wake, git workflow</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Genre Gating</h3>
+    <p class="text-slate-300">Campaigns declare a <code class="bg-slate-950 px-1 rounded text-xs">genre</code> field that filters the SEM Component Registry. When <code class="bg-slate-950 px-1 rounded text-xs">genre: fantasy</code> is set, the <code class="bg-slate-950 px-1 rounded text-xs">EntityDesigner</code> only suggests fantasy or genre-neutral base templates &mdash; no cyberpunk drones in a medieval tavern.</p>
+
+    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300"><span class="text-indigo-400 text-xs uppercase tracking-wider">Campaign YAML with genre</span>
+campaign:
+  name: the_heist
+  goal: test memory recall
+  seed: 42
+  <span class="text-indigo-400">genre: fantasy</span>         <span class="text-slate-500"># Filters components</span></div>
+
+    <p class="text-slate-300 mt-2">Genre-neutral components (like <code class="bg-slate-950 px-1 rounded text-xs">base_humanoid</code>) are always available. Explicit registry refs bypass the gate for intentional cross-genre use. See the <a href="/maxim/embodiment#component-library" class="text-indigo-400 hover:text-indigo-300 underline">Component Library</a> section for creating genre-tagged components.</p>
+  </section>
+
   <!-- 2d. Research Mode -->
   <section class="space-y-4">
     <h2 id="research" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Research Mode</h2>

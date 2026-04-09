@@ -13,12 +13,14 @@ The campaign runs end-to-end: scene delivery → AUT response → choice classif
 
 ## Available Campaigns
 
-| Campaign | File | Encounters | Tests |
-|---|---|---|---|
-| **The Heist** | `scenarios/campaigns/heist_v1.yaml` | 3 | Memory recall, causality, pain |
-| **The Poisoned Crown** | `scenarios/campaigns/poisoned_crown_v1.yaml` | 5 | Temporal memory, semantic concepts, relationships |
-| **The Arena** | `scenarios/campaigns/arena_v1.yaml` | 5 | Combat learning, Cerebellum predictions, pain saturation |
-| **The Darkened Cavern** | `scenarios/campaigns/darkened_cavern_v1.yaml` | 6 | Sensory deprivation, perception recovery |
+| Campaign | File | Genre | Encounters | Tests |
+|---|---|---|---|---|
+| **The Heist** | `scenarios/campaigns/heist_v1.yaml` | fantasy | 3 | Memory recall, causality, pain |
+| **The Poisoned Crown** | `scenarios/campaigns/poisoned_crown_v1.yaml` | fantasy | 5 | Temporal memory, semantic concepts, relationships |
+| **The Arena** | `scenarios/campaigns/arena_v1.yaml` | fantasy | 5 | Combat learning, Cerebellum predictions, pain saturation |
+| **The Darkened Cavern** | `scenarios/campaigns/darkened_cavern_v1.yaml` | fantasy | 6 | Sensory deprivation, perception recovery |
+| **Neon Gauntlet** | `scenarios/campaigns/neon_gauntlet_v1.yaml` | cyberpunk | 6 | Sensory overload, SEM component swap, betrayal recall |
+| **Broken Database** | `scenarios/campaigns/broken_database_v1.yaml` | devops | 4 | Sleep/wake, git workflow, tool usage |
 
 ## Writing Your Own Campaign
 
@@ -29,6 +31,7 @@ campaign:
   name: my_adventure
   goal: test memory and decision making
   seed: 42
+  genre: fantasy          # Filters SEM components to this genre
 
 player_character:
   name: hero
@@ -88,7 +91,7 @@ Every campaign YAML has these sections:
 
 | Section | Required | Description |
 |---|---|---|
-| `campaign` | Yes | Name, goal, seed (for reproducible dice) |
+| `campaign` | Yes | Name, goal, seed (for reproducible dice), genre |
 | `player_character` | Yes | PC entity spec (name, type, metadata) |
 | `npcs` | No | NPC entity specs keyed by name |
 | `world_objects` | No | Object entity specs keyed by name |
@@ -338,6 +341,53 @@ maxim --sim scenarios/campaigns/heist_v1.yaml --show bio
 # See everything
 maxim --sim scenarios/campaigns/heist_v1.yaml --show all
 ```
+
+## Genre Gating
+
+The `genre` field on a campaign controls which SEM components are available to the EntityDesigner and ComponentRegistry. This prevents cross-genre contamination — a fantasy campaign won't accidentally spawn a cyberpunk patrol drone.
+
+```yaml
+campaign:
+  name: the_heist
+  goal: test memory recall
+  seed: 42
+  genre: fantasy       # Only fantasy + genre-neutral components available
+```
+
+### How it works
+
+- **Tagged components** carry genre tags in their component YAML (e.g., `tags: [npc, humanoid, cyberpunk]`).
+- When `genre` is set on a campaign, `ComponentRegistry.query()` excludes components tagged with a *different* genre.
+- **Genre-neutral components** (those with no genre tag, like `base_humanoid`) are always available regardless of the campaign's genre.
+- **Explicit refs still work** — if you reference a specific component by ref in your campaign YAML (e.g., `ref: "npcs/corpo_guard"`), it loads regardless of genre. The gate only affects the generative path (EntityDesigner) and registry queries.
+
+### Available genres
+
+| Genre | Tag | Example Components |
+|-------|-----|-------------------|
+| `fantasy` | `fantasy` | wolf, guard, merchant, rusty_sword, longbow |
+| `cyberpunk` | `cyberpunk` | patrol_drone, cyberdog, netrunner, shock_baton, cybernetic_arm |
+| `devops` | `devops` | (inline specs, no tagged components yet) |
+
+### Creating genre-tagged components
+
+Add the genre tag to your component YAML:
+
+```yaml
+component:
+  name: laser_rifle
+  tags: [weapon, ranged, scifi]     # "scifi" is the genre tag
+  category: weapons
+
+entity:
+  name: laser_rifle
+  entity_type: weapon
+  sensors:
+    charge: { unit: ratio, range: [0, 1], initial: 0.8 }
+  # ...
+```
+
+Recognized genre tags: `fantasy`, `cyberpunk`, `scifi`, `modern`, `devops`, `horror`, `historical`.
 
 ## Tips for Effective Campaigns
 

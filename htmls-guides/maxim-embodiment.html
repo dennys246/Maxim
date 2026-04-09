@@ -220,6 +220,41 @@ recovery_condition: {field: fatigue, op: "<", value: 0.2}</div>
     <p class="text-slate-300 leading-relaxed">Failures route through the existing <em class="text-indigo-400 not-italic">PainBus</em> and <em class="text-indigo-400 not-italic">ToolPainBridge</em>. NAc learns <code class="bg-slate-950 px-1 rounded text-xs">(affordance, entity_state) &rarr; failure</code> causal links. Persistent failures stay active until recovery conditions are met. All failure state persists across sessions.</p>
   </section>
 
+  <!-- Component Library + Genre Gating -->
+  <section class="space-y-4">
+    <h2 id="component-library" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Component Library &amp; Genre Gating</h2>
+
+    <p class="text-slate-300 leading-relaxed">SEM components are reusable YAML templates stored in <code class="bg-slate-950 px-1 rounded text-xs">src/maxim/_data/components/</code> across 5 categories: <em class="text-indigo-400 not-italic">bodies</em>, <em class="text-indigo-400 not-italic">creatures</em>, <em class="text-indigo-400 not-italic">environments</em>, <em class="text-indigo-400 not-italic">npcs</em>, and <em class="text-indigo-400 not-italic">weapons</em>. The <code class="bg-slate-950 px-1 rounded text-xs">ComponentRegistry</code> discovers them automatically from three search paths: campaign-local, user (<code class="bg-slate-950 px-1 rounded text-xs">~/.maxim/components/</code>), and bundled.</p>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Fantasy (20 components)</h3>
+        <p class="text-slate-300 text-sm">wolf, guard, merchant, ferryman, rusty_sword, longbow, tavern_interior, forest_clearing</p>
+        <p class="text-indigo-400 text-xs mt-2">Genre-neutral: base_humanoid (usable in any campaign)</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Cyberpunk (13 components)</h3>
+        <p class="text-slate-300 text-sm">patrol_drone, cyberdog, netrunner, corpo_guard, street_fixer, shock_baton, neural_disruptor, cybernetic_arm, megarm_v3, neon_alley, server_room, megacorp_lobby, ripperdoc_clinic</p>
+      </div>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed mt-4"><strong class="text-white">Genre gating</strong> prevents cross-genre contamination. When a campaign declares <code class="bg-slate-950 px-1 rounded text-xs">genre: fantasy</code>, the <code class="bg-slate-950 px-1 rounded text-xs">ComponentRegistry</code> and <code class="bg-slate-950 px-1 rounded text-xs">EntityDesigner</code> only suggest genre-matching or genre-neutral components. A fantasy campaign won't accidentally spawn a cyberpunk patrol drone.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Creating a genre-tagged component</span>
+component:
+  name: laser_rifle
+  tags: [weapon, ranged, <span class="text-indigo-400">scifi</span>]     <span class="text-slate-500"># Genre tag</span>
+  category: weapons
+
+entity:
+  name: laser_rifle
+  entity_type: weapon
+  sensors:
+    charge: {unit: ratio, range: [0, 1], initial: 0.8}</div>
+
+    <p class="text-slate-300 leading-relaxed mt-2">Recognized genre tags: <code class="bg-slate-950 px-1 rounded text-xs">fantasy</code>, <code class="bg-slate-950 px-1 rounded text-xs">cyberpunk</code>, <code class="bg-slate-950 px-1 rounded text-xs">scifi</code>, <code class="bg-slate-950 px-1 rounded text-xs">modern</code>, <code class="bg-slate-950 px-1 rounded text-xs">devops</code>, <code class="bg-slate-950 px-1 rounded text-xs">horror</code>, <code class="bg-slate-950 px-1 rounded text-xs">historical</code>. Explicit registry refs bypass the genre gate &mdash; you can intentionally cross genres when needed.</p>
+  </section>
+
   <!-- Architecture Diagram -->
   <section class="space-y-4">
     <h2 id="architecture" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Architecture</h2>
@@ -252,6 +287,7 @@ YAML Spec ──&rarr; Entity Tree ──&rarr; Auto-Generated Tools ──&rarr
           <tr><td class="py-1 pr-4 text-slate-300">embodiment/llm_backend.py</td><td>LLM + Narrative sensor/modulator backends</td></tr>
           <tr><td class="py-1 pr-4 text-slate-300">embodiment/percepts.py</td><td>EmbodimentPerceptSource (1Hz polling, demand mode)</td></tr>
           <tr><td class="py-1 pr-4 text-slate-300">embodiment/atl_integration.py</td><td>Auto-register ATL body_part concepts</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/component_registry.py</td><td>Component discovery, genre filtering, instantiation, inheritance</td></tr>
         </tbody>
       </table>
     </div>
