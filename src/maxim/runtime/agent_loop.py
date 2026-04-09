@@ -544,6 +544,11 @@ def run_agentic_loop(
     last_llm_submit_time = ctrl.last_llm_submit_time
     llm_submit_interval = ctrl.llm_submit_interval
 
+    # Consecutive same-tool cap — prevents respond loops (refinement plan 1.5e)
+    _consecutive_same_tool: str = ""
+    _consecutive_same_tool_count: int = 0
+    _MAX_CONSECUTIVE_SAME_TOOL: int = 5
+
     def _get_all_tools() -> set[str]:
         return ctrl.get_all_tools()
 
@@ -1225,6 +1230,29 @@ def run_agentic_loop(
         if pending_proposal and pending_proposal.action:
             action = pending_proposal.action
             confidence = pending_proposal.confidence
+
+            # ── Consecutive same-tool cap (respond loop prevention) ──────
+            _this_tool = action.get("tool_name", "") if isinstance(action, dict) else ""
+            if _this_tool == _consecutive_same_tool:
+                _consecutive_same_tool_count += 1
+            else:
+                _consecutive_same_tool = _this_tool
+                _consecutive_same_tool_count = 1
+
+            if _consecutive_same_tool_count > _MAX_CONSECUTIVE_SAME_TOOL:
+                logger.warning(
+                    "Consecutive same-tool cap hit: %s called %d times — breaking chain",
+                    _this_tool,
+                    _consecutive_same_tool_count,
+                )
+                sim.log(
+                    "EXEC",
+                    f"CAPPED: {_this_tool} repeated {_consecutive_same_tool_count}x — breaking respond loop",
+                )
+                pending_proposal = None
+                _consecutive_same_tool_count = 0
+                _consecutive_same_tool = ""
+                continue
 
             # ───────────────────────────────────────────────────────────────
             # PARALLEL ACTIONS: Execute all together for efficient batching
