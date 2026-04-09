@@ -30,7 +30,7 @@ All pre-publication work is tracked in [foundational_buildout_plan.md](foundatio
 | 12a | Security Hardening | **DONE** |
 | 12b | [Pre-Publication Hardening](pre_publication_hardening_plan.md) — UX, errors, API fixes, tests, docs | **DONE** |
 | 13 | [Publication Refinement](publication_refinement_plan.md) — blockers, error honesty, threading, docs | Phase 0 **DONE** |
-| 13a | [API Surface Hardening](api_surface_hardening_plan.md) — wire stub verbs, fix research protocol, error handling, integration tests, README | **ALL PHASES DONE (2026-04-08)** |
+| 13a | [API Surface Hardening](../archive/api_surface_hardening_plan.md) — wire stub verbs, fix research protocol, error handling, integration tests, README | **ALL PHASES DONE (2026-04-08)** |
 | — | Manual publish (`twine upload`) | Blocked on 13 + 13a |
 
 ---
@@ -45,12 +45,12 @@ Items that improve quality but don't gate v0.2.0 publication — no public API b
 
 | Item | Source Plan | Why Deferred | Effort |
 |------|-----------|-------------|--------|
-| **Module Compartmentalization** | [Plan](module_compartmentalization_plan.md) | Pure refactor, zero behavior change. Users don't see module sizes. Integration tests from ASH serve as safety net. | ~0 net LOC |
-| **Research protocol bugs (D-0a–D-0e)** | [ASH Phase 2](api_surface_hardening_plan.md) | `--research` is a power-user feature. `research()` API verb ships as `NotImplementedError` in v0.2.0. | ~200 LOC |
-| **Full integration test suite** | [ASH Phase 4](api_surface_hardening_plan.md) | 3500+ unit tests provide sufficient confidence. Integration tests are additive. | ~200 LOC |
-| **Error handling audit** (silent except blocks) | [ASH Phase 3](api_surface_hardening_plan.md) | Tech debt, not user-facing breakage. The 593 bare `except Exception:` blocks are noisy but not incorrect. | ~300 LOC |
-| **`@maxim.tool` schema inference** | [ASH Phase 1d](api_surface_hardening_plan.md) | Nice-to-have. Tools work without auto-inferred schemas. | ~30 LOC |
-| **README overhaul** | [ASH Phase 5](api_surface_hardening_plan.md) | Current README is functional. Polish for v0.2.1. | ~200 LOC |
+| ~~Module Compartmentalization~~ | ~~[Plan](../archive/module_compartmentalization_plan.md)~~ | **DONE (2026-04-09).** 5 god-modules decomposed, 7 new files, 125 tests. | ~0 net LOC |
+| **Research protocol bugs (D-0a–D-0e)** | [ASH Phase 2](../archive/api_surface_hardening_plan.md) | `--research` is a power-user feature. `research()` API verb ships as `NotImplementedError` in v0.2.0. | ~200 LOC |
+| **Full integration test suite** | [ASH Phase 4](../archive/api_surface_hardening_plan.md) | 3500+ unit tests provide sufficient confidence. Integration tests are additive. | ~200 LOC |
+| **Error handling audit** (silent except blocks) | [ASH Phase 3](../archive/api_surface_hardening_plan.md) | Tech debt, not user-facing breakage. The 593 bare `except Exception:` blocks are noisy but not incorrect. | ~300 LOC |
+| **`@maxim.tool` schema inference** | [ASH Phase 1d](../archive/api_surface_hardening_plan.md) | Nice-to-have. Tools work without auto-inferred schemas. | ~30 LOC |
+| **README overhaul** | [ASH Phase 5](../archive/api_surface_hardening_plan.md) | Current README is functional. Polish for v0.2.1. | ~200 LOC |
 
 ### Salience Abstraction + Bio-System Integration
 
@@ -73,14 +73,15 @@ An autonomous pipeline that generates, validates, tests, and curates SEM compone
 
 | Phase | Work | LOC | What it enables |
 |-------|------|-----|----------------|
-| F-0 | Generation engine — batch EntityDesigner with theme prompts | ~200 | `maxim --foundry "cyberpunk weapons" --count 10` |
-| F-1 | Validation pipeline — schema, sensor, affordance, genre, diversity checks | ~150 | Reject malformed specs before simulation cost |
-| F-2 | Test gauntlet + SEM protocol tests — per-candidate micro-campaigns, 8 structural SEM tests (sensor R/W, tool gen, failure triggers, cascade compat, composition) | ~250 | Bio-system engagement scoring + structural SEM validation |
-| F-3 | Scoring + curation — rank, promote, flag interesting failures | ~200 | Automated component triage with human-in-the-loop promotion |
+| F-0 | Generation engine — batch EntityDesigner + JSON repair | ~220 | `maxim --foundry "cyberpunk weapons" --count 10` |
+| F-1 | Validation pipeline — schema, semantic sanity, genre, EC diversity | ~180 | Reject malformed/nonsensical specs before simulation cost |
+| F-2 | Test gauntlet — 8 SEM protocol tests + 3-encounter campaign with fresh MemoryHub per candidate, full-stack integration (22 systems), multi-run averaging, error recovery | ~500 | Every system exercised per candidate with state isolation |
+| F-3 | Scoring (11 dimensions) + curation — stochastic averaging, interesting failures | ~250 | Schema + bio-system + salience + ATL + EC + motor + temporal + diversity |
 | F-4 | Theme templates — pre-built genre configurations | ~150 | `maxim --foundry cyberpunk` with category distributions |
-| F-5 | CLI integration + session persistence + incremental runs | ~150 | Resume, re-test, promote workflow |
+| F-5 | CLI integration + session persistence + parallel mode | ~200 | Resume, re-test, promote, `--parallel N` |
+| F-6 | Downstream integration — encounter library, narrator enhancement, interactive curation, benchmark generation | ~250 | Foundry outputs feed back into the broader system |
 
-**Trigger:** Post-publication. Uses LLM tokens for generation and testing. Local models (Mistral-7b) keep costs at ~$0 per run.
+**Trigger:** Post-publication (~1,750 LOC). Uses LLM tokens for generation and testing. Local models (Mistral-7b) keep costs at ~$0 per run. Exercises 22 systems across the full codebase.
 
 ### DM Extensions (conditional on usage data)
 
@@ -264,10 +265,12 @@ Everything below has shipped and is in production.
 | Docker Sandbox | TmpdirSandbox + DockerSandbox + ContainerRunner + pain triggers | [Plan](../archive/docker_sandbox_plan.md) |
 | Bio-System Wiring Hardening | 7 disconnected systems wired, pipeline audit 14/14, percept abstraction | [Plan](../archive/biosystem_wiring_hardening.md) |
 | Mode System Refactor | Autonomy levels only, ~1,800 LOC removed, sleep is a tool | [Plan](../archive/mode_refactor_plan.md) |
-| DM MVP | dm_schema, dm_runtime, ChooseTool, 4 campaigns, expectations checker | [Plan](../archive/dungeon_master_persona.md) |
+| DM MVP | dm_schema, dm_runtime, ChooseTool, 7 campaigns, expectations checker | [Plan](../archive/dungeon_master_persona.md) |
 | Python API | Verb-based interface (run, imagine, connect, diagnose, observe) | [Plan](../archive/python_api_plan.md) |
 | Introspection API (Ph1-4) | Observer class, standalone run_campaign() | [Plan](../archive/introspection_api_plan.md) |
 | Realtime Refinement | InspectAUTTool, 8 personas, metric expectations | [Plan](../archive/realtime_refinement_plan.md) |
+| API Surface Hardening | All phases: verb wiring, research fixes, error handling, integration tests, README | [Plan](../archive/api_surface_hardening_plan.md) |
+| Module Compartmentalization | 5 god-modules decomposed, 7 new files, 1,120 lines moved, 125 tests | [Plan](../archive/module_compartmentalization_plan.md) |
 
 ---
 
@@ -276,22 +279,22 @@ Everything below has shipped and is in production.
 ```
 docs/plans/
 ├── future_plans.md                    # This file — master roadmap
-├── publication_refinement_plan.md     # Phase 13 — blockers (DONE), code quality, packaging
-├── api_surface_hardening_plan.md      # Phase 13a — wire stubs, fix research, error handling, README
-├── module_compartmentalization_plan.md # Phase 13b — break up god-modules
+├── publication_refinement_plan.md     # Pre-publish blockers + packaging (4 must-fix items remaining)
 ├── pecking_order_graph_plan.md        # Unified topology + routing (subsumes mesh 0a/0b, capability agent, multi-node admin)
 ├── mother_maxim_plan.md               # Mother Maxim — persistent shared instance (post-publication priority)
-├── salience_abstraction_plan.md        # Modality-agnostic salience + bio-system integration (S-0 through S-5)
+├── salience_abstraction_plan.md       # Modality-agnostic salience + bio-system integration (S-0 through S-5)
 ├── asset_foundry_plan.md              # Autonomous SEM component generation + testing (F-0 through F-5)
 ├── dungeon_master_extensions.md       # DM follow-ons (Extensions C-G, post-publication)
 ├── github_repo_management_plan.md     # Fork-based workflow (post-publication)
 └── tool_refinement_plan.md            # Living document — tool additions/deprecations
 
-docs/archive/  (completed plans)
+docs/archive/  (completed plans — 21 files)
+├── api_surface_hardening_plan.md      # ALL PHASES DONE (2026-04-08)
+├── module_compartmentalization_plan.md # COMPLETE (2026-04-09) — 7 new files, 1,120 lines, 125 tests
 ├── foundational_buildout_plan.md      # Phases 0-12a — ALL SHIPPED (2026-04-08)
-├── pre_publication_hardening_plan.md  # Phase 12b — security + cv2 + docs DONE
-├── pypi_publication_plan.md           # Phases absorbed into buildout
-├── ... (14 other archived plans from prior initiatives)
+├── pre_publication_hardening_plan.md  # Phase 12b — DONE
+├── pypi_publication_plan.md           # SUPERSEDED by publication_refinement_plan
+├── ... (16 other archived plans from prior initiatives)
 ```
 
 ## Research Directions: Agentic Enhancements

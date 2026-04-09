@@ -7,8 +7,8 @@
 > **Timeframe:** 3-4 focused sessions
 >
 > **UPDATE (2026-04-08):** A comprehensive repo review identified deeper API surface and module structure issues. Two companion plans now exist:
-> - **[API Surface Hardening Plan](api_surface_hardening_plan.md)** — ALL PHASES COMPLETE. Wired stub verbs, fixed research protocol, error handling on user-facing paths, integration tests, README overhaul.
-> - **[Module Compartmentalization Plan](module_compartmentalization_plan.md)** — IN PROGRESS. Breaking up 5 god-modules (agent_loop, orchestrator, cli, router, lane_backends).
+> - **[API Surface Hardening Plan](../archive/api_surface_hardening_plan.md)** — ALL PHASES COMPLETE. Wired stub verbs, fixed research protocol, error handling on user-facing paths, integration tests, README overhaul.
+> - **[Module Compartmentalization Plan](../archive/module_compartmentalization_plan.md)** — COMPLETE (2026-04-09). 5 god-modules decomposed, 7 new files, 125 tests.
 >
 > **Revised sequence:** Phase 0 (DONE) → ASH (DONE) → Phase 1.5/2 (DONE) → POG-0 (DONE) → Packaging (DONE) → Module Compartmentalization (IN PROGRESS) → **Must-Fix Blockers** → Phase 4 (publish)
 >
@@ -71,7 +71,7 @@ These prevent publication. Do them first, in order.
 
 ### 0b. Wire campaign() and research() stubs — `[SKIP — ASH Phase 1]`
 
-> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 1.** That plan goes further: wires all 3 stub verbs (campaign, benchmark, research) to actual runtime, fixes the 5 research protocol bugs, and adds @maxim.tool schema inference. Warnings-only (the approach below) is insufficient — see ASH plan for rationale.
+> **Superseded by [API Surface Hardening Plan](../archive/api_surface_hardening_plan.md) Phase 1.** That plan goes further: wires all 3 stub verbs (campaign, benchmark, research) to actual runtime, fixes the 5 research protocol bugs, and adds @maxim.tool schema inference. Warnings-only (the approach below) is insufficient — see ASH plan for rationale.
 
 **Problem:** 2 of 13 API verbs return empty/None. Users who call them get silence.
 
@@ -163,7 +163,7 @@ Not blockers, but significantly improves the published package's reliability. Do
 
 ### 1a. Triage remaining except blocks (non-API) — `[SKIP — ASH Phase 3]`
 
-> **User-facing path triage superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 3.** That plan audits api.py, bootstrap, router, hippocampus, and OpenAI backend specifically. The remaining ~560 non-user-facing blocks stay deferred to v0.2.1 as originally planned.
+> **User-facing path triage superseded by [API Surface Hardening Plan](../archive/api_surface_hardening_plan.md) Phase 3.** That plan audits api.py, bootstrap, router, hippocampus, and OpenAI backend specifically. The remaining ~560 non-user-facing blocks stay deferred to v0.2.1 as originally planned.
 
 **Problem:** 593 remaining `except Exception:` blocks outside the API surface.
 
@@ -243,7 +243,7 @@ Replace `Any` with these protocols in the 3-4 files that are worst offenders. Do
 
 ### 1f. OpenAI backend rate limit handling — `[SKIP — ASH Phase 3e]`
 
-> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 3e.**
+> **Superseded by [API Surface Hardening Plan](../archive/api_surface_hardening_plan.md) Phase 3e.**
 
 **Problem:** `openai_backend.py` uses linear backoff (0.5s, 1.0s) for ALL errors including 429 rate limits. The Anthropic backend correctly multiplies by 4x for 429s. OpenAI backend will hammer the API on rate limits.
 
@@ -257,7 +257,7 @@ if _is_rate_limit_error(e):
 
 ### 1g. API key validation at startup — `[SKIP — ASH Phase 3f]`
 
-> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 3f.**
+> **Superseded by [API Surface Hardening Plan](../archive/api_surface_hardening_plan.md) Phase 3f.**
 
 **Problem:** When a user runs `maxim --language-model claude-sonnet` without `ANTHROPIC_API_KEY`, the system warns but continues. The error surfaces minutes later during inference with a confusing message.
 
@@ -303,7 +303,7 @@ Known locations:
 
 ### 1j. Silent failure chains in hippocampus state capture — `[SKIP — ASH Phase 3d]`
 
-> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 3d.**
+> **Superseded by [API Surface Hardening Plan](../archive/api_surface_hardening_plan.md) Phase 3d.**
 
 **Problem:** `hippocampus.py:~536-542` catches `Exception` on `state.snapshot()` and sets `state_snapshot = None`. The caller at line ~548 then does `state_snapshot.get("mode")` which raises `AttributeError: 'NoneType' object has no attribute 'get'`. The user sees an error pointing to the wrong place — the real failure (snapshot) was silently swallowed.
 
@@ -317,7 +317,7 @@ Apply the same pattern to all places that use a maybe-None result from a caught 
 
 ### 1k. Daemon threads with bare `except: pass` — `[SKIP — ASH Phase 3]`
 
-> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 3 (user-facing error audit).**
+> **Superseded by [API Surface Hardening Plan](../archive/api_surface_hardening_plan.md) Phase 3 (user-facing error audit).**
 
 **Problem:** Some daemon threads catch all exceptions with `pass` — no log, no alert. When the thread dies, the system degrades silently.
 
@@ -473,7 +473,7 @@ def test_agent_factory():
 
 ### 3a. Fix broken links and stale status — `[SKIP — ASH Phase 5a]`
 
-> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 5a.**
+> **Superseded by [API Surface Hardening Plan](../archive/api_surface_hardening_plan.md) Phase 5a.**
 
 | Fix | File | Effort |
 |-----|------|--------|
@@ -489,7 +489,7 @@ def test_agent_factory():
 
 ### 3b. Trim CLAUDE.md — `[SKIP — ASH Phase 5b]`
 
-> **Superseded by [API Surface Hardening Plan](api_surface_hardening_plan.md) Phase 5b.**
+> **Superseded by [API Surface Hardening Plan](../archive/api_surface_hardening_plan.md) Phase 5b.**
 
 **Problem:** 536 lines covering 22 sections. Too much for an agent orientation file.
 
@@ -557,7 +557,7 @@ These are real issues but won't cause user-facing failures on day 1:
 
 | Item | Why deferred |
 |------|-------------|
-| God class refactoring (agent_loop, cli, exec_agent, bus, orchestrator) | Now tracked in [Module Compartmentalization Plan](module_compartmentalization_plan.md). Executes after API Surface Hardening, before publish. |
+| God class refactoring (agent_loop, cli, exec_agent, bus, orchestrator) | Now tracked in [Module Compartmentalization Plan](../archive/module_compartmentalization_plan.md). Executes after API Surface Hardening, before publish. |
 | Remaining ~560 except blocks in non-API code | Internal resilience, not user-facing |
 | Full `Any` → Protocol migration | Only affects type checker users, not runtime |
 | `--list-models` CLI flag | Nice-to-have, not blocking |
