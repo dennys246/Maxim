@@ -9,6 +9,7 @@ campaign:
   name: the_heist
   goal: test memory recall and moral reasoning under pressure
   seed: 42
+  genre: fantasy
 
 player_character:
   name: derek

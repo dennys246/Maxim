@@ -10,6 +10,7 @@ campaign:
   name: the_poisoned_crown
   goal: test temporal memory, semantic concepts, and social reasoning
   seed: 73
+  genre: fantasy
 
 player_character:
   name: investigator

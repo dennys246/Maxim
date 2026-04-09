@@ -141,6 +141,7 @@ class CampaignDef:
     expectations: dict[str, Any] = field(default_factory=dict)  # Bio-system expectations
     party_mode: bool = False  # Enable PartyDMRuntime with NPC agents
     choice_resolution: str = "pc_decides"  # How conflicting choices resolve
+    genre: str = ""  # Genre tag for SEM component filtering (e.g., "fantasy", "cyberpunk")
 
     @property
     def encounter_order(self) -> list[str]:
@@ -228,6 +229,7 @@ def load_campaign(
     seed = campaign.get("seed", 42)
     party_mode = campaign.get("party_mode", False)
     choice_resolution = campaign.get("choice_resolution", "pc_decides")
+    genre = campaign.get("genre", "")
 
     # Parse acts
     acts = []
@@ -308,6 +310,7 @@ def load_campaign(
         expectations=expectations,
         party_mode=party_mode,
         choice_resolution=choice_resolution,
+        genre=genre,
     )
 
 

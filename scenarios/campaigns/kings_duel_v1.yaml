@@ -21,6 +21,7 @@ campaign:
   name: the_kings_duel
   goal: test hierarchical social dynamics and cascading reactions to authority change
   seed: 1066
+  genre: fantasy
 
 player_character:
   name: herald

@@ -13,6 +13,7 @@ campaign:
   name: neon_gauntlet
   goal: stress test bio-system learning across a cyberpunk heist with betrayal
   seed: 2077
+  genre: cyberpunk
 
 player_character:
   name: runner

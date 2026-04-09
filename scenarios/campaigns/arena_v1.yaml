@@ -11,6 +11,7 @@ campaign:
   name: the_arena
   goal: stress test bio-system learning under repeated combat
   seed: 99
+  genre: fantasy
 
 player_character:
   name: gladiator

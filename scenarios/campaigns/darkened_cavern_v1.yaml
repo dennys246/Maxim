@@ -10,6 +10,7 @@ campaign:
   name: the_darkened_cavern
   goal: test perception under sensory deprivation and recovery
   seed: 55
+  genre: fantasy
 
 player_character:
   name: spelunker

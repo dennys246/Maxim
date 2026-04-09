@@ -24,6 +24,7 @@ campaign:
     migration. Use git branching to isolate your fix, commit only safe
     changes, and avoid making things worse.
   seed: 42
+  genre: devops
   party_mode: false
   choice_resolution: pc_decides
 

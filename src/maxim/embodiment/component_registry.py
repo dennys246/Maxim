@@ -200,16 +200,38 @@ class ComponentRegistry:
         *,
         tags: list[str] | None = None,
         category: str | None = None,
+        genre: str | None = None,
         has_sensor: str | None = None,
         has_affordance: str | None = None,
     ) -> list[ComponentInfo]:
-        """Search components by metadata.  All filters are AND-combined."""
+        """Search components by metadata.  All filters are AND-combined.
+
+        Args:
+            tags: Require all of these tags.
+            category: Require this category.
+            genre: If set, only return components whose tags include this
+                genre (e.g., ``"fantasy"``, ``"cyberpunk"``).  Components
+                without any genre tag are considered genre-neutral and
+                always included.
+            has_sensor: Require a sensor with this name.
+            has_affordance: Require an affordance with this name.
+        """
+        # Known genre tags — used to determine if a component is genre-tagged.
+        _GENRE_TAGS = {"fantasy", "cyberpunk", "scifi", "modern", "devops", "horror", "historical"}
+
         results = []
         for info in self._index.values():
             if category and info.category != category:
                 continue
             if tags and not all(t in info.tags for t in tags):
                 continue
+            # Genre filter: if a genre is requested, exclude components that
+            # carry a *different* genre tag.  Components with no genre tag
+            # at all (genre-neutral) always pass.
+            if genre:
+                component_genres = set(info.tags) & _GENRE_TAGS
+                if component_genres and genre not in component_genres:
+                    continue
             # Sensor/affordance filters require loading the full spec
             if has_sensor or has_affordance:
                 try:

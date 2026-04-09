@@ -104,6 +104,7 @@ class EntityDesigner:
         description: str,
         base_ref: str | None = None,
         entity_type: str | None = None,
+        genre: str | None = None,
     ) -> dict[str, Any]:
         """Design an entity from a natural language description.
 
@@ -111,6 +112,10 @@ class EntityDesigner:
             description: Natural language description (e.g., "a suspicious guard").
             base_ref: Optional ComponentRegistry ref to use as template.
             entity_type: Optional type hint (npc, weapon, creature, environment).
+            genre: Optional genre constraint. When set, only suggests base_refs
+                whose tags include this genre (or have no genre tag at all).
+                Prevents cross-genre contamination (e.g., cyberpunk drone in
+                a fantasy campaign).
 
         Returns:
             Valid entity spec dict ready for ``_parse_entity()``.
@@ -120,12 +125,31 @@ class EntityDesigner:
         # Start from base template if available
         base_spec: dict[str, Any] = {}
         if base_ref and self._registry:
-            try:
-                full = self._registry.get(base_ref)
-                base_spec = full.get("entity", full)
-                log.debug("EntityDesigner: using base '%s'", base_ref)
-            except KeyError:
-                log.warning("EntityDesigner: base ref '%s' not found, generating from scratch", base_ref)
+            # Validate genre compatibility when both genre and base_ref are set
+            if genre:
+                try:
+                    info = self._registry._index.get(base_ref)
+                    if info is not None:
+                        _genre_tags = {"fantasy", "cyberpunk", "scifi", "modern", "devops", "horror", "historical"}
+                        component_genres = set(info.tags) & _genre_tags
+                        if component_genres and genre not in component_genres:
+                            log.warning(
+                                "EntityDesigner: base ref '%s' is %s but campaign genre is '%s' — skipping",
+                                base_ref,
+                                "/".join(component_genres),
+                                genre,
+                            )
+                            base_ref = None  # Fall through to fallback
+                except Exception:
+                    pass  # Best-effort genre check
+
+            if base_ref:
+                try:
+                    full = self._registry.get(base_ref)
+                    base_spec = full.get("entity", full)
+                    log.debug("EntityDesigner: using base '%s'", base_ref)
+                except KeyError:
+                    log.warning("EntityDesigner: base ref '%s' not found, generating from scratch", base_ref)
 
         # Try LLM generation
         if self._llm:
