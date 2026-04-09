@@ -653,6 +653,43 @@ def run_agentic_loop(
             break
 
         # ─────────────────────────────────────────────────────────────────
+        # 0.6 IDLE GATE — skip full cycle when there's nothing to react to
+        # ─────────────────────────────────────────────────────────────────
+        # The agent loop spins at target_hz for responsiveness, but should
+        # NOT burn LLM cycles when idle.  We check for any pending stimulus
+        # BEFORE running perception/pipeline agents.  If nothing is pending,
+        # sleep briefly and loop back.  This keeps the loop responsive to
+        # new input (sub-second latency) without wasting GPU on empty cycles.
+        #
+        # "Stimulus" means:
+        #   - User input (CLI or voice) waiting in state.data
+        #   - Simulation percept available from percept_source
+        #   - Pending proposal from LLM (needs execution)
+        #   - Pending action followup (tool result needs LLM processing)
+        #   - Pending next_actions chain (multi-step plan in progress)
+        #   - First iteration (startup — run initial cycle once)
+        _has_pending_input = bool(
+            state.data.get("pending_cli_input")
+            or state.data.get("pending_voice_input")
+        )
+        _has_pending_work = bool(
+            pending_proposal
+            or pending_action_followup
+            or pending_next_actions
+            or pending_plan_proposal
+        )
+        _has_sim_percept = (
+            sim.is_sim_mode
+            and percept_source is not None
+            and getattr(percept_source, "has_pending", lambda: True)()
+        )
+        _is_first_step = step_num == 0
+
+        if not (_has_pending_input or _has_pending_work or _has_sim_percept or _is_first_step):
+            time.sleep(idle_sleep_s)
+            continue
+
+        # ─────────────────────────────────────────────────────────────────
         # 1. PERCEPTION — via SimulationAdapter or environment
         # ─────────────────────────────────────────────────────────────────
         observation = sim.next_observation(environment, default_network)

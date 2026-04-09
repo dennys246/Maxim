@@ -967,30 +967,50 @@ def _maybe_auto_spawn_server(
             logger.warning("Failed to read tunnel API key: %s", e)
             api_key = None
 
-    # Auto-discovery: if something already answers at port, reuse it and skip spawn.
-    # This makes "run two maxim terminals" transparent — the second finds the
-    # first's server and wires its infer lane to it, no duplicate model load.
+    # Auto-discovery: if something already answers at port, check if we
+    # own it (spawned in this process) before reusing.  Ghost servers from
+    # a previous session are killed and respawned — reusing them is a
+    # security risk (the old agent loop may still be connected) and can
+    # serve stale models.
     existing_url = f"http://127.0.0.1:{port}/v1"
     if _llm_server_responding_at(existing_url):
-        if logger is not None:
-            logger.info(
-                "Auto-discovery: found existing llama-cpp-server on port %d, reusing it",
-                port,
+        if _active_spawner is not None and _active_spawner.is_running:
+            # We spawned this server in this process — safe to reuse.
+            if logger is not None:
+                logger.info(
+                    "Auto-discovery: reusing our llama-cpp-server on port %d",
+                    port,
+                )
+            _active_model = effective_profile
+            _llm_start_time = time.time()
+            out = dict(lane_configs)
+            out[_infer_tier] = dataclasses.replace(
+                infer_cfg,
+                remote_url=existing_url,
+                remote_model=effective_profile,
+                remote_api_key=infer_cfg.remote_api_key or api_key,
             )
-        # Track the model so --status reports correctly
-        _active_model = effective_profile
-        _llm_start_time = time.time()
-        out = dict(lane_configs)
-        out[_infer_tier] = dataclasses.replace(
-            infer_cfg,
-            remote_url=existing_url,
-            remote_model=effective_profile,
-            remote_api_key=infer_cfg.remote_api_key or api_key,
-        )
-        return out
+            return out
+        else:
+            # Ghost server from a previous session — kill it so we get a
+            # clean process we control.  This prevents orphaned agent loops
+            # from continuing to query the server after Ctrl+C.
+            if logger is not None:
+                logger.warning(
+                    "Found unowned llama-cpp-server on port %d — killing ghost process before respawn",
+                    port,
+                )
+            try:
+                from maxim.runtime.local_server_spawner import kill_stale_llm_servers
 
-    # Port not responding but may have a stale process holding VRAM.
-    # Kill it before attempting to spawn a new server.
+                kill_stale_llm_servers(port)
+                # Give the port a moment to release
+                time.sleep(1.0)
+            except Exception:
+                pass
+
+    # Port not responding or ghost was just killed — may have a stale
+    # process holding VRAM.
     try:
         from maxim.runtime.local_server_spawner import kill_stale_llm_servers
 

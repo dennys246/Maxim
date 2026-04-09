@@ -508,6 +508,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(raw_argv)
     _normalize_args(args)
 
+    # ── Force-kill on double Ctrl+C ──────────────────────────────────
+    # First Ctrl+C triggers graceful shutdown. If the user hits Ctrl+C
+    # again while shutdown is in progress, force-kill the LLM server
+    # subprocess and exit immediately. Prevents ghost processes.
+    _shutting_down = [False]
+
+    def _force_exit_handler(signum, frame):
+        if _shutting_down[0]:
+            # Second interrupt — force kill everything and exit
+            try:
+                from maxim.runtime.lane_backends import stop_active_spawner
+
+                stop_active_spawner()
+            except Exception:
+                pass
+            print("\n  Forced shutdown.", file=sys.stderr)
+            os._exit(1)
+        _shutting_down[0] = True
+        raise KeyboardInterrupt
+
+    import signal as _sig
+
+    _sig.signal(_sig.SIGINT, _force_exit_handler)
+
     # ── Early leader proxy bootstrap ─────────────────────────────────
     # Start the LeaderProxy as early as possible so it's always reachable
     # via the Cloudflare tunnel, regardless of what mode maxim enters
@@ -1653,6 +1677,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                     threading.Event().wait()
                 except KeyboardInterrupt:
                     print("\n  Shutting down.")
+                finally:
+                    try:
+                        from maxim.runtime.lane_backends import stop_active_spawner
+
+                        stop_active_spawner()
+                    except Exception:
+                        pass
                 return 0
 
             from maxim.conscience.selfy import Maxim
@@ -1699,6 +1730,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     maxim.shutdown()
                 except Exception:
                     pass
+            # Belt-and-suspenders: kill the LLM server subprocess even if
+            # shutdown() didn't reach it (e.g. double Ctrl+C, thread hang).
+            # This prevents ghost llama-cpp-server processes holding VRAM.
+            try:
+                from maxim.runtime.lane_backends import stop_active_spawner
+
+                stop_active_spawner()
+            except Exception:
+                pass
 
         requested = getattr(maxim, "requested_mode", None) if maxim is not None else None
         if not requested:
