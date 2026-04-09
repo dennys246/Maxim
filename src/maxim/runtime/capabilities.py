@@ -7,6 +7,37 @@ from typing import Any
 
 
 @dataclass
+class NodeLoad:
+    """Live load metrics for a Maxim node (populated by heartbeat).
+
+    Used by the Pecking Order Graph to route inference requests to the
+    least-loaded node. All fields default to 0.0 so nodes that don't
+    report load are treated as idle.
+    """
+
+    gpu_util_pct: float = 0.0  # GPU compute utilization (0-100)
+    vram_used_gb: float = 0.0  # VRAM currently allocated
+    queue_depth: int = 0  # Inference requests queued
+    ram_pressure_pct: float = 0.0  # System RAM usage (0-100)
+    thermal_throttle: bool = False  # GPU thermal throttling active
+    timestamp: float = 0.0  # When this snapshot was taken (monotonic)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "gpu_util_pct": self.gpu_util_pct,
+            "vram_used_gb": self.vram_used_gb,
+            "queue_depth": self.queue_depth,
+            "ram_pressure_pct": self.ram_pressure_pct,
+            "thermal_throttle": self.thermal_throttle,
+            "timestamp": self.timestamp,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> NodeLoad:
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
 class RuntimeCapabilities:
     """What hardware/software is available. Can change during runtime."""
 
@@ -26,6 +57,9 @@ class RuntimeCapabilities:
 
     # Graph topology (POG-0 prep — wire format stability before v0.2.0)
     node_role: str = "solo"  # "solo" | "leader" | "peer" | "mother"
+
+    # Live load metrics (POG-0a — populated by heartbeat, None when unknown)
+    node_load: NodeLoad | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
