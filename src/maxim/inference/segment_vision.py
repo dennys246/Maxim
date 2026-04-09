@@ -59,7 +59,6 @@ class NoveltyTracker:
         max_age: float = 60.0,
         adaptive_cleanup: bool = True,
         *,
-        decay_seconds: float | None = None,  # Backward compatibility alias
         class_novelty_halflife: int = 10,
         class_novelty_floor: float = 0.3,
         class_novelty_weight: float = 0.4,
@@ -77,21 +76,14 @@ class NoveltyTracker:
             max_entries: Hard cap on tracked entries to prevent unbounded growth
             max_age: Max age in seconds before entries are cleaned up
             adaptive_cleanup: If True, cleanup more frequently when near capacity
-            decay_seconds: Deprecated alias for recovery_seconds (backward compatibility)
             class_novelty_halflife: Unique instances until class novelty halves
             class_novelty_floor: Minimum class novelty (never fully habituated)
             class_novelty_weight: Blend weight for class modulation (0=ignore, 1=fully class-driven)
             sensitization_ceiling: Max multiplier for sensitized class novelty (e.g. 1.5 = 50% boost)
             _modulation_lookup: Optional callback mapping class_id -> sensitization modulation
         """
-        # Handle backward compatibility: if old decay_seconds is passed, use it for recovery
-        if decay_seconds is not None:
-            recovery_seconds = decay_seconds
-
         self.focus_decay_seconds = focus_decay_seconds
         self.recovery_seconds = recovery_seconds
-        # Keep decay_seconds as alias for backward compatibility
-        self.decay_seconds = recovery_seconds
         self.max_novelty = max_novelty
         self.min_novelty = min_novelty
         self.cleanup_interval = cleanup_interval

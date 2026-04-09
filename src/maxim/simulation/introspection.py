@@ -341,4 +341,3 @@ class Observer:
         return "; ".join(parts) if parts else "No subsystem data available."
 
 
-AUTIntrospector = Observer  # Deprecated alias — remove in 0.2.0

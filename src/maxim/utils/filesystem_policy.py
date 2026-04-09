@@ -462,10 +462,6 @@ def get_workspace_path(cwd: str | None = None) -> str:
     return os.path.join(os.path.realpath(cwd), WORKSPACE_FOLDER_NAME)
 
 
-# Backward compat alias
-get_sandbox_path = get_workspace_path
-
-
 def ensure_workspace_exists(cwd: str | None = None) -> str:
     """Create the workspace folder and subdirectories if they don't exist.
 

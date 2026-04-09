@@ -387,8 +387,6 @@ With great power comes great responsibility. Act wisely.""",
     ),
 }
 
-# Backward-compatible alias
-MODES = OPERATIONAL_MODES
 
 
 # ─────────────────────────────────────────────────────────────────────────────

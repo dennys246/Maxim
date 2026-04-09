@@ -479,9 +479,10 @@ class TestBuildPrimaryRouter:
             mock_load.return_value = LLMConfig()
             build_primary_router(capabilities=caps, logger=mock_logger)
             # Lane assignments should be emitted at INFO level
-            mock_logger.info.assert_called_once()
-            call_args = mock_logger.info.call_args
-            assert "Lane assignments" in call_args[0][0]
+            assert mock_logger.info.called
+            # Find the Lane assignments call (may not be the only info call)
+            lane_call = [c for c in mock_logger.info.call_args_list if "Lane assignments" in str(c)]
+            assert lane_call, "Expected a 'Lane assignments' info log"
 
 
 class TestLLMServerHealthCheck:

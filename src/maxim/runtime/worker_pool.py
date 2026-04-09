@@ -452,8 +452,6 @@ _LEGACY_LANE_ALIASES: dict[str, str] = {
     "record": "small",  # Current callers: concept extraction, DB writes
 }
 
-# Backward compat alias — code that imports DEFAULT_LANES keeps working.
-DEFAULT_LANES = DEFAULT_TIERS
 
 
 class WorkerPool:
@@ -611,7 +609,6 @@ class WorkerPool:
 
 
 __all__ = [
-    "DEFAULT_LANES",
     "DEFAULT_TIERS",
     "DependencyGate",
     "DependencySpec",

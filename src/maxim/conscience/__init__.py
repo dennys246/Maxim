@@ -13,15 +13,6 @@ Submodules:
 
 from __future__ import annotations
 
-# FearAgent moved to maxim.agents - re-export for backward compatibility
-from maxim.agents.fear_agent import (
-    DangerCategory,
-    FearAgent,
-    Finding,
-    ReviewResult,
-    RiskLevel,
-)
-
 # Mixin classes for discoverability
 from maxim.conscience.connection import ConnectionMixin
 from maxim.conscience.vision_stream import VisionStreamMixin
@@ -29,13 +20,6 @@ from maxim.conscience.agentic_runtime import AgenticRuntimeMixin
 from maxim.conscience.input_handlers import InputHandlerMixin
 
 __all__ = [
-    # FearAgent (backward compat)
-    "DangerCategory",
-    "FearAgent",
-    "Finding",
-    "ReviewResult",
-    "RiskLevel",
-    # Mixins
     "AgenticRuntimeMixin",
     "ConnectionMixin",
     "InputHandlerMixin",
