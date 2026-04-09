@@ -61,6 +61,7 @@ class SimulationResult:
 def _load_resume_context(session_id: str) -> dict[str, Any] | None:
     """Load a previous session's report and action log for resumption."""
     from maxim.utils.paths import sim_reports as _sim_reports_dir
+
     _reports_base = _sim_reports_dir()
     report_path = _reports_base / session_id / "report.json"
     if not report_path.exists():
@@ -250,6 +251,21 @@ def _setup_sim_sandbox(
     return sim_sandbox, sandbox_root, aut_pain_bus
 
 
+def _build_basic_analysis(introspector: Any) -> dict[str, Any]:
+    """Build a basic analysis dict for non-campaign runs (D-0b fix).
+
+    Ensures research protocol always has analysis data to work with,
+    even without a --campaign YAML.
+    """
+    if introspector is None:
+        return {}
+    try:
+        return introspector.full_analysis(seed_keywords=[])
+    except Exception as e:
+        logger.debug("Basic analysis failed: %s", e)
+        return {}
+
+
 def start_simulation_mode(
     goal: str,
     persona: str = "adversarial",
@@ -269,6 +285,7 @@ def start_simulation_mode(
     dm_campaign: Any = None,
     generative: bool = False,
     arc_yaml: str | None = None,
+    experiment_log: Any = None,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -526,6 +543,7 @@ def start_simulation_mode(
         # Restore AUT state from previous session if resuming
         if resume_session:
             from maxim.utils.paths import sim_reports as _sim_reports_dir
+
             prev_dir = _sim_reports_dir() / resume_session
             hippo_path = prev_dir / "aut_hippocampus.json"
             nac_path = prev_dir / "aut_nac.json"
@@ -810,18 +828,25 @@ def start_simulation_mode(
     # useful for any systematic investigation, not just "researcher").
     # Experiment log lives in sim_tmpdir during the run; report.py
     # copies it to the final session directory at save time.
-    experiment_log = None
+    # Use caller-provided ExperimentLog if given (research protocol passes
+    # its log in so Writer/Reviewer read from the same instance — D-0a fix).
+    if experiment_log is None:
+        try:
+            from maxim.simulation.research_tools import ExperimentLog
+
+            experiment_log = ExperimentLog(session_dir=sim_tmpdir)
+        except Exception as e:
+            logger.debug("ExperimentLog not available: %s", e)
     try:
         from maxim.simulation.research_tools import (
-            ExperimentLog,
             RecordExperimentTool,
             QueryExperimentsTool,
         )
 
-        experiment_log = ExperimentLog(session_dir=sim_tmpdir)
-        orch_registry.register(RecordExperimentTool(experiment_log))
-        orch_registry.register(QueryExperimentsTool(experiment_log))
-        logger.info("Research tools registered (record_experiment, query_experiments)")
+        if experiment_log is not None:
+            orch_registry.register(RecordExperimentTool(experiment_log))
+            orch_registry.register(QueryExperimentsTool(experiment_log))
+            logger.info("Research tools registered (record_experiment, query_experiments)")
     except Exception as e:
         logger.debug("Research tools not available: %s", e)
 
@@ -1167,9 +1192,11 @@ def start_simulation_mode(
             dm_state = dm.run()
             dm_rollup = dm.get_rollup()
 
-            print(f"\n  DM Campaign complete: {dm_state.turn_count} turns, "
-                  f"{len(dm_state.choices_made)} choices, "
-                  f"{len(dm_state.dice_rolls)} dice rolls")
+            print(
+                f"\n  DM Campaign complete: {dm_state.turn_count} turns, "
+                f"{len(dm_state.choices_made)} choices, "
+                f"{len(dm_state.dice_rolls)} dice rolls"
+            )
             print(f"  Finish: {dm_state.finish_reason}")
 
             # Check bio-system expectations
@@ -1267,7 +1294,6 @@ def start_simulation_mode(
 
         # Save analysis to session dir
         try:
-
             analysis_path = Path("data") / "sim_reports" / f"campaign_analysis_{time.strftime('%Y%m%d_%H%M%S')}.json"
             analysis_path.parent.mkdir(parents=True, exist_ok=True)
             from maxim.utils.atomic_io import atomic_write_json
@@ -1626,6 +1652,7 @@ def start_simulation_mode(
 
     # Persist everything to session directory
     from maxim.utils.paths import sim_reports as _sim_reports_dir
+
     report_dir = str(_sim_reports_dir())
     print(f"  Saving report to {report_dir}/{report.session_id}/...")
     save_report(report, base_dir=report_dir)
@@ -1732,7 +1759,9 @@ def start_simulation_mode(
         summary=report.llm_summary,
         session_id=report.session_id,
         session_dir=_session_dir,
-        campaign_analysis=campaign_analysis if pre_campaign_turns else dm_rollup,
+        campaign_analysis=campaign_analysis
+        if pre_campaign_turns
+        else (dm_rollup or _build_basic_analysis(aut_introspector)),
         introspector=aut_introspector,
         tool_stats=_tool_stats,
         actions=_actions,

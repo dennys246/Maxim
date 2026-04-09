@@ -5,7 +5,6 @@ from __future__ import annotations
 import textwrap
 
 
-
 # ---------------------------------------------------------------------------
 # Import verbs from maxim package
 # ---------------------------------------------------------------------------
@@ -16,34 +15,42 @@ class TestVerbImports:
 
     def test_campaign_importable(self):
         from maxim import campaign
+
         assert callable(campaign)
 
     def test_benchmark_importable(self):
         from maxim import benchmark
+
         assert callable(benchmark)
 
     def test_research_importable(self):
         from maxim import research
+
         assert callable(research)
 
     def test_on_importable(self):
         from maxim import on
+
         assert callable(on)
 
     def test_register_tool_importable(self):
         from maxim import register_tool
+
         assert callable(register_tool)
 
     def test_register_persona_importable(self):
         from maxim import register_persona
+
         assert callable(register_persona)
 
     def test_tool_decorator_importable(self):
         from maxim import tool
+
         assert callable(tool)
 
     def test_result_types_importable(self):
         from maxim import CampaignResult, BenchmarkResult, ResearchResult, EventHandle
+
         assert CampaignResult is not None
         assert BenchmarkResult is not None
         assert ResearchResult is not None
@@ -56,11 +63,13 @@ class TestVerbImports:
 
 
 class TestCampaignVerb:
-    def test_campaign_loads_yaml(self, tmp_path):
+    def test_campaign_loads_and_runs(self, tmp_path, monkeypatch):
+        from unittest.mock import MagicMock
         from maxim.api import campaign
 
         yaml_path = tmp_path / "test.yaml"
-        yaml_path.write_text(textwrap.dedent("""\
+        yaml_path.write_text(
+            textwrap.dedent("""\
             campaign:
               name: api_test
               goal: test the API
@@ -73,16 +82,29 @@ class TestCampaignVerb:
                 scene: "Welcome."
                 choices: [go]
                 branches: { go: __END__ }
-        """))
+        """)
+        )
+
+        # Mock start_simulation_mode to avoid real LLM calls
+        mock_result = MagicMock()
+        mock_result.turns = 3
+        mock_result.finish_reason = "complete"
+        mock_result.campaign_analysis = {"choices": [{"encounter": "intro", "choice": "go"}], "flags": ["flag_a"]}
+        monkeypatch.setattr("maxim.simulation.orchestrator.start_simulation_mode", lambda **kw: mock_result)
 
         result = campaign(str(yaml_path))
         assert result.campaign_name == "api_test"
+        assert result.turns == 3
+        assert result.finish_reason == "complete"
+        assert len(result.choices_made) == 1
 
-    def test_campaign_party_mode_override(self, tmp_path):
+    def test_campaign_party_mode_override(self, tmp_path, monkeypatch):
+        from unittest.mock import MagicMock
         from maxim.api import campaign
 
         yaml_path = tmp_path / "test.yaml"
-        yaml_path.write_text(textwrap.dedent("""\
+        yaml_path.write_text(
+            textwrap.dedent("""\
             campaign:
               name: party_test
               goal: test
@@ -95,13 +117,21 @@ class TestCampaignVerb:
                 scene: "Test."
                 choices: [go]
                 branches: { go: __END__ }
-        """))
+        """)
+        )
+
+        mock_result = MagicMock()
+        mock_result.turns = 1
+        mock_result.finish_reason = "complete"
+        mock_result.campaign_analysis = {}
+        monkeypatch.setattr("maxim.simulation.orchestrator.start_simulation_mode", lambda **kw: mock_result)
 
         result = campaign(str(yaml_path), party_mode=True)
         assert result.party_mode is True
 
     def test_campaign_result_defaults(self):
         from maxim.api import CampaignResult
+
         r = CampaignResult()
         assert r.choices_made == []
         assert r.flags == []
@@ -114,16 +144,32 @@ class TestCampaignVerb:
 
 
 class TestBenchmarkVerb:
-    def test_benchmark_returns_result(self):
+    def test_benchmark_returns_result(self, monkeypatch):
+        from unittest.mock import MagicMock
         from maxim.api import benchmark
+
+        # Mock BenchmarkRunner to avoid real LLM calls
+        mock_report = MagicMock()
+        mock_report.results = {
+            "mistral-7b": MagicMock(score=0.8, metrics={"recall": 0.75}),
+            "qwen2.5-14b": MagicMock(score=0.9, metrics={"recall": 0.85}),
+        }
+        mock_report.summary_table.return_value = "Summary table"
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = mock_report
+        monkeypatch.setattr("maxim.simulation.benchmark.BenchmarkRunner", lambda **kw: mock_runner)
 
         result = benchmark(models=["mistral-7b", "qwen2.5-14b"], suite="cognitive", runs=2)
         assert result.models == ["mistral-7b", "qwen2.5-14b"]
         assert result.suite == "cognitive"
         assert result.runs_per_model == 2
+        assert "mistral-7b" in result.scores
+        assert result.scores["mistral-7b"]["overall"] == 0.8
 
     def test_benchmark_result_defaults(self):
         from maxim.api import BenchmarkResult
+
         r = BenchmarkResult()
         assert r.models == []
         assert r.scores == {}
@@ -135,14 +181,26 @@ class TestBenchmarkVerb:
 
 
 class TestResearchVerb:
-    def test_research_returns_result(self):
+    def test_research_returns_result(self, monkeypatch):
+        from unittest.mock import MagicMock
         from maxim.api import research
+
+        # Mock start_research_mode to avoid real LLM calls
+        mock_result = MagicMock()
+        mock_result.session_id = "test_123"
+        mock_result.paper_path = ""
+        mock_result.review_verdict = "accept"
+        mock_result.experiments_count = 2
+        monkeypatch.setattr("maxim.simulation.research_orchestrator.start_research_mode", lambda **kw: mock_result)
 
         result = research(goal="test memory retention")
         assert result.goal == "test memory retention"
+        assert result.session_id == "test_123"
+        assert result.experiment_count == 2
 
     def test_research_result_defaults(self):
         from maxim.api import ResearchResult
+
         r = ResearchResult()
         assert r.paper_draft == ""
         assert r.experiment_count == 0
@@ -198,6 +256,7 @@ class TestToolRegistration:
             name = "api_test_tool"
             description = "Test tool"
             input_schema = {}
+
             def execute(self, **kwargs):
                 return ToolOutput(success=True, output="ok")
 
@@ -210,13 +269,24 @@ class TestToolRegistration:
         initial = len(_pending_tools)
 
         @tool
-        def my_analysis(data: str) -> str:
+        def my_analysis(data: str, depth: int = 3) -> str:
             """Analyze data."""
             return f"analyzed: {data}"
 
         assert len(_pending_tools) > initial
         # Function still works normally
         assert my_analysis("hello") == "analyzed: hello"
+
+        # Schema inferred from type annotations
+        registered = _pending_tools[-1]
+        schema = registered.input_schema
+        assert schema["type"] == "object"
+        assert "data" in schema["properties"]
+        assert schema["properties"]["data"]["type"] == "string"
+        assert schema["properties"]["depth"]["type"] == "integer"
+        assert schema["properties"]["depth"]["default"] == 3
+        assert "data" in schema["required"]
+        assert "depth" not in schema["required"]
 
 
 # ---------------------------------------------------------------------------
@@ -266,4 +336,5 @@ class TestObserve:
 
     def test_introspect_alias(self):
         from maxim.api import observe, introspect
+
         assert introspect is observe

@@ -141,6 +141,8 @@ def start_research_mode(
     # Run the simulation. Campaign turns are injected directly through
     # the bridge, and post-campaign analysis runs programmatically.
     # The orchestrator LLM is only used for non-campaign simulations.
+    # Pass our experiment_log so the orchestrator's research tools write to
+    # the same log the Writer/Reviewer will read from (D-0a fix).
     sim_result = start_simulation_mode(
         goal=researcher_goal,
         persona="researcher",
@@ -150,32 +152,45 @@ def start_research_mode(
         aut_model=aut_model,
         no_sim_env=True,
         pre_campaign_turns=campaign_turns if campaign_turns else None,
+        experiment_log=experiment_log,
     )
 
-    # For campaign runs, record the analysis as an experiment
+    # Record analysis as an experiment — works for both campaign and non-campaign runs (D-0b fix).
     if sim_result.campaign_analysis:
         analysis = sim_result.campaign_analysis
-        recall_data = analysis.get("memory_recall_verath", {})
         stats_data = analysis.get("system_stats", {})
         turns_data = analysis.get("turns", [])
 
-        # Build a conclusion from the data
-        recall_found = bool(recall_data) and "error" not in recall_data
+        # Extract memory recall data dynamically — check memory_recall dict
+        # for any seed keyword results (D-0d fix: no hardcoded keys).
+        memory_recall = analysis.get("memory_recall", {})
+        recall_summary_parts = []
+        any_recall_found = False
+        for keyword, recall_data in memory_recall.items():
+            found = bool(recall_data) and "error" not in recall_data
+            count = recall_data.get("count", 0) if isinstance(recall_data, dict) else 0
+            recall_summary_parts.append(f"{keyword}: {'found' if found else 'not found'} ({count} hit(s))")
+            if found:
+                any_recall_found = True
+
         hippo_stats = stats_data.get("hippocampus", {}) if isinstance(stats_data, dict) else {}
         mem_count = hippo_stats.get("total_memories", 0)
         graph_edges = hippo_stats.get("graph_edges", 0)
 
+        recall_summary = "; ".join(recall_summary_parts) if recall_summary_parts else "no recall queries"
+        n_turns = len(turns_data)
+
         experiment_log.record(
-            hypothesis="The seed detail 'Verath' survives in hippocampal memory after narrative interference turns",
-            method=f"Direct bridge injection of {len(turns_data)} campaign turns (short variant: 2 seed + 3 interference + 1 recall + 1 epilogue)",
-            result=f"Memory recall: {'found' if recall_found else 'not found'}. {mem_count} total memories, {graph_edges} graph edges. Recall data: {str(recall_data)[:200]}",
-            conclusion=f"Seed memory {'SURVIVED' if recall_found else 'DID NOT SURVIVE'} interference. AUT formed {mem_count} episodic memories with {graph_edges} associative edges.",
-            tags=["hippocampal_recall", "campaign", "short_variant"],
+            hypothesis=f"Simulation goal: {goal}",
+            method=f"{'Direct bridge injection of ' + str(n_turns) + ' campaign turns' if n_turns else 'Free-form simulation with orchestrator LLM'}",
+            result=f"Memory recall: {recall_summary}. {mem_count} total memories, {graph_edges} graph edges.",
+            conclusion=f"AUT formed {mem_count} episodic memories with {graph_edges} associative edges. Recall: {recall_summary}.",
+            tags=["auto_recorded", "campaign" if n_turns else "freeform"],
             metrics={
-                "memory_survived": 1.0 if recall_found else 0.0,
+                "any_recall_found": 1.0 if any_recall_found else 0.0,
                 "total_memories": mem_count,
                 "graph_edges": graph_edges,
-                "campaign_turns": len(turns_data),
+                "campaign_turns": n_turns,
                 "duration_s": sim_result.duration_s,
             },
         )

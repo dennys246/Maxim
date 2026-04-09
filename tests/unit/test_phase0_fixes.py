@@ -49,40 +49,64 @@ class TestRunSignature:
                     assert "router" not in kw_names, "Should not use 'router' kwarg"
 
 
-# ── 0b: Stub verbs emit warnings ──────────────────────────────────────
+# ── 0b: API verbs are wired (no longer stubs) ────────────────────────
 
 
-class TestStubWarnings:
-    """Stub API verbs should emit UserWarning, not silently return empty."""
+class TestVerbsWired:
+    """API verbs should be wired to real runtimes (not stubs with warnings)."""
 
-    def test_campaign_warns(self):
+    def test_campaign_calls_runtime(self, monkeypatch):
+        from unittest.mock import MagicMock
         import maxim
+
+        mock_result = MagicMock()
+        mock_result.turns = 2
+        mock_result.finish_reason = "complete"
+        mock_result.campaign_analysis = {}
+        monkeypatch.setattr("maxim.simulation.orchestrator.start_simulation_mode", lambda **kw: mock_result)
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = maxim.campaign("scenarios/campaigns/heist_v1.yaml")
-            assert len(w) >= 1
-            assert "not yet wired" in str(w[0].message).lower()
-            assert result.campaign_name  # Has a name (actual value depends on YAML)
+            # Should NOT emit "not yet wired" warning
+            stub_warnings = [x for x in w if "not yet wired" in str(x.message).lower()]
+            assert len(stub_warnings) == 0
+            assert result.campaign_name  # Has a name from the YAML
 
-    def test_benchmark_warns(self):
+    def test_benchmark_calls_runtime(self, monkeypatch):
+        from unittest.mock import MagicMock
         import maxim
+
+        mock_report = MagicMock()
+        mock_report.results = {"mistral-7b": MagicMock(score=0.8, metrics={})}
+        mock_report.summary_table.return_value = ""
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = mock_report
+        monkeypatch.setattr("maxim.simulation.benchmark.BenchmarkRunner", lambda **kw: mock_runner)
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = maxim.benchmark(models=["mistral-7b"], suite="cognitive")
-            assert len(w) >= 1
-            assert "not yet wired" in str(w[0].message).lower()
+            stub_warnings = [x for x in w if "not yet wired" in str(x.message).lower()]
+            assert len(stub_warnings) == 0
             assert result.models == ["mistral-7b"]
 
-    def test_research_warns(self):
+    def test_research_calls_runtime(self, monkeypatch):
+        from unittest.mock import MagicMock
         import maxim
+
+        mock_result = MagicMock()
+        mock_result.session_id = "test_001"
+        mock_result.paper_path = ""
+        mock_result.review_verdict = "accept"
+        mock_result.experiments_count = 1
+        monkeypatch.setattr("maxim.simulation.research_orchestrator.start_research_mode", lambda **kw: mock_result)
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = maxim.research(goal="test memory")
-            assert len(w) >= 1
-            assert "not yet wired" in str(w[0].message).lower()
+            stub_warnings = [x for x in w if "not yet wired" in str(x.message).lower()]
+            assert len(stub_warnings) == 0
             assert result.goal == "test memory"
 
 
@@ -131,30 +155,37 @@ class TestTypeExports:
 
     def test_robot_controller_importable(self):
         from maxim import RobotController
+
         assert RobotController is not None
 
     def test_connection_error_importable(self):
         from maxim import ConnectionError as MaximConnectionError
+
         assert issubclass(MaximConnectionError, Exception)
 
     def test_tool_not_found_error_importable(self):
         from maxim import ToolNotFoundError
+
         assert issubclass(ToolNotFoundError, Exception)
 
     def test_memory_error_importable(self):
         from maxim import MemoryError as MaximMemoryError
+
         assert issubclass(MaximMemoryError, Exception)
 
     def test_planning_error_importable(self):
         from maxim import PlanningError
+
         assert issubclass(PlanningError, Exception)
 
     def test_hardware_error_importable(self):
         from maxim import HardwareError
+
         assert issubclass(HardwareError, Exception)
 
     def test_runtime_error_importable(self):
         from maxim import RuntimeError as MaximRuntimeError
+
         assert issubclass(MaximRuntimeError, Exception)
 
     def test_exception_hierarchy(self):
@@ -170,8 +201,8 @@ class TestTypeExports:
             HardwareError,
             RuntimeError as MR,
         )
-        for exc_cls in [ConfigurationError, MC, ModelError, ToolExecutionError,
-                         MM, PlanningError, HardwareError, MR]:
+
+        for exc_cls in [ConfigurationError, MC, ModelError, ToolExecutionError, MM, PlanningError, HardwareError, MR]:
             assert issubclass(exc_cls, MaximError), f"{exc_cls.__name__} should inherit MaximError"
 
 

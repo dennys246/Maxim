@@ -76,6 +76,7 @@ def configure(
     # Channel filter for simulation output
     if show is not None:
         from maxim.simulation.sim_logger import set_show_channels
+
         set_show_channels(show)
 
     # Subsystem trace env vars (read by individual subsystems at runtime)
@@ -901,17 +902,27 @@ def campaign(
 
         campaign_def = replace(campaign_def, party_mode=party_mode)
 
-    import warnings
+    from maxim.simulation.orchestrator import start_simulation_mode
 
-    warnings.warn(
-        f"campaign() is not yet wired to the DM runtime. "
-        f"Use the CLI instead: maxim --sim {path}\n"
-        f"Full API wiring ships in v0.2.1.",
-        stacklevel=2,
+    sim_result = start_simulation_mode(
+        goal=campaign_def.goal or f"Complete the {campaign_def.name} campaign",
+        persona="campaign",
+        dm_campaign=campaign_def,
     )
+
+    # Extract structured results from the sim
+    rollup = sim_result.campaign_analysis or {}
+    choices = rollup.get("choices", [])
+    flags = rollup.get("flags", [])
+
     return CampaignResult(
         campaign_name=campaign_def.name,
+        turns=sim_result.turns,
+        choices_made=choices,
+        flags=flags,
+        finish_reason=sim_result.finish_reason,
         party_mode=campaign_def.party_mode,
+        rollup=rollup,
     )
 
 
@@ -969,20 +980,53 @@ def benchmark(
         for model, scores in result.scores.items():
             print(f"{model}: {scores}")
     """
-    import warnings
-
     configure(verbosity=verbosity)
 
-    warnings.warn(
-        "benchmark() is not yet wired to the BenchmarkRunner. "
-        "Use the CLI instead: maxim --sim benchmark --models X,Y --campaign Z\n"
-        "Full API wiring ships in v0.2.1.",
-        stacklevel=2,
+    # Resolve suite name to path if not already a path
+    from pathlib import Path
+
+    suite_path = suite
+    if not Path(suite).exists():
+        # Try scenarios/benchmarks/{suite}.yaml
+        candidate = Path("scenarios") / "benchmarks" / f"{suite}.yaml"
+        if not candidate.exists():
+            # Try scenarios/benchmarks/{suite}_suite.yaml
+            candidate = Path("scenarios") / "benchmarks" / f"{suite}_suite.yaml"
+        if candidate.exists():
+            suite_path = str(candidate)
+        else:
+            from maxim.exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                f"Benchmark suite '{suite}' not found. "
+                f"Available suites: cognitive_suite, quick_check, causal_learning, etc. "
+                f"Or pass a direct path to a YAML file.",
+                context={"suite": suite},
+            )
+
+    from maxim.simulation.benchmark import BenchmarkRunner
+
+    runner = BenchmarkRunner(
+        models=list(models),
+        suite_path=suite_path,
+        runs=runs,
     )
+    report = runner.run()
+
+    # Build per-model scores dict from report
+    scores: dict[str, dict[str, float]] = {}
+    for model_name, model_result in report.results.items():
+        scores[model_name] = {
+            "overall": model_result.score,
+            **model_result.metrics,
+        }
+
     return BenchmarkResult(
         models=list(models),
         suite=suite,
         runs_per_model=runs,
+        scores=scores,
+        summary=report.summary_table(),
     )
 
 
@@ -1033,17 +1077,36 @@ def research(
         )
         print(result.paper_draft[:200])
     """
-    import warnings
-
     configure(verbosity=verbosity)
 
-    warnings.warn(
-        "research() is not yet wired to the research orchestrator. "
-        "Use the CLI instead: maxim --sim 'goal' --research\n"
-        "Full API wiring ships in v0.2.1.",
-        stacklevel=2,
+    from maxim.simulation.research_orchestrator import start_research_mode
+
+    orch_result = start_research_mode(
+        goal=goal,
+        campaign=campaign,
+        language_model=model,
+        aut_model=aut_model,
     )
-    return ResearchResult(goal=goal)
+
+    # Read the paper draft if it was written
+    paper_text = ""
+    if orch_result.paper_path:
+        try:
+            from pathlib import Path
+
+            p = Path(orch_result.paper_path)
+            if p.exists():
+                paper_text = p.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.warning("Failed to read paper draft at %s: %s", orch_result.paper_path, e)
+
+    return ResearchResult(
+        goal=goal,
+        session_id=orch_result.session_id,
+        paper_draft=paper_text,
+        review=orch_result.review_verdict,
+        experiment_count=orch_result.experiments_count,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1151,8 +1214,55 @@ def register_tool(tool: Any) -> None:
         _pending_tools.append(tool)
 
 
+def _infer_input_schema(fn: Any) -> dict[str, Any]:
+    """Infer JSON Schema from function signature + type hints."""
+    import inspect
+
+    sig = inspect.signature(fn)
+    hints = {}
+    try:
+        hints = __import__("typing").get_type_hints(fn)
+    except Exception:
+        hints = {}  # get_type_hints can fail on forward refs; fall back to no hints
+
+    _type_map = {
+        str: "string",
+        int: "integer",
+        float: "number",
+        bool: "boolean",
+        list: "array",
+        dict: "object",
+    }
+
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+
+    for name, param in sig.parameters.items():
+        if name in ("self", "cls"):
+            continue
+        prop: dict[str, Any] = {}
+        hint = hints.get(name)
+        if hint is not None:
+            prop["type"] = _type_map.get(hint, "string")
+        else:
+            prop["type"] = "string"
+        if param.default is not inspect.Parameter.empty:
+            prop["default"] = param.default
+        else:
+            required.append(name)
+        properties[name] = prop
+
+    schema: dict[str, Any] = {"type": "object", "properties": properties}
+    if required:
+        schema["required"] = required
+    return schema
+
+
 def tool(fn: Any) -> Any:
     """Decorator to register a function as a tool.
+
+    Automatically infers ``input_schema`` from the function's type
+    annotations so the LLM can discover tool parameters.
 
     Example::
 
@@ -1163,10 +1273,12 @@ def tool(fn: Any) -> Any:
     """
     from maxim.tools.base import Tool, ToolOutput
 
+    inferred_schema = _infer_input_schema(fn)
+
     class FunctionTool(Tool):
         name = fn.__name__
         description = fn.__doc__ or f"Tool: {fn.__name__}"
-        input_schema = {}
+        input_schema = inferred_schema
 
         def execute(self, **kwargs: Any) -> Any:
             try:

@@ -147,10 +147,17 @@ class WriterAgent:
         """
         experiments = self.experiment_log.all_entries()
         if not experiments:
-            logger.warning("Writer: no experiments to write about")
-            return self.draft
-
-        exp_summary = json.dumps(experiments, indent=2, default=str)
+            logger.warning(
+                "Writer: no formal experiments recorded — generating observational paper from available metrics"
+            )
+            # Build a minimal experiment summary so the Writer can still produce content
+            exp_summary = json.dumps(
+                [{"note": "No formal experiments recorded. Paper generated from simulation observations and metrics."}],
+                indent=2,
+                default=str,
+            )
+        else:
+            exp_summary = json.dumps(experiments, indent=2, default=str)
 
         # Write sections in academic order: methods first, title last
         for section in PAPER_SECTIONS:

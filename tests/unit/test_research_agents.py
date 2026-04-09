@@ -171,7 +171,9 @@ class TestWriterAgent:
         empty_log = ExperimentLog(session_dir=session_dir)
         writer = WriterAgent(llm=mock_llm, experiment_log=empty_log, bus=bus, session_dir=session_dir)
         draft = writer.run("test")
-        assert len(draft.sections) == 0  # No experiments = no paper
+        # D-0c fix: Writer now generates observational paper even with no experiments
+        assert len(draft.sections) > 0  # Should still produce content
+        assert (session_dir / "paper.md").exists()  # Paper saved to disk
 
     def test_run_without_llm(self, experiment_log, bus, session_dir):
         writer = WriterAgent(llm=None, experiment_log=experiment_log, bus=bus, session_dir=session_dir)
