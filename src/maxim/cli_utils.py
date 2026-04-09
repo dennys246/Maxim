@@ -126,10 +126,10 @@ def normalize_args(args: argparse.Namespace) -> None:
 
     segmentation_model = getattr(args, "segmentation_model", None)
     if segmentation_model is not None:
-        from maxim.models.vision.registry import list_segmentation_models, normalize_segmentation_model
+        from maxim.models.vision.registry import list_engines, normalize_engine_name
 
-        selected = normalize_segmentation_model(segmentation_model) or "rtm"
-        available = list_segmentation_models()
+        selected = normalize_engine_name(segmentation_model) or "rtm"
+        available = list_engines()
         if available and selected not in available:
             opts = ", ".join(available)
             raise SystemExit(f"Unknown --segmentation-model {segmentation_model!r}. Available: {opts}")

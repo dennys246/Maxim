@@ -317,9 +317,9 @@ class SupervisionPolicy:
         if tool_name == "write_file":
             path = str(params.get("path", ""))
             # Check if writing to sandbox (auto-approve) or CWD (requires approval)
-            from maxim.utils.filesystem_policy import is_path_in_sandbox
+            from maxim.utils.filesystem_policy import is_path_in_workspace
 
-            if is_path_in_sandbox(path):
+            if is_path_in_workspace(path):
                 if self.sandbox_write_auto_approve:
                     return True, None
             elif self.cwd_write_requires_approval:

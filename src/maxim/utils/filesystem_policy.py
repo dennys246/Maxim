@@ -484,8 +484,6 @@ def ensure_workspace_exists(cwd: str | None = None) -> str:
     return workspace_path
 
 
-# Backward compat alias
-ensure_sandbox_exists = ensure_workspace_exists
 
 
 def get_mode_filesystem_config(
@@ -727,8 +725,6 @@ def is_path_in_workspace(path: str, cwd: str | None = None) -> bool:
     return real_path.startswith(workspace + os.sep) or real_path == workspace
 
 
-# Backward compat alias
-is_path_in_sandbox = is_path_in_workspace
 
 
 def is_path_in_cwd(path: str, cwd: str | None = None) -> bool:
@@ -793,7 +789,7 @@ def check_write_permission(
     if cwd is None:
         cwd = get_effective_cwd()
 
-    in_sandbox = is_path_in_sandbox(path, cwd)
+    in_sandbox = is_path_in_workspace(path, cwd)
     in_cwd = is_path_in_cwd(path, cwd)
     in_accessible = is_path_in_accessible_folders(path)
 
@@ -872,7 +868,7 @@ def check_execute_permission(
     if cwd is None:
         cwd = get_effective_cwd()
 
-    in_sandbox = is_path_in_sandbox(path, cwd)
+    in_sandbox = is_path_in_workspace(path, cwd)
 
     # Sandbox execution policy
     if in_sandbox:

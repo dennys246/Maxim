@@ -10,7 +10,7 @@ from maxim.evaluation.base import Evaluator
 from maxim.utils.logging import log_swallowed_exception, warn
 from maxim.utils.structured_logging import log_agentic
 
-# Extracted to tool_dispatch.py — re-export for backward compatibility
+# Extracted to tool_dispatch.py
 from maxim.runtime.tool_dispatch import (
     safe_agent_name as _safe_agent_name,
     record_outcome as _record_outcome,

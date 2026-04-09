@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from maxim.simulation.orchestrator import SimulationResult
+    from maxim.simulation.sim_types import SimulationResult
 
 logger = logging.getLogger(__name__)
 
@@ -163,8 +163,12 @@ class Session:
                     stats = observer.system_stats()
                     report.metrics = stats
                     report.sections["System State"] = json.dumps(stats, indent=2, default=str)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning(
+                        "Could not populate System State in research report for session %s: %s",
+                        self.id,
+                        exc,
+                    )
         else:
             warnings.warn(
                 f"Session '{self.id}' has no persisted data on disk. "

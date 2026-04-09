@@ -16,7 +16,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.llm_worker import LLMProposal
-from maxim.runtime.agent_loop import _record_outcome, _safe_agent_name
+from maxim.runtime.tool_dispatch import record_outcome as _record_outcome, safe_agent_name as _safe_agent_name
 from maxim.runtime.dn_controller import DefaultNetworkController
 from maxim.runtime.loop_types import (
     ActionFollowup,

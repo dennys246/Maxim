@@ -87,10 +87,6 @@ def _build_engine(name: str, *, pose_model: bool = False) -> VisionEngine:
 # Public factory (used by cli.py, selfy.py, etc.)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Keep backward-compatible aliases so existing code keeps working.
-normalize_segmentation_model = normalize_engine_name
-list_segmentation_models = list_engines
-
 
 def build_segmentation_model(name: Any = None, *, pose_model: bool = False) -> Any:
     """Build a ``YOLO8`` adapter wrapping the requested engine.

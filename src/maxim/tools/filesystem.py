@@ -811,7 +811,7 @@ class RequestDirectoryChangeTool(Tool):
                 )
 
             # Import here to avoid circular dependency
-            from maxim.utils.filesystem_policy import set_effective_cwd, ensure_sandbox_exists
+            from maxim.utils.filesystem_policy import set_effective_cwd, ensure_workspace_exists
 
             # Update effective CWD
             if not set_effective_cwd(abs_path):
@@ -821,7 +821,7 @@ class RequestDirectoryChangeTool(Tool):
                 )
 
             # Ensure sandbox exists in new directory
-            sandbox_path = ensure_sandbox_exists(abs_path)
+            sandbox_path = ensure_workspace_exists(abs_path)
 
             return ToolResult(
                 success=True,

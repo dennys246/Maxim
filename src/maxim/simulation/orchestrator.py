@@ -23,7 +23,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Extracted to sim_types.py — re-export for backward compatibility
+# Extracted to sim_types.py
 from maxim.simulation.sim_types import (  # noqa: E402
     SimulationResult,
     load_resume_context as _load_resume_context,
