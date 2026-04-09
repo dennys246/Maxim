@@ -53,6 +53,7 @@ def _normalize_args(args: argparse.Namespace) -> None:
                 print("  Run 'maxim --list-models' to see all available models.\n")
                 # Show a few close matches if possible
                 from difflib import get_close_matches
+
                 close = get_close_matches(language_model.lower(), [a.lower() for a in available], n=3, cutoff=0.4)
                 if close:
                     print(f"  Did you mean: {', '.join(close)}?\n")
@@ -66,8 +67,7 @@ def _normalize_args(args: argparse.Namespace) -> None:
                 api_key_env = profile.get("api_key_env", "")
                 if api_key_env and not os.environ.get(api_key_env):
                     raise SystemExit(
-                        f"Error: {language_model} requires {api_key_env}.\n"
-                        f"  Fix: export {api_key_env}=<your-key>"
+                        f"Error: {language_model} requires {api_key_env}.\n  Fix: export {api_key_env}=<your-key>"
                     )
             # Persist across sessions so the user doesn't need --llm every time
             try:
@@ -1121,14 +1121,28 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.exit(0)
 
     # If no meaningful action was specified, show quick-start guidance
-    # Exception: MAXIM_ROLE=leader means this is a headless leader server — start normally
     _has_sim = sim_path is not None
     _has_explore = getattr(args, "explore", None) is not None
     _has_mode_override = "--mode" in (raw_argv or [])
     _has_robot = getattr(args, "robot_name", "reachy_mini") != "reachy_mini" or "--robot" in (raw_argv or [])
     _is_leader = os.environ.get("MAXIM_ROLE", "").strip().lower() == "leader"
     _has_llm = os.environ.get("MAXIM_LLM_ENABLED", "").strip() == "1"
-    if not (_has_sim or _has_explore or _has_mode_override or _has_robot or _is_leader or _has_llm):
+    _has_action = _has_sim or _has_explore or _has_mode_override or _has_robot
+
+    # Leader/LLM-enabled without explicit action: start proxy, wait for commands
+    if not _has_action and (_is_leader or _has_llm):
+        print("Maxim — leader mode (proxy running)")
+        print("  Accepting peer commands (update, restart, llm, version, logs)")
+        print("  Use --sim or --mode to start a session, or Ctrl+C to stop.\n")
+        try:
+            import threading
+
+            threading.Event().wait()  # Block until Ctrl+C; proxy runs as daemon thread
+        except KeyboardInterrupt:
+            print("\n  Shutting down.")
+        return 0
+
+    if not (_has_action or _is_leader or _has_llm):
         print("Maxim — bio-inspired cognitive architecture\n")
         print("Quick start:")
         print('  maxim --sim "test the agent\'s memory"   Run a generative simulation')
