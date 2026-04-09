@@ -134,7 +134,7 @@ class TestProfileHasLocalFile:
         assert profile_has_local_file("nonexistent-model-xyz") is False
 
 
-class TestBackwardCompatImports:
+class TestImportPaths:
     def test_import_from_lane_backends(self):
         from maxim.runtime.lane_backends import (
             stop_active_spawner,

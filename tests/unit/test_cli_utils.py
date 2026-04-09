@@ -126,7 +126,7 @@ class TestMemoryPaths:
         assert "fear" in MEMORY_PATHS
 
 
-class TestBackwardCompatImports:
+class TestImportPaths:
     def test_import_from_cli(self):
         from maxim.cli import _normalize_epoch_value, _normalize_args
         assert callable(_normalize_epoch_value)

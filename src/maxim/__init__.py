@@ -13,7 +13,7 @@ Public API (verb-based):
     maxim.introspect("causal")   # alias for observe
 """
 
-__version__ = "0.2.0"
+__version__ = "1.0.0"
 
 # Verb-based public API — lazy-loaded to keep ``import maxim`` fast.
 _API_VERBS = frozenset(
@@ -59,19 +59,18 @@ _API_TYPES = {
     "MemoryCaptureEvent": "maxim.api",
     "PainSignalEvent": "maxim.api",
     "PromptEvent": "maxim.api",
-    # Error hierarchy — users can catch these
     # Error hierarchy — category-level exceptions users can catch
     "MaximError": "maxim.exceptions",
     "ConfigurationError": "maxim.exceptions",
-    "ConnectionError": "maxim.exceptions",
+    "MaximConnectionError": "maxim.exceptions",
     "ModelError": "maxim.exceptions",
     "ModelLoadError": "maxim.exceptions",
     "ToolExecutionError": "maxim.exceptions",
     "ToolNotFoundError": "maxim.exceptions",
-    "MemoryError": "maxim.exceptions",
+    "MaximMemoryError": "maxim.exceptions",
     "PlanningError": "maxim.exceptions",
     "HardwareError": "maxim.exceptions",
-    "RuntimeError": "maxim.exceptions",
+    "MaximRuntimeError": "maxim.exceptions",
     # Return types from API verbs
     "RobotController": "maxim.hardware.controller",
     # SEM types — stable public types for embodiment composition
@@ -122,15 +121,15 @@ __all__ = [
     # Errors (category-level)
     "MaximError",
     "ConfigurationError",
-    "ConnectionError",
+    "MaximConnectionError",
     "ModelError",
     "ModelLoadError",
     "ToolExecutionError",
     "ToolNotFoundError",
-    "MemoryError",
+    "MaximMemoryError",
     "PlanningError",
     "HardwareError",
-    "RuntimeError",
+    "MaximRuntimeError",
     # Return types
     "RobotController",
     # Sub-module namespaces

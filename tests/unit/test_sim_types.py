@@ -143,7 +143,7 @@ class TestCampaignRunner:
         assert "error" in result["turns"][0]
 
 
-class TestBackwardCompatImports:
+class TestImportPaths:
     """Verify all original import paths still work."""
 
     def test_start_simulation_mode_import(self):

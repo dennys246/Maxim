@@ -34,9 +34,9 @@ Comprehensive documentation for Maxim's systems and subsystems.
 
 | Document | Description |
 |----------|-------------|
-| [Attention](attention.md) | Spatial attention, gaze control, scene context |
-| [Salience](salience.md) | Object-level salience, novelty tracking |
 | [Semantic Similarity](semantic_similarity_analysis.md) | Phase 4 neural embeddings, NeuralSemanticLSH |
+| Attention (archived) | Vision-centric spatial attention — being rebuilt as part of [salience abstraction](plans/salience_abstraction_plan.md) |
+| Salience (archived) | Vision-centric salience — being rebuilt as part of [salience abstraction](plans/salience_abstraction_plan.md) |
 
 ### Safety & Learning
 

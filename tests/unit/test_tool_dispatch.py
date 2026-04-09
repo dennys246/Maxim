@@ -318,8 +318,8 @@ class TestExecuteParallelActions:
         assert len(outcomes) == 2
 
 
-class TestBackwardCompatImports:
-    """Verify re-exports from agent_loop.py still work."""
+class TestImportPaths:
+    """Verify internal import paths work."""
 
     def test_import_record_outcome_from_agent_loop(self):
         from maxim.runtime.agent_loop import _record_outcome

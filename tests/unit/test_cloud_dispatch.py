@@ -100,7 +100,7 @@ class TestLoadCostConfig:
         assert result.min_spend_samples == 5
 
 
-class TestBackwardCompatImports:
+class TestImportPaths:
     def test_constants_from_router(self):
         from maxim.models.language.router import _JSON_RULES, _DEFAULT_PRICING, _MODEL_DOWNGRADE_MAP
         assert "CRITICAL" in _JSON_RULES
