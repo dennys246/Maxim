@@ -252,7 +252,9 @@ class TestRegistryGet:
         assert "combat" in entity["modulators"]  # From child
 
     def test_get_missing_raises(self, registry):
-        with pytest.raises(KeyError, match="not found"):
+        from maxim.exceptions import ComponentNotFoundError
+
+        with pytest.raises(ComponentNotFoundError, match="not found"):
             registry.get("weapons/nonexistent")
 
     def test_circular_extends_raises(self, tmp_path):

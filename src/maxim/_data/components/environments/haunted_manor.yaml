@@ -1,0 +1,62 @@
+component:
+  name: haunted_manor
+  tags: [environment, indoor, dangerous, horror]
+  category: environments
+
+entity:
+  name: haunted_manor
+  entity_type: environment
+  sensors:
+    lighting:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.15
+    supernatural_presence:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    temperature:
+      unit: celsius
+      range: [-10, 25]
+      initial: 12
+    sanity_drain:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.1
+    exit_accessibility:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+  modulators:
+    interaction:
+      affordances:
+        look_around:
+          params: {}
+          description: "Survey the dust-covered room — portraits seem to watch you"
+        search_room:
+          params: {room: str}
+          description: "Thoroughly search a room for clues or items"
+        read_diary:
+          params: {}
+          description: "Read a diary found in the study — reveals the manor's history"
+        light_candle:
+          params: {}
+          description: "Light a candle to push back the oppressive darkness"
+    survival:
+      affordances:
+        barricade_door:
+          params: {}
+          description: "Push furniture against a door to block it"
+        run:
+          params: {direction: str}
+          description: "Sprint toward an exit"
+        hide:
+          params: {location: str}
+          description: "Conceal yourself behind furniture or in a closet"
+  failure_modes:
+    - name: entity_manifests
+      trigger: {field: supernatural_presence, op: ">", value: 0.85, pain: 0.7}
+    - name: exits_sealed
+      trigger: {field: exit_accessibility, op: "<", value: 0.1, pain: 0.6}
+    - name: freezing
+      trigger: {field: temperature, op: "<", value: -5, pain: 0.4}

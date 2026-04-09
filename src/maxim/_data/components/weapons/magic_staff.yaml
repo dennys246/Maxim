@@ -1,0 +1,60 @@
+component:
+  name: magic_staff
+  tags: [weapon, ranged, magical, degradable, fantasy]
+  category: weapons
+
+entity:
+  name: magic_staff
+  entity_type: weapon
+  sensors:
+    mana:
+      unit: points
+      range: [0, 100]
+      initial: 80
+    durability:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    attunement:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    corruption:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+  modulators:
+    spellcasting:
+      affordances:
+        cast_fireball:
+          params: {target: str}
+          description: "Hurl a fireball at a target — high damage, high mana cost"
+        cast_shield:
+          params: {}
+          description: "Conjure a protective barrier — moderate mana cost"
+        cast_heal:
+          params: {target: str}
+          description: "Channel restorative magic into a target"
+        channel_power:
+          params: {}
+          description: "Focus to regenerate mana slowly — leaves you vulnerable"
+    physical:
+      affordances:
+        strike:
+          params: {target: str}
+          description: "Strike with the staff as a blunt weapon — no mana cost"
+    maintenance:
+      affordances:
+        purify:
+          params: {}
+          description: "Cleanse corruption from the staff through meditation"
+        attune:
+          params: {}
+          description: "Deepen bond with the staff to improve spell potency"
+  failure_modes:
+    - name: mana_exhaustion
+      trigger: {field: mana, op: "<=", value: 5, pain: 0.3}
+    - name: corruption_overload
+      trigger: {field: corruption, op: ">", value: 0.8, pain: 0.7}
+    - name: shattered
+      trigger: {field: durability, op: "<", value: 0.05, pain: 0.8}

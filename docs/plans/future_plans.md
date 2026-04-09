@@ -69,19 +69,30 @@ Decouple salience/attention from vision-specific assumptions (pixels, bounding b
 
 ### Asset Foundry — Autonomous SEM Component Generation
 
-An autonomous pipeline that generates, validates, tests, and curates SEM components — expanding the component library without manual YAML authoring. Full plan: [asset_foundry_plan.md](asset_foundry_plan.md).
+An autonomous pipeline that generates, validates, tests, and curates SEM components. Full plan: [asset_foundry_plan.md](asset_foundry_plan.md).
+
+**Core pipeline (~1,200 LOC):**
 
 | Phase | Work | LOC | What it enables |
 |-------|------|-----|----------------|
-| F-0 | Generation engine — batch EntityDesigner + JSON repair | ~220 | `maxim --foundry "cyberpunk weapons" --count 10` |
-| F-1 | Validation pipeline — schema, semantic sanity, genre, EC diversity | ~180 | Reject malformed/nonsensical specs before simulation cost |
-| F-2 | Test gauntlet — 8 SEM protocol tests + 3-encounter campaign with fresh MemoryHub per candidate, full-stack integration (22 systems), multi-run averaging, error recovery | ~500 | Every system exercised per candidate with state isolation |
-| F-3 | Scoring (11 dimensions) + curation — stochastic averaging, interesting failures | ~250 | Schema + bio-system + salience + ATL + EC + motor + temporal + diversity |
-| F-4 | Theme templates — pre-built genre configurations | ~150 | `maxim --foundry cyberpunk` with category distributions |
-| F-5 | CLI integration + session persistence + parallel mode | ~200 | Resume, re-test, promote, `--parallel N` |
-| F-6 | Downstream integration — encounter library, narrator enhancement, interactive curation, benchmark generation | ~250 | Foundry outputs feed back into the broader system |
+| F-0 | Generation engine — batch design + JSON repair + energy gate | ~220 | `maxim --foundry "cyberpunk weapons" --count 10` |
+| F-1 | Validation pipeline — schema, semantic sanity, genre | ~180 | Reject malformed specs before testing |
+| F-2 | Gauntlet — 8 SEM protocol tests + 3-encounter campaign + entity context injection + error recovery | ~400 | Structural validation + bio-system engagement + strategy prompts |
+| F-3 | Scoring (4 core dimensions, extensible) + curation + reports | ~250 | Rank, promote, flag. Foundation for adding dimensions later |
+| — | Session persistence + CLI | ~150 | Resume, promote workflow |
 
-**Trigger:** Post-publication (~1,750 LOC). Uses LLM tokens for generation and testing. Local models (Mistral-7b) keep costs at ~$0 per run. Exercises 22 systems across the full codebase.
+**Deferred extensions (implement when core proves out):**
+
+| Extension | Trigger |
+|-----------|---------|
+| Theme templates | Multiple genre runs needed |
+| Additional scoring dimensions (cerebellum, motor, salience, ATL, EC, temporal, diversity) | Core 4 prove insufficient |
+| Demand-driven generation | Library too small for generative campaigns. Energy-gated. |
+| `generate_entity` tool | Agent needs to model novel entities. Requires salience refactor. Stress-test first. |
+| Encounter library archival, narrator awareness, interactive curation, benchmark generation | Foundry produces enough promoted components to feed downstream |
+| Iterative spec refinement | Single-shot specs prove insufficient quality |
+
+**Trigger:** Post-publication. Local models keep costs at $0 per run. Success = sim generates a usable, useful, and used asset.
 
 ### DM Extensions (conditional on usage data)
 

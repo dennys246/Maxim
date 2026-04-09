@@ -89,7 +89,7 @@ def check_tier_detection(caps=None) -> CheckResult:
             name="LLM Tiers",
             status="warn",
             message=f"Tier detection unavailable: {e}",
-            fix="pip install -e '.[llm-local]'  # or install pymaxim[llm-local]",
+            fix="pip install -e '.[llm-llama]'  # or install pymaxim[llm-llama]",
         )
     except Exception as e:
         return CheckResult(

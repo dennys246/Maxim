@@ -1,0 +1,61 @@
+component:
+  name: laptop
+  tags: [item, tech, tool, modern]
+  category: items
+
+entity:
+  name: laptop
+  entity_type: item
+  sensors:
+    battery:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.85
+    storage_used:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.4
+    cpu_temp:
+      unit: celsius
+      range: [30, 105]
+      initial: 42
+    network_signal:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+  modulators:
+    computing:
+      affordances:
+        write_file:
+          params: {filename: str, content: str}
+          description: "Create or edit a file on the filesystem"
+        read_file:
+          params: {filename: str}
+          description: "Open and read a file"
+        run_program:
+          params: {command: str}
+          description: "Execute a program or script"
+        browse_web:
+          params: {url: str}
+          description: "Open a website in the browser"
+        send_email:
+          params: {to: str, subject: str, body: str}
+          description: "Send an email message"
+    hardware:
+      affordances:
+        plug_in:
+          params: {}
+          description: "Connect to power to charge the battery"
+        connect_wifi:
+          params: {network: str}
+          description: "Join a wireless network"
+        close_lid:
+          params: {}
+          description: "Close the laptop to sleep"
+  failure_modes:
+    - name: battery_dead
+      trigger: {field: battery, op: "<=", value: 0.02, pain: 0.4}
+    - name: overheating
+      trigger: {field: cpu_temp, op: ">", value: 95, pain: 0.5}
+    - name: storage_full
+      trigger: {field: storage_used, op: ">", value: 0.95, pain: 0.3}

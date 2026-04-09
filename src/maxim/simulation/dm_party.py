@@ -83,6 +83,11 @@ class PartyDMRuntime(DMRuntime):
         self._component_registry = component_registry
         self._npc_responses: dict[str, str] = {}  # Last NPC responses per encounter
 
+        # Share the LLM router with the agent pool so NPCs can generate
+        # real dialogue instead of placeholder responses.
+        if llm_router is not None and hasattr(agent_pool, "_llm_router"):
+            agent_pool._llm_router = llm_router
+
         # Set up NPC agents from campaign specs
         self._setup_npc_agents()
 
@@ -272,7 +277,9 @@ class PartyDMRuntime(DMRuntime):
         reactions: dict[str, str] = {}
         for npc_id, result in results.items():
             npc_name = npc_id.removeprefix("npc_")
-            if result.response and not result.error:
+            if result.error:
+                log.warning("Party DM: NPC '%s' failed to respond: %s", npc_name, result.error)
+            elif result.response:
                 reactions[npc_name] = result.response
                 log.debug("Party DM: NPC '%s' reacted: %s...", npc_name, result.response[:60])
 

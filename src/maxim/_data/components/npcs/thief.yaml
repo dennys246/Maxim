@@ -1,0 +1,56 @@
+component:
+  name: thief
+  tags: [npc, humanoid, stealth, criminal, fantasy]
+  category: npcs
+  extends: npcs/base_humanoid
+
+entity:
+  name: thief
+  entity_type: npc
+  metadata:
+    race: human
+    class: rogue
+    persona_prompt: "You are a cunning thief who knows every shadow in the city."
+  sensors:
+    hp:
+      initial: 14
+    trust:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.2
+    stealth:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    greed:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Speak to the thief — watch your pockets"
+        bribe:
+          params: {amount: float}
+          description: "Offer coin for information or services"
+        intimidate:
+          params: {}
+          description: "Threaten the thief to get what you want"
+    criminal:
+      affordances:
+        pickpocket:
+          params: {target: str}
+          description: "Attempt to steal from a target"
+        lockpick:
+          params: {lock: str}
+          description: "Pick a lock — skill determines success"
+        scout_area:
+          params: {}
+          description: "Case the area for valuables and escape routes"
+  failure_modes:
+    - name: caught
+      trigger: {field: stealth, op: "<", value: 0.15, pain: 0.5}
+    - name: hostile
+      trigger: {field: trust, op: "<", value: 0.05, pain: 0.4}

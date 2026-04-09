@@ -37,7 +37,7 @@ Install any combination with `pip install "pymaxim[extra1,extra2]"` (or `pip ins
 
 | Extra | Command | What it adds |
 |-------|---------|--------------|
-| `llm` | `pip install -e ".[llm]"` | Local LLM inference via llama.cpp |
+| `llm-llama` | `pip install -e ".[llm-llama]"` | Local LLM inference via llama.cpp |
 | `llm-torch` | `pip install -e ".[llm-torch]"` | PyTorch/Transformers backend (Blackwell GPUs) |
 | `llm-anthropic` | `pip install -e ".[llm-anthropic]"` | Anthropic cloud backend |
 | `llm-openai` | `pip install -e ".[llm-openai]"` | OpenAI cloud backend |

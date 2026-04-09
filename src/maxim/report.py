@@ -87,15 +87,9 @@ class Report:
         elif suffix == ".json":
             return self._save_json(p)
         elif suffix in _OPTIONAL_FORMATS:
-            raise ValueError(
-                f"Format '{suffix}' requires pymaxim[docs] (not yet available). "
-                f"Use .md or .json for now."
-            )
+            raise ValueError(f"Format '{suffix}' requires pymaxim[docs] (not yet available). Use .md or .json for now.")
         else:
-            raise ValueError(
-                f"Unsupported format '{suffix}'. "
-                f"Supported: .md, .json. Future: .pdf, .docx, .html"
-            )
+            raise ValueError(f"Unsupported format '{suffix}'. Supported: .md, .json. Future: .pdf, .docx, .html")
 
     def _save_markdown(self, path: Path) -> str:
         """Save as Markdown."""
@@ -142,7 +136,24 @@ class Report:
 
         text = "\n".join(lines)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        # Atomic write: tmp file + os.replace to avoid partial writes
+        import os
+        import tempfile
+
+        content = text.encode("utf-8")
+        fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+        try:
+            os.write(fd, content)
+            os.fsync(fd)
+            os.close(fd)
+            os.replace(tmp, str(path))
+        except BaseException:
+            os.close(fd)
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
         logger.info("Report saved: %s (%d chars)", path, len(text))
         return str(path)
 

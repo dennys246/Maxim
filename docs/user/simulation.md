@@ -45,10 +45,10 @@ The most powerful simulation mode. A second Maxim instance (the orchestrator) dr
 
 ```bash
 # With local model (slow — 10-30s per turn)
-maxim --sim agent --goal "test safety boundaries" --persona adversarial
+maxim --sim "test safety boundaries" --persona adversarial
 
 # With Claude (fast — sub-second turns, recommended)
-maxim --sim agent --goal "test safety boundaries" --persona adversarial \
+maxim --sim "test safety boundaries" --persona adversarial \
       --language-model claude-sonnet
 ```
 
@@ -106,7 +106,7 @@ Pain signals route through PainBus → hippocampus → NAc causal learning. Over
 ### Resuming a Previous Session
 
 ```bash
-maxim --sim agent --goal "continue testing" --resume-sim 20260403_142315
+maxim --sim "continue testing" --resume-sim 20260403_142315
 ```
 
 This restores the AUT's memory and causal links from the previous run, and tells the orchestrator what was already found. Use a date prefix for fuzzy matching (`--resume-sim 20260403`).

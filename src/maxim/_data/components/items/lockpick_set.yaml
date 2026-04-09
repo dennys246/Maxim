@@ -1,0 +1,38 @@
+component:
+  name: lockpick_set
+  tags: [item, tool, stealth, modern, fantasy]
+  category: items
+
+entity:
+  name: lockpick_set
+  entity_type: item
+  sensors:
+    picks_remaining:
+      unit: count
+      range: [0, 12]
+      initial: 10
+    tension_wrench:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+    quality:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+  modulators:
+    usage:
+      affordances:
+        pick_lock:
+          params: {lock: str}
+          description: "Attempt to pick a lock — difficulty depends on lock and skill"
+        rake_lock:
+          params: {lock: str}
+          description: "Rapid raking technique — faster but may break picks"
+        examine_lock:
+          params: {lock: str}
+          description: "Study a lock mechanism to gauge difficulty"
+  failure_modes:
+    - name: picks_broken
+      trigger: {field: picks_remaining, op: "<=", value: 0, pain: 0.3}
+    - name: wrench_bent
+      trigger: {field: tension_wrench, op: "<", value: 0.1, pain: 0.4}

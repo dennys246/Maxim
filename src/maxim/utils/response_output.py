@@ -15,8 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-# Import audio utilities at module level to avoid per-call import overhead
-from maxim.utils.audio import resample_audio
+# Audio utilities deferred to call site to avoid eager numpy/scipy loading
 
 if TYPE_CHECKING:
     pass
@@ -295,6 +294,8 @@ class ResponseOutput:
 
             # Resample if needed (TTS typically outputs 22050Hz, Reachy needs 16000Hz)
             if hasattr(self.tts, "sample_rate") and self.tts.sample_rate != 16000:
+                from maxim.utils.audio import resample_audio
+
                 audio = resample_audio(audio, self.tts.sample_rate, 16000)
 
             # Play through speaker

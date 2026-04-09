@@ -622,7 +622,7 @@ They can also use `python -m maxim` which works via `__main__.py`.
 - `maxim-diagnostics` installs for everyone but only works with Reachy hardware. Confusing for non-robot users.
 - The `[all]` extra is missing `training`, `tts`, `semantic`, and `database`. A user doing `pip install pymaxim[all]` won't get everything.
 - `getting-started.md` still shows `git clone` + `pip install -e .` as the primary install path, not `pip install pymaxim`.
-- Getting-started references `pip install -e ".[llm]"` but the extras group is actually called `llm-llama` in pyproject.toml.
+- ~~Getting-started references `pip install -e ".[llm]"` but the extras group is actually called `llm-llama` in pyproject.toml.~~ **FIXED** — updated to `llm-llama`.
 
 ### First Use — CLI Path
 

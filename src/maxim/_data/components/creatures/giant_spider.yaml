@@ -1,0 +1,52 @@
+component:
+  name: giant_spider
+  tags: [creature, predator, hostile, fantasy, horror]
+  category: creatures
+
+entity:
+  name: giant_spider
+  entity_type: creature
+  sensors:
+    hp:
+      unit: points
+      range: [0, 20]
+      initial: 20
+    venom_sacs:
+      unit: count
+      range: [0, 6]
+      initial: 4
+    web_silk:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    aggression:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+  modulators:
+    combat:
+      affordances:
+        bite:
+          params: {target: str}
+          description: "Bite with venomous fangs — injects poison if venom available"
+        web_trap:
+          params: {target: str}
+          description: "Shoot webbing to ensnare a target — consumes silk"
+        ambush:
+          params: {}
+          description: "Drop from above onto an unsuspecting target"
+    movement:
+      affordances:
+        climb:
+          params: {surface: str}
+          description: "Scale walls or ceilings"
+        retreat_to_web:
+          params: {}
+          description: "Scurry back to the web nest"
+  failure_modes:
+    - name: venom_depleted
+      trigger: {field: venom_sacs, op: "<=", value: 0, pain: 0.2}
+    - name: silk_exhausted
+      trigger: {field: web_silk, op: "<", value: 0.1, pain: 0.3}
+    - name: death
+      trigger: {field: hp, op: "<=", value: 0, pain: 1.0}

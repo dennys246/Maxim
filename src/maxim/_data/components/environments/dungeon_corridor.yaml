@@ -1,0 +1,53 @@
+component:
+  name: dungeon_corridor
+  tags: [environment, indoor, dangerous, fantasy]
+  category: environments
+
+entity:
+  name: dungeon_corridor
+  entity_type: environment
+  sensors:
+    lighting:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.15
+    air_quality:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.4
+    trap_density:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    structural_integrity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+  modulators:
+    interaction:
+      affordances:
+        search_for_traps:
+          params: {}
+          description: "Carefully inspect the corridor for hidden traps"
+        light_torch:
+          params: {}
+          description: "Ignite a torch to illuminate the area"
+        listen:
+          params: {}
+          description: "Press ear to the stone and listen for sounds ahead"
+        check_walls:
+          params: {}
+          description: "Feel along the walls for hidden passages or mechanisms"
+    movement:
+      affordances:
+        proceed_carefully:
+          params: {}
+          description: "Move forward slowly, watching for danger"
+        sprint_through:
+          params: {}
+          description: "Run through quickly — may trigger traps"
+  failure_modes:
+    - name: cave_in
+      trigger: {field: structural_integrity, op: "<", value: 0.15, pain: 0.8}
+    - name: total_darkness
+      trigger: {field: lighting, op: "<", value: 0.05, pain: 0.3}

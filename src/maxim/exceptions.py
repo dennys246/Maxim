@@ -3,26 +3,14 @@
 Provides specific exception types for different error categories,
 enabling more precise error handling and better debugging.
 
-.. note:: ``ConnectionError``, ``MemoryError``, and ``RuntimeError``
-   shadow Python builtins.  Import them qualified or aliased::
+Usage::
 
-       from maxim.exceptions import ConnectionError as MaximConnectionError
-       # or
-       import maxim
-       try: ...
-       except maxim.ConnectionError: ...
-
-   Avoid ``from maxim import *`` as it replaces the builtins.
-   A rename to ``Maxim*Error`` is planned for v0.3.0.
-
-Usage:
-    from maxim.exceptions import ConnectionError, ToolExecutionError
+    from maxim.exceptions import MaximConnectionError, ToolExecutionError
 
     try:
         robot.connect()
-    except ConnectionError as e:
+    except MaximConnectionError as e:
         logger.error("Robot connection failed: %s", e)
-        # Handle connection-specific recovery
 """
 
 from __future__ import annotations
@@ -62,7 +50,7 @@ class MaximError(Exception):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class ConnectionError(MaximError):  # noqa: A001 — shadows builtin; rename planned for v0.3.0
+class MaximConnectionError(MaximError):
     """Robot connection issues.
 
     Raised when:
@@ -74,19 +62,19 @@ class ConnectionError(MaximError):  # noqa: A001 — shadows builtin; rename pla
     pass
 
 
-class ConnectionTimeoutError(ConnectionError):
+class ConnectionTimeoutError(MaximConnectionError):
     """Connection attempt timed out."""
 
     pass
 
 
-class ConnectionLostError(ConnectionError):
+class ConnectionLostError(MaximConnectionError):
     """Connection was lost during operation."""
 
     pass
 
 
-class ReconnectionFailedError(ConnectionError):
+class ReconnectionFailedError(MaximConnectionError):
     """Automatic reconnection failed after multiple attempts."""
 
     pass
@@ -191,7 +179,7 @@ class ModelConfigError(ModelError):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class MemoryError(MaximError):  # noqa: A001 — shadows builtin; rename planned for v0.3.0
+class MaximMemoryError(MaximError):
     """Memory system errors.
 
     Raised when:
@@ -203,13 +191,13 @@ class MemoryError(MaximError):  # noqa: A001 — shadows builtin; rename planned
     pass
 
 
-class MemoryCorruptionError(MemoryError):
+class MemoryCorruptionError(MaximMemoryError):
     """Memory data is corrupted or inconsistent."""
 
     pass
 
 
-class MemoryCapacityError(MemoryError):
+class MemoryCapacityError(MaximMemoryError):
     """Memory capacity limit exceeded."""
 
     pass
@@ -265,6 +253,17 @@ class ConfigurationError(MaximError):
     - Required configuration is missing
     - Configuration values are invalid
     - Configuration file parsing fails
+    """
+
+    pass
+
+
+class ComponentNotFoundError(ConfigurationError):
+    """Requested SEM component template does not exist.
+
+    Raised by ``maxim.create.entity()`` when the template reference
+    (e.g., ``"npcs/guard"``) is not found in any component directory.
+    The error message includes the list of available components.
     """
 
     pass
@@ -328,7 +327,7 @@ class AudioError(HardwareError):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class RuntimeError(MaximError):  # noqa: A001 — shadows builtin; rename planned for v0.3.0
+class MaximRuntimeError(MaximError):
     """Runtime system errors.
 
     Raised for errors in the agent loop, thread management, etc.
@@ -337,7 +336,7 @@ class RuntimeError(MaximError):  # noqa: A001 — shadows builtin; rename planne
     pass
 
 
-class ShutdownRequestedError(RuntimeError):
+class ShutdownRequestedError(MaximRuntimeError):
     """Shutdown was requested during operation.
 
     This is not an error per se, but a signal to stop processing.
@@ -346,7 +345,7 @@ class ShutdownRequestedError(RuntimeError):
     pass
 
 
-class AgentLoopError(RuntimeError):
+class AgentLoopError(MaximRuntimeError):
     """Error in the agent loop."""
 
     pass
@@ -356,7 +355,7 @@ __all__ = [
     # Base
     "MaximError",
     # Connection
-    "ConnectionError",
+    "MaximConnectionError",
     "ConnectionTimeoutError",
     "ConnectionLostError",
     "ReconnectionFailedError",
@@ -371,7 +370,7 @@ __all__ = [
     "ModelInferenceError",
     "ModelConfigError",
     # Memory
-    "MemoryError",
+    "MaximMemoryError",
     "MemoryCorruptionError",
     "MemoryCapacityError",
     # Planning
@@ -380,6 +379,7 @@ __all__ = [
     "NoValidPlanError",
     # Configuration
     "ConfigurationError",
+    "ComponentNotFoundError",
     "MissingConfigError",
     "InvalidConfigError",
     # Hardware
@@ -389,7 +389,7 @@ __all__ = [
     "CameraError",
     "AudioError",
     # Runtime
-    "RuntimeError",
+    "MaximRuntimeError",
     "ShutdownRequestedError",
     "AgentLoopError",
 ]

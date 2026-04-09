@@ -1,0 +1,52 @@
+component:
+  name: skeleton_warrior
+  tags: [creature, undead, hostile, fantasy]
+  category: creatures
+
+entity:
+  name: skeleton_warrior
+  entity_type: creature
+  sensors:
+    hp:
+      unit: points
+      range: [0, 15]
+      initial: 15
+    aggression:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    bone_integrity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    necromantic_binding:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+  modulators:
+    combat:
+      affordances:
+        sword_slash:
+          params: {target: str}
+          description: "Slash with a rusted blade"
+        shield_bash:
+          params: {target: str}
+          description: "Ram target with a battered shield"
+        throw_bone:
+          params: {target: str}
+          description: "Hurl a detached bone as a projectile"
+    movement:
+      affordances:
+        shamble:
+          params: {direction: str}
+          description: "Move with a lurching gait"
+        reassemble:
+          params: {}
+          description: "Pull scattered bones back together"
+  failure_modes:
+    - name: shattered
+      trigger: {field: bone_integrity, op: "<", value: 0.1, pain: 0.6}
+    - name: binding_broken
+      trigger: {field: necromantic_binding, op: "<", value: 0.1, pain: 0.8}
+    - name: destroyed
+      trigger: {field: hp, op: "<=", value: 0, pain: 1.0}

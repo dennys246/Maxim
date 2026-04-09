@@ -1,0 +1,43 @@
+component:
+  name: enchanted_grove
+  tags: [environment, outdoor, magical, fantasy]
+  category: environments
+
+entity:
+  name: enchanted_grove
+  entity_type: environment
+  sensors:
+    ambient_magic:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    lighting:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    hostility:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.1
+    visibility:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.4
+  modulators:
+    interaction:
+      affordances:
+        look_around:
+          params: {}
+          description: "Survey the grove — ancient trees glow with faint runes"
+        gather_herbs:
+          params: {}
+          description: "Search for magical herbs and reagents"
+        meditate:
+          params: {}
+          description: "Sit among the roots and attune to the grove's power"
+        drink_from_spring:
+          params: {}
+          description: "Drink from the luminous spring at the grove's heart"
+  failure_modes:
+    - name: grove_corrupted
+      trigger: {field: hostility, op: ">", value: 0.7, pain: 0.5}

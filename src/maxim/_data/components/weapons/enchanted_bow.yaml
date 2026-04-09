@@ -1,0 +1,55 @@
+component:
+  name: enchanted_bow
+  tags: [weapon, ranged, magical, degradable, fantasy]
+  category: weapons
+
+entity:
+  name: enchanted_bow
+  entity_type: weapon
+  sensors:
+    arrows:
+      unit: count
+      range: [0, 30]
+      initial: 20
+    draw_strength:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    enchantment:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+    string_tension:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+  modulators:
+    combat:
+      affordances:
+        shoot:
+          params: {target: str}
+          description: "Loose an arrow at a target"
+        aimed_shot:
+          params: {target: str}
+          description: "Take careful aim for a precise shot — slower but more accurate"
+        enchanted_shot:
+          params: {target: str}
+          description: "Fire an arrow wreathed in magical energy — consumes enchantment"
+        volley:
+          params: {target: str}
+          description: "Rapid-fire multiple arrows — burns through ammunition"
+    maintenance:
+      affordances:
+        restring:
+          params: {}
+          description: "Replace the bowstring to restore tension"
+        craft_arrows:
+          params: {material: str}
+          description: "Craft arrows from available materials"
+  failure_modes:
+    - name: out_of_arrows
+      trigger: {field: arrows, op: "<=", value: 0, pain: 0.3}
+    - name: string_snapped
+      trigger: {field: string_tension, op: "<", value: 0.1, pain: 0.5}
+    - name: enchantment_faded
+      trigger: {field: enchantment, op: "<", value: 0.05, pain: 0.2}

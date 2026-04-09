@@ -7,7 +7,7 @@ Maxim uses local LLM inference by default via llama.cpp. Cloud backends (Anthrop
 ## Quick Start
 
 ```bash
-pip install -e '.[llm]'
+pip install -e '.[llm-llama]'
 ./scripts/download_models.sh --llm --enable
 maxim --mode agentic --language-model smollm-1.7b
 ```
@@ -117,7 +117,7 @@ source ~/.zshrc
 maxim --language-model claude-sonnet
 
 # Simulation agent mode (recommended — fast turns)
-maxim --sim agent --goal "test safety" --language-model claude-sonnet
+maxim --sim "test safety" --language-model claude-sonnet
 ```
 
 ### Available Claude Models

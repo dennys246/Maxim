@@ -1,0 +1,65 @@
+component:
+  name: terminal_console
+  tags: [item, tech, tool, devops, modern]
+  category: items
+
+entity:
+  name: terminal_console
+  entity_type: item
+  sensors:
+    uptime:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.99
+    cpu_load:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.2
+    disk_usage:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.55
+    active_connections:
+      unit: count
+      range: [0, 1000]
+      initial: 47
+    security_posture:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+  modulators:
+    operations:
+      affordances:
+        run_command:
+          params: {command: str}
+          description: "Execute a shell command on the system"
+        check_logs:
+          params: {service: str}
+          description: "Tail recent log entries for a service"
+        deploy_service:
+          params: {service: str, version: str}
+          description: "Deploy or update a service — risky under load"
+        restart_service:
+          params: {service: str}
+          description: "Restart a running service"
+        check_status:
+          params: {}
+          description: "Review system health dashboard"
+    security:
+      affordances:
+        audit_access:
+          params: {}
+          description: "Review recent access logs for anomalies"
+        rotate_credentials:
+          params: {service: str}
+          description: "Rotate API keys and passwords for a service"
+        block_ip:
+          params: {ip: str}
+          description: "Add an IP address to the firewall block list"
+  failure_modes:
+    - name: disk_full
+      trigger: {field: disk_usage, op: ">", value: 0.95, pain: 0.5}
+    - name: overloaded
+      trigger: {field: cpu_load, op: ">", value: 0.95, pain: 0.4}
+    - name: breach_detected
+      trigger: {field: security_posture, op: "<", value: 0.2, pain: 0.8}

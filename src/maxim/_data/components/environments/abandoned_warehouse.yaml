@@ -1,0 +1,57 @@
+component:
+  name: abandoned_warehouse
+  tags: [environment, indoor, dangerous, modern]
+  category: environments
+
+entity:
+  name: abandoned_warehouse
+  entity_type: environment
+  sensors:
+    lighting:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.2
+    structural_integrity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    noise_level:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.1
+    occupant_count:
+      unit: count
+      range: [0, 20]
+      initial: 0
+    exit_count:
+      unit: count
+      range: [0, 6]
+      initial: 3
+  modulators:
+    interaction:
+      affordances:
+        look_around:
+          params: {}
+          description: "Survey the warehouse — rusted shelving, broken windows, scattered debris"
+        search_area:
+          params: {area: str}
+          description: "Search a specific area for items or clues"
+        listen:
+          params: {}
+          description: "Listen for sounds — footsteps, dripping, machinery"
+        use_flashlight:
+          params: {}
+          description: "Sweep a flashlight beam across the space"
+    movement:
+      affordances:
+        sneak:
+          params: {direction: str}
+          description: "Move quietly through the warehouse"
+        climb_rafters:
+          params: {}
+          description: "Climb up to the overhead rafters for a vantage point"
+  failure_modes:
+    - name: structural_collapse
+      trigger: {field: structural_integrity, op: "<", value: 0.15, pain: 0.7}
+    - name: total_darkness
+      trigger: {field: lighting, op: "<", value: 0.05, pain: 0.2}

@@ -1,0 +1,57 @@
+component:
+  name: roman_legionary
+  tags: [npc, humanoid, military, historical]
+  category: npcs
+  extends: npcs/base_humanoid
+
+entity:
+  name: roman_legionary
+  entity_type: npc
+  metadata:
+    race: human
+    class: soldier
+    persona_prompt: "You are a disciplined Roman legionary, loyal to your centurion and the Republic."
+  sensors:
+    hp:
+      initial: 20
+    morale:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    discipline:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    fatigue:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.2
+    trust:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.4
+  modulators:
+    combat:
+      affordances:
+        gladius_thrust:
+          params: {target: str}
+          description: "Thrust with the short sword from behind the shield wall"
+        shield_bash:
+          params: {target: str}
+          description: "Slam the scutum into a target"
+        throw_pilum:
+          params: {target: str}
+          description: "Hurl a javelin at range — single use"
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Address the legionary"
+        give_orders:
+          params: {order: str}
+          description: "Issue a command — only works if trust is high"
+  failure_modes:
+    - name: routed
+      trigger: {field: morale, op: "<", value: 0.1, pain: 0.5}
+    - name: exhausted
+      trigger: {field: fatigue, op: ">", value: 0.9, pain: 0.4}

@@ -1,0 +1,65 @@
+component:
+  name: pickup_truck
+  tags: [vehicle, ground, modern]
+  category: vehicles
+
+entity:
+  name: pickup_truck
+  entity_type: vehicle
+  sensors:
+    fuel:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+    engine_health:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    speed:
+      unit: kph
+      range: [0, 180]
+      initial: 0
+    tire_condition:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.75
+    cargo_weight:
+      unit: kg
+      range: [0, 900]
+      initial: 0
+  modulators:
+    driving:
+      affordances:
+        start_engine:
+          params: {}
+          description: "Turn the ignition and start the engine"
+        drive:
+          params: {destination: str}
+          description: "Drive toward a destination"
+        accelerate:
+          params: {}
+          description: "Increase speed"
+        brake:
+          params: {}
+          description: "Slow down or stop"
+        reverse:
+          params: {}
+          description: "Drive in reverse"
+    utility:
+      affordances:
+        load_cargo:
+          params: {item: str}
+          description: "Load something into the truck bed"
+        unload_cargo:
+          params: {item: str}
+          description: "Unload an item from the truck bed"
+        honk:
+          params: {}
+          description: "Sound the horn"
+  failure_modes:
+    - name: out_of_fuel
+      trigger: {field: fuel, op: "<=", value: 0.02, pain: 0.5}
+    - name: engine_failure
+      trigger: {field: engine_health, op: "<", value: 0.1, pain: 0.6}
+    - name: flat_tire
+      trigger: {field: tire_condition, op: "<", value: 0.1, pain: 0.4}

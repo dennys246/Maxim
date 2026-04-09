@@ -1,0 +1,53 @@
+component:
+  name: wizard
+  tags: [npc, humanoid, magical, fantasy]
+  category: npcs
+  extends: npcs/base_humanoid
+
+entity:
+  name: wizard
+  entity_type: npc
+  metadata:
+    race: human
+    class: mage
+    persona_prompt: "You are a reclusive wizard who guards ancient knowledge jealously."
+  sensors:
+    hp:
+      initial: 12
+    mana:
+      unit: points
+      range: [0, 100]
+      initial: 85
+    trust:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    arcane_focus:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Speak to the wizard"
+        request_knowledge:
+          params: {topic: str}
+          description: "Ask the wizard about arcane matters"
+        trade:
+          params: {offer: str}
+          description: "Offer a trade — wizards value rare components"
+    magic:
+      affordances:
+        cast_spell:
+          params: {spell: str, target: str}
+          description: "Cast a spell at the wizard's discretion"
+        ward:
+          params: {}
+          description: "Raise magical defenses"
+  failure_modes:
+    - name: mana_depleted
+      trigger: {field: mana, op: "<", value: 10, pain: 0.3}
+    - name: hostile
+      trigger: {field: trust, op: "<", value: 0.1, pain: 0.5}

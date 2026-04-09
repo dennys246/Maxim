@@ -14,92 +14,112 @@ maxim [OPTIONS]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--mode` | str | `agentic` | Operating mode: `agentic` (recommended). Legacy aliases (`exploration`, `live`, `sleep`, `reflection`, `train`) still accepted. |
-| `--robot-name` | str | `reachy_mini` | Robot identifier for Zenoh discovery |
-| `--home-dir` | str | `~/.maxim/` | Directory for outputs and state |
-| `--timeout` | int | `30` | Seconds to wait for robot connection |
-| `--epochs` | int | None (infinite) | Stop after N cycles |
-| `--verbosity` | int | `1` | Logging level: 0 (quiet), 1 (info), 2 (debug) |
-
-## Perception and Input
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--audio` | bool | `True` | Enable audio recording and transcription |
-| `--audio_len` | float | `5.0` | Seconds per audio chunk |
-| `--interactive` | bool | `True` | Enable keyboard/terminal input |
-| `--segmentation-model` | str | `rtm` | Vision engine: `rtm` or `yolo` |
-
-## LLM and Models
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
+| `--mode` | str | `exploration` | Operating mode: `exploration` (novelty-driven, DEFAULT), `agentic` (full agent loop), `sleep` (audio-only), `live` (no training), `train` (update MotorCortex), `reflection` (memory consolidation). |
 | `--language-model`, `--llm` | str | None | LLM profile (e.g., `mistral-7b`, `qwen2.5-14b-instruct`, `claude-sonnet`). Persists across sessions. |
-| `--list-models` | bool | `False` | List all available models with download/key status and exit |
+| `--verbosity` | int | `1` | Logging level: 0 (quiet), 1 (info), 2 (debug) |
+| `--home-dir` | str | `data` | Directory for outputs and state |
+| `--interactive` | bool | `True` | Enable keyboard/terminal input |
+| `--epochs` | int | `0` (infinite) | Stop after N cycles |
+| `--list-models` | flag | | List all available models with download/key status and exit |
 | `--delete-model` | str | None | Delete a downloaded local model to free disk space |
-| `--prompt-profile` | str | `standard` | Prompt optimization (legacy; per-mode config in `llm.json` preferred) |
-| `--tts` | bool | `False` | Enable text-to-speech |
-| `--tts-model` | str | `en_US-lessac-medium` | TTS voice model |
-| `--cloud-fallback` | str | None | Cloud model to use when self-hosted fails (e.g., `claude-sonnet`) |
-| `--cloud-lane` | str | None | Dedicated cloud model for a specific tier (e.g., `small claude-haiku`) |
-| `--cloud-budget` | float | `5.00` | Max session cost for cloud providers |
-| `--aut-model` | str | None | Separate model for AUT in dual-LLM research mode |
 
-## Agentic Mode
+## Cloud LLM Providers
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--memory-path` | str | `{home_dir}/memory/memories.json` | Custom memory storage path |
-| `--reset` | bool | `False` | Clear memory on startup |
-| `--enable-embeddings` | bool | `False` | Enable semantic embeddings for similarity |
-| `--agentic-verbosity` | int | inherits `--verbosity` | Agentic loop logging: 0, 1, 2, 3 |
-| `--no-agentic-console` | bool | `False` | Suppress agentic event console output |
+| `--cloud-fallback` | str | None | Cloud model to use when self-hosted fails (e.g., `claude-sonnet`) |
+| `--cloud-lane` | str str | None | Dedicated cloud model for a specific tier (e.g., `--cloud-lane review claude-haiku`) |
+| `--cloud-budget` | float | `5.00` | Max session cost for cloud providers |
 
 ## Autonomy and Safety
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--autonomy` | str | `planning` | Initial autonomy level: `planning`, `supervised`, `autonomous` |
-| `--autonomy-duration` | int | None | Timed autonomy in seconds |
-| `--internet-access` / `--no-internet` | bool | `False` | Enable or disable internet tools |
+| `--autonomy-duration` | float | None | Limit autonomous mode to N seconds, then revert to supervised. Only applies with `--autonomy autonomous`. |
+| `--internet-access` / `--no-internet` | bool | `True` | Enable or disable internet tools (mutually exclusive) |
 
-## Exploration (Legacy)
+## Memory
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--explore` | str | None | Focus topic for exploration |
-| `--exploration-duration` | int | None | Session time limit in seconds |
+| `--memory-path` | str | `{home_dir}/memory/memories.json` | Custom memory storage path |
+| `--reset` | flag | | Clear memory on startup |
+| `--enable-embeddings` | flag | | Enable semantic embeddings for similarity |
+| `--clear-memory` | str | `all` | Clear persistent memory and exit. Types: `all` (default), `focus`, `bounds`, `escalation`, `fear`, `threshold`, `nac`, `scn`, `hippo`, `pain`, `semantic`. Comma-separated. |
+
+## Hardware and Perception
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--robot-name` | str | `reachy_mini` | Robot identifier for Zenoh discovery |
+| `--timeout` | float | `30` | Seconds to wait for robot connection |
+| `--segmentation-model` | str | `rtm` | Vision engine: `rtm` or `yolo` |
+| `--audio` | bool | `True` | Enable audio recording and transcription |
+| `--audio_len` | float | `5.0` | Seconds per audio chunk |
+| `--tts` | flag | | Enable text-to-speech |
+| `--tts-model` | str | `en_US-lessac-medium` | TTS voice model |
+| `--comms` | flag | | Enable Twilio SMS/Voice |
+| `--record-percepts` | flag | | Record all percepts to `~/.maxim/sessions/` for replay |
+
+## Agentic Mode
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--agentic-verbosity` | int | inherits `--verbosity` | Agentic loop logging: 0 (quiet), 1 (goals/tools), 2 (+perception/memory), 3 (+loop) |
+| `--no-agentic-console` | flag | | Suppress agentic event console output |
+
+## Exploration Mode
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--explore` | str | None | Start exploration mode with optional focus (e.g., `--explore 'kitchen objects'`) |
+| `--exploration-duration` | float | None | Session time limit in seconds |
 | `--exploration-autonomy` | str | `supervised` | Autonomy level: `supervised` or `autonomous` |
-| `--exploration-allow-scripts` | bool | `False` | Allow Python script execution |
-| `--exploration-allow-training` | bool | `False` | Allow model training |
+| `--exploration-allow-scripts` | flag | | Allow Python script execution |
+| `--exploration-allow-training` | flag | | Allow model training |
 | `--resume-session` | str | None | Resume a previous session by ID |
-| `--list-sessions` | bool | `False` | List available sessions |
-
-## Communication
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--comms` | bool | `False` | Enable Twilio SMS/Voice |
+| `--list-sessions` | flag | | List available sessions |
 
 ## Simulation
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--sim` | str | None | Simulation mode: `"goal string"` (generative), `path.yaml` (direct injection/DM campaign auto-detect), `agent` (legacy autonomous), `research`, `benchmark` |
-| `--dm` | bool | `False` | Reserved for future generative DM mode. DM campaigns are auto-detected from YAML metadata today. |
-| `--persona` | str | `cooperative` | Sim persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement`, `researcher`, `sweep` |
+| `--sim` | str | None | Simulation mode: `"goal string"` (generative), `path.yaml` (direct injection/DM campaign auto-detect). No argument: interactive REPL. |
+| `--sim-goal`, `--goal` | str | None | Simulation goal (alternative to passing goal as `--sim` value) |
+| `--sim-persona`, `--persona` | str | `adversarial` | Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement` |
+| `--dm` | flag | | DM campaign mode. With `--sim <goal>`: generate. With `--sim <path.yaml>`: auto-detected. |
 | `--research` | flag | | Enable research report (Writer + Reviewer agents after sim) |
-| `--interactive` | flag | | Enable `ask_user` tool for interactive campaigns |
+| `--sim-interactive` | flag | | Enable human-in-the-loop interaction during simulation |
 | `--arc` | str | None | Narrative arc YAML for generative campaigns |
+| `--aut-name` | str | `AUT` | Display name for the agent-under-test |
+| `--aut-model` | str | None | Separate model for AUT in dual-LLM research mode |
+| `--campaign` | str | None | Campaign YAML(s) for research mode. Glob patterns accepted. |
 | `--resume-sim` | str | None | Resume a previous simulation session by ID or date prefix |
-| `--sandbox` | str | `docker` | Sandbox type: `docker`, `tmpdir` |
-| `--debug` | str | None | Debug subsystems: `hippo`, `nac`, `all` (comma-separated) |
-| `--show` | str | None | Filter simulation output by channel: `bio` (hippocampus/NAc/SCN/ATL/pain/fear), `exec` (tool execution/LLM), `sim` (percepts/scenes/NPC/choices), `memory`, `safety`, `all`. Composable: `--show bio,exec` |
-| `--continuous` | bool | `False` | Continuous mode: never auto-complete, keep testing until `/cancel` |
-| `--no-sim-env` | bool | `False` | Skip simulated filesystem with pain-triggering files |
-| `--generate-simulation` | str | None | Generate a YAML scenario from a natural language description |
-| `-o` | str | None | Output file path for `--generate-simulation` |
-| `--sim-report` | str | None | Write structured simulation results to a JSON file |
+| `--sandbox` | str | `auto` | Sandbox type: `auto` (Docker if available, else tmpdir), `docker`, `tmpdir` |
+| `--sandbox-image` | str | `python:3.12-slim` | Docker image for sandbox container |
+| `--sandbox-network` | str | `none` | Container network: `none` (isolated), `bridge` (outbound), `host` (shared) |
+| `--continuous` | flag | | Never auto-complete, keep testing until `/cancel` |
+| `--no-sim-env` | flag | | Skip simulated filesystem with pain-triggering files |
+| `--sim-report` | str | None | Write structured results to a JSON file (requires `--sim`) |
+
+## Debug and Tracing
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--debug`, `--sim-debug` | str | None | Debug subsystems (synonyms): `hippo`, `nac`, `atl`, `scn`, `all` (comma-separated). No args: trace all. |
+| `--show` | str | None | Filter simulation output: `bio`, `exec`, `sim`, `memory`, `safety`, `all`. Composable: `--show bio,exec` |
+
+## Benchmark
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--benchmark` | str | None | Run benchmarks: `tier1`, `tier2`, `tier3`, `all`, or comma-separated. Requires `--models`. |
+| `--models` | str | None | Comma-separated model profiles for benchmarking |
+| `--runs` | int | `1` | Runs per model (multiple enables variance measurement) |
+| `--benchmark-output` | str | None | Output directory for reports (default: `~/.maxim/benchmarks`) |
+| `--baseline` | str | None | Previous `benchmark_report.json` for comparison |
+| `--write-paper` | flag | | Generate comparative research paper from results |
 
 ## Peer Management
 
@@ -115,16 +135,17 @@ Subcommands for managing a remote leader node over a Cloudflare tunnel.
 | `maxim peer llm --status` | Show active model, uptime, GPU, and lane metrics |
 | `maxim peer test <url>` | Verify peer connectivity to a leader URL |
 
-## Maintenance
+## Utilities
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--clear-cache` | bool | `False` | Clear Python bytecode cache |
-| `--clear-memory` | str | None | Clear persistent memory. Types: `focus`, `bounds`, `escalation`, `fear`, `threshold`, `nac`, `scn`, `hippo`, `pain`, `semantic`, `all` |
-| `--audit-architecture` | bool | `False` | Check for architecture violations and exit |
-| `--last` | int | None | Re-run a recent invocation: `--last` (most recent), `--last 2` (second most recent). Up to 5 saved |
-| `--show-last` | bool | `False` | Show all saved invocations and exit |
-| `--clear-last` | bool | `False` | Clear saved invocations and exit |
+| `--clear-cache` | flag | | Clear Python bytecode cache |
+| `--audit-architecture` | flag | | Check for architecture violations and exit |
+| `--generate-simulation` | str | None | Generate a YAML scenario from natural language |
+| `-o`, `--output` | str | None | Output path for `--generate-simulation` |
+| `--last` | int | None | Re-run a recent invocation: `--last` (most recent), `--last 2` (second most recent) |
+| `--show-last` | flag | | Show all saved invocations and exit |
+| `--clear-last` | flag | | Clear saved invocations and exit |
 
 ---
 
@@ -133,7 +154,7 @@ Subcommands for managing a remote leader node over a Cloudflare tunnel.
 ### Minimal CPU setup
 
 ```bash
-maxim --mode agentic --language-model smollm-1.7b --prompt-profile minimal
+maxim --mode agentic --language-model smollm-1.7b
 ```
 
 ### Full GPU setup with internet
@@ -178,11 +199,10 @@ maxim --sim "hippocampal recall" --research \
 ### Benchmark (multi-model comparison)
 
 ```bash
-maxim --sim benchmark --models mistral-7b,qwen2.5-14b \
-      --campaign scenarios/benchmarks/cognitive_suite.yaml
+maxim --benchmark all --models mistral-7b,qwen2.5-14b
 ```
 
-### Interactive simulation (legacy REPL)
+### Interactive simulation (REPL)
 
 ```bash
 maxim --sim
@@ -206,8 +226,8 @@ maxim --sim scenarios/campaigns/darkened_cavern_v1.yaml
 ### Debug with subsystem tracing
 
 ```bash
-maxim --sim agent --goal "test" --debug hippo
-maxim --sim agent --goal "test" --debug hippo,nac
+maxim --sim "test safety" --debug hippo
+maxim --sim "test safety" --debug hippo,nac
 ```
 
 ### Generate a scenario from natural language

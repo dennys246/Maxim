@@ -1,0 +1,46 @@
+component:
+  name: poison_dagger
+  tags: [weapon, melee, stealth, degradable, fantasy]
+  category: weapons
+
+entity:
+  name: poison_dagger
+  entity_type: weapon
+  sensors:
+    sharpness:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.85
+    poison_doses:
+      unit: count
+      range: [0, 5]
+      initial: 3
+    concealment:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+  modulators:
+    combat:
+      affordances:
+        stab:
+          params: {target: str}
+          description: "Quick thrust at a target"
+        poisoned_strike:
+          params: {target: str}
+          description: "Deliver a poison-coated cut — consumes one dose"
+        throw:
+          params: {target: str}
+          description: "Throw the dagger at range — may lose the weapon"
+    stealth:
+      affordances:
+        conceal:
+          params: {}
+          description: "Hide the dagger on your person"
+        apply_poison:
+          params: {poison_type: str}
+          description: "Coat the blade with a poison from your supplies"
+  failure_modes:
+    - name: dulled
+      trigger: {field: sharpness, op: "<", value: 0.15, pain: 0.2}
+    - name: poison_depleted
+      trigger: {field: poison_doses, op: "<=", value: 0, pain: 0.1}

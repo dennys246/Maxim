@@ -353,19 +353,19 @@ Crash safety: every container launched through `LocalDockerRunner` gets a UUID-s
 
 ```bash
 # Auto (default): use Docker if available, else tmpdir with a warning
-maxim --sim agent --goal "test safety" --persona adversarial
+maxim --sim "test safety" --persona adversarial
 
 # Require Docker, fail if unavailable
-maxim --sim agent --goal "test safety" --sandbox docker
+maxim --sim "test safety" --sandbox docker
 
 # Force tmpdir (e.g. CI without Docker)
-maxim --sim agent --goal "test safety" --sandbox tmpdir
+maxim --sim "test safety" --sandbox tmpdir
 
 # Choose a different base image
-maxim --sim agent --goal "test safety" --sandbox-image ubuntu:24.04
+maxim --sim "test safety" --sandbox-image ubuntu:24.04
 
 # Enable outbound network (default: none)
-maxim --sim agent --goal "test safety" --sandbox-network bridge
+maxim --sim "test safety" --sandbox-network bridge
 ```
 
 ## Session Cost Ceiling

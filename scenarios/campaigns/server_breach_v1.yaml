@@ -1,0 +1,141 @@
+# Server Breach — DevOps/Modern Campaign
+#
+# Tests: Hippocampus (recall credentials and log patterns), NAc (action
+#        consequences — deploying under load, blocking wrong IPs),
+#        PainBus (system failures, security breaches).
+#
+# Exercises: terminal_console, server_room, sysadmin, laptop,
+#            abandoned_warehouse (attacker origin)
+
+campaign:
+  name: server_breach
+  goal: test technical reasoning and memory under time pressure
+  seed: 256
+  genre: devops
+
+player_character:
+  name: alex
+  entity_type: character
+  metadata:
+    race: human
+    class: engineer
+    backstory: "On-call SRE who just got paged at 2 AM. Something is very wrong."
+
+npcs:
+  maya:
+    entity_type: npc
+    metadata:
+      race: human
+      role: security_lead
+      persona_prompt: "You are the security team lead. Calm under pressure, but this incident has you worried. Share info methodically."
+  attacker:
+    entity_type: npc
+    metadata:
+      race: unknown
+      role: threat_actor
+      persona_prompt: "You are an unseen attacker exfiltrating data. You adapt when defenders respond."
+
+acts:
+  - name: alert
+    encounters: [the_page]
+  - name: investigation
+    encounters: [triage]
+  - name: response
+    encounters: [containment]
+
+encounters:
+  the_page:
+    scene: >
+      Your phone screams at 2:17 AM. PagerDuty: "CRITICAL — Anomalous
+      outbound traffic spike on prod-db-03. 47GB transferred in last
+      hour. Source IP: 10.0.4.88."
+
+      You open your laptop. The VPN connects. Maya from security is
+      already in the incident channel:
+
+      "I'm seeing credential stuffing attempts from 203.0.113.42.
+      They've been hitting the auth service for six hours. One of the
+      service accounts — svc-etl-prod — may be compromised. The
+      password is 'K8s#Pr0d!2024' and it has read access to the
+      customer database."
+
+      "Don't restart anything yet. I need you to check the logs on
+      prod-db-03 first. Look for queries from svc-etl-prod that don't
+      match our normal ETL window (02:00-03:00 UTC)."
+    active_npcs: [maya]
+    choices: [check_logs, block_ip_immediately, rotate_credentials]
+    branches:
+      check_logs: triage
+      block_ip_immediately: triage
+      rotate_credentials: triage
+    on_choice:
+      check_logs:
+        flags: [methodical]
+      block_ip_immediately:
+        flags: [reactive]
+    dialogue_hints:
+      default: "Stay calm. Walk me through what you see."
+      methodical: "Good call checking logs first. What do the query patterns show?"
+
+  triage:
+    scene: >
+      The server room terminal shows the damage. You check the logs
+      for prod-db-03:
+
+      Queries from svc-etl-prod outside the ETL window — SELECT * from
+      customers WHERE region='EU' — repeated 340 times in the last
+      hour. Normal ETL runs 12 queries max.
+
+      CPU load is at 87%. Disk usage at 91%. The attacker is still
+      active — you can see new connections forming.
+
+      Maya says: "We have two options. Rotate the svc-etl-prod
+      credentials now and risk breaking the legitimate 02:00 ETL job
+      that starts in 40 minutes, or block the source IP 203.0.113.42
+      and hope they don't have other entry points."
+
+      "Remember: the credential is K8s#Pr0d!2024 for svc-etl-prod.
+      If we rotate, the new one needs to go into vault and the ETL
+      config before 02:00."
+    active_npcs: [maya]
+    choices: [rotate_and_update, block_ip, isolate_database]
+    branches:
+      rotate_and_update: containment
+      block_ip: containment
+      isolate_database: containment
+    dice:
+      rotate_and_update:
+        roll: "1d20"
+        dc: 12
+        success_flag: clean_rotation
+    dialogue_hints:
+      default: "Clock's ticking. What's the call?"
+
+  containment:
+    scene: >
+      The situation is evolving. Whether you rotated credentials,
+      blocked the IP, or isolated the database, the immediate bleeding
+      has slowed.
+
+      Maya needs the incident report. She asks:
+
+      "Walk me through it. What was the compromised account? What was
+      the source IP? What queries did you see? What action did you take
+      and why?"
+
+      Time to recall everything from the last hour.
+    choices: [full_report, partial_report, defer_to_maya]
+    branches:
+      full_report: __END__
+      partial_report: __END__
+      defer_to_maya: __END__
+
+expectations:
+  hippocampus:
+    min_episodic_captures: 5
+    recall_hit_on: ["svc-etl-prod", "203.0.113.42", "prod-db-03"]
+  nac:
+    min_observations: 3
+    prediction_confidence_above: 0.3
+  pain:
+    min_signals: 0

@@ -205,7 +205,7 @@ content-type: application/json
 **Run on: peer**
 
 ```bash
-MAXIM_LANE_TRACE=1 maxim --sim agent --persona cooperative --goal "say hi"
+MAXIM_LANE_TRACE=1 maxim --sim "say hi" --persona cooperative
 ```
 
 **Expected in peer's terminal (within ~10s of sim start):**

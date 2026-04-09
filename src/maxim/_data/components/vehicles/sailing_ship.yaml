@@ -1,0 +1,68 @@
+component:
+  name: sailing_ship
+  tags: [vehicle, water, historical]
+  category: vehicles
+
+entity:
+  name: sailing_ship
+  entity_type: vehicle
+  sensors:
+    hull_integrity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.85
+    sail_condition:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    crew_morale:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+    supplies:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    wind_strength:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    speed:
+      unit: knots
+      range: [0, 12]
+      initial: 0
+  modulators:
+    navigation:
+      affordances:
+        set_course:
+          params: {heading: str}
+          description: "Order the helmsman to change heading"
+        raise_sails:
+          params: {}
+          description: "Unfurl the sails to catch wind"
+        lower_sails:
+          params: {}
+          description: "Furl the sails to slow or stop"
+        drop_anchor:
+          params: {}
+          description: "Lower the anchor to hold position"
+    management:
+      affordances:
+        ration_supplies:
+          params: {level: str}
+          description: "Adjust supply rationing — full, half, or quarter"
+        repair_hull:
+          params: {}
+          description: "Send crew below to patch hull damage"
+        rally_crew:
+          params: {}
+          description: "Give a speech to boost morale"
+  failure_modes:
+    - name: hull_breach
+      trigger: {field: hull_integrity, op: "<", value: 0.15, pain: 0.8}
+    - name: becalmed
+      trigger: {field: wind_strength, op: "<", value: 0.05, pain: 0.2}
+    - name: mutiny
+      trigger: {field: crew_morale, op: "<", value: 0.1, pain: 0.7}
+    - name: starvation
+      trigger: {field: supplies, op: "<", value: 0.05, pain: 0.6}

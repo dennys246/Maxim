@@ -1,0 +1,65 @@
+component:
+  name: horse
+  tags: [vehicle, mount, animal, fantasy, historical]
+  category: vehicles
+
+entity:
+  name: horse
+  entity_type: vehicle
+  sensors:
+    stamina:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    hp:
+      unit: points
+      range: [0, 30]
+      initial: 30
+    loyalty:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    speed:
+      unit: ratio
+      range: [0, 1]
+      initial: 0
+    hunger:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+  modulators:
+    riding:
+      affordances:
+        mount:
+          params: {}
+          description: "Climb onto the horse"
+        dismount:
+          params: {}
+          description: "Climb down from the horse"
+        gallop:
+          params: {direction: str}
+          description: "Ride at full speed — drains stamina quickly"
+        trot:
+          params: {direction: str}
+          description: "Ride at a steady pace — moderate stamina use"
+        halt:
+          params: {}
+          description: "Bring the horse to a stop"
+    care:
+      affordances:
+        feed:
+          params: {food: str}
+          description: "Feed the horse — restores hunger and builds loyalty"
+        water:
+          params: {}
+          description: "Let the horse drink"
+        calm:
+          params: {}
+          description: "Soothe a spooked horse"
+  failure_modes:
+    - name: exhausted
+      trigger: {field: stamina, op: "<", value: 0.05, pain: 0.4}
+    - name: spooked
+      trigger: {field: loyalty, op: "<", value: 0.15, pain: 0.3}
+    - name: collapsed
+      trigger: {field: hp, op: "<=", value: 0, pain: 0.9}

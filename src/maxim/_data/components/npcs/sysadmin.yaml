@@ -1,0 +1,57 @@
+component:
+  name: sysadmin
+  tags: [npc, humanoid, tech, devops, modern]
+  category: npcs
+  extends: npcs/base_humanoid
+
+entity:
+  name: sysadmin
+  entity_type: npc
+  metadata:
+    race: human
+    class: engineer
+    persona_prompt: "You are an overworked sysadmin who has seen too many outages at 3 AM. You are helpful but blunt."
+  sensors:
+    hp:
+      initial: 16
+    stress:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    trust:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.4
+    caffeine:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    expertise:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.85
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Talk to the sysadmin"
+        ask_for_help:
+          params: {problem: str}
+          description: "Describe a technical problem and ask for guidance"
+        escalate:
+          params: {issue: str}
+          description: "Escalate a critical issue — only use for real emergencies"
+    technical:
+      affordances:
+        pair_debug:
+          params: {service: str}
+          description: "Work together to debug a failing service"
+        grant_access:
+          params: {system: str, level: str}
+          description: "Request elevated access to a system"
+  failure_modes:
+    - name: burnout
+      trigger: {field: stress, op: ">", value: 0.9, pain: 0.5}
+    - name: caffeine_crash
+      trigger: {field: caffeine, op: "<", value: 0.1, pain: 0.2}

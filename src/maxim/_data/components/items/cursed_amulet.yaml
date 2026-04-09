@@ -1,0 +1,52 @@
+component:
+  name: cursed_amulet
+  tags: [item, magical, dangerous, horror, fantasy]
+  category: items
+
+entity:
+  name: cursed_amulet
+  entity_type: item
+  sensors:
+    curse_intensity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    power:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    bearer_sanity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    bond_strength:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.2
+  modulators:
+    dark_power:
+      affordances:
+        invoke_power:
+          params: {intention: str}
+          description: "Channel the amulet's dark power — effective but deepens the curse"
+        resist_whispers:
+          params: {}
+          description: "Fight against the amulet's influence"
+        examine:
+          params: {}
+          description: "Study the amulet's inscriptions and pulsing glyphs"
+    management:
+      affordances:
+        attempt_removal:
+          params: {}
+          description: "Try to take off the amulet — harder as bond_strength grows"
+        purify:
+          params: {method: str}
+          description: "Attempt to cleanse the curse with holy water, fire, or ritual"
+  failure_modes:
+    - name: curse_overwhelm
+      trigger: {field: curse_intensity, op: ">", value: 0.85, pain: 0.8}
+    - name: sanity_break
+      trigger: {field: bearer_sanity, op: "<", value: 0.15, pain: 0.9}
+    - name: bonded
+      trigger: {field: bond_strength, op: ">", value: 0.9, pain: 0.5}

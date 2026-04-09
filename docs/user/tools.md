@@ -255,7 +255,7 @@ Expected savings: ~370 tokens per prompt (74% of tool context) with 20 tools.
 
 ## Simulation Orchestrator Tools
 
-These tools are available to the simulation orchestrator when running `maxim --sim agent`. They operate on the agent-under-test through a SimulationBridge, not on the external world.
+These tools are available to the simulation orchestrator when running `maxim --sim "goal"`. They operate on the agent-under-test through a SimulationBridge, not on the external world.
 
 | Tool | Purpose |
 |------|---------|

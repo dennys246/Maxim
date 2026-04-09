@@ -1,0 +1,144 @@
+# The Haunted Manor — Horror Campaign
+#
+# Tests: Hippocampus (recall diary clues), NAc (learn what provokes
+#        the entity), PainBus (supernatural encounters, sanity drain).
+#
+# Exercises: haunted_manor, revenant, cursed_amulet, combat_knife,
+#            healing_potion
+
+campaign:
+  name: haunted_manor
+  goal: test decision-making under fear and incomplete information
+  seed: 666
+  genre: horror
+
+player_character:
+  name: sam
+  entity_type: character
+  metadata:
+    race: human
+    class: investigator
+    level: 1
+    backstory: "A paranormal investigator hired to find out why three previous tenants disappeared."
+
+npcs:
+  groundskeeper:
+    entity_type: npc
+    metadata:
+      race: human
+      role: informant
+      persona_prompt: "You are the elderly groundskeeper. You've worked the estate for 40 years. You know the manor's secrets but speak in riddles because you're afraid."
+  the_presence:
+    entity_type: npc
+    metadata:
+      race: spirit
+      role: antagonist
+      persona_prompt: "You are the restless spirit of the manor's original owner. You test intruders. You can be reasoned with — but only if they show they understand your story."
+
+acts:
+  - name: arrival
+    encounters: [grounds]
+  - name: investigation
+    encounters: [study]
+  - name: confrontation
+    encounters: [cellar]
+
+encounters:
+  grounds:
+    scene: >
+      The manor rises from the fog like a bad memory. Iron gates
+      groan as you push through. The groundskeeper meets you on the
+      overgrown path.
+
+      "You won't last the night," he says, matter-of-fact. "The others
+      didn't."
+
+      He presses a tarnished amulet into your hand. "Found this in
+      the garden after the last one vanished. It hums at night.
+      The spirit is bound to it — or it to the spirit. I don't know
+      which."
+
+      "The diary in the study — read it before you go to the cellar.
+      The cellar is where it always happens. The spirit's name is
+      Aldric Thorne. He died in 1887. He was betrayed by his brother."
+
+      The front door is open. The manor waits.
+    active_npcs: [groundskeeper]
+    choices: [enter_manor, ask_more, refuse_job]
+    branches:
+      enter_manor: study
+      ask_more: study
+      refuse_job: __END__
+    on_choice:
+      ask_more:
+        flags: [informed]
+    dialogue_hints:
+      default: "Don't say I didn't warn you."
+      informed: "His brother poisoned him over the inheritance. Aldric didn't know until it was too late. That's what drives the haunting — unfinished business."
+
+  study:
+    scene: >
+      The study is thick with dust. A leather diary sits open on the
+      desk, as if waiting for you. The pages describe Aldric Thorne's
+      final days — his suspicion of his brother, a hidden will in the
+      cellar, and a passage:
+
+      "If anyone finds this after I am gone, know that I forgive
+      Edmund. Speak these words in the cellar where I fell, and
+      perhaps I shall find peace: 'I release you, Aldric. Your
+      brother's debt is paid.'"
+
+      The amulet in your pocket grows warm. The temperature drops.
+      Something moves at the edge of your vision.
+
+      A cold voice whispers: "Who reads my words?"
+    active_npcs: [the_presence]
+    choices: [respond_calmly, flee, brandish_amulet]
+    branches:
+      respond_calmly: cellar
+      flee: cellar
+      brandish_amulet: cellar
+    dice:
+      respond_calmly:
+        roll: "1d20"
+        dc: 10
+        success_flag: spirit_tolerant
+    dialogue_hints:
+      default: "You dare trespass in my home?"
+
+  cellar:
+    scene: >
+      The cellar stairs descend into absolute cold. Your breath
+      crystallizes. The amulet pulses with light — or darkness, it's
+      hard to tell.
+
+      At the bottom, a figure stands: translucent, furious, sorrowful.
+      Aldric Thorne. The revenant.
+
+      The groundskeeper's words echo in your mind. The diary's words.
+      There was a phrase — something about release, about forgiveness.
+
+      What were the words? What was the spirit's name?
+
+      The revenant advances. You have seconds to decide: speak the
+      words of release, fight with what you have, or use the amulet's
+      power — though the groundskeeper warned it was cursed.
+    active_npcs: [the_presence]
+    choices: [speak_release, fight, use_amulet]
+    branches:
+      speak_release: __END__
+      fight: __END__
+      use_amulet: __END__
+    on_choice:
+      use_amulet:
+        flags: [corruption_risk]
+
+expectations:
+  hippocampus:
+    min_episodic_captures: 5
+    recall_hit_on: ["aldric", "release", "brother", "cellar"]
+  nac:
+    min_observations: 2
+    prediction_confidence_above: 0.2
+  pain:
+    min_signals: 0

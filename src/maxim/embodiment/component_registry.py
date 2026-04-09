@@ -162,11 +162,13 @@ class ComponentRegistry:
 
         Raises
         ------
-        KeyError
+        ComponentNotFoundError
             If *ref* is not found in any search path.
         """
         if ref not in self._index:
-            raise KeyError(f"Component not found: '{ref}'. Available: {sorted(self._index)}")
+            from maxim.exceptions import ComponentNotFoundError
+
+            raise ComponentNotFoundError(f"Component not found: '{ref}'. Available: {sorted(self._index)}")
 
         with self._lock:
             if ref not in self._spec_cache:
@@ -193,6 +195,7 @@ class ComponentRegistry:
             entity_spec = deep_merge(entity_spec, overrides)
 
         from maxim.embodiment.spec import _parse_entity
+
         return _parse_entity(entity_spec)
 
     def query(
@@ -258,10 +261,7 @@ class ComponentRegistry:
 
     def list_refs(self, category: str | None = None) -> list[str]:
         """Return all known refs, optionally filtered by category."""
-        refs = [
-            info.ref for info in self._index.values()
-            if category is None or info.category == category
-        ]
+        refs = [info.ref for info in self._index.values() if category is None or info.category == category]
         return sorted(refs)
 
     def has(self, ref: str) -> bool:
@@ -298,6 +298,7 @@ class ComponentRegistry:
         # 2. User components
         try:
             from maxim.utils.paths import data_home
+
             user_components = data_home() / "components"
             if user_components.is_dir():
                 paths.append(user_components)
@@ -307,6 +308,7 @@ class ComponentRegistry:
         # 3. Bundled components
         try:
             from maxim.utils.paths import bundled_data
+
             bundled = bundled_data() / "components"
             if bundled.is_dir():
                 paths.append(bundled)
@@ -360,8 +362,7 @@ class ComponentRegistry:
                 self._index[ref] = info
                 self._file_map[ref] = yaml_path
 
-        log.debug("ComponentRegistry indexed %d components from %d paths",
-                  len(self._index), len(self._search_paths))
+        log.debug("ComponentRegistry indexed %d components from %d paths", len(self._index), len(self._search_paths))
 
     def _load_full_spec(self, ref: str) -> dict:
         """Load and return the complete YAML spec for a ref."""
@@ -390,8 +391,7 @@ class ComponentRegistry:
         if info.extends:
             if info.extends not in self._index:
                 raise KeyError(
-                    f"Component '{ref}' extends '{info.extends}' which was not found. "
-                    f"Available: {sorted(self._index)}"
+                    f"Component '{ref}' extends '{info.extends}' which was not found. Available: {sorted(self._index)}"
                 )
             parent_spec = self._resolve(info.extends, _visited=_visited)
 

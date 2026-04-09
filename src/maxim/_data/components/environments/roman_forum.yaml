@@ -1,0 +1,51 @@
+component:
+  name: roman_forum
+  tags: [environment, outdoor, social, historical]
+  category: environments
+
+entity:
+  name: roman_forum
+  entity_type: environment
+  sensors:
+    crowd_density:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+    political_tension:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.4
+    time_of_day:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    noise_level:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+  modulators:
+    interaction:
+      affordances:
+        observe_crowd:
+          params: {}
+          description: "Watch the citizens, senators, and merchants moving through the forum"
+        listen_to_orator:
+          params: {}
+          description: "Listen to a public speaker addressing the crowd"
+        speak_publicly:
+          params: {message: str}
+          description: "Address the crowd from the rostra — risky if political tension is high"
+        visit_stall:
+          params: {stall: str}
+          description: "Browse goods at a merchant's stall"
+    social:
+      affordances:
+        approach_senator:
+          params: {name: str}
+          description: "Approach a senator for a private word"
+        bribe:
+          params: {target: str, amount: float}
+          description: "Offer coin to influence someone's cooperation"
+  failure_modes:
+    - name: riot
+      trigger: {field: political_tension, op: ">", value: 0.85, pain: 0.6}

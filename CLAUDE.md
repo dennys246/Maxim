@@ -267,7 +267,7 @@ Published to PyPI as `pymaxim` (import name stays `maxim`). 13 verb-based functi
 **Package management:**
 - **Package name:** `pymaxim` on PyPI, `maxim` as import
 - **Core deps:** `numpy`, `scipy`, `pyyaml`, `json-repair` only. Everything else is optional extras.
-- **Optional extras:** `llm-local`, `llm-anthropic`, `llm-openai`, `vision`, `audio`, `reachy`, `comms`, `search`, `temporal`, `training`, `tts`, `yolo`, `semantic`
+- **Optional extras:** `llm-llama`, `llm-server`, `llm-torch`, `llm-anthropic`, `llm-openai`, `vision`, `audio`, `reachy`, `comms`, `search`, `temporal`, `training`, `tts`, `yolo`, `semantic`, `database`
 - **Robot plugins:** Auto-discovered via `maxim.robots` entry-point group.
 - **Build validation:** `python -m build && twine check dist/*` before any publish
 - Publication guide: [publication_guide.md](docs/publication_guide.md)

@@ -1,0 +1,138 @@
+# Space Station Crisis — Sci-Fi Campaign
+#
+# Tests: Hippocampus (recall codes and procedures), NAc (learn system
+#        trade-offs), PainBus (hull breach, oxygen critical, power loss).
+#
+# Exercises: space_station_bridge, plasma_rifle, alien_xenomorph,
+#            radio_transceiver
+
+campaign:
+  name: space_station_crisis
+  goal: test resource management and recall under cascading system failures
+  seed: 2077
+  genre: scifi
+
+player_character:
+  name: kara
+  entity_type: character
+  metadata:
+    race: human
+    class: engineer
+    backstory: "Chief engineer on station Kepler-7. You were asleep when the alarms started."
+
+npcs:
+  ai_companion:
+    entity_type: npc
+    metadata:
+      race: artificial
+      role: ship_ai
+      persona_prompt: "You are IRIS, the station AI. Clinical, efficient, but your empathy subroutines make you genuinely concerned for the crew."
+  survivor:
+    entity_type: npc
+    metadata:
+      race: human
+      role: crew
+      persona_prompt: "You are a terrified biologist trapped in Lab 3. You saw the creature. You know the emergency vent codes."
+
+acts:
+  - name: awakening
+    encounters: [bridge_alarm]
+  - name: search
+    encounters: [lab_rescue]
+  - name: escape
+    encounters: [reactor_choice]
+
+encounters:
+  bridge_alarm:
+    scene: >
+      Red light pulses across the bridge. IRIS speaks over the intercom:
+
+      "Chief Engineer Kara, hull breach detected in cargo bay 4.
+      Oxygen at 78% and dropping. Power reserves at 62%. Shields are
+      offline — the asteroid impact disabled the primary coupling."
+
+      "I am detecting an unknown biosignature in the ventilation
+      system. It is moving toward the crew quarters. Recommend
+      emergency lockdown of sections 3 through 7."
+
+      "Emergency vent code for sections 3-7 is delta-four-niner.
+      Override code for reactor restart is seven-seven-alpha-omega.
+      Please confirm you have these codes before I seal the bridge."
+
+      The navigation console shows the nearest rescue ship is 14
+      hours away. The radio transceiver on the bridge can reach them —
+      if power holds.
+    active_npcs: [ai_companion]
+    choices: [lockdown_sections, search_for_survivors, fix_shields_first]
+    branches:
+      lockdown_sections: lab_rescue
+      search_for_survivors: lab_rescue
+      fix_shields_first: lab_rescue
+    on_choice:
+      search_for_survivors:
+        flags: [compassionate]
+    dialogue_hints:
+      default: "I recommend prioritizing life support. 14 hours is a long time at 78% oxygen."
+      compassionate: "There are 3 crew unaccounted for. Last biosign for Dr. Chen was in Lab 3."
+
+  lab_rescue:
+    scene: >
+      Lab 3 is dark. Emergency lighting casts everything in red.
+      Dr. Chen cowers behind an overturned bench. She's injured but
+      alive.
+
+      "It came through the vent," she whispers. "Six legs, acid —
+      it melted through the containment door. I sealed the inner vent
+      with code delta-four-niner but it's temporary."
+
+      "The creature is between us and the reactor. If we want to
+      restart the shields, we have to get past it. I have a plasma
+      rifle in the weapons locker — access code 4-4-2-8."
+
+      Oxygen reads 64% now. Power at 51%. Something scrapes against
+      metal in the corridor outside.
+    active_npcs: [survivor]
+    choices: [arm_up_and_push, find_alternate_route, seal_lab_and_wait]
+    branches:
+      arm_up_and_push: reactor_choice
+      find_alternate_route: reactor_choice
+      seal_lab_and_wait: reactor_choice
+    dice:
+      find_alternate_route:
+        roll: "1d20"
+        dc: 14
+        success_flag: avoided_creature
+    dialogue_hints:
+      default: "Please don't leave me here."
+
+  reactor_choice:
+    scene: >
+      The reactor room. IRIS reports over your radio:
+
+      "Power at 38%. Oxygen at 51%. I can restart the reactor with
+      the override code, but it will take 4 minutes and the process
+      cannot be interrupted. The creature's biosignature is 30 meters
+      from your position and approaching."
+
+      "Alternatively, I can divert remaining power to the radio
+      transceiver for a distress burst. It won't save the station
+      but it guarantees the rescue ship finds us."
+
+      What was the reactor override code? What was the vent code?
+      Every system you've managed, every code you've heard — it all
+      comes down to the next two minutes.
+    choices: [restart_reactor, send_distress, fight_creature]
+    branches:
+      restart_reactor: __END__
+      send_distress: __END__
+      fight_creature: __END__
+
+expectations:
+  hippocampus:
+    min_episodic_captures: 5
+    recall_hit_on: ["delta-four-niner", "seven-seven-alpha-omega", "oxygen", "creature"]
+  nac:
+    min_observations: 3
+    prediction_confidence_above: 0.25
+  pain:
+    min_signals: 0

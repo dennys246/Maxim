@@ -67,6 +67,35 @@ def configure(
         maxim.configure(show="bio,exec")     # Bio + execution
         maxim.configure(show="all")          # Everything (default)
     """
+    # ── Validate inputs ────────────────────────────────────────────────
+    if not isinstance(verbosity, int) or not (0 <= verbosity <= 3):
+        logger.warning(
+            "verbosity=%r is outside 0-3 range; clamping to nearest bound. (0=quiet, 1=normal, 2=verbose, 3=debug)",
+            verbosity,
+        )
+        verbosity = max(0, min(3, int(verbosity)))
+
+    _VALID_SHOW_CHANNELS = {"bio", "exec", "sim", "memory", "safety", "all"}
+    if show is not None:
+        unknown = {ch.strip().lower() for ch in show.split(",") if ch.strip().lower() not in _VALID_SHOW_CHANNELS}
+        if unknown:
+            logger.warning(
+                "Unknown show channel(s): %s. Valid: %s",
+                ", ".join(sorted(unknown)),
+                ", ".join(sorted(_VALID_SHOW_CHANNELS)),
+            )
+
+    _VALID_DEBUG_SUBSYSTEMS = {"hippo", "nac", "atl", "ec", "scn", "pain", "fear", "default_net", "all"}
+    if debug is not None:
+        unknown = {t.strip().lower() for t in debug.split(",") if t.strip().lower() not in _VALID_DEBUG_SUBSYSTEMS}
+        if unknown:
+            logger.warning(
+                "Unknown debug subsystem(s): %s. Valid: %s",
+                ", ".join(sorted(unknown)),
+                ", ".join(sorted(_VALID_DEBUG_SUBSYSTEMS)),
+            )
+
+    # ── Apply configuration ──────────────────────────────────────────
     from maxim.utils.logging import configure_logging
     from maxim.utils.structured_logging import configure_agentic_verbosity
 
@@ -327,7 +356,7 @@ def run(
         verbosity: Logging verbosity (0-3).
 
     Raises:
-        maxim.exceptions.MaximConfigurationError: If the requested model
+        maxim.exceptions.ConfigurationError: If the requested model
             is not available (missing files or API key).
     """
     model = _resolve_model(model)
@@ -518,7 +547,7 @@ def connect(
         Connected ``RobotController`` instance.
 
     Raises:
-        maxim.exceptions.MaximConfigurationError: If ``robot_type`` is
+        maxim.exceptions.ConfigurationError: If ``robot_type`` is
             not registered and no matching entry-point plugin is found.
         maxim.exceptions.MaximConnectionError: If the connection fails
             or times out.
@@ -542,7 +571,7 @@ def connect(
     )
 
     if controller is None:
-        from maxim.exceptions import ConnectionError as MaximConnectionError
+        from maxim.exceptions import MaximConnectionError
 
         available = registry.get_controller_types()
         raise MaximConnectionError(
@@ -925,6 +954,7 @@ def campaign(
         flags=flags,
         finish_reason=sim_result.finish_reason,
         party_mode=campaign_def.party_mode,
+        npc_memories=rollup.get("npc_memories", {}),
         rollup=rollup,
     )
 
@@ -1053,7 +1083,7 @@ def research(
     goal: str,
     *,
     campaign: str | None = None,
-    model: str = "claude-sonnet",
+    model: str = _API_DEFAULT_MODEL,
     aut_model: str | None = None,
     verbosity: int = 1,
 ) -> ResearchResult:
@@ -1330,6 +1360,7 @@ def _inject_pending_tools(registry: Any) -> int:
     """
     with _pending_tools_lock:
         tools = list(_pending_tools)
+        _pending_tools.clear()
     injected = 0
     for t in tools:
         try:
@@ -1443,7 +1474,8 @@ def tool(fn: Any) -> Any:
             except Exception as e:
                 return ToolOutput(success=False, error=str(e))
 
-    _pending_tools.append(FunctionTool())
+    with _pending_tools_lock:
+        _pending_tools.append(FunctionTool())
     return fn
 
 

@@ -1,0 +1,60 @@
+component:
+  name: alien_xenomorph
+  tags: [creature, predator, hostile, scifi, horror]
+  category: creatures
+
+entity:
+  name: alien_xenomorph
+  entity_type: creature
+  sensors:
+    hp:
+      unit: points
+      range: [0, 60]
+      initial: 60
+    aggression:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.95
+    acid_blood:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+    stealth:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    hunger:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+  modulators:
+    combat:
+      affordances:
+        tail_strike:
+          params: {target: str}
+          description: "Whip the bladed tail at a target"
+        inner_jaw:
+          params: {target: str}
+          description: "Extend the secondary jaw for a lethal close-range strike"
+        acid_spit:
+          params: {target: str}
+          description: "Eject corrosive blood at a target"
+        pounce:
+          params: {target: str}
+          description: "Leap from the shadows onto prey"
+    movement:
+      affordances:
+        climb_surface:
+          params: {surface: str}
+          description: "Crawl along walls or ceilings"
+        retreat_to_nest:
+          params: {}
+          description: "Fall back to the hive"
+        stalk:
+          params: {target: str}
+          description: "Follow prey silently through corridors"
+  failure_modes:
+    - name: wounded
+      trigger: {field: hp, op: "<", value: 15, pain: 0.4}
+    - name: death
+      trigger: {field: hp, op: "<=", value: 0, pain: 1.0}

@@ -1,0 +1,52 @@
+component:
+  name: plasma_rifle
+  tags: [weapon, ranged, tech, degradable, scifi]
+  category: weapons
+
+entity:
+  name: plasma_rifle
+  entity_type: weapon
+  sensors:
+    plasma_charge:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    heat:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+    barrel_integrity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.95
+    accuracy:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.85
+  modulators:
+    combat:
+      affordances:
+        fire:
+          params: {target: str}
+          description: "Fire a plasma bolt — high damage, generates heat"
+        overcharge_shot:
+          params: {target: str}
+          description: "Channel extra plasma for a devastating shot — extreme heat generation"
+        burst_fire:
+          params: {target: str}
+          description: "Fire three rapid bolts — less accurate but suppressive"
+    maintenance:
+      affordances:
+        vent_heat:
+          params: {}
+          description: "Open heat vents to cool the weapon"
+        swap_cell:
+          params: {}
+          description: "Replace the plasma charge cell"
+  failure_modes:
+    - name: overheated
+      trigger: {field: heat, op: ">", value: 0.9, pain: 0.5}
+    - name: cell_depleted
+      trigger: {field: plasma_charge, op: "<", value: 0.05, pain: 0.3}
+    - name: barrel_melt
+      trigger: {field: barrel_integrity, op: "<", value: 0.1, pain: 0.7}

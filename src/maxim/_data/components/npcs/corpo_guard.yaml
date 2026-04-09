@@ -13,6 +13,7 @@ entity:
     persona_prompt: "You are a corporate security enforcer — augmented, disciplined, loyal to the company. Trespassers are neutralized, not negotiated with."
   sensors:
     hp:
+      range: [0, 30]
       initial: 22
     armor_integrity:
       unit: ratio

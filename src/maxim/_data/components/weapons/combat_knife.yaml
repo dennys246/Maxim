@@ -1,0 +1,42 @@
+component:
+  name: combat_knife
+  tags: [weapon, melee, modern]
+  category: weapons
+
+entity:
+  name: combat_knife
+  entity_type: weapon
+  sensors:
+    sharpness:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    durability:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.95
+  modulators:
+    combat:
+      affordances:
+        slash:
+          params: {target: str}
+          description: "Slash at a target"
+        stab:
+          params: {target: str}
+          description: "Thrust the blade at a target"
+        throw:
+          params: {target: str}
+          description: "Throw the knife — may lose it"
+    utility:
+      affordances:
+        cut_rope:
+          params: {}
+          description: "Cut through rope or bindings"
+        pry:
+          params: {target: str}
+          description: "Use the blade to pry open a container or panel"
+  failure_modes:
+    - name: dulled
+      trigger: {field: sharpness, op: "<", value: 0.15, pain: 0.2}
+    - name: broken
+      trigger: {field: durability, op: "<", value: 0.05, pain: 0.5}

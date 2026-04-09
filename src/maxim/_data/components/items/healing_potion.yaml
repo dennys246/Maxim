@@ -1,0 +1,38 @@
+component:
+  name: healing_potion
+  tags: [item, consumable, magical, fantasy]
+  category: items
+
+entity:
+  name: healing_potion
+  entity_type: item
+  sensors:
+    doses:
+      unit: count
+      range: [0, 3]
+      initial: 3
+    potency:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    freshness:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+  modulators:
+    usage:
+      affordances:
+        drink:
+          params: {}
+          description: "Drink the potion to restore health — consumes one dose"
+        administer:
+          params: {target: str}
+          description: "Pour the potion into another's mouth to heal them"
+        examine:
+          params: {}
+          description: "Inspect the potion's color and viscosity"
+  failure_modes:
+    - name: empty
+      trigger: {field: doses, op: "<=", value: 0, pain: 0.2}
+    - name: expired
+      trigger: {field: freshness, op: "<", value: 0.1, pain: 0.3}

@@ -159,7 +159,7 @@ class TestTypeExports:
         assert RobotController is not None
 
     def test_connection_error_importable(self):
-        from maxim import ConnectionError as MaximConnectionError
+        from maxim import MaximConnectionError
 
         assert issubclass(MaximConnectionError, Exception)
 
@@ -169,7 +169,7 @@ class TestTypeExports:
         assert issubclass(ToolNotFoundError, Exception)
 
     def test_memory_error_importable(self):
-        from maxim import MemoryError as MaximMemoryError
+        from maxim import MaximMemoryError
 
         assert issubclass(MaximMemoryError, Exception)
 
@@ -184,7 +184,7 @@ class TestTypeExports:
         assert issubclass(HardwareError, Exception)
 
     def test_runtime_error_importable(self):
-        from maxim import RuntimeError as MaximRuntimeError
+        from maxim import MaximRuntimeError
 
         assert issubclass(MaximRuntimeError, Exception)
 
@@ -193,16 +193,25 @@ class TestTypeExports:
         from maxim import (
             MaximError,
             ConfigurationError,
-            ConnectionError as MC,
+            MaximConnectionError,
             ModelError,
             ToolExecutionError,
-            MemoryError as MM,
+            MaximMemoryError,
             PlanningError,
             HardwareError,
-            RuntimeError as MR,
+            MaximRuntimeError,
         )
 
-        for exc_cls in [ConfigurationError, MC, ModelError, ToolExecutionError, MM, PlanningError, HardwareError, MR]:
+        for exc_cls in [
+            ConfigurationError,
+            MaximConnectionError,
+            ModelError,
+            ToolExecutionError,
+            MaximMemoryError,
+            PlanningError,
+            HardwareError,
+            MaximRuntimeError,
+        ]:
             assert issubclass(exc_cls, MaximError), f"{exc_cls.__name__} should inherit MaximError"
 
 

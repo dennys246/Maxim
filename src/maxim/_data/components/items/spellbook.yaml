@@ -1,0 +1,46 @@
+component:
+  name: spellbook
+  tags: [item, magical, knowledge, fantasy]
+  category: items
+
+entity:
+  name: spellbook
+  entity_type: item
+  sensors:
+    pages_intact:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    comprehension:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.2
+    ward_strength:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+  modulators:
+    study:
+      affordances:
+        read:
+          params: {section: str}
+          description: "Study a section of the spellbook — improves comprehension"
+        transcribe:
+          params: {spell: str}
+          description: "Copy a spell onto a scroll — requires ink and focus"
+        decipher:
+          params: {}
+          description: "Attempt to decode a warded or encrypted passage"
+    usage:
+      affordances:
+        cast_from_book:
+          params: {spell: str, target: str}
+          description: "Cast a spell directly from the page — risky if comprehension is low"
+        close_and_ward:
+          params: {}
+          description: "Seal the book with a protective ward"
+  failure_modes:
+    - name: pages_crumble
+      trigger: {field: pages_intact, op: "<", value: 0.1, pain: 0.4}
+    - name: ward_backlash
+      trigger: {field: ward_strength, op: ">", value: 0.9, pain: 0.3}

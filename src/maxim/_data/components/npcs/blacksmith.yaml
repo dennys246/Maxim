@@ -1,0 +1,51 @@
+component:
+  name: blacksmith
+  tags: [npc, humanoid, craftsman, fantasy, historical]
+  category: npcs
+  extends: npcs/base_humanoid
+
+entity:
+  name: blacksmith
+  entity_type: npc
+  metadata:
+    race: human
+    class: artisan
+    persona_prompt: "You are a skilled blacksmith who takes pride in honest work."
+  sensors:
+    hp:
+      initial: 20
+    stamina:
+      initial: 8
+    trust:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    crafting_skill:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.75
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Talk to the blacksmith"
+        haggle:
+          params: {item: str, price: float}
+          description: "Negotiate a price for goods or services"
+    crafting:
+      affordances:
+        repair_weapon:
+          params: {weapon: str}
+          description: "Repair a damaged weapon — costs coin and time"
+        forge_item:
+          params: {item: str, material: str}
+          description: "Commission a new item — requires materials"
+        appraise:
+          params: {item: str}
+          description: "Assess the quality and value of an item"
+  failure_modes:
+    - name: exhausted
+      trigger: {field: stamina, op: "<=", value: 1, pain: 0.3}
+    - name: distrust
+      trigger: {field: trust, op: "<", value: 0.15, pain: 0.3}

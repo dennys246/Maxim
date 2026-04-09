@@ -5,18 +5,18 @@ A bio-inspired cognitive architecture for AI agents. Combines a 5-agent pipeline
 ## Quickstart
 
 ```bash
+# With Claude (fastest way to start)
 pip install pymaxim[llm-anthropic]
 export ANTHROPIC_API_KEY=sk-...
-
-# Check your environment
-maxim doctor
-
-# Run a cognitive simulation
 maxim --sim "test memory recall under interference"
 
-# See what happened
-ls ~/.maxim/sessions/
+# Or with a local model (no API key needed)
+pip install pymaxim[llm-llama]
+maxim --list-models                        # see available models
+maxim --sim "test memory recall" --llm mistral-7b   # auto-downloads on first run
 ```
+
+Check your setup with `maxim doctor`, and find session results in `~/.maxim/sessions/`.
 
 ## What You Can Do
 
@@ -24,7 +24,7 @@ ls ~/.maxim/sessions/
 - **Run DM campaigns** -- multi-encounter branching stories with SEM-embodied entities
 - **Benchmark models** -- compare local and cloud LLMs across cognitive task suites
 - **Connect robots** -- hardware-agnostic runtime with Reachy Mini support (or run headless)
-- **Use the Python API** -- 13 verb-based functions for programmatic access
+- **Use the Python API** -- 17 verb-based functions for programmatic access
 
 ## Installation
 
@@ -36,7 +36,8 @@ pip install pymaxim
 
 | Extra | What it adds |
 |-------|-------------|
-| `llm-local` | Local LLM inference via llama.cpp |
+| `llm-llama` | Local LLM inference via llama.cpp |
+| `llm-torch` | PyTorch/Transformers backend |
 | `llm-anthropic` | Claude backend |
 | `llm-openai` | OpenAI backend |
 | `vision` | Camera + object detection |
@@ -44,13 +45,17 @@ pip install pymaxim
 | `reachy` | Reachy Mini robot SDK |
 | `comms` | Twilio SMS/Voice |
 | `semantic` | Sentence-transformer embeddings |
+| `tts` | Text-to-speech via Piper |
+| `database` | PostgreSQL + pgvector memory stores |
+
+See [getting-started.md](docs/user/getting-started.md) for the full list of 16 extras.
 
 ```bash
 # Local LLM + vision
-pip install pymaxim[llm-local,vision]
+pip install pymaxim[llm-llama,vision]
 
 # Everything for development
-pip install -e '.[llm-local,llm-anthropic,llm-openai,vision,audio]'
+pip install -e '.[llm-llama,llm-anthropic,llm-openai,vision,audio]'
 ```
 
 ## Python API

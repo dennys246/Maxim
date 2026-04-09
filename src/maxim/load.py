@@ -69,11 +69,19 @@ def nac(path: str) -> "NAc":
     Returns:
         ``NAc`` instance with causal links restored.
 
+    Raises:
+        FileNotFoundError: If the file does not exist.
+
     Example::
 
         nac = maxim.load.nac("~/.maxim/agents/scout/nac.json")
         prediction = nac.predict("action", "ate_mushroom")
     """
+    from pathlib import Path as _Path
+
+    if not _Path(path).expanduser().exists():
+        raise FileNotFoundError(f"NAc file not found: {path}")
+
     from maxim.decisions.nac import NAc
 
     n = NAc()
@@ -90,11 +98,19 @@ def atl(path: str) -> "ATL":
     Returns:
         ``ATL`` instance with semantic concepts restored.
 
+    Raises:
+        FileNotFoundError: If the file does not exist.
+
     Example::
 
         atl = maxim.load.atl("~/.maxim/agents/scout/atl.json")
         concepts = atl.recall(limit=10)
     """
+    from pathlib import Path as _Path
+
+    if not _Path(path).expanduser().exists():
+        raise FileNotFoundError(f"ATL file not found: {path}")
+
     from maxim.memory.atl import ATL
 
     a = ATL()

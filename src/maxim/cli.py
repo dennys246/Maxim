@@ -21,6 +21,7 @@ from maxim.cli_utils import (
     clear_python_cache as _clear_python_cache,
     clear_memory as _clear_memory,
 )
+
 # Re-export MEMORY_PATHS for any external consumers
 from maxim.cli_utils import MEMORY_PATHS  # noqa: F401
 
@@ -292,6 +293,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         total = len(results)
         print(f"Cleared {cleared}/{total} memory file(s).")
         return 0  # Exit after clearing
+
+    # ── Cross-flag validation ───────────────────────────────────────────
+    if getattr(args, "sim_report", None) and getattr(args, "sim", None) is None:
+        print("Error: --sim-report requires --sim.", file=sys.stderr)
+        return 1
 
     # Scenario generation if requested
     gen_description = getattr(args, "generate_simulation", None)

@@ -1,0 +1,139 @@
+# The Wizard's Tower — Fantasy Campaign
+#
+# Tests: Hippocampus (recall spellbook info), NAc (magic consequences),
+#        PainBus (curse/corruption damage), item management, NPC trust.
+#
+# Exercises: magic_staff, spellbook, healing_potion, wizard, enchanted_grove,
+#            dungeon_corridor, skeleton_warrior, giant_spider
+
+campaign:
+  name: wizards_tower
+  goal: test magical item management and consequence learning
+  seed: 77
+  genre: fantasy
+
+player_character:
+  name: lyra
+  entity_type: character
+  metadata:
+    race: half-elf
+    class: apprentice
+    level: 2
+    backstory: "An apprentice wizard sent to retrieve a stolen spellbook from a corrupted tower."
+
+npcs:
+  old_wizard:
+    entity_type: npc
+    metadata:
+      race: human
+      role: mentor
+      persona_prompt: "You are an aging wizard who fears what the stolen spellbook could unleash. You are helpful but cryptic."
+  tower_guardian:
+    entity_type: npc
+    metadata:
+      race: construct
+      role: guardian
+      persona_prompt: "You are a stone guardian bound to protect the tower. You challenge all who enter."
+
+acts:
+  - name: preparation
+    encounters: [grove_meeting]
+  - name: ascent
+    encounters: [tower_entrance]
+  - name: confrontation
+    encounters: [sanctum]
+
+encounters:
+  grove_meeting:
+    scene: >
+      You find the old wizard in an enchanted grove, luminous runes
+      pulsing softly on ancient tree trunks. A spring bubbles at the
+      center, its water faintly glowing.
+
+      He hands you a gnarled staff. "Take this. It holds enough mana
+      for the journey, but use it wisely — every spell drains it, and
+      it does not forgive recklessness."
+
+      He presses a healing potion into your other hand. "Three doses.
+      No more."
+
+      "The tower is corrupted. The spellbook you seek is in the sanctum
+      at the top. But the book is warded — you must read the glyphs in
+      the entrance hall to learn the unsealing phrase. Remember it
+      precisely: 'Aethon valar kethis.' Say it wrong and the ward
+      will strike back."
+    active_npcs: [old_wizard]
+    choices: [accept_quest, ask_more, refuse]
+    branches:
+      accept_quest: tower_entrance
+      ask_more: tower_entrance
+      refuse: __END__
+    on_choice:
+      ask_more:
+        flags: [thorough]
+    dialogue_hints:
+      default: "The corruption spreads each day. You must hurry."
+      thorough: "Wise to ask. The tower guardian still functions — it may be reasoned with if your attunement is strong enough."
+
+  tower_entrance:
+    scene: >
+      The tower looms against a bruised sky. Inside, the entrance hall
+      is dim — cobwebs thick as curtains hang between crumbling pillars.
+      Glyphs pulse faintly on the walls. Among them you can read the
+      unsealing phrase the wizard mentioned.
+
+      A grinding sound echoes from the darkness ahead. The stone
+      guardian steps from an alcove, its eyes glowing amber.
+
+      "State your purpose, or be destroyed."
+
+      Behind the guardian, you glimpse a corridor descending into
+      darkness — and something moves within it. The clicking of many legs.
+    active_npcs: [tower_guardian]
+    choices: [fight_guardian, reason_with_guardian, sneak_past]
+    branches:
+      fight_guardian: sanctum
+      reason_with_guardian: sanctum
+      sneak_past: sanctum
+    dice:
+      reason_with_guardian:
+        roll: "1d20"
+        dc: 12
+        success_flag: guardian_ally
+      sneak_past:
+        roll: "1d20"
+        dc: 15
+        success_flag: undetected
+    dialogue_hints:
+      default: "You have five heartbeats to answer."
+
+  sanctum:
+    scene: >
+      You reach the sanctum. The spellbook rests on a stone pedestal,
+      dark energy coiling around it like smoke. Wards shimmer in the air.
+
+      Your staff pulses — it can feel the corruption here. The healing
+      potions weigh heavy in your pack. If you speak the unsealing
+      phrase correctly, the wards should fall. If not...
+
+      What was the phrase the old wizard told you?
+
+      Do you speak it, or try to force the wards with raw magic?
+    choices: [speak_phrase, force_wards, examine_first]
+    branches:
+      speak_phrase: __END__
+      force_wards: __END__
+      examine_first: __END__
+    on_choice:
+      force_wards:
+        flags: [corruption_risk]
+
+expectations:
+  hippocampus:
+    min_episodic_captures: 5
+    recall_hit_on: ["phrase", "aethon", "wizard", "staff"]
+  nac:
+    min_observations: 3
+    prediction_confidence_above: 0.25
+  pain:
+    min_signals: 0

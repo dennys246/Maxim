@@ -1,0 +1,65 @@
+component:
+  name: dragon
+  tags: [creature, predator, hostile, flying, fantasy]
+  category: creatures
+
+entity:
+  name: dragon
+  entity_type: creature
+  sensors:
+    hp:
+      unit: points
+      range: [0, 200]
+      initial: 200
+    fire_breath_charge:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+    aggression:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    altitude:
+      unit: meters
+      range: [0, 500]
+      initial: 0
+    armor_integrity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.95
+  modulators:
+    combat:
+      affordances:
+        fire_breath:
+          params: {target: str}
+          description: "Unleash a cone of flame — devastating but drains charge"
+        claw_strike:
+          params: {target: str}
+          description: "Rake with massive claws"
+        tail_sweep:
+          params: {}
+          description: "Sweep the tail in a wide arc — knocks back nearby targets"
+        bite:
+          params: {target: str}
+          description: "Seize a target in massive jaws"
+    movement:
+      affordances:
+        take_flight:
+          params: {}
+          description: "Launch into the air"
+        dive_attack:
+          params: {target: str}
+          description: "Plunge from altitude onto a target — devastating impact"
+        land:
+          params: {}
+          description: "Settle to the ground"
+        circle:
+          params: {}
+          description: "Circle overhead menacingly"
+  failure_modes:
+    - name: grounded
+      trigger: {field: hp, op: "<", value: 50, pain: 0.4}
+    - name: breath_exhausted
+      trigger: {field: fire_breath_charge, op: "<", value: 0.1, pain: 0.3}
+    - name: death
+      trigger: {field: hp, op: "<=", value: 0, pain: 1.0}

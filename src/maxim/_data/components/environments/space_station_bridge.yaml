@@ -1,0 +1,62 @@
+component:
+  name: space_station_bridge
+  tags: [environment, indoor, tech, scifi]
+  category: environments
+
+entity:
+  name: space_station_bridge
+  entity_type: environment
+  sensors:
+    oxygen:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.95
+    hull_integrity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    power_level:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    gravity:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+    alert_status:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+  modulators:
+    systems:
+      affordances:
+        check_sensors:
+          params: {}
+          description: "Read the sensor displays for ship status"
+        access_navigation:
+          params: {destination: str}
+          description: "Plot a course on the navigation console"
+        comms_hail:
+          params: {target: str, message: str}
+          description: "Broadcast a message on the communications array"
+        activate_shields:
+          params: {}
+          description: "Raise defensive shields — consumes power"
+        emergency_lockdown:
+          params: {}
+          description: "Seal all bulkheads and activate emergency lighting"
+    interaction:
+      affordances:
+        look_through_viewport:
+          params: {}
+          description: "Gaze through the main viewport at the stars"
+        check_crew_roster:
+          params: {}
+          description: "Review crew status on the personnel terminal"
+  failure_modes:
+    - name: hull_breach
+      trigger: {field: hull_integrity, op: "<", value: 0.2, pain: 0.8}
+    - name: oxygen_critical
+      trigger: {field: oxygen, op: "<", value: 0.15, pain: 0.7}
+    - name: power_failure
+      trigger: {field: power_level, op: "<", value: 0.1, pain: 0.6}

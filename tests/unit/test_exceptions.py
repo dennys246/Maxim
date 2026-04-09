@@ -42,23 +42,23 @@ class TestConnectionErrors:
     def test_connection_error_hierarchy(self):
         """Connection errors inherit correctly."""
         from maxim.exceptions import (
-            ConnectionError,
+            MaximConnectionError,
             ConnectionLostError,
             ConnectionTimeoutError,
             MaximError,
             ReconnectionFailedError,
         )
 
-        assert issubclass(ConnectionError, MaximError)
-        assert issubclass(ConnectionTimeoutError, ConnectionError)
-        assert issubclass(ConnectionLostError, ConnectionError)
-        assert issubclass(ReconnectionFailedError, ConnectionError)
+        assert issubclass(MaximConnectionError, MaximError)
+        assert issubclass(ConnectionTimeoutError, MaximConnectionError)
+        assert issubclass(ConnectionLostError, MaximConnectionError)
+        assert issubclass(ReconnectionFailedError, MaximConnectionError)
 
     def test_catch_all_connection_errors(self):
         """Can catch all connection errors with base class."""
-        from maxim.exceptions import ConnectionError, ConnectionLostError
+        from maxim.exceptions import MaximConnectionError, ConnectionLostError
 
-        with pytest.raises(ConnectionError):
+        with pytest.raises(MaximConnectionError):
             raise ConnectionLostError("Connection dropped")
 
 

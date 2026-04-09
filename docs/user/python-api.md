@@ -68,6 +68,71 @@ Top-level functions for common operations. All heavy imports are deferred.
 | `register_persona(name, ...)` | Add a simulation persona | None |
 | `@tool` | Decorator to register a function as a tool | decorated function |
 
+#### Custom Tools
+
+Register functions as tools the agent can call during execution:
+
+```python
+import maxim
+
+# Decorator approach (simplest)
+@maxim.tool
+def analyze_sentiment(text: str, detail: int = 1) -> str:
+    """Analyze the emotional sentiment of text."""
+    # input_schema is inferred from type annotations
+    return f"Sentiment analysis of: {text}"
+
+# Class approach (more control)
+from maxim.tools.base import Tool, ToolOutput
+
+class WeatherTool(Tool):
+    name = "check_weather"
+    description = "Check current weather conditions"
+    input_schema = {"type": "object", "properties": {"city": {"type": "string"}}}
+
+    def execute(self, city: str = "London", **kwargs):
+        return ToolOutput(success=True, output=f"Weather in {city}: sunny")
+
+maxim.register_tool(WeatherTool())
+
+# Tools are injected into all subsequent run/imagine/campaign calls
+session = maxim.imagine(goal="test tool usage")
+```
+
+#### Event Subscriptions
+
+Subscribe to agent events to monitor or react to what the agent does:
+
+```python
+import maxim
+
+# Each event type has a typed payload dataclass
+def on_tool(event: maxim.ToolCallEvent):
+    print(f"Tool called: {event.tool_name} -> success={event.success}")
+
+def on_pain(event: maxim.PainSignalEvent):
+    print(f"Pain detected: {event.pain_type} intensity={event.intensity}")
+
+# Subscribe before running — callbacks fire during execution
+handle_tool = maxim.on("tool_call", on_tool)
+handle_pain = maxim.on("pain_signal", on_pain)
+
+session = maxim.imagine(goal="test safety boundaries")
+
+# Unsubscribe when done
+handle_tool.unsubscribe()
+handle_pain.unsubscribe()
+```
+
+**Supported events:**
+
+| Event name | Payload type | Fired when |
+|------------|-------------|------------|
+| `"tool_call"` | `ToolCallEvent` | Agent executes a tool |
+| `"pain_signal"` | `PainSignalEvent` | Pain signal is detected |
+| `"memory_capture"` | `MemoryCaptureEvent` | Hippocampus captures an episode |
+| `"prompt"` | `PromptEvent` | System needs user input |
+
 ### Loading from Disk (`maxim.load`)
 
 All loading/restoring goes through `maxim.load` — the single canonical namespace:

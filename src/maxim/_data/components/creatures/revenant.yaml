@@ -1,0 +1,53 @@
+component:
+  name: revenant
+  tags: [creature, undead, hostile, horror]
+  category: creatures
+
+entity:
+  name: revenant
+  entity_type: creature
+  sensors:
+    hp:
+      unit: points
+      range: [0, 40]
+      initial: 40
+    rage:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+    regeneration:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    fear_aura:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+  modulators:
+    combat:
+      affordances:
+        claw:
+          params: {target: str}
+          description: "Rake with blackened claws"
+        wail:
+          params: {}
+          description: "Emit a blood-curdling scream — inflicts fear"
+        grapple:
+          params: {target: str}
+          description: "Seize a target with unnatural strength"
+        drain_life:
+          params: {target: str}
+          description: "Siphon life force from a grappled target — heals self"
+    movement:
+      affordances:
+        phase_through:
+          params: {barrier: str}
+          description: "Pass through a thin wall or door"
+        stalk:
+          params: {target: str}
+          description: "Follow a target relentlessly"
+  failure_modes:
+    - name: banished
+      trigger: {field: hp, op: "<=", value: 0, pain: 1.0}
+    - name: weakened
+      trigger: {field: regeneration, op: "<", value: 0.1, pain: 0.3}

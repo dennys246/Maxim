@@ -1,0 +1,53 @@
+component:
+  name: detective
+  tags: [npc, humanoid, authority, modern]
+  category: npcs
+  extends: npcs/base_humanoid
+
+entity:
+  name: detective
+  entity_type: npc
+  metadata:
+    race: human
+    class: investigator
+    persona_prompt: "You are a seasoned detective who notices everything and trusts no one."
+  sensors:
+    hp:
+      initial: 18
+    suspicion:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+    trust:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    alertness:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Talk to the detective"
+        interrogate:
+          params: {subject: str}
+          description: "Ask pointed questions about a subject"
+        present_evidence:
+          params: {evidence: str}
+          description: "Show evidence to the detective"
+    investigation:
+      affordances:
+        observe:
+          params: {target: str}
+          description: "Study a person or scene for clues"
+        take_notes:
+          params: {note: str}
+          description: "Record observations in a notebook"
+  failure_modes:
+    - name: hostile_witness
+      trigger: {field: trust, op: "<", value: 0.1, pain: 0.4}
+    - name: suspicious
+      trigger: {field: suspicion, op: ">", value: 0.85, pain: 0.3}

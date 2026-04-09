@@ -1,0 +1,53 @@
+component:
+  name: radio_transceiver
+  tags: [item, tech, communication, modern, historical]
+  category: items
+
+entity:
+  name: radio_transceiver
+  entity_type: item
+  sensors:
+    battery:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    signal_strength:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+    frequency:
+      unit: mhz
+      range: [30, 300]
+      initial: 148.5
+    encryption:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+  modulators:
+    communication:
+      affordances:
+        transmit:
+          params: {message: str}
+          description: "Broadcast a voice or coded message on current frequency"
+        listen:
+          params: {}
+          description: "Monitor the current frequency for incoming transmissions"
+        scan_frequencies:
+          params: {}
+          description: "Sweep through frequency bands to find active channels"
+        change_frequency:
+          params: {freq: float}
+          description: "Tune to a specific frequency"
+    hardware:
+      affordances:
+        extend_antenna:
+          params: {}
+          description: "Extend the antenna for better range"
+        enable_encryption:
+          params: {key: str}
+          description: "Enable encrypted transmission mode"
+  failure_modes:
+    - name: battery_dead
+      trigger: {field: battery, op: "<=", value: 0.05, pain: 0.4}
+    - name: no_signal
+      trigger: {field: signal_strength, op: "<", value: 0.05, pain: 0.2}
