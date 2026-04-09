@@ -231,6 +231,12 @@ class InteractiveMode(enum.Enum):
 
 Add `display_log()` and `should_prompt()` functions.
 
+> **Design note (verified):** `DisplayTier` is intentionally separate from the existing `AgenticVerbosity` enum in `structured_logging.py`. They control different things:
+> - `AgenticVerbosity`: What goes into the **abstraction stream** (LLM context, agentic event buffer)
+> - `DisplayTier`: What appears on the **user's console**
+> 
+> A researcher might want `AgenticVerbosity.DEBUG` (full event buffer for post-hoc analysis) with `DisplayTier.CLEAN` (quiet console). Don't merge these.
+
 **Files:** sim_logger.py, interactive/prompts.py  
 **Tests:** Test tier filtering, test auto-interactive context detection
 
@@ -268,14 +274,24 @@ Wire as callbacks alongside existing `sim_log()` calls.
 **Files:** sim_logger.py, hippocampus capture path, nac observe path, pain_bus, fear agent  
 **Tests:** Test annotations appear at BIO, hidden at CLEAN
 
-### Phase D-3: Silence direct print() calls (~80 LOC)
+### Phase D-3: Silence direct print() calls (~120 LOC)
 
-Audit all ~40 `print()` calls. Replace each with:
-- `display_*()` if it's narrative content
-- `display_log(DEBUG, ...)` if it's system status
+> **Audit note (verified):** Grep shows ~193 `print()` matches across simulation/ and runtime/, but most are in string constants (subsystem label maps, docstring examples). Functional `print()` calls that produce console output are concentrated in:
+> - orchestrator.py (~33 calls — status banners, progress, shutdown messages)
+> - campaign_runner.py (~10 calls — campaign progress)  
+> - agent_loop.py (~9 calls — confirmation prompts)
+> - report.py (~15 calls — final summary formatting)
+> - interactive.py (~12 calls — REPL messages)
+
+Replace each functional `print()` with:
+- `display_*()` if it's narrative content (scenes, actions, prompts)
+- `display_log(DEBUG, ...)` if it's system status ("Saving memory...", "Building report...")
 - `display_summary()` if it's the final report
+- `PromptHandler.prompt()` if it's a confirmation/input request (agent_loop.py)
 
-**Files:** orchestrator.py, campaign_runner.py, agent_loop.py, loop_controller.py, report.py, interactive.py, research_orchestrator.py  
+Also: **Delete the dead `--sim-interactive` flag** from cli_parser.py (defined at line 327 but never consumed anywhere — verified by grep). Replace with the new `--interactive` flag.
+
+**Files:** orchestrator.py, campaign_runner.py, agent_loop.py, loop_controller.py, report.py, interactive.py, research_orchestrator.py, cli_parser.py  
 **Tests:** Assert CLEAN tier produces zero system status messages
 
 ### Phase D-4: Auto-interactive wiring (~60 LOC)
@@ -442,17 +458,23 @@ The display system doesn't just serve simulations — it must integrate with the
 ### BUG: Hardcoded print() in the agent loop blocks headless mode
 
 > **Severity: HIGH — fix before or alongside display simplification.**
-> `agent_loop.py:1583-1595` prints a confirmation prompt unconditionally to stdout and then waits for `input()`. If a user runs `--interactive off` or any headless/automated mode, this blocks forever. This is not a display preference issue — it's a runtime hang.
+
+**Corrected understanding (verified against code):** The confirmation prompt at `agent_loop.py:1583-1595` does NOT call `input()` directly. It prints the prompt via hardcoded `print()`, then sets `state.data["pending_confirmation"]` and returns. The loop then waits for `state.data["pending_cli_input"]` to be populated on the next iteration by an external reader thread.
+
+**The actual bug:** In headless/non-interactive mode:
+1. The `print()` calls fire unconditionally — unwanted console noise
+2. The loop sets `pending_confirmation` and waits for `pending_cli_input` which never arrives if no reader thread exists — forward progress stalls indefinitely (not a thread hang, but a logical deadlock)
+3. None of this goes through the `PromptHandler` system which already has `NonInteractiveHandler` fallback
 
 The agent loop has ~15 direct `print()` calls that bypass all display control:
 
 | Location | What it prints | Fix |
 |----------|---------------|-----|
-| **agent_loop.py:1583-1595** | **Action confirmation prompt — BLOCKS on `input()`** | **Guard with `should_prompt()`, fall back to SupervisionPolicy default** |
+| **agent_loop.py:1583-1595** | **Action confirmation prompt — logical deadlock in headless mode** | **Route through PromptHandler; NonInteractiveHandler auto-resolves via SupervisionPolicy** |
 | loop_controller.py:248-268 | Confirmation success/failure messages | Route through `display_action()` |
 | loop_controller.py:319-338 | Timeout retry notifications | Route through `display_log(BIO)` |
 
-The confirmation prompt fix is the most urgent: when `--interactive off` or the system is in a non-interactive context, the confirmation must auto-resolve using the `SupervisionPolicy` default (approve if within bounds, reject if not) instead of blocking on stdin.
+The fix: replace the hardcoded `print()` + state-wait pattern with a call to the existing `PromptHandler.prompt()` system. `NonInteractiveHandler` already returns defaults immediately — the infrastructure exists, it's just not used here.
 
 ### Autonomy level ↔ display interaction
 
@@ -468,20 +490,22 @@ Key insight: **autonomy level already controls when the system needs human input
 
 ### Autonomy transition consent
 
-When the agent requests an autonomy level change (via `AutonomyLevelTool`), the current behavior is:
-- **Escalation** (planning → supervised → autonomous): immediate, no approval
-- **De-escalation** (autonomous → supervised → planning): requires approval
+> **Terminology note (verified against code):** The code in `mode_switch.py` uses "escalation" to mean "increasing restrictions" (autonomous→planning), which is the opposite of common usage. We use "gaining autonomy" and "reducing autonomy" here to avoid confusion.
 
-This is backwards for user safety. The user should consent to the agent gaining MORE autonomy, not less. The revised policy:
+When the agent requests an autonomy level change (via `AutonomyLevelTool`), the **current code behavior** is:
+- **Gaining autonomy** (planning → supervised → autonomous): immediate, no approval
+- **Reducing autonomy** (autonomous → supervised → planning): requires approval
 
-| Transition | Current | Revised |
-|-----------|---------|---------|
-| Planning → Supervised | Immediate | **Prompt user**: "Agent requests supervised autonomy: {reason}. Allow? [yes/no]" |
-| Planning → Autonomous | Immediate | **Prompt user**: "Agent requests full autonomy: {reason}. Allow? [yes/no]" |
-| Supervised → Autonomous | Immediate | **Prompt user**: "Agent requests full autonomy: {reason}. Allow? [yes/no]" |
-| Autonomous → Supervised | Requires approval | **Immediate** (agent is voluntarily reducing power) |
-| Supervised → Planning | Requires approval | **Immediate** (agent is voluntarily reducing power) |
-| Any → same level | No-op | No-op |
+This is backwards for user safety. The user should consent to the agent gaining MORE power, not less. The revised policy:
+
+| Transition | Direction | Current | Revised |
+|-----------|-----------|---------|---------|
+| Planning → Supervised | Gaining autonomy | Immediate | **Prompt user**: "Agent requests supervised autonomy: {reason}. Allow? [y/n]" |
+| Planning → Autonomous | Gaining autonomy | Immediate | **Prompt user**: "Agent requests full autonomy: {reason}. Allow? [y/n]" |
+| Supervised → Autonomous | Gaining autonomy | Immediate | **Prompt user**: "Agent requests full autonomy: {reason}. Allow? [y/n]" |
+| Autonomous → Supervised | Reducing autonomy | Requires approval | **Immediate** (agent is voluntarily reducing power — always safe) |
+| Supervised → Planning | Reducing autonomy | Requires approval | **Immediate** (agent is voluntarily reducing power — always safe) |
+| Any → same level | No change | No-op | No-op |
 
 The consent prompt:
 - Uses the `PromptHandler` system (not raw `print()`/`input()`)
