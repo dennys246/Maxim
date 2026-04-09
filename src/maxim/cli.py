@@ -104,7 +104,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = _build_parser()
     args = parser.parse_args(raw_argv)
-    _normalize_args(args)
 
     # ── Force-kill on double Ctrl+C ──────────────────────────────────
     # First Ctrl+C triggers graceful shutdown. If the user hits Ctrl+C
@@ -131,7 +130,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     _sig.signal(_sig.SIGINT, _force_exit_handler)
 
     # ── Early leader proxy bootstrap ─────────────────────────────────
-    # Start the LeaderProxy as early as possible so it's always reachable
+    # Start the LeaderProxy BEFORE _normalize_args — that function can
+    # trigger heavy imports (llama_cpp, torch) for model validation,
+    # which takes 5-15s on CUDA systems. The proxy must be reachable
+    # immediately after os.execv restart so peers don't time out.
     # via the Cloudflare tunnel, regardless of what mode maxim enters
     # (sim, interactive, agentic, etc.). This ensures `maxim peer update`,
     # `maxim peer restart`, `maxim peer logs`, and `maxim peer version`
@@ -162,6 +164,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         print(f"[leader-boot] WARNING: early proxy boot failed: {_e}")
         _tb.print_exc()
+
+    # ── Normalize args (after proxy boot — can trigger heavy CUDA imports) ──
+    _normalize_args(args)
 
     # Save this invocation if it's meaningful
     if should_save(raw_argv):

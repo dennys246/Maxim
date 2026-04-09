@@ -636,18 +636,22 @@ def _cmd_restart(argv: list[str]) -> int:
         if llm_ready:
             print("  Leader is back online.")
         elif proxy_up:
-            # Proxy responded but LLM not ready yet — keep polling for LLM
+            # Proxy responded but LLM not ready yet — keep polling for LLM.
+            # Large models (14B+) can take 60-120s to load into VRAM.
+            _llm_wait_start = _time.time()
             print("  Proxy is up, waiting for LLM model to load...", end="", flush=True)
-            for attempt in range(12):
+            for attempt in range(30):  # 30 x 5s = 150s max — enough for large models
                 _time.sleep(5.0)
-                print(".", end="", flush=True)
+                elapsed = int(_time.time() - _llm_wait_start)
+                print(f" {elapsed}s", end="", flush=True)
                 ping = _check_proxy_ping(base, key)
                 if ping is not None and ping.get("llm_ready", False):
                     llm_ready = True
                     break
             print()
             if llm_ready:
-                print("  Leader is back online (LLM ready).")
+                elapsed = int(_time.time() - _llm_wait_start)
+                print(f"  Leader is back online (LLM ready, {elapsed}s).")
             else:
                 print("  Leader proxy is up but LLM model is still loading.")
                 print("  Inference requests will queue until the model is ready.")
