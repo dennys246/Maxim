@@ -1189,7 +1189,14 @@ def start_simulation_mode(
                 choose_tool=dm_choose_tool,
                 executor=aut_executor,
             )
-            dm_state = dm.run()
+            try:
+                dm_state = dm.run()
+            except KeyboardInterrupt:
+                logger.info("DM Campaign interrupted by user")
+                print("\n  DM Campaign interrupted (Ctrl+C)")
+                dm_state = dm._state  # Partial state — campaign didn't finish
+                dm_state.finish_reason = "cancel"
+                finish_reason = "cancel"
             dm_rollup = dm.get_rollup()
 
             print(

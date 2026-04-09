@@ -8,11 +8,11 @@ from typing import Any
 
 from maxim.utils.logging import warn
 
-_DEFAULT_ACTIONS_PATH = Path(__file__).resolve().parents[3] / "data" / "motion" / "default_actions.json"
-
-_DEFAULT_POSES_PATH = Path(__file__).resolve().parents[3] / "data" / "motion" / "default_poses.json"
-
-_DEFAULT_THRESHOLDS_PATH = Path(__file__).resolve().parents[3] / "data" / "motion" / "movement_thresholds.json"
+# Bundled seed data — shipped inside the package (src/maxim/_data/motion/).
+_DATA_DIR = Path(__file__).resolve().parent.parent / "_data" / "motion"
+_DEFAULT_ACTIONS_PATH = _DATA_DIR / "default_actions.json"
+_DEFAULT_POSES_PATH = _DATA_DIR / "default_poses.json"
+_DEFAULT_THRESHOLDS_PATH = _DATA_DIR / "movement_thresholds.json"
 
 
 def _to_rad(value: float, *, degrees: bool) -> float:
