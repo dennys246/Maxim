@@ -626,7 +626,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         from maxim.simulation.dm_schema import load_campaign, validate_campaign
                         from maxim.simulation.orchestrator import start_simulation_mode
 
-                        dm_campaign = load_campaign(_yaml_path)
+                        from maxim.embodiment.component_registry import ComponentRegistry
+
+                        _registry = ComponentRegistry(campaign_dir=str(Path(_yaml_path).parent))
+                        dm_campaign = load_campaign(_yaml_path, registry=_registry)
                         errors = validate_campaign(dm_campaign)
                         if errors:
                             print(f"Campaign validation failed ({len(errors)} errors):")

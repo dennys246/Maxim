@@ -96,6 +96,41 @@ def run_dm_campaign(
             choose_tool=dm_choose_tool,
             executor=aut_executor,
         )
+
+        # ── Instantiate SEM entities from campaign specs ─────────────
+        entity_registry: dict[str, Any] = {}
+        try:
+            from maxim.embodiment.spec import _parse_entity
+
+            # Player character
+            if dm_campaign.pc_spec and isinstance(dm_campaign.pc_spec, dict):
+                pc_spec = dm_campaign.pc_spec
+                if "name" in pc_spec or "entity_type" in pc_spec:
+                    entity_registry["pc"] = _parse_entity(pc_spec)
+
+            # NPCs
+            for npc_name, npc_spec in (dm_campaign.npc_specs or {}).items():
+                if isinstance(npc_spec, dict) and ("name" in npc_spec or "entity_type" in npc_spec):
+                    entity_registry[npc_name] = _parse_entity(npc_spec)
+
+            # World objects
+            for obj_name, obj_spec in (dm_campaign.object_specs or {}).items():
+                if isinstance(obj_spec, dict) and ("name" in obj_spec or "entity_type" in obj_spec):
+                    entity_registry[obj_name] = _parse_entity(obj_spec)
+
+            if entity_registry:
+                dm.init_entities(
+                    entity_registry=entity_registry,
+                    tool_registry=aut_registry,
+                )
+                logger.info(
+                    "DM: Instantiated %d SEM entities: %s",
+                    len(entity_registry),
+                    list(entity_registry.keys()),
+                )
+        except Exception as e:
+            logger.warning("DM: Entity instantiation failed (campaign will run without SEM entities): %s", e)
+
         try:
             dm_state = dm.run()
         except KeyboardInterrupt:

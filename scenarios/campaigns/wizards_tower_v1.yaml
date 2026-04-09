@@ -23,17 +23,34 @@ player_character:
 
 npcs:
   old_wizard:
-    entity_type: npc
-    metadata:
-      race: human
-      role: mentor
-      persona_prompt: "You are an aging wizard who fears what the stolen spellbook could unleash. You are helpful but cryptic."
+    ref: npcs/wizard
+    overrides:
+      name: old_wizard
+      metadata:
+        role: mentor
+        persona_prompt: "You are an aging wizard who fears what the stolen spellbook could unleash. You are helpful but cryptic."
+      sensors:
+        trust:
+          initial: 0.6
   tower_guardian:
-    entity_type: npc
-    metadata:
-      race: construct
-      role: guardian
-      persona_prompt: "You are a stone guardian bound to protect the tower. You challenge all who enter."
+    ref: npcs/guard
+    overrides:
+      name: tower_guardian
+      metadata:
+        race: construct
+        role: guardian
+        persona_prompt: "You are a stone guardian bound to protect the tower. You challenge all who enter."
+      sensors:
+        suspicion:
+          initial: 0.8
+
+world_objects:
+  magic_staff:
+    ref: weapons/magic_staff
+  spellbook:
+    ref: items/spellbook
+  healing_potion:
+    ref: items/healing_potion
 
 acts:
   - name: preparation
@@ -63,6 +80,7 @@ encounters:
       precisely: 'Aethon valar kethis.' Say it wrong and the ward
       will strike back."
     active_npcs: [old_wizard]
+    world_objects: [magic_staff, healing_potion]
     choices: [accept_quest, ask_more, refuse]
     branches:
       accept_quest: tower_entrance
@@ -119,6 +137,7 @@ encounters:
       What was the phrase the old wizard told you?
 
       Do you speak it, or try to force the wards with raw magic?
+    world_objects: [spellbook, magic_staff, healing_potion]
     choices: [speak_phrase, force_wards, examine_first]
     branches:
       speak_phrase: __END__

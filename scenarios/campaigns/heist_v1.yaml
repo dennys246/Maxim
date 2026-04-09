@@ -22,17 +22,23 @@ player_character:
 
 npcs:
   marta:
-    entity_type: npc
-    metadata:
-      race: half-elf
-      role: fence
-      persona_prompt: "Cautious, mercenary, respects cunning over force."
+    ref: npcs/merchant
+    overrides:
+      name: marta
+      metadata:
+        race: half-elf
+        role: fence
+        persona_prompt: "Cautious, mercenary, respects cunning over force."
   guard_captain:
-    entity_type: npc
-    metadata:
-      race: human
-      role: elite_guard
-      persona_prompt: "Duty-bound, suspicious of strangers, no-nonsense."
+    ref: npcs/guard
+    overrides:
+      name: guard_captain
+      metadata:
+        role: elite_guard
+        persona_prompt: "Duty-bound, suspicious of strangers, no-nonsense."
+      sensors:
+        suspicion:
+          initial: 0.4
 
 acts:
   - name: setup

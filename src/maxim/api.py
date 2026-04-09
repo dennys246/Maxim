@@ -924,8 +924,11 @@ def campaign(
     os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
 
     from maxim.simulation.dm_schema import load_campaign as _load_campaign
+    from maxim.embodiment.component_registry import ComponentRegistry
+    from pathlib import Path as _Path
 
-    campaign_def = _load_campaign(path)
+    _registry = ComponentRegistry(campaign_dir=str(_Path(path).parent))
+    campaign_def = _load_campaign(path, registry=_registry)
 
     # Override party_mode if specified
     if party_mode is not None:
