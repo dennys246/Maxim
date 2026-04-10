@@ -106,7 +106,7 @@ Paths refer to the `src/maxim/` package layout.
   - `memory_hub.py`: MemoryHub coordinates all bridges, manages session lifecycle, and wires multi-layer memory (ATL concept extraction, grounding, promotion). Connects 11 bio-systems in production; now also fully wired in simulation mode.
 - `src/maxim/state/` (reserved): owns authoritative runtime truth; must **not** contain long-term storage logic or planning.
 - `src/maxim/runtime/`: owns agentic orchestration/main execution loop; must **not** do domain reasoning. Includes `RuntimeCapabilities` for hardware detection and graceful degradation (headless mode without robot), and `StreamEvent`/`on_event` callback for fine-grained streaming events from the agent loop. ADaPT-style replan loop: `FailureStrategy.REPLAN` triggers `planner.decompose()` at depth+1. `AgentFactory` creates independent agent instances with isolated subsystems (Hippocampus, NAc, ATL, MemoryHub). `AgentPool` orchestrates concurrent multi-agent execution with `LocalMessageBus` for inter-agent communication.
-- `src/maxim/conscience/`: owns robot orchestration/main loop (Reachy capture/inference/control); must **not** do agentic decision making. `ConnectionState` enum with callback system for runtime capability degradation/restoration on robot disconnect/reconnect. `_run_headless_loop()` for event-driven operation without media capture.
+- `src/maxim/embodied_runtime/`: owns robot orchestration/main loop (Reachy capture/inference/control); must **not** do agentic decision making. `ConnectionState` enum with callback system for runtime capability degradation/restoration on robot disconnect/reconnect. `_run_headless_loop()` for event-driven operation without media capture. (Renamed from `conscience/` in v1.0.0 to better describe contents — robot mixin stack, not safety enforcement.)
 
 ### Absolute Separation Rules
 - Agents never call tools directly.
@@ -137,7 +137,7 @@ If a component cannot be tested in isolation, the architecture is violated.
 - `src/maxim/cli.py`: primary CLI entrypoint (`maxim` console script).
 - `scripts/main.py`: legacy checkout entrypoint (delegates to `maxim.cli`).
 - `src/configs/`: version-controlled config templates and notes.
-- `src/maxim/conscience/selfy.py`: `Maxim` orchestrator class, composed from six mixins:
+- `src/maxim/embodied_runtime/selfy.py`: `Maxim` robot orchestrator class, composed from six mixins:
   - `connection.py` (`ConnectionMixin`): Reachy SDK connection lifecycle
   - `vision_stream.py` (`VisionStreamMixin`): vision capture and segmentation pipeline
   - `agentic_runtime.py` (`AgenticRuntimeMixin`): agentic runtime bootstrap and lifecycle

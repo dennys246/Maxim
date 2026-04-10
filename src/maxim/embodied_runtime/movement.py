@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 import time
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 
@@ -543,338 +543,383 @@ class MovementMixin:
         if duration is None:
             duration = getattr(self, "duration", 0.5)
 
-        # Clamp pixel coordinates to safe bounds to prevent drift outside servo limits
-        if clamp_to_bounds:
-            bounds = self._LOOK_AT_PIXEL_BOUNDS
-            u_clamped = max(bounds["u_min"], min(bounds["u_max"], int(u)))
-            v_clamped = max(bounds["v_min"], min(bounds["v_max"], int(v)))
-            if u_clamped != int(u) or v_clamped != int(v):
-                self.log.debug("Clamped look_at_image coordinates: (%d, %d) -> (%d, %d)", u, v, u_clamped, v_clamped)
-            u, v = u_clamped, v_clamped
-
+        u, v = self._clamp_pixel_to_safe_bounds(u, v, clamp_to_bounds)
         position = (int(u), int(v))
 
-        # Check reachability before attempting movement (dynamic bounds learning)
-        if min_reachability > 0:
-            default_network = getattr(self, "_default_network", None)
-            if default_network is not None:
-                attention = getattr(default_network, "_attention_network", None)
-                if attention is not None:
-                    try:
-                        reachability = attention.get_reachability(position)
-                        if reachability < min_reachability:
-                            self.log.debug(
-                                "Skipping unreachable position (%d, %d) - reachability %.2f < %.2f",
-                                u,
-                                v,
-                                reachability,
-                                min_reachability,
-                            )
-                            return
-                    except Exception:
-                        pass  # Continue if reachability check fails
+        if min_reachability > 0 and not self._is_pixel_reachable(position, min_reachability):
+            return
 
-        # ═══════════════════════════════════════════════════════════════════════════
-        # HYBRID APPROACH: SDK look_at_image + position-aware clamping
-        # ═══════════════════════════════════════════════════════════════════════════
-        # The SDK's look_at_image WORKS for centering - it knows the camera model.
-        # The problem was IK failures at extreme positions.
-        # Solution: clamp pixels based on current position to prevent going further
-        # into the limits.
-        # ═══════════════════════════════════════════════════════════════════════════
-        if perform_movement:
-            # Sync to get accurate current position
-            self.sync_head_position()
+        if not perform_movement:
+            self._enqueue_sdk_look_at(u, v, position, duration, perform_movement=False)
+            return
 
-            cur_yaw = float(getattr(self, "yaw", 0.0) or 0.0)
-            cur_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
-            cur_y = float(getattr(self, "y", 0.0) or 0.0)
-            cur_z = float(getattr(self, "z", 0.0) or 0.0)
+        # Sync to get accurate current position before computing offsets
+        self.sync_head_position()
 
-            # Calculate pixel offset
-            du = float(u) - self._IMAGE_CENTER_U
-            dv = float(v) - self._IMAGE_CENTER_V
+        cur_yaw = float(getattr(self, "yaw", 0.0) or 0.0)
+        cur_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
+        cur_y = float(getattr(self, "y", 0.0) or 0.0)
+        cur_z = float(getattr(self, "z", 0.0) or 0.0)
 
-            # ADAPTIVE MOVEMENT GAIN: Use FocusLearner for adaptive dampening
-            # Instead of a fixed dampening factor, we learn the optimal gain
-            # from focus feedback - how far the target ends up from center
-            # after each movement.
-            default_network = getattr(self, "_default_network", None)
-            focus_learner = getattr(default_network, "_focus_learner", None) if default_network else None
+        # Pixel offset from center
+        du = float(u) - self._IMAGE_CENTER_U
+        dv = float(v) - self._IMAGE_CENTER_V
 
-            # Debug: log why FocusLearner might not be available
-            if focus_learner is None:
-                if default_network is None:
-                    self.log.debug("FocusLearner unavailable: _default_network is None")
-                else:
-                    self.log.debug("FocusLearner unavailable: _focus_learner is None in DefaultNetwork")
+        # Apply learned/fallback gain
+        du, dv = self._apply_focus_gain(du, dv)
 
-            if focus_learner is not None:
-                gain_h, gain_v = focus_learner.get_gain(du, dv)
-                # Record intent for later result tracking
-                focus_learner.record_intent(du, dv, gain_h, gain_v)
-                self.log.info(
-                    "FocusLearner: raw_du=%.1f raw_dv=%.1f gain_h=%.3f gain_v=%.3f",
-                    du,
-                    dv,
-                    gain_h,
-                    gain_v,
-                )
-                du = du * gain_h
-                dv = dv * gain_v
+        # Compute usage of horizontal/vertical workspace + lookup current direction
+        limits = self._get_workspace_limits()
+        h_usage, looking_left, looking_right = self._horizontal_workspace_state(cur_yaw, cur_y, limits)
+
+        pain_bridge = getattr(getattr(self, "_default_network", None), "_pain_bridge", None)
+
+        # If at a limit and target is further into it, rotate body instead of pushing servo
+        if self._maybe_turn_around(
+            du=du,
+            looking_left=looking_left,
+            looking_right=looking_right,
+            h_usage=h_usage,
+            pain_bridge=pain_bridge,
+        ):
+            return  # turn_around handled the movement
+
+        # Restrict du/dv based on pain risk or workspace usage near limits
+        du = self._restrict_horizontal(du, looking_left, looking_right, h_usage, pain_bridge)
+        dv = self._restrict_vertical(dv, cur_pitch, cur_z, limits, pain_bridge)
+
+        # Compute final pixel coords (with hard bounds as the last safety net)
+        final_u, final_v = self._final_pixel_with_bounds(du, dv)
+        self._log_look_at_debug(u, v, du, dv, cur_yaw, cur_pitch, final_u, final_v)
+
+        commanded_6d = self._build_commanded_6d(du, dv, cur_yaw, cur_pitch, cur_y, cur_z)
+        self._record_pain_action_start(commanded_6d, position)
+
+        self._enqueue_sdk_look_at(
+            final_u,
+            final_v,
+            position,
+            duration,
+            perform_movement=True,
+            commanded_6d=commanded_6d,
+        )
+
+    # ── look_at_image helpers ──────────────────────────────────────────────
+
+    def _clamp_pixel_to_safe_bounds(self, u: int, v: int, clamp_to_bounds: bool) -> tuple[int, int]:
+        """Clamp ``(u, v)`` to ``_LOOK_AT_PIXEL_BOUNDS`` to prevent servo drift."""
+        if not clamp_to_bounds:
+            return int(u), int(v)
+        bounds = self._LOOK_AT_PIXEL_BOUNDS
+        u_clamped = max(bounds["u_min"], min(bounds["u_max"], int(u)))
+        v_clamped = max(bounds["v_min"], min(bounds["v_max"], int(v)))
+        if u_clamped != int(u) or v_clamped != int(v):
+            self.log.debug("Clamped look_at_image coordinates: (%d, %d) -> (%d, %d)", u, v, u_clamped, v_clamped)
+        return u_clamped, v_clamped
+
+    def _is_pixel_reachable(self, position: tuple[int, int], min_reachability: float) -> bool:
+        """Check the AttentionNetwork's learned reachability for ``position``."""
+        default_network = getattr(self, "_default_network", None)
+        if default_network is None:
+            return True
+        attention = getattr(default_network, "_attention_network", None)
+        if attention is None:
+            return True
+        try:
+            reachability = attention.get_reachability(position)
+        except Exception as e:
+            self.log.debug("Reachability check failed for %s: %s", position, e)
+            return True  # be permissive on lookup failure
+        if reachability < min_reachability:
+            self.log.debug(
+                "Skipping unreachable position %s — reachability %.2f < %.2f",
+                position,
+                reachability,
+                min_reachability,
+            )
+            return False
+        return True
+
+    def _apply_focus_gain(self, du: float, dv: float) -> tuple[float, float]:
+        """Apply ``FocusLearner`` adaptive gain (or fallback dampening)."""
+        default_network = getattr(self, "_default_network", None)
+        focus_learner = getattr(default_network, "_focus_learner", None) if default_network else None
+
+        if focus_learner is None:
+            if default_network is None:
+                self.log.debug("FocusLearner unavailable: _default_network is None")
             else:
-                # Fallback to fixed dampening if FocusLearner not available
-                DAMPENING_FACTOR = 0.5
-                self.log.warning("Using fallback DAMPENING_FACTOR=0.5 (FocusLearner unavailable)")
-                du = du * DAMPENING_FACTOR
-                dv = dv * DAMPENING_FACTOR
+                self.log.debug("FocusLearner unavailable: _focus_learner is None in DefaultNetwork")
+            DAMPENING_FACTOR = 0.5
+            self.log.warning("Using fallback DAMPENING_FACTOR=0.5 (FocusLearner unavailable)")
+            return du * DAMPENING_FACTOR, dv * DAMPENING_FACTOR
 
-            # POSITION-AWARE CLAMPING: If we're already near a limit,
-            # don't allow pixels that would push us further that direction
-            # This prevents accumulating into IK failure territory
-            #
-            # We check BOTH rotation (yaw, pitch) AND translation (y, z)
-            # and use the MORE restrictive of the two.
+        gain_h, gain_v = focus_learner.get_gain(du, dv)
+        focus_learner.record_intent(du, dv, gain_h, gain_v)
+        self.log.info(
+            "FocusLearner: raw_du=%.1f raw_dv=%.1f gain_h=%.3f gain_v=%.3f",
+            du,
+            dv,
+            gain_h,
+            gain_v,
+        )
+        return du * gain_h, dv * gain_v
 
-            # === HORIZONTAL AXIS (left/right) ===
-            # Rotation: yaw (positive = looking left)
-            # Translation: Y (positive = platform shifted left in mm)
-            # Use learned bounds when available
-            limits = self._get_workspace_limits()
-            yaw_limit = limits["yaw"]
-            y_limit = limits["y"]
-            yaw_usage = abs(cur_yaw) / yaw_limit if yaw_limit > 0 else 0
-            y_usage = abs(cur_y) / y_limit if y_limit > 0 else 0
-            h_usage = max(yaw_usage, y_usage)  # Use the more restrictive
+    def _horizontal_workspace_state(
+        self,
+        cur_yaw: float,
+        cur_y: float,
+        limits: dict[str, float],
+    ) -> tuple[float, bool, bool]:
+        """Return ``(h_usage, looking_left, looking_right)`` for the current pose."""
+        yaw_limit = limits["yaw"]
+        y_limit = limits["y"]
+        yaw_usage = abs(cur_yaw) / yaw_limit if yaw_limit > 0 else 0
+        y_usage = abs(cur_y) / y_limit if y_limit > 0 else 0
+        h_usage = max(yaw_usage, y_usage)  # Use the more restrictive
+        looking_left = cur_yaw > 0 or cur_y > 0
+        looking_right = cur_yaw < 0 or cur_y < 0
+        return h_usage, looking_left, looking_right
 
-            # Check direction: positive yaw/y = left, negative = right
-            looking_left = cur_yaw > 0 or cur_y > 0
-            looking_right = cur_yaw < 0 or cur_y < 0
+    def _maybe_turn_around(
+        self,
+        *,
+        du: float,
+        looking_left: bool,
+        looking_right: bool,
+        h_usage: float,
+        pain_bridge: Any,
+    ) -> bool:
+        """If movement would push past a limit, rotate the body instead.
 
-            # Get pain bridge for learned movement control
-            pain_bridge = getattr(getattr(self, "_default_network", None), "_pain_bridge", None)
+        Returns ``True`` if a turn was executed (caller should early-return).
+        """
+        import time as time_module
 
-            # === TURN AROUND TRIGGER (LEARNED) ===
-            # If movement in target direction would cause pain, rotate body instead
-            import time as time_module
+        now = time_module.time()
+        can_turn = (now - self._last_turn_around_time) > self._TURN_AROUND_COOLDOWN
 
-            now = time_module.time()
-            can_turn = (now - self._last_turn_around_time) > self._TURN_AROUND_COOLDOWN
+        target_is_beyond = (looking_left and du < -self._TURN_AROUND_MIN_PIXEL_OFFSET) or (
+            looking_right and du > self._TURN_AROUND_MIN_PIXEL_OFFSET
+        )
+        if not (can_turn and target_is_beyond):
+            return False
 
-            # Check if pixel is significantly in the blocked direction
-            target_is_beyond = (looking_left and du < -self._TURN_AROUND_MIN_PIXEL_OFFSET) or (
-                looking_right and du > self._TURN_AROUND_MIN_PIXEL_OFFSET
+        should_turn = False
+        turn_reason = ""
+        if pain_bridge is not None:
+            dyaw = abs(du * self._DEG_PER_PIXEL_H)
+            action_sig = f"look_at:dy={dyaw:.0f}:dp=0"
+            pain_risk = pain_bridge.get_pain_risk(action_sig)
+            if pain_risk >= self._TURN_AROUND_PAIN_THRESHOLD:
+                should_turn = True
+                turn_reason = f"pain_risk={pain_risk:.2f}"
+        elif h_usage > self._TURN_AROUND_BOUNDS_THRESHOLD:
+            should_turn = True
+            turn_reason = f"bounds_usage={h_usage:.2f}"
+
+        if not should_turn:
+            return False
+
+        turn_angle = self._TURN_AROUND_ANGLE if looking_left else -self._TURN_AROUND_ANGLE
+        self.log.info(
+            "look_at_image triggering turn_around: %s, du=%.1f, turning %.0f°",
+            turn_reason,
+            du,
+            turn_angle,
+        )
+        self._last_turn_around_time = now
+
+        if pain_bridge is not None:
+            try:
+                pain_bridge.record_action_start(
+                    "turn_around",
+                    context={"reason": turn_reason, "angle": turn_angle},
+                )
+            except Exception as e:
+                self.log.debug("Pain bridge record_action_start failed: %s", e)
+
+        self.turn_around(turn_angle, duration=self._TURN_AROUND_DURATION, recenter_head=True)
+
+        if pain_bridge is not None:
+            try:
+                pain_bridge.record_action_complete(success=True)
+            except Exception as e:
+                self.log.debug("Pain bridge record_action_complete failed: %s", e)
+
+        return True
+
+    def _restrict_horizontal(
+        self,
+        du: float,
+        looking_left: bool,
+        looking_right: bool,
+        h_usage: float,
+        pain_bridge: Any,
+    ) -> float:
+        """Reduce horizontal pixel delta when near a limit (pain-aware)."""
+        h_restrict = 0.0
+        if pain_bridge is not None:
+            dyaw_h = abs(du * self._DEG_PER_PIXEL_H)
+            action_sig_h = f"look_at:dy={dyaw_h:.0f}:dp=0"
+            h_pain_risk = pain_bridge.get_pain_risk(action_sig_h)
+            h_restrict = min(1.0, h_pain_risk * 2.0)  # Scale up for faster response
+        elif h_usage > 0.5:
+            h_restrict = min(1.0, (h_usage - 0.5) * 2)
+
+        if h_restrict > 0.1:
+            if looking_left and du < 0:
+                du = du * (1.0 - h_restrict * 0.8)
+            elif looking_right and du > 0:
+                du = du * (1.0 - h_restrict * 0.8)
+        return du
+
+    def _restrict_vertical(
+        self,
+        dv: float,
+        cur_pitch: float,
+        cur_z: float,
+        limits: dict[str, float],
+        pain_bridge: Any,
+    ) -> float:
+        """Reduce vertical pixel delta when near a limit (pain-aware)."""
+        pitch_limit = limits["pitch"]
+        z_limit = limits["z"]
+        pitch_usage = abs(cur_pitch) / pitch_limit if pitch_limit > 0 else 0
+        z_usage = abs(cur_z) / z_limit if z_limit > 0 else 0
+        v_usage = max(pitch_usage, z_usage)
+
+        v_restrict = 0.0
+        if pain_bridge is not None:
+            dpitch_v = abs(dv * self._DEG_PER_PIXEL_V)
+            action_sig_v = f"look_at:dy=0:dp={dpitch_v:.0f}"
+            v_pain_risk = pain_bridge.get_pain_risk(action_sig_v)
+            v_restrict = min(1.0, v_pain_risk * 2.0)
+        elif v_usage > 0.5:
+            v_restrict = min(1.0, (v_usage - 0.5) * 2)
+
+        if v_restrict > 0.1:
+            looking_down = cur_pitch > 0 or cur_z > 0
+            looking_up = cur_pitch < 0 or cur_z < 0
+            if looking_down and dv > 0:
+                dv = dv * (1.0 - v_restrict * 0.8)
+            elif looking_up and dv < 0:
+                dv = dv * (1.0 - v_restrict * 0.8)
+        return dv
+
+    def _final_pixel_with_bounds(self, du: float, dv: float) -> tuple[int, int]:
+        """Compute the final integer pixel target with hard bounds applied."""
+        final_u = int(self._IMAGE_CENTER_U + du)
+        final_v = int(self._IMAGE_CENTER_V + dv)
+        px_bounds = self._LOOK_AT_PIXEL_BOUNDS
+        final_u = max(px_bounds["u_min"], min(px_bounds["u_max"], final_u))
+        final_v = max(px_bounds["v_min"], min(px_bounds["v_max"], final_v))
+        return final_u, final_v
+
+    def _log_look_at_debug(
+        self,
+        u: int,
+        v: int,
+        du: float,
+        dv: float,
+        cur_yaw: float,
+        cur_pitch: float,
+        final_u: int,
+        final_v: int,
+    ) -> None:
+        """Trace pixel-to-motor direction for debug visibility."""
+        du_direction = "RIGHT" if du > 0 else "LEFT" if du < 0 else "CENTER"
+        expected_yaw_change = "decrease" if du > 0 else "increase" if du < 0 else "none"
+        self.log.warning(
+            "LOOK_AT_DEBUG: input_pixel=(%d,%d) center=(320,240) du=%.1f (%s) dv=%.1f "
+            "-> expect_yaw_to_%s | cur_yaw=%.1f cur_pitch=%.1f | final_pixel=(%d,%d)",
+            u,
+            v,
+            du,
+            du_direction,
+            dv,
+            expected_yaw_change,
+            cur_yaw,
+            cur_pitch,
+            final_u,
+            final_v,
+        )
+
+    def _build_commanded_6d(
+        self,
+        du: float,
+        dv: float,
+        cur_yaw: float,
+        cur_pitch: float,
+        cur_y: float,
+        cur_z: float,
+    ) -> dict[str, float]:
+        """Estimate the commanded 6D pose from pixel deltas (for bounds learning)."""
+        delta = self._calculate_movement_for_pixel(du, dv)
+        return {
+            "yaw": cur_yaw + delta[5],
+            "pitch": cur_pitch + delta[4],
+            "y": cur_y + delta[1],
+            "z": cur_z + delta[2],
+            "roll": float(getattr(self, "roll", 0.0) or 0.0) + delta[3],
+            "x": float(getattr(self, "x", 0.0) or 0.0) + delta[0],
+        }
+
+    def _record_pain_action_start(self, commanded_6d: dict[str, float], position: tuple[int, int]) -> None:
+        """Record action start with the pain bridge before issuing the move."""
+        pain_bridge = getattr(getattr(self, "_default_network", None), "_pain_bridge", None)
+        if pain_bridge is None:
+            return
+        try:
+            dyaw = abs(commanded_6d["yaw"])
+            dpitch = abs(commanded_6d["pitch"])
+            action_sig = f"look_at:dy={dyaw:.0f}:dp={dpitch:.0f}"
+            pain_bridge.record_action_start(
+                action_sig,
+                context={"position": position, "commanded_6d": commanded_6d},
+                target_yaw=commanded_6d.get("yaw"),
+                target_pitch=commanded_6d.get("pitch"),
+                target_y=commanded_6d.get("y"),
+                target_z=commanded_6d.get("z"),
             )
+        except Exception as e:
+            self.log.debug("Pain action start recording failed: %s", e)
 
-            if can_turn and target_is_beyond:
-                # Check pain prediction for the proposed movement
-                should_turn = False
-                turn_reason = ""
+    def _enqueue_sdk_look_at(
+        self,
+        u: int,
+        v: int,
+        position: tuple[int, int],
+        duration: float,
+        *,
+        perform_movement: bool,
+        commanded_6d: dict[str, float] | None = None,
+    ) -> None:
+        """Scale internal pixel coords to the SDK resolution and enqueue the call."""
+        sdk_scale_x = self._SDK_IMAGE_WIDTH / self._IMAGE_WIDTH
+        sdk_scale_y = self._SDK_IMAGE_HEIGHT / self._IMAGE_HEIGHT
+        sdk_u = int(u * sdk_scale_x)
+        sdk_v = int(v * sdk_scale_y)
 
-                if pain_bridge is not None:
-                    # Create action signature for this movement
-                    dyaw = abs(du * self._DEG_PER_PIXEL_H)
-                    action_sig = f"look_at:dy={dyaw:.0f}:dp=0"
-                    pain_risk = pain_bridge.get_pain_risk(action_sig)
-
-                    if pain_risk >= self._TURN_AROUND_PAIN_THRESHOLD:
-                        should_turn = True
-                        turn_reason = f"pain_risk={pain_risk:.2f}"
-                else:
-                    # Fallback: use bounds usage threshold if pain prediction unavailable
-                    if h_usage > self._TURN_AROUND_BOUNDS_THRESHOLD:
-                        should_turn = True
-                        turn_reason = f"bounds_usage={h_usage:.2f}"
-
-                if should_turn:
-                    # Determine turn direction
-                    # Looking left + pixel further left = turn left (positive angle)
-                    # Looking right + pixel further right = turn right (negative angle)
-                    turn_angle = self._TURN_AROUND_ANGLE if looking_left else -self._TURN_AROUND_ANGLE
-
-                    self.log.info(
-                        "look_at_image triggering turn_around: %s, du=%.1f, turning %.0f°", turn_reason, du, turn_angle
-                    )
-                    self._last_turn_around_time = now
-
-                    # Record turn_around as action start for positive learning
-                    if pain_bridge is not None:
-                        try:
-                            pain_bridge.record_action_start(
-                                "turn_around",
-                                context={"reason": turn_reason, "angle": turn_angle},
-                            )
-                        except Exception:
-                            pass
-
-                    self.turn_around(turn_angle, duration=self._TURN_AROUND_DURATION, recenter_head=True)
-
-                    # Record successful turn_around (no pain) as positive outcome
-                    if pain_bridge is not None:
-                        try:
-                            pain_bridge.record_action_complete(success=True)
-                        except Exception:
-                            pass
-
-                    return  # Exit early - turn_around handles the movement
-
-            # === LEARNED POSITION CLAMPING (HORIZONTAL) ===
-            # Use pain prediction to determine how much to restrict movement
-            h_restrict = 0.0
-            if pain_bridge is not None:
-                # Calculate pain risk for horizontal movement
-                dyaw_h = abs(du * self._DEG_PER_PIXEL_H)
-                action_sig_h = f"look_at:dy={dyaw_h:.0f}:dp=0"
-                h_pain_risk = pain_bridge.get_pain_risk(action_sig_h)
-                # Use pain risk directly as restriction factor
-                h_restrict = min(1.0, h_pain_risk * 2.0)  # Scale up for faster response
-            elif h_usage > 0.5:
-                # Fallback to bounds-based restriction
-                h_restrict = min(1.0, (h_usage - 0.5) * 2)
-
-            if h_restrict > 0.1:
-                if looking_left and du < 0:  # At left limit, pixel is further left
-                    du = du * (1.0 - h_restrict * 0.8)  # Reduce by up to 80%
-                elif looking_right and du > 0:  # At right limit, pixel is further right
-                    du = du * (1.0 - h_restrict * 0.8)
-
-            # === VERTICAL AXIS (up/down) ===
-            # Rotation: pitch (positive = looking down in this system)
-            # Translation: Z (positive = platform raised up = camera higher = looking down)
-            # Use learned bounds (already fetched in horizontal axis section)
-            pitch_limit = limits["pitch"]
-            z_limit = limits["z"]
-            pitch_usage = abs(cur_pitch) / pitch_limit if pitch_limit > 0 else 0
-            z_usage = abs(cur_z) / z_limit if z_limit > 0 else 0
-            v_usage = max(pitch_usage, z_usage)  # Use the more restrictive
-
-            # === LEARNED POSITION CLAMPING (VERTICAL) ===
-            v_restrict = 0.0
-            if pain_bridge is not None:
-                # Calculate pain risk for vertical movement
-                dpitch_v = abs(dv * self._DEG_PER_PIXEL_V)
-                action_sig_v = f"look_at:dy=0:dp={dpitch_v:.0f}"
-                v_pain_risk = pain_bridge.get_pain_risk(action_sig_v)
-                v_restrict = min(1.0, v_pain_risk * 2.0)
-            elif v_usage > 0.5:
-                # Fallback to bounds-based restriction
-                v_restrict = min(1.0, (v_usage - 0.5) * 2)
-
-            if v_restrict > 0.1:
-                # Image v: positive = below center (looking down)
-                # Pitch positive = looking down, Z positive = raised up = looking down
-                looking_down = cur_pitch > 0 or cur_z > 0
-                looking_up = cur_pitch < 0 or cur_z < 0
-                if looking_down and dv > 0:  # At down limit, pixel is further down
-                    dv = dv * (1.0 - v_restrict * 0.8)
-                elif looking_up and dv < 0:  # At up limit, pixel is further up
-                    dv = dv * (1.0 - v_restrict * 0.8)
-
-            # Calculate final pixel coordinates
-            final_u = int(self._IMAGE_CENTER_U + du)
-            final_v = int(self._IMAGE_CENTER_V + dv)
-
-            # Apply standard bounds as final safety
-            px_bounds = self._LOOK_AT_PIXEL_BOUNDS
-            final_u = max(px_bounds["u_min"], min(px_bounds["u_max"], final_u))
-            final_v = max(px_bounds["v_min"], min(px_bounds["v_max"], final_v))
-
-            # ENHANCED DEBUG: Trace pixel-to-motor direction
-            # du > 0 means target is RIGHT of center (u=320), so yaw should DECREASE (turn right)
-            # du < 0 means target is LEFT of center, so yaw should INCREASE (turn left)
-            du_direction = "RIGHT" if du > 0 else "LEFT" if du < 0 else "CENTER"
-            expected_yaw_change = "decrease" if du > 0 else "increase" if du < 0 else "none"
-            self.log.warning(
-                "LOOK_AT_DEBUG: input_pixel=(%d,%d) center=(320,240) du=%.1f (%s) dv=%.1f "
-                "-> expect_yaw_to_%s | cur_yaw=%.1f cur_pitch=%.1f | final_pixel=(%d,%d)",
-                u,
-                v,
-                du,
-                du_direction,
-                dv,
-                expected_yaw_change,
-                cur_yaw,
-                cur_pitch,
-                final_u,
-                final_v,
-            )
-
-            # Calculate estimated commanded 6D pose for bounds learning
-            # This is an approximation since the SDK handles the actual conversion
-            delta = self._calculate_movement_for_pixel(du, dv)
-            commanded_6d = {
-                "yaw": cur_yaw + delta[5],  # dyaw
-                "pitch": cur_pitch + delta[4],  # dpitch
-                "y": cur_y + delta[1],  # dy
-                "z": cur_z + delta[2],  # dz
-                "roll": float(getattr(self, "roll", 0.0) or 0.0) + delta[3],  # droll
-                "x": float(getattr(self, "x", 0.0) or 0.0) + delta[0],  # dx
-            }
-
-            # Record action start for pain detection (before movement)
-            # Includes target position for movement failure detection
-            pain_bridge = getattr(getattr(self, "_default_network", None), "_pain_bridge", None)
-            if pain_bridge is not None:
-                try:
-                    # Create action signature from movement magnitude
-                    dyaw = abs(delta[5])
-                    dpitch = abs(delta[4])
-                    action_sig = f"look_at:dy={dyaw:.0f}:dp={dpitch:.0f}"
-                    pain_bridge.record_action_start(
-                        action_sig,
-                        context={"position": position, "commanded_6d": commanded_6d},
-                        # Pass target position for movement failure detection
-                        target_yaw=commanded_6d.get("yaw"),
-                        target_pitch=commanded_6d.get("pitch"),
-                        target_y=commanded_6d.get("y"),
-                        target_z=commanded_6d.get("z"),
-                    )
-                except Exception as e:
-                    self.log.debug("Pain action start recording failed: %s", e)
-
-            # SCALE COORDINATES: Convert from our 640x480 to SDK's 1920x1080
-            # The SDK expects coordinates in the camera's native resolution
-            sdk_scale_x = self._SDK_IMAGE_WIDTH / self._IMAGE_WIDTH
-            sdk_scale_y = self._SDK_IMAGE_HEIGHT / self._IMAGE_HEIGHT
-            sdk_u = int(final_u * sdk_scale_x)
-            sdk_v = int(final_v * sdk_scale_y)
-
+        if perform_movement:
             self.log.warning(
                 "LOOK_AT_SDK: internal_pixel=(%d,%d) -> sdk_pixel=(%d,%d) scale=(%.2f,%.2f)",
-                final_u,
-                final_v,
+                u,
+                v,
                 sdk_u,
                 sdk_v,
                 sdk_scale_x,
                 sdk_scale_y,
             )
 
-            # Use the SDK's look_at_image - it knows how to center on a pixel
-            self._enqueue_motor(
-                self.mini.look_at_image,
-                sdk_u,
-                sdk_v,
-                duration=float(duration),
-                perform_movement=True,
-                _position_info=position,
-                _commanded_6d=commanded_6d,
-            )
-        else:
-            # SCALE COORDINATES for non-movement case too
-            sdk_scale_x = self._SDK_IMAGE_WIDTH / self._IMAGE_WIDTH
-            sdk_scale_y = self._SDK_IMAGE_HEIGHT / self._IMAGE_HEIGHT
-            sdk_u = int(u * sdk_scale_x)
-            sdk_v = int(v * sdk_scale_y)
-
-            # If not performing movement, just use SDK's look_at_image for calculation
-            self._enqueue_motor(
-                self.mini.look_at_image,
-                sdk_u,
-                sdk_v,
-                duration=float(duration),
-                perform_movement=False,
-                _position_info=position,
-            )
+        kwargs: dict[str, Any] = {
+            "duration": float(duration),
+            "perform_movement": perform_movement,
+            "_position_info": position,
+        }
+        if commanded_6d is not None:
+            kwargs["_commanded_6d"] = commanded_6d
+        self._enqueue_motor(self.mini.look_at_image, sdk_u, sdk_v, **kwargs)
 
     def move(
         self,

@@ -317,7 +317,7 @@ class MediaLoopMixin:
         self.log.debug("Continuing with main loop setup after transcription worker...")
 
         # Import worker functions from workers module
-        from maxim.conscience.workers import (
+        from maxim.embodied_runtime.workers import (
             motor_worker,
             frame_capture_worker,
             audio_capture_worker,

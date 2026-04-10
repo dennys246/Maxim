@@ -8,7 +8,7 @@ import threading
 from unittest.mock import MagicMock
 
 
-from maxim.conscience.vision_stream import VisionStreamMixin
+from maxim.embodied_runtime.vision_stream import VisionStreamMixin
 
 
 class _TestVision(VisionStreamMixin):
@@ -49,7 +49,7 @@ class TestEnsureVisionLogger:
 
         mock_logger = MagicMock()
         mock_cls = MagicMock(return_value=mock_logger)
-        monkeypatch.setattr("maxim.conscience.vision_stream.VisionEventLogger", mock_cls)
+        monkeypatch.setattr("maxim.embodied_runtime.vision_stream.VisionEventLogger", mock_cls)
 
         result = obj._ensure_vision_logger()
 
@@ -65,7 +65,7 @@ class TestEnsureVisionLogger:
 
         mock_logger = MagicMock()
         monkeypatch.setattr(
-            "maxim.conscience.vision_stream.VisionEventLogger",
+            "maxim.embodied_runtime.vision_stream.VisionEventLogger",
             MagicMock(return_value=mock_logger),
         )
 
@@ -80,7 +80,7 @@ class TestEnsureVisionLogger:
 
         mock_logger = MagicMock()
         mock_cls = MagicMock(return_value=mock_logger)
-        monkeypatch.setattr("maxim.conscience.vision_stream.VisionEventLogger", mock_cls)
+        monkeypatch.setattr("maxim.embodied_runtime.vision_stream.VisionEventLogger", mock_cls)
 
         first = obj._ensure_vision_logger()
         second = obj._ensure_vision_logger()
@@ -93,7 +93,7 @@ class TestEnsureVisionLogger:
         obj = _TestVision(tmp_path)
 
         monkeypatch.setattr(
-            "maxim.conscience.vision_stream.VisionEventLogger",
+            "maxim.embodied_runtime.vision_stream.VisionEventLogger",
             MagicMock(side_effect=RuntimeError("boom")),
         )
 
@@ -174,7 +174,7 @@ class TestStartVisionEventStream:
         obj = _TestVision(tmp_path)
 
         monkeypatch.setattr(
-            "maxim.conscience.vision_stream.VisionEventLogger",
+            "maxim.embodied_runtime.vision_stream.VisionEventLogger",
             MagicMock(side_effect=RuntimeError("boom")),
         )
 
@@ -192,7 +192,7 @@ class TestStartVisionEventStream:
         obj._vision_event_thread = alive_thread
 
         mock_cls = MagicMock()
-        monkeypatch.setattr("maxim.conscience.vision_stream.VisionEventLogger", mock_cls)
+        monkeypatch.setattr("maxim.embodied_runtime.vision_stream.VisionEventLogger", mock_cls)
 
         obj._start_vision_event_stream()
 
@@ -207,7 +207,7 @@ class TestStartVisionEventStream:
 
         mock_logger = MagicMock()
         monkeypatch.setattr(
-            "maxim.conscience.vision_stream.VisionEventLogger",
+            "maxim.embodied_runtime.vision_stream.VisionEventLogger",
             MagicMock(return_value=mock_logger),
         )
 

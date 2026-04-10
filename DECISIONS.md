@@ -27,8 +27,10 @@ coding assistant capabilities and architectural robustness:
 
 ## 2026-03-13: Conscience mixin decomposition and agents/ module extraction
 
+> **Note:** The package was renamed `conscience/` → `embodied_runtime/` in v1.0.0 to better describe its contents (robot mixin stack, not safety enforcement). All file references below use the new path.
+
 Decision:
-- `src/maxim/conscience/selfy.py` `Maxim` class decomposed into six mixins: `ConnectionMixin` (connection.py), `VisionStreamMixin` (vision_stream.py), `AgenticRuntimeMixin` (agentic_runtime.py), `MovementMixin` (movement.py), `InputHandlerMixin` (input_handlers.py), `MediaLoopMixin` (media_loop.py). Module-level worker functions live in `workers.py`.
+- `src/maxim/embodied_runtime/selfy.py` `Maxim` class decomposed into six mixins: `ConnectionMixin` (connection.py), `VisionStreamMixin` (vision_stream.py), `AgenticRuntimeMixin` (agentic_runtime.py), `MovementMixin` (movement.py), `InputHandlerMixin` (input_handlers.py), `MediaLoopMixin` (media_loop.py). Module-level worker functions live in `workers.py`.
 - `src/maxim/agents/llm_worker.py` split into focused modules: `llm_types.py` (request/response dataclasses), `llm_context.py` (context building), `prompt_budgeter.py` (token budget management), `llm_fallback.py` (fallback behaviors), `prompt_builder.py` (prompt construction). All are re-exported from `llm_worker.py` for backward compatibility.
 
 Reason:
@@ -189,7 +191,7 @@ Tradeoffs:
 
 ## 2026-01-02: Inference code lives under `src/maxim/inference/`
 Reason:
-- Keep “runtime inference/control” separate from “robot orchestration” (`src/maxim/conscience/`) and “model definitions” (`src/maxim/models/`).
+- Keep "runtime inference/control" separate from "robot orchestration" (`src/maxim/embodied_runtime/`, formerly `conscience/`) and "model definitions" (`src/maxim/models/`).
 
 Tradeoffs:
 - Requires stable re-export modules to preserve import paths during refactors.
@@ -450,7 +452,7 @@ Reason:
 
 The system has two parallel control paths:
 
-1. **`live()` loop** (`src/maxim/conscience/selfy.py`, decomposed into mixins):
+1. **`live()` loop** (`src/maxim/embodied_runtime/selfy.py`, decomposed into mixins):
    - Hardware I/O: frame capture, audio capture, video/audio writing (`MediaLoopMixin`, `workers.py`)
    - Connection lifecycle (`ConnectionMixin`)
    - Vision capture and segmentation (`VisionStreamMixin`)

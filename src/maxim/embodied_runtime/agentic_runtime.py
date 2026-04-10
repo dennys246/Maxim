@@ -47,38 +47,8 @@ class AgenticRuntimeMixin:
 
         _t_boot = time.time()
 
-        # Allow CPU-only operation (e.g., when CUDA is hidden for Blackwell GPUs)
-        # Note: llama_cpp backend has native Metal support on macOS, so skip this fallback
-        # when using llama_cpp - it will use Metal GPU acceleration automatically
-        if not is_gpu_available():
-            # Check if we're using llama_cpp backend (has native Metal support)
-            llm_config_path = os.path.join(str(getattr(self, "home_dir", "data") or "data"), "util", "llm.json")
-            using_llama_cpp = False
-            try:
-                if os.path.exists(llm_config_path):
-                    with open(llm_config_path) as f:
-                        llm_cfg = json.load(f)
-                    profile_name = llm_cfg.get("profile", "")
-                    profiles = llm_cfg.get("profiles", {})
-                    if profile_name in profiles:
-                        using_llama_cpp = profiles[profile_name].get("backend") == "llama_cpp"
-            except Exception:
-                pass
-
-            if using_llama_cpp:
-                # llama.cpp has native Metal support on macOS - no fallback needed
-                self.log.info("Using llama.cpp backend with native Metal GPU support")
-            else:
-                cuda_hidden = os.environ.get("CUDA_VISIBLE_DEVICES") == ""
-                if cuda_hidden:
-                    self.log.info("GPU hidden for compatibility - agentic runtime will use CPU (slower)")
-                else:
-                    self.log.warning("No GPU available - agentic runtime will use CPU (slower)")
-
-                # Configure CPU-friendly model defaults (only for non-llama_cpp backends)
-                os.environ.setdefault("MAXIM_LLM_PROFILE", "smollm-1.7b-instruct")
-                os.environ.setdefault("MAXIM_LLM_N_GPU_LAYERS", "0")
-                self.log.info("Using CPU-friendly LLM: smollm-1.7b-instruct")
+        # Apply CPU/Metal fallback for the LLM backend before importing it
+        self._apply_llm_backend_fallback()
 
         try:
             from maxim.agents import MaximAgent
@@ -855,6 +825,47 @@ class AgenticRuntimeMixin:
         t = threading.Thread(target=_worker, name="maxim.agentic", daemon=True)
         self._agentic_thread = t
         t.start()
+
+    def _apply_llm_backend_fallback(self) -> None:
+        """Apply CPU/Metal fallback for the LLM backend when no GPU is available.
+
+        - On systems with native GPU: no-op.
+        - On macOS with llama.cpp configured: log "Metal is fine" and no-op
+          (llama.cpp uses Metal automatically).
+        - Otherwise: switch the default profile to ``smollm-1.7b-instruct`` and
+          force ``MAXIM_LLM_N_GPU_LAYERS=0`` so the runtime doesn't try to load
+          a model it can't run.
+        """
+        if is_gpu_available():
+            return
+
+        # Check whether the configured profile uses llama.cpp (Metal-friendly)
+        llm_config_path = os.path.join(str(getattr(self, "home_dir", "data") or "data"), "util", "llm.json")
+        using_llama_cpp = False
+        try:
+            if os.path.exists(llm_config_path):
+                with open(llm_config_path) as f:
+                    llm_cfg = json.load(f)
+                profile_name = llm_cfg.get("profile", "")
+                profiles = llm_cfg.get("profiles", {})
+                if profile_name in profiles:
+                    using_llama_cpp = profiles[profile_name].get("backend") == "llama_cpp"
+        except Exception as e:
+            self.log.debug("Could not inspect LLM config for backend fallback: %s", e)
+
+        if using_llama_cpp:
+            self.log.info("Using llama.cpp backend with native Metal GPU support")
+            return
+
+        cuda_hidden = os.environ.get("CUDA_VISIBLE_DEVICES") == ""
+        if cuda_hidden:
+            self.log.info("GPU hidden for compatibility - agentic runtime will use CPU (slower)")
+        else:
+            self.log.warning("No GPU available - agentic runtime will use CPU (slower)")
+
+        os.environ.setdefault("MAXIM_LLM_PROFILE", "smollm-1.7b-instruct")
+        os.environ.setdefault("MAXIM_LLM_N_GPU_LAYERS", "0")
+        self.log.info("Using CPU-friendly LLM: smollm-1.7b-instruct")
 
     def _stop_agentic_runtime(self, *, timeout: float = 10.0) -> None:
         """Stop the agentic runtime with graceful shutdown and force-kill fallback.

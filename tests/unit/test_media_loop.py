@@ -7,7 +7,7 @@ import queue
 from unittest.mock import MagicMock, patch
 
 
-from maxim.conscience.media_loop import MediaLoopMixin
+from maxim.embodied_runtime.media_loop import MediaLoopMixin
 
 
 class _TestMedia(MediaLoopMixin):

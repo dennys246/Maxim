@@ -3,7 +3,7 @@ import threading
 
 # NOTE: Import-time side effects (mp.set_start_method, GPU detection,
 # PYOPENGL_PLATFORM) moved to _setup_hardware_env() — called from
-# Maxim.__init__() so that `import maxim.conscience.selfy` has no
+# Maxim.__init__() so that `import maxim.embodied_runtime.selfy` has no
 # subprocess or env-mutation side effects.
 
 from maxim.utils.thread_manager import ThreadRegistry
@@ -78,12 +78,12 @@ def _setup_hardware_env() -> None:
 
 
 # Mixin classes (compartmentalized from this file)
-from maxim.conscience.connection import ConnectionMixin
-from maxim.conscience.vision_stream import VisionStreamMixin
-from maxim.conscience.agentic_runtime import AgenticRuntimeMixin
-from maxim.conscience.movement import MovementMixin
-from maxim.conscience.input_handlers import InputHandlerMixin
-from maxim.conscience.media_loop import MediaLoopMixin
+from maxim.embodied_runtime.connection import ConnectionMixin
+from maxim.embodied_runtime.vision_stream import VisionStreamMixin
+from maxim.embodied_runtime.agentic_runtime import AgenticRuntimeMixin
+from maxim.embodied_runtime.movement import MovementMixin
+from maxim.embodied_runtime.input_handlers import InputHandlerMixin
+from maxim.embodied_runtime.media_loop import MediaLoopMixin
 
 # Initialize global robot registry with controller types
 _robot_registry = RobotRegistry()

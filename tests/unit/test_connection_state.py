@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 
-from maxim.conscience.connection import (
+from maxim.embodied_runtime.connection import (
     ConnectionState,
 )
 
@@ -24,7 +24,7 @@ class TestCapabilityDegradation:
 
     def _make_mixin(self):
         from maxim.runtime.capabilities import RuntimeCapabilities
-        from maxim.conscience.connection import ConnectionMixin
+        from maxim.embodied_runtime.connection import ConnectionMixin
 
         class FakeSelf(ConnectionMixin):
             def __init__(self):
@@ -60,7 +60,7 @@ class TestCapabilityDegradation:
         assert mixin._capabilities.has_audio is True
 
     def test_degrade_without_capabilities_is_safe(self):
-        from maxim.conscience.connection import ConnectionMixin
+        from maxim.embodied_runtime.connection import ConnectionMixin
 
         class NoCapsMixin(ConnectionMixin):
             def __init__(self):
@@ -78,21 +78,21 @@ class TestAdaptiveHz:
     """_compute_target_hz adapts to capabilities."""
 
     def test_motor_gets_30hz(self):
-        from maxim.conscience.agentic_runtime import _compute_target_hz
+        from maxim.embodied_runtime.agentic_runtime import _compute_target_hz
         from maxim.runtime.capabilities import RuntimeCapabilities
 
         caps = RuntimeCapabilities(has_motor=True, has_vision=True)
         assert _compute_target_hz(caps) == 30.0
 
     def test_vision_only_gets_10hz(self):
-        from maxim.conscience.agentic_runtime import _compute_target_hz
+        from maxim.embodied_runtime.agentic_runtime import _compute_target_hz
         from maxim.runtime.capabilities import RuntimeCapabilities
 
         caps = RuntimeCapabilities(has_motor=False, has_vision=True)
         assert _compute_target_hz(caps) == 10.0
 
     def test_headless_gets_2hz(self):
-        from maxim.conscience.agentic_runtime import _compute_target_hz
+        from maxim.embodied_runtime.agentic_runtime import _compute_target_hz
         from maxim.runtime.capabilities import RuntimeCapabilities
 
         caps = RuntimeCapabilities(has_motor=False, has_vision=False)

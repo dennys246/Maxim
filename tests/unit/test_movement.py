@@ -7,7 +7,7 @@ import math
 
 import pytest
 
-from maxim.conscience.movement import MovementMixin
+from maxim.embodied_runtime.movement import MovementMixin
 
 
 # ---------------------------------------------------------------------------

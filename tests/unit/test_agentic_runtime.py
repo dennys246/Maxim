@@ -7,7 +7,7 @@ import threading
 from unittest.mock import MagicMock, patch
 
 
-from maxim.conscience.agentic_runtime import AgenticRuntimeMixin
+from maxim.embodied_runtime.agentic_runtime import AgenticRuntimeMixin
 
 
 class _TestRuntime(AgenticRuntimeMixin):
@@ -212,7 +212,7 @@ class TestStartAgenticRuntime:
         existing_thread.is_alive.return_value = True
         rt._agentic_thread = existing_thread
 
-        with patch("maxim.conscience.agentic_runtime.is_gpu_available") as mock_gpu:
+        with patch("maxim.embodied_runtime.agentic_runtime.is_gpu_available") as mock_gpu:
             rt._start_agentic_runtime()
             # is_gpu_available should never be reached because of early return
             mock_gpu.assert_not_called()

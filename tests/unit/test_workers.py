@@ -1,4 +1,4 @@
-"""Unit tests for maxim.conscience.workers."""
+"""Unit tests for maxim.embodied_runtime.workers."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import time
 from unittest.mock import MagicMock
 
 
-from maxim.conscience.workers import (
+from maxim.embodied_runtime.workers import (
     IK_FAILURE_THRESHOLD,
     IKWarningHandler,
     frame_capture_worker,

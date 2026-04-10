@@ -10,7 +10,7 @@ class TestFailureState:
 
     def test_default_values(self):
         """Default values are zero."""
-        from maxim.conscience.connection import FailureState
+        from maxim.embodied_runtime.connection import FailureState
 
         state = FailureState()
 
@@ -23,7 +23,7 @@ class TestFailureTracker:
 
     def test_record_failure_increments_count(self):
         """Recording failure increments count."""
-        from maxim.conscience.connection import FailureTracker
+        from maxim.embodied_runtime.connection import FailureTracker
 
         tracker = FailureTracker()
         tracker.record_failure("motor")
@@ -32,7 +32,7 @@ class TestFailureTracker:
 
     def test_record_failure_returns_false_below_threshold(self):
         """Returns False when below threshold."""
-        from maxim.conscience.connection import FailureTracker
+        from maxim.embodied_runtime.connection import FailureTracker
 
         tracker = FailureTracker(thresholds={"motor": 3})
 
@@ -41,7 +41,7 @@ class TestFailureTracker:
 
     def test_record_failure_returns_true_at_threshold(self):
         """Returns True when threshold reached."""
-        from maxim.conscience.connection import FailureTracker
+        from maxim.embodied_runtime.connection import FailureTracker
 
         tracker = FailureTracker(thresholds={"motor": 3})
 
@@ -53,7 +53,7 @@ class TestFailureTracker:
 
     def test_window_resets_count(self):
         """Count resets after window expires."""
-        from maxim.conscience.connection import FailureTracker
+        from maxim.embodied_runtime.connection import FailureTracker
 
         tracker = FailureTracker(window_s=0.01)
 
@@ -69,7 +69,7 @@ class TestFailureTracker:
 
     def test_reset_clears_all(self):
         """Reset clears all failure states."""
-        from maxim.conscience.connection import FailureTracker
+        from maxim.embodied_runtime.connection import FailureTracker
 
         tracker = FailureTracker()
         tracker.record_failure("motor")
@@ -84,7 +84,7 @@ class TestFailureTracker:
 
     def test_reset_subsystem(self):
         """Can reset individual subsystem."""
-        from maxim.conscience.connection import FailureTracker
+        from maxim.embodied_runtime.connection import FailureTracker
 
         tracker = FailureTracker()
         tracker.record_failure("motor")
@@ -101,7 +101,7 @@ class TestConnectionConfig:
 
     def test_default_values(self):
         """Default values are sensible."""
-        from maxim.conscience.connection import ConnectionConfig
+        from maxim.embodied_runtime.connection import ConnectionConfig
 
         config = ConnectionConfig()
 
@@ -112,7 +112,7 @@ class TestConnectionConfig:
 
     def test_custom_values(self):
         """Can set custom values."""
-        from maxim.conscience.connection import ConnectionConfig
+        from maxim.embodied_runtime.connection import ConnectionConfig
 
         config = ConnectionConfig(
             robot_name="test_robot",

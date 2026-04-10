@@ -1,4 +1,4 @@
-"""Unit tests for maxim.conscience.input_handlers.InputHandlerMixin."""
+"""Unit tests for maxim.embodied_runtime.input_handlers.InputHandlerMixin."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from maxim.conscience.input_handlers import InputHandlerMixin
+from maxim.embodied_runtime.input_handlers import InputHandlerMixin
 
 
 class _TestHandler(InputHandlerMixin):
