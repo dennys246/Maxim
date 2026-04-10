@@ -108,12 +108,17 @@ class TestTunnelEcho:
         assert kwargs.get("stdout") == _sp.DEVNULL
         assert kwargs.get("stderr") == _sp.DEVNULL
 
-    def test_echo_on_inherits_parent_streams(self, tmp_path, monkeypatch, capsys):
+    def test_echo_on_inherits_parent_streams(self, tmp_path, monkeypatch, caplog):
+        import logging
+
         monkeypatch.setenv("MAXIM_TUNNEL_ECHO", "1")
         model = tmp_path / "fake.gguf"
         model.write_bytes(b"GGUF")
         s = LocalServerSpawner(model_path=str(model))
-        with patch("subprocess.Popen") as mock_popen:
+        with (
+            patch("subprocess.Popen") as mock_popen,
+            caplog.at_level(logging.INFO, logger="maxim.runtime.local_server_spawner"),
+        ):
             mock_proc = MagicMock()
             mock_proc.poll.return_value = 1
             mock_proc.pid = 99999
@@ -123,8 +128,8 @@ class TestTunnelEcho:
         # None → inherits parent's stdout/stderr
         assert kwargs.get("stdout") is None
         assert kwargs.get("stderr") is None
-        # And we print a notice to stderr
-        assert "MAXIM_TUNNEL_ECHO" in capsys.readouterr().err
+        # And we log a notice (used to print to stderr — now via logger.info)
+        assert any("MAXIM_TUNNEL_ECHO" in r.message for r in caplog.records)
 
 
 class TestSignalIsolation:

@@ -204,76 +204,26 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             novelty_tracker: Shared novelty tracker. If None, creates new one.
             nac: NAc instance for causal learning (used by pain detection).
         """
-        self._maxim = maxim
-        self._bus = bus
-        self._config = config or DefaultNetworkConfig()
-        self._fear_agent = fear_agent
+        # 1. Core state — config, callbacks, runtime flags, stats
+        self._init_core_state(maxim, bus, behaviors, config, fear_agent, novelty_tracker)
 
-        # Create or use shared novelty tracker
-        self._novelty_tracker = novelty_tracker or ThreadSafeNoveltyTracker()
-
-        # Initialize behaviors (empty list if none provided)
-        self._behaviors = behaviors or []
-
-        # Initialize arbiter
+        # 2. Decision pipeline — arbiter + thalamic gate
         self._arbiter = PriorityArbiter(self._config.arbiter)
-
-        # Initialize thalamic gate
         self._gate = ThalamicGate(
             config=self._config.gate,
             adaptive_config=self._config.adaptive_threshold,
         )
 
-        # Initialize gaze history for salience-based movement filtering
-        self._gaze_history = GazeHistory(self._config.gaze_history)
+        # 3. Spatial subsystems — gaze history, spatial map, workspace bounds learner
+        self._init_spatial_subsystems()
 
-        # Initialize spatial map for learned reachability and spatial memory
-        self._spatial_map: SpatialMap | None = None
-        if self._config.spatial_map_enabled:
-            self._spatial_map = SpatialMap(self._config.spatial_map)
+        # 4. Attention/salience subsystems
+        self._init_attention_subsystems()
 
-        # Initialize WorkspaceBoundsLearner for learned joint-space limits
-        self._bounds_learner: WorkspaceBoundsLearner | None = None
-        if self._config.bounds_learning_enabled:
-            self._bounds_learner = WorkspaceBoundsLearner(self._config.bounds)
-
-        # Initialize AttentionNetwork for DataFrame-backed spatial attention
-        self._attention_network: AttentionNetwork | None = None
-        if self._config.attention_network_enabled:
-            self._attention_network = AttentionNetwork(self._config.attention)
-
-        # Initialize SalienceNetwork for DataFrame-backed object salience
-        self._salience_network: SalienceNetwork | None = None
-        if self._config.salience_network_enabled:
-            self._salience_network = SalienceNetwork(self._config.salience)
-
-        # Initialize MovementDetector for motion-based salience
-        self._movement_detector: MovementDetector | None = None
-        if self._config.movement_detection_enabled:
-            self._movement_detector = MovementDetector(self._config.movement_detection)
-
-        # Initialize SalienceMap for unified spatial attention
-        self._salience_map_unified: SalienceMap | None = None
-        if self._config.salience_map_enabled:
-            self._salience_map_unified = SalienceMap(self._config.salience_map_config)
-
-        # Initialize GazeController for human-like saccade-fixate dynamics
-        self._gaze_controller: GazeController | None = None
-        if self._config.gaze_controller_enabled:
-            self._gaze_controller = GazeController(
-                salience_map=self._salience_map_unified,
-                config=self._config.gaze_controller,
-            )
-
-        # Initialize SceneContextDetector for scene change detection
-        self._scene_context: SceneContextDetector | None = None
-        if self._config.scene_context_enabled:
-            self._scene_context = SceneContextDetector(self._config.scene_context)
-
-        # Initialize operation throttlers to reduce CPU load
+        # 5. Throttlers (CPU-load reducer for periodic operations)
         self._throttlers = create_throttlers(self._config.throttle)
 
-        # Initialize background task manager for cleanup/maintenance
+        # 6. Background task manager — depends on spatial + attention + salience
         self._background_tasks = BackgroundTaskManager(
             config=self._config.background_tasks,
             spatial_map=self._spatial_map,
@@ -282,52 +232,38 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             novelty_tracker=self._novelty_tracker,
         )
 
-        # Initialize PainCircuitBridge for aversive learning
-        self._pain_bridge: PainCircuitBridge | None = None
-        self._pain_bus = None
-        if self._config.pain_detection_enabled and nac is not None:
-            from maxim.proprioception.pain_bus import PainBus
+        # 7. Pain circuit + 8. Focus learner (both depend on nac)
+        self._init_pain_circuit(nac)
+        self._init_focus_learner(nac)
 
-            pain_config = PainConfig(
-                angular_velocity_pain=self._config.pain_angular_velocity_threshold,
-                translation_velocity_pain=self._config.pain_translation_velocity_threshold,
-            )
-            self._pain_bus = PainBus()
-            pain_detector = PainDetector(config=pain_config, pain_bus=self._pain_bus)
-            self._pain_bridge = PainCircuitBridge(
-                nac=nac,
-                pain_detector=pain_detector,
-                config=PainBridgeConfig(
-                    prediction_threshold=self._config.pain_prediction_threshold,
-                ),
-                pain_bus=self._pain_bus,
-            )
-            # Connect bounds learner for joint limit prediction
-            if self._bounds_learner is not None:
-                self._pain_bridge.set_bounds_learner(self._bounds_learner)
-            logger.info(
-                "PainCircuitBridge initialized with angular_velocity_threshold=%.1f",
-                self._config.pain_angular_velocity_threshold,
-            )
+        # 9. Auto-subscribe to bus
+        self._maybe_subscribe_to_bus()
 
-        # Initialize FocusLearner for adaptive movement correction
-        self._focus_learner: FocusLearner | None = None
-        if self._config.focus_learning_enabled:
-            self._focus_learner = FocusLearner(
-                config=self._config.focus_learner,
-                nac=nac,
-                image_center=(320.0, 240.0),  # Standard frame center
-            )
-            logger.info(
-                "FocusLearner initialized with initial_gain=%.2f",
-                self._config.focus_learner.initial_gain,
-            )
+    # ── __init__ helpers ───────────────────────────────────────────────────
+
+    def _init_core_state(
+        self,
+        maxim: Any,
+        bus: "AgentBus | None",
+        behaviors: list[Behavior] | None,
+        config: DefaultNetworkConfig | None,
+        fear_agent: "FearAgent | None",
+        novelty_tracker: ThreadSafeNoveltyTracker | None,
+    ) -> None:
+        """Set up plain-data fields: config, locks, callbacks, stats, runtime flags."""
+        self._maxim = maxim
+        self._bus = bus
+        self._config = config or DefaultNetworkConfig()
+        self._fear_agent = fear_agent
+
+        self._novelty_tracker = novelty_tracker or ThreadSafeNoveltyTracker()
+        self._behaviors = behaviors or []
 
         # Idle exploration state
         self._last_interesting_time: float = time.time()
         self._next_exploration_time: float = self._schedule_next_exploration()
 
-        # State
+        # Runtime flags
         self._running = False
         self._inhibited = False
         self._inhibit_until: float = 0.0
@@ -364,17 +300,107 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         }
         self._stats_lock = threading.Lock()
 
-        # Auto-subscribe to Percept messages if bus is provided
+        # Subscribe state — populated by _maybe_subscribe_to_bus
         self._subscribed_to_bus = False
-        if self._bus is not None:
-            try:
-                from maxim.agents.bus import Percept
 
-                self._bus.subscribe(Percept, self.on_percept)
-                self._subscribed_to_bus = True
-                logger.debug("DefaultNetwork subscribed to Percept messages")
-            except Exception as e:
-                logger.warning("Failed to subscribe to bus: %s", e)
+    def _init_spatial_subsystems(self) -> None:
+        """Gaze history + (optional) spatial map + workspace bounds learner."""
+        self._gaze_history = GazeHistory(self._config.gaze_history)
+
+        self._spatial_map: SpatialMap | None = None
+        if self._config.spatial_map_enabled:
+            self._spatial_map = SpatialMap(self._config.spatial_map)
+
+        self._bounds_learner: WorkspaceBoundsLearner | None = None
+        if self._config.bounds_learning_enabled:
+            self._bounds_learner = WorkspaceBoundsLearner(self._config.bounds)
+
+    def _init_attention_subsystems(self) -> None:
+        """Attention network, salience network, movement detector, salience map, gaze, scene context."""
+        self._attention_network: AttentionNetwork | None = None
+        if self._config.attention_network_enabled:
+            self._attention_network = AttentionNetwork(self._config.attention)
+
+        self._salience_network: SalienceNetwork | None = None
+        if self._config.salience_network_enabled:
+            self._salience_network = SalienceNetwork(self._config.salience)
+
+        self._movement_detector: MovementDetector | None = None
+        if self._config.movement_detection_enabled:
+            self._movement_detector = MovementDetector(self._config.movement_detection)
+
+        self._salience_map_unified: SalienceMap | None = None
+        if self._config.salience_map_enabled:
+            self._salience_map_unified = SalienceMap(self._config.salience_map_config)
+
+        self._gaze_controller: GazeController | None = None
+        if self._config.gaze_controller_enabled:
+            self._gaze_controller = GazeController(
+                salience_map=self._salience_map_unified,
+                config=self._config.gaze_controller,
+            )
+
+        self._scene_context: SceneContextDetector | None = None
+        if self._config.scene_context_enabled:
+            self._scene_context = SceneContextDetector(self._config.scene_context)
+
+    def _init_pain_circuit(self, nac: "NAc | None") -> None:
+        """PainBus + PainDetector + PainCircuitBridge wiring (skips if NAc absent or disabled)."""
+        self._pain_bridge: PainCircuitBridge | None = None
+        self._pain_bus = None
+        if not (self._config.pain_detection_enabled and nac is not None):
+            return
+
+        from maxim.proprioception.pain_bus import PainBus
+
+        pain_config = PainConfig(
+            angular_velocity_pain=self._config.pain_angular_velocity_threshold,
+            translation_velocity_pain=self._config.pain_translation_velocity_threshold,
+        )
+        self._pain_bus = PainBus()
+        pain_detector = PainDetector(config=pain_config, pain_bus=self._pain_bus)
+        self._pain_bridge = PainCircuitBridge(
+            nac=nac,
+            pain_detector=pain_detector,
+            config=PainBridgeConfig(
+                prediction_threshold=self._config.pain_prediction_threshold,
+            ),
+            pain_bus=self._pain_bus,
+        )
+        if self._bounds_learner is not None:
+            self._pain_bridge.set_bounds_learner(self._bounds_learner)
+        logger.info(
+            "PainCircuitBridge initialized with angular_velocity_threshold=%.1f",
+            self._config.pain_angular_velocity_threshold,
+        )
+
+    def _init_focus_learner(self, nac: "NAc | None") -> None:
+        """Adaptive movement-correction learner (depends on NAc; skips if disabled)."""
+        self._focus_learner: FocusLearner | None = None
+        if not self._config.focus_learning_enabled:
+            return
+        self._focus_learner = FocusLearner(
+            config=self._config.focus_learner,
+            nac=nac,
+            image_center=(320.0, 240.0),  # Standard frame center
+        )
+        logger.info(
+            "FocusLearner initialized with initial_gain=%.2f",
+            self._config.focus_learner.initial_gain,
+        )
+
+    def _maybe_subscribe_to_bus(self) -> None:
+        """Auto-subscribe to ``Percept`` messages if a bus was provided."""
+        if self._bus is None:
+            return
+        try:
+            from maxim.agents.bus import Percept
+
+            self._bus.subscribe(Percept, self.on_percept)
+            self._subscribed_to_bus = True
+            logger.debug("DefaultNetwork subscribed to Percept messages")
+        except Exception as e:
+            logger.warning("Failed to subscribe to bus: %s", e)
 
     @property
     def novelty_tracker(self) -> ThreadSafeNoveltyTracker:
@@ -813,47 +839,73 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
 
     def _process_tick(self) -> None:
         """Single processing cycle."""
-        # 1. Get latest detections (copy under lock)
         with self._detection_lock:
             detections = list(self._latest_detections)
             percept = self._latest_percept
 
         now = time.time()
 
-        # 2. Check for interesting content and update idle timer
+        # Idle exploration: short-circuit if nothing interesting for a while
+        if self._maybe_run_idle_exploration(detections, now):
+            return
+
+        if not detections:
+            return
+
+        # Update perception subsystems (novelty / spatial / salience / movement / scene)
+        self._update_perception_subsystems(detections, now)
+
+        # Update head-position behaviors (drift correction)
+        self._update_head_position_for_behaviors()
+
+        # Behavior evaluation + arbitration
+        winner = self._evaluate_behaviors(detections, now)
+        if winner is not None:
+            with self._stats_lock:
+                self._stats["actions_proposed"] += 1
+            self._execute_action(winner)
+
+        # Percept escalation runs independently of behavior execution
+        if percept:
+            self._evaluate_escalation(percept)
+
+    def _maybe_run_idle_exploration(self, detections: list[dict], now: float) -> bool:
+        """Trigger an idle-exploration ``look_at`` if nothing interesting recently.
+
+        Returns True if an exploration was executed (caller should skip the
+        normal behavior pipeline for this tick).
+        """
         has_interesting = self._has_interesting_content(detections) if detections else False
         if has_interesting:
             self._last_interesting_time = now
             self._next_exploration_time = self._schedule_next_exploration()
 
-        # 3. Handle idle exploration if nothing interesting for a while
-        if self._config.idle_exploration_enabled and not has_interesting and now >= self._next_exploration_time:
-            # Generate random exploration movement
-            target = self._generate_exploration_target()
-            exploration_proposal = ActionProposal(
-                behavior_name="idle_exploration",
-                action_type="look_at",
-                target=target,
-                priority=0.3,  # Low priority - can be overridden by behaviors
-                confidence=0.5,
-                metadata={"reason": "idle_exploration"},
-            )
-            logger.debug(
-                "Idle exploration triggered after %.1fs of no interesting content -> %s",
-                now - self._last_interesting_time,
-                target,
-            )
-            with self._stats_lock:
-                self._stats["idle_explorations"] += 1
-            self._execute_action(exploration_proposal)
-            # Schedule next exploration
-            self._next_exploration_time = self._schedule_next_exploration()
-            return  # Skip normal behavior processing this tick
+        if not (self._config.idle_exploration_enabled and not has_interesting and now >= self._next_exploration_time):
+            return False
 
-        if not detections:
-            return
+        target = self._generate_exploration_target()
+        exploration_proposal = ActionProposal(
+            behavior_name="idle_exploration",
+            action_type="look_at",
+            target=target,
+            priority=0.3,  # Low priority - can be overridden by behaviors
+            confidence=0.5,
+            metadata={"reason": "idle_exploration"},
+        )
+        logger.debug(
+            "Idle exploration triggered after %.1fs of no interesting content -> %s",
+            now - self._last_interesting_time,
+            target,
+        )
+        with self._stats_lock:
+            self._stats["idle_explorations"] += 1
+        self._execute_action(exploration_proposal)
+        self._next_exploration_time = self._schedule_next_exploration()
+        return True
 
-        # 4. Update novelty tracker with all track IDs (THROTTLED: 10Hz instead of 30Hz)
+    def _update_perception_subsystems(self, detections: list[dict], now: float) -> None:
+        """Throttled feed-forward into novelty / spatial / salience / movement / scene."""
+        # 4a. Novelty tracker (10Hz)
         if self._throttlers["novelty"].should_run():
             for d in detections:
                 track_id = d.get("track_id")
@@ -863,45 +915,38 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                 elif track_id is not None:
                     self._novelty_tracker.update(track_id)
 
-        # 4b. Record observations in spatial map (THROTTLED: 5Hz instead of 30Hz)
-        if self._spatial_map is not None and detections and self._throttlers["spatial_map"].should_run():
-            # Get current gaze position (center of frame if unknown)
-            current_pos = self._gaze_history.get_current_position()
-            if current_pos is None:
-                current_pos = (320.0, 240.0)  # Default to center
-
-            # Get novelty scores for all detections (with class-level modulation)
+        # 4b. Spatial map observations (5Hz)
+        if self._spatial_map is not None and self._throttlers["spatial_map"].should_run():
+            current_pos = self._gaze_history.get_current_position() or (320.0, 240.0)
             novelty_scores = {}
             for det in detections:
                 track_id = det.get("track_id")
                 if track_id is not None:
-                    novelty_scores[track_id] = self._novelty_tracker.get_novelty(track_id, class_id=det.get("class_id"))
-
+                    novelty_scores[track_id] = self._novelty_tracker.get_novelty(
+                        track_id,
+                        class_id=det.get("class_id"),
+                    )
             self._spatial_map.record_observation(
                 position=current_pos,
                 detections=detections,
                 novelty_scores=novelty_scores,
             )
 
-        # 4c. Update SalienceNetwork with detections (THROTTLED: 10Hz instead of 30Hz)
-        if self._salience_network is not None and detections and self._throttlers["salience"].should_run():
+        # 4c. SalienceNetwork update (10Hz)
+        if self._salience_network is not None and self._throttlers["salience"].should_run():
             self._salience_network.update_from_detections(detections, timestamp=now)
 
-        # 4d. Update MovementDetector and inject movement scores into detections
-        # This runs every frame (not throttled) for responsive motion detection
-        if self._movement_detector is not None and detections:
+        # 4d. Movement scores (every frame for responsiveness)
+        if self._movement_detector is not None:
             current_gaze = self._gaze_history.get_current_position()
             frame_center = current_gaze or (320.0, 240.0)
             movement_scores = self._movement_detector.update(detections, frame_center)
-
-            # Inject movement scores into detections for behaviors to use
             for det in detections:
                 track_id = det.get("track_id")
                 if track_id is not None:
                     det["movement_score"] = movement_scores.get(track_id, 0.0)
 
-        # 4e. Update unified SalienceMap (THROTTLED: 10Hz instead of 30Hz)
-        # Combines novelty, social, movement, and spatial factors
+        # 4e. Unified salience map (10Hz)
         if self._salience_map_unified is not None and self._throttlers["salience"].should_run():
             self._salience_map_unified.update(
                 detections=detections,
@@ -911,39 +956,34 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                 current_time=now,
             )
 
-        # 4f. Update SceneContextDetector for scene change detection
-        # Triggers exploration when scene changes significantly
-        scene_changed = False
-        if self._scene_context is not None and detections:
-            head_yaw = getattr(self._maxim, "yaw", None)
-            head_pitch = getattr(self._maxim, "pitch", None)
-            try:
-                head_yaw = float(head_yaw) if head_yaw is not None else None
-                head_pitch = float(head_pitch) if head_pitch is not None else None
-            except (TypeError, ValueError):
-                head_yaw, head_pitch = None, None
+        # 4f. Scene-change detection
+        if self._scene_context is not None:
+            self._update_scene_context(detections, now)
 
-            scene_changed = self._scene_context.update(
-                detections=detections,
-                head_yaw=head_yaw,
-                head_pitch=head_pitch,
-            )
+    def _update_scene_context(self, detections: list[dict], now: float) -> None:
+        """Run the SceneContextDetector and reset idle/gaze state on changes."""
+        head_yaw = getattr(self._maxim, "yaw", None)
+        head_pitch = getattr(self._maxim, "pitch", None)
+        try:
+            head_yaw = float(head_yaw) if head_yaw is not None else None
+            head_pitch = float(head_pitch) if head_pitch is not None else None
+        except (TypeError, ValueError):
+            head_yaw, head_pitch = None, None
 
-            if scene_changed:
-                logger.info("Scene change detected - triggering exploration")
-                # Reset idle timer to trigger immediate exploration
-                self._last_interesting_time = 0.0
-                self._next_exploration_time = now
-                # Note activity in gaze controller
-                if self._gaze_controller is not None:
-                    self._gaze_controller.note_activity()
+        scene_changed = self._scene_context.update(
+            detections=detections,
+            head_yaw=head_yaw,
+            head_pitch=head_pitch,
+        )
+        if scene_changed:
+            logger.info("Scene change detected - triggering exploration")
+            self._last_interesting_time = 0.0
+            self._next_exploration_time = now
+            if self._gaze_controller is not None:
+                self._gaze_controller.note_activity()
 
-        # 4g. Update ReturnToCenter behavior with current head position
-        # This enables drift correction by allowing the behavior to know when
-        # the head is at extreme positions and needs to return toward center.
-        self._update_head_position_for_behaviors()
-
-        # 5. Build behavior state
+    def _evaluate_behaviors(self, detections: list[dict], now: float) -> ActionProposal | None:
+        """Run all enabled behaviors against ``detections`` and arbitrate the winner."""
         state = BehaviorState(
             inhibited_behaviors=frozenset(name for name, mod in self._behavior_overrides.items() if mod <= 0),
             priority_modifiers=self._behavior_overrides,
@@ -953,19 +993,14 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             focus_learner=self._focus_learner,
         )
 
-        # 6. Run all behaviors (THROTTLED: 15Hz instead of 30Hz for full evaluation)
         proposals: list[ActionProposal] = []
         if self._throttlers["behaviors"].should_run():
             for behavior in self._behaviors:
-                if not behavior.enabled:
+                if not behavior.enabled or behavior.name in state.inhibited_behaviors:
                     continue
-                if behavior.name in state.inhibited_behaviors:
-                    continue
-
                 try:
                     proposal = behavior.evaluate(detections, state)
                     if proposal:
-                        # Apply priority overrides
                         modifier = self._behavior_overrides.get(behavior.name, 1.0)
                         if modifier != 1.0:
                             proposal = ActionProposal(
@@ -980,29 +1015,23 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                 except Exception as e:
                     logger.warning("Behavior '%s' failed: %s", behavior.name, e)
 
-        # 7. Arbitrate
-        if proposals:
-            # Debug: log all proposals
-            if logger.isEnabledFor(logging.DEBUG):
-                proposal_summary = [(p.behavior_name, p.priority, p.confidence, p.target) for p in proposals]
-                logger.debug("Behavior proposals: %s", proposal_summary)
+        if not proposals:
+            return None
 
-            winner = self._arbiter.select(proposals)
-            if winner:
-                logger.debug(
-                    "Arbiter selected: %s (priority=%.2f, conf=%.2f) -> %s",
-                    winner.behavior_name,
-                    winner.priority,
-                    winner.confidence,
-                    winner.target,
-                )
-                with self._stats_lock:
-                    self._stats["actions_proposed"] += 1
-                self._execute_action(winner)
+        if logger.isEnabledFor(logging.DEBUG):
+            proposal_summary = [(p.behavior_name, p.priority, p.confidence, p.target) for p in proposals]
+            logger.debug("Behavior proposals: %s", proposal_summary)
 
-        # 8. Evaluate percept escalation (separate from behavior execution)
-        if percept:
-            self._evaluate_escalation(percept)
+        winner = self._arbiter.select(proposals)
+        if winner is not None:
+            logger.debug(
+                "Arbiter selected: %s (priority=%.2f, conf=%.2f) -> %s",
+                winner.behavior_name,
+                winner.priority,
+                winner.confidence,
+                winner.target,
+            )
+        return winner
 
     def _execute_action(self, proposal: ActionProposal) -> None:
         """Execute the winning action proposal.
@@ -1010,85 +1039,14 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         Args:
             proposal: The action to execute.
         """
-        # Gate through FearAgent if enabled
-        if self._config.fear_gate_enabled and self._fear_agent:
-            try:
-                # Build action signature for pain prediction
-                action_sig = ""
-                if proposal.target:
-                    # Estimate movement magnitude from target
-                    current = self._gaze_history.get_current_position()
-                    if current:
-                        du = abs(proposal.target[0] - current[0])
-                        dv = abs(proposal.target[1] - current[1])
-                        # Rough conversion: pixels to degrees (~0.1 deg/pixel)
-                        dyaw = du * 0.1
-                        dpitch = dv * 0.1
-                        action_sig = f"look_at:dy={dyaw:.0f}:dp={dpitch:.0f}"
-
-                review = self._fear_agent.review_action(
-                    action_type="dn_movement",
-                    action_params={
-                        "behavior": proposal.behavior_name,
-                        "target": proposal.target,
-                        "priority": proposal.priority,
-                        "action_signature": action_sig,
-                    },
-                    agent_id="default_network",
-                    pain_bridge=self._pain_bridge,
-                )
-                if not review.allow:
-                    logger.debug(
-                        "FearAgent blocked DN action: %s (risk=%s)",
-                        proposal.behavior_name,
-                        getattr(review, "risk_level", "unknown"),
-                    )
-                    with self._stats_lock:
-                        self._stats["actions_blocked"] += 1
-                    self._publish_action(proposal, executed=False)
-                    return
-            except Exception as e:
-                logger.warning("FearAgent check failed: %s", e)
-
-        # Gate through salience check if enabled (inhibition-of-return)
-        if self._config.gaze_salience_enabled and proposal.target:
-            should_move, salience, reason = self._gaze_history.should_move(proposal.target)
-            if not should_move:
-                logger.debug(
-                    "Salience blocked DN action: %s -> %s (salience=%.2f, reason=%s)",
-                    proposal.behavior_name,
-                    proposal.target,
-                    salience,
-                    reason,
-                )
-                with self._stats_lock:
-                    self._stats["actions_salience_blocked"] += 1
-                self._publish_action(proposal, executed=False)
-                return
-
-        # Gate through reachability check if enabled
-        if self._config.reachability_check_enabled and proposal.target:
-            reachability = 1.0  # Default to reachable
-
-            # Check AttentionNetwork first (has learned reachability)
-            if self._attention_network is not None:
-                reachability = self._attention_network.get_reachability(proposal.target)
-            # Fall back to SpatialMap if available
-            elif self._spatial_map is not None:
-                reachability = self._spatial_map.get_reachability(proposal.target)
-
-            if reachability < self._config.min_reachability_threshold:
-                logger.debug(
-                    "Reachability blocked DN action: %s -> %s (reach=%.2f < %.2f)",
-                    proposal.behavior_name,
-                    proposal.target,
-                    reachability,
-                    self._config.min_reachability_threshold,
-                )
-                with self._stats_lock:
-                    self._stats["actions_reachability_blocked"] += 1
-                self._publish_action(proposal, executed=False)
-                return
+        # Three gates: fear, salience (inhibition-of-return), reachability.
+        # Each can short-circuit by publishing the proposal as ``executed=False``.
+        if not self._gate_action_through_fear(proposal):
+            return
+        if not self._gate_action_through_salience(proposal):
+            return
+        if not self._gate_action_through_reachability(proposal):
+            return
 
         # Compute dynamic duration based on distance (+ random jitter)
         current_pos = self._gaze_history.get_current_position()
@@ -1102,9 +1060,122 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         else:
             duration = self._config.movement.base_duration
 
-        # Execute the movement
+        executed, movement_failed = self._dispatch_action_to_motor(proposal, duration)
+        self._record_movement_result(proposal, executed, movement_failed)
+
+        if executed:
+            with self._stats_lock:
+                self._stats["actions_executed"] += 1
+            track_id = proposal.metadata.get("track_id")
+            if track_id is not None and self._novelty_tracker is not None:
+                self._novelty_tracker.focus(track_id)
+            if self._config.gaze_salience_enabled and proposal.target:
+                self._gaze_history.record_gaze(proposal.target)
+
+        self._publish_action(proposal, executed=executed)
+
+    # ── _execute_action gates ──────────────────────────────────────────────
+
+    def _gate_action_through_fear(self, proposal: ActionProposal) -> bool:
+        """Return True if the action passes the FearAgent gate (or gate disabled)."""
+        if not (self._config.fear_gate_enabled and self._fear_agent):
+            return True
+        try:
+            action_sig = ""
+            if proposal.target:
+                current = self._gaze_history.get_current_position()
+                if current:
+                    du = abs(proposal.target[0] - current[0])
+                    dv = abs(proposal.target[1] - current[1])
+                    # Rough conversion: pixels to degrees (~0.1 deg/pixel)
+                    dyaw = du * 0.1
+                    dpitch = dv * 0.1
+                    action_sig = f"look_at:dy={dyaw:.0f}:dp={dpitch:.0f}"
+
+            review = self._fear_agent.review_action(
+                action_type="dn_movement",
+                action_params={
+                    "behavior": proposal.behavior_name,
+                    "target": proposal.target,
+                    "priority": proposal.priority,
+                    "action_signature": action_sig,
+                },
+                agent_id="default_network",
+                pain_bridge=self._pain_bridge,
+            )
+            if not review.allow:
+                logger.debug(
+                    "FearAgent blocked DN action: %s (risk=%s)",
+                    proposal.behavior_name,
+                    getattr(review, "risk_level", "unknown"),
+                )
+                with self._stats_lock:
+                    self._stats["actions_blocked"] += 1
+                self._publish_action(proposal, executed=False)
+                return False
+        except Exception as e:
+            logger.warning("FearAgent check failed: %s", e)
+        return True
+
+    def _gate_action_through_salience(self, proposal: ActionProposal) -> bool:
+        """Return True if the proposal passes the inhibition-of-return gate."""
+        if not (self._config.gaze_salience_enabled and proposal.target):
+            return True
+        should_move, salience, reason = self._gaze_history.should_move(proposal.target)
+        if should_move:
+            return True
+        logger.debug(
+            "Salience blocked DN action: %s -> %s (salience=%.2f, reason=%s)",
+            proposal.behavior_name,
+            proposal.target,
+            salience,
+            reason,
+        )
+        with self._stats_lock:
+            self._stats["actions_salience_blocked"] += 1
+        self._publish_action(proposal, executed=False)
+        return False
+
+    def _gate_action_through_reachability(self, proposal: ActionProposal) -> bool:
+        """Return True if the target is reachable enough (or check disabled)."""
+        if not (self._config.reachability_check_enabled and proposal.target):
+            return True
+
+        reachability = 1.0
+        if self._attention_network is not None:
+            reachability = self._attention_network.get_reachability(proposal.target)
+        elif self._spatial_map is not None:
+            reachability = self._spatial_map.get_reachability(proposal.target)
+
+        if reachability >= self._config.min_reachability_threshold:
+            return True
+
+        logger.debug(
+            "Reachability blocked DN action: %s -> %s (reach=%.2f < %.2f)",
+            proposal.behavior_name,
+            proposal.target,
+            reachability,
+            self._config.min_reachability_threshold,
+        )
+        with self._stats_lock:
+            self._stats["actions_reachability_blocked"] += 1
+        self._publish_action(proposal, executed=False)
+        return False
+
+    # ── _execute_action dispatch ───────────────────────────────────────────
+
+    def _dispatch_action_to_motor(
+        self,
+        proposal: ActionProposal,
+        duration: float,
+    ) -> tuple[bool, bool]:
+        """Dispatch the proposal to the appropriate Maxim motor command.
+
+        Returns ``(executed, movement_failed)`` — ``movement_failed`` is True
+        only for IK/collision errors (so the spatial map can learn from them).
+        """
         executed = False
-        movement_failed = False  # Track IK/collision failures separately
+        movement_failed = False
 
         try:
             if proposal.action_type == "look_at" and proposal.target:
@@ -1113,29 +1184,23 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                     self._maxim.look_at_image(u, v, duration=duration)
                     executed = True
             elif proposal.action_type == "scan":
-                # For exploration, prefer look_at_image if target is provided
-                # This allows smooth movement to exploration waypoints
+                # Exploration: prefer look_at_image (smooth waypoint motion),
+                # fall back to move_relative for ReturnToCenter etc.
                 if proposal.target and hasattr(self._maxim, "look_at_image"):
                     u, v = proposal.target
-                    # Use longer duration for leisurely exploration
                     explore_duration = max(0.5, duration * 0.8)
                     self._maxim.look_at_image(u, v, duration=explore_duration)
                     executed = True
                 elif hasattr(self._maxim, "move_relative"):
-                    # Fallback to delta-based movement (for ReturnToCenter, etc.)
                     delta = proposal.metadata.get("delta", (0, 0))
                     self._maxim.move_relative(delta)
                     executed = True
             elif proposal.action_type == "track" and proposal.target:
-                # Smooth tracking - use slightly shorter duration
                 u, v = proposal.target
                 if hasattr(self._maxim, "look_at_image"):
                     track_duration = max(0.1, duration * 0.5)  # Half duration for tracking
-
-                    # DEBUG: Log social tracking request
                     if proposal.behavior_name == "social":
                         cur_yaw = float(getattr(self._maxim, "yaw", 0.0) or 0.0)
-                        # Target RIGHT of center (u > 320) → yaw decreases; LEFT → yaw increases
                         direction = "RIGHT" if u > 320 else "LEFT" if u < 320 else "CENTER"
                         logger.debug(
                             "SocialTrack: target=(%.0f,%.0f) %s, yaw=%.1f, track_id=%s",
@@ -1145,13 +1210,9 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                             cur_yaw,
                             proposal.metadata.get("track_id"),
                         )
-
                     self._maxim.look_at_image(u, v, duration=track_duration)
                     executed = True
-                    # Note: Movement is async (enqueued to motor worker), so we can't
-                    # check post-movement position here - it hasn't happened yet.
             elif proposal.action_type == "turn_around":
-                # Body rotation when head is at yaw limits
                 turn_angle = proposal.metadata.get("turn_angle", 90.0)
                 turn_duration = proposal.metadata.get("duration", 5.0)
                 if hasattr(self._maxim, "turn_around"):
@@ -1160,42 +1221,35 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                     logger.info("Executing turn_around: %.0f° over %.1fs", turn_angle, turn_duration)
         except Exception as e:
             error_msg = str(e).lower()
-            # Check if this is an IK/collision error
             if "collision" in error_msg or "ik" in error_msg or "not achievable" in error_msg:
                 movement_failed = True
                 logger.debug("Movement to %s failed (IK/collision): %s", proposal.target, e)
             else:
                 logger.warning("Failed to execute DN action: %s", e)
 
-        # Record movement result in spatial map for learning
-        if self._spatial_map is not None and proposal.target:
+        return executed, movement_failed
+
+    def _record_movement_result(
+        self,
+        proposal: ActionProposal,
+        executed: bool,
+        movement_failed: bool,
+    ) -> None:
+        """Update spatial map + attention network with the movement outcome."""
+        if not proposal.target:
+            return
+
+        if self._spatial_map is not None:
             if executed:
                 self._spatial_map.record_movement(proposal.target, success=True)
             elif movement_failed:
                 self._spatial_map.record_movement(proposal.target, success=False)
 
-        # Record movement in AttentionNetwork for reachability tracking
-        if self._attention_network is not None and proposal.target:
+        if self._attention_network is not None:
             if executed:
                 self._attention_network.record_gaze(proposal.target, success=True)
             elif movement_failed:
                 self._attention_network.record_gaze(proposal.target, success=False)
-
-        if executed:
-            with self._stats_lock:
-                self._stats["actions_executed"] += 1
-
-            # Mark the focused object as focused (affects novelty decay)
-            track_id = proposal.metadata.get("track_id")
-            if track_id is not None and self._novelty_tracker is not None:
-                self._novelty_tracker.focus(track_id)
-
-            # Record gaze for salience tracking (inhibition-of-return)
-            if self._config.gaze_salience_enabled and proposal.target:
-                self._gaze_history.record_gaze(proposal.target)
-
-        # Notify callbacks and publish
-        self._publish_action(proposal, executed=executed)
 
     def _publish_action(self, proposal: ActionProposal, executed: bool) -> None:
         """Publish action to bus and notify callbacks.

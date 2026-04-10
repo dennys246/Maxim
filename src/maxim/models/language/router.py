@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from dataclasses import replace
 from typing import Any
 
 from maxim.utils.logging import info, warn
+
+logger = logging.getLogger(__name__)
 from maxim.utils.structured_logging import log_agentic
 from maxim.models.language.cost_tracker import CostTracker
 from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult
@@ -528,7 +531,7 @@ class LLMRouter:
         prompt_tokens = self._estimate_prompt_tokens(system, user)
         now = time.time()
 
-        providers, budget_tier, totals = self._candidate_providers(prompt_tokens, max_tokens, now)
+        providers, budget_tier, _totals = self._candidate_providers(prompt_tokens, max_tokens, now)
         if provider_hint and provider_hint in providers:
             providers = [provider_hint] + [p for p in providers if p != provider_hint]
 
@@ -536,166 +539,302 @@ class LLMRouter:
             warn("No eligible LLM providers for request")
             return "", None
 
-        policy = self._routing_policy
         for provider_key in providers:
-            provider_cfg = self._providers.get(provider_key, {})
-            is_self_hosted = bool(provider_cfg.get("allow_local_endpoints", False))
-            if self._provider_is_cloud(provider_cfg) and not is_self_hosted and not self._cloud_allowed:
+            outcome = self._try_provider(
+                provider_key=provider_key,
+                system=system,
+                user=user,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                prompt_tokens=prompt_tokens,
+                budget_tier=budget_tier,
+                tools=tools,
+                thinking=thinking,
+                stream=stream,
+                request_context=request_context,
+                now=now,
+            )
+            if outcome is None:
+                # provider was skipped (cloud-disabled, backend init failure, etc.)
                 continue
-
-            backend = self._get_backend_for_provider(provider_key)
-            if backend is None:
-                self._note_provider_failure(provider_key, "backend_init_failed")
-                continue
-
-            model = self._provider_model(provider_cfg)
-            model_override = self._model_for_tier(model, provider_cfg, budget_tier)
-
-            # Cost checks + PII redaction only apply to real cloud providers,
-            # not to self-hosted openai-compatible servers (llama-cpp-server,
-            # Ollama, vLLM) running on a private IP.
-            treat_as_cloud = self._provider_is_cloud(provider_cfg) and not is_self_hosted
-            if treat_as_cloud:
-                if policy.max_cost_per_request > 0:
-                    estimate = self._cost_tracker.estimate_cost(
-                        model_override,
-                        prompt_tokens,
-                        max_tokens,
-                    )
-                    if estimate is None and self._provider_pricing_required(provider_cfg):
-                        warn("Missing pricing for model %s; skipping provider %s", model_override, provider_key)
-                        continue
-                    if estimate is not None and estimate > policy.max_cost_per_request:
-                        warn("Estimated cost %.4f exceeds per-request limit", estimate)
-                        if policy.fallback_on_budget_exceeded == "reject":
-                            return "", None
-                        continue
-
-            redaction_result: RedactionResult | None = None
-            redacted_system = system
-            redacted_user = user
-            if treat_as_cloud:
-                redactor = CloudRedactionFilter.from_config(
-                    provider_cfg=provider_cfg,
-                    global_cfg=self.cfg.redaction,
-                )
-                redaction_result = redactor.redact(system, user)
-                redacted_system = redaction_result.system
-                redacted_user = redaction_result.user
-
-            try:
-                if getattr(backend, "requires_prompt_formatting", True):
-                    prompt_cfg = getattr(backend, "cfg", self.cfg)
-                    stop = tuple(getattr(prompt_cfg, "stop", ("</s>",)))
-                    prompt = _build_prompt(prompt_cfg, redacted_system, redacted_user)
-                    text = backend.complete(
-                        prompt,
-                        max_tokens=max_tokens,
-                        temperature=temperature,
-                        stop=stop,
-                    )
-                    if text:
-                        self._note_provider_success(provider_key, model=model_override or model)
-                        return text, None
-                else:
-                    if hasattr(backend, "complete_with_usage"):
-                        kwargs: dict[str, Any] = {
-                            "system": redacted_system,
-                            "user": redacted_user,
-                            "max_tokens": max_tokens,
-                            "temperature": temperature,
-                            "stop": tuple(getattr(self.cfg, "stop", ("</s>",))),
-                        }
-                        if model_override and getattr(backend, "supports_model_override", False):
-                            kwargs["model_override"] = model_override
-                        if tools and getattr(backend, "supports_tool_use", False):
-                            kwargs["tools"] = tools
-                        if thinking:
-                            kwargs["thinking"] = thinking
-                        if stream and getattr(backend, "supports_streaming", False):
-                            kwargs["stream"] = True
-                        resp = backend.complete_with_usage(**kwargs)
-                        if isinstance(resp, LLMResponse) and resp.content:
-                            self._note_provider_success(
-                                provider_key,
-                                model=resp.model or model_override or model,
-                            )
-                            usage = {
-                                "input_tokens": resp.input_tokens,
-                                "output_tokens": resp.output_tokens,
-                                "model": resp.model,
-                                "provider": resp.provider,
-                                "cached_input_tokens": resp.cached_input_tokens,
-                                "uncached_input_tokens": resp.uncached_input_tokens,
-                            }
-                            cost_usd = 0.0
-                            try:
-                                cost_usd = self._cost_tracker.record(
-                                    provider=resp.provider or provider_key,
-                                    model=resp.model or model_override,
-                                    input_tokens=resp.input_tokens,
-                                    output_tokens=resp.output_tokens,
-                                    cached_input_tokens=resp.cached_input_tokens,
-                                    uncached_input_tokens=resp.uncached_input_tokens,
-                                    timestamp=now,
-                                )
-                            except Exception:
-                                cost_usd = 0.0
-                            usage["cost_usd"] = cost_usd
-                            self._session_cost += cost_usd
-
-                            if redaction_result is None:
-                                redaction_result = RedactionResult(
-                                    system=redacted_system,
-                                    user=redacted_user,
-                                    categories_sent=[],
-                                    categories_redacted=[],
-                                    policy="unknown",
-                                )
-                            self._emit_cloud_audit(
-                                provider_key=provider_key,
-                                model=resp.model or model_override,
-                                usage=usage,
-                                cost_usd=cost_usd,
-                                redaction=redaction_result,
-                                request_context=request_context,
-                            )
-                            return resp.content, usage
-                    # Fallback: treat user string as prompt
-                    text = backend.complete(
-                        redacted_user,
-                        max_tokens=max_tokens,
-                        temperature=temperature,
-                        stop=tuple(getattr(self.cfg, "stop", ("</s>",))),
-                    )
-                    if text:
-                        self._note_provider_success(provider_key, model=model_override or model)
-                        return text, None
-            except Exception as e:
-                err_msg = str(e).lower()
-                # Distinguish permanent errors (don't retry other providers) from
-                # transient ones (try next provider in the priority list).
-                is_auth = "401" in err_msg or "403" in err_msg or "unauthorized" in err_msg
-                is_not_found = "404" in err_msg or "not found" in err_msg
-                if is_auth:
-                    warn(
-                        "LLM auth failed (%s): %s. Check API key for provider '%s'.",
-                        provider_key,
-                        e,
-                        provider_key,
-                    )
-                elif is_not_found:
-                    warn(
-                        "LLM model not found (%s): %s. Verify model name in config.",
-                        provider_key,
-                        e,
-                    )
-                else:
-                    warn("LLM complete failed (%s): %s", provider_key, e)
-
-            self._note_provider_failure(provider_key, "call_failed")
+            text, usage, status = outcome
+            if status == "success":
+                return text, usage
+            if status == "budget_reject":
+                return "", None
+            # status == "failed" → try next provider
 
         return "", None
+
+    def _try_provider(
+        self,
+        *,
+        provider_key: str,
+        system: str,
+        user: str,
+        temperature: float,
+        max_tokens: int,
+        prompt_tokens: int,
+        budget_tier: Any,
+        tools: list[dict[str, Any]] | None,
+        thinking: dict[str, Any] | None,
+        stream: bool,
+        request_context: dict[str, Any] | None,
+        now: float,
+    ) -> tuple[str, dict[str, Any] | None, str] | None:
+        """Try a single provider for one inference attempt.
+
+        Returns:
+            None if the provider was skipped (not eligible, no backend),
+            ``(text, usage, status)`` otherwise where status is one of:
+              - ``"success"`` — return the text/usage to caller
+              - ``"budget_reject"`` — caller should reject the request entirely
+              - ``"failed"`` — caller should try the next provider
+        """
+        provider_cfg = self._providers.get(provider_key, {})
+        is_self_hosted = bool(provider_cfg.get("allow_local_endpoints", False))
+        if self._provider_is_cloud(provider_cfg) and not is_self_hosted and not self._cloud_allowed:
+            return None
+
+        backend = self._get_backend_for_provider(provider_key)
+        if backend is None:
+            self._note_provider_failure(provider_key, "backend_init_failed")
+            return None
+
+        model = self._provider_model(provider_cfg)
+        model_override = self._model_for_tier(model, provider_cfg, budget_tier)
+
+        # Cost checks + PII redaction only apply to real cloud providers,
+        # not to self-hosted openai-compatible servers (llama-cpp-server,
+        # Ollama, vLLM) running on a private IP.
+        treat_as_cloud = self._provider_is_cloud(provider_cfg) and not is_self_hosted
+        budget_status = self._check_provider_budget(
+            provider_key=provider_key,
+            provider_cfg=provider_cfg,
+            model_override=model_override,
+            prompt_tokens=prompt_tokens,
+            max_tokens=max_tokens,
+            treat_as_cloud=treat_as_cloud,
+        )
+        if budget_status == "skip":
+            return None
+        if budget_status == "reject":
+            return "", None, "budget_reject"
+
+        redacted_system, redacted_user, redaction_result = self._redact_for_provider(
+            system=system,
+            user=user,
+            provider_cfg=provider_cfg,
+            treat_as_cloud=treat_as_cloud,
+        )
+
+        try:
+            text, usage = self._invoke_backend(
+                backend=backend,
+                provider_key=provider_key,
+                redacted_system=redacted_system,
+                redacted_user=redacted_user,
+                model=model,
+                model_override=model_override,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tools=tools,
+                thinking=thinking,
+                stream=stream,
+                redaction_result=redaction_result,
+                request_context=request_context,
+                now=now,
+            )
+            if text:
+                return text, usage, "success"
+        except Exception as e:
+            self._log_provider_error(provider_key, e)
+
+        self._note_provider_failure(provider_key, "call_failed")
+        return "", None, "failed"
+
+    def _check_provider_budget(
+        self,
+        *,
+        provider_key: str,
+        provider_cfg: dict[str, Any],
+        model_override: str | None,
+        prompt_tokens: int,
+        max_tokens: int,
+        treat_as_cloud: bool,
+    ) -> str:
+        """Apply per-request cost ceiling. Returns ``"ok"``/``"skip"``/``"reject"``."""
+        if not treat_as_cloud:
+            return "ok"
+        policy = self._routing_policy
+        if policy.max_cost_per_request <= 0:
+            return "ok"
+
+        estimate = self._cost_tracker.estimate_cost(model_override, prompt_tokens, max_tokens)
+        if estimate is None and self._provider_pricing_required(provider_cfg):
+            warn("Missing pricing for model %s; skipping provider %s", model_override, provider_key)
+            return "skip"
+        if estimate is not None and estimate > policy.max_cost_per_request:
+            warn("Estimated cost %.4f exceeds per-request limit", estimate)
+            if policy.fallback_on_budget_exceeded == "reject":
+                return "reject"
+            return "skip"
+        return "ok"
+
+    def _redact_for_provider(
+        self,
+        *,
+        system: str,
+        user: str,
+        provider_cfg: dict[str, Any],
+        treat_as_cloud: bool,
+    ) -> tuple[str, str, RedactionResult | None]:
+        """Apply PII redaction for cloud providers; pass-through for self-hosted."""
+        if not treat_as_cloud:
+            return system, user, None
+
+        redactor = CloudRedactionFilter.from_config(
+            provider_cfg=provider_cfg,
+            global_cfg=self.cfg.redaction,
+        )
+        redaction_result = redactor.redact(system, user)
+        return redaction_result.system, redaction_result.user, redaction_result
+
+    def _invoke_backend(
+        self,
+        *,
+        backend: Any,
+        provider_key: str,
+        redacted_system: str,
+        redacted_user: str,
+        model: str,
+        model_override: str | None,
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict[str, Any]] | None,
+        thinking: dict[str, Any] | None,
+        stream: bool,
+        redaction_result: RedactionResult | None,
+        request_context: dict[str, Any] | None,
+        now: float,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Dispatch to a backend's complete()/complete_with_usage() and bookkeep.
+
+        Records cost + emits cloud-audit on success. Returns ``(text, usage)``;
+        ``usage`` is ``None`` for the legacy prompt-formatting path.
+        """
+        # Path A: backend wants pre-formatted prompt (legacy llama-cpp style)
+        if getattr(backend, "requires_prompt_formatting", True):
+            prompt_cfg = getattr(backend, "cfg", self.cfg)
+            stop = tuple(getattr(prompt_cfg, "stop", ("</s>",)))
+            prompt = _build_prompt(prompt_cfg, redacted_system, redacted_user)
+            text = backend.complete(
+                prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stop=stop,
+            )
+            if text:
+                self._note_provider_success(provider_key, model=model_override or model)
+            return text, None
+
+        # Path B: backend takes structured system/user (cloud providers)
+        if hasattr(backend, "complete_with_usage"):
+            kwargs: dict[str, Any] = {
+                "system": redacted_system,
+                "user": redacted_user,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stop": tuple(getattr(self.cfg, "stop", ("</s>",))),
+            }
+            if model_override and getattr(backend, "supports_model_override", False):
+                kwargs["model_override"] = model_override
+            if tools and getattr(backend, "supports_tool_use", False):
+                kwargs["tools"] = tools
+            if thinking:
+                kwargs["thinking"] = thinking
+            if stream and getattr(backend, "supports_streaming", False):
+                kwargs["stream"] = True
+            resp = backend.complete_with_usage(**kwargs)
+            if isinstance(resp, LLMResponse) and resp.content:
+                self._note_provider_success(
+                    provider_key,
+                    model=resp.model or model_override or model,
+                )
+                usage = {
+                    "input_tokens": resp.input_tokens,
+                    "output_tokens": resp.output_tokens,
+                    "model": resp.model,
+                    "provider": resp.provider,
+                    "cached_input_tokens": resp.cached_input_tokens,
+                    "uncached_input_tokens": resp.uncached_input_tokens,
+                }
+                try:
+                    cost_usd = self._cost_tracker.record(
+                        provider=resp.provider or provider_key,
+                        model=resp.model or model_override,
+                        input_tokens=resp.input_tokens,
+                        output_tokens=resp.output_tokens,
+                        cached_input_tokens=resp.cached_input_tokens,
+                        uncached_input_tokens=resp.uncached_input_tokens,
+                        timestamp=now,
+                    )
+                except Exception as e:
+                    logger.debug("CostTracker.record failed: %s", e)
+                    cost_usd = 0.0
+                usage["cost_usd"] = cost_usd
+                self._session_cost += cost_usd
+
+                if redaction_result is None:
+                    redaction_result = RedactionResult(
+                        system=redacted_system,
+                        user=redacted_user,
+                        categories_sent=[],
+                        categories_redacted=[],
+                        policy="unknown",
+                    )
+                self._emit_cloud_audit(
+                    provider_key=provider_key,
+                    model=resp.model or model_override,
+                    usage=usage,
+                    cost_usd=cost_usd,
+                    redaction=redaction_result,
+                    request_context=request_context,
+                )
+                return resp.content, usage
+
+        # Path C: fallback — treat user string as prompt
+        text = backend.complete(
+            redacted_user,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stop=tuple(getattr(self.cfg, "stop", ("</s>",))),
+        )
+        if text:
+            self._note_provider_success(provider_key, model=model_override or model)
+        return text, None
+
+    @staticmethod
+    def _log_provider_error(provider_key: str, exc: Exception) -> None:
+        """Classify a backend exception and emit an actionable warning."""
+        err_msg = str(exc).lower()
+        is_auth = "401" in err_msg or "403" in err_msg or "unauthorized" in err_msg
+        is_not_found = "404" in err_msg or "not found" in err_msg
+        if is_auth:
+            warn(
+                "LLM auth failed (%s): %s. Check API key for provider '%s'.",
+                provider_key,
+                exc,
+                provider_key,
+            )
+        elif is_not_found:
+            warn(
+                "LLM model not found (%s): %s. Verify model name in config.",
+                provider_key,
+                exc,
+            )
+        else:
+            warn("LLM complete failed (%s): %s", provider_key, exc)
 
     def preview_provider(
         self,

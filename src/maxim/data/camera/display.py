@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import atexit
+import logging
 import multiprocessing as mp
 import os
 import sys
@@ -10,6 +11,8 @@ import queue as queue_module
 import threading
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def _import_cv2():
@@ -76,7 +79,10 @@ def _warn_display_disabled(reason: str) -> None:
     global _IMSHOW_DISABLED_WARNED
     if _IMSHOW_DISABLED_WARNED:
         return
-    print(f"[WARN] OpenCV display disabled ({reason}). Set MAXIM_DISABLE_IMSHOW=0 to re-enable.")
+    logger.warning(
+        "OpenCV display disabled (%s). Set MAXIM_DISABLE_IMSHOW=0 to re-enable.",
+        reason,
+    )
     _IMSHOW_DISABLED_WARNED = True
 
 
@@ -221,7 +227,10 @@ def show_photo(photo: np.ndarray, window_name: str = "Camera", wait: bool = True
     except Exception as e:
         global _IMSHOW_FAILED
         if not _IMSHOW_FAILED:
-            print(f"[WARN] OpenCV display failed (imshow). Install a GUI-enabled OpenCV build. ({e})")
+            logger.warning(
+                "OpenCV display failed (imshow). Install a GUI-enabled OpenCV build. (%s)",
+                e,
+            )
             _IMSHOW_FAILED = True
 
 
@@ -489,5 +498,8 @@ def show_frame(
     except Exception as e:
         global _IMSHOW_FAILED
         if not _IMSHOW_FAILED:
-            print(f"[WARN] OpenCV display failed (imshow). Install a GUI-enabled OpenCV build. ({e})")
+            logger.warning(
+                "OpenCV display failed (imshow). Install a GUI-enabled OpenCV build. (%s)",
+                e,
+            )
             _IMSHOW_FAILED = True

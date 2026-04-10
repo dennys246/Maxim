@@ -704,15 +704,11 @@ class PromptBuilder:
         time_str: str,
     ) -> str:
         """Build a comprehensive tool-aware prompt for complex reasoning."""
-        context = request.context
+        from maxim.utils.filesystem_policy import get_effective_cwd
+
         mode = request.mode
         counter = self._token_counter
         response_reserve = mode.max_response_tokens
-        mode_name = mode.name
-
-        from maxim.utils.filesystem_policy import get_effective_cwd
-
-        effective_cwd = get_effective_cwd()
 
         budgeter = PromptBudgeter(
             total_budget=self._n_ctx,
@@ -720,20 +716,81 @@ class PromptBuilder:
             token_counter=counter,
         )
 
+        effective_cwd = get_effective_cwd()
         is_rt = is_realtime_request(question_text)
 
-        # ── MANDATORY sections ──
+        # Add sections by category. Each helper appends to ``budgeter`` in-place
+        # so this orchestrator stays a flat sequence — easy to read and reorder.
+        self._add_mandatory_sections(budgeter, request, question_text)
+        self._add_critical_sections(budgeter, request, question_text, date_str, time_str, effective_cwd, is_rt)
+        self._add_guidance_sections(budgeter, request, date_str, time_str)
+        self._add_context_sections(budgeter, request, question_text)
+        self._add_perception_sections(budgeter, request)
+        self._add_memory_sections(budgeter, request.context)
+
+        prompt_text, dropped = budgeter.build()
+        if dropped:
+            notice = f"[Context note: omitted due to token budget: {', '.join(dropped)}]"
+            prompt_text = notice + "\n\n" + prompt_text
+            logger.info(
+                "Prompt budget: dropped %d sections for %s (n_ctx=%d, reserve=%d)",
+                len(dropped),
+                mode.name,
+                self._n_ctx,
+                response_reserve,
+            )
+
+        return f"TOOL_PROMPT|{prompt_text}"
+
+    # ── _build_tool_aware_prompt section helpers ──────────────────────────
+
+    @staticmethod
+    def _add_mandatory_sections(
+        budgeter: PromptBudgeter,
+        request: LLMRequest,
+        question_text: str,
+    ) -> None:
+        """Instructions + the user's request itself. Cannot be dropped."""
         budgeter.add("instructions", build_instructions_section(request), SectionPriority.MANDATORY)
         if question_text:
-            budgeter.add("user_request", f'=== User Request ===\n"{question_text}"', SectionPriority.MANDATORY)
+            budgeter.add(
+                "user_request",
+                f'=== User Request ===\n"{question_text}"',
+                SectionPriority.MANDATORY,
+            )
 
-        # ── CRITICAL sections ──
-        budgeter.add("planning_banner", build_planning_banner(request.autonomy_level), SectionPriority.CRITICAL)
+    def _add_critical_sections(
+        self,
+        budgeter: PromptBudgeter,
+        request: LLMRequest,
+        question_text: str,
+        date_str: str,
+        time_str: str,
+        effective_cwd: str,
+        is_rt: bool,
+    ) -> None:
+        """Identity, tools, workspace, and the realtime hint."""
+        mode = request.mode
+        mode_name = mode.name
+        counter = self._token_counter
+
+        budgeter.add(
+            "planning_banner",
+            build_planning_banner(request.autonomy_level),
+            SectionPriority.CRITICAL,
+        )
         if request.pending_modification:
             budgeter.add(
-                "modification", build_modification_section(request.pending_modification), SectionPriority.CRITICAL
+                "modification",
+                build_modification_section(request.pending_modification),
+                SectionPriority.CRITICAL,
             )
-        budgeter.add("identity", build_identity_section(mode, request, date_str, time_str), SectionPriority.CRITICAL)
+        budgeter.add(
+            "identity",
+            build_identity_section(mode, request, date_str, time_str),
+            SectionPriority.CRITICAL,
+        )
+
         # Tool section: split by learned relevance when index available
         if self._tool_index is not None:
             relevant, background = self._tool_index.get_relevant_tools(question_text)
@@ -780,16 +837,39 @@ class PromptBuilder:
                 hint += "Use 'internet_search' tool directly."
             budgeter.add("realtime_hint", hint, SectionPriority.CRITICAL)
 
-        # ── IMPORTANT sections ──
-        budgeter.add("tool_guidance_core", build_tool_guidance_core(mode_name=mode_name), SectionPriority.IMPORTANT)
+    def _add_guidance_sections(
+        self,
+        budgeter: PromptBudgeter,
+        request: LLMRequest,
+        date_str: str,
+        time_str: str,
+    ) -> None:
+        """Tool guidance + datetime + cost budget. Mostly IMPORTANT priority."""
+        mode_name = request.mode.name
         budgeter.add(
-            "tool_guidance_extended", build_tool_guidance_extended(mode_name=mode_name), SectionPriority.NICE_TO_HAVE
+            "tool_guidance_core",
+            build_tool_guidance_core(mode_name=mode_name),
+            SectionPriority.IMPORTANT,
+        )
+        budgeter.add(
+            "tool_guidance_extended",
+            build_tool_guidance_extended(mode_name=mode_name),
+            SectionPriority.NICE_TO_HAVE,
         )
         budgeter.add("datetime", build_datetime_section(date_str, time_str), SectionPriority.IMPORTANT)
 
         budget_context = self.build_budget_context()
         if budget_context:
             budgeter.add("budget_context", budget_context, SectionPriority.NICE_TO_HAVE)
+
+    def _add_context_sections(
+        self,
+        budgeter: PromptBudgeter,
+        request: LLMRequest,
+        question_text: str,
+    ) -> None:
+        """Conversation history, context pool, protocols, carryover, prefetch, coding guidelines."""
+        counter = self._token_counter
 
         if request.conversation_history_text:
             conv_text = _compact_conversation(request.conversation_history_text, 12)
@@ -814,7 +894,9 @@ class PromptBuilder:
 
         if request.protocol_context:
             budgeter.add(
-                "active_protocols", "=== Active Protocols ===\n" + request.protocol_context, SectionPriority.IMPORTANT
+                "active_protocols",
+                "=== Active Protocols ===\n" + request.protocol_context,
+                SectionPriority.IMPORTANT,
             )
 
         carryover_text = self._reasoning_carryover.get_prompt_text()
@@ -853,6 +935,7 @@ class PromptBuilder:
                 truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter),
             )
 
+        # Coding guidelines: prefer the user's question text, fall back to pending_modification
         guidelines_text = question_text
         if not guidelines_text and request.pending_modification:
             guidelines_text = request.pending_modification.get("user_modification", "")
@@ -861,10 +944,17 @@ class PromptBuilder:
             if coding_context:
                 budgeter.add("coding_guidelines", coding_context, SectionPriority.IMPORTANT)
 
-        # ── NICE_TO_HAVE sections ──
         budgeter.add("foundational", _load_foundational_context(), SectionPriority.IMPORTANT)
-        if mode.context_prompt:
-            budgeter.add("mode_context", mode.context_prompt, SectionPriority.NICE_TO_HAVE)
+        if request.mode.context_prompt:
+            budgeter.add("mode_context", request.mode.context_prompt, SectionPriority.NICE_TO_HAVE)
+
+    @staticmethod
+    def _add_perception_sections(
+        budgeter: PromptBudgeter,
+        request: LLMRequest,
+    ) -> None:
+        """Current observation, recent speech, agent states, recent outcomes, body state."""
+        context = request.context
 
         if context.current_percept:
             obs_text = build_observation_section(context.current_percept)
@@ -895,11 +985,16 @@ class PromptBuilder:
                 outcome_lines.append(f"- {tool}: {success}" + (f" ({result})" if result else ""))
             budgeter.add("recent_outcomes", "\n".join(outcome_lines), SectionPriority.IMPORTANT)
 
-        # ── Body state (interoception — always present when embodied) ──
+        # Body state (interoception — always present when embodied)
         if context.body_state:
             budgeter.add("body_state", context.body_state, SectionPriority.CRITICAL)
 
-        # ── Memory recall sections (from Hippocampus + ATL) ──
+    @staticmethod
+    def _add_memory_sections(
+        budgeter: PromptBudgeter,
+        context: Any,
+    ) -> None:
+        """Episodic recalls, ATL concepts, semantic knowledge, causal predictions, motor programs, statistics."""
         if context.relevant_memories:
             mem_lines = ["=== Relevant Memories ==="]
             for mem in context.relevant_memories[:8]:
@@ -917,7 +1012,6 @@ class PromptBuilder:
                     parts.append(f'"{content["transcript"][:80]}"')
                 summary = ", ".join(parts) if parts else str(content)[:80]
                 mem_lines.append(f"- [{source}, salience={salience:.2f}] {summary}")
-                # Include predictions if available
                 if mem.get("predictions"):
                     for pred in mem["predictions"][:2]:
                         pred_tool = pred.get("tool", "?")
@@ -1036,20 +1130,6 @@ class PromptBuilder:
                 )
             stat_lines.append("Use 'internet_search' to research unfamiliar patterns or analysis techniques.")
             budgeter.add("statistical_patterns", "\n".join(stat_lines), SectionPriority.NICE_TO_HAVE)
-
-        prompt_text, dropped = budgeter.build()
-        if dropped:
-            notice = f"[Context note: omitted due to token budget: {', '.join(dropped)}]"
-            prompt_text = notice + "\n\n" + prompt_text
-            logger.info(
-                "Prompt budget: dropped %d sections for %s (n_ctx=%d, reserve=%d)",
-                len(dropped),
-                mode.name,
-                self._n_ctx,
-                response_reserve,
-            )
-
-        return f"TOOL_PROMPT|{prompt_text}"
 
     def _build_followup_prompt(self, followup_input: str) -> str:
         """Build a prompt to handle action followups based on followup_type."""

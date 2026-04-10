@@ -98,7 +98,7 @@ def truncate_for_display(key: str, *, keep: int = 6) -> str:
 
 # ─── shell snippet rendering ───────────────────────────────────────────────
 
-ENV_VAR = "MAXIM_LANE_INFER_REMOTE_API_KEY"
+ENV_VAR = "MAXIM_LANE_LARGE_REMOTE_API_KEY"
 
 
 def render_snippets(key: str) -> dict[str, str]:

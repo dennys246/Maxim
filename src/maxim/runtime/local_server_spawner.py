@@ -17,12 +17,15 @@ Design:
 from __future__ import annotations
 
 import atexit
+import logging
 import os
 import subprocess
 import sys
 import threading
 from typing import Any
 import time
+
+logger = logging.getLogger(__name__)
 from pathlib import Path
 
 from maxim.utils.gpu_compat import get_original_cuda_devices
@@ -243,10 +246,7 @@ class LocalServerSpawner:
                 return self.base_url
 
             if not Path(self._model_path).is_file():
-                print(
-                    f"[warn] LocalServerSpawner: model file not found at {self._model_path}",
-                    file=sys.stderr,
-                )
+                logger.warning("LocalServerSpawner: model file not found at %s", self._model_path)
                 return None
 
             env = self._build_subprocess_env()
@@ -265,10 +265,7 @@ class LocalServerSpawner:
             )
             stream_target = None if echo_enabled else subprocess.DEVNULL
             if echo_enabled:
-                print(
-                    "[MAXIM_TUNNEL_ECHO=1] llama-cpp-server stdout/stderr will stream to this terminal",
-                    file=sys.stderr,
-                )
+                logger.info("MAXIM_TUNNEL_ECHO=1: llama-cpp-server stdout/stderr will stream to this terminal")
             try:
                 # start_new_session=True puts the subprocess in its own process
                 # group so terminal SIGINT (Ctrl+C) doesn't kill it. We control
@@ -283,7 +280,7 @@ class LocalServerSpawner:
                     start_new_session=True,
                 )
             except (OSError, ValueError) as e:
-                print(f"[warn] LocalServerSpawner: failed to start subprocess: {e}", file=sys.stderr)
+                logger.warning("LocalServerSpawner: failed to start subprocess: %s", e)
                 self._process = None
                 return None
 
@@ -295,10 +292,11 @@ class LocalServerSpawner:
             return self.base_url
         # Timed out — kill and report
         self.stop()
-        print(
-            f"[warn] LocalServerSpawner: server did not become ready within {timeout_s}s "
-            f"(model={Path(self._model_path).name}, port={self._port})",
-            file=sys.stderr,
+        logger.warning(
+            "LocalServerSpawner: server did not become ready within %ds (model=%s, port=%d)",
+            timeout_s,
+            Path(self._model_path).name,
+            self._port,
         )
         return None
 

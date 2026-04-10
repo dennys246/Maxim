@@ -156,7 +156,7 @@ def _retry_loop(
     # Peer key is resolved once for peer checks.
     import os
 
-    peer_key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY") or os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY")
+    peer_key = os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY")
     if not peer_key:
         try:
             from maxim.peer.config import read_peer_config
@@ -233,7 +233,7 @@ Verify a peer/leader URL is reachable and authenticated. Runs:
   - Chat completion round-trip
 
 Options:
-  --key KEY     Bearer token (default: $MAXIM_LANE_INFER_REMOTE_API_KEY)
+  --key KEY     Bearer token (default: $MAXIM_LANE_LARGE_REMOTE_API_KEY)
   --model M     Model name to send (default: auto-detect from /v1/models)
 
 Returns 0 on full success, 1 on any failure.
@@ -262,7 +262,7 @@ def run_peer_subcommand(argv: Sequence[str]) -> int:
 def _parse_peer_opts(opts: list[str]) -> tuple[str | None, str | None]:
     import os
 
-    key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY")
+    key = os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY")
     # Fall back to peer config if no key in env or args
     if not key:
         try:
@@ -400,7 +400,7 @@ def _peer_test(base_url: str, *, key: str | None, model: str | None) -> int:
         return 1
 
     print()
-    print(f"Ready to run: MAXIM_LANE_INFER_REMOTE_URL={base_url} maxim")
+    print(f"Ready to run: MAXIM_LANE_LARGE_REMOTE_URL={base_url} maxim")
     return 0
 
 

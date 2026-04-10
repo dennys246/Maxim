@@ -1159,134 +1159,26 @@ Based on this context, what goal should be proposed?"""
         """Use LLM to propose a goal."""
         # Handle hard overrides without LLM
         if ctx.current_percept and ctx.current_percept.hard_override:
-            override = ctx.current_percept.hard_override
-            return ProposedGoal(
-                id=str(uuid.uuid4()),
-                description=f"Execute hard override: {override}",
-                priority=GoalPriority.CRITICAL,
-                tool_name="maxim_command",
-                tool_params={"command": override},
-                reasoning="User explicitly requested mode change",
-                confidence=1.0,
-            )
+            return self._build_override_goal(ctx.current_percept.hard_override)
 
         # Handle sleep mode
         if ctx.mode == "sleep":
             return None
 
-        # Rate limit
-        now = time.time()
-        elapsed = now - self._last_call_time
-        if elapsed < self._min_interval:
-            time.sleep(self._min_interval - elapsed)
-        self._last_call_time = time.time()
+        self._enforce_rate_limit()
 
         try:
-            response = None
             llm_worker = self._ensure_llm_worker()
             router = self._router or self._ensure_router()
-
-            budget_context = llm_worker.get_budget_context() if llm_worker else ""
-            prompt = self._build_llm_context(ctx, budget_context=budget_context)
-
-            prompt_builder = ExecutivePrompt(self._system_prompt)
-            prompt_profile = None
-            if router is not None:
-                profile_name = self._get_prompt_profile_name(router)
-                prompt_profile = load_prompt_profile(router.cfg.prompt_profiles, profile_name)
-            injected = prompt_builder.inject(prompt, prompt_profile)
-
-            # Determine if cloud backend supports native tool use
-            tool_use_tools = None
-            thinking_cfg = None
-            if router is not None and router.cloud_allowed():
-                tool_use_tools = self._get_tool_definitions(router)
-                thinking_cfg = self._get_thinking_config(router)
-
-            if llm_worker is not None:
-                request_id = f"exec-{uuid.uuid4()}"
-                response = llm_worker.generate_json_direct(
-                    system=injected.system,
-                    user=injected.user,
-                    temperature=0.2,
-                    max_tokens=512,
-                    request_id=request_id,
-                    agent_name=self.agent_name,
-                    tools=tool_use_tools,
-                    thinking=thinking_cfg,
-                )
-            elif router is not None:
-                request_id = f"exec-{uuid.uuid4()}"
-                response = router.generate_json(
-                    injected.user,
-                    temperature=0.2,
-                    system_override=injected.system,
-                    request_context={"agent": self.agent_name, "request_id": request_id, "lane": "large"},
-                    tools=tool_use_tools,
-                    thinking=thinking_cfg,
-                )
-            else:
-                llm = self._ensure_llm()
-                if llm is None:
-                    return None
-                response = llm.generate_json(prompt, temperature=0.2)
+            response, thinking_cfg = self._invoke_llm_for_goal(ctx, llm_worker, router)
 
             if not response or not isinstance(response, dict) or not response.get("goal_description"):
                 return None
 
-            # Contemplation: critique + refine for complex plans on non-thinking providers
-            contemplated = False
-            refined = False
-            if not thinking_cfg and self._should_contemplate(response):
-                draft = response
-                response = self._contemplate(response, ctx)
-                contemplated = True
-                refined = response is not draft
+            response, contemplated, refined = self._maybe_contemplate(response, ctx, thinking_cfg)
 
-            priority_str = response.get("priority", "MEDIUM").upper()
-            try:
-                priority = GoalPriority[priority_str]
-            except KeyError:
-                priority = GoalPriority.MEDIUM
-
-            # Build sub-goals if provided
-            sub_goals: list[SubGoal] = []
-            for i, sg_data in enumerate(response.get("sub_goals", [])):
-                if isinstance(sg_data, dict) and sg_data.get("tool_name"):
-                    sub_goals.append(
-                        SubGoal(
-                            id=f"{uuid.uuid4()}-sg{i}",
-                            description=sg_data.get("description", ""),
-                            tool_name=sg_data["tool_name"],
-                            tool_params=sg_data.get("tool_params", {}),
-                        )
-                    )
-
-            goal = ProposedGoal(
-                id=str(uuid.uuid4()),
-                description=response["goal_description"],
-                priority=priority,
-                tool_name=response.get("tool_name"),
-                tool_params=response.get("tool_params", {}),
-                reasoning=response.get("reasoning", ""),
-                confidence=0.9,
-                parent_goal="root",
-                sub_goals=sub_goals,
-            )
-
-            # Record contemplation metadata for outcome tracking
-            self._contemplation_log[goal.id] = {
-                "contemplated": contemplated,
-                "refined": refined,
-                "timestamp": time.time(),
-            }
-            # Bound the log to prevent unbounded growth
-            if len(self._contemplation_log) > 200:
-                oldest = sorted(self._contemplation_log, key=lambda k: self._contemplation_log[k]["timestamp"])
-                for k in oldest[:50]:
-                    del self._contemplation_log[k]
-
-            # Log to abstraction stream
+            goal = self._build_proposed_goal_from_response(response)
+            self._record_contemplation_meta(goal.id, contemplated, refined)
             log_structured(
                 self.log,
                 logging.INFO,
@@ -1298,12 +1190,151 @@ Based on this context, what goal should be proposed?"""
                     "contemplated": contemplated,
                 },
             )
-
             return goal
 
         except Exception as e:
             warn("ExecAgent: LLM error: %s", e)
             return None
+
+    @staticmethod
+    def _build_override_goal(override: str) -> ProposedGoal:
+        """Build a critical-priority ProposedGoal directly from a hard-override percept."""
+        return ProposedGoal(
+            id=str(uuid.uuid4()),
+            description=f"Execute hard override: {override}",
+            priority=GoalPriority.CRITICAL,
+            tool_name="maxim_command",
+            tool_params={"command": override},
+            reasoning="User explicitly requested mode change",
+            confidence=1.0,
+        )
+
+    def _enforce_rate_limit(self) -> None:
+        """Sleep if needed so successive ``_propose_goal`` calls respect ``_min_interval``."""
+        now = time.time()
+        elapsed = now - self._last_call_time
+        if elapsed < self._min_interval:
+            time.sleep(self._min_interval - elapsed)
+        self._last_call_time = time.time()
+
+    def _invoke_llm_for_goal(
+        self,
+        ctx: StructuredContext,
+        llm_worker: Any | None,
+        router: Any | None,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        """Build the prompt + dispatch to whichever LLM transport is available.
+
+        Returns ``(response_dict_or_None, thinking_cfg_or_None)``. The
+        ``thinking_cfg`` is needed by the contemplation step to decide whether
+        to wrap with critique+refine.
+        """
+        budget_context = llm_worker.get_budget_context() if llm_worker else ""
+        prompt = self._build_llm_context(ctx, budget_context=budget_context)
+
+        prompt_builder = ExecutivePrompt(self._system_prompt)
+        prompt_profile = None
+        if router is not None:
+            profile_name = self._get_prompt_profile_name(router)
+            prompt_profile = load_prompt_profile(router.cfg.prompt_profiles, profile_name)
+        injected = prompt_builder.inject(prompt, prompt_profile)
+
+        # Determine if cloud backend supports native tool use
+        tool_use_tools = None
+        thinking_cfg = None
+        if router is not None and router.cloud_allowed():
+            tool_use_tools = self._get_tool_definitions(router)
+            thinking_cfg = self._get_thinking_config(router)
+
+        request_id = f"exec-{uuid.uuid4()}"
+
+        if llm_worker is not None:
+            response = llm_worker.generate_json_direct(
+                system=injected.system,
+                user=injected.user,
+                temperature=0.2,
+                max_tokens=512,
+                request_id=request_id,
+                agent_name=self.agent_name,
+                tools=tool_use_tools,
+                thinking=thinking_cfg,
+            )
+        elif router is not None:
+            response = router.generate_json(
+                injected.user,
+                temperature=0.2,
+                system_override=injected.system,
+                request_context={"agent": self.agent_name, "request_id": request_id, "lane": "large"},
+                tools=tool_use_tools,
+                thinking=thinking_cfg,
+            )
+        else:
+            llm = self._ensure_llm()
+            if llm is None:
+                return None, thinking_cfg
+            response = llm.generate_json(prompt, temperature=0.2)
+
+        return response, thinking_cfg
+
+    def _maybe_contemplate(
+        self,
+        response: dict[str, Any],
+        ctx: StructuredContext,
+        thinking_cfg: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any], bool, bool]:
+        """Optionally critique-and-refine the draft for complex plans.
+
+        Returns ``(final_response, contemplated, refined)``.
+        """
+        if thinking_cfg or not self._should_contemplate(response):
+            return response, False, False
+        draft = response
+        refined_response = self._contemplate(response, ctx)
+        return refined_response, True, refined_response is not draft
+
+    def _build_proposed_goal_from_response(self, response: dict[str, Any]) -> ProposedGoal:
+        """Convert an LLM JSON response dict into a ``ProposedGoal``."""
+        priority_str = response.get("priority", "MEDIUM").upper()
+        try:
+            priority = GoalPriority[priority_str]
+        except KeyError:
+            priority = GoalPriority.MEDIUM
+
+        sub_goals: list[SubGoal] = []
+        for i, sg_data in enumerate(response.get("sub_goals", [])):
+            if isinstance(sg_data, dict) and sg_data.get("tool_name"):
+                sub_goals.append(
+                    SubGoal(
+                        id=f"{uuid.uuid4()}-sg{i}",
+                        description=sg_data.get("description", ""),
+                        tool_name=sg_data["tool_name"],
+                        tool_params=sg_data.get("tool_params", {}),
+                    )
+                )
+
+        return ProposedGoal(
+            id=str(uuid.uuid4()),
+            description=response["goal_description"],
+            priority=priority,
+            tool_name=response.get("tool_name"),
+            tool_params=response.get("tool_params", {}),
+            reasoning=response.get("reasoning", ""),
+            confidence=0.9,
+            parent_goal="root",
+            sub_goals=sub_goals,
+        )
+
+    def _record_contemplation_meta(self, goal_id: str, contemplated: bool, refined: bool) -> None:
+        """Append a contemplation entry and bound the log to the latest 200."""
+        self._contemplation_log[goal_id] = {
+            "contemplated": contemplated,
+            "refined": refined,
+            "timestamp": time.time(),
+        }
+        if len(self._contemplation_log) > 200:
+            oldest = sorted(self._contemplation_log, key=lambda k: self._contemplation_log[k]["timestamp"])
+            for k in oldest[:50]:
+                del self._contemplation_log[k]
 
     def _worker_loop(self) -> None:
         """Background worker for goal proposal."""

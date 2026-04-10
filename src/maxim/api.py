@@ -1131,7 +1131,7 @@ def research(
         verbosity: Logging verbosity (0-3).
 
     Returns:
-        ResearchResult with paper draft, review, and experiment data.
+        ResearchResult with paper draft, review verdict, and experiment count.
 
     Example::
 
@@ -1140,6 +1140,7 @@ def research(
             campaign="scenarios/experiments/hippocampal_recall_short.yaml",
         )
         print(result.paper_draft[:200])
+        print(f"Review verdict: {result.review}")
     """
     configure(verbosity=verbosity)
 
@@ -1161,7 +1162,7 @@ def research(
             p = Path(orch_result.paper_path)
             if p.exists():
                 paper_text = p.read_text(encoding="utf-8")
-        except Exception as e:
+        except OSError as e:
             logger.warning("Failed to read paper draft at %s: %s", orch_result.paper_path, e)
 
     return ResearchResult(
@@ -1348,7 +1349,9 @@ def _bridge_event_subscriptions(bus: Any) -> None:
                 try:
                     cb(evt)
                 except Exception as e:
-                    logger.debug("Event callback error (tool_call): %s", e)
+                    # User-registered callback failed — surface at warning so they
+                    # can debug their handler. Don't propagate (would break the bus).
+                    logger.warning("User on('tool_call') callback raised: %s", e, exc_info=True)
 
         bus.subscribe(ToolResult, _on_tool_result)
 
@@ -1369,7 +1372,9 @@ def _bridge_event_subscriptions(bus: Any) -> None:
                 try:
                     cb(evt)
                 except Exception as e:
-                    logger.debug("Event callback error (pain_signal): %s", e)
+                    # User-registered callback failed — surface at warning so they
+                    # can debug their handler. Don't propagate (would break the bus).
+                    logger.warning("User on('pain_signal') callback raised: %s", e, exc_info=True)
 
         bus.subscribe(PainSignal, _on_pain)
 

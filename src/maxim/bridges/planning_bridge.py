@@ -306,13 +306,17 @@ class PlanHistoryBridge:
             (success_rate, sample_count) tuple
         """
         try:
+            from maxim.decisions.causal_link import Valence
+
             # Query NAc for tool outcomes
             links = self.nac.get_links_for_event(tool_name)
 
             if not links:
                 return (0.5, 0)
 
-            positive = sum(1 for link in links if link.outcome_valence.value > 0)
+            # Valence.value is a string ("positive"/"negative"/"neutral"/"unknown"),
+            # not a number — compare against the enum directly.
+            positive = sum(1 for link in links if link.outcome_valence == Valence.POSITIVE)
             return (positive / len(links), len(links))
 
         except Exception as e:
@@ -333,13 +337,20 @@ class PlanHistoryBridge:
     ) -> None:
         """Record the outcome of a plan execution.
 
-        Updates NAc causal links for each tool in the sequence.
+        Updates NAc causal links for each tool in the sequence. Uses
+        :meth:`NAc.observe` (not ``record_outcome``) because we already
+        know both the event (the tool call) and the outcome (the plan's
+        success/failure) — there's no temporal-window matching needed.
+        ``record_outcome`` would silently no-op when called outside an
+        active event window, which previously caused
+        ``test_record_plan_outcome`` to fail.
 
         Args:
             goal: Goal that was pursued
             tool_sequence: Tools that were used
             success: Whether the plan succeeded
-            execution_time_ms: Total execution time
+            execution_time_ms: Total execution time per tool (used as
+                ``delta_seconds`` for the temporal delta distribution)
             memory_id: Associated Hippocampus memory ID
         """
         if not self._healthy:
@@ -349,12 +360,17 @@ class PlanHistoryBridge:
             from maxim.decisions.causal_link import Valence
 
             valence = Valence.POSITIVE if success else Valence.NEGATIVE
+            # Convert to seconds; default to 0.1s when caller didn't measure.
+            delta_s = max(0.001, execution_time_ms / 1000.0) if execution_time_ms > 0 else 0.1
 
             for tool in tool_sequence:
-                self.nac.record_outcome(
+                self.nac.observe(
                     event_type="tool",
-                    event_id=tool,
+                    event_signature=tool,
+                    outcome_type="plan_result",
+                    outcome_signature=f"plan:{goal}:{'success' if success else 'failure'}",
                     outcome_valence=valence,
+                    delta_seconds=delta_s,
                     context={"goal": goal},
                     memory_id=memory_id,
                 )

@@ -14,7 +14,6 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
-import sys
 import threading
 
 logger = logging.getLogger(__name__)
@@ -90,15 +89,11 @@ def ensure_blackwell_guards() -> bool:
                     _apply_guards(hide_cuda=hide_cuda)
                     os.environ[_BLACKWELL_CACHE_ENV] = "yes"
                     if hide_cuda:
-                        print(
-                            "Blackwell GPU detected - CPU-only mode (MAXIM_BLACKWELL_HIDE_CUDA=1)",
-                            file=sys.stderr,
-                        )
+                        logger.info("Blackwell GPU detected - CPU-only mode (MAXIM_BLACKWELL_HIDE_CUDA=1)")
                     else:
-                        print(
+                        logger.info(
                             "Blackwell GPU detected - GStreamer CUDA disabled, "
-                            "LLM CUDA kept (set MAXIM_BLACKWELL_HIDE_CUDA=1 for CPU-only)",
-                            file=sys.stderr,
+                            "LLM CUDA kept (set MAXIM_BLACKWELL_HIDE_CUDA=1 for CPU-only)"
                         )
                 else:
                     os.environ[_BLACKWELL_CACHE_ENV] = "no"
@@ -106,8 +101,8 @@ def ensure_blackwell_guards() -> bool:
                 os.environ[_BLACKWELL_CACHE_ENV] = "no"
         except subprocess.TimeoutExpired:
             os.environ[_BLACKWELL_CACHE_ENV] = "no"
-        except Exception:
-            pass  # nvidia-smi not found
+        except Exception as e:
+            logger.debug("nvidia-smi not available, skipping Blackwell detection: %s", e)
 
         return _detected
 

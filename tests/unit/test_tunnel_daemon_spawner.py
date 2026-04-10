@@ -68,21 +68,29 @@ class TestConfigPathResolution:
 
 
 class TestSpawnerStart:
-    def test_skips_start_when_cloudflared_missing(self, tmp_path, capsys):
+    def test_skips_start_when_cloudflared_missing(self, tmp_path, caplog):
+        import logging
+
         cfg = tmp_path / "config.yml"
         cfg.write_text("tunnel: x")
-        with patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value=None):
+        with (
+            patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value=None),
+            caplog.at_level(logging.WARNING, logger="maxim.tunnel.daemon_spawner"),
+        ):
             spawner = TunnelDaemonSpawner(config_path=cfg)
             assert spawner.start() is False
-        err = capsys.readouterr().err
-        assert "cloudflared not found" in err.lower()
+        assert any("cloudflared not found" in r.message.lower() for r in caplog.records)
 
-    def test_skips_start_when_config_missing(self, capsys):
-        with patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value="/usr/bin/cloudflared"):
+    def test_skips_start_when_config_missing(self, caplog):
+        import logging
+
+        with (
+            patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value="/usr/bin/cloudflared"),
+            caplog.at_level(logging.WARNING, logger="maxim.tunnel.daemon_spawner"),
+        ):
             spawner = TunnelDaemonSpawner(config_path=Path("/tmp/does-not-exist-xyz.yml"))
             assert spawner.start() is False
-        err = capsys.readouterr().err
-        assert "no config" in err.lower()
+        assert any("no config" in r.message.lower() for r in caplog.records)
 
     def test_builds_expected_cmd(self, tmp_path):
         cfg = tmp_path / "config.yml"
@@ -132,16 +140,18 @@ class TestSpawnerStart:
             mock_popen.return_value = mock_proc
             assert TunnelDaemonSpawner(config_path=cfg).start() is False
 
-    def test_subprocess_failure_returns_false(self, tmp_path, capsys):
+    def test_subprocess_failure_returns_false(self, tmp_path, caplog):
+        import logging
+
         cfg = tmp_path / "config.yml"
         cfg.write_text("tunnel: x")
         with (
             patch("maxim.tunnel.daemon_spawner.find_cloudflared", return_value="/bin/cloudflared"),
             patch("subprocess.Popen", side_effect=OSError("nope")),
+            caplog.at_level(logging.WARNING, logger="maxim.tunnel.daemon_spawner"),
         ):
             assert TunnelDaemonSpawner(config_path=cfg).start() is False
-        err = capsys.readouterr().err
-        assert "failed to spawn" in err.lower()
+        assert any("failed to spawn" in r.message.lower() for r in caplog.records)
 
 
 class TestSpawnerStop:

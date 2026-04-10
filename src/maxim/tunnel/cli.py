@@ -252,7 +252,7 @@ def _cmd_setup() -> int:
     print("       maxim tunnel key export     # on this machine — shows copy-paste snippets")
     print()
     print("  4. On each peer:")
-    print(f"       export MAXIM_LANE_INFER_REMOTE_URL=https://{hostname}/v1")
+    print(f"       export MAXIM_LANE_LARGE_REMOTE_URL=https://{hostname}/v1")
     print(f'       export {ENV_VAR}="<key-shared-securely>"')
     print("       export MAXIM_MAX_CLOUD_LANES=1")
     print("       maxim")

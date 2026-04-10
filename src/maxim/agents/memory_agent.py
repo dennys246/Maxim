@@ -929,9 +929,40 @@ class MemoryAgent(Agent, AgentOutputMixin):
         Args:
             persist_snapshot: If True, write context snapshot to shared outputs
         """
-        from concurrent.futures import ThreadPoolExecutor
+        # 1. Snapshot synchronous fields under the lock + extract percept
+        sync_fields, current, det_objects, det_people = self._snapshot_sync_fields()
 
-        # Snapshot mutable state under the lock, then release for parallel queries
+        # 2. Run the memory subsystem queries in parallel (each takes its own lock)
+        sync_fields.update(self._run_parallel_memory_queries(current, det_objects, det_people))
+
+        # 3. Optional embodiment context (cerebellum motor programs + body state)
+        self._enrich_with_embodiment(sync_fields)
+
+        context = StructuredContext(**sync_fields)
+
+        # 4. Persist snapshot if requested
+        if persist_snapshot and self._output_manager is not None:
+            try:
+                self._write_context_snapshot(context)
+            except Exception as e:
+                log_swallowed_exception(e, operation="write_context")
+
+        # 5. Inject provenance context (P7)
+        if self._collector and self._collector.verbosity >= 1:
+            try:
+                self._inject_provenance_context(context)
+            except Exception as e:
+                log_swallowed_exception(e, operation="provenance_context")
+
+        return context
+
+    def _snapshot_sync_fields(self) -> tuple[dict[str, Any], Any, list[Any], list[Any]]:
+        """Acquire ``self._lock`` and copy out the synchronous context fields.
+
+        Returns ``(sync_fields, current_percept, detected_objects, detected_people)``.
+        Holding the lock for the minimum time keeps the parallel-query phase
+        from blocking writers.
+        """
         with self._lock:
             self._apply_decay()
 
@@ -961,7 +992,6 @@ class MemoryAgent(Agent, AgentOutputMixin):
             det_objects = self._extract_detected_objects(recent)
             det_people = self._extract_detected_people(recent)
 
-            # Snapshot cheap/fast fields synchronously
             sync_fields = dict(
                 timestamp=time.time(),
                 current_percept=current,
@@ -986,9 +1016,21 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 workspace_files=self._scan_workspace_files(),
                 plan_progress=self._build_plan_progress(),
             )
+        return sync_fields, current, det_objects, det_people
 
-        # --- Parallel memory queries (outside self._lock) ---
-        # Each method acquires its own subsystem's lock internally.
+    def _run_parallel_memory_queries(
+        self,
+        current: Any,
+        det_objects: list[Any],
+        det_people: list[Any],
+    ) -> dict[str, Any]:
+        """Fan out the four memory-subsystem queries on the shared pool.
+
+        Each call acquires its own subsystem lock internally; running them in
+        parallel collapses ~4x15ms sequential into ~15ms wall-clock.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
         if MemoryAgent._context_pool is None:
             MemoryAgent._context_pool = ThreadPoolExecutor(
                 max_workers=4,
@@ -1001,13 +1043,19 @@ class MemoryAgent(Agent, AgentOutputMixin):
         fut_concepts = pool.submit(self._build_concept_context, det_objects, det_people)
         fut_causal = pool.submit(self._build_causal_context)
 
-        # Collect results (each ~5-15ms, running in parallel → ~15ms total)
-        sync_fields["relevant_memories"] = fut_memories.result(timeout=2.0)
-        sync_fields["knowledge_context"] = fut_knowledge.result(timeout=2.0)
-        sync_fields["concept_context"] = fut_concepts.result(timeout=2.0)
-        sync_fields["causal_context"] = fut_causal.result(timeout=2.0)
+        return {
+            "relevant_memories": fut_memories.result(timeout=2.0),
+            "knowledge_context": fut_knowledge.result(timeout=2.0),
+            "concept_context": fut_concepts.result(timeout=2.0),
+            "causal_context": fut_causal.result(timeout=2.0),
+        }
 
-        # Motor programs from Cerebellum (if available via memory_hub)
+    def _enrich_with_embodiment(self, sync_fields: dict[str, Any]) -> None:
+        """Add motor-program suggestions + body-state interoception when present.
+
+        Both sources are best-effort: failure or absence is silently degraded
+        because the agent must remain functional in disembodied (text/sim) mode.
+        """
         try:
             cerebellum = getattr(self._memory_hub, "cerebellum", None) if self._memory_hub else None
             if cerebellum is not None and cerebellum.programs is not None:
@@ -1025,53 +1073,42 @@ class MemoryAgent(Agent, AgentOutputMixin):
                         }
                         for p in programs[:8]
                     ]
-        except Exception:
-            pass  # Cerebellum not critical for context building
+        except Exception as e:
+            log_swallowed_exception(e, operation="cerebellum_enrich")
 
-        # Body state from Embodiment (interoception — always present when embodied)
         try:
             embodiment = getattr(self._memory_hub, "embodiment", None) if self._memory_hub else None
             if embodiment is not None:
                 body_str = embodiment.format_body_state_for_prompt()
                 if body_str:
                     sync_fields["body_state"] = body_str
-        except Exception:
-            pass  # Embodiment not critical for context building
+        except Exception as e:
+            log_swallowed_exception(e, operation="embodiment_enrich")
 
-        context = StructuredContext(**sync_fields)
+    def _write_context_snapshot(self, context: StructuredContext) -> None:
+        """Write a small dict snapshot of ``context`` to shared outputs."""
+        context_dict = {
+            "timestamp": context.timestamp,
+            "active_goal": context.active_goal,
+            "mode": context.mode,
+            "detected_speech": context.detected_speech,
+            "cli_inputs": context.cli_inputs,
+            "memory_count": len(context.relevant_memories),
+            "object_count": len(context.detected_objects),
+            "people_count": len(context.detected_people),
+        }
+        self._write_context(context_dict, share=True)
 
-        # Persist snapshot to shared outputs if requested
-        if persist_snapshot and self._output_manager is not None:
-            try:
-                context_dict = {
-                    "timestamp": context.timestamp,
-                    "active_goal": context.active_goal,
-                    "mode": context.mode,
-                    "detected_speech": context.detected_speech,
-                    "cli_inputs": context.cli_inputs,
-                    "memory_count": len(context.relevant_memories),
-                    "object_count": len(context.detected_objects),
-                    "people_count": len(context.detected_people),
-                }
-                self._write_context(context_dict, share=True)
-            except Exception as e:
-                log_swallowed_exception(e, operation="write_context")
+    def _inject_provenance_context(self, context: StructuredContext) -> None:
+        """Render the latest provenance traces into ``context.provenance_context``."""
+        from maxim.provenance.render import render_trace
+        from maxim.provenance.types import ProvenanceVerbosity
 
-        # Inject provenance context (P7)
-        if self._collector and self._collector.verbosity >= 1:
-            try:
-                from maxim.provenance.render import render_trace
-                from maxim.provenance.types import ProvenanceVerbosity
-
-                recent_traces = self._collector.recent_traces(limit=3)
-                if recent_traces:
-                    context.provenance_context = "\n".join(
-                        render_trace(t, verbosity=ProvenanceVerbosity.COMPACT) for t in recent_traces
-                    )
-            except Exception as e:
-                log_swallowed_exception(e, operation="provenance_context")
-
-        return context
+        recent_traces = self._collector.recent_traces(limit=3)
+        if recent_traces:
+            context.provenance_context = "\n".join(
+                render_trace(t, verbosity=ProvenanceVerbosity.COMPACT) for t in recent_traces
+            )
 
     def _build_plan_progress(self) -> Any:
         """Build PlanProgressContext from active plan, or None."""

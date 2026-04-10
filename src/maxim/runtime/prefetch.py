@@ -767,125 +767,118 @@ class SpeculativePrefetcher:
         Returns:
             PrefetchResult with pre-gathered context.
         """
-        result = PrefetchResult(
-            file_references=[],
-            intent="unknown",
-        )
+        result = PrefetchResult(file_references=[], intent="unknown")
 
-        # Detect file references
         refs = detect_file_references(user_input)
         result.file_references = refs
         result.intent = detect_file_intent(user_input)
 
-        # Topic-based discovery: when no explicit files found OR complex request
+        # No explicit file references → topic-based fallback only
         if not refs:
-            try:
-                topics = extract_topics(user_input)
-                if topics.explicit_topics:
-                    candidates = discover_files_by_topic(
-                        topics,
-                        cwd=cwd or self._base_path,
-                        user_text=user_input,
-                    )
-                    if candidates:
-                        plan = select_files_for_context(
-                            candidates,
-                            max_total_chars=3000,
-                            cwd=cwd,
-                        )
-                        plan.topic_extraction = topics
-                        result.discovery_plan = plan
-                        result.file_contents.update(plan.full_content_files)
-                        result.intent = topics.action_intent
-                        logger.info(
-                            "Topic discovery: %s → %d candidates, %d read, %d summarized",
-                            topics.explicit_topics,
-                            len(candidates),
-                            len(plan.full_content_files),
-                            len(plan.summary_files),
-                        )
-            except Exception as e:
-                logger.debug("Topic-based discovery failed (non-critical): %s", e)
+            self._try_topic_discovery(user_input, cwd, result, set_intent_from_topics=True)
             return result
 
-        # If creating a new file and we detect a clear filename, skip exploration
-        if result.intent == "create" and len(refs) == 1:
-            ref = refs[0]
-            # Check if file already exists
-            potential_path = self._find_file(ref.pattern)
-            if potential_path is None:
-                # File doesn't exist - this is truly a new file
-                result.skip_exploration = True
-                logger.info("Skipping exploration - new file creation: %s", ref.pattern)
-                return result
+        # Pure new-file creation → skip exploration entirely
+        if self._maybe_skip_for_new_file(refs, result):
+            return result
 
-        # For modifications, use systematic discovery with find
-        # This is more aggressive - we find and read files BEFORE the LLM runs
+        # For modify/unknown intents, do systematic discovery up front
         if result.intent in ("modify", "unknown"):
-            try:
-                # Use the new systematic file discovery
-                discovered_contents = discover_and_read_files(
-                    file_refs=refs,
-                    base_path=self._base_path,
-                    max_total_content=50000,
-                )
-                result.file_contents.update(discovered_contents)
+            self._systematic_file_discovery(refs, result)
 
-                # If we found the main file and have its content, we can skip exploration
-                if discovered_contents:
-                    main_file_found = any(
-                        ref.pattern.lower() in path.lower() for ref in refs for path in discovered_contents.keys()
-                    )
-                    if main_file_found and len(discovered_contents) >= 1:
-                        result.skip_exploration = True
-                        logger.info(
-                            "Systematic discovery found %d files - LLM can write directly",
-                            len(discovered_contents),
-                        )
-
-            except Exception as e:
-                logger.debug("Systematic discovery failed, falling back: %s", e)
-                # Fall back to old method if discovery fails
-                if self._executor:
-                    self._prefetch_file_context(refs, result)
-
-        # ── Safety net: file refs detected but nothing found ──────────────
-        # When the user mentions a file by name but we couldn't locate it,
-        # inject guidance so the LLM searches with tools instead of
-        # hallucinating an unrelated action.
+        # Safety net: refs detected but nothing found → topic-based fallback
         if refs and not result.file_contents:
-            ref_names = [r.pattern for r in refs]
-            result.not_found_refs = ref_names
-
-            # Also attempt topic-based discovery as fallback — maybe the
-            # user's keywords match a subsystem even though the exact
-            # filename wasn't in the tree.
-            try:
-                topics = extract_topics(user_input)
-                if topics.explicit_topics:
-                    candidates = discover_files_by_topic(
-                        topics,
-                        cwd=cwd or self._base_path,
-                        user_text=user_input,
-                    )
-                    if candidates:
-                        plan = select_files_for_context(
-                            candidates,
-                            max_total_chars=3000,
-                            cwd=cwd,
-                        )
-                        plan.topic_extraction = topics
-                        result.discovery_plan = plan
-                        result.file_contents.update(plan.full_content_files)
-                        logger.info(
-                            "Fallback topic discovery for unresolved refs %s: %d candidates",
-                            ref_names,
-                            len(candidates),
-                        )
-            except Exception as e:
-                logger.debug("Fallback topic discovery failed: %s", e)
+            result.not_found_refs = [r.pattern for r in refs]
+            self._try_topic_discovery(user_input, cwd, result, set_intent_from_topics=False)
 
         return result
+
+    def _try_topic_discovery(
+        self,
+        user_input: str,
+        cwd: str | None,
+        result: PrefetchResult,
+        *,
+        set_intent_from_topics: bool,
+    ) -> None:
+        """Run keyword→directory topic discovery and merge results into ``result``.
+
+        Used both as the primary path (no explicit refs) and as the
+        safety-net fallback (refs found but no content located).
+        """
+        try:
+            topics = extract_topics(user_input)
+            if not topics.explicit_topics:
+                return
+            candidates = discover_files_by_topic(
+                topics,
+                cwd=cwd or self._base_path,
+                user_text=user_input,
+            )
+            if not candidates:
+                return
+            plan = select_files_for_context(
+                candidates,
+                max_total_chars=3000,
+                cwd=cwd,
+            )
+            plan.topic_extraction = topics
+            result.discovery_plan = plan
+            result.file_contents.update(plan.full_content_files)
+            if set_intent_from_topics:
+                result.intent = topics.action_intent
+                logger.info(
+                    "Topic discovery: %s → %d candidates, %d read, %d summarized",
+                    topics.explicit_topics,
+                    len(candidates),
+                    len(plan.full_content_files),
+                    len(plan.summary_files),
+                )
+            else:
+                logger.info(
+                    "Fallback topic discovery for unresolved refs %s: %d candidates",
+                    result.not_found_refs,
+                    len(candidates),
+                )
+        except Exception as e:
+            logger.debug("Topic-based discovery failed (non-critical): %s", e)
+
+    def _maybe_skip_for_new_file(self, refs: list[Any], result: PrefetchResult) -> bool:
+        """Set ``skip_exploration`` if this is a single ref to a non-existent file."""
+        if not (result.intent == "create" and len(refs) == 1):
+            return False
+        ref = refs[0]
+        if self._find_file(ref.pattern) is not None:
+            return False  # file exists — fall through to systematic discovery
+        result.skip_exploration = True
+        logger.info("Skipping exploration - new file creation: %s", ref.pattern)
+        return True
+
+    def _systematic_file_discovery(self, refs: list[Any], result: PrefetchResult) -> None:
+        """Run aggressive find-and-read on the explicit refs and update ``result``."""
+        try:
+            discovered_contents = discover_and_read_files(
+                file_refs=refs,
+                base_path=self._base_path,
+                max_total_content=50000,
+            )
+            result.file_contents.update(discovered_contents)
+
+            # If the main referenced file was found, the LLM can skip exploration
+            if discovered_contents:
+                main_file_found = any(
+                    ref.pattern.lower() in path.lower() for ref in refs for path in discovered_contents.keys()
+                )
+                if main_file_found and len(discovered_contents) >= 1:
+                    result.skip_exploration = True
+                    logger.info(
+                        "Systematic discovery found %d files - LLM can write directly",
+                        len(discovered_contents),
+                    )
+        except Exception as e:
+            logger.debug("Systematic discovery failed, falling back: %s", e)
+            if self._executor:
+                self._prefetch_file_context(refs, result)
 
     def _find_file(self, pattern: str) -> str | None:
         """Try to find a file matching the pattern."""

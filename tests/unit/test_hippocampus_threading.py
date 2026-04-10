@@ -88,6 +88,8 @@ class TestNacThreading:
         """Concurrent NAc record_outcome() — verify counter consistency."""
         from maxim.decisions.nac import NAc
 
+        from maxim.decisions.causal_link import Valence
+
         nac = NAc()
         n_threads = 4
         n_per_thread = 25
@@ -101,7 +103,7 @@ class TestNacThreading:
                     event_signature=f"sig_{i}",
                     outcome_type="success" if i % 2 == 0 else "failure",
                     outcome_signature=f"outcome_{i}",
-                    outcome_valence=1.0 if i % 2 == 0 else -1.0,
+                    outcome_valence=Valence.POSITIVE if i % 2 == 0 else Valence.NEGATIVE,
                     delta_seconds=float(i + 1),
                 )
 
@@ -119,6 +121,7 @@ class TestNacThreading:
 
     def test_reentrant_lock_no_deadlock(self):
         """NAc uses RLock — verify no deadlock on re-entrant calls."""
+        from maxim.decisions.causal_link import Valence
         from maxim.decisions.nac import NAc
 
         nac = NAc()
@@ -127,7 +130,7 @@ class TestNacThreading:
             event_signature="sig_a",
             outcome_type="success",
             outcome_signature="out_a",
-            outcome_valence=1.0,
+            outcome_valence=Valence.POSITIVE,
             delta_seconds=1.0,
         )
         # predict() and stats() should both work without deadlock

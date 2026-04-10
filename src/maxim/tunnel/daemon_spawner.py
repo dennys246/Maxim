@@ -14,15 +14,17 @@ spawn to avoid duplicate connections to Cloudflare's edge.
 from __future__ import annotations
 
 import atexit
+import logging
 import os
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
 
 from maxim.tunnel.cloudflared import find_cloudflared
 from maxim.tunnel.config import CONFIG_PATH as USER_CONFIG_PATH
+
+logger = logging.getLogger(__name__)
 
 
 SYSTEM_CONFIG_PATH = Path("/etc/cloudflared/config.yml")
@@ -90,16 +92,12 @@ class TunnelDaemonSpawner:
 
             binary = find_cloudflared()
             if binary is None:
-                print(
-                    "[warn] TunnelDaemonSpawner: cloudflared not found on PATH",
-                    file=sys.stderr,
-                )
+                logger.warning("TunnelDaemonSpawner: cloudflared not found on PATH")
                 return False
 
             if self._config_path is None or not self._config_path.is_file():
-                print(
-                    "[warn] TunnelDaemonSpawner: no config.yml found (checked ~/.cloudflared/ and /etc/cloudflared/)",
-                    file=sys.stderr,
+                logger.warning(
+                    "TunnelDaemonSpawner: no config.yml found (checked ~/.cloudflared/ and /etc/cloudflared/)"
                 )
                 return False
 
@@ -120,7 +118,7 @@ class TunnelDaemonSpawner:
                     start_new_session=True,
                 )
             except (OSError, ValueError) as e:
-                print(f"[warn] TunnelDaemonSpawner: failed to spawn: {e}", file=sys.stderr)
+                logger.warning("TunnelDaemonSpawner: failed to spawn: %s", e)
                 self._process = None
                 return False
 

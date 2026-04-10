@@ -180,21 +180,21 @@ class TestConnectionConfigMigration:
 
     def test_default_connection_mode_is_network(self):
         """Default connection_mode is 'network'."""
-        from maxim.conscience.connection import ConnectionConfig
+        from maxim.embodied_runtime.connection import ConnectionConfig
 
         config = ConnectionConfig()
         assert config.connection_mode == "network"
 
     def test_custom_connection_mode(self):
         """Can set custom connection_mode."""
-        from maxim.conscience.connection import ConnectionConfig
+        from maxim.embodied_runtime.connection import ConnectionConfig
 
         config = ConnectionConfig(connection_mode="auto")
         assert config.connection_mode == "auto"
 
     def test_localhost_only_still_exists_for_compat(self):
         """localhost_only field still exists for backward compatibility."""
-        from maxim.conscience.connection import ConnectionConfig
+        from maxim.embodied_runtime.connection import ConnectionConfig
 
         config = ConnectionConfig()
         assert hasattr(config, "localhost_only")

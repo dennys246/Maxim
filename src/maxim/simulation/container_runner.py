@@ -503,9 +503,7 @@ class LocalDockerRunner:
         )
         if inspect.returncode == 0:
             return
-        import sys
-
-        print(f"  ↓ Pulling Docker image: {image} ...", file=sys.stderr, flush=True)
+        logger.info("Pulling Docker image: %s ...", image)
         pull = self._run_docker(
             [self._docker, "pull", image],
             timeout=300.0,

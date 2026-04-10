@@ -1,9 +1,12 @@
 import atexit
 import copy
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SAVE_ROOT = _REPO_ROOT / "data" / "models" / "MotorCortex"
@@ -118,14 +121,14 @@ class build:
 
         config_path = Path(self.config_filepath)
         if config_path.exists() and config_path.is_file():
-            print(f"Loading config file: {self.config_filepath}")
+            logger.info("Loading config file: %s", self.config_filepath)
             config_json = self.load_config(self.config_filepath)
         else:
             legacy_config = LEGACY_SAVE_ROOT / DEFAULT_CONFIG_FILENAME
             is_default_path = config_path == (DEFAULT_SAVE_ROOT / DEFAULT_CONFIG_FILENAME)
 
             if is_default_path and legacy_config.exists():
-                print(f"Loading legacy config file: {legacy_config.as_posix()}")
+                logger.info("Loading legacy config file: %s", legacy_config.as_posix())
                 config_json = self.load_config(legacy_config.as_posix())
 
                 try:
@@ -136,7 +139,7 @@ class build:
                 except Exception:
                     pass
             else:
-                print("WARNING: Config not found, building from default template...")
+                logger.warning("Config not found, building from default template")
                 config_json = copy.deepcopy(config_template)
 
                 # If user passed a directory, default save_dir/checkpoint under it.
@@ -177,7 +180,7 @@ class build:
         except Exception:
             legacy_output_dim = 0
         if legacy_output_dim == 2 and "movement_delta_limits" not in config_json:
-            print("Upgrading motor cortex config: output_dim 2 -> 7 (head movement).")
+            logger.info("Upgrading motor cortex config: output_dim 2 -> 7 (head movement).")
             config_json["output_dim"] = config_template["output_dim"]
             if config_json.get("final_activation") is None:
                 config_json["final_activation"] = config_template["final_activation"]

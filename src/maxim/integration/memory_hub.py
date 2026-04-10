@@ -190,94 +190,113 @@ class MemoryHub:
 
     def _wire_multi_layer(self) -> None:
         """Wire ATL, CrossLayerGraph, and SemanticPromoter when ATL is available."""
-        from maxim.memory.cross_layer import CrossLayerGraph
-        from maxim.memory.semantic_promoter import SemanticPromoter
-
-        # Build layers dict for CrossLayerGraph
-        layers: dict[str, Any] = {"hippocampus": self.hippocampus}
-        if self.atl is not None:
-            layers["atl"] = self.atl
-        if self.angular_gyrus is not None:
-            layers["angular_gyrus"] = self.angular_gyrus
-
-        # Create CrossLayerGraph if not provided externally
-        if self._cross_layer is None:
-            self._cross_layer = CrossLayerGraph(layers=layers)
-
-        # Register cross-layer deletion callbacks
-        if self._cross_layer is not None:
-            self.hippocampus.register_deletion_callback(lambda rid: self._cross_layer.remove_record("hippocampus", rid))
-            if self.atl is not None:
-                self.atl.register_deletion_callback(lambda rid: self._cross_layer.remove_record("atl", rid))
-
-        # Build promotion sources
-        sources: list[Any] = [self.nac]  # NAc always available
-
-        # Create SemanticPromoter
-        if self.atl is not None:
-            self._promoter = SemanticPromoter(
-                hippocampus=self.hippocampus,
-                atl=self.atl,
-                sources=sources,
-                cross_layer=self._cross_layer,
-            )
-
-        # Wire ConceptExtractor for percept-to-concept extraction
-        if self.atl is not None and self._cross_layer is not None:
-            from maxim.memory.concept_extractor import ConceptExtractor
-
-            self._concept_extractor = ConceptExtractor(
-                atl=self.atl,
-                cross_layer=self._cross_layer,
-                scn=self.scn,
-                worker_pool=self.worker_pool,
-            )
-            # Register as capture callback on Hippocampus
-            self.hippocampus.register_capture_callback(self._concept_extractor.on_memory_captured)
-            # Register for deletion cleanup
-            self.hippocampus.register_deletion_callback(self._concept_extractor.on_memory_deleted)
-            # Register for compression cleanup
-            self.hippocampus.register_compression_callback(self._concept_extractor.on_memory_compressed)
-            # Rebuild reverse index from persisted ATL state
-            self._concept_extractor.rebuild_reverse_index()
-
-        # Wire ConceptGrounder for AG numerical grounding of concepts
-        if self.atl is not None and self.angular_gyrus is not None and self._cross_layer is not None:
-            from maxim.math.ips import IPS
-            from maxim.memory.concept_grounder import ConceptGrounder
-
-            self._concept_grounder = ConceptGrounder(
-                atl=self.atl,
-                angular_gyrus=self.angular_gyrus,
-                ips=IPS(),
-                cross_layer=self._cross_layer,
-                worker_pool=self.worker_pool,
-            )
-
-        # Wire ConceptContextBuilder for concept-aware recall
-        if self.atl is not None:
-            from maxim.memory.concept_context import ConceptContextBuilder
-
-            self._concept_context_builder = ConceptContextBuilder(
-                atl=self.atl,
-                layers=layers,
-                concept_grounder=self._concept_grounder,
-            )
-
-        # Wire PatternCompleter for graph-chaining pattern completion
-        if self.atl is not None:
-            from maxim.memory.pattern_completer import PatternCompleter
-
-            self._pattern_completer = PatternCompleter(
-                atl=self.atl,
-                layers=layers,
-            )
+        layers = self._build_layer_map()
+        self._wire_cross_layer_graph(layers)
+        self._wire_semantic_promoter()
+        self._wire_concept_extractor()
+        self._wire_concept_grounder()
+        self._wire_concept_context_builder(layers)
+        self._wire_pattern_completer(layers)
 
         logger.info(
             "Multi-layer memory wired: ATL=%s, AG=%s, cross_layer=%s",
             self.atl is not None,
             self.angular_gyrus is not None,
             self._cross_layer is not None,
+        )
+
+    def _build_layer_map(self) -> dict[str, Any]:
+        """Collect available memory layers into a dict for CrossLayerGraph."""
+        layers: dict[str, Any] = {"hippocampus": self.hippocampus}
+        if self.atl is not None:
+            layers["atl"] = self.atl
+        if self.angular_gyrus is not None:
+            layers["angular_gyrus"] = self.angular_gyrus
+        return layers
+
+    def _wire_cross_layer_graph(self, layers: dict[str, Any]) -> None:
+        """Build (or reuse) the CrossLayerGraph and register deletion callbacks."""
+        from maxim.memory.cross_layer import CrossLayerGraph
+
+        if self._cross_layer is None:
+            self._cross_layer = CrossLayerGraph(layers=layers)
+
+        if self._cross_layer is None:
+            return
+
+        self.hippocampus.register_deletion_callback(lambda rid: self._cross_layer.remove_record("hippocampus", rid))
+        if self.atl is not None:
+            self.atl.register_deletion_callback(lambda rid: self._cross_layer.remove_record("atl", rid))
+
+    def _wire_semantic_promoter(self) -> None:
+        """Build the SemanticPromoter when ATL is present."""
+        if self.atl is None:
+            return
+        from maxim.memory.semantic_promoter import SemanticPromoter
+
+        sources: list[Any] = [self.nac]  # NAc always available
+        self._promoter = SemanticPromoter(
+            hippocampus=self.hippocampus,
+            atl=self.atl,
+            sources=sources,
+            cross_layer=self._cross_layer,
+        )
+
+    def _wire_concept_extractor(self) -> None:
+        """Wire percept-to-concept extraction (requires ATL + cross_layer)."""
+        if not (self.atl is not None and self._cross_layer is not None):
+            return
+        from maxim.memory.concept_extractor import ConceptExtractor
+
+        self._concept_extractor = ConceptExtractor(
+            atl=self.atl,
+            cross_layer=self._cross_layer,
+            scn=self.scn,
+            worker_pool=self.worker_pool,
+        )
+        # Hook into hippocampus capture/delete/compress lifecycle
+        self.hippocampus.register_capture_callback(self._concept_extractor.on_memory_captured)
+        self.hippocampus.register_deletion_callback(self._concept_extractor.on_memory_deleted)
+        self.hippocampus.register_compression_callback(self._concept_extractor.on_memory_compressed)
+        # Rebuild reverse index from persisted ATL state
+        self._concept_extractor.rebuild_reverse_index()
+
+    def _wire_concept_grounder(self) -> None:
+        """Wire AG numerical grounding of concepts (requires ATL + AG + cross_layer)."""
+        if not (self.atl is not None and self.angular_gyrus is not None and self._cross_layer is not None):
+            return
+        from maxim.math.ips import IPS
+        from maxim.memory.concept_grounder import ConceptGrounder
+
+        self._concept_grounder = ConceptGrounder(
+            atl=self.atl,
+            angular_gyrus=self.angular_gyrus,
+            ips=IPS(),
+            cross_layer=self._cross_layer,
+            worker_pool=self.worker_pool,
+        )
+
+    def _wire_concept_context_builder(self, layers: dict[str, Any]) -> None:
+        """Wire concept-aware recall context builder (requires ATL)."""
+        if self.atl is None:
+            return
+        from maxim.memory.concept_context import ConceptContextBuilder
+
+        self._concept_context_builder = ConceptContextBuilder(
+            atl=self.atl,
+            layers=layers,
+            concept_grounder=self._concept_grounder,
+        )
+
+    def _wire_pattern_completer(self, layers: dict[str, Any]) -> None:
+        """Wire graph-chaining pattern completion (requires ATL)."""
+        if self.atl is None:
+            return
+        from maxim.memory.pattern_completer import PatternCompleter
+
+        self._pattern_completer = PatternCompleter(
+            atl=self.atl,
+            layers=layers,
         )
 
     def register_promotion_source(self, source: "PromotionSource") -> None:

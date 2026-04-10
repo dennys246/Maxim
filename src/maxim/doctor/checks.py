@@ -7,10 +7,13 @@ hint is rendered verbatim in the doctor output — it should be copy-pasteable.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Literal
 
 from maxim.doctor.platform_detect import PlatformInfo, detect_wsl_ip
+
+logger = logging.getLogger(__name__)
 
 Status = Literal["ok", "warn", "fail", "info"]
 
@@ -904,7 +907,7 @@ def check_peer_key_set() -> CheckResult:
     """Check that the peer has a remote API key configured."""
     import os
 
-    key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY") or os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY")
+    key = os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY")
     if not key:
         try:
             from maxim.peer.config import read_peer_config
@@ -912,8 +915,8 @@ def check_peer_key_set() -> CheckResult:
             cfg = read_peer_config()
             if cfg is not None:
                 key = cfg.api_key
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not read peer config for API key check: %s", e)
     if not key:
         return CheckResult(
             name="Peer API key",
@@ -1049,15 +1052,15 @@ def check_peer_latency(url: str, key: str | None) -> CheckResult:
     if key:
         headers["Authorization"] = f"Bearer {key}"
     timings: list[float] = []
-    for _ in range(5):
+    for probe_idx in range(5):
         try:
             req = urllib.request.Request(ping_url, headers=headers)
             t0 = time.time()
             with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
                 resp.read()
             timings.append((time.time() - t0) * 1000)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Latency probe %d failed: %s", probe_idx, e)
     if not timings:
         return CheckResult(
             name="Peer latency",
@@ -1133,12 +1136,12 @@ def _detect_doctor_role(explicit: str | None = None, peer_url: str | None = None
     from urllib.parse import urlparse
 
     if explicit == "peer":
-        url = peer_url or os.environ.get("MAXIM_LANE_INFER_REMOTE_URL") or os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL")
+        url = peer_url or os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL")
         return "peer", url
     if explicit in ("leader", "solo"):
         return explicit, None
     # Auto-detect from env
-    url = os.environ.get("MAXIM_LANE_INFER_REMOTE_URL") or os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL")
+    url = os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL")
     if url:
         host = urlparse(url).hostname or ""
         if host not in ("127.0.0.1", "localhost", "::1"):
@@ -1189,9 +1192,7 @@ def run_all_checks(
         if not peer_key:
             import os
 
-            peer_key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY") or os.environ.get(
-                "MAXIM_LANE_LARGE_REMOTE_API_KEY"
-            )
+            peer_key = os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY")
         if not peer_key:
             try:
                 from maxim.peer.config import read_peer_config
@@ -1199,8 +1200,8 @@ def run_all_checks(
                 cfg = read_peer_config()
                 if cfg is not None:
                     peer_key = cfg.api_key
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Could not read peer config in run_all_checks: %s", e)
         sections.append(
             (
                 "Peer Connectivity",

@@ -26,6 +26,128 @@ from maxim.cli_utils import (
 from maxim.cli_utils import MEMORY_PATHS  # noqa: F401
 
 
+# ── Discrete subcommand handlers (extracted from main() for clarity) ────────
+
+
+def _handle_list_models() -> int:
+    """Print all known LLM profiles grouped by backend, then return 0.
+
+    Used by ``maxim --list-models``. The grouping (local llama / local torch /
+    cloud anthropic / cloud openai / cloud other) mirrors what users actually
+    care about when picking a model.
+    """
+    from maxim.models.language.config import _BUILTIN_PROFILES, _PROFILE_ALIASES
+    from maxim.runtime.lane_backends import _profile_has_local_file, _read_persisted_model
+
+    local_llama: list[str] = []
+    local_torch: list[str] = []
+    cloud_anthropic: list[str] = []
+    cloud_openai: list[str] = []
+    cloud_other: list[str] = []
+
+    for name, profile in sorted(_BUILTIN_PROFILES.items()):
+        aliases = [a for a, v in _PROFILE_ALIASES.items() if v == name and a != name]
+        alias_str = f"  (also: {', '.join(aliases[:2])})" if aliases else ""
+        backend = profile.get("backend", "")
+        n_ctx = profile.get("n_ctx", 0)
+        ctx_str = f"{n_ctx // 1000}K" if n_ctx >= 1000 else str(n_ctx)
+
+        if profile.get("cloud"):
+            env = profile.get("api_key_env", "")
+            key_set = bool(os.environ.get(env)) if env else False
+            status = "✓ ready" if key_set else f"needs {env}"
+            base_url = profile.get("base_url", "")
+            provider = ""
+            if "anthropic" in backend:
+                provider = "Anthropic"
+            elif "generativelanguage.googleapis" in base_url:
+                provider = "Google"
+            elif "groq.com" in base_url:
+                provider = "Groq"
+            elif "together.xyz" in base_url:
+                provider = "Together"
+            elif "fireworks.ai" in base_url:
+                provider = "Fireworks"
+            elif "mistral.ai" in base_url:
+                provider = "Mistral"
+            elif "deepseek.com" in base_url:
+                provider = "DeepSeek"
+            elif "openai" in backend:
+                provider = "OpenAI"
+
+            line = f"  {name:30s} {ctx_str:>6s} ctx  [{status}]"
+            if backend == "anthropic":
+                cloud_anthropic.append(line)
+            elif backend == "openai" and not base_url:
+                cloud_openai.append(line)
+            else:
+                cloud_other.append(f"  {name:30s} {ctx_str:>6s} ctx  {provider:10s} [{status}]")
+        else:
+            downloaded = _profile_has_local_file(name)
+            status = "✓ downloaded" if downloaded else "not downloaded"
+            backend_label = "torch" if backend == "pytorch" else "llama.cpp"
+            line = f"  {name:30s} {ctx_str:>6s} ctx  ({backend_label})  [{status}]{alias_str}"
+            if backend == "pytorch":
+                local_torch.append(line)
+            else:
+                local_llama.append(line)
+
+    print("═══ Local Models (requires GPU + downloaded model) ═══\n")
+    if local_llama:
+        print(" llama.cpp backend:")
+        for line in local_llama:
+            print(line)
+    if local_torch:
+        print("\n PyTorch/Transformers backend:")
+        for line in local_torch:
+            print(line)
+
+    print("\n═══ Cloud Models (requires API key) ═══\n")
+    if cloud_anthropic:
+        print(" Anthropic (Claude):")
+        for line in cloud_anthropic:
+            print(line)
+    if cloud_openai:
+        print("\n OpenAI:")
+        for line in cloud_openai:
+            print(line)
+    if cloud_other:
+        print("\n Other providers:")
+        for line in cloud_other:
+            print(line)
+
+    persisted = _read_persisted_model()
+    current = os.environ.get("MAXIM_LLM_PROFILE", "") or persisted or "mistral-7b"
+    print(f"\n═══ Active: {current} ═══")
+    print("\nSet model: maxim --llm <model-name>")
+    print("Download:  python -m maxim.models.download --llm <model-name>")
+    print("Delete:    maxim --delete-model <model-name>")
+    return 0
+
+
+def _handle_delete_model(name: str) -> int:
+    """Delete the requested local model and return 0."""
+    from maxim.models.language.config import normalize_llm_profile
+    from maxim.models.download import delete_llm
+
+    canonical = normalize_llm_profile(name) or name
+    if delete_llm(canonical):
+        print("Done.")
+    else:
+        print("\nAvailable local models: python -m maxim.models.download --list")
+    return 0
+
+
+def _handle_clear_memory(scope: str, home_dir: str) -> int:
+    """Clear the requested memory scope and return 0."""
+    print(f"Clearing memory ({scope})...")
+    results = _clear_memory(scope, home_dir)
+    cleared = sum(1 for v in results.values() if v)
+    total = len(results)
+    print(f"Cleared {cleared}/{total} memory file(s).")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
     # imports.  This was previously at module-import time; moved here so that
@@ -173,126 +295,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     if should_save(raw_argv):
         save_last_run(raw_argv)
 
-    # List available models if requested
+    # ── Discrete management subcommands (each returns 0 on completion) ──
     if bool(getattr(args, "list_models", False)):
-        from maxim.models.language.config import _BUILTIN_PROFILES, _PROFILE_ALIASES
-        from maxim.runtime.lane_backends import _profile_has_local_file, _read_persisted_model
+        return _handle_list_models()
 
-        # Group by type
-        local_llama: list[str] = []
-        local_torch: list[str] = []
-        cloud_anthropic: list[str] = []
-        cloud_openai: list[str] = []
-        cloud_other: list[str] = []
-
-        for name, profile in sorted(_BUILTIN_PROFILES.items()):
-            aliases = [a for a, v in _PROFILE_ALIASES.items() if v == name and a != name]
-            alias_str = f"  (also: {', '.join(aliases[:2])})" if aliases else ""
-            backend = profile.get("backend", "")
-            n_ctx = profile.get("n_ctx", 0)
-            ctx_str = f"{n_ctx // 1000}K" if n_ctx >= 1000 else str(n_ctx)
-
-            if profile.get("cloud"):
-                env = profile.get("api_key_env", "")
-                key_set = bool(os.environ.get(env)) if env else False
-                status = "✓ ready" if key_set else f"needs {env}"
-                base_url = profile.get("base_url", "")
-                provider = ""
-                if "anthropic" in backend:
-                    provider = "Anthropic"
-                elif "generativelanguage.googleapis" in base_url:
-                    provider = "Google"
-                elif "groq.com" in base_url:
-                    provider = "Groq"
-                elif "together.xyz" in base_url:
-                    provider = "Together"
-                elif "fireworks.ai" in base_url:
-                    provider = "Fireworks"
-                elif "mistral.ai" in base_url:
-                    provider = "Mistral"
-                elif "deepseek.com" in base_url:
-                    provider = "DeepSeek"
-                elif "openai" in backend:
-                    provider = "OpenAI"
-
-                line = f"  {name:30s} {ctx_str:>6s} ctx  [{status}]"
-                if backend == "anthropic":
-                    cloud_anthropic.append(line)
-                elif backend == "openai" and not base_url:
-                    cloud_openai.append(line)
-                else:
-                    cloud_other.append(f"  {name:30s} {ctx_str:>6s} ctx  {provider:10s} [{status}]")
-            else:
-                downloaded = _profile_has_local_file(name)
-                status = "✓ downloaded" if downloaded else "not downloaded"
-                backend_label = "torch" if backend == "pytorch" else "llama.cpp"
-                line = f"  {name:30s} {ctx_str:>6s} ctx  ({backend_label})  [{status}]{alias_str}"
-                if backend == "pytorch":
-                    local_torch.append(line)
-                else:
-                    local_llama.append(line)
-
-        print("═══ Local Models (requires GPU + downloaded model) ═══\n")
-        if local_llama:
-            print(" llama.cpp backend:")
-            for line in local_llama:
-                print(line)
-        if local_torch:
-            print("\n PyTorch/Transformers backend:")
-            for line in local_torch:
-                print(line)
-
-        print("\n═══ Cloud Models (requires API key) ═══\n")
-        if cloud_anthropic:
-            print(" Anthropic (Claude):")
-            for line in cloud_anthropic:
-                print(line)
-        if cloud_openai:
-            print("\n OpenAI:")
-            for line in cloud_openai:
-                print(line)
-        if cloud_other:
-            print("\n Other providers:")
-            for line in cloud_other:
-                print(line)
-
-        # Show current config
-        persisted = _read_persisted_model()
-        current = os.environ.get("MAXIM_LLM_PROFILE", "") or persisted or "mistral-7b"
-        print(f"\n═══ Active: {current} ═══")
-        print("\nSet model: maxim --llm <model-name>")
-        print("Download:  python -m maxim.models.download --llm <model-name>")
-        print("Delete:    maxim --delete-model <model-name>")
-        return 0
-
-    # Delete a downloaded model if requested
     delete_model_name = getattr(args, "delete_model", None)
     if delete_model_name:
-        from maxim.models.language.config import normalize_llm_profile
+        return _handle_delete_model(delete_model_name)
 
-        canonical = normalize_llm_profile(delete_model_name) or delete_model_name
-        from maxim.models.download import delete_llm
-
-        if delete_llm(canonical):
-            print("Done.")
-        else:
-            print("\nAvailable local models: python -m maxim.models.download --list")
-        return 0
-
-    # Clear Python cache if requested
     if bool(getattr(args, "clear_cache", False)):
         removed = _clear_python_cache()
         print(f"Cleared {removed} __pycache__ director{'y' if removed == 1 else 'ies'}.", file=sys.stderr)
 
-    # Clear memory if requested
     clear_memory = getattr(args, "clear_memory", None)
     if clear_memory is not None:
-        print(f"Clearing memory ({clear_memory})...")
-        results = _clear_memory(clear_memory, args.home_dir)
-        cleared = sum(1 for v in results.values() if v)
-        total = len(results)
-        print(f"Cleared {cleared}/{total} memory file(s).")
-        return 0  # Exit after clearing
+        return _handle_clear_memory(clear_memory, args.home_dir)
 
     # ── Cross-flag validation ───────────────────────────────────────────
     if getattr(args, "sim_report", None) and getattr(args, "sim", None) is None:
@@ -1293,7 +1310,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         pass
                 return 0
 
-            from maxim.conscience.selfy import Maxim
+            from maxim.embodied_runtime.selfy import Maxim
 
             audio_enabled = bool(getattr(args, "audio", True))
             if mode == "sleep":

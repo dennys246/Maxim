@@ -219,9 +219,9 @@ class TestDoctorCLI:
 
     def test_runs_without_retry(self, capsys, monkeypatch):
         # Ensure solo mode — earlier tests or real peer.yml may set
-        # MAXIM_LANE_INFER_REMOTE_URL, which triggers peer mode and
+        # MAXIM_LANE_LARGE_REMOTE_URL, which triggers peer mode and
         # replaces "Local LLM" / "Tunnel" sections with "Peer Connectivity".
-        monkeypatch.delenv("MAXIM_LANE_INFER_REMOTE_URL", raising=False)
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
         monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
         code = run_doctor_subcommand([])
         out = capsys.readouterr().out
@@ -266,14 +266,14 @@ class TestPeerCLI:
         assert model is None
 
     def test_parse_key_from_env(self, monkeypatch):
-        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_API_KEY", "env-key")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", "env-key")
         from maxim.doctor.cli import _parse_peer_opts
 
         key, _ = _parse_peer_opts([])
         assert key == "env-key"
 
     def test_flag_overrides_env(self, monkeypatch):
-        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_API_KEY", "env-key")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", "env-key")
         from maxim.doctor.cli import _parse_peer_opts
 
         key, _ = _parse_peer_opts(["--key", "flag-key"])
@@ -572,7 +572,7 @@ class TestPeerUrlReachable:
 
 class TestPeerKeySet:
     def test_no_key_returns_warn(self, monkeypatch):
-        monkeypatch.delenv("MAXIM_LANE_INFER_REMOTE_API_KEY", raising=False)
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", raising=False)
         monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", raising=False)
         from maxim.doctor.checks import check_peer_key_set
 
@@ -581,7 +581,7 @@ class TestPeerKeySet:
         assert result.status == "warn"
 
     def test_env_key_returns_ok(self, monkeypatch):
-        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_API_KEY", "test-key-value")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", "test-key-value")
         from maxim.doctor.checks import check_peer_key_set
 
         result = check_peer_key_set()
@@ -704,8 +704,8 @@ class TestDoctorAsFlag:
         assert code in (0, 1)
 
     def test_auto_detect_peer_from_env(self, monkeypatch, capsys):
-        """Setting MAXIM_LANE_INFER_REMOTE_URL should auto-detect peer mode."""
-        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_URL", "https://remote-leader.example.com/v1")
+        """Setting MAXIM_LANE_LARGE_REMOTE_URL should auto-detect peer mode."""
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "https://remote-leader.example.com/v1")
         run_doctor_subcommand(["--json"])
         data = json.loads(capsys.readouterr().out)
         section_names = [s["name"] for s in data["sections"]]
@@ -713,7 +713,7 @@ class TestDoctorAsFlag:
 
     def test_localhost_url_stays_solo(self, monkeypatch, capsys):
         """A localhost remote URL should NOT trigger peer mode."""
-        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_URL", "http://127.0.0.1:8100/v1")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://127.0.0.1:8100/v1")
         run_doctor_subcommand(["--json"])
         data = json.loads(capsys.readouterr().out)
         section_names = [s["name"] for s in data["sections"]]
@@ -781,7 +781,7 @@ class TestDetectDoctorRole:
         assert url is None
 
     def test_auto_from_env(self, monkeypatch):
-        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_URL", "https://remote.example.com/v1")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "https://remote.example.com/v1")
         from maxim.doctor.checks import _detect_doctor_role
 
         role, url = _detect_doctor_role()
@@ -789,14 +789,14 @@ class TestDetectDoctorRole:
         assert "remote.example.com" in url
 
     def test_auto_localhost_stays_auto(self, monkeypatch):
-        monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_URL", "http://127.0.0.1:8100/v1")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://127.0.0.1:8100/v1")
         from maxim.doctor.checks import _detect_doctor_role
 
         role, url = _detect_doctor_role()
         assert role == "auto"
 
     def test_no_env_returns_auto(self, monkeypatch):
-        monkeypatch.delenv("MAXIM_LANE_INFER_REMOTE_URL", raising=False)
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
         monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
         from maxim.doctor.checks import _detect_doctor_role
 

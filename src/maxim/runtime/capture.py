@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import numpy as np
 
 if TYPE_CHECKING:
-    from maxim.conscience.selfy import Maxim
+    from maxim.embodied_runtime.selfy import Maxim
     from maxim.hardware import RobotController
 
 logger = logging.getLogger(__name__)

@@ -107,7 +107,7 @@ def run_benchmark(
 
 
 @pytest.mark.slow
-def test_benchmark_hippocampus_capture() -> BenchmarkResult:
+def test_benchmark_hippocampus_capture() -> None:
     """Benchmark Hippocampus capture at 30Hz.
 
     Target: >30 ops/s with <33ms p99 latency
@@ -150,17 +150,18 @@ def test_benchmark_hippocampus_capture() -> BenchmarkResult:
         counter[0] += 1
         return memory_id
 
-    return run_benchmark(
+    result = run_benchmark(
         name="Hippocampus.capture",
         operation=capture_operation,
         iterations=1000,
         warmup=50,
         target_ops_per_second=30.0,  # 30Hz target
     )
+    assert result.passed, f"{result.name}: {result.ops_per_second:.1f} ops/s (target {result.target_ops_per_second})"
 
 
 @pytest.mark.slow
-def test_benchmark_hippocampus_recall() -> BenchmarkResult:
+def test_benchmark_hippocampus_recall() -> None:
     """Benchmark Hippocampus recall.
 
     Target: >100 ops/s (recall should be fast)
@@ -202,17 +203,18 @@ def test_benchmark_hippocampus_recall() -> BenchmarkResult:
     def recall_operation():
         return hippocampus.recall(mode="exploration", limit=10)
 
-    return run_benchmark(
+    result = run_benchmark(
         name="Hippocampus.recall",
         operation=recall_operation,
         iterations=1000,
         warmup=50,
         target_ops_per_second=100.0,
     )
+    assert result.passed, f"{result.name}: {result.ops_per_second:.1f} ops/s (target {result.target_ops_per_second})"
 
 
 @pytest.mark.slow
-def test_benchmark_hippocampus_sleep() -> BenchmarkResult:
+def test_benchmark_hippocampus_sleep() -> None:
     """Benchmark sleep consolidation.
 
     Target: <5 seconds for 1000 memories
@@ -255,7 +257,7 @@ def test_benchmark_hippocampus_sleep() -> BenchmarkResult:
 
     # Adjust pass criteria based on actual duration
     result.passed = result.duration_seconds < 5.0
-    return result
+    assert result.passed, f"{result.name}: took {result.duration_seconds:.2f}s (target <5s)"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -264,7 +266,7 @@ def test_benchmark_hippocampus_sleep() -> BenchmarkResult:
 
 
 @pytest.mark.slow
-def test_benchmark_ec_register() -> BenchmarkResult:
+def test_benchmark_ec_register() -> None:
     """Benchmark EC registration.
 
     Target: >100 ops/s (registration happens with capture)
@@ -292,17 +294,18 @@ def test_benchmark_ec_register() -> BenchmarkResult:
         ec.register(memory_id, signature)
         counter[0] += 1
 
-    return run_benchmark(
+    result = run_benchmark(
         name="EC.register",
         operation=register_operation,
         iterations=1000,
         warmup=50,
         target_ops_per_second=100.0,
     )
+    assert result.passed, f"{result.name}: {result.ops_per_second:.1f} ops/s (target {result.target_ops_per_second})"
 
 
 @pytest.mark.slow
-def test_benchmark_ec_find_similar() -> BenchmarkResult:
+def test_benchmark_ec_find_similar() -> None:
     """Benchmark EC similarity queries.
 
     Target: >50 ops/s (queries should be fast with LSH)
@@ -339,13 +342,14 @@ def test_benchmark_ec_find_similar() -> BenchmarkResult:
     def query_operation():
         return ec.find_similar(query_sig, k=10)
 
-    return run_benchmark(
+    result = run_benchmark(
         name="EC.find_similar",
         operation=query_operation,
         iterations=500,
         warmup=50,
         target_ops_per_second=50.0,
     )
+    assert result.passed, f"{result.name}: {result.ops_per_second:.1f} ops/s (target {result.target_ops_per_second})"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -354,7 +358,7 @@ def test_benchmark_ec_find_similar() -> BenchmarkResult:
 
 
 @pytest.mark.slow
-def test_benchmark_memory_hub_session_start() -> BenchmarkResult:
+def test_benchmark_memory_hub_session_start() -> None:
     """Benchmark MemoryHub session start.
 
     Target: <2 seconds (cold start is acceptable)
@@ -384,11 +388,11 @@ def test_benchmark_memory_hub_session_start() -> BenchmarkResult:
     )
 
     result.passed = result.mean_latency_ms < 2000
-    return result
+    assert result.passed, f"{result.name}: mean latency {result.mean_latency_ms:.1f}ms (target <2000ms)"
 
 
 @pytest.mark.slow
-def test_benchmark_memory_hub_plan_outcome() -> BenchmarkResult:
+def test_benchmark_memory_hub_plan_outcome() -> None:
     """Benchmark MemoryHub plan outcome recording.
 
     Target: >100 ops/s (should be fast, non-blocking)
@@ -418,13 +422,14 @@ def test_benchmark_memory_hub_plan_outcome() -> BenchmarkResult:
         )
         counter[0] += 1
 
-    return run_benchmark(
+    result = run_benchmark(
         name="MemoryHub.record_plan_outcome",
         operation=record_outcome,
         iterations=500,
         warmup=50,
         target_ops_per_second=100.0,
     )
+    assert result.passed, f"{result.name}: {result.ops_per_second:.1f} ops/s (target {result.target_ops_per_second})"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -433,7 +438,7 @@ def test_benchmark_memory_hub_plan_outcome() -> BenchmarkResult:
 
 
 @pytest.mark.slow
-def test_benchmark_semantic_hash() -> BenchmarkResult | None:
+def test_benchmark_semantic_hash() -> None:
     """Benchmark semantic hashing (fallback implementation).
 
     Target: >100 ops/s (fallback should be fast)
@@ -441,7 +446,7 @@ def test_benchmark_semantic_hash() -> BenchmarkResult | None:
     try:
         from maxim.similarity.lsh import SemanticLSH
     except ImportError:
-        return None
+        pytest.skip("SemanticLSH not available")
 
     hasher = SemanticLSH(num_planes=16, seed=42)
 
@@ -460,17 +465,18 @@ def test_benchmark_semantic_hash() -> BenchmarkResult | None:
         counter[0] += 1
         return result
 
-    return run_benchmark(
+    result = run_benchmark(
         name="SemanticLSH.hash (fallback)",
         operation=hash_operation,
         iterations=1000,
         warmup=50,
         target_ops_per_second=100.0,
     )
+    assert result.passed, f"{result.name}: {result.ops_per_second:.1f} ops/s (target {result.target_ops_per_second})"
 
 
 @pytest.mark.slow
-def test_benchmark_neural_semantic_hash() -> BenchmarkResult | None:
+def test_benchmark_neural_semantic_hash() -> None:
     """Benchmark neural semantic hashing (requires sentence-transformers).
 
     Target: >30 ops/s on GPU, >10 ops/s on CPU
@@ -478,7 +484,7 @@ def test_benchmark_neural_semantic_hash() -> BenchmarkResult | None:
     try:
         from maxim.similarity.semantic import NeuralSemanticLSH, SemanticEmbedderConfig
     except ImportError:
-        return None
+        pytest.skip("NeuralSemanticLSH not available (sentence-transformers missing)")
 
     try:
         config = SemanticEmbedderConfig(
@@ -489,10 +495,10 @@ def test_benchmark_neural_semantic_hash() -> BenchmarkResult | None:
         embedder = NeuralSemanticLSH(config=config)
 
         if not embedder.is_healthy:
-            return None
+            pytest.skip("NeuralSemanticLSH not healthy")
 
-    except Exception:
-        return None
+    except Exception as e:
+        pytest.skip(f"NeuralSemanticLSH init failed: {e}")
 
     texts = [
         "find the coffee mug",
@@ -509,13 +515,14 @@ def test_benchmark_neural_semantic_hash() -> BenchmarkResult | None:
         counter[0] += 1
         return result
 
-    return run_benchmark(
+    result = run_benchmark(
         name="NeuralSemanticLSH.hash",
         operation=embed_operation,
         iterations=100,  # Fewer iterations for neural
         warmup=10,
         target_ops_per_second=10.0,  # Conservative target
     )
+    assert result.passed, f"{result.name}: {result.ops_per_second:.1f} ops/s (target {result.target_ops_per_second})"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

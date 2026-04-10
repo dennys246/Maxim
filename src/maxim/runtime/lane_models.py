@@ -189,8 +189,8 @@ def apply_lane_env_overrides(lane_configs: dict[str, LaneConfig]) -> dict[str, L
 
     If REMOTE_URL is set on a lane, it supersedes that lane's local profile
     assignment (the backend becomes a remote HTTP client). A missing or empty
-    REMOTE_URL leaves the lane unchanged. Names are case-folded (infer →
-    MAXIM_LANE_INFER_REMOTE_URL).
+    REMOTE_URL leaves the lane unchanged. Names are case-folded (large →
+    MAXIM_LANE_LARGE_REMOTE_URL).
 
     Returns a new dict — does not mutate the input.
     """

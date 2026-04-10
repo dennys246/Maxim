@@ -165,6 +165,19 @@ class CausalLink:
     # Thread safety for concurrent record_observation calls
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
+    def __post_init__(self) -> None:
+        # Validate that outcome_valence is a real Valence enum, not a float/int.
+        # This catches a class of bugs where callers pass numeric scores
+        # (e.g., outcome_valence=1.0) into APIs that expect the enum, which
+        # would otherwise silently store the float and crash later in
+        # record_observation when accessing self.outcome_valence.value.
+        if not isinstance(self.outcome_valence, Valence):
+            raise TypeError(
+                f"CausalLink.outcome_valence must be a Valence enum, "
+                f"got {type(self.outcome_valence).__name__} ({self.outcome_valence!r}). "
+                f"Use Valence.POSITIVE / Valence.NEGATIVE / Valence.NEUTRAL / Valence.UNKNOWN."
+            )
+
     def record_observation(
         self,
         delta_seconds: float,

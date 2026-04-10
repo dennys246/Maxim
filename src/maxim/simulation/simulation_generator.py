@@ -199,7 +199,7 @@ def generate_scenario(
     if output_path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(yaml_str)
-        print(f"Scenario written to {output_path}")
+        logger.info("Scenario written to %s", output_path)
 
     return yaml_str
 

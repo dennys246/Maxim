@@ -416,7 +416,7 @@ def _run_peer_test(url: str, key: str) -> int:
     """Delegate to the existing `maxim peer test` implementation."""
     import os
 
-    os.environ["MAXIM_LANE_INFER_REMOTE_API_KEY"] = key
+    os.environ["MAXIM_LANE_LARGE_REMOTE_API_KEY"] = key
     from maxim.doctor.cli import run_peer_subcommand
 
     return run_peer_subcommand(["test", url])

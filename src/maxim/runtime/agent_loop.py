@@ -55,6 +55,20 @@ from maxim.runtime.loop_state import (
 )
 
 
+def _idle_sleep(idle_sleep_s: float) -> None:
+    """Sleep for ``idle_sleep_s`` seconds, logging any failure at warning.
+
+    Extracted because the loop body has 4+ identical sleep+swallow blocks.
+    A ``time.sleep`` failure is essentially impossible in normal operation
+    (it would mean the interpreter is in a degraded state), but if it does
+    happen we want to know — log at warning so it surfaces.
+    """
+    try:
+        time.sleep(float(idle_sleep_s))
+    except Exception as e:
+        logger.warning("idle_sleep failed (loop will continue without backoff): %s", e, exc_info=True)
+
+
 def run_agent_loop(
     agent: Any,
     environment: Any,
@@ -96,8 +110,11 @@ def run_agent_loop(
         try:
             if stop_event is not None and hasattr(stop_event, "is_set") and stop_event.is_set():
                 break
-        except Exception:
-            logger.debug("stop_event check failed", exc_info=True)
+        except Exception as e:
+            # A stop_event check failure during the loop is serious — it means
+            # we can't honor shutdown requests cleanly. Surface at warning so
+            # users can spot wedged loops in their logs.
+            logger.warning("stop_event.is_set() check failed: %s", e, exc_info=True)
 
         # ── Consume pending replan candidate from previous failure ──
         # If the previous iteration triggered ADaPT decomposition, the replan
@@ -152,30 +169,21 @@ def run_agent_loop(
             if not isinstance(intent, dict) or not intent:
                 if break_on_no_intent:
                     break
-                try:
-                    time.sleep(float(idle_sleep_s))
-                except Exception:
-                    logger.debug("idle_sleep failed", exc_info=True)
+                _idle_sleep(idle_sleep_s)
                 continue
 
             goal = intent.get("goal") or intent.get("intent")
             if goal is None:
                 if break_on_no_intent:
                     break
-                try:
-                    time.sleep(float(idle_sleep_s))
-                except Exception:
-                    logger.debug("idle_sleep failed", exc_info=True)
+                _idle_sleep(idle_sleep_s)
                 continue
 
             decision = decision_engine.decide(goal, state, memory)
             if not isinstance(decision, dict) or not decision.get("action"):
                 if break_on_no_intent:
                     break
-                try:
-                    time.sleep(float(idle_sleep_s))
-                except Exception:
-                    logger.debug("idle_sleep failed", exc_info=True)
+                _idle_sleep(idle_sleep_s)
                 continue
 
         action = decision["action"]
@@ -183,10 +191,7 @@ def run_agent_loop(
             warn("Invalid action selected: %r", action)
             if break_on_no_intent:
                 break
-            try:
-                time.sleep(float(idle_sleep_s))
-            except Exception:
-                logger.debug("idle_sleep failed", exc_info=True)
+            _idle_sleep(idle_sleep_s)
             continue
 
         ctx = {

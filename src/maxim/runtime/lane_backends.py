@@ -602,31 +602,16 @@ def build_primary_router(
         logger.warning("Failed to load peer config: %s", e)
 
     # ── Reconcile --language-model with peer remote config ────────────
-    # When peer config sets a remote URL for the infer lane AND the user
+    # When peer config sets a remote URL for the large lane AND the user
     # specified --language-model (MAXIM_LLM_PROFILE), the intent is
     # "run this model on the remote server" — not "load it locally."
     # Redirect: copy the profile name into the remote model env var
     # and clear MAXIM_LLM_PROFILE so the local backend machinery doesn't
     # activate and try to load a local pytorch/llama_cpp backend.
-    #
-    # Peer config sets MAXIM_LANE_INFER_* (legacy name). Propagate to
-    # MAXIM_LANE_LARGE_* so detect_tiers() + apply_lane_env_overrides()
-    # pick it up on the new tier name.
     if _has_peer_config:
-        _remote_url = os.environ.get("MAXIM_LANE_INFER_REMOTE_URL", "").strip()
-        if _remote_url:
-            # Mirror infer → large so tier-based env override picks it up
-            os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_URL", _remote_url)
-            _infer_key = os.environ.get("MAXIM_LANE_INFER_REMOTE_API_KEY", "").strip()
-            if _infer_key:
-                os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_API_KEY", _infer_key)
-            _infer_model = os.environ.get("MAXIM_LANE_INFER_REMOTE_MODEL", "").strip()
-            if _infer_model:
-                os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_MODEL", _infer_model)
-
+        _remote_url = os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip()
         _llm_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
         if _remote_url and _llm_profile:
-            os.environ.setdefault("MAXIM_LANE_INFER_REMOTE_MODEL", _llm_profile)
             os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_MODEL", _llm_profile)
             os.environ.pop("MAXIM_LLM_PROFILE", None)
 
@@ -992,6 +977,144 @@ def _maybe_auto_spawn_server(
     return out
 
 
+def _validate_swap_profile(profile: str) -> tuple[str, dict[str, Any]]:
+    """Validate that ``profile`` can be swapped onto llama-cpp-server.
+
+    Resolves the profile name, blocks cloud and non-llama_cpp backends,
+    and confirms the profile is in the registry. Returns
+    ``(resolved_name, profile_data)``. Raises ``ValueError`` on any
+    client-side issue.
+    """
+    from maxim.models.language.config import (
+        _BUILTIN_PROFILES,
+        list_llm_profiles,
+        normalize_llm_profile,
+    )
+
+    resolved = normalize_llm_profile(profile)
+    if not resolved:
+        raise ValueError("Empty model name")
+
+    profile_data = _BUILTIN_PROFILES.get(resolved, {})
+
+    if profile_data.get("cloud"):
+        raise ValueError(f"Profile '{resolved}' is a cloud provider — cannot run on llama-cpp-server")
+
+    backend = profile_data.get("backend", "llama_cpp")
+    if backend not in ("llama_cpp", "llamacpp", "llama"):
+        raise ValueError(f"Profile '{resolved}' uses {backend} backend — not compatible with llama-cpp-server")
+
+    available = list_llm_profiles()
+    if available and resolved not in available:
+        raise ValueError(f"Unknown model profile: {profile}. Available: {', '.join(sorted(available))}")
+
+    return resolved, profile_data
+
+
+def _resolve_swap_target(resolved: str) -> tuple[Any, str]:
+    """Resolve the LLMConfig + GGUF path for ``resolved`` profile.
+
+    Raises ``ValueError`` if the profile fails to load and
+    ``FileNotFoundError`` (with a copy-paste fix line) if the GGUF is
+    not on disk.
+    """
+    from maxim.models.language.config import load_llm_config
+
+    try:
+        cfg = load_llm_config(profile_override=resolved)
+        model_path = getattr(cfg, "model_path", "")
+    except Exception as e:
+        raise ValueError(f"Failed to resolve profile '{resolved}': {e}") from e
+
+    if not model_path or not Path(model_path).is_file():
+        raise FileNotFoundError(
+            f"GGUF not found: {model_path}|Run on leader: python -m maxim.models.download --llm {resolved}"
+        )
+    return cfg, model_path
+
+
+def _drain_in_flight_requests(deadline_s: float = 5.0) -> None:
+    """Wait up to ``deadline_s`` seconds for in-flight large-lane requests to finish.
+
+    Best-effort: silently no-ops if the metrics registry is unavailable.
+    """
+    import time as _time
+
+    try:
+        from maxim.models.language.lane_metrics import get_metrics_registry
+
+        metrics = get_metrics_registry().get("large")
+        deadline = _time.time() + deadline_s
+        while metrics.current_in_flight > 0 and _time.time() < deadline:
+            _time.sleep(0.25)
+    except Exception as e:
+        logger.debug("In-flight drain skipped (metrics unavailable): %s", e)
+
+
+def _stop_active_server(logger_obj: Any | None) -> None:
+    """Stop the currently-active llama-cpp-server (if any) and clear globals."""
+    if _server_mod._active_spawner is not None:
+        if logger_obj is not None:
+            logger_obj.info("LLM swap: stopping current server (model=%s)", _server_mod._active_model)
+        _server_mod._active_spawner.stop()
+        _server_mod._active_spawner = None
+        _server_mod._active_model = None
+
+
+def _start_swap_server(
+    *,
+    cfg: Any,
+    model_path: str,
+    api_key: str | None,
+    port: int,
+    logger_obj: Any | None,
+) -> tuple[Any, float, int]:
+    """Spawn a fresh LocalServerSpawner for the swap target.
+
+    Returns ``(spawner, startup_s, n_ctx)``. Raises ``RuntimeError`` if
+    the server fails to become ready in 120s.
+    """
+    import time as _time
+
+    from maxim.runtime.local_server_spawner import LocalServerSpawner
+
+    bind_host = "0.0.0.0"  # noqa: S104 — leader always binds all interfaces
+    try:
+        from maxim.runtime.leader_mode import detect_role
+
+        bind_host = detect_role().bind_host
+    except Exception as e:
+        logger.debug("Could not detect leader role for bind_host: %s", e)
+
+    n_ctx = cfg.n_ctx if cfg.n_ctx > 0 else 8192
+    spawner = LocalServerSpawner(
+        model_path=model_path,
+        port=port,
+        bind_host=bind_host,
+        n_ctx=n_ctx,
+        n_gpu_layers=cfg.n_gpu_layers,
+        api_key=api_key,
+    )
+
+    if logger_obj is not None:
+        logger_obj.info(
+            "LLM swap: starting %s (port=%d, n_ctx=%d)",
+            Path(model_path).name,
+            port,
+            n_ctx,
+        )
+
+    t0 = _time.time()
+    url = spawner.start(timeout_s=120.0)
+    startup_s = round(_time.time() - t0, 1)
+    if url is None:
+        raise RuntimeError(
+            f"Server failed to start for model '{Path(model_path).name}'. "
+            "Check GPU memory — the model may be too large."
+        )
+    return spawner, startup_s, n_ctx
+
+
 def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
     """Hot-swap the llama-cpp-server to a different model.
 
@@ -1003,38 +1126,8 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
     Raises ValueError for client errors (400-level) and RuntimeError for
     server errors (500-level).
     """
-    import time as _time
-
-    from maxim.models.language.config import (
-        _BUILTIN_PROFILES,
-        list_llm_profiles,
-        load_llm_config,
-        normalize_llm_profile,
-    )
-    from maxim.runtime.local_server_spawner import LocalServerSpawner
-
-    # Mutable globals live in _server_mod (llm_server.py) — single source of truth
-
-    # Resolve profile name
-    resolved = normalize_llm_profile(profile)
-    if not resolved:
-        raise ValueError("Empty model name")
-
-    profile_data = _BUILTIN_PROFILES.get(resolved, {})
-
-    # Block cloud profiles
-    if profile_data.get("cloud"):
-        raise ValueError(f"Profile '{resolved}' is a cloud provider — cannot run on llama-cpp-server")
-
-    # Block non-llama_cpp backends
-    backend = profile_data.get("backend", "llama_cpp")
-    if backend not in ("llama_cpp", "llamacpp", "llama"):
-        raise ValueError(f"Profile '{resolved}' uses {backend} backend — not compatible with llama-cpp-server")
-
-    # Validate profile exists
-    available = list_llm_profiles()
-    if available and resolved not in available:
-        raise ValueError(f"Unknown model profile: {profile}. Available: {', '.join(sorted(available))}")
+    # Validate + resolve target before touching any globals
+    resolved, _profile_data = _validate_swap_profile(profile)
 
     # Acquire swap lock (non-blocking — reject concurrent swaps)
     if not _swap_lock.acquire(blocking=False):
@@ -1046,24 +1139,11 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
             _server_mod._active_model
             and _server_mod._active_model == resolved
             and _server_mod._active_spawner is not None
+            and _server_mod._active_spawner.is_running
         ):
-            if _server_mod._active_spawner.is_running:
-                return {
-                    "status": "already_running",
-                    "model": resolved,
-                }
+            return {"status": "already_running", "model": resolved}
 
-        # Resolve GGUF path
-        try:
-            cfg = load_llm_config(profile_override=resolved)
-            model_path = getattr(cfg, "model_path", "")
-        except Exception as e:
-            raise ValueError(f"Failed to resolve profile '{resolved}': {e}") from e
-
-        if not model_path or not Path(model_path).is_file():
-            raise FileNotFoundError(
-                f"GGUF not found: {model_path}|Run on leader: python -m maxim.models.download --llm {resolved}"
-            )
+        cfg, model_path = _resolve_swap_target(resolved)
 
         # Determine port and API key (reuse current config)
         try:
@@ -1077,66 +1157,21 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
 
             api_key = read_key()
         except Exception as e:
-            logger.warning("Failed to read tunnel API key for swap: %s", e)
+            if logger is not None:
+                logger.warning("Failed to read tunnel API key for swap: %s", e)
 
         previous_model = _server_mod._active_model or "none"
 
-        # Drain in-flight requests (best-effort, 5s max)
-        try:
-            from maxim.models.language.lane_metrics import get_metrics_registry
+        _drain_in_flight_requests(deadline_s=5.0)
+        _stop_active_server(logger)
 
-            metrics = get_metrics_registry().get("large")
-            deadline = _time.time() + 5.0
-            while metrics.current_in_flight > 0 and _time.time() < deadline:
-                _time.sleep(0.25)
-        except Exception:
-            pass
-
-        # Stop current server
-        if _server_mod._active_spawner is not None:
-            if logger is not None:
-                logger.info("LLM swap: stopping current server (model=%s)", _server_mod._active_model)
-            _server_mod._active_spawner.stop()
-            _server_mod._active_spawner = None
-            _server_mod._active_model = None
-
-        # Detect bind host
-        bind_host = "0.0.0.0"  # noqa: S104 — leader always binds all interfaces
-        try:
-            from maxim.runtime.leader_mode import detect_role
-
-            role_decision = detect_role()
-            bind_host = role_decision.bind_host
-        except Exception:
-            pass
-
-        # Start new server
-        n_ctx = cfg.n_ctx if cfg.n_ctx > 0 else 8192
-        spawner = LocalServerSpawner(
+        spawner, startup_s, n_ctx = _start_swap_server(
+            cfg=cfg,
             model_path=model_path,
-            port=port,
-            bind_host=bind_host,
-            n_ctx=n_ctx,
-            n_gpu_layers=cfg.n_gpu_layers,
             api_key=api_key,
+            port=port,
+            logger_obj=logger,
         )
-
-        if logger is not None:
-            logger.info(
-                "LLM swap: starting %s (port=%d, n_ctx=%d)",
-                Path(model_path).name,
-                port,
-                n_ctx,
-            )
-
-        t0 = _time.time()
-        url = spawner.start(timeout_s=120.0)
-        startup_s = round(_time.time() - t0, 1)
-
-        if url is None:
-            raise RuntimeError(
-                f"Server failed to start for model '{resolved}'. Check GPU memory — the model may be too large."
-            )
 
         _server_mod._active_spawner = spawner
         _server_mod._active_model = resolved
@@ -1152,8 +1187,8 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
                 router.update_provider_n_ctx("local", n_ctx)
                 if logger is not None:
                     logger.info("LLM swap: updated router n_ctx to %d", n_ctx)
-        except Exception:
-            pass  # Best-effort — router may not be accessible
+        except Exception as e:
+            logger.debug("Could not update router n_ctx after swap: %s", e)
 
         return {
             "status": "swapped",
@@ -1247,15 +1282,13 @@ def _maybe_start_leader_proxy(
 
 
 def _print_lane_banner(manager: "LaneBackendManager") -> None:
-    """Emit a compact, always-visible banner showing per-lane backend assignments.
+    """Emit a compact banner showing per-lane backend assignments.
 
-    Printed directly so it bypasses the application logger (which may be
-    configured to filter INFO). Keeps users oriented about which backend each
-    lane is actually using — answers "is it really talking to my server?"
-    at a glance.
+    Logged at INFO level so users see which backend each lane is using —
+    answers "is it really talking to my server?" at a glance. CLI users
+    with default verbosity (>=1) see this; library users can suppress
+    via ``logging.getLogger("maxim").setLevel(logging.WARNING)``.
     """
-    import sys
-
     info = manager.describe()
     lines = [" " + "─" * 62, "  Maxim LLM lanes"]
     for lane, data in info.items():
@@ -1270,8 +1303,7 @@ def _print_lane_banner(manager: "LaneBackendManager") -> None:
             descr = f"{kind:<7} {url}"
         lines.append(f"  {lane:<7} {descr}")
     lines.append(" " + "─" * 62)
-    for line in lines:
-        print(line, file=sys.stderr)
+    logger.info("\n".join(lines))
 
 
 __all__ = ["LaneBackendManager", "BackendGateError", "build_primary_router"]

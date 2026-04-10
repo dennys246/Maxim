@@ -35,6 +35,18 @@ import urllib.request
 _BRANCH_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]*$")
 
 
+def _remote_update_allowed() -> bool:
+    """True iff ``MAXIM_ALLOW_REMOTE_UPDATE`` is set to a truthy value."""
+    return os.environ.get("MAXIM_ALLOW_REMOTE_UPDATE", "").strip().lower() in (
+        "1",
+        "true",
+        "t",
+        "yes",
+        "y",
+        "on",
+    )
+
+
 def _validate_branch(branch: str) -> str:
     """Validate and return a sanitized branch name.
 
@@ -636,43 +648,19 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         Accepts JSON body: {"branch": "main", "dry_run": true/false}
         dry_run=true (default) previews pending commits without applying.
         """
-        if os.environ.get("MAXIM_ALLOW_REMOTE_UPDATE", "").strip().lower() not in (
-            "1",
-            "true",
-            "t",
-            "yes",
-            "y",
-            "on",
-        ):
+        if not _remote_update_allowed():
             self._send_json(
                 403,
-                {
-                    "error": "Remote update disabled. Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader.",
-                },
+                {"error": "Remote update disabled. Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader."},
             )
             return
 
-        # Parse request body (small limit — admin requests are tiny)
-        raw = self._read_body(max_size=4096)
-        body: dict[str, Any] = {}
-        if raw:
-            try:
-                body = json.loads(raw)
-            except Exception:
-                pass
+        params = self._parse_admin_update_body()
+        if params is None:
+            return  # error response already sent
+        branch, dry_run, force = params
 
-        raw_branch = body.get("branch", "main")
-        try:
-            branch = _validate_branch(raw_branch)
-        except ValueError as e:
-            self._send_json(400, {"error": f"Invalid branch: {e}"})
-            return
-        dry_run = body.get("dry_run", True)
-        force = body.get("force", False)
-
-        # Find repo root (leader_proxy.py is in src/maxim/runtime/)
         repo_root = str(Path(__file__).resolve().parents[3])
-
         logger.info(
             "admin/update: peer=%s branch=%s dry_run=%s force=%s repo=%s",
             self.client_address[0],
@@ -682,71 +670,17 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             repo_root,
         )
 
-        # Check for dirty working tree
-        stashed = False
-        try:
-            status = subprocess.run(
-                ["git", "status", "--porcelain"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                cwd=repo_root,
-            )
-            if status.stdout.strip():
-                if force:
-                    # Stash changes so pull can proceed
-                    stash_result = subprocess.run(
-                        ["git", "stash", "--include-untracked"],
-                        capture_output=True,
-                        text=True,
-                        timeout=10,
-                        cwd=repo_root,
-                    )
-                    stashed = stash_result.returncode == 0 and bool(stash_result.stdout.strip())
-                    logger.info("admin/update: stashed dirty tree (stashed=%s)", stashed)
-                else:
-                    self._send_json(
-                        409,
-                        {
-                            "error": "Working tree is dirty. Commit or stash changes first.",
-                            "hint": "Use: maxim peer update --force (stashes and restores automatically)",
-                            "dirty_files": status.stdout.strip().split("\n"),
-                        },
-                    )
-                    return
-        except Exception as e:
-            logger.exception("git status failed: %s", e)
-            self._send_json(500, {"error": "git status check failed"})
-            return
+        # 1. Stash dirty tree if --force; bail with 409 otherwise
+        stashed = self._stash_if_dirty(repo_root, force)
+        if stashed is None:
+            return  # error response already sent
 
-        # Fetch latest
-        try:
-            subprocess.run(
-                ["git", "fetch", "origin", branch],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                cwd=repo_root,
-                check=True,
-            )
-        except Exception as e:
-            logger.exception("git fetch failed: %s", e)
-            self._send_json(500, {"error": "git fetch failed"})
-            return
+        # 2. Fetch latest from origin
+        if not self._fetch_branch(repo_root, branch):
+            return  # error response already sent
 
-        # Preview: what commits are pending?
-        try:
-            log_result = subprocess.run(
-                ["git", "log", f"HEAD..origin/{branch}", "--oneline"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                cwd=repo_root,
-            )
-            pending = log_result.stdout.strip().split("\n") if log_result.stdout.strip() else []
-        except Exception:
-            pending = []
-
+        # 3. Compute pending commits + handle dry-run / up-to-date paths
+        pending = self._list_pending_commits(repo_root, branch)
         if not pending:
             self._send_json(
                 200,
@@ -757,7 +691,6 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 },
             )
             return
-
         if dry_run:
             self._send_json(
                 200,
@@ -770,7 +703,148 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             )
             return
 
-        # Apply: git pull
+        # 4. Apply git pull (with stash restore on failure)
+        if not self._apply_git_pull(repo_root, branch, stashed):
+            return  # error response already sent
+
+        if stashed:
+            subprocess.run(
+                ["git", "stash", "pop"],
+                capture_output=True,
+                timeout=10,
+                cwd=repo_root,
+            )
+            logger.info("admin/update: restored stashed changes")
+
+        # 5. pip install + rollback on failure
+        pip_output = self._run_pip_install(repo_root)
+        if pip_output is None:
+            return  # error response already sent (with rollback status)
+
+        # 6. Record + reply success
+        if self.request_log is not None:
+            self.request_log.record(
+                {
+                    "type": "admin_update",
+                    "peer_ip": self.client_address[0],
+                    "branch": branch,
+                    "commits_applied": pending,
+                    "timestamp": time.time(),
+                }
+            )
+        logger.info("admin/update: SUCCESS — %d commits applied from origin/%s", len(pending), branch)
+        self._send_json(
+            200,
+            {
+                "status": "updated",
+                "branch": branch,
+                "commits_applied": pending,
+                "pip_output": pip_output,
+                "message": f"Applied {len(pending)} commit(s). Restart maxim to load new code.",
+            },
+        )
+
+    def _parse_admin_update_body(self) -> tuple[str, bool, bool] | None:
+        """Parse the JSON body and validate the branch name.
+
+        Returns ``(branch, dry_run, force)`` or ``None`` if a 400 has
+        already been sent.
+        """
+        raw = self._read_body(max_size=4096)
+        body: dict[str, Any] = {}
+        if raw:
+            try:
+                body = json.loads(raw)
+            except Exception as e:
+                logger.debug("admin/update: ignoring malformed JSON body: %s", e)
+
+        raw_branch = body.get("branch", "main")
+        try:
+            branch = _validate_branch(raw_branch)
+        except ValueError as e:
+            self._send_json(400, {"error": f"Invalid branch: {e}"})
+            return None
+        return branch, bool(body.get("dry_run", True)), bool(body.get("force", False))
+
+    def _stash_if_dirty(self, repo_root: str, force: bool) -> bool | None:
+        """Stash dirty working tree under ``--force``; bail with 409 otherwise.
+
+        Returns ``True`` if a stash was created, ``False`` if the tree was
+        clean, or ``None`` if a 4xx/5xx error response has already been sent.
+        """
+        try:
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=repo_root,
+            )
+        except Exception as e:
+            logger.exception("git status failed: %s", e)
+            self._send_json(500, {"error": "git status check failed"})
+            return None
+
+        if not status.stdout.strip():
+            return False
+
+        if not force:
+            self._send_json(
+                409,
+                {
+                    "error": "Working tree is dirty. Commit or stash changes first.",
+                    "hint": "Use: maxim peer update --force (stashes and restores automatically)",
+                    "dirty_files": status.stdout.strip().split("\n"),
+                },
+            )
+            return None
+
+        stash_result = subprocess.run(
+            ["git", "stash", "--include-untracked"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=repo_root,
+        )
+        stashed = stash_result.returncode == 0 and bool(stash_result.stdout.strip())
+        logger.info("admin/update: stashed dirty tree (stashed=%s)", stashed)
+        return stashed
+
+    def _fetch_branch(self, repo_root: str, branch: str) -> bool:
+        """``git fetch origin <branch>``. Returns False after sending a 500."""
+        try:
+            subprocess.run(
+                ["git", "fetch", "origin", branch],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=repo_root,
+                check=True,
+            )
+            return True
+        except Exception as e:
+            logger.exception("git fetch failed: %s", e)
+            self._send_json(500, {"error": "git fetch failed"})
+            return False
+
+    @staticmethod
+    def _list_pending_commits(repo_root: str, branch: str) -> list[str]:
+        """Return the list of ``HEAD..origin/<branch>`` commit lines (oneline)."""
+        try:
+            log_result = subprocess.run(
+                ["git", "log", f"HEAD..origin/{branch}", "--oneline"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=repo_root,
+            )
+            return log_result.stdout.strip().split("\n") if log_result.stdout.strip() else []
+        except Exception as e:
+            logger.debug("git log HEAD..origin/%s failed: %s", branch, e)
+            return []
+
+    def _apply_git_pull(self, repo_root: str, branch: str, stashed: bool) -> bool:
+        """``git pull --rebase``. Restores stash and sends 500 on failure."""
         try:
             subprocess.run(
                 ["git", "-c", "pull.rebase=true", "pull", "origin", branch],
@@ -780,8 +854,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 cwd=repo_root,
                 check=True,
             )
+            return True
         except subprocess.CalledProcessError as e:
-            # Restore stashed changes before reporting failure
             if stashed:
                 subprocess.run(
                     ["git", "stash", "pop"],
@@ -797,20 +871,14 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     "stderr": _sanitize_git_output(e.stderr),
                 },
             )
-            return
+            return False
 
-        # Restore stashed changes after successful pull
-        if stashed:
-            subprocess.run(
-                ["git", "stash", "pop"],
-                capture_output=True,
-                timeout=10,
-                cwd=repo_root,
-            )
-            logger.info("admin/update: restored stashed changes")
+    def _run_pip_install(self, repo_root: str) -> str | None:
+        """Run ``pip install -e .`` and roll back on failure.
 
-        # pip install -e .
-        pip_output = ""
+        Returns the (truncated) pip stdout on success, or ``None`` if an
+        error response has already been sent (with rollback status).
+        """
         try:
             pip_result = subprocess.run(
                 [sys.executable, "-m", "pip", "install", "-e", "."],
@@ -819,73 +887,47 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 timeout=120,
                 cwd=repo_root,
             )
-            pip_output = pip_result.stdout[-500:] if pip_result.stdout else ""
-            if pip_result.returncode != 0:
-                # Rollback: revert git and reinstall
-                rollback = subprocess.run(
-                    ["git", "checkout", "HEAD~1"],
-                    capture_output=True,
-                    timeout=10,
-                    cwd=repo_root,
-                )
-                rollback_ok = rollback.returncode == 0
-                reinstall = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-e", "."],
-                    capture_output=True,
-                    timeout=120,
-                    cwd=repo_root,
-                )
-                reinstall_ok = reinstall.returncode == 0
-                if not rollback_ok or not reinstall_ok:
-                    logger.error(
-                        "admin/update: ROLLBACK INCOMPLETE — git=%s pip=%s",
-                        "ok" if rollback_ok else "FAILED",
-                        "ok" if reinstall_ok else "FAILED",
-                    )
-                rollback_status = "complete" if (rollback_ok and reinstall_ok) else "INCOMPLETE"
-                self._send_json(
-                    500,
-                    {
-                        "error": f"pip install failed, rollback {rollback_status}",
-                        "pip_stderr": _sanitize_git_output(pip_result.stderr),
-                        "rollback_git": "ok" if rollback_ok else "failed",
-                        "rollback_pip": "ok" if reinstall_ok else "failed",
-                    },
-                )
-                return
         except Exception as e:
             logger.exception("pip install failed: %s", e)
             self._send_json(500, {"error": "pip install failed"})
-            return
+            return None
 
-        # Log to request ring buffer
-        if self.request_log is not None:
-            self.request_log.record(
-                {
-                    "type": "admin_update",
-                    "peer_ip": self.client_address[0],
-                    "branch": branch,
-                    "commits_applied": pending,
-                    "timestamp": time.time(),
-                }
-            )
+        pip_output = pip_result.stdout[-500:] if pip_result.stdout else ""
+        if pip_result.returncode == 0:
+            return pip_output
 
-        logger.info(
-            "admin/update: SUCCESS — %d commits applied from origin/%s",
-            len(pending),
-            branch,
+        # Rollback: revert git + reinstall
+        rollback = subprocess.run(
+            ["git", "checkout", "HEAD~1"],
+            capture_output=True,
+            timeout=10,
+            cwd=repo_root,
         )
-
+        rollback_ok = rollback.returncode == 0
+        reinstall = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-e", "."],
+            capture_output=True,
+            timeout=120,
+            cwd=repo_root,
+        )
+        reinstall_ok = reinstall.returncode == 0
+        if not rollback_ok or not reinstall_ok:
+            logger.error(
+                "admin/update: ROLLBACK INCOMPLETE — git=%s pip=%s",
+                "ok" if rollback_ok else "FAILED",
+                "ok" if reinstall_ok else "FAILED",
+            )
+        rollback_status = "complete" if (rollback_ok and reinstall_ok) else "INCOMPLETE"
         self._send_json(
-            200,
+            500,
             {
-                "status": "updated",
-                "branch": branch,
-                "commits_applied": pending,
-                "pip_output": pip_output,
-                "message": f"Applied {len(pending)} commit(s). Restart maxim to load new code.",
+                "error": f"pip install failed, rollback {rollback_status}",
+                "pip_stderr": _sanitize_git_output(pip_result.stderr),
+                "rollback_git": "ok" if rollback_ok else "failed",
+                "rollback_pip": "ok" if reinstall_ok else "failed",
             },
         )
+        return None
 
     def _handle_admin_restart(self) -> None:
         """POST /v1/admin/restart — soft-restart the maxim process via os.execv.

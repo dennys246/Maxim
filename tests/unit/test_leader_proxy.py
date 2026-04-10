@@ -311,11 +311,12 @@ class TestLogBuffer:
 
 class TestVersionInfo:
     def test_returns_version(self):
+        import maxim
         from maxim import get_version_info
 
         info = get_version_info()
         assert "version" in info
-        assert info["version"] == "1.0.0"
+        assert info["version"] == maxim.__version__
 
     def test_includes_git_hash(self):
         from maxim import get_version_info
@@ -333,11 +334,12 @@ class TestVersionInfo:
         assert len(info["git_message"]) > 0
 
     def test_handles_missing_git(self):
+        import maxim
         from maxim import get_version_info
 
         with patch("subprocess.run", side_effect=FileNotFoundError):
             info = get_version_info()
-        assert info["version"] == "1.0.0"
+        assert info["version"] == maxim.__version__
         assert "git_hash" not in info
 
 

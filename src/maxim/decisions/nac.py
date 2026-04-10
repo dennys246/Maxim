@@ -414,31 +414,38 @@ class NAc:
     ) -> CausalLink:
         """Directly observe a complete causal relationship.
 
-        Use this when you have both the event and outcome together.
+        Use this when you have both the event and outcome together — for
+        example, when recording a plan outcome where you already know the
+        tool that was called and whether it succeeded. Unlike
+        :meth:`record_outcome`, this does NOT require the event to have
+        been previously enqueued in ``_pending_events``; it creates the
+        causal link directly.
         """
         context = context or {}
         ctx_hash = self._hash_context(context)
         link_id = self._generate_link_id(event_signature, outcome_signature, ctx_hash)
 
-        event_links = self._links.setdefault(event_signature, [])
+        with self._lock:
+            event_links = self._links.setdefault(event_signature, [])
 
-        # Find or create link
-        existing_link = None
-        for link in event_links:
-            if link.id == link_id:
-                existing_link = link
-                break
+            # Find or create link
+            existing_link = None
+            for link in event_links:
+                if link.id == link_id:
+                    existing_link = link
+                    break
 
-        if existing_link:
-            existing_link.record_observation(
-                delta_seconds=delta_seconds,
-                valence=outcome_valence,
-                memory_id=memory_id,
-                context=context,
-            )
-            existing_link.update_prediction_rw(outcome_valence, learning_rate=self.config.base_learning_rate)
-            return existing_link
-        else:
+            if existing_link:
+                existing_link.record_observation(
+                    delta_seconds=delta_seconds,
+                    valence=outcome_valence,
+                    memory_id=memory_id,
+                    context=context,
+                )
+                existing_link.update_prediction_rw(outcome_valence, learning_rate=self.config.base_learning_rate)
+                self._total_observations += 1
+                return existing_link
+
             new_link = CausalLink(
                 id=link_id,
                 event_type=event_type,
@@ -451,6 +458,12 @@ class NAc:
                 observation_count=1,
                 confidence=0.5,
                 memory_ids=[memory_id] if memory_id else [],
+            )
+            # Bootstrap RPE on first observation so callers
+            # can gauge surprise even for novel events.
+            new_link.update_prediction_rw(
+                outcome_valence,
+                learning_rate=self.config.base_learning_rate,
             )
             event_links.append(new_link)
             self._outcome_index.setdefault(outcome_signature, set()).add(link_id)

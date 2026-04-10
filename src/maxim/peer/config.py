@@ -10,7 +10,7 @@ Fields:
   is_cloud     — optional; forces MAXIM_MAX_CLOUD_LANES=1 for public URLs
 
 `build_primary_router` consults this file at startup and uses its values
-as defaults for the infer-lane remote config. Env vars (MAXIM_LANE_INFER_*)
+as defaults for the large-lane remote config. Env vars (MAXIM_LANE_LARGE_*)
 still override these — so users can do per-session tweaks without touching
 the file.
 """
@@ -105,12 +105,17 @@ def delete_peer_config() -> bool:
 
 
 def apply_peer_config_to_env(cfg: PeerConfig) -> None:
-    """Set MAXIM_LANE_INFER_* env vars from a peer config, without overwriting
-    any that are already set (env wins over file for per-session overrides)."""
-    os.environ.setdefault("MAXIM_LANE_INFER_REMOTE_URL", cfg.url)
-    os.environ.setdefault("MAXIM_LANE_INFER_REMOTE_API_KEY", cfg.api_key)
+    """Set MAXIM_LANE_LARGE_* env vars from a peer config, without overwriting
+    any that are already set (env wins over file for per-session overrides).
+
+    Note: the variable name family is keyed off the canonical lane tier name
+    (``large``). Earlier code wrote ``MAXIM_LANE_INFER_*`` as a legacy alias;
+    that fallback was removed in v1.0.0 along with the matching read code.
+    """
+    os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_URL", cfg.url)
+    os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_API_KEY", cfg.api_key)
     if cfg.model:
-        os.environ.setdefault("MAXIM_LANE_INFER_REMOTE_MODEL", cfg.model)
+        os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_MODEL", cfg.model)
     # Peer connections are to your own infrastructure — even if the URL
     # resolves to a public IP (Cloudflare tunnel), it's not a cloud
     # provider. Mark it as peer-owned so lane_backends treats it as

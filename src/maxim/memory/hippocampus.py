@@ -360,82 +360,122 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         Returns:
             The memory_id of the captured memory.
         """
-        if record is not None:
-            # Pre-built path: use record directly
-            memory = record
-            memory_id = memory.id
-        else:
-            # Existing path: construct from individual args
-            memory_id = str(uuid4())
-            now = time.time()
-
-            # Store state snapshot and get reference
-            if state_snapshot is not None:
-                if context is None:
-                    context = Context()
-                context.state_ref = self._state_store.store(state_snapshot)
-
-            # Clamp salience to valid range
-            if perception is not None and perception.salience is not None:
-                perception.salience = max(0.0, min(1.0, perception.salience))
-
-            # Create the memory
-            memory = EpisodicMemory(
-                id=memory_id,
-                timestamp=now,
-                run_id=run_id,
-                created_at=now,
-                accessed_at=now,
-                access_count=1,
-                perception=perception or Perception(),
-                context=context or Context(),
-                decision=decision or Decision(),
-                action=action or Action(),
-                outcome=outcome or Outcome(),
-            )
+        memory_id, memory = self._build_capture_record(
+            perception=perception,
+            context=context,
+            decision=decision,
+            action=action,
+            outcome=outcome,
+            run_id=run_id,
+            record=record,
+            state_snapshot=state_snapshot,
+        )
 
         with self._rwlock.write():
-            # Capacity check — evict before insert
-            if len(self._memories) >= self.config.max_nodes:
-                self._evict_one()
+            self._insert_and_index_locked(memory_id, memory)
 
-            # Store the memory
-            self._memories[memory_id] = memory
+        self._emit_capture_telemetry(memory_id, memory)
+        return memory_id
 
-            # Build index entries
-            self._index_memory(memory_id, memory)
+    def _build_capture_record(
+        self,
+        *,
+        perception: Perception | None,
+        context: Context | None,
+        decision: Decision | None,
+        action: Action | None,
+        outcome: Outcome | None,
+        run_id: str,
+        record: EpisodicMemory | None,
+        state_snapshot: dict[str, Any] | None,
+    ) -> tuple[str, EpisodicMemory]:
+        """Build a capture-ready (id, EpisodicMemory) tuple.
 
-            # Update stats
-            self._stats["memories_captured"] += 1
+        Two paths: a pre-built record passes through unchanged, otherwise
+        the individual percept/decision/action/outcome args are normalized
+        and wrapped in a fresh ``EpisodicMemory``. Pre-lock so callers can
+        keep critical-section work to the minimum.
+        """
+        if record is not None:
+            return record.id, record
 
-            if memory.outcome.success:
-                self._stats["successful"] = self._stats.get("successful", 0) + 1
-            else:
-                self._stats["failed"] = self._stats.get("failed", 0) + 1
+        memory_id = str(uuid4())
+        now = time.time()
 
-            # Check for immediate promotion to long-term (very high importance)
-            if (
-                memory.perception.salience >= self.config.immediate_promotion_salience
-                or memory.perception.novelty >= self.config.immediate_promotion_novelty
-            ):
-                memory.long_term = True
-                memory.consolidated_at = time.time()
-                self._stats["long_term_count"] = self._stats.get("long_term_count", 0) + 1
-                logger.debug("Immediately promoted memory %s to long-term", memory_id[:8])
+        # Store state snapshot and get reference
+        if state_snapshot is not None:
+            if context is None:
+                context = Context()
+            context.state_ref = self._state_store.store(state_snapshot)
 
-            # Add to consolidation candidates if potentially important
-            elif (
-                memory.perception.salience > 0.7
-                or memory.perception.novelty > 0.7
-                or memory.perception.cli_input
-                or memory.perception.transcript
-            ):
-                self._add_consolidation_candidate(memory_id)
+        # Clamp salience to valid range
+        if perception is not None and perception.salience is not None:
+            perception.salience = max(0.0, min(1.0, perception.salience))
 
-            # Form associative edges to similar recalled memories
-            if self.config.enable_associative_graph:
-                self._form_associations(memory_id, memory)
+        memory = EpisodicMemory(
+            id=memory_id,
+            timestamp=now,
+            run_id=run_id,
+            created_at=now,
+            accessed_at=now,
+            access_count=1,
+            perception=perception or Perception(),
+            context=context or Context(),
+            decision=decision or Decision(),
+            action=action or Action(),
+            outcome=outcome or Outcome(),
+        )
+        return memory_id, memory
 
+    def _insert_and_index_locked(self, memory_id: str, memory: EpisodicMemory) -> None:
+        """Insert + index a memory inside the write lock.
+
+        Caller must hold ``self._rwlock.write()``. Handles capacity
+        eviction, indexing, stats bookkeeping, immediate-promotion checks,
+        consolidation-candidate enrollment, and associative-graph linking.
+        """
+        # Capacity check — evict before insert
+        if len(self._memories) >= self.config.max_nodes:
+            self._evict_one()
+
+        self._memories[memory_id] = memory
+        self._index_memory(memory_id, memory)
+
+        # Update stats
+        self._stats["memories_captured"] += 1
+        if memory.outcome.success:
+            self._stats["successful"] = self._stats.get("successful", 0) + 1
+        else:
+            self._stats["failed"] = self._stats.get("failed", 0) + 1
+
+        # Check for immediate promotion to long-term (very high importance)
+        if (
+            memory.perception.salience >= self.config.immediate_promotion_salience
+            or memory.perception.novelty >= self.config.immediate_promotion_novelty
+        ):
+            memory.long_term = True
+            memory.consolidated_at = time.time()
+            self._stats["long_term_count"] = self._stats.get("long_term_count", 0) + 1
+            logger.debug("Immediately promoted memory %s to long-term", memory_id[:8])
+        elif (
+            memory.perception.salience > 0.7
+            or memory.perception.novelty > 0.7
+            or memory.perception.cli_input
+            or memory.perception.transcript
+        ):
+            self._add_consolidation_candidate(memory_id)
+
+        # Form associative edges to similar recalled memories
+        if self.config.enable_associative_graph:
+            self._form_associations(memory_id, memory)
+
+    def _emit_capture_telemetry(self, memory_id: str, memory: EpisodicMemory) -> None:
+        """Emit logging, sim traces, and capture-callback notifications.
+
+        Runs after the write lock is released so callbacks don't deadlock
+        or block other captures. Best-effort: callback failures are logged
+        as warnings, sim-logger failures as debug.
+        """
         logger.debug(
             "Captured memory %s: goal=%s, tool=%s, success=%s",
             memory_id[:8],
@@ -456,8 +496,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 sim_debug("HIPPOCAMPUS", msg, goal=memory.context.active_goal, success=memory.outcome.success)
             else:
                 sim_memory(msg, goal=memory.context.active_goal, success=memory.outcome.success)
-        except Exception:
-            pass  # sim logger is optional — not loaded outside simulations
+        except Exception as e:
+            logger.debug("sim_logger unavailable for capture trace: %s", e)
 
         # Notify capture callbacks (e.g., for semantic embedding)
         for callback in self._on_memory_captured:
@@ -465,8 +505,6 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 callback(memory_id, memory)
             except Exception as e:
                 logger.warning("Memory capture callback failed: %s", e)
-
-        return memory_id
 
     def store_observation(self, text: str, metadata: dict[str, Any] | None = None) -> str:
         """Lightweight observation capture for NPC agents.

@@ -263,8 +263,8 @@ def start_simulation_mode(
 
         log_path = str(sim_workspace / f"sim_agent_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
         enable_sim_logging(log_path=log_path, debug=debug)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to enable sim logging — sim will run but no JSONL trace: %s", e)
 
     # Build AUT pain bus + sandbox together. The pain bus MUST exist
     # before the sandbox so PainTriggerLayer can route signals; this
@@ -1286,24 +1286,24 @@ def start_simulation_mode(
         stop_event.set()
         bridge.finish()
         orchestrator_source.finish()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Error while signalling shutdown: %s", e, exc_info=True)
 
     display_status("Waiting for AUT to finish...")
     try:
         aut_thread.join(timeout=5.0)
         if aut_thread.is_alive():
             display_status("AUT thread did not stop in time (continuing anyway)")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Error joining AUT thread during shutdown: %s", e, exc_info=True)
 
     display_status("Stopping LLM workers...")
     for worker in (aut_llm_worker, orch_llm_worker):
         if worker:
             try:
                 worker.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Error stopping LLM worker during shutdown: %s", e, exc_info=True)
 
     # Persist orchestrator memory (Phase 3: cross-session learning)
     if orch_hippocampus is not None:
@@ -1321,16 +1321,16 @@ def start_simulation_mode(
             display_status(f"Pain signals fired: {pain_count}")
         try:
             sim_sandbox.cleanup()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Sandbox cleanup failed: %s", e, exc_info=True)
 
     # Disable sim logging
     try:
         from maxim.simulation.sim_logger import disable_sim_logging
 
         disable_sim_logging()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("disable_sim_logging failed: %s", e)
 
     # ── Build comprehensive report ──────────────────────────────────────
     from maxim.simulation.report import (
@@ -1450,8 +1450,8 @@ def start_simulation_mode(
                 _inner = getattr(_inner, _attr)
         if hasattr(_inner, "tool_usage_stats"):
             _tool_stats = _inner.tool_usage_stats()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to collect tool_usage_stats for SimulationResult: %s", e, exc_info=True)
 
     # Serialized action history
     _actions: list[dict[str, Any]] = []
@@ -1468,16 +1468,16 @@ def start_simulation_mode(
                     "block_reason": a.block_reason,
                 }
             )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to serialize action history for SimulationResult: %s", e, exc_info=True)
 
     # Subsystem snapshot
     _snapshot: dict[str, Any] = {}
     if aut_introspector is not None:
         try:
             _snapshot = aut_introspector.benchmark_snapshot()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to collect subsystem snapshot for SimulationResult: %s", e, exc_info=True)
 
     # JSON parse compliance
     _router_stats: dict[str, Any] = {}
@@ -1485,8 +1485,8 @@ def start_simulation_mode(
         from maxim.models.language.json_parser import json_parse_stats
 
         _router_stats = json_parse_stats()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("json_parse_stats unavailable: %s", e)
 
     _session_dir = str(Path(report_dir) / report.session_id)
 

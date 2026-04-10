@@ -253,8 +253,8 @@ def run_precampaign_turns(
 
         atomic_write_json(str(analysis_path), campaign_analysis)
         display_status(f"Analysis saved: {analysis_path}")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to save campaign analysis: %s", e, exc_info=True)
 
     display_status("Post-campaign analysis complete.")
     return campaign_analysis
