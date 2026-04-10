@@ -128,9 +128,11 @@ class ModeSwitchTool(Tool):
 class AutonomyLevelTool(Tool):
     """Tool for requesting autonomy level changes.
 
-    In PLANNING mode, this queues a request for human approval.
-    In SUPERVISED mode, escalation is automatic, de-escalation requires approval.
-    In AUTONOMOUS mode, self-escalation to PLANNING is always allowed.
+    Gaining autonomy (planning → supervised → autonomous) requires
+    human approval — the agent is requesting more power.
+
+    Reducing autonomy (autonomous → supervised → planning) is
+    immediate — the agent is voluntarily giving up power.
     """
 
     name = "autonomy_level"
@@ -173,30 +175,60 @@ class AutonomyLevelTool(Tool):
                 metadata={"level": target_level.value, "was_change": False},
             )
 
-        # Escalation (more restrictive) is always allowed
+        # Autonomy ordering: planning(0) < supervised(1) < autonomous(2)
         level_order = {
-            AutonomyLevel.AUTONOMOUS: 2,
-            AutonomyLevel.SUPERVISED: 1,
             AutonomyLevel.PLANNING: 0,
+            AutonomyLevel.SUPERVISED: 1,
+            AutonomyLevel.AUTONOMOUS: 2,
         }
 
-        is_escalation = level_order[target_level] < level_order[current_level]
+        gaining_autonomy = level_order[target_level] > level_order[current_level]
 
-        if is_escalation:
-            # Immediate escalation
-            self._controller.set_level(target_level, reason or "agent-requested escalation")
+        if not gaining_autonomy:
+            # Reducing autonomy — always safe, immediate
+            self._controller.set_level(target_level, reason or "agent voluntarily reduced autonomy")
             return ToolResult(
                 success=True,
-                output=f"Escalated to {target_level.value} level",
+                output=f"Reduced autonomy to {target_level.value}",
                 metadata={
                     "level": target_level.value,
                     "previous_level": current_level.value,
                     "was_change": True,
-                    "type": "escalation",
+                    "type": "reduction",
                 },
             )
 
-        # De-escalation (more permissive) requires human approval
+        # Gaining autonomy — requires human approval (or auto-policy if non-interactive)
+        from maxim.simulation.sim_logger import should_prompt
+
+        if not should_prompt("autonomy_escalation"):
+            # Non-interactive: use auto-escalation policy
+            # Default: allow supervised, deny autonomous
+            if target_level == AutonomyLevel.SUPERVISED:
+                self._controller.set_level(target_level, reason or "auto-approved (supervised)")
+                return ToolResult(
+                    success=True,
+                    output=f"Auto-approved: {target_level.value} (non-interactive mode)",
+                    metadata={
+                        "level": target_level.value,
+                        "previous_level": current_level.value,
+                        "was_change": True,
+                        "type": "auto_approved",
+                    },
+                )
+            else:
+                return ToolResult(
+                    success=False,
+                    error=f"Autonomy escalation to {target_level.value} denied (non-interactive mode). "
+                    f"Only supervised level can be auto-approved.",
+                    metadata={
+                        "level": target_level.value,
+                        "previous_level": current_level.value,
+                        "type": "auto_denied",
+                    },
+                )
+
+        # Interactive: queue request for human approval
         request = self._controller.request_autonomy(
             target_level=target_level,
             duration_seconds=duration,
@@ -205,7 +237,7 @@ class AutonomyLevelTool(Tool):
 
         return ToolResult(
             success=True,
-            output=f"Requested {target_level.value} level (awaiting human approval)",
+            output=f"Requested {target_level.value} level: {reason or 'no reason given'} (awaiting approval)",
             metadata={
                 "level": target_level.value,
                 "previous_level": current_level.value,
