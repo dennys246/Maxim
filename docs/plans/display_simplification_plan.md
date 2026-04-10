@@ -2,9 +2,11 @@
 
 **Goal:** Replace 4 overlapping output systems and 5+ display flags with two orthogonal flags that control what the user sees and how they interact. Default should be clean narrative with smart interactive behavior.
 
-**Status:** Planning  
+**Status:** Partially shipped (DisplayTier + sim_logger display system). `--interactive` reverted to boolean True/False — "auto" detection belongs in the simulation layer, not the CLI flag.  
 **Priority:** First post-publication UX improvement (v1.0.1)  
 **Estimated effort:** ~500 LOC across ~15 files
+
+> **Decision (2026-04-09):** `--interactive` stays as a boolean (True/False) controlling whether the runtime accepts user input. The "auto" concept (DM campaigns prompt, generative sims don't) is handled by the simulation layer internally based on campaign type — not exposed as a CLI flag value. The `InteractiveMode` enum in `sim_logger.py` still supports auto/on/off for the display system's internal use via `maxim.configure(interactive="on"/"off")`.
 
 ---
 

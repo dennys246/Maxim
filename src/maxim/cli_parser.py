@@ -25,10 +25,8 @@ def _build_parser() -> argparse.ArgumentParser:
     core.add_argument(
         "--interactive",
         type=str,
-        default="auto",
-        choices=["auto", "on", "off"],
-        help="Input mode: auto (DM campaigns prompt, generative sims don't, DEFAULT), "
-        "on (always prompt), off (never prompt — use policy defaults).",
+        default="true",
+        help="Enable interactive terminal input (True/False). Default: true.",
     )
     core.add_argument(
         "--verbosity",

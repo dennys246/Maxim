@@ -710,9 +710,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             if display_arg == "debug":
                 set_show_channels("all")
 
-            # Apply --interactive mode
-            interactive_arg = getattr(args, "interactive", "auto")
-            set_interactive_mode(interactive_arg)
+            # Apply --interactive mode to simulation display layer
+            # Runtime --interactive is boolean; sim display uses auto/on/off
+            _interactive_bool = bool(getattr(args, "interactive", True))
+            set_interactive_mode("on" if _interactive_bool else "off")
 
             # Apply --show channel filter (legacy, overrides if explicit)
             show_channels = getattr(args, "show_channels", None)
@@ -1307,7 +1308,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 mode=mode,
                 audio=audio_enabled,
                 audio_len=float(getattr(args, "audio_len", 5.0) or 5.0),
-                interactive=getattr(args, "interactive", "auto") != "off",
+                interactive=bool(getattr(args, "interactive", True)),
             )
 
             if mode == "sleep":

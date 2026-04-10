@@ -66,8 +66,8 @@ def configure(
         display: Output detail level.  ``"clean"`` (narrative only, default),
             ``"bio"`` (+ memory/learning annotations), ``"debug"``
             (+ full system traces).
-        interactive: Input mode.  ``"auto"`` (context-dependent, default),
-            ``"on"`` (always prompt), ``"off"`` (never prompt).
+        interactive: Input prompting.  ``"on"`` (prompt for user input),
+            ``"off"`` (headless — no prompts, use policy defaults).
 
     Example::
 

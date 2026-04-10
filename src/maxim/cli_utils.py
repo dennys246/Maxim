@@ -32,10 +32,13 @@ def normalize_args(args: argparse.Namespace) -> None:
     else:
         raise SystemExit(f"Invalid --audio value: {args.audio!r} (expected True/False)")
 
-    # --interactive: "auto" (default), "on", or "off"
-    interactive_raw = str(getattr(args, "interactive", "auto")).strip().lower()
-    if interactive_raw not in ("auto", "on", "off"):
-        raise SystemExit(f"Invalid --interactive value: {args.interactive!r} (expected auto/on/off)")
+    interactive_raw = str(getattr(args, "interactive", "true")).strip().lower()
+    if interactive_raw in ("1", "true", "t", "yes", "y", "on"):
+        args.interactive = True
+    elif interactive_raw in ("0", "false", "f", "no", "n", "off"):
+        args.interactive = False
+    else:
+        raise SystemExit(f"Invalid --interactive value: {args.interactive!r} (expected True/False)")
 
     if str(getattr(args, "mode", "active")).strip().lower() == "sleep":
         args.audio = True
@@ -285,7 +288,7 @@ def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
         "--audio_len",
         str(float(getattr(args, "audio_len", 5.0) or 5.0)),
         "--interactive",
-        str(getattr(args, "interactive", "auto")),
+        "true" if bool(getattr(args, "interactive", True)) else "false",
     ]
     language_model = str(getattr(args, "language_model", "") or "").strip()
     if language_model:
