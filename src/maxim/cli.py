@@ -1307,7 +1307,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 mode=mode,
                 audio=audio_enabled,
                 audio_len=float(getattr(args, "audio_len", 5.0) or 5.0),
-                interactive=bool(getattr(args, "interactive", True)),
+                interactive=getattr(args, "interactive", "auto") != "off",
             )
 
             if mode == "sleep":

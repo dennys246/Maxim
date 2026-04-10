@@ -285,7 +285,7 @@ def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
         "--audio_len",
         str(float(getattr(args, "audio_len", 5.0) or 5.0)),
         "--interactive",
-        "true" if bool(getattr(args, "interactive", True)) else "false",
+        str(getattr(args, "interactive", "auto")),
     ]
     language_model = str(getattr(args, "language_model", "") or "").strip()
     if language_model:

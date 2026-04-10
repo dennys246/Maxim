@@ -65,12 +65,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Data directory for run artifacts (default: 'data').",
     )
     core.add_argument(
-        "--interactive",
-        type=str,
-        default="true",
-        help="Enable interactive terminal input (True/False).",
-    )
-    core.add_argument(
         "--list-models",
         action="store_true",
         help="List available LLM model profiles and exit.",
