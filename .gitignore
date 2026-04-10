@@ -242,6 +242,9 @@ learned_bounds.json
 # Claude Code
 .claude/
 
+# Untracked local output directory
+outputs/
+
 # Runtime state (per-user, evolves locally)
 data/util/cost_state.json
 data/util/active_llm_model.txt

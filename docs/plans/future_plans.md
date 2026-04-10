@@ -2,13 +2,33 @@
 
 Master roadmap for Maxim development.
 
-**Last updated:** 2026-04-09
+**Last updated:** 2026-04-10
 
 ---
 
-## Current Focus: Publication
+## Current Focus: 0.2 Research Preview → Percept Substrate Refactor
 
-All pre-publication work is tracked in [foundational_buildout_plan.md](../archive/foundational_buildout_plan.md). Version is v1.0.0 — ready to publish.
+**Versioning reset (2026-04-10):** Pulled the v1.0.0 label after a deep architectural review. Publishing as **0.2.0** as a research preview to claim the PyPI namespace and exercise packaging hygiene, while keeping refactor freedom. The 1.0 label is reserved for the version that can demonstrably improve on a task across sessions without fine-tuning the underlying LLM — see [percept_substrate_plan.md](percept_substrate_plan.md) for the path.
+
+**Why the label moved:** the bio-inspired stack is currently half-earned. NAc and Cerebellum implement genuine analogs of their brain namesakes; ATL, Angular Gyrus, SCN, and Default Network use the vocabulary without the cross-region mechanisms. The root cause is that percepts are not stored in a unified representation, so Hippocampus / EC / ATL run as parallel stores with bridges instead of an interlocking memory system. NAc learns causal links the agent loop never consults at decision time. Shipping 1.0 would lock in that gap. 0.2 keeps the door open.
+
+**Sequencing:**
+
+| Version | Theme | Status |
+|---------|-------|--------|
+| **0.2.0** | Research preview. Namespace claim. Two cosmetic packaging fixes. No architecture changes. | **READY** — fixes applied 2026-04-10 |
+| **0.3** | Unified `Percept` substrate. EC routes. ATL centroids in shared embedding space. No learning changes. Convergence test harness in place. | Planned — see [percept_substrate_plan.md](percept_substrate_plan.md) Phase 0.3 |
+| **0.4** | Reward-modulated Hebbian binding over the percept graph. NAc actually gates retrieval. Five convergence tests must pass. | Planned — Phase 0.4 |
+| **0.5** | Sleep-phase consolidation with energy-gated optional active search. `energy/` and `harm/` become load-bearing. | Planned — Phase 0.5 |
+| **1.0** | Stability promise. System demonstrably improves on a task across sessions without fine-tuning the LLM, with a test that proves it. | Reserved |
+
+The historical pre-publication phases (0–13a) are preserved below for context, but the 1.0 ship target they pointed at is no longer the target. They got the package into shape to *be publishable*; what they did not do is close the bio-stack ↔ decision-path gap. That is what 0.3–0.5 are for.
+
+---
+
+## Pre-Publication Phases (historical — completed but no longer the 1.0 target)
+
+All pre-publication work is tracked in [foundational_buildout_plan.md](../archive/foundational_buildout_plan.md). These phases shipped the package hygiene, public API surface, and architectural foundations needed to publish at all — they remain valid as the 0.2.0 baseline.
 
 **Summary:** Ship package hygiene, architectural foundations (multi-agent runtime, SEM component registry, encounter library, party DM mode), expanded public API, and publication prep. ~4,000 LOC across 12 phases.
 
@@ -31,7 +51,35 @@ All pre-publication work is tracked in [foundational_buildout_plan.md](../archiv
 | 12b | [Pre-Publication Hardening](../archive/pre_publication_hardening_plan.md) — UX, errors, API fixes, tests, docs | **DONE** |
 | 13 | [Publication Refinement](publication_refinement_plan.md) — blockers, error honesty, threading, docs | **DONE** |
 | 13a | [API Surface Hardening](../archive/api_surface_hardening_plan.md) — wire stub verbs, fix research protocol, error handling, integration tests, README | **ALL PHASES DONE (2026-04-08)** |
-| — | Manual publish (`twine upload`) | **Ready** — v1.0.0 |
+| — | Manual publish (`twine upload`) | **Ready** — as v0.2.0 research preview (1.0 label pulled 2026-04-10) |
+
+---
+
+## Audit Deferred Items (v1.0.1+)
+
+Items surfaced by the comprehensive 5-agent code/architecture/security/docs/test review just before v1.0.0 publish. These are explicitly deferred — Phase A of the [Final Refinement Plan](../../../.claude/plans/effervescent-orbiting-tulip.md) addressed the publish-blocking subset; the items below are improvements that don't gate v1.0.0 but are tracked so they're not lost.
+
+| Item | Why Deferred | Effort | Source |
+|------|--------------|--------|--------|
+| **Type annotation Protocol definitions** | ~80% coverage already; Protocols for `Agent`/`Environment`/`Executor` would improve mypy depth + IDE support but don't block users. Extract from `runtime/agent_loop.py` parameter signatures into a new `agents/interfaces.py`. | ~6 hours | Code quality audit |
+| **Full swallowed-exception audit** (deeper internals beyond API paths) | Phase A2 fixed the API call paths (orchestrator shutdown, doctor checks, campaign analysis save). The remaining ~340 swallowed exceptions in deep internals are tech debt, not user-facing breakage. Many are correctly degrading optional features. | ~1 day | Code quality audit |
+| **Library `print()` cleanup beyond API paths** | Phase A3 fixed the library paths reachable from api.py verbs. Remaining prints are in tracer/debug modules (`atl_tracer`, `hippo_tracer`, `nac_tracer`) which are env-gated, plus `utils/response_output.py` (the user-facing display channel — print is correct there). | ~0 (mostly intentional) | Code quality audit |
+| **Tiny package consolidation** | `motion/` (233 LOC, 2 files), `prompts/` (141 LOC, 2 files), `evaluation/` (130 LOC, 6 files), `environment/` (248 LOC, 4 files) could nest under related larger packages. Reduces 39-package import surface. | ~2 hours | Architecture audit |
+| **Dead-code audit** | CLAUDE.md notes prior 15 dead modules / ~8.5K LOC; run a fresh orphan-import scan post-publish on every `.py` whose basename doesn't appear in any `import` statement. | ~2 hours | Code quality audit |
+| **`docs/examples/` directory** | 5–6 standalone runnable Python scripts (`simple_simulation.py`, `custom_tool_demo.py`, `multi_agent_scenario.py`, `event_subscription.py`, `campaign_runner.py`). Currently users have only inline docstring examples. | ~half day | Docs audit |
+| **`docs/CONCURRENCY.md`** | Document RWLock strategy, llama-cpp inference serialization (`_inference_lock` is a known bottleneck for cloud-only workloads), pain bus design, and known threading bugs. | ~3 hours | Code quality audit |
+| **`docs/CONFIG.md`** | Centralized list of every config point: `HippocampusConfig`, `NACConfig`, `LLMConfig` + all 30+ env vars + precedence (env > JSON > default). Currently scattered across CLAUDE.md and individual subsystem docstrings. | ~2 hours | Code quality audit |
+| **Thread safety audit of shared mutable state** | Pain bus + capture queue + global registries; CLAUDE.md mentions past deadlock + race bugs found by accident, not by design audit. | ~half day | Code quality audit |
+| **Test coverage report** (`pytest --cov`) | Identify modules under 20% coverage, especially `api.py`/`cli.py`/`session.py` user paths. Already excluded `embodied_runtime/selfy.py` from coverage; widen the report to identify other gaps. | ~1 hour to run, ~1 day to fill gaps | Test audit |
+| **Troubleshooting docs expansion** | Current `docs/user/troubleshooting.md` is sparse (3.9 KB); add 10–15 common problems + solutions (model download fails, robot connection timeout, memory file corrupted, LLM bad JSON). | ~3 hours | Docs audit |
+| **`@maxim.tool` schema inference** | Tools work without auto-inferred schemas; nice-to-have. Inspect type hints + docstring to build the JSON schema automatically. | ~30 LOC | ASH Phase 1d |
+| **README v1.0.1 polish** | Functional now; add stability promise + tutorial videos + scenario YAML cheatsheet + "Common Recipes" section. | ~half day | Docs audit |
+| ~~`bridges/planning_bridge.py` `record_plan_outcome` → NAc observation counter~~ | **DONE (2026-04-10).** Switched from `nac.record_outcome()` (which silently no-ops without pending events) to `nac.observe()`. Also added thread-safety lock to `nac.observe()`. The pre-existing `test_record_plan_outcome` failure now passes. | ~0 net | CLAUDE.md known issue |
+| **Drop the `data/` runtime path entirely** | Currently runtime data lives in repo-relative `data/` directory (gitignored). Migrate the last few writers to `~/.maxim/` for clean separation between bundled `_data/` (in-package), runtime `~/.maxim/` (user persistence), and the now-empty `data/` (delete). | ~half day | Architecture audit |
+| **C1: Decompose `runtime/agent_loop.py::run_agentic_loop`** (~1854 LOC) | The flagship agent loop. The audit identified its 9 numbered sections (perception, idle gate, LLM proposals, agent fallback, EXECUTE, approved proposals, SUBMIT, callbacks, persist). EXECUTE (~545 LOC) and SUBMIT (~370 LOC) are the worst offenders. Decomposition requires either bundling ~30 local variables into a state object or migrating into `LoopController` methods. **Cannot safely decompose without characterization tests** for the 37 existing agent_loop test cases — their coverage is breadth-first, not behavioral. Estimated: ~2 sessions (1 to write characterization tests, 1 to refactor). | ~2 sessions | Final Refinement Plan C1 |
+| **C2: Finish decomposing `cli.py::main`** (~1230 LOC remaining) | Phase C of the refinement plan extracted 3 discrete subcommand handlers (`_handle_list_models`, `_handle_delete_model`, `_handle_clear_memory`) — ~120 LOC removed. Remaining: `--sim` dispatch (lines 392–739, ~347 LOC), the `while True` mode loop (lines 787–end, ~600 LOC), `--benchmark` block (~52 LOC), scenario generation (~20 LOC). The mode loop is the worst — needs handlers per `mode` string (`agentic`, `interactive`, `server`, etc.). **No test coverage on `cli.main` itself** (only `cli_utils`); needs characterization tests via subprocess invocations first. | ~1 session | Final Refinement Plan C2 |
+| **C3: Finish decomposing `embodied_runtime/agentic_runtime.py::_start_agentic_runtime`** (~780 LOC remaining) | Phase C extracted `_apply_llm_backend_fallback` (~30 LOC). Remaining ~780 LOC instantiates ~15 subsystems with cross-dependencies (agent factory, memory hub, default network, tool registry, llm worker, comms, agent loop launch). Plan: extract into `embodied_runtime/bootstrap/` subpackage with one builder per subsystem (~7 builders), called sequentially from `_start_agentic_runtime`. Order matters — each builder takes the previous result. | ~1 session | Final Refinement Plan C3 |
+| **C17 remaining: Decompose 3 more `tools/reachy.py` functions over 130 LOC** | Phase C decomposed the 190-line `track_target.execute` into 4 helpers. Remaining: another `execute` (168 LOC), `_track_novel` (189 LOC), `is_significant_movement` (138 LOC), `score_target` (132 LOC), and a third `execute` (167 LOC). All are tool implementations (not core agent infrastructure), well-contained, and don't block publication. | ~half day | Final Refinement Plan C17 |
 
 ---
 
@@ -46,9 +94,9 @@ Items that improve quality but don't gate v1.0.0 publication — no public API b
 | Item | Source Plan | Why Deferred | Effort |
 |------|-----------|-------------|--------|
 | ~~Module Compartmentalization~~ | ~~[Plan](../archive/module_compartmentalization_plan.md)~~ | **DONE (2026-04-09).** 5 god-modules decomposed, 7 new files, 125 tests. | ~0 net LOC |
-| **Research protocol bugs (D-0a–D-0e)** | [ASH Phase 2](../archive/api_surface_hardening_plan.md) | `--research` is a power-user feature. `research()` API verb ships as `NotImplementedError` in v1.0.0. | ~200 LOC |
+| ~~Research protocol bugs (D-0a–D-0e)~~ | ~~[ASH Phase 2](../archive/api_surface_hardening_plan.md)~~ | **DONE (Phase A1.5, 2026-04-10).** All 5 bugs verified fixed in prior work; `research()` verb re-enabled and 44 unit/integration tests pass. | ~0 net LOC |
 | **Full integration test suite** | [ASH Phase 4](../archive/api_surface_hardening_plan.md) | 3500+ unit tests provide sufficient confidence. Integration tests are additive. | ~200 LOC |
-| **Error handling audit** (silent except blocks) | [ASH Phase 3](../archive/api_surface_hardening_plan.md) | Tech debt, not user-facing breakage. The 593 bare `except Exception:` blocks are noisy but not incorrect. | ~300 LOC |
+| **Error handling audit** (silent except blocks) | [ASH Phase 3](../archive/api_surface_hardening_plan.md) | Tech debt, not user-facing breakage. Phase A2 fixed the API-path subset. The remaining bare `except Exception:` blocks are noisy but not incorrect. | ~300 LOC |
 | **`@maxim.tool` schema inference** | [ASH Phase 1d](../archive/api_surface_hardening_plan.md) | Nice-to-have. Tools work without auto-inferred schemas. | ~30 LOC |
 | **README overhaul** | [ASH Phase 5](../archive/api_surface_hardening_plan.md) | Current README is functional. Polish for v1.0.1. | ~200 LOC |
 
@@ -111,7 +159,7 @@ An autonomous pipeline that generates, validates, tests, and curates SEM compone
 | **Pecking Order Graph** | Multi-machine topology + Mother Maxim federation | ~1,200 LOC | [Plan](pecking_order_graph_plan.md). Rooted directed graph with domain-scoped pecking (authority, compute, memory, knowledge, embodiment). Mother as root. **Subsumes:** Mesh Phase 0a/0b, Capability Agent, Multi-Node Admin. POG-0 (prep) weaves into publication; POG-1-4 post-publication. |
 | ~~Agent Mesh Phase 0a-0b~~ | ~~Multiple LAN machines join~~ | ~~~400 LOC~~ | **Absorbed into Pecking Order Graph** (POG-2c for discovery, POG-3c for inference routing). |
 | ~~Capability Agent~~ | ~~Multi-machine setups need runtime awareness~~ | ~~~500 LOC~~ | **Absorbed into Pecking Order Graph** (graph IS the capability map — `route_request()`, `check_gate()`, node load tracking replace all CA-1 through CA-5 phases). |
-| **Embodiment Hardware Adapter + selfy.py decomposition** | Deploying to physical hardware or adding new robots | ~800 LOC net (saves ~900) | Decompose `conscience/selfy.py` (858 LOC after mixin decomposition) into `ReachyController(RobotController)` plugin. Moves `AgenticRuntimeMixin` (~1,080 LOC) into standard runtime, eliminates ~650 LOC of orchestrator glue, moves ~276 LOC of generic input handling to interactive module. Enables multi-robot support via entry-point plugins (Atlas, Spot, etc.) without modifying core runtime. Currently behind lazy import — no PyPI impact, but blocks clean robot extensibility. |
+| **Embodiment Hardware Adapter + selfy.py decomposition** | Deploying to physical hardware or adding new robots | ~800 LOC net (saves ~900) | Decompose `embodied_runtime/selfy.py` (858 LOC after mixin decomposition) into `ReachyController(RobotController)` plugin. Moves `AgenticRuntimeMixin` (~1,080 LOC) into standard runtime, eliminates ~650 LOC of orchestrator glue, moves ~276 LOC of generic input handling to interactive module. Enables multi-robot support via entry-point plugins (Atlas, Spot, etc.) without modifying core runtime. Currently behind lazy import — no PyPI impact, but blocks clean robot extensibility. |
 | **PyPI Multi-Robot Plugins** | External robot controllers need discovery | ~250 LOC | Entry-point based `maxim.robots` registration. Phase 3 of [PyPI plan](pypi_publication_plan.md). Depends on selfy.py decomposition above. |
 | **Full CI/CD Pipeline** | Need automated test + publish | ~2 files | GitHub Actions: lint, test, build, publish. Phase 4 of [PyPI plan](pypi_publication_plan.md). |
 | **Peer Inference Retry** | Leader restarts cause 502 errors | ~30 LOC | Exponential backoff in openai_backend.py. Peer CLI now has `_request_with_retry()` + logs follow backoff (shipped). OpenAI backend already retries 2x. Remaining: circuit breaker in lane_backends.py to stop resubmitting after N consecutive failures. |

@@ -5,7 +5,19 @@ All notable changes to pymaxim will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-04-09
+## [0.2.1] - 2026-04-10
+
+### Changed
+
+- **Re-publish of 0.2.0 contents.** No functional changes from the 0.2.0 draft. The 0.2.0 version slot on PyPI was burned by an earlier upload+delete cycle (PyPI version numbers are immutable even after deletion), so this patch bump is the smallest version that could be published.
+
+## [0.2.0] - 2026-04-10 — Research Preview
+
+**Versioning note:** This release was originally drafted as 1.0.0 and the entries below describe that work. After a deep architectural review on 2026-04-10, the 1.0 label was pulled and reissued as a 0.2.0 research preview. The reasoning: the bio-inspired stack is currently half-earned (NAc and Cerebellum implement genuine analogs of their brain namesakes; ATL, Angular Gyrus, SCN, and Default Network use the vocabulary without the cross-region mechanisms), and shipping 1.0 would lock in stability promises before the percept-substrate refactor that closes that gap. The 1.0 label is now reserved for the version that demonstrably improves on a task across sessions without fine-tuning the underlying LLM. See [docs/plans/percept_substrate_plan.md](docs/plans/percept_substrate_plan.md) for the 0.3 → 0.4 → 0.5 → 1.0 path.
+
+The work documented below is real and shipping in 0.2.0 — only the label changed.
+
+## [Original 1.0.0 draft — shipped as 0.2.0] - 2026-04-09
 
 ### Added
 

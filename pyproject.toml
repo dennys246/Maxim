@@ -4,24 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pymaxim"
-version = "1.0.0"
+version = "0.2.1"
 description = "Bio-inspired cognitive architecture with adaptive planning, biological memory systems, and local LLM inference. Works headless, with simulation, or connected to robots."
 readme = "README.md"
 requires-python = ">=3.10"
-license = {file = "LICENSE"}
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{name = "Denny Schaedig"}]
 keywords = ["cognitive-architecture", "llm", "agentic", "planning", "embodied-ai", "robotics", "memory", "simulation", "bio-inspired"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Scientific/Engineering :: Robotics",
 ]
 
 dependencies = [
@@ -100,9 +99,11 @@ tts = [
     "piper-tts>=1.2.0",
 ]
 # YOLOv8 vision backend (AGPL-3.0 — NOT included in core to keep Apache-2.0 clean)
+# Bounded to 8.x so security patches flow through; pin major to catch breaking
+# changes proactively. lap is also bounded similarly.
 yolo = [
-    "ultralytics==8.3.248",
-    "lap==0.5.12",
+    "ultralytics>=8.3.248,<9.0",
+    "lap>=0.5.12,<1.0",
 ]
 # Twilio SMS/Voice communication
 comms = [
@@ -190,7 +191,7 @@ source = ["src/maxim"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
-    "*/conscience/selfy.py",  # Too coupled for unit testing currently
+    "*/embodied_runtime/selfy.py",  # Too coupled for unit testing currently
 ]
 branch = true
 
