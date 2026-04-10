@@ -791,8 +791,13 @@ class PromptBuilder:
             SectionPriority.CRITICAL,
         )
 
-        # Tool section: split by learned relevance when index available
-        if self._tool_index is not None:
+        # Tool section: split by learned relevance when index available.
+        # Autonomous modes (active/singularity — sims, agent loops) bypass the
+        # filter: cold-start relevance scoring produces near-random 3-tool
+        # slices that cause tool hallucination. Passive interactive mode keeps
+        # the filter but surfaces background tools with full descriptions at
+        # IMPORTANT priority so the list survives prompt budgeting.
+        if self._tool_index is not None and mode_name == "passive":
             relevant, background = self._tool_index.get_relevant_tools(question_text)
             request.surfaced_tools = relevant
             relevant_section = build_tools_section_filtered(request, relevant, mode_name)
@@ -805,8 +810,20 @@ class PromptBuilder:
                 truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
             )
             if background:
-                bg_section = f"Other tools available: {', '.join(sorted(background))}"
-                budgeter.add("tools_background", bg_section, SectionPriority.NICE_TO_HAVE)
+                bg_section = build_tools_section_filtered(request, background, mode_name)
+                bg_section = bg_section.replace(
+                    "=== Available Tools ===",
+                    "=== Additional Tools ===",
+                    1,
+                )
+                budgeter.add(
+                    "tools_background",
+                    bg_section,
+                    SectionPriority.IMPORTANT,
+                    truncatable=True,
+                    min_tokens=50,
+                    truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
+                )
         else:
             budgeter.add(
                 "tools",

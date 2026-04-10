@@ -473,7 +473,7 @@ class LoopController:
         self.state.data["pending_user_input"] = cli_text
         self.state.data["pending_user_input_time"] = time.time()
         self.state.data["pending_user_input_source"] = source_type
-        logger.warning("Agent loop received %s input: %s", source_type, cli_text[:100])
+        logger.debug("Agent loop received %s input: %s", source_type, cli_text[:100])
         log_agentic(
             "agent_loop",
             "user_input_received",
@@ -482,7 +482,7 @@ class LoopController:
         if hasattr(self.memory, "record_command"):
             try:
                 self.memory.record_command(cli_text)
-                logger.warning("Recorded %s input to memory: %s", source_type, cli_text[:50])
+                logger.debug("Recorded %s input to memory: %s", source_type, cli_text[:50])
             except Exception as e:
                 logger.warning("Failed to record %s input: %s", source_type, e)
 

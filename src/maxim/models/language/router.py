@@ -1120,7 +1120,7 @@ Return JSON exactly like:
             stream=stream,
         )
         if text:
-            info("LLM raw response (first 200 chars): %s", text[:200] if len(text) > 200 else text)
+            logger.debug("LLM raw response (first 200 chars): %s", text[:200] if len(text) > 200 else text)
 
         obj = _extract_json_object(text)
         if not isinstance(obj, dict):
@@ -1192,7 +1192,7 @@ Return JSON exactly like:
         # Note: Response length is controlled by max_tokens in config
         # No truncation here - let the full response through
 
-        info("LLM answer_only response: %s", answer[:500] if len(answer) > 500 else answer)
+        logger.debug("LLM answer_only response: %s", answer[:500] if len(answer) > 500 else answer)
 
         # Stage 2: Wrap in JSON programmatically (no LLM needed)
         # Escape the answer for JSON
@@ -1265,7 +1265,7 @@ Respond with ONLY a valid JSON object. No text before or after the JSON."""
             request_context=request_context,
         )
         if text:
-            info("LLM tool_response raw (first 300 chars): %s", text[:300] if len(text) > 300 else text)
+            logger.debug("LLM tool_response raw (first 300 chars): %s", text[:300] if len(text) > 300 else text)
 
         if not text or not text.strip():
             warn("LLM returned empty tool response")
