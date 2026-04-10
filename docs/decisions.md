@@ -268,7 +268,7 @@ NAc state persists to JSON:
 
 ```python
 # Default path
-persist_path = "data/util/nac_state.json"
+persist_path = "~/.maxim/util/nac_state.json"
 
 # Save/load handled by runtime
 nac.save(persist_path)

@@ -1,19 +1,29 @@
 # Architecture (Maxim)
 
-Maxim orchestrates Reachy Mini data capture (camera + mic), perception/inference, optional learning, and motor control.
+Maxim is a bio-inspired cognitive architecture for AI agents. It combines a 5-agent pipeline (Perception, Memory, Exec, Goal, Statistician) with biological memory systems (Hippocampus, ATL, Angular Gyrus, SCN, NAc) and a reactive Default Network. Works headless, in simulation, or connected to a robot.
 
 ## High-Level Flow
-Capture (Reachy) → Writers (video/audio) → Inference (vision/audio) → Control (motor) → Persist (models/history)
+
+```
+Percepts → 5-Agent Pipeline → Tool Execution → Memory Capture → Bio-System Learning
+              ↑ LLM Router (10 cloud + local backends)
+```
+
+**Modes of operation:**
+- **Headless** — `maxim.run(headless=True)` — pure cognitive loop, no hardware
+- **Simulation** — `maxim --sim “goal”` — generative campaigns with orchestrator + AUT
+- **DM Campaigns** — `maxim --sim campaign.yaml` — structured multi-agent scenarios
+- **Robot** — `maxim --robot reachy_mini` — full hardware I/O (camera, audio, motors)
 
 ## Threading / Process Model
-- Video capture thread pulls frames from Reachy and feeds:
-  - a bounded “save” queue for the video writer (records everything; blocks when backpressured)
-  - a “latest” queue for observation/control (keeps the loop responsive)
-- Video writer thread writes a single MP4 for the run.
-- Audio capture thread pulls samples and feeds a bounded “save” queue.
-- Audio writer thread appends to a single WAV and (optionally) cuts chunk WAVs for transcription.
-- Transcription runs in a separate process consuming chunk paths and appending JSONL transcripts.
-- Motor commands are funneled through a single executor thread to avoid unsafe concurrent SDK calls.
+- Main agent loop at 2-30Hz + WorkerPool (tier-based lanes: large/medium/small, owned by LLMWorker)
+- Hippocampus capture thread (owned + shut down by MemoryHub.on_session_end)
+- When connected to hardware:
+  - Video capture thread pulls frames from robot and feeds bounded save/latest queues
+  - Video writer thread writes a single MP4 per run
+  - Audio capture/writer threads for WAV recording + optional chunk transcription
+  - Transcription runs in a separate process (faster-whisper)
+  - Motor commands funneled through a single executor thread
 
 ## Agentic Architecture (Enforcement Rules)
 
@@ -81,7 +91,7 @@ Paths refer to the `src/maxim/` package layout.
   - `engrams.py`: MotorEngram — contextual links between programs and episodic memories.
   - `llm_backend.py`: LLMSensor, LLMModulator, NarrativeSensor, NarrativeModulator.
   - `program_executor.py`: Step-by-step motor program execution with pain gates.
-  - `component_registry.py`: ComponentRegistry — template catalog for reusable SEM entity specs. Multi-path discovery (campaign-local → `~/.maxim/components/` → `_data/components/`). 9 seed components across 5 categories (bodies, creatures, environments, npcs, weapons).
+  - `component_registry.py`: ComponentRegistry — template catalog for reusable SEM entity specs. Multi-path discovery (campaign-local → `~/.maxim/components/` → `_data/components/`). 54 seed components across 7 categories (bodies, creatures, environments, items, npcs, vehicles, weapons). Genre-gated: fantasy, cyberpunk, scifi, horror, historical, modern, devops.
 - `src/maxim/mesh/`: owns cooperative peer-to-peer agent networking. Each Maxim instance is sovereign (owns its memories, causal models, behaviors) but can share cooperatively.
   - `identity.py`: AgentProfile — lightweight identity for local multi-agent coordination.
   - `agent_identity.py`: AgentIdentity — extends AgentProfile with hardware capabilities and knowledge statistics for network-level coordination.
@@ -288,23 +298,23 @@ All config values can be overridden via environment variables:
 
 ## Cognitive Memory Systems
 
-Four biologically-inspired systems collaborate to give Maxim memory, temporal awareness, reward prediction, and similarity matching. In the brain, these are anatomically distinct regions that communicate via neural pathways; in Maxim, each lives in its own package and they coordinate through the MemoryHub.
+Six biologically-inspired systems collaborate to give Maxim memory, temporal awareness, reward prediction, similarity matching, semantic concepts, and algebraic reasoning. In the brain, these are anatomically distinct regions that communicate via neural pathways; in Maxim, each lives in its own package and they coordinate through the MemoryHub.
 
 ### System Architecture
 
 ```
-  ┌─────────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐
-  │ Hippocampus │  │    SCN    │  │    NAc    │  │    EC     │
-  │  (memory/)  │  │  (time/)  │  │(decisions/)│  │(similarity/)│
-  │  Episodic   │  │ Temporal  │  │  Reward   │  │ Similarity│
-  │  Memory     │  │  Rhythm   │  │ Prediction│  │  Matching │
-  └──────┬──────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘
-         │               │              │               │
-         └───────────────┼──────────────┼───────────────┘
-                         │              │
-                ┌────────┴──────────────┴────────┐
-                │          MEMORY HUB            │
-                │   (integration/memory_hub.py)  │
+  ┌─────────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌──────────────┐
+  │ Hippocampus │  │    SCN    │  │    NAc    │  │    EC     │  │    ATL    │  │AngularGyrus  │
+  │  (memory/)  │  │  (time/)  │  │(decisions/)│  │(similarity/)│ │  (memory/)│  │  (memory/)   │
+  │  Episodic   │  │ Temporal  │  │  Reward   │  │ Similarity│  │ Semantic  │  │ Algebraic    │
+  │  Memory     │  │  Rhythm   │  │ Prediction│  │  Matching │  │ Concepts  │  │  Memory      │
+  └──────┬──────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └──────┬───────┘
+         │               │              │               │              │               │
+         └───────────────┼──────────────┼───────────────┼──────────────┼───────────────┘
+                         │              │               │              │
+                ┌────────┴──────────────┴───────────────┴──────────────┘
+                │                    MEMORY HUB
+                │             (integration/memory_hub.py)
                 └────────────────┬───────────────┘
                                  │
      ┌─────────┬─────────┬──────┼──────┬─────────┬─────────┐
@@ -318,9 +328,11 @@ Four biologically-inspired systems collaborate to give Maxim memory, temporal aw
 | System | Brain Region | Purpose | Key Features |
 |--------|-------------|---------|--------------|
 | **Hippocampus** | Medial temporal lobe | Episodic memory | Selective capture, associative graph, sleep consolidation |
+| **ATL** (Anterior Temporal Lobe) | Temporal pole | Semantic concepts | Concept extraction, grounding, pattern completion, promotion |
+| **AngularGyrus** | Parietal-temporal junction | Algebraic memory | Mathematical reasoning, quantity tracking |
 | **SCN** (Suprachiasmatic Nucleus) | Hypothalamus | Temporal rhythm indexing | 24h/7d/monthly bins, coupled oscillator, pattern detection |
 | **NAc** (Nucleus Accumbens) | Ventral striatum | Causal inference | Event→outcome learning, reward prediction |
-| **EC** (Entorhinal Cortex) | Medial temporal lobe (adjacent to hippocampus) | Similarity queries | LSH + neural semantic embeddings (Phase 4) |
+| **EC** (Entorhinal Cortex) | Medial temporal lobe (adjacent to hippocampus) | Similarity queries | LSH + neural semantic embeddings |
 
 ### Bridges
 

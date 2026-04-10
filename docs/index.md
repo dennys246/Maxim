@@ -2,7 +2,7 @@
 
 Comprehensive documentation for Maxim's systems and subsystems.
 
-**Version:** 0.2.0 | **Last updated:** 2026-04-09
+**Version:** 1.0.0 | **Last updated:** 2026-04-09
 
 ## Quick Links
 
@@ -53,7 +53,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | [Embodiment Guide](embodiment_guide.md) | SEM protocol, entity specs, sensors, modulators, failure modes |
 | [Embodiment YAML Reference](embodiment_yaml_reference.md) | YAML format for body/entity definitions |
 | [Generative Campaigns](generative_campaigns_guide.md) | Narrative arc system, narrator, campaign modes |
-| [DM Campaigns](user/dm-campaigns.md) | Bundled SEM characters, encounter choices, cascade DAG, 7 campaigns |
+| [DM Campaigns](user/dm-campaigns.md) | Bundled SEM characters, encounter choices, cascade DAG, 11 campaigns |
 
 ### Communication & Networking
 
@@ -68,14 +68,14 @@ Comprehensive documentation for Maxim's systems and subsystems.
 
 | Document | Description |
 |----------|-------------|
-| [Bridges](bridges.md) | Cross-system integration, memory bridges |
+| [Bridges](archive/bridges.md) | Cross-system integration, memory bridges |
 | Agent Mesh Guide ([HTML](../htmls-guides/maxim-agent-mesh.html)) | Identity, protocol, transport, knowledge sharing, delegation |
 
 ### Publication & Development
 
 | Document | Description |
 |----------|-------------|
-| [Publication Guide](publication_guide.md) | PyPI publication checklist for pymaxim v0.2.0 |
+| [Publication Guide](publication_guide.md) | PyPI publication checklist for pymaxim v1.0.0 |
 | [Reference](reference.md) | Module layout, bio-system mappings, configuration |
 | [Skills (tombstone)](skills.md) | Removed module — replaced by Cerebellum/motor programs |
 
@@ -197,8 +197,8 @@ Future Actions
 ```
 src/maxim/
 ├── agents/          → AGENTS.md (+ modality.py SensoryModality/SensoryTag, sensory_gate.py SensoryGate)
-├── attention/       → attention.md
-├── bridges/         → bridges.md
+├── attention/       → archive/attention.md
+├── bridges/         → archive/bridges.md
 ├── comms/           → (SMS/Voice communication; see user/peer-setup.md for tunnel)
 ├── conscience/      → ARCHITECTURE.md (conscience section)
 ├── data/            → (camera/audio data utilities)
@@ -211,21 +211,21 @@ src/maxim/
 ├── hardware/        → (Reachy hardware + simulation backends)
 ├── harm/            → harm.md
 ├── inference/       → (observation/control functions)
-├── integration/     → bridges.md (MemoryHub coordinator)
+├── integration/     → archive/bridges.md (MemoryHub coordinator)
 ├── math/            → (IPS, AngularGyrus, linalg)
 ├── memory/          → memory.md (Hippocampus, ATL semantic memory, EC, consolidation)
-├── mesh/            → agent_mesh.md (identity, protocol, transport, knowledge sharing, delegation)
+├── mesh/            → archive/agent_mesh.md (identity, protocol, transport, knowledge sharing, delegation)
 ├── models/          → (vision, audio, language, movement models)
-├── modes/           → README.md (modes section)
+├── modes/           → user/modes-guide.md (ProcessingState × OperationalMode)
 ├── motion/          → (motion presets and actions)
 ├── planning/        → ARCHITECTURE.md (planning section, workspace dashboard/logger)
 ├── proprioception/  → proprioception.md
 ├── retrieval/       → (retrieval utilities)
 ├── runtime/         → ARCHITECTURE.md (runtime section)
-├── salience/        → salience.md
+├── salience/        → archive/salience.md
 ├── similarity/      → semantic_similarity_analysis.md (Phase 4 implemented)
 ├── simulation/      → simulation.md (orchestrator, bridge, personas, campaigns, benchmarks)
-├── spatial/         → bridges.md (SpatialMemoryBridge)
+├── spatial/         → archive/bridges.md (SpatialMemoryBridge)
 ├── time/            → time.md (+ BoundedBin, significance-based eviction)
 ├── tools/           → ARCHITECTURE.md (tools section)
 └── utils/           → (config, logging, plotting, filesystem helpers)

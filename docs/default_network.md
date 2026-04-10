@@ -117,7 +117,7 @@ adaptive_config = AdaptiveThresholdConfig(
     escalation_rate_target=0.05,         # Target 5% escalation rate
     window_seconds=60.0,
     adaptation_interval=5.0,             # How often to adapt
-    persist_path="data/util/adaptive_thresholds.json",
+    persist_path="~/.maxim/util/adaptive_thresholds.json",
     auto_save_interval=60.0,
 )
 
@@ -237,7 +237,7 @@ class CustomBehavior(Behavior):
 ### Behavior Configuration
 
 ```yaml
-# data/util/default_network.yaml
+# ~/.maxim/config/default_network.yaml
 default_network:
   enabled: true
   update_hz: 30.0
@@ -426,7 +426,7 @@ Adaptive thresholds persist across sessions:
 
 ```python
 # Auto-saved every 60 seconds when thresholds adapt
-# Path: data/util/adaptive_thresholds.json
+# Path: ~/.maxim/util/adaptive_thresholds.json
 ```
 
 Clear with: `maxim --clear-memory threshold`

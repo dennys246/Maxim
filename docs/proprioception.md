@@ -54,7 +54,7 @@ config = FocusLearnerConfig(
     learning_rate=0.15,           # Rescorla-Wagner α
     error_scaling_factor=0.01,    # Converts pixels to gain delta
     sample_threshold=5,           # Min samples before adjusting
-    persist_path="data/util/focus_learner.json",
+    persist_path="~/.maxim/util/focus_learner.json",
 )
 
 learner = FocusLearner(config)
@@ -84,10 +84,10 @@ FocusLearner automatically saves learned gains:
 
 ```python
 # Manual save
-learner.save("data/util/focus_learner.json")
+learner.save("~/.maxim/util/focus_learner.json")
 
 # Load existing gains
-learner.load("data/util/focus_learner.json")
+learner.load("~/.maxim/util/focus_learner.json")
 ```
 
 ---
@@ -188,7 +188,7 @@ Position Updates → MovementTracker → PainDetector → PainSignal
                                     └── NAc.predict() (avoidance)
 ```
 
-See [bridges.md](bridges.md) for PainCircuitBridge details.
+See [bridges.md](archive/bridges.md) for PainCircuitBridge details.
 
 ---
 
@@ -196,8 +196,8 @@ See [bridges.md](bridges.md) for PainCircuitBridge details.
 
 | Component | Default Path | Contents |
 |-----------|--------------|----------|
-| FocusLearner | `data/util/focus_learner.json` | Learned gains, sample history |
-| PainDetector | `data/util/pain_detector.json` | Pain thresholds, history |
+| FocusLearner | `~/.maxim/util/focus_learner.json` | Learned gains, sample history |
+| PainDetector | `~/.maxim/util/pain_detector.json` | Pain thresholds, history |
 
 Clear with: `maxim --clear-memory focus,pain`
 

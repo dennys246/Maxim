@@ -46,7 +46,7 @@ from maxim.memory import Hippocampus, HippocampusConfig, Perception
 
 config = HippocampusConfig(
     max_nodes=10_000,
-    persistence_path="data/util/hippocampus.json",
+    persistence_path="~/.maxim/util/hippocampus.json",
     indexed_keys=frozenset({"goal", "tool", "object", "person"}),
 )
 
@@ -327,11 +327,11 @@ Hippocampus persists to JSON:
 
 ```python
 # Save manually
-hippo.save("data/util/hippocampus.json")
+hippo.save("~/.maxim/util/hippocampus.json")
 
 # Load on init if path exists
 hippo = Hippocampus(HippocampusConfig(
-    persistence_path="data/util/hippocampus.json"
+    persistence_path="~/.maxim/util/hippocampus.json"
 ))
 
 # Auto-save on shutdown
@@ -507,9 +507,9 @@ results = ec.find_semantic("find the coffee mug", k=10)
 # "cup" memories will match with high similarity
 ```
 
-Semantic embeddings are automatically generated when memories are captured (via capture callback) and persist across sessions in `data/util/semantic_embeddings.npz`.
+Semantic embeddings are automatically generated when memories are captured (via capture callback) and persist across sessions in `~/.maxim/util/semantic_embeddings.npz`.
 
-See [bridges.md](bridges.md) for bridge documentation.
+See [bridges.md](archive/bridges.md) for bridge documentation.
 
 ---
 

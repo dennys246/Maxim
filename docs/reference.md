@@ -22,7 +22,7 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/environment/` | World observation (no side effects) |
 | `src/maxim/memory/` | Storage and retrieval |
 | `src/maxim/runtime/` | Agent orchestration loop |
-| `src/maxim/conscience/` | Reachy capture/inference/control loop |
+| `src/maxim/conscience/` | Robot capture/inference/control loop (Reachy hardware) |
 | `src/maxim/modes/` | Operating mode definitions |
 | `src/maxim/proprioception/` | Movement tracking and pain detection |
 | `src/maxim/harm/` | Predictive harm detection (velocity, joint limits) |

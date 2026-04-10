@@ -66,7 +66,7 @@ python -m maxim.models.download --vision
 ### Without a Robot (Headless)
 
 ```bash
-maxim --mode agentic --language-model smollm-1.7b
+maxim --language-model smollm-1.7b
 ```
 
 This starts the full agent loop without attempting a robot connection. Useful for testing LLM reasoning, planning, and coding tools on your development machine.
@@ -95,7 +95,7 @@ sudo systemctl stop reachy-sdk-server
 Then from your host machine (or on the robot directly):
 
 ```bash
-maxim --mode agentic --language-model mistral-7b
+maxim --language-model mistral-7b
 ```
 
 ### Exploration Mode (Legacy)
@@ -116,12 +116,12 @@ The simplest mode. The robot looks around, tracks objects, and learns spatial bo
 For verbose output during startup and runtime:
 
 ```bash
-maxim --mode agentic --language-model smollm-1.7b --verbosity 2
+maxim --language-model smollm-1.7b --verbosity 2
 ```
 
 ## Python API
 
-Maxim 0.2.0 exposes two API layers via the `pymaxim` package (import name: `maxim`). Install from PyPI with `pip install pymaxim` or use the local editable install.
+Maxim exposes two API layers via the `pymaxim` package (import name: `maxim`). Install from PyPI with `pip install pymaxim` or use the local editable install.
 
 ### Verb API (simple path)
 

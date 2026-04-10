@@ -180,8 +180,8 @@ hub.on_session_start()  # Loads embeddings
 hub.on_session_end()    # Saves embeddings
 
 # Manual
-ec._embedding_store.save("data/util/semantic_embeddings.npz")
-ec._embedding_store.load("data/util/semantic_embeddings.npz")
+ec._embedding_store.save("~/.maxim/util/semantic_embeddings.npz")
+ec._embedding_store.load("~/.maxim/util/semantic_embeddings.npz")
 ```
 
 ### File Format

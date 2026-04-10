@@ -4,7 +4,7 @@
 > **Goal:** Two-layer permission system — enforced (hard gates) + perceived (bio-stack-driven social norms) — for realistic multi-agent authority dynamics.
 > **Estimated scope:** ~300 LOC core + ~120 LOC tests + ~50 LOC wiring
 > **Depends on:** None. Foundation for Pecking Order Graph authority domain.
-> **Blocks:** v1.0.0 publication (lightweight, high-impact feature).
+> **Priority:** First post-publication feature (lightweight, high-impact). Foundation for Pecking Order Graph authority domain.
 
 ---
 

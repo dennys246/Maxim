@@ -2,7 +2,7 @@
 
 > **Status:** Not started. Design phase.
 > **Goal:** Unify leader/peer roles, mesh topology, compute routing, and Mother Maxim hierarchy into a single directed graph with domain-scoped pecking relationships on each edge.
-> **Depends on:** PyPI publication (v0.2.0). Subsumes Mesh Phase 0a/0b, Capability Agent, Multi-Node Admin, and reshapes Mother Maxim's federation model.
+> **Depends on:** PyPI publication (v1.0.0). Subsumes Mesh Phase 0a/0b, Capability Agent, Multi-Node Admin, and reshapes Mother Maxim's federation model.
 > **Estimated scope:** ~1,200 LOC across 5 phases + prep items woven into publication.
 
 ---

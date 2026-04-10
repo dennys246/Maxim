@@ -28,7 +28,7 @@ maxim [OPTIONS]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--cloud-fallback` | str | None | Cloud model to use when self-hosted fails (e.g., `claude-sonnet`) |
-| `--cloud-lane` | str str | None | Dedicated cloud model for a specific tier (e.g., `--cloud-lane review claude-haiku`) |
+| `--cloud-lane` | str str | None | Dedicated cloud model for a specific tier (e.g., `--cloud-lane medium claude-haiku`) |
 | `--cloud-budget` | float | `5.00` | Max session cost for cloud providers |
 
 ## Autonomy and Safety
@@ -154,13 +154,13 @@ Subcommands for managing a remote leader node over a Cloudflare tunnel.
 ### Minimal CPU setup
 
 ```bash
-maxim --mode agentic --language-model smollm-1.7b
+maxim --language-model smollm-1.7b
 ```
 
 ### Full GPU setup with internet
 
 ```bash
-maxim --mode agentic --language-model mistral-7b --internet-access --autonomy supervised
+maxim --language-model mistral-7b --internet-access --autonomy supervised
 ```
 
 ### Exploration with time limit
@@ -172,7 +172,7 @@ maxim --mode exploration --explore "kitchen objects" --exploration-duration 300
 ### Debug mode
 
 ```bash
-maxim --mode agentic --verbosity 2 --agentic-verbosity 3
+maxim --verbosity 2 --agentic-verbosity 3
 ```
 
 ### Generative campaign (goal string)

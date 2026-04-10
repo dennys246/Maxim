@@ -210,10 +210,10 @@ SCN state persists to JSON:
 
 ```python
 # Save
-scn.save("data/util/scn_state.json")
+scn.save("~/.maxim/util/scn_state.json")
 
 # Load
-scn.load("data/util/scn_state.json")
+scn.load("~/.maxim/util/scn_state.json")
 ```
 
 ### File Format (v3.0)

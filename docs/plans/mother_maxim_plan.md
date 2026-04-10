@@ -1,8 +1,8 @@
 # Mother Maxim Plan
 
-> **Status:** Not started. Pre-publication prep items woven into foundational buildout.
+> **Status:** Design complete. Pre-publication prep (M-0 items) done — store protocols defined, threading fixed, metadata fields added. Implementation (M-1+) not started.
 > **Goal:** A persistent, public Maxim instance that accumulates collective memory across all users and sessions. Exposed via public URL with database-backed persistence.
-> **Depends on:** PyPI publication (v0.2.0), foundational buildout complete.
+> **Depends on:** PyPI publication (v1.0.0), foundational buildout complete.
 > **Estimated scope:** ~3,800 LOC across 6 phases + pre-pub prep.
 
 ---
@@ -187,7 +187,7 @@ The pymaxim package structure is compatible with Mother Maxim development. Key f
 
 ## Phase M-1: Database Backend (~800 LOC)
 
-**Depends on:** Publication (v0.2.0), store protocol wiring (publication refinement Phase 1m — bio-systems must delegate to store parameters before database backends can be swapped in).
+**Depends on:** Publication (v1.0.0), store protocol wiring (publication refinement Phase 1m — bio-systems must delegate to store parameters before database backends can be swapped in).
 
 **Pre-requisite check:** After pub refinement Phase 1m lands, verify that `Hippocampus(store=FileEpisodicStore(...))`, `NAc(store=FileCausalStore(...))`, and `ATL(store=FileSemanticStore(...))` all work identically to the previous hardcoded behavior. If so, M-1 is purely additive — implement `Database*Store` classes and pass them instead.
 
@@ -765,7 +765,7 @@ maxim --mother --federation <hub_url> # Join hub's pecking order graph as sub-ro
 > - Publication refinement Phase 0c/1a (error honesty) — **critical for 24/7 operation**. Silent `except Exception:` in hippocampus/NAc will cause invisible data loss.
 > - Publication refinement Phase 0b (API verb wiring) — needed for Mother's self-directed experiments (`maxim.imagine()`, `maxim.campaign()` must work programmatically).
 > - `Session` class + `load.py` — **DONE** (new files from buildout). Mother's M-3 tenant isolation builds on these.
-> **Timeline:** ~500 LOC after v0.2.0 publication.
+> **Timeline:** ~500 LOC after v1.0.0 publication.
 
 ### What you build
 

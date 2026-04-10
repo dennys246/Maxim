@@ -1,6 +1,6 @@
 # Dungeon Master Persona Plan — MVP
 
-> **Status:** COMPLETE. All 3 slices shipped. 4 campaigns, cascade system, scene management, visibility, expectations checker. Ready for archival.
+> **Status:** COMPLETE. All 3 slices shipped. 11 campaigns, cascade system, scene management, visibility, expectations checker. Archived.
 >
 > **Last updated:** 2026-04-07
 >

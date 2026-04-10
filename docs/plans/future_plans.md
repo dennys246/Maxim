@@ -2,13 +2,13 @@
 
 Master roadmap for Maxim development.
 
-**Last updated:** 2026-04-08
+**Last updated:** 2026-04-09
 
 ---
 
-## Current Focus: Foundational Buildout
+## Current Focus: Publication
 
-All pre-publication work is tracked in [foundational_buildout_plan.md](foundational_buildout_plan.md).
+All pre-publication work is tracked in [foundational_buildout_plan.md](../archive/foundational_buildout_plan.md). Version is v1.0.0 — ready to publish.
 
 **Summary:** Ship package hygiene, architectural foundations (multi-agent runtime, SEM component registry, encounter library, party DM mode), expanded public API, and publication prep. ~4,000 LOC across 12 phases.
 
@@ -26,12 +26,12 @@ All pre-publication work is tracked in [foundational_buildout_plan.md](foundatio
 | 8 | API Surface Expansion (campaign, benchmark, research, events, tools) | **DONE** |
 | 9 | Deps + Docs + Cloud Profiles + Pre-Pub Hardening (incl. Mother M-0a/b/c) | **DONE** |
 | 10 | Publication Prep (CHANGELOG, CONTRIBUTING) | **DONE** |
-| 11 | Test PyPI (dry-run validation) | **In progress** |
+| 11 | Test PyPI (dry-run validation) | **DONE** |
 | 12a | Security Hardening | **DONE** |
-| 12b | [Pre-Publication Hardening](pre_publication_hardening_plan.md) — UX, errors, API fixes, tests, docs | **DONE** |
-| 13 | [Publication Refinement](publication_refinement_plan.md) — blockers, error honesty, threading, docs | Phase 0 **DONE** |
+| 12b | [Pre-Publication Hardening](../archive/pre_publication_hardening_plan.md) — UX, errors, API fixes, tests, docs | **DONE** |
+| 13 | [Publication Refinement](publication_refinement_plan.md) — blockers, error honesty, threading, docs | **DONE** |
 | 13a | [API Surface Hardening](../archive/api_surface_hardening_plan.md) — wire stub verbs, fix research protocol, error handling, integration tests, README | **ALL PHASES DONE (2026-04-08)** |
-| — | Manual publish (`twine upload`) | Blocked on 13 + 13a |
+| — | Manual publish (`twine upload`) | **Ready** — v1.0.0 |
 
 ---
 
@@ -39,18 +39,18 @@ All pre-publication work is tracked in [foundational_buildout_plan.md](foundatio
 
 These are features, not architecture. Safe to add after PyPI publication without breaking the public API.
 
-### v0.2.1 Deferred Items (ship shortly after publish)
+### v1.0.1 Deferred Items (ship shortly after publish)
 
-Items that improve quality but don't gate v0.2.0 publication — no public API breakage.
+Items that improve quality but don't gate v1.0.0 publication — no public API breakage.
 
 | Item | Source Plan | Why Deferred | Effort |
 |------|-----------|-------------|--------|
 | ~~Module Compartmentalization~~ | ~~[Plan](../archive/module_compartmentalization_plan.md)~~ | **DONE (2026-04-09).** 5 god-modules decomposed, 7 new files, 125 tests. | ~0 net LOC |
-| **Research protocol bugs (D-0a–D-0e)** | [ASH Phase 2](../archive/api_surface_hardening_plan.md) | `--research` is a power-user feature. `research()` API verb ships as `NotImplementedError` in v0.2.0. | ~200 LOC |
+| **Research protocol bugs (D-0a–D-0e)** | [ASH Phase 2](../archive/api_surface_hardening_plan.md) | `--research` is a power-user feature. `research()` API verb ships as `NotImplementedError` in v1.0.0. | ~200 LOC |
 | **Full integration test suite** | [ASH Phase 4](../archive/api_surface_hardening_plan.md) | 3500+ unit tests provide sufficient confidence. Integration tests are additive. | ~200 LOC |
 | **Error handling audit** (silent except blocks) | [ASH Phase 3](../archive/api_surface_hardening_plan.md) | Tech debt, not user-facing breakage. The 593 bare `except Exception:` blocks are noisy but not incorrect. | ~300 LOC |
 | **`@maxim.tool` schema inference** | [ASH Phase 1d](../archive/api_surface_hardening_plan.md) | Nice-to-have. Tools work without auto-inferred schemas. | ~30 LOC |
-| **README overhaul** | [ASH Phase 5](../archive/api_surface_hardening_plan.md) | Current README is functional. Polish for v0.2.1. | ~200 LOC |
+| **README overhaul** | [ASH Phase 5](../archive/api_surface_hardening_plan.md) | Current README is functional. Polish for v1.0.1. | ~200 LOC |
 
 ### Salience Abstraction + Bio-System Integration
 
@@ -235,7 +235,7 @@ A persistent, public Maxim instance that accumulates collective memory across al
 
 | Step | What | LOC | Depends On |
 |------|------|-----|------------|
-| **MVP** | Mother runner + API + CLI (JSON persistence, leader-hosted) | ~500 | v0.2.0 published |
+| **MVP** | Mother runner + API + CLI (JSON persistence, leader-hosted) | ~500 | v1.0.0 published |
 | **M-2a** | Client-side deidentification (bio-system identity map + LLM pass) | ~350 | MVP |
 | **M-2b** | Deidentification model benchmark (determine minimum tier) | ~50 | M-2a |
 | **SEC** | Security hardening (stress test + output filtering) | ~100 | MVP |
@@ -281,7 +281,7 @@ Everything below has shipped and is in production.
 | Docker Sandbox | TmpdirSandbox + DockerSandbox + ContainerRunner + pain triggers | [Plan](../archive/docker_sandbox_plan.md) |
 | Bio-System Wiring Hardening | 7 disconnected systems wired, pipeline audit 14/14, percept abstraction | [Plan](../archive/biosystem_wiring_hardening.md) |
 | Mode System Refactor | Autonomy levels only, ~1,800 LOC removed, sleep is a tool | [Plan](../archive/mode_refactor_plan.md) |
-| DM MVP | dm_schema, dm_runtime, ChooseTool, 7 campaigns, expectations checker | [Plan](../archive/dungeon_master_persona.md) |
+| DM MVP | dm_schema, dm_runtime, ChooseTool, 11 campaigns, expectations checker | [Plan](../archive/dungeon_master_persona.md) |
 | Python API | Verb-based interface (run, imagine, connect, diagnose, observe) | [Plan](../archive/python_api_plan.md) |
 | Introspection API (Ph1-4) | Observer class, standalone run_campaign() | [Plan](../archive/introspection_api_plan.md) |
 | Realtime Refinement | InspectAUTTool, 8 personas, metric expectations | [Plan](../archive/realtime_refinement_plan.md) |
@@ -295,11 +295,13 @@ Everything below has shipped and is in production.
 ```
 docs/plans/
 ├── future_plans.md                    # This file — master roadmap
-├── publication_refinement_plan.md     # Pre-publish blockers + packaging (4 must-fix items remaining)
+├── publication_refinement_plan.md     # Pre-publish blockers + packaging
+├── agent_permissions_plan.md          # Two-layer permission model (enforced + perceived)
 ├── pecking_order_graph_plan.md        # Unified topology + routing (subsumes mesh 0a/0b, capability agent, multi-node admin)
 ├── mother_maxim_plan.md               # Mother Maxim — persistent shared instance (post-publication priority)
 ├── salience_abstraction_plan.md       # Modality-agnostic salience + bio-system integration (S-0 through S-5)
 ├── asset_foundry_plan.md              # Autonomous SEM component generation + testing (F-0 through F-5)
+├── display_simplification_plan.md     # DisplayTier × InteractiveMode two-axis system
 ├── dungeon_master_extensions.md       # DM follow-ons (Extensions C-G, post-publication)
 ├── github_repo_management_plan.md     # Fork-based workflow (post-publication)
 └── tool_refinement_plan.md            # Living document — tool additions/deprecations
@@ -432,7 +434,7 @@ A persistent, public Maxim instance that accumulates collective memory across al
 | Phase | Work | Depends On |
 |-------|------|------------|
 | M-0 | Pre-pub prep: split store protocols, NAc locking, dict serialization audit | Buildout Phases 1.1, 4, 5 |
-| M-1 | Database backend (split stores + PostgreSQL + pgvector) | Publication (v0.2.0) |
+| M-1 | Database backend (split stores + PostgreSQL + pgvector) | Publication (v1.0.0) |
 | M-2 | Dual-pass deidentification (bio-system-aware client-side + server verification) | M-1 |
 | M-3 | Tenant/session isolation (private → shared → Mother's own) | M-1 |
 | M-4 | Memory coalescence engine (consensus confidence, cross-user dedup, merge strategy) | M-1, M-2 |

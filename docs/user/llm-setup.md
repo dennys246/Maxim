@@ -404,7 +404,7 @@ Or pin it in `~/.maxim/config/llm.json`:
 ```json
 {
   "lane_models": {
-    "infer": {
+    "large": {
       "remote_url": "http://192.168.1.10:8000/v1",
       "model": "mistral-7b-instruct-v0.2"
     }
@@ -683,7 +683,7 @@ Example `~/.maxim/config/llm.json` for a Claude cloud lane:
 {
   "cloud_enabled": true,
   "lane_models": {
-    "infer": {
+    "large": {
       "remote_url": "https://api.anthropic.com/v1",
       "model": "claude-3-5-sonnet-20241022",
       "api_key_env": "ANTHROPIC_API_KEY"

@@ -1,7 +1,7 @@
 # Publication Refinement Plan
 
-> **Status:** Phase 0 DONE. Phase 1 DONE (1m deferred). ASH ALL PHASES DONE. Module Compartmentalization IN PROGRESS. POG-0 DONE.
-> **Goal:** Fix the blockers, code quality issues, and documentation gaps identified in a comprehensive repo review before publishing pymaxim v0.2.0 to PyPI.
+> **Status:** Phase 0 DONE. Phase 1 DONE (1m deferred). ASH ALL PHASES DONE. Module Compartmentalization DONE. POG-0 DONE. v1.0.0 ready.
+> **Goal:** Fix the blockers, code quality issues, and documentation gaps identified in a comprehensive repo review before publishing pymaxim v1.0.0 to PyPI.
 > **Estimated scope:** ~1,400 LOC of fixes + ~500 LOC of tests + ~400 LOC of docs changes across 5 phases (includes Mother Maxim on-ramp items 1m-1n)
 > **Sequence:** Blockers (0) → Code Quality + Data Integrity + UX + API Contract (1) → Test Depth (2) → Docs & Packaging (3) → Publish (4)
 > **Timeframe:** 3-4 focused sessions
@@ -10,7 +10,7 @@
 > - **[API Surface Hardening Plan](../archive/api_surface_hardening_plan.md)** — ALL PHASES COMPLETE. Wired stub verbs, fixed research protocol, error handling on user-facing paths, integration tests, README overhaul.
 > - **[Module Compartmentalization Plan](../archive/module_compartmentalization_plan.md)** — COMPLETE (2026-04-09). 5 god-modules decomposed, 7 new files, 125 tests.
 >
-> **Revised sequence:** Phase 0 (DONE) → ASH (DONE) → Phase 1.5/2 (DONE) → POG-0 (DONE) → Packaging (DONE) → Module Compartmentalization (IN PROGRESS) → **Must-Fix Blockers** → Phase 4 (publish)
+> **Revised sequence:** Phase 0 (DONE) → ASH (DONE) → Phase 1.5/2 (DONE) → POG-0 (DONE) → Packaging (DONE) → Module Compartmentalization (DONE) → v1.0.0 cleanup (DONE) → Phase 4 (publish)
 >
 > ## Pre-Publish Must-Fix Checklist
 >

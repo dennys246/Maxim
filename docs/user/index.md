@@ -5,7 +5,7 @@ Documentation for users of Maxim (pymaxim) — a bio-inspired cognitive architec
 ## Start Here
 
 - [Getting Started](getting-started.md) — Installation, first run, prerequisites
-- [Python API](python-api.md) — All 13 API verbs with examples **(new in v0.2.0)**
+- [Python API](python-api.md) — All 17 API verbs with examples
 
 ## Core Guides
 
@@ -23,11 +23,13 @@ Documentation for users of Maxim (pymaxim) — a bio-inspired cognitive architec
 
 ## Subsystems
 
-- [LLM Setup](llm-setup.md) — Local models, 12+ cloud providers (Anthropic, OpenAI, Gemini, Groq, etc.)
+- [LLM Setup](llm-setup.md) — Local models, 10 cloud providers (Anthropic, OpenAI, Gemini, Groq, Together, Fireworks, Mistral, DeepSeek)
 - [Peer Setup](peer-setup.md) — Connecting to a remote leader via Cloudflare tunnel
 - [Vision & Audio](vision-audio.md) — Camera, Whisper, VAD, voice commands
 - [Memory](memory-user-guide.md) — What persists, lifecycle, recall improvements
 - [Safety](safety.md) — Autonomy levels, FearAgent, pain detection, harm prediction
+- [Component Library](component-library.md) — 54 SEM components across 7 genre-gated categories
+- [API Quickstart](api-quickstart.md) — Quick examples for the Python API
 
 ## Setup & Support
 

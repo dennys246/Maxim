@@ -29,9 +29,9 @@ maxim --mode agentic --agentic-verbosity 3
 | Issue | Solution |
 |-------|----------|
 | "Model not found" | `python -m maxim.models.download --llm <model-name>` or `maxim.download_model("model-name")` from Python |
-| `--llm` flag ignored | Fixed in v0.2.0 — `detect_tiers()` now respects `MAXIM_LLM_PROFILE`. Update to latest. |
+| `--llm` flag ignored | Fixed in v1.0.0 — `detect_tiers()` now respects `MAXIM_LLM_PROFILE`. Update to latest. |
 | Wrong model loads on restart | Your `--llm` choice now persists automatically. Clear with: delete `~/.maxim/util/active_llm_model.txt` |
-| VRAM not released on exit | Fixed in v0.2.0 — shutdown now kills the full process tree. If stuck: `maxim --delete-model` won't help, but restarting will auto-kill stale servers. |
+| VRAM not released on exit | Fixed in v1.0.0 — shutdown now kills the full process tree. If stuck: `maxim --delete-model` won't help, but restarting will auto-kill stale servers. |
 | Out of memory | Use `smollm-1.7b` or lower quantization (`Q3_K_M`). Delete unused models: `maxim --delete-model <name>` |
 | Slow inference | Use smaller model (`smollm-1.7b`) or lower quantization |
 | Gibberish output | Check `prompt_style` matches model in `~/.maxim/config/llm.json` |
