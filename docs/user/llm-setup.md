@@ -299,7 +299,7 @@ cloud, so they bypass `MAXIM_MAX_CLOUD_LANES`. The session-cost ceiling in
 
 ### Auto-spawn (Phase 6) — zero-terminal setup
 
-If you have a GPU and the `[llm-server]` extra installed, Maxim will **automatically launch a llama-cpp-server subprocess** at startup, wire the infer lane to it, and shut it down when Maxim exits. No second terminal needed.
+If you have a GPU and the `[llm-server]` extra installed, Maxim will **automatically launch a llama-cpp-server subprocess** at startup, wire the large lane to it, and shut it down when Maxim exits. No second terminal needed.
 
 ```bash
 pip install -e '.[llm-server]'  # one-time: bundles sse-starlette, openai SDK, etc.
@@ -321,7 +321,7 @@ On startup you'll see a banner like:
 
 - `MAXIM_AUTO_SPAWN_LLM_SERVER=0` (opt-out)
 - No GPU detected
-- `MAXIM_LANE_INFER_REMOTE_URL` already set (user pointed at a different server)
+- `MAXIM_LANE_LARGE_REMOTE_URL` already set (user pointed at a different server)
 - The profile's GGUF file isn't present locally
 - `llama_cpp.server` isn't installed (missing `[llm-server]` extra)
 
@@ -337,7 +337,7 @@ On startup you'll see a banner like:
 
 **Signal isolation:** the spawned server runs in its own process group so Ctrl+C on the Maxim CLI doesn't kill it mid-shutdown. The server stays alive through Maxim's cleanup (e.g., sim-report LLM roundup) and is stopped explicitly via the atexit handler.
 
-**Stale remote URL recovery:** if `MAXIM_LANE_INFER_REMOTE_URL` points at a server that's no longer responding, Maxim warns once and drops the override so auto-spawn can take over. No more silent connection errors from leftover env vars.
+**Stale remote URL recovery:** if `MAXIM_LANE_LARGE_REMOTE_URL` points at a server that's no longer responding, Maxim warns once and drops the override so auto-spawn can take over. No more silent connection errors from leftover env vars.
 
 ### Leader mode (Phase 6b) — be the cluster's inference host
 
@@ -357,14 +357,14 @@ Other valid roles:
 | `MAXIM_ROLE` | Bind | Use |
 |---|---|---|
 | `leader` | `0.0.0.0` | Host for peers (home PC, desktop with GPU) |
-| `client` | `127.0.0.1` | Follower — pairs with `MAXIM_LANE_INFER_REMOTE_URL` |
+| `client` | `127.0.0.1` | Follower — pairs with `MAXIM_LANE_LARGE_REMOTE_URL` |
 | `solo` | `127.0.0.1` | Single-machine default (no peers) |
 
 **Setting up a home leader:**
 
 1. Install cloudflared + configure tunnel (see next section) — or skip and just use LAN IP
 2. Run `maxim` — auto-spawn detects cloudflared, promotes to leader, binds `0.0.0.0`
-3. On a peer machine: `MAXIM_LANE_INFER_REMOTE_URL=https://maxim-llm.yourdomain.com/v1 maxim`
+3. On a peer machine: `MAXIM_LANE_LARGE_REMOTE_URL=https://maxim-llm.yourdomain.com/v1 maxim`
 
 The leader's Maxim still runs locally too — both your home CLI and the laptop CLI hit the same GPU.
 
@@ -394,8 +394,8 @@ On the client machine, point a lane at the server via environment overrides
 
 ```bash
 # Quick test — one-shot remote lane
-MAXIM_LANE_INFER_REMOTE_URL=http://192.168.1.10:8000/v1 \
-MAXIM_LANE_INFER_REMOTE_MODEL=mistral-7b-instruct-v0.2 \
+MAXIM_LANE_LARGE_REMOTE_URL=http://192.168.1.10:8000/v1 \
+MAXIM_LANE_LARGE_REMOTE_MODEL=mistral-7b-instruct-v0.2 \
 maxim --language-model mistral-7b
 ```
 
@@ -458,7 +458,7 @@ maxim peer show      # print current peer config (key truncated)
 maxim peer forget    # remove the peer config file
 ```
 
-**How it's used:** on every `maxim` startup, if `peer.yml` exists the URL + key + optional model are set as defaults for `MAXIM_LANE_INFER_*` env vars. **Env vars still win** — you can do per-session overrides without editing the file.
+**How it's used:** on every `maxim` startup, if `peer.yml` exists the URL + key + optional model are set as defaults for `MAXIM_LANE_LARGE_*` env vars. **Env vars still win** — you can do per-session overrides without editing the file.
 
 For public URLs (tunnel hostnames), `is_cloud: true` is detected automatically and raises `MAXIM_MAX_CLOUD_LANES` to 1 on startup.
 
@@ -477,7 +477,7 @@ Runs four checks:
 3. `GET /v1/models` (401 → tells you the key is wrong)
 4. Chat completion round-trip with latency timing
 
-Uses `MAXIM_LANE_INFER_REMOTE_API_KEY` from env if `--key` isn't passed. Exit code 0 = fully working, 1 = any failure.
+Uses `MAXIM_LANE_LARGE_REMOTE_API_KEY` from env if `--key` isn't passed. Exit code 0 = fully working, 1 = any failure.
 
 #### Interpreting peer-test failures
 
@@ -543,7 +543,7 @@ sudo cloudflared service install
 Then on peers:
 
 ```bash
-export MAXIM_LANE_INFER_REMOTE_URL=https://maxim.yourdomain.com/v1
+export MAXIM_LANE_LARGE_REMOTE_URL=https://maxim.yourdomain.com/v1
 export MAXIM_MAX_CLOUD_LANES=1   # cloud-lane gate opt-in (public URL)
 maxim
 ```
@@ -579,18 +579,18 @@ fish, PowerShell, and Windows cmd** — the peer picks theirs:
 
 ```bash
 # bash / zsh (Linux, macOS, WSL)
-export MAXIM_LANE_INFER_REMOTE_API_KEY="…"
-echo 'export MAXIM_LANE_INFER_REMOTE_API_KEY="…"' >> ~/.bashrc
+export MAXIM_LANE_LARGE_REMOTE_API_KEY="…"
+echo 'export MAXIM_LANE_LARGE_REMOTE_API_KEY="…"' >> ~/.bashrc
 
 # fish
-set -Ux MAXIM_LANE_INFER_REMOTE_API_KEY "…"
+set -Ux MAXIM_LANE_LARGE_REMOTE_API_KEY "…"
 
 # PowerShell
-$env:MAXIM_LANE_INFER_REMOTE_API_KEY = "…"
-Add-Content $PROFILE "`n$env:MAXIM_LANE_INFER_REMOTE_API_KEY = `"…`""
+$env:MAXIM_LANE_LARGE_REMOTE_API_KEY = "…"
+Add-Content $PROFILE "`n$env:MAXIM_LANE_LARGE_REMOTE_API_KEY = `"…`""
 
 # Windows cmd
-setx MAXIM_LANE_INFER_REMOTE_API_KEY "…"
+setx MAXIM_LANE_LARGE_REMOTE_API_KEY "…"
 ```
 
 **Rotation:** `maxim tunnel key rotate` generates a new key. Peers using the old
@@ -660,8 +660,8 @@ sudo cloudflared service install
 On the client, point a lane at the tunnel URL:
 
 ```bash
-MAXIM_LANE_INFER_REMOTE_URL=https://maxim-llm.yourdomain.com/v1 \
-MAXIM_LANE_INFER_REMOTE_MODEL=mistral-7b-instruct-v0.2 \
+MAXIM_LANE_LARGE_REMOTE_URL=https://maxim-llm.yourdomain.com/v1 \
+MAXIM_LANE_LARGE_REMOTE_MODEL=mistral-7b-instruct-v0.2 \
 maxim
 ```
 

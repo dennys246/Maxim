@@ -116,7 +116,7 @@
   <section class="space-y-4">
     <h2 id="orchestrator" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Orchestration Loop</h2>
 
-    <p class="text-slate-300 leading-relaxed">Everything runs through <em class="text-indigo-400 not-italic font-medium">selfy.py</em>, the main conscience of the system. The name isn't accidental: it's the self-model, the inner loop where perception, cognition, and action come together. The <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">Maxim</code> class composes six mixins extracted into the <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">conscience/</code> package: <em class="text-indigo-400 not-italic">ConnectionMixin</em> (reconnection &amp; resource cleanup), <em class="text-indigo-400 not-italic">VisionStreamMixin</em> (threaded vision events), <em class="text-indigo-400 not-italic">AgenticRuntimeMixin</em> (LLM agent lifecycle), <em class="text-indigo-400 not-italic">MovementMixin</em> (kinematics &amp; gaze), <em class="text-indigo-400 not-italic">InputHandlerMixin</em> (keyboard, CLI, voice listeners), and <em class="text-indigo-400 not-italic">MediaLoopMixin</em> (live capture/playback pipeline).</p>
+    <p class="text-slate-300 leading-relaxed">Everything runs through <em class="text-indigo-400 not-italic font-medium">selfy.py</em>, the embodied runtime of the system — the inner loop where perception, cognition, and action come together. The <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">Maxim</code> class composes six mixins extracted into the <code class="bg-slate-950 px-2 py-0.5 rounded text-sm">embodied_runtime/</code> package: <em class="text-indigo-400 not-italic">ConnectionMixin</em> (reconnection &amp; resource cleanup), <em class="text-indigo-400 not-italic">VisionStreamMixin</em> (threaded vision events), <em class="text-indigo-400 not-italic">AgenticRuntimeMixin</em> (LLM agent lifecycle), <em class="text-indigo-400 not-italic">MovementMixin</em> (kinematics &amp; gaze), <em class="text-indigo-400 not-italic">InputHandlerMixin</em> (keyboard, CLI, voice listeners), and <em class="text-indigo-400 not-italic">MediaLoopMixin</em> (live capture/playback pipeline).</p>
 
     <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Maxim.run() — simplified</span>
 
@@ -669,27 +669,70 @@ class RobotController(ABC):
 
 @dataclass
 class MotionTarget:
+    # Generic head pose (3-DOF) — common to humanoid robots
     head_roll: float | None = None     # Radians
     head_pitch: float | None = None
     head_yaw: float | None = None
+    # Body rotation — common to most robots
     body_yaw: float | None = None
-    antenna_left: float | None = None
-    antenna_right: float | None = None
+    # Robot-specific joints (Reachy antennas, Atlas arms, Spot legs)
+    # live in extras so the canonical motion command stays SDK-agnostic
+    extras: dict[str, float] = field(default_factory=dict)
     duration: float = 1.0              # Seconds
-    method: str = "minimum_jerk"       # Smooth trajectory</div>
+    method: str = "minimum_jerk"       # Smooth trajectory
 
-    <p class="text-slate-300 leading-relaxed">The <em class="text-indigo-400 not-italic font-medium">ReachyMiniController</em> connects via Zenoh peer discovery on the local network, streaming video through GStreamer and audio through WebRTC. The <em class="text-indigo-400 not-italic font-medium">SimulatedController</em> provides a virtual 640x480 stream for testing without hardware.</p>
+# Reachy: antennas
+target = MotionTarget(
+    head_pitch=0.2,
+    extras={"antenna_left": 0.5, "antenna_right": -0.5},
+)
 
-    <h3 class="text-lg font-semibold text-indigo-400">Multi-Robot Support</h3>
-    <p class="text-slate-300 leading-relaxed">The <em class="text-indigo-400 not-italic font-medium">RobotRegistry</em> (singleton) allows connecting multiple robots simultaneously:</p>
+# Atlas: arms + grippers
+target = MotionTarget(
+    extras={"left_arm_yaw": 1.0, "gripper_left": 0.7},
+)</div>
 
-    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Example</span>
-registry = RobotRegistry()
+    <p class="text-slate-300 leading-relaxed">The <em class="text-indigo-400 not-italic font-medium">ReachyMiniController</em> connects via Zenoh peer discovery on the local network, streaming video through GStreamer and audio through WebRTC. The <em class="text-indigo-400 not-italic font-medium">SimulatedController</em> provides a virtual 640x480 stream for testing without hardware. Robot-specific joints flow through <code class="bg-slate-950 px-1.5 py-0.5 rounded text-xs">MotionTarget.extras</code> — each controller reads its own keys and ignores the rest, so the canonical motion command never has to know what hardware is downstream.</p>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Multi-Robot Support — Plug In Any Robot</h3>
+    <p class="text-slate-300 leading-relaxed">Reachy Mini ships in-tree as the reference implementation, but adding Atlas, Spot, a custom drone, or anything that exposes a programmable controller is a 3-step plugin pattern. The <em class="text-indigo-400 not-italic font-medium">RobotRegistry</em> auto-discovers third-party robots through the <code class="bg-slate-950 px-1.5 py-0.5 rounded text-xs">maxim.robots</code> entry-point group — no Maxim core changes required.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Adding a new robot — 3 steps</span>
+
+# 1. Implement RobotController in your own package
+class AtlasController(RobotController):
+    @property
+    def robot_type(self) -&gt; str:
+        return "atlas"
+    def goto_target(self, target: MotionTarget) -&gt; bool:
+        # Read generic fields
+        yaw = target.head_yaw or 0.0
+        # Read robot-specific joints from extras
+        left_arm = target.extras.get("left_arm_yaw", 0.0)
+        return self._sdk.move(yaw=yaw, left_arm=left_arm, ...)
+    # ... see hardware/reachy/controller.py for the full list
+
+# 2. Register via the maxim.robots entry-point group in your pyproject.toml
+#    [project.entry-points."maxim.robots"]
+#    atlas = "maxim_atlas.controller:AtlasController"
+#
+#    RobotRegistry auto-discovers it on next startup. Done.
+
+# 3. (Optional) Ship a SEM template for the agent's body model:
+#    bodies/atlas.yaml — sensors, modulators, failure modes</div>
+
+    <p class="text-slate-300 leading-relaxed">The bundled <em class="text-indigo-400 not-italic font-medium">bodies/reachy_mini</em> SEM template — an ode to where Maxim's embodiment journey started — models Reachy's joints (head pose, body yaw, antennas), camera/microphone health, battery, motor temperature, and pose confidence as SEM sensors with motion + expression + capture + lifecycle modulators. Use it as a reference when modeling your own robot.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Multi-robot example</span>
+registry = RobotRegistry()  # Auto-discovers entry-point plugins on init
+# Built-in: Reachy Mini + simulated
 registry.register_controller_type("reachy_mini", ReachyMiniController)
 registry.register_controller_type("simulated", SimulatedController)
 
 primary = registry.connect_robot("primary", "reachy_mini", set_primary=True)
-secondary = registry.connect_robot("secondary", "simulated")</div>
+secondary = registry.connect_robot("secondary", "simulated")
+# Third-party plugin (auto-discovered): no manual register call needed
+atlas = registry.connect_robot("atlas_unit_1", "atlas")</div>
   </section>
 
   <!-- 7. Bridge System -->

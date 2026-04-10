@@ -2,7 +2,7 @@
 
 {% block title %}Component Library — Maxim Docs | SEM Entity Templates{% endblock %}
 
-{% block meta_description %}Browse Maxim's 54 SEM component templates — weapons, creatures, NPCs, environments, items, and vehicles across fantasy, cyberpunk, sci-fi, horror, historical, and modern genres. Searchable and filterable.{% endblock %}
+{% block meta_description %}Browse Maxim's 55 SEM component templates — weapons, creatures, NPCs, environments, items, and vehicles across fantasy, cyberpunk, sci-fi, horror, historical, and modern genres. Searchable and filterable.{% endblock %}
 
 {% block meta_keywords %}Maxim components, SEM entities, game assets, NPC templates, weapon templates, creature templates, fantasy, cyberpunk, scifi, horror{% endblock %}
 
@@ -16,7 +16,7 @@
   "@context": "https://schema.org",
   "@type": "TechArticle",
   "headline": "Component Library — SEM Entity Templates",
-  "description": "54 reusable SEM entity templates across 7 categories and 7 genres for Maxim's cognitive simulation system.",
+  "description": "55 reusable SEM entity templates across 7 categories and 7 genres for Maxim's cognitive simulation system.",
   "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
   "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
   "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/component-library",
@@ -61,7 +61,7 @@
   <!-- Header -->
   <div class="text-center space-y-4">
     <h1 class="text-3xl md:text-4xl font-bold text-white">Component Library</h1>
-    <p class="text-lg text-slate-400 max-w-3xl mx-auto">54 SEM entity templates across 7 categories. Every component has sensors, affordances, and failure modes that drive Maxim's bio-cognitive systems during simulation.</p>
+    <p class="text-lg text-slate-400 max-w-3xl mx-auto">55 SEM entity templates across 7 categories. Every component has sensors, affordances, and failure modes that drive Maxim's bio-cognitive systems during simulation.</p>
   </div>
 
   <!-- Search + Filters -->
@@ -508,7 +508,15 @@ print(staff.sensors[<span class="text-green-400">"mana"</span>].read())</div>
   <!-- BODIES -->
   <!-- ═══════════════════════════════════════════════════════════════ -->
   <div id="cat-bodies" class="space-y-4">
-    <h2 class="text-2xl font-bold text-white border-b border-slate-700 pb-2">Bodies <span class="text-sm font-normal text-slate-500">(2)</span></h2>
+    <h2 class="text-2xl font-bold text-white border-b border-slate-700 pb-2">Bodies <span class="text-sm font-normal text-slate-500">(3)</span></h2>
+
+    <div class="component-card bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3" data-category="bodies" data-genres="modern" data-search="reachy mini robot embodied humanoid head pollen robotics antenna camera microphone battery motor temperature pose confidence look at nod">
+      <div class="flex items-center justify-between"><h3 class="text-white font-semibold">Reachy Mini <span class="text-xs text-indigo-400 font-normal">(real robot — bundled reference)</span></h3><div class="flex gap-1"><span class="genre-tag genre-modern">modern</span><span class="genre-tag genre-neutral">robot</span></div></div>
+      <p class="text-sm text-slate-400">Full SEM model of the desktop humanoid head from Pollen Robotics — the robot Maxim's embodiment journey started with. Models head pose (3-DOF), body yaw, antennas, camera/microphone health, battery, motor temperature, and pose confidence as SEM sensors. Use it as a reference template when modeling your own robot. Independent of the live hardware: works against the simulated controller too.</p>
+      <div class="flex flex-wrap gap-1"><span class="sensor-pill">head_yaw</span><span class="sensor-pill">head_pitch</span><span class="sensor-pill">head_roll</span><span class="sensor-pill">body_yaw</span><span class="sensor-pill">antenna_left</span><span class="sensor-pill">antenna_right</span><span class="sensor-pill">battery</span><span class="sensor-pill">motor_temperature</span><span class="sensor-pill">pose_confidence</span></div>
+      <div class="flex flex-wrap gap-1"><span class="failure-pill">thermal_throttling</span><span class="failure-pill">low_battery</span><span class="failure-pill">pose_drift</span><span class="failure-pill">camera_lost</span></div>
+      <code class="text-xs text-slate-500">ref: bodies/reachy_mini</code>
+    </div>
 
     <div class="component-card bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3" data-category="bodies" data-genres="cyberpunk" data-search="cybernetic arm integrity grip strength power proprioception pain feedback servo failure body part augmentation">
       <div class="flex items-center justify-between"><h3 class="text-white font-semibold">Cybernetic Arm / MEGARM v3</h3><div class="flex gap-1"><span class="genre-tag genre-cyberpunk">cyberpunk</span></div></div>

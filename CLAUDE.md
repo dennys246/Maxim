@@ -14,7 +14,7 @@ ruff check src/ tests/
 ruff format src/ tests/
 
 # Tests (fast suite)
-python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
+python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py
 
 # If touching memory/, decisions/, integration/memory_hub.py:
 python -m pytest tests/integration/test_memory_hub.py -q
@@ -92,7 +92,7 @@ Companion: `maxim tunnel` subcommand in [src/maxim/tunnel/](src/maxim/tunnel/) (
 
 **Retry loop** (`maxim doctor --retry`): the loop is data-driven — any `CheckResult` with a `retry_id` and non-ok status is automatically included. Add the retry_id to the `retryable_fns` dict in `cli._retry_loop` with a callable that re-runs the check.
 
-**Role detection** (`_detect_doctor_role()`): auto-detects from `MAXIM_LANE_INFER_REMOTE_URL` / `MAXIM_LANE_LARGE_REMOTE_URL`. Non-localhost URLs trigger peer mode. Override with `--as peer/leader/solo`.
+**Role detection** (`_detect_doctor_role()`): auto-detects from `MAXIM_LANE_LARGE_REMOTE_URL`. A non-localhost URL triggers peer mode. Override with `--as peer/leader/solo`.
 
 **Adding a new platform:** extend `PlatformInfo`'s `OSName` / `Runtime` / `Distro` Literal types + the detection branches in `platform_detect.py`, and add fix-hint branches in every platform-aware check.
 
@@ -129,7 +129,7 @@ maxim tunnel setup                           # Cloudflare tunnel
 maxim peer update && maxim peer restart      # remote update
 
 # Tests
-python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
+python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py
 ```
 
 Full CLI reference: [docs/user/cli-reference.md](docs/user/cli-reference.md)
@@ -158,7 +158,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 
 - **Agent loop** lives in `runtime/agent_loop.py` with `LoopController` in `runtime/loop_controller.py`
 - **Multi-agent runtime**: `AgentFactory` in `runtime/agent_factory.py` creates independent agent instances (NPC agents with isolated Hippocampus, NAc, ATL). `AgentPool` in `runtime/agent_pool.py` orchestrates concurrent multi-agent execution with `LocalMessageBus`.
-- **LLM routing** lives in `models/language/router.py` (config in `models/language/config.py`). 10 cloud provider profiles: Gemini, Groq, Together, Fireworks, Mistral, DeepSeek (plus Anthropic, OpenAI, local llama-cpp, transformers).
+- **LLM routing** lives in `models/language/router.py` (config in `models/language/config.py`). 8 cloud providers (Anthropic, OpenAI, Google Gemini, Groq, Together, Fireworks, Mistral, DeepSeek) across 15 cloud profiles, plus 15 local profiles (llama-cpp and PyTorch/Transformers backends).
 - **Simulation** orchestrator in `simulation/orchestrator.py`, bridge in `simulation/bridge.py`. Campaign runners in `simulation/campaign_runner.py`. Types in `simulation/sim_types.py`.
 - **Interactive runtime** in `interactive/` — universal prompt protocol (`PromptRequest`/`PromptHandler`), rich terminal display with split panels, DM display extensions.
 - **Mode system**: ProcessingState (awake/sleep) x OperationalMode (planning/supervised/autonomous). Sleep is a tool the agent calls; it wakes automatically on user input.
@@ -236,7 +236,7 @@ MAXIM_LANE_LARGE_REMOTE_API_KEY= # Auth token for remote server
 
 ```bash
 # Full suite (one pre-existing logic failure in test_record_plan_outcome)
-python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
+python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py
 
 # Specific test file
 python -m pytest tests/unit/test_simulation_agent.py -v
@@ -254,7 +254,7 @@ Known pre-existing failure: `tests/integration/test_memory_hub.py::TestPlanningB
 **Kill stale sims before running tests.** A running `maxim --sim agent` process holds GPU + port resources and can cause test hangs:
 ```bash
 pkill -f "maxim.*sim" 2>/dev/null; sleep 2
-python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
+python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py
 ```
 
 **Threading pitfalls (learned the hard way):**

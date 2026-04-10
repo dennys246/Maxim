@@ -22,7 +22,7 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/environment/` | World observation (no side effects) |
 | `src/maxim/memory/` | Storage and retrieval |
 | `src/maxim/runtime/` | Agent orchestration loop |
-| `src/maxim/conscience/` | Robot capture/inference/control loop (Reachy hardware) |
+| `src/maxim/embodied_runtime/` | Robot capture/inference/control loop (Reachy hardware mixin stack) |
 | `src/maxim/modes/` | Operating mode definitions |
 | `src/maxim/proprioception/` | Movement tracking and pain detection |
 | `src/maxim/harm/` | Predictive harm detection (velocity, joint limits) |
@@ -152,7 +152,7 @@ Observe state -> Agents propose intents -> Planners propose plans
 
 ### Cloud Providers
 
-10 cloud provider profiles are supported: Anthropic (`claude-sonnet`, `claude-haiku`), OpenAI, Gemini, Groq, Together, Fireworks, Mistral, DeepSeek. Cloud dispatch is opt-in via `MAXIM_LLM_CLOUD_ENABLED=1`.
+8 cloud providers are supported across 15 profiles: Anthropic (3 Claude models), OpenAI (2 GPT-4o models), Google Gemini (2), Groq (2), Together (1), Fireworks (1), Mistral (2), DeepSeek (2). Cloud dispatch is opt-in via `MAXIM_LLM_CLOUD_ENABLED=1`.
 
 ### Quantization
 

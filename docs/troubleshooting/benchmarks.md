@@ -41,7 +41,7 @@ A percept with an empty or missing `cli_input` is silently skipped during campai
 
 ## LLM loads twice
 
-Normal behavior. The AUT and orchestrator share a single LLM router, but the warmup message prints on each lane's first use. You will see two "model loaded" messages -- one for the `infer` lane and one for the `review` lane (or whichever lane the orchestrator uses first). This does not mean two model instances are loaded into memory.
+Normal behavior. The AUT and orchestrator share a single LLM router, but the warmup message prints on each lane's first use. You will see two "model loaded" messages -- one for the `large` lane and one for the `review` lane (or whichever lane the orchestrator uses first). This does not mean two model instances are loaded into memory.
 
 ---
 

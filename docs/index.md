@@ -61,7 +61,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 |----------|-------------|
 | Communication | SMS/Voice via Twilio, webhook setup. See `src/maxim/comms/` |
 | [Peer Setup](user/peer-setup.md) | Leader/peer networking, Cloudflare Tunnel, remote LLM |
-| [LLM Setup](user/llm-setup.md) | Local models, 10 cloud providers, tunnels, LeaderProxy |
+| [LLM Setup](user/llm-setup.md) | Local models, 8 cloud providers, tunnels, LeaderProxy |
 | [MediaMTX](mediaMTX.md) | RTSP relay: auto-start, network topology, deployment scenarios |
 
 ### Integration & Mesh
@@ -200,7 +200,7 @@ src/maxim/
 ├── attention/       → archive/attention.md
 ├── bridges/         → archive/bridges.md
 ├── comms/           → (SMS/Voice communication; see user/peer-setup.md for tunnel)
-├── conscience/      → ARCHITECTURE.md (conscience section)
+├── embodied_runtime/ → ARCHITECTURE.md (embodied runtime section — robot mixin stack, formerly `conscience/`)
 ├── data/            → (camera/audio data utilities)
 ├── decisions/       → decisions.md (NAc causal learning, AdaptivePlanner, significance)
 ├── default_network/ → default_network.md

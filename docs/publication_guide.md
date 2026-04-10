@@ -189,7 +189,7 @@ python -c "import maxim; print(maxim.__version__)"
 
 | Version | What |
 |---------|------|
-| 1.0.0 | Current release — foundational buildout, 13 API verbs, multi-agent |
+| 1.0.0 | Current release — foundational buildout, 17 API verbs, multi-agent |
 | 0.2.1 | Patch — fix `maxim.run()`, wire API stubs, error honesty |
 | 0.3.0 | Mother Maxim MVP + deidentification |
 | 0.4.0 | Coalescence + circadian lifecycle |
