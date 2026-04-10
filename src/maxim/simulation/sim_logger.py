@@ -110,11 +110,13 @@ def revert_display_to_floor() -> None:
     _display_tier = _display_floor
 
 
-_CRITICAL_CONTEXTS = frozenset({
-    "plan_approval",
-    "safety_escalation",
-    "autonomy_escalation",
-})
+_CRITICAL_CONTEXTS = frozenset(
+    {
+        "plan_approval",
+        "safety_escalation",
+        "autonomy_escalation",
+    }
+)
 """Contexts that override OFF mode — these represent decisions too
 important to auto-resolve silently."""
 

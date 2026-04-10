@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from maxim.math.angular_gyrus import AngularGyrus
     from maxim.memory.atl import ATL
     from maxim.memory.hippocampus import Hippocampus
-    from maxim.models.language.router import LLMRouter
     from maxim.runtime.agent_factory import AgentInstance
     from maxim.runtime.agent_pool import AgentPool
     from maxim.time.scn import SCN

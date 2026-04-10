@@ -22,7 +22,6 @@ from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
-    from maxim.embodiment.sem import Entity
     from maxim.memory.atl import ATL
     from maxim.memory.hippocampus import Hippocampus
     from maxim.runtime.agent_factory import AgentInstance

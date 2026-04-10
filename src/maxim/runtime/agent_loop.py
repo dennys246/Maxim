@@ -1571,9 +1571,7 @@ def run_agentic_loop(
                 from maxim.simulation.sim_logger import should_prompt
 
                 if not should_prompt("plan_approval"):
-                    autonomy_controller.proposal_queue.approve(
-                        proposal.id, approved_by="auto:non-interactive"
-                    )
+                    autonomy_controller.proposal_queue.approve(proposal.id, approved_by="auto:non-interactive")
                     sim.log("PIPELINE", f"Auto-approved (non-interactive PLANNING): {action.get('tool_name')}")
 
                 pending_proposal = None
