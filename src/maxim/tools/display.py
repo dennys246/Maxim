@@ -81,16 +81,19 @@ class RequestInteractionTool(Tool):
     """Request user input for an important decision.
 
     The agent calls this when it encounters a situation where human
-    judgment would be valuable.  The prompt fires if ``--interactive``
-    is ``auto`` or ``on``.  If ``off``, the agent gets a response
-    indicating interaction is disabled.
+    judgment would be valuable.  Fires when ``--interactive true`` or
+    when the context is critical (plan approval, safety escalation).
+
+    Set ``critical=true`` for decisions that should prompt even when
+    ``--interactive false`` (e.g., plan approval before implementation).
     """
 
     name = "request_interaction"
     description = (
         "Request user input for an important decision. Only use when "
         "the decision has significant consequences and the agent is "
-        "not confident about the right choice."
+        "not confident about the right choice. Set critical=true for "
+        "plan approvals or safety-critical decisions."
     )
     input_schema = {
         "type": "object",
@@ -108,6 +111,10 @@ class RequestInteractionTool(Tool):
                 "type": "string",
                 "description": "Why user input is needed",
             },
+            "critical": {
+                "type": "boolean",
+                "description": "If true, prompt even when interactive mode is off (plan approvals, safety decisions)",
+            },
         },
         "required": ["question"],
     }
@@ -120,11 +127,13 @@ class RequestInteractionTool(Tool):
         question: str = "",
         options: list[str] | None = None,
         reason: str = "",
+        critical: bool = False,
         **kwargs: Any,
     ) -> ToolOutput:
         from maxim.simulation.sim_logger import should_prompt
 
-        if not should_prompt("agent_request"):
+        context = "plan_approval" if critical else "agent_request"
+        if not should_prompt(context):
             return ToolOutput(
                 success=True,
                 output="Interaction disabled — make your best judgment.",

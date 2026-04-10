@@ -110,26 +110,42 @@ def revert_display_to_floor() -> None:
     _display_tier = _display_floor
 
 
-def should_prompt(context: str = "") -> bool:
+_CRITICAL_CONTEXTS = frozenset({
+    "plan_approval",
+    "safety_escalation",
+    "autonomy_escalation",
+})
+"""Contexts that override OFF mode — these represent decisions too
+important to auto-resolve silently."""
+
+
+def should_prompt(context: str = "", *, force: bool = False) -> bool:
     """Determine whether to prompt the user for input.
 
     Args:
         context: What's requesting the prompt — "dm_campaign",
-            "agentic_mode", "autonomy_escalation", "agent_request",
-            "confirmation", etc.
+            "agentic_mode", "autonomy_escalation", "plan_approval",
+            "safety_escalation", "agent_request", "confirmation", etc.
+        force: If True, prompt regardless of interactive mode. Use
+            sparingly — only for decisions that must not be auto-resolved.
 
     Returns:
         True if the prompt should be shown to the user.
     """
+    if force:
+        return True
     if _interactive_mode == InteractiveMode.ON:
         return True
     if _interactive_mode == InteractiveMode.OFF:
-        return False
+        # Critical contexts still prompt even when OFF
+        return context in _CRITICAL_CONTEXTS
     # AUTO: derive from context
     return context in (
         "dm_campaign",
         "agentic_mode",
         "autonomy_escalation",
+        "plan_approval",
+        "safety_escalation",
         "agent_request",
         "confirmation",
     )

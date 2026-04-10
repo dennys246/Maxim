@@ -18,7 +18,7 @@ maxim [OPTIONS]
 | `--language-model`, `--llm` | str | None | LLM profile (e.g., `mistral-7b`, `qwen2.5-14b-instruct`, `claude-sonnet`). Persists across sessions. |
 | `--verbosity` | int | `1` | Logging level: 0 (quiet), 1 (info), 2 (debug) |
 | `--home-dir` | str | `data` | Directory for outputs and state |
-| `--interactive` | bool | `True` | Enable keyboard/terminal input |
+| `--interactive` | bool | `True` | Enable keyboard/terminal input. Note: critical decisions (plan approvals, safety escalations) can still prompt even when false. |
 | `--epochs` | int | `0` (infinite) | Stop after N cycles |
 | `--list-models` | flag | | List all available models with download/key status and exit |
 | `--delete-model` | str | None | Delete a downloaded local model to free disk space |

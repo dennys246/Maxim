@@ -7,6 +7,8 @@
 **Estimated effort:** ~500 LOC across ~15 files
 
 > **Decision (2026-04-09):** `--interactive` stays as a boolean (True/False) controlling whether the runtime accepts user input. The "auto" concept (DM campaigns prompt, generative sims don't) is handled by the simulation layer internally based on campaign type — not exposed as a CLI flag value. The `InteractiveMode` enum in `sim_logger.py` still supports auto/on/off for the display system's internal use via `maxim.configure(interactive="on"/"off")`.
+>
+> **Critical prompts override OFF mode:** `should_prompt()` allows critical contexts (`plan_approval`, `safety_escalation`, `autonomy_escalation`) to prompt even when `--interactive false`. The `request_interaction` tool has a `critical=true` parameter for this. This ensures the agent can ask for plan approval before implementing, even in headless mode.
 
 ---
 
