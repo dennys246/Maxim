@@ -82,14 +82,14 @@ maxim peer connect https://maxim.yourdomain.com/v1
 
 **Alternative check — env vars:**
 ```bash
-echo $MAXIM_LANE_INFER_REMOTE_URL
-echo $MAXIM_LANE_INFER_REMOTE_API_KEY
+echo $MAXIM_LANE_LARGE_REMOTE_URL
+echo $MAXIM_LANE_LARGE_REMOTE_API_KEY
 echo $MAXIM_MAX_CLOUD_LANES
 ```
 
 If set, these override peer.yml. Make sure they point at the right URL + key. If stale, unset them:
 ```bash
-unset MAXIM_LANE_INFER_REMOTE_URL MAXIM_LANE_INFER_REMOTE_MODEL MAXIM_LANE_INFER_REMOTE_API_KEY MAXIM_MAX_CLOUD_LANES
+unset MAXIM_LANE_LARGE_REMOTE_URL MAXIM_LANE_LARGE_REMOTE_MODEL MAXIM_LANE_LARGE_REMOTE_API_KEY MAXIM_MAX_CLOUD_LANES
 ```
 
 ### Rung 1 — Does DNS resolve on the peer?
@@ -216,15 +216,15 @@ MAXIM_LANE_TRACE=1 maxim --sim "say hi" --persona cooperative
  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   Maxim LLM lanes
-  infer   self-hosted https://maxim.yourdomain.com/v1     ← MUST say "self-hosted" not "local"
+  large   self-hosted https://maxim.yourdomain.com/v1     ← MUST say "self-hosted" not "local"
   ...
 
-peer_infer req=abc12345 provider=lane-infer model=mistral-7b status=ok latency=312ms http=200 tokens=50+10
+peer_large req=abc12345 provider=lane-large model=mistral-7b status=ok latency=312ms http=200 tokens=50+10
 ```
 
-**If the banner shows `infer local ...` →** the peer is using its own local model, NOT the tunnel. Causes:
+**If the banner shows `large local ...` →** the peer is using its own local model, NOT the tunnel. Causes:
 - `peer.yml` wasn't loaded (check Rung 0)
-- `MAXIM_LANE_INFER_REMOTE_URL` isn't set (check Rung 0)
+- `MAXIM_LANE_LARGE_REMOTE_URL` isn't set (check Rung 0)
 - Auto-spawn found a GPU on the peer and spawned a local server (the remote_url env var was empty, so auto-spawn took over). Fix: set the URL explicitly or `maxim peer connect`.
 - **Pre-loading race (debug plan root cause (a))**: peer.yml was read AFTER `LaneBackendManager` initialized. This would be a bug — report with logs.
 
@@ -337,16 +337,16 @@ sudo systemd-resolve --flush-caches
 
 **Symptom:** peer's Maxim connects to the wrong URL or uses no auth, despite `maxim peer show` looking correct.
 
-**Cause:** env vars (`MAXIM_LANE_INFER_REMOTE_URL`, etc.) take precedence over `peer.yml`. If the shell has a stale export from a previous session, it overrides the file.
+**Cause:** env vars (`MAXIM_LANE_LARGE_REMOTE_URL`, etc.) take precedence over `peer.yml`. If the shell has a stale export from a previous session, it overrides the file.
 
 **Diagnosis:**
 ```bash
-env | grep MAXIM_LANE_INFER
+env | grep MAXIM_LANE_LARGE
 ```
 
 **Fix:**
 ```bash
-unset MAXIM_LANE_INFER_REMOTE_URL MAXIM_LANE_INFER_REMOTE_MODEL MAXIM_LANE_INFER_REMOTE_API_KEY MAXIM_MAX_CLOUD_LANES
+unset MAXIM_LANE_LARGE_REMOTE_URL MAXIM_LANE_LARGE_REMOTE_MODEL MAXIM_LANE_LARGE_REMOTE_API_KEY MAXIM_MAX_CLOUD_LANES
 ```
 
 Then restart `maxim`. peer.yml values will take effect.
@@ -355,9 +355,9 @@ Then restart `maxim`. peer.yml values will take effect.
 
 **Symptom:** peer has a GPU → auto-spawn fires → spawns a LOCAL llama-cpp-server → peer talks to its own server instead of the leader.
 
-**Cause:** If the peer has a GPU and `MAXIM_LANE_INFER_REMOTE_URL` wasn't set before auto-spawn's check runs, auto-spawn takes over.
+**Cause:** If the peer has a GPU and `MAXIM_LANE_LARGE_REMOTE_URL` wasn't set before auto-spawn's check runs, auto-spawn takes over.
 
-**Diagnosis:** peer startup banner shows `infer self-hosted http://127.0.0.1:8100/v1` instead of the tunnel URL.
+**Diagnosis:** peer startup banner shows `large self-hosted http://127.0.0.1:8100/v1` instead of the tunnel URL.
 
 **Fix:** ensure peer.yml is loaded OR env vars are set BEFORE auto-spawn. `maxim peer connect <url>` handles this. Alternatively, force: `MAXIM_AUTO_SPAWN_LLM_SERVER=0`.
 
@@ -371,13 +371,13 @@ These are safe, read-only, no side effects. A Claude instance on the peer machin
 # Configuration state
 maxim doctor
 maxim peer show
-env | grep MAXIM_LANE_INFER
+env | grep MAXIM_LANE_LARGE
 env | grep MAXIM_MAX_CLOUD
 
 # Connectivity probes (read-only)
 dig maxim.yourdomain.com
 curl -I https://maxim.yourdomain.com/v1/models
-curl -i -H "Authorization: Bearer $MAXIM_LANE_INFER_REMOTE_API_KEY" https://maxim.yourdomain.com/v1/models
+curl -i -H "Authorization: Bearer $MAXIM_LANE_LARGE_REMOTE_API_KEY" https://maxim.yourdomain.com/v1/models
 maxim peer test https://maxim.yourdomain.com/v1
 
 # Trace-level diagnosis (generates log output but no state mutation)

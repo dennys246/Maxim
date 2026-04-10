@@ -87,7 +87,7 @@ Maps key presses to actions:
 
 ## Cloud Provider Profiles
 
-Maxim ships with built-in profiles for 10 cloud LLM providers. All use the OpenAI-compatible backend, so no extra dependencies are needed beyond `pip install -e ".[llm-openai]"`. Set the corresponding API key environment variable to enable a profile.
+Maxim ships with built-in profiles for 8 cloud LLM providers (Anthropic, OpenAI, Google Gemini, Groq, Together, Fireworks, Mistral, DeepSeek) across 15 cloud profiles. Most use the OpenAI-compatible backend (so no extra dependencies are needed beyond `pip install -e ".[llm-openai]"`); Anthropic uses the native SDK via `pip install -e ".[llm-anthropic]"`. Set the corresponding API key environment variable to enable a profile.
 
 | Profile | Provider | Model | API Key Env Var |
 |---------|----------|-------|-----------------|

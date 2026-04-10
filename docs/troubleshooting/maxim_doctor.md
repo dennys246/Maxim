@@ -106,10 +106,10 @@ Shown only after Maxim has processed LLM requests. Reports per-lane performance:
 
 | Check | What it tests | Status thresholds |
 |-------|--------------|-------------------|
-| Lane: infer | Inference lane health | ok: <20% failures, warn: 20-50%, fail: >50% |
-| Lane: review | Review lane health | Same thresholds |
+| Lane: large | Inference lane health | ok: <20% failures, warn: 20-50%, fail: >50% |
+| Lane: medium | Review lane health | Same thresholds |
 
-**High failure rate on infer lane:**
+**High failure rate on large lane:**
 - Check leader connectivity: `maxim peer test <url>`
 - Check model is loaded: `curl -H "Authorization: Bearer $KEY" <url>/v1/models`
 - Check logs for specific errors: `MAXIM_LANE_TRACE=1 maxim`

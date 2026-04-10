@@ -41,8 +41,8 @@ time with no coordination.
 
 | # | Where | What it does | Gap |
 |---|-------|--------------|-----|
-| 1 | [src/maxim/runtime/lane_backends.py:349-352](../../src/maxim/runtime/lane_backends.py#L349-L352), [L286](../../src/maxim/runtime/lane_backends.py#L286) | Peer infer lane is wired directly to `{remote_url}/v1/chat/completions` via OpenAI client | No Maxim-level endpoint; bypasses leader runtime entirely |
-| 2 | [src/maxim/runtime/lane_backends.py:612-621](../../src/maxim/runtime/lane_backends.py#L612-L621) | Leader rewires its own infer lane to `localhost:8100` | Leader + peer compete for GPU with no priority/queue awareness |
+| 1 | [src/maxim/runtime/lane_backends.py:349-352](../../src/maxim/runtime/lane_backends.py#L349-L352), [L286](../../src/maxim/runtime/lane_backends.py#L286) | Peer large lane is wired directly to `{remote_url}/v1/chat/completions` via OpenAI client | No Maxim-level endpoint; bypasses leader runtime entirely |
+| 2 | [src/maxim/runtime/lane_backends.py:612-621](../../src/maxim/runtime/lane_backends.py#L612-L621) | Leader rewires its own large lane to `localhost:8100` | Leader + peer compete for GPU with no priority/queue awareness |
 | 3 | [src/maxim/runtime/local_server_spawner.py:160-172](../../src/maxim/runtime/local_server_spawner.py#L160-L172) | llama-cpp-server gets `--api_key` only if one is set | Solo→leader transitions can leave server unauthenticated while tunnel is exposed |
 | 4 | [src/maxim/tunnel/config.py:23-36](../../src/maxim/tunnel/config.py#L23-L36) | Cloudflare tunnel is a pure proxy | No upstream auth enforcement; relies entirely on llama-cpp-server |
 | 5 | [src/maxim/peer/cli.py](../../src/maxim/peer/cli.py), [src/maxim/doctor/cli.py](../../src/maxim/doctor/cli.py) | `maxim peer test` probes `/v1/models` + a chat completion | Doesn't verify GPU served it, doesn't confirm leader runtime saw it |
@@ -55,8 +55,8 @@ time with no coordination.
 In order of likelihood:
 
 **(a) Lane init races peer.yml load.** If the peer's `LaneBackendManager`
-initializes before `peer.yml` is read, `MAXIM_LANE_INFER_REMOTE_URL` is unset
-and the infer lane silently falls back to `local-llama`. The peer will *appear*
+initializes before `peer.yml` is read, `MAXIM_LANE_LARGE_REMOTE_URL` is unset
+and the large lane silently falls back to `local-llama`. The peer will *appear*
 to work — it just never hits the leader.
 
 **(b) API key mismatch / absent key.** Leader's llama-cpp-server may have

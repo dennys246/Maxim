@@ -60,7 +60,7 @@ maxim peer connect <url> [--key KEY] [--model MODEL] [--skip-test]
 4. Saves `{url, api_key, model?, is_cloud}` to `~/.config/maxim/peer.yml` (mode 0600) only if the test passes
 5. Auto-detects `is_cloud: true` for public hostnames and enables the cloud-lane gate
 
-**On subsequent `maxim` runs**, the config is read from disk and populates `MAXIM_LANE_INFER_*` env vars via `setdefault` — env vars still win for per-session overrides.
+**On subsequent `maxim` runs**, the config is read from disk and populates `MAXIM_LANE_LARGE_*` env vars via `setdefault` — env vars still win for per-session overrides.
 
 **Companion commands:**
 
@@ -168,9 +168,9 @@ Or in the Cloudflare Dashboard: DNS → delete the A record for `<hostname>` →
 
 **Don't disable TLS verification.** A cert error almost always means you're reaching the wrong host. Fix the hostname.
 
-**Watch what you paste into the hidden key prompt.** The prompt echoes nothing, so a mis-paste (your shell prompt, the URL, the `export MAXIM_LANE_INFER_API_KEY=` prefix, a `✓` decoration character) gets silently stored as your key. If `peer show` displays something that doesn't look like a random string, that's what happened — `peer forget` and try again.
+**Watch what you paste into the hidden key prompt.** The prompt echoes nothing, so a mis-paste (your shell prompt, the URL, the `export MAXIM_LANE_LARGE_API_KEY=` prefix, a `✓` decoration character) gets silently stored as your key. If `peer show` displays something that doesn't look like a random string, that's what happened — `peer forget` and try again.
 
-**Copy only the key value, not the surrounding text.** `maxim tunnel key export` on the leader prints something like `export MAXIM_LANE_INFER_API_KEY=jXzgjz...3LwzD4`. The key is **only** the part after `=`, without quotes, without `export`, without the variable name, without any leading checkmark or prompt decoration.
+**Copy only the key value, not the surrounding text.** `maxim tunnel key export` on the leader prints something like `export MAXIM_LANE_LARGE_API_KEY=jXzgjz...3LwzD4`. The key is **only** the part after `=`, without quotes, without `export`, without the variable name, without any leading checkmark or prompt decoration.
 
 ---
 
@@ -191,12 +191,12 @@ Then run Maxim:
 maxim
 ```
 
-On startup the logs should show the peer URL being picked up as the infer-lane backend. Inference calls will then flow through the tunnel → leader's llama-cpp-server → back.
+On startup the logs should show the peer URL being picked up as the large-lane backend. Inference calls will then flow through the tunnel → leader's llama-cpp-server → back.
 
 To temporarily override for a session (without editing the saved config):
 
 ```bash
-MAXIM_LANE_INFER_REMOTE_URL=http://other-host:8100/v1 maxim
+MAXIM_LANE_LARGE_REMOTE_URL=http://other-host:8100/v1 maxim
 ```
 
 To stop using the peer config entirely:
