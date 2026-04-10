@@ -40,6 +40,31 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _is_structured_goal(goal_text: str) -> bool:
+    """Return True if a goal string looks structured enough to tokenize.
+
+    Structured goals yield meaningful concepts when split into tokens:
+      - compound identifiers: ``navigate_to_kitchen`` -> navigate, kitchen
+      - short phrases:        ``find red cup``        -> find, red, cup
+
+    Free-form natural-language goals yield concept noise when tokenized —
+    every word becomes a pseudo-concept (``"so"``, ``"before"``, ``"plan,"``).
+    We treat anything longer than 4 whitespace-separated tokens as opaque
+    context and decline to extract per-word concepts from it.
+
+    This is a pragmatic gate, not a linguistic analysis. The tradeoff:
+    long narrative goals lose their concept contribution, but the ATL
+    store stays clean. Proper narrative concept extraction requires
+    keyphrase extraction or LLM assistance — tracked as a future arc in
+    docs/plans/.
+    """
+    if not goal_text:
+        return False
+    if "_" in goal_text:
+        return True
+    return len(goal_text.split()) <= 4
+
+
 class ConceptExtractor:
     """Extracts concepts from episodic memories and registers them in ATL.
 
@@ -135,9 +160,21 @@ class ConceptExtractor:
             concepts_found.append((location.lower(), "location"))
 
         # Goal: tokenize into individual words so "navigate_to_kitchen"
-        # becomes concepts "navigate" (action) and "kitchen" (goal_token)
-        if record.context.active_goal:
-            for token in normalize_tokens(record.context.active_goal):
+        # becomes concepts "navigate" (action) and "kitchen" (goal_token).
+        #
+        # Only tokenize STRUCTURED goals — compound identifiers or short
+        # phrases. Free-form natural-language goals (long sentences from
+        # scripted scenarios or LLM self-reflection) explode into dozens of
+        # low-signal per-word concepts that bloat the ATL store and drown
+        # real concepts in noise. A 12-word sentence produced 12 concepts
+        # per capture before this gate — classic concept pollution.
+        #
+        # Heuristic: a goal is "structured" if it contains an underscore
+        # (compound identifier) OR is <= 4 whitespace-separated tokens
+        # (short phrase). Anything longer is treated as opaque context.
+        goal_text = record.context.active_goal
+        if goal_text and _is_structured_goal(goal_text):
+            for token in normalize_tokens(goal_text):
                 concepts_found.append((token, "goal"))
 
         # Action/tool
@@ -219,6 +256,20 @@ class ConceptExtractor:
             concept.add_ref("hippocampus", memory_id)
         elif concept and not was_created:
             concept.reinforce(memory_id)
+
+        # Bio-tier trace: surface concept formation and reinforcement so
+        # --display bio runs can observe the ATL's semantic accumulation in
+        # real time. Best-effort — sim_logger is optional and unrelated to
+        # the concept store's correctness.
+        try:
+            from maxim.simulation.sim_logger import sim_log
+
+            if was_created:
+                sim_log("ATL", f'Concept formed: "{name}" → {category}')
+            else:
+                sim_log("ATL", f'Concept reinforced: "{name}" ({category})')
+        except Exception:
+            pass
 
         # Cross-layer edge: episode INSTANCE_OF concept
         self._cross_layer.add_edge(

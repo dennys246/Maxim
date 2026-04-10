@@ -466,6 +466,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         # If --goal is set explicitly, it overrides the --sim value as goal
         _explicit_goal = getattr(args, "sim_goal", None)
 
+        # ── Apply sim display config EARLY so every subcommand sees it ───
+        # Previously set_display_tier was only called inside the scenario-file
+        # branch further down, so freeform-goal / research / benchmark / DM
+        # paths all ran with the default CLEAN tier — bio/debug display modes
+        # were silently no-ops for every path except explicit YAML scenarios.
+        # This is upstream of enable_sim_logging because sim_logger reads the
+        # tier global when each event fires, not when logging is enabled.
+        try:
+            from maxim.simulation.sim_logger import (
+                set_display_tier as _set_display_tier_early,
+                set_interactive_mode as _set_interactive_mode_early,
+                set_show_channels as _set_show_channels_early,
+            )
+
+            _display_arg_early = getattr(args, "display", "clean")
+            _set_display_tier_early(_display_arg_early)
+            if _display_arg_early == "debug":
+                _set_show_channels_early("all")
+            _interactive_str = str(getattr(args, "interactive", "true")).strip().lower()
+            _set_interactive_mode_early("on" if _interactive_str not in ("false", "0", "no", "off") else "off")
+            _show_channels_early = getattr(args, "show_channels", None)
+            if _show_channels_early:
+                _set_show_channels_early(_show_channels_early)
+        except Exception as _e:
+            logging.getLogger("maxim").warning("Failed to apply sim display config: %s", _e)
+
         # ── Generative campaign mode (new default for goal strings) ──
         if _is_goal_string and not _is_legacy_agent:
             goal = _explicit_goal or _sim_val
@@ -712,30 +738,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             from maxim.simulation.sim_logger import (
                 enable_sim_logging,
                 disable_sim_logging,
-                set_show_channels,
-                set_display_tier,
-                set_interactive_mode,
             )
 
             sim_log_path = str(sim_workspace / f"sim_log_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
             enable_sim_logging(log_path=sim_log_path, debug=_sim_debug)
 
-            # Apply --display tier
-            display_arg = getattr(args, "display", "clean")
-            set_display_tier(display_arg)
-            # --display debug implies full sim logging
-            if display_arg == "debug":
-                set_show_channels("all")
-
-            # Apply --interactive mode to simulation display layer
-            # Runtime --interactive is boolean; sim display uses auto/on/off
-            _interactive_bool = bool(getattr(args, "interactive", True))
-            set_interactive_mode("on" if _interactive_bool else "off")
-
-            # Apply --show channel filter (legacy, overrides if explicit)
-            show_channels = getattr(args, "show_channels", None)
-            if show_channels:
-                set_show_channels(show_channels)
+            # Display tier / interactive / show-channels are applied earlier
+            # in the sim block so all sim subcommands share the same config.
 
             for scenario_file in scenario_files:
                 if _sim_debug:

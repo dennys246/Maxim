@@ -226,65 +226,7 @@ def display_status(message: str) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Bio-tier condensed annotations
-# ─────────────────────────────────────────────────────────────────────────────
-
-_BIO_PREFIX = "  \u25cb "  # ○ prefix
-
-
-def display_memory_capture(content: str) -> None:
-    """Show memory capture annotation (BIO tier)."""
-    if _display_tier >= DisplayTier.BIO:
-        _emit(f'{_BIO_PREFIX}memory: Captured "{content}"', "bio")
-
-
-def display_memory_recall(query: str, count: int) -> None:
-    """Show memory recall annotation (BIO tier)."""
-    if _display_tier >= DisplayTier.BIO:
-        _emit(f'{_BIO_PREFIX}memory: Recalled {count} memories matching "{query}"', "bio")
-
-
-def display_causal_learn(event: str, outcome: str, confidence: float) -> None:
-    """Show causal learning annotation (BIO tier)."""
-    if _display_tier >= DisplayTier.BIO:
-        _emit(f"{_BIO_PREFIX}causal: {event} \u2192 {outcome} (confidence {confidence:.2f})", "bio")
-
-
-def display_pain_signal(source: str, intensity: float) -> None:
-    """Show pain signal annotation (BIO tier)."""
-    if _display_tier >= DisplayTier.BIO:
-        _emit(f"{_BIO_PREFIX}pain: {source} (intensity {intensity:.1f})", "bio")
-
-
-def display_fear_gate(tool: str, approved: bool) -> None:
-    """Show fear gate decision annotation (BIO tier)."""
-    if _display_tier >= DisplayTier.BIO:
-        if approved:
-            _emit(f"{_BIO_PREFIX}safety: Approved {tool}", "bio")
-        else:
-            _emit(f"{_BIO_PREFIX}safety: Blocked {tool}", "bio")
-
-
-def display_concept(name: str, category: str) -> None:
-    """Show concept formation annotation (BIO tier)."""
-    if _display_tier >= DisplayTier.BIO:
-        _emit(f'{_BIO_PREFIX}concept: "{name}" \u2192 {category}', "bio")
-
-
-def display_temporal(pattern: str) -> None:
-    """Show temporal pattern annotation (BIO tier)."""
-    if _display_tier >= DisplayTier.BIO:
-        _emit(f"{_BIO_PREFIX}temporal: {pattern}", "bio")
-
-
-def display_default_net(message: str) -> None:
-    """Show Default Network escalation (BIO tier)."""
-    if _display_tier >= DisplayTier.BIO:
-        _emit(f"{_BIO_PREFIX}default_net: {message}", "bio")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Legacy sim_log system (DEBUG tier) — full subsystem traces
+# sim_log subsystem traces — wired across the runtime, gated per-subsystem
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ANSI color codes for terminal output
@@ -307,6 +249,45 @@ _COLORS = {
     "BODY": "\033[37;1m",  # Bold white
 }
 _RESET = "\033[0m"
+
+# Per-subsystem minimum display tier. An event for subsystem S surfaces to the
+# terminal only if the active display tier >= _SUBSYSTEM_TIERS[S]. All events
+# are persisted to the JSONL log regardless of tier — this map only controls
+# terminal visibility.
+#
+# BIO-level subsystems are the "bio annotations" users want at --display bio:
+# memory events, causal learning, safety gates, pain, tool execution, high-
+# level perception and choice. DEBUG-level subsystems are granular pipeline
+# traces that would flood bio mode. Unknown subsystems default to BIO so new
+# code emitting to sim_log surfaces by default (opt-out rather than opt-in).
+_SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
+    # Bio-tier: surface at --display bio and above. All named biological
+    # subsystems belong here — they are the "bio annotations" users expect
+    # when they pass --display bio. The _CHANNEL_MAP below already groups
+    # all of these under the "bio" --show channel; the tier map must agree.
+    "HIPPOCAMPUS": DisplayTier.BIO,
+    "NAc": DisplayTier.BIO,
+    "ATL": DisplayTier.BIO,
+    "SCN": DisplayTier.BIO,
+    "CEREBELLUM": DisplayTier.BIO,
+    "SENSORY": DisplayTier.BIO,
+    "BODY": DisplayTier.BIO,
+    "BODY_STATE": DisplayTier.BIO,
+    "FEAR": DisplayTier.BIO,
+    "BLOCKED": DisplayTier.BIO,
+    "PAIN": DisplayTier.BIO,
+    "MOTOR": DisplayTier.BIO,
+    "EXEC": DisplayTier.BIO,
+    "PERCEPT": DisplayTier.BIO,
+    "SCENE": DisplayTier.BIO,
+    "CHOICE": DisplayTier.BIO,
+    "NPC": DisplayTier.BIO,
+    "RESULT": DisplayTier.BIO,
+    # Debug-tier: granular pipeline internals that would flood bio mode.
+    # These are implementation traces, not biological subsystem events.
+    "PIPELINE": DisplayTier.DEBUG,
+    "SALIENCE": DisplayTier.DEBUG,
+}
 
 _sim_active = False
 _sim_start: float = 0.0
@@ -371,9 +352,6 @@ def _cleanup_log_file() -> None:
 import atexit
 
 atexit.register(_cleanup_log_file)
-
-# Subsystems that only print in debug mode (always persisted to JSONL log)
-_DEBUG_ONLY_SUBSYSTEMS = {"PIPELINE"}
 
 
 def enable_sim_logging(
@@ -490,13 +468,15 @@ def sim_log(
         _log_file.write(json.dumps(record) + "\n")
         _log_file.flush()
 
-    # Display tier gate — full subsystem traces only at DEBUG tier
-    if _display_tier < DisplayTier.DEBUG:
-        return
-
-    # Terminal output — skip debug-only subsystems/events unless debug mode
-    if (subsystem in _DEBUG_ONLY_SUBSYSTEMS or _force_debug) and not _debug_mode:
-        return
+    # Display-tier gate. Each subsystem declares its minimum visible tier via
+    # _SUBSYSTEM_TIERS (unknown subsystems default to BIO). _force_debug
+    # escalates an event to DEBUG tier regardless of its subsystem's baseline.
+    # The legacy --debug runtime flag (_debug_mode) bypasses the tier gate
+    # entirely for backward compatibility with verbose-mode CLI users.
+    if not _debug_mode:
+        min_tier = DisplayTier.DEBUG if _force_debug else _SUBSYSTEM_TIERS.get(subsystem, DisplayTier.BIO)
+        if _display_tier < min_tier:
+            return
 
     # Channel filter — skip subsystems not in the active show set
     if _show_channels is not None and subsystem not in _show_channels:

@@ -16,68 +16,162 @@ import re
 
 _STOP_WORDS: frozenset[str] = frozenset(
     {
+        # Articles and core determiners
         "a",
         "an",
         "the",
+        "this",
+        "that",
+        "these",
+        "those",
+        # Prepositions
         "to",
         "in",
         "on",
         "of",
         "for",
-        "is",
-        "it",
-        "and",
-        "or",
-        "but",
-        "not",
         "with",
         "at",
         "by",
         "from",
         "as",
+        "into",
+        "onto",
+        "over",
+        "under",
+        "after",
+        "before",
+        "during",
+        "through",
+        "about",
+        "against",
+        # Conjunctions
+        "and",
+        "or",
+        "but",
+        "not",
+        "so",
+        "if",
+        "then",
+        "than",
+        "because",
+        "while",
+        "although",
+        "though",
+        "unless",
+        # Auxiliary verbs and copulas
+        "is",
+        "it",
+        "its",
         "be",
         "was",
         "were",
         "been",
+        "being",
         "are",
         "am",
         "do",
         "does",
         "did",
+        "doing",
         "has",
         "had",
         "have",
+        "having",
         "will",
         "would",
         "could",
         "should",
+        "shall",
         "can",
-        "this",
-        "that",
-        "these",
-        "those",
+        "may",
+        "might",
+        "must",
+        # Pronouns
         "i",
         "me",
         "my",
+        "mine",
+        "myself",
         "we",
+        "us",
         "our",
+        "ours",
+        "you",
+        "your",
+        "yours",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+        "hers",
+        "they",
+        "them",
+        "their",
+        "theirs",
+        # Common filler and hedge words that are rarely meaningful concepts
+        "best",
+        "good",
+        "bad",
+        "now",
+        "here",
+        "there",
+        "when",
+        "where",
+        "what",
+        "who",
+        "why",
+        "how",
+        "some",
+        "any",
+        "all",
+        "no",
+        "yes",
+        "also",
+        "only",
+        "just",
+        "very",
+        "too",
+        "one",
+        "two",
+        "such",
+        "still",
+        "even",
+        "much",
+        "many",
+        "more",
+        "most",
+        "less",
+        "few",
+        "both",
+        "other",
+        "another",
     }
 )
+
+# Leading/trailing punctuation that sneaks in from free-form text
+# (e.g. "plan," "action." "it'"). Strip from both ends after lowercasing.
+_PUNCT_STRIP = ".,;:!?\"'`()[]{}<>—–-"
 
 
 def normalize_tokens(text: str) -> list[str]:
     """Tokenize, filter stop words, and lemmatize for concept matching.
 
-    Splits on whitespace AND underscores so compound identifiers like
-    "navigate_to_kitchen" become ["navigate", "kitchen"] (after stop-word
-    removal). Lemmatization uses basic suffix stripping (no NLTK dependency).
-    Covers common English inflections: -ing, -ed, -s, -ly, -tion.
-    Not linguistically perfect, but sufficient for concept name matching.
+    Splits on whitespace, underscores, and apostrophes so compound
+    identifiers like "navigate_to_kitchen" become ["navigate", "kitchen"]
+    and contractions like "it's" become ["it", "s"] (both filtered by the
+    stop-word / length-2 rules). Also strips leading/trailing punctuation
+    so "plan," and "action." normalize to "plan" and "action" before the
+    stop-word filter runs. Lemmatization uses basic suffix stripping (no
+    NLTK dependency) and is conservative about stem length to avoid
+    garbage stems like "tak" from "taking".
     """
-    words = re.split(r"[\s_]+", text.lower())
-    result = []
-    for w in words:
-        if w in _STOP_WORDS or len(w) < 2:
+    words = re.split(r"[\s_'\u2019]+", text.lower())
+    result: list[str] = []
+    for raw in words:
+        w = raw.strip(_PUNCT_STRIP)
+        if not w or w in _STOP_WORDS or len(w) < 3:
             continue
         result.append(_lemmatize(w))
     return result
@@ -93,13 +187,25 @@ def _lemmatize(word: str) -> str:
     Edge-case aware: checks stem validity (min length, vowel presence)
     to avoid garbage stems like "used" -> "us" or "placed" -> "plac".
     """
-    # -ing: grasping -> grasp, running -> run
+    # -ing: grasping -> grasp, running -> run.
+    # Split the two cases so we can require a longer stem for non-doubled
+    # strips (which are prone to garbage stems like "taking" -> "tak")
+    # while still allowing legitimate short stems from doubled-consonant
+    # strips (running -> runn -> run is correct at 3 chars).
     if word.endswith("ing") and len(word) > 4:
         stem = word[:-3]
-        if len(stem) > 2 and stem[-1] == stem[-2]:
+        doubled = len(stem) >= 2 and stem[-1] == stem[-2]
+        if doubled:
             stem = stem[:-1]  # running -> runn -> run
-        if _has_vowel(stem):
-            return stem
+            if len(stem) >= 3 and _has_vowel(stem):
+                return stem
+        else:
+            # Non-doubled: require len >= 4 so "taking" stays "taking"
+            # rather than degenerating into "tak". A real stemmer would
+            # know "taking" -> "take", but we prefer the original word
+            # intact over producing non-words.
+            if len(stem) >= 4 and _has_vowel(stem):
+                return stem
         return word
     # -ed: grasped -> grasp, used -> use, placed -> place
     if word.endswith("ed") and len(word) > 3:

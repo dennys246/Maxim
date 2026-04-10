@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from maxim.memory.atl import ATL, ATLConfig
-from maxim.memory.concept_extractor import ConceptExtractor
+from maxim.memory.concept_extractor import ConceptExtractor, _is_structured_goal
 from maxim.memory.cross_layer import CrossLayerGraph
 from maxim.memory.semantic_types import Concept
 from maxim.memory.text import normalize_tokens
@@ -124,6 +124,89 @@ class TestNormalizeTokens:
     def test_lemmatize_ies(self):
         tokens = normalize_tokens("batteries")
         assert "battery" in tokens
+
+    def test_punctuation_stripped(self):
+        """'plan,' and 'action.' should normalize to 'plan' and 'action'."""
+        tokens = normalize_tokens("plan, action.")
+        assert "plan" in tokens
+        assert "action" in tokens
+        # Punctuation-attached variants should NOT appear
+        assert "plan," not in tokens
+        assert "action." not in tokens
+
+    def test_contraction_split_not_lemmatized_to_garbage(self):
+        """'it's' previously became 'it'' via the -s stripper — now it
+        splits on the apostrophe and both halves are filtered."""
+        tokens = normalize_tokens("it's not possible")
+        # 'it' and 's' are both too short / stopwords
+        assert "it'" not in tokens
+        assert "it's" not in tokens
+        assert "it" not in tokens
+
+    def test_taking_does_not_become_tak(self):
+        """The -ing stripper must not produce garbage stems from short words."""
+        tokens = normalize_tokens("taking")
+        assert "tak" not in tokens
+        # "taking" is kept as-is because the stem would be too short
+        assert "taking" in tokens
+
+    def test_expanded_stopwords(self):
+        """Common filler words added to the stopword list in the concept
+        bloat fix should be filtered."""
+        for filler in ["so", "before", "best", "just", "very", "you", "some"]:
+            tokens = normalize_tokens(f"plan {filler} action")
+            assert filler not in tokens, f"{filler!r} should be a stopword"
+
+    def test_natural_language_sentence_is_quiet(self):
+        """A typical free-form narrative goal should yield a small number
+        of meaningful tokens — not one per word. Regression coverage for
+        the concept-bloat bug where a 17-word sentence produced 12 per-
+        word concepts like 'so', 'it'', 'tak', 'plan,', 'action.'"""
+        goal = "The user has not specified a detailed plan, so it's best to seek clarification before taking action."
+        tokens = normalize_tokens(goal)
+        # Each of the bug-output tokens should be cleaned up
+        assert "plan," not in tokens
+        assert "action." not in tokens
+        assert "it'" not in tokens
+        assert "tak" not in tokens
+        assert "so" not in tokens
+        assert "before" not in tokens
+        assert "best" not in tokens
+        # The clean core nouns and verbs should still be there
+        assert "user" in tokens
+        assert "plan" in tokens
+        assert "action" in tokens
+        assert "clarification" in tokens
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# _is_structured_goal gate — the architectural fix that prevents ATL bloat
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestIsStructuredGoal:
+    def test_compound_identifier_is_structured(self):
+        assert _is_structured_goal("navigate_to_kitchen") is True
+        assert _is_structured_goal("pick_up_red_mug") is True
+
+    def test_short_phrase_is_structured(self):
+        assert _is_structured_goal("find red cup") is True
+        assert _is_structured_goal("grab the mug") is True
+        assert _is_structured_goal("pick up bottle") is True
+        assert _is_structured_goal("go to kitchen now") is True  # 4 tokens, edge
+
+    def test_long_sentence_is_not_structured(self):
+        """Free-form narrative goals should NOT trigger concept tokenization."""
+        assert _is_structured_goal("gather information about the server room") is False
+        assert _is_structured_goal("complete the mission successfully and return home safely") is False
+        assert (
+            _is_structured_goal("The user has not specified a detailed plan, so it's best to seek clarification")
+            is False
+        )
+
+    def test_empty_is_not_structured(self):
+        assert _is_structured_goal("") is False
+        assert _is_structured_goal(None) is False  # type: ignore[arg-type]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
