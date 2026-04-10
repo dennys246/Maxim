@@ -1956,6 +1956,7 @@ def run_agentic_loop(
                             forbidden_tools=mode_def.forbidden_tools if mode_def else set(),
                             can_access_filesystem=mode_def.can_access_filesystem if mode_def else True,
                             can_access_network=mode_def.can_access_network if mode_def else True,
+                            uses_tool_relevance_filter=(mode_def.uses_tool_relevance_filter if mode_def else False),
                         )
 
                         # Get internet access status

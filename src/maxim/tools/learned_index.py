@@ -123,7 +123,18 @@ class LearnedToolIndex:
     LEARNING_RATE = 0.1
     DECAY_RATE = 0.2
     RELEVANCE_THRESHOLD = 0.3
-    MIN_TOOLS = 3
+    # Below this registry size, the filter is a token-savings illusion: prompt
+    # overhead from the section split costs more than the trimmed descriptions
+    # would. At or below SMALL_REGISTRY_THRESHOLD, get_relevant_tools returns
+    # every tool as "relevant" (background empty), giving the model the full
+    # manifest in one section. Tunable; current registries land around 27-50
+    # tools depending on enabled subsystems.
+    SMALL_REGISTRY_THRESHOLD = 60
+    # Floor for the relevant set on cold-start scoring above the small-registry
+    # threshold. Was 3 (severe — produced 3 dict-order tools and caused
+    # systematic tool hallucination); raised to a value that gives the model
+    # enough surface area to find a real match for any reasonable query.
+    MIN_TOOLS = 15
     NEW_KEYWORD_INITIAL_WEIGHT = 0.2
     NEW_KEYWORD_MAX_PER_OUTCOME = 2
 
@@ -188,27 +199,59 @@ class LearnedToolIndex:
     def get_relevant_tools(self, goal_text: str) -> tuple[list[str], list[str]]:
         """Partition tools into relevant (full schema) and background (name only).
 
-        Always returns at least ``MIN_TOOLS`` relevant tools regardless of score.
+        For small registries (<= SMALL_REGISTRY_THRESHOLD) returns every tool
+        as relevant — the filter overhead exceeds its savings at that scale,
+        and trimming risks hiding the right tool from a cold-signal query.
+
+        For larger registries: returns the highest-scoring matches (above
+        RELEVANCE_THRESHOLD) plus a MIN_TOOLS floor. The floor padding draws
+        from the highest-scoring sub-threshold tools first, falling back to
+        registration order only when scoring produced no signal at all.
         """
+        with self._lock:
+            all_tools = list(self._tool_keywords.keys())
+
+        if len(all_tools) <= self.SMALL_REGISTRY_THRESHOLD:
+            return list(all_tools), []
+
         scores = self.score_tools(goal_text)
         sorted_tools = sorted(scores.items(), key=lambda x: -x[1])
 
         relevant: list[str] = []
-        for i, (name, score) in enumerate(sorted_tools):
-            if i < self.MIN_TOOLS or score >= self.RELEVANCE_THRESHOLD:
+        for name, score in sorted_tools:
+            if score >= self.RELEVANCE_THRESHOLD:
                 relevant.append(name)
             else:
                 break
 
-        # Pad with unscored tools if fewer than MIN_TOOLS matched
+        # Floor: ensure the relevant set has at least MIN_TOOLS so the model
+        # always sees enough surface area. Prefer the next-highest-scoring
+        # tools (still informative ranking) over arbitrary dict-order picks.
         if len(relevant) < self.MIN_TOOLS:
-            with self._lock:
-                remaining = [n for n in self._tool_keywords if n not in set(relevant)]
-            relevant.extend(remaining[: self.MIN_TOOLS - len(relevant)])
+            relevant_set = set(relevant)
+            for name, _score in sorted_tools:
+                if name in relevant_set:
+                    continue
+                relevant.append(name)
+                relevant_set.add(name)
+                if len(relevant) >= self.MIN_TOOLS:
+                    break
+
+        # If scoring produced no candidates at all (cold registry, no learned
+        # signal yet, no keyword matches), fall back to registration order
+        # padding rather than returning fewer than MIN_TOOLS.
+        if len(relevant) < self.MIN_TOOLS:
+            relevant_set = set(relevant)
+            for name in all_tools:
+                if name in relevant_set:
+                    continue
+                relevant.append(name)
+                relevant_set.add(name)
+                if len(relevant) >= self.MIN_TOOLS:
+                    break
 
         relevant_set = set(relevant)
-        with self._lock:
-            background = [n for n in self._tool_keywords if n not in relevant_set]
+        background = [n for n in all_tools if n not in relevant_set]
         return relevant, background
 
     # ── Learning ──────────────────────────────────────────────

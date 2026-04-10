@@ -113,6 +113,15 @@ class ModeDefinition:
     default_display: str = "clean"  # "clean", "bio", or "debug"
     confirmations_required: bool = True  # False for autonomous modes
 
+    # Prompt-assembly hints. The learned tool-relevance filter trims the
+    # Available Tools section to a scored subset on each call; this is a
+    # token-saving optimization tuned for interactive real-user queries with
+    # warm learned signal. Autonomous modes (sim agents, agent loops) hit the
+    # filter cold with no signal and end up with near-random 3-tool slices,
+    # which causes tool hallucination. Opt each mode in or out declaratively
+    # rather than string-checking mode name at the call site.
+    uses_tool_relevance_filter: bool = False
+
     def get_available_tools(self, all_tools: set[str]) -> set[str]:
         """Get the set of tools available in this mode.
 
@@ -289,6 +298,10 @@ When in passive mode:
 - You CAN PROPOSE: edits to CWD files (submit as proposals for approval)
 - You CANNOT: execute code, change directories, or act without approval
 - Use the workspace directories to organize your work: drafts/ for code, plans/ for proposals, notes/ for thinking""",
+        # Interactive real-user queries benefit from the learned relevance
+        # filter (smaller prompts, warm signal over time). Autonomous modes
+        # keep the default (False) because they hit the filter cold.
+        uses_tool_relevance_filter=True,
     ),
     "active": ModeDefinition(
         name="active",

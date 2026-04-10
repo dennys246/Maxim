@@ -151,12 +151,36 @@ class TestScoring:
 
 
 class TestGetRelevantTools:
-    def test_minimum_tools_guaranteed(self):
+    def test_small_registry_returns_all_tools_as_relevant(self):
+        """Below SMALL_REGISTRY_THRESHOLD the filter bypasses entirely.
+
+        This is a deliberate design choice: at small registry sizes (<=60
+        tools) the filter's token savings are less than the prompt overhead
+        of splitting the tools section, and a cold-signal query is
+        statistically likely to land on a random subset that hides the
+        right tool. Returning the full registry as 'relevant' produces a
+        single unified manifest with zero hallucination risk.
+        """
         index = LearnedToolIndex()
         for i in range(10):
             index.register_tool(FakeTool(name=f"tool_{i}", description=f"Tool number {i}"))
         relevant, background = index.get_relevant_tools("xyzzy no match")
+        assert len(relevant) == 10
+        assert background == []
+
+    def test_large_registry_cold_start_meets_min_tools_floor(self):
+        """Above SMALL_REGISTRY_THRESHOLD, even a no-match query must return
+        at least MIN_TOOLS relevant entries so the model has enough surface
+        area to find a match. Previously returned only MIN_TOOLS=3 which
+        caused systematic tool hallucination.
+        """
+        index = LearnedToolIndex()
+        count = index.SMALL_REGISTRY_THRESHOLD + 10
+        for i in range(count):
+            index.register_tool(FakeTool(name=f"tool_{i}", description=f"Tool number {i}"))
+        relevant, background = index.get_relevant_tools("xyzzy no match")
         assert len(relevant) >= index.MIN_TOOLS
+        assert len(relevant) + len(background) == count
 
     def test_high_scoring_tools_are_relevant(self):
         index = LearnedToolIndex()

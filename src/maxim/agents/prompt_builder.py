@@ -791,13 +791,16 @@ class PromptBuilder:
             SectionPriority.CRITICAL,
         )
 
-        # Tool section: split by learned relevance when index available.
-        # Autonomous modes (active/singularity — sims, agent loops) bypass the
-        # filter: cold-start relevance scoring produces near-random 3-tool
-        # slices that cause tool hallucination. Passive interactive mode keeps
-        # the filter but surfaces background tools with full descriptions at
-        # IMPORTANT priority so the list survives prompt budgeting.
-        if self._tool_index is not None and mode_name == "passive":
+        # Tool section: opt-in learned relevance filter, declared per mode via
+        # ModeDefinition.uses_tool_relevance_filter. Modes that opt in (passive
+        # interactive use) get a CRITICAL relevant-tools section plus an
+        # IMPORTANT background section, both with full descriptions. Modes
+        # that opt out (autonomous: active/singularity) get the full unfiltered
+        # manifest as a single CRITICAL section — the filter has cold-start
+        # pathology under no learned signal and produces near-random subsets
+        # that cause tool hallucination.
+        use_filter = self._tool_index is not None and getattr(request.mode, "uses_tool_relevance_filter", False)
+        if use_filter:
             relevant, background = self._tool_index.get_relevant_tools(question_text)
             request.surfaced_tools = relevant
             relevant_section = build_tools_section_filtered(request, relevant, mode_name)

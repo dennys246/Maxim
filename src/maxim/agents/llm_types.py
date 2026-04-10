@@ -63,6 +63,12 @@ class ModeInfo:
     context_window_tokens: int = 2048
     response_format: str = "conversational"
 
+    # Prompt-assembly hint copied from ModeDefinition. When False, prompt
+    # assembly emits the full tool manifest with descriptions (autonomous
+    # modes). When True, the learned-relevance filter trims the manifest
+    # (interactive passive mode).
+    uses_tool_relevance_filter: bool = False
+
     def get_available_tools(self, all_tools: set[str]) -> set[str]:
         """Get tools available in this mode."""
         if self.allowed_tools:
