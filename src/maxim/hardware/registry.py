@@ -95,6 +95,49 @@ class RobotRegistry:
 
         self._initialized = True
 
+        # Auto-discover external robot plugins via the ``maxim.robots``
+        # entry-point group. Lets third-party packages register controllers
+        # without modifying core code:
+        #
+        #     [project.entry-points."maxim.robots"]
+        #     atlas = "maxim_atlas.controller:AtlasController"
+        #
+        # Failures are silent at debug level — a missing optional plugin
+        # shouldn't crash the registry.
+        self._discover_entry_point_plugins()
+
+    def _discover_entry_point_plugins(self) -> None:
+        """Discover and register robot controllers from the ``maxim.robots`` entry-point group."""
+        try:
+            from importlib.metadata import entry_points
+        except ImportError:
+            return
+
+        try:
+            eps = entry_points(group="maxim.robots")
+        except Exception as e:
+            logger.debug("entry_points() lookup failed: %s", e)
+            return
+
+        for ep in eps:
+            try:
+                controller_class = ep.load()
+                if not isinstance(controller_class, type) or not issubclass(controller_class, RobotController):
+                    logger.warning(
+                        "Entry-point %s did not yield a RobotController subclass; got %r",
+                        ep.name,
+                        controller_class,
+                    )
+                    continue
+                self._controller_types[ep.name] = controller_class
+                logger.info(
+                    "Auto-registered robot plugin: %s -> %s",
+                    ep.name,
+                    controller_class.__name__,
+                )
+            except Exception as e:
+                logger.debug("Failed to load robot plugin %s: %s", ep.name, e)
+
     # ─────────────────────────────────────────────────────────────────────────
     # Controller Type Registration
     # ─────────────────────────────────────────────────────────────────────────

@@ -116,6 +116,25 @@ YAML Spec ──→ Entity Tree ──→ Auto-Generated Tools ──→ Agent
 | `scenarios/embodiment/embodiment_baseline.yaml` | Regression test with bounds violations |
 | `scenarios/embodiment/sword_npc_demo.yaml` | Virtual entities (sword + NPC) |
 
+### Bundled Robot Templates
+
+Maxim ships at least one full SEM template for a real robot — Reachy Mini, the desktop humanoid head from Pollen Robotics that started Maxim's embodiment journey:
+
+| Template | Purpose |
+|----------|---------|
+| `bodies/reachy_mini` | Full SEM model of Reachy Mini: head pose, body yaw, antennas, camera/microphone health, battery, motor temperature, pose confidence, plus motion + expression + capture + lifecycle modulators. |
+
+Load it via the registry:
+
+```python
+from maxim.embodiment.component_registry import ComponentRegistry
+
+registry = ComponentRegistry()
+reachy = registry.instantiate("bodies/reachy_mini", name="my_reachy")
+```
+
+The SEM template is **independent of the hardware connection** — you can run an agent against the SEM model in pure simulation, or wire it through to the actual `ReachyMiniController` for live hardware. Use the same shape as a starting point when modeling your own robot (Atlas, Spot, custom drone). See [Adding a New Robot](user/robot-setup.md#adding-a-new-robot) for the 3-step plugin pattern.
+
 ## Concepts
 
 ### Failure Modes

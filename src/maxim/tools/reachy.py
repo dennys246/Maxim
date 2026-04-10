@@ -267,18 +267,55 @@ class TrackTargetTool(Tool):
         now = time.time()
         if now - self._last_track_time < self._min_interval:
             log_agentic("track_target", "rate_limited", level="DEBUG")
-            return ToolResult(
-                success=True,
-                output={"skipped": True, "reason": "rate_limited"},
-            )
+            return ToolResult(success=True, output={"skipped": True, "reason": "rate_limited"})
 
-        # Get parameters
         target_class = kwargs.get("target_class")
         deadzone_px = int(kwargs.get("deadzone_px", 40) or 40)
         duration_s = float(kwargs.get("duration_s", 0.3) or 0.3)
         prefer_people = bool(kwargs.get("prefer_people", True))
 
-        # Try to get target from CaptureManager first (Phase 3 path)
+        # Resolve a target from the active capture manager (or stored fallback)
+        target_info, frame_width, frame_height = self._resolve_track_target(maxim, prefer_people, target_class)
+        if target_info is None or not isinstance(target_info, dict):
+            log_agentic("track_target", "no_target", level="DEBUG")
+            return ToolResult(success=True, output={"skipped": True, "reason": "no_target"})
+
+        target_u = target_info.get("target_u")
+        target_v = target_info.get("target_v")
+        frame_center = target_info.get("frame_center", (frame_width / 2, frame_height / 2))
+        if target_u is None or target_v is None:
+            log_agentic("track_target", "no_target", {"reason": "no_coords"}, level="DEBUG")
+            return ToolResult(success=True, output={"skipped": True, "reason": "no_target_coords"})
+
+        # Three gates: vision-range clamp, significant-movement check, deadzone check
+        clamped_u, clamped_v, was_clamped = clamp_to_vision_range(target_u, target_v, frame_width, frame_height)
+
+        skip_result = self._check_movement_gates(clamped_u, clamped_v, frame_center, deadzone_px)
+        if skip_result is not None:
+            return skip_result
+
+        # All gates passed — perform the movement
+        return self._perform_track_movement(
+            maxim=maxim,
+            kwargs=kwargs,
+            clamped_u=clamped_u,
+            clamped_v=clamped_v,
+            target_u=target_u,
+            target_v=target_v,
+            duration_s=duration_s,
+            frame_center=frame_center,
+            target_info=target_info,
+            was_clamped=was_clamped,
+            now=now,
+        )
+
+    def _resolve_track_target(
+        self,
+        maxim: Any,
+        prefer_people: bool,
+        target_class: str | None,
+    ) -> tuple[dict | None, int, int]:
+        """Pick the best target from the latest capture frame, or fall back to stored target."""
         target_info = None
         frame_width = DEFAULT_FRAME_WIDTH
         frame_height = DEFAULT_FRAME_HEIGHT
@@ -295,34 +332,18 @@ class TrackTargetTool(Tool):
                     prefer_people=prefer_people,
                     target_class=target_class,
                 )
-
-        # Fall back to stored detection target (Phase 2 path)
         if target_info is None:
             target_info = getattr(maxim, "_last_detection_target", None)
+        return target_info, frame_width, frame_height
 
-        if target_info is None or not isinstance(target_info, dict):
-            log_agentic("track_target", "no_target", level="DEBUG")
-            return ToolResult(
-                success=True,
-                output={"skipped": True, "reason": "no_target"},
-            )
-
-        # Extract target coordinates
-        target_u = target_info.get("target_u")
-        target_v = target_info.get("target_v")
-        frame_center = target_info.get("frame_center", (frame_width / 2, frame_height / 2))
-
-        if target_u is None or target_v is None:
-            log_agentic("track_target", "no_target", {"reason": "no_coords"}, level="DEBUG")
-            return ToolResult(
-                success=True,
-                output={"skipped": True, "reason": "no_target_coords"},
-            )
-
-        # Gate 1: Clamp to safe vision range
-        clamped_u, clamped_v, was_clamped = clamp_to_vision_range(target_u, target_v, frame_width, frame_height)
-
-        # Gate 2: Check if movement is significant
+    def _check_movement_gates(
+        self,
+        clamped_u: float,
+        clamped_v: float,
+        frame_center: tuple,
+        deadzone_px: int,
+    ) -> ToolResult | None:
+        """Apply significant-movement and deadzone gates. Returns a skip ``ToolResult`` if blocked."""
         if not is_significant_movement(
             self._current_look_u,
             self._current_look_v,
@@ -354,11 +375,9 @@ class TrackTargetTool(Tool):
                 },
             )
 
-        # Gate 3: Check deadzone
         center_u, center_v = frame_center
         offset_u = abs(clamped_u - center_u)
         offset_v = abs(clamped_v - center_v)
-
         if offset_u < deadzone_px and offset_v < deadzone_px:
             log_agentic(
                 "track_target",
@@ -375,12 +394,26 @@ class TrackTargetTool(Tool):
                     "offset_v": offset_v,
                 },
             )
+        return None
 
-        # All gates passed - execute movement
+    def _perform_track_movement(
+        self,
+        *,
+        maxim: Any,
+        kwargs: dict[str, Any],
+        clamped_u: float,
+        clamped_v: float,
+        target_u: float,
+        target_v: float,
+        duration_s: float,
+        frame_center: tuple,
+        target_info: dict,
+        was_clamped: bool,
+        now: float,
+    ) -> ToolResult:
+        """Issue the look-at command via RobotController or Maxim, then update tracking state."""
         robot_id = kwargs.get("robot_id")
-
         try:
-            # If robot_id specified, use RobotController directly
             if robot_id is not None:
                 robot = _get_robot_from_registry(robot_id, maxim)
                 if robot is None:
@@ -397,7 +430,6 @@ class TrackTargetTool(Tool):
                 if not success:
                     return ToolResult(success=False, error="Look-at command failed")
             else:
-                # Fallback to Maxim's look_at_image for backward compatibility
                 maxim.look_at_image(
                     int(clamped_u),
                     int(clamped_v),
@@ -405,12 +437,14 @@ class TrackTargetTool(Tool):
                     perform_movement=True,
                 )
 
-            # Update position tracking
             self._current_look_u = clamped_u
             self._current_look_v = clamped_v
             self._last_track_time = now
 
-            # Log successful tracking
+            center_u, center_v = frame_center
+            offset_u = abs(clamped_u - center_u)
+            offset_v = abs(clamped_v - center_v)
+
             log_agentic(
                 "track_target",
                 "detection",
@@ -423,7 +457,6 @@ class TrackTargetTool(Tool):
                     "was_clamped": was_clamped,
                 },
             )
-
             return ToolResult(
                 success=True,
                 output={
@@ -440,12 +473,7 @@ class TrackTargetTool(Tool):
                 },
             )
         except Exception as e:
-            log_agentic(
-                "track_target",
-                "error",
-                {"error": str(e)},
-                level="ERROR",
-            )
+            log_agentic("track_target", "error", {"error": str(e)}, level="ERROR")
             warn("track_target failed: %s", e, logger=getattr(maxim, "log", None))
             return ToolResult(success=False, error=str(e))
 

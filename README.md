@@ -23,7 +23,7 @@ Check your setup with `maxim doctor`, and find session results in `~/.maxim/sess
 - **Simulate cognitive scenarios** -- test memory, safety, causal learning with LLM-driven narrative arcs
 - **Run DM campaigns** -- multi-encounter branching stories with SEM-embodied entities
 - **Benchmark models** -- compare local and cloud LLMs across cognitive task suites
-- **Connect robots** -- hardware-agnostic runtime with Reachy Mini support (or run headless)
+- **Connect robots** -- hardware-agnostic runtime; Reachy Mini ships in-tree, third-party robots plug in via the `maxim.robots` entry-point group (Atlas, Spot, custom drones — see [robot-setup.md](docs/user/robot-setup.md#adding-a-new-robot)). Or run headless.
 - **Use the Python API** -- 17 verb-based functions for programmatic access
 
 ## Installation

@@ -35,7 +35,15 @@ class RobotConfig:
 
     @classmethod
     def from_dict(cls, robot_id: str, data: dict[str, Any]) -> RobotConfig:
-        """Create from configuration dict."""
+        """Create from configuration dict.
+
+        ``type`` defaults to ``"reachy_mini"`` for legacy reasons (Reachy Mini
+        was the first supported robot). For other robots, set ``type`` explicitly
+        in the YAML — e.g. ``type: atlas`` or ``type: spot``. The
+        :class:`~maxim.hardware.registry.RobotRegistry` auto-discovers
+        controllers via the ``maxim.robots`` entry-point group, so any installed
+        plugin can be referenced by its registered name.
+        """
         return cls(
             robot_id=robot_id,
             robot_type=str(data.get("type", "reachy_mini")),
@@ -193,11 +201,21 @@ def setup_robots_from_config(
     config = load_robots_config(config_path)
     registry = RobotRegistry()
 
-    # Import and register controller types
-    from maxim.hardware.reachy import ReachyMiniController
+    # Built-in controllers — Reachy is optional (requires the [reachy] extra),
+    # simulated always works. Third-party robots register themselves via the
+    # ``maxim.robots`` entry-point group (auto-discovered in RobotRegistry.__init__).
+    try:
+        from maxim.hardware.reachy import ReachyMiniController
+
+        registry.register_controller_type("reachy_mini", ReachyMiniController)
+    except ImportError as e:
+        # Reachy SDK not installed — fine if the user is on a peer or another robot.
+        import logging
+
+        logging.getLogger(__name__).debug("Reachy controller not available (optional): %s", e)
+
     from maxim.hardware.simulation import SimulatedController
 
-    registry.register_controller_type("reachy_mini", ReachyMiniController)
     registry.register_controller_type("simulated", SimulatedController)
 
     results = connect_configured_robots(registry, config, timeout=timeout)

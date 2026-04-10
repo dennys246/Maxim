@@ -53,11 +53,64 @@ class TestInstantiation:
             assert entity.name, f"{ref}: entity has no name"
             assert entity.entity_type, f"{ref}: entity has no entity_type"
 
-    def test_entity_types_are_valid(self, registry, component_refs):
-        valid_types = {"npc", "creature", "weapon", "body_part", "environment", "character", "robot", "item", "vehicle"}
+    def test_entity_types_are_well_formed(self, registry, component_refs):
+        """``entity_type`` is a free-form identifier — third parties can add
+        their own (e.g., ``drone``, ``robotic_dog``, ``cyberdeck``). The
+        runtime treats it as an opaque string. We only require:
+
+        - non-empty
+        - lowercase + snake_case (no spaces, no caps) — convention only,
+          not enforced anywhere in code, but documented as the recommended
+          style for new template authors
+
+        We do **not** lock the set of allowed types because doing so would
+        break third-party SEM templates and force PRs against this test on
+        every new entity category.
+        """
+        import re
+
+        snake_case = re.compile(r"^[a-z][a-z0-9_]*$")
         for ref in component_refs:
             entity = registry.instantiate(ref)
-            assert entity.entity_type in valid_types, f"{ref}: entity_type '{entity.entity_type}' not in {valid_types}"
+            t = entity.entity_type
+            assert t, f"{ref}: entity_type is empty"
+            assert isinstance(t, str), f"{ref}: entity_type is {type(t).__name__}, expected str"
+            assert snake_case.match(t), (
+                f"{ref}: entity_type '{t}' is not snake_case (use lowercase letters, digits, and underscores only)"
+            )
+
+    # Convention guide: bundled components use these well-known types.
+    # Third parties are free to add their own — the runtime just stores
+    # the string. This list is informational only.
+    BUNDLED_ENTITY_TYPES = {
+        "npc",
+        "creature",
+        "weapon",
+        "body_part",
+        "environment",
+        "character",
+        "robot",
+        "item",
+        "vehicle",
+    }
+
+    def test_bundled_components_use_known_types(self, registry, component_refs):
+        """Bundled components should stick to the conventional type set.
+
+        This is a softer assertion than the open-set validator above — it
+        only checks the components that ship inside the wheel, not user
+        templates. If you're adding a new bundled SEM template, either use
+        one of the established types or update the ``BUNDLED_ENTITY_TYPES``
+        set in this test.
+        """
+        for ref in component_refs:
+            entity = registry.instantiate(ref)
+            assert entity.entity_type in self.BUNDLED_ENTITY_TYPES, (
+                f"{ref}: bundled entity_type '{entity.entity_type}' is not in the "
+                f"conventional set {sorted(self.BUNDLED_ENTITY_TYPES)}. "
+                "Either use an existing type or update BUNDLED_ENTITY_TYPES "
+                "in test_component_protocol.py if introducing a new category."
+            )
 
 
 # ---------------------------------------------------------------------------

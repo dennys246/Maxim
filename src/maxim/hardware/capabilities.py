@@ -22,15 +22,22 @@ class RobotConnectionState(Enum):
 
 
 class MotionCapability(Enum):
-    """Types of motion a robot can perform."""
+    """Generic motion categories common across humanoid + quadruped robots.
+
+    Robot-specific capabilities (Reachy antennas, Spot legs, hand gestures)
+    are advertised via :attr:`RobotCapabilities.custom` so this enum doesn't
+    grow per-robot entries. The agent loop checks the generic categories;
+    specific tools check ``custom`` strings.
+    """
 
     HEAD_PAN = auto()  # Left/right head rotation
     HEAD_TILT = auto()  # Up/down head rotation
     HEAD_ROLL = auto()  # Head roll (ear to shoulder)
     BODY_YAW = auto()  # Body rotation
-    ANTENNA = auto()  # Antenna movement (Reachy-specific)
-    ARMS = auto()  # Arm movement (future)
-    WHEELS = auto()  # Mobile base (future)
+    ARMS = auto()  # Arm movement (humanoid)
+    GRIPPER = auto()  # Hand/gripper open/close
+    WHEELS = auto()  # Mobile base (wheeled)
+    LEGS = auto()  # Legged locomotion (quadruped/biped)
 
 
 class StreamCapability(Enum):
@@ -50,6 +57,20 @@ class RobotCapabilities:
     This is set at connection time and doesn't change during runtime.
     Use this to check if a robot supports specific features before
     attempting to use them.
+
+    Robot-specific capabilities that don't fit the generic
+    :class:`MotionCapability` / :class:`StreamCapability` enums (e.g.
+    Reachy antennas, Atlas precision grip, Spot LIDAR-equipped legs)
+    are advertised via :attr:`custom` as freeform strings. This keeps
+    the canonical enums small and lets new robot plugins add features
+    without modifying the core. Example::
+
+        REACHY_CAPS = RobotCapabilities(
+            robot_type="reachy_mini",
+            ...,
+            motion=frozenset({MotionCapability.HEAD_PAN, ...}),
+            custom=frozenset({"antenna_left", "antenna_right"}),
+        )
     """
 
     robot_type: str
@@ -60,6 +81,11 @@ class RobotCapabilities:
 
     # Stream capabilities
     streams: frozenset[StreamCapability] = field(default_factory=frozenset)
+
+    # Robot-specific extension capabilities (free-form strings).
+    # Used for joints / sensors / behaviours that don't fit the generic
+    # enums above. Tool implementations check these to gate features.
+    custom: frozenset[str] = field(default_factory=frozenset)
 
     # Video resolution (width, height) if VIDEO capability present
     video_resolution: tuple[int, int] | None = None
@@ -82,6 +108,10 @@ class RobotCapabilities:
     def has_stream(self, capability: StreamCapability) -> bool:
         """Check if robot supports a stream capability."""
         return capability in self.streams
+
+    def has_custom(self, capability: str) -> bool:
+        """Check if robot supports a custom (robot-specific) capability."""
+        return capability in self.custom
 
     def has_video(self) -> bool:
         """Convenience check for video capability."""
@@ -141,7 +171,6 @@ REACHY_MINI_CAPABILITIES = RobotCapabilities(
             MotionCapability.HEAD_TILT,
             MotionCapability.HEAD_ROLL,
             MotionCapability.BODY_YAW,
-            MotionCapability.ANTENNA,
         }
     ),
     streams=frozenset(
@@ -151,6 +180,7 @@ REACHY_MINI_CAPABILITIES = RobotCapabilities(
             StreamCapability.AUDIO_OUTPUT,
         }
     ),
+    custom=frozenset({"antenna_left", "antenna_right"}),  # Reachy-specific joints
     video_resolution=(640, 480),  # Default, may vary
     audio_input_rate=48000,
     audio_output_rate=48000,

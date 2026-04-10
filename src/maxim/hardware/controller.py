@@ -1,15 +1,34 @@
 """Robot controller abstraction.
 
-The RobotController ABC defines the interface for controlling
-any robot hardware. Implementations wrap specific SDKs
-(Reachy, simulation, future robots).
+The :class:`RobotController` ABC defines the interface for controlling
+any robot hardware. Implementations wrap specific SDKs (Reachy, Atlas,
+Spot, simulation, etc.) and live in their own subpackages under
+:mod:`maxim.hardware`. The agent loop, default network, and decision
+engine consume this abstract interface — they have no SDK assumptions.
+
+Adding a new robot is a 3-step process:
+
+1. Implement :class:`RobotController` for your robot's SDK in a new
+   subpackage (e.g. ``maxim/hardware/atlas/controller.py``).
+2. Register it via the ``maxim.robots`` entry-point group in
+   ``pyproject.toml`` so :class:`RobotRegistry` auto-discovers it::
+
+       [project.entry-points."maxim.robots"]
+       atlas = "maxim_atlas.controller:AtlasController"
+
+3. (Optional) Ship robot-specific tools in ``maxim/tools/atlas.py``.
+
+Robot-specific joints (Reachy antennas, Atlas arms, Spot legs) are
+expressed via the generic :attr:`MotionTarget.extras` field — no
+subclassing required. See ``hardware/reachy/controller.py`` for the
+canonical reference implementation.
 """
 
 from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from maxim.hardware.capabilities import (
@@ -25,24 +44,41 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@dataclass(slots=True)
+@dataclass
 class MotionTarget:
     """Target pose for robot motion.
 
-    All angles are in radians. None values mean "don't change".
+    All angles are in radians. ``None`` values mean "don't change".
+
+    Robot-specific joints (Reachy antennas, Atlas arms, Spot legs) go
+    in the generic :attr:`extras` dict so the canonical motion command
+    stays SDK-agnostic. A controller implementation reads its own keys
+    out of ``extras`` and ignores keys it doesn't recognize. Example::
+
+        # Reachy antenna positions
+        target = MotionTarget(
+            head_pitch=0.2,
+            extras={"antenna_left": 0.5, "antenna_right": -0.5},
+        )
+
+        # Future Atlas arm posture
+        target = MotionTarget(
+            extras={"left_arm_yaw": 1.0, "right_arm_pitch": -0.3},
+        )
     """
 
-    # Head pose (3-DOF)
+    # Head pose (3-DOF) — common to humanoid robots
     head_roll: float | None = None
     head_pitch: float | None = None
     head_yaw: float | None = None
 
-    # Body rotation
+    # Body rotation — common to most robots
     body_yaw: float | None = None
 
-    # Antenna positions (Reachy-specific, left/right angle)
-    antenna_left: float | None = None
-    antenna_right: float | None = None
+    # Robot-specific joints — keys are controller-defined.
+    # Examples: ``"antenna_left"`` / ``"antenna_right"`` (Reachy),
+    # ``"left_arm_yaw"`` / ``"gripper_pos"`` (Atlas).
+    extras: dict[str, float] = field(default_factory=dict)
 
     # Motion duration in seconds
     duration: float = 1.0

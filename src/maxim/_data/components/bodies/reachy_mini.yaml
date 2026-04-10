@@ -1,0 +1,131 @@
+component:
+  name: reachy_mini
+  tags: [robot, body, embodied, hardware, humanoid_head, foundational]
+  category: bodies
+  description: |
+    SEM template for the Reachy Mini robot — the desktop humanoid head from Pollen
+    Robotics that started Maxim's embodiment journey. This template models the
+    robot's joints, cameras, microphones, and antennas as SEM entities so the
+    cognitive stack can reason about its own body.
+
+    Drop this into a campaign or simulation to give the agent a Reachy-shaped
+    body without needing the actual hardware connected. The same shape works
+    against the simulated controller.
+
+entity:
+  name: reachy_mini
+  entity_type: robot
+  sensors:
+    # Head pose (3-DOF)
+    head_yaw:
+      unit: radians
+      range: [-1.57, 1.57]      # ±90°
+      initial: 0.0
+    head_pitch:
+      unit: radians
+      range: [-0.7, 0.7]        # ±40° approx
+      initial: 0.0
+    head_roll:
+      unit: radians
+      range: [-0.5, 0.5]
+      initial: 0.0
+
+    # Body rotation (turntable base)
+    body_yaw:
+      unit: radians
+      range: [-3.14, 3.14]
+      initial: 0.0
+
+    # Antenna positions (Reachy-specific expressive joints)
+    antenna_left:
+      unit: radians
+      range: [-1.0, 1.0]
+      initial: 0.0
+    antenna_right:
+      unit: radians
+      range: [-1.0, 1.0]
+      initial: 0.0
+
+    # Camera + audio streams (presence + health, not pixel data)
+    camera_health:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+    microphone_health:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+
+    # Battery + thermal
+    battery:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+    motor_temperature:
+      unit: celsius
+      range: [15, 90]
+      initial: 28.0
+
+    # Proprioception confidence
+    pose_confidence:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.95
+
+  modulators:
+    motion:
+      affordances:
+        look_at:
+          params: {u: int, v: int, duration: float}
+          description: "Aim the head at a pixel coordinate (camera frame)"
+        goto_pose:
+          params: {head_yaw: float, head_pitch: float, head_roll: float, body_yaw: float, duration: float}
+          description: "Move all joints to a target pose"
+        recenter:
+          params: {duration: float}
+          description: "Return head + body to (0, 0, 0, 0)"
+        nod:
+          params: {amplitude: float, cycles: int}
+          description: "Affirmative head nod gesture"
+        shake_head:
+          params: {amplitude: float, cycles: int}
+          description: "Negative head shake gesture"
+    expression:
+      affordances:
+        antenna_alert:
+          params: {}
+          description: "Both antennas point up — signals attention/alertness"
+        antenna_relaxed:
+          params: {}
+          description: "Both antennas droop — signals calm/idle"
+        antenna_tilt:
+          params: {left: float, right: float}
+          description: "Independent antenna positioning for nuanced expression"
+    capture:
+      affordances:
+        get_frame:
+          params: {}
+          description: "Snapshot the current camera frame"
+        listen:
+          params: {duration: float}
+          description: "Capture an audio clip from the microphone"
+    lifecycle:
+      affordances:
+        wake_up:
+          params: {}
+          description: "Enable motors and start sensor streaming"
+        goto_sleep:
+          params: {}
+          description: "Disable motors and stop streaming"
+
+  failure_modes:
+    - name: thermal_throttling
+      trigger: {field: motor_temperature, op: ">", value: 75, pain: 0.4}
+    - name: low_battery
+      trigger: {field: battery, op: "<", value: 0.15, pain: 0.3}
+    - name: pose_drift
+      trigger: {field: pose_confidence, op: "<", value: 0.5, pain: 0.5}
+    - name: camera_lost
+      trigger: {field: camera_health, op: "<", value: 0.2, pain: 0.6}
+    - name: microphone_lost
+      trigger: {field: microphone_health, op: "<", value: 0.2, pain: 0.4}
