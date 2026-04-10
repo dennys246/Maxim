@@ -38,7 +38,7 @@ class TestNormalizeArgs:
     def _make_args(self, **kwargs):
         defaults = {
             "audio": "true",
-            "interactive": "true",
+            "interactive": "auto",
             "mode": "active",
             "epochs": 0,
             "language_model": None,
