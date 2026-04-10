@@ -88,10 +88,10 @@ _PROFILE_ALIASES: dict[str, str] = {
     "llama3-torch": "llama3-8b-instruct-torch",
     "phi3-torch": "phi3-mini-torch",
     # Cloud providers (Anthropic)
-    "claude": "claude-sonnet-4-5-20250514",
-    "claude-sonnet": "claude-sonnet-4-5-20250514",
+    "claude": "claude-sonnet-4-6",
+    "claude-sonnet": "claude-sonnet-4-6",
     "claude-haiku": "claude-haiku-4-5-20251001",
-    "claude-opus": "claude-opus-4-5-20250514",
+    "claude-opus": "claude-opus-4-6",
     # Cloud providers (OpenAI)
     "gpt4o": "gpt-4o",
     "gpt-4o": "gpt-4o",
@@ -226,10 +226,10 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "quantization": "F16",
     },
     # Cloud providers (Anthropic)
-    "claude-sonnet-4-5-20250514": {
+    "claude-sonnet-4-6": {
         "backend": "anthropic",
-        "model": "claude-sonnet-4-5-20250514",
-        "model_base": "claude-sonnet-4-5-20250514",
+        "model": "claude-sonnet-4-6",
+        "model_base": "claude-sonnet-4-6",
         "prompt_style": "chatml",
         "n_ctx": 200000,
         "cloud": True,
@@ -244,10 +244,10 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "cloud": True,
         "api_key_env": "ANTHROPIC_API_KEY",
     },
-    "claude-opus-4-5-20250514": {
+    "claude-opus-4-6": {
         "backend": "anthropic",
-        "model": "claude-opus-4-5-20250514",
-        "model_base": "claude-opus-4-5-20250514",
+        "model": "claude-opus-4-6",
+        "model_base": "claude-opus-4-6",
         "prompt_style": "chatml",
         "n_ctx": 200000,
         "cloud": True,

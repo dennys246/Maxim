@@ -533,9 +533,25 @@ def _apply_cloud_cli_overrides(
                     cloud_model,
                 )
             continue
-        # Rewrite the lane to use the cloud profile as primary
-        out[lane_name] = dataclasses.replace(cfg, model_profile=cloud_model)
+        # Rewrite the lane to use the cloud profile as primary. Clear any
+        # peer/remote-URL assignment: --cloud-lane is an explicit user override
+        # and should route to the cloud provider directly, not through a peer
+        # tunnel that would reinterpret the model name as "whatever is loaded."
+        out[lane_name] = dataclasses.replace(
+            cfg,
+            model_profile=cloud_model,
+            remote_url=None,
+            remote_model=None,
+            remote_api_key=None,
+        )
         if logger is not None:
+            if cfg.remote_url:
+                logger.info(
+                    "Lane '%s' cloud override: clearing peer remote_url=%s to route to %s",
+                    lane_name,
+                    cfg.remote_url,
+                    cloud_model,
+                )
             logger.info("Lane '%s' assigned cloud model: %s", lane_name, cloud_model)
     return out
 
@@ -774,6 +790,30 @@ def _maybe_auto_spawn_server(
     infer_cfg = lane_configs.get(_infer_tier)
     if infer_cfg is None or infer_cfg.remote_url or not infer_cfg.model_profile:
         return lane_configs
+
+    # If the lane's assigned profile is a cloud profile (anthropic, openai,
+    # gemini, etc.), there's no local GGUF to serve and auto-spawn is not
+    # applicable. Skip BEFORE consulting MAXIM_LLM_PROFILE / persisted model
+    # — the lane config is the explicit, current decision about what this
+    # lane should do. Previously a stale persisted model from a prior
+    # `maxim peer llm mistral-7b` swap could resurrect local auto-spawn
+    # even after `--cloud-lane large claude-sonnet` explicitly routed to
+    # Anthropic, wasting 120s of spawn startup on a model the lane won't
+    # use. See cancellation.py / cli.py for the cloud-lane override path.
+    try:
+        from maxim.models.language.config import _BUILTIN_PROFILES
+
+        _lane_profile_data = _BUILTIN_PROFILES.get(infer_cfg.model_profile, {})
+        if _lane_profile_data.get("cloud"):
+            if logger is not None:
+                logger.info(
+                    "Auto-spawn skipped: lane '%s' is configured for cloud profile '%s' (no local GGUF needed)",
+                    _infer_tier,
+                    infer_cfg.model_profile,
+                )
+            return lane_configs
+    except Exception as e:
+        logger.debug("Cloud-profile detection failed, continuing auto-spawn check: %s", e)
 
     try:
         import llama_cpp.server  # noqa: F401

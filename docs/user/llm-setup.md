@@ -99,7 +99,7 @@ source ~/.zshrc
 ```json
 "claude-sonnet": {
   "backend": "anthropic",
-  "model": "claude-sonnet-4-5-20250514",
+  "model": "claude-sonnet-4-6",
   "n_ctx": 65536,
   "max_tokens": 4096
 },

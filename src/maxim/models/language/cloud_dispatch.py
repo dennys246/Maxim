@@ -15,9 +15,9 @@ from maxim.models.language.types import RoutingPolicy
 
 # ─── Default pricing table ──────────────────────────────────────────────
 DEFAULT_PRICING: dict[str, ModelPricing] = {
-    "claude-sonnet-4-5-20250514": ModelPricing(3.00, 15.00, 0.30),
+    "claude-sonnet-4-6": ModelPricing(3.00, 15.00, 0.30),
     "claude-haiku-4-5-20251001": ModelPricing(0.80, 4.00, 0.08),
-    "claude-opus-4-5-20250514": ModelPricing(15.00, 75.00, 1.50),
+    "claude-opus-4-6": ModelPricing(15.00, 75.00, 1.50),
     "gpt-4o": ModelPricing(2.50, 10.00, 1.25),
     "gpt-4o-mini": ModelPricing(0.15, 0.60, 0.075),
     "local": ModelPricing(0.0, 0.0, 0.0),
@@ -25,8 +25,8 @@ DEFAULT_PRICING: dict[str, ModelPricing] = {
 
 # ─── Model downgrade map for budget tiers ────────────────────────────────
 MODEL_DOWNGRADE_MAP: dict[str, str] = {
-    "claude-opus-4-5-20250514": "claude-sonnet-4-5-20250514",
-    "claude-sonnet-4-5-20250514": "claude-haiku-4-5-20251001",
+    "claude-opus-4-6": "claude-sonnet-4-6",
+    "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
     "gpt-4o": "gpt-4o-mini",
     "gpt-4-turbo": "gpt-4o-mini",
 }

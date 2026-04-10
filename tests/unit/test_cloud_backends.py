@@ -24,7 +24,7 @@ def _make_cfg(**overrides: Any) -> LLMConfig:
             "anthropic": {
                 "type": "anthropic",
                 "api_key_env": "ANTHROPIC_API_KEY",
-                "model": "claude-sonnet-4-5-20250514",
+                "model": "claude-sonnet-4-6",
                 "prompt_cache": {"enabled": True},
                 "thinking": {"enabled": True, "budget_tokens": 5000},
             }
@@ -48,7 +48,7 @@ class TestAnthropicBackend:
         providers: dict[str, Any] = {
             "type": "anthropic",
             "api_key_env": "ANTHROPIC_API_KEY",
-            "model": "claude-sonnet-4-5-20250514",
+            "model": "claude-sonnet-4-6",
         }
         providers.update(provider_overrides)
         cfg = _make_cfg(providers={"anthropic": providers})
@@ -131,7 +131,7 @@ class TestAnthropicBackend:
         text_block.text = '{"goal_description": "test"}'
         mock_resp.content = [text_block]
 
-        result = backend._parse_response(mock_resp, "claude-sonnet-4-5-20250514", 0.0)
+        result = backend._parse_response(mock_resp, "claude-sonnet-4-6", 0.0)
         assert result.content == '{"goal_description": "test"}'
         assert result.input_tokens == 100
         assert result.cached_input_tokens == 30
@@ -153,7 +153,7 @@ class TestAnthropicBackend:
         tool_block.input = {"goal_description": "test", "priority": "HIGH"}
         mock_resp.content = [tool_block]
 
-        result = backend._parse_response(mock_resp, "claude-sonnet-4-5-20250514", 0.0)
+        result = backend._parse_response(mock_resp, "claude-sonnet-4-6", 0.0)
         assert result.tool_calls is not None
         assert len(result.tool_calls) == 1
         assert result.tool_calls[0]["name"] == "propose_goal"
@@ -180,7 +180,7 @@ class TestAnthropicBackend:
         text_block.text = '{"goal_description": "reasoned goal"}'
         mock_resp.content = [thinking_block, text_block]
 
-        result = backend._parse_response(mock_resp, "claude-sonnet-4-5-20250514", 0.0)
+        result = backend._parse_response(mock_resp, "claude-sonnet-4-6", 0.0)
         assert result.content == '{"goal_description": "reasoned goal"}'
         # Thinking text is captured but not included in content
         assert "Let me reason" not in result.content
@@ -296,7 +296,7 @@ class TestExecAgentPhase3:
         mock_router.cloud_allowed.return_value = True
         mock_router.preview_provider.return_value = {"is_cloud": True, "provider": "anthropic"}
         mock_router.get_provider_configs.return_value = {
-            "anthropic": {"type": "anthropic", "model": "claude-sonnet-4-5-20250514"}
+            "anthropic": {"type": "anthropic", "model": "claude-sonnet-4-6"}
         }
 
         exec_agent = ExecAgent.__new__(ExecAgent)
