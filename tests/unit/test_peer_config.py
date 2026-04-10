@@ -96,13 +96,20 @@ class TestFileIO:
 
 class TestApplyToEnv:
     def test_sets_env_vars_when_unset(self, monkeypatch):
-        for var in (
+        env_vars = (
             "MAXIM_LANE_INFER_REMOTE_URL",
             "MAXIM_LANE_INFER_REMOTE_API_KEY",
             "MAXIM_LANE_INFER_REMOTE_MODEL",
             "MAXIM_MAX_CLOUD_LANES",
-        ):
+        )
+        for var in env_vars:
             monkeypatch.delenv(var, raising=False)
+        # Pre-set via monkeypatch so it tracks the undo even if the var
+        # was absent — apply_peer_config_to_env uses os.environ.setdefault
+        # which bypasses monkeypatch tracking for new vars.
+        for var in env_vars:
+            monkeypatch.setenv(var, "__placeholder__")
+            monkeypatch.delenv(var)
         cfg = PeerConfig(url="https://h/v1", api_key="k", model="m", is_cloud=True)
         apply_peer_config_to_env(cfg)
         assert os.environ["MAXIM_LANE_INFER_REMOTE_URL"] == "https://h/v1"
@@ -111,13 +118,29 @@ class TestApplyToEnv:
         assert os.environ["MAXIM_MAX_CLOUD_LANES"] == "1"
 
     def test_env_wins_over_file(self, monkeypatch):
+        # Pre-register all vars apply_peer_config_to_env may set.
+        for var in (
+            "MAXIM_LANE_INFER_REMOTE_API_KEY",
+            "MAXIM_MAX_CLOUD_LANES",
+        ):
+            monkeypatch.setenv(var, "__placeholder__")
+            monkeypatch.delenv(var)
         monkeypatch.setenv("MAXIM_LANE_INFER_REMOTE_URL", "https://env-override/v1")
         cfg = PeerConfig(url="https://from-file/v1", api_key="k")
         apply_peer_config_to_env(cfg)
         assert os.environ["MAXIM_LANE_INFER_REMOTE_URL"] == "https://env-override/v1"
 
     def test_skips_model_when_not_set(self, monkeypatch):
-        monkeypatch.delenv("MAXIM_LANE_INFER_REMOTE_MODEL", raising=False)
+        # Pre-register vars with monkeypatch so cleanup works even when
+        # apply_peer_config_to_env sets them via os.environ.setdefault.
+        for var in (
+            "MAXIM_LANE_INFER_REMOTE_URL",
+            "MAXIM_LANE_INFER_REMOTE_API_KEY",
+            "MAXIM_LANE_INFER_REMOTE_MODEL",
+            "MAXIM_MAX_CLOUD_LANES",
+        ):
+            monkeypatch.setenv(var, "__placeholder__")
+            monkeypatch.delenv(var)
         cfg = PeerConfig(url="a", api_key="b")  # no model
         apply_peer_config_to_env(cfg)
         assert "MAXIM_LANE_INFER_REMOTE_MODEL" not in os.environ

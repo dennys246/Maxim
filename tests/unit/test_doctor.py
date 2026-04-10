@@ -217,7 +217,12 @@ class TestDoctorCLI:
         assert code == 0
         assert "doctor" in capsys.readouterr().out.lower()
 
-    def test_runs_without_retry(self, capsys):
+    def test_runs_without_retry(self, capsys, monkeypatch):
+        # Ensure solo mode — earlier tests or real peer.yml may set
+        # MAXIM_LANE_INFER_REMOTE_URL, which triggers peer mode and
+        # replaces "Local LLM" / "Tunnel" sections with "Peer Connectivity".
+        monkeypatch.delenv("MAXIM_LANE_INFER_REMOTE_URL", raising=False)
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
         code = run_doctor_subcommand([])
         out = capsys.readouterr().out
         assert "Environment" in out
@@ -722,7 +727,7 @@ class TestRunAllChecksNewSections:
     def test_environment_includes_disk_and_ram(self):
         from maxim.doctor.checks import run_all_checks
 
-        sections = run_all_checks(_info())
+        sections = run_all_checks(_info(), role="solo")
         env_section = next(s for name, s in sections if name == "Environment")
         names = [r.name for r in env_section]
         assert "Disk space" in names
@@ -731,7 +736,7 @@ class TestRunAllChecksNewSections:
     def test_api_key_section_includes_hygiene_checks(self):
         from maxim.doctor.checks import run_all_checks
 
-        sections = run_all_checks(_info())
+        sections = run_all_checks(_info(), role="solo")
         key_section = next(s for name, s in sections if name == "API key")
         names = [r.name for r in key_section]
         assert "Key age" in names
@@ -741,7 +746,7 @@ class TestRunAllChecksNewSections:
     def test_local_llm_includes_inference_coherence(self):
         from maxim.doctor.checks import run_all_checks
 
-        sections = run_all_checks(_info())
+        sections = run_all_checks(_info(), role="solo")
         llm_section = next(s for name, s in sections if name == "Local LLM")
         names = [r.name for r in llm_section]
         assert "Inference coherence" in names
