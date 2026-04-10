@@ -133,23 +133,25 @@ def build_report(
         except Exception:
             pass
 
-    # Cost data — session_cost is exact USD, session token counts
-    # are summed by CostTracker.record() during this process lifetime.
+    # Cost data — session_cost is exact USD accumulated by the router during
+    # THIS sim's lifetime, incremented at router.py:786 on every LLM request.
+    # We deliberately do NOT fall back to the CostTracker hourly rolling
+    # window: that window is persisted across process invocations and counts
+    # cost events from prior unrelated sims (including past cloud runs), so
+    # a local mistral run with zero actual cost would otherwise display the
+    # previous Claude run's cost as its own. session_cost == 0 means this
+    # session spent nothing, full stop.
     cost_usd = 0.0
     input_tokens = 0
     output_tokens = 0
     if llm_router is not None:
         try:
-            cost_usd = getattr(llm_router, "session_cost", 0.0)
+            cost_usd = float(getattr(llm_router, "session_cost", 0.0) or 0.0)
             tracker = getattr(llm_router, "_cost_tracker", None)
             if tracker and hasattr(tracker, "get_session_tokens"):
                 tokens = tracker.get_session_tokens()
                 input_tokens = int(tokens.get("input_tokens", 0))
                 output_tokens = int(tokens.get("output_tokens", 0))
-            if cost_usd <= 0 and tracker is not None:
-                # Fall back to hourly window total if session_cost not tracked
-                totals = tracker.get_totals() if hasattr(tracker, "get_totals") else {}
-                cost_usd = float(totals.get("hourly", 0.0))
         except Exception as e:
             logger.debug("cost/token lookup failed: %s", e)
 
