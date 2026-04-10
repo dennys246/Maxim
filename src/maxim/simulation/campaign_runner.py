@@ -30,10 +30,12 @@ def run_generative_campaign(
 
     Returns the GenerativeCampaignResult, or None on failure.
     """
-    print(f"\n  Generative Campaign: {goal}")
-    print(f"  Max turns: {max_turns}")
+    from maxim.simulation.sim_logger import display_status, display_summary
+
+    display_status(f"Generative Campaign: {goal}")
+    display_status(f"Max turns: {max_turns}")
     if arc_yaml:
-        print(f"  Arc: {arc_yaml}")
+        display_status(f"Arc: {arc_yaml}")
     time.sleep(0.5)  # Let AUT start up
 
     try:
@@ -50,11 +52,11 @@ def run_generative_campaign(
             tool_registry=tool_registry,
             session_dir=session_dir_base,
         )
-        print(f"\n  Generative campaign complete: {result.turns_completed} turns")
+        display_summary([f"Generative campaign complete: {result.turns_completed} turns"])
         return result
     except Exception as e:
         logger.warning("Generative campaign failed: %s", e)
-        print(f"\n  Generative campaign error: {e}")
+        display_summary([f"Generative campaign error: {e}"])
         return None
 
 
@@ -74,10 +76,12 @@ def run_dm_campaign(
 
     Returns the DM rollup dict (campaign results + bio-system expectations).
     """
-    print(f"\n  DM Campaign: {dm_campaign.name}")
-    print(f"  Goal: {dm_campaign.goal}")
-    print(f"  Encounters: {len(dm_campaign.encounters)}")
-    print(f"  Seed: {dm_campaign.seed}")
+    from maxim.simulation.sim_logger import display_status, display_summary
+
+    display_status(f"DM Campaign: {dm_campaign.name}")
+    display_status(f"Goal: {dm_campaign.goal}")
+    display_status(f"Encounters: {len(dm_campaign.encounters)}")
+    display_status(f"Seed: {dm_campaign.seed}")
     time.sleep(1.0)  # Let AUT start up
 
     dm_rollup: dict[str, Any] = {}
@@ -135,17 +139,19 @@ def run_dm_campaign(
             dm_state = dm.run()
         except KeyboardInterrupt:
             logger.info("DM Campaign interrupted by user")
-            print("\n  DM Campaign interrupted (Ctrl+C)")
+            display_summary(["DM Campaign interrupted (Ctrl+C)"])
             dm_state = dm._state  # Partial state
             dm_state.finish_reason = "cancel"
         dm_rollup = dm.get_rollup()
 
-        print(
-            f"\n  DM Campaign complete: {dm_state.turn_count} turns, "
-            f"{len(dm_state.choices_made)} choices, "
-            f"{len(dm_state.dice_rolls)} dice rolls"
+        display_summary(
+            [
+                f"DM Campaign complete: {dm_state.turn_count} turns, "
+                f"{len(dm_state.choices_made)} choices, "
+                f"{len(dm_state.dice_rolls)} dice rolls",
+                f"Finish: {dm_state.finish_reason}",
+            ]
         )
-        print(f"  Finish: {dm_state.finish_reason}")
 
         # Check bio-system expectations
         exp_results = dm.check_expectations(
@@ -159,10 +165,10 @@ def run_dm_campaign(
             passed = sum(1 for c in exp_results["checks"].values() if c.get("pass"))
             total = len(exp_results["checks"])
             status = "ALL PASS" if exp_results["all_pass"] else f"{passed}/{total} passed"
-            print(f"  Bio-system expectations: {status}")
+            display_summary([f"Bio-system expectations: {status}"])
     except Exception as e:
         logger.error("DM Campaign failed: %s", e)
-        print(f"\n  DM Campaign error: {e}")
+        display_summary([f"DM Campaign error: {e}"])
         dm_rollup = {"error": str(e)}
 
     bridge.finish()
@@ -180,7 +186,9 @@ def run_precampaign_turns(
     Returns a campaign_analysis dict containing turn results and
     post-campaign analysis.
     """
-    print(f"\n  Delivering {len(turns)} campaign turns directly to AUT...")
+    from maxim.simulation.sim_logger import display_status, display_summary, display_response
+
+    display_status(f"Delivering {len(turns)} campaign turns directly to AUT...")
     time.sleep(1.0)  # Let AUT start up
 
     campaign_results: list[dict[str, Any]] = []
@@ -190,7 +198,7 @@ def run_precampaign_turns(
         sal = turn.get("salience", 0.8)
         nov = turn.get("novelty", 0.7)
         phase_label = f" [{phase}]" if phase else ""
-        print(f"  Turn {i}/{len(turns)}{phase_label}: sending ({len(text)} chars)...")
+        display_status(f"Turn {i}/{len(turns)}{phase_label}: sending ({len(text)} chars)...")
         try:
             result = bridge.send_and_wait(text, salience=sal, novelty=nov)
             actions = [a.tool_name for a in result.get("actions", [])]
@@ -199,10 +207,10 @@ def run_precampaign_turns(
             resp_preview = (
                 (response[:80] + "...") if response and len(response) > 80 else (response or "(no verbal response)")
             )
-            print(
-                f"    AUT: {len(actions)} action(s) {actions}, {blocked} blocked, {result.get('duration_ms', 0):.0f}ms"
+            display_status(
+                f"AUT: {len(actions)} action(s) {actions}, {blocked} blocked, {result.get('duration_ms', 0):.0f}ms"
             )
-            print(f"    Response: {resp_preview}")
+            display_response(resp_preview)
             campaign_results.append(
                 {
                     "turn": i,
@@ -218,10 +226,10 @@ def run_precampaign_turns(
         except Exception as e:
             logger.warning("Campaign turn %d failed: %s", i, e)
             campaign_results.append({"turn": i, "phase": phase, "error": str(e)})
-    print(f"  Campaign delivery complete: {len(campaign_results)} turns delivered\n")
+    display_summary([f"Campaign delivery complete: {len(campaign_results)} turns delivered"])
 
     # Post-campaign analysis
-    print("  Running post-campaign analysis...")
+    display_status("Running post-campaign analysis...")
     campaign_analysis: dict[str, Any] = {"turns": campaign_results}
     if introspector is not None:
         try:
@@ -231,11 +239,11 @@ def run_precampaign_turns(
             stats = analysis.get("system_stats", {})
             mem_count = stats.get("hippocampus_memories", "?")
             links = stats.get("nac_causal_links", "?")
-            print(f"    System stats: {mem_count} memories, {links} causal links")
-            print(f"    Summary: {introspector.summarize(analysis)}")
+            display_status(f"System stats: {mem_count} memories, {links} causal links")
+            display_status(f"Summary: {introspector.summarize(analysis)}")
         except Exception as e:
             logger.warning("Post-campaign analysis failed: %s", e)
-            print(f"    (analysis failed: {e})")
+            display_status(f"(analysis failed: {e})")
 
     # Save analysis
     try:
@@ -244,9 +252,9 @@ def run_precampaign_turns(
         from maxim.utils.atomic_io import atomic_write_json
 
         atomic_write_json(str(analysis_path), campaign_analysis)
-        print(f"    Analysis saved: {analysis_path}")
+        display_status(f"Analysis saved: {analysis_path}")
     except Exception:
         pass
 
-    print("  Post-campaign analysis complete.\n")
+    display_status("Post-campaign analysis complete.")
     return campaign_analysis

@@ -1588,20 +1588,24 @@ def run_agentic_loop(
                         state.data["pending_confirmation"] = confirmation_data
                         state.data["pending_cli_input"] = sim_response
                     else:
-                        # Production mode: print prompt and wait for real user
-                        print("\n" + "=" * 60)
-                        print("⚠️  ACTION REQUIRES CONFIRMATION")
-                        print("=" * 60)
-                        print(f"Tool: {tool_name}")
-                        print("Parameters:")
-                        for key, value in params.items():
-                            display_value = str(value)
-                            if len(display_value) > 200:
-                                display_value = display_value[:200] + "..."
-                            print(f"  {key}: {display_value}")
-                        print(f"Reasoning: {pending_proposal.reasoning}")
-                        print("=" * 60)
-                        print("Type 'yes' or 'no' to confirm/reject:")
+                        # Production mode: display prompt if interactive, auto-resolve if not
+                        from maxim.simulation.sim_logger import should_prompt, display_scene
+
+                        if should_prompt("confirmation"):
+                            display_scene(f"\n  Action requires confirmation: {tool_name}")
+                            param_lines = []
+                            for key, value in params.items():
+                                dv = str(value)[:200]
+                                param_lines.append(f"    {key}: {dv}")
+                            if param_lines:
+                                display_scene("\n".join(param_lines))
+                            if pending_proposal.reasoning:
+                                display_scene(f"  Reasoning: {pending_proposal.reasoning}")
+                            display_scene("  Type 'yes' or 'no' to confirm/reject:")
+                        else:
+                            # Non-interactive: auto-approve via supervision policy
+                            state.data["pending_cli_input"] = "yes"
+                            sim.log("PIPELINE", f"Auto-approved (non-interactive): {tool_name}")
 
                         state.data["pending_confirmation"] = confirmation_data
                     # Don't clear pending_proposal yet - we need to wait for response

@@ -243,16 +243,15 @@ class LoopController:
                     outcome="success" if success else "failure",
                 )
                 output = getattr(result, "output", None)
+                from maxim.simulation.sim_logger import display_action, display_status
+
                 if success:
                     confirmed_success = True
-                    print("✅ Action executed successfully")
+                    display_action(pc.tool_name, pc.params or {})
                     if output:
-                        if isinstance(output, dict):
-                            print(f"   Result: {output}")
-                        else:
-                            print(f"   Result: {str(output)[:200]}")
+                        display_status(f"Result: {str(output)[:200]}")
                 else:
-                    print(f"❌ Action failed: {error_msg or 'unknown error'}")
+                    display_status(f"Action failed: {error_msg or 'unknown error'}")
 
                 confirmed_result_str = str(output)[:3000] if output is not None else None
                 self.record_outcome(
@@ -265,7 +264,7 @@ class LoopController:
 
             except Exception as e:
                 logger.error(f"Confirmed action failed: {e}")
-                print(f"❌ Action failed: {e}")
+                display_status(f"Action failed: {e}")
 
             # Queue a follow-up LLM cycle so it can continue
             current_mode = self.state.data.get("mode", "live")
@@ -300,7 +299,7 @@ class LoopController:
                 confidence=pc.confidence,
                 human_involved=True,
             )
-            print("❌ Action cancelled by user")
+            display_status("Action cancelled by user")
 
             self.record_outcome(
                 tool_name=pc.tool_name,
@@ -331,8 +330,8 @@ class LoopController:
                 "timestamp": time.time(),
             }
             self.set_pending_confirmation(None)
-            print(
-                f'📝 Modification requested - revising action based on: "{cli_text[:80]}{"..." if len(cli_text) > 80 else ""}"'
+            display_status(
+                f'Modification requested — revising action based on: "{cli_text[:80]}{"..." if len(cli_text) > 80 else ""}"'
             )
             self.clear_pending_user_input()
             return True
@@ -352,8 +351,10 @@ class LoopController:
         self.set_timeout_retry(None)
 
         if response in ("no", "n", "cancel", "skip"):
+            from maxim.simulation.sim_logger import display_status
+
             logger.info("User declined timeout retry")
-            print("Understood, skipping.")
+            display_status("Understood, skipping.")
             self.state.data.pop("pending_cli_input", None)
             self.clear_pending_user_input()
             return True
@@ -372,7 +373,9 @@ class LoopController:
         if new_timeout_s is not None and self.llm_worker is not None:
             if tr.original_request is not None:
                 logger.info("Retrying LLM with timeout=%.0fs", new_timeout_s)
-                print(f"Retrying with {int(new_timeout_s)}s time limit...")
+                from maxim.simulation.sim_logger import display_status
+
+                display_status(f"Retrying with {int(new_timeout_s)}s time limit...")
                 self.llm_worker.retry_with_timeout(tr.original_request, new_timeout_s)
                 self.state.data.pop("pending_cli_input", None)
                 self.clear_pending_user_input()

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import tempfile
 import threading
 import time
@@ -115,19 +114,12 @@ def _setup_sim_sandbox(
 
         if announce:
             if backend == "auto" and "tmpdir" in actual_backend:
-                print(
-                    "  ⚠  Sandbox: Docker unavailable — falling back to "
-                    "tmpdir (reduced isolation). Install/start Docker "
-                    "Desktop for full container isolation.",
-                    file=sys.stderr,
-                    flush=True,
+                logger.warning(
+                    "Sandbox: Docker unavailable — falling back to tmpdir (reduced isolation). "
+                    "Install/start Docker Desktop for full container isolation."
                 )
             else:
-                print(
-                    f"  ✓  Sandbox: {actual_backend}",
-                    file=sys.stderr,
-                    flush=True,
-                )
+                logger.info("Sandbox: %s", actual_backend)
         if populate:
             logger.info(
                 "Simulation sandbox: %s (requested=%s, actual=%s, with pain-triggering files)",
@@ -973,14 +965,14 @@ def start_simulation_mode(
             logger.debug("Failed to connect MemoryHub bridges: %s", e)
 
     # ── Print simulation banner ──────────────────────────────────────────
-    print(f"\n{'=' * 60}")
-    print(f"  SIMULATION MODE — {persona.upper()} persona")
-    print(f"  Goal: {goal}")
-    print(f"  Max turns: {max_turns}")
+    from maxim.simulation.sim_logger import display_status, display_summary
+
+    display_status(f"SIMULATION MODE — {persona.upper()} persona")
+    display_status(f"Goal: {goal}")
+    display_status(f"Max turns: {max_turns}")
     if sim_sandbox and not no_sim_env:
-        print("  Environment: simulated filesystem with pain triggers")
-    print("  Commands: /cancel  /new <goal>  /status  /report")
-    print(f"{'=' * 60}\n")
+        display_status("Environment: simulated filesystem with pain triggers")
+    display_status("Commands: /cancel  /new <goal>  /status  /report")
 
     # ── Start AUT thread ─────────────────────────────────────────────────
     aut_error: list[Exception] = []
@@ -1065,9 +1057,9 @@ def start_simulation_mode(
         if resume_data:
             resume_prompt = _build_resume_prompt(resume_data, goal, persona)
             orchestrator_source.inject_cli(resume_prompt, salience=1.0, novelty=1.0)
-            print(f"  Resuming session: {resume_session}")
-            print(
-                f"  Previous turns: {resume_data.get('turns', '?')}, actions: {resume_data.get('total_actions', '?')}"
+            display_status(f"Resuming session: {resume_session}")
+            display_status(
+                f"Previous turns: {resume_data.get('turns', '?')}, actions: {resume_data.get('total_actions', '?')}"
             )
         else:
             # Fallback to fresh start if session not found
@@ -1122,7 +1114,7 @@ def start_simulation_mode(
                 continue
 
             if line.lower() in ("/cancel", "/stop", "/quit"):
-                print("\n  Simulation cancelled by user.")
+                display_summary(["Simulation cancelled by user."])
                 stop_event.set()
                 break
             elif line.lower().startswith("/new "):
@@ -1135,7 +1127,7 @@ def start_simulation_mode(
                         salience=1.0,
                         novelty=1.0,
                     )
-                    print(f"  New goal: {new_goal}")
+                    display_status(f"New goal: {new_goal}")
             elif line.lower().startswith("/persona "):
                 new_persona = line[9:].strip()
                 orchestrator_source.inject_cli(
@@ -1144,12 +1136,12 @@ def start_simulation_mode(
                     salience=0.9,
                     novelty=0.8,
                 )
-                print(f"  Persona switched to: {new_persona}")
+                display_status(f"Persona switched to: {new_persona}")
             elif line.lower() == "/status":
-                print(f"  Turns: {bridge.turn_count}")
-                print(f"  Actions: {len(bridge.get_all_actions())}")
+                display_status(f"Turns: {bridge.turn_count}")
+                display_status(f"Actions: {len(bridge.get_all_actions())}")
                 blocked = [a for a in bridge.get_all_actions() if a.blocked]
-                print(f"  Blocked: {len(blocked)}")
+                display_status(f"Blocked: {len(blocked)}")
             elif line.lower() == "/report":
                 orchestrator_source.inject_cli(
                     "Generate an interim report of your findings so far "
@@ -1157,7 +1149,7 @@ def start_simulation_mode(
                     salience=0.9,
                     novelty=0.5,
                 )
-                print("  Report requested...")
+                display_status("Report requested...")
             else:
                 # Free text → guidance for orchestrator
                 orchestrator_source.inject_cli(
@@ -1275,7 +1267,7 @@ def start_simulation_mode(
             percept_source=orchestrator_source,
         )
     except KeyboardInterrupt:
-        print("\n\n  Simulation interrupted (Ctrl+C)")
+        display_summary(["Simulation interrupted (Ctrl+C)"])
     except Exception as e:
         orch_error.append(e)
         logger.error("Orchestrator loop failed: %s", e)
@@ -1289,7 +1281,7 @@ def start_simulation_mode(
     logging.getLogger("maxim").setLevel(logging.WARNING)
 
     # ── Shutdown everything (safe even after KeyboardInterrupt) ────────
-    print("  Shutting down agent loops...")
+    display_status("Shutting down agent loops...")
     try:
         stop_event.set()
         bridge.finish()
@@ -1297,15 +1289,15 @@ def start_simulation_mode(
     except Exception:
         pass
 
-    print("  Waiting for AUT to finish...")
+    display_status("Waiting for AUT to finish...")
     try:
         aut_thread.join(timeout=5.0)
         if aut_thread.is_alive():
-            print("  AUT thread did not stop in time (continuing anyway)")
+            display_status("AUT thread did not stop in time (continuing anyway)")
     except Exception:
         pass
 
-    print("  Stopping LLM workers...")
+    display_status("Stopping LLM workers...")
     for worker in (aut_llm_worker, orch_llm_worker):
         if worker:
             try:
@@ -1317,7 +1309,7 @@ def start_simulation_mode(
     if orch_hippocampus is not None:
         try:
             mem_count = len(orch_hippocampus)
-            print(f"  Saving orchestrator memory ({mem_count} memories)...")
+            display_status(f"Saving orchestrator memory ({mem_count} memories)...")
             orch_hippocampus.save()
         except Exception as e:
             logger.debug("Failed to save orchestrator hippocampus: %s", e)
@@ -1326,7 +1318,7 @@ def start_simulation_mode(
     if sim_sandbox:
         pain_count = len(sim_sandbox.pain_events)
         if pain_count > 0:
-            print(f"  Pain signals fired: {pain_count}")
+            display_status(f"Pain signals fired: {pain_count}")
         try:
             sim_sandbox.cleanup()
         except Exception:
@@ -1374,7 +1366,7 @@ def start_simulation_mode(
             llm_finish.get("reason"),
         )
 
-    print("  Building simulation report...")
+    display_status("Building simulation report...")
     report = build_report(
         goal=goal,
         persona=persona,
@@ -1404,17 +1396,17 @@ def start_simulation_mode(
     from maxim.utils.paths import sim_reports as _sim_reports_dir
 
     report_dir = str(_sim_reports_dir())
-    print(f"  Saving report to {report_dir}/{report.session_id}/...")
+    display_status(f"Saving report to {report_dir}/{report.session_id}/...")
     save_report(report, base_dir=report_dir)
 
     action_count = len(bridge.get_all_actions())
-    print(f"  Saving action log ({action_count} records)...")
+    display_status(f"Saving action log ({action_count} records)...")
     save_action_log(bridge, base_dir=report_dir, session_id=report.session_id)
 
     if aut_hippocampus is not None or aut_nac is not None:
         aut_mem = len(aut_hippocampus) if aut_hippocampus else 0
         aut_links = sum(len(v) for v in aut_nac._links.values()) if aut_nac else 0
-        print(f"  Saving AUT state ({aut_mem} memories, {aut_links} causal links)...")
+        display_status(f"Saving AUT state ({aut_mem} memories, {aut_links} causal links)...")
     save_aut_state(
         hippocampus=aut_hippocampus,
         nac=aut_nac,
@@ -1431,18 +1423,18 @@ def start_simulation_mode(
         if exp_src.exists():
             exp_dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(str(exp_src), str(exp_dst))
-            print(f"  Saving experiment log ({len(experiment_log)} experiments)...")
+            display_status(f"Saving experiment log ({len(experiment_log)} experiments)...")
 
     # LLM-powered roundup (log noise suppressed by WARNING level above)
     if llm_router is not None and not getattr(llm_router, "session_cost_exceeded", False):
         try:
-            print("  Running LLM analysis roundup...")
+            display_status("Running LLM analysis roundup...")
             analyze_simulation(report, llm_router=llm_router)
             save_report(report, base_dir=report_dir)
         except Exception:
-            print("  LLM roundup skipped (model unavailable after shutdown)")
+            display_status("LLM roundup skipped (model unavailable after shutdown)")
     elif llm_router is not None:
-        print("  Skipping LLM roundup (session cost ceiling reached)")
+        display_status("Skipping LLM roundup (session cost ceiling reached)")
 
     # Print human-readable report
     print_report(report)
