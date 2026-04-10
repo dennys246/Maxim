@@ -1564,6 +1564,18 @@ def run_agentic_loop(
                     mode=state.data.get("mode", "unknown"),
                     confidence=confidence,
                 )
+
+                # Non-interactive: auto-approve if safety constraints pass.
+                # Prevents the proposal queue from silently expiring with
+                # no human to approve. The agent acts on its own judgment.
+                from maxim.simulation.sim_logger import should_prompt
+
+                if not should_prompt("plan_approval"):
+                    autonomy_controller.proposal_queue.approve(
+                        proposal.id, approved_by="auto:non-interactive"
+                    )
+                    sim.log("PIPELINE", f"Auto-approved (non-interactive PLANNING): {action.get('tool_name')}")
+
                 pending_proposal = None
 
             else:
