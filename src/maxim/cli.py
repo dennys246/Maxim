@@ -229,12 +229,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(raw_argv)
 
     # ── Force-kill on double Ctrl+C ──────────────────────────────────
-    # First Ctrl+C triggers graceful shutdown. If the user hits Ctrl+C
-    # again while shutdown is in progress, force-kill the LLM server
-    # subprocess and exit immediately. Prevents ghost processes.
+    # First Ctrl+C signals the LLM cancellation primitive and raises
+    # KeyboardInterrupt in the main thread for graceful shutdown. If the
+    # user hits Ctrl+C again while shutdown is in progress, force-kill the
+    # LLM server subprocess and exit immediately. Prevents ghost processes
+    # and prevents in-flight retry loops from burning cloud credits after
+    # the user has asked to stop.
     _shutting_down = [False]
 
     def _force_exit_handler(signum, frame):
+        # Always signal LLM cancellation first — this wakes up any backend
+        # retry loop that's mid-backoff and lets it abandon the request
+        # before Python gets a chance to unwind via KeyboardInterrupt.
+        # Must be best-effort: if the import fails (unlikely), we still
+        # want the rest of the handler to run.
+        try:
+            from maxim.models.language.cancellation import request_shutdown
+
+            request_shutdown()
+        except Exception:
+            pass
+
         if _shutting_down[0]:
             # Second interrupt — force kill everything and exit
             try:
@@ -414,6 +429,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         from maxim.simulation.scenario_source import ScenarioSource
         from maxim.simulation.sinks import RecordingSink
         from maxim.simulation.validation import validate_expectations
+
+        # ── Safety net: detect stale sim processes from previous runs ──
+        # Graceful shutdown (Ctrl+C → orchestrator cleanup → LLM cancellation)
+        # handles the common case, but kill -9, crashes, and detached shells
+        # can still leave zombie maxim processes that keep hitting the LLM
+        # backend and burning cloud credits. Scan for them before starting
+        # anything new. Warn always; reap only when user opts in explicitly
+        # (--reap-orphans flag or MAXIM_REAP_ORPHANS=1).
+        try:
+            from maxim.runtime.orphan_reaper import (
+                find_orphans,
+                reap_orphans,
+                warn_about_orphans,
+            )
+
+            _orphans = find_orphans()
+            if _orphans:
+                warn_about_orphans(_orphans)
+                _reap_requested = bool(getattr(args, "reap_orphans", False)) or os.environ.get(
+                    "MAXIM_REAP_ORPHANS", ""
+                ).strip() not in ("", "0", "false", "no")
+                if _reap_requested:
+                    _killed = reap_orphans(_orphans)
+                    print(f"  Reaped {_killed} stale sim process(es).\n", file=sys.stderr)
+        except Exception as _e:
+            logging.getLogger("maxim").debug("Orphan reaper check failed: %s", _e)
 
         # Parse --debug subsystem selection
         _debug_raw = getattr(args, "debug", None)

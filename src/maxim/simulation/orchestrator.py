@@ -216,6 +216,18 @@ def start_simulation_mode(
     # ── Shared stop event ────────────────────────────────────────────────
     stop_event = threading.Event()
 
+    # Reset the process-wide LLM cancellation primitive. If a previous sim
+    # in the same Python process requested shutdown (e.g., this is a
+    # --continuous run or a long-lived REPL invoking multiple sims), the
+    # event would still be set and the new sim's LLM calls would bail out
+    # immediately. Clearing at entry makes successive sims safe.
+    try:
+        from maxim.models.language.cancellation import reset_shutdown
+
+        reset_shutdown()
+    except Exception as e:
+        logger.debug("Failed to reset LLM cancellation at sim start: %s", e)
+
     # ── Shared LLM router (single model, alternating inference) ──────────
     # Routed through the multi-LLM factory so sim respects per-lane assignments
     # (capability-driven profiles, env overrides, remote URLs, safety gates).
@@ -1282,6 +1294,17 @@ def start_simulation_mode(
 
     # ── Shutdown everything (safe even after KeyboardInterrupt) ────────
     display_status("Shutting down agent loops...")
+    # Signal the process-wide LLM cancellation primitive FIRST so any
+    # in-flight retry loops in anthropic/openai backends abandon pending
+    # retries immediately. Without this, a user Ctrl+C during a rate-limit
+    # backoff would keep burning cloud credits for up to ~50s while the
+    # retry chain completes. See models/language/cancellation.py.
+    try:
+        from maxim.models.language.cancellation import request_shutdown
+
+        request_shutdown()
+    except Exception as e:
+        logger.debug("Failed to signal LLM cancellation: %s", e)
     try:
         stop_event.set()
         bridge.finish()

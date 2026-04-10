@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from maxim.utils.logging import warn
+from maxim.models.language.cancellation import is_shutdown_requested, shutdown_wait
 from maxim.models.language.config import LLMConfig
 from maxim.models.language.types import LLMResponse
 
@@ -241,6 +242,12 @@ class _AnthropicBackend:
 
         last_err: Exception | None = None
         for attempt in range(self._get_max_retries() + 1):
+            # Abort if the process is shutting down. Previously a user Ctrl+C
+            # mid-retry would run the loop to completion (up to ~8s of
+            # uninterruptible backoff sleeps) while burning cloud credits.
+            if is_shutdown_requested():
+                warn("Anthropic call aborted: shutdown requested during retry loop")
+                return LLMResponse(content="")
             try:
                 if stream:
                     return self._stream_response(create_kwargs, start)
@@ -255,7 +262,11 @@ class _AnthropicBackend:
                     backoff = 0.5 * (attempt + 1)
                     if _is_rate_limit_error(e):
                         backoff = min(backoff * 4, 30.0)
-                    time.sleep(backoff)
+                    # shutdown_wait returns True early if shutdown fires
+                    # mid-backoff; we bail out on the next iteration check.
+                    if shutdown_wait(backoff):
+                        warn("Anthropic call aborted: shutdown requested during backoff")
+                        return LLMResponse(content="")
                     continue
                 break
 

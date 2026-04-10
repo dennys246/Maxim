@@ -309,6 +309,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "With --sim <path.yaml>: run as DM campaign (auto-detected from YAML).",
     )
     sim.add_argument(
+        "--reap-orphans",
+        action="store_true",
+        default=False,
+        help="Kill stale maxim sim processes detected at startup (safety net "
+        "for runaway runs that may still be hitting the LLM backend). "
+        "Equivalent to MAXIM_REAP_ORPHANS=1.",
+    )
+    sim.add_argument(
         "--research",
         action="store_true",
         help="Generate research report (Writer + Reviewer agents) after simulation completes.",

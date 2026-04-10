@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from maxim.utils.logging import warn
 
 log = logging.getLogger(__name__)
+from maxim.models.language.cancellation import is_shutdown_requested, shutdown_wait
 from maxim.models.language.config import LLMConfig
 from maxim.models.language.types import LLMResponse
 
@@ -254,6 +255,15 @@ class _OpenAIBackend:
 
         attempt = 0
         while attempt <= max_retries:
+            # Abort if the process is shutting down. Without this check a
+            # Ctrl+C mid-retry would run the full chain (up to 2 normal + 4
+            # gateway retries with backoffs totalling ~50s), burning cloud
+            # credits and holding up shutdown even though the user asked to
+            # stop. See models/language/cancellation.py for the primitive.
+            if is_shutdown_requested():
+                log.warning("OpenAI call aborted: shutdown requested during retry loop [req=%s]", request_id)
+                last_err = last_err or RuntimeError("shutdown requested")
+                break
             try:
                 if stream:
                     return self._stream_response(client, model, messages, temperature, max_tokens, stop, start)
@@ -308,7 +318,12 @@ class _OpenAIBackend:
                         backoff,
                         request_id,
                     )
-                    time.sleep(backoff)
+                    # shutdown_wait returns early when shutdown fires; the
+                    # next iteration's is_shutdown_requested() check then
+                    # exits the loop cleanly.
+                    if shutdown_wait(backoff):
+                        log.warning("OpenAI call aborted during gateway backoff [req=%s]", request_id)
+                        break
                     # Don't consume a normal retry for gateway errors
                     continue
 
@@ -316,7 +331,12 @@ class _OpenAIBackend:
                     backoff = 0.5 * (attempt + 1)
                     if _is_rate_limit_error(e):
                         backoff = min(backoff * 4, 30.0)
-                    time.sleep(backoff)
+                    if shutdown_wait(backoff):
+                        log.warning(
+                            "OpenAI call aborted during rate-limit backoff [req=%s]",
+                            request_id,
+                        )
+                        break
                     attempt += 1
                     continue
                 break
