@@ -1,18 +1,27 @@
 # Agent Permissions Plan
 
 > **Status:** Design complete, implementation ready.
-> **Goal:** Per-agent authority levels, tool-scoped permissions, and SEM entity access control for multi-agent campaigns.
-> **Estimated scope:** ~250 LOC core + ~100 LOC tests + ~50 LOC wiring
+> **Goal:** Two-layer permission system — enforced (hard gates) + perceived (bio-stack-driven social norms) — for realistic multi-agent authority dynamics.
+> **Estimated scope:** ~300 LOC core + ~120 LOC tests + ~50 LOC wiring
 > **Depends on:** None. Foundation for Pecking Order Graph authority domain.
 > **Blocks:** v1.0.0 publication (lightweight, high-impact feature).
 
 ---
 
-## Why This Matters
+## Core Insight: Enforced vs. Perceived Permissions
 
-Maxim simulates cognitive agents. Realistic scenarios require realistic authority dynamics — a king has more power than a soldier, a sysadmin has more access than an intern. Without permissions, every agent in a multi-agent campaign has identical capabilities, which undermines the simulation's value.
+In the real world, permission operates on two levels:
 
-This is also the foundation for the Pecking Order Graph's authority domain. Building it now means POG has a concrete data model to build on.
+1. **Enforced** — physical gates. The door is locked. The terminal requires a key. The modulator rejects the call. You **cannot** do this.
+2. **Perceived** — social norms. You *could* sit on the king's throne, but you *don't* because you predict punishment. Permission is a learned expectation, not a physical barrier.
+
+Maxim's bio-stack already models perceived permissions naturally:
+- **NAc** learns "attempting X without authority → negative outcome" through causal observation
+- **FearAgent** reviews actions against predicted harm
+- **LLM system prompt** carries role context ("you are a soldier, you follow orders")
+- **Hippocampus** remembers past denials and their consequences
+
+What we need to BUILD is only the enforced layer. The perceived layer is the bio-stack doing its job — we just need to feed it the right context.
 
 ---
 
@@ -20,49 +29,43 @@ This is also the foundation for the Pecking Order Graph's authority domain. Buil
 
 ### `AgentPermissions` (`src/maxim/agents/permissions.py`)
 
+This is the **enforced** layer only. Hard gates that the system physically blocks.
+
 ```python
 @dataclass
 class SEMAccessRule:
-    """Access control for a specific SEM entity's sensors/modulators."""
+    """Enforced access control for a specific SEM entity."""
     entity_pattern: str          # fnmatch glob: "server_room.*", "prod-db-*", "*"
     read_sensors: bool = True    # Can read sensor values
     actuate: bool = True         # Can trigger modulator affordances
-    min_clearance: int = 0       # Entity requires this clearance level to interact
+    min_clearance: int = 0       # Entity requires this clearance level
 
 @dataclass
 class AgentPermissions:
-    """Per-agent permission bundle. Parsed from campaign YAML metadata."""
+    """Enforced per-agent permissions. Hard gates — the system blocks the action."""
 
-    # Authority (0-100). Higher = more power. Maps to POG authority score.
-    authority: int = 50
-
-    # Clearance level (0-5). Separate from authority — a warrior may be
-    # powerful but lack technical clearance. Entities can require min clearance.
+    # Clearance level (0-5). Physical access control.
+    # A locked terminal requires clearance 4 regardless of authority.
     clearance: int = 0
 
-    # Tool access control
+    # Tool access control (hard gates)
     tool_allow: frozenset[str] | None = None   # If set, ONLY these tools permitted
     tool_deny: frozenset[str] = frozenset()     # Always denied (overrides allow)
 
     # SEM entity access rules. Most-specific pattern wins (longest first).
     sem_rules: tuple[SEMAccessRule, ...] = ()
 
-    # --- Methods ---
-
     def can_use_tool(self, tool_name: str) -> tuple[bool, str]:
-        """Returns (allowed, reason). Reason is '' if allowed."""
+        """Hard gate: can this agent use this tool?"""
 
     def can_read_entity(self, entity_path: str) -> bool:
-        """Can this agent read sensors on the named entity?"""
+        """Hard gate: can this agent read sensors on this entity?"""
 
     def can_actuate_entity(self, entity_path: str) -> bool:
-        """Can this agent trigger modulators on the named entity?"""
-
-    def can_command(self, target: "AgentPermissions") -> bool:
-        """Can this agent issue commands to the target agent?"""
-        return self.authority > target.authority
+        """Hard gate: can this agent trigger modulators on this entity?"""
 
     def meets_clearance(self, required: int) -> bool:
+        """Hard gate: does agent have sufficient clearance?"""
         return self.clearance >= required
 
     @classmethod
@@ -70,24 +73,51 @@ class AgentPermissions:
 
     @classmethod
     def permissive(cls) -> "AgentPermissions":
-        """Default: full access. Used when no permissions specified."""
-        return cls(authority=50, clearance=5)
+        """Default: no enforced restrictions."""
+        return cls(clearance=5)
 ```
 
-### Design decisions
+### `PerceivedAuthority` — campaign YAML metadata (no code needed)
 
-- **`authority` is 0-100 int**, not an enum. Supports fine-grained ordering (king=100, prince=80, knight=60, soldier=40). Maps directly to POG node authority score.
-- **`clearance` is separate from `authority`** because a powerful warrior shouldn't automatically access a computer terminal.
-- **`tool_deny` overrides `tool_allow`** — deny-list always wins for safety.
-- **SEM rules use most-specific-match** (longest entity_pattern first), not first-match. This prevents the `"*": deny` footgun.
-- **`from_dict` enables pure YAML configuration** — no code changes needed for new permission schemes.
-- **`permissive()` default** ensures existing campaigns work without changes.
+This is the **perceived** layer. It flows into the LLM system prompt and lets the bio-stack learn naturally.
+
+```python
+@dataclass
+class PerceivedAuthority:
+    """Social context that shapes agent behavior through learning, not hard gates."""
+
+    # Authority score (0-100). Injected into LLM prompt as social context.
+    # The agent *could* disobey — but NAc will learn consequences.
+    authority: int = 50
+
+    # Role expectations. Injected into LLM system prompt.
+    # "Follow orders from knights and above. Do not issue commands."
+    role_expectations: str = ""
+
+    # Social hierarchy. Other agents the LLM knows to defer to or command.
+    defers_to: list[str] = field(default_factory=list)    # ["english_king", "english_champion"]
+    commands: list[str] = field(default_factory=list)      # ["militia_1", "militia_2"]
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PerceivedAuthority": ...
+```
+
+### Key distinction
+
+| Aspect | Enforced (`AgentPermissions`) | Perceived (`PerceivedAuthority`) |
+|---|---|---|
+| Mechanism | Tool executor rejects call | NAc learns, FearAgent reviews, LLM avoids |
+| Violation | Impossible — blocked by code | Possible — agent chooses not to (or learns not to) |
+| Feedback | `ToolOutput(success=False, error="Access denied")` | Negative outcome → NAc RPE → future avoidance |
+| Example | Locked door, missing SSH key | Social rank, role expectations |
+| Where defined | `metadata.permissions.enforced` | `metadata.permissions.perceived` |
+| Can be subverted? | No | Yes — that's the point (agent can rebel, face consequences) |
 
 ---
 
 ## Campaign YAML Schema
 
-Permissions live in `metadata.permissions` on each NPC spec. No schema changes needed — NPC metadata is already a free-form dict.
+Both layers live in `metadata.permissions`:
 
 ### Fantasy example (Kings' Duel)
 
@@ -97,35 +127,35 @@ npcs:
     entity_type: npc
     metadata:
       role: monarch
+      persona_prompt: "King Edmund III. Proud, battle-hardened."
       permissions:
-        authority: 100
-        clearance: 5
-        sem_rules:
-          - entity_pattern: "*"
-            read_sensors: true
-            actuate: true
-
-  english_prince:
-    entity_type: npc
-    metadata:
-      role: heir
-      permissions:
-        authority: 80
-        clearance: 4
-        sem_rules:
-          - entity_pattern: "english_*"
-            actuate: true
-          - entity_pattern: "french_*"
-            actuate: false  # Can observe but not command French forces
+        enforced:
+          clearance: 5
+          sem_rules:
+            - entity_pattern: "*"
+              read_sensors: true
+              actuate: true
+        perceived:
+          authority: 100
+          role_expectations: "You are the king. You command all English forces."
+          commands: [english_prince, english_champion, english_sergeant]
 
   english_sergeant:
     entity_type: npc
     metadata:
       role: soldier
+      persona_prompt: "Sergeant Thomas. Veteran of three campaigns."
       permissions:
-        authority: 40
-        clearance: 2
-        tool_deny: [command]  # Soldiers can't issue commands
+        enforced:
+          clearance: 2
+          tool_deny: [admin_console]  # Can't use command-level tools
+          sem_rules:
+            - entity_pattern: "royal_vault"
+              actuate: false  # Vault is physically locked to non-royals
+        perceived:
+          authority: 40
+          role_expectations: "Follow orders from knights and above. Protect the prince. Do not issue commands to nobility."
+          defers_to: [english_king, english_champion]
 ```
 
 ### Cybersecurity example
@@ -135,94 +165,119 @@ npcs:
   sysadmin:
     metadata:
       permissions:
-        authority: 90
-        clearance: 5
-        sem_rules:
-          - entity_pattern: "*"
-            actuate: true
+        enforced:
+          clearance: 5
+          sem_rules:
+            - entity_pattern: "*"
+              actuate: true
+        perceived:
+          authority: 90
+          role_expectations: "You are the security lead. Full system access. Responsible for incident response."
 
   intern:
     metadata:
       permissions:
-        authority: 20
-        clearance: 1
-        tool_deny: [execute_command, write_file, delete_file]
-        sem_rules:
-          - entity_pattern: "staging_*"
-            actuate: true
-          - entity_pattern: "prod_*"
-            read_sensors: true
-            actuate: false  # Can see prod metrics, can't touch
+        enforced:
+          clearance: 1
+          tool_deny: [execute_command, write_file, delete_file]
+          sem_rules:
+            - entity_pattern: "staging_*"
+              actuate: true
+            - entity_pattern: "prod_*"
+              read_sensors: true
+              actuate: false  # ENFORCED: can see prod metrics, physically can't touch
+        perceived:
+          authority: 20
+          role_expectations: "You are a junior engineer. Ask the sysadmin before touching production. You should not run commands you don't understand."
+          defers_to: [sysadmin]
 
   attacker:
     metadata:
       permissions:
-        authority: 0
-        clearance: 0
-        sem_rules:
-          - entity_pattern: "*"
-            read_sensors: false
-            actuate: false
+        enforced:
+          clearance: 0
+          sem_rules:
+            - entity_pattern: "*"
+              read_sensors: false
+              actuate: false
+        perceived:
+          authority: 0
+          role_expectations: "You are outside the system. You must find vulnerabilities to gain access."
 
 world_objects:
   prod_database:
     entity_type: server
     metadata:
-      min_clearance: 4
+      min_clearance: 4  # Enforced: only clearance >= 4 can interact
     sensors:
       cpu_load: {unit: percent, range: [0, 100], initial: 87}
 ```
 
+### What makes this powerful
+
+The **intern** example shows both layers working together:
+- **Enforced**: Can't `execute_command` (tool_deny), can't actuate prod modulators (SEM rule). These are hard-blocked.
+- **Perceived**: "Ask the sysadmin before touching production." The intern *could* try `read_file` on a prod config (not in tool_deny), but NAc will learn that doing so without asking leads to negative outcomes (sysadmin gets angry, access revoked in-story).
+
+The **attacker** example shows pure enforcement — no perceived layer because the attacker doesn't respect social norms. They're hard-blocked by clearance and SEM rules.
+
 ---
 
-## Wiring Points
+## How Perceived Permissions Wire into Existing Systems
 
-### 1. Tool execution gating (`runtime/executor.py`)
+### LLM System Prompt (already exists — extend it)
 
-Permissions flow per-call through an execution context, NOT stored on the Executor (which is shared across agents in a pool).
+The agent loop builds a system prompt for each LLM call. `PerceivedAuthority` data gets injected:
 
-```python
-def execute(self, action: dict, *, permissions: AgentPermissions | None = None) -> ToolOutput:
-    tool_name = action.get("tool_name", "")
-    if permissions is not None:
-        allowed, reason = permissions.can_use_tool(tool_name)
-        if not allowed:
-            return ToolOutput(success=False, error=f"Permission denied: {reason}")
-    # ... existing execution logic
+```
+Your role: soldier (authority: 40/100)
+You defer to: english_king, english_champion
+Social expectations: Follow orders from knights and above. Do not issue commands to nobility.
 ```
 
-### 2. Autonomy controller (`agents/autonomy.py`)
+This goes into the `ModeInfo` or `StructuredContext` that the LLM worker receives. The LLM then naturally avoids actions that violate these expectations — but it *can* choose to violate them, which creates interesting narrative.
 
-Add an optional permissions reference. The `can_execute_action` check runs permissions BEFORE safety constraints:
+### NAc Causal Learning (already exists — just observe)
+
+When the agent violates perceived expectations and gets a negative response:
+1. Agent (soldier) tries to give an order → NPC ignores the order
+2. Outcome: failure → NAc observes `event: "command_npc", outcome: "ignored", valence: NEGATIVE`
+3. Future: NAc predicts `command_npc → negative` → agent avoids commanding
+
+No new code needed. The DM runtime's NPC response just needs to react appropriately to authority violations (already handled by the NPC's own persona_prompt).
+
+### FearAgent (already exists — just feed context)
+
+FearAgent reviews actions before execution. If the agent's perceived authority context is in the review prompt, FearAgent can flag "this action exceeds your perceived authority" as a risk. This is a ~5 line change to include perceived authority in the FearAgent's review context.
+
+---
+
+## Dynamic Authority Transfer
+
+Authority changes affect BOTH layers:
 
 ```python
-def can_execute_action(self, action, confidence=None, *, permissions=None):
-    # ... existing ALWAYS_ALLOWED_TOOLS check ...
-    if permissions is not None:
-        allowed, reason = permissions.can_use_tool(tool_name)
-        if not allowed:
-            return False, reason
-    # ... existing safety/level checks ...
+def transfer_authority(pool, from_id, to_id, reason=""):
+    source = pool.get_agent(from_id)
+    target = pool.get_agent(to_id)
+
+    # Transfer enforced clearance (physical keys/access)
+    if source.permissions and target.permissions:
+        target.permissions.clearance = max(target.permissions.clearance, source.permissions.clearance)
+
+    # Transfer perceived authority
+    if source.perceived and target.perceived:
+        target.perceived.authority = source.perceived.authority
+        source.perceived.authority = 0
+
+    # Broadcast so all agents observe the change through bio-stack
+    pool.broadcast_percept(
+        f"Authority transferred from {from_id} to {to_id}: {reason}",
+        salience=1.0, novelty=1.0,
+    )
 ```
 
-### 3. Agent factory (`runtime/agent_factory.py`)
-
-Parse permissions from config metadata during agent creation:
-
-```python
-# In create_npc_agent() or similar:
-perm_data = config.metadata.get("permissions")
-permissions = AgentPermissions.from_dict(perm_data) if perm_data else AgentPermissions.permissive()
-agent_instance.permissions = permissions
-```
-
-### 4. Campaign runner (`simulation/campaign_runner.py`)
-
-When `run_dm_campaign()` instantiates SEM entities, also parse permissions and attach to agents.
-
-### 5. DM runtime — authority transfer (`simulation/dm_runtime.py`)
-
-Add `authority_transfer` to `on_choice` effects:
+Campaign YAML trigger:
 
 ```yaml
 on_choice:
@@ -231,88 +286,57 @@ on_choice:
     authority_transfer:
       from: english_king
       to: english_prince
+      reason: "succession"
 ```
-
-The runtime calls `target.permissions.authority = source.permissions.authority` and zeros the source. Emits a percept so other agents observe the transfer through their bio-stacks.
-
-### 6. SEM tool gating
-
-Auto-generated SEM tools (sense/actuate) check permissions:
-
-```python
-def execute(self, *, permissions: AgentPermissions | None = None, **kwargs):
-    if permissions and not permissions.can_read_entity(self.entity_name):
-        return ToolOutput(success=False, error=f"Access denied: cannot read {self.entity_name}")
-```
-
-### 7. Permission denial as percept
-
-When a tool is denied, the denial flows back through the agent loop as a normal tool result (success=False). The agent's Hippocampus captures it, NAc learns "attempting X → denied", and future planning avoids denied actions. No special wiring needed — the existing bio-system integration handles this naturally.
-
----
-
-## Dynamic Authority Transfer
-
-Authority changes at runtime via direct mutation:
-
-```python
-def transfer_authority(pool, from_id, to_id, reason=""):
-    source = pool.get_agent(from_id)
-    target = pool.get_agent(to_id)
-    target.permissions.authority = source.permissions.authority
-    source.permissions.authority = 0
-    # Emit as percept so agents observe the change
-    pool.broadcast_percept(
-        f"Authority transferred from {from_id} to {to_id}: {reason}",
-        salience=1.0, novelty=1.0,
-    )
-```
-
-Triggered by:
-- `authority_transfer` in `on_choice` effects (campaign YAML)
-- Entity HP reaching 0 (DM runtime death hook)
-- Direct API call from orchestrator
 
 ---
 
 ## Mapping to Pecking Order Graph
 
-| Permission System | POG Equivalent |
+| Permission Layer | POG Mapping |
 |---|---|
-| `authority` (0-100) | `PeckingNode` authority score → pecking direction on AUTHORITY edges |
-| `clearance` (0-5) | Node metadata, used for EMBODIMENT domain gating |
-| `can_command(target)` | `graph.find_pecked(node_id, AUTHORITY)` |
-| `tool_allow/deny` | Capability metadata on PeckingNode |
-| `sem_rules` | `PeckingDomain.EMBODIMENT` — who can interact with what |
-| `transfer_authority()` | `graph.recompute_pecking()` triggered on authority change |
+| `PerceivedAuthority.authority` (0-100) | `PeckingNode` authority score → pecking direction on AUTHORITY edges |
+| `AgentPermissions.clearance` (0-5) | `PeckingDomain.EMBODIMENT` gating |
+| `PerceivedAuthority.defers_to` | Graph edge: pecked_by in AUTHORITY domain |
+| `PerceivedAuthority.commands` | Graph edge: pecks in AUTHORITY domain |
+| `AgentPermissions.sem_rules` | `PeckingDomain.EMBODIMENT` — who can interact with what |
+| `AgentPermissions.tool_allow/deny` | Capability metadata on PeckingNode |
+| `transfer_authority()` | `PeckingGraph.recompute_pecking()` |
 
-When POG ships, `AgentPermissions` becomes the local view. The graph provides the relational view. The transition is additive — POG reads permissions, doesn't replace them.
+When POG ships:
+- Phase 1: `AgentPermissions` is standalone (local enforcement)
+- Phase 2: `PeckingGraph` is built from `PerceivedAuthority` scores (relational view)
+- Phase 3: Graph position can dynamically adjust perceived authority
 
 ---
 
-## Implementation Sequence
+## Wiring Points
 
 | Step | What | LOC | Files |
 |---|---|---|---|
-| 1 | `AgentPermissions` + `SEMAccessRule` + tests | ~180 | `agents/permissions.py`, `tests/unit/test_permissions.py` |
+| 1 | `AgentPermissions` + `SEMAccessRule` + `PerceivedAuthority` + `from_dict` | ~150 | `agents/permissions.py` |
 | 2 | Executor per-call permissions check | ~10 | `runtime/executor.py` |
 | 3 | AutonomyController permissions check | ~5 | `agents/autonomy.py` |
 | 4 | AgentFactory permissions parsing | ~15 | `runtime/agent_factory.py` |
-| 5 | Campaign runner wiring | ~15 | `simulation/campaign_runner.py` |
-| 6 | DM runtime authority_transfer | ~20 | `simulation/dm_runtime.py` |
-| 7 | SEM tool gating | ~20 | Where SEM tools are generated |
-| 8 | Integration tests | ~60 | `tests/unit/test_permissions.py` |
+| 5 | Perceived authority → LLM prompt injection | ~20 | `agents/llm_worker.py` or prompt builder |
+| 6 | Campaign runner wiring | ~15 | `simulation/campaign_runner.py` |
+| 7 | DM runtime `authority_transfer` | ~20 | `simulation/dm_runtime.py` |
+| 8 | SEM tool gating | ~20 | SEM tool generation |
+| 9 | FearAgent perceived authority context | ~5 | `agents/fear_agent.py` |
+| 10 | Tests | ~120 | `tests/unit/test_permissions.py` |
 
-Total: ~325 LOC. Can be done in one focused session.
+Total: ~380 LOC.
 
 ---
 
 ## Open Questions
 
-1. **Should denied actions count as "actions taken" for the consecutive-tool-cap?** Probably yes — prevents infinite retry loops on denied tools.
+1. **Should the agent be told about enforced vs perceived?** If the LLM prompt says "You CANNOT use execute_command (enforced)" vs "You SHOULDN'T issue commands (social expectation)", the LLM can make smarter decisions. Recommend: yes, include both in context.
 
-2. **Should authority transfer be reversible?** (e.g., the prince gives authority back if the king is healed). The current model supports it trivially — just mutate the int back. But should it be logged/tracked?
+2. **Can perceived authority be negative?** A traitor or outcast might have negative social standing. The system supports authority=0 (no social power) but negative could model active hostility from others. Defer to POG — graph edges handle this better than a signed integer.
 
-3. **Should the LLM prompt include permission context?** If the agent's LLM knows "you can't use execute_command", it won't waste a turn trying. This could be a few lines in the system prompt: "Your permissions: authority=20, tools=[speak, read_file, examine]. You do NOT have access to: execute_command, write_file."
+3. **Should NAc observation of permission denials be special-cased?** Currently denials flow through the normal tool result path. Should denials have higher salience so the agent learns faster? Probably yes — a 1-line salience boost in the capture path.
 
-4. **Multi-agent approval chains.** When Agent B (authority=40) proposes an action and Agent A (authority=80) could approve it — how does the approval flow? For v1.0, auto-approve based on authority. For POG, route through the graph.
+4. **Rebellion mechanic.** An agent with high NAc confidence in a positive outcome could choose to violate perceived authority. "I know the king said don't go into the vault, but I predict finding the cure will save him." This already works — NAc's prediction overrides the persona_prompt expectation. No code needed, but campaigns should test for it.
+
+5. **SEM entities gaining/losing clearance requirements at runtime.** The hacker gains access to the server (reduces its min_clearance). This is just entity metadata mutation — `entity.metadata["min_clearance"] = 0`. Should be triggerable from campaign `on_choice` effects.
