@@ -95,17 +95,19 @@ def start_research_mode(
     except Exception as e:
         logger.warning("Research LLM init failed: %s — Writer/Reviewer will use heuristics", e)
 
-    # ── Phase 1: Researcher ──────────────────────────────────────────────
-    print(f"\n{'=' * 60}")
-    print("  RESEARCH PROTOCOL")
-    print(f"  Goal: {goal}")
-    if campaign:
-        print(f"  Campaign: {campaign}")
-    if aut_model:
-        print(f"  AUT model: {aut_model}")
-    print(f"{'=' * 60}\n")
+    from maxim.simulation.sim_logger import display_status, display_summary
 
-    print("  Phase 1: Running experiments (Researcher agent)...")
+    # ── Phase 1: Researcher ──────────────────────────────────────────────
+    # separator removed — display tier handles formatting
+    display_status("RESEARCH PROTOCOL")
+    display_status(f"Goal: {goal}")
+    if campaign:
+        display_status(f"Campaign: {campaign}")
+    if aut_model:
+        display_status(f"AUT model: {aut_model}")
+    # separator removed
+
+    display_status("Phase 1: Running experiments...")
 
     # Load campaign YAML and extract percept texts for the researcher
     campaign_turns: list[dict] = []
@@ -128,7 +130,7 @@ def start_research_mode(
                             "novelty": p.get("novelty", 0.7),
                         }
                     )
-            print(f"  Loaded {len(campaign_turns)} campaign turns from {campaign}")
+            display_status(f"Loaded {len(campaign_turns)} campaign turns from {campaign}")
         except Exception as e:
             logger.warning("Failed to load campaign YAML: %s", e)
 
@@ -196,11 +198,11 @@ def start_research_mode(
         )
 
     exp_count = len(experiment_log)
-    print(f"  Researcher completed: {exp_count} experiments recorded")
-    print(f"  Sim result: {sim_result.turns} turns, {sim_result.total_actions} actions")
+    display_status(f"Researcher completed: {exp_count} experiments recorded")
+    display_status(f"Sim result: {sim_result.turns} turns, {sim_result.total_actions} actions")
 
     # ── Phase 2: Writer ──────────────────────────────────────────────────
-    print("\n  Phase 2: Writing paper (Writer agent)...")
+    display_status("Phase 2: Writing paper...")
 
     writer = WriterAgent(
         llm=research_llm,
@@ -210,10 +212,10 @@ def start_research_mode(
     )
     draft = writer.run(goal)
     sections_written = len(draft.sections)
-    print(f"  Writer completed: {sections_written} sections written")
+    display_status(f"Writer completed: {sections_written} sections written")
 
     # ── Phase 3: Reviewer ────────────────────────────────────────────────
-    print("\n  Phase 3: Peer review (Reviewer agent)...")
+    display_status("Phase 3: Peer review...")
 
     reviewer = ReviewerAgent(
         llm=research_llm,
@@ -228,16 +230,16 @@ def start_research_mode(
     # ── Revision loop ────────────────────────────────────────────────────
     while review.verdict == "revise" and revision_round < MAX_REVISION_ROUNDS:
         revision_round += 1
-        print(f"\n  Revision round {revision_round}/{MAX_REVISION_ROUNDS}...")
-        print(f"    Issues: {len(review.issues)}, Requests: {len(review.revision_requests)}")
+        display_status(f"Revision round {revision_round}/{MAX_REVISION_ROUNDS}...")
+        display_status(f"Issues: {len(review.issues)}, Requests: {len(review.revision_requests)}")
 
         # Writer revises based on feedback
         draft = writer.revise(review)
-        print(f"    Writer revised {len(review.section_feedback)} sections")
+        display_status(f"Writer revised {len(review.section_feedback)} sections")
 
         # Reviewer re-evaluates
         review = reviewer.review(draft, goal)
-        print(f"    Reviewer verdict: {review.verdict} (confidence: {review.confidence:.2f})")
+        display_status(f"Reviewer verdict: {review.verdict} (confidence: {review.confidence:.2f})")
 
     # ── Final report ─────────────────────────────────────────────────────
     duration = time.time() - start_time
@@ -296,17 +298,18 @@ def start_research_mode(
     )
 
     # Print summary
-    print(f"\n{'=' * 60}")
-    print("  RESEARCH PROTOCOL COMPLETE")
-    print(f"  Goal: {goal}")
-    print(f"  Experiments: {exp_count}")
-    print(f"  Paper: {draft.output_path}")
-    print(f"  Verdict: {review.verdict} (confidence: {review.confidence:.2f})")
-    print(f"  Revisions: {revision_round}")
-    print(f"  Duration: {duration:.1f}s")
+    summary_lines = [
+        "RESEARCH PROTOCOL COMPLETE",
+        f"Goal: {goal}",
+        f"Experiments: {exp_count}",
+        f"Paper: {draft.output_path}",
+        f"Verdict: {review.verdict} (confidence: {review.confidence:.2f})",
+        f"Revisions: {revision_round}",
+        f"Duration: {duration:.1f}s",
+    ]
     if cost > 0:
-        print(f"  Cost: ${cost:.4f}")
-    print(f"  Session: {session_dir}")
-    print(f"{'=' * 60}\n")
+        summary_lines.append(f"Cost: ${cost:.4f}")
+    summary_lines.append(f"Session: {session_dir}")
+    display_summary(summary_lines)
 
     return result

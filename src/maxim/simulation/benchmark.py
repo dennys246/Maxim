@@ -347,8 +347,9 @@ class BenchmarkRunner:
         total_models = len(self.models)
 
         for model_idx, model in enumerate(self.models):
-            print(f"\n{'=' * 60}")
-            print(f"Model: {model} ({model_idx + 1}/{total_models})")
+            from maxim.simulation.sim_logger import display_status, display_summary
+
+            display_status(f"Model: {model} ({model_idx + 1}/{total_models})")
             model_runs: list[RunResult] = []
 
             for run_idx in range(self.runs):
@@ -357,7 +358,7 @@ class BenchmarkRunner:
                     scenario_name = Path(scenario_path).stem
                     scenario_seed_kw = scenario_desc.get("seed_keywords", self.seed_keywords)
 
-                    print(f"  Scenario: {scenario_name} (run {run_idx + 1}/{self.runs})")
+                    display_status(f"Scenario: {scenario_name} (run {run_idx + 1}/{self.runs})")
 
                     try:
                         # Load scenario definition for expectations
@@ -414,7 +415,7 @@ class BenchmarkRunner:
                         turns = run_result.turns
                         passed = run_result.expectations_passed
                         total = run_result.expectations_total
-                        print(f"    \u2713 {duration:.1f}s \u2014 {turns} turns \u2014 {passed}/{total} expectations")
+                        display_status(f"  OK {duration:.1f}s — {turns} turns — {passed}/{total} expectations")
 
                     except Exception as e:
                         logger.warning("Scenario %s failed on %s: %s", scenario_name, model, e)
@@ -427,15 +428,15 @@ class BenchmarkRunner:
                                 error=error_msg,
                             )
                         )
-                        print(f"    \u2717 Error: {error_msg}")
+                        display_status(f"  FAIL: {error_msg}")
 
             # Aggregate across runs
             model_result = self._aggregate_runs(model, model_runs)
             all_model_results[model] = model_result
-            print(f"  Score: {model_result.score:.3f}")
+            display_summary([f"Score: {model_result.score:.3f}"])
 
         total_duration = time.time() - start
-        print(f"\nBenchmark complete: {total_duration:.1f}s across {total_models} model(s)")
+        display_summary([f"Benchmark complete: {total_duration:.1f}s across {total_models} model(s)"])
 
         # Build report
         report = BenchmarkReport(

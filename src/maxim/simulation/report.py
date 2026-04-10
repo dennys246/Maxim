@@ -353,50 +353,53 @@ def _build_roundup_prompt(report: SimulationReport) -> str:
 
 
 def print_report(report: SimulationReport) -> None:
-    """Print a human-readable report to stdout."""
-    print(f"\n{'=' * 60}")
-    print(f"  SIMULATION REPORT — {report.session_id}")
-    print(f"{'=' * 60}")
-    print(f"  Goal: {report.goal}")
-    print(f"  Persona: {report.persona}")
-    print(f"  Model: {report.language_model}")
-    print(f"  Duration: {report.duration_s}s | Turns: {report.turns}")
-    print(f"  Finish: {report.finish_reason}")
+    """Print a human-readable report to stdout via display_summary()."""
+    from maxim.simulation.sim_logger import display_summary
+
+    lines = [
+        f"SIMULATION REPORT — {report.session_id}",
+        f"  Goal: {report.goal}",
+        f"  Persona: {report.persona}",
+        f"  Model: {report.language_model}",
+        f"  Duration: {report.duration_s}s | Turns: {report.turns}",
+        f"  Finish: {report.finish_reason}",
+    ]
     if report.llm_finish_status:
-        print(f"  Orchestrator-initiated status: {report.llm_finish_status}")
+        lines.append(f"  Orchestrator status: {report.llm_finish_status}")
         if report.llm_finish_reason:
-            print(f"    Reason: {report.llm_finish_reason}")
+            lines.append(f"    Reason: {report.llm_finish_reason}")
         if report.llm_finish_summary:
-            # Indent multi-line summaries
             indented = "\n      ".join(report.llm_finish_summary.splitlines())
-            print(f"    Summary:\n      {indented}")
-    print(f"  Actions: {report.total_actions} ({report.blocked_actions} blocked)")
-    print(f"  AUT Memories: {report.aut_memories_formed} | Causal Links: {report.aut_causal_links}")
+            lines.append(f"    Summary:\n      {indented}")
+    lines.append(f"  Actions: {report.total_actions} ({report.blocked_actions} blocked)")
+    lines.append(f"  AUT Memories: {report.aut_memories_formed} | Causal Links: {report.aut_causal_links}")
     if report.cost_usd > 0:
-        print(f"  Cost: ${report.cost_usd:.4f} ({report.total_input_tokens + report.total_output_tokens} tokens)")
-    print()
+        lines.append(
+            f"  Cost: ${report.cost_usd:.4f} ({report.total_input_tokens + report.total_output_tokens} tokens)"
+        )
 
     if report.tool_usage:
-        print("  Tool Usage:")
+        lines.append("")
+        lines.append("  Tool Usage:")
         for tool, count in sorted(report.tool_usage.items(), key=lambda x: -x[1]):
             rate = report.tool_success_rates.get(tool, 0)
-            print(f"    {tool}: {count} calls ({rate:.0%} success)")
-        print()
+            lines.append(f"    {tool}: {count} calls ({rate:.0%} success)")
 
     if report.llm_summary:
-        print("  LLM Analysis:")
-        print(f"    {report.llm_summary}")
-        print()
+        lines.append("")
+        lines.append("  LLM Analysis:")
+        lines.append(f"    {report.llm_summary}")
 
     if report.llm_issues_found:
-        print(f"  Issues Found ({len(report.llm_issues_found)}):")
+        lines.append("")
+        lines.append(f"  Issues Found ({len(report.llm_issues_found)}):")
         for issue in report.llm_issues_found:
-            print(f"    - {issue}")
-        print()
+            lines.append(f"    - {issue}")
 
     if report.llm_recommendations:
-        print(f"  Recommendations ({len(report.llm_recommendations)}):")
+        lines.append("")
+        lines.append(f"  Recommendations ({len(report.llm_recommendations)}):")
         for rec in report.llm_recommendations:
-            print(f"    - {rec}")
+            lines.append(f"    - {rec}")
 
-    print(f"{'=' * 60}\n")
+    display_summary(lines)

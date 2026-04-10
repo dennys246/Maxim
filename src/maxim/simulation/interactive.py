@@ -108,19 +108,16 @@ def run_interactive_sim(
         sim_workspace = resolve_user_state("sim_sandbox")
     sim_workspace.mkdir(parents=True, exist_ok=True)
 
-    # Pre-load the generator and continuation LLMs so first input is fast
-    print("  Pre-loading simulation generator...")
-    warm_generator(llm_profile)
-    print("  Generator ready.")
+    from maxim.simulation.sim_logger import display_scene, display_status
 
-    print("\n  Interactive Simulation Mode")
-    print("  Type a scenario description or follow-up input.")
-    print("  Each input generates contextually-aware percepts.")
-    print("  Commands:")
-    print("    /new          Start new conversation")
-    print("    /save [path]  Save full transcript as YAML")
-    print("    /status       Show conversation stats")
-    print("    quit          Exit\n")
+    # Pre-load the generator and continuation LLMs so first input is fast
+    display_status("Pre-loading simulation generator...")
+    warm_generator(llm_profile)
+    display_status("Generator ready.")
+
+    display_scene("Interactive Simulation Mode")
+    display_scene("Type a scenario description or follow-up input.")
+    display_scene("Commands: /new  /save [path]  /status  quit")
 
     conversation_count = 0
 
@@ -143,7 +140,7 @@ def run_interactive_sim(
         try:
             description = input("  sim> ").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\n  Exiting.")
+            display_scene("Exiting.")
             break
 
         if not description or description.lower() in ("quit", "exit", "q"):
@@ -151,7 +148,7 @@ def run_interactive_sim(
 
         # Generate initial scenario
         sim_log("PIPELINE", f"Generating initial scenario from: {description[:60]}")
-        print("  Generating scenario...")
+        display_status("Generating scenario...")
         try:
             yaml_str = generate_scenario(description, output_path=transcript_path, llm_profile=llm_profile)
             # Show the generated percepts
@@ -160,19 +157,19 @@ def run_interactive_sim(
                 for p in generated.get("percepts", []):
                     src = p.get("source", "?")
                     text = p.get("cli_input") or p.get("transcript_chunk") or p.get("content") or "signal"
-                    print(f"    [{src}] {str(text)[:70]}")
+                    display_scene(f"  [{src}] {str(text)[:70]}")
                 exps = generated.get("expectations", [])
                 if exps:
-                    print(f"    ({len(exps)} expectation(s))")
+                    display_status(f"({len(exps)} expectation(s))")
             except Exception:
                 pass
         except Exception as e:
-            print(f"  Failed to generate scenario: {e}")
+            display_status(f"Failed to generate scenario: {e}")
             disable_sim_logging()
             continue
 
         # Run initial scenario
-        print("  Running through agent pipeline...")
+        display_status("Running through agent pipeline...")
         sim_log("PIPELINE", "Running initial scenario turn")
         _run_scenario_turn(
             transcript_path,
@@ -196,7 +193,7 @@ def run_interactive_sim(
         # Show what Maxim did
         sim_log("PIPELINE", f"Initial turn complete ({len(total_sink.actions)} actions)")
         _show_turn_results(total_sink, from_index=0)
-        print("\n  Simulated, what happens next?")
+        display_scene("Simulated, what happens next?")
 
         # Record what happened
         try:
@@ -213,7 +210,7 @@ def run_interactive_sim(
             try:
                 user_input = input("  sim> ").strip()
             except (EOFError, KeyboardInterrupt):
-                print("\n  Exiting.")
+                display_scene("Exiting.")
                 _save_full_transcript(transcript_path, all_percepts, description)
                 disable_sim_logging()
                 return
@@ -232,25 +229,25 @@ def run_interactive_sim(
                 parts = user_input.split(maxsplit=1)
                 save_path = Path(parts[1]).resolve() if len(parts) > 1 else transcript_path
                 _save_full_transcript(save_path, all_percepts, description)
-                print(f"  Saved: {save_path}")
+                display_status(f"Saved: {save_path}")
                 continue
 
             if user_input.lower() == "/status":
-                print(f"  Conversation: {conversation_count}, Turn: {turn}")
-                print(f"  Percepts sent: {len(all_percepts)}")
-                print(f"  Actions recorded: {len(total_sink.actions)}")
+                display_status(f"Conversation: {conversation_count}, Turn: {turn}")
+                display_status(f"Percepts sent: {len(all_percepts)}")
+                display_status(f"Actions recorded: {len(total_sink.actions)}")
                 if hippocampus:
-                    print(f"  Hippocampus memories: {len(hippocampus)}")
+                    display_status(f"Hippocampus memories: {len(hippocampus)}")
                 continue
 
             # Generate continuation percepts with context
             sim_log("PIPELINE", f"Generating continuation from: {user_input[:60]}")
-            print("  Generating continuation...")
+            display_status("Generating continuation...")
             new_percepts = _generate_continuation(user_input, all_percepts, all_actions, llm_profile)
 
             if not new_percepts:
                 # Fallback: just inject the raw text as a CLI percept
-                print("    (Generator returned no percepts, using raw input)")
+                display_status("Generator returned no percepts, using raw input")
                 new_percepts = [
                     {
                         "at": 0,
@@ -266,7 +263,7 @@ def run_interactive_sim(
             for p in new_percepts:
                 src = p.get("source", "?")
                 text = p.get("cli_input") or p.get("transcript_chunk") or p.get("content") or "signal"
-                print(f"    [{src}] {str(text)[:70]}")
+                display_scene(f"  [{src}] {str(text)[:70]}")
 
             # Append to conversation history
             all_percepts.extend(new_percepts)
@@ -306,7 +303,7 @@ def run_interactive_sim(
             _show_turn_results(total_sink, from_index=len(all_actions))
             all_actions.extend(_summarize_actions(total_sink, from_index=len(all_actions)))
             turn += 1
-            print("\n  Simulated, what happens next?")
+            display_scene("Simulated, what happens next?")
 
             # Clean up turn file
             try:
@@ -317,7 +314,7 @@ def run_interactive_sim(
         # End of conversation — run consolidation now
         if memory_hub is not None:
             try:
-                print("  Consolidating memories...")
+                display_status("Consolidating memories...")
                 session_stats = memory_hub.on_session_end()
                 sim_log("PIPELINE", f"Session ended: {session_stats}")
             except Exception as e:
@@ -325,19 +322,17 @@ def run_interactive_sim(
 
         _save_full_transcript(transcript_path, all_percepts, description)
         _print_summary(total_sink)
-        print(f"  Transcript: {transcript_path}")
+        display_status(f"Transcript: {transcript_path}")
 
         saved_log = disable_sim_logging()
         if saved_log:
-            print(f"  Log: {saved_log}")
+            display_status(f"Log: {saved_log}")
 
         if not restart:
             break
 
-        print()  # Blank line before next conversation
 
-
-def _run_scenario_turn(
+def _run_scenario_turn(  # noqa: PLR0913
     scenario_path: Path,
     agent: Any,
     env: Any,
@@ -386,8 +381,10 @@ def _run_scenario_turn(
             **kwargs,
         )
     except Exception as e:
+        from maxim.simulation.sim_logger import display_status
+
         logger.exception("Turn %d failed: %s", turn, e)
-        print(f"  Turn failed: {e}")
+        display_status(f"Turn failed: {e}")
     finally:
         os.chdir(original_cwd)
         try:
@@ -483,9 +480,11 @@ def _save_full_transcript(path: Path, percepts: list[dict], description: str) ->
 
 def _show_turn_results(sink: Any, from_index: int = 0) -> None:
     """Show what Maxim did during this turn."""
+    from maxim.simulation.sim_logger import display_scene, display_status
+
     new_actions = sink.actions[from_index:]
     if not new_actions:
-        print("  (No actions this turn — LLM may still be processing)")
+        display_status("No actions this turn")
         return
     for a in new_actions:
         tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
@@ -497,12 +496,14 @@ def _show_turn_results(sink: Any, from_index: int = 0) -> None:
                 preview = f": {str(msg)[:70]}"
         elif a.block_reason:
             preview = f": {str(a.block_reason)[:70]}"
-        print(f"  {tag} {name}{preview}")
+        display_scene(f"  {tag} {name}{preview}")
 
 
 def _print_summary(sink: Any) -> None:
     """Print conversation summary."""
-    print(f"\n  Actions: {len(sink.actions)}")
+    from maxim.simulation.sim_logger import display_scene
+
+    display_scene(f"Actions: {len(sink.actions)}")
     for a in sink.actions[:15]:
         tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
         name = a.tool_name
@@ -511,6 +512,6 @@ def _print_summary(sink: Any) -> None:
             msg = a.result_output.get("message", "")
             if msg:
                 preview = f": {str(msg)[:60]}"
-        print(f"    {tag} {name}{preview}")
+        display_scene(f"  {tag} {name}{preview}")
     if len(sink.actions) > 15:
-        print(f"    ... and {len(sink.actions) - 15} more")
+        display_scene(f"  ... and {len(sink.actions) - 15} more")
