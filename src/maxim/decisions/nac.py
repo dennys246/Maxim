@@ -820,8 +820,15 @@ class NAc:
     # Persistence
     # ─────────────────────────────────────────────────────────────────────────
 
-    def save(self, path: str) -> None:
-        """Save NAc state to JSON file."""
+    def save(self, path: str | None = None) -> None:
+        """Save NAc state to JSON file.
+
+        If ``path`` is omitted, falls back to ``self.config.persistence_path``.
+        Raises ``ValueError`` if neither is set.
+        """
+        path = path or self.config.persistence_path
+        if path is None:
+            raise ValueError("NAc.save() requires a path or NACConfig.persistence_path to be set")
         with self._lock:
             data = {
                 "version": "1.0",
@@ -837,8 +844,15 @@ class NAc:
 
         logger.info("Saved NAc to %s (%d links)", path, len(self))
 
-    def load(self, path: str) -> None:
-        """Load NAc state from JSON file."""
+    def load(self, path: str | None = None) -> None:
+        """Load NAc state from JSON file.
+
+        If ``path`` is omitted, falls back to ``self.config.persistence_path``.
+        Raises ``ValueError`` if neither is set.
+        """
+        path = path or self.config.persistence_path
+        if path is None:
+            raise ValueError("NAc.load() requires a path or NACConfig.persistence_path to be set")
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
@@ -856,8 +870,11 @@ class NAc:
 
         logger.info("Loaded NAc from %s (%d links)", path, len(self))
 
-    def load_safe(self, path: str) -> tuple[bool, str | None]:
+    def load_safe(self, path: str | None = None) -> tuple[bool, str | None]:
         """Load with recovery on failure. Returns (success, error_message)."""
+        path = path or self.config.persistence_path
+        if path is None:
+            raise ValueError("NAc.load_safe() requires a path or NACConfig.persistence_path to be set")
         if not os.path.exists(path):
             logger.info("No existing NAc file at %s, starting fresh", path)
             return True, None

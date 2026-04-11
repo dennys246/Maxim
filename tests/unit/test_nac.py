@@ -6,6 +6,8 @@ prediction, and persistence.
 
 from __future__ import annotations
 
+import pytest
+
 
 class TestNAcObservation:
     """Test causal link creation and updates."""
@@ -354,6 +356,39 @@ class TestNAcPersistence:
         links = nac2.get_links_for_event("persistent_tool")
         assert len(links) == 1
         assert links[0].temporal_delta.mean == 2.5
+
+    def test_save_load_default_path_from_config(self, valence_positive, tmp_path):
+        """save() and load() fall back to NACConfig.persistence_path when called with no args."""
+        from maxim.decisions.nac import NAc, NACConfig
+
+        path = tmp_path / "nac_default.json"
+        config = NACConfig(persistence_path=str(path))
+        nac = NAc(config=config)
+        nac.observe(
+            event_type="tool",
+            event_signature="default_path_tool",
+            outcome_type="result",
+            outcome_signature="success",
+            outcome_valence=valence_positive,
+            delta_seconds=1.0,
+        )
+
+        nac.save()
+        assert path.exists()
+
+        nac2 = NAc(config=config)
+        nac2.load()
+        assert len(nac2.get_links_for_event("default_path_tool")) == 1
+
+    def test_save_load_raise_without_path(self):
+        """save() and load() raise ValueError when no path is set anywhere."""
+        from maxim.decisions.nac import NAc
+
+        nac = NAc()  # NACConfig.persistence_path defaults to None
+        with pytest.raises(ValueError, match="persistence_path"):
+            nac.save()
+        with pytest.raises(ValueError, match="persistence_path"):
+            nac.load()
 
     def test_save_load_preserves_stats(self, nac, valence_positive, tmp_path):
         """Statistics survive save/load cycle."""
