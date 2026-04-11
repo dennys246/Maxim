@@ -705,6 +705,91 @@ def _apply_cloud_cli_overrides(
     return out
 
 
+def _apply_local_llm_override(
+    lane_configs: dict[str, Any],
+    logger: Any | None,
+) -> dict[str, Any]:
+    """Clear the large lane's remote_url when --llm names a local profile.
+
+    When a user passes ``--llm mistral-7b`` on the command line, they
+    expect that model to run **on this machine**. If peer config is
+    also active (``~/.config/maxim/peer.yml`` exists), the old
+    "reconcile" block in build_primary_router would rewrite this into
+    "ask the leader for mistral-7b" — which the leader ignores because
+    it has whatever model IS loaded, regardless of the name in the
+    request. The user's explicit CLI flag was silently translated
+    into something that didn't match their intent.
+
+    This helper is the counterpart to ``_apply_cloud_cli_overrides``.
+    It runs AFTER env overrides + cloud overrides so:
+
+    - Cloud profiles land via ``_apply_cloud_cli_overrides`` and exit
+      that function without touching remote_url semantics here.
+    - Local profiles named via ``--llm`` reach this function and
+      clear the large lane's remote fields, forcing the auto-spawn
+      path (or the local backend) to serve the requested model.
+    - If ``MAXIM_LLM_PROFILE`` is unset, this function is a no-op —
+      peer config's remote_url stays intact and routing is unchanged.
+
+    Precedence (all three scenarios now resolve correctly):
+
+    +---------------------------+-------------------------------------+
+    | User config               | Outcome                             |
+    +===========================+=====================================+
+    | ``--llm <local>``         | Local wins. remote_url cleared.     |
+    | + peer config             | Large lane spawns locally.          |
+    +---------------------------+-------------------------------------+
+    | ``--llm <cloud>``         | Cloud wins (handled upstream by     |
+    | + peer config             | ``_apply_cloud_cli_overrides``).    |
+    +---------------------------+-------------------------------------+
+    | No ``--llm``, peer config | Peer wins (unchanged behavior).     |
+    +---------------------------+-------------------------------------+
+
+    Scoped to the ``large`` tier by design. Medium/small lanes do not
+    have remote_url set today; if a future feature distributes them
+    across machines, that routing will need its own override path
+    (via the ``MAXIM_LANE_{NAME}_REMOTE_URL`` env var family).
+    """
+    profile_name = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
+    if not profile_name:
+        return lane_configs
+
+    try:
+        from maxim.models.language.config import _BUILTIN_PROFILES
+    except Exception:
+        return lane_configs
+
+    profile_data = _BUILTIN_PROFILES.get(profile_name, {})
+    if profile_data.get("cloud"):
+        # Cloud profiles are handled by _apply_cloud_cli_overrides and
+        # also by the existing cloud-backend construction path. This
+        # override is for LOCAL profiles only — "run this model here".
+        return lane_configs
+
+    out = dict(lane_configs)
+    target_lane = "large"
+    cfg = out.get(target_lane)
+    if cfg is None or not cfg.remote_url:
+        return lane_configs
+
+    if logger is not None:
+        logger.info(
+            "Lane '%s' local override: --llm=%s clears remote_url=%s (local wins over peer)",
+            target_lane,
+            profile_name,
+            cfg.remote_url,
+        )
+
+    out[target_lane] = dataclasses.replace(
+        cfg,
+        model_profile=profile_name,
+        remote_url=None,
+        remote_model=None,
+        remote_api_key=None,
+    )
+    return out
+
+
 def build_primary_router(
     capabilities: Any | None = None,
     *,
@@ -781,19 +866,15 @@ def build_primary_router(
     except Exception as e:
         logger.warning("Failed to load peer config: %s", e)
 
-    # ── Reconcile --language-model with peer remote config ────────────
-    # When peer config sets a remote URL for the large lane AND the user
-    # specified --language-model (MAXIM_LLM_PROFILE), the intent is
-    # "run this model on the remote server" — not "load it locally."
-    # Redirect: copy the profile name into the remote model env var
-    # and clear MAXIM_LLM_PROFILE so the local backend machinery doesn't
-    # activate and try to load a local pytorch/llama_cpp backend.
-    if _has_peer_config:
-        _remote_url = os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip()
-        _llm_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
-        if _remote_url and _llm_profile:
-            os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_MODEL", _llm_profile)
-            os.environ.pop("MAXIM_LLM_PROFILE", None)
+    # Note: the old "reconcile --language-model with peer remote config"
+    # block used to live here. It rewrote `--llm <local>` into
+    # "send <local> as model name to leader" on peer configs, which
+    # was the wrong default — the leader ignores the requested model
+    # name and serves whatever is loaded. The correct precedence is
+    # now applied after tier detection via _apply_local_llm_override,
+    # which clears remote_url on the affected lane so the user's
+    # local profile actually runs locally. See peer_leader_flexibility
+    # plan P1 for the rationale and precedence table.
 
     if capabilities is None:
         has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
@@ -846,6 +927,12 @@ def build_primary_router(
 
     lane_configs = apply_lane_env_overrides(lane_configs)
     lane_configs = _apply_cloud_cli_overrides(lane_configs, logger)
+    # Local --llm <profile> override: runs AFTER cloud overrides so that
+    # when both --llm and --cloud-lane are set, cloud wins for the
+    # lane it targets while local wins for anything else. See P1 in
+    # docs/plans/peer_leader_flexibility_plan.md for the full precedence
+    # table and the rationale for clearing remote_url here.
+    lane_configs = _apply_local_llm_override(lane_configs, logger)
 
     # Health-check any user-supplied remote_url before wiring a lane to it.
     # Catches stale env vars pointing at servers that have since shut down —

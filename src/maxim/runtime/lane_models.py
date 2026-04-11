@@ -133,40 +133,52 @@ def detect_tiers(
         n_gpu_layers=0,
     )
 
-    # CUDA GPU with enough VRAM → large tier (profile selected by VRAM)
+    # GPU with enough VRAM → large tier (profile selected by VRAM).
     # Respect --language-model / MAXIM_LLM_PROFILE if set by the user.
+    #
+    # MPS systems are now accepted into the large tier as long as they
+    # report a non-zero vram_gb (which they do via `_mps_effective_vram_gb`
+    # on Apple Silicon — see capabilities.py). Previously MPS was hard-
+    # excluded here and routed to the medium tier regardless of available
+    # memory, which capped a 24GB Mac at mistral-7b. The fallback path
+    # below still creates a medium tier for Macs without enough effective
+    # VRAM (<4GB) or Intel Macs where MPS reports vram_gb=0.
     env_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
-    if caps.has_gpu and caps.gpu_type not in ("mps", None) and caps.vram_gb >= 4.0:
+    # gpu_type=None is the "detected a GPU but couldn't identify it" edge
+    # case (e.g., torch exception mid-detection). Treat that as
+    # unconfigured and fall through to the medium/CPU path rather than
+    # routing to the large tier blindly. MPS is an explicit, known type
+    # so it passes this check.
+    if caps.has_gpu and caps.gpu_type is not None and caps.vram_gb >= 4.0:
         profile = env_profile or _pick_infer_profile(caps.vram_gb, profile_available=profile_available)
+        # MPS uses `device="auto"` so llama.cpp's Metal backend picks the
+        # right offload strategy. `requires_gpu=False` on MPS so the
+        # worker pool doesn't reserve a CUDA worker that doesn't exist
+        # (requires_gpu is historically used for CUDA-specific gating).
+        is_mps = caps.gpu_type == "mps"
         tiers["large"] = LaneConfig(
             name="large",
             max_workers=1,
-            requires_gpu=True,
+            requires_gpu=not is_mps,
             model_profile=profile,
-            device="gpu",
+            device="auto" if is_mps else "gpu",
             n_gpu_layers=-1,
         )
-    elif caps.has_gpu and caps.gpu_type == "mps":
-        # Mac with MPS: unified memory — pick model by RAM (shared with GPU)
-        m_profile = env_profile or _pick_medium_profile(caps.ram_gb, profile_available)
-        if m_profile is not None:
-            tiers["medium"] = LaneConfig(
-                name="medium",
-                max_workers=1,
-                model_profile=m_profile,
-                device="auto",
-            )
 
-    # No GPU (or GPU with unknown type) — pick CPU model by RAM
-    if "medium" not in tiers and "large" not in tiers:
+    # No large tier (no GPU, unknown GPU type, or effective VRAM < 4GB)
+    # → pick a CPU/medium model by RAM. This branch catches Intel Macs
+    # with MPS but vram_gb=0.0, low-VRAM discrete cards, and headless
+    # servers without a GPU at all.
+    if "large" not in tiers:
         m_profile = env_profile or _pick_medium_profile(caps.ram_gb, profile_available)
         if m_profile is not None:
+            is_mps = caps.gpu_type == "mps"
             tiers["medium"] = LaneConfig(
                 name="medium",
                 max_workers=1,
                 model_profile=m_profile,
-                device="cpu",
-                n_gpu_layers=0,
+                device="auto" if is_mps else "cpu",
+                n_gpu_layers=-1 if is_mps else 0,
             )
 
     if len(tiers) == 1:

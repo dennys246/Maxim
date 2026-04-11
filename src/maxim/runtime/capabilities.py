@@ -69,17 +69,110 @@ class RuntimeCapabilities:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
+def _is_apple_silicon() -> bool:
+    """Return True on macOS arm64 (M-series) machines.
+
+    Used to gate unified-memory VRAM assumptions: on Apple Silicon the
+    GPU addresses the same RAM pool as the CPU, so we can treat a
+    fraction of total RAM as effective VRAM. On Intel Macs running
+    legacy PyTorch MPS (with discrete AMD GPUs), this assumption is
+    wrong — actual Metal-accessible VRAM is the discrete card's size,
+    not system RAM.
+    """
+    import platform
+
+    return platform.system() == "Darwin" and platform.machine() == "arm64"
+
+
+def _mps_effective_vram_gb(
+    ram_gb: float,
+    *,
+    headroom_factor: float | None = None,
+    ceiling_gb: float = 64.0,
+) -> float:
+    """Compute effective Metal-accessible VRAM on Apple Silicon.
+
+    Apple's Metal documentation recommends leaving ~25% of unified
+    memory free for the OS and other GPU clients, so the default
+    headroom_factor of 0.75 yields ~18GB effective on a 24GB Mac.
+
+    The ceiling caps absurd reports on huge-RAM Macs: a 192GB M2 Ultra
+    shouldn't advertise 144GB of effective VRAM because no currently
+    supported quantized model uses that much, and the number is
+    misleading for doctor output and future tier additions.
+
+    Environment override:
+        MAXIM_MPS_VRAM_HEADROOM — float in [0.25, 0.85]. Defaults to
+        0.75. Lower values reserve less for the OS (aggressive, good
+        on idle machines); higher values reserve more (safe, good on
+        machines with Chrome/Xcode/etc. running).
+
+    Args:
+        ram_gb: Total system RAM in gigabytes.
+        headroom_factor: Override for the Metal headroom fraction.
+            ``None`` reads from the env var with a 0.75 default.
+        ceiling_gb: Maximum reported effective VRAM, regardless of
+            RAM size. Defaults to 64 GB.
+
+    Returns:
+        Effective VRAM in gigabytes. Always non-negative. Returns 0.0
+        on invalid inputs (ram_gb <= 0).
+    """
+    if ram_gb <= 0:
+        return 0.0
+    if headroom_factor is None:
+        try:
+            import os
+
+            raw = os.environ.get("MAXIM_MPS_VRAM_HEADROOM", "0.75")
+            headroom_factor = float(raw)
+        except (ValueError, TypeError):
+            headroom_factor = 0.75
+    # Clamp to sane range. Below 0.25 risks starving the OS; above 0.85
+    # is so conservative the user gets no benefit from unified memory.
+    headroom_factor = max(0.25, min(headroom_factor, 0.85))
+    effective = ram_gb * headroom_factor
+    return min(effective, ceiling_gb)
+
+
+def _detect_ram_gb() -> float:
+    """Query total system RAM via psutil, falling back to /proc/meminfo."""
+    try:
+        import psutil
+
+        return psutil.virtual_memory().total / (1024**3)
+    except Exception:
+        pass
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) / (1024**2)
+    except Exception:
+        pass
+    return 0.0
+
+
 def detect_compute_resources() -> tuple[bool, str | None, float, float]:
     """Probe hardware and return (has_gpu, gpu_type, vram_gb, ram_gb).
 
     Pure function — does not mutate global state. Safe to call before or after
     any Blackwell CUDA-visibility decisions; respects CUDA_VISIBLE_DEVICES.
     Returns zeros/None on any detection failure.
+
+    On Apple Silicon (MPS + arm64), ``vram_gb`` is set to a fraction
+    of ``ram_gb`` via :func:`_mps_effective_vram_gb` because unified
+    memory means the GPU can address most of the RAM pool. On Intel
+    Macs running PyTorch MPS (legacy, deprecated), ``vram_gb`` stays
+    at 0.0 — the unified-memory assumption doesn't hold there.
     """
     has_gpu = False
     gpu_type: str | None = None
     vram_gb = 0.0
-    ram_gb = 0.0
+
+    # Detect RAM first so the MPS branch below can derive effective
+    # VRAM from unified memory.
+    ram_gb = _detect_ram_gb()
 
     try:
         import torch
@@ -94,21 +187,12 @@ def detect_compute_resources() -> tuple[bool, str | None, float, float]:
             if mps is not None and getattr(mps, "is_available", lambda: False)():
                 has_gpu = True
                 gpu_type = "mps"
+                if _is_apple_silicon():
+                    vram_gb = _mps_effective_vram_gb(ram_gb)
+                # Intel Macs leave vram_gb at 0.0. PyTorch MPS on Intel
+                # with discrete AMD GPUs is deprecated and we don't want
+                # to guess at discrete-VRAM sizing.
     except Exception:
         pass
-
-    try:
-        import psutil
-
-        ram_gb = psutil.virtual_memory().total / (1024**3)
-    except Exception:
-        try:
-            with open("/proc/meminfo") as f:
-                for line in f:
-                    if line.startswith("MemTotal:"):
-                        ram_gb = int(line.split()[1]) / (1024**2)
-                        break
-        except Exception:
-            pass
 
     return has_gpu, gpu_type, vram_gb, ram_gb

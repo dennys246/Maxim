@@ -446,6 +446,7 @@ class TestBuildPrimaryRouter:
         # Pre-clear any inherited env (test runner may have it set from .env)
         monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
         monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_MODEL", raising=False)
+        monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
         monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://127.0.0.1:8000/v1")
         monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_MODEL", "mistral-7b")
         from maxim.runtime.capabilities import RuntimeCapabilities
@@ -455,6 +456,16 @@ class TestBuildPrimaryRouter:
             patch("maxim.models.language.config.load_llm_config") as mock_load,
             patch("maxim.models.language.router.LLMRouter"),
             patch("maxim.runtime.lane_backends._llm_server_responding_at", return_value=True),
+            # Mock the persisted-model read so the developer's real
+            # ~/.maxim/util/active_llm_model.txt doesn't pollute the
+            # test. Without this, the persisted profile is injected
+            # into MAXIM_LLM_PROFILE which then triggers
+            # _apply_local_llm_override to clear the remote_url.
+            patch("maxim.runtime.lane_backends._read_persisted_model", return_value=None),
+            # Also skip the pre-upgrade pin migration — it fires as a
+            # side effect and can also set MAXIM_LLM_PROFILE on the
+            # current run via its consistency guarantee.
+            patch("maxim.runtime.lane_backends._maybe_pin_pre_upgrade_profile"),
         ):
             from maxim.models.language.config import LLMConfig
 

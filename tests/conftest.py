@@ -5,6 +5,7 @@ This module provides reusable fixtures for testing core components.
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -15,6 +16,33 @@ import pytest
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+
+@pytest.fixture(autouse=True)
+def _isolate_maxim_llm_profile_env():
+    """Save and restore ``MAXIM_LLM_PROFILE`` across every test.
+
+    Several paths in ``build_primary_router`` (the persisted-model
+    restore at lane_backends.py:~741, the ``_maybe_pin_pre_upgrade_profile``
+    migration, and ``_apply_local_llm_override``) read, set, or clear
+    this env var as intentional side effects on the running process.
+    Without isolation, a test that calls ``build_primary_router`` on a
+    developer machine with a real ``~/.maxim/util/active_llm_model.txt``
+    leaks the persisted profile into every subsequent test's env,
+    breaking assertions that expect ``MAXIM_LLM_PROFILE`` to be absent
+    or to match a specific value.
+
+    This fixture runs for every test (not just tests/unit/) so CI
+    machines with pre-existing Maxim state or test runs with --last
+    behavior stay clean.
+    """
+    saved = os.environ.pop("MAXIM_LLM_PROFILE", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_LLM_PROFILE", None)
+        if saved is not None:
+            os.environ["MAXIM_LLM_PROFILE"] = saved
 
 
 # ─────────────────────────────────────────────────────────────────────────────

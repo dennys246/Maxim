@@ -22,12 +22,30 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from maxim.runtime.capabilities import RuntimeCapabilities
 from maxim.runtime.lane_backends import (
     _maybe_pin_pre_upgrade_profile,
     _pick_pre_upgrade_infer_profile,
     _PRE_P4A_INFER_VRAM_TIERS,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_llm_profile_env():
+    """The pinning function sets MAXIM_LLM_PROFILE as an intentional
+    side effect. Without this fixture, that side effect leaks into
+    subsequent tests in the same pytest run (e.g., test_lane_backends
+    asserts on clean env state and would see the pinned profile).
+    Save + restore around every test."""
+    saved = os.environ.pop("MAXIM_LLM_PROFILE", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_LLM_PROFILE", None)
+        if saved is not None:
+            os.environ["MAXIM_LLM_PROFILE"] = saved
 
 
 def _fake_caps(has_gpu=True, gpu_type="RTX 5080", vram_gb=16.0, ram_gb=64.0):
@@ -76,13 +94,6 @@ class TestPreUpgradeProfilePick:
 
 
 class TestPinningConditions:
-    def setup_method(self):
-        # Ensure no stale env from other tests
-        os.environ.pop("MAXIM_LLM_PROFILE", None)
-
-    def teardown_method(self):
-        os.environ.pop("MAXIM_LLM_PROFILE", None)
-
     def test_fires_on_existing_install_with_gpu(self, tmp_path):
         home = _prepare_existing_install(tmp_path)
         caps = _fake_caps(vram_gb=16.0)
@@ -289,6 +300,4 @@ class TestPinningIntegration:
         # same profile that the env var now names.
         assert written["value"] == "llama-3-8b-instruct"
         assert os.environ.get("MAXIM_LLM_PROFILE") == "llama-3-8b-instruct"
-
-        # Cleanup for other tests
-        os.environ.pop("MAXIM_LLM_PROFILE", None)
+        # Autouse _isolate_llm_profile_env fixture handles cleanup.

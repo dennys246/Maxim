@@ -231,6 +231,97 @@ class TestDetectTiers:
         assert "medium" in tiers
         assert tiers["medium"].device == "cpu"
 
+    # ── P3: MPS into large tier (peer_leader_flexibility_plan) ──
+
+    def test_mps_24gb_mac_gets_large_tier(self):
+        """24GB Mac with 18GB effective VRAM (from P2 unified memory
+        detection) should land in the large tier, not medium. This
+        is the headline regression that P3 fixes: before this change,
+        Apple Silicon was hard-excluded from the large tier and
+        capped at mistral-7b regardless of memory."""
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="mps", vram_gb=18.0, ram_gb=24.0)
+        tiers = detect_tiers(caps)
+        assert "large" in tiers
+        assert "medium" not in tiers
+
+    def test_mps_large_tier_uses_auto_device(self):
+        """MPS large tier uses device='auto' so llama.cpp's Metal
+        backend picks the right offload strategy. CUDA uses device='gpu'."""
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="mps", vram_gb=18.0, ram_gb=24.0)
+        tiers = detect_tiers(caps)
+        assert tiers["large"].device == "auto"
+        assert tiers["large"].n_gpu_layers == -1
+
+    def test_mps_large_tier_requires_gpu_false(self):
+        """MPS sets requires_gpu=False because that flag is
+        historically used for CUDA-specific worker-pool gating.
+        Setting it True on MPS would reserve a CUDA worker that
+        doesn't exist and starve the lane."""
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="mps", vram_gb=18.0, ram_gb=24.0)
+        tiers = detect_tiers(caps)
+        assert tiers["large"].requires_gpu is False
+
+    def test_cuda_large_tier_unchanged(self):
+        """Regression check: CUDA path still sets requires_gpu=True
+        and device='gpu'. The P3 change only affects the MPS path."""
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="NVIDIA RTX 5080", vram_gb=16.0, ram_gb=64.0)
+        tiers = detect_tiers(caps)
+        assert tiers["large"].device == "gpu"
+        assert tiers["large"].requires_gpu is True
+
+    def test_mps_vram_below_4gb_falls_to_medium(self):
+        """MPS with low effective VRAM (an 8GB Mac at 0.75 headroom =
+        6GB effective — wait that's actually above 4. Test the edge
+        case of a hypothetical tiny MPS system.)"""
+        # 4GB Mac at 0.75 headroom = 3GB effective → below threshold
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="mps", vram_gb=3.0, ram_gb=4.0)
+        tiers = detect_tiers(caps)
+        assert "large" not in tiers
+        # Falls through to the medium path but 4GB RAM is below the
+        # _MEDIUM_RAM_TIERS threshold (8GB minimum), so no medium either
+        assert "medium" not in tiers
+        # Only small remains
+        assert list(tiers.keys()) == ["small"]
+
+    def test_mps_intel_mac_falls_to_medium(self):
+        """Intel Macs running legacy PyTorch MPS get vram_gb=0.0 from
+        capabilities.py (the unified-memory assumption doesn't hold
+        on Intel). They should land in the medium tier, not large."""
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="mps", vram_gb=0.0, ram_gb=32.0)
+        tiers = detect_tiers(caps)
+        assert "large" not in tiers
+        assert "medium" in tiers
+        assert tiers["medium"].device == "auto"  # MPS path preserves auto
+
+    def test_mps_large_tier_picks_llama_13b_by_default(self):
+        """18GB effective VRAM on Mac should pick llama-2-13b-chat
+        from the 14GB+ tier. (qwen2.5-14b is not in the pre-P4a tier
+        table yet — P4a adds it later.)"""
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="mps", vram_gb=18.0, ram_gb=24.0)
+        tiers = detect_tiers(caps)
+        assert tiers["large"].model_profile == "llama-2-13b-chat"
+
+    def test_mps_medium_fallback_uses_auto_device(self):
+        """When an MPS system falls through to the medium tier (Intel
+        Mac with vram_gb=0.0, or Apple Silicon with effective VRAM
+        below 4GB but enough RAM for a medium model), the medium
+        lane should still use device='auto' and n_gpu_layers=-1 so
+        llama.cpp can offload to Metal if possible."""
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="mps", vram_gb=0.0, ram_gb=16.0)
+        tiers = detect_tiers(caps)
+        assert "medium" in tiers
+        assert tiers["medium"].device == "auto"
+        assert tiers["medium"].n_gpu_layers == -1
+
+    def test_cpu_medium_fallback_uses_cpu_device(self):
+        """Non-MPS, non-CUDA systems fall to the medium tier with
+        device='cpu' and n_gpu_layers=0."""
+        caps = RuntimeCapabilities(has_gpu=False, vram_gb=0.0, ram_gb=16.0)
+        tiers = detect_tiers(caps)
+        assert "medium" in tiers
+        assert tiers["medium"].device == "cpu"
+        assert tiers["medium"].n_gpu_layers == 0
+
 
 # ─── apply_tier_config_overrides ──────────────────────────────────────────
 
