@@ -321,7 +321,8 @@ class DMRuntime:
         for npc_name in encounter.active_npcs:
             npc_spec = self._campaign.npc_specs.get(npc_name, {})
             hints = encounter.dialogue_hints
-            _persona = npc_spec.get("metadata", {}).get("persona_prompt", "")  # Used by NarrativeModulator in Slice 2
+            metadata = npc_spec.get("metadata", {})
+            persona = metadata.get("persona_prompt", "")
 
             # Find the best matching dialogue hint (flag-based)
             hint_text = hints.get("default", "")
@@ -331,7 +332,12 @@ class DMRuntime:
                     break
 
             if hint_text:
-                npc_display = npc_spec.get("metadata", {}).get("role", npc_name)
+                npc_display = metadata.get("role", npc_name)
+                # Inject persona into the stimulus so distinct NPCs reach the
+                # LLM with visibly different framing. Substrate B1's
+                # PromptAssembler will replace this ad-hoc path.
+                if persona:
+                    parts.append(f"\n[{npc_name} — {persona}]")
                 parts.append(f'\n{npc_name} ({npc_display}): "{hint_text}"')
 
         # Add choice prompt if applicable

@@ -40,7 +40,7 @@ class CerebellumModulator:
         The Cerebellum instance for forward model lookup/training.
     fallback : Modulator-like, optional
         Fallback modulator to use when Cerebellum has no confident model.
-        Typically an ``LLMModulator`` or ``NarrativeModulator``.
+        Typically an ``LLMModulator``.
         If None, returns stub results when Cerebellum can't predict.
     sensor_ranges : dict, optional
         ``{sensor_name: (lo, hi)}`` for param bucketing.
