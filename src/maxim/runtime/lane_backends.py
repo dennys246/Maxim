@@ -705,6 +705,105 @@ def _apply_cloud_cli_overrides(
     return out
 
 
+def _ensure_lane_profiles_available(
+    lane_configs: dict[str, Any],
+    capabilities: Any | None,
+    logger: Any | None,
+) -> dict[str, Any]:
+    """Make sure each local lane's GGUF is on disk; auto-download if missing.
+
+    For each lane that runs locally (no ``remote_url``, profile is a
+    llama_cpp profile), call :func:`maxim.models.download.ensure_available`.
+    On failure, re-walk the tier table with the missing profile filtered
+    out so we land on the next-smaller model the user already has, rather
+    than failing startup with a cryptic load error.
+
+    No-op for cloud lanes, remote lanes, and lanes with no profile.
+    """
+    try:
+        from maxim.models.download import LLM_MODELS, ensure_available
+        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.runtime.lane_models import detect_tiers
+    except Exception as e:
+        if logger is not None:
+            logger.debug("ensure_available unavailable, skipping preflight: %s", e)
+        return lane_configs
+
+    out = dict(lane_configs)
+    re_walked = False
+    excluded: set[str] = set()
+
+    for lane_name, cfg in list(out.items()):
+        if cfg.remote_url:
+            continue
+        profile = cfg.model_profile
+        if not profile:
+            continue
+        # Skip cloud profiles outright — they have no GGUF.
+        profile_data = _BUILTIN_PROFILES.get(profile, {})
+        if profile_data.get("cloud"):
+            continue
+        # Skip profiles that aren't in our download registry. They're either
+        # custom user profiles (handled out-of-band) or non-llama_cpp
+        # backends like transformers (HF auto-downloads on first use).
+        if profile not in LLM_MODELS:
+            continue
+        if _profile_has_local_file(profile):
+            continue
+
+        if logger is not None:
+            logger.info(
+                "Lane '%s' profile '%s' missing on disk — running ensure_available",
+                lane_name,
+                profile,
+            )
+        ok = ensure_available(profile, logger=logger)
+        if ok:
+            continue
+
+        # Download refused / failed / declined — re-walk the tier table
+        # with this profile filtered out so we land on a smaller model
+        # the user already has. Only re-walk once per build call to keep
+        # the cost bounded.
+        excluded.add(profile)
+        if re_walked or capabilities is None:
+            # Already re-walked once or we have no caps to walk against —
+            # just clear the broken profile so downstream lane assembly
+            # falls back to its own defaults.
+            out[lane_name] = dataclasses.replace(cfg, model_profile=None)
+            continue
+        try:
+            new_tiers = detect_tiers(
+                capabilities,
+                profile_available=lambda p, _excl=excluded: (_profile_has_local_file(p) and p not in _excl),
+            )
+        except Exception as e:
+            if logger is not None:
+                logger.warning("Tier re-walk after failed download failed: %s", e)
+            out[lane_name] = dataclasses.replace(cfg, model_profile=None)
+            continue
+        re_walked = True
+        # Replace lanes with their re-walked counterparts. We deliberately
+        # only carry over fields that the re-walk knows about — preserving
+        # remote_url overrides etc. that came from upstream stages.
+        for new_name, new_cfg in new_tiers.items():
+            existing = out.get(new_name)
+            if existing is None:
+                out[new_name] = new_cfg
+                continue
+            out[new_name] = dataclasses.replace(
+                existing,
+                model_profile=new_cfg.model_profile,
+                device=new_cfg.device,
+                n_gpu_layers=new_cfg.n_gpu_layers,
+                n_ctx=new_cfg.n_ctx,
+                kv_quant_mode=new_cfg.kv_quant_mode,
+                requires_gpu=new_cfg.requires_gpu,
+            )
+
+    return out
+
+
 def _apply_local_llm_override(
     lane_configs: dict[str, Any],
     logger: Any | None,
@@ -933,6 +1032,16 @@ def build_primary_router(
     # docs/plans/peer_leader_flexibility_plan.md for the full precedence
     # table and the rationale for clearing remote_url here.
     lane_configs = _apply_local_llm_override(lane_configs, logger)
+
+    # P5: ensure each local-lane profile has an on-disk GGUF. If the user
+    # is offline + non-tty + has not opted in to auto-download, this is a
+    # no-op (the lane keeps its missing profile, llm_server load fails,
+    # and the existing fallback paths take over). When the file is
+    # missing AND the user is interactive (or set --auto-download), this
+    # downloads the GGUF before auto-spawn tries to load it. On failure,
+    # we re-walk the tier table with the missing profile filtered out so
+    # the lane lands on the next-smaller model the user already has.
+    lane_configs = _ensure_lane_profiles_available(lane_configs, capabilities, logger)
 
     # Health-check any user-supplied remote_url before wiring a lane to it.
     # Catches stale env vars pointing at servers that have since shut down —

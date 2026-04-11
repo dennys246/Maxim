@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -336,6 +337,190 @@ def download_file(
 
     print(f"  Saved to: {dest_path}")
     return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Auto-download (P5: peer_leader_flexibility_plan)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _prompt_yes_no_with_timeout(question: str, timeout_s: float = 30.0) -> bool | None:
+    """Prompt the user for a yes/no answer with a wall-clock timeout.
+
+    Returns True/False on a real answer, None on timeout. Used by
+    :func:`ensure_available` so an unattended terminal doesn't deadlock
+    a Maxim startup waiting for input that will never come.
+
+    POSIX uses ``select`` on stdin. Windows uses a thread + Event so the
+    main thread can be interrupted by Ctrl+C without ``msvcrt`` getting
+    in the way.
+    """
+    import sys
+
+    print(question, end="", flush=True)
+    if sys.platform == "win32":
+        import threading
+
+        result: dict[str, str] = {}
+        done = threading.Event()
+
+        def _reader() -> None:
+            try:
+                result["line"] = sys.stdin.readline()
+            except Exception:
+                result["line"] = ""
+            finally:
+                done.set()
+
+        threading.Thread(target=_reader, daemon=True, name="download-prompt").start()
+        if not done.wait(timeout=timeout_s):
+            print(" [timeout]")
+            return None
+        response = (result.get("line") or "").strip().lower()
+    else:
+        import select
+
+        ready, _, _ = select.select([sys.stdin], [], [], timeout_s)
+        if not ready:
+            print(" [timeout]")
+            return None
+        response = sys.stdin.readline().strip().lower()
+    return response in ("y", "yes")
+
+
+def _auto_download_enabled() -> bool:
+    """Whether auto-download is enabled via env (set by --auto-download)."""
+    raw = os.environ.get("MAXIM_AUTO_DOWNLOAD_MODELS", "").strip().lower()
+    return raw in ("1", "true", "t", "yes", "y", "on")
+
+
+def _soft_budget_gb() -> float | None:
+    """Read MAXIM_DATA_BUDGET_GB env var, return None if unset / invalid."""
+    raw = os.environ.get("MAXIM_DATA_BUDGET_GB", "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+        return value if value > 0 else None
+    except ValueError:
+        return None
+
+
+def ensure_available(
+    profile_name: str,
+    *,
+    auto: bool | None = None,
+    interactive: bool | None = None,
+    logger: Any | None = None,
+) -> bool:
+    """Make sure the GGUF for ``profile_name`` is on disk; download if not.
+
+    The single entry point used by ``build_primary_router`` (P5) and any
+    other code path that needs to guarantee a profile's local file exists
+    before it tries to load it. Composes the F0.1–F0.5 building blocks:
+    storage preflight, advisory file lock, atomic download with size
+    verification.
+
+    Args:
+        profile_name: Profile key from ``LLM_MODELS``.
+        auto: Override the env-derived auto-download flag. ``True`` skips
+            the prompt unconditionally; ``None`` (default) reads
+            ``MAXIM_AUTO_DOWNLOAD_MODELS`` via :func:`_auto_download_enabled`.
+        interactive: Override the tty check. ``None`` (default) checks
+            ``sys.stdin.isatty()``.
+        logger: Logger for warnings; ``print`` for user-facing messages.
+
+    Returns:
+        True iff the file is on disk after this call (already-present or
+        newly downloaded). False on any failure — caller should fall
+        through to the next-smaller profile via tier re-walk.
+    """
+    import sys
+
+    from maxim.runtime.llm_server import profile_has_local_file
+    from maxim.utils.filelock import LockContended, file_lock
+    from maxim.utils.paths import data_home
+    from maxim.utils.storage import can_download, format_report, report_storage
+
+    if profile_has_local_file(profile_name):
+        return True
+
+    if profile_name not in LLM_MODELS:
+        msg = (
+            f"Auto-download skipped: profile '{profile_name}' is not in the LLM_MODELS "
+            f"registry. Custom profiles must be downloaded manually — point "
+            f"~/.maxim/config/llm.json at an existing GGUF file."
+        )
+        if logger is not None:
+            logger.warning(msg)
+        else:
+            print(msg)
+        return False
+
+    info = LLM_MODELS[profile_name]
+    size_gb = float(info.get("size_gb", 0.0))
+
+    ok, reason = can_download(
+        size_gb,
+        headroom_gb=2.0,
+        soft_budget_gb=_soft_budget_gb(),
+    )
+    if not ok:
+        report = report_storage()
+        print(f"\n  Cannot download '{profile_name}' ({size_gb:.1f} GB): {reason}\n")
+        print(format_report(report))
+        print("\n  Free up space (delete unused models with `maxim --delete-model NAME`) or")
+        print("  raise MAXIM_DATA_BUDGET_GB and retry.\n")
+        return False
+
+    auto_flag = _auto_download_enabled() if auto is None else bool(auto)
+    is_tty = (sys.stdin.isatty() if interactive is None else bool(interactive)) if sys.stdin else False
+
+    if not auto_flag:
+        if is_tty:
+            question = (
+                f"\n  Maxim wants to download '{profile_name}' (~{size_gb:.1f} GB) "
+                f"from HuggingFace.\n  Disk: {reason}\n  Proceed? [y/N] (30s timeout) "
+            )
+            answer = _prompt_yes_no_with_timeout(question, timeout_s=30.0)
+            if answer is None:
+                print(
+                    f"\n  Auto-download cancelled (timeout). Run with --auto-download "
+                    f"to skip the prompt, or download manually:\n"
+                    f"    python -m maxim.models.download --llm {profile_name}\n"
+                )
+                return False
+            if not answer:
+                print(
+                    f"\n  Auto-download declined. Run manually when ready:\n"
+                    f"    python -m maxim.models.download --llm {profile_name}\n"
+                )
+                return False
+        else:
+            print(
+                f"\n  Profile '{profile_name}' is not downloaded and stdin is not a tty.\n"
+                f"  Either pass --auto-download (or set MAXIM_AUTO_DOWNLOAD_MODELS=1)\n"
+                f"  or run manually:\n"
+                f"    python -m maxim.models.download --llm {profile_name}\n"
+            )
+            return False
+
+    # Acquire the download lock so two concurrent `maxim` invocations don't
+    # race on the same target file.
+    lock_path = data_home() / "util" / "download.lock"
+    try:
+        with file_lock(lock_path):
+            # Re-check inside the lock — another process may have just
+            # finished downloading the same profile while we were prompting.
+            if profile_has_local_file(profile_name):
+                return True
+            return download_llm(profile_name)
+    except LockContended:
+        print(
+            f"\n  Another maxim process is downloading models. Wait for it to finish, "
+            f"or kill it and retry.\n  (lock file: {lock_path})\n"
+        )
+        return False
 
 
 def download_llm(

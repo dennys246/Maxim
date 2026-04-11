@@ -948,7 +948,9 @@ print(_pick_infer_profile_with_ctx(12.0))  # (llama-3-8b-instruct, 8192)
 
 ---
 
-## P5 — Auto-download on first use with disk preflight
+## P5 — Auto-download on first use with disk preflight ✅ DONE
+
+**Status:** Landed. `models/download.py::ensure_available()` composes the F0.1–F0.5 building blocks (atomic download, integrity check, advisory `~/.maxim/util/download.lock`, storage preflight, soft budget). `_ensure_lane_profiles_available()` in `lane_backends.py` runs after `_apply_local_llm_override` and re-walks tier detection (with the missing profile filtered out) on download failure. `--auto-download` CLI flag forwards to `MAXIM_AUTO_DOWNLOAD_MODELS`. 17 new tests in `tests/unit/test_ensure_available.py`.
 
 See F0.1 / F0.2 / F0.4 / F0.5 for prerequisites. This phase wires everything together.
 

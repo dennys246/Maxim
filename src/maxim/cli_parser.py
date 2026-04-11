@@ -56,6 +56,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="LLM profile name (overrides ~/.maxim/config/llm.json and $MAXIM_LLM_PROFILE).",
     )
     core.add_argument(
+        "--auto-download",
+        action="store_true",
+        default=False,
+        dest="auto_download",
+        help="Skip the interactive 'download model? [y/N]' prompt and proceed "
+        "with any GGUF download required for the active LLM profile. "
+        "Equivalent to MAXIM_AUTO_DOWNLOAD_MODELS=1. Use in scripts and "
+        "headless deployments.",
+    )
+    core.add_argument(
         "--llm-n-ctx",
         type=int,
         default=None,

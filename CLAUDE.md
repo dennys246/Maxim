@@ -207,6 +207,8 @@ DEEPSEEK_API_KEY           # Required for DeepSeek backend
 MAXIM_LLM_ENABLED=1        # Enable LLM inference
 MAXIM_LLM_PROFILE=claude-sonnet  # Default model profile
 MAXIM_LLM_N_CTX=4096       # Override auto-computed llama.cpp n_ctx (P4c). Same as --llm-n-ctx.
+MAXIM_AUTO_DOWNLOAD_MODELS=1     # Skip the auto-download prompt (P5). Same as --auto-download.
+MAXIM_DATA_BUDGET_GB=50          # Optional soft cap on ~/.maxim disk usage; refuses downloads over budget.
 MAXIM_PROVENANCE_VERBOSITY=1     # 0=off, 1=compact, 2=verbose
 
 # Heartbeat + trace (debug/diagnostics)

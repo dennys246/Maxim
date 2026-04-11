@@ -45,6 +45,29 @@ def _isolate_maxim_llm_profile_env():
             os.environ["MAXIM_LLM_PROFILE"] = saved
 
 
+@pytest.fixture(autouse=True)
+def _isolate_maxim_auto_download_env():
+    """Scrub ``MAXIM_AUTO_DOWNLOAD_MODELS`` across every test.
+
+    P5's ``ensure_available`` reads this env var to decide whether to
+    skip the download prompt. ``cli_utils.normalize_args`` sets it when
+    ``--auto-download`` is passed. Without isolation, the
+    ``test_normalize_args_sets_env_when_flag_set`` test would leak the
+    env var into every later test that calls ``build_primary_router``,
+    causing a real GGUF download against the developer's home directory.
+
+    Always start each test with the var unset; restore it on the way out
+    so any user-set value survives the test session.
+    """
+    saved = os.environ.pop("MAXIM_AUTO_DOWNLOAD_MODELS", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_AUTO_DOWNLOAD_MODELS", None)
+        if saved is not None:
+            os.environ["MAXIM_AUTO_DOWNLOAD_MODELS"] = saved
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Memory Types Fixtures
 # ─────────────────────────────────────────────────────────────────────────────

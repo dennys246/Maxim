@@ -86,6 +86,12 @@ def normalize_args(args: argparse.Namespace) -> None:
                 pass
         args.language_model = selected
 
+    # ── --auto-download flag (peer_leader_flexibility_plan P5) ──────────
+    # Forwards to MAXIM_AUTO_DOWNLOAD_MODELS so ensure_available() picks
+    # it up without plumbing a new arg through every layer.
+    if getattr(args, "auto_download", False):
+        os.environ["MAXIM_AUTO_DOWNLOAD_MODELS"] = "1"
+
     # ── --llm-n-ctx override (peer_leader_flexibility_plan P4c) ──────────
     # Forwards to MAXIM_LLM_N_CTX so the auto-spawn path in lane_backends
     # picks it up without plumbing a new arg through every layer.

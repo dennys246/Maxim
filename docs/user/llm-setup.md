@@ -333,6 +333,10 @@ On startup you'll see a banner like:
 | `MAXIM_AUTO_SPAWN_PORT` | `8100` | Port for the spawned server (avoid 8000 if you run your own) |
 | `MAXIM_LLM_N_CTX` | _(unset)_ | Force a specific n_ctx for the spawned server. Same effect as `--llm-n-ctx N`. |
 | `MAXIM_AUTO_SPAWN_N_CTX` | _(unset)_ | Legacy alias for `MAXIM_LLM_N_CTX`. Kept for in-place upgrades; new installs should prefer `MAXIM_LLM_N_CTX`. |
+| `MAXIM_AUTO_DOWNLOAD_MODELS` | _(unset)_ | Set to `1` to skip the interactive 'download model? [y/N]' prompt and proceed with any missing GGUF download. Same effect as `--auto-download`. |
+| `MAXIM_DATA_BUDGET_GB` | _(unset)_ | Optional soft cap on Maxim's total disk usage. When set, the auto-download preflight refuses if the new download would push `~/.maxim/` past this budget. |
+
+**Auto-download (P5):** when the active LLM profile's GGUF is not on disk, Maxim's tier-detection layer calls `ensure_available()` before auto-spawn. If you're at a tty it prompts (`Maxim wants to download 'X' (~Y GB)... Proceed? [y/N]`) with a 30-second timeout; if you pass `--auto-download` (or set the env var) it proceeds without prompting; if stdin isn't a tty and neither flag is set, it fails fast with an actionable error and the exact `python -m maxim.models.download --llm <profile>` command. Concurrent `maxim` invocations on the same machine serialize via an advisory file lock at `~/.maxim/util/download.lock` so two processes can't race on the same target file.
 
 **Dynamic n_ctx (P4c):** when neither env var is set, Maxim sizes the spawned server's context window from the active profile's architecture metadata + your detected VRAM. A 16 GB CUDA card running `qwen2.5-14b` lands at ~4096; a 24 GB Apple Silicon mac at ~16384; the profile's declared 32K is used as a hard ceiling so we never request more than the model was trained for. Override with `--llm-n-ctx N` if you need a specific value (e.g. tuning against a tight VRAM budget).
 
