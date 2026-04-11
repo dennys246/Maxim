@@ -241,7 +241,7 @@ maxim
 
 Then re-run `nvidia-smi` on the leader during a sim and confirm GPU utilization spikes. A 7B-Q4 model at ~5 GB VRAM should peg a modern GPU briefly on each inference call.
 
-> **Note:** `maxim doctor` now includes an inference coherence check that sends a test prompt and verifies the response. It also checks GPU/CUDA, tier detection, and disk/RAM. If the leader is running CPU-only, the tier detection check will warn. See [future_plans.md](../plans/future_plans.md) "Doctor Enhancements" for planned deeper GPU health checks (tokens/sec, latency jitter).
+> **Note:** `maxim doctor` now includes an inference coherence check that sends a test prompt and verifies the response. It also checks GPU/CUDA, tier detection, and disk/RAM. If the leader is running CPU-only, the tier detection check will warn. Deeper GPU health checks (tokens/sec, latency jitter) are tracked inline as TODOs in [src/maxim/doctor/](../../src/maxim/doctor/).
 
 ## Remote Updates
 

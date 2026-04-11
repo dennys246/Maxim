@@ -11,7 +11,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 - [AGENTS.md](../AGENTS.md) — Agent system documentation
 - [User Guides](user/index.md) — End-user documentation (install, CLI, API, modes)
 - [Troubleshooting](troubleshooting/index.md) — Runbooks and diagnostics
-- [Plans](plans/future_plans.md) — Active roadmap and future plans
+- [Plans](plans/README.md) — Active roadmap and future plans
 
 ---
 
@@ -35,8 +35,8 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | Document | Description |
 |----------|-------------|
 | [Semantic Similarity](semantic_similarity_analysis.md) | Phase 4 neural embeddings, NeuralSemanticLSH |
-| Attention (archived) | Vision-centric spatial attention — being rebuilt as part of [salience abstraction](plans/salience_abstraction_plan.md) |
-| Salience (archived) | Vision-centric salience — being rebuilt as part of [salience abstraction](plans/salience_abstraction_plan.md) |
+| Attention (archived) | Vision-centric spatial attention — being rebuilt as part of the [substrate plan](plans/substrate_plan.md) |
+| Salience (archived) | Vision-centric salience — being rebuilt as part of the [substrate plan](plans/substrate_plan.md) |
 
 ### Safety & Learning
 

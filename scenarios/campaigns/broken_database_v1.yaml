@@ -36,7 +36,7 @@ campaign:
 #
 # PREREQUISITES (not yet implemented):
 #   1. Hibernate mode (no-LLM sleep) — agent starts with zero LLM cost
-#      until the pager sensor fires. See future_plans.md.
+#      until the pager sensor fires.
 #   2. DM schema extension — add `embodiment:` key to dm_schema.py
 #      (load_campaign parses it, passes Entity tree to runtime)
 #   3. `initial_state:` key — sets processing_state=sleep at campaign start

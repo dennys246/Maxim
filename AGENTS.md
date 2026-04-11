@@ -87,7 +87,7 @@ When multiple systems share the same functional role, they **must** use the same
 
 ## Environment Diagnostics (`maxim doctor`)
 
-`maxim doctor` lives in [src/maxim/doctor/](src/maxim/doctor/) and runs platform-aware checks (OS, runtime — native/WSL2/docker/etc., GPU, tiers, LLM server, inference coherence, leader role, LAN access, cloudflared, tunnel config, API key hygiene, disk/RAM) with platform-specific fix hints. Supports `--json`, `--as peer/leader/solo`, and `--retry`. Companion subcommand `maxim peer test <url>` verifies peer↔leader connectivity. User-facing docs: [docs/user/llm-setup.md](docs/user/llm-setup.md). Forward roadmap: [docs/plans/future_plans.md](docs/plans/future_plans.md) under "Doctor Enhancements".
+`maxim doctor` lives in [src/maxim/doctor/](src/maxim/doctor/) and runs platform-aware checks (OS, runtime — native/WSL2/docker/etc., GPU, tiers, LLM server, inference coherence, leader role, LAN access, cloudflared, tunnel config, API key hygiene, disk/RAM) with platform-specific fix hints. Supports `--json`, `--as peer/leader/solo`, and `--retry`. Companion subcommand `maxim peer test <url>` verifies peer↔leader connectivity. User-facing docs: [docs/user/llm-setup.md](docs/user/llm-setup.md). Forward roadmap: tracked inline as TODOs in [src/maxim/doctor/](src/maxim/doctor/); no standalone plan doc.
 
 **When adding a new check:**
 1. Pure function in `doctor/checks.py` → returns `CheckResult(name, status, message, fix?, retry_id?)`.

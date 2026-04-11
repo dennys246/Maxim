@@ -99,11 +99,11 @@ Companion: `maxim tunnel` subcommand in [src/maxim/tunnel/](src/maxim/tunnel/) (
 **`maxim peer test`** should stay self-contained — no imports from the agent runtime. It's run from peer machines that may not have the full dependency set installed.
 
 **Don't:**
-- Don't auto-execute fixes without the user asking (`--fix` flag is explicit opt-in; see future_plans.md "Doctor Enhancements").
+- Don't auto-execute fixes without the user asking (`--fix` flag is explicit opt-in).
 - Don't make checks slow (> 1s). Network probes use short timeouts (1.5–2s). Long-running benchmarks belong in a future `maxim benchmark` subcommand.
 - Don't silently drop failures — any failing check needs a user-actionable `fix` string.
 
-Remaining enhancements tracked in [docs/plans/future_plans.md](docs/plans/future_plans.md) under "Doctor Enhancements".
+Remaining doctor enhancements are tracked inline as TODO comments in [src/maxim/doctor/](src/maxim/doctor/); no standalone plan doc.
 
 ## Key Commands
 
@@ -290,4 +290,14 @@ Published to PyPI as `pymaxim` (import name stays `maxim`). 17 verb-based functi
 
 ## Active initiatives
 
-See `docs/plans/future_plans.md` for the full roadmap. Current version: v1.0.0 ([publication guide](docs/publication_guide.md)). Post-publication priorities: Mother Maxim ([plan](docs/plans/mother_maxim_plan.md)) and Pecking Order Graph ([plan](docs/plans/pecking_order_graph_plan.md)). Previously completed work is archived in `docs/archive/`.
+See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current version: v0.2.1 on PyPI as `pymaxim` ([publication guide](docs/publication_guide.md)).
+
+**Gating 1.0:**
+- [substrate_plan.md](docs/plans/substrate_plan.md) — bio-stack convergence (unified Percept, EC/ATL/Hebbian, convergence harnesses). Supersedes the old percept + salience plans.
+- [embodiment_voice_plan.md](docs/plans/embodiment_voice_plan.md) — PromptAssembler, acting coach, replanning with failure diagnosis.
+
+**Parallel:**
+- [cleanup_wave.md](docs/plans/cleanup_wave.md) — fix `--interactive`, delete dead CLI flags, display defaults, agent permissions. Supersedes display_simplification + agent_permissions plans.
+- [tool_refinement_plan.md](docs/plans/tool_refinement_plan.md) — living doc for agent tool curation.
+
+**Deferred (post-1.0, revive on trigger):** Mother Maxim, Pecking Order Graph, Asset Foundry, DM Extensions. See [docs/plans/deferred/](docs/plans/deferred/).

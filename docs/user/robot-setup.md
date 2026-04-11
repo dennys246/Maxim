@@ -218,7 +218,7 @@ A controller reads its own keys out of `extras` and ignores keys it doesn't reco
 
 ### What's still planned
 
-The `selfy.py` mixin stack in `embodied_runtime/` is currently hardcoded for the Reachy SDK. Decomposing it into a `RobotController`-driven generic loop is tracked as the **"Embodiment Hardware Adapter + selfy.py decomposition"** item in [docs/plans/future_plans.md](../plans/future_plans.md). When that lands, you'll be able to run the live media-capture loop against any registered robot, not just Reachy.
+The `selfy.py` mixin stack in `embodied_runtime/` is currently hardcoded for the Reachy SDK. Decomposing it into a `RobotController`-driven generic loop is a deferred item — no active plan doc; revive when a second robot target lands. When that lands, you'll be able to run the live media-capture loop against any registered robot, not just Reachy.
 
 Until then, the recommended path for non-Reachy robots is:
 - Use Maxim **headless** with your robot (the agent loop, planning, memory, and tools all work without `selfy.py`'s media loop)
