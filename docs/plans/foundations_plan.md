@@ -37,29 +37,13 @@ Land as eight separate PRs, in dependency order:
 
 Each PR: full lint + fast test suite + `mypy` on public API files per CLAUDE.md. Don't batch, don't skip hooks, don't amend across failures.
 
-## F0.1 — NAc wiring + save/load signature
+## F0.1 — NAc wiring + save/load signature ✅ LANDED
 
-Two small NAc fixes taking advantage of having `nac.py` open in one PR.
+**Status:** Complete. Shipped in commit `ee2bb9c` (PR merged 2026-04-11).
 
-**1. Fix `record_plan_outcome` → NAc wiring.** `record_plan_outcome` does not increment NAc's observation counter. The failing test `tests/integration/test_memory_hub.py::TestPlanningBridge::test_record_plan_outcome` has been sitting as a known pre-existing failure in CLAUDE.md. Substrate P2 adds per-node reward bias on top of NAc's learning path — if that path is already mis-wired to plan outcomes, P2 passes or fails for the wrong reasons.
+**What shipped:** `NAc.save`/`load`/`load_safe` now accept `path: str | None = None` with fallback to `NACConfig.persistence_path` and raise `ValueError` when neither is set. Existing explicit-path callers unchanged. Two unit tests added in [tests/unit/test_nac.py](../../tests/unit/test_nac.py) covering the default-path fallback and the no-path error.
 
-**Investigation path (context from iceberg sweep audit, preserved so a cold-start session can find the bug without re-doing the investigation):**
-- NAc's observation counter is `self._total_observations`, incremented on lines 372, 446, 470 of [decisions/nac.py](../../src/maxim/decisions/nac.py) (one counter bump per code path that actually processes an observation). CLAUDE.md notes the counter exists; the bug is that one of the paths `record_plan_outcome` flows through bypasses all three.
-- `record_plan_outcome` is defined/referenced in four files: [runtime/agent_loop.py](../../src/maxim/runtime/agent_loop.py), [integration/memory_hub.py](../../src/maxim/integration/memory_hub.py), [bridges/planning_bridge.py](../../src/maxim/bridges/planning_bridge.py), [runtime/bio_integration.py](../../src/maxim/runtime/bio_integration.py). The failing test hits `PlanningBridge.record_plan_outcome` specifically — start there.
-- The diagnostic: add a breakpoint or print at each of nac.py:372/446/470 and run the failing test. Whichever path the `PlanningBridge` call takes should hit one of them; if it hits none, the bug is somewhere in the bridge → NAc dispatch. If it hits one but the counter still reads zero, the counter write itself is broken (unlikely — it's a simple `self._total_observations += 1`).
-- **Likely root cause (hypothesis, not verified):** `PlanningBridge.record_plan_outcome` probably calls a NAc method that *processes the outcome* (updates causal links, eligibility) but doesn't route through the same entry point that bumps `_total_observations`. The fix is either to bump the counter in that method too or to route plan outcomes through whichever entry point already does the bump. Don't assume — verify with the diagnostic above first.
-- **Don't fix by hacking around the symptom.** If the test wants `total_observations > 0` but the real code path doesn't semantically count plan outcomes as "observations," fix the semantics (does a plan outcome *count* as an observation of a causal link in NAc's model?), not just the counter. The answer is probably "yes, plan outcomes are observations" given NAc's Rescorla-Wagner framing, but confirm before bumping.
-
-**2. Align NAc save/load signature with ATL/Hippocampus.** [nac.py:823, 840](../../src/maxim/decisions/nac.py#L823) requires an explicit `path` argument, while ATL and Hippocampus both default to `config.persistence_path` when called without args. The cross-layer round-trip harness in substrate P3.5 will crash on NAc's signature mismatch. Change `save(path: str)` to `save(path: str | None = None)` with fallback to `self.config.persistence_path`; same for `load()`. Existing call sites with explicit paths continue to work unchanged.
-
-**Context note on NAc's persistence-path config field:** confirm the exact config attribute name during implementation. ATL's pattern at [atl.py:289-349](../../src/maxim/memory/atl.py#L289-L349) reads from `self.config.persistence_path` (or equivalent). NAc may use a different config field name — check `NAcConfig` dataclass before writing the fallback. If NAc doesn't have a persistence path in its config at all, the fix is two steps: (a) add the config field, (b) then add the signature fallback. That's still ~30 LOC and still in scope for F0.1.
-
-**Exit:**
-- `test_record_plan_outcome` passes. `nac.stats()["total_observations"] > 0` after a plan outcome is recorded.
-- `nac.save()` and `nac.load()` work with no args when config has a path set, raise a clear error when config has no path.
-- Existing callers with explicit paths unchanged.
-
-**Scope:** ~80 LOC (~50 wiring + ~30 signature) plus verification across [runtime/agent_loop.py](../../src/maxim/runtime/agent_loop.py), [bridges/planning_bridge.py](../../src/maxim/bridges/planning_bridge.py), [integration/memory_hub.py](../../src/maxim/integration/memory_hub.py), [runtime/bio_integration.py](../../src/maxim/runtime/bio_integration.py), [decisions/nac.py](../../src/maxim/decisions/nac.py).
+**What was already done before this PR:** The `record_plan_outcome` → NAc observation-counter wiring was repaired during an earlier wave (likely the peer/leader flexibility series); `test_record_plan_outcome` was already green on main when F0.1 opened. No code change needed for part 1 — only the signature alignment (part 2) shipped in this PR.
 
 **Dependencies:** None.
 
