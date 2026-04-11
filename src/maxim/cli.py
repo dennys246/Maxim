@@ -1032,11 +1032,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
                 # Use active mode in simulation so agent can read/write in sandbox
                 _operational_mode = "active" if getattr(args, "sim", None) is not None else "passive"
+                # PromptHandler for RequestInteractionTool — console prompts
+                # when --interactive is on, respects the global interactive
+                # mode gate inside the tool itself otherwise.
+                try:
+                    from maxim.interactive.prompts import create_handler
+
+                    _prompt_handler = create_handler("auto")
+                except Exception as _ph_exc:
+                    logger.debug("PromptHandler unavailable: %s", _ph_exc)
+                    _prompt_handler = None
+
                 registry = build_tool_registry(
                     response_output=response_output,
                     internet_policy_getter=internet_policy_getter,
                     gateway=gateway,
                     operational_mode=_operational_mode,
+                    prompt_handler=_prompt_handler,
                 )
                 executor = build_executor(registry)
 

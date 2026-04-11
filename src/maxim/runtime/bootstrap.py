@@ -61,6 +61,7 @@ def build_tool_registry(
     gateway: object | None = None,
     allowed_dirs_override: list[str] | None = None,
     state_manager: object | None = None,
+    prompt_handler: Any = None,
 ) -> ToolRegistry:
     """Build the tool registry with mode-based filesystem containment.
 
@@ -126,6 +127,15 @@ def build_tool_registry(
             can_change=mode_config.can_request_directory_change,
         )
     )
+
+    # Register display + interaction tools. These respect the global
+    # interactive mode via sim_logger.should_prompt, so registering them
+    # unconditionally is safe — when interactive is off, the tool returns
+    # a "disabled" message without touching the handler.
+    from maxim.tools.display import DisplayModeTool, RequestInteractionTool
+
+    registry.register(DisplayModeTool())
+    registry.register(RequestInteractionTool(prompt_handler=prompt_handler))
 
     # Register Reachy robot tools
     if maxim is not None:

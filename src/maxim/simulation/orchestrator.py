@@ -318,10 +318,22 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("Failed to create ResponseOutput for AUT: %s", e)
 
+    # PromptHandler: routes `request_interaction` tool calls to the
+    # console when --interactive is on. The tool itself gates on
+    # sim_logger.should_prompt, so it's safe to pass unconditionally.
+    try:
+        from maxim.interactive.prompts import create_handler
+
+        aut_prompt_handler = create_handler("auto")
+    except Exception as _ph_exc:
+        logger.debug("PromptHandler unavailable for AUT: %s", _ph_exc)
+        aut_prompt_handler = None
+
     aut_registry = build_tool_registry(
         operational_mode="active",
         allowed_dirs_override=sandbox_dirs,
         response_output=aut_response_output,
+        prompt_handler=aut_prompt_handler,
     )
     # Inject user-registered tools from maxim.register_tool() / @maxim.tool
     from maxim.api import _inject_pending_tools
