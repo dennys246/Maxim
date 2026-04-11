@@ -11,6 +11,14 @@ Maxim is configured through three mechanisms: CLI flags, environment variables, 
 | `MAXIM_LLM_ENABLED` | Enable LLM inference (1/true) | 0 |
 | `MAXIM_LLM_PROFILE` | Model profile name | None |
 | `MAXIM_LLM_QUANTIZATION` | Quantization level (Q3_K_M, Q4_K_M, Q5_K_M, Q8_0) | Q4_K_M |
+| `MAXIM_LLM_N_CTX` | Override auto-computed llama.cpp context window (P4c). Same as `--llm-n-ctx`. | (formula) |
+| `MAXIM_AUTO_SPAWN_N_CTX` | Legacy alias for `MAXIM_LLM_N_CTX`. Kept for in-place upgrades. | (unset) |
+| `MAXIM_AUTO_DOWNLOAD_MODELS` | Set to `1` to skip the interactive download prompt and auto-download missing GGUFs (P5). Same as `--auto-download`. | off |
+| `MAXIM_DATA_BUDGET_GB` | Optional soft cap on `~/.maxim/` disk usage. The auto-download preflight refuses if the new download would exceed it. | (unset) |
+| `MAXIM_SKIP_REMOTE_PROBE` | Set to `1` to bypass the P6 remote-URL probe. CI/test escape hatch. | off |
+| `MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S` | First-attempt probe timeout (clamped 0.2-5.0). | 0.8 |
+| `MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S` | Retry probe timeout (clamped 0.5-10.0). | 2.5 |
+| `MAXIM_REMOTE_PROBE_CACHE_TTL_S` | Probe cache freshness window (clamped 0-600). | 60 |
 | `MAXIM_PROMPT_PROFILE` | Prompt optimization (deprecated — not read by current code; use per-mode config in llm.json) | standard |
 | `MAXIM_ROBOT_NAME` | Robot identifier | reachy_mini |
 | `MAXIM_COMMS_ENABLED` | Enable SMS/Voice (1/true) | 0 |

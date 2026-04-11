@@ -222,6 +222,8 @@ CUDA_VISIBLE_DEVICES="" maxim
 
 The `llama-cpp-python` package builds with Metal support on macOS by default. No additional configuration is needed.
 
+**Tier behavior on Apple Silicon (P2 + P3):** Maxim now reports the Mac's effective unified-memory budget as `vram_gb` and admits MPS into the **large** tier. Previously MPS was hard-excluded — a 24 GB Mac was capped at `mistral-7b` on the medium tier even though it could comfortably run a 14B-class model. With P4a's tier-table expansion, a 24 GB Mac now defaults to `qwen2.5-14b-instruct` on the large tier, and dynamic n_ctx sizing (P4c) picks an appropriate context window for the available memory (typically 8K-16K depending on headroom). Intel Macs (no MPS) and Apple Silicon Macs whose effective VRAM falls below 4 GB still route to the medium tier.
+
 ### Blackwell GPUs (RTX 5080/5090)
 
 Blackwell (sm_120) GPUs require special handling because:

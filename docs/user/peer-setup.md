@@ -59,8 +59,13 @@ maxim peer connect <url> [--key KEY] [--model MODEL] [--skip-test]
 3. Runs a four-step connectivity test against the leader
 4. Saves `{url, api_key, model?, is_cloud}` to `~/.config/maxim/peer.yml` (mode 0600) only if the test passes
 5. Auto-detects `is_cloud: true` for public hostnames and enables the cloud-lane gate
+6. Clears the remote-probe cache (P6) so the next `maxim` startup re-probes the freshly-configured leader instead of trusting any stale entry from a previous URL
 
 **On subsequent `maxim` runs**, the config is read from disk and populates `MAXIM_LANE_LARGE_*` env vars via `setdefault` — env vars still win for per-session overrides.
+
+> **Local override (`--llm`) takes precedence over peer config (P1).** If you pass `--llm mistral-7b` (or any local profile name) on a peer that has a remote leader configured, the peer runs that model **locally** instead of forwarding to the leader. The remote URL is cleared on the large lane for that session, auto-spawn (or in-process inference) takes over, and the rest of the runtime is unaffected. This lets you override the peer config for one session without editing files. Pass a cloud profile (e.g. `--llm claude-sonnet`) and that wins over both peer and local. To swap the **leader's** model instead, run `maxim peer llm <profile>`.
+
+> **Probe-cache clearing.** `maxim peer connect`, `forget`, `restart`, `update`, and `llm <model>` all clear (or invalidate) the on-disk probe cache at `~/.maxim/util/last_probe_status.json`. The next `maxim` startup re-probes the leader rather than trusting an entry from before the change. Useful to know when debugging "I changed the leader URL but the peer is still using the old one."
 
 **Companion commands:**
 

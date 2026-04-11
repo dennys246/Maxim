@@ -256,7 +256,15 @@ MAXIM_ROLE=leader                      # leader / client / solo
 MAXIM_HEARTBEAT=1                      # System health heartbeat (GPU/CPU/RAM)
 MAXIM_LANE_TRACE=1                     # Per-request LLM trace + heartbeat
 MAXIM_PROXY_MAX_CONCURRENT=4           # Max in-flight proxy requests
-MAXIM_PROXY_RATE_LIMIT_RPM=0           # Per-peer rate limit (0=unlimited)</div>
+MAXIM_PROXY_RATE_LIMIT_RPM=0           # Per-peer rate limit (0=unlimited)
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Routing &amp; downloads (peer/leader flexibility)</span>
+
+MAXIM_LLM_N_CTX=4096                   # Override auto-computed llama.cpp n_ctx (P4c)
+MAXIM_AUTO_DOWNLOAD_MODELS=1           # Skip the download prompt (P5) — same as --auto-download
+MAXIM_DATA_BUDGET_GB=50                # Optional soft cap on ~/.maxim disk usage
+MAXIM_SKIP_REMOTE_PROBE=1              # Bypass the P6 remote-URL probe (CI escape hatch)
+MAXIM_REMOTE_PROBE_CACHE_TTL_S=60      # Probe-cache freshness window (clamped 0-600)</div>
 
     <h3 class="text-lg font-semibold text-indigo-400">Peer &amp; Tunnel Commands</h3>
     <p class="text-slate-300 leading-relaxed">Connect peers to a leader's GPU for distributed inference. See <a href="/maxim/networking" class="text-indigo-400 hover:text-indigo-300">Networking &amp; Mesh</a> for full details.</p>
@@ -281,6 +289,8 @@ maxim tunnel key export                # Print peer export snippets
 maxim peer connect https://maxim.yourdomain.com/v1
 maxim peer show                        # Verify peer config
 maxim peer test https://maxim.yourdomain.com/v1
+maxim --llm mistral-7b                 # Per-session local override (wins over peer)
+maxim doctor --last-decision           # Why did the last sim pick this model? (P9)
 
 <span class="text-indigo-400 text-xs uppercase tracking-wider">Debug trace (see everything)</span>
 
