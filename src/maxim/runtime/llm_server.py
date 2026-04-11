@@ -10,10 +10,14 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import socket
+import ssl
 import threading
+import time
 import weakref
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +114,128 @@ def write_persisted_model(profile: str | None) -> None:
             raise
     except Exception as e:
         logger.warning("Failed to persist model state: %s", e)
+
+
+# ─── Structured probe (peer_leader_flexibility_plan P6) ──────────────────────
+
+
+ProbeOutcome = Literal[
+    "ok",
+    "auth_rejected",
+    "dns_fail",
+    "connection_refused",
+    "tls_error",
+    "timeout",
+    "http_5xx",
+    "other",
+]
+
+
+@dataclass(frozen=True)
+class ProbeResult:
+    """Outcome of probing a remote OpenAI-compatible LLM endpoint.
+
+    The structured outcome lets callers distinguish between actually
+    unreachable servers and auth-gated servers (where the leader is alive
+    but rejected our token). Each outcome maps to a different fix-hint
+    message.
+
+    ``latency_ms`` is populated only on outcomes where we actually got an
+    HTTP response back (``ok``, ``auth_rejected``, ``http_5xx``, ``other``).
+    For network-layer failures it's left None.
+    """
+
+    url: str
+    outcome: ProbeOutcome
+    detail: str
+    latency_ms: float | None = None
+
+    @property
+    def is_reachable(self) -> bool:
+        """True iff the leader is alive and listening (auth-gated counts)."""
+        return self.outcome in ("ok", "auth_rejected")
+
+
+def _build_probe_url(base_url: str) -> str:
+    base = base_url.rstrip("/")
+    return base + "/models" if base.endswith("/v1") else base + "/v1/models"
+
+
+def _probe_once(url: str, api_key: str | None, timeout_s: float) -> ProbeResult:
+    """Single probe attempt. Classifies errors into structured outcomes.
+
+    Catches each network/HTTP exception class explicitly so the caller
+    can act on the outcome (drop the lane, warn the user, suggest a fix)
+    instead of branching on str(exception). New exception types fall into
+    ``other`` rather than crashing the probe.
+    """
+    import urllib.error
+    import urllib.request
+
+    probe_url = _build_probe_url(url)
+    req = urllib.request.Request(probe_url)
+    if api_key:
+        req.add_header("Authorization", f"Bearer {api_key}")
+
+    start = time.monotonic()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # noqa: S310
+            latency_ms = (time.monotonic() - start) * 1000
+            return ProbeResult(url, "ok", f"HTTP {resp.status}", round(latency_ms, 1))
+    except urllib.error.HTTPError as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        if e.code == 401:
+            return ProbeResult(url, "auth_rejected", "401 Unauthorized", round(latency_ms, 1))
+        if 500 <= e.code < 600:
+            return ProbeResult(url, "http_5xx", f"HTTP {e.code}", round(latency_ms, 1))
+        return ProbeResult(url, "other", f"HTTP {e.code}", round(latency_ms, 1))
+    except urllib.error.URLError as e:
+        # URLError wraps lower-level errors. Unwrap one layer to classify.
+        reason = getattr(e, "reason", e)
+        if isinstance(reason, socket.gaierror):
+            return ProbeResult(url, "dns_fail", str(reason), None)
+        if isinstance(reason, ssl.SSLError):
+            return ProbeResult(url, "tls_error", str(reason), None)
+        if isinstance(reason, TimeoutError) or isinstance(reason, socket.timeout):
+            return ProbeResult(url, "timeout", f"{timeout_s}s", None)
+        if isinstance(reason, (ConnectionRefusedError, ConnectionResetError)):
+            return ProbeResult(url, "connection_refused", str(reason), None)
+        return ProbeResult(url, "other", f"URLError: {reason}", None)
+    except socket.gaierror as e:
+        return ProbeResult(url, "dns_fail", str(e), None)
+    except ssl.SSLError as e:
+        return ProbeResult(url, "tls_error", str(e), None)
+    except TimeoutError:
+        return ProbeResult(url, "timeout", f"{timeout_s}s", None)
+    except (ConnectionRefusedError, ConnectionResetError) as e:
+        return ProbeResult(url, "connection_refused", str(e), None)
+    except Exception as e:  # noqa: BLE001 — defensive catch-all
+        return ProbeResult(url, "other", f"{type(e).__name__}: {e}", None)
+
+
+def probe_llm_server(
+    url: str,
+    *,
+    api_key: str | None = None,
+    first_timeout_s: float = 0.8,
+    retry_timeout_s: float = 2.5,
+) -> ProbeResult:
+    """Probe ``GET /v1/models`` with optional Bearer auth, two-attempt retry.
+
+    The first probe uses an aggressive timeout so a healthy leader returns
+    fast. On any unreachable outcome we retry once with a longer budget,
+    which catches slow leaders mid-cold-start without making the happy
+    path slow. ``ok`` and ``auth_rejected`` short-circuit — both mean the
+    HTTP listener is alive, no point retrying.
+
+    Returns a :class:`ProbeResult` whose ``outcome`` the caller switches
+    on. See :func:`_log_probe_failure` in lane_backends for the human-
+    readable warning template per outcome.
+    """
+    result = _probe_once(url, api_key, first_timeout_s)
+    if result.is_reachable:
+        return result
+    return _probe_once(url, api_key, retry_timeout_s)
 
 
 def llm_server_responding_at(url: str, *, timeout_s: float = 1.5) -> bool:

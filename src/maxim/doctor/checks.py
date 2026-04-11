@@ -1149,6 +1149,249 @@ def _detect_doctor_role(explicit: str | None = None, peer_url: str | None = None
     return "auto", None
 
 
+# ─── P8: Routing-decision visibility checks ─────────────────────────────────
+
+
+def check_tier_effectiveness(caps=None) -> CheckResult:
+    """Compare what tier detection actually picked vs. what the hardware allows.
+
+    On a 24 GB Mac that hasn't downloaded qwen2.5-14b yet, ``detect_tiers``
+    walks past qwen and lands on the next-best profile that IS on disk
+    (e.g. mistral-7b). The tier check still says "ok", which is correct
+    but hides the gap. This check runs detect_tiers TWICE — once
+    respecting availability, once ignoring it — and reports the gap with
+    the exact download command.
+    """
+    try:
+        from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
+        from maxim.runtime.lane_models import detect_tiers
+        from maxim.runtime.llm_server import profile_has_local_file
+    except ImportError as e:
+        return CheckResult(
+            name="LLM Tier headroom",
+            status="warn",
+            message=f"Tier-effectiveness check unavailable: {e}",
+        )
+    if caps is None:
+        try:
+            has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
+            caps = RuntimeCapabilities(has_gpu=has_gpu, gpu_type=gpu_type, vram_gb=vram_gb, ram_gb=ram_gb)
+        except Exception as e:
+            return CheckResult(
+                name="LLM Tier headroom",
+                status="warn",
+                message=f"Capability detection failed: {e}",
+            )
+
+    try:
+        actual_tiers = detect_tiers(caps, profile_available=profile_has_local_file)
+        ideal_tiers = detect_tiers(caps, profile_available=lambda _name: True)
+    except Exception as e:
+        return CheckResult(
+            name="LLM Tier headroom",
+            status="warn",
+            message=f"Tier walk failed: {e}",
+        )
+
+    actual_large = actual_tiers.get("large") or actual_tiers.get("medium")
+    ideal_large = ideal_tiers.get("large") or ideal_tiers.get("medium")
+    if actual_large is None or ideal_large is None:
+        return CheckResult(
+            name="LLM Tier headroom",
+            status="info",
+            message="No large/medium tier detected",
+        )
+    actual_profile = actual_large.model_profile or "(none)"
+    ideal_profile = ideal_large.model_profile or "(none)"
+    if actual_profile == ideal_profile:
+        return CheckResult(
+            name="LLM Tier headroom",
+            status="ok",
+            message=f"Hardware-best profile selected: {actual_profile}",
+        )
+    return CheckResult(
+        name="LLM Tier headroom",
+        status="warn",
+        message=(f"Running '{actual_profile}' but hardware ({caps.vram_gb:.0f} GB VRAM) could run '{ideal_profile}'."),
+        fix=f"python -m maxim.models.download --llm {ideal_profile}",
+        retry_id="tier_effectiveness",
+    )
+
+
+def check_peer_vs_local_conflict() -> CheckResult:
+    """Inform the user when --llm + peer config will run locally.
+
+    P1's ``_apply_local_llm_override`` clears the large lane's
+    ``remote_url`` whenever ``MAXIM_LLM_PROFILE`` names a local
+    (non-cloud) profile. This is the right behavior, but invisible — a
+    user with a peer config and ``--llm mistral-7b`` may be expecting
+    the leader to serve mistral. This check surfaces the override as an
+    informational message so they're not surprised.
+    """
+    import os
+
+    profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
+    if not profile:
+        return CheckResult(
+            name="--llm vs peer config",
+            status="ok",
+            message="no local --llm override active",
+        )
+    try:
+        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.peer.config import read_peer_config
+
+        cfg = read_peer_config()
+    except Exception:
+        return CheckResult(
+            name="--llm vs peer config",
+            status="info",
+            message=f"--llm={profile} active (peer config check unavailable)",
+        )
+    if cfg is None:
+        return CheckResult(
+            name="--llm vs peer config",
+            status="ok",
+            message=f"--llm={profile} (no peer config)",
+        )
+    profile_data = _BUILTIN_PROFILES.get(profile, {})
+    if profile_data.get("cloud"):
+        return CheckResult(
+            name="--llm vs peer config",
+            status="ok",
+            message=f"--llm={profile} is cloud (handled by cloud overrides)",
+        )
+    return CheckResult(
+        name="--llm vs peer config",
+        status="info",
+        message=(
+            f"--llm={profile} will run LOCALLY despite peer config at {cfg.url}. "
+            f"P1 clears remote_url for local profiles. To use the leader "
+            f"instead, run: maxim peer llm {profile}"
+        ),
+    )
+
+
+def check_remote_reachability(url: str | None = None, api_key: str | None = None) -> CheckResult:
+    """Probe a remote leader URL with the structured probe (P6).
+
+    Reports outcome-specific fix hints. Distinct from
+    ``check_peer_url_reachable`` (the existing peer-mode check) which
+    just returns ok/fail; this one surfaces the auth_rejected vs
+    dns_fail vs timeout distinction so the user gets a directly
+    actionable hint.
+    """
+    if url is None:
+        try:
+            from maxim.peer.config import read_peer_config
+
+            cfg = read_peer_config()
+            if cfg is None:
+                return CheckResult(
+                    name="Remote leader probe",
+                    status="info",
+                    message="No peer config — skipping remote probe",
+                )
+            url = cfg.url
+            api_key = api_key or cfg.api_key
+        except Exception as e:
+            return CheckResult(
+                name="Remote leader probe",
+                status="warn",
+                message=f"Could not load peer config: {e}",
+            )
+    try:
+        from maxim.runtime.llm_server import probe_llm_server
+    except ImportError as e:
+        return CheckResult(
+            name="Remote leader probe",
+            status="warn",
+            message=f"Probe unavailable: {e}",
+        )
+    result = probe_llm_server(url, api_key=api_key)
+    if result.outcome == "ok":
+        return CheckResult(
+            name="Remote leader probe",
+            status="ok",
+            message=f"{url} responding ({result.latency_ms:.0f} ms)",
+        )
+    if result.outcome == "auth_rejected":
+        return CheckResult(
+            name="Remote leader probe",
+            status="warn",
+            message=f"{url} alive but rejected the API key ({result.detail})",
+            fix="maxim peer key  # rotate / re-paste from leader",
+            retry_id="remote_probe",
+        )
+    fix_hints = {
+        "dns_fail": f"Check the hostname in peer.yml or $MAXIM_LANE_LARGE_REMOTE_URL ({url})",
+        "tls_error": "Check the leader's TLS certificate validity",
+        "connection_refused": "Leader is not accepting connections — start `maxim` on the leader",
+        "timeout": "Leader did not respond in time — is it cold-loading a model?",
+        "http_5xx": "Leader returned a server error — check `maxim peer logs`",
+        "other": "Unexpected error — check `maxim peer logs`",
+    }
+    return CheckResult(
+        name="Remote leader probe",
+        status="fail",
+        message=f"{url} unreachable: {result.outcome} ({result.detail})",
+        fix=fix_hints.get(result.outcome, "check `maxim peer logs`"),
+        retry_id="remote_probe",
+    )
+
+
+def check_storage_footprint() -> CheckResult:
+    """Surface ~/.maxim disk usage with a top-N subdir breakdown.
+
+    Distinct from check_disk_space (which is a fs-level free check):
+    this one tells the user where their Maxim footprint is going so
+    they can decide what to delete. Fails when free space drops below
+    10 GB, warns below 20 GB.
+    """
+    try:
+        from maxim.utils.storage import format_report, report_storage
+    except ImportError as e:
+        return CheckResult(
+            name="Storage footprint",
+            status="warn",
+            message=f"Storage report unavailable: {e}",
+        )
+    try:
+        report = report_storage(force=True)
+    except Exception as e:
+        return CheckResult(
+            name="Storage footprint",
+            status="warn",
+            message=f"Storage walk failed: {e}",
+        )
+    summary = format_report(report)
+    if report.fs_free_gb == float("inf"):
+        return CheckResult(
+            name="Storage footprint",
+            status="info",
+            message=summary,
+        )
+    if report.fs_free_gb < 10.0:
+        return CheckResult(
+            name="Storage footprint",
+            status="fail",
+            message=f"Only {report.fs_free_gb:.1f} GB free on {report.data_home}",
+            fix=summary + "\n  Delete unused models: maxim --delete-model NAME",
+        )
+    if report.fs_free_gb < 20.0:
+        return CheckResult(
+            name="Storage footprint",
+            status="warn",
+            message=f"{report.fs_free_gb:.1f} GB free on {report.data_home} (Maxim using {report.total_maxim_gb:.1f} GB)",
+            fix=summary,
+        )
+    return CheckResult(
+        name="Storage footprint",
+        status="ok",
+        message=f"{report.fs_free_gb:.1f} GB free, Maxim using {report.total_maxim_gb:.1f} GB",
+    )
+
+
 def run_all_checks(
     info: PlatformInfo,
     *,
@@ -1180,8 +1423,10 @@ def run_all_checks(
                 CheckResult(name="Architecture", status="ok", message=info.arch),
                 check_gpu(),
                 check_tier_detection(),
+                check_tier_effectiveness(),
                 check_disk_space(),
                 check_ram_headroom(),
+                check_storage_footprint(),
             ],
         ),
     ]
@@ -1209,6 +1454,8 @@ def run_all_checks(
                     check_peer_url_reachable(peer_url),
                     check_peer_key_set(),
                     check_peer_auth(peer_url, peer_key),
+                    check_remote_reachability(peer_url, peer_key),
+                    check_peer_vs_local_conflict(),
                     check_peer_model(peer_url, peer_key),
                     check_peer_latency(peer_url, peer_key),
                 ],
@@ -1284,5 +1531,9 @@ __all__ = [
     "check_peer_model",
     "check_peer_latency",
     "check_role",
+    "check_tier_effectiveness",
+    "check_peer_vs_local_conflict",
+    "check_remote_reachability",
+    "check_storage_footprint",
     "run_all_checks",
 ]

@@ -452,10 +452,17 @@ class TestBuildPrimaryRouter:
         from maxim.runtime.capabilities import RuntimeCapabilities
 
         caps = RuntimeCapabilities(has_gpu=True, gpu_type="NVIDIA RTX 5080", vram_gb=15.9, ram_gb=32.0)
+        from maxim.runtime.llm_server import ProbeResult
+
         with (
             patch("maxim.models.language.config.load_llm_config") as mock_load,
             patch("maxim.models.language.router.LLMRouter"),
-            patch("maxim.runtime.lane_backends._llm_server_responding_at", return_value=True),
+            # P6: _validate_remote_urls now uses the structured probe.
+            # Force "ok" so the env-supplied URL flows through.
+            patch(
+                "maxim.runtime.llm_server.probe_llm_server",
+                return_value=ProbeResult("http://127.0.0.1:8000/v1", "ok", "HTTP 200", 10.0),
+            ),
             # Mock the persisted-model read so the developer's real
             # ~/.maxim/util/active_llm_model.txt doesn't pollute the
             # test. Without this, the persisted profile is injected
@@ -466,6 +473,13 @@ class TestBuildPrimaryRouter:
             # side effect and can also set MAXIM_LLM_PROFILE on the
             # current run via its consistency guarantee.
             patch("maxim.runtime.lane_backends._maybe_pin_pre_upgrade_profile"),
+            # P5: skip ensure_available so we don't try to download
+            # smollm-1.7b in the test environment. The lane URL flow
+            # is what we're testing here, not the download path.
+            patch(
+                "maxim.runtime.lane_backends._ensure_lane_profiles_available",
+                side_effect=lambda lc, _caps, _log: lc,
+            ),
         ):
             from maxim.models.language.config import LLMConfig
 
@@ -518,20 +532,53 @@ class TestLLMServerHealthCheck:
 
 
 class TestValidateRemoteUrls:
+    """P6 rewrote `_validate_remote_urls` to use the structured probe
+    instead of the old loopback-only `_llm_server_responding_at`. The
+    tests below now mock `probe_llm_server` and assert per-outcome
+    behavior. Public/cloud URLs ARE probed (the old "skip public"
+    heuristic was the bug — dead Cloudflare tunnels were silently
+    wedging peers).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolate_probe_cache(self, tmp_path, monkeypatch):
+        """Point MAXIM_DATA_HOME at a tmp dir so the on-disk probe cache
+        doesn't leak between tests (or from the dev machine's real
+        ~/.maxim/util/last_probe_status.json)."""
+        home = tmp_path / "maxim_home"
+        (home / "util").mkdir(parents=True)
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(home))
+        from maxim.utils import paths
+
+        paths._reset_caches()
+
+    @staticmethod
+    def _ok(url):
+        from maxim.runtime.llm_server import ProbeResult
+
+        return ProbeResult(url, "ok", "HTTP 200", 10.0)
+
+    @staticmethod
+    def _down(url, outcome="connection_refused"):
+        from maxim.runtime.llm_server import ProbeResult
+
+        return ProbeResult(url, outcome, "boom", None)
+
     def test_unreachable_loopback_dropped(self):
         from unittest.mock import MagicMock as MM
 
         logger = MM()
+        url = "http://127.0.0.1:8000/v1"
         cfgs = {
             "large": LaneConfig(
                 name="large",
                 max_workers=1,
-                remote_url="http://127.0.0.1:8000/v1",
+                remote_url=url,
                 remote_model="mistral-7b",
                 remote_api_key="test-key",
             )
         }
-        with patch("maxim.runtime.lane_backends._llm_server_responding_at", return_value=False):
+        with patch("maxim.runtime.llm_server.probe_llm_server", return_value=self._down(url)):
             out = _validate_remote_urls(cfgs, logger)
         assert out["large"].remote_url is None
         assert out["large"].remote_model is None
@@ -539,32 +586,36 @@ class TestValidateRemoteUrls:
         logger.warning.assert_called_once()
 
     def test_reachable_loopback_kept(self):
+        url = "http://127.0.0.1:8100/v1"
         cfgs = {
             "large": LaneConfig(
                 name="large",
                 max_workers=1,
-                remote_url="http://127.0.0.1:8100/v1",
+                remote_url=url,
                 remote_model="mistral-7b",
             )
         }
-        with patch("maxim.runtime.lane_backends._llm_server_responding_at", return_value=True):
+        with patch("maxim.runtime.llm_server.probe_llm_server", return_value=self._ok(url)):
             out = _validate_remote_urls(cfgs, None)
-        assert out["large"].remote_url == "http://127.0.0.1:8100/v1"
+        assert out["large"].remote_url == url
 
-    def test_cloud_url_not_probed(self):
-        """Public URLs shouldn't be health-checked at startup."""
+    def test_cloud_url_now_probed(self):
+        """P6: dead public URLs (e.g. expired Cloudflare tunnels) MUST be
+        probed and dropped — the old skip-public-urls heuristic was the
+        bug we're fixing. A reachable cloud URL stays wired."""
+        url = "https://api.anthropic.com/v1"
         cfgs = {
             "large": LaneConfig(
                 name="large",
                 max_workers=1,
-                remote_url="https://api.anthropic.com/v1",
+                remote_url=url,
                 remote_model="claude-3",
             )
         }
-        with patch("maxim.runtime.lane_backends._llm_server_responding_at") as mock_probe:
+        with patch("maxim.runtime.llm_server.probe_llm_server", return_value=self._ok(url)) as mock_probe:
             out = _validate_remote_urls(cfgs, None)
-        mock_probe.assert_not_called()
-        assert out["large"].remote_url == "https://api.anthropic.com/v1"
+        mock_probe.assert_called_once()
+        assert out["large"].remote_url == url
 
     def test_no_remote_url_untouched(self):
         cfgs = {"large": LaneConfig(name="large", max_workers=1, model_profile="smollm-1.7b-instruct")}

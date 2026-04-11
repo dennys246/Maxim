@@ -21,6 +21,29 @@ from maxim.peer.config import (
 )
 
 
+def _clear_probe_cache(url: str | None = None) -> None:
+    """Drop the P6 remote-probe cache so the next startup re-probes.
+
+    Called from peer commands that change the leader's reachability:
+    ``connect`` (new URL), ``forget`` (URL gone), ``restart`` (the leader
+    is transiently unavailable during the restart), ``update`` (the
+    leader process is replaced), ``llm`` (the leader's model is being
+    swapped, server is unreachable for 30-90s).
+
+    Best-effort: silently swallows any error so a probe-cache failure
+    can never block a peer command.
+    """
+    try:
+        from maxim.runtime import probe_cache
+
+        if url:
+            probe_cache.clear_cache_for_url(url)
+        else:
+            probe_cache.clear_cache()
+    except Exception:
+        pass
+
+
 CONNECT_USAGE = """\
 Usage: maxim peer connect <url> [options]
 
@@ -166,6 +189,10 @@ def _cmd_connect(argv: list[str]) -> int:
     # Save config
     cfg = PeerConfig(url=url, api_key=key, model=model, is_cloud=is_cloud)
     path = write_peer_config(cfg)
+    # New URL: drop any cached probe outcomes so the next startup re-probes
+    # the freshly-configured leader instead of trusting a stale entry from
+    # whatever was previously connected.
+    _clear_probe_cache()
     print()
     print(f"✓ Saved peer config to {path}")
     print(f"  url:      {url}")
@@ -198,6 +225,7 @@ def _cmd_show() -> int:
 def _cmd_forget() -> int:
     path = peer_config_path()
     if delete_peer_config():
+        _clear_probe_cache()
         print(f"✓ Removed peer config: {path}")
         return 0
     print(f"No peer config to remove at {path}")
@@ -479,6 +507,12 @@ def _cmd_update(argv: list[str]) -> int:
     if key:
         req.add_header("Authorization", f"Bearer {key}")
 
+    # An update replaces the leader process. Drop the cached probe entry
+    # so the next startup re-probes the new binary instead of trusting
+    # the pre-update "ok".
+    if not dry_run:
+        _clear_probe_cache(url)
+
     print(f"{'Previewing' if dry_run else 'Updating'} leader ({base})...")
     print(f"  branch: {branch}")
     print()
@@ -590,6 +624,10 @@ def _cmd_restart(argv: list[str]) -> int:
     )
     if key:
         req.add_header("Authorization", f"Bearer {key}")
+
+    # Restart drops the leader briefly. Clear the probe cache so the next
+    # startup re-probes instead of believing a now-stale "ok" entry.
+    _clear_probe_cache(url)
 
     print(f"Restarting leader ({base})...")
     print()
@@ -800,6 +838,10 @@ def _cmd_llm(argv: list[str]) -> int:
     )
     if key:
         req.add_header("Authorization", f"Bearer {key}")
+
+    # The leader is unreachable for 30-90 s during a swap; nuke the cache
+    # entry so the next probe sees the new model state, not the old "ok".
+    _clear_probe_cache(url)
 
     print(f"  Swapping leader to {model}...")
     t0 = time.time()

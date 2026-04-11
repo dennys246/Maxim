@@ -1053,7 +1053,9 @@ def _prompt_yes_no_with_timeout(question: str, timeout_s: float = 30.0) -> bool 
 
 ---
 
-## P6 — Probe remote URLs with caching + structured outcomes
+## P6 — Probe remote URLs with caching + structured outcomes ✅ DONE
+
+**Status:** Landed. New `ProbeResult` + `probe_llm_server` in `runtime/llm_server.py` with two-attempt retry and structured outcome classification (ok / auth_rejected / dns_fail / tls_error / connection_refused / timeout / http_5xx / other). New `runtime/probe_cache.py` with TTL-bounded on-disk cache, single-URL eviction, full clear. `_validate_remote_urls` rewritten to probe ALL remote URLs (public + loopback) and use cache short-circuiting; `auth_rejected` keeps the lane wired with a key-rotation hint. `peer/cli.py` clears the cache on `connect`, `forget`, `restart`, `update`, `llm` commands. Env knobs: `MAXIM_SKIP_REMOTE_PROBE`, `MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S` (clamped 0.2-5.0), `MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S` (0.5-10.0), `MAXIM_REMOTE_PROBE_CACHE_TTL_S` (0-600). 32 new tests in `tests/unit/test_probe_remote.py`.
 
 **Bug:** `_validate_remote_urls` at [lane_backends.py:735-760](../../src/maxim/runtime/lane_backends.py#L735-L760) skips public URLs. Dead tunnels wedge peers into retry storms.
 
@@ -1316,7 +1318,9 @@ All call sites in `openai_backend.py` that log `str(last_err)` switch to `_sanit
 
 ---
 
-## P8 — `maxim doctor` actionable checks
+## P8 — `maxim doctor` actionable checks ✅ DONE
+
+**Status:** Landed. Four new check functions in `doctor/checks.py`: `check_tier_effectiveness` (compares actual vs ideal tier choice and emits the exact `python -m maxim.models.download` command for the gap), `check_peer_vs_local_conflict` (info notice when --llm + peer config will run locally per P1), `check_remote_reachability` (uses P6's structured probe with outcome-specific fix hints), `check_storage_footprint` (fail/warn/ok bands on free disk + per-subdir breakdown). All wired into `run_all_checks` — environment + peer connectivity sections both extended. 16 new tests in `tests/unit/test_doctor_p8_checks.py`.
 
 **Bug:** Doctor reports tier detection passed when the routing decision is actually broken.
 

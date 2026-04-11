@@ -45,6 +45,34 @@ def _safe_int_env(name: str, default: int) -> int:
         return default
 
 
+def _safe_float_env(
+    name: str,
+    default: float,
+    *,
+    min_value: float | None = None,
+    max_value: float | None = None,
+) -> float:
+    """Parse a float env var with optional clamping. Falls back on bad input.
+
+    Used by P6's probe-tuning knobs (``MAXIM_REMOTE_PROBE_*``) where a
+    typo or out-of-range value should fall back to the documented default
+    instead of, say, a 0-second timeout that bricks every probe.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except (ValueError, TypeError):
+        logger.warning("Invalid %s=%r, using default %s", name, raw, default)
+        return default
+    if min_value is not None and value < min_value:
+        return min_value
+    if max_value is not None and value > max_value:
+        return max_value
+    return value
+
+
 # ─── Pre-upgrade tier snapshot (peer_leader_flexibility_plan F0.3) ──────
 #
 # Frozen snapshot of `_INFER_VRAM_TIERS` as of the commit that introduced
@@ -1092,31 +1120,128 @@ def build_primary_router(
     return router, manager
 
 
-def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> dict[str, Any]:
-    """Drop remote_url on lanes whose target server isn't responding.
+_PROBE_FIX_HINTS: dict[str, str] = {
+    "ok": "",
+    "auth_rejected": "Auth token rejected — run `maxim peer key` to rotate",
+    "dns_fail": "Check the hostname spelling in peer.yml or $MAXIM_LANE_*_REMOTE_URL",
+    "tls_error": "Check the TLS certificate validity on the leader",
+    "connection_refused": "Leader is not accepting connections — is `maxim` running there?",
+    "timeout": "Leader did not respond in time — is it cold-loading a model?",
+    "http_5xx": "Leader returned a server error — check `maxim peer logs`",
+    "other": "Unexpected error — check `maxim peer logs`",
+}
 
-    Only applies to loopback / private-IP URLs (where we can probe safely
-    without external network calls). Public/cloud URLs are trusted as-is —
-    probing them at startup would add latency + cost.
+
+def _log_probe_failure(
+    log: Any | None,
+    lane_name: str,
+    url: str,
+    result: Any,  # ProbeResult
+) -> None:
+    """Emit a structured warning with an outcome-specific fix hint."""
+    if log is None:
+        return
+    hint = _PROBE_FIX_HINTS.get(result.outcome, "unknown outcome")
+    log.warning(
+        "Lane '%s' probe failed (outcome=%s, url=%s): %s. Fix: %s. Falling back to local model selection.",
+        lane_name,
+        result.outcome,
+        url,
+        result.detail,
+        hint,
+    )
+
+
+def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> dict[str, Any]:
+    """Probe each lane's remote_url and drop unreachable ones.
+
+    Replaces the older "skip public URLs" heuristic with a structured
+    probe (:func:`maxim.runtime.llm_server.probe_llm_server`) backed by a
+    short-TTL on-disk cache (:mod:`maxim.runtime.probe_cache`). Catches
+    dead Cloudflare tunnels that the previous "loopback only" guard
+    would have left wired to the lane, generating retry storms on every
+    real request.
+
+    Behavior:
+      * Empty remote_url → skip.
+      * ``MAXIM_SKIP_REMOTE_PROBE=1`` → skip entirely (CI escape hatch).
+      * Cache hit fresher than ``MAXIM_REMOTE_PROBE_CACHE_TTL_S`` (default
+        60 s) → use cached outcome.
+      * Otherwise probe with two-attempt retry, persist the result.
+      * ``ok`` / ``auth_rejected`` → keep the lane wired. ``auth_rejected``
+        emits a warning so the user knows to rotate the key, but the
+        leader is still alive so we don't fall back locally.
+      * Anything else → log a structured warning + drop ``remote_url`` so
+        auto-spawn or local fallback takes over.
     """
+    if os.environ.get("MAXIM_SKIP_REMOTE_PROBE", "").strip().lower() in (
+        "1",
+        "true",
+        "t",
+        "yes",
+        "y",
+        "on",
+    ):
+        return dict(lane_configs)
+
+    from maxim.runtime import probe_cache
+    from maxim.runtime.llm_server import ProbeResult, probe_llm_server
+
+    ttl_s = _safe_float_env("MAXIM_REMOTE_PROBE_CACHE_TTL_S", 60.0, min_value=0.0, max_value=600.0)
+    first_timeout = _safe_float_env("MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S", 0.8, min_value=0.2, max_value=5.0)
+    retry_timeout = _safe_float_env("MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S", 2.5, min_value=0.5, max_value=10.0)
+
+    cache = probe_cache.load_cache()
+    cache_dirty = False
     out = dict(lane_configs)
+
     for name, cfg in lane_configs.items():
         url = getattr(cfg, "remote_url", None)
         if not url:
             continue
-        if _is_cloud_url(url):
-            continue  # don't probe public endpoints at startup
-        if _llm_server_responding_at(url):
-            continue
-        if logger is not None:
-            logger.warning(
-                "Lane '%s' remote_url=%s is unreachable — dropping it so auto-spawn "
-                "can take over. Unset MAXIM_LANE_%s_REMOTE_URL to silence this.",
-                name,
-                url,
-                name.upper(),
+
+        cached = cache.get(url)
+        if cached and probe_cache.is_fresh(cached, ttl_s):
+            result = ProbeResult(
+                url=url,
+                outcome=cached.get("outcome", "other"),
+                detail=cached.get("detail", ""),
+                latency_ms=cached.get("latency_ms"),
             )
+        else:
+            result = probe_llm_server(
+                url,
+                api_key=cfg.remote_api_key,
+                first_timeout_s=first_timeout,
+                retry_timeout_s=retry_timeout,
+            )
+            cache[url] = {
+                "outcome": result.outcome,
+                "detail": result.detail,
+                "probed_at": time.time(),
+                "latency_ms": result.latency_ms,
+            }
+            cache_dirty = True
+
+        if result.outcome == "auth_rejected":
+            # Leader is alive but rejected the key. KEEP the lane wired —
+            # the user needs to rotate the key, not fall back to local.
+            if logger is not None:
+                logger.warning(
+                    "Lane '%s' auth_rejected by %s. Fix: %s",
+                    name,
+                    url,
+                    _PROBE_FIX_HINTS["auth_rejected"],
+                )
+            continue
+        if result.outcome == "ok":
+            continue
+
+        _log_probe_failure(logger, name, url, result)
         out[name] = dataclasses.replace(cfg, remote_url=None, remote_model=None, remote_api_key=None)
+
+    if cache_dirty:
+        probe_cache.save_cache(cache)
     return out
 
 

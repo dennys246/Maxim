@@ -344,7 +344,12 @@ On startup you'll see a banner like:
 
 **Signal isolation:** the spawned server runs in its own process group so Ctrl+C on the Maxim CLI doesn't kill it mid-shutdown. The server stays alive through Maxim's cleanup (e.g., sim-report LLM roundup) and is stopped explicitly via the atexit handler.
 
-**Stale remote URL recovery:** if `MAXIM_LANE_LARGE_REMOTE_URL` points at a server that's no longer responding, Maxim warns once and drops the override so auto-spawn can take over. No more silent connection errors from leftover env vars.
+**Stale remote URL recovery (P6):** every configured `remote_url` is probed at startup using a structured two-attempt probe. Outcomes:
+- `ok` — lane stays wired.
+- `auth_rejected` (HTTP 401) — leader is alive but rejected the API key. Lane STAYS wired (because the leader is the right target — rotate the key with `maxim peer key`, don't fall back locally).
+- `dns_fail` / `tls_error` / `connection_refused` / `timeout` / `http_5xx` / `other` — lane is dropped, auto-spawn or local fallback takes over, and the warning carries an outcome-specific fix hint.
+
+Probe results are cached at `~/.maxim/util/last_probe_status.json` for 60 seconds (configurable via `MAXIM_REMOTE_PROBE_CACHE_TTL_S`) so repeated startups within the window pay zero probe cost. `maxim peer connect/forget/restart/update/llm` clear the cache so the next startup re-probes the freshly-changed leader. CI bypass: `MAXIM_SKIP_REMOTE_PROBE=1`.
 
 ### Leader mode (Phase 6b) — be the cluster's inference host
 

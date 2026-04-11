@@ -211,6 +211,10 @@ MAXIM_LLM_PROFILE=claude-sonnet  # Default model profile
 MAXIM_LLM_N_CTX=4096       # Override auto-computed llama.cpp n_ctx (P4c). Same as --llm-n-ctx.
 MAXIM_AUTO_DOWNLOAD_MODELS=1     # Skip the auto-download prompt (P5). Same as --auto-download.
 MAXIM_DATA_BUDGET_GB=50          # Optional soft cap on ~/.maxim disk usage; refuses downloads over budget.
+MAXIM_SKIP_REMOTE_PROBE=1        # Bypass the remote-URL probe (P6) — CI escape hatch.
+MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S=0.8   # First probe attempt timeout (clamped 0.2-5.0)
+MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S=2.5   # Retry probe timeout (clamped 0.5-10.0)
+MAXIM_REMOTE_PROBE_CACHE_TTL_S=60        # Probe cache freshness window (clamped 0-600)
 MAXIM_PROVENANCE_VERBOSITY=1     # 0=off, 1=compact, 2=verbose
 
 # Heartbeat + trace (debug/diagnostics)
