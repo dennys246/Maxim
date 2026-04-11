@@ -210,12 +210,6 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable Twilio SMS/Voice communication (requires TWILIO_* env vars).",
     )
-    hw.add_argument(
-        "--record-percepts",
-        action="store_true",
-        help="Record all percepts during a live session to ~/.maxim/sessions/ for replay.",
-    )
-
     # ── Agentic ────────────────────────────────────────────────────────
     agentic = parser.add_argument_group("agentic", "Agent loop display and logging")
     agentic.add_argument(
@@ -231,51 +225,6 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="no_agentic_console",
         help="Disable agentic event output to console.",
-    )
-
-    # ── Exploration ────────────────────────────────────────────────────
-    explore = parser.add_argument_group("exploration", "Exploration mode options (--mode exploration)")
-    explore.add_argument(
-        "--explore",
-        type=str,
-        nargs="?",
-        const="",
-        default=None,
-        help="Start in exploration mode with optional focus (e.g., --explore 'kitchen objects').",
-    )
-    explore.add_argument(
-        "--exploration-duration",
-        type=float,
-        default=None,
-        help="Duration in seconds for exploration session (default: unlimited).",
-    )
-    explore.add_argument(
-        "--exploration-autonomy",
-        type=str,
-        default="supervised",
-        choices=["supervised", "autonomous"],
-        help="Autonomy level for exploration: supervised (default) or autonomous.",
-    )
-    explore.add_argument(
-        "--exploration-allow-scripts",
-        action="store_true",
-        help="Allow writing and executing Python analysis scripts during exploration.",
-    )
-    explore.add_argument(
-        "--exploration-allow-training",
-        action="store_true",
-        help="Allow model training during exploration (requires GPU).",
-    )
-    explore.add_argument(
-        "--resume-session",
-        type=str,
-        default=None,
-        help="Resume a previous exploration session by ID.",
-    )
-    explore.add_argument(
-        "--list-sessions",
-        action="store_true",
-        help="List available exploration sessions and exit.",
     )
 
     # ── Simulation ─────────────────────────────────────────────────────
@@ -331,31 +280,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--research",
         action="store_true",
         help="Generate research report (Writer + Reviewer agents) after simulation completes.",
-    )
-    sim.add_argument(
-        "--arc",
-        type=str,
-        default=None,
-        dest="arc",
-        metavar="PATH",
-        help="Seed arc template YAML for generative mode.",
-    )
-    sim.add_argument(
-        "--aut-name",
-        type=str,
-        default="AUT",
-        dest="aut_name",
-        metavar="NAME",
-        help="Display name for the agent-under-test in simulation logs. Default: AUT",
-    )
-    sim.add_argument(
-        "--replay-from",
-        type=str,
-        default=None,
-        dest="replay_from",
-        metavar="SESSION_ID",
-        help="Replay recorded user interactions from a previous session. "
-        "Used with --sim-interactive for deterministic re-runs.",
     )
     sim.add_argument(
         "--sim-persona",

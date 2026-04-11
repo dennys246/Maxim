@@ -823,7 +823,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # If no meaningful action was specified, show quick-start guidance
     _has_sim = sim_path is not None
-    _has_explore = getattr(args, "explore", None) is not None
     _has_mode_override = "--mode" in (raw_argv or [])
     _has_robot = getattr(args, "robot_name", "reachy_mini") != "reachy_mini" or "--robot" in (raw_argv or [])
     _is_leader = os.environ.get("MAXIM_ROLE", "").strip().lower() == "leader"
@@ -834,7 +833,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # the MAXIM_LLM_ENABLED env var, so `maxim --llm qwen2.5-14b` silently
     # exited with the quick-start banner instead of entering the main loop.
     _has_llm_cli = bool(str(getattr(args, "language_model", "") or "").strip())
-    _has_action = _has_sim or _has_explore or _has_mode_override or _has_robot or _has_llm_cli
+    _has_action = _has_sim or _has_mode_override or _has_robot or _has_llm_cli
 
     if not (_has_action or _is_leader or _has_llm):
         print("Maxim — bio-inspired cognitive architecture\n")

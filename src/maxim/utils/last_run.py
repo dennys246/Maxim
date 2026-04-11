@@ -31,7 +31,6 @@ _SKIP_INDICATORS = {
     "--clear-cache",
     "--clear-memory",
     "--audit-architecture",
-    "--list-sessions",
 }
 
 _LAST_RUNS_PATH = Path.home() / ".maxim" / "last_runs.json"

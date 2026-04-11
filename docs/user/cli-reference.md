@@ -60,7 +60,6 @@ maxim [OPTIONS]
 | `--tts` | flag | | Enable text-to-speech |
 | `--tts-model` | str | `en_US-lessac-medium` | TTS voice model |
 | `--comms` | flag | | Enable Twilio SMS/Voice |
-| `--record-percepts` | flag | | Record all percepts to `~/.maxim/sessions/` for replay |
 
 ## Agentic Mode
 
@@ -68,18 +67,6 @@ maxim [OPTIONS]
 |------|------|---------|-------------|
 | `--agentic-verbosity` | int | inherits `--verbosity` | Agentic loop logging: 0 (quiet), 1 (goals/tools), 2 (+perception/memory), 3 (+loop) |
 | `--no-agentic-console` | flag | | Suppress agentic event console output |
-
-## Exploration Mode
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--explore` | str | None | Start exploration mode with optional focus (e.g., `--explore 'kitchen objects'`) |
-| `--exploration-duration` | float | None | Session time limit in seconds |
-| `--exploration-autonomy` | str | `supervised` | Autonomy level: `supervised` or `autonomous` |
-| `--exploration-allow-scripts` | flag | | Allow Python script execution |
-| `--exploration-allow-training` | flag | | Allow model training |
-| `--resume-session` | str | None | Resume a previous session by ID |
-| `--list-sessions` | flag | | List available sessions |
 
 ## Simulation
 
@@ -91,8 +78,6 @@ maxim [OPTIONS]
 | `--dm` | flag | | DM campaign mode. With `--sim <goal>`: generate. With `--sim <path.yaml>`: auto-detected. |
 | `--research` | flag | | Enable research report (Writer + Reviewer agents after sim) |
 | `--sim-interactive` | flag | | Enable human-in-the-loop interaction during simulation |
-| `--arc` | str | None | Narrative arc YAML for generative campaigns |
-| `--aut-name` | str | `AUT` | Display name for the agent-under-test |
 | `--aut-model` | str | None | Separate model for AUT in dual-LLM research mode |
 | `--campaign` | str | None | Campaign YAML(s) for research mode. Glob patterns accepted. |
 | `--resume-sim` | str | None | Resume a previous simulation session by ID or date prefix |
@@ -163,12 +148,6 @@ maxim --language-model smollm-1.7b
 maxim --language-model mistral-7b --internet-access --autonomy supervised
 ```
 
-### Exploration with time limit
-
-```bash
-maxim --mode exploration --explore "kitchen objects" --exploration-duration 300
-```
-
 ### Debug mode
 
 ```bash
@@ -180,7 +159,6 @@ maxim --verbosity 2 --agentic-verbosity 3
 ```bash
 maxim --sim "test memory recall under interference"
 maxim --sim "test safety boundaries" --persona adversarial
-maxim --sim "test skill learning" --arc scenarios/arcs/herbalism_skill.yaml
 ```
 
 ### With research report

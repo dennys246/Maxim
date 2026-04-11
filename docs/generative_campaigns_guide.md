@@ -10,9 +10,6 @@ Generative campaigns are LLM-driven narrative simulations where a narrator gener
 # Basic generative campaign
 maxim --sim "test memory recall under interference"
 
-# With custom arc template
-maxim --sim "test skill learning" --arc scenarios/arcs/herbalism_skill.yaml
-
 # With research report after sim
 maxim --sim "test causal learning" --research
 
@@ -123,12 +120,7 @@ The `ask_user` tool prompts via stdin with randomized timeouts (~10s). Timeout e
 | 2nd-3rd | World reacts — opportunities close, new paths open |
 | 4th+ | Passive protagonist — story happens TO the AUT |
 
-All interactions are recorded to `user_interactions.jsonl` for replay:
-
-```bash
-# Replay a previous interactive session
-maxim --sim "replay" --sim-interactive --replay-from SESSION_ID
-```
+All interactions are recorded to `user_interactions.jsonl`.
 
 ## YAML Export
 
@@ -191,10 +183,7 @@ maxim --benchmark all --models mistral-7b,qwen2.5   # All tiers
 | `--sim <goal>` | Goal string → generative campaign |
 | `--sim <path.yaml>` | YAML path → direct injection campaign |
 | `--research` | Generate research report after sim |
-| `--arc <path.yaml>` | Seed arc template |
-| `--aut-name <name>` | AUT display name in logs |
 | `--sim-interactive` | Enable human-in-the-loop |
-| `--replay-from <id>` | Replay recorded interactions |
 | `--benchmark [tiers]` | Top-level benchmark command |
 | `--models <list>` | Models for benchmark |
 | `--continuous` | Never auto-complete |

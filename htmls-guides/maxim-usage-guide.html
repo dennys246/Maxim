@@ -459,16 +459,6 @@ maxim [OPTIONS]
 --tts                        Enable text-to-speech
 --tts-model TEXT             Voice model (default: en_US-lessac-medium)
 
-<span class="text-indigo-400 text-xs uppercase tracking-wider">Exploration</span>
-
---explore [FOCUS]            Start exploration with optional focus topic
---exploration-duration FLOAT Session duration in seconds
---exploration-autonomy LEVEL supervised|autonomous
---exploration-allow-scripts  Allow Python script generation
---exploration-allow-training Allow model training during exploration
---resume-session ID          Resume a previous session
---list-sessions              List available sessions
-
 <span class="text-indigo-400 text-xs uppercase tracking-wider">Maintenance</span>
 
 --clear-cache                Remove __pycache__ directories
@@ -592,13 +582,6 @@ maxim [OPTIONS]
     </div>
 
     <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
-      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Timed Autonomous Exploration</h3>
-      <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">maxim --explore "kitchen objects" \
-  --exploration-duration 300 \
-  --exploration-autonomy autonomous</div>
-    </div>
-
-    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
       <h3 class="text-lg font-semibold text-emerald-400 mb-2">Verbose Debugging Session</h3>
       <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">maxim --mode live \
   --verbosity 2 \
@@ -606,14 +589,6 @@ maxim [OPTIONS]
   --language-model phi-3-mini</div>
     </div>
 
-    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
-      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Resume a Previous Session</h3>
-      <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"># List available sessions
-maxim --list-sessions
-
-# Resume by ID
-maxim --resume-session abc123</div>
-    </div>
   </section>
 
   <!-- 9. Memory Management -->

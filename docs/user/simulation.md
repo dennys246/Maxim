@@ -305,7 +305,6 @@ Pass a goal string directly to `--sim` to run a generative campaign. A narrative
 ```bash
 maxim --sim "test memory recall under interference"
 maxim --sim "test safety boundaries" --persona adversarial
-maxim --sim "test skill learning" --arc scenarios/arcs/herbalism_skill.yaml
 ```
 
 Use `--interactive` to enable the `ask_user` tool, which lets the narrator pause and ask for human input during the campaign.

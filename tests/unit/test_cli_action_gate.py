@@ -2,7 +2,7 @@
 
 The gate at cli.py:_has_action decides whether to enter the main loop or
 print the quick-start banner and exit. It used to check only:
-    --sim, --explore, --mode, --robot, MAXIM_ROLE=leader, MAXIM_LLM_ENABLED=1
+    --sim, --mode, --robot, MAXIM_ROLE=leader, MAXIM_LLM_ENABLED=1
 
 That meant `maxim --llm qwen2.5-14b` (without --sim or any other flag)
 silently exited because `--llm` sets args.language_model but not
@@ -30,13 +30,12 @@ def _compute_has_action(argv: list[str]) -> bool:
     sim_path = getattr(args, "sim", None)
 
     _has_sim = sim_path is not None
-    _has_explore = getattr(args, "explore", None) is not None
     _has_mode_override = "--mode" in argv
     _has_robot = getattr(args, "robot_name", "reachy_mini") != "reachy_mini" or "--robot" in argv
     _is_leader = os.environ.get("MAXIM_ROLE", "").strip().lower() == "leader"
     _has_llm = os.environ.get("MAXIM_LLM_ENABLED", "").strip() == "1"
     _has_llm_cli = bool(str(getattr(args, "language_model", "") or "").strip())
-    _has_action = _has_sim or _has_explore or _has_mode_override or _has_robot or _has_llm_cli
+    _has_action = _has_sim or _has_mode_override or _has_robot or _has_llm_cli
 
     return bool(_has_action or _is_leader or _has_llm)
 
