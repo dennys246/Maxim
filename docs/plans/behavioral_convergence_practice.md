@@ -109,6 +109,18 @@ If an experiment here produces a strong finding — positive or negative — tha
 
 The promotion is manual and deliberate. Not every finding here needs to change the substrate plan. Most will just accumulate as evidence.
 
+## Stimulus-agent experiments — isolation discipline
+
+Some hypotheses here (especially H3 NPC preference consistency, H4 consolidation-helps-behavior, and scale-dependent versions of H1/H2) will eventually benefit from a generative stimulus agent rather than hand-authored fixtures. That's the Mother NPC pattern documented in [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md).
+
+**Hard rule:** any experiment entry in this doc that uses a second agent (Mother, another NPC, another Maxim instance) as a stimulus source must satisfy the isolation audit from the deferred Mother NPC plan *before results count*. The audit is a gate, not a checkbox — if it can't be demonstrated that Mother and Baby shared zero state beyond the percept stream, the experiment proves nothing about Baby's substrate, only about Mother's LLM leaking through.
+
+Until the Mother NPC plan is revived, experiments here use hand-authored fixtures. When the Mother NPC plan revives (trigger: this doc has ≥2 successful experiments + 1 blocked-on-variety), new entries can use Mother but must document:
+- Mode (deterministic replay vs. live seeded)
+- LLM class for Mother and Baby (must be comparable — see same-class-LLM discipline in the deferred plan)
+- Reward signal source (Mother-as-judge vs. rigid scenario rule vs. mixed)
+- Isolation audit status for the specific runtime at experiment time (not a reference to an old audit — fresh verification)
+
 ## Review cadence + forcing function
 
 Each version bump (0.3 → 0.4, 0.4 → 0.5, 0.5 → 1.0) triggers a review of this document:

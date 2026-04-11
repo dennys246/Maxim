@@ -127,13 +127,14 @@ Two ways to write the mock LLM were considered:
   - `torch.cuda.manual_seed_all(seed)` if CUDA is available
 - Remove the hardcoded seed from [similarity/semantic.py](../../src/maxim/similarity/semantic.py) — it becomes derived from the global seed
 - `ScenarioSource` accepts an optional `rng: random.Random` parameter for reproducible shuffling of its internal queues
-- Documentation: "Byte-identical determinism requires `--seed <N>` and fixture-driven mode (no live LLM in the loop)."
+- **Per-agent RNG streams** — when multiple agents are constructed in one sim (e.g., multi-NPC campaigns, or the eventual Mother+Baby setup from [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md)), each agent gets its own `random.Random` instance seeded from `seed + hash(agent_id)` rather than sharing the global RNG. This prevents cross-agent decision correlation that would look like information leak even without any actual shared state. Pass the per-agent RNG into bio-system constructors that need randomness.
+- Documentation: "Byte-identical determinism requires `--seed <N>` and fixture-driven mode (no live LLM in the loop). Multi-agent determinism additionally requires per-agent RNG streams — covered by this item."
 
-**Exit:** Two runs of the same P0 pilot fixture with the same `--seed` produce identical session reports (tool-call sequences, ATL node IDs, NAc bias values). Changing the seed produces different-but-still-deterministic outputs.
+**Exit:** Two runs of the same P0 pilot fixture with the same `--seed` produce identical session reports (tool-call sequences, ATL node IDs, NAc bias values). Changing the seed produces different-but-still-deterministic outputs. Two agents in a multi-agent sim with the same base seed have reproducible but *uncorrelated* RNG streams.
 
-**Scope:** ~150 LOC.
+**Scope:** ~180 LOC (~150 for base seeding + ~30 for per-agent stream derivation).
 
-**Dependencies:** None. Can land first if convenient.
+**Dependencies:** None. Can land first if convenient. Per-agent stream derivation benefits from F0.5 agent_id threading being in place, but doesn't strictly require it — the `agent_id` string is available at agent construction time regardless.
 
 ## Scope summary
 
@@ -142,8 +143,8 @@ Two ways to write the mock LLM were considered:
 | S1 — FixtureDrivenOrchestrator | ~200 LOC | S2 | Yes |
 | S2 — LLMBackend Protocol + MockLLMBackend (Option B) | ~200 LOC (~50 Protocol + ~150 mock) | — | Yes |
 | S3 — Persistence subprocess harness | ~300 LOC | S1, S2 | Yes (before P1 ships) |
-| S4 — Deterministic seeding CLI | ~150 LOC | — | Yes |
-| **Total** | **~850 LOC + tests** | — | — |
+| S4 — Deterministic seeding CLI (+ per-agent RNG streams) | ~180 LOC | — | Yes |
+| **Total** | **~880 LOC + tests** | — | — |
 
 ## Order of operations
 
