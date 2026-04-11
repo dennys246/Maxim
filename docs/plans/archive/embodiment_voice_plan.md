@@ -1,8 +1,8 @@
 # Embodiment & Voice Plan — Prompts, Acting Coach, Replanning
 
-**Status:** Active, gating 1.0
-**New plan** (not a merge of existing plans)
-**Target versions:** 0.3 → 0.4 → 1.0
+**Status:** ARCHIVED — merged into [substrate_plan.md](../substrate_plan.md) as Track B (B1–B5). B2 (`NarrativeModulator` ghost removal) landed in the substrate plan's F0 foundation wave. Merge happened because B1's PromptAssembler and substrate P1's text-to-prompt migration touch the same files — running them as separate plans was a merge-conflict generator, and the original plan already noted "P1 and B1 should land together." See substrate_plan.md's Track B section for the current version.
+
+**Original target versions:** 0.3 → 0.4 → 1.0
 
 ## Goal
 
