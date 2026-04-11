@@ -828,7 +828,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     _has_robot = getattr(args, "robot_name", "reachy_mini") != "reachy_mini" or "--robot" in (raw_argv or [])
     _is_leader = os.environ.get("MAXIM_ROLE", "").strip().lower() == "leader"
     _has_llm = os.environ.get("MAXIM_LLM_ENABLED", "").strip() == "1"
-    _has_action = _has_sim or _has_explore or _has_mode_override or _has_robot
+    # --llm / --language-model on the command line is a meaningful action
+    # by itself ("start maxim with this model loaded"). Previously this
+    # flag set args.language_model but the quick-start gate only checked
+    # the MAXIM_LLM_ENABLED env var, so `maxim --llm qwen2.5-14b` silently
+    # exited with the quick-start banner instead of entering the main loop.
+    _has_llm_cli = bool(str(getattr(args, "language_model", "") or "").strip())
+    _has_action = _has_sim or _has_explore or _has_mode_override or _has_robot or _has_llm_cli
 
     if not (_has_action or _is_leader or _has_llm):
         print("Maxim — bio-inspired cognitive architecture\n")

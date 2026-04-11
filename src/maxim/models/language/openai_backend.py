@@ -28,6 +28,37 @@ def _is_rate_limit_error(err: Exception) -> bool:
     return "429" in msg or "rate" in msg
 
 
+def _sanitize_error_message(err: BaseException | None, *, max_len: int = 500) -> str:
+    """Collapse HTML error bodies to a short summary; truncate long strings.
+
+    Cloudflare (and other reverse proxies) return ~4KB HTML bodies on 5xx
+    errors that the OpenAI client surfaces via ``str(err)``. Logging those
+    verbatim buries the terminal. This helper detects HTML anywhere in the
+    first 200 characters (covers exception-chain prefixes like
+    ``"RuntimeError: <!DOCTYPE html>..."``) and replaces the body with a
+    one-line ``<title, N bytes>`` summary.
+
+    Plain-text error messages over ``max_len`` are truncated with an
+    ellipsis marker. Short plain strings pass through unchanged.
+    """
+    if err is None:
+        return ""
+    import re
+
+    msg = str(err)
+    # Check the first 200 chars so HTML bodies wrapped by an exception
+    # chain (e.g. "RuntimeError: <!DOCTYPE ...") are still caught.
+    head = msg[:200]
+    head_lower = head.lower()
+    if "<!doctype" in head_lower or "<html" in head_lower:
+        title_match = re.search(r"<title>([^<]+)</title>", msg, re.IGNORECASE)
+        title = title_match.group(1).strip() if title_match else "HTML error body"
+        return f"<{title}, {len(msg)} bytes>"
+    if len(msg) > max_len:
+        return msg[:max_len] + "… (truncated)"
+    return msg
+
+
 def _http_status_of(err: Exception | None) -> int | None:
     """Best-effort extraction of HTTP status code from an openai client error."""
     if err is None:
@@ -343,6 +374,7 @@ class _OpenAIBackend:
             attempt += 1
 
         # Final failure — emit a trace record with error details before returning
+        sanitized_error = _sanitize_error_message(last_err)
         emit_trace(
             TraceRecord(
                 request_id=request_id,
@@ -352,10 +384,10 @@ class _OpenAIBackend:
                 status="error",
                 http_status=_http_status_of(last_err),
                 latency_ms=(time.time() - start) * 1000,
-                error=str(last_err)[:200] if last_err else None,
+                error=sanitized_error[:200] if sanitized_error else None,
             )
         )
-        warn("OpenAI call failed [req=%s]: %s", request_id[:8], last_err)
+        warn("OpenAI call failed [req=%s]: %s", request_id[:8], sanitized_error)
         return LLMResponse(content="")
 
     def _parse_response(self, resp: Any, model: str, start: float) -> LLMResponse:

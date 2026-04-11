@@ -35,10 +35,15 @@ logger = logging.getLogger(__name__)
 # Model Registry
 # ─────────────────────────────────────────────────────────────────────────────
 
+# expected_bytes is the authoritative size for download verification. When set,
+# downloaded files must match exactly or download_file treats them as corrupted
+# and deletes them. Leave None for profiles where the upstream size has not
+# been verified yet; the download path skips the size check in that case.
 LLM_MODELS: dict[str, dict[str, Any]] = {
     "smollm-1.7b-instruct": {
         "description": "SmolLM 1.7B - Small, fast, good for CPU (recommended for limited hardware)",
         "size_gb": 1.1,
+        "expected_bytes": 1055609344,
         "quantization": "Q4_K_M",
         "url": "https://huggingface.co/QuantFactory/SmolLM-1.7B-Instruct-GGUF/resolve/main/SmolLM-1.7B-Instruct.Q4_K_M.gguf",
         "filename": "SmolLM-1.7B-Instruct.Q4_K_M.gguf",
@@ -46,6 +51,7 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
     "smollm2-1.7b-instruct": {
         "description": "SmolLM2 1.7B - Improved SmolLM, small and efficient",
         "size_gb": 1.0,
+        "expected_bytes": None,
         "quantization": "Q4_K_M",
         "url": "https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
         "filename": "SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
@@ -53,6 +59,7 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
     "phi-2": {
         "description": "Microsoft Phi-2 2.7B - Compact but capable",
         "size_gb": 1.8,
+        "expected_bytes": 1789239136,
         "quantization": "Q4_K_M",
         "url": "https://huggingface.co/TheBloke/phi-2-GGUF/resolve/main/phi-2.Q4_K_M.gguf",
         "filename": "phi-2.Q4_K_M.gguf",
@@ -60,6 +67,7 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
     "gemma-2-2b-it": {
         "description": "Google Gemma 2 2B Instruct - Small and efficient",
         "size_gb": 1.6,
+        "expected_bytes": 1708582752,
         "quantization": "Q4_K_M",
         "url": "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf",
         "filename": "gemma-2-2b-it-Q4_K_M.gguf",
@@ -67,6 +75,7 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
     "mistral-7b-instruct-v0.2": {
         "description": "Mistral 7B Instruct v0.2 - High quality, needs more RAM",
         "size_gb": 4.4,
+        "expected_bytes": 4368439584,
         "quantization": "Q4_K_M",
         "url": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
         "filename": "mistral-7b-instruct-v0.2.Q4_K_M.gguf",
@@ -74,6 +83,7 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
     "llama-3-8b-instruct": {
         "description": "Meta Llama 3 8B Instruct - Excellent quality, needs GPU or lots of RAM",
         "size_gb": 4.9,
+        "expected_bytes": 4920734272,
         "quantization": "Q4_K_M",
         "url": "https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf",
         "filename": "Meta-Llama-3-8B-Instruct.Q4_K_M.gguf",
@@ -81,6 +91,7 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
     "qwen2-7b-instruct": {
         "description": "Alibaba Qwen2 7B Instruct - Strong multilingual support",
         "size_gb": 4.4,
+        "expected_bytes": 4683071264,
         "quantization": "Q4_K_M",
         "url": "https://huggingface.co/Qwen/Qwen2-7B-Instruct-GGUF/resolve/main/qwen2-7b-instruct-q4_k_m.gguf",
         "filename": "qwen2-7b-instruct-q4_k_m.gguf",
@@ -88,6 +99,7 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
     "qwen2.5-14b-instruct": {
         "description": "Alibaba Qwen2.5 14B Instruct - Excellent instruction following, 32K context",
         "size_gb": 8.5,
+        "expected_bytes": 8988110976,
         "quantization": "Q4_K_M",
         "url": "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf",
         "filename": "Qwen2.5-14B-Instruct.Q4_K_M.gguf",
@@ -226,16 +238,37 @@ def _progress_hook(block_num: int, block_size: int, total_size: int) -> None:
             sys.stdout.flush()
 
 
-def download_file(url: str, dest_path: Path, desc: str = "") -> bool:
-    """Download a file with progress indicator.
+def download_file(
+    url: str,
+    dest_path: Path,
+    desc: str = "",
+    *,
+    expected_bytes: int | None = None,
+) -> bool:
+    """Download a file atomically with progress indicator.
+
+    Writes to ``{dest_path}.partial``, verifies size if ``expected_bytes``
+    is provided, then ``os.replace()`` atomically to ``dest_path``. A
+    partial file is cleaned up on ANY failure path, including
+    ``KeyboardInterrupt`` — the previous implementation left a corrupt
+    file at the final name on ``URLError`` and on Ctrl+C, which then
+    passed ``profile_has_local_file`` on subsequent runs and crashed the
+    loader in a retry loop.
 
     Args:
         url: URL to download from.
-        dest_path: Destination path.
-        desc: Description for logging.
+        dest_path: Final destination path (the atomic rename target).
+        desc: Optional description used in the progress print.
+        expected_bytes: If provided, the downloaded file must match this
+            byte count exactly or the download is rejected. Sourced from
+            ``LLM_MODELS[<profile>]["expected_bytes"]``. ``None`` skips
+            the size check (legacy profiles that have not been verified
+            against HuggingFace yet).
 
     Returns:
-        True if download succeeded, False otherwise.
+        True if the file exists at ``dest_path`` after the call (either
+        newly downloaded or already present). False on any failure, with
+        no residual ``.partial`` file left behind.
     """
     dest_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -243,22 +276,66 @@ def download_file(url: str, dest_path: Path, desc: str = "") -> bool:
         print(f"  Already exists: {dest_path}")
         return True
 
+    tmp_path = dest_path.with_suffix(dest_path.suffix + ".partial")
+    # Clean up any stale partial from a prior crashed run before starting.
+    if tmp_path.exists():
+        try:
+            tmp_path.unlink()
+        except OSError as e:
+            print(f"  Warning: could not remove stale partial {tmp_path.name}: {e}")
+
     print(f"  Downloading: {desc or dest_path.name}")
     print(f"  From: {url}")
 
     try:
-        urlretrieve(url, dest_path, reporthook=_progress_hook)
-        print(f"  Saved to: {dest_path}")
-        return True
-    except URLError as e:
-        print(f"  Download failed: {e}")
-        return False
-    except Exception as e:
+        urlretrieve(url, tmp_path, reporthook=_progress_hook)
+    except BaseException as e:
+        # BaseException catches KeyboardInterrupt (which Exception doesn't)
+        # so Ctrl+C mid-download cleans up before exiting. Re-raise after
+        # cleanup so the caller's interrupt handling still fires.
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+        if isinstance(e, KeyboardInterrupt):
+            print("  Download interrupted — cleaned up partial file")
+            raise
+        if isinstance(e, URLError):
+            print(f"  Download failed: {e}")
+            return False
         print(f"  Error: {e}")
-        # Clean up partial download
-        if dest_path.exists():
-            dest_path.unlink()
         return False
+
+    # Verify size before the atomic rename. A truncated download (network
+    # drop that urlretrieve didn't notice, HF returning a partial response,
+    # etc.) would otherwise land at the final path and pass future
+    # profile_has_local_file checks — leading to cryptic load failures.
+    if expected_bytes is not None:
+        actual_bytes = tmp_path.stat().st_size
+        if actual_bytes != expected_bytes:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+            print(f"  Download size mismatch: got {actual_bytes} bytes, expected {expected_bytes}. File rejected.")
+            return False
+
+    try:
+        import os as _os
+
+        _os.replace(tmp_path, dest_path)
+    except OSError as e:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+        print(f"  Rename failed: {e}")
+        return False
+
+    print(f"  Saved to: {dest_path}")
+    return True
 
 
 def download_llm(
@@ -289,7 +366,12 @@ def download_llm(
     print(f"  Size: ~{model_info['size_gb']} GB")
 
     dest_path = models_dir / model_info["filename"]
-    return download_file(model_info["url"], dest_path, model_info["filename"])
+    return download_file(
+        model_info["url"],
+        dest_path,
+        model_info["filename"],
+        expected_bytes=model_info.get("expected_bytes"),
+    )
 
 
 def delete_llm(

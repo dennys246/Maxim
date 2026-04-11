@@ -139,6 +139,26 @@ class TestProfileHasLocalFile:
         # Unknown profile — should return False, not raise
         assert profile_has_local_file("nonexistent-model-xyz") is False
 
+    def test_rejects_partial_suffix(self, tmp_path):
+        """A profile resolved to a .partial tmp file must return False
+        even if the file exists on disk. download_file writes to
+        {dest}.partial during the transfer and only os.replace()s to
+        the final path after size verification. A stale .partial from a
+        crashed download would otherwise be loaded by the spawner and
+        fail in cryptic ways."""
+        # Create a fake .partial file that DOES exist so the vanilla
+        # Path.is_file() check would pass.
+        partial = tmp_path / "Qwen2.5-14B-Instruct.Q4_K_M.gguf.partial"
+        partial.write_bytes(b"truncated download")
+        assert partial.is_file()
+
+        # Mock load_llm_config to resolve the profile to the partial path
+        class _FakeCfg:
+            model_path = str(partial)
+
+        with patch("maxim.models.language.config.load_llm_config", return_value=_FakeCfg()):
+            assert profile_has_local_file("qwen2.5-14b-instruct") is False
+
 
 class TestImportPaths:
     def test_import_from_lane_backends(self):

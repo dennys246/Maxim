@@ -143,6 +143,14 @@ def profile_has_local_file(profile_name: str) -> bool:
 
     Used to filter the capability-driven tier table down to models the user
     has actually downloaded. Returns False on any error — fail-closed.
+
+    Explicitly rejects ``.partial`` paths: ``download_file`` writes to a
+    ``{dest}.partial`` tmp file and only ``os.replace()`` to the final
+    path after size verification. A resolved ``model_path`` ending in
+    ``.partial`` means either (a) the profile is mis-configured to point
+    at a tmp file, or (b) we somehow resolved against a stale partial
+    from a crashed download. Either way, returning True would let the
+    spawner try to load a truncated GGUF, which fails in cryptic ways.
     """
     if not profile_name:
         return False
@@ -151,6 +159,10 @@ def profile_has_local_file(profile_name: str) -> bool:
 
         cfg = load_llm_config(profile_override=profile_name)
         model_path = getattr(cfg, "model_path", "") or ""
-        return bool(model_path) and Path(model_path).is_file()
+        if not model_path:
+            return False
+        if model_path.endswith(".partial"):
+            return False
+        return Path(model_path).is_file()
     except Exception:
         return False
