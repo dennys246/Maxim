@@ -107,6 +107,18 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "mistral_instruct",
         "stop": ["</s>"],
         "n_ctx": 4096,
+        # Architecture metadata for P4c dynamic n_ctx sizing (see
+        # peer_leader_flexibility_plan). weights_gb is the Q4_K_M GGUF
+        # size (4.07 GB measured from bartowski/TheBloke HF metadata).
+        # GQA: 32 attention heads / 4 = 8 KV heads. kv_type_bytes=2
+        # is f16 KV cache (llama.cpp default without --type_k/--type_v).
+        "arch": {
+            "n_layers": 32,
+            "n_kv_heads": 8,
+            "head_dim": 128,
+            "kv_type_bytes": 2,
+            "weights_gb": 4.1,
+        },
     },
     "smollm-1.7b-instruct": {
         "backend": "llama_cpp",
@@ -115,6 +127,17 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "chatml",
         "stop": ["<|im_end|>", "</s>"],
         "n_ctx": 4096,
+        # HuggingFaceTB/SmolLM-1.7B-Instruct config: 24 layers,
+        # 32 attention heads, 32 KV heads (MHA, no GQA on the
+        # smaller SmolLM variants), hidden_size 2048 → head_dim 64.
+        # Q4_K_M GGUF: 0.98 GB measured.
+        "arch": {
+            "n_layers": 24,
+            "n_kv_heads": 32,
+            "head_dim": 64,
+            "kv_type_bytes": 2,
+            "weights_gb": 1.0,
+        },
     },
     "llama-2-7b-chat": {
         "backend": "llama_cpp",
@@ -123,6 +146,18 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "llama2_chat",
         "stop": ["</s>"],
         "n_ctx": 4096,
+        # Llama 2 7B published arch: 32 layers, 32 attention heads,
+        # 32 KV heads (MHA — GQA wasn't introduced until Llama 2 70B),
+        # hidden_size 4096 → head_dim 128.
+        # Q4_K_M GGUF: ~3.83 GB (TheBloke; not in our HF scrape because
+        # meta-llama repos are gated behind auth).
+        "arch": {
+            "n_layers": 32,
+            "n_kv_heads": 32,
+            "head_dim": 128,
+            "kv_type_bytes": 2,
+            "weights_gb": 3.9,
+        },
     },
     "llama-2-13b-chat": {
         "backend": "llama_cpp",
@@ -131,6 +166,16 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "llama2_chat",
         "stop": ["</s>"],
         "n_ctx": 4096,
+        # Llama 2 13B published arch: 40 layers, 40 attention heads,
+        # 40 KV heads (MHA), hidden_size 5120 → head_dim 128.
+        # Q4_K_M GGUF: ~7.37 GB (TheBloke).
+        "arch": {
+            "n_layers": 40,
+            "n_kv_heads": 40,
+            "head_dim": 128,
+            "kv_type_bytes": 2,
+            "weights_gb": 7.4,
+        },
     },
     "llama-3-8b-instruct": {
         "backend": "llama_cpp",
@@ -139,6 +184,16 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "llama3_instruct",
         "stop": ["<|eot_id|>"],
         "n_ctx": 8192,
+        # Meta Llama 3 8B published arch: 32 layers, 32 attention
+        # heads, 8 KV heads (GQA ratio 4), hidden_size 4096 → head_dim 128.
+        # Q4_K_M GGUF: 4.58 GB measured (QuantFactory).
+        "arch": {
+            "n_layers": 32,
+            "n_kv_heads": 8,
+            "head_dim": 128,
+            "kv_type_bytes": 2,
+            "weights_gb": 4.6,
+        },
     },
     "phi-2": {
         "backend": "llama_cpp",
@@ -147,6 +202,16 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "phi",
         "stop": ["<|endoftext|>"],
         "n_ctx": 2048,
+        # Microsoft phi-2 published arch: 32 layers, 32 attention heads,
+        # 32 KV heads (MHA), hidden_size 2560 → head_dim 80.
+        # Q4_K_M GGUF: 1.67 GB measured (TheBloke).
+        "arch": {
+            "n_layers": 32,
+            "n_kv_heads": 32,
+            "head_dim": 80,
+            "kv_type_bytes": 2,
+            "weights_gb": 1.7,
+        },
     },
     "phi-3-mini-4k-instruct": {
         "backend": "llama_cpp",
@@ -155,6 +220,17 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "phi3",
         "stop": ["<|end|>", "<|endoftext|>"],
         "n_ctx": 4096,
+        # Microsoft Phi-3-mini-4k published arch: 32 layers, 32
+        # attention heads, 32 KV heads (MHA for the mini variant;
+        # the medium variant uses GQA), hidden_size 3072 → head_dim 96.
+        # Q4_K_M GGUF: ~2.3 GB (microsoft/Phi-3-mini-4k-instruct-gguf).
+        "arch": {
+            "n_layers": 32,
+            "n_kv_heads": 32,
+            "head_dim": 96,
+            "kv_type_bytes": 2,
+            "weights_gb": 2.3,
+        },
     },
     "qwen2.5-14b-instruct": {
         "backend": "llama_cpp",
@@ -163,6 +239,20 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "chatml",
         "stop": ["<|im_end|>", "<|endoftext|>"],
         "n_ctx": 32768,
+        # Alibaba Qwen2.5-14B-Instruct published arch: 48 layers,
+        # 40 attention heads, 8 KV heads (GQA ratio 5), hidden_size
+        # 5120 → head_dim 128.
+        # Q4_K_M GGUF: 8.37 GB measured (bartowski). The 32K declared
+        # n_ctx above is the training-time ceiling; actual runtime
+        # n_ctx on tight hardware is computed dynamically by P4c's
+        # estimate_max_ctx (e.g., 16 GB VRAM caps it at ~4K f16 KV).
+        "arch": {
+            "n_layers": 48,
+            "n_kv_heads": 8,
+            "head_dim": 128,
+            "kv_type_bytes": 2,
+            "weights_gb": 8.4,
+        },
     },
     "qwen2-7b-instruct": {
         "backend": "llama_cpp",
@@ -171,6 +261,17 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "chatml",
         "stop": ["<|im_end|>", "<|endoftext|>"],
         "n_ctx": 8192,
+        # Alibaba Qwen2-7B-Instruct published arch: 28 layers,
+        # 28 attention heads, 4 KV heads (GQA ratio 7), hidden_size
+        # 3584 → head_dim 128.
+        # Q4_K_M GGUF: 4.36 GB measured (Qwen/Qwen2-7B-Instruct-GGUF).
+        "arch": {
+            "n_layers": 28,
+            "n_kv_heads": 4,
+            "head_dim": 128,
+            "kv_type_bytes": 2,
+            "weights_gb": 4.4,
+        },
     },
     "gemma-2b-it": {
         "backend": "llama_cpp",
@@ -179,6 +280,18 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "gemma",
         "stop": ["<end_of_turn>"],
         "n_ctx": 8192,
+        # Google Gemma 1 2B published arch: 18 layers, 8 attention
+        # heads, 1 KV head (MQA — a single shared KV head), hidden_size
+        # 2048, head_dim 256 (head_dim * num_heads != hidden_size
+        # because Gemma uses separate projection). kv_type_bytes is
+        # still f16. Weights ~1.5 GB.
+        "arch": {
+            "n_layers": 18,
+            "n_kv_heads": 1,
+            "head_dim": 256,
+            "kv_type_bytes": 2,
+            "weights_gb": 1.5,
+        },
     },
     "gemma-7b-it": {
         "backend": "llama_cpp",
@@ -187,6 +300,17 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "prompt_style": "gemma",
         "stop": ["<end_of_turn>"],
         "n_ctx": 8192,
+        # Google Gemma 1 7B published arch: 28 layers, 16 attention
+        # heads, 16 KV heads (MHA), hidden_size 3072, head_dim 256
+        # (Gemma uses the same "large heads, non-standard ratio"
+        # pattern as Gemma 2B). Weights ~5.0 GB Q4_K_M.
+        "arch": {
+            "n_layers": 28,
+            "n_kv_heads": 16,
+            "head_dim": 256,
+            "kv_type_bytes": 2,
+            "weights_gb": 5.0,
+        },
     },
     # PyTorch/Transformers profiles (for Blackwell GPU support)
     "smollm-1.7b-instruct-torch": {
