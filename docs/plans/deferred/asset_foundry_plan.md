@@ -1,5 +1,9 @@
 # Asset Foundry Plan
 
+> **Status:** DEFERRED (post-1.0). Design complete, not started.
+>
+> **Revive when:** Manual SEM component authoring becomes a demonstrable bottleneck — i.e., someone is waiting on new components to unblock a sim or experiment. Current library (54 components across 7 categories) is sufficient for 1.0 demonstration scenarios. Do not build this preemptively.
+
 **Goal:** An autonomous pipeline that generates, validates, tests, and curates SEM components — expanding the component library without manual YAML authoring while stress-testing the bio-stack against novel entity designs.
 
 **Motivation:** Hand-writing SEM components is slow and biased toward what the author thinks of. An LLM-driven foundry generates creative sensor combinations, failure modes, and affordance patterns that humans wouldn't consider — then the simulation system ruthlessly filters for the ones that actually produce interesting cognitive behavior.

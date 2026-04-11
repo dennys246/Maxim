@@ -1,6 +1,10 @@
 # Pecking Order Graph Plan
 
-> **Status:** Not started. Design phase.
+> **Status:** DEFERRED (post-1.0). Not started. Design phase complete.
+>
+> **Revive when:** (1) [substrate_plan.md](../substrate_plan.md) A6 convergence harnesses pass, AND (2) a second real node exists in the mesh that isn't the Mac peer (i.e., there's an actual multi-node topology to unify). Until then, the single-leader + peer model is sufficient and POG's 1,200 LOC would be abstracting over a structure that doesn't exist yet.
+>
+> **Note on overlap with [cleanup_wave.md](../cleanup_wave.md) C4:** Agent Permissions ships standalone in the cleanup wave. When POG is revived, it consumes the permissions layer via its AUTHORITY domain rather than replacing it.
 > **Goal:** Unify leader/peer roles, mesh topology, compute routing, and Mother Maxim hierarchy into a single directed graph with domain-scoped pecking relationships on each edge.
 > **Depends on:** PyPI publication (v1.0.0). Subsumes Mesh Phase 0a/0b, Capability Agent, Multi-Node Admin, and reshapes Mother Maxim's federation model.
 > **Estimated scope:** ~1,200 LOC across 5 phases + prep items woven into publication.

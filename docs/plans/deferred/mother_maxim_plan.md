@@ -1,6 +1,8 @@
 # Mother Maxim Plan
 
-> **Status:** Design complete. Pre-publication prep (M-0 items) done — store protocols defined, threading fixed, metadata fields added. Implementation (M-1+) not started.
+> **Status:** DEFERRED (post-1.0). Design complete. Pre-publication prep (M-0 items) done — store protocols defined, threading fixed, metadata fields added. Implementation (M-1+) not started.
+>
+> **Revive when:** (1) [substrate_plan.md](../substrate_plan.md) A6 convergence harnesses pass, AND (2) [deferred/pecking_order_graph_plan.md](pecking_order_graph_plan.md) has shipped, AND (3) at least one external user has asked for persistent cross-session memory. Until all three conditions hold, this plan stays parked — its 3,800 LOC scope is a black hole that would swallow 1.0 if revived early.
 > **Goal:** A persistent, public Maxim instance that accumulates collective memory across all users and sessions. Exposed via public URL with database-backed persistence.
 > **Depends on:** PyPI publication (v1.0.0), foundational buildout complete.
 > **Estimated scope:** ~3,800 LOC across 6 phases + pre-pub prep.

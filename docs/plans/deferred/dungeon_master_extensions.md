@@ -1,6 +1,8 @@
 # Dungeon Master Extensions Plan
 
-> **Status:** Not started. Depends on [Dungeon Master Persona MVP](../archive/dungeon_master_persona.md) shipping and accumulating real usage.
+> **Status:** DEFERRED (post-1.0). Not started.
+>
+> **Revive when:** Real DM campaign usage produces a specific signal pointing at one extension (encounter library, architect persona, adaptation engine, sub-sim isolation, or true-random RNG). Currently there is no such signal — this is a maybe-list, not a commitment. Each extension is independently scopable and should only ship if MVP usage reveals actual demand.
 >
 > **Summary:** Optional follow-on capabilities for DM. Each extension is independently scoppable and should only ship if MVP usage reveals actual demand. Listed in rough priority order, but the *real* ordering comes from MVP pain points.
 

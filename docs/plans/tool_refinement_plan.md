@@ -4,7 +4,7 @@
 >
 > **Scope:** Expansion and curation of the tool surface the agent can call. Covers introspection tools (agent → agent's own state), action tools (agent → world), and composite tools. Tracks what's shipped, what's proposed, what's been removed, and the principles guiding additions.
 
-Parallel to the Doctor Enhancements section in [future_plans.md](future_plans.md) (which curates environment diagnostics) and [agent_mesh.md](../archive/agent_mesh.md) (which curates compute infrastructure), this plan curates **the agent's own action + introspection surface**. Where those plans shape what humans can see, this one shapes what the *agent* can see and do.
+Where [cleanup_wave.md](cleanup_wave.md) curates the human CLI surface and [archive/agent_mesh.md](../archive/agent_mesh.md) curates compute infrastructure, this plan curates **the agent's own action + introspection surface**. Those plans shape what humans can see; this one shapes what the *agent* can see and do.
 
 ---
 
