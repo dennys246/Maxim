@@ -39,11 +39,20 @@ class LaneModelConfig:
 #
 # Tiers are inclusive-lower, exclusive-upper: a 15.9GB card lands in the >=8 tier.
 _INFER_VRAM_TIERS: tuple[tuple[float, str], ...] = (
-    (14.0, "llama-2-13b-chat"),  # 13B Q4 ~8GB, leaves headroom on 16GB cards
-    (8.0, "llama-3-8b-instruct"),  # 8B Q4 ~5GB
-    (4.0, "mistral-7b-instruct-v0.2"),  # 7B Q4 ~4.5GB
+    (16.0, "qwen2.5-14b-instruct"),  # 14B Q4 ~9.5GB weights, 32K max ctx, strong tool-use (P4a)
+    (14.0, "llama-2-13b-chat"),  # 13B Q4 ~8GB, 4K ctx
+    (8.0, "llama-3-8b-instruct"),  # 8B Q4 ~5GB, 8K ctx
+    (4.0, "mistral-7b-instruct-v0.2"),  # 7B Q4 ~4.5GB, 4K ctx
     (0.0, "smollm-1.7b-instruct"),  # 1.7B Q4 ~1GB, CPU fallback
 )
+# NOTE: The 16 GB threshold covers both "CUDA discrete 16 GB cards
+# (RTX 5080 class)" and "Apple Silicon 24 GB effective VRAM at default
+# headroom". qwen2.5-14b's declared profile n_ctx of 32K produces a KV
+# cache cost that only fits in budgets above ~20 GB with f16 KV, so
+# 16 GB cards need a reduced runtime n_ctx. That's P4c's responsibility
+# (estimate_max_ctx) — the static tier-table placement here just says
+# "qwen is the best model the hardware CAN run at some context size",
+# not "qwen fits at its advertised 32K context".
 
 # RAM threshold (GB) below which the review lane shares the infer backend
 # instead of loading its own CPU model. SmolLM Q4 needs ~2GB resident + overhead.

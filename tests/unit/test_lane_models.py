@@ -141,11 +141,16 @@ class TestDetectTiers:
         assert tiers["large"].model_profile == "mistral-7b-instruct-v0.2"
 
     def test_dual_gpu_large_tier(self):
-        """Dual GPU server: high VRAM → large with best profile."""
+        """Dual GPU server: high VRAM → large with best profile.
+
+        After P4a, qwen2.5-14b-instruct is the top of the VRAM tier
+        table (at the 16 GB threshold), so a 40 GB A100 picks it.
+        Previously this test asserted llama-2-13b-chat.
+        """
         caps = RuntimeCapabilities(has_gpu=True, gpu_type="NVIDIA A100", vram_gb=40.0, ram_gb=64.0)
         tiers = detect_tiers(caps)
         assert "large" in tiers
-        assert tiers["large"].model_profile == "llama-2-13b-chat"  # top of VRAM tiers
+        assert tiers["large"].model_profile == "qwen2.5-14b-instruct"  # top of VRAM tiers
 
     # ── Boundary value tests ──
 
@@ -293,13 +298,14 @@ class TestDetectTiers:
         assert "medium" in tiers
         assert tiers["medium"].device == "auto"  # MPS path preserves auto
 
-    def test_mps_large_tier_picks_llama_13b_by_default(self):
-        """18GB effective VRAM on Mac should pick llama-2-13b-chat
-        from the 14GB+ tier. (qwen2.5-14b is not in the pre-P4a tier
-        table yet — P4a adds it later.)"""
+    def test_mps_large_tier_picks_qwen_14b_by_default(self):
+        """18 GB effective VRAM on Mac (24 GB total at 0.75 headroom)
+        should pick qwen2.5-14b-instruct from the 16 GB+ tier added
+        in P4a. Earlier this test expected llama-2-13b-chat from the
+        pre-P4a table."""
         caps = RuntimeCapabilities(has_gpu=True, gpu_type="mps", vram_gb=18.0, ram_gb=24.0)
         tiers = detect_tiers(caps)
-        assert tiers["large"].model_profile == "llama-2-13b-chat"
+        assert tiers["large"].model_profile == "qwen2.5-14b-instruct"
 
     def test_mps_medium_fallback_uses_auto_device(self):
         """When an MPS system falls through to the medium tier (Intel
@@ -321,6 +327,42 @@ class TestDetectTiers:
         assert "medium" in tiers
         assert tiers["medium"].device == "cpu"
         assert tiers["medium"].n_gpu_layers == 0
+
+    # ── P4a: qwen2.5-14b row at 16 GB threshold ──
+
+    def test_p4a_boundary_vram_exactly_16gb_picks_qwen(self):
+        """VRAM exactly 16 GB → qwen2.5-14b-instruct (inclusive boundary)."""
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="NVIDIA RTX 5080", vram_gb=16.0, ram_gb=64.0)
+        tiers = detect_tiers(caps)
+        assert tiers["large"].model_profile == "qwen2.5-14b-instruct"
+
+    def test_p4a_vram_just_below_16gb_picks_llama13b(self):
+        """15.9 GB → llama-2-13b-chat (below the new 16 GB threshold)."""
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="NVIDIA RTX 5080", vram_gb=15.9, ram_gb=64.0)
+        tiers = detect_tiers(caps)
+        assert tiers["large"].model_profile == "llama-2-13b-chat"
+
+    def test_p4a_profile_available_filter_falls_through_qwen(self):
+        """If qwen2.5-14b-instruct is not available (not downloaded)
+        but llama-2-13b-chat is, the walk falls through to the next
+        tier that satisfies the availability callback."""
+        available = {"llama-2-13b-chat", "smollm-1.7b-instruct"}
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="NVIDIA A100", vram_gb=40.0, ram_gb=64.0)
+        tiers = detect_tiers(caps, profile_available=lambda p: p in available)
+        assert tiers["large"].model_profile == "llama-2-13b-chat"
+
+    def test_p4a_mps_24gb_picks_qwen(self):
+        """Apple Silicon 24 GB Mac (18 GB effective VRAM at default
+        headroom) picks qwen2.5-14b-instruct from the 16 GB tier.
+
+        This is the headline change the P4 wave enables on Mac
+        hardware: previously capped at mistral-7b via the medium
+        fallback, now gets the 14B model at the large tier.
+        """
+        caps = RuntimeCapabilities(has_gpu=True, gpu_type="mps", vram_gb=18.0, ram_gb=24.0)
+        tiers = detect_tiers(caps)
+        assert "large" in tiers
+        assert tiers["large"].model_profile == "qwen2.5-14b-instruct"
 
 
 # ─── apply_tier_config_overrides ──────────────────────────────────────────
