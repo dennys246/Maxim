@@ -17,23 +17,27 @@ def _build_parser() -> argparse.ArgumentParser:
     core.add_argument(
         "--display",
         type=str,
-        default="clean",
+        default="bio",
         choices=["clean", "bio", "debug"],
-        help="Output detail: clean (narrative only, DEFAULT), "
-        "bio (+ memory/learning annotations), debug (+ full system traces).",
+        help="Output detail: bio (+ memory/learning annotations, DEFAULT), "
+        "clean (narrative only), debug (+ full system traces).",
     )
     core.add_argument(
         "--interactive",
         type=str,
-        default="true",
-        help="Enable interactive terminal input (True/False). Default: true.",
+        default=None,
+        help="Enable interactive terminal input (True/False). When unset, "
+        "auto-enables for DM campaigns and disables for generative sims.",
     )
     core.add_argument(
+        "--log-level",
         "--verbosity",
         type=int,
         default=1,
         choices=[0, 1, 2],
-        help="Logging verbosity: 0=warnings/errors, 1=info, 2=debug.",
+        dest="verbosity",
+        help="Logging level: 0=warnings/errors, 1=info, 2=debug. "
+        "Alias: --verbosity (deprecated, will be removed before 1.0).",
     )
     core.add_argument(
         "--mode",
@@ -212,14 +216,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     # ── Agentic ────────────────────────────────────────────────────────
     agentic = parser.add_argument_group("agentic", "Agent loop display and logging")
-    agentic.add_argument(
-        "--agentic-verbosity",
-        type=int,
-        default=None,
-        choices=[0, 1, 2, 3],
-        help="Agentic logging: 0=quiet, 1=normal (goals/tools), 2=verbose (+perception/memory), "
-        "3=debug (+loop). Defaults to --verbosity.",
-    )
     agentic.add_argument(
         "--no-agentic-console",
         action="store_true",

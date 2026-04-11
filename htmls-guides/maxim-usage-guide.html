@@ -463,8 +463,8 @@ maxim [OPTIONS]
 
 --clear-cache                Remove __pycache__ directories
 --clear-memory [TYPE]        Clear persistent memory and exit
---verbosity 0|1|2            Logging level
---agentic-verbosity 0|1|2|3  Agentic system logging detail
+--log-level 0|1|2            Logging level (alias: --verbosity, deprecated)
+--display bio|clean|debug    Output detail (DEFAULT: bio)
 --no-agentic-console         Suppress agentic event output
 --audit-architecture         Audit codebase for architecture layer rule violations and exit</div>
   </section>
@@ -584,8 +584,8 @@ maxim [OPTIONS]
     <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
       <h3 class="text-lg font-semibold text-emerald-400 mb-2">Verbose Debugging Session</h3>
       <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre">maxim --mode live \
-  --verbosity 2 \
-  --agentic-verbosity 3 \
+  --log-level 2 \
+  --display debug \
   --language-model phi-3-mini</div>
     </div>
 

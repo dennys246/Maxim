@@ -521,12 +521,31 @@ def main(argv: Sequence[str] | None = None) -> int:
                 set_show_channels as _set_show_channels_early,
             )
 
-            _display_arg_early = getattr(args, "display", "clean")
+            _display_arg_early = getattr(args, "display", "bio")
             _set_display_tier_early(_display_arg_early)
             if _display_arg_early == "debug":
                 _set_show_channels_early("all")
-            _interactive_str = str(getattr(args, "interactive", "true")).strip().lower()
-            _set_interactive_mode_early("on" if _interactive_str not in ("false", "0", "no", "off") else "off")
+            # Auto-interactive detection: when the user did not pass
+            # --interactive on the command line, default to ON for DM
+            # campaigns (where the user makes choices) and OFF for
+            # generative sims (where the persona drives input).
+            _interactive_explicit = "--interactive" in (raw_argv or [])
+            if _interactive_explicit:
+                _interactive_str = str(getattr(args, "interactive", "true")).strip().lower()
+                _set_interactive_mode_early("on" if _interactive_str not in ("false", "0", "no", "off") else "off")
+            else:
+                _wants_dm_early = bool(getattr(args, "dm", False))
+                _is_dm_yaml_early = False
+                if _is_yaml:
+                    try:
+                        import yaml as _yaml_probe
+
+                        with open(Path(_sim_val).resolve()) as _f:
+                            _probe = _yaml_probe.safe_load(_f)
+                        _is_dm_yaml_early = isinstance(_probe, dict) and "campaign" in _probe and "encounters" in _probe
+                    except Exception:
+                        _is_dm_yaml_early = False
+                _set_interactive_mode_early("on" if (_wants_dm_early or _is_dm_yaml_early) else "off")
             _show_channels_early = getattr(args, "show_channels", None)
             if _show_channels_early:
                 _set_show_channels_early(_show_channels_early)
@@ -907,14 +926,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 from maxim.runtime.agent_loop import run_agentic_loop
                 from maxim.utils.structured_logging import configure_agentic_verbosity
 
-                # Configure agentic verbosity
-                # Default to --verbosity if --agentic-verbosity not specified
-                agentic_verbosity = getattr(args, "agentic_verbosity", None)
-                if agentic_verbosity is None:
-                    agentic_verbosity = int(getattr(args, "verbosity", 1))
-                else:
-                    agentic_verbosity = int(agentic_verbosity)
-                # Agentic console output is ON by default (unless --no-agentic-console)
+                # Agentic console output is ON by default (unless --no-agentic-console).
+                # Verbosity follows the global --log-level (alias --verbosity).
+                agentic_verbosity = int(getattr(args, "verbosity", 1))
                 agentic_console = not bool(getattr(args, "no_agentic_console", False))
                 configure_agentic_verbosity(
                     verbosity=agentic_verbosity,

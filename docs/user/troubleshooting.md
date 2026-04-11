@@ -9,10 +9,10 @@ maxim doctor
 maxim --timeout 60 --verbosity 2
 
 # Verbose logging
-maxim --verbosity 2
+maxim --log-level 2
 
 # Extra verbose agentic logging
-maxim --mode agentic --agentic-verbosity 3
+maxim --mode agentic --log-level 2 --display debug
 ```
 
 ## Common Issues
@@ -89,7 +89,7 @@ maxim --clear-memory all
 maxim --verbosity 2
 
 # Agentic loop detail (0=quiet, 1=info, 2=debug, 3=trace)
-maxim --mode agentic --agentic-verbosity 3
+maxim --mode agentic --log-level 2 --display debug
 
 # Provenance tracing (see why decisions were made)
 MAXIM_PROVENANCE_VERBOSITY=2 maxim --mode agentic

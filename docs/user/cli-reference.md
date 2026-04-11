@@ -16,9 +16,10 @@ maxim [OPTIONS]
 |------|------|---------|-------------|
 | `--mode` | str | `exploration` | Operating mode: `exploration` (novelty-driven, DEFAULT), `agentic` (full agent loop), `sleep` (audio-only), `live` (no training), `train` (update MotorCortex), `reflection` (memory consolidation). |
 | `--language-model`, `--llm` | str | None | LLM profile (e.g., `mistral-7b`, `qwen2.5-14b-instruct`, `claude-sonnet`). Persists across sessions. |
-| `--verbosity` | int | `1` | Logging level: 0 (quiet), 1 (info), 2 (debug) |
+| `--display` | str | `bio` | Output detail: `bio` (DEFAULT, narrative + memory/learning annotations), `clean` (narrative only), `debug` (+ full system traces). |
+| `--log-level` | int | `1` | Logging level: 0 (quiet), 1 (info), 2 (debug). Alias `--verbosity` is deprecated and will be removed before 1.0. |
 | `--home-dir` | str | `data` | Directory for outputs and state |
-| `--interactive` | bool | `True` | Enable keyboard/terminal input. Note: critical decisions (plan approvals, safety escalations) can still prompt even when false. |
+| `--interactive` | bool | auto | Enable keyboard/terminal input. When omitted, auto-enables for DM campaigns and disables for generative sims. Critical decisions (plan approvals, safety escalations) prompt regardless. |
 | `--epochs` | int | `0` (infinite) | Stop after N cycles |
 | `--list-models` | flag | | List all available models with download/key status and exit |
 | `--delete-model` | str | None | Delete a downloaded local model to free disk space |
@@ -65,7 +66,6 @@ maxim [OPTIONS]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--agentic-verbosity` | int | inherits `--verbosity` | Agentic loop logging: 0 (quiet), 1 (goals/tools), 2 (+perception/memory), 3 (+loop) |
 | `--no-agentic-console` | flag | | Suppress agentic event console output |
 
 ## Simulation
@@ -151,7 +151,7 @@ maxim --language-model mistral-7b --internet-access --autonomy supervised
 ### Debug mode
 
 ```bash
-maxim --verbosity 2 --agentic-verbosity 3
+maxim --log-level 2 --display debug
 ```
 
 ### Generative campaign (goal string)

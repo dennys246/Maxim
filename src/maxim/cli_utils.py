@@ -32,13 +32,19 @@ def normalize_args(args: argparse.Namespace) -> None:
     else:
         raise SystemExit(f"Invalid --audio value: {args.audio!r} (expected True/False)")
 
-    interactive_raw = str(getattr(args, "interactive", "true")).strip().lower()
-    if interactive_raw in ("1", "true", "t", "yes", "y", "on"):
+    _raw_interactive = getattr(args, "interactive", None)
+    if _raw_interactive is None:
+        # None means "auto" — leave the resolved boolean to downstream
+        # display config (sim path) and default to True for live runs.
         args.interactive = True
-    elif interactive_raw in ("0", "false", "f", "no", "n", "off"):
-        args.interactive = False
     else:
-        raise SystemExit(f"Invalid --interactive value: {args.interactive!r} (expected True/False)")
+        interactive_raw = str(_raw_interactive).strip().lower()
+        if interactive_raw in ("1", "true", "t", "yes", "y", "on"):
+            args.interactive = True
+        elif interactive_raw in ("0", "false", "f", "no", "n", "off"):
+            args.interactive = False
+        else:
+            raise SystemExit(f"Invalid --interactive value: {args.interactive!r} (expected True/False)")
 
     if str(getattr(args, "mode", "active")).strip().lower() == "sleep":
         args.audio = True

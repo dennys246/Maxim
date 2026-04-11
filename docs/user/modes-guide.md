@@ -105,9 +105,10 @@ You do not have to restart Maxim to change modes.
 
 ### Prompt Profiles
 
-Control how much context the agent receives with `--agentic-verbosity`:
+Control how much context the agent receives with `--log-level` (alias `--verbosity`):
 
 - `0` -- Quiet. Minimal logging.
 - `1` -- Normal. Goals and tool calls.
-- `2` -- Verbose. Adds perception and memory events.
-- `3` -- Debug. Full loop internals.
+- `2` -- Debug. Full loop internals + perception + memory events.
+
+For richer per-turn output, combine with `--display bio` (default) or `--display debug`.
