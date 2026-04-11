@@ -45,6 +45,155 @@ def _safe_int_env(name: str, default: int) -> int:
         return default
 
 
+# ─── Pre-upgrade tier snapshot (peer_leader_flexibility_plan F0.3) ──────
+#
+# Frozen snapshot of `_INFER_VRAM_TIERS` as of the commit that introduced
+# the pinning-migration logic. Used ONLY by `_maybe_pin_pre_upgrade_profile`
+# to compute what an existing leader would have picked before the tier
+# table expanded — so we can pin it to that choice and prevent silent
+# model swaps on upgrade.
+#
+# When `_INFER_VRAM_TIERS` changes (e.g., P4a adds a qwen2.5-14b row),
+# THIS snapshot stays frozen. That's the whole point of the migration
+# safety: the pinning decision is made against the OLD table, not
+# whatever the new table says.
+#
+# DO NOT update this table when adding new profiles to
+# `_INFER_VRAM_TIERS`. This is a historical record.
+_PRE_P4A_INFER_VRAM_TIERS: tuple[tuple[float, str], ...] = (
+    (14.0, "llama-2-13b-chat"),
+    (8.0, "llama-3-8b-instruct"),
+    (4.0, "mistral-7b-instruct-v0.2"),
+    (0.0, "smollm-1.7b-instruct"),
+)
+
+
+def _pick_pre_upgrade_infer_profile(vram_gb: float) -> str:
+    """Walk the frozen pre-P4a tier table for a given VRAM budget.
+
+    Returns the profile a pre-P4a leader would have picked for its
+    large/infer tier. Used only by the pinning migration path.
+    """
+    for min_vram, profile in _PRE_P4A_INFER_VRAM_TIERS:
+        if vram_gb >= min_vram:
+            return profile
+    return _PRE_P4A_INFER_VRAM_TIERS[-1][1]
+
+
+def _maybe_pin_pre_upgrade_profile(capabilities: Any | None, logger_obj: Any | None) -> None:
+    """Pin the leader to its pre-upgrade profile on first post-upgrade run.
+
+    Fires exactly once per machine — writes a marker file after completing
+    so subsequent startups skip this code path. Triggers only when all of
+    these are true:
+
+    1. The user has NOT set MAXIM_LLM_PROFILE (no explicit current-session
+       override).
+    2. The persisted-model file is absent (nothing has pinned it yet).
+    3. The pin marker file is absent (this migration has not run before).
+    4. The data_home has at least one non-hidden child (indicates this
+       machine has run Maxim before — new installs are skipped).
+
+    Best-effort: swallows all exceptions because pinning failure must
+    not block startup. If the pin doesn't happen, the worst case is the
+    next run picks whatever the current tier table says, which matches
+    existing behavior before this migration was added.
+    """
+    try:
+        from maxim.utils.paths import data_home
+
+        # (3) Skip if the pin marker already exists
+        home = data_home()
+        util_dir = home / "util"
+        marker = util_dir / "tier_pinned_at_upgrade"
+        if marker.exists():
+            return
+
+        # (1) Skip if the user set an explicit profile via env
+        if os.environ.get("MAXIM_LLM_PROFILE", "").strip():
+            return
+
+        # (2) Skip if a persisted model already exists (existing pin)
+        persisted = _read_persisted_model()
+        if persisted:
+            # Still record the marker so we don't re-check this path.
+            _write_pin_marker(marker)
+            return
+
+        # (4) Skip fresh installs. Heuristic: util/ must exist with at
+        # least one file. A brand-new install has no util/ directory at
+        # all (utils/paths creates it lazily on first write), so the
+        # absence of util/ is our proxy for "never run before".
+        if not util_dir.exists():
+            return
+        try:
+            has_content = any(util_dir.iterdir())
+        except OSError:
+            has_content = False
+        if not has_content:
+            return
+
+        # Compute what the pre-P4a tier table would have picked.
+        if capabilities is None:
+            from maxim.runtime.capabilities import detect_compute_resources
+
+            has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
+        else:
+            has_gpu = getattr(capabilities, "has_gpu", False)
+            vram_gb = getattr(capabilities, "vram_gb", 0.0)
+
+        # Before P4a, MPS was hard-excluded from the large-tier branch,
+        # so MPS systems would not have had a large-tier pin at all.
+        # Only CUDA systems with vram_gb >= 4.0 got pinned. Mirror that
+        # exactly — don't pin MPS systems retroactively.
+        gpu_type = getattr(capabilities, "gpu_type", None) if capabilities is not None else None
+        if not (has_gpu and gpu_type not in ("mps", None) and vram_gb >= 4.0):
+            # Pre-P4a would have left this machine without a large tier.
+            # Nothing to pin. Still record the marker so we don't re-check.
+            _write_pin_marker(marker)
+            return
+
+        pre_profile = _pick_pre_upgrade_infer_profile(vram_gb)
+
+        # Write BOTH the persisted-model file AND the env var. The file
+        # pins all future startups; the env var makes sure the CURRENT
+        # run also respects the pin rather than using whatever the new
+        # tier table selects. Without the env var set here, the pin
+        # fires one run too late — the machine would use the new
+        # default on the first post-upgrade run and the old default
+        # on every subsequent run, which is confusing.
+        _write_persisted_model(pre_profile)
+        os.environ["MAXIM_LLM_PROFILE"] = pre_profile
+        _write_pin_marker(marker)
+
+        if logger_obj is not None:
+            logger_obj.info(
+                "Pinned leader to pre-upgrade profile %r for safe migration. "
+                "Run `maxim peer llm <model>` to change, or delete "
+                "~/.maxim/util/tier_pinned_at_upgrade to re-run the pin.",
+                pre_profile,
+            )
+    except Exception as e:
+        # Pinning failure must never block startup. Log at debug so the
+        # absence of a pin is visible to anyone spelunking, but don't
+        # surface a warning that'd confuse users.
+        if logger_obj is not None:
+            logger_obj.debug("Pre-upgrade profile pinning failed (non-fatal): %s", e)
+
+
+def _write_pin_marker(marker_path: Any) -> None:
+    """Touch the marker file so the pin-migration code path is skipped
+    on subsequent startups. Swallows errors — failure to write the
+    marker just means the pin may re-run next time, which is harmless
+    (conditions 1-4 in `_maybe_pin_pre_upgrade_profile` still apply).
+    """
+    try:
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        marker_path.touch()
+    except OSError as e:
+        logger.debug("Could not write pin marker %s: %s", marker_path, e)
+
+
 # Extracted to llm_server.py — mutable globals accessed via module reference
 # to avoid Python's import-by-value semantics splitting the state.
 import maxim.runtime.llm_server as _server_mod  # noqa: E402
@@ -602,6 +751,21 @@ def build_primary_router(
             os.environ["MAXIM_LLM_PROFILE"] = _persisted
             if logger is not None:
                 logger.info("Restored persisted model preference: %s", _persisted)
+
+    # ── Migration safety: pin existing leaders to pre-upgrade profile ──
+    # Before the tier table expands (planned P4a), any leader that was
+    # running on the OLD tier table's defaults gets its choice frozen
+    # to the persisted-model file so a subsequent `maxim peer restart`
+    # does NOT silently swap its model. See peer_leader_flexibility_plan
+    # F0.3 for the full rationale.
+    #
+    # This code path only fires on the FIRST startup on a machine that:
+    #   1. Has run Maxim before (util/ exists with content)
+    #   2. Has NO persisted model file (nothing was explicitly pinned)
+    #   3. Has NO explicit MAXIM_LLM_PROFILE in env (user didn't override)
+    #   4. Has NOT already run the pin (marker file absent)
+    # The marker file prevents repeat execution across future restarts.
+    _maybe_pin_pre_upgrade_profile(capabilities, logger)
 
     # Peer-config auto-load: if ~/.config/maxim/peer.yml exists and env vars
     # aren't already set, populate them from the file. Set by
