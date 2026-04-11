@@ -215,6 +215,9 @@ MAXIM_SKIP_REMOTE_PROBE=1        # Bypass the remote-URL probe (P6) — CI escap
 MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S=0.8   # First probe attempt timeout (clamped 0.2-5.0)
 MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S=2.5   # Retry probe timeout (clamped 0.5-10.0)
 MAXIM_REMOTE_PROBE_CACHE_TTL_S=60        # Probe cache freshness window (clamped 0-600)
+
+# Decision log (P9). Append-only JSONL at ~/.maxim/util/lane_decisions.jsonl.
+# Inspect with: maxim doctor --last-decision   (or tail/jq the file directly)
 MAXIM_PROVENANCE_VERBOSITY=1     # 0=off, 1=compact, 2=verbose
 
 # Heartbeat + trace (debug/diagnostics)

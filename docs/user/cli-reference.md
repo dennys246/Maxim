@@ -18,6 +18,8 @@ maxim [OPTIONS]
 | `--language-model`, `--llm` | str | None | LLM profile (e.g., `mistral-7b`, `qwen2.5-14b-instruct`, `claude-sonnet`). Persists across sessions. |
 | `--llm-n-ctx` | int | None | Override the auto-computed llama.cpp context window. Use to tune against a specific VRAM budget; see [llm-setup.md](llm-setup.md) for the formula and per-card defaults. A value above the formula estimate may OOM the GPU at load time. |
 | `--auto-download` | flag | off | Skip the interactive download prompt and auto-download any missing GGUF for the active LLM profile. Equivalent to `MAXIM_AUTO_DOWNLOAD_MODELS=1`. Use in headless deployments and CI. |
+
+`maxim doctor --last-decision` (P9) prints the most recent routing decision — caps, env, tier choices, probe outcomes — read from `~/.maxim/util/lane_decisions.jsonl`. Use it for "why did the last sim pick this model?" post-mortems.
 | `--display` | str | `bio` | Output detail: `bio` (DEFAULT, narrative + memory/learning annotations), `clean` (narrative only), `debug` (+ full system traces). |
 | `--log-level` | int | `1` | Logging level: 0 (quiet), 1 (info), 2 (debug). Alias `--verbosity` is deprecated and will be removed before 1.0. |
 | `--home-dir` | str | `data` | Directory for outputs and state |

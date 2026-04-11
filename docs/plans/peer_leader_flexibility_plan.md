@@ -1354,7 +1354,9 @@ Four new `CheckResult`-returning functions:
 
 ---
 
-## P9 — Lane decision log (NEW)
+## P9 — Lane decision log (NEW) ✅ DONE
+
+**Status:** Landed. New `runtime/decision_log.py` writes append-only JSONL at `~/.maxim/util/lane_decisions.jsonl`, one record per `build_primary_router` invocation. Records carry serialized `RuntimeCapabilities`, redacted env snapshot (API keys masked, URLs reduced to hostname), tier decisions with source/profile/n_ctx/remote_host fields, peer_config_loaded flag, optional probe_results + auto_download_triggered. Rotation drops the oldest entries past `MAX_RECORDS=1000`. New `maxim doctor --last-decision` flag pretty-prints the most recent record. 14 new tests in `tests/unit/test_decision_log.py`.
 
 **Bug:** None of the fixes emit a traceable record of "why did we pick this configuration." Post-mortem debugging of "why is my sim running qwen2.5-14b instead of mistral-7b" requires reading source code and guessing at env var state at the time of the run.
 

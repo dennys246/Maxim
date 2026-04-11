@@ -1104,6 +1104,23 @@ def build_primary_router(
 
     _print_lane_banner(manager)
 
+    # P9: persist a post-mortem record of this routing decision so the
+    # user can run `maxim doctor --last-decision` later and see exactly
+    # which env vars + capabilities + probe outcomes produced this
+    # configuration. Best-effort — never fails the build.
+    try:
+        from maxim.runtime import decision_log
+
+        record = decision_log.build_record(
+            caps=capabilities,
+            final_lane_configs=lane_configs,
+            peer_config_loaded=_has_peer_config,
+        )
+        decision_log.append_record(record)
+    except Exception as e:
+        if logger is not None:
+            logger.debug("decision_log append failed (non-fatal): %s", e)
+
     # Start heartbeat monitor if enabled via env flags (peer or solo mode)
     try:
         from maxim.runtime.heartbeat import get_heartbeat_monitor, should_enable_heartbeat

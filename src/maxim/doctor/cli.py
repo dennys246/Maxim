@@ -22,12 +22,14 @@ Options:
   --as peer <url>   Run peer-mode checks against a remote leader URL
   --as leader       Force leader-mode checks (skip peer auto-detection)
   --as solo         Force solo-mode checks (no peer/leader wiring)
+  --last-decision   Print the most recent lane-routing decision (P9) and exit
   -h, --help        Show this help message
 
 Examples:
   maxim doctor                           Check local environment
   maxim doctor --retry                   Interactive fix loop
   maxim doctor --json                    JSON output for CI/scripts
+  maxim doctor --last-decision           Why did the last sim pick its model?
   maxim doctor --as peer https://maxim.example.com/v1
                                          Check peer connectivity
 """
@@ -37,6 +39,8 @@ def run_doctor_subcommand(argv: Sequence[str]) -> int:
     if any(a in ("-h", "--help") for a in argv):
         print(DOCTOR_USAGE)
         return 0
+    if "--last-decision" in argv:
+        return _print_last_decision()
     retry = "--retry" in argv
     as_json = "--json" in argv
 
@@ -57,6 +61,26 @@ def run_doctor_subcommand(argv: Sequence[str]) -> int:
     # Exit code reflects the worst status seen
     worst = _worst_status(sections)
     return {"ok": 0, "warn": 0, "fail": 1, "info": 0}[worst]
+
+
+def _print_last_decision() -> int:
+    """Render the most recent ``LaneDecisionRecord`` to stdout (P9).
+
+    Returns 0 on success, 1 if no log exists yet (e.g. fresh install).
+    """
+    try:
+        from maxim.runtime.decision_log import format_record_human, read_last_record
+    except ImportError as e:
+        print(f"decision_log unavailable: {e}", file=sys.stderr)
+        return 1
+    record = read_last_record()
+    if record is None:
+        print("No lane decisions logged yet.")
+        print("Run `maxim` (or any command that builds the LLM router) at least once,")
+        print("then re-run `maxim doctor --last-decision`.")
+        return 1
+    print(format_record_human(record))
+    return 0
 
 
 def _parse_as_flag(argv: list[str]) -> tuple[str | None, str | None]:
