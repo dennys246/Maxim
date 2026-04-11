@@ -105,6 +105,40 @@ Every campaign YAML has these sections:
 | `acts` | Yes | Ordered list of act names with encounter lists |
 | `encounters` | Yes | Encounter definitions keyed by name |
 | `expectations` | No | Bio-system thresholds for automated validation |
+| `permissions` | No | Per-character enforced authority blocks (see below) |
+
+### Enforced Permissions
+
+Campaign authors can declare hard, enforced authority for the PC or any
+NPC. The block is keyed by character name; each block follows the
+[`AgentPermissions`](../../src/maxim/agents/permissions.py) shape:
+
+```yaml
+permissions:
+  spymaster:
+    clearance: 3
+    tool_deny: [bash, write_file]    # Hard deny — never resolved by aliases
+    tool_allow: [examine, say]       # Optional allow-list (omit to allow all but tool_deny)
+    sem_access:
+      - entity: vault_terminal
+        deny: [delete_records]
+        min_clearance: 5
+      - entity: "*"
+        deny: [self_destruct]
+```
+
+These rules are evaluated at the runtime executor's hot path
+([runtime/executor.py](../../src/maxim/runtime/executor.py)) before tool
+dispatch. Denies survive alias resolution, so an LLM that calls `shell`
+when `bash` is denied still gets refused.
+
+Enforced permissions are deliberately **separate from perceived
+authority** — the bio-stack learns perceived authority from outcomes
+through [`PerceivedAuthorityTracker`](../../src/maxim/agents/permissions.py),
+which is independent of the YAML blocks above. A character can have
+zero perceived authority and full enforced clearance (a feared
+spymaster), or full perceived authority and no enforced clearance (a
+beloved figurehead).
 
 ### Encounters
 

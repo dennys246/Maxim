@@ -142,6 +142,7 @@ class CampaignDef:
     party_mode: bool = False  # Enable PartyDMRuntime with NPC agents
     choice_resolution: str = "pc_decides"  # How conflicting choices resolve
     genre: str = ""  # Genre tag for SEM component filtering (e.g., "fantasy", "cyberpunk")
+    permissions: dict[str, Any] = field(default_factory=dict)  # Per-character enforced permission YAML
 
     @property
     def encounter_order(self) -> list[str]:
@@ -300,6 +301,10 @@ def load_campaign(
             resolved = _resolve_entity_specs({"pc": pc_spec}, registry)
             pc_spec = resolved["pc"]
 
+    permissions = raw.get("permissions", {}) or {}
+    if not isinstance(permissions, dict):
+        permissions = {}
+
     return CampaignDef(
         name=name,
         goal=goal,
@@ -313,6 +318,7 @@ def load_campaign(
         party_mode=party_mode,
         choice_resolution=choice_resolution,
         genre=genre,
+        permissions=permissions,
     )
 
 

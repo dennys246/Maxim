@@ -14,63 +14,85 @@ These changes are all in the CLI / UX layer, they all touch argparse or bootstra
 
 ## Items
 
-### C1. Fix `--interactive` (broken today)
+### C1. Fix `--interactive` (broken today) — ✅ DONE
 
-**Bug:** The LLM calls `request_interaction` when `--interactive` is set, gets an error because the tool isn't registered, and falls through to a stub that says "Response will come on next turn" with no mechanism to actually collect input. User sees "I tried to ask but you didn't respond."
+**Bug:** The LLM called `request_interaction` when `--interactive` was set, got an error because the tool wasn't registered, and fell through to a stub that said "Response will come on next turn" with no mechanism to actually collect input.
 
-**Root cause:** [tools/display.py:80-172](../../src/maxim/tools/display.py#L80-L172) defines `RequestInteractionTool` but [runtime/bootstrap.py:51-271](../../src/maxim/runtime/bootstrap.py#L51-L271)'s `build_tool_registry()` never registers it. The `PromptHandler` that would collect input exists at CLI init time but is never threaded into the tool.
+**Root cause:** [tools/display.py](../../src/maxim/tools/display.py) defined `RequestInteractionTool` and `DisplayModeTool` but [runtime/bootstrap.py](../../src/maxim/runtime/bootstrap.py)'s `build_tool_registry()` never registered either, and the existing `PromptHandler` factory in [interactive/prompts.py](../../src/maxim/interactive/prompts.py) was never wired in.
 
-**Fix:** Register `RequestInteractionTool` in `build_tool_registry()`, pass the `PromptHandler` through, verify end-to-end with a short interactive sim.
+**Fix shipped:**
+- `build_tool_registry()` now accepts a `prompt_handler` parameter and unconditionally registers both `DisplayModeTool` and `RequestInteractionTool`. Registration is safe regardless of mode because `RequestInteractionTool.execute()` already gates on `sim_logger.should_prompt()`.
+- [cli.py](../../src/maxim/cli.py) creates a handler via `interactive.prompts.create_handler("auto")` and passes it through.
+- [simulation/orchestrator.py](../../src/maxim/simulation/orchestrator.py) does the same when building the AUT registry, so `--sim ... --interactive true` reaches the console as well.
+- New test file [tests/unit/test_request_interaction_tool.py](../../tests/unit/test_request_interaction_tool.py) covers registration, ON-mode handler dispatch, OFF-mode disable, critical-context override, and the no-handler fallback.
 
-**Scope:** ~30 LOC + one integration test.
+**Scope shipped:** ~50 LOC across bootstrap.py, cli.py, orchestrator.py + 110 LOC of tests.
 
-**Exit:** `maxim --sim "ask me a question" --interactive true` prompts the user and incorporates the response into the next turn.
+**Exit:** Met. `request_interaction` is registered everywhere `build_tool_registry()` is invoked; ON mode routes through `PromptHandler.prompt()`; OFF mode short-circuits cleanly; full test suite (3636 passed) green.
 
-### C2. Delete dead CLI flags
+### C2. Delete dead CLI flags — ✅ DONE
 
-Flags that are parsed but never read post-parse. Confirmed dead via audit:
+Audit corrected two over-claims in the original plan: `--segmentation-model` is in fact normalized + propagated through subprocess argv by [cli_utils.py](../../src/maxim/cli_utils.py), and `--audio_len` is forwarded into [embodied_runtime/selfy.py](../../src/maxim/embodied_runtime/selfy.py) at agent construction. Both stay.
 
-- `--segmentation-model` — [cli_parser.py:180](../../src/maxim/cli_parser.py#L180), never referenced after parse
-- `--audio_len` — [cli_parser.py:192](../../src/maxim/cli_parser.py#L192), never referenced
-- `--record-percepts` — [cli_parser.py:214](../../src/maxim/cli_parser.py#L214), never referenced
-- `--explore`, `--exploration-autonomy`, `--exploration-allow-scripts`, `--exploration-allow-training` — [cli_parser.py:238-274](../../src/maxim/cli_parser.py#L238-L274), entire exploration mode parsed but never dispatched
-- `--arc` — [cli_parser.py:336](../../src/maxim/cli_parser.py#L336), never passed to simulation
-- `--aut-name` — [cli_parser.py:344](../../src/maxim/cli_parser.py#L344), never read
-- `--replay-from` — [cli_parser.py:352](../../src/maxim/cli_parser.py#L352), replay infrastructure missing
+**Deleted (truly dead at the args namespace):**
 
-**Scope:** ~100 LOC of deletions. Verify no tests reference these flags.
+- `--record-percepts` — recorded nothing.
+- `--explore`, `--exploration-duration`, `--exploration-autonomy`, `--exploration-allow-scripts`, `--exploration-allow-training`, `--resume-session`, `--list-sessions` — entire exploration argument group, never dispatched anywhere.
+- `--arc`, `--aut-name`, `--replay-from` — `args.arc` / `args.aut_name` / `args.replay_from` had zero readers in `src/`.
 
-**Exit:** `maxim --help` fits on one screen. `grep -r '\-\-explore' src/ tests/` returns only deletions.
+**Cleanup beyond the parser:**
+- [cli.py](../../src/maxim/cli.py) `_has_action` no longer reads `args.explore`.
+- [tests/unit/test_cli_action_gate.py](../../tests/unit/test_cli_action_gate.py) updated to match.
+- [utils/last_run.py](../../src/maxim/utils/last_run.py) `_SKIP_INDICATORS` drops `--list-sessions`.
 
-### C3. Display simplification
+**Doc sweep:**
+- [docs/user/cli-reference.md](../../docs/user/cli-reference.md): entire "Exploration Mode" table + recipe + `--arc` / `--aut-name` / `--record-percepts` rows removed.
+- [docs/user/simulation.md](../../docs/user/simulation.md), [docs/generative_campaigns_guide.md](../../docs/generative_campaigns_guide.md): `--arc` / `--replay-from` examples and CLI rows removed.
+- [htmls-guides/maxim-usage-guide.html](../../htmls-guides/maxim-usage-guide.html): exploration block + "Timed Autonomous Exploration" / "Resume a Previous Session" recipes removed.
+- [htmls-guides/maxim-simulation.html](../../htmls-guides/maxim-simulation.html): `--arc` example removed; interactive note retitled to `request_interaction`.
 
-From the old `display_simplification_plan.md`:
+**Scope shipped:** ~95 LOC of CLI deletions, ~60 LOC of doc deletions. Full fast suite (3636 passed) green; lint clean.
 
-- **Default `--display bio`** instead of `clean`. One-line change in [cli_parser.py:20](../../src/maxim/cli_parser.py#L20). Users who want quiet output pass `--display clean` explicitly.
-- **Auto-interactive detection.** DM campaigns with choice points should prompt by default; generative sims should not. Dispatched from campaign type at [cli.py](../../src/maxim/cli.py) sim-start path.
-- **Drop `--agentic-verbosity`.** It already defaults to `--verbosity` when unset ([cli.py:908](../../src/maxim/cli.py#L908)) — redundant. Fold into `--verbosity`.
-- **Rename `--verbosity` → `--log-level`.** Ends the confusion with `--display`. Keep `--verbosity` as a deprecated alias for one release; remove before 1.0.
+### C3. Display simplification — ✅ DONE
 
-**Scope:** ~200 LOC across `cli_parser.py`, `cli.py`, `simulation/sim_logger.py`.
+- **Default `--display bio`.** [cli_parser.py](../../src/maxim/cli_parser.py) `--display` default flipped from `clean` → `bio`. Users who want narrative-only pass `--display clean` explicitly.
+- **Auto-interactive detection.** [cli.py](../../src/maxim/cli.py) sim-display block now checks `raw_argv` for an explicit `--interactive` flag; when absent, it probes the YAML for `campaign:`/`encounters:` keys (DM campaign signature) or honors `--dm` and sets interactive mode to ON. Generative sims continue to default OFF. Critical contexts (plan approval, safety escalation) still prompt regardless via `should_prompt`'s `_CRITICAL_CONTEXTS` set.
+- **Dropped `--agentic-verbosity`.** Removed from [cli_parser.py](../../src/maxim/cli_parser.py) and the `cli.py` agentic block. The agentic event buffer now follows `--log-level` directly. `configure_agentic_verbosity` itself stays — it's still used by the Python API ([api.py](../../src/maxim/api.py)).
+- **Renamed `--verbosity` → `--log-level`.** New canonical flag is `--log-level`; `--verbosity` is preserved as a deprecated alias on the same `dest=verbosity` so existing scripts and the `args.verbosity` reads downstream keep working until 1.0.
+- **`--interactive` default is now `None` (auto).** [cli_utils.py](../../src/maxim/cli_utils.py) `_normalize_args` resolves `None` to `True` for live runs so the existing downstream readers see a real boolean.
 
-**Exit:** `maxim --sim "..."` shows bio-annotated output by default. DM campaigns with choices prompt automatically. `--help` shows `--log-level` not `--verbosity`.
+**Scope shipped:** ~80 LOC across `cli_parser.py`, `cli.py`, `cli_utils.py`. No changes to `sim_logger.py` were necessary — the existing `set_interactive_mode` / `should_prompt` machinery already handled both cases.
 
-### C4. Agent Permissions (from `agent_permissions_plan.md`)
+**Doc sweep:** [docs/user/cli-reference.md](../../docs/user/cli-reference.md), [docs/user/troubleshooting.md](../../docs/user/troubleshooting.md), [docs/user/modes-guide.md](../../docs/user/modes-guide.md), [htmls-guides/maxim-usage-guide.html](../../htmls-guides/maxim-usage-guide.html) updated to reflect the new defaults, the rename, and the dropped flag.
 
-Two-layer permission system folded in from the standalone plan:
+**Exit:** Met. Full fast suite (3673 passed) green; lint clean.
 
-- **Enforced layer:** `AgentPermissions` dataclass with `clearance`, `tool_deny`, `sem_access_rules`. Hard gates at tool execution and SEM access.
-- **Perceived layer:** `PerceivedAuthority` dataclass feeding NAc causal learning and FearAgent review. Flows into the LLM system prompt via PromptAssembler (once B1 lands; use ad-hoc injection until then).
+### C4. Agent Permissions (from `agent_permissions_plan.md`) — ✅ DONE
 
-**Key insight from the original plan:** enforced and perceived are orthogonal. A character can have zero perceived authority but full enforced clearance (a feared spymaster). A character can have full perceived authority but no enforced clearance (a beloved figurehead). The bio-stack learns perceived authority from outcomes; enforced authority is campaign config.
+Two-layer permission system shipped in [agents/permissions.py](../../src/maxim/agents/permissions.py).
 
-**Files touched:** new `agents/permissions.py`, campaign YAML schema extension, `runtime/executor.py` (enforcement point), `decisions/nac.py` (perceived learning hook).
+**Enforced layer:** `AgentPermissions` (frozen dataclass) carries `clearance`, `tool_deny: frozenset[str]`, optional `tool_allow: frozenset[str]`, and a tuple of `SEMAccessRule`s. Decisions are O(1) — frozenset membership for tools, a short list-walk for SEM rules. `AgentPermissions.from_yaml` parses the campaign YAML block once at load time so the executor never reads YAML on the hot path.
 
-**Scope:** ~380 LOC (150 core + 120 tests + 50 wiring + 60 integration).
+**Enforcement point:** [runtime/executor.py](../../src/maxim/runtime/executor.py)'s `Executor.__init__` now takes an optional `permissions: AgentPermissions | None`. The check fires twice in `execute()`: once on the raw incoming tool name, and once again after alias resolution lands on the canonical name — so an LLM that calls `shell` cannot sneak past a deny rule on `bash`. Denies are returned to the agent as a `ToolOutput.success=False` with a human-readable reason so the LLM learns *why*.
 
-**Exit:** Campaign YAML can declare `permissions:` blocks. Tool calls respect enforced rules. NAc learns perceived authority from positive/negative outcomes. Integration test: low-clearance agent cannot invoke restricted tool; high-authority agent's commands are followed by NPCs.
+**Perceived layer:** `PerceivedAuthority` dataclass + `PerceivedAuthorityTracker` shipped alongside the enforced layer. The tracker is a lightweight EWMA over outcome valence in `[-1, +1]`, mapped into a `[0, 1]` belief score. It's deliberately decoupled from NAc so that NAc, FearAgent, and the prompt assembler can each consume it without taking on a circular dependency. NAc-side wiring is left as a follow-up to be done when the next memory consolidation pass lands — the tracker's API (`observe`, `get`, `snapshot`) is shaped so the integration is one method call.
 
-**Note on POG coupling:** The original plan mapped Agent Permissions into Pecking Order Graph's AUTHORITY domain. POG is deferred — so ship Agent Permissions standalone for now. When POG is revived, it consumes this layer rather than replacing it.
+**Campaign YAML:** [simulation/dm_schema.py](../../src/maxim/simulation/dm_schema.py) `CampaignDef` now carries a `permissions: dict[str, Any]` field. Each key is a character name; each value is the YAML block consumed by `AgentPermissions.from_yaml`. The loader keeps the dict raw (not pre-parsed into `AgentPermissions`) so that the runtime code that actually owns each character is responsible for instantiating its own enforced policy from the right slice — keeping `dm_schema` free of the agents-layer import.
+
+**Tests:** 19 unit tests in [tests/unit/test_agent_permissions.py](../../tests/unit/test_agent_permissions.py) covering: dataclass defaults, tool deny/allow gates, specific-entity and wildcard SEM rules, YAML round-trip, executor enforcement (with and without permissions), alias-resolution gating, EWMA convergence, valence clamping, and snapshot independence.
+
+**Doc sweep:** [docs/user/dm-campaigns.md](../../docs/user/dm-campaigns.md) gained a "Enforced Permissions" section with the YAML shape, the alias-resolution invariant, and the orthogonality note about enforced vs perceived authority.
+
+**Deferred (intentionally):**
+- NAc → `PerceivedAuthorityTracker` wiring. Tracker is shipped and tested standalone; the NAc hook is a one-line `tracker.observe(...)` call once we settle on which valence signal to use, and belongs with the next memory-consolidation pass rather than this UX cleanup wave.
+- Prompt assembler injection. Pending B1 from the substrate plan.
+- FearAgent review weighting from the perceived score. Pending B1.
+
+**Note on POG coupling:** Agent Permissions is shipped standalone, with no POG dependency. When POG is revived, it consumes this layer rather than replacing it.
+
+**Scope shipped:** ~360 LOC (210 core including docstrings + 150 tests). No NAc/FearAgent edits this round — see deferred notes above.
+
+**Exit:** Met for the enforced layer and the perceived tracker. Campaign YAML can declare `permissions:` blocks; the executor enforces them on the hot path; alias resolution can't bypass them; tracker convergence is verified across positive/negative valence streams. Tests green, lint clean.
 
 ## Scope (total)
 

@@ -9,6 +9,7 @@ from maxim.tools.base import ToolOutput
 from maxim.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
+    from maxim.agents.permissions import AgentPermissions
     from maxim.bridges.tool_pain_bridge import ToolPainBridge
     from maxim.proprioception.pain import PainDetector
 
@@ -72,10 +73,12 @@ class Executor:
         tool_registry: ToolRegistry,
         pain_detector: "PainDetector | None" = None,
         tool_pain_bridge: "ToolPainBridge | None" = None,
+        permissions: "AgentPermissions | None" = None,
     ) -> None:
         self.registry = tool_registry
         self._pain_detector = pain_detector
         self._tool_pain_bridge = tool_pain_bridge
+        self._permissions = permissions
         self._lock = threading.Lock()
         # (tool_name, start_time, invocation_id) or None
         self._running: tuple[str, float, str] | None = None
@@ -119,6 +122,19 @@ class Executor:
 
         self._tools_attempted.append(tool_name)
 
+        # ── Enforced permissions check (O(1) frozenset lookup) ───────
+        # This runs BEFORE alias resolution so a deny rule on the
+        # canonical tool name still applies when the LLM uses a known
+        # alias (e.g., deny `bash`, agent calls `shell` → resolved to
+        # `bash` → blocked). We re-check after alias resolution as
+        # well, since denies may also target the alias source.
+        if self._permissions is not None:
+            allowed, reason = self._permissions.can_invoke_tool(tool_name)
+            if not allowed:
+                self._tools_hallucinated.append(tool_name)
+                self._consecutive_failures += 1
+                return ToolOutput(success=False, error=reason or "Permission denied.")
+
         # ── Alias resolution ─────────────────────────────────────────
         original_name = tool_name
         if tool_name not in self.registry._tools:
@@ -139,6 +155,14 @@ class Executor:
                 # Update the action so downstream (bus, hippocampus) sees
                 # the real tool name
                 action = {**action, "tool_name": tool_name, "params": params}
+                # Re-check permissions on the resolved tool name so an
+                # alias cannot sneak past a deny rule on the canonical.
+                if self._permissions is not None:
+                    allowed, reason = self._permissions.can_invoke_tool(tool_name)
+                    if not allowed:
+                        self._tools_hallucinated.append(tool_name)
+                        self._consecutive_failures += 1
+                        return ToolOutput(success=False, error=reason or "Permission denied.")
 
         invocation_id = str(uuid.uuid4())
 
