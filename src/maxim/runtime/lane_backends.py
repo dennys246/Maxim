@@ -1210,13 +1210,23 @@ def _maybe_auto_spawn_server(
     # when spawning the subprocess. Solo mode (127.0.0.1 bind) has api_key=None
     # which means the server spawns without --api_key and accepts all requests.
 
+    # n_ctx precedence (peer_leader_flexibility_plan P4c):
+    #   1. MAXIM_LLM_N_CTX  — explicit user override (--llm-n-ctx flag)
+    #   2. MAXIM_AUTO_SPAWN_N_CTX — legacy env (kept for in-place upgrades)
+    #   3. infer_cfg.n_ctx — value computed by detect_tiers/estimate_max_ctx
+    #   4. 8192 — final fallback if none of the above resolved
+    _cli_n_ctx = _safe_int_env("MAXIM_LLM_N_CTX", 0)
+    _legacy_n_ctx = _safe_int_env("MAXIM_AUTO_SPAWN_N_CTX", 0)
+    _tier_n_ctx = int(infer_cfg.n_ctx or 0)
+    resolved_n_ctx = _cli_n_ctx or _legacy_n_ctx or _tier_n_ctx or 8192
     spawner = LocalServerSpawner(
         model_path=model_path,
         port=port,
         bind_host=role_decision.bind_host,
-        n_ctx=_safe_int_env("MAXIM_AUTO_SPAWN_N_CTX", 8192),
+        n_ctx=resolved_n_ctx,
         n_gpu_layers=infer_cfg.n_gpu_layers,
         api_key=api_key,
+        kv_quant_mode=infer_cfg.kv_quant_mode,
     )
     try:
         timeout_s = float(os.environ.get("MAXIM_AUTO_SPAWN_TIMEOUT_S", "120.0"))
@@ -1324,6 +1334,42 @@ def _resolve_swap_target(resolved: str) -> tuple[Any, str]:
     return cfg, model_path
 
 
+def _estimate_swap_n_ctx(cfg: Any, *, fallback: int = 8192) -> int:
+    """Recompute n_ctx for a hot-swap target using current capabilities.
+
+    ``cfg`` is the freshly-loaded ``LLMConfig`` for the swap target. We
+    detect the running machine's VRAM, look up the profile's arch metadata,
+    and ask :func:`estimate_max_ctx` for the largest viable context. Falls
+    back to the profile's declared ``n_ctx`` (or ``fallback``) when the
+    capability path can't produce a number — never returns 0.
+    """
+    try:
+        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.runtime.capabilities import detect_compute_resources
+        from maxim.runtime.lane_models import _lookup_fallback_nctx, estimate_max_ctx
+    except Exception:
+        return int(getattr(cfg, "n_ctx", 0) or fallback)
+
+    profile_name = str(getattr(cfg, "profile", "") or "").strip()
+    profile_data = _BUILTIN_PROFILES.get(profile_name, {}) if profile_name else {}
+    try:
+        _, _, vram_gb, _ = detect_compute_resources()
+    except Exception:
+        vram_gb = 0.0
+
+    formula_ctx = estimate_max_ctx(profile_data, vram_gb) if vram_gb > 0 else 0
+    fallback_ctx = _lookup_fallback_nctx(profile_name, vram_gb) if profile_name else 0
+    if formula_ctx > 0 and fallback_ctx > 0:
+        n_ctx = min(formula_ctx, fallback_ctx)
+    else:
+        n_ctx = formula_ctx or fallback_ctx
+    if n_ctx > 0:
+        return n_ctx
+    # Last resort: trust the profile's declared value, then the static fallback.
+    declared = int(getattr(cfg, "n_ctx", 0) or 0)
+    return declared if declared > 0 else fallback
+
+
 def _drain_in_flight_requests(deadline_s: float = 5.0) -> None:
     """Wait up to ``deadline_s`` seconds for in-flight large-lane requests to finish.
 
@@ -1377,7 +1423,16 @@ def _start_swap_server(
     except Exception as e:
         logger.debug("Could not detect leader role for bind_host: %s", e)
 
-    n_ctx = cfg.n_ctx if cfg.n_ctx > 0 else 8192
+    # P4c: re-run estimate_max_ctx for the swap target so a hot-swap from
+    # qwen-14b → mistral-7b on a 16 GB card doesn't accidentally inherit
+    # the previous model's tight 4096 budget (or vice versa). The CLI
+    # override (MAXIM_LLM_N_CTX) wins if set; otherwise we recompute from
+    # current capabilities + the swap target's arch metadata.
+    _cli_n_ctx = _safe_int_env("MAXIM_LLM_N_CTX", 0)
+    if _cli_n_ctx > 0:
+        n_ctx = _cli_n_ctx
+    else:
+        n_ctx = _estimate_swap_n_ctx(cfg, fallback=8192)
     spawner = LocalServerSpawner(
         model_path=model_path,
         port=port,
@@ -1385,6 +1440,7 @@ def _start_swap_server(
         n_ctx=n_ctx,
         n_gpu_layers=cfg.n_gpu_layers,
         api_key=api_key,
+        kv_quant_mode=getattr(cfg, "kv_quant_mode", "f16"),
     )
 
     if logger_obj is not None:

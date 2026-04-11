@@ -90,12 +90,121 @@ def _pick_medium_profile(
 _REVIEW_PROFILE = "smollm-1.7b-instruct"
 
 
+# ─── P4c: dynamic n_ctx sizing ───────────────────────────────────────────────
+#
+# Bytes-per-KV-token map. The formula
+#     kv_bytes_per_token = 2 * n_layers * n_kv_heads * head_dim * kv_type_bytes
+# (the leading 2 covers K and V) gets multiplied by n_ctx to compute total KV
+# cache cost. The "2" coefficient and arch-field meanings are documented in
+# the llama.cpp memory math whitepaper.
+_KV_TYPE_BYTES: dict[str, float] = {
+    "f16": 2.0,
+    "q8_0": 1.0,
+    "q4_0": 0.5,
+}
+# Hard floor for "useful for agent work". Below this, tool prompts won't fit.
+_MIN_VIABLE_CTX = 2048
+# Default safety headroom (GB) reserved on top of weights + KV before we
+# declare a context size viable. Covers KV growth during decode + activation
+# scratchpads + the OS keeping a few hundred MB resident.
+_DEFAULT_SAFETY_MARGIN_GB = 1.5
+
+
+def estimate_max_ctx(
+    profile_meta: dict,
+    vram_budget_gb: float,
+    *,
+    safety_margin_gb: float = _DEFAULT_SAFETY_MARGIN_GB,
+    kv_quant_mode: str = "f16",
+) -> int:
+    """Largest n_ctx (multiple of 1024) that fits weights + KV cache + margin.
+
+    Returns 0 if the weights alone exceed the budget — caller should fall
+    through to a smaller profile. Caps the returned value at the profile's
+    declared ``n_ctx`` so we never request more context than the model was
+    trained for.
+
+    Requires ``profile_meta["arch"]`` populated by P4b. Custom profiles
+    without arch metadata return 0; callers must consult
+    :data:`_NCTX_SAFE_FALLBACK` (or the env-var default) instead.
+    """
+    arch = profile_meta.get("arch")
+    if not arch:
+        return 0
+    try:
+        weights_gb = float(arch["weights_gb"])
+        n_layers = int(arch["n_layers"])
+        n_kv_heads = int(arch["n_kv_heads"])
+        head_dim = int(arch["head_dim"])
+    except (KeyError, TypeError, ValueError):
+        return 0
+
+    kv_type_bytes = _KV_TYPE_BYTES.get(kv_quant_mode, 2.0)
+    kv_bytes_per_token = 2 * n_layers * n_kv_heads * head_dim * kv_type_bytes
+    if kv_bytes_per_token <= 0:
+        return 0
+
+    available_kv_gb = vram_budget_gb - weights_gb - safety_margin_gb
+    if available_kv_gb <= 0:
+        return 0
+
+    max_tokens = int(available_kv_gb * (1024**3) / kv_bytes_per_token)
+    profile_max = profile_meta.get("n_ctx")
+    if isinstance(profile_max, int) and profile_max > 0:
+        max_tokens = min(max_tokens, profile_max)
+    # Round down to a multiple of 1024 — llama.cpp doesn't require it but
+    # rounded values produce nicer logs and avoid spurious "5121" surprises.
+    rounded = (max_tokens // 1024) * 1024
+    return max(rounded, 0)
+
+
+# Measured "known good" context sizes per (profile, vram). Walk-largest-first
+# tuples. Used as a sanity floor over the formula: when a card sits below the
+# safety_margin assumption (e.g. background OS apps competing on a Mac), the
+# fallback table catches it before the formula picks an OOM-prone value.
+_NCTX_SAFE_FALLBACK: dict[str, tuple[tuple[float, int], ...]] = {
+    "qwen2.5-14b-instruct": (
+        (24.0, 16384),
+        (18.0, 8192),
+        (16.0, 4096),
+    ),
+    "llama-2-13b-chat": (
+        (16.0, 4096),
+        (14.0, 2048),
+    ),
+    "llama-3-8b-instruct": (
+        (12.0, 8192),
+        (8.0, 4096),
+    ),
+    "mistral-7b-instruct-v0.2": (
+        (8.0, 4096),
+        (4.0, 2048),
+    ),
+}
+
+
+def _lookup_fallback_nctx(profile_name: str, vram_gb: float) -> int:
+    """Return the measured-safe n_ctx for ``profile_name`` at this VRAM, or 0."""
+    rows = _NCTX_SAFE_FALLBACK.get(profile_name)
+    if not rows:
+        return 0
+    for min_vram, n_ctx in rows:
+        if vram_gb >= min_vram:
+            return n_ctx
+    return 0
+
+
 def _pick_infer_profile(
     vram_gb: float,
     profile_available: ProfileAvailabilityCheck | None = None,
 ) -> str:
     """Walk the VRAM tier table from largest to smallest, returning the first
-    profile that fits the VRAM budget AND passes the availability check."""
+    profile that fits the VRAM budget AND passes the availability check.
+
+    Note: this is the legacy "name only" picker, retained because callers
+    that don't yet thread n_ctx (e.g. ``maxim doctor``) only need the
+    profile name. New code should prefer :func:`_pick_infer_profile_with_ctx`.
+    """
     check = profile_available or (lambda _: True)
     for min_vram, profile in _INFER_VRAM_TIERS:
         if vram_gb >= min_vram and check(profile):
@@ -103,6 +212,46 @@ def _pick_infer_profile(
     # Last tier (smollm) is the universal fallback — return it even if the
     # availability check fails, so callers always get a profile name.
     return _INFER_VRAM_TIERS[-1][1]
+
+
+def _pick_infer_profile_with_ctx(
+    vram_gb: float,
+    profile_available: ProfileAvailabilityCheck | None = None,
+    *,
+    kv_quant_mode: str = "f16",
+    min_viable_ctx: int = _MIN_VIABLE_CTX,
+) -> tuple[str, int]:
+    """Walk the tier table picking the largest profile that produces a viable
+    n_ctx for the given VRAM budget.
+
+    Returns ``(profile_name, n_ctx)``. If the formula says 0 for every tier
+    above the smollm floor, falls through to the smollm row with n_ctx=0
+    (the spawner's default). Callers should treat n_ctx<=0 as "use the
+    spawner default" so this function never blocks startup.
+    """
+    from maxim.models.language.config import _BUILTIN_PROFILES
+
+    check = profile_available or (lambda _: True)
+    for min_vram, profile_name in _INFER_VRAM_TIERS:
+        if vram_gb < min_vram:
+            continue
+        if not check(profile_name):
+            continue
+        profile_data = _BUILTIN_PROFILES.get(profile_name, {})
+        formula_ctx = estimate_max_ctx(profile_data, vram_gb, kv_quant_mode=kv_quant_mode)
+        fallback_ctx = _lookup_fallback_nctx(profile_name, vram_gb)
+        # Be conservative: when both speak, take the SMALLER of the two so
+        # measured reality bounds the formula's optimism.
+        if formula_ctx > 0 and fallback_ctx > 0:
+            n_ctx = min(formula_ctx, fallback_ctx)
+        else:
+            n_ctx = formula_ctx or fallback_ctx
+        if n_ctx >= min_viable_ctx:
+            return profile_name, n_ctx
+        # Profile fits the tier table but produces an unusable context size
+        # at this budget — fall through to the next-smaller tier.
+    # Universal fallback (smollm); n_ctx=0 means "spawner picks default".
+    return _INFER_VRAM_TIERS[-1][1], 0
 
 
 def detect_tiers(
@@ -159,7 +308,19 @@ def detect_tiers(
     # routing to the large tier blindly. MPS is an explicit, known type
     # so it passes this check.
     if caps.has_gpu and caps.gpu_type is not None and caps.vram_gb >= 4.0:
-        profile = env_profile or _pick_infer_profile(caps.vram_gb, profile_available=profile_available)
+        # When the user names a profile via --llm / MAXIM_LLM_PROFILE we
+        # honor it but still run estimate_max_ctx() so the resulting n_ctx
+        # respects the user's hardware. The "with_ctx" picker is only used
+        # for auto-selection.
+        if env_profile:
+            from maxim.models.language.config import _BUILTIN_PROFILES
+
+            profile = env_profile
+            n_ctx = estimate_max_ctx(_BUILTIN_PROFILES.get(profile, {}), caps.vram_gb)
+            if n_ctx <= 0:
+                n_ctx = _lookup_fallback_nctx(profile, caps.vram_gb)
+        else:
+            profile, n_ctx = _pick_infer_profile_with_ctx(caps.vram_gb, profile_available=profile_available)
         # MPS uses `device="auto"` so llama.cpp's Metal backend picks the
         # right offload strategy. `requires_gpu=False` on MPS so the
         # worker pool doesn't reserve a CUDA worker that doesn't exist
@@ -172,6 +333,7 @@ def detect_tiers(
             model_profile=profile,
             device="auto" if is_mps else "gpu",
             n_gpu_layers=-1,
+            n_ctx=n_ctx if n_ctx > 0 else None,
         )
 
     # No large tier (no GPU, unknown GPU type, or effective VRAM < 4GB)

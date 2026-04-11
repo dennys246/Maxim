@@ -206,6 +206,7 @@ MISTRAL_API_KEY            # Required for Mistral API backend
 DEEPSEEK_API_KEY           # Required for DeepSeek backend
 MAXIM_LLM_ENABLED=1        # Enable LLM inference
 MAXIM_LLM_PROFILE=claude-sonnet  # Default model profile
+MAXIM_LLM_N_CTX=4096       # Override auto-computed llama.cpp n_ctx (P4c). Same as --llm-n-ctx.
 MAXIM_PROVENANCE_VERBOSITY=1     # 0=off, 1=compact, 2=verbose
 
 # Heartbeat + trace (debug/diagnostics)
@@ -292,12 +293,17 @@ Published to PyPI as `pymaxim` (import name stays `maxim`). 17 verb-based functi
 
 See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current version: v0.2.1 on PyPI as `pymaxim` ([publication guide](docs/publication_guide.md)).
 
-**Gating 1.0:**
-- [substrate_plan.md](docs/plans/substrate_plan.md) — bio-stack convergence (unified Percept, EC/ATL/Hebbian, convergence harnesses). Supersedes the old percept + salience plans.
-- [embodiment_voice_plan.md](docs/plans/embodiment_voice_plan.md) — PromptAssembler, acting coach, replanning with failure diagnosis.
+**Gating 1.0** (three prerequisite waves, then substrate phases):
+- [foundations_plan.md](docs/plans/foundations_plan.md) — F0.1–F0.8 prerequisite fixes (NAc wiring + save/load signature, PerceptTraceBuffer, ghost removal, Percept schema, agent_id threading + SCN race fix, factory consolidation, tier assertions, sensor→Percept contract). Eight small PRs, ~1,130 LOC total.
+- [simulator_upgrades_plan.md](docs/plans/simulator_upgrades_plan.md) — S1–S4 test-harness infrastructure (fixture-driven orchestrator, LLMBackend Protocol + mock via Option B, subprocess persistence harness, deterministic seeding). ~850 LOC. Drops substrate per-phase harness cost from ~200 LOC to ~100 LOC. Blocks substrate P0.
+- [substrate_plan.md](docs/plans/substrate_plan.md) — bio-stack convergence (Track A: P0, P1–P6, P8) and prompt layer (Track B: B1–B5, merged from the old `embodiment_voice_plan.md`). Includes P0 fixture-difficulty pilot, persistence as cross-phase contract, minimum-viable sleep replay (P8), sim-as-fixture-debugger workflow, 0.3-minimum vs 0.3-target fallback, incremental contracts layer, and living-doc discipline. Pass criteria are mechanistic where the phase tests a mechanism, head-to-head gate baselines where applicable (P3a, P4, P6). No p-values; effect sizes across ≥10 seeds. Depends on foundations_plan + simulator_upgrades_plan landing first. Supersedes the old percept + salience + embodiment/voice plans.
+
+**Living practice docs (paired with substrate_plan):**
+- [behavioral_convergence_practice.md](docs/plans/behavioral_convergence_practice.md) — does the agent actually get better across sessions? Living doc, not a gate.
+- [memory_consolidation_practice.md](docs/plans/memory_consolidation_practice.md) — refines the P8 sleep-replay mechanism with alternative strategies, promotion rules, interference analysis. Kicks in when P8 ships in 0.5.
 
 **Parallel:**
 - [cleanup_wave.md](docs/plans/cleanup_wave.md) — fix `--interactive`, delete dead CLI flags, display defaults, agent permissions. Supersedes display_simplification + agent_permissions plans.
 - [tool_refinement_plan.md](docs/plans/tool_refinement_plan.md) — living doc for agent tool curation.
 
-**Deferred (post-1.0, revive on trigger):** Mother Maxim, Pecking Order Graph, Asset Foundry, DM Extensions. See [docs/plans/deferred/](docs/plans/deferred/).
+**Deferred (post-1.0, revive on trigger):** Bio-System Plugin Discovery, Unified Event Bus, Mother Maxim, Pecking Order Graph, Asset Foundry, DM Extensions. See [docs/plans/deferred/](docs/plans/deferred/).

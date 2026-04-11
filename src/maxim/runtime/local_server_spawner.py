@@ -211,6 +211,7 @@ class LocalServerSpawner:
         n_gpu_layers: int = -1,
         chat_format: str = "chatml",
         api_key: str | None = None,
+        kv_quant_mode: str = "f16",
     ) -> None:
         self._model_path = str(model_path)
         self._port = int(port)
@@ -219,6 +220,7 @@ class LocalServerSpawner:
         self._n_gpu_layers = int(n_gpu_layers)
         self._chat_format = chat_format
         self._api_key = api_key
+        self._kv_quant_mode = kv_quant_mode
         self._process: subprocess.Popen | None = None
         self._atexit_registered = False
         self._lock = threading.Lock()
@@ -354,6 +356,19 @@ class LocalServerSpawner:
         ]
         if self._api_key:
             cmd.extend(["--api_key", self._api_key])
+        # KV cache quantization (peer_leader_flexibility_plan P4c). f16 is
+        # llama-cpp-server's default, so only emit flags for q8_0/q4_0 — keeps
+        # the spawn cmdline backward-compatible with older llama_cpp_python
+        # builds that didn't recognize --type_k/--type_v.
+        if self._kv_quant_mode in ("q8_0", "q4_0"):
+            cmd.extend(
+                [
+                    "--type_k",
+                    self._kv_quant_mode,
+                    "--type_v",
+                    self._kv_quant_mode,
+                ]
+            )
         return cmd
 
     def _build_subprocess_env(self) -> dict[str, str]:

@@ -331,7 +331,10 @@ On startup you'll see a banner like:
 |---|---|---|
 | `MAXIM_AUTO_SPAWN_LLM_SERVER` | `1` | Set `0`/`false` to disable auto-spawn |
 | `MAXIM_AUTO_SPAWN_PORT` | `8100` | Port for the spawned server (avoid 8000 if you run your own) |
-| `MAXIM_AUTO_SPAWN_N_CTX` | `8192` | Context window for the spawned server |
+| `MAXIM_LLM_N_CTX` | _(unset)_ | Force a specific n_ctx for the spawned server. Same effect as `--llm-n-ctx N`. |
+| `MAXIM_AUTO_SPAWN_N_CTX` | _(unset)_ | Legacy alias for `MAXIM_LLM_N_CTX`. Kept for in-place upgrades; new installs should prefer `MAXIM_LLM_N_CTX`. |
+
+**Dynamic n_ctx (P4c):** when neither env var is set, Maxim sizes the spawned server's context window from the active profile's architecture metadata + your detected VRAM. A 16 GB CUDA card running `qwen2.5-14b` lands at ~4096; a 24 GB Apple Silicon mac at ~16384; the profile's declared 32K is used as a hard ceiling so we never request more than the model was trained for. Override with `--llm-n-ctx N` if you need a specific value (e.g. tuning against a tight VRAM budget).
 
 **Auto-discovery:** if a llama-cpp-server is already answering on the auto-spawn port, Maxim will **reuse it** rather than spawning a duplicate. Running two `maxim` terminals from the same shell is transparent — first spawns, second detects the existing server and wires its own lane to it. Two Maxim "minds" share one model copy in VRAM.
 

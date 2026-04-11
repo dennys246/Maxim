@@ -83,6 +83,15 @@ class LaneConfig:
     model_profile: str | None = None
     device: str = "auto"  # "gpu" | "cpu" | "auto"
     n_gpu_layers: int = -1  # -1 = all on GPU, 0 = CPU only
+    # Resolved llama.cpp context budget. None = let the spawner pick its
+    # default (DEFAULT_N_CTX). Populated by detect_tiers() via
+    # estimate_max_ctx() so the chosen n_ctx fits the lane's VRAM budget
+    # without OOMing at load time. See peer_leader_flexibility_plan.md P4c.
+    n_ctx: int | None = None
+    # KV cache quantization for llama.cpp (-1.5x to -4x KV memory cost vs f16).
+    # Currently only "f16" is wired in by detect_tiers; "q8_0" / "q4_0" can be
+    # set manually via tier overrides in llm.json for tight-VRAM cards.
+    kv_quant_mode: str = "f16"
     # Remote backend via OpenAI-compatible API (model server, Cloudflare tunnel, peer).
     remote_url: str | None = None
     remote_api_key: str | None = None

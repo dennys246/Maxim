@@ -86,6 +86,19 @@ def normalize_args(args: argparse.Namespace) -> None:
                 pass
         args.language_model = selected
 
+    # ── --llm-n-ctx override (peer_leader_flexibility_plan P4c) ──────────
+    # Forwards to MAXIM_LLM_N_CTX so the auto-spawn path in lane_backends
+    # picks it up without plumbing a new arg through every layer.
+    llm_n_ctx = getattr(args, "llm_n_ctx", None)
+    if llm_n_ctx is not None:
+        try:
+            n_ctx_int = int(llm_n_ctx)
+        except (TypeError, ValueError):
+            raise SystemExit(f"Invalid --llm-n-ctx value: {llm_n_ctx!r} (expected integer)")
+        if n_ctx_int <= 0:
+            raise SystemExit(f"--llm-n-ctx must be positive, got {n_ctx_int}")
+        os.environ["MAXIM_LLM_N_CTX"] = str(n_ctx_int)
+
     # ── Cloud provider CLI flags ──────────────────────────────────────────
     cloud_fallback = getattr(args, "cloud_fallback", None)
     cloud_lane = getattr(args, "cloud_lane", None)

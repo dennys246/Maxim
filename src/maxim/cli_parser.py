@@ -56,6 +56,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="LLM profile name (overrides ~/.maxim/config/llm.json and $MAXIM_LLM_PROFILE).",
     )
     core.add_argument(
+        "--llm-n-ctx",
+        type=int,
+        default=None,
+        dest="llm_n_ctx",
+        metavar="N",
+        help="Override auto-computed llama.cpp n_ctx (context window). "
+        "Use for tuning against specific VRAM budgets. Warning: a value "
+        "above the formula estimate may OOM the GPU at load time.",
+    )
+    core.add_argument(
         "--epochs",
         type=int,
         default=0,
