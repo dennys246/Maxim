@@ -317,6 +317,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "Equivalent to MAXIM_REAP_ORPHANS=1.",
     )
     sim.add_argument(
+        "--sim-max-turns",
+        type=int,
+        default=50,
+        dest="sim_max_turns",
+        metavar="N",
+        help="Maximum simulation turns before forced termination. "
+        "When reached, the stall detector injects a max_turns termination "
+        "into the bridge so the report shows finish_reason='max_turns'. "
+        "Default: 50.",
+    )
+    sim.add_argument(
         "--research",
         action="store_true",
         help="Generate research report (Writer + Reviewer agents) after simulation completes.",

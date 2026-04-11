@@ -572,6 +572,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
                     sandbox_network=getattr(args, "sandbox_network", "none"),
                     aut_model=getattr(args, "aut_model", None),
+                    max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
                 )
                 sys.exit(0 if result.finish_reason != "error" else 1)
 
@@ -596,6 +597,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
                 sandbox_network=getattr(args, "sandbox_network", "none"),
                 aut_model=getattr(args, "aut_model", None),
+                max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
             )
             sys.exit(0 if result.finish_reason != "error" else 1)
 
@@ -706,6 +708,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             no_sim_env=bool(getattr(args, "no_sim_env", False)),
                             sandbox_backend=getattr(args, "sandbox_backend", "auto"),
                             dm_campaign=dm_campaign,
+                            max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
                         )
                         sys.exit(0 if result.finish_reason != "error" else 1)
                 except Exception:
@@ -724,7 +727,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sandbox_backend=getattr(args, "sandbox_backend", "auto"),
                 generative=True,  # Use generative campaign runner
                 arc_yaml=getattr(args, "arc", None),
-                max_turns=int(getattr(args, "sim_max_turns", 0) or 20),
+                max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
             )
             sys.exit(0 if result.finish_reason != "error" else 1)
 
