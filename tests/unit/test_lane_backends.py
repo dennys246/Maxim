@@ -491,7 +491,6 @@ class TestBuildPrimaryRouter:
 
     def test_logger_receives_describe(self, monkeypatch):
         monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
-        from unittest.mock import MagicMock
         from maxim.runtime.capabilities import RuntimeCapabilities
 
         mock_logger = MagicMock()
@@ -513,23 +512,34 @@ class TestBuildPrimaryRouter:
 
 class TestLLMServerHealthCheck:
     def test_responding_url_returns_true(self):
-        with patch("urllib.request.urlopen") as mock_open:
-            mock_resp = MagicMock()
-            mock_resp.status = 200
-            mock_open.return_value.__enter__.return_value = mock_resp
+        # Plan 1 R1: _llm_server_responding_at now goes through
+        # maxim.utils.http.fetch_url, which uses httpx under the hood. Mock
+        # at the fetch_url layer and assert it was called with the expected
+        # /v1/models path. User-Agent is now set once at _external endpoint
+        # registration (http.DEFAULT_USER_AGENT = "maxim-peer/1.0") — that's
+        # verified structurally in tests/unit/test_http_client.py.
+        from maxim.utils import http as _http
+
+        fake_resp = _http.Response(
+            status=200,
+            headers={},
+            content=b"{}",
+            elapsed_ms=1.0,
+            endpoint=_http._EXTERNAL_ENDPOINT,
+            request_id="r",
+        )
+        with patch("maxim.utils.http.fetch_url", return_value=fake_resp) as mock_fetch:
             assert _llm_server_responding_at("http://127.0.0.1:8100/v1") is True
-            # Verify it probed the /v1/models endpoint. The call now passes
-            # a urllib.request.Request object (so we can set User-Agent to
-            # bypass Cloudflare Bot Fight Mode), so read .full_url instead.
-            called_arg = mock_open.call_args[0][0]
-            called_url = getattr(called_arg, "full_url", called_arg)
+            called_url = mock_fetch.call_args[0][0]
             assert called_url.endswith("/v1/models")
-            # Verify the User-Agent header is set — Cloudflare's Bot Fight
-            # Mode rejects urllib's default ``Python-urllib/*`` UA.
-            assert called_arg.get_header("User-agent") == "maxim-peer/1.0"
 
     def test_dead_url_returns_false(self):
-        with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
+        from maxim.utils import http as _http
+
+        with patch(
+            "maxim.utils.http.fetch_url",
+            side_effect=_http.HTTPConnectionError("_external", fix_hint="refused"),
+        ):
             assert _llm_server_responding_at("http://127.0.0.1:8100/v1") is False
 
     def test_empty_url_returns_false(self):
