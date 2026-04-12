@@ -2,10 +2,9 @@
 
 Thread-safe mailbox-style bus. Each agent registers by nickname and
 receives messages via a per-agent queue. No network transport — this
-is the local proving ground for mesh message patterns.
-
-Future: PeerChannel (agent mesh Phase 3) replaces or wraps this for
-network delivery.
+is the in-process mesh used by simulation/research protocols. A networked
+transport is deferred to
+``docs/plans/deferred/llm_path_multi_peer_dispatch.md`` if/when revived.
 """
 
 from __future__ import annotations

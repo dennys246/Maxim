@@ -1,55 +1,28 @@
-"""Agent mesh primitives — identity, naming, messages, transport, and admission.
+"""Agent mesh primitives — identity, naming, messages, and local transport.
 
 These are the foundational abstractions for multi-agent collaboration.
-Built and proven locally (research protocol) before adding network transport.
+Used by ``simulation/`` and ``create.py`` for research-protocol agent setups.
+
+**What was removed in R0 of llm_path_foundation.md (2026-04-12):**
+The peer_registry, peer_info, peer_channel, task_delegation, knowledge,
+clock, agent_identity, and admission modules were dead code (zero production
+imports) and have been deleted. If you're looking for rate limiting, see
+``runtime/rate_limit.py`` which cherry-picked admission.py's logic. If you're
+looking for peer-to-peer LLM routing, see ``docs/plans/llm_path_refinement.md``
+and the deferred plans in ``docs/plans/deferred/``.
 """
 
 from maxim.mesh.identity import AgentProfile
-from maxim.mesh.agent_identity import AgentIdentity
 from maxim.mesh.naming import UMR, parse_umr
 from maxim.mesh.message import MESH_PROTOCOL_VERSION, MeshMessage, MeshMessageType
 from maxim.mesh.bus import LocalMessageBus
-from maxim.mesh.peer_info import PeerInfo
-from maxim.mesh.peer_registry import PeerRegistry
-from maxim.mesh.peer_channel import PeerChannel
-from maxim.mesh.admission import MeshAdmissionControl
-from maxim.mesh.task_delegation import TaskDelegator, TaskReceiver
-from maxim.mesh.clock import PeerClockEstimator
-from maxim.mesh.knowledge import (
-    CausalLinkProvider,
-    CausalLinkReceiver,
-    ExperienceBroker,
-    KnowledgeProvider,
-    KnowledgeReceiver,
-    MotorProgramProvider,
-    MotorProgramReceiver,
-    ReflectionProvider,
-    ReflectionReceiver,
-)
 
 __all__ = [
     "AgentProfile",
-    "AgentIdentity",
     "UMR",
     "parse_umr",
     "MESH_PROTOCOL_VERSION",
     "MeshMessage",
     "MeshMessageType",
     "LocalMessageBus",
-    "PeerInfo",
-    "PeerRegistry",
-    "PeerChannel",
-    "MeshAdmissionControl",
-    "ExperienceBroker",
-    "KnowledgeProvider",
-    "KnowledgeReceiver",
-    "CausalLinkProvider",
-    "CausalLinkReceiver",
-    "ReflectionProvider",
-    "ReflectionReceiver",
-    "MotorProgramProvider",
-    "MotorProgramReceiver",
-    "TaskDelegator",
-    "TaskReceiver",
-    "PeerClockEstimator",
 ]

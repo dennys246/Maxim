@@ -1,5 +1,24 @@
 # Agent Mesh Troubleshooting
 
+> **⚠ LEGACY — this document describes code that was deleted on 2026-04-12.**
+>
+> As of R0 of [llm_path_foundation.md](../plans/llm_path_foundation.md), the
+> mesh modules referenced below (`PeerRegistry`, `PeerChannel`, `TaskDelegator`,
+> `ExperienceBroker`, `MeshAdmissionControl`, `PeerClockEstimator`,
+> `AgentIdentity`) have been deleted as dead code — they had zero production
+> imports and were swept along during the task→size lane refactor without
+> being re-wired.
+>
+> **For current peer routing troubleshooting**, see
+> [peer_leader_connectivity.md](peer_leader_connectivity.md) and
+> [peer_diagnosis_runbook.md](peer_diagnosis_runbook.md).
+>
+> **The replacement runbook** ([mesh_debug.md](mesh_debug.md)) will be
+> written by Plan 4 (`llm_path_operator_visibility.md`) once the new
+> `mesh.yml` + admin API ships. Until then, the content below is preserved
+> for historical reference only. Do not follow these instructions as
+> operational guidance — the classes they reference no longer exist.
+
 ## Peer Discovery & Connectivity
 
 ### Peer not found in registry

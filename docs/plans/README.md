@@ -23,6 +23,15 @@ These accumulate evidence and refinement over time. They are not on the critical
 ## Parallel (ship anytime, not gating 1.0)
 
 - [tool_refinement_plan.md](tool_refinement_plan.md) — living doc for agent tool surface curation
+- [llm_path_refinement.md](llm_path_refinement.md) — meta-plan for the LLM routing path refactor. Motivated by two 2026-04-12 peer-leader incidents + an audit that revealed `_OpenAIBackend` has a hidden ~52s retry loop. **Ships as 0.4 stability version**, contains four focused sub-plans + three deferred shell plans. Authoritative architecture reference at [../architecture/llm_routing.md](../architecture/llm_routing.md); stress test protocol at [../experiments/protocols/llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md).
+  - [llm_path_foundation.md](llm_path_foundation.md) — **Plan 1: Foundation**. Delete ~1,250 LOC dead mesh scaffolding. New `maxim/utils/http.py` with endpoint registry, typed `HTTPError` hierarchy, `RequestContext` dataclass + contextvars, automatic `X-Maxim-*` header propagation. ~450 LOC new, ~1,330 LOC deleted. Pure refactoring.
+  - [llm_path_typed_errors.md](llm_path_typed_errors.md) — **Plan 2: Typed Errors + Role Detection**. Split from Plan 1 per user decision. Role detection (`detect_role()` as first runtime action), typed `BackendError` taxonomy with `.fix_hint`, two-stage probe, SSRF check moved to `utils/net.py`. ~280 LOC new.
+  - [llm_path_fast_failover.md](llm_path_fast_failover.md) — **Plan 3: Fast Failover**. New `_MaximPeerBackend` replaces `_OpenAIBackend` for self-hosted peers (single HTTP call, no retry loop, typed exceptions, streaming). Router catches typed exceptions for per-class backoff. Probe consolidation. ~420 LOC new. **The 52-second retry loop dies here.** Stress test protocol runs substrate P2 validation + `llama.cpp --parallel` batching PoC + multi-agent fan-out as triple duty.
+  - [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — **Plan 4: Operator Visibility** (renamed from "Reactive Mesh"). `mesh.yml` + `maxim peer --node X` CLI + `install` command + admin API with per-agent request-trace filtering + per-agent rate limiting to prevent runaway agent starvation. ~650 LOC new. Ships unconditionally — multi-peer dispatch moved to deferred.
+  - Deferred shell plans (revive on stress-test-defined triggers):
+    - [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — multi-peer reactive overflow if batching doesn't solve saturation
+    - [deferred/llm_path_async_router.md](deferred/llm_path_async_router.md) — async router if `_inference_lock` becomes the bottleneck
+    - [deferred/llm_path_fair_scheduling.md](deferred/llm_path_fair_scheduling.md) — bio-inspired priority classes + fair-share (aspiration: improve on Kubernetes quotas, not copy them)
 
 ## Deferred (post-1.0, revive on trigger)
 
@@ -50,7 +59,14 @@ Recently archived (2026-04-11/12, S1–S4 shipped 2026-04-12):
 
 ## Version path to 1.0
 
-Track A runs substrate (F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4 → P5 → P6 → P8). Track B runs the prompt layer (B1 → B3 → B4 → B5), interleaved with Track A. Each phase is a falsifiable claim validated with mechanistic criteria where the phase tests a mechanism, and head-to-head gate baselines where the baseline attacks the same claim (P3a TF-IDF, P4 OpenCLIP, P6 LRU). Pass criteria use effect sizes across ≥10 seeds (≥20 for P4); no p-values, no Bonferroni corrections. Persistence round-trip smoke tests fire at every phase.
+Two tracks run in parallel:
+- **Track A — Substrate:** the bio-inspired research claim. F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4 → P5 → P6 → P8.
+- **Track B — Prompt layer:** B1 → B3 → B4 → B5.
+- **Track C — Infrastructure (new, 2026-04-12):** LLM path refinement. Four sub-plans + stress test protocol. Ships as 0.4 stability version.
+
+Track C is a pause-insertion between Track A's 0.3 and Track B's 0.4 because the 2026-04-12 peer-leader incidents + `_OpenAIBackend` retry-loop discovery made it clear the substrate work cannot be reliably stress-tested on the current LLM path.
+
+Each substrate phase is a falsifiable claim validated with mechanistic criteria where the phase tests a mechanism, and head-to-head gate baselines where the baseline attacks the same claim (P3a TF-IDF, P4 OpenCLIP, P6 LRU). Pass criteria use effect sizes across ≥10 seeds (≥20 for P4); no p-values, no Bonferroni corrections. Persistence round-trip smoke tests fire at every phase.
 
 | Version | What ships | What it proves |
 |---|---|---|
@@ -58,13 +74,43 @@ Track A runs substrate (F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4 
 | **0.3-pre** | foundations_plan, simulator_upgrades_plan, P0 pilot, B1+P1 combined migration | Foundations solid; substrate phases cheap to run; fixtures calibrated; text flows through percepts end-to-end |
 | **0.3-minimum** | 0.3-pre plus P1, P2, P3.5 | Mechanism + reward modulation + persistence certification. Defensible version bump if P3a/b/P4 slip to 0.3.1. |
 | **0.3-target** | 0.3-minimum plus P3a, P3b, P4 (OpenCLIP head-to-head) | Full substrate proven with cross-modal binding across real process boundary |
-| **0.4** | P4 re-pass (production vision + email/Slack), B3, B4 (gates 1.0), B5 | Architecture generalizes; NPCs coherent; replanning recovers from failure. B4 depends on P3a — if 0.3 shipped as 0.3-minimum, B4 slips. |
-| **0.5** | P5 (stress persistence), P6 (extinction vs LRU), **P8 (minimum-viable sleep replay)** | Persists under load, forgets appropriately, actively strengthens rewarded associations offline |
+| **0.4 (Track C — stability)** | **LLM path refinement Plans 1-4** + substrate P2 validation + stress test + `llama.cpp --parallel` batching PoC | Infrastructure reliably supports multi-agent stress testing. `maxim peer restart` recovers in < 10s (vs ~52s today). Per-agent observability. Substrate P2 validated under multi-agent load. See [llm_path_refinement.md](llm_path_refinement.md). |
+| **0.5 (formerly 0.4)** | P4 re-pass (production vision + email/Slack), B3, B4 (gates 1.0), B5 | Architecture generalizes; NPCs coherent; replanning recovers from failure |
+| **0.6 (formerly 0.5)** | P5 (stress persistence), P6 (extinction vs LRU), **P8 (minimum-viable sleep replay)** | Persists under load, forgets appropriately, actively strengthens rewarded associations offline |
 | **1.0** | Stress-test sim combining all phases; B4 passing; practice docs with experiments logged | Cross-session learning without fine-tuning at realistic scale, with coherent voice, with ongoing research program |
 
 **0.3-minimum vs 0.3-target:** a partial 0.3 can ship as a version bump if the ambitious target slips. Normal re-planning, not failure.
 
-Channels (SMS, email, Slack, narrative speech) are **TEXT modality with context metadata**, not separate modalities. Channel rollout: SMS + narrative in 0.3, email + Slack in 0.4. See [substrate_plan.md](archive/substrate_plan.md) for phase definitions, convergence sims, plausible baselines, negative controls, pass criteria, swap points, and fixture requirements.
+**0.4 is a pure infrastructure version bump.** No new substrate phases. No new prompt-layer features. It exists because the 2026-04-12 incidents + architecture audit made stability work non-optional. Substrate work continues in 0.5 on top of the stabilized LLM path.
+
+**P2 validation runs INSIDE Plan 3's stress test** (Phase A). The substrate P2 reward modulation validation happens alongside Plan 3's fast-failover verification — one stress test serves both needs. See [../experiments/protocols/llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md).
+
+Channels (SMS, email, Slack, narrative speech) are **TEXT modality with context metadata**, not separate modalities. Channel rollout: SMS + narrative in 0.3, email + Slack in 0.5. See [substrate_plan.md](archive/substrate_plan.md) for phase definitions.
+
+## How LLM path refinement interleaves with substrate P2
+
+Timeline (rough, not calendar-committed):
+
+1. **Now:** Plan 1 (Foundation) — delete dead mesh, unified HTTP client, RequestContext contract
+2. **Next:** Plan 2 (Typed Errors + Role Detection) — correctness primitives
+3. **Then:** Plan 3 (Fast Failover) — `_MaximPeerBackend`, kills the 52s retry loop
+4. **Stress test (one combined run):**
+   - Phase A: substrate P2 validation (satisfies 0.3-minimum P2 requirement) + Plan 3 baseline
+   - Phase B: multi-agent fan-out (exercises AgentPool under the new LLM path)
+   - Phase C: `llama.cpp --parallel` batching PoC (decides whether we need multi-peer dispatch at all)
+   - Phase D: leader restart recovery test (the "52s is dead" proof)
+   - Phase E: fault injection (verifies typed exception coverage)
+5. **Then:** Plan 4 (Operator Visibility) — CLI + admin API + per-agent rate limiting
+6. **Release 0.4** with LLM path refinement complete + substrate P2 validated
+7. **Back to substrate work:** P3a + P3b + P4 in 0.5
+
+**Why this order is load-bearing (decided 2026-04-12):**
+- Current LLM infrastructure is **too broken to use for P2 testing at all.** The 52s retry loop + probe fragility + lack of per-agent observability would make P2 validation data unreliable and un-attributable ("substrate bug vs. LLM flakiness?"). Running P2 first was considered and rejected.
+- Substrate P2 needs a stable LLM path to validate correctly
+- Multi-agent P2 runs need per-agent observability (which Plans 1-2 provide via `RequestContext`)
+- Stress test needs typed exceptions to classify failures properly (Plan 2)
+- Plan 4's admin API is where you'd inspect per-agent P2 reward modulation under load
+- Shipping Plans 1-3 alone without Plan 4 means you can't debug concurrent-agent P2 validation effectively
 
 ## 1.0 exit criteria
 
