@@ -187,9 +187,14 @@ class NeuralSemanticLSH:
                 self._initialized = True
                 return
 
-        # Generate random hyperplanes for LSH
-        np.random.seed(42)  # Reproducible hashes
-        self._random_planes = np.random.randn(self.config.num_hash_bits, self.config.embedding_dim)
+        # Generate random hyperplanes for LSH using a local RNG so we
+        # don't pollute the global numpy state. Uses the global seed from
+        # --seed if set, otherwise falls back to 42 for backward compat.
+        from maxim.utils.seeding import get_global_seed
+
+        _lsh_seed = get_global_seed() or 42
+        _lsh_rng = np.random.RandomState(_lsh_seed)
+        self._random_planes = _lsh_rng.randn(self.config.num_hash_bits, self.config.embedding_dim)
         # Normalize planes
         self._random_planes = self._random_planes / np.linalg.norm(self._random_planes, axis=1, keepdims=True)
 

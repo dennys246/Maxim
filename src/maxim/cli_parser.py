@@ -372,6 +372,15 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Write scenario results to a JSON file (requires --sim).",
     )
+    sim.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Global deterministic seed. Sets PYTHONHASHSEED, random, numpy, "
+        "and torch seeds for reproducible fixture runs. Byte-identical "
+        "determinism requires fixture-driven mode (no live LLM).",
+    )
 
     # ── Debug/Trace ────────────────────────────────────────────────────
     dbg = parser.add_argument_group("debug", "Debug tracing and output filtering")

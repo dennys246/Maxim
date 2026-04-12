@@ -228,6 +228,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(raw_argv)
 
+    # ── Deterministic seeding (S4) — must run before heavy imports ───
+    if getattr(args, "seed", None) is not None:
+        from maxim.utils.seeding import seed_all
+
+        seed_all(args.seed)
+
     # ── Force-kill on double Ctrl+C ──────────────────────────────────
     # First Ctrl+C signals the LLM cancellation primitive and raises
     # KeyboardInterrupt in the main thread for graceful shutdown. If the
