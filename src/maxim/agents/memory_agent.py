@@ -98,10 +98,13 @@ class MemoryAgent(Agent, AgentOutputMixin):
         memory_hub: Any | None = None,
         plan_manager: Any | None = None,
         workspace_path: str | None = None,
+        agent_id: str | None = None,
     ) -> None:
         super().__init__(name=name, enabled=enabled)
         self._bus = bus
         self._plan_manager = plan_manager
+        self._agent_id = agent_id
+        self._warned_mismatched_agent_ids: set[str] = set()
 
         # Initialize output mixin for sandbox/shared output support
         self._init_output(agent_name="memory", output_manager=output_manager)
@@ -432,6 +435,24 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
     def _on_percept(self, percept: Percept) -> None:
         """Process incoming percept."""
+        # F0.5: soft agent_id isolation check. When this MemoryAgent is
+        # bound to an agent_id and a percept arrives carrying a different
+        # agent's tag, log a warning once per foreign id. Intentionally
+        # not a hard assertion — PerceptContext.agent_id is Optional until
+        # F0.6 factory consolidation enforces it, and single-agent legacy
+        # paths still produce context=None.
+        if self._agent_id is not None and percept.context is not None:
+            foreign = percept.context.agent_id
+            if foreign is not None and foreign != self._agent_id and foreign not in self._warned_mismatched_agent_ids:
+                self._warned_mismatched_agent_ids.add(foreign)
+                self.log.warning(
+                    "MemoryAgent(agent_id=%s) received percept tagged for agent_id=%s; "
+                    "cross-agent percepts are allowed on the shared bus but this agent "
+                    "will not learn from them — first occurrence logged, further "
+                    "occurrences silent.",
+                    self._agent_id,
+                    foreign,
+                )
         with self._lock:
             self._recent_percepts.append(percept)
 

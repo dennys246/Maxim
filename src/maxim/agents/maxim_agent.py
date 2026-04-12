@@ -65,8 +65,10 @@ class MaximAgent(Agent):
         enable_embeddings: bool = False,
         reset_on_startup: bool = False,
         capture_manager: CaptureManager | None = None,
+        agent_id: str = "maxim",
     ) -> None:
         super().__init__(name=name, enabled=enabled)
+        self._agent_id = agent_id
 
         # Create the message bus
         self._bus = AgentBus()
@@ -79,11 +81,14 @@ class MaximAgent(Agent):
         # Store capture manager reference (Phase 3)
         self._capture_manager = capture_manager
 
-        # Create agents in dependency order
+        # Create agents in dependency order. F0.5: agent_id flows through
+        # to percept producers so every Percept produced by this runtime
+        # carries the producer's identity in PerceptContext.agent_id.
         self.perception = PerceptionAgent(
             self._bus,
             interests=set(interests or []),
             capture_manager=capture_manager,
+            agent_id=agent_id,
         )
 
         from maxim.utils.filesystem_policy import get_workspace_path
@@ -97,6 +102,7 @@ class MaximAgent(Agent):
             enable_embeddings=enable_embeddings,
             reset_on_startup=reset_on_startup,
             workspace_path=get_workspace_path(),
+            agent_id=agent_id,
         )
 
         self.exec_agent = ExecAgent(

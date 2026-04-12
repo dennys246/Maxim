@@ -183,6 +183,15 @@ class SCN:
     # Coupled oscillator network (optional, disabled by default)
     _oscillator: Any = field(default=None, repr=False)
 
+    # Persistence path — populated at construction time by AgentFactory so
+    # per-agent SCN files never share a binding window. F0.5 migration: the
+    # previous pattern (`scn._persistence_path = str(...)` set *after*
+    # construction) was a race under concurrent AgentFactory.create_agent
+    # calls. MemoryHub.on_session_end reads this field to decide where to
+    # save. Kept as ``persistence_path`` (public, typed) instead of the old
+    # untyped ``_persistence_path`` attribute.
+    persistence_path: str | None = None
+
     def register(
         self,
         memory_id: str,

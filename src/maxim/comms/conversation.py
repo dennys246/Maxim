@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.bus import Percept
+from maxim.agents.percept_context import PerceptContext
 
 if TYPE_CHECKING:
     from maxim.agents.bus import AgentBus
@@ -84,12 +85,36 @@ class ConversationManager:
         bus: "AgentBus",
         nac: "NAc | None" = None,
         max_history: int = 20,
+        agent_id: str | None = None,
     ) -> None:
         self.bus = bus
         self.nac = nac
         self.conversations: dict[str, Conversation] = {}
         self.participant_index: dict[str, str] = {}  # key → conv_id
         self.max_history = max_history
+        self._agent_id = agent_id
+
+    _KNOWN_CHANNELS = frozenset({"sms", "email", "slack", "speech", "mesh", "narrative", "self", "internal"})
+
+    def _build_context(
+        self,
+        *,
+        channel: str | None = None,
+        sender: str | None = None,
+    ) -> PerceptContext:
+        """Build a PerceptContext stamping this manager's agent_id.
+
+        Channel is passed through when it matches a known literal; unknown
+        transport strings (e.g. ``"twilio:sms"``) fall back to ``None`` on
+        the typed context while the free-form ``source`` field on Percept
+        still carries the raw transport identifier.
+        """
+        return PerceptContext(
+            channel=channel if channel in self._KNOWN_CHANNELS else None,  # type: ignore[arg-type]
+            sender=sender,
+            timestamp=time.time(),
+            agent_id=self._agent_id,
+        )
 
     def get_or_create(self, channel: str, participant: str) -> Conversation:
         """Find existing conversation or start a new one."""
@@ -162,6 +187,8 @@ class ConversationManager:
                     source=shortcut["source"],
                     content=shortcut["content"],
                     hard_override=shortcut["hard_override"],
+                    context=self._build_context(channel=channel, sender=sender),
+                    modality="text",
                 )
             )
             return True
@@ -195,9 +222,10 @@ class ConversationManager:
                 source="conversation:archive",
                 content=summary,
                 salience=0.6,
+                context=self._build_context(channel=conv.channel, sender=conv.participant),
+                modality="text",
                 metadata={
                     "conversation_id": conv.id,
-                    "channel": conv.channel,
                     "message_count": len(conv.messages),
                     "duration_seconds": conv.last_activity - conv.created_at,
                 },
