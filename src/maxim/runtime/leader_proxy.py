@@ -34,6 +34,17 @@ import urllib.request
 
 _BRANCH_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]*$")
 
+# Shared state for async install — written by the install thread, read by
+# the /v1/debug/install-status endpoint. Dict (not dataclass) so the
+# background thread can mutate in place without import gymnastics.
+_install_status: dict[str, Any] = {
+    "status": "idle",
+    "installed": [],
+    "pip_output": "",
+    "error": "",
+    "started_by": "",
+}
+
 
 def _remote_update_allowed() -> bool:
     """True iff ``MAXIM_ALLOW_REMOTE_UPDATE`` is set to a truthy value."""
@@ -494,6 +505,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self._handle_debug_last_requests()
         elif stripped == "/v1/debug/deps":
             self._handle_debug_deps()
+        elif stripped == "/v1/debug/install-status":
+            self._send_json(200, dict(_install_status))
         else:
             self._send_json(404, {"error": "Not found"})
 
@@ -1005,85 +1018,71 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         # chain that static analyzers trace from request body to exec.
         repo_root = str(Path(__file__).resolve().parents[3])
         installed: list[str] = []
-        all_pip_output: list[str] = []
+        pip_cmds: list[list[str]] = []
 
         # Rebuild extras from the allowlist (not from user input)
         safe_extras = [e for e in _ALLOWED_EXTRAS if e in extras]
         if safe_extras:
             extra_str = ",".join(safe_extras)
-            # The spec string is built entirely from _ALLOWED_EXTRAS literals
             spec = f".[{extra_str}]"
+            pip_cmds.append([sys.executable, "-m", "pip", "install", spec])
             installed.extend(f"pymaxim[{e}]" for e in safe_extras)
 
-            logger.info("admin/install: extras [%s] from peer %s", extra_str, self.client_address[0])
-            try:
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", spec],
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    cwd=repo_root,
-                )
-            except Exception as e:
-                self._send_json(500, {"error": f"pip install extras failed: {e}"})
-                return
-
-            if result.returncode != 0:
-                self._send_json(
-                    500,
-                    {
-                        "status": "error",
-                        "error": "pip install extras failed",
-                        "pip_stderr": result.stderr[-500:] if result.stderr else "",
-                    },
-                )
-                return
-            if result.stdout:
-                all_pip_output.append(result.stdout[-500:])
-
-        # Rebuild package names: re-match each against the safe pattern and
-        # take the match group — this produces a new string that is not the
-        # original user input, severing the taint chain for static analysis.
+        # Rebuild package names via regex match groups (severs taint chain)
         safe_packages: list[str] = []
         for pkg in packages:
             m = _SAFE_PKG_RE.match(pkg)
             if m:
                 safe_packages.append(m.group(0))
         if safe_packages:
+            pip_cmds.append([sys.executable, "-m", "pip", "install", *safe_packages])
             installed.extend(safe_packages)
 
-            logger.info("admin/install: packages %s from peer %s", safe_packages, self.client_address[0])
-            try:
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", *safe_packages],
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    cwd=repo_root,
-                )
-            except Exception as e:
-                self._send_json(500, {"error": f"pip install packages failed: {e}"})
-                return
+        # Respond immediately — pip runs in a background thread to avoid
+        # Cloudflare tunnel timeouts (524) on long-running installs.
+        # Peer polls /v1/debug/install-status for completion.
+        def _run_pip_background() -> None:
+            for cmd in pip_cmds:
+                try:
+                    r = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=600,
+                        cwd=repo_root,
+                    )
+                    _install_status["pip_output"] += (r.stdout or "")[-500:]
+                    if r.returncode != 0:
+                        _install_status["status"] = "error"
+                        _install_status["error"] = r.stderr[-500:] if r.stderr else "pip failed"
+                        return
+                except Exception as exc:
+                    _install_status["status"] = "error"
+                    _install_status["error"] = str(exc)
+                    return
+            _install_status["status"] = "ok"
 
-            if result.returncode != 0:
-                self._send_json(
-                    500,
-                    {
-                        "status": "error",
-                        "error": "pip install packages failed",
-                        "pip_stderr": result.stderr[-500:] if result.stderr else "",
-                    },
-                )
-                return
-            if result.stdout:
-                all_pip_output.append(result.stdout[-500:])
+        # Store status in the module-level dict so the debug endpoint can read it
+        _install_status.update(
+            {
+                "status": "running",
+                "installed": installed,
+                "pip_output": "",
+                "error": "",
+                "started_by": self.client_address[0],
+            }
+        )
+
+        logger.info("admin/install: %s from peer %s (async)", installed, self.client_address[0])
+        t = threading.Thread(target=_run_pip_background, name="admin.install", daemon=True)
+        t.start()
 
         self._send_json(
-            200,
+            202,
             {
-                "status": "ok",
+                "status": "started",
                 "installed": installed,
-                "pip_output": "\n".join(all_pip_output),
+                "message": "Install started. Poll /v1/debug/install-status for progress.",
             },
         )
 
