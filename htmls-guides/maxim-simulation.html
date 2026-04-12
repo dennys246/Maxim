@@ -407,6 +407,24 @@ maxim --sim "hippocampal recall" --research \
     <p class="text-slate-300 mt-3">After the simulation completes, a <span class="text-indigo-400 font-semibold">Writer</span> agent produces a structured research paper and a <span class="text-indigo-400 font-semibold">Reviewer</span> agent evaluates it. Both use mesh primitives (<code class="text-indigo-400">AgentProfile</code>, <code class="text-indigo-400">MeshMessage</code>) for communication. The <code class="bg-slate-950 px-1 rounded text-xs">ExperimentLog</code> tracks all runs with structured metadata for querying.</p>
   </section>
 
+  <!-- 2b. Fixture-Driven Mode (Substrate Testing) -->
+  <section class="space-y-4">
+    <h2 id="fixture-mode" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Fixture-Driven Mode (Substrate Testing)</h2>
+
+    <p class="text-slate-300">Run YAML fixtures through the agent loop <strong>without a narrator LLM</strong>. Fastest and most deterministic mode &mdash; designed for substrate phase testing but usable for any repeatable scenario.</p>
+
+    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300"># Run a substrate fixture
+maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml
+
+# With deterministic seeding for reproducible results
+maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42</div>
+
+    <p class="text-slate-300">Features: no narrator LLM cost, bio-system state snapshots at end-of-run (Hippocampus, NAc, ATL, percept trace buffer), substrate_metrics in session report, automatic expectation checking.</p>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Deterministic Seeding</h3>
+    <p class="text-slate-300">The <code class="text-indigo-300">--seed N</code> flag sets all RNG sources (Python random, numpy, torch) from a single integer. Two runs with the same seed and fixture produce identical results. Per-agent RNG streams prevent cross-agent correlation in multi-agent sims.</p>
+  </section>
+
   <!-- 3. Running YAML Scenarios -->
   <section class="space-y-4">
     <h2 id="running" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Running YAML Scenarios</h2>

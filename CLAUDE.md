@@ -123,6 +123,7 @@ maxim --sim "test memory recall"             # generative campaign
 maxim --sim scenarios/campaigns/heist_v1.yaml  # DM campaign
 maxim --sim "test safety" --persona adversarial --research  # with research report
 maxim --sim benchmark --models mistral-7b,qwen2.5-14b      # benchmark
+maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42  # fixture-driven (S1+S4)
 
 # Diagnostics + networking
 maxim doctor                                 # environment check
@@ -161,7 +162,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 - **Agent loop** lives in `runtime/agent_loop.py` with `LoopController` in `runtime/loop_controller.py`
 - **Multi-agent runtime**: `AgentFactory` in `runtime/agent_factory.py` creates independent agent instances (NPC agents with isolated Hippocampus, NAc, ATL). `AgentPool` in `runtime/agent_pool.py` orchestrates concurrent multi-agent execution with `LocalMessageBus`.
 - **LLM routing** lives in `models/language/router.py` (config in `models/language/config.py`). 8 cloud providers (Anthropic, OpenAI, Google Gemini, Groq, Together, Fireworks, Mistral, DeepSeek) across 15 cloud profiles, plus 15 local profiles (llama-cpp and PyTorch/Transformers backends).
-- **Simulation** orchestrator in `simulation/orchestrator.py`, bridge in `simulation/bridge.py`. Campaign runners in `simulation/campaign_runner.py`. Types in `simulation/sim_types.py`.
+- **Simulation** orchestrator in `simulation/orchestrator.py`, bridge in `simulation/bridge.py`. Campaign runners in `simulation/campaign_runner.py` (generative + DM + fixture). Fixture-driven testing in `simulation/fixture_orchestrator.py` (S1). Types in `simulation/sim_types.py`.
 - **Interactive runtime** in `interactive/` — universal prompt protocol (`PromptRequest`/`PromptHandler`), rich terminal display with split panels, DM display extensions.
 - **Mode system**: ProcessingState (awake/sleep) x OperationalMode (planning/supervised/autonomous). Sleep is a tool the agent calls; it wakes automatically on user input.
 - **Memory tiers**: FORMING -> WORKING -> SHORT_TERM -> LONG_TERM (enforced by `TierTransitionError` in `agents/bus.py` — see F0.7)
@@ -190,7 +191,8 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Reactions | `reactions/types.py` (Reaction, ReactionContext, TraceSnapshot), `reactions/bus.py` (ReactionBus), `reactions/protocols.py` (PerceptProducer, ReactionProducer) |
 | Cross-layer wiring | `integration/memory_hub.py` (single coordinator) |
 | Persistence | `utils/atomic_io.py`, `utils/paths.py` (data path resolution) |
-| Simulation | `simulation/orchestrator.py`, `simulation/bridge.py`, `simulation/personas.py` |
+| Simulation | `simulation/orchestrator.py`, `simulation/bridge.py`, `simulation/fixture_orchestrator.py`, `simulation/personas.py` |
+| Substrate test infra | `models/language/backend_protocol.py` (S2), `utils/seeding.py` (S4), `tests/substrate/` (S2+S3) |
 | Generative campaigns | `simulation/arcs.py`, `simulation/narrator.py`, `simulation/generative_runner.py` |
 | DM campaigns | `simulation/dm_schema.py`, `simulation/dm_runtime.py` |
 | Benchmarks | `simulation/benchmark.py`, `simulation/validation.py` |
@@ -317,7 +319,7 @@ See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current 
 - Peer/leader flexibility P1–P9 — dynamic n_ctx, auto-download, remote probes, lane decision log. Archived.
 
 **Gating 1.0** (next steps):
-- [simulator_upgrades_plan.md](docs/plans/simulator_upgrades_plan.md) — S1–S4 test-harness infrastructure. Blocks substrate P0. ~850 LOC.
+- [simulator_upgrades_plan.md](docs/plans/simulator_upgrades_plan.md) — S1–S4 **SHIPPED** (2026-04-12). FixtureDrivenOrchestrator, LLMBackend Protocol + MockLLMBackend, persistence harness, `--seed`. 72 tests, ~880 LOC. Substrate P0 unblocked.
 - [substrate_plan.md](docs/plans/substrate_plan.md) — bio-stack convergence (Track A: P0, P1–P6, P8) and prompt layer (Track B: B1–B5). Reaction abstraction Phase 5 (NAc structured percept-context access) folds into P2.
 
 **Living practice docs (paired with substrate_plan):**

@@ -1,6 +1,6 @@
 # Simulator Upgrades Plan — Substrate Test Harness Prep
 
-**Status:** Active, blocks substrate_plan P0
+**Status:** SHIPPED (2026-04-12). All four items landed. 72 new tests, ~880 LOC.
 **Target version:** 0.3-pre (lands after [foundations_plan.md](foundations_plan.md), before [substrate_plan.md](substrate_plan.md) P0)
 **Scope:** ~800 LOC across four items, ~1.5 weeks of focused work
 **Relationship:** Prerequisite for substrate phase work. Shrinks substrate harness cost by ~1,500 LOC across the full plan by reusing existing sim infrastructure instead of building bespoke harnesses per phase.

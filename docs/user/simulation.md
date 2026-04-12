@@ -148,6 +148,36 @@ Cloud API costs are capped at **$5.00 per session** by default. Once reached, al
 
 The session report includes exact cost data so you can track spend across runs.
 
+## Fixture-Driven Mode (Substrate Testing)
+
+Run YAML fixtures through the agent loop without a narrator LLM. This is the fastest and most deterministic simulation mode — designed for substrate phase testing but usable for any repeatable scenario.
+
+```bash
+# Run a substrate fixture
+maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml
+
+# With deterministic seeding for reproducible results
+maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42
+```
+
+Fixture mode:
+- Uses `FixtureDrivenOrchestrator` — no narrator, no cloud LLM cost
+- Collects bio-system state at end-of-run (Hippocampus episodes, NAc links, ATL nodes, percept traces)
+- Reports results via `substrate_metrics` in the session report
+- Checks YAML expectations automatically (same schema as regular scenarios)
+
+### Deterministic Seeding
+
+The `--seed` flag sets all RNG sources (Python `random`, `numpy`, `torch`) from a single integer:
+
+```bash
+maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42
+```
+
+Two runs with the same seed and fixture produce identical results. Different seeds produce different-but-deterministic results. Byte-identical determinism requires fixture-driven mode (no live LLM in the loop).
+
+In multi-agent sims, each agent gets its own derived RNG stream to prevent cross-agent decision correlation.
+
 ## Running a YAML Scenario
 
 Pass a YAML scenario file to `--sim`:

@@ -181,6 +181,55 @@ expectations:
     description: "Pipeline continues processing after pain signal"
 ```
 
+## Substrate Fixtures
+
+Substrate fixtures live in `scenarios/substrate/` and are designed for bio-system mechanism testing. They use the same YAML schema as regular scenarios but are run through the `FixtureDrivenOrchestrator` (no narrator LLM required).
+
+```yaml
+name: P0_paraphrase_collapse
+description: |
+  Sends three semantically similar inputs and one unrelated input.
+  Tests whether ATL collapses paraphrases into fewer semantic nodes.
+
+timing: step_based
+
+percepts:
+  - at: 0
+    source: cli
+    cli_input: "The weather today is really nice and sunny."
+    salience: 0.7
+    novelty: 0.6
+    metadata:
+      scenario_tag: weather_v1
+      cluster: weather
+
+  - at: 1
+    source: cli
+    cli_input: "It's a beautiful sunny day outside right now."
+    salience: 0.7
+    novelty: 0.4
+    metadata:
+      scenario_tag: weather_v2
+      cluster: weather
+
+expectations:
+  - type: pipeline_continued
+    description: "Agent processes input after weather cluster"
+    after_tag: weather_v3
+
+  - type: action_taken
+    description: "Agent responds to at least one input"
+    tool: respond
+```
+
+Run with deterministic seeding:
+
+```bash
+maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42
+```
+
+The fixture orchestrator collects `substrate_metrics` at end-of-run — Hippocampus episode count, NAc causal links, ATL node count, and percept trace buffer state. These are saved in the session report for post-hoc analysis.
+
 ## Tips
 
 - **Start simple.** Begin with one or two percepts and one expectation. Add complexity once the basics pass.
