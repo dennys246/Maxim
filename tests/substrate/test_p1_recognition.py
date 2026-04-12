@@ -114,51 +114,91 @@ class TestP1RecognitionSweep:
 
         Prints a comparison table. Model loads once, re-encodes per threshold.
         """
+        self._run_sweep(models=["all-mpnet-base-v2"])
+
+    def test_model_comparison(self):
+        """Compare embedding models across thresholds.
+
+        Tests mpnet (general purpose) vs paraphrase-MiniLM (paraphrase-trained)
+        to see if a model swap breaks past the 80% collapse ceiling.
+        """
+        self._run_sweep(
+            models=[
+                "all-mpnet-base-v2",
+                "paraphrase-MiniLM-L6-v2",
+                "paraphrase-mpnet-base-v2",
+            ],
+        )
+
+    def _run_sweep(self, models: list[str] | None = None):
+        """Run threshold sweep across one or more models."""
         from maxim.memory.atl import ATL
         from maxim.similarity.ec import ECConfig, EntorhinalCortex
-        from maxim.similarity.encoder import LinguisticEncoder
+        from maxim.similarity.encoder import EncoderConfig, LinguisticEncoder
 
         from tests.substrate.p1_metrics import compute_p1_metrics, load_clusters_from_fixture
 
+        if models is None:
+            models = ["all-mpnet-base-v2"]
+
         clusters = load_clusters_from_fixture(str(FIXTURE_PATH))
-        thresholds = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55]
+        thresholds = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60]
 
-        # Pre-compute all embeddings once (reuse encoder model)
-        encoder_for_warmup = LinguisticEncoder(
-            ec=EntorhinalCortex(),
-            atl=ATL(),
-        )
-        # Warm up the model
-        encoder_for_warmup.embed("warmup")
-
-        print(f"\n{'=' * 75}")
-        print("P1 THRESHOLD SWEEP")
-        print(f"{'=' * 75}")
-        print(f"  {'Thresh':>6s}  {'Collapse':>8s}  {'X-Cluster':>9s}  {'Nodes':>5s}  {'Growth':>6s}  {'P1':>4s}")
-        print(f"  {'─' * 65}")
-
-        for thresh in thresholds:
-            ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=thresh))
-            atl = ATL()
-            encoder = LinguisticEncoder(ec=ec, atl=atl)
-
-            metrics = compute_p1_metrics(
-                ec=ec,
-                atl=atl,
-                clusters=clusters,
-                encoder=encoder,
-                diagnostics=False,
+        for model_name in models:
+            # Warm up model
+            warmup_encoder = LinguisticEncoder(
+                ec=EntorhinalCortex(),
+                atl=ATL(),
+                config=EncoderConfig(model_name=model_name),
             )
+            try:
+                warmup_encoder.embed("warmup")
+            except Exception as e:
+                print(f"\n⚠ Skipping {model_name}: {e}")
+                continue
 
-            status = "PASS" if metrics.passes_p1() else "FAIL"
-            print(
-                f"  {thresh:>6.2f}  {metrics.collapse_rate:>7.1%}  "
-                f"{metrics.cross_cluster_rate:>8.1%}  "
-                f"{metrics.total_nodes:>5d}  {metrics.node_growth_final_20pct:>5.1%}  "
-                f"{status:>4s}"
-            )
+            print(f"\n{'=' * 80}")
+            print(f"  MODEL: {model_name}")
+            print(f"{'=' * 80}")
+            print(f"  {'Thresh':>6s}  {'Collapse':>8s}  {'X-Cluster':>9s}  {'Nodes':>5s}  {'Growth':>6s}  {'P1':>4s}")
+            print(f"  {'─' * 65}")
 
-        print(f"{'=' * 75}")
+            best_collapse = 0.0
+            best_row = ""
+
+            for thresh in thresholds:
+                ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=thresh))
+                atl = ATL()
+                encoder = LinguisticEncoder(
+                    ec=ec,
+                    atl=atl,
+                    config=EncoderConfig(model_name=model_name),
+                )
+
+                metrics = compute_p1_metrics(
+                    ec=ec,
+                    atl=atl,
+                    clusters=clusters,
+                    encoder=encoder,
+                    diagnostics=False,
+                )
+
+                status = "PASS" if metrics.passes_p1() else "FAIL"
+                marker = " ◀" if metrics.passes_p1() else ""
+                row = (
+                    f"  {thresh:>6.2f}  {metrics.collapse_rate:>7.1%}  "
+                    f"{metrics.cross_cluster_rate:>8.1%}  "
+                    f"{metrics.total_nodes:>5d}  {metrics.node_growth_final_20pct:>5.1%}  "
+                    f"{status:>4s}{marker}"
+                )
+                print(row)
+
+                if metrics.collapse_rate > best_collapse:
+                    best_collapse = metrics.collapse_rate
+                    best_row = f"thresh={thresh} collapse={metrics.collapse_rate:.1%} x-cluster={metrics.cross_cluster_rate:.1%}"
+
+            print(f"  Best: {best_row}")
+            print(f"{'=' * 80}")
 
     @staticmethod
     def _run_seed(seed: int = 42, threshold: float = 0.50):
