@@ -171,6 +171,10 @@ class SemanticMemory(MemoryRecord):
     confidence: float = 0.5
     reinforcement_count: int = 1
     embedding_text: str = ""
+    # Substrate modality tag (P1). "text" or "vision" — determines which
+    # EC processing path produced this concept. None for pre-substrate
+    # concepts (legacy path).
+    substrate_modality: str | None = None
     # Extensible metadata bag — used by Mother Maxim for domain_tags,
     # provenance_chain, drift_history. Adding pre-publication avoids
     # migration for persisted semantic memories.
@@ -230,6 +234,7 @@ class SemanticMemory(MemoryRecord):
             "confidence": self.confidence,
             "reinforcement_count": self.reinforcement_count,
             "embedding_text": self.embedding_text,
+            "substrate_modality": self.substrate_modality,
             "metadata": self.metadata,
         }
 
@@ -260,6 +265,7 @@ class SemanticMemory(MemoryRecord):
             confidence=data.get("confidence", 0.5),
             reinforcement_count=data.get("reinforcement_count", 1),
             embedding_text=data.get("embedding_text", ""),
+            substrate_modality=data.get("substrate_modality"),
             metadata=data.get("metadata", {}),
         )
 
@@ -348,6 +354,7 @@ class Concept(SemanticMemory):
             confidence=data.get("confidence", 0.5),
             reinforcement_count=data.get("reinforcement_count", 1),
             embedding_text=data.get("embedding_text", ""),
+            substrate_modality=data.get("substrate_modality"),
             memory_refs=memory_refs,
         )
 

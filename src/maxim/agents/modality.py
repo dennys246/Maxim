@@ -62,6 +62,37 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from maxim.agents.bus import Percept
+
+# Substrate processing path — coarser than SensoryModality.
+# TEXT covers speech, narrative, abstract (anything EC encodes as language).
+# VISION covers sight (anything EC encodes as spatial/visual features).
+SubstrateModality = Literal["text", "vision"]
+
+# SensoryModality → SubstrateModality mapping.  Modalities that don't
+# map cleanly (TOUCH, SMELL, INTEROCEPTION) default to TEXT because
+# their substrate representation is a text description today.
+_SUBSTRATE_MAP: dict[SensoryModality, SubstrateModality] = {}  # populated after class
+
+
+def substrate_modality(percept: "Percept") -> SubstrateModality:
+    """Derive the substrate processing path for a percept.
+
+    Resolution order:
+    1. percept.sensory.modality → lookup table
+    2. percept.modality literal ("text"/"vision") → direct
+    3. Default → "text"
+    """
+    if percept.sensory is not None and hasattr(percept.sensory, "modality"):
+        mapped = _SUBSTRATE_MAP.get(percept.sensory.modality)
+        if mapped is not None:
+            return mapped
+    if percept.modality == "vision":
+        return "vision"
+    return "text"
 
 
 class SensoryModality(Enum):
@@ -74,6 +105,20 @@ class SensoryModality(Enum):
     INTEROCEPTION = "intero"  # Internal — hunger, fatigue, emotional state
     NARRATIVE = "narrative"  # Meta — DM scene-setting, exposition (not a real sense)
     ABSTRACT = "abstract"  # Non-sensory — tool results, system messages
+
+
+# Populate _SUBSTRATE_MAP now that SensoryModality is defined.
+_SUBSTRATE_MAP.update(
+    {
+        SensoryModality.SIGHT: "vision",
+        SensoryModality.SOUND: "text",  # speech → language
+        SensoryModality.TOUCH: "text",  # described as text today
+        SensoryModality.SMELL: "text",  # described as text today
+        SensoryModality.INTEROCEPTION: "text",
+        SensoryModality.NARRATIVE: "text",
+        SensoryModality.ABSTRACT: "text",
+    }
+)
 
 
 @dataclass(frozen=True)

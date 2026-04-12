@@ -151,6 +151,11 @@ class MemoryHub:
     # modify the dynamic interest set or trigger concept extraction.
     _salience_callbacks: list[Callable] = field(default_factory=list)
 
+    # Substrate path (P1): LinguisticEncoder routes text through EC → ATL.
+    # Active when MAXIM_SUBSTRATE_PATH=1 and ATL is wired.
+    _encoder: Any = None
+    _substrate_enabled: bool = False
+
     def __post_init__(self) -> None:
         """Initialize and wire core systems."""
         # Resolve default embedding persist path lazily
@@ -186,7 +191,73 @@ class MemoryHub:
         if self.atl is not None:
             self._wire_multi_layer()
 
+        # Wire substrate path (P1) when ATL is available and flag is set
+        self._wire_substrate_encoder()
+
         logger.info("MemoryHub initialized with core systems")
+
+    def _wire_substrate_encoder(self) -> None:
+        """Wire the LinguisticEncoder for substrate path (P1).
+
+        Gated by MAXIM_SUBSTRATE_PATH=1 env var and requires ATL.
+        During Phase 1 (dual-write), the encoder runs alongside the
+        legacy transcript_chunk path — both write, only legacy reads.
+        """
+        import os
+
+        if not os.environ.get("MAXIM_SUBSTRATE_PATH"):
+            return
+        if self.atl is None:
+            logger.warning("MAXIM_SUBSTRATE_PATH=1 but ATL not available; substrate path disabled")
+            return
+
+        from maxim.similarity.encoder import LinguisticEncoder
+
+        self._encoder = LinguisticEncoder(ec=self.ec, atl=self.atl, nac=self.nac)
+        self._substrate_enabled = True
+        logger.info("Substrate path enabled (Phase 1 dual-write)")
+
+    def on_percept_received(self, percept: Any) -> None:
+        """Process a percept through the substrate path (if enabled).
+
+        Called by the memory agent when a new percept arrives. During
+        Phase 1, this runs the encoder alongside the legacy path —
+        the percept gets embedding + substrate_node_id populated, but
+        the prompt builder continues to read from transcript_chunk.
+
+        Safe to call even when substrate path is disabled (no-op).
+        """
+        if not self._substrate_enabled or self._encoder is None:
+            return
+
+        text = percept.transcript_chunk or percept.content
+        if not text:
+            return
+
+        try:
+            self._encoder.encode(percept)
+        except Exception as e:
+            logger.warning("Substrate encoding failed: %s", e)
+
+    def get_memory_summary(
+        self,
+        current_node_id: str | None = None,
+        pattern_completed: bool = False,
+    ) -> Any:
+        """Build a MemorySummary from current ATL substrate state.
+
+        Returns None if substrate path is not active.
+        """
+        if not self._substrate_enabled or self.atl is None:
+            return None
+
+        from maxim.prompts.assembler import MemorySummary
+
+        return MemorySummary.from_atl(
+            self.atl,
+            current_node_id=current_node_id,
+            pattern_completed=pattern_completed,
+        )
 
     def _wire_multi_layer(self) -> None:
         """Wire ATL, CrossLayerGraph, and SemanticPromoter when ATL is available."""

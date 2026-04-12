@@ -1,5 +1,6 @@
 """Prompt composition helpers."""
 
+from maxim.prompts.assembler import MemorySummary, PromptAssembler, SubstrateNode
 from maxim.prompts.prompt_profiles import (
     ExecutivePrompt,
     PromptProfile,
@@ -8,6 +9,9 @@ from maxim.prompts.prompt_profiles import (
 
 __all__ = [
     "ExecutivePrompt",
+    "MemorySummary",
+    "PromptAssembler",
     "PromptProfile",
+    "SubstrateNode",
     "load_prompt_profile",
 ]

@@ -484,6 +484,11 @@ class MemoryAgent(Agent, AgentOutputMixin):
                     }
                 )
 
+            # Substrate path (P1 dual-write): encode percept through EC → ATL.
+            # Safe to call even when substrate is disabled (no-op).
+            if self._memory_hub is not None:
+                self._memory_hub.on_percept_received(percept)
+
             # Capture via Hippocampus if salient — use staged formation
             if percept.salience > self._salience_threshold or percept.has_maxim_keyword:
                 run_id = f"percept-{percept.timestamp:.0f}"

@@ -232,6 +232,9 @@ MAXIM_REMOTE_PROBE_CACHE_TTL_S=60        # Probe cache freshness window (clamped
 # Inspect with: maxim doctor --last-decision   (or tail/jq the file directly)
 MAXIM_PROVENANCE_VERBOSITY=1     # 0=off, 1=compact, 2=verbose
 
+# Substrate path (P1). Enables LinguisticEncoder → EC → ATL dual-write.
+MAXIM_SUBSTRATE_PATH=1           # Enable substrate encoding path (Phase 1 dual-write)
+
 # Heartbeat + trace (debug/diagnostics)
 MAXIM_HEARTBEAT=1                # System health heartbeat every 10s (GPU/CPU/RAM/disk/WiFi + stall detection)
 MAXIM_HEARTBEAT_INTERVAL_S=10    # Heartbeat sample interval

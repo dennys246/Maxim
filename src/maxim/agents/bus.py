@@ -202,6 +202,13 @@ class Percept:
     # needing a populated SensoryTag.
     modality: "Modality | None" = None
 
+    # Substrate fields (P1). Populated by LinguisticEncoder when the
+    # substrate path is active. ``embedding`` is the dense vector from
+    # the encoder; ``substrate_node_id`` is the ATL node that EC
+    # pattern-completed or separated this percept into.
+    embedding: list[float] | None = None
+    substrate_node_id: str | None = None
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize for session persistence. Omits large/internal fields."""
         return {
@@ -220,6 +227,7 @@ class Percept:
             "sensory": self.sensory.to_dict() if self.sensory and hasattr(self.sensory, "to_dict") else None,
             "context": self.context.to_dict() if self.context is not None else None,
             "modality": self.modality,
+            "substrate_node_id": self.substrate_node_id,
         }
 
     @classmethod
