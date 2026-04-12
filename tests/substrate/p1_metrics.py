@@ -193,6 +193,8 @@ def compute_p1_metrics(
     clusters: list[dict[str, Any]],
     encoder: Any,
     diagnostics: bool = True,
+    shuffle: bool = False,
+    seed: int = 42,
 ) -> P1Metrics:
     """Compute P1 metrics by encoding all cluster sentences and checking collapse.
 
@@ -202,7 +204,11 @@ def compute_p1_metrics(
         clusters: List of cluster dicts with "name" and "sentences" keys
         encoder: LinguisticEncoder instance
         diagnostics: If True, collect per-sentence similarity diagnostics
+        shuffle: If True, randomize sentence order (tests node growth fairness)
+        seed: RNG seed for shuffle reproducibility
     """
+    import random
+
     from maxim.agents.bus import Percept
     from maxim.similarity.ec import _cosine_similarity
 
@@ -216,6 +222,10 @@ def compute_p1_metrics(
     for cluster in clusters:
         for sentence in cluster.get("sentences", []):
             all_sentences.append((cluster["name"], sentence))
+
+    if shuffle:
+        rng = random.Random(seed)
+        rng.shuffle(all_sentences)
 
     for cluster_name, sentence in all_sentences:
         percept = Percept(

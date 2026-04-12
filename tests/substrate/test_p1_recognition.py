@@ -109,6 +109,59 @@ class TestP1RecognitionSweep:
         # The actual gate assertion
         assert all_pass, f"P1 failed: {sum(1 for r in results if not r['passes'])}/{len(results)} seeds failed"
 
+    def test_shuffle_check(self):
+        """Check if node growth improves with shuffled sentence order.
+
+        Compares sequential vs shuffled at the best threshold (0.40)
+        with paraphrase-mpnet-base-v2.
+        """
+        from maxim.memory.atl import ATL
+        from maxim.similarity.ec import ECConfig, EntorhinalCortex
+        from maxim.similarity.encoder import EncoderConfig, LinguisticEncoder
+
+        from tests.substrate.p1_metrics import compute_p1_metrics, load_clusters_from_fixture
+
+        clusters = load_clusters_from_fixture(str(FIXTURE_PATH))
+        model = "paraphrase-mpnet-base-v2"
+        thresh = 0.40
+
+        print(f"\n{'=' * 75}")
+        print(f"SHUFFLE CHECK — {model} @ {thresh}")
+        print(f"{'=' * 75}")
+        print(f"  {'Order':<15s}  {'Collapse':>8s}  {'X-Cluster':>9s}  {'Nodes':>5s}  {'Growth':>6s}  {'P1':>4s}")
+        print(f"  {'─' * 60}")
+
+        for label, do_shuffle, seed in [
+            ("sequential", False, 0),
+            ("shuffle s=0", True, 0),
+            ("shuffle s=1", True, 1),
+            ("shuffle s=2", True, 2),
+            ("shuffle s=42", True, 42),
+        ]:
+            ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=thresh))
+            atl = ATL()
+            encoder = LinguisticEncoder(ec=ec, atl=atl, config=EncoderConfig(model_name=model))
+
+            metrics = compute_p1_metrics(
+                ec=ec,
+                atl=atl,
+                clusters=clusters,
+                encoder=encoder,
+                diagnostics=False,
+                shuffle=do_shuffle,
+                seed=seed,
+            )
+
+            status = "PASS" if metrics.passes_p1() else "FAIL"
+            print(
+                f"  {label:<15s}  {metrics.collapse_rate:>7.1%}  "
+                f"{metrics.cross_cluster_rate:>8.1%}  "
+                f"{metrics.total_nodes:>5d}  {metrics.node_growth_final_20pct:>5.1%}  "
+                f"{status:>4s}"
+            )
+
+        print(f"{'=' * 75}")
+
     def test_threshold_sweep(self):
         """Sweep thresholds to find the sweet spot for collapse vs cross-cluster.
 
