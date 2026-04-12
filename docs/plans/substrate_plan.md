@@ -248,10 +248,34 @@ Seed near-duplicate paraphrases of a target concept plus distractors. Baseline p
 - NAc per-node reward bias keyed by `(agent_id, node_id)` (F0.5 prereq — multi-agent correctness)
 - NAc reads from `PerceptTraceBuffer` when crediting reward events
 - EC threshold formula: `threshold = base - α × nac.reward_bias(agent_id, nearest)`
+- **Reaction abstraction Phase 5** (folded from [reaction_abstraction_plan](reaction_abstraction_plan.md)): NAc causal link table gains structured `percept_refs: tuple[TraceSnapshot, ...]` column so queries can run by percept involvement, not just hash match. Per-node reward bias keys off `(agent_id, node_id)`.
 - **P2 metric extractor plugin** (~100 LOC): rewarded-node collapse delta, distractor non-interference, decay timescale, per-agent isolation verification
 - Fixture YAML reusing P1 paraphrase clusters with reward annotations on a subset
 
-**Dependencies:** P1, foundations_plan (F0.1, F0.2, F0.5), simulator_upgrades_plan.
+**P2 proof-of-concept: SEM-to-SEM pain cascade simulation**
+
+A hard PoC verifying the Percept→Reaction→Learning loop works end-to-end through SEM entity interaction. Uses the sword component (`_data/components/weapons/`) and the agent's body as two interacting SEM entities.
+
+*Scenario:* Agent wields a sword with a `durability` sensor and a failure mode at `durability < 0.1, pain: 0.8`. Over 3 encounters:
+
+1. **Encounter 1 — Use while healthy.** Sword durability starts at 1.0. Agent uses `slash` affordance 3 times. Durability decreases per use. No failure mode fires. NAc observes neutral outcomes. Hippocampus records successful actions.
+
+2. **Encounter 2 — Use into failure.** Durability crosses the 0.1 threshold. `Embodiment.evaluate_failures()` triggers → `Reaction(kind="pain", intensity=0.8, source="embodiment:external_signal")` flows through ReactionBus. NAc learns `(slash_sword, low_durability_context) → NEGATIVE`. CascadeResolver propagates sensor changes to the body entity (pain reading increases on the body's proprioception sensor).
+
+3. **Encounter 3 — Avoidance test.** Sword is re-presented at low durability. Agent is offered `slash` vs `drop_weapon`. NAc prediction for `slash` in low-durability context should return NEGATIVE valence with confidence > 0.5. The bio-stack should prefer `drop_weapon` (or at minimum, suppress `slash` confidence relative to Encounter 1).
+
+*Pass criteria:*
+- **Pain reaction fires** at the correct threshold (durability < 0.1). Verify via `ReactionBus.history(kind="pain")`.
+- **NAc learns context-conditional avoidance:** `nac.predict(event_signature="slash_sword", context={"durability": "low"})` returns a prediction with `valence=NEGATIVE` and `confidence > 0.5` after Encounter 2.
+- **Hippocampus records the pain episode** with salience > 0.8 (from `create_pain_memory_subscriber` intensity boost).
+- **Contrast with healthy state:** same `nac.predict` with `context={"durability": "high"}` returns NEUTRAL or POSITIVE, showing the avoidance is state-conditional, not a blanket weapon aversion.
+- **Persistence round-trip:** save NAc + Hippocampus state after Encounter 2, reload into fresh subprocess, Encounter 3 avoidance behavior survives.
+
+*Implementation:* ~150 LOC fixture YAML + ~80 LOC test harness using S1 fixture orchestrator. The sword component already exists; the test wires it through AgentFactory → CerebellumModulator (with reaction_bus) → ReactionBus → NAc bridge → prediction query. No new SEM types needed — the PoC exercises the existing infrastructure under adversarial conditions.
+
+*Why this belongs in P2:* it tests reward-modulated recognition (P2's claim) through a concrete embodied scenario rather than synthetic paraphrase clusters. If the agent can learn "don't slash with a degraded sword" purely from bio-stack state (no LLM fine-tuning, no hand-coded rule), that's a concrete demonstration of the substrate's learning capability. The PoC also stress-tests the reaction_abstraction Phase 2 infrastructure (ReactionBus, CerebellumModulator emission, pain bridges) against a real scenario.
+
+**Dependencies:** P1, F0.2 (PerceptTraceBuffer), reaction_abstraction Phases 1–4 (all landed), simulator_upgrades_plan.
 
 ### P3a — Episode binding produces retrieval on partial cue (synthetic only)
 
