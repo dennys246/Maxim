@@ -14,8 +14,9 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from maxim.agents.bus import Percept
+from maxim.agents.modality import SensoryModality, SensoryTag
 from maxim.agents.percept_context import PerceptContext
+from maxim.agents.percept_factory import make_text_percept
 
 if TYPE_CHECKING:
     from maxim.agents.bus import AgentBus
@@ -181,16 +182,16 @@ class ConversationManager:
         cmd = text.strip().lower()
         shortcut = COMMAND_SHORTCUTS.get(cmd)
         if shortcut:
-            self.bus.publish(
-                Percept(
-                    timestamp=time.time(),
-                    source=shortcut["source"],
-                    content=shortcut["content"],
-                    hard_override=shortcut["hard_override"],
-                    context=self._build_context(channel=channel, sender=sender),
-                    modality="text",
-                )
+            p = make_text_percept(
+                shortcut["content"],
+                source=shortcut["source"],
+                agent_id=self._agent_id,
+                channel=channel,
+                sender=sender,
+                sensory=SensoryTag(modality=SensoryModality.NARRATIVE, submodality="command"),
             )
+            p.hard_override = shortcut["hard_override"]
+            self.bus.publish(p)
             return True
         return False
 
@@ -217,18 +218,19 @@ class ConversationManager:
         """
         summary = self._summarize(conv)
         self.bus.publish(
-            Percept(
-                timestamp=time.time(),
+            make_text_percept(
+                summary,
                 source="conversation:archive",
-                content=summary,
+                agent_id=self._agent_id,
+                channel=conv.channel,
+                sender=conv.participant,
                 salience=0.6,
-                context=self._build_context(channel=conv.channel, sender=conv.participant),
-                modality="text",
                 metadata={
                     "conversation_id": conv.id,
                     "message_count": len(conv.messages),
                     "duration_seconds": conv.last_activity - conv.created_at,
                 },
+                sensory=SensoryTag(modality=SensoryModality.NARRATIVE, submodality="archive"),
             )
         )
         # Record conversation-level NAc event for pattern promotion

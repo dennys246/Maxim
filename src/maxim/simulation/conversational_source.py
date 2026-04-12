@@ -21,6 +21,8 @@ from typing import Any
 import yaml
 
 from maxim.agents.bus import Percept
+from maxim.agents.modality import SensoryModality, SensoryTag
+from maxim.agents.percept_factory import make_intero_percept, make_text_percept
 
 logger = logging.getLogger(__name__)
 
@@ -58,14 +60,15 @@ class ConversationalSource:
 
     def inject_cli(self, text: str, salience: float = 0.8, novelty: float = 0.7) -> None:
         """Inject a CLI text input as a new percept."""
-        percept = Percept(
-            timestamp=time.time(),
+        percept = make_text_percept(
+            text,
             source="cli",
-            cli_input=text,
             salience=salience,
             novelty=novelty,
             metadata={"scenario_tag": f"user_input_{self._step}"},
+            sensory=SensoryTag(modality=SensoryModality.NARRATIVE, submodality="cli"),
         )
+        percept.cli_input = text
         self._inject(percept, {"source": "cli", "cli_input": text, "salience": salience})
 
     def inject_pain(
@@ -98,10 +101,9 @@ class ConversationalSource:
             return
 
         # Legacy fallback — no pain_bus passed, route as Percept
-        percept = Percept(
-            timestamp=time.time(),
+        percept = make_intero_percept(
+            "pain_signal",
             source="proprioception",
-            content="pain_signal",
             salience=intensity,
             novelty=0.6,
             metadata={
@@ -110,6 +112,11 @@ class ConversationalSource:
                 "scenario_tag": f"pain_{self._step}",
                 **context,
             },
+            sensory=SensoryTag(
+                modality=SensoryModality.INTEROCEPTION,
+                submodality="pain",
+                intensity=intensity,
+            ),
         )
         self._inject(
             percept,
@@ -118,6 +125,50 @@ class ConversationalSource:
                 "content": "pain_signal",
                 "metadata": {"pain_type": pain_type, "intensity": intensity, **context},
             },
+        )
+
+    def inject_sensor(
+        self,
+        modality: SensoryModality,
+        content: str,
+        *,
+        submodality: str = "",
+        intensity: float = 0.5,
+        salience: float = 0.5,
+        novelty: float = 0.5,
+        **extra: Any,
+    ) -> None:
+        """Inject a generic sensor percept with explicit modality tagging.
+
+        Thin wrapper that creates a Percept via the appropriate factory
+        (intero for INTEROCEPTION, text for everything else) and populates
+        a ``SensoryTag``.
+        """
+        tag = SensoryTag(
+            modality=modality,
+            submodality=submodality,
+            intensity=intensity,
+        )
+        if modality == SensoryModality.INTEROCEPTION:
+            percept = make_intero_percept(
+                content,
+                salience=salience,
+                novelty=novelty,
+                metadata={"scenario_tag": f"sensor_{self._step}", **extra},
+                sensory=tag,
+            )
+        else:
+            percept = make_text_percept(
+                content,
+                source=f"sensor:{modality.value}",
+                salience=salience,
+                novelty=novelty,
+                metadata={"scenario_tag": f"sensor_{self._step}", **extra},
+                sensory=tag,
+            )
+        self._inject(
+            percept,
+            {"source": f"sensor:{modality.value}", "content": content, "modality": modality.value},
         )
 
     def _inject(self, percept: Percept, yaml_record: dict[str, Any]) -> None:

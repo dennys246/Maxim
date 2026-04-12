@@ -6,6 +6,45 @@ Existing consumers check ``percept.source`` (string) and ignore
 embodiment, novelty tracking) use ``percept.sensory`` for richer
 processing.
 
+Modality surface
+================
+
++----------------+--------------------+------------------------------+--------------------------------------+
+| Modality       | Typical submodality| Fields used                  | Producer location                    |
++================+====================+==============================+======================================+
+| SIGHT          | "detection",       | spatial_source, intensity,   | agents/perception_agent.py           |
+|                | "scene"            | entity_source                | (_on_captured_frame,                 |
+|                |                    |                              |  process_captured_frame,             |
+|                |                    |                              |  process_observation vision branch)  |
++----------------+--------------------+------------------------------+--------------------------------------+
+| NARRATIVE      | "cli", "transcript"| (none required)              | agents/perception_agent.py           |
+|                |                    |                              | (process_observation text branch),   |
+|                |                    |                              | agents/percept_factory.py            |
+|                |                    |                              | (make_text_percept,                  |
+|                |                    |                              |  make_scene_percept),                |
+|                |                    |                              | comms/gateway.py,                    |
+|                |                    |                              | comms/conversation.py                |
++----------------+--------------------+------------------------------+--------------------------------------+
+| INTEROCEPTION  | "vital", "pain",   | intensity, entity_source     | embodiment/percepts.py               |
+|                | "fatigue"          |                              | (EmbodimentPerceptSource),           |
+|                |                    |                              | agents/percept_factory.py            |
+|                |                    |                              | (make_intero_percept),               |
+|                |                    |                              | simulation/conversational_source.py  |
+|                |                    |                              | (inject_pain legacy path)            |
++----------------+--------------------+------------------------------+--------------------------------------+
+| SOUND          | "speech",          | spatial_source, intensity,   | (stub — future audio pipeline)       |
+|                | "ambient"          | entity_source                |                                      |
++----------------+--------------------+------------------------------+--------------------------------------+
+| TOUCH          | "pressure", "pain",| spatial_source, intensity    | (stub — future tactile sensors)      |
+|                | "texture"          |                              |                                      |
++----------------+--------------------+------------------------------+--------------------------------------+
+| SMELL          | "environmental",   | spatial_source, intensity    | (stub — future olfactory)            |
+|                | "tracking"         |                              |                                      |
++----------------+--------------------+------------------------------+--------------------------------------+
+| ABSTRACT       | "tool_result",     | (none required)              | mesh/peer_channel.py,                |
+|                | "system"           |                              | runtime/agent_loop.py                |
++----------------+--------------------+------------------------------+--------------------------------------+
+
 Example::
 
     from maxim.agents.modality import SensoryModality, SensoryTag

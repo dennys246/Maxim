@@ -49,7 +49,7 @@ class TestEmbodimentPerceptSourceContext:
         assert percept.context is not None
         assert percept.context.agent_id == "bot_1"
 
-    def test_percept_context_is_none_without_agent_id(self):
+    def test_percept_context_has_no_agent_id_when_unset(self):
         from maxim.embodiment.percepts import EmbodimentPerceptSource
 
         mock_embodiment = MagicMock()
@@ -62,7 +62,10 @@ class TestEmbodimentPerceptSourceContext:
         percept = source.next_percept()
 
         assert percept is not None
-        assert percept.context is None
+        # F0.6 factory migration: make_intero_percept always creates a
+        # context (channel="internal"), but agent_id stays None.
+        assert percept.context is not None
+        assert percept.context.agent_id is None
 
 
 class TestCerebellumModulatorReactionEmission:

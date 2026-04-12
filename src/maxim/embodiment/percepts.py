@@ -82,11 +82,6 @@ class EmbodimentPerceptSource:
         if not body_state and not failures:
             return None
 
-        try:
-            from maxim.agents.bus import Percept
-        except ImportError:
-            return None
-
         # Compute salience from pain proximity + failures
         salience = 0.0
         novelty = 0.0
@@ -103,22 +98,29 @@ class EmbodimentPerceptSource:
             ]
             content_parts.append("\n".join(failure_lines))
 
-        from maxim.agents.percept_context import PerceptContext
+        try:
+            from maxim.agents.modality import SensoryModality, SensoryTag
+            from maxim.agents.percept_factory import make_intero_percept
+        except ImportError:
+            return None
 
-        ctx = PerceptContext(agent_id=self._agent_id, timestamp=now) if self._agent_id else None
-
-        return Percept(
-            timestamp=now,
+        sensory = SensoryTag(
+            modality=SensoryModality.INTEROCEPTION,
+            submodality="pain" if failures else "vital",
+            intensity=salience if salience > 0 else 0.5,
+            entity_source=self._embodiment.root.name,
+        )
+        return make_intero_percept(
+            "\n".join(content_parts),
             source="embodiment",
-            content="\n".join(content_parts),
+            agent_id=self._agent_id,
             salience=salience,
             novelty=novelty,
-            context=ctx,
-            modality="intero",
             metadata={
                 "failure_count": len(failures),
                 "entity_root": self._embodiment.root.name,
             },
+            sensory=sensory,
         )
 
     def is_exhausted(self) -> bool:
