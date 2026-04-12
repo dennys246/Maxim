@@ -226,15 +226,22 @@ class SCN:
     ) -> None:
         """Register a memory from a peer with clock skew correction.
 
-        Corrects the TemporalSignature using the PeerClockEstimator before
-        registering, so bins align with local time. If no clock estimate
-        is available yet, registers with the uncorrected signature.
+        Corrects the TemporalSignature using a clock-estimator duck type
+        before registering, so bins align with local time. If no clock
+        estimate is available yet, registers with the uncorrected signature.
+
+        Note: this method is currently unused (the mesh clock-estimator it
+        was designed for was deleted as dead code in R0 of
+        llm_path_foundation.md — 2026-04-12). Kept as a hook for a future
+        clock-sync layer. ``clock_estimator`` is duck-typed: any object with
+        a ``correct_signature(peer_id, signature) -> TemporalSignature``
+        method works.
 
         Args:
             memory_id: Unique memory identifier (should include peer prefix)
             signature: Peer's TemporalSignature (uncorrected)
             peer_id: The peer's node_id
-            clock_estimator: PeerClockEstimator instance
+            clock_estimator: duck-typed object with ``correct_signature``
             significance: Significance score (0-1)
         """
         try:

@@ -9,9 +9,11 @@ with size-based tiers. Functions declare what capability level they need;
 the router handles placement, fallback, and restrictions.
 
 Mesh-ready: ``available_tiers`` accepts either a static ``set[str]`` or a
-``Callable[[], set[str]]``. When ``PeerRegistry`` is active, the callable
+``Callable[[], set[str]]``. A future mesh layer can pass a callable that
 queries local tiers + peer-advertised tiers. When mesh is off, a plain set
-is wrapped in a lambda — zero overhead.
+is wrapped in a lambda — zero overhead. See
+``docs/plans/deferred/llm_path_multi_peer_dispatch.md`` for the planned
+peer-advertised-tier integration if/when it revives.
 """
 
 from __future__ import annotations
@@ -169,7 +171,7 @@ class FunctionRouter:
     Phase 2 (mesh): dynamic availability via health_check + callable tiers.
 
     Mesh-ready: ``available_tiers`` accepts either a ``set[str]`` or a
-    ``Callable[[], set[str]]``. When ``PeerRegistry`` is active, the callable
+    ``Callable[[], set[str]]``. A future mesh layer can pass a callable that
     queries local tiers + peer-advertised tiers. When mesh is off, a plain
     set is wrapped in a lambda — zero overhead.
     """
