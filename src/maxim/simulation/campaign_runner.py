@@ -258,3 +258,63 @@ def run_precampaign_turns(
 
     display_status("Post-campaign analysis complete.")
     return campaign_analysis
+
+
+def run_fixture_campaign(
+    *,
+    fixture_path: Path,
+    bridge: Any,
+    aut_hippocampus: Any | None = None,
+    aut_nac: Any | None = None,
+    aut_memory_hub: Any | None = None,
+    aut_pain_bus: Any | None = None,
+    aut_percept_trace_buffer: Any | None = None,
+    settle_s: float = 2.0,
+    turn_timeout: float = 30.0,
+) -> dict[str, Any]:
+    """Run a fixture-driven scenario — no narrator LLM required.
+
+    Loads a YAML fixture and drives it through the bridge, collecting
+    bio-system state snapshots at end-of-run. Returns the FixtureResult
+    as a dict for integration with the orchestrator's report pipeline.
+    """
+    from maxim.simulation.sim_logger import display_status, display_summary
+
+    display_status(f"Fixture Campaign: {fixture_path.stem}")
+    time.sleep(0.5)  # Let AUT start up
+
+    try:
+        from maxim.simulation.fixture_orchestrator import FixtureDrivenOrchestrator
+
+        orch = FixtureDrivenOrchestrator(
+            fixture_path,
+            settle_s=settle_s,
+            turn_timeout=turn_timeout,
+        )
+        display_status(f"Loaded: {orch.name} ({len(orch._definition.percepts)} percepts)")
+
+        result = orch.run(
+            bridge,
+            hippocampus=aut_hippocampus,
+            nac=aut_nac,
+            memory_hub=aut_memory_hub,
+            pain_bus=aut_pain_bus,
+            percept_trace_buffer=aut_percept_trace_buffer,
+        )
+
+        exp_status = (
+            f"{result.expectations_passed}/{result.expectations_total} expectations passed"
+            if result.expectations_total > 0
+            else "no expectations defined"
+        )
+        display_summary(
+            [
+                f"Fixture complete: {result.turns_delivered} turns in {result.duration_s}s",
+                f"Expectations: {exp_status}",
+            ]
+        )
+        return orch.to_report_dict(result)
+    except Exception as e:
+        logger.warning("Fixture campaign failed: %s", e)
+        display_summary([f"Fixture campaign error: {e}"])
+        return {"error": str(e)}

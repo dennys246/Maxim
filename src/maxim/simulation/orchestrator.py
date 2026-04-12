@@ -153,6 +153,7 @@ def start_simulation_mode(
     generative: bool = False,
     arc_yaml: str | None = None,
     experiment_log: Any = None,
+    fixture_path: str | None = None,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -1075,6 +1076,21 @@ def start_simulation_mode(
         )
         stop_event.set()
 
+    # ── Fixture-driven campaign (S1) — no narrator LLM required ──────────
+    fixture_result: dict[str, Any] = {}
+    if fixture_path is not None:
+        from maxim.simulation.campaign_runner import run_fixture_campaign as _run_fix
+
+        fixture_result = _run_fix(
+            fixture_path=Path(fixture_path),
+            bridge=bridge,
+            aut_hippocampus=aut_hippocampus,
+            aut_nac=aut_nac,
+            aut_memory_hub=aut_memory_hub,
+            aut_pain_bus=aut_pain_bus,
+        )
+        stop_event.set()
+
     # ── Inject initial goal (or resume context) into orchestrator ────────
     if resume_session:
         resume_data = _load_resume_context(resume_session)
@@ -1531,6 +1547,11 @@ def start_simulation_mode(
         else "",
         llm_finish_context=llm_finish,
     )
+
+    # Attach fixture/substrate metrics if present
+    if fixture_result:
+        report.substrate_metrics = fixture_result.get("substrate_metrics", {})
+        report.substrate_metrics["fixture"] = {k: v for k, v in fixture_result.items() if k != "substrate_metrics"}
 
     # Persist everything to session directory
     from maxim.utils.paths import sim_reports as _sim_reports_dir

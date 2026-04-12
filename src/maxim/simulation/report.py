@@ -62,6 +62,9 @@ class SimulationReport:
     llm_finish_reason: str = ""
     llm_finish_summary: str = ""
 
+    # Substrate metrics (populated by FixtureDrivenOrchestrator, S1)
+    substrate_metrics: dict[str, Any] = field(default_factory=dict)
+
 
 def build_report(
     *,

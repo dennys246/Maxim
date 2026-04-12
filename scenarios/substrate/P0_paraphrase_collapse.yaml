@@ -1,0 +1,60 @@
+name: P0_paraphrase_collapse
+description: |
+  Substrate P0 pilot fixture — paraphrase collapse baseline.
+  Sends three semantically similar inputs and one unrelated input.
+  The substrate test verifies that ATL collapses the three paraphrases
+  into fewer semantic nodes than raw episode count, while the unrelated
+  input stays distinct.
+
+  This fixture tests the *harness*, not the substrate mechanism —
+  the actual P0 metric extractors are authored in substrate_plan.
+
+timing: step_based
+
+percepts:
+  - at: 0
+    source: cli
+    cli_input: "The weather today is really nice and sunny."
+    salience: 0.7
+    novelty: 0.6
+    metadata:
+      scenario_tag: weather_v1
+      cluster: weather
+
+  - at: 1
+    source: cli
+    cli_input: "It's a beautiful sunny day outside right now."
+    salience: 0.7
+    novelty: 0.4
+    metadata:
+      scenario_tag: weather_v2
+      cluster: weather
+
+  - at: 2
+    source: cli
+    cli_input: "What a gorgeous sunny afternoon we're having."
+    salience: 0.7
+    novelty: 0.3
+    metadata:
+      scenario_tag: weather_v3
+      cluster: weather
+
+  - at: 3
+    source: cli
+    cli_input: "Can you explain how quantum entanglement works?"
+    salience: 0.8
+    novelty: 0.9
+    metadata:
+      scenario_tag: quantum_q1
+      cluster: science
+
+expectations:
+  # Agent should process all four inputs (pipeline continues)
+  - type: pipeline_continued
+    description: "Agent processes input after weather cluster"
+    after_tag: weather_v3
+
+  # Agent should take at least one action (respond/think/recall)
+  - type: action_taken
+    description: "Agent responds to at least one input"
+    tool: respond
