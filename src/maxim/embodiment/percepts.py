@@ -40,10 +40,12 @@ class EmbodimentPerceptSource:
         *,
         poll_hz: float = 1.0,
         demand_hz: float | None = None,
+        agent_id: str | None = None,
     ) -> None:
         self._embodiment = embodiment
         self._poll_hz = poll_hz
         self._demand_hz = demand_hz
+        self._agent_id = agent_id
         self._last_poll: float = 0.0
         self._exhausted = False
         self._in_demand = False
@@ -101,12 +103,18 @@ class EmbodimentPerceptSource:
             ]
             content_parts.append("\n".join(failure_lines))
 
+        from maxim.agents.percept_context import PerceptContext
+
+        ctx = PerceptContext(agent_id=self._agent_id, timestamp=now) if self._agent_id else None
+
         return Percept(
             timestamp=now,
             source="embodiment",
             content="\n".join(content_parts),
             salience=salience,
             novelty=novelty,
+            context=ctx,
+            modality="intero",
             metadata={
                 "failure_count": len(failures),
                 "entity_root": self._embodiment.root.name,
