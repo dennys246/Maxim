@@ -19,6 +19,7 @@ from maxim.agents.bus import (
     AgentBus,
     MemoryTier,
     Percept,
+    TierTransitionError,
     WorkingMemoryEntry,
 )
 from maxim.agents.memory_agent import (
@@ -323,6 +324,37 @@ class TestWorkingMemoryEntry:
         assert entry.tier == MemoryTier.WORKING
         entry.tier = MemoryTier.SHORT_TERM
         assert entry.tier == MemoryTier.SHORT_TERM
+        entry.tier = MemoryTier.LONG_TERM
+        assert entry.tier == MemoryTier.LONG_TERM
+
+    def test_tier_transition_rejects_skip(self):
+        ep = _make_episodic()
+        entry = WorkingMemoryEntry(record=ep, tier=MemoryTier.FORMING)
+        with pytest.raises(TierTransitionError, match="FORMING → SHORT_TERM"):
+            entry.tier = MemoryTier.SHORT_TERM
+        with pytest.raises(TierTransitionError, match="FORMING → LONG_TERM"):
+            entry.tier = MemoryTier.LONG_TERM
+
+    def test_tier_transition_rejects_reverse(self):
+        ep = _make_episodic()
+        entry = WorkingMemoryEntry(record=ep, tier=MemoryTier.SHORT_TERM)
+        with pytest.raises(TierTransitionError, match="SHORT_TERM → WORKING"):
+            entry.tier = MemoryTier.WORKING
+        with pytest.raises(TierTransitionError, match="SHORT_TERM → FORMING"):
+            entry.tier = MemoryTier.FORMING
+
+    def test_tier_transition_allows_noop(self):
+        ep = _make_episodic()
+        entry = WorkingMemoryEntry(record=ep, tier=MemoryTier.WORKING)
+        entry.tier = MemoryTier.WORKING  # No-op, must not raise.
+        assert entry.tier == MemoryTier.WORKING
+
+    def test_tier_transition_rejects_long_term_mutation(self):
+        ep = _make_episodic()
+        entry = WorkingMemoryEntry(record=ep, tier=MemoryTier.LONG_TERM)
+        for bad in (MemoryTier.FORMING, MemoryTier.WORKING, MemoryTier.SHORT_TERM):
+            with pytest.raises(TierTransitionError):
+                entry.tier = bad
 
     def test_is_protected(self):
         ep = _make_episodic()
@@ -364,6 +396,9 @@ class TestWorkingMemoryEntry:
         ep = _make_episodic()
         entry = WorkingMemoryEntry(record=ep, salience=0.8, tier=MemoryTier.FORMING)
         assert entry.should_promote() is False
+        # Walk through the legal FORMING → WORKING → SHORT_TERM progression;
+        # direct FORMING → SHORT_TERM now fails the tier-transition guard.
+        entry.tier = MemoryTier.WORKING
         entry.tier = MemoryTier.SHORT_TERM
         assert entry.should_promote() is True  # salience 0.8 > 0.7 threshold
 

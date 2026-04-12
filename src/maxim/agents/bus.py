@@ -51,6 +51,38 @@ class MemoryTier(Enum):
     LONG_TERM = "long"  # Slow decay, consolidated knowledge
 
 
+# Allowed forward transitions for MemoryTier. The progression is strictly
+# one-way: skipping a tier or reversing direction indicates a bug that would
+# silently corrupt consolidation. Enforced by WorkingMemoryEntry.__setattr__.
+_TIER_FORWARD_TRANSITIONS: dict[MemoryTier, frozenset[MemoryTier]] = {
+    MemoryTier.FORMING: frozenset({MemoryTier.WORKING}),
+    MemoryTier.WORKING: frozenset({MemoryTier.SHORT_TERM}),
+    MemoryTier.SHORT_TERM: frozenset({MemoryTier.LONG_TERM}),
+    MemoryTier.LONG_TERM: frozenset(),
+}
+
+
+class TierTransitionError(ValueError):
+    """Raised when a MemoryTier transition violates the one-way lifecycle."""
+
+
+def _assert_tier_transition(old: MemoryTier, new: MemoryTier) -> None:
+    """Validate a MemoryTier transition.
+
+    Allows no-op (same-tier) writes so that idempotent sweeps don't crash,
+    but rejects reversals and non-adjacent skips. The progression is:
+    FORMING → WORKING → SHORT_TERM → LONG_TERM.
+    """
+    if old == new:
+        return
+    allowed = _TIER_FORWARD_TRANSITIONS.get(old, frozenset())
+    if new not in allowed:
+        raise TierTransitionError(
+            f"Illegal MemoryTier transition {old.name} → {new.name}; "
+            f"legal progression is FORMING → WORKING → SHORT_TERM → LONG_TERM"
+        )
+
+
 class SubGoalStatus(Enum):
     """Status of a sub-goal."""
 
@@ -291,6 +323,14 @@ class WorkingMemoryEntry(Generic[T]):
     def invalidate_keywords(self) -> None:
         """Clear keyword cache after record mutation (e.g., FORMING → complete)."""
         self._keywords = None
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        # Enforce the one-way MemoryTier lifecycle on every tier write.
+        # The initial dataclass __init__ assignment is allowed through
+        # because __dict__ does not yet contain "tier".
+        if name == "tier" and "tier" in self.__dict__:
+            _assert_tier_transition(self.__dict__["tier"], value)
+        object.__setattr__(self, name, value)
 
     def should_promote(self, access_threshold: int = 3, salience_threshold: float = 0.7) -> bool:
         """Check if this entry should be promoted to long-term."""
