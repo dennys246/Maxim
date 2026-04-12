@@ -188,7 +188,7 @@ Auto-generated from the spec:
 
 Uses the cheapest available LLM (Mistral-7b or smollm) for testing — the point isn't quality reasoning, it's whether the entity spec produces bio-system engagement.
 
-**MemoryHub state isolation:** Each gauntlet gets a **fresh MemoryHub** instance (new Hippocampus, ATL, EC, NAc, SCN, AngularGyrus, Cerebellum). This prevents cross-contamination — memories from gauntlet 1 must not appear in gauntlet 2's recall.
+**MemoryHub state isolation:** Each gauntlet gets a **fresh MemoryHub** instance (new Hippocampus, ATL, EC, NAc, SCN, AngularGyrus, Cerebellum) and a **fresh ReactionBus** (or its predecessor PainBus, depending on whether [reaction_abstraction_plan Phase 2](../reaction_abstraction_plan.md) has landed). This prevents cross-contamination — memories from gauntlet 1 must not appear in gauntlet 2's recall, and reactive signals must not leak across candidates.
 
 **Run-level EC for cross-candidate diversity:** A separate `EntorhinalCortex` instance persists across the entire foundry run. After each gauntlet scores, the candidate's `SituationSignature` is copied into the run-level EC for future diversity checks. Persisted to `~/.maxim/foundry/{run_id}/ec_index.json`.
 
@@ -267,6 +267,8 @@ A melee weapon with two attack modes.
 
 This is auto-composed from the entity spec (sensor names + ranges + affordance descriptions + failure trigger conditions). No LLM call needed — it's template-based. The `body_state` section (already at CRITICAL priority) shows current sensor values; the entity context section (at IMPORTANT priority) shows how to use them.
 
+**Enhancement opportunity (post [reaction_abstraction Phase 3](../reaction_abstraction_plan.md)):** Once `EmbodimentPerceptSource` is wired into the agent loop via the `PerceptProducer` protocol, sensor readings flow as typed Percepts instead of only through `format_body_state_for_prompt()`. The gauntlet's Hippocampal engagement scoring becomes richer because the bio-stack sees typed percepts with modality/context metadata, not just prompt text. Not required for the foundry to work — the string-based path is sufficient — but it's a free upgrade if Phase 3 has landed by revive time.
+
 **Files:**
 - **New:** `src/maxim/simulation/foundry_gauntlet.py` — `generate_gauntlet()`, `run_gauntlet()`
 - **New:** `src/maxim/simulation/foundry_sem_tests.py` — `run_sem_protocol_tests()`
@@ -307,7 +309,7 @@ Generate → Validate (schema) → SEM Protocol Tests → Gauntlet (bio-system) 
 |-----------|--------|-------------|
 | **Hippocampal engagement** | 30% | Episodic captures / encounters (did the agent remember this entity?) |
 | **Causal learning** | 30% | NAc observations + link confidence (did the agent learn cause-effect from this entity?) |
-| **Pain/failure activation** | 20% | Pain signals published, failure modes triggered (did the entity's failure modes fire?) |
+| **Pain/failure activation** | 20% | Pain signals published, failure modes triggered (did the entity's failure modes fire?). Post [reaction_abstraction Phase 2](../reaction_abstraction_plan.md): measures `ReactionBus.history(kind="pain")` instead of `PainBus.history`. |
 | **Affordance usage** | 20% | Number of distinct affordances the agent actually called (was the entity used, not just observed?) |
 
 **Score formula:** `score = Σ(dimension_i × weight_i)`, normalized to [0, 1].
@@ -452,6 +454,7 @@ These are tracked in `future_plans.md`, not implemented as part of the foundry c
 | **Interactive curation** | Review bucket needs human-in-the-loop | PromptHandler-based review workflow for borderline candidates |
 | **Benchmark suite generation** | Promoted components should become benchmarks | Auto-generate benchmark scenarios from promoted entities |
 | **Iterative spec refinement** | Single-shot specs are insufficient quality | Energy-aware multi-pass refinement ("rough spec if low energy, polished if budget available") |
+| **PerceptProducer/ReactionProducer protocol tests** | [reaction_abstraction Phase 3](../reaction_abstraction_plan.md) lands | Test 9: generated sensors satisfy `PerceptProducer` (EmbodimentPerceptSource can wrap them). Test 10: generated failure modes emit `Reaction` through CerebellumModulator. ~40 LOC addition to F-2's test suite. |
 
 ---
 
