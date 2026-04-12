@@ -5,10 +5,10 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## Active (gating 1.0)
 
-Three focused plans remain, split from the master substrate plan. Foundations, reaction abstraction, and simulator upgrades are all complete. The sequence is: P0 pilot → recognition (B1+P1+P2) → binding/persistence (P3a through P8 + B3-B5).
+Three focused plans remain, split from the master substrate plan. Foundations, reaction abstraction, and simulator upgrades are all complete. P0 pilot is complete (2026-04-12, fixtures calibrated at 78.5% baseline). The sequence is now: recognition (B1+P1+P2) → binding/persistence (P3a through P8 + B3-B5).
 
-- [substrate_p0_pilot.md](substrate_p0_pilot.md) — **next up.** Fixture-difficulty pilot: author research-grade P1 fixtures, run FAISS+cosine baseline, pin OpenCLIP number for P4. ~350 LOC + ~2.5 days fixture authoring.
-- [substrate_recognition.md](substrate_recognition.md) — B1 PromptAssembler + text-to-prompt migration + P1 within-modality recognition + P2 reward modulation. The highest-risk work (LinguisticEncoder, EC pattern_complete_or_separate). ~2,230 LOC. Targets 0.3-pre through 0.3-minimum.
+- [substrate_p0_pilot.md](substrate_p0_pilot.md) — **COMPLETE** (2026-04-12). Baseline pinned at 78.5% (mpnet@0.50). P1 sanity floor = 73.5%. Results: [experiments/p0_baseline_sweep.md](../experiments/p0_baseline_sweep.md).
+- [substrate_recognition.md](substrate_recognition.md) — **next up.** B1 PromptAssembler + text-to-prompt migration + P1 within-modality recognition + P2 reward modulation. The highest-risk work (LinguisticEncoder, EC pattern_complete_or_separate). ~2,230 LOC. Targets 0.3-pre through 0.3-minimum.
 - [substrate_binding_persistence.md](substrate_binding_persistence.md) — P3a episode binding through P8 sleep replay + B3-B5 prompt layer. Includes the 1.0-gating P4 cross-modal head-to-head vs OpenCLIP. ~4,100 LOC. Targets 0.3-target through 0.5.
 
 The master reference for rationale, baselines, and statistical hygiene is archived at [archive/substrate_plan.md](archive/substrate_plan.md).
