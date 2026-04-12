@@ -203,6 +203,171 @@ Also introduce `Percept.modality: Literal["text", "vision", "audio", "intero"]` 
 
 **Dependencies:** F0.4 (Percept context schema must land first so the sensor registry can reference its fields), F0.5 (agent_id threading — sensors flag which agent produced the reading).
 
+## Follow-ups from the F0.4 architectural review (⚠ NEEDS REFINEMENT — do not implement as-is)
+
+> **STOP. Read this banner before touching either item below.**
+>
+> These two items came out of the architectural discussion that happened
+> while F0.4 was being implemented — specifically, once the `Percept.metadata`
+> escape hatch was in place, a reviewer asked "is `metadata` appropriately
+> abstracted?" and the investigation that followed surfaced that **pain is
+> already a reactive signal in Maxim, not a percept**, and the only reason
+> pain touches `Percept.metadata` at all is a sim-layer shortcut in
+> `inject_pain`. Removing that shortcut is a real cleanup; standardizing
+> how reactive signals bind to the percepts that triggered them is a real
+> refinement — but the shape of *both* items needs more thought before
+> anyone writes code.
+>
+> Concretely, **the open questions below are load-bearing**. Do not treat
+> these items as ready-to-implement PRs. Spend a session resolving the
+> questions first, update this section with the answers, then (and only
+> then) decide whether these land as their own PRs, fold into F0.8, or
+> move to substrate_plan.md P2. A cold-start implementer who skips the
+> refinement step will ship a premature abstraction and either bloat
+> `PainSignal` or re-introduce the reaction/percept conflation we just
+> finished pulling apart.
+
+### F0.R1 — Drop the `inject_pain` → `Percept.metadata` detour
+
+**What today does.** [`sandbox.py:518`](../../src/maxim/simulation/sandbox.py#L518) and
+[`conversational_source.py:73`](../../src/maxim/simulation/conversational_source.py#L73)
+construct a `Percept(source="proprioception", content="pain_signal",
+metadata={"pain_type": ..., "intensity": ...})` and route it through
+[`pain_bus.route_pain_percept`](../../src/maxim/proprioception/pain_bus.py),
+which immediately *converts* it into a typed `PainSignal` and publishes to
+`PainBus`. The Percept is a transport shortcut — pain isn't actually a
+percept, it's just riding the percept bus to get from sim code into the
+reactive pathway.
+
+**What it should do.** Rewrite `inject_pain` in both sim sites to construct
+a `PainSignal` directly and publish to `PainBus` without building a Percept
+at all. Delete `route_pain_percept` and the `source == "proprioception"`
+branch on the percept bus. Once this lands, `Percept.metadata` has one
+fewer legitimate use case and the "pain is reaction, not sensation"
+invariant is enforced by the type system instead of by convention.
+
+**Why this isn't F0.8b.** F0.8 is about populating `SensoryTag` at
+existing producers. This item is about *removing* a producer — moving
+pain off the percept pipeline entirely. Different direction. If anything
+it reduces F0.8's surface.
+
+**Rough scope estimate (unverified — see open questions):** ~40 LOC
+across three files plus test updates.
+
+**Open questions that MUST be answered before implementation:**
+
+1. **Is there a sim-layer reason the Percept detour exists that we've
+   missed?** Specifically: does any sim orchestrator watch the percept
+   bus for `proprioception` sources as a signal of "pain happened during
+   this turn"? A grep for `source == "proprioception"` outside
+   `route_pain_percept` should be the first step. If something is
+   listening to the percept bus for pain signals, removing the detour
+   silently changes observable behavior.
+2. **Does `route_pain_percept` do any translation we'd lose?**
+   Intensity clamping, pain-type fallback, anything schema-ish?
+   Re-read it before assuming "direct construction" is equivalent.
+3. **Is `inject_pain` the only caller-facing sim helper for pain?**
+   If test harnesses use it with the assumption "this produces a
+   percept that shows up in the transcript," the transcript-capture
+   path may need an explicit pain-signal hook instead.
+
+### F0.R2 — Standardize reactive-signal → percept binding
+
+**The architectural gap.** When `PainSignal` fires, NAc needs to learn
+"*action X in context of percept Y* → pain," not just "action X → pain."
+Today, the percept-side context comes in indirectly: each pain bridge
+populates NAc's `context` dict differently, and there's no invariant
+that says "when you emit a `PainSignal`, snapshot the percepts that were
+live at that moment." Pain binds to actions (via [`PainCircuitBridge._on_pain`](src/maxim/decisions/pain_bridge.py)
+and [`ToolPainBridge._on_pain`](src/maxim/decisions/tool_pain_bridge.py)),
+but action→percept attribution is per-bridge convention, not a typed
+invariant. This is the "standardized attachment" gap an earlier reviewer
+flagged.
+
+**The candidate shape.** Add a percept-context snapshot field to
+`PainSignal` (or whatever base reactive-signal type ends up owning it),
+populated at emission time by reading from the shared
+`PerceptTraceBuffer` that lands in F0.2. Something like:
+
+```python
+@dataclass
+class PainSignal:
+    ...existing fields...
+    context_percept_ids: tuple[str, ...] = ()  # snapshot at emission
+```
+
+With the emitter side doing
+`context_percept_ids=tuple(trace_buffer.recent(tau=...))`. NAc's bridges
+then read both attribution fields (action + percept context) and train
+on the full binding. This is what makes "the stove that burned me" a
+typed thing instead of an implicit convention.
+
+**Why this can't ship before F0.2.** The whole point of the
+`PerceptTraceBuffer` is to give reactive signals a standardized
+short-term window to snapshot from. Without it, each pain emitter would
+have to reinvent "what were the recent percepts" and we'd be back to
+per-bridge convention. F0.R2's implementation is gated on F0.2 landing.
+
+**Open questions that MUST be answered before implementation:**
+
+1. **Is this just about pain, or about reactive signals in general?**
+   If hunger, fear, surprise, and fatigue are coming (and the substrate
+   P2/P8 work implies they are), F0.R2 should define a *pattern* for
+   reactive signals to snapshot percept context, not just patch
+   `PainSignal`. That probably means a shared base class or mixin —
+   which in turn means answering "where do reactive signals live in
+   the module tree?" before picking the shape. Putting
+   `context_percept_ids` on `PainSignal` alone would solve pain and
+   punt on the pattern, leaving the next reactive signal to re-solve
+   it. Not good.
+2. **Is `tuple[str, ...]` the right shape?** Alternatives: a richer
+   reference with trace activation strengths (so NAc can weight recent
+   vs. decayed percepts), a content-addressed hash, or a reference into
+   a snapshot stored on `PerceptTraceBuffer` itself. Each has tradeoffs
+   around persistence, NAc key shape, and cross-agent isolation. Pick
+   deliberately, not by defaulting.
+3. **Does NAc's current key shape accommodate percept-context
+   conditioning?** NAc stores causal links by
+   `(event_sig, outcome_sig, context_hash)`. Percept context could be
+   folded into `context_hash` without a NAc schema change, OR it could
+   become a first-class key dimension. The answer affects whether
+   F0.R2 is a ~20-LOC addition or a NAc schema migration. Needs a
+   quick look at NAc's internal index before committing to a shape.
+4. **Is there a parallel to F0.4's isolation-hygiene rule for reactive
+   signals?** Something like: "reactive signals are a function of the
+   producer's own state + recent percept context only; they must not
+   carry cross-agent intent, scenario oracles, or learned-policy hints
+   from elsewhere in the system." Pain today trivially satisfies this,
+   but the rule should be written down before `FearSignal` or
+   `SurpriseSignal` arrives, not after.
+5. **Should `PainBus` generalize to a `ReactionBus`, or should each
+   reaction type have its own bus?** The current PainBus design (typed
+   subscribers, refractory period, attribution bridges) is clean, but
+   if every reaction type gets its own bus we'll have five pub/sub
+   surfaces doing nearly the same thing. Unifying them is probably
+   right — but the cost is a round of coordinated refactors to
+   existing pain bridges. Not this PR, but the answer determines
+   whether F0.R2's shape is PainSignal-specific or generic.
+
+**Scope estimate (unverified):** ~50–150 LOC depending on whether the
+refinement settles on "patch PainSignal" (low end) or "introduce a
+reactive-signal base with shared snapshot logic" (high end). The open
+questions above have to resolve first.
+
+### How these items interact with the existing F0.1–F0.8 wave
+
+**F0.R1 is independent** and can land any time after this doc review
+settles — it only touches sim-layer inject code and the percept-bus
+routing. No dependency on F0.2–F0.8.
+
+**F0.R2 is gated on F0.2** (`PerceptTraceBuffer`) and should land after
+F0.2 is in and stable. It doesn't block F0.5/F0.6/F0.8.
+
+**Neither item is in the scope-summary table below.** They're follow-ups,
+not committed foundation items. If the refinement session produces a
+narrower, implementable shape, move them into the table at that point
+(and renumber if needed).
+
 ## Scope summary
 
 | Item | Scope | Depends on |
