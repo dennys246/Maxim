@@ -162,6 +162,10 @@ class CausalLink:
     # Most recent Rescorla-Wagner prediction error magnitude (set by update_prediction_rw)
     last_rpe: float | None = None
 
+    # P2: Percept trace snapshots that were active when this link was
+    # observed. Enables reward attribution back to specific substrate nodes.
+    percept_refs: tuple[Any, ...] = ()  # tuple[TraceSnapshot, ...]
+
     # Thread safety for concurrent record_observation calls
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
@@ -312,11 +316,22 @@ class CausalLink:
             "memory_ids": self.memory_ids,
             "context_factors": self.context_factors,
             "last_rpe": self.last_rpe,
+            "percept_refs": [r.to_dict() if hasattr(r, "to_dict") else r for r in self.percept_refs],
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> CausalLink:
         """Deserialize from dictionary."""
+        # P2: Rehydrate percept_refs as dicts (TraceSnapshot.from_dict
+        # is wired when the reactions module is available).
+        raw_refs = data.get("percept_refs", [])
+        try:
+            from maxim.reactions.types import TraceSnapshot
+
+            percept_refs = tuple(TraceSnapshot.from_dict(r) if isinstance(r, dict) else r for r in raw_refs)
+        except ImportError:
+            percept_refs = tuple(raw_refs)
+
         return cls(
             id=data["id"],
             event_type=data["event_type"],
@@ -334,6 +349,7 @@ class CausalLink:
             memory_ids=data.get("memory_ids", []),
             context_factors=data.get("context_factors", {}),
             last_rpe=data.get("last_rpe"),
+            percept_refs=percept_refs,
         )
 
 
