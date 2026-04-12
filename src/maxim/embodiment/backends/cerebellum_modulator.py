@@ -53,6 +53,7 @@ class CerebellumModulator:
         "_cerebellum",
         "_fallback",
         "_sensor_ranges",
+        "_reaction_bus",
     )
 
     def __init__(
@@ -64,6 +65,7 @@ class CerebellumModulator:
         *,
         fallback: Any = None,
         sensor_ranges: dict[str, tuple[float, float]] | None = None,
+        reaction_bus: Any = None,
     ) -> None:
         self._entity = entity
         self._name = modulator_name
@@ -71,6 +73,7 @@ class CerebellumModulator:
         self._cerebellum = cerebellum
         self._fallback = fallback
         self._sensor_ranges = sensor_ranges
+        self._reaction_bus = reaction_bus
 
     @property
     def name(self) -> str:
@@ -94,7 +97,7 @@ class CerebellumModulator:
            - Train Cerebellum on the fallback result
         """
         if affordance not in self._affordances:
-            return ModulatorResult(
+            result = ModulatorResult(
                 success=False,
                 modulator_name=self._name,
                 entity_name=self._entity.name,
@@ -102,6 +105,8 @@ class CerebellumModulator:
                 params=params,
                 error=f"Unknown affordance: {affordance}",
             )
+            self._emit_failure_reaction(affordance, 0.3)
+            return result
 
         # Try Cerebellum prediction first
         predicted = self._cerebellum.predict(
@@ -163,6 +168,10 @@ class CerebellumModulator:
                     self._cerebellum._models[key].observations,
                 )
 
+        # Emit failure Reaction if the fallback execution failed
+        if not result.success:
+            self._emit_failure_reaction(affordance, min(0.5, 0.3 + 0.1))
+
         # Tag result with source
         if result.metadata is None:
             result = ModulatorResult(
@@ -176,6 +185,35 @@ class CerebellumModulator:
             )
 
         return result
+
+    def _emit_failure_reaction(self, affordance: str, intensity: float) -> None:
+        """Emit a Reaction(kind="pain") when a modulator execution fails.
+
+        SEM facilitates reactions via Cerebellum mediation — the modulator
+        itself doesn't know about the Reaction type; this wrapper handles
+        the translation from "execution failed" to "evaluative signal."
+        """
+        if self._reaction_bus is None:
+            return
+        try:
+            import time
+
+            from maxim.decisions.causal_link import Valence
+            from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
+
+            reaction = Reaction(
+                kind="pain",
+                intensity=intensity,
+                valence=Valence.NEGATIVE,
+                timestamp=time.time(),
+                source=f"cerebellum:{self._entity.name}.{self._name}.{affordance}",
+                context=ReactionContext(
+                    bindings={"entity_path": TraceSnapshot(percept_id=self._entity.name)},
+                ),
+            )
+            self._reaction_bus.publish(reaction)
+        except Exception as e:
+            log.debug("CerebellumModulator: failed to emit reaction: %s", e)
 
     def _apply_predictions(self, predicted: dict[str, float]) -> None:
         """Apply Cerebellum predictions to entity sensors/vital_metrics."""
