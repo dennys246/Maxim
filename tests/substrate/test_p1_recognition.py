@@ -109,8 +109,59 @@ class TestP1RecognitionSweep:
         # The actual gate assertion
         assert all_pass, f"P1 failed: {sum(1 for r in results if not r['passes'])}/{len(results)} seeds failed"
 
+    def test_threshold_sweep(self):
+        """Sweep thresholds to find the sweet spot for collapse vs cross-cluster.
+
+        Prints a comparison table. Model loads once, re-encodes per threshold.
+        """
+        from maxim.memory.atl import ATL
+        from maxim.similarity.ec import ECConfig, EntorhinalCortex
+        from maxim.similarity.encoder import LinguisticEncoder
+
+        from tests.substrate.p1_metrics import compute_p1_metrics, load_clusters_from_fixture
+
+        clusters = load_clusters_from_fixture(str(FIXTURE_PATH))
+        thresholds = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55]
+
+        # Pre-compute all embeddings once (reuse encoder model)
+        encoder_for_warmup = LinguisticEncoder(
+            ec=EntorhinalCortex(),
+            atl=ATL(),
+        )
+        # Warm up the model
+        encoder_for_warmup.embed("warmup")
+
+        print(f"\n{'=' * 75}")
+        print("P1 THRESHOLD SWEEP")
+        print(f"{'=' * 75}")
+        print(f"  {'Thresh':>6s}  {'Collapse':>8s}  {'X-Cluster':>9s}  {'Nodes':>5s}  {'Growth':>6s}  {'P1':>4s}")
+        print(f"  {'─' * 65}")
+
+        for thresh in thresholds:
+            ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=thresh))
+            atl = ATL()
+            encoder = LinguisticEncoder(ec=ec, atl=atl)
+
+            metrics = compute_p1_metrics(
+                ec=ec,
+                atl=atl,
+                clusters=clusters,
+                encoder=encoder,
+                diagnostics=False,
+            )
+
+            status = "PASS" if metrics.passes_p1() else "FAIL"
+            print(
+                f"  {thresh:>6.2f}  {metrics.collapse_rate:>7.1%}  "
+                f"{metrics.cross_cluster_rate:>8.1%}  "
+                f"{metrics.total_nodes:>5d}  {metrics.node_growth_final_20pct:>5.1%}  "
+                f"{status:>4s}"
+            )
+
+        print(f"{'=' * 75}")
+
     @staticmethod
-    def _run_seed(seed: int = 42):
+    def _run_seed(seed: int = 42, threshold: float = 0.50):
         """Run one seed through the full pipeline and return metrics."""
         from maxim.memory.atl import ATL
         from maxim.similarity.ec import ECConfig, EntorhinalCortex
@@ -118,10 +169,7 @@ class TestP1RecognitionSweep:
 
         from tests.substrate.p1_metrics import compute_p1_metrics, load_clusters_from_fixture
 
-        # The pipeline is deterministic for a given model + threshold,
-        # but we vary seed for future use when stochastic elements
-        # (dropout, random init) are added.
-        ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.50))
+        ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=threshold))
         atl = ATL()
         encoder = LinguisticEncoder(ec=ec, atl=atl)
 
