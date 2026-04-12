@@ -1,12 +1,14 @@
 # Reaction Abstraction Plan
 
-> **Status:** Active — Phase 1 sequences inside the foundations wave; Phases 2–5 execute post-foundations.
+> **Status:** Phases 1–4 LANDED (2026-04-11). Phase 5 deferred to substrate P2.
 >
 > **Origin:** Emerged from the F0.4 architectural review. While deciding whether `Percept.metadata` was appropriately abstracted for pain signals, the investigation revealed that pain is already a reactive signal (not a percept) and that the codebase has no typed abstraction for evaluative signals that drive learning. This plan fills that gap.
 >
-> **Depends on:** F0.4 (PerceptContext), F0.5 (agent_id threading). Phase 2 additionally depends on F0.2 (PerceptTraceBuffer).
+> **Depends on:** F0.4 (PerceptContext) ✅, F0.5 (agent_id threading) ✅, F0.2 (PerceptTraceBuffer) ✅. All dependencies landed.
 >
-> **Supersedes:** F0.R1 and F0.R2 in `foundations_plan.md` are absorbed into Phases 1–2 of this plan.
+> **Supersedes:** F0.R1 and F0.R2 from the foundations plan are absorbed into Phases 1–2.
+>
+> **What shipped:** `maxim.reactions` package with Reaction/ReactionContext/TraceSnapshot types, ReactionBus (generalized PainBus), PerceptProducer/ReactionProducer protocols, CerebellumModulator reaction emission, Percept factories (`make_text_percept`/`make_scene_percept`/`make_intero_percept`), AgentPool runtime unification. PainBus delegates to ReactionBus; all PainSignal publishers migrated to Reaction(kind="pain").
 
 ## The sandwich: Percept → Reaction → Bio-systems
 
@@ -220,14 +222,14 @@ This is a prerequisite for the [deferred mother_npc_stimulus_plan](deferred/moth
 
 ## Phasing
 
-| Phase | Scope | LOC est. | Dependencies | Absorbs |
-|---|---|---|---|---|
-| **1 — Types** | Define `Reaction`, `ReactionContext`, `TraceSnapshot`, `ReactionKind`. Isolation-hygiene docstring. Module: `maxim/reactions/types.py`. No runtime changes. | ~200 | F0.4, F0.5 | — |
-| **2 — ReactionBus + PainBus migration** | `ReactionBus` class. PainSignal → Reaction(kind="pain"). Migrate existing PainBus subscribers. Delete `route_pain_percept`. Rewrite `inject_pain` to emit Reaction directly. | ~300 | Phase 1, F0.2 (for TraceSnapshot population) | F0.R1, F0.R2 |
-| **3 — SEM producer protocols** | `PerceptProducer` / `ReactionProducer` Protocol types. CerebellumModulator gains ReactionProducer behavior. Wire [EmbodimentPerceptSource](../../src/maxim/embodiment/percepts.py) into the agent loop (currently unused). SEM sensors adopt PerceptProducer. | ~200 | Phase 2 | F0.8 |
-| **4 — Factory + runtime unification** | `make_text_percept` factory implements PerceptProducer. AgentPool.run_turn uses it. Percept factory consolidation across remaining call sites. | ~150 | Phase 3, F0.6 | F0.6 runtime-unification piece |
-| **5 — NAc structured access** | NAc causal link table gains `percept_refs` column. Queries by percept involvement. Per-node reward bias keys off `(agent_id, node_id)`. | ~150 | Phase 4, substrate P2 | — |
-| **Total** | | **~1,000** | | |
+| Phase | Scope | Status | Absorbs |
+|---|---|---|---|
+| **1 — Types** | `Reaction`, `ReactionContext`, `TraceSnapshot`, `ReactionKind` in `maxim/reactions/types.py` | ✅ LANDED | — |
+| **2a — ReactionBus** | `ReactionBus` class, PainBus backward-compat wrapper, `route_pain_percept` deleted, `inject_pain` emits Reaction | ✅ LANDED | F0.R1 |
+| **2b — Publisher migration** | All 7 PainSignal publishers → `Reaction(kind="pain")` | ✅ LANDED | F0.R2 |
+| **3 — SEM producer protocols** | `PerceptProducer` / `ReactionProducer` Protocols, CerebellumModulator reaction emission, SensoryTag population | ✅ LANDED | F0.8 |
+| **4 — Factory + runtime unification** | `make_text_percept`/`make_scene_percept`/`make_intero_percept` factories, `AgentPool.run_turn` produces typed Percepts, 9 call sites migrated to factories | ✅ LANDED | F0.6 |
+| **5 — NAc structured access** | NAc causal link table gains `percept_refs` column. Per-node reward bias keys off `(agent_id, node_id)`. | Deferred → [substrate P2](substrate_plan.md) | — |
 
 ### Sequencing against the foundations wave
 

@@ -164,8 +164,14 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 - **Simulation** orchestrator in `simulation/orchestrator.py`, bridge in `simulation/bridge.py`. Campaign runners in `simulation/campaign_runner.py`. Types in `simulation/sim_types.py`.
 - **Interactive runtime** in `interactive/` — universal prompt protocol (`PromptRequest`/`PromptHandler`), rich terminal display with split panels, DM display extensions.
 - **Mode system**: ProcessingState (awake/sleep) x OperationalMode (planning/supervised/autonomous). Sleep is a tool the agent calls; it wakes automatically on user input.
-- **Memory tiers**: FORMING -> WORKING -> SHORT_TERM -> LONG_TERM
+- **Memory tiers**: FORMING -> WORKING -> SHORT_TERM -> LONG_TERM (enforced by `TierTransitionError` in `agents/bus.py` — see F0.7)
 - **Memory store protocols**: `EpisodicStore`, `CausalStore`, `SemanticStore` in `memory/store.py` — split persistence protocols with `File*Store` defaults and database implementations for Mother Maxim.
+- **Percept/Reaction dual surface** (reaction_abstraction_plan, Phases 1–4 shipped):
+  - **Percept** = sensory/environmental input. Typed `PerceptContext` (channel, sender, agent_id, scn_tag) in `agents/percept_context.py`. Named factories in `agents/percept_factory.py`: `make_text_percept`, `make_scene_percept`, `make_intero_percept`. `SensoryTag` populated at all producers via `agents/modality.py`.
+  - **Reaction** = evaluative signal driving learning. Types in `reactions/types.py` (`Reaction`, `ReactionContext`, `TraceSnapshot`, `ReactionKind`). `ReactionBus` in `reactions/bus.py` (generalized from PainBus, per-kind dispatch). `PerceptProducer`/`ReactionProducer` protocols in `reactions/protocols.py`.
+  - **SEM integration**: sensors → PerceptProducer (via `EmbodimentPerceptSource`), modulators → ReactionProducer (via `CerebellumModulator` mediation). SEM specs don't import Reaction types.
+  - **Runtime unification**: both MaximAgent and AgentPool produce typed Percepts. AgentPool.run_turn wraps string input via `make_text_percept`.
+  - **Isolation hygiene**: PerceptContext and ReactionContext must NOT carry cross-agent intent, private state, scenario oracles, or learned-policy hints. Rules documented in module docstrings of `percept_context.py` and `reactions/types.py`.
 - **Lane tier system**: Functions route to capability tiers (large/medium/small) via `FunctionRouter` in `runtime/function_router.py`. `detect_tiers()` in `lane_models.py` auto-detects from hardware.
 - **Data paths**: Bundled seed data in `src/maxim/_data/` (components, encounters, prompts, templates). User data at `~/.maxim/` (memory, sessions, benchmarks, config). Resolution via `utils/paths.py`.
 - **SEM Component Registry**: `embodiment/component_registry.py` discovers SEM entity templates from campaign-local, `~/.maxim/components/`, and `_data/components/`. 54 seed components across 7 categories (bodies, creatures, environments, items, npcs, vehicles, weapons). Genre-gated: fantasy, cyberpunk, scifi, horror, historical, modern, devops.
@@ -178,8 +184,10 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Agent loop | `runtime/agent_loop.py`, `runtime/loop_controller.py` |
 | Tools | `tools/` (register in registry), `runtime/executor.py` (aliases) |
 | LLM routing | `models/language/router.py`, `models/language/config.py` (profiles), `models/language/json_parser.py` (JSON repair) |
-| Memory | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/store.py` (protocols) |
+| Memory | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/store.py` (protocols), `memory/percept_trace_buffer.py` (τ-decay ring buffer) |
 | Causal learning | `decisions/nac.py` |
+| Percept schema | `agents/percept_context.py` (PerceptContext), `agents/percept_factory.py` (factories), `agents/modality.py` (SensoryTag) |
+| Reactions | `reactions/types.py` (Reaction, ReactionContext, TraceSnapshot), `reactions/bus.py` (ReactionBus), `reactions/protocols.py` (PerceptProducer, ReactionProducer) |
 | Cross-layer wiring | `integration/memory_hub.py` (single coordinator) |
 | Persistence | `utils/atomic_io.py`, `utils/paths.py` (data path resolution) |
 | Simulation | `simulation/orchestrator.py`, `simulation/bridge.py`, `simulation/personas.py` |
@@ -259,7 +267,7 @@ python -m pytest tests/unit/test_lane_metrics.py -v
 
 ### Testing efficiently
 
-**Run narrow first, then wide.** Test the specific module you changed before running the full suite (~3 min). The full suite has 3400+ tests; don't wait for all of them on every edit.
+**Run narrow first, then wide.** Test the specific module you changed before running the full suite (~3 min). The full suite has ~4,000 tests; don't wait for all of them on every edit.
 
 **Kill stale sims before running tests.** A running `maxim --sim agent` process holds GPU + port resources and can cause test hangs:
 ```bash
@@ -302,17 +310,21 @@ Published to PyPI as `pymaxim` (import name stays `maxim`). 17 verb-based functi
 
 See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current version: v0.2.1 on PyPI as `pymaxim` ([publication guide](docs/publication_guide.md)).
 
-**Gating 1.0** (three prerequisite waves, then substrate phases):
-- [foundations_plan.md](docs/plans/foundations_plan.md) — F0.1–F0.8 prerequisite fixes (NAc wiring + save/load signature, PerceptTraceBuffer, ghost removal, Percept schema, agent_id threading + SCN race fix, factory consolidation, tier assertions, sensor→Percept contract). Eight small PRs, ~1,130 LOC total.
-- [simulator_upgrades_plan.md](docs/plans/simulator_upgrades_plan.md) — S1–S4 test-harness infrastructure (fixture-driven orchestrator, LLMBackend Protocol + mock via Option B, subprocess persistence harness, deterministic seeding). ~850 LOC. Drops substrate per-phase harness cost from ~200 LOC to ~100 LOC. Blocks substrate P0.
-- [substrate_plan.md](docs/plans/substrate_plan.md) — bio-stack convergence (Track A: P0, P1–P6, P8) and prompt layer (Track B: B1–B5, merged from the old `embodiment_voice_plan.md`). Includes P0 fixture-difficulty pilot, persistence as cross-phase contract, minimum-viable sleep replay (P8), sim-as-fixture-debugger workflow, 0.3-minimum vs 0.3-target fallback, incremental contracts layer, and living-doc discipline. Pass criteria are mechanistic where the phase tests a mechanism, head-to-head gate baselines where applicable (P3a, P4, P6). No p-values; effect sizes across ≥10 seeds. Depends on foundations_plan + simulator_upgrades_plan landing first. Supersedes the old percept + salience + embodiment/voice plans.
+**Recently shipped (2026-04-11):**
+- Foundations wave F0.1–F0.8 — all landed. Archived to [docs/plans/archive/foundations_plan.md](docs/plans/archive/foundations_plan.md).
+- Reaction abstraction Phases 1–4 — Percept/Reaction dual-surface architecture, ReactionBus, producer protocols, factories, runtime unification. See [docs/plans/reaction_abstraction_plan.md](docs/plans/reaction_abstraction_plan.md).
+- Cleanup wave C1–C4 — shipped in 0.2.2. Archived.
+- Peer/leader flexibility P1–P9 — dynamic n_ctx, auto-download, remote probes, lane decision log. Archived.
+
+**Gating 1.0** (next steps):
+- [simulator_upgrades_plan.md](docs/plans/simulator_upgrades_plan.md) — S1–S4 test-harness infrastructure. Blocks substrate P0. ~850 LOC.
+- [substrate_plan.md](docs/plans/substrate_plan.md) — bio-stack convergence (Track A: P0, P1–P6, P8) and prompt layer (Track B: B1–B5). Reaction abstraction Phase 5 (NAc structured percept-context access) folds into P2.
 
 **Living practice docs (paired with substrate_plan):**
 - [behavioral_convergence_practice.md](docs/plans/behavioral_convergence_practice.md) — does the agent actually get better across sessions? Living doc, not a gate.
-- [memory_consolidation_practice.md](docs/plans/memory_consolidation_practice.md) — refines the P8 sleep-replay mechanism with alternative strategies, promotion rules, interference analysis. Kicks in when P8 ships in 0.5.
+- [memory_consolidation_practice.md](docs/plans/memory_consolidation_practice.md) — refines the P8 sleep-replay mechanism. Kicks in when P8 ships in 0.5.
 
 **Parallel:**
-- [cleanup_wave.md](docs/plans/cleanup_wave.md) — fix `--interactive`, delete dead CLI flags, display defaults, agent permissions. Supersedes display_simplification + agent_permissions plans.
 - [tool_refinement_plan.md](docs/plans/tool_refinement_plan.md) — living doc for agent tool curation.
 
 **Deferred (post-1.0, revive on trigger):** Bio-System Plugin Discovery, Unified Event Bus, Mother NPC Stimulus, Mother Maxim, Pecking Order Graph, Asset Foundry, DM Extensions. See [docs/plans/deferred/](docs/plans/deferred/).

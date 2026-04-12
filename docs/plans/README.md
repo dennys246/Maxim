@@ -5,13 +5,10 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## Active (gating 1.0)
 
-Three plans run in sequence before substrate phases start. Each is its own wave with its own gate. The sequence is Cleanup Wave → foundations_plan → simulator_upgrades_plan → P0 pilot → substrate phases.
+Two plans remain before substrate phases start. Foundations wave and reaction abstraction Phases 1–4 are complete (2026-04-11). The sequence is now: simulator_upgrades_plan → P0 pilot → substrate phases.
 
-- [foundations_plan.md](foundations_plan.md) — F0.1–F0.8 prerequisites (NAc wiring + save/load signature, PerceptTraceBuffer, NarrativeModulator ghost, Percept schema, agent_id threading + SCN race fix, factory consolidation, tier assertions, Sensor→Percept contract). Blocks simulator_upgrades_plan and substrate. ~1,130 LOC across eight PRs.
-- [simulator_upgrades_plan.md](simulator_upgrades_plan.md) — S1–S4 test-harness infrastructure: fixture-driven orchestrator, **LLMBackend Protocol + MockLLMBackend** (Option B — S2 defines the Protocol itself as the first step because no formal protocol exists today), subprocess persistence harness, deterministic seeding CLI. Blocks substrate P0. ~850 LOC across four PRs. Drops substrate per-phase harness cost from ~200 LOC to ~100 LOC by leveraging existing `ConversationalSource`/`ScenarioSource`/`BenchmarkRunner` infrastructure instead of building bespoke harnesses.
-- [substrate_plan.md](substrate_plan.md) — bio-stack convergence (Track A: P0, P1–P6, P8) + prompt layer (Track B: B1–B5, merged from `embodiment_voice_plan.md`). Includes P0 fixture-difficulty pilot, persistence as cross-phase contract, minimum-viable sleep replay (P8), sim-as-fixture-debugger workflow, 0.3-minimum vs 0.3-target fallback, incremental contracts layer, and living-doc discipline. Depends on foundations_plan + simulator_upgrades_plan landing first.
-
-The prompt-layer plan was merged into substrate because B1's PromptAssembler and P1's text-to-prompt migration touch the same files. The foundations and simulator upgrades plans were split out because those items are prerequisite waves, not proof-obligation phases — keeping them together diluted all three documents.
+- [simulator_upgrades_plan.md](simulator_upgrades_plan.md) — S1–S4 test-harness infrastructure: fixture-driven orchestrator, **LLMBackend Protocol + MockLLMBackend** (Option B — S2 defines the Protocol itself as the first step because no formal protocol exists today), subprocess persistence harness, deterministic seeding CLI. Blocks substrate P0. ~850 LOC across four PRs.
+- [substrate_plan.md](substrate_plan.md) — bio-stack convergence (Track A: P0, P1–P6, P8) + prompt layer (Track B: B1–B5). Includes P0 fixture-difficulty pilot, persistence as cross-phase contract, minimum-viable sleep replay (P8). Phase 5 of the reaction abstraction (NAc structured percept-context access) is folded into substrate P2.
 
 ## Living practice docs (pair with substrate_plan)
 
@@ -22,9 +19,7 @@ These accumulate evidence and refinement over time. They are not on the critical
 
 ## Parallel (ship anytime, not gating 1.0)
 
-- [reaction_abstraction_plan.md](reaction_abstraction_plan.md) — **NEW.** Typed `Reaction` type + `ReactionBus` (generalized from PainBus) + `PerceptProducer`/`ReactionProducer` protocols. SEM sensors produce Percepts, Cerebellum mediates modulator outcomes into Reactions. Absorbs foundations F0.R1/F0.R2/F0.8 and the F0.6 runtime-unification piece. 5 phases, ~1,000 LOC total. Phase 1 (types-only, ~200 LOC) sequences inside the foundations wave; Phases 2–5 post-foundations. Phase 5 lands in substrate P2 (NAc structured access for per-node reward bias).
-- [cleanup_wave.md](cleanup_wave.md) — fix `--interactive`, delete dead flags, display defaults, agent permissions
-- [peer_leader_flexibility_plan.md](peer_leader_flexibility_plan.md) — `--llm` precedence, Apple Silicon tier detection, graceful leader-down fallback, auto-download on first use
+- [reaction_abstraction_plan.md](reaction_abstraction_plan.md) — Phases 1–4 **SHIPPED** (2026-04-11). Typed Percept/Reaction dual-surface architecture with PerceptProducer/ReactionProducer protocols, ReactionBus, Percept factories, SensoryTag population, AgentPool runtime unification. Phase 5 (NAc structured access) folds into substrate P2.
 - [tool_refinement_plan.md](tool_refinement_plan.md) — living doc for agent tool surface curation
 
 ## Deferred (post-1.0, revive on trigger)
@@ -41,7 +36,12 @@ Design work is preserved in [deferred/](deferred/). Each plan has an explicit "r
 
 ## Archive
 
-Completed or superseded plans live in [archive/](archive/). See the archive for historical context on pre-publication refinement, repo management, and the v1 versions of plans folded into the active spine.
+Completed or superseded plans live in [archive/](archive/).
+
+Recently archived (2026-04-11):
+- [archive/foundations_plan.md](archive/foundations_plan.md) — F0.1–F0.8 all landed. NAc save/load, NarrativeModulator ghost removal, PerceptContext schema, agent_id threading + SCN race fix, PerceptTraceBuffer, tier assertions, SensoryTag population, Percept factory consolidation.
+- [archive/cleanup_wave.md](archive/cleanup_wave.md) — C1–C4 shipped in 0.2.2. `--interactive` fix, dead CLI flags, display defaults, agent permissions.
+- [archive/peer_leader_flexibility_plan.md](archive/peer_leader_flexibility_plan.md) — P1–P9 shipped. Dynamic n_ctx, KV quant, Apple Silicon tiers, auto-download, remote probes, lane decision log.
 
 ## Version path to 1.0
 
