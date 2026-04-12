@@ -248,7 +248,7 @@ Seed near-duplicate paraphrases of a target concept plus distractors. Baseline p
 - NAc per-node reward bias keyed by `(agent_id, node_id)` (F0.5 prereq — multi-agent correctness)
 - NAc reads from `PerceptTraceBuffer` when crediting reward events
 - EC threshold formula: `threshold = base - α × nac.reward_bias(agent_id, nearest)`
-- **Reaction abstraction Phase 5** (folded from [reaction_abstraction_plan](reaction_abstraction_plan.md)): NAc causal link table gains structured `percept_refs: tuple[TraceSnapshot, ...]` column so queries can run by percept involvement, not just hash match. Per-node reward bias keys off `(agent_id, node_id)`.
+- **Reaction abstraction Phase 5** (folded from [reaction_abstraction_plan](archive/reaction_abstraction_plan.md)): NAc causal link table gains structured `percept_refs: tuple[TraceSnapshot, ...]` column so queries can run by percept involvement, not just hash match. Per-node reward bias keys off `(agent_id, node_id)`.
 - **P2 metric extractor plugin** (~100 LOC): rewarded-node collapse delta, distractor non-interference, decay timescale, per-agent isolation verification
 - Fixture YAML reusing P1 paraphrase clusters with reward annotations on a subset
 

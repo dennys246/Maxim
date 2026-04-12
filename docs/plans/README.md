@@ -18,7 +18,6 @@ These accumulate evidence and refinement over time. They are not on the critical
 
 ## Parallel (ship anytime, not gating 1.0)
 
-- [reaction_abstraction_plan.md](reaction_abstraction_plan.md) — Phases 1–4 **SHIPPED** (2026-04-11). Typed Percept/Reaction dual-surface architecture with PerceptProducer/ReactionProducer protocols, ReactionBus, Percept factories, SensoryTag population, AgentPool runtime unification. Phase 5 (NAc structured access) folds into substrate P2.
 - [tool_refinement_plan.md](tool_refinement_plan.md) — living doc for agent tool surface curation
 
 ## Deferred (post-1.0, revive on trigger)
@@ -42,6 +41,7 @@ Recently archived (2026-04-11/12, S1–S4 shipped 2026-04-12):
 - [archive/peer_leader_flexibility_plan.md](archive/peer_leader_flexibility_plan.md) — P1–P9 shipped. Dynamic n_ctx, KV quant, Apple Silicon tiers, auto-download, remote probes, lane decision log.
 - [archive/unified_event_bus_plan.md](archive/unified_event_bus_plan.md) — Scope largely absorbed by reaction_abstraction (ReactionBus, typed protocols, sim_reaction hooks). Remaining AgentBus/LocalMessageBus merge is optional cleanliness.
 - [archive/simulator_upgrades_plan.md](archive/simulator_upgrades_plan.md) — S1–S4 shipped (2026-04-12). FixtureDrivenOrchestrator, LLMBackend Protocol + MockLLMBackend, subprocess persistence harness, deterministic seeding. 72 tests, ~880 LOC.
+- [archive/reaction_abstraction_plan.md](archive/reaction_abstraction_plan.md) — Phases 1–4 shipped (2026-04-11). Percept/Reaction dual-surface, ReactionBus, producer protocols, factories, runtime unification. Phase 5 (NAc structured access) folds into substrate P2.
 
 ## Version path to 1.0
 

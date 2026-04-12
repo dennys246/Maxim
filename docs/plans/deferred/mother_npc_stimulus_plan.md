@@ -5,14 +5,14 @@
 
 **Revive when:** [behavioral_convergence_practice.md](../behavioral_convergence_practice.md) has logged at least two successful experiment entries on hand-authored fixtures AND a third experiment is blocked on "we need more stimulus variety than we can author by hand." **Do not revive before this trigger.** Mother NPC is the correct answer to a problem that isn't load-bearing yet, and building her before the trigger would dilute substrate mechanism work with stimulus-infrastructure work.
 
-**Prerequisites (from [reaction_abstraction_plan.md](../reaction_abstraction_plan.md)):**
+**Prerequisites (from [reaction_abstraction_plan.md](../archive/reaction_abstraction_plan.md)):**
 - **Phase 4 (runtime unification)** — Mother (AgentInstance-shaped) must produce Percept objects that Baby (MaximAgent-shaped) consumes. Phase 4's `make_text_percept` factory + AgentPool integration is a hard prereq.
 - **Reaction isolation rule** — Reactions are Baby-internal: Baby generates them from her own bio-stack, not from Mother's intent. The isolation-hygiene rule in `ReactionContext` (Phase 1) is the formal contract; the leak-vector audit below must verify no Reaction back-channels exist at revive time.
 
 **Kin:**
 - [bio_system_plugin_plan.md](bio_system_plugin_plan.md) — similar deferred-plan shape, also conditional on platform/research trigger
 - [mother_maxim_plan.md](mother_maxim_plan.md) — adjacent but different (that plan is about persistent collective memory across sessions; this plan is about a stimulus-producing NPC that never shares state with the AUT)
-- [../reaction_abstraction_plan.md](../reaction_abstraction_plan.md) — provides the Percept/Reaction information barrier this plan's isolation requirements depend on
+- [../archive/reaction_abstraction_plan.md](../archive/reaction_abstraction_plan.md) — provides the Percept/Reaction information barrier this plan's isolation requirements depend on
 - [../behavioral_convergence_practice.md](../behavioral_convergence_practice.md) — this plan is the likely infrastructure for H1–H5 experiments at scale
 - [unified_event_bus_plan.md](unified_event_bus_plan.md) — tangential; if that plan revives first, Mother NPC uses the unified bus; if this plan revives first, Mother NPC subscribes to the existing percept pipeline
 

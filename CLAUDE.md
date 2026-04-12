@@ -314,7 +314,7 @@ See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current 
 
 **Recently shipped (2026-04-11):**
 - Foundations wave F0.1–F0.8 — all landed. Archived to [docs/plans/archive/foundations_plan.md](docs/plans/archive/foundations_plan.md).
-- Reaction abstraction Phases 1–4 — Percept/Reaction dual-surface architecture, ReactionBus, producer protocols, factories, runtime unification. See [docs/plans/reaction_abstraction_plan.md](docs/plans/reaction_abstraction_plan.md).
+- Reaction abstraction Phases 1–4 — Percept/Reaction dual-surface architecture, ReactionBus, producer protocols, factories, runtime unification. Archived to [docs/plans/archive/reaction_abstraction_plan.md](docs/plans/archive/reaction_abstraction_plan.md). Phase 5 folds into substrate P2.
 - Cleanup wave C1–C4 — shipped in 0.2.2. Archived.
 - Peer/leader flexibility P1–P9 — dynamic n_ctx, auto-download, remote probes, lane decision log. Archived.
 
