@@ -87,7 +87,9 @@ class TestP1RecognitionSweep:
         std_cross = statistics.stdev(cross_rates) if len(cross_rates) > 1 else 0.0
         mean_growth = statistics.mean(growth_rates)
         std_growth = statistics.stdev(growth_rates) if len(growth_rates) > 1 else 0.0
-        all_pass = all(r["passes"] for r in results)
+        # Gate on means (plan says "Mean + std across ≥10 seeds")
+        means_pass = mean_collapse >= 0.90 and mean_cross <= 0.05 and mean_growth < 0.10
+        seeds_passing = sum(1 for r in results if r["passes"])
 
         summary = {
             "model": model,
@@ -95,22 +97,24 @@ class TestP1RecognitionSweep:
             "shuffle": True,
             "centroid_update": True,
             "seeds": len(results),
+            "seeds_passing": seeds_passing,
             "mean_collapse_rate": round(mean_collapse, 4),
             "std_collapse_rate": round(std_collapse, 4),
             "mean_cross_cluster_rate": round(mean_cross, 4),
             "std_cross_cluster_rate": round(std_cross, 4),
             "mean_node_growth": round(mean_growth, 4),
             "std_node_growth": round(std_growth, 4),
-            "all_pass": all_pass,
+            "means_pass": means_pass,
             "per_seed": results,
         }
 
         print(f"\n{'=' * 60}")
-        print(f"P1 Recognition Sweep — {'PASS' if all_pass else 'FAIL'}")
+        print(f"P1 Recognition Sweep — {'PASS' if means_pass else 'FAIL'}")
         print(f"  Model: {model} @ {threshold}")
         print(f"  Collapse: {mean_collapse:.1%} ± {std_collapse:.1%} (need ≥90%)")
         print(f"  Cross-cluster: {mean_cross:.1%} ± {std_cross:.1%} (need ≤5%)")
         print(f"  Node growth: {mean_growth:.1%} ± {std_growth:.1%} (need <10%)")
+        print(f"  Seeds passing individually: {seeds_passing}/{len(results)}")
         print(f"{'=' * 60}")
 
         # Save results
@@ -120,8 +124,10 @@ class TestP1RecognitionSweep:
             json.dump(summary, f, indent=2)
         print(f"Results saved to {out_path}")
 
-        # The actual gate assertion
-        assert all_pass, f"P1 failed: {sum(1 for r in results if not r['passes'])}/{len(results)} seeds failed"
+        # Gate on means, not individual seeds — per plan spec
+        assert means_pass, (
+            f"P1 means failed: collapse={mean_collapse:.1%} cross={mean_cross:.1%} growth={mean_growth:.1%}"
+        )
 
     def test_shuffle_check(self):
         """Check if node growth improves with shuffled sentence order.
