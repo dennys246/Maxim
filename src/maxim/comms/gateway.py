@@ -14,6 +14,11 @@ from typing import TYPE_CHECKING, Any
 from maxim.agents.autonomy import check_hard_stop
 from maxim.agents.bus import Percept
 
+# PerceptContext.channel is a Literal; only these values pass. Unknown
+# transports (custom channel adapters) fall back to channel=None on the
+# typed context while still setting the free-form ``source`` field.
+_KNOWN_CHANNELS = frozenset({"sms", "email", "slack", "speech", "mesh"})
+
 if TYPE_CHECKING:
     from maxim.agents.bus import AgentBus
     from maxim.comms.channels.base import Channel
@@ -69,15 +74,26 @@ class CommunicationGateway:
         ``hard_override`` is only set if the text matches the existing
         HARD_STOP_TRIGGERS whitelist (returns reason string or None).
         """
+        # Typed framing (F0.4). Channel/sender flow through PerceptContext;
+        # non-messaging extras (flagged "external" + caller passthrough)
+        # stay in the metadata escape hatch.
+        from maxim.agents.percept_context import PerceptContext
+
+        ts = time.time()
+        percept_context = PerceptContext(
+            channel=channel if channel in _KNOWN_CHANNELS else None,
+            sender=sender,
+            timestamp=ts,
+        )
         percept = Percept(
-            timestamp=time.time(),
+            timestamp=ts,
             source=f"comms:{channel}",
             content=text,
             salience=0.9,  # Fixed — not from external data
             hard_override=None,
+            context=percept_context,
+            modality="text",
             metadata={
-                "channel": channel,
-                "sender": sender,
                 "external": True,
                 **(metadata or {}),
             },
