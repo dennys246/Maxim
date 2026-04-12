@@ -267,6 +267,126 @@ class TestP1RecognitionSweep:
             print(f"  Best: {best_row}")
             print(f"{'=' * 80}")
 
+    def test_degenerate_control(self):
+        """Verify substrate beats random node assignment by >30pp.
+
+        Random baseline: each sentence gets assigned to a random node
+        (uniform over num_clusters). Expected collapse ≈ 1/num_clusters
+        for within-cluster pairs ≈ 1.8% for 55 clusters.
+        """
+        import random
+
+        from tests.substrate.p1_metrics import load_clusters_from_fixture
+
+        clusters = load_clusters_from_fixture(str(FIXTURE_PATH))
+
+        # --- Random baseline ---
+        rng = random.Random(42)
+        num_clusters = len(clusters)
+        random_nodes: dict[str, str] = {}  # sentence → random node_id
+
+        for cluster in clusters:
+            for sentence in cluster["sentences"]:
+                random_nodes[sentence] = f"rand-{rng.randint(0, num_clusters - 1)}"
+
+        # Compute random collapse rate
+        within_total = 0
+        within_collapsed = 0
+        for cluster in clusters:
+            sents = cluster["sentences"]
+            for i in range(len(sents)):
+                for j in range(i + 1, len(sents)):
+                    within_total += 1
+                    if random_nodes[sents[i]] == random_nodes[sents[j]]:
+                        within_collapsed += 1
+
+        random_collapse = within_collapsed / within_total if within_total else 0.0
+
+        # --- Substrate result ---
+        metrics = self._run_seed(seed=42, shuffle=True)
+
+        gap = metrics.collapse_rate - random_collapse
+
+        print(f"\n{'=' * 60}")
+        print("DEGENERATE CONTROL")
+        print(f"  Random baseline: {random_collapse:.1%}")
+        print(f"  Substrate:       {metrics.collapse_rate:.1%}")
+        print(f"  Gap:             {gap:.1%} (need >30pp)")
+        print(f"{'=' * 60}")
+
+        assert gap > 0.30, f"Substrate only beats random by {gap:.1%}, need >30pp"
+
+    def test_persistence_round_trip(self, tmp_path):
+        """Verify ≥95% of node activations are preserved after save/load.
+
+        Encodes all sentences, saves EC+ATL, loads into fresh instances,
+        re-encodes the same sentences, checks that ≥95% map to the same node.
+        """
+        from maxim.agents.bus import Percept
+        from maxim.memory.atl import ATL, ATLConfig
+        from maxim.similarity.ec import ECConfig, EntorhinalCortex
+        from maxim.similarity.encoder import LinguisticEncoder
+
+        from tests.substrate.p1_metrics import load_clusters_from_fixture
+
+        clusters = load_clusters_from_fixture(str(FIXTURE_PATH))
+        all_sentences = []
+        for cluster in clusters:
+            for sentence in cluster["sentences"]:
+                all_sentences.append(sentence)
+
+        # --- First pass: encode everything ---
+        ec_path = str(tmp_path / "ec.json")
+        atl_path = str(tmp_path / "atl.json")
+
+        ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.40))
+        atl = ATL(ATLConfig(persistence_path=atl_path))
+        encoder = LinguisticEncoder(ec=ec, atl=atl)
+
+        first_pass: dict[str, str] = {}  # sentence → node_id
+        for sentence in all_sentences:
+            percept = Percept(timestamp=0.0, source="test", transcript_chunk=sentence)
+            node_id = encoder.encode(percept)
+            first_pass[sentence] = node_id
+
+        # Save
+        ec.save(ec_path)
+        atl.save()
+
+        # --- Second pass: load and re-encode ---
+        ec2 = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.40))
+        ec2.load(ec_path)
+        atl2 = ATL(ATLConfig(persistence_path=atl_path))
+        atl2.load()
+        encoder2 = LinguisticEncoder(ec=ec2, atl=atl2)
+
+        matches = 0
+        total = 0
+        mismatches = []
+        for sentence in all_sentences:
+            percept = Percept(timestamp=0.0, source="test", transcript_chunk=sentence)
+            node_id = encoder2.encode(percept)
+            total += 1
+            if node_id == first_pass[sentence]:
+                matches += 1
+            else:
+                mismatches.append((sentence[:50], first_pass[sentence][:8], node_id[:8]))
+
+        preservation_rate = matches / total if total else 0.0
+
+        print(f"\n{'=' * 60}")
+        print("PERSISTENCE ROUND-TRIP")
+        print(f"  Sentences:     {total}")
+        print(f"  Preserved:     {matches} ({preservation_rate:.1%})")
+        print(f"  Mismatches:    {total - matches}")
+        if mismatches[:5]:
+            print("  Sample mismatches:")
+            for sent, old, new in mismatches[:5]:
+                print(f'    "{sent}" {old} → {new}')
+        print(f"{'=' * 60}")
+
+        assert preservation_rate >= 0.95, f"Only {preservation_rate:.1%} preserved, need ≥95%"
+
     @staticmethod
     def _run_seed(seed: int = 42, threshold: float = 0.40, shuffle: bool = False):
         """Run one seed through the full pipeline and return metrics."""
