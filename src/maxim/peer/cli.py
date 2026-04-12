@@ -1172,7 +1172,7 @@ def _cmd_install(argv: list[str]) -> int:
     print(f"Installing on leader ({base}): {'; '.join(desc_parts)}...")
 
     try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body_text = ""
@@ -1194,21 +1194,74 @@ def _cmd_install(argv: list[str]) -> int:
         return 1
 
     status = data.get("status", "unknown")
-    if status == "ok":
-        print("  Installed successfully.")
-        if data.get("pip_output"):
-            for line in data["pip_output"].strip().splitlines()[-5:]:
-                print(f"    {line}")
-        if data.get("installed"):
-            print(f"  Packages: {', '.join(data['installed'])}")
-    else:
+    if status not in ("started", "ok"):
         print(f"  Install failed: {data.get('error', 'unknown error')}", file=sys.stderr)
-        if data.get("pip_stderr"):
-            print(f"  stderr: {data['pip_stderr'][:500]}", file=sys.stderr)
         return 1
 
-    _clear_probe_cache(url)
-    return 0
+    if status == "ok":
+        # Synchronous completion (leader responded before timeout)
+        print("  Installed successfully.")
+        _clear_probe_cache(url)
+        return 0
+
+    # status == "started" — async install. Poll for completion.
+    print("  Install started on leader. Waiting for completion...")
+    poll_endpoint = f"{base}/v1/debug/install-status"
+    poll_req = urllib.request.Request(
+        poll_endpoint,
+        method="GET",
+        headers={"User-Agent": "maxim-peer/1.0"},
+    )
+    if key:
+        poll_req.add_header("Authorization", f"Bearer {key}")
+
+    import time
+
+    deadline = time.time() + 600  # 10 min max wait
+    last_output_len = 0
+    while time.time() < deadline:
+        time.sleep(5)
+        try:
+            poll_req = urllib.request.Request(
+                poll_endpoint,
+                method="GET",
+                headers={"User-Agent": "maxim-peer/1.0"},
+            )
+            if key:
+                poll_req.add_header("Authorization", f"Bearer {key}")
+            with urllib.request.urlopen(poll_req, timeout=10) as resp:
+                poll_data = json.loads(resp.read())
+        except Exception:
+            print("    (polling...)", end="\r")
+            continue
+
+        poll_status = poll_data.get("status", "unknown")
+
+        # Show new pip output lines as they appear
+        pip_out = poll_data.get("pip_output", "")
+        if len(pip_out) > last_output_len:
+            new_text = pip_out[last_output_len:]
+            for line in new_text.strip().splitlines()[-3:]:
+                line = line.strip()
+                if line:
+                    print(f"    {line}")
+            last_output_len = len(pip_out)
+
+        if poll_status == "ok":
+            installed = poll_data.get("installed", [])
+            print(f"  Installed successfully: {', '.join(installed)}")
+            _clear_probe_cache(url)
+            return 0
+
+        if poll_status == "error":
+            print(f"  Install failed: {poll_data.get('error', 'unknown')}", file=sys.stderr)
+            return 1
+
+        elapsed = int(time.time() - (deadline - 600))
+        print(f"    Installing... ({elapsed}s)", end="\r")
+
+    print("\n  Timed out waiting for install (10 min). Check leader logs.", file=sys.stderr)
+    return 1
 
 
 # ─── deps ────────────────────────────────────────────────────────────────
