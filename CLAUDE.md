@@ -315,4 +315,4 @@ See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current 
 - [cleanup_wave.md](docs/plans/cleanup_wave.md) — fix `--interactive`, delete dead CLI flags, display defaults, agent permissions. Supersedes display_simplification + agent_permissions plans.
 - [tool_refinement_plan.md](docs/plans/tool_refinement_plan.md) — living doc for agent tool curation.
 
-**Deferred (post-1.0, revive on trigger):** Bio-System Plugin Discovery, Unified Event Bus, Mother Maxim, Pecking Order Graph, Asset Foundry, DM Extensions. See [docs/plans/deferred/](docs/plans/deferred/).
+**Deferred (post-1.0, revive on trigger):** Bio-System Plugin Discovery, Unified Event Bus, Mother NPC Stimulus, Mother Maxim, Pecking Order Graph, Asset Foundry, DM Extensions. See [docs/plans/deferred/](docs/plans/deferred/).
