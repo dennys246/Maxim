@@ -43,6 +43,7 @@ class TestP1RecognitionSweep:
         """Single-seed smoke test — verifies the pipeline runs end-to-end."""
         metrics = self._run_seed(seed=42)
         print("\n" + metrics.summary())
+        print(metrics.diagnostics())
         # Smoke test — just verify it ran
         assert metrics.total_nodes > 0
         assert metrics.modality_violations == 0

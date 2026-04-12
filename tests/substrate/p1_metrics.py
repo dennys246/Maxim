@@ -8,8 +8,8 @@ Usage:
 
     clusters = load_clusters_from_fixture("scenarios/substrate/paraphrase_clusters.yaml")
     metrics = compute_p1_metrics(ec=ec, atl=atl, clusters=clusters, encoder=encoder)
-    assert metrics.collapse_rate >= 0.90
-    assert metrics.cross_cluster_rate <= 0.05
+    print(metrics.summary())
+    print(metrics.diagnostics())
 """
 
 from __future__ import annotations
@@ -20,6 +20,19 @@ from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SentenceDiag:
+    """Per-sentence diagnostic record."""
+
+    cluster: str
+    sentence: str
+    node_id: str
+    is_new: bool  # True = EC separated (new node), False = pattern completed
+    best_sim: float  # Cosine sim to the closest existing node
+    best_match_node: str  # Which node was the closest match
+    best_match_cluster: str  # Which cluster owns that best-match node (if known)
 
 
 @dataclass
@@ -48,6 +61,12 @@ class P1Metrics:
     # a non-text node (should be 0)
     modality_violations: int = 0
 
+    # Per-sentence diagnostics (populated when diagnostics=True)
+    sentence_diags: list[SentenceDiag] = field(default_factory=list)
+
+    # Similarity score distribution for within-cluster misses
+    missed_sims: list[float] = field(default_factory=list)
+
     def passes_p1(self) -> bool:
         """Check if all P1 pass criteria are met."""
         return (
@@ -68,6 +87,73 @@ class P1Metrics:
             f"  Total nodes:        {self.total_nodes}",
             f"  Modality violations:{self.modality_violations} (need 0)",
         ]
+        return "\n".join(lines)
+
+    def diagnostics(self) -> str:
+        """Detailed diagnostic report for threshold tuning.
+
+        Shows:
+        - Similarity score histogram for within-cluster misses
+        - Per-cluster collapse breakdown
+        - Worst-performing clusters
+        - Threshold recommendation
+        """
+        if not self.sentence_diags:
+            return "(no diagnostics collected — re-run with diagnostics=True)"
+
+        lines = ["\n" + "=" * 70, "P1 DIAGNOSTICS", "=" * 70]
+
+        # --- Similarity distribution for missed within-cluster pairs ---
+        missed = self.missed_sims
+        if missed:
+            missed_sorted = sorted(missed)
+            lines.append(f"\nWithin-cluster MISSES (separated when should have collapsed): {len(missed)}")
+            lines.append(f"  Min sim:    {missed_sorted[0]:.4f}")
+            lines.append(f"  Max sim:    {missed_sorted[-1]:.4f}")
+            lines.append(f"  Median sim: {missed_sorted[len(missed_sorted) // 2]:.4f}")
+            lines.append(f"  Mean sim:   {sum(missed) / len(missed):.4f}")
+
+            # Histogram buckets
+            buckets = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.01]
+            lines.append("\n  Similarity histogram (missed pairs):")
+            for i in range(len(buckets) - 1):
+                lo, hi = buckets[i], buckets[i + 1]
+                count = sum(1 for s in missed if lo <= s < hi)
+                bar = "#" * count
+                lines.append(f"    [{lo:.1f}-{hi:.1f}): {count:3d} {bar}")
+
+            # Threshold recommendation
+            if missed_sorted:
+                p90 = missed_sorted[int(len(missed_sorted) * 0.10)]  # 10th percentile
+                lines.append(f"\n  Recommended threshold (captures 90% of misses): {p90:.3f}")
+        else:
+            lines.append("\nNo within-cluster misses — all paraphrases collapsed!")
+
+        # --- Per-cluster breakdown ---
+        lines.append(f"\n{'─' * 70}")
+        lines.append("Per-cluster collapse:")
+        lines.append(f"  {'Cluster':<30s} {'Sents':>5s} {'Nodes':>5s} {'Rate':>6s}")
+        lines.append(f"  {'─' * 50}")
+
+        failed_clusters = []
+        for cd in sorted(self.cluster_details, key=lambda x: x["collapse_rate"]):
+            rate = cd["collapse_rate"]
+            marker = " ✗" if rate < 1.0 else ""
+            lines.append(f"  {cd['name']:<30s} {cd['sentences']:>5d} {cd['unique_nodes']:>5d} {rate:>5.0%}{marker}")
+            if rate < 1.0:
+                failed_clusters.append(cd["name"])
+
+        if failed_clusters:
+            lines.append(f"\n  Failed clusters ({len(failed_clusters)}/{len(self.cluster_details)}):")
+            for name in failed_clusters[:10]:
+                # Show the actual sentences and their nodes for this cluster
+                cluster_diags = [d for d in self.sentence_diags if d.cluster == name]
+                lines.append(f"    {name}:")
+                for d in cluster_diags:
+                    status = "COMPLETE" if not d.is_new else f"NEW (best_sim={d.best_sim:.3f})"
+                    lines.append(f'      "{d.sentence[:60]}" → {d.node_id[:8]} [{status}]')
+
+        lines.append("=" * 70)
         return "\n".join(lines)
 
 
@@ -106,23 +192,25 @@ def compute_p1_metrics(
     atl: Any,
     clusters: list[dict[str, Any]],
     encoder: Any,
+    diagnostics: bool = True,
 ) -> P1Metrics:
     """Compute P1 metrics by encoding all cluster sentences and checking collapse.
-
-    This is a test-time function — it re-encodes all sentences through
-    the encoder and checks how EC/ATL mapped them.
 
     Args:
         ec: EntorhinalCortex instance
         atl: ATL instance
         clusters: List of cluster dicts with "name" and "sentences" keys
         encoder: LinguisticEncoder instance
+        diagnostics: If True, collect per-sentence similarity diagnostics
     """
     from maxim.agents.bus import Percept
+    from maxim.similarity.ec import _cosine_similarity
 
     # Track which node each sentence was assigned to
     sentence_nodes: list[tuple[str, str, str]] = []  # (cluster_name, sentence, node_id)
+    node_to_cluster: dict[str, str] = {}  # node_id → cluster that created it
     node_history: list[int] = []  # unique node count after each sentence
+    diags: list[SentenceDiag] = []
 
     all_sentences = []
     for cluster in clusters:
@@ -136,13 +224,50 @@ def compute_p1_metrics(
             content=sentence,
             transcript_chunk=sentence,
         )
+
+        # Get embedding before encode (so we can compute diagnostics)
+        embedding = encoder.embed(sentence)
+
+        # Find best match manually for diagnostics
+        best_sim = 0.0
+        best_match_node = ""
+        best_match_cluster = ""
+        if diagnostics:
+            for nid, (stored_emb, stored_mod) in ec._substrate_nodes.items():
+                if stored_mod != "text":
+                    continue
+                sim = _cosine_similarity(embedding, stored_emb)
+                if sim > best_sim:
+                    best_sim = sim
+                    best_match_node = nid
+                    best_match_cluster = node_to_cluster.get(nid, "?")
+
+        # Now run the actual encode
         node_id = encoder.encode(percept)
         if node_id is None:
             logger.warning("Encoder returned None for sentence: %s", sentence[:50])
             continue
+
+        is_new = node_id not in node_to_cluster
+        if is_new:
+            node_to_cluster[node_id] = cluster_name
+
         sentence_nodes.append((cluster_name, sentence, node_id))
         unique_nodes = len(set(n for _, _, n in sentence_nodes))
         node_history.append(unique_nodes)
+
+        if diagnostics:
+            diags.append(
+                SentenceDiag(
+                    cluster=cluster_name,
+                    sentence=sentence,
+                    node_id=node_id,
+                    is_new=is_new,
+                    best_sim=round(best_sim, 4),
+                    best_match_node=best_match_node[:8] if best_match_node else "",
+                    best_match_cluster=best_match_cluster,
+                )
+            )
 
     if not sentence_nodes:
         return P1Metrics()
@@ -158,7 +283,6 @@ def compute_p1_metrics(
         if len(cluster_nodes) < 2:
             continue
 
-        # All pairs within this cluster
         pairs = 0
         collapsed = 0
         for i in range(len(cluster_nodes)):
@@ -182,7 +306,16 @@ def compute_p1_metrics(
 
     collapse_rate = within_collapsed / within_total if within_total > 0 else 0.0
 
-    # --- Cross-cluster rate: cross-cluster pairs that share a node ---
+    # --- Collect missed similarity scores ---
+    # For each sentence that was NEW but whose cluster already had a node,
+    # record the similarity to the cluster's existing node.
+    missed_sims: list[float] = []
+    if diagnostics:
+        for d in diags:
+            if d.is_new and d.best_match_cluster == d.cluster and d.best_sim > 0:
+                missed_sims.append(d.best_sim)
+
+    # --- Cross-cluster rate ---
     cross_total = 0
     cross_collapsed = 0
     cluster_names = [c["name"] for c in clusters]
@@ -224,4 +357,6 @@ def compute_p1_metrics(
         total_nodes=total_nodes,
         cluster_details=cluster_details,
         modality_violations=modality_violations,
+        sentence_diags=diags,
+        missed_sims=missed_sims,
     )
