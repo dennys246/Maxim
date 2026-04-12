@@ -1,7 +1,17 @@
-# Unified Typed Event Bus — Deferred Post-1.0 Refactor
+# Unified Typed Event Bus — ARCHIVED (scope largely absorbed)
 
-**Status:** Deferred. Not on the critical path to 1.0. Not a blocker for the research claim.
-**Revive when:** (a) a cross-layer debugging bug surfaces that a unified bus would have caught immediately, OR (b) a second developer joins and needs to trace cross-layer event flow without reading seven files, OR (c) an external contributor is writing a bio-system against the `BioSystem` Protocol and needs a predictable subscription model for percept/memory/reward events, OR (d) observability tooling (tracing, replay, offline analysis) needs a single place to hook into.
+**Status:** Archived (2026-04-12). The reaction_abstraction_plan (Phases 1–4, shipped 2026-04-11) absorbed the most valuable piece of this plan — typed topic dispatch for evaluative signals — via `ReactionBus`. The remaining scope (merging `AgentBus` + `LocalMessageBus` into one transport, eliminating direct cross-layer callbacks) is an optional cleanliness refactor with no architectural payoff.
+
+**What was absorbed:**
+- "Consolidate pain/reaction signals into a typed bus" → **Done.** `ReactionBus` with per-kind subscription, refractory periods, typed history. PainBus delegates to it.
+- "Observable event stream for debugging" → **Partially done.** `sim_reaction()` and `sim_percept()` hooks feed the simulation display. JSONL persistence captures all events regardless of display tier.
+- "Typed producer protocols" → **Done.** `PerceptProducer` / `ReactionProducer` structural protocols give producers a uniform registration surface.
+
+**What remains (not worth reviving):**
+- Merging `AgentBus` (single-agent synchronous pub/sub) and `LocalMessageBus` (multi-agent routed dispatch) — these serve different concurrency models. Phase 4's runtime unification made them share the same *data type* (Percept) but not the same *transport*, which is the correct design.
+- Eliminating direct cross-layer callbacks — CLAUDE.md explicitly accepts both patterns (MemoryHub coordinator + direct callbacks). A full mediator refactor is not justified by any concrete debugging or correctness need.
+
+**Original revive trigger** (now stale): ~~(a) cross-layer debugging bug, (b) second developer, (c) BioSystem Protocol contributor friction, (d) observability tooling.~~ Trigger (a) and (d) are partially addressed by sim_reaction/sim_percept hooks. Triggers (b) and (c) remain hypothetical.
 
 ## Current state (why this isn't urgent)
 
