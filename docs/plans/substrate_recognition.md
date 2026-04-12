@@ -1,6 +1,6 @@
 # Substrate Recognition — B1 + P1 + P2
 
-**Status:** Active — blocked on P0 pilot (fixture calibration)
+**Status:** Active — P0 pilot COMPLETE (2026-04-12), this plan is next
 **Scope:** ~2,500 LOC across three phases + text-to-prompt migration
 **Target version:** 0.3-pre (B1+P1 combined) through 0.3-minimum (P2)
 **Blocks:** substrate_binding_persistence.md (P3a onward)
@@ -106,7 +106,7 @@ Text content on `Percept.transcript_chunk` currently bypasses the substrate enti
 - Node stability: <10% growth over final 20% of run
 - Modality isolation: no text cluster collapses into non-text node (mixed-modality probe)
 - Persistence round-trip: ATL subprocess reload, ≥95% node activations preserved
-- Sanity floor: within 5 pp of FAISS baseline from P0
+- Sanity floor: within 5 pp of FAISS baseline from P0 (**pinned: 73.5%** — see [P0 results](../experiments/p0_baseline_sweep.md))
 - Beats degenerate control (random node assignment) by >30 pp
 - Mean + std across ≥10 seeds
 

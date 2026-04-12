@@ -321,8 +321,8 @@ See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current 
 - Simulator upgrades S1–S4 **SHIPPED** (2026-04-12). Archived.
 
 **Gating 1.0** (three focused substrate plans, split from the master plan):
-- [substrate_p0_pilot.md](docs/plans/substrate_p0_pilot.md) — **next up.** Fixture-difficulty pilot. ~350 LOC + fixture authoring.
-- [substrate_recognition.md](docs/plans/substrate_recognition.md) — B1 PromptAssembler + P1 recognition + P2 reward modulation. ~2,230 LOC. 0.3-pre → 0.3-minimum.
+- [substrate_p0_pilot.md](docs/plans/substrate_p0_pilot.md) — **COMPLETE** (2026-04-12). Baseline pinned at 78.5%. Results: [docs/experiments/p0_baseline_sweep.md](docs/experiments/p0_baseline_sweep.md).
+- [substrate_recognition.md](docs/plans/substrate_recognition.md) — **next up.** B1 PromptAssembler + P1 recognition + P2 reward modulation. ~2,230 LOC. 0.3-pre → 0.3-minimum.
 - [substrate_binding_persistence.md](docs/plans/substrate_binding_persistence.md) — P3a–P8 + B3-B5. Includes 1.0-gating P4 cross-modal head-to-head. ~4,100 LOC. 0.3-target → 0.5.
 
 **Living practice docs (paired with substrate_plan):**

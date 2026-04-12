@@ -1,9 +1,10 @@
 # Substrate P0 — Fixture-Difficulty Pilot
 
-**Status:** Active — next up after S1-S4 (shipped 2026-04-12)
+**Status:** COMPLETE (2026-04-12). Fixtures calibrated, baselines pinned, P1 unblocked.
 **Scope:** ~350 LOC + ~2.5 days fixture authoring
-**Blocks:** substrate_recognition.md (P1+P2)
+**Blocks:** substrate_recognition.md (P1+P2) — **UNBLOCKED**
 **Master reference:** [archive/substrate_plan.md](archive/substrate_plan.md) for full rationale, baselines, statistical hygiene rules
+**Results:** [experiments/p0_baseline_sweep.md](../experiments/p0_baseline_sweep.md) | [experiments/results/p0_baseline_sweep.json](../experiments/results/p0_baseline_sweep.json)
 
 ## Goal
 
@@ -77,6 +78,18 @@ Run baselines and make a go/no-go decision on fixture quality:
 | <60% | Possibly too hard | Verify a human reader can solve them. If yes, proceed |
 
 **Exit:** Decision recorded, P1 sanity-floor threshold written into `substrate_recognition.md`, fixtures frozen.
+
+### P0.4 — Decision outcome (2026-04-12)
+
+**Best baseline:** all-mpnet-base-v2 @ threshold 0.50 = **78.5% collapse**, 1.5% cross-cluster contamination.
+
+Falls in the **60-85% well-calibrated** zone. Difficulty gradient works as designed: easy ~91%, medium ~93%, hard ~59%. Near-miss separation at this threshold is 36.8% — the substrate architecture needs to break the collapse-vs-separation tradeoff the baseline can't.
+
+**P1 sanity floor:** 78.5% - 5pp = **73.5%**
+
+**Decision: proceed to P1.** Fixtures frozen. Full results: [experiments/p0_baseline_sweep.md](../experiments/p0_baseline_sweep.md).
+
+OpenCLIP text-encoder baseline code exists (`tests/substrate/baselines/openclip_baseline.py`) but has not been scored yet — requires `open_clip_torch` which is not installed. The OpenCLIP number is pinned at P4 time, not P0. The P0 decision gate uses sentence-transformers only.
 
 ## Fixture path convention
 

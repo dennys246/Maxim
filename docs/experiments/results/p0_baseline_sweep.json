@@ -1,0 +1,60 @@
+{
+  "experiment": "p0_baseline_sweep",
+  "date": "2026-04-12",
+  "git_hash": "dc3c279",
+  "fixture": "scenarios/substrate/paraphrase_clusters.yaml",
+  "fixture_stats": {
+    "total_clusters": 55,
+    "total_sentences": 155,
+    "easy_clusters": 10,
+    "medium_clusters": 21,
+    "hard_clusters": 24,
+    "near_miss_pairs": 19,
+    "train_sentences": 97,
+    "holdout_sentences": 58
+  },
+  "models": {
+    "all-MiniLM-L6-v2": {
+      "thresholds": {
+        "0.40": {"collapse": 0.822, "cross_cluster": 0.026, "near_miss_sep": 0.158, "easy": 0.909, "medium": 0.976, "hard": 0.636},
+        "0.45": {"collapse": 0.804, "cross_cluster": 0.020, "near_miss_sep": 0.263, "easy": 0.909, "medium": 0.951, "hard": 0.614},
+        "0.50": {"collapse": 0.692, "cross_cluster": 0.016, "near_miss_sep": 0.368, "easy": 0.909, "medium": 0.756, "hard": 0.523},
+        "0.55": {"collapse": 0.505, "cross_cluster": 0.012, "near_miss_sep": 0.368, "easy": 0.909, "medium": 0.561, "hard": 0.250},
+        "0.60": {"collapse": 0.430, "cross_cluster": 0.009, "near_miss_sep": 0.474, "easy": 0.864, "medium": 0.512, "hard": 0.136},
+        "0.65": {"collapse": 0.364, "cross_cluster": 0.005, "near_miss_sep": 0.632, "easy": 0.864, "medium": 0.390, "hard": 0.091},
+        "0.70": {"collapse": 0.252, "cross_cluster": 0.002, "near_miss_sep": 0.842, "easy": 0.727, "medium": 0.268, "hard": 0.000},
+        "0.75": {"collapse": 0.159, "cross_cluster": 0.002, "near_miss_sep": 0.842, "easy": 0.409, "medium": 0.195, "hard": 0.000},
+        "0.80": {"collapse": 0.084, "cross_cluster": 0.002, "near_miss_sep": 0.842, "easy": 0.273, "medium": 0.073, "hard": 0.000}
+      },
+      "best_operating_point": {"threshold": 0.50, "collapse": 0.692, "cross_cluster": 0.016}
+    },
+    "all-mpnet-base-v2": {
+      "thresholds": {
+        "0.40": {"collapse": 0.832, "cross_cluster": 0.024, "near_miss_sep": 0.158, "easy": 0.909, "medium": 0.951, "hard": 0.682},
+        "0.45": {"collapse": 0.813, "cross_cluster": 0.018, "near_miss_sep": 0.211, "easy": 0.909, "medium": 0.976, "hard": 0.614},
+        "0.50": {"collapse": 0.785, "cross_cluster": 0.015, "near_miss_sep": 0.368, "easy": 0.909, "medium": 0.927, "hard": 0.591},
+        "0.55": {"collapse": 0.729, "cross_cluster": 0.012, "near_miss_sep": 0.474, "easy": 0.909, "medium": 0.902, "hard": 0.477},
+        "0.60": {"collapse": 0.645, "cross_cluster": 0.011, "near_miss_sep": 0.474, "easy": 0.909, "medium": 0.805, "hard": 0.364},
+        "0.65": {"collapse": 0.477, "cross_cluster": 0.005, "near_miss_sep": 0.632, "easy": 0.727, "medium": 0.585, "hard": 0.250},
+        "0.70": {"collapse": 0.290, "cross_cluster": 0.003, "near_miss_sep": 0.790, "easy": 0.636, "medium": 0.317, "hard": 0.091},
+        "0.75": {"collapse": 0.196, "cross_cluster": 0.003, "near_miss_sep": 0.790, "easy": 0.409, "medium": 0.219, "hard": 0.068},
+        "0.80": {"collapse": 0.093, "cross_cluster": 0.002, "near_miss_sep": 0.842, "easy": 0.227, "medium": 0.122, "hard": 0.000}
+      },
+      "best_operating_point": {"threshold": 0.50, "collapse": 0.785, "cross_cluster": 0.015}
+    }
+  },
+  "decision": {
+    "gate": "60-85% well-calibrated",
+    "best_baseline": "all-mpnet-base-v2 @ threshold=0.50",
+    "best_collapse": 0.785,
+    "p1_sanity_floor": 0.735,
+    "outcome": "proceed_to_p1"
+  },
+  "notes": [
+    "Both models are deterministic across seeds (no randomness in embedding pipeline)",
+    "Difficulty gradient works as designed: easy ~91%, medium ~75-93%, hard ~0-68%",
+    "Cross-cluster contamination stays below 2.6% even at loosest threshold",
+    "Near-miss separation is the key tradeoff axis — looser thresholds merge near-miss pairs",
+    "P1 sanity floor set at best_collapse - 5pp = 73.5% per substrate_recognition.md criteria"
+  ]
+}
