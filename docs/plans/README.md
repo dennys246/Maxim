@@ -22,6 +22,7 @@ These accumulate evidence and refinement over time. They are not on the critical
 
 ## Parallel (ship anytime, not gating 1.0)
 
+- [reaction_abstraction_plan.md](reaction_abstraction_plan.md) — **NEW.** Typed `Reaction` type + `ReactionBus` (generalized from PainBus) + `PerceptProducer`/`ReactionProducer` protocols. SEM sensors produce Percepts, Cerebellum mediates modulator outcomes into Reactions. Absorbs foundations F0.R1/F0.R2/F0.8 and the F0.6 runtime-unification piece. 5 phases, ~1,000 LOC total. Phase 1 (types-only, ~200 LOC) sequences inside the foundations wave; Phases 2–5 post-foundations. Phase 5 lands in substrate P2 (NAc structured access for per-node reward bias).
 - [cleanup_wave.md](cleanup_wave.md) — fix `--interactive`, delete dead flags, display defaults, agent permissions
 - [peer_leader_flexibility_plan.md](peer_leader_flexibility_plan.md) — `--llm` precedence, Apple Silicon tier detection, graceful leader-down fallback, auto-download on first use
 - [tool_refinement_plan.md](tool_refinement_plan.md) — living doc for agent tool surface curation
