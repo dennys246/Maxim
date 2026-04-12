@@ -130,6 +130,8 @@ maxim doctor                                 # environment check
 maxim doctor --retry                         # interactive fix loop
 maxim tunnel setup                           # Cloudflare tunnel
 maxim peer update && maxim peer restart      # remote update
+maxim peer install semantic                  # install optional extra on leader
+maxim peer deps                              # show leader's installed packages
 
 # Tests
 python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py
@@ -145,7 +147,7 @@ git push origin main && maxim peer update && maxim peer restart
 
 Use `--dry-run` first if unsure. Use `--force` if the leader has untracked runtime files blocking the pull. Troubleshooting: [docs/troubleshooting/remote_update.md](docs/troubleshooting/remote_update.md).
 
-**Important for Claude agents:** `maxim peer update --dry-run`, `maxim peer version`, `maxim peer logs`, and `maxim peer llm --status` are safe and read-only. `maxim peer update`, `maxim peer restart`, and `maxim peer llm <model>` modify leader state — only run when explicitly asked by the user.
+**Important for Claude agents:** `maxim peer update --dry-run`, `maxim peer version`, `maxim peer logs`, `maxim peer llm --status`, and `maxim peer deps` are safe and read-only. `maxim peer update`, `maxim peer restart`, `maxim peer llm <model>`, and `maxim peer install <extras>` modify leader state — only run when explicitly asked by the user.
 
 ## Versioning
 

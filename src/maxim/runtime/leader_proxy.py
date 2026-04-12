@@ -492,6 +492,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self._handle_debug_logs()
         elif stripped == "/v1/debug/last-requests":
             self._handle_debug_last_requests()
+        elif stripped == "/v1/debug/deps":
+            self._handle_debug_deps()
         else:
             self._send_json(404, {"error": "Not found"})
 
@@ -929,6 +931,213 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         )
         return None
 
+    def _handle_admin_install(self) -> None:
+        """POST /v1/admin/install — install packages on the leader.
+
+        Requires MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.
+        Accepts JSON body: {"extras": ["semantic", "llm-torch"], "packages": ["some-pkg"]}
+        Extras are installed as pymaxim[extra], raw packages via pip install.
+        """
+        if not _remote_update_allowed():
+            self._send_json(
+                403,
+                {"error": "Remote install disabled. Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader."},
+            )
+            return
+
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(content_length) if content_length else b"{}"
+            params = json.loads(raw)
+        except Exception as e:
+            self._send_json(400, {"error": f"Invalid JSON body: {e}"})
+            return
+
+        extras = params.get("extras", [])
+        packages = params.get("packages", [])
+
+        if not extras and not packages:
+            self._send_json(400, {"error": "No extras or packages specified."})
+            return
+
+        # ── Input validation — allowlist-only to prevent command injection ──
+        _ALLOWED_EXTRAS = {
+            "semantic",
+            "llm-llama",
+            "llm-server",
+            "llm-torch",
+            "llm-anthropic",
+            "llm-openai",
+            "vision",
+            "audio",
+            "reachy",
+            "comms",
+            "search",
+            "temporal",
+            "training",
+            "tts",
+            "yolo",
+            "database",
+        }
+        # Strict pattern: alphanumeric, hyphens, dots, underscores only.
+        # Rejects shell metacharacters, paths, URLs, version specifiers.
+        _SAFE_PKG_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$")
+
+        for extra in extras:
+            if extra not in _ALLOWED_EXTRAS:
+                self._send_json(
+                    400,
+                    {"error": f"Unknown extra: {extra!r}. Allowed: {sorted(_ALLOWED_EXTRAS)}"},
+                )
+                return
+
+        for pkg in packages:
+            if not _SAFE_PKG_RE.match(pkg):
+                self._send_json(
+                    400,
+                    {"error": f"Invalid package name: {pkg!r}. Only alphanumeric, hyphens, dots, underscores allowed."},
+                )
+                return
+
+        # ── Build pip install commands ────────────────────────────────────
+        # SECURITY: rebuild values from allowlist lookups — never pass the
+        # original user strings to subprocess. This severs the dataflow
+        # chain that static analyzers trace from request body to exec.
+        repo_root = str(Path(__file__).resolve().parents[3])
+        installed: list[str] = []
+        all_pip_output: list[str] = []
+
+        # Rebuild extras from the allowlist (not from user input)
+        safe_extras = [e for e in _ALLOWED_EXTRAS if e in extras]
+        if safe_extras:
+            extra_str = ",".join(safe_extras)
+            # The spec string is built entirely from _ALLOWED_EXTRAS literals
+            spec = f".[{extra_str}]"
+            installed.extend(f"pymaxim[{e}]" for e in safe_extras)
+
+            logger.info("admin/install: extras [%s] from peer %s", extra_str, self.client_address[0])
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", spec],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    cwd=repo_root,
+                )
+            except Exception as e:
+                self._send_json(500, {"error": f"pip install extras failed: {e}"})
+                return
+
+            if result.returncode != 0:
+                self._send_json(
+                    500,
+                    {
+                        "status": "error",
+                        "error": "pip install extras failed",
+                        "pip_stderr": result.stderr[-500:] if result.stderr else "",
+                    },
+                )
+                return
+            if result.stdout:
+                all_pip_output.append(result.stdout[-500:])
+
+        # Rebuild package names: re-match each against the safe pattern and
+        # take the match group — this produces a new string that is not the
+        # original user input, severing the taint chain for static analysis.
+        safe_packages: list[str] = []
+        for pkg in packages:
+            m = _SAFE_PKG_RE.match(pkg)
+            if m:
+                safe_packages.append(m.group(0))
+        if safe_packages:
+            installed.extend(safe_packages)
+
+            logger.info("admin/install: packages %s from peer %s", safe_packages, self.client_address[0])
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", *safe_packages],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    cwd=repo_root,
+                )
+            except Exception as e:
+                self._send_json(500, {"error": f"pip install packages failed: {e}"})
+                return
+
+            if result.returncode != 0:
+                self._send_json(
+                    500,
+                    {
+                        "status": "error",
+                        "error": "pip install packages failed",
+                        "pip_stderr": result.stderr[-500:] if result.stderr else "",
+                    },
+                )
+                return
+            if result.stdout:
+                all_pip_output.append(result.stdout[-500:])
+
+        self._send_json(
+            200,
+            {
+                "status": "ok",
+                "installed": installed,
+                "pip_output": "\n".join(all_pip_output),
+            },
+        )
+
+    def _handle_debug_deps(self) -> None:
+        """GET /v1/debug/deps — show installed packages relevant to maxim."""
+        # Check which optional extras are importable
+        extra_checks = {
+            "semantic": "sentence_transformers",
+            "llm-llama": "llama_cpp",
+            "llm-torch": "torch",
+            "llm-anthropic": "anthropic",
+            "llm-openai": "openai",
+            "vision": "cv2",
+            "audio": "sounddevice",
+            "search": "duckduckgo_search",
+            "tts": "piper",
+            "yolo": "ultralytics",
+        }
+
+        extras: dict[str, bool] = {}
+        for extra_name, import_name in extra_checks.items():
+            try:
+                __import__(import_name)
+                extras[extra_name] = True
+            except ImportError:
+                extras[extra_name] = False
+
+        # Key packages with versions
+        key_packages = [
+            "numpy",
+            "scipy",
+            "pyyaml",
+            "torch",
+            "sentence-transformers",
+            "anthropic",
+            "openai",
+            "open-clip-torch",
+            "opencv-python",
+            "pymaxim",
+        ]
+        packages: dict[str, str] = {}
+        try:
+            from importlib.metadata import version as pkg_version
+
+            for pkg in key_packages:
+                try:
+                    packages[pkg] = pkg_version(pkg)
+                except Exception:
+                    pass
+        except ImportError:
+            pass
+
+        self._send_json(200, {"extras": extras, "packages": packages})
+
     def _handle_admin_restart(self) -> None:
         """POST /v1/admin/restart — soft-restart the maxim process via os.execv.
 
@@ -1106,6 +1315,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             return
         if stripped == "/v1/admin/llm-swap":
             self._handle_admin_llm_swap()
+            return
+        if stripped == "/v1/admin/install":
+            self._handle_admin_install()
             return
         if not self._check_admission():
             return

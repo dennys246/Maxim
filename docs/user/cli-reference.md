@@ -123,6 +123,8 @@ Subcommands for managing a remote leader node over a Cloudflare tunnel.
 | `maxim peer llm <model>` | Hot-swap the leader's LLM to a different model |
 | `maxim peer llm --status` | Show active model, uptime, GPU, and lane metrics |
 | `maxim peer test <url>` | Verify peer connectivity to a leader URL |
+| `maxim peer install <extras>` | Install optional extras on leader (e.g., `semantic`, `llm-torch`). Accepts comma-separated extras or raw pip package names. |
+| `maxim peer deps` | Show installed packages and extras status on the leader |
 
 ## Utilities
 
