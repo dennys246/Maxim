@@ -130,6 +130,26 @@ class TestApplyToEnv:
         apply_peer_config_to_env(cfg)
         assert os.environ["MAXIM_LANE_LARGE_REMOTE_URL"] == "https://env-override/v1"
 
+    def test_empty_env_treated_as_unset(self, monkeypatch):
+        """Empty-string env vars should NOT shadow the peer config.
+
+        Regression test: os.environ.setdefault treats '' as 'set', so a
+        stale empty export would silently prevent the valid peer config
+        value from being applied, causing the probe to fail without auth.
+        """
+        for var in (
+            "MAXIM_LANE_LARGE_REMOTE_URL",
+            "MAXIM_LANE_LARGE_REMOTE_API_KEY",
+            "MAXIM_LANE_LARGE_REMOTE_MODEL",
+            "MAXIM_MAX_CLOUD_LANES",
+        ):
+            monkeypatch.setenv(var, "")
+        cfg = PeerConfig(url="https://leader/v1", api_key="secret", model="qwen")
+        apply_peer_config_to_env(cfg)
+        assert os.environ["MAXIM_LANE_LARGE_REMOTE_URL"] == "https://leader/v1"
+        assert os.environ["MAXIM_LANE_LARGE_REMOTE_API_KEY"] == "secret"
+        assert os.environ["MAXIM_LANE_LARGE_REMOTE_MODEL"] == "qwen"
+
     def test_skips_model_when_not_set(self, monkeypatch):
         # Pre-register vars with monkeypatch so cleanup works even when
         # apply_peer_config_to_env sets them via os.environ.setdefault.

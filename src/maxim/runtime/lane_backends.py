@@ -955,9 +955,36 @@ def build_primary_router(
         load_function_overrides,
     )
 
+    # Peer-config auto-load: if ~/.config/maxim/peer.yml exists and env vars
+    # aren't already set, populate them from the file. Set by
+    # `maxim peer connect`. Env wins over file for per-session overrides.
+    #
+    # This MUST run before the persisted model restore below — the peer
+    # config signals "my large tier lives on the leader", and restoring
+    # a stale local profile would cause _apply_local_llm_override to
+    # clear the remote_url and silently route everything locally.
+    _has_peer_config = False
+    try:
+        from maxim.peer.config import apply_peer_config_to_env, read_peer_config
+
+        peer_cfg = read_peer_config()
+        if peer_cfg is not None:
+            apply_peer_config_to_env(peer_cfg)
+            _has_peer_config = True
+    except Exception as e:
+        logger.warning("Failed to load peer config: %s", e)
+
     # Restore persisted model preference (from --llm or maxim.run(model=...))
     # when no explicit MAXIM_LLM_PROFILE is set for this session.
-    if not os.environ.get("MAXIM_LLM_PROFILE", "").strip():
+    #
+    # Skip when peer config is active: the peer config means "my large-tier
+    # LLM lives on the leader". Restoring a persisted local profile would
+    # cause _apply_local_llm_override to clear the remote_url, silently
+    # routing everything locally instead of to the leader's GPU. The user
+    # can still override with an explicit --llm flag (which sets
+    # MAXIM_LLM_PROFILE before we get here), and _apply_local_llm_override
+    # will correctly clear the remote for that session.
+    if not os.environ.get("MAXIM_LLM_PROFILE", "").strip() and not _has_peer_config:
         _persisted = _read_persisted_model()
         if _persisted:
             os.environ["MAXIM_LLM_PROFILE"] = _persisted
@@ -978,20 +1005,6 @@ def build_primary_router(
     #   4. Has NOT already run the pin (marker file absent)
     # The marker file prevents repeat execution across future restarts.
     _maybe_pin_pre_upgrade_profile(capabilities, logger)
-
-    # Peer-config auto-load: if ~/.config/maxim/peer.yml exists and env vars
-    # aren't already set, populate them from the file. Set by
-    # `maxim peer connect`. Env wins over file for per-session overrides.
-    _has_peer_config = False
-    try:
-        from maxim.peer.config import apply_peer_config_to_env, read_peer_config
-
-        peer_cfg = read_peer_config()
-        if peer_cfg is not None:
-            apply_peer_config_to_env(peer_cfg)
-            _has_peer_config = True
-    except Exception as e:
-        logger.warning("Failed to load peer config: %s", e)
 
     # Note: the old "reconcile --language-model with peer remote config"
     # block used to live here. It rewrote `--llm <local>` into

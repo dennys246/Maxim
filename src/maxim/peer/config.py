@@ -104,6 +104,16 @@ def delete_peer_config() -> bool:
         return False
 
 
+def _setdefault_nonempty(key: str, value: str) -> None:
+    """Like ``os.environ.setdefault`` but treats an existing *empty* value as
+    absent.  An empty URL or API key is never intentional — it usually means a
+    previous session or shell snippet exported the var without a value, which
+    would silently shadow the peer config.
+    """
+    if not os.environ.get(key, "").strip():
+        os.environ[key] = value
+
+
 def apply_peer_config_to_env(cfg: PeerConfig) -> None:
     """Set MAXIM_LANE_LARGE_* env vars from a peer config, without overwriting
     any that are already set (env wins over file for per-session overrides).
@@ -112,10 +122,10 @@ def apply_peer_config_to_env(cfg: PeerConfig) -> None:
     (``large``). Earlier code wrote ``MAXIM_LANE_INFER_*`` as a legacy alias;
     that fallback was removed in v1.0.0 along with the matching read code.
     """
-    os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_URL", cfg.url)
-    os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_API_KEY", cfg.api_key)
+    _setdefault_nonempty("MAXIM_LANE_LARGE_REMOTE_URL", cfg.url)
+    _setdefault_nonempty("MAXIM_LANE_LARGE_REMOTE_API_KEY", cfg.api_key)
     if cfg.model:
-        os.environ.setdefault("MAXIM_LANE_LARGE_REMOTE_MODEL", cfg.model)
+        _setdefault_nonempty("MAXIM_LANE_LARGE_REMOTE_MODEL", cfg.model)
     # Peer connections are to your own infrastructure — even if the URL
     # resolves to a public IP (Cloudflare tunnel), it's not a cloud
     # provider. Mark it as peer-owned so lane_backends treats it as
