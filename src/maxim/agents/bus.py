@@ -14,7 +14,10 @@ import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field, fields
 from enum import Enum, auto
-from typing import Any, Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
+
+if TYPE_CHECKING:
+    from maxim.agents.percept_context import Modality, PerceptContext
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +143,11 @@ class Percept:
     # Exploration commands
     explore_command: dict[str, Any] | None = None  # Parsed explore command
 
-    # Generic content and metadata (for comms, archives, preemption context, etc.)
+    # Generic content and metadata. ``metadata`` remains a free-form
+    # escape hatch for non-messaging attributes (pain signal params,
+    # YAML scenario passthrough, legacy keys). Messaging framing
+    # (channel, sender, thread, subject, latency, agent_id) flows
+    # through the typed ``context`` field instead — see F0.4.
     content: str | None = None
     metadata: dict[str, Any] | None = None
 
@@ -150,6 +157,18 @@ class Percept:
 
     # Sensory modality tag (optional — None for legacy percepts)
     sensory: Any = None  # SensoryTag | None
+
+    # Typed message framing (F0.4). Optional so construction sites that
+    # do not have messaging semantics (vision detection, proprioception)
+    # can leave it None. F0.5 populates ``context.agent_id`` at
+    # every producer; F0.6 consolidates production into named factories.
+    context: "PerceptContext | None" = None
+
+    # Explicit sensory modality (F0.4). Kept alongside ``sensory`` —
+    # ``sensory`` carries rich per-modality sub-tags (populated by F0.8)
+    # while this literal lets consumers switch on modality without
+    # needing a populated SensoryTag.
+    modality: "Modality | None" = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for session persistence. Omits large/internal fields."""
@@ -165,11 +184,24 @@ class Percept:
             "has_maxim_keyword": self.has_maxim_keyword,
             "hard_override": self.hard_override,
             "content": self.content,
+            "metadata": self.metadata,
             "sensory": self.sensory.to_dict() if self.sensory and hasattr(self.sensory, "to_dict") else None,
+            "context": self.context.to_dict() if self.context is not None else None,
+            "modality": self.modality,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Percept":
+        # Rehydrate typed context separately so nested scn_tag gets
+        # reconstructed as CircadianContext rather than a bare dict.
+        from maxim.agents.percept_context import PerceptContext
+
+        data = dict(data)
+        ctx_raw = data.pop("context", None)
+        if ctx_raw is not None and not isinstance(ctx_raw, PerceptContext):
+            data["context"] = PerceptContext.from_dict(ctx_raw)
+        elif ctx_raw is not None:
+            data["context"] = ctx_raw
         valid_fields = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in data.items() if k in valid_fields})
 

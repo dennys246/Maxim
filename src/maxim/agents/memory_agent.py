@@ -445,14 +445,20 @@ class MemoryAgent(Agent, AgentOutputMixin):
             if percept.cli_input:
                 self._cli_inputs.append(percept.cli_input)
 
-            # Track comms messages (SMS, voice, etc.)
+            # Track comms messages (SMS, voice, etc.). Prefer typed
+            # PerceptContext (F0.4) and fall back to legacy metadata for
+            # pre-migration producers.
             if percept.source.startswith("comms:") and percept.content:
+                ctx = percept.context
+                meta = percept.metadata or {}
+                channel = (ctx.channel if ctx and ctx.channel else meta.get("channel", "")) or ""
+                sender = (ctx.sender if ctx and ctx.sender else meta.get("sender", "")) or ""
                 self._comms_messages.append(
                     {
                         "direction": "inbound",
                         "content": percept.content,
-                        "channel": (percept.metadata or {}).get("channel", ""),
-                        "sender": (percept.metadata or {}).get("sender", ""),
+                        "channel": channel,
+                        "sender": sender,
                         "timestamp": percept.timestamp,
                     }
                 )
