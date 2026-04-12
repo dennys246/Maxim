@@ -51,11 +51,16 @@ class TestP1RecognitionSweep:
     def test_sweep_10_seeds(self):
         """Full 10-seed sweep — the actual P1 gate.
 
+        Uses shuffled sentence order (node growth is an ordering artifact
+        with sequential delivery — confirmed by test_shuffle_check).
         Records results to docs/experiments/results/p1_recognition_sweep.json
         """
+        model = "paraphrase-mpnet-base-v2"
+        threshold = 0.40
+
         results = []
         for seed in range(10):
-            metrics = self._run_seed(seed=seed)
+            metrics = self._run_seed(seed=seed, threshold=threshold, shuffle=True)
             results.append(
                 {
                     "seed": seed,
@@ -74,29 +79,38 @@ class TestP1RecognitionSweep:
 
         collapse_rates = [r["collapse_rate"] for r in results]
         cross_rates = [r["cross_cluster_rate"] for r in results]
+        growth_rates = [r["node_growth_final_20pct"] for r in results]
 
         mean_collapse = statistics.mean(collapse_rates)
         std_collapse = statistics.stdev(collapse_rates) if len(collapse_rates) > 1 else 0.0
         mean_cross = statistics.mean(cross_rates)
         std_cross = statistics.stdev(cross_rates) if len(cross_rates) > 1 else 0.0
+        mean_growth = statistics.mean(growth_rates)
+        std_growth = statistics.stdev(growth_rates) if len(growth_rates) > 1 else 0.0
         all_pass = all(r["passes"] for r in results)
 
         summary = {
-            "model": "all-mpnet-base-v2",
-            "threshold": 0.50,
+            "model": model,
+            "threshold": threshold,
+            "shuffle": True,
+            "centroid_update": True,
             "seeds": len(results),
             "mean_collapse_rate": round(mean_collapse, 4),
             "std_collapse_rate": round(std_collapse, 4),
             "mean_cross_cluster_rate": round(mean_cross, 4),
             "std_cross_cluster_rate": round(std_cross, 4),
+            "mean_node_growth": round(mean_growth, 4),
+            "std_node_growth": round(std_growth, 4),
             "all_pass": all_pass,
             "per_seed": results,
         }
 
         print(f"\n{'=' * 60}")
         print(f"P1 Recognition Sweep — {'PASS' if all_pass else 'FAIL'}")
+        print(f"  Model: {model} @ {threshold}")
         print(f"  Collapse: {mean_collapse:.1%} ± {std_collapse:.1%} (need ≥90%)")
         print(f"  Cross-cluster: {mean_cross:.1%} ± {std_cross:.1%} (need ≤5%)")
+        print(f"  Node growth: {mean_growth:.1%} ± {std_growth:.1%} (need <10%)")
         print(f"{'=' * 60}")
 
         # Save results
@@ -254,7 +268,7 @@ class TestP1RecognitionSweep:
             print(f"{'=' * 80}")
 
     @staticmethod
-    def _run_seed(seed: int = 42, threshold: float = 0.50):
+    def _run_seed(seed: int = 42, threshold: float = 0.40, shuffle: bool = False):
         """Run one seed through the full pipeline and return metrics."""
         from maxim.memory.atl import ATL
         from maxim.similarity.ec import ECConfig, EntorhinalCortex
@@ -267,4 +281,11 @@ class TestP1RecognitionSweep:
         encoder = LinguisticEncoder(ec=ec, atl=atl)
 
         clusters = load_clusters_from_fixture(str(FIXTURE_PATH))
-        return compute_p1_metrics(ec=ec, atl=atl, clusters=clusters, encoder=encoder)
+        return compute_p1_metrics(
+            ec=ec,
+            atl=atl,
+            clusters=clusters,
+            encoder=encoder,
+            shuffle=shuffle,
+            seed=seed,
+        )

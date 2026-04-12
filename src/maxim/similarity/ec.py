@@ -68,8 +68,9 @@ class ECConfig:
     # Phase 4: Semantic embedding hash bits
     semantic_hash_bits: int = 16  # Number of bits for semantic LSH hash
 
-    # Substrate (P1): pattern completion threshold for cosine similarity
-    pattern_complete_threshold: float = 0.50
+    # Substrate (P1): pattern completion threshold for cosine similarity.
+    # Tuned via P1 sweep: paraphrase-mpnet-base-v2 @ 0.40 → 93.5% collapse, 3.3% cross-cluster.
+    pattern_complete_threshold: float = 0.40
 
 
 @dataclass

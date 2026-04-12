@@ -68,3 +68,4 @@ Link to `results/<filename>.json` for machine-readable output.
 | Entry | Phase | Date | Status | Decision |
 |---|---|---|---|---|
 | [p0_baseline_sweep.md](p0_baseline_sweep.md) | P0 | 2026-04-12 | recorded | Fixtures well-calibrated (78.5% @ best operating point). Proceed to P1. |
+| [p1_recognition_sweep.md](p1_recognition_sweep.md) | P1 | 2026-04-12 | recorded | Recognition criteria met (93.5% collapse, 3.3% cross-cluster). Proceed to P2. |
