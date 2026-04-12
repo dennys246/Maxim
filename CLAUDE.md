@@ -319,7 +319,7 @@ See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current 
 - Peer/leader flexibility P1–P9 — dynamic n_ctx, auto-download, remote probes, lane decision log. Archived.
 
 **Gating 1.0** (next steps):
-- [simulator_upgrades_plan.md](docs/plans/simulator_upgrades_plan.md) — S1–S4 **SHIPPED** (2026-04-12). FixtureDrivenOrchestrator, LLMBackend Protocol + MockLLMBackend, persistence harness, `--seed`. 72 tests, ~880 LOC. Substrate P0 unblocked.
+- Simulator upgrades S1–S4 **SHIPPED** (2026-04-12). Archived to [docs/plans/archive/simulator_upgrades_plan.md](docs/plans/archive/simulator_upgrades_plan.md).
 - [substrate_plan.md](docs/plans/substrate_plan.md) — bio-stack convergence (Track A: P0, P1–P6, P8) and prompt layer (Track B: B1–B5). Reaction abstraction Phase 5 (NAc structured percept-context access) folds into P2.
 
 **Living practice docs (paired with substrate_plan):**

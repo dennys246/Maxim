@@ -51,7 +51,7 @@ Mother and Baby both have bio-stack instances that share a MemoryHub, a persiste
 **3. Shared random seed.**
 Mother and Baby share an RNG and their "independent" decisions end up correlated in a way that mimics information transfer. Subtle and dangerous — the correlation might look like Baby learning Mother's patterns when it's really just RNG coupling.
 
-*Mitigation:* per-agent RNG streams derived from different seeds. F0.5 (agent_id threading) + simulator_upgrades_plan S4 (deterministic seeding) should be extended with explicit per-agent RNG streams at the simulator level. **This needs a concrete code change in S4** — see the hygiene note in simulator_upgrades_plan.md.
+*Mitigation:* per-agent RNG streams derived from different seeds. F0.5 (agent_id threading) + simulator_upgrades S4 (deterministic seeding) should be extended with explicit per-agent RNG streams at the simulator level. **This needs a concrete code change in S4** — see the hygiene note in archive/simulator_upgrades_plan.md.
 
 **4. Percept metadata back-channel.**
 Mother's Percept emissions carry metadata fields (sender_id, scene_id, intent annotations) and Baby's substrate reads those fields as stronger signal than the plain content. This isn't inherently wrong — real children get intent from tone and context — but it becomes a back-channel if Mother encodes her goals in metadata Baby reads mechanically.
@@ -127,7 +127,7 @@ Mother is an orchestration artifact, not a bio-stack component. She lives in the
 - Likely home: `src/maxim/simulation/mother_npc.py` as an extension of `generative_runner.py` or as a parallel runner
 - Uses the existing `AgentFactory.create_agent()` pattern to get her own bio-stack (which she may or may not actually use — she's primarily an LLM-driven stimulus source, not a memory-accumulating agent)
 - Does NOT touch `src/maxim/memory/`, `src/maxim/decisions/`, or the `agents/bus.py` percept dataclass
-- Subscribes to (or publishes through) the percept pipeline the same way `ConversationalSource` does today — see simulator_upgrades_plan S1 and F0.8 for the `inject_sensor` API she'd use
+- Subscribes to (or publishes through) the percept pipeline the same way `ConversationalSource` does today — see simulator_upgrades S1 and F0.8 for the `inject_sensor` API she'd use
 
 The existing runtime already supports two-agent setups (per the iceberg sweep — `AgentFactory` creates per-agent isolated bio-stacks). What's missing is the **harness** that wires "agent A is Baby, agent B is Mother, the percept pipeline only flows Mother→Baby at the stimulus layer."
 
@@ -180,8 +180,8 @@ Phase 3 will reveal leak vectors and failure modes I haven't thought of. Phase 5
 - **substrate_plan.md:** Mother doesn't affect any P-phase directly. She's stimulus infrastructure that downstream experiments can optionally use. P1–P8 still run with hand-authored fixtures. B-phases (Track B) might benefit from Mother for blind A/B NPC coherence tests in B3.
 - **foundations_plan.md F0.4:** percept context schema must forbid Mother-intent back-channel fields. Add to F0.4 documentation when this plan is revived.
 - **foundations_plan.md F0.5:** agent_id threading is load-bearing for Mother+Baby isolation. Already covered.
-- **simulator_upgrades_plan.md S4:** per-agent RNG streams are load-bearing for Mother+Baby isolation. Already noted in S4.
-- **simulator_upgrades_plan.md S1:** Mother is a percept source that plugs into the fixture-driven orchestrator, reusing the same pipeline. No new orchestrator.
+- **archive/simulator_upgrades_plan.md S4:** per-agent RNG streams are load-bearing for Mother+Baby isolation. Already noted in S4.
+- **archive/simulator_upgrades_plan.md S1:** Mother is a percept source that plugs into the fixture-driven orchestrator, reusing the same pipeline. No new orchestrator.
 - **behavioral_convergence_practice.md:** H1–H5 experiments become tractable at scale once Mother exists. Each experiment entry that uses Mother must document the mode (replay/live), the LLM class, the isolation audit status, and the reward signal source.
 
 ## If you're reading this cold

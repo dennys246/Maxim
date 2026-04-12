@@ -115,7 +115,7 @@ Before committing to the substrate architecture, run the cheapest possible sanit
 **Steps:**
 1. Author P1's fixtures first (`tests/fixtures/substrate/paraphrase_clusters.yaml`, ≥50 clusters, 2–3 days using the sim-as-fixture-debugger workflow — see "Fixture authoring workflow" below).
 2. Implement the trivial baseline against `BenchmarkRunner`'s existing `baseline_path` hook. `sentence-transformers` embeds each sentence (run both `all-MiniLM-L6-v2` and `all-mpnet-base-v2`), stored in FAISS, cluster membership by cosine threshold. ~100 LOC of baseline module + ~20 LOC of BenchmarkRunner wiring.
-3. Run it on the fixtures via the fixture-driven orchestrator from [simulator_upgrades_plan.md](simulator_upgrades_plan.md) S1. Publish mean + std over 10 seeds.
+3. Run it on the fixtures via the fixture-driven orchestrator from [simulator_upgrades_plan.md](archive/simulator_upgrades_plan.md) S1. Publish mean + std over 10 seeds.
 4. **Decision gate:**
    - **Baseline ≥85%:** the fixtures are too easy. Author harder clusters (more paraphrase variation, more near-miss distractors) and re-run. The pilot is not a plan-killer; it's a fixture-quality gate.
    - **Baseline 60–85%:** fixtures are well-calibrated. Proceed with P1, register the baseline score as P1's **regression check** — not a pass bar, just a floor.
@@ -679,7 +679,7 @@ The `0.3` gate includes three prerequisite waves (Cleanup, foundations_plan, sim
 | Version | Phases that must pass | What it proves |
 |---|---|---|
 | **0.2.2** | Cleanup Wave (ships first — removes friction from the hot path B1+P1 will rewrite) | CLI rot cleared |
-| **0.3-pre** | [foundations_plan](foundations_plan.md), [simulator_upgrades_plan](simulator_upgrades_plan.md), **P0** fixture-difficulty pilot, **B1+P1** combined migration | Foundations solid; substrate phases cheap to run; fixtures calibrated; text flows through percepts end-to-end |
+| **0.3-pre** | [foundations_plan](foundations_plan.md), [simulator_upgrades_plan](archive/simulator_upgrades_plan.md), **P0** fixture-difficulty pilot, **B1+P1** combined migration | Foundations solid; substrate phases cheap to run; fixtures calibrated; text flows through percepts end-to-end |
 | **0.3-minimum** (fallback if scope runs long) | Everything in 0.3-pre plus **P1, P2, P3.5** | Mechanism + reward modulation + persistence certification proven. Enough for a defensible version bump even if P3a/P3b/P4 slip to 0.3.1. |
 | **0.3-target** | 0.3-minimum plus **P3a, P3b, P4** (real cross-modal, OpenCLIP head-to-head — the 1.0-gating head-to-head) | Architecture's mechanism works, survives persistence, beats head-to-head baselines, cross-modal binding proven across real process boundary |
 | **0.4** | P4 re-passed with production vision + email/Slack channels, **B3 Acting Coach**, **B4 Replanning** (gates 1.0), **B5 embodiment/narrative separation** | Architecture generalizes; NPCs coherent; replanning recovers from failure |
@@ -696,7 +696,7 @@ The `0.3` gate includes three prerequisite waves (Cleanup, foundations_plan, sim
 
 **Why foundations_plan is its own wave:** the foundation fixes are load-bearing for every substrate phase and were wrongly assumed to exist in the prior plan. Fixing them as a clean block with its own CI gate is cheaper than discovering them mid-P2. See [foundations_plan.md](foundations_plan.md).
 
-**Why simulator_upgrades_plan is its own wave:** the sim upgrades drop per-phase harness cost from ~200 LOC to ~100 LOC, unlock deterministic testing without live LLMs, and enable the persistence subprocess harness that every subsequent phase depends on. ~1 week of work that saves ~1.5 weeks across the substrate phases, plus unlocks local-only substrate validation (no cloud cost). See [simulator_upgrades_plan.md](simulator_upgrades_plan.md).
+**Why simulator_upgrades_plan is its own wave:** the sim upgrades drop per-phase harness cost from ~200 LOC to ~100 LOC, unlock deterministic testing without live LLMs, and enable the persistence subprocess harness that every subsequent phase depends on. ~1 week of work that saves ~1.5 weeks across the substrate phases, plus unlocks local-only substrate validation (no cloud cost). See [simulator_upgrades_plan.md](archive/simulator_upgrades_plan.md).
 
 **Why only P0 as a pilot (not P0 + P4-mini):** earlier drafts had two pilots. P4-mini was cut because its "minimum cross-modal binding" wasn't actually testing commitment #3 — it was testing "does OpenCLIP win at vision retrieval on a toy fixture," which the literature already answers. The real test requires real substrate state (hippocampus episodes, reward-gated binding, persistence) and happens at P4 proper. P0 remains as a single fixture-difficulty pilot; the OpenCLIP baseline is authored during P0 and carried forward into P4 so the number is pinned before P4 starts, but there is no separate "feasibility" gate.
 
@@ -709,12 +709,12 @@ The `0.3` gate includes three prerequisite waves (Cleanup, foundations_plan, sim
 
 ## Scope honesty — updated
 
-**Note:** sim harness LOC dropped significantly after the [simulator_upgrades_plan](simulator_upgrades_plan.md) audit found that `ConversationalSource.inject_cli()`, `ScenarioSource`, `BenchmarkRunner.baseline_path`, and the session-report builder already provide ~80% of the harness infrastructure. Per-phase harness work is now ~100 LOC for a metric extractor plugin, not ~200 LOC for a bespoke framework. The net scope savings (~1,100 LOC of harness) mostly offset the cost of the sim upgrades themselves.
+**Note:** sim harness LOC dropped significantly after the [simulator_upgrades_plan](archive/simulator_upgrades_plan.md) audit found that `ConversationalSource.inject_cli()`, `ScenarioSource`, `BenchmarkRunner.baseline_path`, and the session-report builder already provide ~80% of the harness infrastructure. Per-phase harness work is now ~100 LOC for a metric extractor plugin, not ~200 LOC for a bespoke framework. The net scope savings (~1,100 LOC of harness) mostly offset the cost of the sim upgrades themselves.
 
 | Wave | Item | Scope | Notes |
 |---|---|---|---|
 | **Prereq** | [foundations_plan](foundations_plan.md) (F0.1–F0.7) | ~1,010 LOC | Blocks substrate phases. See separate plan. |
-| **Prereq** | [simulator_upgrades_plan](simulator_upgrades_plan.md) (S1–S4) | ~800 LOC | Fixture orchestrator, mock LLM, persistence subprocess harness, deterministic seeding. Blocks P0. |
+| **Prereq** | [simulator_upgrades_plan](archive/simulator_upgrades_plan.md) (S1–S4) | ~800 LOC | Fixture orchestrator, mock LLM, persistence subprocess harness, deterministic seeding. Blocks P0. |
 | **Prereq** | **P0** fixture-difficulty pilot | ~100 LOC (FAISS baseline wired into `BenchmarkRunner`) + ~150 LOC (OpenCLIP baseline carried forward into P4) + ~100 LOC metric extractor | Uses sim upgrades. Also pins the OpenCLIP baseline number before P4 starts. |
 | **0.3** | **B1+P1 combined migration** | ~1,100 LOC (500 assembler + 600 text-to-prompt dual-write) | Critical path. See dedicated migration section. |
 | 0.3 | P1 substrate additions | ~300 LOC (EC pattern completion + ATL modality tagging) + ~100 LOC metric extractor | |
@@ -807,7 +807,7 @@ The 1.0 release should have at least one entry in each practice doc. Enforce tha
 
 Separate from the proof-obligation phase work, this plan establishes formal Protocols for the key extension points as they come up. The goal is **extensibility and platform-readiness**, not a standalone refactor. Protocols land naturally during the work that already touches each boundary:
 
-- **`LLMBackend` Protocol** — defined as the first step of [simulator_upgrades_plan](simulator_upgrades_plan.md) S2, since S2 needs a target to implement against. Reverse-engineered from the four existing backends. ~50 LOC.
+- **`LLMBackend` Protocol** — defined as the first step of [simulator_upgrades_plan](archive/simulator_upgrades_plan.md) S2, since S2 needs a target to implement against. Reverse-engineered from the four existing backends. ~50 LOC.
 - **`BioSystem` Protocol** — defined during substrate phase work (P1–P8) as each phase touches a bio-system. Captures the common contract: `save`, `load`, `snapshot`, `on_percept`, `on_tick`. Lives in `src/maxim/contracts/biosystem.py`. Not wired to a plugin discovery system — that's post-1.0 (see [deferred/bio_system_plugin_plan.md](deferred/bio_system_plugin_plan.md)).
 - **`BioSystemSnapshot` Protocol** — defined as part of P3.5's schema-versioned snapshot sub-section (see P3.5.1 above). Schema versioning is load-bearing for the 1.0 cross-session learning claim; the Protocol accretes in P3.5 rather than waiting.
 - **`Sensor` / `PerceptProducer` Protocols** — defined during foundations_plan F0.6 (Percept factory consolidation) and F0.8 (Sensor→Percept contract). These are natural landing spots because those items already touch the surface.

@@ -7,7 +7,6 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 One plan remains before substrate phases start. Foundations wave, reaction abstraction Phases 1–4, and simulator upgrades S1–S4 are all complete. The sequence is now: P0 pilot → substrate phases.
 
-- [simulator_upgrades_plan.md](simulator_upgrades_plan.md) — **S1–S4 SHIPPED** (2026-04-12). FixtureDrivenOrchestrator, LLMBackend Protocol + MockLLMBackend, subprocess persistence harness, deterministic seeding (`--seed`). 72 new tests, ~880 LOC. Unblocks substrate P0.
 - [substrate_plan.md](substrate_plan.md) — bio-stack convergence (Track A: P0, P1–P6, P8) + prompt layer (Track B: B1–B5). Includes P0 fixture-difficulty pilot, persistence as cross-phase contract, minimum-viable sleep replay (P8). Phase 5 of the reaction abstraction (NAc structured percept-context access) is folded into substrate P2.
 
 ## Living practice docs (pair with substrate_plan)
@@ -42,6 +41,7 @@ Recently archived (2026-04-11/12, S1–S4 shipped 2026-04-12):
 - [archive/cleanup_wave.md](archive/cleanup_wave.md) — C1–C4 shipped in 0.2.2. `--interactive` fix, dead CLI flags, display defaults, agent permissions.
 - [archive/peer_leader_flexibility_plan.md](archive/peer_leader_flexibility_plan.md) — P1–P9 shipped. Dynamic n_ctx, KV quant, Apple Silicon tiers, auto-download, remote probes, lane decision log.
 - [archive/unified_event_bus_plan.md](archive/unified_event_bus_plan.md) — Scope largely absorbed by reaction_abstraction (ReactionBus, typed protocols, sim_reaction hooks). Remaining AgentBus/LocalMessageBus merge is optional cleanliness.
+- [archive/simulator_upgrades_plan.md](archive/simulator_upgrades_plan.md) — S1–S4 shipped (2026-04-12). FixtureDrivenOrchestrator, LLMBackend Protocol + MockLLMBackend, subprocess persistence harness, deterministic seeding. 72 tests, ~880 LOC.
 
 ## Version path to 1.0
 
