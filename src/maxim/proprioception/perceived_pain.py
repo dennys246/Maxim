@@ -35,7 +35,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from maxim.decisions.causal_link import Valence
 from maxim.proprioception.pain import PainSignal, PainType
+from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -338,9 +340,23 @@ class PerceivedPainAssessor:
 
         if self._pain_bus is not None:
             try:
-                self._pain_bus.publish(signal)
+                reaction = Reaction(
+                    kind="pain",
+                    intensity=signal.intensity,
+                    valence=Valence.NEGATIVE,
+                    timestamp=signal.timestamp,
+                    source=f"perceived_pain:{PainType.ANTICIPATED.value}",
+                    context=ReactionContext(
+                        bindings={
+                            "paths": TraceSnapshot(percept_id=",".join(paths[:5])),
+                        }
+                        if paths
+                        else {},
+                    ),
+                )
+                self._pain_bus.reaction_bus.publish(reaction)
             except Exception as e:
-                logger.debug("PainBus publish failed: %s", e)
+                logger.debug("ReactionBus publish failed: %s", e)
 
         # Sim-visibility trace.
         try:
@@ -399,8 +415,6 @@ class PerceivedPainAssessor:
         prediction_summary: dict[str, Any] | None = None
         if self._nac is not None:
             try:
-                from maxim.decisions.causal_link import Valence
-
                 prediction = self._nac.predict(
                     event_type="tool",
                     event_signature=f"tool:{tool_name}",
@@ -457,12 +471,26 @@ class PerceivedPainAssessor:
             }
         )
 
-        # Publish via PainBus so hippocampus + any other subscriber see it.
+        # Publish via ReactionBus so hippocampus + any other subscriber see it.
         if self._pain_bus is not None:
             try:
-                self._pain_bus.publish(signal)
+                reaction = Reaction(
+                    kind="pain",
+                    intensity=signal.intensity,
+                    valence=Valence.NEGATIVE,
+                    timestamp=signal.timestamp,
+                    source=f"perceived_pain:{PainType.ANTICIPATED.value}",
+                    context=ReactionContext(
+                        bindings={
+                            "paths": TraceSnapshot(percept_id=",".join(path_list[:5])),
+                        }
+                        if path_list
+                        else {},
+                    ),
+                )
+                self._pain_bus.reaction_bus.publish(reaction)
             except Exception as e:
-                logger.debug("PainBus publish failed: %s", e)
+                logger.debug("ReactionBus publish failed: %s", e)
 
         # Sim-visibility trace: [PAIN] line in sim output.
         try:

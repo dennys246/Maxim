@@ -98,12 +98,14 @@ class TestComposedFailures:
         emb = Embodiment(ent, pain_bus=pain_bus)
         events = emb.evaluate_failures()
         assert any(e.failure_name == "tennis_elbow" for e in events)
-        pain_bus.publish.assert_called()
+        pain_bus.reaction_bus.publish.assert_called()
 
-        # Verify composition metadata in pain signal
-        signal = pain_bus.publish.call_args[0][0]
-        assert signal.context["failure_mode"] == "tennis_elbow"
-        assert signal.context["composes"] == ["strain", "fatigue"]
+        # Verify Reaction(kind="pain") was published with entity_path binding
+        reaction = pain_bus.reaction_bus.publish.call_args[0][0]
+        assert reaction.kind == "pain"
+        assert reaction.intensity == 0.5
+        assert reaction.source == "embodiment:external_signal"
+        assert reaction.context.bindings["entity_path"].percept_id == ent.full_path
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
+from maxim.decisions.causal_link import Valence
+from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
+
 if TYPE_CHECKING:
     from maxim.agents.bus import ToolErrorKind
     from maxim.proprioception.movement_tracker import MovementMetrics, MovementTracker
@@ -452,9 +455,20 @@ class PainDetector:
         else:
             logger.info(log_msg, *log_args)
 
-        # Dispatch: prefer PainBus, fall back to internal callbacks
+        # Dispatch: prefer ReactionBus (via PainBus wrapper), fall back to internal callbacks
         if self._pain_bus is not None:
-            self._pain_bus.publish(signal)
+            entity_path = signal.context.get("entity_path", "")
+            reaction = Reaction(
+                kind="pain",
+                intensity=signal.intensity,
+                valence=Valence.NEGATIVE,
+                timestamp=signal.timestamp,
+                source=f"pain_detector:{signal.pain_type.value}",
+                context=ReactionContext(
+                    bindings={"entity_path": TraceSnapshot(percept_id=entity_path)} if entity_path else {},
+                ),
+            )
+            self._pain_bus.reaction_bus.publish(reaction)
         else:
             for callback in self._callbacks:
                 try:

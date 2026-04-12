@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from maxim.proprioception.pain import PainSignal, PainType
+from maxim.proprioception.pain import PainType
 from maxim.proprioception.perceived_pain import (
     PerceivedPainAssessor,
     SensitivePathPrior,
@@ -19,20 +19,33 @@ from maxim.proprioception.perceived_pain import (
     extract_paths_from_params,
     tool_to_operation,
 )
+from maxim.reactions.types import Reaction
 from maxim.runtime.pain_interceptor import (
     AnticipatoryPainExecutor,
     PainInterceptorExecutor,
 )
 
 
-class _Bus:
-    """Minimal PainBus stand-in that just records published signals."""
+class _ReactionBus:
+    """Minimal ReactionBus stand-in that just records published reactions."""
 
     def __init__(self) -> None:
-        self.signals: list[PainSignal] = []
+        self.reactions: list[Reaction] = []
 
-    def publish(self, signal: PainSignal) -> None:
-        self.signals.append(signal)
+    def publish(self, reaction: Reaction) -> None:
+        self.reactions.append(reaction)
+
+
+class _Bus:
+    """Minimal PainBus stand-in with reaction_bus attribute (Phase 2b)."""
+
+    def __init__(self) -> None:
+        self.reaction_bus = _ReactionBus()
+
+    @property
+    def signals(self) -> list[Reaction]:
+        """Backward-compat alias so existing tests can still say bus.signals."""
+        return self.reaction_bus.reactions
 
 
 class _Result:
@@ -318,8 +331,8 @@ class TestPainInterceptorExecutor:
         exe = PainInterceptorExecutor(_Executor(), pain_bus=bus)
         exe.execute({"tool_name": "read_file", "params": {"path": "/etc/shadow"}})
         assert len(bus.signals) == 1
-        assert bus.signals[0].pain_type == PainType.EXTERNAL_SIGNAL
-        assert bus.signals[0].context["kind"] == "consequence"
+        assert bus.signals[0].kind == "pain"
+        assert bus.signals[0].source == "pain_interceptor:external_signal"
         assert bus.signals[0].intensity >= 0.9
 
     def test_does_not_fire_on_safe_path(self):
@@ -349,7 +362,8 @@ class TestPainInterceptorExecutor:
             }
         )
         assert len(bus.signals) == 1
-        assert bus.signals[0].context["operation"] == "delete"
+        assert bus.signals[0].kind == "pain"
+        assert bus.signals[0].source == "pain_interceptor:external_signal"
 
     def test_events_recorded(self):
         bus = _Bus()
@@ -410,8 +424,9 @@ class TestTwoLayerIntegration:
             {"tool_name": "read_file", "params": {"path": "/etc/shadow"}},
         )
         assert len(bus.signals) == 2
-        kinds = {s.context.get("kind") for s in bus.signals}
-        assert kinds == {"anticipated", "consequence"}
+        sources = {s.source for s in bus.signals}
+        assert "perceived_pain:anticipated" in sources
+        assert "pain_interceptor:external_signal" in sources
 
     def test_anticipation_without_consequence_on_safe_path(self):
         bus = _Bus()
