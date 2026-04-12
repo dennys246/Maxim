@@ -86,6 +86,9 @@ class ATL(MemoryLayer):
         # Optional SCN reference for temporal-aware strategies
         self._scn: Any = None
 
+        # Substrate modality index (P1): modality → set of concept_ids
+        self._modality_index: dict[str, set[str]] = defaultdict(set)
+
         # Stats
         self._stats: dict[str, int] = {"concepts_stored": 0, "queries": 0}
         self._compressed_count: int = 0
@@ -168,6 +171,10 @@ class ATL(MemoryLayer):
                     del self._context_index[key]
             self._concept_contexts.pop(record_id, None)
 
+            # Clean up modality index
+            for mod_set in self._modality_index.values():
+                mod_set.discard(record_id)
+
             # Clean up graph
             if self._graph.get_node(record_id) is not None:
                 self._graph.remove_node(record_id)
@@ -208,7 +215,8 @@ class ATL(MemoryLayer):
         """Query concepts with optional filters.
 
         Supported filters: name, category, min_confidence,
-        property_key, property_value, include_compressed.
+        property_key, property_value, include_compressed,
+        substrate_modality.
         """
         self._stats["queries"] = self._stats.get("queries", 0) + 1
 
@@ -218,6 +226,7 @@ class ATL(MemoryLayer):
         prop_key = filters.get("property_key")
         prop_value = filters.get("property_value")
         include_compressed = filters.get("include_compressed", True)
+        substrate_modality = filters.get("substrate_modality")
 
         with self._rwlock.read():
             # Use index if we have a specific filter
@@ -225,6 +234,8 @@ class ATL(MemoryLayer):
                 candidate_ids = self._context_index.get(f"name:{name}", set())
             elif category is not None:
                 candidate_ids = self._context_index.get(f"category:{category}", set())
+            elif substrate_modality is not None:
+                candidate_ids = self._modality_index.get(substrate_modality, set())
             else:
                 candidate_ids = set(self._concepts.keys())
 
@@ -243,6 +254,12 @@ class ATL(MemoryLayer):
                 if category is not None and concept.category != category:
                     continue
                 if min_confidence is not None and concept.confidence < min_confidence:
+                    continue
+                if (
+                    substrate_modality is not None
+                    and isinstance(concept, SemanticMemory)
+                    and concept.substrate_modality != substrate_modality
+                ):
                     continue
                 if prop_key is not None and isinstance(concept, SemanticMemory):
                     if prop_value is not None:
@@ -318,6 +335,7 @@ class ATL(MemoryLayer):
             self._concepts.clear()
             self._context_index.clear()
             self._concept_contexts.clear()
+            self._modality_index.clear()
             self._compressed_count = 0
 
             for cid, c_data in data.get("concepts", {}).items():
@@ -364,6 +382,7 @@ class ATL(MemoryLayer):
                 self._concepts.clear()
                 self._context_index.clear()
                 self._concept_contexts.clear()
+                self._modality_index.clear()
                 self._compressed_count = 0
             return False, error_msg
 
@@ -485,6 +504,58 @@ class ATL(MemoryLayer):
         )
         self.store(concept)
         return concept.id, True
+
+    def activate_substrate_node(
+        self,
+        node_id: str,
+        text: str,
+        substrate_modality: str,
+        embedding_text: str = "",
+    ) -> str:
+        """Activate an existing substrate node or create it if new.
+
+        Called by LinguisticEncoder after EC pattern_complete_or_separate.
+        If ``node_id`` already exists in ATL, reinforces it and returns
+        the existing ID. Otherwise creates a new Concept with the given
+        modality tag.
+
+        Returns:
+            The concept ID (same as ``node_id`` for new nodes).
+        """
+        existing = self.get(node_id)
+        if existing is not None:
+            if isinstance(existing, SemanticMemory):
+                existing.reinforce(node_id)
+            return existing.id
+
+        concept = Concept(
+            id=node_id,
+            timestamp=time.time(),
+            name=text[:80],
+            category="substrate",
+            definition=text,
+            provenance=ConceptProvenance.AGENT_INFERENCE,
+            embedding_text=embedding_text or text,
+            substrate_modality=substrate_modality,
+        )
+        self.store(concept)
+        return concept.id
+
+    def get_by_modality(
+        self,
+        substrate_modality: str,
+        limit: int = 100,
+    ) -> list[SemanticMemory | CompressedSemantic]:
+        """Return all concepts with a given substrate modality tag."""
+        with self._rwlock.read():
+            ids = self._modality_index.get(substrate_modality, set())
+            results = []
+            for cid in ids:
+                concept = self._concepts.get(cid)
+                if concept is not None:
+                    results.append(concept)
+            results.sort(key=lambda c: c.accessed_at, reverse=True)
+            return results[:limit]
 
     def define_relationship(
         self,
@@ -617,6 +688,10 @@ class ATL(MemoryLayer):
             self._context_index[key].add(concept_id)
         self._concept_contexts[concept_id] = keys
 
+        # Substrate modality index (P1)
+        if isinstance(concept, SemanticMemory) and concept.substrate_modality:
+            self._modality_index[concept.substrate_modality].add(concept_id)
+
     def _remove_concept(self, concept_id: str) -> None:
         """Remove a concept and clean up (lock must be held)."""
         for key in self._concept_contexts.get(concept_id, set()):
@@ -624,6 +699,10 @@ class ATL(MemoryLayer):
             if not self._context_index[key]:
                 del self._context_index[key]
         self._concept_contexts.pop(concept_id, None)
+
+        # Clean up modality index
+        for mod_set in self._modality_index.values():
+            mod_set.discard(concept_id)
 
         if self._graph.get_node(concept_id) is not None:
             self._graph.remove_node(concept_id)

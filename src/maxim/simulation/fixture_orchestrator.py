@@ -291,9 +291,24 @@ class FixtureDrivenOrchestrator:
                 atl = getattr(memory_hub, "_atl", None) or getattr(memory_hub, "atl", None)
                 if atl is not None:
                     node_count = len(atl) if hasattr(atl, "__len__") else 0
-                    metrics["atl"] = {"node_count": node_count}
+                    atl_metrics: dict[str, Any] = {"node_count": node_count}
+                    # P1: substrate modality breakdown
+                    if hasattr(atl, "_modality_index"):
+                        atl_metrics["substrate_text_nodes"] = len(atl._modality_index.get("text", set()))
+                        atl_metrics["substrate_vision_nodes"] = len(atl._modality_index.get("vision", set()))
+                    metrics["atl"] = atl_metrics
             except Exception as e:
                 logger.debug("atl snapshot failed: %s", e)
+
+        # EC substrate nodes (P1)
+        ec = getattr(memory_hub, "ec", None)
+        if ec is not None and hasattr(ec, "substrate_node_count"):
+            try:
+                metrics["ec_substrate"] = {
+                    "node_count": ec.substrate_node_count,
+                }
+            except Exception as e:
+                logger.debug("ec substrate snapshot failed: %s", e)
 
         # PerceptTraceBuffer
         if percept_trace_buffer is not None:

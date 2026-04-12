@@ -68,6 +68,24 @@ def _isolate_maxim_auto_download_env():
             os.environ["MAXIM_AUTO_DOWNLOAD_MODELS"] = saved
 
 
+@pytest.fixture(autouse=True)
+def _isolate_maxim_substrate_path_env():
+    """Scrub ``MAXIM_SUBSTRATE_PATH`` across every test.
+
+    P1's ``MemoryHub._wire_substrate_encoder`` reads this env var to
+    decide whether to activate the substrate encoding path. Without
+    isolation, tests that set this var leak the encoder into every
+    later test that constructs a MemoryHub.
+    """
+    saved = os.environ.pop("MAXIM_SUBSTRATE_PATH", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_SUBSTRATE_PATH", None)
+        if saved is not None:
+            os.environ["MAXIM_SUBSTRATE_PATH"] = saved
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Memory Types Fixtures
 # ─────────────────────────────────────────────────────────────────────────────

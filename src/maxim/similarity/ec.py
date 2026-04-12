@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 from maxim.similarity.indices import InvertedIndices
 from maxim.similarity.lsh import LSHIndex, SemanticLSH
@@ -32,6 +34,19 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Cosine similarity between two dense vectors.
+
+    Returns 0.0 for zero-norm vectors instead of NaN.
+    """
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
 @dataclass
 class ECConfig:
     """Configuration for Entorhinal Cortex."""
@@ -52,6 +67,24 @@ class ECConfig:
 
     # Phase 4: Semantic embedding hash bits
     semantic_hash_bits: int = 16  # Number of bits for semantic LSH hash
+
+    # Substrate (P1): pattern completion threshold for cosine similarity
+    pattern_complete_threshold: float = 0.50
+
+
+@dataclass
+class PatternResult:
+    """Result of EC pattern_complete_or_separate.
+
+    Attributes:
+        node_id: ATL node this percept mapped to (existing or new).
+        similarity: Cosine similarity to the matched node (0.0 if new).
+        is_new: True if a new node was created (separation).
+    """
+
+    node_id: str
+    similarity: float
+    is_new: bool
 
 
 class EntorhinalCortex:
@@ -136,6 +169,85 @@ class EntorhinalCortex:
             else:
                 # Fallback to simple word-based LSH
                 self._semantic_hasher = SemanticLSH()
+
+        # Substrate (P1): dense embedding store for pattern completion.
+        # Keyed by node_id, stores (embedding, modality) pairs.
+        self._substrate_nodes: dict[str, tuple[list[float], str]] = {}
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Substrate Pattern Completion (P1)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def pattern_complete_or_separate(
+        self,
+        embedding: list[float],
+        modality: str,
+        threshold: float | None = None,
+        threshold_override: dict[str, float] | None = None,
+    ) -> PatternResult:
+        """Route an embedding to an existing ATL node or create a new one.
+
+        Cosine similarity against all stored embeddings of the same
+        modality. If the best match exceeds ``threshold``, returns that
+        node (pattern completion). Otherwise creates a new node
+        (pattern separation).
+
+        Args:
+            embedding: Dense vector from LinguisticEncoder.
+            modality: Substrate modality ("text" or "vision").
+            threshold: Override the default pattern_complete_threshold.
+            threshold_override: Per-node threshold overrides keyed by
+                node_id. Used by P2 reward modulation to widen the
+                recognition radius for rewarded nodes.
+
+        Returns:
+            PatternResult with the node_id, similarity score, and
+            whether a new node was created.
+        """
+        base_threshold = threshold if threshold is not None else self.config.pattern_complete_threshold
+        overrides = threshold_override or {}
+
+        best_node: str | None = None
+        best_sim = -1.0
+
+        for node_id, (stored_emb, stored_mod) in self._substrate_nodes.items():
+            if stored_mod != modality:
+                continue
+            sim = _cosine_similarity(embedding, stored_emb)
+            # Use per-node override if available, else base threshold
+            node_thresh = overrides.get(node_id, base_threshold)
+            if sim >= node_thresh and sim > best_sim:
+                best_sim = sim
+                best_node = node_id
+
+        if best_node is not None:
+            return PatternResult(node_id=best_node, similarity=best_sim, is_new=False)
+
+        # Separation — allocate a new node ID but don't register yet.
+        # The caller (LinguisticEncoder) registers via register_substrate_node
+        # after ATL activation succeeds. This keeps EC stateless for the
+        # separation path and allows the test harness to inspect without
+        # side effects.
+        new_id = str(uuid4())
+        return PatternResult(node_id=new_id, similarity=0.0, is_new=True)
+
+    def register_substrate_node(
+        self,
+        node_id: str,
+        embedding: list[float],
+        modality: str,
+    ) -> None:
+        """Register or update a substrate node's embedding."""
+        self._substrate_nodes[node_id] = (embedding, modality)
+
+    def remove_substrate_node(self, node_id: str) -> None:
+        """Remove a substrate node."""
+        self._substrate_nodes.pop(node_id, None)
+
+    @property
+    def substrate_node_count(self) -> int:
+        """Number of substrate nodes registered."""
+        return len(self._substrate_nodes)
 
     def register(
         self,
@@ -395,6 +507,7 @@ class EntorhinalCortex:
             "inverted_indices": self._inverted.stats(),
             "semantic_enabled": self.config.enable_semantic,
             "neural_semantic_available": self._neural_embedder is not None,
+            "substrate_nodes": len(self._substrate_nodes),
         }
 
         # Add neural embedder stats if available
@@ -428,13 +541,21 @@ class EntorhinalCortex:
             "lsh": self._lsh.serialize(),
             "inverted": self._inverted.to_dict(),
             "signatures": {k: v.to_dict() for k, v in self._signatures.items()},
+            "substrate_nodes": {
+                nid: {"embedding": emb, "modality": mod} for nid, (emb, mod) in self._substrate_nodes.items()
+            },
         }
 
         from maxim.utils.atomic_io import atomic_write_json
 
         atomic_write_json(path, data)
 
-        logger.info("Saved EC to %s (%d signatures)", path, len(self._signatures))
+        logger.info(
+            "Saved EC to %s (%d signatures, %d substrate nodes)",
+            path,
+            len(self._signatures),
+            len(self._substrate_nodes),
+        )
 
     def load(self, path: str) -> None:
         """Load EC state from JSON file."""
@@ -468,11 +589,21 @@ class EntorhinalCortex:
         # Load signatures
         self._signatures = {k: SituationSignature.from_dict(v) for k, v in data.get("signatures", {}).items()}
 
-        logger.info("Loaded EC from %s (%d signatures)", path, len(self._signatures))
+        # Load substrate nodes (P1)
+        self._substrate_nodes = {}
+        for nid, ndata in data.get("substrate_nodes", {}).items():
+            self._substrate_nodes[nid] = (ndata["embedding"], ndata["modality"])
+
+        logger.info(
+            "Loaded EC from %s (%d signatures, %d substrate nodes)",
+            path,
+            len(self._signatures),
+            len(self._substrate_nodes),
+        )
 
     def get_version(self) -> str:
         """Return data format version."""
         return "1.0"
 
 
-__all__ = ["EntorhinalCortex", "ECConfig"]
+__all__ = ["EntorhinalCortex", "ECConfig", "PatternResult", "_cosine_similarity"]
