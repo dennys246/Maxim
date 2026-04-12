@@ -351,14 +351,21 @@ class AgentFactory:
             from maxim.similarity.ec import EntorhinalCortex
             from maxim.time.scn import SCN
 
-            scn = SCN()
-            # Set persistence path so SCN can be saved on session end
+            # F0.5: SCN persistence path is bound at construction time, not
+            # late-assigned. The old pattern
+            #   scn = SCN(); scn._persistence_path = str(agent_dir / ...)
+            # had a race window under concurrent agent construction where
+            # two agents could overwrite each other's path binding. Passing
+            # it to the constructor eliminates the window.
+            scn_path_str: str | None = None
             if agent_dir is not None:
-                scn._persistence_path = str(agent_dir / "scn.json")  # type: ignore[attr-defined]
-                scn_file = agent_dir / "scn.json"
+                scn_path_str = str(agent_dir / "scn.json")
+            scn = SCN(persistence_path=scn_path_str)
+            if scn_path_str is not None:
+                scn_file = Path(scn_path_str)
                 if scn_file.exists():
                     try:
-                        scn.load(str(scn_file))
+                        scn.load(scn_path_str)
                     except Exception:
                         pass  # Start fresh if corrupt
             return MemoryHub(

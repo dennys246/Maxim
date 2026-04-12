@@ -602,9 +602,11 @@ class MemoryHub:
                 except Exception as e:
                     logger.warning("%s shutdown failed: %s", name, e)
 
-        # Save SCN state
+        # Save SCN state. F0.5: SCN now carries ``persistence_path`` as a
+        # typed field set at construction time. Legacy underscore fallback
+        # tolerates pre-F0.5 SCN instances that may still exist in tests.
         if self.scn is not None:
-            scn_path = getattr(self.scn, "_persistence_path", None)
+            scn_path = getattr(self.scn, "persistence_path", None) or getattr(self.scn, "_persistence_path", None)
             if scn_path:
                 try:
                     self.scn.save(scn_path)

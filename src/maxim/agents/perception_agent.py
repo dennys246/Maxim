@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.agents.base import Agent
 from maxim.agents.bus import AgentBus, Percept
+from maxim.agents.percept_context import PerceptContext
 from maxim.utils.structured_logging import log_structured
 
 if TYPE_CHECKING:
@@ -52,9 +53,11 @@ class PerceptionAgent(Agent):
         interests: set[int] | None = None,
         novelty_window: int = 10,
         capture_manager: CaptureManager | None = None,
+        agent_id: str | None = None,
     ) -> None:
         super().__init__(name=name, enabled=enabled)
         self._bus = bus
+        self._agent_id = agent_id
         self._interests = interests or set()
         self._recent_percepts: deque[Percept] = deque(maxlen=novelty_window)
         self._capture_manager = capture_manager
@@ -75,6 +78,17 @@ class PerceptionAgent(Agent):
         self._last_transcript_path: str | None = None
         self._last_transcript_mtime: float | None = None
         self._last_chunk_index: int | None = None
+
+    def _build_context(self) -> PerceptContext | None:
+        """Build a PerceptContext stamping this agent's id onto produced percepts.
+
+        Returns ``None`` when no agent_id is set so legacy single-agent code
+        paths stay unaffected by F0.5. Once F0.6 consolidates construction
+        into named factories this becomes unconditional.
+        """
+        if self._agent_id is None:
+            return None
+        return PerceptContext(agent_id=self._agent_id, timestamp=time.time())
 
     @staticmethod
     def _normalize_transcript_text(text: str) -> str:
@@ -230,6 +244,8 @@ class PerceptionAgent(Agent):
             hard_override=hard_override,
             raw_transcript_text=raw_text,
             maxim_runtime=maxim_runtime,
+            context=self._build_context(),
+            modality="vision" if source == "vision" else "text",
         )
 
         self._recent_percepts.append(percept)
@@ -319,6 +335,8 @@ class PerceptionAgent(Agent):
             hard_override=None,
             raw_transcript_text=None,
             maxim_runtime=None,
+            context=self._build_context(),
+            modality="vision",
         )
 
         self._recent_percepts.append(percept)
@@ -367,6 +385,8 @@ class PerceptionAgent(Agent):
             hard_override=None,
             raw_transcript_text=None,
             maxim_runtime=None,
+            context=self._build_context(),
+            modality="vision",
         )
 
         self._recent_percepts.append(percept)
