@@ -161,6 +161,36 @@
             <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
             <td class="py-3">5 god-modules decomposed: agent_loop, orchestrator, cli, router, lane_backends. 7 new focused files extracted (~1,120 LOC moved). 125 new tests. All import paths preserved.</td>
           </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Foundations F0.1&ndash;F0.8</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">NAc save/load, PerceptContext typed schema, agent_id threading, PerceptTraceBuffer, tier enforcement, SensoryTag population, Percept factory consolidation. Prereqs for substrate work.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Reaction Abstraction Ph1&ndash;4</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Percept/Reaction dual-surface architecture. ReactionBus with refractory periods, producer protocols, typed Percept factories, runtime unification. Phase 5 folded into substrate P2.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Simulator Upgrades S1&ndash;S4</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">FixtureDrivenOrchestrator (S1), LLMBackend Protocol + MockLLMBackend (S2), subprocess persistence harness (S3), deterministic seeding with <code class="bg-slate-950 px-1 rounded text-xs">--seed</code> (S4). 72 tests.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Substrate P0 Pilot</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Baseline pinned at 78.5% collapse (mpnet@0.50). 55 clusters, 155 sentences, 3 difficulty tiers. Fixtures validated in the 60&ndash;85% well-calibrated range. P1 sanity floor = 73.5%.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Substrate B1 + P1 Recognition</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">LinguisticEncoder, EC pattern completion with centroid update, ATL modality-tagged nodes, PromptAssembler. 91.7% &plusmn; 2.9% collapse with <code class="bg-slate-950 px-1 rounded text-xs">paraphrase-mpnet-base-v2</code> @ 0.40. 100% persistence round-trip. 92.5pp degenerate gap.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Substrate P2 Reward Modulation</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">In Progress</span></td>
+            <td class="py-3">NAc per-node reward bias, eligibility traces, EC threshold modulation, CausalLink.percept_refs. Core mechanism merged. Validation sweep + SEM pain cascade PoC remaining.</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -170,7 +200,7 @@
   <section class="space-y-4">
     <h2 id="recently-shipped" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What We Just Shipped</h2>
 
-    <p class="text-slate-300 leading-relaxed">The most recent completions were <span class="text-indigo-400 font-semibold">DM MVP</span> (bundled SEM characters, cascade DAG, ChooseTool, 4 campaigns) and <span class="text-indigo-400 font-semibold">Bio-System Wiring Hardening</span> (percept abstraction, pipeline correctness, energy&rarr;NAc metabolic cost learning, decision_rationale provenance). With those done, all 14 major initiatives have shipped&mdash;the full cognitive stack is exercised end-to-end through narrative campaigns.</p>
+    <p class="text-slate-300 leading-relaxed">The most recent completions were <span class="text-indigo-400 font-semibold">Substrate P1 Recognition</span> (91.7% paraphrase collapse with centroid-updated pattern completion, validated across 10 seeds) and all prerequisite waves: <span class="text-indigo-400 font-semibold">Foundations F0.1&ndash;F0.8</span>, <span class="text-indigo-400 font-semibold">Reaction Abstraction Phases 1&ndash;4</span>, <span class="text-indigo-400 font-semibold">Simulator Upgrades S1&ndash;S4</span>, and <span class="text-indigo-400 font-semibold">P0 Baseline Pilot</span>. The substrate recognition pipeline is live: text percepts flow through LinguisticEncoder &rarr; EC pattern completion &rarr; ATL modality-tagged nodes. P2 reward modulation core is merged and ready for validation.</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
@@ -224,28 +254,28 @@
   <section class="space-y-4">
     <h2 id="next-up" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Next Up</h2>
 
-    <p class="text-slate-300 leading-relaxed">With the foundational buildout, API surface hardening, and module compartmentalization complete, these are the current priorities.</p>
+    <p class="text-slate-300 leading-relaxed">The path to 1.0 runs through the substrate plan. P1 recognition is complete. P2 reward modulation is next, followed by binding and persistence.</p>
 
     <div class="space-y-3">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">1</span>
         <div>
-          <h3 class="text-white font-semibold">PyPI Publication <span class="text-slate-500 font-normal text-sm">(pymaxim v1.0.0)</span></h3>
-          <p class="text-slate-300 text-sm leading-relaxed">All blockers resolved. Wheel built and validated. Module compartmentalization shipped (7 new focused files). 3,500+ tests passing. Ready for <code class="bg-slate-950 px-1 rounded text-xs">twine upload</code>.</p>
+          <h3 class="text-white font-semibold">P2 Reward Modulation Validation <span class="text-slate-500 font-normal text-sm">(~430 LOC remaining)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Core mechanism merged (NAc reward bias, eligibility traces, EC threshold modulation). Remaining: P2 metric extractor, reward-annotated fixtures, SEM pain cascade PoC (sword durability &rarr; pain &rarr; avoidance learning), validation sweep across 10 seeds.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">2</span>
         <div>
-          <h3 class="text-white font-semibold">Mother Maxim MVP <span class="text-slate-500 font-normal text-sm">(~500 LOC)</span></h3>
-          <p class="text-slate-300 text-sm leading-relaxed">A persistent, public Maxim instance that accumulates collective memory. Runs on the RTX 5080 leader behind Cloudflare tunnel. Her own bio-stack (Hippocampus, NAc, ATL), not a passive database. JSON persistence initially, PostgreSQL + pgvector later.</p>
+          <h3 class="text-white font-semibold">Substrate Binding &amp; Persistence <span class="text-slate-500 font-normal text-sm">(~4,100 LOC)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">P3a episode binding through P8 sleep replay. Includes the 1.0-gating P4 cross-modal head-to-head vs OpenCLIP, persistence round-trip certification, and minimum-viable sleep replay. Blocked on P2 validation.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">3</span>
         <div>
-          <h3 class="text-white font-semibold">Pecking Order Graph <span class="text-slate-500 font-normal text-sm">(~1,200 LOC)</span></h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Unified topology for all Maxim instances: a rooted directed graph with domain-scoped pecking relations (authority, compute, memory, knowledge, embodiment). Mother Maxim as root. Subsumes Capability Agent, Mesh Phase 0a/0b, Multi-Node Admin. Includes location-aware routing via SpatialContext.</p>
+          <h3 class="text-white font-semibold">Text-to-Prompt Migration Phases 2&ndash;4 <span class="text-slate-500 font-normal text-sm">(parallel)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Phase 1 (dual-write behind flag) is shipped. Next: shadow read (PromptAssembler reads from MemorySummary alongside legacy), cutover (substrate path authoritative), legacy removal. Can run in parallel with P2/P3.</p>
         </div>
       </div>
     </div>

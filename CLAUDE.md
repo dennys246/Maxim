@@ -188,13 +188,15 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Tools | `tools/` (register in registry), `runtime/executor.py` (aliases) |
 | LLM routing | `models/language/router.py`, `models/language/config.py` (profiles), `models/language/json_parser.py` (JSON repair) |
 | Memory | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/store.py` (protocols), `memory/percept_trace_buffer.py` (τ-decay ring buffer) |
-| Causal learning | `decisions/nac.py` |
-| Percept schema | `agents/percept_context.py` (PerceptContext), `agents/percept_factory.py` (factories), `agents/modality.py` (SensoryTag) |
+| Causal learning | `decisions/nac.py` (reward bias, eligibility traces), `decisions/causal_link.py` (CausalLink, percept_refs) |
+| Substrate encoding | `similarity/encoder.py` (LinguisticEncoder), `similarity/ec.py` (pattern_complete_or_separate, centroid update) |
+| Prompt composition | `prompts/assembler.py` (PromptAssembler, MemorySummary), `agents/prompt_builder.py` (legacy) |
+| Percept schema | `agents/percept_context.py` (PerceptContext), `agents/percept_factory.py` (factories), `agents/modality.py` (SensoryTag, SubstrateModality) |
 | Reactions | `reactions/types.py` (Reaction, ReactionContext, TraceSnapshot), `reactions/bus.py` (ReactionBus), `reactions/protocols.py` (PerceptProducer, ReactionProducer) |
 | Cross-layer wiring | `integration/memory_hub.py` (single coordinator) |
 | Persistence | `utils/atomic_io.py`, `utils/paths.py` (data path resolution) |
 | Simulation | `simulation/orchestrator.py`, `simulation/bridge.py`, `simulation/fixture_orchestrator.py`, `simulation/personas.py` |
-| Substrate test infra | `models/language/backend_protocol.py` (S2), `utils/seeding.py` (S4), `tests/substrate/` (S2+S3) |
+| Substrate test infra | `models/language/backend_protocol.py` (S2), `utils/seeding.py` (S4), `tests/substrate/` (S2+S3+P1 metrics) |
 | Generative campaigns | `simulation/arcs.py`, `simulation/narrator.py`, `simulation/generative_runner.py` |
 | DM campaigns | `simulation/dm_schema.py`, `simulation/dm_runtime.py` |
 | Benchmarks | `simulation/benchmark.py`, `simulation/validation.py` |
@@ -325,8 +327,8 @@ See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current 
 
 **Gating 1.0** (three focused substrate plans, split from the master plan):
 - [substrate_p0_pilot.md](docs/plans/substrate_p0_pilot.md) — **COMPLETE** (2026-04-12). Baseline pinned at 78.5%. Results: [docs/experiments/p0_baseline_sweep.md](docs/experiments/p0_baseline_sweep.md).
-- [substrate_recognition.md](docs/plans/substrate_recognition.md) — **next up.** B1 PromptAssembler + P1 recognition + P2 reward modulation. ~2,230 LOC. 0.3-pre → 0.3-minimum.
-- [substrate_binding_persistence.md](docs/plans/substrate_binding_persistence.md) — P3a–P8 + B3-B5. Includes 1.0-gating P4 cross-modal head-to-head. ~4,100 LOC. 0.3-target → 0.5.
+- [substrate_recognition.md](docs/plans/substrate_recognition.md) — **in progress.** B1+P1 **SHIPPED** (2026-04-12): 91.7% collapse with paraphrase-mpnet@0.40 + centroid update. P2 core merged, P2 validation remaining. Results: [docs/experiments/p1_recognition_sweep.md](docs/experiments/p1_recognition_sweep.md). 0.3-pre → 0.3-minimum.
+- [substrate_binding_persistence.md](docs/plans/substrate_binding_persistence.md) — blocked on recognition P2. P3a–P8 + B3-B5. Includes 1.0-gating P4 cross-modal head-to-head. ~4,100 LOC. 0.3-target → 0.5.
 
 **Living practice docs (paired with substrate_plan):**
 - [behavioral_convergence_practice.md](docs/plans/behavioral_convergence_practice.md) — does the agent actually get better across sessions? Living doc, not a gate.

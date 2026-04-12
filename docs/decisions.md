@@ -279,6 +279,58 @@ Clear with: `maxim --clear-memory nac`
 
 ---
 
+## Reward-Modulated Recognition (P2)
+
+NAc now modulates substrate recognition via per-node reward biases. When a Reaction (positive or negative) fires, NAc credits recently-active ATL nodes and adjusts EC's pattern completion threshold for those nodes.
+
+### Per-node reward bias
+
+```python
+# Credit a node after a positive reaction
+nac.credit_node(agent_id="agent-1", node_id="atl-node-abc", reward=1.0)
+
+# Check current bias
+bias = nac.reward_bias("agent-1", "atl-node-abc")
+
+# Get EC threshold overrides for pattern completion
+overrides = nac.get_threshold_overrides("agent-1")
+# → {"atl-node-abc": 0.25}  (base 0.40 - bias)
+```
+
+### Eligibility traces
+
+When a percept completes to a node, NAc tracks that activation. When a reward arrives, all eligible nodes receive credit proportional to their activation strength.
+
+```python
+# Automatic — called by LinguisticEncoder on pattern completion
+nac.update_eligibility("agent-1", "node-abc", activation=0.85)
+
+# When reward arrives, distribute to all eligible nodes
+credited = nac.distribute_reward("agent-1", reward=1.0)
+# → [("node-abc", 0.6), ("node-def", 0.4)]
+```
+
+### Decay
+
+Reward biases and eligibility traces decay over time to prevent runaway recognition widening.
+
+```python
+nac.decay_reward_biases()  # Exponential decay with tau from config
+nac.decay_eligibility(factor=0.9)  # Per-tick decay
+```
+
+### Configuration
+
+```python
+config = NACConfig(
+    reward_bias_alpha=0.15,      # How much each reward strengthens bias
+    reward_bias_decay_tau=50.0,  # Decay timescale (ticks)
+    max_reward_bias=0.20,        # Cap on threshold reduction
+)
+```
+
+---
+
 ## Biological Inspiration
 
 | Biological | Maxim Equivalent |
@@ -288,5 +340,7 @@ Clear with: `maxim --clear-memory nac`
 | Temporal difference | Rescorla-Wagner learning |
 | Reward prediction | predict() method |
 | Behavioral inhibition | FearAgent gating |
+| Reward-modulated plasticity | Per-node reward bias (P2) |
+| Eligibility traces | Activation-weighted credit assignment (P2) |
 
 The goal is proactive, experience-based decision making that learns from consequences rather than requiring explicit programming of every scenario.
