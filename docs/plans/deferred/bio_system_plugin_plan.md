@@ -16,7 +16,7 @@ But **it's only valuable if those contributors exist.** For a single-developer r
 
 ### Phase 1 — `BioSystem` Protocol (already done by the time you read this)
 
-Defined as part of substrate_plan's incremental contracts layer. See [../substrate_plan.md](../substrate_plan.md) "Contracts layer" section. The Protocol captures: `name`, `depends_on: list[str]`, `save`, `load`, `snapshot`, `on_percept`, `on_tick`, plus whatever else the real bio-systems actually expose by the time this plan revives.
+Defined as part of substrate_plan's incremental contracts layer. See [../archive/substrate_plan.md](../archive/substrate_plan.md) "Contracts layer" section. The Protocol captures: `name`, `depends_on: list[str]`, `save`, `load`, `snapshot`, `on_percept`, `on_tick`, plus whatever else the real bio-systems actually expose by the time this plan revives.
 
 If the Protocol didn't land incrementally (because substrate phase work didn't need all of it), reviving this plan starts with finishing the Protocol definition. That's ~50 LOC of reverse-engineering from the existing bio-systems (ATL, Hippocampus, NAc, SCN, PerceptTraceBuffer).
 
@@ -91,7 +91,7 @@ Speculative abstraction is the enemy of simple plans. This one stays in `deferre
 
 ## Relationship to other plans
 
-- **[../substrate_plan.md](../substrate_plan.md)** — provides the `BioSystem` Protocol via the contracts layer. Without it, this plan starts with a larger Phase 0.
+- **[../archive/substrate_plan.md](../archive/substrate_plan.md)** — provides the `BioSystem` Protocol via the contracts layer. Without it, this plan starts with a larger Phase 0.
 - **[../foundations_plan.md](../foundations_plan.md)** — F0.5 (agent_id threading), F0.2 (PerceptTraceBuffer as a shared resource), and F0.6 (factory consolidation) are all load-bearing for the plugin system because they establish per-agent isolation patterns that plugins need to respect. Without them, a plugin system would inherit silent multi-agent bugs.
 - **robot plugin discovery (existing)** — this plan copies the pattern from `maxim.robots`. If that pattern changes substantially before this plan revives, re-read the robot plugin code first and adjust.
 

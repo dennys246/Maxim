@@ -2,7 +2,7 @@
 
 **Status:** Living document. Kicks in once P8 ships in 0.5. Not a gated phase; refines the mechanism P8 puts in place.
 **Kin:** [tool_refinement_plan.md](tool_refinement_plan.md), [behavioral_convergence_practice.md](behavioral_convergence_practice.md).
-**Related:** [substrate_plan.md](substrate_plan.md) P8 (the minimum-viable sleep replay mechanism this doc extends).
+**Related:** [substrate_binding_persistence.md](substrate_binding_persistence.md) P8 (the minimum-viable sleep replay mechanism this doc extends). Master reference: [archive/substrate_plan.md](archive/substrate_plan.md).
 
 ## What this document is for
 
@@ -68,7 +68,7 @@ A variant earns a promotion into the default P8 mechanism (and possibly back int
 3. It is at most modestly more complex than the default. Complexity-for-marginal-gain is rejected here as sharply as in the substrate plan.
 4. It has been running as a tracked entry in this doc for at least one version cycle.
 
-A promotion triggers a PR to substrate_plan.md updating P8's minimum mechanism and this doc's "current default" section. The old default stays in this doc as an archived entry.
+A promotion triggers a PR to substrate_binding_persistence.md updating P8's minimum mechanism and this doc's "current default" section. The old default stays in this doc as an archived entry.
 
 ## Current default (starts with P8's minimum)
 
