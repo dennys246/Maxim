@@ -513,26 +513,39 @@ class PainTriggerLayer:
 
         if self._pain_bus is not None:
             try:
-                from maxim.agents.bus import Percept
+                import time as _time
 
-                pain_percept = Percept(
-                    timestamp=__import__("time").time(),
-                    source="proprioception",
-                    content="pain_signal",
-                    salience=sf.pain_intensity,
-                    novelty=0.7,
-                    metadata={
-                        "pain_type": sf.pain_type,
-                        "intensity": sf.pain_intensity,
-                        "source_path": path,
-                        "operation": operation,
-                        "description": sf.description,
-                        "scenario_tag": f"sensitive_file_{operation}",
-                    },
+                from maxim.decisions.causal_link import Valence
+                from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
+
+                reaction = Reaction(
+                    kind="pain",
+                    intensity=sf.pain_intensity,
+                    valence=Valence.NEGATIVE,
+                    timestamp=_time.time(),
+                    source=f"sandbox:{sf.pain_type}",
+                    context=ReactionContext(
+                        bindings={"entity_path": TraceSnapshot(percept_id=path)},
+                    ),
                 )
-                from maxim.proprioception.pain_bus import route_pain_percept
+                # Publish via the underlying ReactionBus when available,
+                # fall back to PainBus wrapper for legacy wiring.
+                bus = getattr(self._pain_bus, "reaction_bus", None)
+                if bus is not None:
+                    bus.publish(reaction)
+                else:
+                    from maxim.proprioception.pain import PainSignal, PainType
 
-                route_pain_percept(pain_percept, self._pain_bus)
+                    self._pain_bus.publish(
+                        PainSignal(
+                            pain_type=PainType(sf.pain_type)
+                            if sf.pain_type in PainType.__members__.values()
+                            else PainType.EXTERNAL_SIGNAL,
+                            intensity=sf.pain_intensity,
+                            timestamp=_time.time(),
+                            context={"entity_path": path, "operation": operation},
+                        )
+                    )
             except Exception as e:
                 logger.debug("Failed to fire pain signal: %s", e)
 
