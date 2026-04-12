@@ -21,6 +21,16 @@ from maxim.agents.modality import SensoryModality, SensoryTag
 from maxim.agents.percept_context import PerceptContext
 
 
+def _log_percept(source: str, content: str | None, modality: str) -> None:
+    """Best-effort sim_percept call. No-op outside simulation context."""
+    try:
+        from maxim.simulation.sim_logger import sim_percept
+
+        sim_percept(source, (content or "")[:80], modality=modality)
+    except Exception:
+        pass
+
+
 def make_text_percept(
     text: str,
     *,
@@ -49,6 +59,7 @@ def make_text_percept(
     )
     if sensory is None:
         sensory = SensoryTag(modality=SensoryModality.NARRATIVE)
+    _log_percept(source, text, "text")
     return Percept(
         timestamp=ts,
         source=source,
@@ -79,6 +90,7 @@ def make_scene_percept(
     )
     if sensory is None:
         sensory = SensoryTag(modality=SensoryModality.NARRATIVE)
+    _log_percept("narrative", scene_text, "text")
     return Percept(
         timestamp=ts,
         source="narrative",
@@ -111,6 +123,7 @@ def make_intero_percept(
     )
     if sensory is None:
         sensory = SensoryTag(modality=SensoryModality.INTEROCEPTION)
+    _log_percept(source, content, "intero")
     return Percept(
         timestamp=ts,
         source=source,
