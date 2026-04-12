@@ -27,6 +27,9 @@ src/maxim/simulation/
     sandbox.py                 # SandboxEnvironment ABC + TmpdirSandbox + DockerSandbox + PainTriggerLayer
     container_runner.py        # ContainerRunner Protocol + LocalDockerRunner + image catalog
 
+    # Fixture-Driven Testing (S1 — simulator_upgrades_plan)
+    fixture_orchestrator.py    # FixtureDrivenOrchestrator — YAML fixtures without narrator LLM
+
     # Generative Campaign System
     arcs.py                    # NarrativeArc, NarrativePhase, BUILTIN_ARCS, load_arc_yaml
     narrator.py                # Two-call narrator (decision + generation), single-call fallback
@@ -53,7 +56,84 @@ src/maxim/simulation/
 src/maxim/runtime/
     fear_gate.py               # FearGatedExecutor (independent of DefaultNetwork)
     sim_adapter.py             # SimulationAdapter / NullSimulationAdapter (loop isolation)
+
+src/maxim/models/language/
+    backend_protocol.py        # LLMBackend Protocol — formal contract for all backends (S2)
+
+src/maxim/utils/
+    seeding.py                 # seed_all(), get_global_seed(), make_agent_rng() (S4)
+
+tests/substrate/
+    mock_llm.py                # MockLLMBackend — canned/policy/scripted modes (S2)
+    persistence_harness.py     # run_round_trip() — subprocess persistence testing (S3)
+    persistence_child.py       # Child process entry point for round-trip tests (S3)
+    probes.py                  # Probe functions for bio-system state assertions (S3)
+    conftest.py                # persistence_round_trip pytest fixture (S3)
+
+scenarios/substrate/
+    P0_paraphrase_collapse.yaml  # P0 pilot fixture — paraphrase collapse baseline (S1)
 ```
+
+## Fixture-Driven Orchestrator (S1)
+
+`FixtureDrivenOrchestrator` in `fixture_orchestrator.py` runs YAML fixture scenarios through the agent loop without a narrator LLM. This is the primary entry point for substrate phase testing.
+
+```python
+from maxim.simulation.fixture_orchestrator import FixtureDrivenOrchestrator
+
+orch = FixtureDrivenOrchestrator(Path("scenarios/substrate/P0_paraphrase_collapse.yaml"))
+result = orch.run(bridge, hippocampus=h, nac=n, percept_trace_buffer=ptb)
+# result.substrate_metrics contains bio-system state snapshots
+# result.expectation_results contains pass/fail for each YAML expectation
+```
+
+Key features:
+- Reads the same YAML schema as `ScenarioSource` (no new format to learn)
+- Routes percepts through `SimulationBridge.send_and_wait()` for action collection
+- Collects substrate-relevant state at end-of-run: Hippocampus episodes, NAc links, ATL nodes, PerceptTraceBuffer snapshot, ReactionBus history
+- Checks expectations against observed behavior (action_blocked, action_taken, memory_formed, pipeline_continued)
+- Integrated into `campaign_runner.py` as `run_fixture_campaign()` — the fourth dispatch path alongside generative, DM, and pre-campaign
+
+The `SimulationReport.substrate_metrics` field carries fixture results through the existing report pipeline.
+
+## MockLLMBackend (S2)
+
+`MockLLMBackend` in `tests/substrate/mock_llm.py` provides deterministic LLM responses for substrate testing. It implements the `LLMBackend` Protocol (defined in `models/language/backend_protocol.py`) with three response modes:
+
+- **Canned**: returns a fixed string regardless of prompt
+- **Policy**: matches prompt substrings against a response dict (regex-capable)
+- **Scripted**: returns responses in sequence (raises `IndexError` when exhausted)
+
+The mock is NOT registered with the production router. Substrate test code instantiates it directly.
+
+## Substrate Persistence Harness (S3)
+
+`tests/substrate/persistence_harness.py` tests that bio-stack state survives a true serialize → kill → fresh-interpreter → reload cycle. This catches bugs where closures or module-level singletons silently pass in-process tests but fail across process boundaries.
+
+```python
+def test_hippo_round_trip(persistence_round_trip):
+    h = Hippocampus(config=HippocampusConfig())
+    h.store(episode)
+    result = persistence_round_trip(
+        state={"hippocampus": h},
+        probe="tests.substrate.probes:hippocampus_episode_count",
+    )
+    assert result.success
+```
+
+Probes are `"module.path:function_name"` strings — never closures.
+
+## Deterministic Seeding (S4)
+
+`--seed N` on the CLI sets all RNG sources (stdlib random, numpy, torch) from a single integer for reproducible fixture runs. Per-agent RNG streams are derived via SHA-256 mixing to prevent cross-agent correlation.
+
+```bash
+maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42
+```
+
+In code: `from maxim.utils.seeding import seed_all, make_agent_rng`
+
+The hardcoded `np.random.seed(42)` in `similarity/semantic.py` has been replaced with a local `RandomState` derived from the global seed.
 
 ## PerceptSource Protocol
 

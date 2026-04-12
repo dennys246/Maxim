@@ -5,9 +5,8 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## Active (gating 1.0)
 
-Two plans remain before substrate phases start. Foundations wave and reaction abstraction Phases 1–4 are complete (2026-04-11). The sequence is now: simulator_upgrades_plan → P0 pilot → substrate phases.
+One plan remains before substrate phases start. Foundations wave, reaction abstraction Phases 1–4, and simulator upgrades S1–S4 are all complete. The sequence is now: P0 pilot → substrate phases.
 
-- [simulator_upgrades_plan.md](simulator_upgrades_plan.md) — S1–S4 test-harness infrastructure: fixture-driven orchestrator, **LLMBackend Protocol + MockLLMBackend** (Option B — S2 defines the Protocol itself as the first step because no formal protocol exists today), subprocess persistence harness, deterministic seeding CLI. Blocks substrate P0. ~850 LOC across four PRs.
 - [substrate_plan.md](substrate_plan.md) — bio-stack convergence (Track A: P0, P1–P6, P8) + prompt layer (Track B: B1–B5). Includes P0 fixture-difficulty pilot, persistence as cross-phase contract, minimum-viable sleep replay (P8). Phase 5 of the reaction abstraction (NAc structured percept-context access) is folded into substrate P2.
 
 ## Living practice docs (pair with substrate_plan)
@@ -37,11 +36,12 @@ Design work is preserved in [deferred/](deferred/). Each plan has an explicit "r
 
 Completed or superseded plans live in [archive/](archive/).
 
-Recently archived (2026-04-11/12):
+Recently archived (2026-04-11/12, S1–S4 shipped 2026-04-12):
 - [archive/foundations_plan.md](archive/foundations_plan.md) — F0.1–F0.8 all landed. NAc save/load, NarrativeModulator ghost removal, PerceptContext schema, agent_id threading + SCN race fix, PerceptTraceBuffer, tier assertions, SensoryTag population, Percept factory consolidation.
 - [archive/cleanup_wave.md](archive/cleanup_wave.md) — C1–C4 shipped in 0.2.2. `--interactive` fix, dead CLI flags, display defaults, agent permissions.
 - [archive/peer_leader_flexibility_plan.md](archive/peer_leader_flexibility_plan.md) — P1–P9 shipped. Dynamic n_ctx, KV quant, Apple Silicon tiers, auto-download, remote probes, lane decision log.
 - [archive/unified_event_bus_plan.md](archive/unified_event_bus_plan.md) — Scope largely absorbed by reaction_abstraction (ReactionBus, typed protocols, sim_reaction hooks). Remaining AgentBus/LocalMessageBus merge is optional cleanliness.
+- [archive/simulator_upgrades_plan.md](archive/simulator_upgrades_plan.md) — S1–S4 shipped (2026-04-12). FixtureDrivenOrchestrator, LLMBackend Protocol + MockLLMBackend, subprocess persistence harness, deterministic seeding. 72 tests, ~880 LOC.
 
 ## Version path to 1.0
 

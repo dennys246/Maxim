@@ -44,7 +44,10 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/runtime/bio_integration.py` | Bio-system wiring for the agent loop |
 | `src/maxim/runtime/llm_server.py` | Local llama-cpp server lifecycle management |
 | `src/maxim/simulation/sim_types.py` | Shared type definitions for simulation subsystem |
-| `src/maxim/simulation/campaign_runner.py` | Campaign execution engine (generative + DM) |
+| `src/maxim/simulation/campaign_runner.py` | Campaign execution engine (generative + DM + fixture) |
+| `src/maxim/simulation/fixture_orchestrator.py` | FixtureDrivenOrchestrator — YAML fixtures without narrator LLM (S1) |
+| `src/maxim/models/language/backend_protocol.py` | LLMBackend Protocol — formal contract for all backends (S2) |
+| `src/maxim/utils/seeding.py` | Global deterministic seeding + per-agent RNG streams (S4) |
 | `src/maxim/models/language/cloud_dispatch.py` | Cloud provider request routing and redaction |
 | `src/maxim/memory/store.py` | Split persistence protocols: EpisodicStore, CausalStore, SemanticStore |
 | `src/maxim/memory/atl.py` | ATL semantic concept memory (concepts, relationships, grounding) |
