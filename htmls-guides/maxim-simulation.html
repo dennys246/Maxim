@@ -419,10 +419,22 @@ maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml
 # With deterministic seeding for reproducible results
 maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42</div>
 
-    <p class="text-slate-300">Features: no narrator LLM cost, bio-system state snapshots at end-of-run (Hippocampus, NAc, ATL, percept trace buffer), substrate_metrics in session report, automatic expectation checking.</p>
+    <p class="text-slate-300">Features: no narrator LLM cost, bio-system state snapshots at end-of-run (Hippocampus, NAc, ATL, percept trace buffer, EC substrate nodes), substrate_metrics in session report, automatic expectation checking.</p>
 
     <h3 class="text-lg font-semibold text-indigo-400 mt-4">Deterministic Seeding</h3>
     <p class="text-slate-300">The <code class="text-indigo-300">--seed N</code> flag sets all RNG sources (Python random, numpy, torch) from a single integer. Two runs with the same seed and fixture produce identical results. Per-agent RNG streams prevent cross-agent correlation in multi-agent sims.</p>
+
+    <h3 class="text-lg font-semibold text-indigo-400 mt-4">Substrate Recognition Tests (P1)</h3>
+    <p class="text-slate-300">The P1 recognition sweep runs all 155 paraphrase sentences through the substrate pipeline (LinguisticEncoder &rarr; EC pattern completion &rarr; ATL) and measures collapse rate, cross-cluster distinctness, and node stability. Results are recorded in the lab notebook at <code class="text-indigo-300">docs/experiments/</code>.</p>
+
+    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300"><span class="text-slate-500"># Run the official 10-seed P1 gate test</span>
+python -m pytest tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_sweep_10_seeds -v -s
+
+<span class="text-slate-500"># Run all P1 validation (sweep + degenerate control + persistence round-trip)</span>
+python -m pytest tests/substrate/test_p1_recognition.py -v -s -k "degenerate or persistence or sweep_10"
+
+<span class="text-slate-500"># Model comparison across thresholds</span>
+python -m pytest tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_model_comparison -v -s</div>
   </section>
 
   <!-- 3. Running YAML Scenarios -->

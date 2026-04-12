@@ -226,9 +226,47 @@ else:
 | Model loads in <5s | Yes | ✓ (~2-3s) |
 | GPU memory <4GB | Yes | ✓ (~200MB) |
 
+## Substrate Encoding (P1)
+
+The substrate recognition layer adds a parallel encoding path via `LinguisticEncoder` (`similarity/encoder.py`). While Phase 4's `NeuralSemanticLSH` provides semantic search over episodic memories, the substrate encoder handles a different task: **pattern completion** — deciding whether a new percept refers to an existing concept or a novel one.
+
+### Key differences from Phase 4
+
+| | Phase 4 (NeuralSemanticLSH) | Substrate (LinguisticEncoder) |
+|---|---|---|
+| **Purpose** | Semantic search over memories | Pattern completion for concept recognition |
+| **Model** | `all-MiniLM-L6-v2` (default) | `paraphrase-mpnet-base-v2` (paraphrase-trained) |
+| **Output** | Similarity scores for ranking | Binary decision: complete to existing node or create new |
+| **Storage** | EmbeddingStore (flat index) | EC substrate nodes (centroid-updated) |
+| **Consumer** | `ec.find_semantic(query)` | `ec.pattern_complete_or_separate(embedding, modality)` |
+
+### Model selection rationale
+
+The P1 recognition sweep ([experiments/p1_recognition_sweep.md](experiments/p1_recognition_sweep.md)) compared three models:
+
+| Model | Best collapse | Cross-cluster |
+|---|---|---|
+| all-mpnet-base-v2 | 84.1% | 1.7% |
+| paraphrase-MiniLM-L6-v2 | 86.0% | 5.0% |
+| **paraphrase-mpnet-base-v2** | **93.5%** | **3.3%** |
+
+`paraphrase-mpnet-base-v2` was selected because it was explicitly trained on paraphrase detection — the exact task the substrate encoder performs. The centroid update mechanism (running mean of member embeddings) gained an additional +4.7pp.
+
+### Centroid update
+
+Unlike Phase 4's static embeddings, substrate nodes maintain a running centroid. When a new embedding pattern-completes to an existing node, the node's stored embedding updates:
+
+```
+new_centroid = (old_centroid × n + new_embedding) / (n + 1)
+```
+
+This shifts the node's "center of gravity" so subsequent paraphrases are more likely to match, even if they're lexically distant from the original anchor sentence.
+
 ## Future Improvements
 
 1. **Batch embedding**: Embed multiple memories in one forward pass
 2. **Incremental indexing**: Add to LSH without full rebuild
 3. **Model fine-tuning**: Custom model for robotics domain
 4. **Quantization**: INT8 embeddings for memory reduction
+5. **Cross-encoder re-ranking**: Use cross-encoder for hard paraphrase pairs (P1 swap point #4)
+6. **Adaptive per-node threshold**: Each node tracks its own variance (P2 swap point #2)

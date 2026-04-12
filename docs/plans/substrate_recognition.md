@@ -1,38 +1,48 @@
 # Substrate Recognition — B1 + P1 + P2
 
-**Status:** Active — P0 pilot COMPLETE (2026-04-12), this plan is next
+**Status:** Active — B1+P1 **SHIPPED** (2026-04-12), P2 core merged, P2 validation remaining
 **Scope:** ~2,500 LOC across three phases + text-to-prompt migration
 **Target version:** 0.3-pre (B1+P1 combined) through 0.3-minimum (P2)
 **Blocks:** substrate_binding_persistence.md (P3a onward)
 **Master reference:** [archive/substrate_plan.md](archive/substrate_plan.md) for full rationale, baselines, statistical hygiene
+**P1 results:** [experiments/p1_recognition_sweep.md](../experiments/p1_recognition_sweep.md) — 91.7% ± 2.9% collapse, paraphrase-mpnet@0.40 + centroid update
 
 ## Goal
 
 Text flows through the substrate and learning modulates it. Specifically: text percepts get encoded, recognized by EC, stored in modality-tagged ATL nodes, and NAc reward bias sharpens recognition of behaviorally relevant stimuli.
 
-## Current state (verified 2026-04-12)
+## Current state (updated 2026-04-12)
 
-**Shipped and available:**
-- PerceptContext typed schema (F0.4) — channel, sender, agent_id, scn_tag
-- Percept factories (F0.6) — `make_text_percept`, `make_scene_percept`, `make_intero_percept`
-- PerceptTraceBuffer (F0.2) — `record()`, `tick()`, `snapshot()` with τ-decay
-- SensoryTag + SensoryModality enum (F0.8) — SIGHT, SOUND, TOUCH, SMELL, INTEROCEPTION, NARRATIVE, ABSTRACT
-- agent_id threading (F0.5) — per-agent isolation
-- Tier enforcement (F0.7) — `TierTransitionError`
-- ReactionBus (Phase 2a) — publish/subscribe with refractory periods, PainBus wrapper
-- FixtureDrivenOrchestrator (S1) — `substrate_metrics` collection
-- MockLLMBackend (S2) — canned/policy/scripted modes
-- Persistence harness (S3) — subprocess round-trip with probes
-- Deterministic seeding (S4) — `--seed` + per-agent RNG
+**Prereqs (shipped before this plan):**
+- PerceptContext typed schema (F0.4), Percept factories (F0.6), PerceptTraceBuffer (F0.2)
+- SensoryTag + SensoryModality enum (F0.8), agent_id threading (F0.5), Tier enforcement (F0.7)
+- ReactionBus (Phase 2a), FixtureDrivenOrchestrator (S1), MockLLMBackend (S2)
+- Persistence harness (S3), Deterministic seeding (S4)
 
-**Critical gaps (what this plan builds):**
-- `Percept` has NO `embedding` field (only `WorkingMemoryEntry` does)
-- NO `LinguisticEncoder` — text flows directly from `transcript_chunk` to `prompt_builder.py`
-- EC has NO `pattern_complete_or_separate()` — pure LSH wrapper today
-- ATL has NO modality-tagged nodes — no tag-filtered queries, no edge enforcement
-- NAc has NO per-node reward bias — no `(agent_id, node_id)` keyed bias, no eligibility traces
-- NO `Modality` enum for substrate routing — `SensoryModality` exists but with a different taxonomy (biological senses vs TEXT/VISION)
-- `PromptAssembler` does not exist — prompt construction is scattered across 4 locations
+**B1 + P1 — SHIPPED (2026-04-12):**
+- `Percept.embedding` + `substrate_node_id` fields — `agents/bus.py`
+- `LinguisticEncoder` — `similarity/encoder.py` (paraphrase-mpnet-base-v2, fallback bag-of-words for tests)
+- `EC.pattern_complete_or_separate()` with centroid update — `similarity/ec.py`
+- ATL modality-tagged nodes + `activate_substrate_node()` + `get_by_modality()` — `memory/atl.py`
+- `SubstrateModality` derivation from `SensoryTag` — `agents/modality.py`
+- `PromptAssembler` + `MemorySummary` + `SubstrateNode` — `prompts/assembler.py`
+- Dual-write wired behind `MAXIM_SUBSTRATE_PATH=1` (Phase 1 of text-to-prompt migration)
+- P1 metric extractor — `tests/substrate/p1_metrics.py`
+- conftest autouse scrub for `MAXIM_SUBSTRATE_PATH` env var
+
+**P2 core — MERGED (2026-04-12):**
+- NAc per-node reward bias keyed by `(agent_id, node_id)` — `decisions/nac.py`
+- NAc eligibility traces + `distribute_reward()` + `decay_reward_biases()`
+- EC threshold formula wired: `threshold = base - bias` via `get_threshold_overrides()`
+- `CausalLink.percept_refs: tuple[TraceSnapshot, ...]` — Phase 5 of reaction abstraction
+- NAc save/load persists reward biases
+
+**P2 remaining (what needs to ship for this plan to close):**
+- P2 metric extractor plugin (~100 LOC)
+- Reward-annotated fixtures (extend paraphrase_clusters.yaml with reward events)
+- SEM pain cascade PoC (~230 LOC)
+- P2 validation sweep + lab notebook entry
+- Text-to-prompt migration Phases 2-4 (shadow read → cutover → legacy removal)
 
 ## Modality taxonomy reconciliation
 

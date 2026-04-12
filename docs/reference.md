@@ -34,7 +34,8 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/integration/` | MemoryHub cross-system coordinator (11 bio-systems) |
 | `src/maxim/decisions/` | NAc causal learning, adaptive planner |
 | `src/maxim/time/` | SCN temporal rhythm indexing |
-| `src/maxim/similarity/` | Entorhinal Cortex similarity matching |
+| `src/maxim/similarity/` | Entorhinal Cortex (pattern completion, centroid update) + LinguisticEncoder (P1) |
+| `src/maxim/prompts/` | PromptAssembler (B1), MemorySummary, prompt profiles |
 | `src/maxim/math/` | Angular Gyrus mathematical cognition, IPS fast stats |
 | `src/maxim/default_network/` | Reactive behavior layer (thalamic gate, arbiter) |
 | `src/maxim/salience/` | Novelty tracking, interest matching |
@@ -72,7 +73,7 @@ Maxim uses neuroscience-inspired names. Here is the translation:
 | ATL | Semantic memory | `memory/` | Extracts concepts, categories, and generalizations |
 | NAc | Reward / causal learning | `decisions/` | Learns cause-and-effect relationships ("what leads to what") |
 | SCN | Internal clock | `time/` | Tracks circadian-like temporal patterns and rhythms |
-| EC | Memory indexing | `similarity/` | Routes queries to the right memory store via similarity |
+| EC | Memory indexing + substrate recognition | `similarity/` | Routes queries via similarity; pattern_complete_or_separate for substrate nodes (P1) |
 | Angular Gyrus | Cross-modal algebra | `math/` | Combines memories across different modalities |
 | Cerebellum | Motor prediction | `embodiment/` | Predicts outcomes of physical actions, learns motor programs |
 | Amygdala / Fear | Threat detection | `proprioception/` | Detects harm, triggers pain signals, gates risky actions |
