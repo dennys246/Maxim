@@ -1,0 +1,969 @@
+# Substrate P0 — Research-Grade Paraphrase Cluster Fixtures
+#
+# 55 clusters, 2-3 paraphrases each (155 sentences total).
+# 60/40 train/holdout split: split=train or split=holdout in metadata.
+# Ground truth: cluster field in metadata identifies the referent.
+#
+# Design criteria:
+#   - Lexically different but semantically equivalent within clusters
+#   - Near-miss distractors that share vocabulary across clusters
+#   - Difficulty gradient: easy (obvious rewordings) to hard (requires
+#     understanding intent, not just word overlap)
+#   - Topics: daily life, science, technology, emotions, spatial,
+#     temporal, abstract concepts, commands/requests
+#
+# Scoring: a baseline that clusters by surface similarity (cosine on
+# sentence embeddings) should get 60-85%. Below 60% = fixtures too hard.
+# Above 85% = fixtures too easy for substrate testing.
+
+name: paraphrase_clusters_v1
+description: |
+  Research-grade paraphrase cluster fixtures for substrate P0 pilot.
+  55 clusters × 2-3 paraphrases = 155 sentences. Used to calibrate
+  fixture difficulty before P1 implementation begins.
+
+timing: step_based
+
+percepts:
+  # ══════════════════════════════════════════════════════════════════
+  # EASY TIER — obvious rewordings, high lexical overlap
+  # Baseline should nail these (>95%)
+  # ══════════════════════════════════════════════════════════════════
+
+  # Cluster 1: greeting
+  - at: 0
+    source: cli
+    cli_input: "Hello, how are you doing today?"
+    salience: 0.5
+    novelty: 0.5
+    metadata: { cluster: greeting, split: train, difficulty: easy }
+  - at: 1
+    source: cli
+    cli_input: "Hi there, how are you today?"
+    salience: 0.5
+    novelty: 0.3
+    metadata: { cluster: greeting, split: train, difficulty: easy }
+  - at: 2
+    source: cli
+    cli_input: "Hey, how's it going today?"
+    salience: 0.5
+    novelty: 0.2
+    metadata: { cluster: greeting, split: holdout, difficulty: easy }
+
+  # Cluster 2: weather_nice
+  - at: 3
+    source: cli
+    cli_input: "The weather is really nice and sunny today."
+    salience: 0.5
+    novelty: 0.5
+    metadata: { cluster: weather_nice, split: train, difficulty: easy }
+  - at: 4
+    source: cli
+    cli_input: "It's a beautiful sunny day outside right now."
+    salience: 0.5
+    novelty: 0.3
+    metadata: { cluster: weather_nice, split: train, difficulty: easy }
+  - at: 5
+    source: cli
+    cli_input: "What gorgeous weather we're having, so sunny."
+    salience: 0.5
+    novelty: 0.2
+    metadata: { cluster: weather_nice, split: holdout, difficulty: easy }
+
+  # Cluster 3: weather_bad (near-miss distractor for weather_nice)
+  - at: 6
+    source: cli
+    cli_input: "The weather is terrible, it won't stop raining."
+    salience: 0.5
+    novelty: 0.5
+    metadata: { cluster: weather_bad, split: train, difficulty: easy }
+  - at: 7
+    source: cli
+    cli_input: "What awful weather today, constant rain and wind."
+    salience: 0.5
+    novelty: 0.3
+    metadata: { cluster: weather_bad, split: holdout, difficulty: easy }
+
+  # Cluster 4: time_question
+  - at: 8
+    source: cli
+    cli_input: "What time is it right now?"
+    salience: 0.5
+    novelty: 0.5
+    metadata: { cluster: time_question, split: train, difficulty: easy }
+  - at: 9
+    source: cli
+    cli_input: "Can you tell me the current time?"
+    salience: 0.5
+    novelty: 0.3
+    metadata: { cluster: time_question, split: train, difficulty: easy }
+  - at: 10
+    source: cli
+    cli_input: "Do you know what time it is?"
+    salience: 0.5
+    novelty: 0.2
+    metadata: { cluster: time_question, split: holdout, difficulty: easy }
+
+  # Cluster 5: hungry
+  - at: 11
+    source: cli
+    cli_input: "I'm really hungry, I need to eat something."
+    salience: 0.6
+    novelty: 0.5
+    metadata: { cluster: hungry, split: train, difficulty: easy }
+  - at: 12
+    source: cli
+    cli_input: "I'm starving, let's get some food."
+    salience: 0.6
+    novelty: 0.3
+    metadata: { cluster: hungry, split: train, difficulty: easy }
+  - at: 13
+    source: cli
+    cli_input: "I could really use a meal right now, so hungry."
+    salience: 0.6
+    novelty: 0.2
+    metadata: { cluster: hungry, split: holdout, difficulty: easy }
+
+  # Cluster 6: tired
+  - at: 14
+    source: cli
+    cli_input: "I'm so tired, I need to get some sleep."
+    salience: 0.6
+    novelty: 0.5
+    metadata: { cluster: tired, split: train, difficulty: easy }
+  - at: 15
+    source: cli
+    cli_input: "I'm exhausted, I should go to bed soon."
+    salience: 0.6
+    novelty: 0.3
+    metadata: { cluster: tired, split: holdout, difficulty: easy }
+
+  # Cluster 7: thank_you
+  - at: 16
+    source: cli
+    cli_input: "Thank you so much for your help!"
+    salience: 0.5
+    novelty: 0.5
+    metadata: { cluster: thank_you, split: train, difficulty: easy }
+  - at: 17
+    source: cli
+    cli_input: "Thanks a lot, I really appreciate it!"
+    salience: 0.5
+    novelty: 0.3
+    metadata: { cluster: thank_you, split: train, difficulty: easy }
+  - at: 18
+    source: cli
+    cli_input: "I'm grateful for your assistance, thank you!"
+    salience: 0.5
+    novelty: 0.2
+    metadata: { cluster: thank_you, split: holdout, difficulty: easy }
+
+  # Cluster 8: goodbye
+  - at: 19
+    source: cli
+    cli_input: "Goodbye, see you later!"
+    salience: 0.5
+    novelty: 0.5
+    metadata: { cluster: goodbye, split: train, difficulty: easy }
+  - at: 20
+    source: cli
+    cli_input: "Bye for now, talk to you soon!"
+    salience: 0.5
+    novelty: 0.3
+    metadata: { cluster: goodbye, split: holdout, difficulty: easy }
+
+  # Cluster 9: apology
+  - at: 21
+    source: cli
+    cli_input: "I'm sorry about that, it was my mistake."
+    salience: 0.6
+    novelty: 0.5
+    metadata: { cluster: apology, split: train, difficulty: easy }
+  - at: 22
+    source: cli
+    cli_input: "My apologies, I shouldn't have done that."
+    salience: 0.6
+    novelty: 0.3
+    metadata: { cluster: apology, split: train, difficulty: easy }
+  - at: 23
+    source: cli
+    cli_input: "Sorry about that, it was my fault entirely."
+    salience: 0.6
+    novelty: 0.2
+    metadata: { cluster: apology, split: holdout, difficulty: easy }
+
+  # Cluster 10: agreement
+  - at: 24
+    source: cli
+    cli_input: "Yes, I completely agree with you on that."
+    salience: 0.5
+    novelty: 0.5
+    metadata: { cluster: agreement, split: train, difficulty: easy }
+  - at: 25
+    source: cli
+    cli_input: "Absolutely, you're totally right about that."
+    salience: 0.5
+    novelty: 0.3
+    metadata: { cluster: agreement, split: holdout, difficulty: easy }
+
+  # ══════════════════════════════════════════════════════════════════
+  # MEDIUM TIER — semantic equivalence with less lexical overlap
+  # Baseline should get 60-80% here
+  # ══════════════════════════════════════════════════════════════════
+
+  # Cluster 11: request_delete_files
+  - at: 26
+    source: cli
+    cli_input: "Please remove all the temporary files from the system."
+    salience: 0.8
+    novelty: 0.6
+    metadata: { cluster: request_delete_files, split: train, difficulty: medium }
+  - at: 27
+    source: cli
+    cli_input: "Clean up the temp directory by deleting everything in it."
+    salience: 0.8
+    novelty: 0.4
+    metadata: { cluster: request_delete_files, split: train, difficulty: medium }
+  - at: 28
+    source: cli
+    cli_input: "Get rid of all the cached temporary data on disk."
+    salience: 0.8
+    novelty: 0.3
+    metadata: { cluster: request_delete_files, split: holdout, difficulty: medium }
+
+  # Cluster 12: request_list_files (near-miss for delete_files)
+  - at: 29
+    source: cli
+    cli_input: "Show me what temporary files exist on the system."
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: request_list_files, split: train, difficulty: medium }
+  - at: 30
+    source: cli
+    cli_input: "List everything in the temp directory for me."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: request_list_files, split: holdout, difficulty: medium }
+
+  # Cluster 13: robot_pick_up
+  - at: 31
+    source: cli
+    cli_input: "Can you pick up that cup from the table?"
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: robot_pick_up, split: train, difficulty: medium }
+  - at: 32
+    source: cli
+    cli_input: "Grab the mug sitting on the desk please."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: robot_pick_up, split: train, difficulty: medium }
+  - at: 33
+    source: cli
+    cli_input: "Lift that drinking vessel off the counter."
+    salience: 0.7
+    novelty: 0.3
+    metadata: { cluster: robot_pick_up, split: holdout, difficulty: medium }
+
+  # Cluster 14: robot_put_down (near-miss for pick_up)
+  - at: 34
+    source: cli
+    cli_input: "Put the cup back down on the table."
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: robot_put_down, split: train, difficulty: medium }
+  - at: 35
+    source: cli
+    cli_input: "Set that mug down on the desk please."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: robot_put_down, split: holdout, difficulty: medium }
+
+  # Cluster 15: explain_gravity
+  - at: 36
+    source: cli
+    cli_input: "Can you explain how gravity works?"
+    salience: 0.7
+    novelty: 0.7
+    metadata: { cluster: explain_gravity, split: train, difficulty: medium }
+  - at: 37
+    source: cli
+    cli_input: "Tell me about the force that pulls objects toward Earth."
+    salience: 0.7
+    novelty: 0.5
+    metadata: { cluster: explain_gravity, split: train, difficulty: medium }
+  - at: 38
+    source: cli
+    cli_input: "What makes things fall down instead of floating away?"
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: explain_gravity, split: holdout, difficulty: medium }
+
+  # Cluster 16: explain_magnetism (near-miss for gravity)
+  - at: 39
+    source: cli
+    cli_input: "Can you explain how magnets attract and repel?"
+    salience: 0.7
+    novelty: 0.7
+    metadata: { cluster: explain_magnetism, split: train, difficulty: medium }
+  - at: 40
+    source: cli
+    cli_input: "What creates the invisible force between magnetic objects?"
+    salience: 0.7
+    novelty: 0.5
+    metadata: { cluster: explain_magnetism, split: holdout, difficulty: medium }
+
+  # Cluster 17: emotional_happy
+  - at: 41
+    source: cli
+    cli_input: "I just got promoted at work and I'm thrilled!"
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: emotional_happy, split: train, difficulty: medium }
+  - at: 42
+    source: cli
+    cli_input: "Great news — they gave me a raise and new title!"
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: emotional_happy, split: train, difficulty: medium }
+  - at: 43
+    source: cli
+    cli_input: "My career just took a huge step forward, so excited!"
+    salience: 0.7
+    novelty: 0.3
+    metadata: { cluster: emotional_happy, split: holdout, difficulty: medium }
+
+  # Cluster 18: emotional_sad
+  - at: 44
+    source: cli
+    cli_input: "I lost my job today and I feel devastated."
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: emotional_sad, split: train, difficulty: medium }
+  - at: 45
+    source: cli
+    cli_input: "They let me go from work, I'm really upset about it."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: emotional_sad, split: holdout, difficulty: medium }
+
+  # Cluster 19: location_kitchen
+  - at: 46
+    source: cli
+    cli_input: "I'm standing in the kitchen near the stove."
+    salience: 0.6
+    novelty: 0.6
+    metadata: { cluster: location_kitchen, split: train, difficulty: medium }
+  - at: 47
+    source: cli
+    cli_input: "I'm in the cooking area by the oven and countertop."
+    salience: 0.6
+    novelty: 0.4
+    metadata: { cluster: location_kitchen, split: train, difficulty: medium }
+  - at: 48
+    source: cli
+    cli_input: "Currently positioned in the room where meals are prepared."
+    salience: 0.6
+    novelty: 0.3
+    metadata: { cluster: location_kitchen, split: holdout, difficulty: medium }
+
+  # Cluster 20: location_bedroom (near-miss for kitchen)
+  - at: 49
+    source: cli
+    cli_input: "I'm in the bedroom lying on the bed."
+    salience: 0.6
+    novelty: 0.6
+    metadata: { cluster: location_bedroom, split: train, difficulty: medium }
+  - at: 50
+    source: cli
+    cli_input: "I'm in the sleeping quarters resting on the mattress."
+    salience: 0.6
+    novelty: 0.4
+    metadata: { cluster: location_bedroom, split: holdout, difficulty: medium }
+
+  # Cluster 21: code_bug_report
+  - at: 51
+    source: cli
+    cli_input: "The application crashes when I click the submit button."
+    salience: 0.8
+    novelty: 0.6
+    metadata: { cluster: code_bug_report, split: train, difficulty: medium }
+  - at: 52
+    source: cli
+    cli_input: "There's a fatal error triggered by pressing submit."
+    salience: 0.8
+    novelty: 0.4
+    metadata: { cluster: code_bug_report, split: train, difficulty: medium }
+  - at: 53
+    source: cli
+    cli_input: "Hitting the send form button causes the program to die."
+    salience: 0.8
+    novelty: 0.3
+    metadata: { cluster: code_bug_report, split: holdout, difficulty: medium }
+
+  # Cluster 22: code_feature_request (near-miss for bug_report)
+  - at: 54
+    source: cli
+    cli_input: "The submit button should also save a draft automatically."
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: code_feature_request, split: train, difficulty: medium }
+  - at: 55
+    source: cli
+    cli_input: "It would be great if pressing send also preserved a copy."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: code_feature_request, split: holdout, difficulty: medium }
+
+  # Cluster 23: safety_warning
+  - at: 56
+    source: cli
+    cli_input: "Be careful, the floor is wet and slippery."
+    salience: 0.9
+    novelty: 0.7
+    metadata: { cluster: safety_warning, split: train, difficulty: medium }
+  - at: 57
+    source: cli
+    cli_input: "Watch your step, there's water on the ground."
+    salience: 0.9
+    novelty: 0.5
+    metadata: { cluster: safety_warning, split: train, difficulty: medium }
+  - at: 58
+    source: cli
+    cli_input: "The surface underfoot is dangerously slick right now."
+    salience: 0.9
+    novelty: 0.4
+    metadata: { cluster: safety_warning, split: holdout, difficulty: medium }
+
+  # Cluster 24: permission_request
+  - at: 59
+    source: cli
+    cli_input: "May I access your personal files to help debug this?"
+    salience: 0.8
+    novelty: 0.7
+    metadata: { cluster: permission_request, split: train, difficulty: medium }
+  - at: 60
+    source: cli
+    cli_input: "Would it be okay if I looked at your private documents?"
+    salience: 0.8
+    novelty: 0.5
+    metadata: { cluster: permission_request, split: holdout, difficulty: medium }
+
+  # Cluster 25: denial_response
+  - at: 61
+    source: cli
+    cli_input: "No, you absolutely cannot access those files."
+    salience: 0.8
+    novelty: 0.7
+    metadata: { cluster: denial_response, split: train, difficulty: medium }
+  - at: 62
+    source: cli
+    cli_input: "I refuse to let you look at my private data."
+    salience: 0.8
+    novelty: 0.5
+    metadata: { cluster: denial_response, split: train, difficulty: medium }
+  - at: 63
+    source: cli
+    cli_input: "Absolutely not, those documents are off limits."
+    salience: 0.8
+    novelty: 0.4
+    metadata: { cluster: denial_response, split: holdout, difficulty: medium }
+
+  # Cluster 26: memory_recall_request
+  - at: 64
+    source: cli
+    cli_input: "Do you remember what we talked about yesterday?"
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: memory_recall_request, split: train, difficulty: medium }
+  - at: 65
+    source: cli
+    cli_input: "Can you recall our conversation from the previous session?"
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: memory_recall_request, split: train, difficulty: medium }
+  - at: 66
+    source: cli
+    cli_input: "What did we discuss last time we spoke?"
+    salience: 0.7
+    novelty: 0.3
+    metadata: { cluster: memory_recall_request, split: holdout, difficulty: medium }
+
+  # Cluster 27: schedule_meeting
+  - at: 67
+    source: cli
+    cli_input: "Let's set up a meeting for tomorrow at 3 PM."
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: schedule_meeting, split: train, difficulty: medium }
+  - at: 68
+    source: cli
+    cli_input: "Can we arrange a call tomorrow afternoon at three?"
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: schedule_meeting, split: holdout, difficulty: medium }
+
+  # Cluster 28: cancel_meeting (near-miss for schedule)
+  - at: 69
+    source: cli
+    cli_input: "I need to cancel our meeting tomorrow at 3 PM."
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: cancel_meeting, split: train, difficulty: medium }
+  - at: 70
+    source: cli
+    cli_input: "Please remove the call we had planned for tomorrow afternoon."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: cancel_meeting, split: holdout, difficulty: medium }
+
+  # Cluster 29: cooking_instruction
+  - at: 71
+    source: cli
+    cli_input: "Preheat the oven to 375 degrees and bake for 25 minutes."
+    salience: 0.6
+    novelty: 0.6
+    metadata: { cluster: cooking_instruction, split: train, difficulty: medium }
+  - at: 72
+    source: cli
+    cli_input: "Set the oven to 375°F and cook it for about half an hour."
+    salience: 0.6
+    novelty: 0.4
+    metadata: { cluster: cooking_instruction, split: train, difficulty: medium }
+  - at: 73
+    source: cli
+    cli_input: "Warm the oven to 190 Celsius and let it bake 25 min."
+    salience: 0.6
+    novelty: 0.3
+    metadata: { cluster: cooking_instruction, split: holdout, difficulty: medium }
+
+  # Cluster 30: navigation_left
+  - at: 74
+    source: cli
+    cli_input: "Turn left at the next intersection."
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: navigation_left, split: train, difficulty: medium }
+  - at: 75
+    source: cli
+    cli_input: "Take a left when you reach the upcoming junction."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: navigation_left, split: holdout, difficulty: medium }
+
+  # Cluster 31: navigation_right (near-miss)
+  - at: 76
+    source: cli
+    cli_input: "Turn right at the next intersection."
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: navigation_right, split: train, difficulty: medium }
+  - at: 77
+    source: cli
+    cli_input: "Hang a right when you get to the next junction."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: navigation_right, split: holdout, difficulty: medium }
+
+  # ══════════════════════════════════════════════════════════════════
+  # HARD TIER — requires understanding intent, not surface similarity
+  # Baseline should struggle here (<60%)
+  # ══════════════════════════════════════════════════════════════════
+
+  # Cluster 32: request_help_implicit
+  - at: 78
+    source: cli
+    cli_input: "I can't figure out how to make this work."
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: request_help_implicit, split: train, difficulty: hard }
+  - at: 79
+    source: cli
+    cli_input: "This thing is completely beyond me right now."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: request_help_implicit, split: train, difficulty: hard }
+  - at: 80
+    source: cli
+    cli_input: "I'm stuck and don't know what to do next."
+    salience: 0.7
+    novelty: 0.3
+    metadata: { cluster: request_help_implicit, split: holdout, difficulty: hard }
+
+  # Cluster 33: expressing_capability (near-miss for help request)
+  - at: 81
+    source: cli
+    cli_input: "I figured it out, I can handle this myself."
+    salience: 0.6
+    novelty: 0.6
+    metadata: { cluster: expressing_capability, split: train, difficulty: hard }
+  - at: 82
+    source: cli
+    cli_input: "No worries, I've got this under control now."
+    salience: 0.6
+    novelty: 0.4
+    metadata: { cluster: expressing_capability, split: holdout, difficulty: hard }
+
+  # Cluster 34: sarcastic_compliment
+  - at: 83
+    source: cli
+    cli_input: "Oh great, another brilliant suggestion from the machine."
+    salience: 0.6
+    novelty: 0.7
+    metadata: { cluster: sarcastic_compliment, split: train, difficulty: hard }
+  - at: 84
+    source: cli
+    cli_input: "Wow, what an incredibly helpful response that was."
+    salience: 0.6
+    novelty: 0.5
+    metadata: { cluster: sarcastic_compliment, split: train, difficulty: hard }
+  - at: 85
+    source: cli
+    cli_input: "Thanks for that groundbreaking insight, truly amazing."
+    salience: 0.6
+    novelty: 0.4
+    metadata: { cluster: sarcastic_compliment, split: holdout, difficulty: hard }
+
+  # Cluster 35: genuine_compliment (near-miss for sarcasm)
+  - at: 86
+    source: cli
+    cli_input: "That was actually a really helpful suggestion, thank you."
+    salience: 0.6
+    novelty: 0.6
+    metadata: { cluster: genuine_compliment, split: train, difficulty: hard }
+  - at: 87
+    source: cli
+    cli_input: "I'm impressed, that response was genuinely useful."
+    salience: 0.6
+    novelty: 0.4
+    metadata: { cluster: genuine_compliment, split: holdout, difficulty: hard }
+
+  # Cluster 36: indirect_refusal
+  - at: 88
+    source: cli
+    cli_input: "I don't think that's something I'd be comfortable with."
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: indirect_refusal, split: train, difficulty: hard }
+  - at: 89
+    source: cli
+    cli_input: "That's not really something I want to get into."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: indirect_refusal, split: train, difficulty: hard }
+  - at: 90
+    source: cli
+    cli_input: "I'd prefer if we didn't go down that path."
+    salience: 0.7
+    novelty: 0.3
+    metadata: { cluster: indirect_refusal, split: holdout, difficulty: hard }
+
+  # Cluster 37: urgency_real
+  - at: 91
+    source: cli
+    cli_input: "This needs to happen right now, it's an emergency."
+    salience: 0.9
+    novelty: 0.7
+    metadata: { cluster: urgency_real, split: train, difficulty: hard }
+  - at: 92
+    source: cli
+    cli_input: "Drop everything else, this is critical and time-sensitive."
+    salience: 0.9
+    novelty: 0.5
+    metadata: { cluster: urgency_real, split: holdout, difficulty: hard }
+
+  # Cluster 38: urgency_fake (near-miss — same tone, different intent)
+  - at: 93
+    source: cli
+    cli_input: "I need this done immediately! Well, actually whenever you can."
+    salience: 0.7
+    novelty: 0.7
+    metadata: { cluster: urgency_fake, split: train, difficulty: hard }
+  - at: 94
+    source: cli
+    cli_input: "Super urgent! Just kidding, no rush at all really."
+    salience: 0.7
+    novelty: 0.5
+    metadata: { cluster: urgency_fake, split: holdout, difficulty: hard }
+
+  # Cluster 39: describe_pain_physical
+  - at: 95
+    source: cli
+    cli_input: "There's a sharp stabbing pain in my lower back."
+    salience: 0.8
+    novelty: 0.7
+    metadata: { cluster: describe_pain_physical, split: train, difficulty: hard }
+  - at: 96
+    source: cli
+    cli_input: "My lumbar region has an intense piercing discomfort."
+    salience: 0.8
+    novelty: 0.5
+    metadata: { cluster: describe_pain_physical, split: train, difficulty: hard }
+  - at: 97
+    source: cli
+    cli_input: "Something feels terribly wrong with my spine area, acute pain."
+    salience: 0.8
+    novelty: 0.4
+    metadata: { cluster: describe_pain_physical, split: holdout, difficulty: hard }
+
+  # Cluster 40: describe_pain_emotional (near-miss for physical pain)
+  - at: 98
+    source: cli
+    cli_input: "The breakup hit me hard, it feels like a knife in my chest."
+    salience: 0.8
+    novelty: 0.7
+    metadata: { cluster: describe_pain_emotional, split: train, difficulty: hard }
+  - at: 99
+    source: cli
+    cli_input: "Losing that relationship left a wound that won't heal."
+    salience: 0.8
+    novelty: 0.5
+    metadata: { cluster: describe_pain_emotional, split: holdout, difficulty: hard }
+
+  # Cluster 41: causal_reasoning
+  - at: 100
+    source: cli
+    cli_input: "If the server goes down, all connected clients lose their session."
+    salience: 0.7
+    novelty: 0.7
+    metadata: { cluster: causal_reasoning, split: train, difficulty: hard }
+  - at: 101
+    source: cli
+    cli_input: "A server crash would result in every user being disconnected."
+    salience: 0.7
+    novelty: 0.5
+    metadata: { cluster: causal_reasoning, split: train, difficulty: hard }
+  - at: 102
+    source: cli
+    cli_input: "When the main machine fails, nobody can stay logged in."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: causal_reasoning, split: holdout, difficulty: hard }
+
+  # Cluster 42: hypothetical_reasoning (near-miss for causal)
+  - at: 103
+    source: cli
+    cli_input: "What would happen if the server went down right now?"
+    salience: 0.7
+    novelty: 0.7
+    metadata: { cluster: hypothetical_reasoning, split: train, difficulty: hard }
+  - at: 104
+    source: cli
+    cli_input: "Imagine the main machine crashes — what's the impact?"
+    salience: 0.7
+    novelty: 0.5
+    metadata: { cluster: hypothetical_reasoning, split: holdout, difficulty: hard }
+
+  # Cluster 43: temporal_past
+  - at: 105
+    source: cli
+    cli_input: "Yesterday I went to the store and bought groceries."
+    salience: 0.5
+    novelty: 0.6
+    metadata: { cluster: temporal_past, split: train, difficulty: hard }
+  - at: 106
+    source: cli
+    cli_input: "I picked up food supplies at the market the other day."
+    salience: 0.5
+    novelty: 0.4
+    metadata: { cluster: temporal_past, split: holdout, difficulty: hard }
+
+  # Cluster 44: temporal_future (near-miss for past)
+  - at: 107
+    source: cli
+    cli_input: "Tomorrow I'm going to the store to buy groceries."
+    salience: 0.5
+    novelty: 0.6
+    metadata: { cluster: temporal_future, split: train, difficulty: hard }
+  - at: 108
+    source: cli
+    cli_input: "I plan to pick up food supplies at the market soon."
+    salience: 0.5
+    novelty: 0.4
+    metadata: { cluster: temporal_future, split: holdout, difficulty: hard }
+
+  # Cluster 45: negation_understanding
+  - at: 109
+    source: cli
+    cli_input: "I don't want you to delete any files."
+    salience: 0.8
+    novelty: 0.7
+    metadata: { cluster: negation_understanding, split: train, difficulty: hard }
+  - at: 110
+    source: cli
+    cli_input: "Under no circumstances should you remove any data."
+    salience: 0.8
+    novelty: 0.5
+    metadata: { cluster: negation_understanding, split: train, difficulty: hard }
+  - at: 111
+    source: cli
+    cli_input: "Do not erase or clean up anything on the filesystem."
+    salience: 0.8
+    novelty: 0.4
+    metadata: { cluster: negation_understanding, split: holdout, difficulty: hard }
+
+  # Cluster 46: affirmation_delete (near-miss — opposite intent, similar words)
+  - at: 112
+    source: cli
+    cli_input: "Yes, go ahead and delete all those files now."
+    salience: 0.8
+    novelty: 0.7
+    metadata: { cluster: affirmation_delete, split: train, difficulty: hard }
+  - at: 113
+    source: cli
+    cli_input: "Please proceed with removing all the data immediately."
+    salience: 0.8
+    novelty: 0.5
+    metadata: { cluster: affirmation_delete, split: holdout, difficulty: hard }
+
+  # Cluster 47: abstract_concept_trust
+  - at: 114
+    source: cli
+    cli_input: "I need to know I can rely on you before I give you more access."
+    salience: 0.7
+    novelty: 0.7
+    metadata: { cluster: abstract_concept_trust, split: train, difficulty: hard }
+  - at: 115
+    source: cli
+    cli_input: "You have to earn my confidence before I expand your permissions."
+    salience: 0.7
+    novelty: 0.5
+    metadata: { cluster: abstract_concept_trust, split: train, difficulty: hard }
+  - at: 116
+    source: cli
+    cli_input: "Prove you're dependable and I'll consider letting you do more."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: abstract_concept_trust, split: holdout, difficulty: hard }
+
+  # Cluster 48: abstract_concept_privacy
+  - at: 117
+    source: cli
+    cli_input: "My personal information should never be shared with anyone."
+    salience: 0.8
+    novelty: 0.7
+    metadata: { cluster: abstract_concept_privacy, split: train, difficulty: hard }
+  - at: 118
+    source: cli
+    cli_input: "Keep my private data confidential and don't expose it."
+    salience: 0.8
+    novelty: 0.5
+    metadata: { cluster: abstract_concept_privacy, split: holdout, difficulty: hard }
+
+  # Cluster 49: tool_use_implicit
+  - at: 119
+    source: cli
+    cli_input: "What's in the current directory?"
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: tool_use_implicit, split: train, difficulty: hard }
+  - at: 120
+    source: cli
+    cli_input: "Show me the contents of wherever we are right now."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: tool_use_implicit, split: train, difficulty: hard }
+  - at: 121
+    source: cli
+    cli_input: "List the files and folders in this working path."
+    salience: 0.7
+    novelty: 0.3
+    metadata: { cluster: tool_use_implicit, split: holdout, difficulty: hard }
+
+  # Cluster 50: tool_use_explicit (near-miss)
+  - at: 122
+    source: cli
+    cli_input: "Run the ls command in the current directory."
+    salience: 0.7
+    novelty: 0.6
+    metadata: { cluster: tool_use_explicit, split: train, difficulty: hard }
+  - at: 123
+    source: cli
+    cli_input: "Execute a directory listing using the bash tool."
+    salience: 0.7
+    novelty: 0.4
+    metadata: { cluster: tool_use_explicit, split: holdout, difficulty: hard }
+
+  # Cluster 51: context_switch_cooking
+  - at: 124
+    source: cli
+    cli_input: "Actually, forget the code, let's talk about making pasta."
+    salience: 0.6
+    novelty: 0.8
+    metadata: { cluster: context_switch_cooking, split: train, difficulty: hard }
+  - at: 125
+    source: cli
+    cli_input: "Change of topic — how do you prepare spaghetti carbonara?"
+    salience: 0.6
+    novelty: 0.6
+    metadata: { cluster: context_switch_cooking, split: holdout, difficulty: hard }
+
+  # Cluster 52: context_switch_code (near-miss)
+  - at: 126
+    source: cli
+    cli_input: "Actually, forget the recipe, let's get back to the code."
+    salience: 0.6
+    novelty: 0.8
+    metadata: { cluster: context_switch_code, split: train, difficulty: hard }
+  - at: 127
+    source: cli
+    cli_input: "Change of topic — let's return to the programming problem."
+    salience: 0.6
+    novelty: 0.6
+    metadata: { cluster: context_switch_code, split: holdout, difficulty: hard }
+
+  # Cluster 53: quantity_large
+  - at: 128
+    source: cli
+    cli_input: "There are thousands of entries in this database table."
+    salience: 0.6
+    novelty: 0.6
+    metadata: { cluster: quantity_large, split: train, difficulty: hard }
+  - at: 129
+    source: cli
+    cli_input: "The dataset has an enormous number of rows to process."
+    salience: 0.6
+    novelty: 0.4
+    metadata: { cluster: quantity_large, split: train, difficulty: hard }
+  - at: 130
+    source: cli
+    cli_input: "We're dealing with a massive volume of records here."
+    salience: 0.6
+    novelty: 0.3
+    metadata: { cluster: quantity_large, split: holdout, difficulty: hard }
+
+  # Cluster 54: quantity_small (near-miss)
+  - at: 131
+    source: cli
+    cli_input: "There are only a handful of entries in this table."
+    salience: 0.6
+    novelty: 0.6
+    metadata: { cluster: quantity_small, split: train, difficulty: hard }
+  - at: 132
+    source: cli
+    cli_input: "The dataset is tiny, just a few rows to look at."
+    salience: 0.6
+    novelty: 0.4
+    metadata: { cluster: quantity_small, split: holdout, difficulty: hard }
+
+  # Cluster 55: meta_reflection
+  - at: 133
+    source: cli
+    cli_input: "Do you ever think about what it means to learn something?"
+    salience: 0.6
+    novelty: 0.8
+    metadata: { cluster: meta_reflection, split: train, difficulty: hard }
+  - at: 134
+    source: cli
+    cli_input: "Have you considered the nature of knowledge acquisition itself?"
+    salience: 0.6
+    novelty: 0.6
+    metadata: { cluster: meta_reflection, split: train, difficulty: hard }
+  - at: 135
+    source: cli
+    cli_input: "What does it actually mean when we say something has been learned?"
+    salience: 0.6
+    novelty: 0.5
+    metadata: { cluster: meta_reflection, split: holdout, difficulty: hard }
+
+expectations: []
