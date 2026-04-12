@@ -960,89 +960,119 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "No extras or packages specified."})
             return
 
-        # Build pip install command
-        pip_args: list[str] = [sys.executable, "-m", "pip", "install"]
-        installed: list[str] = []
+        # ── Input validation — allowlist-only to prevent command injection ──
+        _ALLOWED_EXTRAS = {
+            "semantic",
+            "llm-llama",
+            "llm-server",
+            "llm-torch",
+            "llm-anthropic",
+            "llm-openai",
+            "vision",
+            "audio",
+            "reachy",
+            "comms",
+            "search",
+            "temporal",
+            "training",
+            "tts",
+            "yolo",
+            "database",
+        }
+        # Strict pattern: alphanumeric, hyphens, dots, underscores only.
+        # Rejects shell metacharacters, paths, URLs, version specifiers.
+        _SAFE_PKG_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$")
 
+        for extra in extras:
+            if extra not in _ALLOWED_EXTRAS:
+                self._send_json(
+                    400,
+                    {"error": f"Unknown extra: {extra!r}. Allowed: {sorted(_ALLOWED_EXTRAS)}"},
+                )
+                return
+
+        for pkg in packages:
+            if not _SAFE_PKG_RE.match(pkg):
+                self._send_json(
+                    400,
+                    {"error": f"Invalid package name: {pkg!r}. Only alphanumeric, hyphens, dots, underscores allowed."},
+                )
+                return
+
+        # ── Build pip install commands ────────────────────────────────────
         repo_root = str(Path(__file__).resolve().parents[3])
+        installed: list[str] = []
+        all_pip_output: list[str] = []
 
         # Install extras as pymaxim[extra1,extra2]
         if extras:
             extra_str = ",".join(extras)
-            pip_args.append(f".[{extra_str}]")
+            pip_args = [sys.executable, "-m", "pip", "install", f".[{extra_str}]"]
             installed.extend(f"pymaxim[{e}]" for e in extras)
 
-        # Install raw packages directly
+            logger.info("admin/install: extras [%s] from peer %s", extra_str, self.client_address[0])
+            try:
+                result = subprocess.run(
+                    pip_args,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    cwd=repo_root,
+                )
+            except Exception as e:
+                self._send_json(500, {"error": f"pip install extras failed: {e}"})
+                return
+
+            if result.returncode != 0:
+                self._send_json(
+                    500,
+                    {
+                        "status": "error",
+                        "error": "pip install extras failed",
+                        "pip_stderr": result.stderr[-500:] if result.stderr else "",
+                    },
+                )
+                return
+            if result.stdout:
+                all_pip_output.append(result.stdout[-500:])
+
+        # Install validated raw packages
         if packages:
-            # Only install extras OR raw packages per call, not both in same pip invocation
-            if extras:
-                # Run extras first, then packages separately
-                logger.info("admin/install: installing extras [%s] from peer %s", extra_str, self.client_address[0])
-                try:
-                    result = subprocess.run(
-                        pip_args,
-                        capture_output=True,
-                        text=True,
-                        timeout=300,
-                        cwd=repo_root,
-                    )
-                except Exception as e:
-                    self._send_json(500, {"error": f"pip install extras failed: {e}"})
-                    return
-
-                if result.returncode != 0:
-                    self._send_json(
-                        500,
-                        {
-                            "status": "error",
-                            "error": "pip install extras failed",
-                            "pip_stderr": result.stderr[-500:] if result.stderr else "",
-                        },
-                    )
-                    return
-
-                # Now install raw packages
-                pip_args = [sys.executable, "-m", "pip", "install"] + packages
-            else:
-                pip_args.extend(packages)
+            pip_args = [sys.executable, "-m", "pip", "install"] + packages
             installed.extend(packages)
 
-        logger.info(
-            "admin/install: installing %s from peer %s",
-            installed,
-            self.client_address[0],
-        )
+            logger.info("admin/install: packages %s from peer %s", packages, self.client_address[0])
+            try:
+                result = subprocess.run(
+                    pip_args,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    cwd=repo_root,
+                )
+            except Exception as e:
+                self._send_json(500, {"error": f"pip install packages failed: {e}"})
+                return
 
-        try:
-            result = subprocess.run(
-                pip_args,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                cwd=repo_root,
-            )
-        except Exception as e:
-            self._send_json(500, {"error": f"pip install failed: {e}"})
-            return
+            if result.returncode != 0:
+                self._send_json(
+                    500,
+                    {
+                        "status": "error",
+                        "error": "pip install packages failed",
+                        "pip_stderr": result.stderr[-500:] if result.stderr else "",
+                    },
+                )
+                return
+            if result.stdout:
+                all_pip_output.append(result.stdout[-500:])
 
-        if result.returncode != 0:
-            self._send_json(
-                500,
-                {
-                    "status": "error",
-                    "error": "pip install failed",
-                    "pip_stderr": result.stderr[-500:] if result.stderr else "",
-                },
-            )
-            return
-
-        pip_output = result.stdout[-1000:] if result.stdout else ""
         self._send_json(
             200,
             {
                 "status": "ok",
                 "installed": installed,
-                "pip_output": pip_output,
+                "pip_output": "\n".join(all_pip_output),
             },
         )
 
