@@ -138,6 +138,24 @@ class TestProbeOnce:
             _probe_once(self.URL, "secret-token", 1.0)
         assert any("Authorization" in k and "Bearer secret-token" in v for k, v in captured["headers"].items())
 
+    def test_user_agent_set_for_cloudflare(self):
+        """Cloudflare Bot Fight Mode rejects urllib's default ``Python-urllib/*``
+        User-Agent with HTTP 403 + CF error 1010, even when the Bearer token
+        is valid. Every probe request must set a stable custom User-Agent or
+        the peer silently fails to reach any leader behind a CF tunnel.
+        """
+        captured = {}
+
+        def fake_urlopen(req, timeout=None):
+            captured["headers"] = dict(req.header_items())
+            return _http_response(200)
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            _probe_once(self.URL, None, 1.0)
+        ua_values = [v for k, v in captured["headers"].items() if k.lower() == "user-agent"]
+        assert ua_values, "probe must set a custom User-Agent header"
+        assert ua_values[0] == "maxim-peer/1.0"
+
 
 # ─── probe_llm_server two-attempt retry ─────────────────────────────────────
 

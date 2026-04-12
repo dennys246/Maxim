@@ -176,6 +176,12 @@ def _probe_once(url: str, api_key: str | None, timeout_s: float) -> ProbeResult:
     req = urllib.request.Request(probe_url)
     if api_key:
         req.add_header("Authorization", f"Bearer {api_key}")
+    # Cloudflare Bot Fight Mode rejects urllib's default ``Python-urllib/*``
+    # User-Agent with a 403 + CF error 1010, even with a valid Bearer token.
+    # Every other urllib caller in the codebase already sets this header;
+    # this one got missed, which made leader probes silently fail for any
+    # peer whose leader is behind a Cloudflare tunnel with Bot Fight Mode.
+    req.add_header("User-Agent", "maxim-peer/1.0")
 
     start = time.monotonic()
     try:
@@ -256,7 +262,11 @@ def llm_server_responding_at(url: str, *, timeout_s: float = 1.5) -> bool:
         import urllib.error
         import urllib.request
 
-        with urllib.request.urlopen(probe, timeout=timeout_s) as resp:  # noqa: S310
+        # Cloudflare Bot Fight Mode rejects urllib's default User-Agent; set
+        # a stable identifier so leaders behind Cloudflare tunnels respond.
+        req = urllib.request.Request(probe)
+        req.add_header("User-Agent", "maxim-peer/1.0")
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # noqa: S310
             return resp.status == 200
     except urllib.error.HTTPError as e:
         return e.code == 401  # server reachable, auth-gated

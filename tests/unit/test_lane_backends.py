@@ -518,9 +518,15 @@ class TestLLMServerHealthCheck:
             mock_resp.status = 200
             mock_open.return_value.__enter__.return_value = mock_resp
             assert _llm_server_responding_at("http://127.0.0.1:8100/v1") is True
-            # Verify it probed the /v1/models endpoint
-            called_url = mock_open.call_args[0][0]
+            # Verify it probed the /v1/models endpoint. The call now passes
+            # a urllib.request.Request object (so we can set User-Agent to
+            # bypass Cloudflare Bot Fight Mode), so read .full_url instead.
+            called_arg = mock_open.call_args[0][0]
+            called_url = getattr(called_arg, "full_url", called_arg)
             assert called_url.endswith("/v1/models")
+            # Verify the User-Agent header is set — Cloudflare's Bot Fight
+            # Mode rejects urllib's default ``Python-urllib/*`` UA.
+            assert called_arg.get_header("User-agent") == "maxim-peer/1.0"
 
     def test_dead_url_returns_false(self):
         with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
