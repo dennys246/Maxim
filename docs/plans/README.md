@@ -27,7 +27,6 @@ These accumulate evidence and refinement over time. They are not on the critical
 Design work is preserved in [deferred/](deferred/). Each plan has an explicit "revive when" condition at the top.
 
 - [deferred/bio_system_plugin_plan.md](deferred/bio_system_plugin_plan.md) — plugin discovery for bio-systems (extends the `maxim.robots` pattern). Depends on the `BioSystem` Protocol landing incrementally during substrate work. Revive when external contributors want to add bio-systems or a research collaborator needs substrate A/B testing.
-- [deferred/unified_event_bus_plan.md](deferred/unified_event_bus_plan.md) — consolidate the current five event transports (`LocalMessageBus`, `AgentBus`, `ConversationalSource`, direct cross-layer callbacks, `MemoryHub`) into one typed-topic bus. Protocol defined during substrate contracts-layer work; the 3–5 week refactor is deferred until a concrete trigger (cross-layer debugging pain, observability needs, external contributor friction).
 - [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) — **needs heavy refinement.** Two-agent stimulus pattern: Baby Maxim is the AUT with frozen LLM and evolving substrate; Mother NPC is a separate agent with her own LLM that produces realistic, varied percepts Baby learns from. Interaction is percepts only, zero information leak beyond that surface. Gives behavioral convergence experiments scalable stimulus variety without breaking the "no fine-tuning" research claim. Revive when [behavioral_convergence_practice.md](behavioral_convergence_practice.md) has ≥2 successful experiments + 1 blocked-on-variety. Isolation leak vector list in the plan is a starting point, not a contract — heavy refinement needed at revive time.
 - [deferred/pecking_order_graph_plan.md](deferred/pecking_order_graph_plan.md) — unified hierarchy DAG
 - [deferred/mother_maxim_plan.md](deferred/mother_maxim_plan.md) — persistent collective memory
@@ -38,10 +37,11 @@ Design work is preserved in [deferred/](deferred/). Each plan has an explicit "r
 
 Completed or superseded plans live in [archive/](archive/).
 
-Recently archived (2026-04-11):
+Recently archived (2026-04-11/12):
 - [archive/foundations_plan.md](archive/foundations_plan.md) — F0.1–F0.8 all landed. NAc save/load, NarrativeModulator ghost removal, PerceptContext schema, agent_id threading + SCN race fix, PerceptTraceBuffer, tier assertions, SensoryTag population, Percept factory consolidation.
 - [archive/cleanup_wave.md](archive/cleanup_wave.md) — C1–C4 shipped in 0.2.2. `--interactive` fix, dead CLI flags, display defaults, agent permissions.
 - [archive/peer_leader_flexibility_plan.md](archive/peer_leader_flexibility_plan.md) — P1–P9 shipped. Dynamic n_ctx, KV quant, Apple Silicon tiers, auto-download, remote probes, lane decision log.
+- [archive/unified_event_bus_plan.md](archive/unified_event_bus_plan.md) — Scope largely absorbed by reaction_abstraction (ReactionBus, typed protocols, sim_reaction hooks). Remaining AgentBus/LocalMessageBus merge is optional cleanliness.
 
 ## Version path to 1.0
 
