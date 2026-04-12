@@ -29,7 +29,8 @@ import logging
 import time
 from typing import Any
 
-from maxim.proprioception.pain import PainSignal, PainType
+from maxim.decisions.causal_link import Valence
+from maxim.proprioception.pain import PainType
 from maxim.proprioception.perceived_pain import (
     DEFAULT_SENSITIVE_PRIORS,
     SensitivePathPrior,
@@ -108,33 +109,37 @@ class PainInterceptorExecutor:
             return result
 
         path_list = [a.path for a in accesses]
-        signal = PainSignal(
-            pain_type=PainType.EXTERNAL_SIGNAL,
+        from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
+
+        now = time.time()
+        reaction = Reaction(
+            kind="pain",
             intensity=round(best_intensity, 3),
-            timestamp=time.time(),
-            context={
-                "kind": "consequence",
-                "tool_name": tool_name,
-                "operation": best_access.operation if best_access else "unknown",
-                "paths": path_list,
-                "prior_path": best_prior.path,
-                "prior_reason": best_prior.reason,
-            },
+            valence=Valence.NEGATIVE,
+            timestamp=now,
+            source=f"pain_interceptor:{PainType.EXTERNAL_SIGNAL.value}",
+            context=ReactionContext(
+                bindings={
+                    "paths": TraceSnapshot(percept_id=",".join(path_list[:5])),
+                }
+                if path_list
+                else {},
+            ),
         )
         self._events.append(
             {
-                "timestamp": signal.timestamp,
+                "timestamp": now,
                 "tool_name": tool_name,
-                "intensity": signal.intensity,
+                "intensity": reaction.intensity,
                 "paths": path_list,
             }
         )
 
         if self._pain_bus is not None:
             try:
-                self._pain_bus.publish(signal)
+                self._pain_bus.reaction_bus.publish(reaction)
             except Exception as e:
-                logger.debug("PainBus publish failed: %s", e)
+                logger.debug("ReactionBus publish failed: %s", e)
 
         # Sim-visibility trace.
         try:

@@ -152,27 +152,27 @@ class Embodiment:
         failure: FailureMode,
         readings: dict[str, float],
     ) -> None:
-        """Publish a PainSignal for an embodiment failure."""
+        """Publish a Reaction(kind="pain") for an embodiment failure."""
         if not self.config.enable_pain or self._pain_bus is None:
             return
 
         try:
-            from maxim.proprioception.pain import PainSignal, PainType
+            from maxim.decisions.causal_link import Valence
+            from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
 
-            signal = PainSignal(
-                pain_type=PainType.EXTERNAL_SIGNAL,
+            reaction = Reaction(
+                kind="pain",
                 intensity=failure.pain_intensity,
+                valence=Valence.NEGATIVE,
                 timestamp=time.time(),
-                context={
-                    "source": "embodiment",
-                    "entity": entity.full_path,
-                    "entity_type": entity.entity_type,
-                    "failure_mode": failure.name,
-                    "composes": failure.composes,
-                    "sensor_readings": readings,
-                },
+                source="embodiment:external_signal",
+                context=ReactionContext(
+                    bindings={
+                        "entity_path": TraceSnapshot(percept_id=entity.full_path),
+                    },
+                ),
             )
-            self._pain_bus.publish(signal)
+            self._pain_bus.reaction_bus.publish(reaction)
             log.debug(
                 "Pain published: %s on %s (%.2f)",
                 failure.name,
@@ -180,7 +180,7 @@ class Embodiment:
                 failure.pain_intensity,
             )
         except ImportError:
-            log.warning("PainBus not available — pain signal dropped")
+            log.warning("ReactionBus not available — pain signal dropped")
 
     # -- vital metric drift -------------------------------------------------
 
