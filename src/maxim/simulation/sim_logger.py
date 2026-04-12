@@ -517,6 +517,15 @@ def sim_debug(subsystem: str, action: str, **kwargs: Any) -> None:
     sim_log(subsystem, action, kwargs if kwargs else None, _force_debug=True)
 
 
+def sim_reaction(kind: str, intensity: float, source: str, **kwargs: Any) -> None:
+    """Log a Reaction from the ReactionBus.
+
+    Generalizes sim_pain for all reaction kinds. Replaces the sim_pain
+    call lost when route_pain_percept was deleted in Phase 2a.
+    """
+    sim_log("REACTION", f"{kind} (intensity={intensity:.2f}) from {source}", kwargs if kwargs else None)
+
+
 def sim_pain(pain_type: str, intensity: float, **kwargs: Any) -> None:
     """Log a pain signal."""
     sim_log("PAIN", f"{pain_type} (intensity={intensity:.2f})", kwargs if kwargs else None)

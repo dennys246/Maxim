@@ -26,6 +26,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _sim_log_reaction(reaction: "Reaction") -> None:
+    """Best-effort sim_reaction call for the simulation display."""
+    try:
+        from maxim.simulation.sim_logger import sim_reaction
+
+        sim_reaction(reaction.kind, reaction.intensity, reaction.source)
+    except Exception:
+        pass
+
+
 class PainBus:
     """Backward-compatible wrapper around ReactionBus.
 
@@ -39,6 +49,10 @@ class PainBus:
             history_size=history_size,
             refractory_overrides={"pain": 0.5},
         )
+        # Wire sim_logger so the simulation display shows reaction events.
+        # Replaces the sim_pain() call lost when route_pain_percept was
+        # deleted in Phase 2a.
+        self.reaction_bus.subscribe_all(_sim_log_reaction)
 
     def subscribe(self, callback: Callable[[PainSignal], None]) -> None:
         def _adapter(reaction: "Reaction") -> None:
