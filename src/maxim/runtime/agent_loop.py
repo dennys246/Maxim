@@ -730,13 +730,18 @@ def run_agentic_loop(
                         has_keyword = bool(
                             cli_input and ("maxim" in str(cli_input).lower() or "reachy" in str(cli_input).lower())
                         )
-                    percept = Percept(
-                        timestamp=time.time(),
+                    from maxim.agents.modality import SensoryModality, SensoryTag
+                    from maxim.agents.percept_factory import make_text_percept
+
+                    _obs_text = cli_input or transcript or ""
+                    percept = make_text_percept(
+                        str(_obs_text),
                         source=observation.get("source", "observation"),
-                        transcript_chunk=transcript,
-                        cli_input=cli_input,
-                        has_maxim_keyword=has_keyword,
+                        sensory=SensoryTag(modality=SensoryModality.ABSTRACT, submodality="observation"),
                     )
+                    percept.transcript_chunk = transcript
+                    percept.cli_input = cli_input
+                    percept.has_maxim_keyword = has_keyword
                 elif isinstance(observation, Percept):
                     percept = observation
 

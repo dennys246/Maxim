@@ -8,11 +8,9 @@ call gateway.send(). Inbound messages are published as Percepts on the bus.
 from __future__ import annotations
 
 import logging
-import time
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.autonomy import check_hard_stop
-from maxim.agents.bus import Percept
 
 # PerceptContext.channel is a Literal; only these values pass. Unknown
 # transports (custom channel adapters) fall back to channel=None on the
@@ -77,27 +75,22 @@ class CommunicationGateway:
         # Typed framing (F0.4). Channel/sender flow through PerceptContext;
         # non-messaging extras (flagged "external" + caller passthrough)
         # stay in the metadata escape hatch.
-        from maxim.agents.percept_context import PerceptContext
+        from maxim.agents.modality import SensoryModality, SensoryTag
+        from maxim.agents.percept_factory import make_text_percept
 
-        ts = time.time()
-        percept_context = PerceptContext(
+        percept = make_text_percept(
+            text,
+            source=f"comms:{channel}",
             channel=channel if channel in _KNOWN_CHANNELS else None,
             sender=sender,
-            timestamp=ts,
-        )
-        percept = Percept(
-            timestamp=ts,
-            source=f"comms:{channel}",
-            content=text,
             salience=0.9,  # Fixed — not from external data
-            hard_override=None,
-            context=percept_context,
-            modality="text",
             metadata={
                 "external": True,
                 **(metadata or {}),
             },
+            sensory=SensoryTag(modality=SensoryModality.NARRATIVE, submodality="comms"),
         )
+        percept.hard_override = None
         # Only allow hard overrides via the existing whitelist
         reason = check_hard_stop(text, None)
         if reason:

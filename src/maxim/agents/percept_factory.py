@@ -17,6 +17,7 @@ import time
 from typing import Any
 
 from maxim.agents.bus import Percept
+from maxim.agents.modality import SensoryModality, SensoryTag
 from maxim.agents.percept_context import PerceptContext
 
 
@@ -30,6 +31,7 @@ def make_text_percept(
     salience: float = 0.5,
     novelty: float = 0.3,
     metadata: dict[str, Any] | None = None,
+    sensory: SensoryTag | None = None,
 ) -> Percept:
     """Create a text-modality Percept with proper context.
 
@@ -45,6 +47,8 @@ def make_text_percept(
         timestamp=ts,
         agent_id=agent_id,
     )
+    if sensory is None:
+        sensory = SensoryTag(modality=SensoryModality.NARRATIVE)
     return Percept(
         timestamp=ts,
         source=source,
@@ -54,6 +58,7 @@ def make_text_percept(
         context=ctx,
         modality="text",
         metadata=metadata,
+        sensory=sensory,
     )
 
 
@@ -63,6 +68,7 @@ def make_scene_percept(
     agent_id: str | None = None,
     salience: float = 0.6,
     metadata: dict[str, Any] | None = None,
+    sensory: SensoryTag | None = None,
 ) -> Percept:
     """Create a narrative/scene Percept for DM campaign encounters."""
     ts = time.time()
@@ -71,6 +77,8 @@ def make_scene_percept(
         timestamp=ts,
         agent_id=agent_id,
     )
+    if sensory is None:
+        sensory = SensoryTag(modality=SensoryModality.NARRATIVE)
     return Percept(
         timestamp=ts,
         source="narrative",
@@ -80,6 +88,7 @@ def make_scene_percept(
         context=ctx,
         modality="text",
         metadata=metadata,
+        sensory=sensory,
     )
 
 
@@ -89,7 +98,9 @@ def make_intero_percept(
     source: str = "embodiment",
     agent_id: str | None = None,
     salience: float = 0.3,
+    novelty: float = 0.2,
     metadata: dict[str, Any] | None = None,
+    sensory: SensoryTag | None = None,
 ) -> Percept:
     """Create an interoceptive Percept (body state, vital metrics)."""
     ts = time.time()
@@ -98,13 +109,16 @@ def make_intero_percept(
         timestamp=ts,
         agent_id=agent_id,
     )
+    if sensory is None:
+        sensory = SensoryTag(modality=SensoryModality.INTEROCEPTION)
     return Percept(
         timestamp=ts,
         source=source,
         content=content,
         salience=salience,
-        novelty=0.2,
+        novelty=novelty,
         context=ctx,
         modality="intero",
         metadata=metadata,
+        sensory=sensory,
     )

@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.agents.base import Agent
 from maxim.agents.bus import AgentBus, Percept
+from maxim.agents.modality import SensoryModality, SensoryTag
 from maxim.agents.percept_context import PerceptContext
 from maxim.utils.structured_logging import log_structured
 
@@ -230,6 +231,11 @@ class PerceptionAgent(Agent):
         elif detections:
             source = "vision"
 
+        is_vision = source == "vision"
+        sensory = SensoryTag(
+            modality=SensoryModality.SIGHT if is_vision else SensoryModality.NARRATIVE,
+            submodality="detection" if is_vision else ("cli" if cli_input else "transcript"),
+        )
         percept = Percept(
             timestamp=time.time(),
             source=source,
@@ -245,7 +251,8 @@ class PerceptionAgent(Agent):
             raw_transcript_text=raw_text,
             maxim_runtime=maxim_runtime,
             context=self._build_context(),
-            modality="vision" if source == "vision" else "text",
+            modality="vision" if is_vision else "text",
+            sensory=sensory,
         )
 
         self._recent_percepts.append(percept)
@@ -321,6 +328,10 @@ class PerceptionAgent(Agent):
 
         source = "vision" if detections else "idle"
 
+        sensory = SensoryTag(
+            modality=SensoryModality.SIGHT,
+            submodality="detection" if detections else "scene",
+        )
         percept = Percept(
             timestamp=captured.timestamp,
             source=source,
@@ -337,6 +348,7 @@ class PerceptionAgent(Agent):
             maxim_runtime=None,
             context=self._build_context(),
             modality="vision",
+            sensory=sensory,
         )
 
         self._recent_percepts.append(percept)
@@ -371,6 +383,10 @@ class PerceptionAgent(Agent):
         novelty = self._compute_novelty(detections)
         source = "vision" if detections else "idle"
 
+        sensory = SensoryTag(
+            modality=SensoryModality.SIGHT,
+            submodality="detection" if detections else "scene",
+        )
         percept = Percept(
             timestamp=captured.timestamp,
             source=source,
@@ -387,6 +403,7 @@ class PerceptionAgent(Agent):
             maxim_runtime=None,
             context=self._build_context(),
             modality="vision",
+            sensory=sensory,
         )
 
         self._recent_percepts.append(percept)

@@ -133,12 +133,12 @@ class PeerChannel(Channel):
             logger.debug("mesh: received message but no bus attached, discarding")
             return
 
-        from maxim.agents.bus import Percept
+        from maxim.agents.modality import SensoryModality, SensoryTag
+        from maxim.agents.percept_factory import make_text_percept
 
-        percept = Percept(
-            timestamp=msg.timestamp,
+        percept = make_text_percept(
+            json.dumps(msg.payload),
             source=f"mesh:{msg.sender}",
-            content=json.dumps(msg.payload),
             salience=0.7,
             metadata={
                 "msg_type": msg.msg_type.name,
@@ -146,6 +146,7 @@ class PeerChannel(Channel):
                 "correlation_id": msg.correlation_id,
                 "external": True,
             },
+            sensory=SensoryTag(modality=SensoryModality.ABSTRACT, submodality="mesh"),
         )
         self._bus.publish(percept)
 
