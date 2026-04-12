@@ -1,0 +1,107 @@
+{
+  "model": "paraphrase-mpnet-base-v2",
+  "threshold": 0.4,
+  "shuffle": true,
+  "centroid_update": true,
+  "seeds": 10,
+  "mean_collapse_rate": 0.9168,
+  "std_collapse_rate": 0.0287,
+  "mean_cross_cluster_rate": 0.0312,
+  "std_cross_cluster_rate": 0.0131,
+  "mean_node_growth": 0.0347,
+  "std_node_growth": 0.0335,
+  "per_seed": [
+    {
+      "seed": 0,
+      "collapse_rate": 0.9065,
+      "cross_cluster_rate": 0.022,
+      "node_growth_final_20pct": 0.0968,
+      "total_nodes": 34,
+      "modality_violations": 0,
+      "passes": true
+    },
+    {
+      "seed": 1,
+      "collapse_rate": 0.9533,
+      "cross_cluster_rate": 0.0594,
+      "node_growth_final_20pct": 0.0,
+      "total_nodes": 31,
+      "modality_violations": 0,
+      "passes": false
+    },
+    {
+      "seed": 2,
+      "collapse_rate": 0.9159,
+      "cross_cluster_rate": 0.0244,
+      "node_growth_final_20pct": 0.0312,
+      "total_nodes": 33,
+      "modality_violations": 0,
+      "passes": true
+    },
+    {
+      "seed": 3,
+      "collapse_rate": 0.8598,
+      "cross_cluster_rate": 0.0186,
+      "node_growth_final_20pct": 0.0857,
+      "total_nodes": 38,
+      "modality_violations": 0,
+      "passes": false
+    },
+    {
+      "seed": 4,
+      "collapse_rate": 0.9346,
+      "cross_cluster_rate": 0.0378,
+      "node_growth_final_20pct": 0.0323,
+      "total_nodes": 32,
+      "modality_violations": 0,
+      "passes": true
+    },
+    {
+      "seed": 5,
+      "collapse_rate": 0.9065,
+      "cross_cluster_rate": 0.0285,
+      "node_growth_final_20pct": 0.0294,
+      "total_nodes": 35,
+      "modality_violations": 0,
+      "passes": true
+    },
+    {
+      "seed": 6,
+      "collapse_rate": 0.9159,
+      "cross_cluster_rate": 0.0424,
+      "node_growth_final_20pct": 0.0357,
+      "total_nodes": 29,
+      "modality_violations": 0,
+      "passes": true
+    },
+    {
+      "seed": 7,
+      "collapse_rate": 0.9439,
+      "cross_cluster_rate": 0.0374,
+      "node_growth_final_20pct": 0.0357,
+      "total_nodes": 29,
+      "modality_violations": 0,
+      "passes": true
+    },
+    {
+      "seed": 8,
+      "collapse_rate": 0.9439,
+      "cross_cluster_rate": 0.0182,
+      "node_growth_final_20pct": 0.0,
+      "total_nodes": 35,
+      "modality_violations": 0,
+      "passes": true
+    },
+    {
+      "seed": 9,
+      "collapse_rate": 0.8879,
+      "cross_cluster_rate": 0.0228,
+      "node_growth_final_20pct": 0.0,
+      "total_nodes": 34,
+      "modality_violations": 0,
+      "passes": false
+    }
+  ],
+  "means_pass": true,
+  "seeds_passing": 7
+}

@@ -68,3 +68,4 @@ Link to `results/<filename>.json` for machine-readable output.
 | Entry | Phase | Date | Status | Decision |
 |---|---|---|---|---|
 | [p0_baseline_sweep.md](p0_baseline_sweep.md) | P0 | 2026-04-12 | recorded | Fixtures well-calibrated (78.5% @ best operating point). Proceed to P1. |
+| [p1_recognition_sweep.md](p1_recognition_sweep.md) | P1 | 2026-04-12 | recorded | All P1 criteria met (91.7% ± 2.9% collapse, 3.1% ± 1.3% cross-cluster, 100% persistence, 92.5pp degenerate gap). Proceed to P2. |
