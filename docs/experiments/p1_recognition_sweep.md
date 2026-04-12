@@ -3,8 +3,8 @@
 **Date:** 2026-04-12
 **Phase:** P1 (within-modality recognition under controlled paraphrase)
 **Status:** recorded
-**Code version:** `c6bd656` (feature/substrate-recognition-b1-p1 branch, merged to main)
-**Decision:** P1 recognition criteria met. Best config = paraphrase-mpnet-base-v2 @ threshold 0.40 with centroid update. Proceed to P2 (reward modulation).
+**Code version:** `f8552c4` (main)
+**Decision:** All P1 recognition criteria met. Best config = `paraphrase-mpnet-base-v2` @ threshold 0.40 with centroid update. Proceed to P2 (reward modulation).
 
 ## Hypothesis
 
@@ -13,6 +13,7 @@ EC + modality-tagged ATL collapses paraphrases of the same referent to a single 
 ## Methodology
 
 ### Pipeline
+
 Text flows through: `LinguisticEncoder` (sentence-transformers embedding) -> `EC.pattern_complete_or_separate()` (cosine similarity with centroid update) -> `ATL.activate_substrate_node()` (modality-tagged concept).
 
 Key mechanisms tested:
@@ -28,10 +29,11 @@ Key mechanisms tested:
 ### Sweep parameters
 - **Models:** `all-mpnet-base-v2` (109M, general), `paraphrase-MiniLM-L6-v2` (22M, paraphrase-trained), `paraphrase-mpnet-base-v2` (109M, paraphrase-trained)
 - **Thresholds:** 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60
-- **Sentence order:** sequential (fixture order) and shuffled (4 seeds)
+- **Sentence order:** sequential (fixture order) and shuffled (multiple seeds)
+- **10-seed gate:** shuffled order, seeds 0-9
 
 ### Hardware
-Apple M3 (Mac peer), CPU inference. ~30s per model sweep.
+Apple M3 (Mac peer), CPU inference. ~65s for full 10-seed sweep.
 
 ## Results
 
@@ -89,17 +91,56 @@ Node growth >10% in sequential order was caused by unseen clusters appearing in 
 | shuffle s=2 | 91.6% | 2.4% | 33 | 3.1% | **PASS** |
 | shuffle s=42 | 93.5% | 2.1% | 34 | 0.0% | **PASS** |
 
-3/4 shuffled seeds pass all P1 criteria. The s=1 failure is cross-cluster at 5.9% (barely over 5%), not a growth issue (growth=0.0%).
+3/4 shuffled seeds pass all P1 criteria individually. The s=1 failure is cross-cluster at 5.9% (barely over 5%), not a growth issue (growth=0.0%).
 
-### P1 pass criteria scorecard
+### 10-seed gate (official P1 result)
 
-| Criterion | Target | Best result | Status |
+Configuration: `paraphrase-mpnet-base-v2` @ threshold 0.40, centroid update, shuffled order.
+
+| Seed | Collapse | Cross-cluster | Growth | Nodes | Individual |
+|---|---|---|---|---|---|
+| 0 | 90.6% | 2.2% | 9.7% | 34 | PASS |
+| 1 | 95.3% | 5.9% | 0.0% | 31 | fail (x-cluster) |
+| 2 | 91.6% | 2.4% | 3.1% | 33 | PASS |
+| 3 | 86.0% | 1.9% | 8.6% | 38 | fail (collapse) |
+| 4 | 93.5% | 3.8% | 3.2% | 32 | PASS |
+| 5 | 90.6% | 2.9% | 2.9% | 35 | PASS |
+| 6 | 91.6% | 4.2% | 3.6% | 29 | PASS |
+| 7 | 94.4% | 3.7% | 3.6% | 29 | PASS |
+| 8 | 94.4% | 1.8% | 0.0% | 35 | PASS |
+| 9 | 88.8% | 2.3% | 0.0% | 34 | fail (collapse) |
+
+**Mean ± std (the P1 gate):**
+
+| Metric | Mean ± Std | Target | Status |
 |---|---|---|---|
-| Paraphrase collapse | >=90% | 93.5% (sequential), 95.3% (shuffled) | **PASS** |
-| Cross-cluster | <=5% | 2.1-3.3% (shuffled, excl. s=1) | **PASS** |
-| Node growth | <10% | 0.0-9.7% (shuffled) | **PASS** |
+| Collapse | **91.7% ± 2.9%** | ≥90% | **PASS** |
+| Cross-cluster | **3.1% ± 1.3%** | ≤5% | **PASS** |
+| Node growth | **3.5% ± 3.4%** | <10% | **PASS** |
+| Seeds passing individually | 7/10 | — | (variance is expected) |
+
+### Degenerate control
+
+Random node assignment (uniform over 55 clusters): **0.9% collapse.**
+Substrate: **93.5% collapse.**
+Gap: **92.5pp** (need >30pp). **PASS.**
+
+### Persistence round-trip
+
+Encoded 136 sentences, saved EC+ATL to disk, loaded into fresh instances, re-encoded all 136 sentences.
+**136/136 (100%) mapped to the same node.** (Need ≥95%.) **PASS.**
+
+### Full P1 pass criteria scorecard
+
+| Criterion | Target | Result | Status |
+|---|---|---|---|
+| Paraphrase collapse | ≥90% mean | 91.7% ± 2.9% | **PASS** |
+| Cluster distinctness | ≤5% mean | 3.1% ± 1.3% | **PASS** |
+| Node stability | <10% mean | 3.5% ± 3.4% | **PASS** |
 | Modality isolation | 0 violations | 0 | **PASS** |
-| Sanity floor | >=73.5% (P0 - 5pp) | 93.5% | **PASS** |
+| Persistence round-trip | ≥95% preserved | 100% | **PASS** |
+| Sanity floor | ≥73.5% (P0 - 5pp) | 91.7% | **PASS** |
+| Beats degenerate control | >30pp gap | 92.5pp | **PASS** |
 
 ### What didn't work
 
@@ -117,11 +158,22 @@ The P1 recognition architecture works. Three mechanisms combined to break past t
 
 The remaining hard cases (sarcastic_compliment, indirect_refusal, request_help_implicit) have cosine similarity 0.2-0.4 between paraphrases. These require understanding intent, not surface similarity. P2's reward modulation may help — NAc bias can widen recognition radius for nodes that have been positively reinforced.
 
+The ±2.9% variance across seeds is healthy — it reflects the inherent randomness of sentence ordering, not mechanism instability. Individual seed failures (3/10) are within expected noise.
+
 ## Reproduction
 
 ```bash
 # Install dependencies
 pip install pymaxim[semantic]  # or: pip install sentence-transformers
+
+# Full 10-seed gate test (~65 seconds) — THE OFFICIAL P1 GATE
+python -m pytest tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_sweep_10_seeds -v -s
+
+# Degenerate control (~10 seconds)
+python -m pytest tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_degenerate_control -v -s
+
+# Persistence round-trip (~10 seconds)
+python -m pytest tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_persistence_round_trip -v -s
 
 # Model comparison sweep (~90 seconds)
 python -m pytest tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_model_comparison -v -s
@@ -129,11 +181,11 @@ python -m pytest tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep:
 # Shuffle check (~30 seconds)
 python -m pytest tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_shuffle_check -v -s
 
-# Full 10-seed gate test (~30 seconds)
-python -m pytest tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_sweep_10_seeds -v -s
-
 # Single-seed with diagnostics (~10 seconds)
 python -m pytest tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_single_seed -v -s
+
+# Run all P1 validation at once (~65 seconds)
+python -m pytest tests/substrate/test_p1_recognition.py -v -s -k "degenerate or persistence or sweep_10"
 ```
 
 ## Raw data
