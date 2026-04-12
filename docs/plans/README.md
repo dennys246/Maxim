@@ -5,11 +5,15 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## Active (gating 1.0)
 
-One plan remains before substrate phases start. Foundations wave, reaction abstraction Phases 1–4, and simulator upgrades S1–S4 are all complete. The sequence is now: P0 pilot → substrate phases.
+Three focused plans remain, split from the master substrate plan. Foundations, reaction abstraction, and simulator upgrades are all complete. The sequence is: P0 pilot → recognition (B1+P1+P2) → binding/persistence (P3a through P8 + B3-B5).
 
-- [substrate_plan.md](substrate_plan.md) — bio-stack convergence (Track A: P0, P1–P6, P8) + prompt layer (Track B: B1–B5). Includes P0 fixture-difficulty pilot, persistence as cross-phase contract, minimum-viable sleep replay (P8). Phase 5 of the reaction abstraction (NAc structured percept-context access) is folded into substrate P2.
+- [substrate_p0_pilot.md](substrate_p0_pilot.md) — **next up.** Fixture-difficulty pilot: author research-grade P1 fixtures, run FAISS+cosine baseline, pin OpenCLIP number for P4. ~350 LOC + ~2.5 days fixture authoring.
+- [substrate_recognition.md](substrate_recognition.md) — B1 PromptAssembler + text-to-prompt migration + P1 within-modality recognition + P2 reward modulation. The highest-risk work (LinguisticEncoder, EC pattern_complete_or_separate). ~2,230 LOC. Targets 0.3-pre through 0.3-minimum.
+- [substrate_binding_persistence.md](substrate_binding_persistence.md) — P3a episode binding through P8 sleep replay + B3-B5 prompt layer. Includes the 1.0-gating P4 cross-modal head-to-head vs OpenCLIP. ~4,100 LOC. Targets 0.3-target through 0.5.
 
-## Living practice docs (pair with substrate_plan)
+The master reference for rationale, baselines, and statistical hygiene is archived at [archive/substrate_plan.md](archive/substrate_plan.md).
+
+## Living practice docs (pair with substrate phases)
 
 These accumulate evidence and refinement over time. They are not on the critical path to 1.0; they exist because the questions they address are scientific/ongoing, not engineering milestones.
 
@@ -41,7 +45,8 @@ Recently archived (2026-04-11/12, S1–S4 shipped 2026-04-12):
 - [archive/peer_leader_flexibility_plan.md](archive/peer_leader_flexibility_plan.md) — P1–P9 shipped. Dynamic n_ctx, KV quant, Apple Silicon tiers, auto-download, remote probes, lane decision log.
 - [archive/unified_event_bus_plan.md](archive/unified_event_bus_plan.md) — Scope largely absorbed by reaction_abstraction (ReactionBus, typed protocols, sim_reaction hooks). Remaining AgentBus/LocalMessageBus merge is optional cleanliness.
 - [archive/simulator_upgrades_plan.md](archive/simulator_upgrades_plan.md) — S1–S4 shipped (2026-04-12). FixtureDrivenOrchestrator, LLMBackend Protocol + MockLLMBackend, subprocess persistence harness, deterministic seeding. 72 tests, ~880 LOC.
-- [archive/reaction_abstraction_plan.md](archive/reaction_abstraction_plan.md) — Phases 1–4 shipped (2026-04-11). Percept/Reaction dual-surface, ReactionBus, producer protocols, factories, runtime unification. Phase 5 (NAc structured access) folds into substrate P2.
+- [archive/reaction_abstraction_plan.md](archive/reaction_abstraction_plan.md) — Phases 1–4 shipped (2026-04-11). Percept/Reaction dual-surface, ReactionBus, producer protocols, factories, runtime unification. Phase 5 folds into substrate P2.
+- [archive/substrate_plan.md](archive/substrate_plan.md) — master substrate reference (superseded by the three focused plans above). Full rationale, baselines, statistical hygiene, and fallback strategies.
 
 ## Version path to 1.0
 
@@ -59,7 +64,7 @@ Track A runs substrate (F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4 
 
 **0.3-minimum vs 0.3-target:** a partial 0.3 can ship as a version bump if the ambitious target slips. Normal re-planning, not failure.
 
-Channels (SMS, email, Slack, narrative speech) are **TEXT modality with context metadata**, not separate modalities. Channel rollout: SMS + narrative in 0.3, email + Slack in 0.4. See [substrate_plan.md](substrate_plan.md) for phase definitions, convergence sims, plausible baselines, negative controls, pass criteria, swap points, and fixture requirements.
+Channels (SMS, email, Slack, narrative speech) are **TEXT modality with context metadata**, not separate modalities. Channel rollout: SMS + narrative in 0.3, email + Slack in 0.4. See [substrate_plan.md](archive/substrate_plan.md) for phase definitions, convergence sims, plausible baselines, negative controls, pass criteria, swap points, and fixture requirements.
 
 ## 1.0 exit criteria
 

@@ -312,15 +312,16 @@ Published to PyPI as `pymaxim` (import name stays `maxim`). 17 verb-based functi
 
 See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current version: v0.2.1 on PyPI as `pymaxim` ([publication guide](docs/publication_guide.md)).
 
-**Recently shipped (2026-04-11):**
-- Foundations wave F0.1–F0.8 — all landed. Archived to [docs/plans/archive/foundations_plan.md](docs/plans/archive/foundations_plan.md).
-- Reaction abstraction Phases 1–4 — Percept/Reaction dual-surface architecture, ReactionBus, producer protocols, factories, runtime unification. Archived to [docs/plans/archive/reaction_abstraction_plan.md](docs/plans/archive/reaction_abstraction_plan.md). Phase 5 folds into substrate P2.
-- Cleanup wave C1–C4 — shipped in 0.2.2. Archived.
-- Peer/leader flexibility P1–P9 — dynamic n_ctx, auto-download, remote probes, lane decision log. Archived.
+**Recently shipped (2026-04-11/12):**
+- Foundations wave F0.1–F0.8 — all landed. Archived.
+- Reaction abstraction Phases 1–4 — Percept/Reaction dual-surface architecture. Archived. Phase 5 folds into substrate P2.
+- Cleanup wave C1–C4, Peer/leader flexibility P1–P9 — all archived.
+- Simulator upgrades S1–S4 **SHIPPED** (2026-04-12). Archived.
 
-**Gating 1.0** (next steps):
-- Simulator upgrades S1–S4 **SHIPPED** (2026-04-12). Archived to [docs/plans/archive/simulator_upgrades_plan.md](docs/plans/archive/simulator_upgrades_plan.md).
-- [substrate_plan.md](docs/plans/substrate_plan.md) — bio-stack convergence (Track A: P0, P1–P6, P8) and prompt layer (Track B: B1–B5). Reaction abstraction Phase 5 (NAc structured percept-context access) folds into P2.
+**Gating 1.0** (three focused substrate plans, split from the master plan):
+- [substrate_p0_pilot.md](docs/plans/substrate_p0_pilot.md) — **next up.** Fixture-difficulty pilot. ~350 LOC + fixture authoring.
+- [substrate_recognition.md](docs/plans/substrate_recognition.md) — B1 PromptAssembler + P1 recognition + P2 reward modulation. ~2,230 LOC. 0.3-pre → 0.3-minimum.
+- [substrate_binding_persistence.md](docs/plans/substrate_binding_persistence.md) — P3a–P8 + B3-B5. Includes 1.0-gating P4 cross-modal head-to-head. ~4,100 LOC. 0.3-target → 0.5.
 
 **Living practice docs (paired with substrate_plan):**
 - [behavioral_convergence_practice.md](docs/plans/behavioral_convergence_practice.md) — does the agent actually get better across sessions? Living doc, not a gate.

@@ -35,8 +35,8 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | Document | Description |
 |----------|-------------|
 | [Semantic Similarity](semantic_similarity_analysis.md) | Phase 4 neural embeddings, NeuralSemanticLSH |
-| Attention (archived) | Vision-centric spatial attention — being rebuilt as part of the [substrate plan](plans/substrate_plan.md) |
-| Salience (archived) | Vision-centric salience — being rebuilt as part of the [substrate plan](plans/substrate_plan.md) |
+| Attention (archived) | Vision-centric spatial attention — being rebuilt as part of the [substrate plans](plans/substrate_recognition.md) |
+| Salience (archived) | Vision-centric salience — being rebuilt as part of the [substrate plans](plans/substrate_recognition.md) |
 
 ### Safety & Learning
 

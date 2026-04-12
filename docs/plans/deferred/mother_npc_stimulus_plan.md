@@ -177,7 +177,7 @@ Phase 3 will reveal leak vectors and failure modes I haven't thought of. Phase 5
 
 ## Cross-plan interactions
 
-- **substrate_plan.md:** Mother doesn't affect any P-phase directly. She's stimulus infrastructure that downstream experiments can optionally use. P1–P8 still run with hand-authored fixtures. B-phases (Track B) might benefit from Mother for blind A/B NPC coherence tests in B3.
+- **substrate plans:** Mother doesn't affect any P-phase directly. She's stimulus infrastructure that downstream experiments can optionally use. P1–P8 still run with hand-authored fixtures. B-phases (Track B) might benefit from Mother for blind A/B NPC coherence tests in B3.
 - **foundations_plan.md F0.4:** percept context schema must forbid Mother-intent back-channel fields. Add to F0.4 documentation when this plan is revived.
 - **foundations_plan.md F0.5:** agent_id threading is load-bearing for Mother+Baby isolation. Already covered.
 - **archive/simulator_upgrades_plan.md S4:** per-agent RNG streams are load-bearing for Mother+Baby isolation. Already noted in S4.
