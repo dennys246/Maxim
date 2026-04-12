@@ -82,6 +82,10 @@ def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
         return _cmd_version(list(argv[1:]))
     if action == "logs":
         return _cmd_logs(list(argv[1:]))
+    if action == "install":
+        return _cmd_install(list(argv[1:]))
+    if action == "deps":
+        return _cmd_deps(list(argv[1:]))
     # Fall through to maxim.doctor.cli for `peer test` (kept in doctor/ because
     # test is a diagnostic, not a configuration subcommand)
     if action == "test":
@@ -108,6 +112,8 @@ def _print_peer_usage() -> None:
     print("  llm <model>     Hot-swap the LLM model on the leader")
     print("  version [url]    Show maxim version on leader (and local)")
     print("  logs [url]       Tail live logs from leader (-f to follow)")
+    print("  install <extras> Install optional extras on leader (e.g., semantic,llm-torch)")
+    print("  deps [url]       Show installed packages on leader")
 
 
 # ─── connect ──────────────────────────────────────────────────────────────
@@ -1065,6 +1071,214 @@ def _cmd_logs(argv: list[str]) -> int:
     except KeyboardInterrupt:
         print("\n  Stopped.")
         return 0
+
+
+# ─── install ─────────────────────────────────────────────────────────────
+
+
+# Extras that map to pymaxim[extra_name] in pyproject.toml
+KNOWN_EXTRAS = {
+    "semantic",
+    "llm-llama",
+    "llm-server",
+    "llm-torch",
+    "llm-anthropic",
+    "llm-openai",
+    "vision",
+    "audio",
+    "reachy",
+    "comms",
+    "search",
+    "temporal",
+    "training",
+    "tts",
+    "yolo",
+    "database",
+}
+
+
+def _cmd_install(argv: list[str]) -> int:
+    """Install optional extras on leader via /v1/admin/install.
+
+    Usage:
+        maxim peer install semantic
+        maxim peer install semantic,llm-torch
+        maxim peer install sentence-transformers   # raw pip package
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    url: str | None = None
+    key: str | None = None
+    packages: list[str] = []
+
+    for arg in argv:
+        if arg.startswith("http"):
+            url = arg
+        elif arg.startswith("--"):
+            pass  # future flags
+        else:
+            # Could be comma-separated extras or raw package names
+            packages.extend(arg.split(","))
+
+    if not packages:
+        print("Usage: maxim peer install <extras_or_packages>", file=sys.stderr)
+        print("  extras: " + ", ".join(sorted(KNOWN_EXTRAS)), file=sys.stderr)
+        print("  Example: maxim peer install semantic", file=sys.stderr)
+        print("  Example: maxim peer install sentence-transformers", file=sys.stderr)
+        return 2
+
+    if url is None:
+        cfg = read_peer_config()
+        if cfg is None:
+            print("No peer config. Run: maxim peer connect <leader-url>", file=sys.stderr)
+            return 1
+        url = cfg.url
+        key = cfg.api_key
+
+    base = url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+
+    # Classify: known extras → "pymaxim[extra]", unknown → raw pip package
+    extras: list[str] = []
+    raw_packages: list[str] = []
+    for pkg in packages:
+        pkg = pkg.strip()
+        if not pkg:
+            continue
+        if pkg in KNOWN_EXTRAS:
+            extras.append(pkg)
+        else:
+            raw_packages.append(pkg)
+
+    body = json.dumps({"extras": extras, "packages": raw_packages}).encode()
+    endpoint = f"{base}/v1/admin/install"
+    req = urllib.request.Request(
+        endpoint,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "User-Agent": "maxim-peer/1.0"},
+    )
+    if key:
+        req.add_header("Authorization", f"Bearer {key}")
+
+    desc_parts = []
+    if extras:
+        desc_parts.append(f"extras: {', '.join(extras)}")
+    if raw_packages:
+        desc_parts.append(f"packages: {', '.join(raw_packages)}")
+    print(f"Installing on leader ({base}): {'; '.join(desc_parts)}...")
+
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        body_text = ""
+        try:
+            body_text = e.read().decode()[:500]
+        except Exception:
+            pass
+        if e.code == 403:
+            print("Install disabled on leader. Set MAXIM_ALLOW_REMOTE_UPDATE=1.", file=sys.stderr)
+        elif e.code == 401:
+            print("Authentication failed. Check API key.", file=sys.stderr)
+        elif e.code == 404:
+            print("Leader does not support remote install (update leader first).", file=sys.stderr)
+        else:
+            print(f"Install failed (HTTP {e.code}): {body_text}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Install failed: {e}", file=sys.stderr)
+        return 1
+
+    status = data.get("status", "unknown")
+    if status == "ok":
+        print("  Installed successfully.")
+        if data.get("pip_output"):
+            for line in data["pip_output"].strip().splitlines()[-5:]:
+                print(f"    {line}")
+        if data.get("installed"):
+            print(f"  Packages: {', '.join(data['installed'])}")
+    else:
+        print(f"  Install failed: {data.get('error', 'unknown error')}", file=sys.stderr)
+        if data.get("pip_stderr"):
+            print(f"  stderr: {data['pip_stderr'][:500]}", file=sys.stderr)
+        return 1
+
+    _clear_probe_cache(url)
+    return 0
+
+
+# ─── deps ────────────────────────────────────────────────────────────────
+
+
+def _cmd_deps(argv: list[str]) -> int:
+    """Show installed packages on leader via /v1/debug/deps."""
+    import json
+    import urllib.error
+    import urllib.request
+
+    url: str | None = None
+    key: str | None = None
+
+    for arg in argv:
+        if arg.startswith("http"):
+            url = arg
+
+    if url is None:
+        cfg = read_peer_config()
+        if cfg is None:
+            print("No peer config. Run: maxim peer connect <leader-url>", file=sys.stderr)
+            return 1
+        url = cfg.url
+        key = cfg.api_key
+
+    base = url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+
+    endpoint = f"{base}/v1/debug/deps"
+    req = urllib.request.Request(
+        endpoint,
+        method="GET",
+        headers={"User-Agent": "maxim-peer/1.0"},
+    )
+    if key:
+        req.add_header("Authorization", f"Bearer {key}")
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            print("Leader does not support deps endpoint (update leader first).", file=sys.stderr)
+        elif e.code == 401:
+            print("Authentication failed.", file=sys.stderr)
+        else:
+            print(f"Failed (HTTP {e.code})", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Failed: {e}", file=sys.stderr)
+        return 1
+
+    packages = data.get("packages", {})
+    extras = data.get("extras", {})
+
+    if extras:
+        print("Installed extras:")
+        for name, installed in sorted(extras.items()):
+            status = "installed" if installed else "not installed"
+            print(f"  [{name}] {status}")
+        print()
+
+    if packages:
+        print("Key packages:")
+        for name, version in sorted(packages.items()):
+            print(f"  {name}=={version}")
+
+    return 0
 
 
 __all__ = ["run_peer_connect_subcommand"]

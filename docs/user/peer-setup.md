@@ -260,3 +260,23 @@ maxim peer update --branch dev # target a specific branch
 ```
 
 The leader must restart `maxim` after an update to load new code. Disable with `MAXIM_ALLOW_REMOTE_UPDATE=0` if you don't want peers to be able to trigger updates.
+
+## Remote Package Installation
+
+Install optional extras on the leader without SSH:
+
+```bash
+# Install a pymaxim optional extra
+maxim peer install semantic           # pip install pymaxim[semantic]
+maxim peer install llm-torch,vision   # multiple extras
+
+# Install arbitrary pip packages
+maxim peer install sentence-transformers
+
+# Check what's installed on the leader
+maxim peer deps
+```
+
+Available extras: `semantic`, `llm-llama`, `llm-server`, `llm-torch`, `llm-anthropic`, `llm-openai`, `vision`, `audio`, `reachy`, `comms`, `search`, `temporal`, `training`, `tts`, `yolo`, `database`.
+
+Requires `MAXIM_ALLOW_REMOTE_UPDATE=1` on the leader (same as `peer update`).
