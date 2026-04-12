@@ -77,7 +77,7 @@ def _fallback_embed(text: str, dim: int = 384) -> list[float]:
 class EncoderConfig:
     """Configuration for the LinguisticEncoder."""
 
-    model_name: str = "all-mpnet-base-v2"
+    model_name: str = "paraphrase-mpnet-base-v2"
     fallback_dim: int = 384
 
 

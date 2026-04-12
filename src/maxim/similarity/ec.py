@@ -171,8 +171,11 @@ class EntorhinalCortex:
                 self._semantic_hasher = SemanticLSH()
 
         # Substrate (P1): dense embedding store for pattern completion.
-        # Keyed by node_id, stores (embedding, modality) pairs.
+        # Keyed by node_id, stores (centroid_embedding, modality) pairs.
+        # Centroid is the running mean of all embeddings that completed to this node.
         self._substrate_nodes: dict[str, tuple[list[float], str]] = {}
+        # Member count per node — used for running mean update.
+        self._substrate_node_counts: dict[str, int] = {}
 
     # ─────────────────────────────────────────────────────────────────────────
     # Substrate Pattern Completion (P1)
@@ -221,6 +224,13 @@ class EntorhinalCortex:
                 best_node = node_id
 
         if best_node is not None:
+            # Update centroid: running mean of all embeddings that completed here.
+            # new_centroid = (old_centroid * n + new_embedding) / (n + 1)
+            stored_emb, stored_mod = self._substrate_nodes[best_node]
+            n = self._substrate_node_counts.get(best_node, 1)
+            updated = [(s * n + e) / (n + 1) for s, e in zip(stored_emb, embedding)]
+            self._substrate_nodes[best_node] = (updated, stored_mod)
+            self._substrate_node_counts[best_node] = n + 1
             return PatternResult(node_id=best_node, similarity=best_sim, is_new=False)
 
         # Separation — allocate a new node ID but don't register yet.
@@ -239,10 +249,12 @@ class EntorhinalCortex:
     ) -> None:
         """Register or update a substrate node's embedding."""
         self._substrate_nodes[node_id] = (embedding, modality)
+        self._substrate_node_counts[node_id] = 1
 
     def remove_substrate_node(self, node_id: str) -> None:
         """Remove a substrate node."""
         self._substrate_nodes.pop(node_id, None)
+        self._substrate_node_counts.pop(node_id, None)
 
     @property
     def substrate_node_count(self) -> int:
@@ -542,7 +554,12 @@ class EntorhinalCortex:
             "inverted": self._inverted.to_dict(),
             "signatures": {k: v.to_dict() for k, v in self._signatures.items()},
             "substrate_nodes": {
-                nid: {"embedding": emb, "modality": mod} for nid, (emb, mod) in self._substrate_nodes.items()
+                nid: {
+                    "embedding": emb,
+                    "modality": mod,
+                    "count": self._substrate_node_counts.get(nid, 1),
+                }
+                for nid, (emb, mod) in self._substrate_nodes.items()
             },
         }
 
@@ -591,8 +608,10 @@ class EntorhinalCortex:
 
         # Load substrate nodes (P1)
         self._substrate_nodes = {}
+        self._substrate_node_counts = {}
         for nid, ndata in data.get("substrate_nodes", {}).items():
             self._substrate_nodes[nid] = (ndata["embedding"], ndata["modality"])
+            self._substrate_node_counts[nid] = ndata.get("count", 1)
 
         logger.info(
             "Loaded EC from %s (%d signatures, %d substrate nodes)",
