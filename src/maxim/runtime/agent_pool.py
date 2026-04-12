@@ -45,6 +45,7 @@ class TurnResult:
     timed_out: bool = False
     error: str | None = None
     duration_ms: float = 0.0
+    percept: Any = None  # Typed Percept created from the input string (Phase 4)
 
 
 class AgentPool:
@@ -158,6 +159,20 @@ class AgentPool:
         instance = self.get_agent(agent_id)
 
         try:
+            # Phase 4: wrap the string stimulus in a typed Percept so both
+            # runtimes share the same Percept surface. store_observation
+            # still takes a string (the full MemoryAgent pipeline is a
+            # bigger refactor for substrate P1), but the typed Percept is
+            # stashed on TurnResult for any consumer that wants it.
+            from maxim.agents.percept_factory import make_text_percept
+
+            typed_percept = make_text_percept(
+                percept[:500],
+                source="npc_turn",
+                agent_id=agent_id,
+                channel="narrative",
+            )
+
             # Store percept in hippocampus (lightweight observation capture)
             if instance.hippocampus is not None:
                 try:
@@ -192,6 +207,7 @@ class AgentPool:
                 agent_id=agent_id,
                 response=response,
                 duration_ms=elapsed,
+                percept=typed_percept,
             )
 
         except Exception as e:
