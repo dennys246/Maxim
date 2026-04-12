@@ -43,6 +43,11 @@ class NACConfig:
     use_ec_similarity: bool = False  # Phase 3 flag, default OFF
     persistence_path: str | None = None  # Path for save/load (set by AgentFactory)
 
+    # P2: Reward modulation of recognition
+    reward_bias_alpha: float = 0.15  # Threshold modulation strength
+    reward_bias_decay_tau: float = 50.0  # Decay timescale (ticks) for reward bias
+    max_reward_bias: float = 0.20  # Cap on how much bias can lower EC threshold
+
 
 class NAc:
     """Nucleus Accumbens - Causal inference and reward prediction engine.
@@ -104,6 +109,16 @@ class NAc:
 
         # Cold start priors: event_sig → (predicted_value, confidence)
         self._priors: dict[str, tuple[float, float]] = {}
+
+        # P2: Per-node reward bias keyed by (agent_id, node_id).
+        # Positive bias = node has been rewarded → EC should widen recognition radius.
+        # Decays toward 0 over time when reinforcement stops.
+        self._reward_bias: dict[tuple[str, str], float] = {}
+
+        # P2: Eligibility traces — nodes that were recently active and
+        # should receive credit when a reward arrives. Maps
+        # (agent_id, node_id) → activation strength from PerceptTraceBuffer.
+        self._eligibility: dict[tuple[str, str], float] = {}
 
         # Stats
         self._total_observations = 0
@@ -800,6 +815,158 @@ class NAc:
             for link in links:
                 link.decay(factor)
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # P2: Reward Bias — per-node recognition modulation
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def reward_bias(self, agent_id: str, node_id: str) -> float:
+        """Get the current reward bias for a substrate node.
+
+        Returns a value in [0, max_reward_bias]. Positive means the node
+        has been rewarded and EC should lower its threshold for this node.
+        """
+        return self._reward_bias.get((agent_id, node_id), 0.0)
+
+    def credit_node(
+        self,
+        agent_id: str,
+        node_id: str,
+        reward: float,
+    ) -> None:
+        """Credit a substrate node with reward, strengthening its recognition bias.
+
+        Called when a Reaction (positive or negative) is attributed to a
+        node via eligibility traces. Positive reward increases bias
+        (widens recognition radius), negative reward decreases it.
+
+        Args:
+            agent_id: Agent whose recognition should be modulated.
+            node_id: ATL node to credit.
+            reward: Reward magnitude. Positive = reinforce, negative = weaken.
+        """
+        with self._lock:
+            key = (agent_id, node_id)
+            current = self._reward_bias.get(key, 0.0)
+            updated = current + self.config.reward_bias_alpha * reward
+            # Clamp to [0, max_reward_bias] — bias only widens, never inverts
+            self._reward_bias[key] = max(0.0, min(updated, self.config.max_reward_bias))
+            logger.debug(
+                "NAc credit_node(%s, %s): %.4f → %.4f (reward=%.2f)",
+                agent_id[:8] if agent_id else "?",
+                node_id[:8],
+                current,
+                self._reward_bias[key],
+                reward,
+            )
+
+    def update_eligibility(
+        self,
+        agent_id: str,
+        node_id: str,
+        activation: float,
+    ) -> None:
+        """Update the eligibility trace for a node.
+
+        Called when a percept activates (completes to) a node. The
+        activation strength determines how much credit the node receives
+        when a reward arrives later.
+
+        Args:
+            agent_id: Agent context.
+            node_id: ATL node that was activated.
+            activation: Activation strength (typically from PerceptTraceBuffer).
+        """
+        with self._lock:
+            self._eligibility[(agent_id, node_id)] = activation
+
+    def distribute_reward(
+        self,
+        agent_id: str,
+        reward: float,
+    ) -> list[tuple[str, float]]:
+        """Distribute reward to all eligible nodes for an agent.
+
+        Credits each node proportional to its eligibility trace strength.
+        Returns list of (node_id, credit_applied) for logging.
+        """
+        credited: list[tuple[str, float]] = []
+        with self._lock:
+            eligible = {
+                (aid, nid): strength
+                for (aid, nid), strength in self._eligibility.items()
+                if aid == agent_id and strength > 0.01
+            }
+            if not eligible:
+                return credited
+
+            # Normalize eligibility so total credit = reward
+            total_strength = sum(eligible.values())
+            for (aid, nid), strength in eligible.items():
+                proportion = strength / total_strength
+                credit = reward * proportion
+                self.credit_node(aid, nid, credit)
+                credited.append((nid, credit))
+
+        return credited
+
+    def decay_reward_biases(self) -> int:
+        """Decay all reward biases toward zero.
+
+        Called periodically (e.g., on each tick). Uses exponential decay
+        with timescale tau from config. Returns count of biases pruned.
+        """
+        if not self._reward_bias:
+            return 0
+
+        decay_factor = 1.0 / self.config.reward_bias_decay_tau
+        pruned = 0
+        with self._lock:
+            to_remove = []
+            for key, bias in self._reward_bias.items():
+                new_bias = bias * (1.0 - decay_factor)
+                if new_bias < 0.001:
+                    to_remove.append(key)
+                    pruned += 1
+                else:
+                    self._reward_bias[key] = new_bias
+
+            for key in to_remove:
+                del self._reward_bias[key]
+
+        return pruned
+
+    def decay_eligibility(self, factor: float = 0.9) -> None:
+        """Decay all eligibility traces. Called on each tick."""
+        with self._lock:
+            to_remove = []
+            for key, strength in self._eligibility.items():
+                new_strength = strength * factor
+                if new_strength < 0.01:
+                    to_remove.append(key)
+                else:
+                    self._eligibility[key] = new_strength
+            for key in to_remove:
+                del self._eligibility[key]
+
+    def get_threshold_overrides(self, agent_id: str) -> dict[str, float]:
+        """Build EC threshold overrides from reward biases for an agent.
+
+        Returns a dict of node_id → adjusted_threshold suitable for
+        EC.pattern_complete_or_separate(threshold_override=...).
+
+        Formula: threshold_override = base - α × reward_bias(agent_id, node)
+        Clamped to [0.1, base] to prevent degenerate matching.
+        """
+        overrides: dict[str, float] = {}
+        base = 0.40  # matches ECConfig.pattern_complete_threshold default
+        with self._lock:
+            for (aid, nid), bias in self._reward_bias.items():
+                if aid != agent_id or bias < 0.001:
+                    continue
+                adjusted = base - bias
+                overrides[nid] = max(0.10, adjusted)
+        return overrides
+
     def stats(self) -> dict[str, Any]:
         """Return NAc statistics."""
         total_links = sum(len(links) for links in self._links.values())
@@ -810,6 +977,8 @@ class NAc:
             "total_observations": self._total_observations,
             "pending_events": len(self._pending_events),
             "priors": len(self._priors),
+            "reward_biases": len(self._reward_bias),
+            "eligibility_traces": len(self._eligibility),
         }
 
     def __len__(self) -> int:
@@ -836,6 +1005,7 @@ class NAc:
                 "outcome_index": {k: list(v) for k, v in self._outcome_index.items()},
                 "priors": self._priors,
                 "total_observations": self._total_observations,
+                "reward_bias": {f"{aid}:{nid}": bias for (aid, nid), bias in self._reward_bias.items()},
             }
 
         from maxim.utils.atomic_io import atomic_write_json
@@ -868,7 +1038,14 @@ class NAc:
         self._priors = data.get("priors", {})
         self._total_observations = data.get("total_observations", 0)
 
-        logger.info("Loaded NAc from %s (%d links)", path, len(self))
+        # P2: Load reward biases
+        self._reward_bias = {}
+        for key_str, bias in data.get("reward_bias", {}).items():
+            parts = key_str.split(":", 1)
+            if len(parts) == 2:
+                self._reward_bias[(parts[0], parts[1])] = bias
+
+        logger.info("Loaded NAc from %s (%d links, %d biases)", path, len(self), len(self._reward_bias))
 
     def load_safe(self, path: str | None = None) -> tuple[bool, str | None]:
         """Load with recovery on failure. Returns (success, error_message)."""

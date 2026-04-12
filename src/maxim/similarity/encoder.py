@@ -174,6 +174,14 @@ class LinguisticEncoder:
 
         percept.substrate_node_id = result.node_id
 
+        # P2: Update eligibility trace — this node is now "active" and
+        # eligible for credit when a reward arrives.
+        if self._nac is not None and not result.is_new:
+            agent_id = ""
+            if percept.context is not None and hasattr(percept.context, "agent_id"):
+                agent_id = percept.context.agent_id or ""
+            self._nac.update_eligibility(agent_id, result.node_id, result.similarity)
+
         logger.debug(
             "Encoded percept → node %s (sim=%.3f, new=%s, mod=%s)",
             result.node_id[:8],
@@ -191,8 +199,16 @@ class LinguisticEncoder:
         a dict mapping node_id → adjusted threshold for nodes whose
         reward bias should widen their recognition radius.
         """
-        # P2 stub — will be implemented in the reward modulation phase
-        return None
+        if self._nac is None:
+            return None
+
+        # Determine agent_id from percept context
+        agent_id = ""
+        if percept.context is not None and hasattr(percept.context, "agent_id"):
+            agent_id = percept.context.agent_id or ""
+
+        overrides = self._nac.get_threshold_overrides(agent_id)
+        return overrides if overrides else None
 
     @property
     def using_fallback(self) -> bool:
