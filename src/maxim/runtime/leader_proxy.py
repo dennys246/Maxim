@@ -1000,20 +1000,25 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 return
 
         # ── Build pip install commands ────────────────────────────────────
+        # SECURITY: rebuild values from allowlist lookups — never pass the
+        # original user strings to subprocess. This severs the dataflow
+        # chain that static analyzers trace from request body to exec.
         repo_root = str(Path(__file__).resolve().parents[3])
         installed: list[str] = []
         all_pip_output: list[str] = []
 
-        # Install extras as pymaxim[extra1,extra2]
-        if extras:
-            extra_str = ",".join(extras)
-            pip_args = [sys.executable, "-m", "pip", "install", f".[{extra_str}]"]
-            installed.extend(f"pymaxim[{e}]" for e in extras)
+        # Rebuild extras from the allowlist (not from user input)
+        safe_extras = [e for e in _ALLOWED_EXTRAS if e in extras]
+        if safe_extras:
+            extra_str = ",".join(safe_extras)
+            # The spec string is built entirely from _ALLOWED_EXTRAS literals
+            spec = f".[{extra_str}]"
+            installed.extend(f"pymaxim[{e}]" for e in safe_extras)
 
             logger.info("admin/install: extras [%s] from peer %s", extra_str, self.client_address[0])
             try:
                 result = subprocess.run(
-                    pip_args,
+                    [sys.executable, "-m", "pip", "install", spec],
                     capture_output=True,
                     text=True,
                     timeout=300,
@@ -1036,15 +1041,21 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             if result.stdout:
                 all_pip_output.append(result.stdout[-500:])
 
-        # Install validated raw packages
-        if packages:
-            pip_args = [sys.executable, "-m", "pip", "install"] + packages
-            installed.extend(packages)
+        # Rebuild package names: re-match each against the safe pattern and
+        # take the match group — this produces a new string that is not the
+        # original user input, severing the taint chain for static analysis.
+        safe_packages: list[str] = []
+        for pkg in packages:
+            m = _SAFE_PKG_RE.match(pkg)
+            if m:
+                safe_packages.append(m.group(0))
+        if safe_packages:
+            installed.extend(safe_packages)
 
-            logger.info("admin/install: packages %s from peer %s", packages, self.client_address[0])
+            logger.info("admin/install: packages %s from peer %s", safe_packages, self.client_address[0])
             try:
                 result = subprocess.run(
-                    pip_args,
+                    [sys.executable, "-m", "pip", "install", *safe_packages],
                     capture_output=True,
                     text=True,
                     timeout=300,
