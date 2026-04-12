@@ -38,16 +38,28 @@ class SimulationAdapter:
         """Get observation from percept source or empty dict."""
         sim_percept = self.percept_source.next_percept()
         if sim_percept is not None:
-            # Route pain percepts through PainBus
+            # Route pain percepts through ReactionBus (Phase 2a: emit
+            # Reaction directly instead of the old route_pain_percept detour).
             if sim_percept.source == "proprioception" and sim_percept.content == "pain_signal":
                 try:
-                    from maxim.proprioception.pain_bus import route_pain_percept
-
                     _pb = self.pain_bus
                     if _pb is None:
                         _pb = getattr(default_network, "pain_bus", None) if default_network else None
                     if _pb is not None:
-                        route_pain_percept(sim_percept, _pb)
+                        from maxim.decisions.causal_link import Valence
+                        from maxim.reactions.types import Reaction, ReactionContext
+
+                        meta = sim_percept.metadata or {}
+                        reaction = Reaction(
+                            kind="pain",
+                            intensity=meta.get("intensity", 0.5),
+                            valence=Valence.NEGATIVE,
+                            timestamp=sim_percept.timestamp,
+                            source=f"sim_adapter:{meta.get('pain_type', 'external_signal')}",
+                            context=ReactionContext(),
+                        )
+                        bus = getattr(_pb, "reaction_bus", _pb)
+                        bus.publish(reaction)
                 except Exception:
                     pass
 

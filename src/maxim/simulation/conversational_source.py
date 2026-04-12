@@ -68,8 +68,36 @@ class ConversationalSource:
         )
         self._inject(percept, {"source": "cli", "cli_input": text, "salience": salience})
 
-    def inject_pain(self, pain_type: str = "external_signal", intensity: float = 0.5, **context: Any) -> None:
-        """Inject a pain signal percept."""
+    def inject_pain(
+        self,
+        pain_type: str = "external_signal",
+        intensity: float = 0.5,
+        pain_bus: Any = None,
+        **context: Any,
+    ) -> None:
+        """Inject a pain signal as a Reaction on the ReactionBus.
+
+        Phase 2a (F0.R1): emits Reaction(kind="pain") directly instead
+        of routing through Percept.metadata. Falls back to a Percept
+        if no pain_bus is provided (legacy callers).
+        """
+        if pain_bus is not None:
+            from maxim.decisions.causal_link import Valence
+            from maxim.reactions.types import Reaction, ReactionContext
+
+            reaction = Reaction(
+                kind="pain",
+                intensity=intensity,
+                valence=Valence.NEGATIVE,
+                timestamp=time.time(),
+                source=f"conversational_source:{pain_type}",
+                context=ReactionContext(),
+            )
+            bus = getattr(pain_bus, "reaction_bus", pain_bus)
+            bus.publish(reaction)
+            return
+
+        # Legacy fallback — no pain_bus passed, route as Percept
         percept = Percept(
             timestamp=time.time(),
             source="proprioception",

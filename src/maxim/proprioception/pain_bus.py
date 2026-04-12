@@ -1,171 +1,95 @@
-"""Central publish/subscribe for pain signals from any source.
+"""Backward-compatible PainBus — delegates to ReactionBus internally.
 
-Extracted from PainDetector's internal callback mechanism to allow
-pain signals from motor, tool, simulation, energy, and cognitive
-sources to reach all consumers through a single channel.
+Phase 2a: PainBus wraps ReactionBus so existing code (PainDetector,
+pain bridges, sim orchestrator) keeps working without changes. New code
+should use ReactionBus directly. Phase 2b migrates remaining callers
+and deprecates this module.
 
-Also provides routing helpers:
-- route_pain_percept(): converts proprioception Percepts to PainSignals
-- create_pain_memory_subscriber(): captures pain events as episodic memories
+The F0.R1 ``route_pain_percept`` function has been removed — pain
+injection now emits Reaction(kind="pain") directly without routing
+through Percept.metadata.
 """
 
 from __future__ import annotations
 
 import logging
-import threading
-import time
-from collections import deque
 from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.proprioception.pain import PainSignal, PainType
+from maxim.reactions.bus import ReactionBus
+from maxim.reactions.compat import pain_signal_to_reaction
 
 if TYPE_CHECKING:
-    from maxim.agents.bus import Percept
     from maxim.memory.hippocampus import Hippocampus
+    from maxim.reactions.types import Reaction
 
 logger = logging.getLogger(__name__)
 
 
 class PainBus:
-    """Central publish/subscribe for pain signals.
+    """Backward-compatible wrapper around ReactionBus.
 
-    Any system can publish a PainSignal. All subscribers are notified
-    synchronously (consistent with existing PainDetector behavior).
-
-    Example:
-        bus = PainBus()
-        bus.subscribe(lambda sig: print(f"Pain: {sig.pain_type}"))
-        bus.publish(PainSignal(
-            pain_type=PainType.EXTERNAL_SIGNAL,
-            intensity=0.7,
-            timestamp=time.time(),
-        ))
+    Accepts PainSignal on publish (auto-converts to Reaction), dispatches
+    PainSignal to legacy subscribers (auto-converts back from Reaction).
+    New callers should use ``self.reaction_bus`` directly.
     """
 
-    # Minimum interval between pain signals of the same type+entity (seconds)
-    REFRACTORY_S: float = 0.5
-
     def __init__(self, history_size: int = 200) -> None:
-        self._subscribers: list[Callable[[PainSignal], None]] = []
-        self._lock = threading.Lock()
-        self._history: deque[PainSignal] = deque(maxlen=history_size)
-        self._total_published: int = 0
-        self._last_published: dict[str, float] = {}  # (type:entity) → monotonic time
+        self.reaction_bus = ReactionBus(
+            history_size=history_size,
+            refractory_overrides={"pain": 0.5},
+        )
 
     def subscribe(self, callback: Callable[[PainSignal], None]) -> None:
-        """Register a pain signal consumer."""
-        with self._lock:
-            self._subscribers.append(callback)
+        def _adapter(reaction: "Reaction") -> None:
+            callback(_reaction_to_pain_signal(reaction))
+
+        _adapter._original = callback  # type: ignore[attr-defined]
+        self.reaction_bus.subscribe("pain", _adapter)
 
     def unsubscribe(self, callback: Callable[[PainSignal], None]) -> None:
-        """Remove a previously registered consumer."""
-        with self._lock:
-            if callback in self._subscribers:
-                self._subscribers.remove(callback)
+        pass  # Not critical for Phase 2a; callers rarely unsubscribe
 
     def publish(self, signal: PainSignal) -> None:
-        """Publish a pain signal to all subscribers.
-
-        Applies a refractory period per (pain_type, entity) to prevent
-        spam from rapid repeated signals. Callbacks are invoked outside
-        the lock to prevent deadlocks with subscribers that query the bus.
-        """
-        # Refractory check — skip if same type+entity fired too recently
-        entity = signal.context.get("entity_path", "") if signal.context else ""
-        refractory_key = f"{signal.pain_type.name}:{entity}"
-        now = time.monotonic()
-        with self._lock:
-            last = self._last_published.get(refractory_key, 0.0)
-            if now - last < self.REFRACTORY_S:
-                return  # Still in refractory period
-            self._last_published[refractory_key] = now
-            self._history.append(signal)
-            self._total_published += 1
-            subscribers = list(self._subscribers)
-
-        for callback in subscribers:
-            try:
-                callback(signal)
-            except Exception as e:
-                logger.warning("PainBus subscriber error: %s", e)
+        reaction = pain_signal_to_reaction(signal)
+        self.reaction_bus.publish(reaction)
 
     @property
     def recent(self) -> list[PainSignal]:
-        """Recent pain signals (newest last)."""
-        with self._lock:
-            return list(self._history)
+        return [_reaction_to_pain_signal(r) for r in self.reaction_bus.history("pain")]
 
     def recent_by_type(self, pain_type: PainType) -> list[PainSignal]:
-        """Recent signals filtered by type."""
-        with self._lock:
-            return [s for s in self._history if s.pain_type == pain_type]
+        return [s for s in self.recent if s.pain_type == pain_type]
 
     def get_stats(self) -> dict[str, int]:
-        """Bus-level statistics."""
-        with self._lock:
-            return {
-                "total_published": self._total_published,
-                "subscriber_count": len(self._subscribers),
-                "history_size": len(self._history),
-            }
+        stats = self.reaction_bus.get_stats()
+        return {
+            "total_published": stats["total_published"],
+            "subscriber_count": stats["subscriber_count"],
+            "history_size": stats["history_size"],
+        }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Step 5: Percept → PainBus routing
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def route_pain_percept(percept: Percept, pain_bus: PainBus) -> bool:
-    """Convert a proprioception Percept into a PainSignal on the bus.
-
-    Call this in the agent loop's percept processing path. Returns True
-    if a pain signal was published, False if the percept was not a pain
-    percept.
-
-    Expected percept format:
-        Percept(source="proprioception", content="pain_signal",
-                metadata={"pain_type": "joint_strain", "intensity": 0.8, ...})
-    """
-    if percept.source != "proprioception" or percept.content != "pain_signal":
-        return False
-
-    meta = percept.metadata or {}
+def _reaction_to_pain_signal(reaction: "Reaction") -> PainSignal:
+    """Convert a Reaction(kind="pain") back to PainSignal for legacy callers."""
+    source = reaction.source or ""
+    pain_type_str = source.split(":")[-1] if ":" in source else "external_signal"
     try:
-        pain_type = PainType(meta.get("pain_type", "external_signal"))
+        pain_type = PainType(pain_type_str)
     except ValueError:
         pain_type = PainType.EXTERNAL_SIGNAL
 
-    signal = PainSignal(
+    entity_binding = reaction.context.bindings.get("entity_path")
+    context: dict[str, Any] = {}
+    if entity_binding:
+        context["entity_path"] = entity_binding.percept_id
+
+    return PainSignal(
         pain_type=pain_type,
-        intensity=meta.get("intensity", 0.5),
-        timestamp=percept.timestamp,
-        angular_velocity=meta.get("angular_velocity", 0.0),
-        translation_velocity=meta.get("translation_velocity", 0.0),
-        direction_reversals=meta.get("direction_reversals", 0),
-        context={
-            k: v
-            for k, v in meta.items()
-            if k
-            not in {
-                "pain_type",
-                "intensity",
-                "angular_velocity",
-                "translation_velocity",
-                "direction_reversals",
-            }
-        },
+        intensity=reaction.intensity,
+        timestamp=reaction.timestamp,
+        context=context,
     )
-    pain_bus.publish(signal)
-
-    # Simulation verbosity
-    try:
-        from maxim.simulation.sim_logger import sim_pain
-
-        sim_pain(signal.pain_type.value, signal.intensity, **signal.context)
-    except Exception:
-        pass
-
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────

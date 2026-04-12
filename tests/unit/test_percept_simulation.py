@@ -7,11 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from maxim.agents.bus import Percept
 from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 from maxim.memory.types import Decision, Outcome, Perception
 from maxim.proprioception.pain import PainSignal, PainType
-from maxim.proprioception.pain_bus import PainBus, create_pain_memory_subscriber, route_pain_percept
+from maxim.proprioception.pain_bus import PainBus, create_pain_memory_subscriber
 from maxim.simulation.scenario_source import (
     Expectation,
     ScenarioSource,
@@ -337,33 +336,41 @@ class TestValidation:
 
 
 class TestPainRouting:
-    def test_route_pain_percept(self):
+    def test_direct_reaction_reaches_pain_bus_subscriber(self):
+        """Phase 2a: pain emitted as Reaction reaches PainBus legacy subscribers."""
+        from maxim.decisions.causal_link import Valence
+        from maxim.reactions.types import Reaction, ReactionContext
+
         bus = PainBus()
         received: list[PainSignal] = []
         bus.subscribe(lambda s: received.append(s))
 
-        percept = Percept(
+        reaction = Reaction(
+            kind="pain",
+            intensity=0.8,
+            valence=Valence.NEGATIVE,
             timestamp=time.time(),
-            source="proprioception",
-            content="pain_signal",
-            metadata={"pain_type": "external_signal", "intensity": 0.8, "joint": "head_pitch"},
+            source="test:external_signal",
+            context=ReactionContext(),
         )
-        result = route_pain_percept(percept, bus)
-        assert result is True
+        bus.reaction_bus.publish(reaction)
+        assert len(received) == 1
+        assert received[0].intensity == 0.8
+
+    def test_pain_signal_still_works_via_wrapper(self):
+        """Backward compat: PainSignal.publish still reaches subscribers."""
+        bus = PainBus()
+        received: list[PainSignal] = []
+        bus.subscribe(lambda s: received.append(s))
+
+        signal = PainSignal(
+            pain_type=PainType.EXTERNAL_SIGNAL,
+            intensity=0.7,
+            timestamp=time.time(),
+        )
+        bus.publish(signal)
         assert len(received) == 1
         assert received[0].pain_type == PainType.EXTERNAL_SIGNAL
-        assert received[0].intensity == 0.8
-        assert received[0].context.get("joint") == "head_pitch"
-
-    def test_non_pain_percept_ignored(self):
-        bus = PainBus()
-        received: list[PainSignal] = []
-        bus.subscribe(lambda s: received.append(s))
-
-        percept = Percept(timestamp=time.time(), source="cli", cli_input="hello")
-        result = route_pain_percept(percept, bus)
-        assert result is False
-        assert len(received) == 0
 
     def test_pain_memory_subscriber(self):
         hippo = Hippocampus(config=HippocampusConfig())
