@@ -1289,8 +1289,16 @@ def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> d
     from maxim.runtime.llm_server import ProbeResult, probe_llm_server
 
     ttl_s = _safe_float_env("MAXIM_REMOTE_PROBE_CACHE_TTL_S", 60.0, min_value=0.0, max_value=600.0)
-    first_timeout = _safe_float_env("MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S", 0.8, min_value=0.2, max_value=5.0)
-    retry_timeout = _safe_float_env("MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S", 2.5, min_value=0.5, max_value=10.0)
+    # First-attempt timeout: 1.5s handles a warm-but-cold httpx connection
+    # (measured ~710ms on Mac→Cloudflare→RTX5080). Previous default of 0.8s
+    # was within 90ms of the measured cold-connection latency — any
+    # system/DNS hiccup caused a false negative.
+    first_timeout = _safe_float_env("MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S", 1.5, min_value=0.2, max_value=5.0)
+    # Retry timeout: 8.0s handles a dormant Cloudflare tunnel that needs to
+    # re-establish its origin connection (observed >2.5s after 8+ minutes of
+    # inactivity). Previous default of 2.5s fell in the gap between
+    # "warm tunnel fast" and "dormant tunnel re-establishing".
+    retry_timeout = _safe_float_env("MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S", 8.0, min_value=0.5, max_value=10.0)
 
     cache = probe_cache.load_cache()
     cache_dirty = False
