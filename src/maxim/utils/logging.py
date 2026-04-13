@@ -29,6 +29,11 @@ def configure_logging(
     Configure root logging once, and always ensure the effective level tracks `verbosity`.
 
     Safe to call multiple times (e.g., from both CLI entrypoints and library code).
+
+    If ``MAXIM_LOG_FILE`` is set in the environment, a JSONL file handler is
+    attached using the shared ``StructuredFormatter`` from
+    :mod:`maxim.utils.structured_logging`. This is the Plan 1 R1 dual-format
+    contract: stdout stays human-readable, file gets machine-parseable JSONL.
     """
     level = verbosity_to_level(verbosity)
 
@@ -55,6 +60,31 @@ def configure_logging(
         file_handler.setFormatter(formatter)
         root.addHandler(file_handler)
 
+    def _ensure_jsonl_file_handler(path: str) -> None:
+        """Attach a JSONL handler using StructuredFormatter. MAXIM_LOG_FILE."""
+        if not path:
+            return
+        abs_path = os.path.abspath(path)
+        # Dedupe: if a JSONL handler already points at this path, skip.
+        for handler in root.handlers:
+            if (
+                isinstance(handler, logging.FileHandler)
+                and os.path.abspath(getattr(handler, "baseFilename", "")) == abs_path
+                and getattr(handler, "_maxim_jsonl", False)
+            ):
+                return
+        # Lazy import — avoid circular at module-init time.
+        from maxim.utils.structured_logging import StructuredFormatter
+
+        os.makedirs(os.path.dirname(abs_path) or ".", exist_ok=True)
+        jsonl_handler = logging.FileHandler(abs_path, mode="a", encoding="utf-8")
+        jsonl_handler.setLevel(level)
+        jsonl_handler.setFormatter(StructuredFormatter())
+        jsonl_handler._maxim_jsonl = True  # type: ignore[attr-defined]
+        root.addHandler(jsonl_handler)
+
+    jsonl_path = os.environ.get("MAXIM_LOG_FILE", "").strip() or None
+
     if force or not root.handlers:
         # Always attach a console handler; add a file handler if requested.
         stream_handler = logging.StreamHandler()
@@ -64,6 +94,8 @@ def configure_logging(
         logging.basicConfig(level=level, handlers=handlers, force=force)
         if log_file:
             _ensure_file_handler(log_file)
+        if jsonl_path:
+            _ensure_jsonl_file_handler(jsonl_path)
         return
 
     # Keep existing handlers but align their levels with the requested verbosity.
@@ -75,6 +107,8 @@ def configure_logging(
 
     if log_file:
         _ensure_file_handler(log_file)
+    if jsonl_path:
+        _ensure_jsonl_file_handler(jsonl_path)
 
 
 def get_logger(name: str = "maxim") -> logging.Logger:

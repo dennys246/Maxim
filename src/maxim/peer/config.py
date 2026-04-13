@@ -121,6 +121,13 @@ def apply_peer_config_to_env(cfg: PeerConfig) -> None:
     Note: the variable name family is keyed off the canonical lane tier name
     (``large``). Earlier code wrote ``MAXIM_LANE_INFER_*`` as a legacy alias;
     that fallback was removed in v1.0.0 along with the matching read code.
+
+    Also registers the ``leader`` HTTP endpoint in ``maxim.utils.http`` so
+    downstream callers (probes, doctor, proxy, peer CLI) reference it by
+    name instead of building urllib requests from scratch. The registration
+    is idempotent and keys auth off the current ``MAXIM_LANE_LARGE_REMOTE_API_KEY``
+    env var via a late-bound ``auth_provider`` — cluster-key rotation doesn't
+    need to touch call sites.
     """
     _setdefault_nonempty("MAXIM_LANE_LARGE_REMOTE_URL", cfg.url)
     _setdefault_nonempty("MAXIM_LANE_LARGE_REMOTE_API_KEY", cfg.api_key)
@@ -131,6 +138,35 @@ def apply_peer_config_to_env(cfg: PeerConfig) -> None:
     # provider. Mark it as peer-owned so lane_backends treats it as
     # "self-hosted" (no cloud gate, no redaction policy required).
     os.environ.setdefault("MAXIM_MAX_CLOUD_LANES", "1")
+
+    register_leader_endpoint(cfg.url)
+
+
+def register_leader_endpoint(base_url: str) -> None:
+    """Register the ``leader`` HTTP endpoint so callers can use
+    ``http.get("leader", "/v1/models")`` instead of hand-rolled urllib.
+
+    Idempotent — later calls overwrite the registration, which is correct
+    if the peer config is reloaded with a new URL.
+    """
+    if not base_url:
+        return
+    from maxim.utils import http as _http
+
+    def _leader_auth() -> str | None:
+        return os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY") or None
+
+    _http.register_endpoint(
+        _http.HTTPEndpoint(
+            name="leader",
+            base_url=base_url.rstrip("/"),
+            default_headers={"User-Agent": _http.DEFAULT_USER_AGENT},
+            auth_provider=_leader_auth,
+            timeouts=_http.TimeoutPolicy(connect_s=3.0, read_s=60.0, total_s=120.0),
+            max_pool_connections=_http.DEFAULT_POOL_PER_ENDPOINT,
+            internal=True,
+        )
+    )
 
 
 def truncate_key(key: str, *, keep: int = 6) -> str:
@@ -146,5 +182,6 @@ __all__ = [
     "write_peer_config",
     "delete_peer_config",
     "apply_peer_config_to_env",
+    "register_leader_endpoint",
     "truncate_key",
 ]
