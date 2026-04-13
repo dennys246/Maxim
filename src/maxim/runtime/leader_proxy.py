@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import subprocess
 import sys
 import threading
@@ -256,7 +257,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         """Check concurrency cap + per-peer rate limit. Returns True if allowed."""
         # Per-peer rate limit
         if self.rate_limiter is not None:
-            peer_key = self.headers.get("Authorization", self.client_address[0])
+            peer_key = self.client_address[0]  # bucket by IP; all peers share one cluster key
             if not self.rate_limiter.try_acquire(peer_key):
                 self._send_json(
                     429,
@@ -321,7 +322,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         if not self.api_key:
             return True
         auth = self.headers.get("Authorization", "")
-        if auth == f"Bearer {self.api_key}":
+        if secrets.compare_digest(auth, f"Bearer {self.api_key}"):
             return True
         # Log enough to diagnose mismatches without leaking the full key
         expected_prefix = self.api_key[:6] if self.api_key else "?"

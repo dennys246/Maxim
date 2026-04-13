@@ -52,7 +52,7 @@ Actions:
                bypass the duplicate-instance check)
   tail         Stream cloudflared + llama-cpp-server logs (debug)
   key show     Print the current Maxim API key
-  key rotate   Generate a new API key (invalidates peers)
+  key rotate   Generate a new API key (peers must run `maxim peer key set`)
   key export   Print copy-paste shell snippets for peers to set the key
 
 Once `setup` completes, subsequent `maxim` runs auto-detect ~/.cloudflared/config.yml
@@ -579,7 +579,8 @@ def _cmd_key_show() -> int:
     print(f"Truncated:  {truncate_for_display(key)}")
     print()
     print("Share with peers via a secure channel (Signal, encrypted email, etc.)")
-    print("They'll set it with: maxim tunnel key export")
+    print("Peers set it with: maxim peer key set <key>")
+    print("  or on first connect: maxim peer connect <url> --key <key>")
     return 0
 
 
@@ -596,6 +597,7 @@ def _cmd_key_rotate() -> int:
         print("  Restart `maxim` on the leader machine to pick up the new key.")
     print()
     print("Run `maxim tunnel key export` for peer setup snippets.")
+    print("Then on each peer: maxim peer key set <new-key>")
     return 0
 
 
