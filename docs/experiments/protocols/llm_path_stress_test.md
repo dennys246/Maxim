@@ -60,8 +60,10 @@ export MAXIM_BACKEND_TRACE=1
 python -m pytest tests/substrate/test_p2_reward_modulation.py -v --seed 42
 # Expected: all P2 mechanistic targets pass (per substrate_recognition.md)
 
-# Single-user sim (from peer)
-maxim --sim "A cyberpunk heist" --seed 42 --language-model qwen2.5-14b-instruct
+# Single-user sim (from peer) — no --language-model flag; peer config routes
+# to the leader's loaded model automatically. Passing --language-model triggers
+# _apply_local_llm_override which clears remote_url and routes locally instead.
+maxim --sim "A cyberpunk heist" --seed 42
 
 # Record baseline numbers
 jq -c 'select(.event=="peer_backend_call")' /tmp/maxim-stress-phase-a.jsonl | \
