@@ -24,9 +24,9 @@ These accumulate evidence and refinement over time. They are not on the critical
 
 - [tool_refinement_plan.md](tool_refinement_plan.md) — living doc for agent tool surface curation
 - [llm_path_refinement.md](llm_path_refinement.md) — meta-plan for the LLM routing path refactor. Motivated by two 2026-04-12 peer-leader incidents + an audit that revealed `_OpenAIBackend` has a hidden ~52s retry loop. **Ships as 0.4 stability version**, contains four focused sub-plans + three deferred shell plans. Authoritative architecture reference at [../architecture/llm_routing.md](../architecture/llm_routing.md); stress test protocol at [../experiments/protocols/llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md).
-  - [llm_path_foundation.md](llm_path_foundation.md) — **Plan 1: Foundation — R0 + R1 SHIPPED (2026-04-12).** Deleted ~1,250 LOC dead mesh scaffolding (R0, commit `e811787`). Shipped `maxim/utils/http.py` with endpoint registry, typed `HTTPError` hierarchy, `RequestContext` dataclass + contextvars, automatic `X-Maxim-*` header propagation (R1, PRs #88 + #90 + pending cleanup PR `c8a07e9`). All 11 urllib call sites migrated. CI grep invariant enforced. See [project_llm_path_r1_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r1_shipped.md) for the 5 design divergences + 10 gotchas.
-  - [llm_path_typed_errors.md](llm_path_typed_errors.md) — **Plan 2: Typed Errors + Role Detection**. Split from Plan 1 per user decision. Role detection (`detect_role()` as first runtime action), typed `BackendError` taxonomy with `.fix_hint`, two-stage probe, SSRF check moved to `utils/net.py`. ~280 LOC new.
-  - [llm_path_fast_failover.md](llm_path_fast_failover.md) — **Plan 3: Fast Failover**. New `_MaximPeerBackend` replaces `_OpenAIBackend` for self-hosted peers (single HTTP call, no retry loop, typed exceptions, streaming). Router catches typed exceptions for per-class backoff. Probe consolidation. ~420 LOC new. **The 52-second retry loop dies here.** Stress test protocol runs substrate P2 validation + `llama.cpp --parallel` batching PoC + multi-agent fan-out as triple duty.
+  - [llm_path_foundation.md](llm_path_foundation.md) — **Plan 1: Foundation — R0 + R1 FULLY SHIPPED (2026-04-12).** Deleted ~1,250 LOC dead mesh scaffolding (R0, commit `e811787`). Shipped `maxim/utils/http.py` with endpoint registry, typed `HTTPError` hierarchy, `RequestContext` dataclass + contextvars, automatic `X-Maxim-*` header propagation (R1, PRs #88 + #90). Post-ship cleanup shipped via PR #91 (`fix/r1-loose-ends`): CI grep invariant now actually wired in `.github/workflows/test.yml`, `HTTPEndpoint.internal` default flipped to `False` (data-sovereignty safe-by-default), `make_http_response` test helper in `tests/conftest.py`, architecture doc drift. All 11 urllib call sites migrated. Leader updated + restarted successfully. Fast suite baseline: **4004 passed, 1 skipped** (was 4003 pre-R1). See [project_llm_path_r1_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r1_shipped.md) for the 5 design divergences + 10 gotchas + load-bearing invariants for Plan 2+.
+  - [llm_path_typed_errors.md](llm_path_typed_errors.md) — **Plan 2: Typed Errors + Role Detection — READY TO START.** Split from Plan 1 per user decision. Role detection (`detect_role()` as first runtime action), typed `BackendError` taxonomy with `.fix_hint`, two-stage probe, SSRF check moved to `utils/net.py`. ~280 LOC new. **Note:** R2c's `_probe_stage2_readiness` + `inference_broken` outcome are already scaffolded in `runtime/llm_server.py`, gated behind `enable_stage2=False`. R2c's remaining work is the per-outcome TTL map in `probe_cache.py`, flipping `enable_stage2=True` at the `lane_backends._validate_remote_urls` call site, and the tests — not a full implementation from scratch.
+  - [llm_path_fast_failover.md](llm_path_fast_failover.md) — **Plan 3: Fast Failover**. New `_MaximPeerBackend` replaces `_OpenAIBackend` for self-hosted peers (single HTTP call, no retry loop, typed exceptions, streaming). Router catches typed exceptions for per-class backoff. Probe consolidation. ~420 LOC new. **The 52-second retry loop dies here.** Pre-Plan-3 baseline: `maxim peer restart` recovery measured at **~63s on 2026-04-12** (RTX 5080 leader + Mac peer, clean probe cache). Plan 3's success criterion: drop this significantly. Stress test protocol runs substrate P2 validation + `llama.cpp --parallel` batching PoC + multi-agent fan-out as triple duty.
   - [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — **Plan 4: Operator Visibility** (renamed from "Reactive Mesh"). `mesh.yml` + `maxim peer --node X` CLI + `install` command + admin API with per-agent request-trace filtering + per-agent rate limiting to prevent runaway agent starvation. ~650 LOC new. Ships unconditionally — multi-peer dispatch moved to deferred.
   - Deferred shell plans (revive on stress-test-defined triggers):
     - [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — multi-peer reactive overflow if batching doesn't solve saturation
@@ -74,7 +74,7 @@ Each substrate phase is a falsifiable claim validated with mechanistic criteria 
 | **0.3-pre** | foundations_plan, simulator_upgrades_plan, P0 pilot, B1+P1 combined migration | Foundations solid; substrate phases cheap to run; fixtures calibrated; text flows through percepts end-to-end |
 | **0.3-minimum** | 0.3-pre plus P1, P2, P3.5 | Mechanism + reward modulation + persistence certification. Defensible version bump if P3a/b/P4 slip to 0.3.1. |
 | **0.3-target** | 0.3-minimum plus P3a, P3b, P4 (OpenCLIP head-to-head) | Full substrate proven with cross-modal binding across real process boundary |
-| **0.4 (Track C — stability)** | **LLM path refinement Plans 1-4** + substrate P2 validation + stress test + `llama.cpp --parallel` batching PoC | Infrastructure reliably supports multi-agent stress testing. `maxim peer restart` recovers in < 10s (vs ~52s today). Per-agent observability. Substrate P2 validated under multi-agent load. See [llm_path_refinement.md](llm_path_refinement.md). |
+| **0.4 (Track C — stability)** | **LLM path refinement Plans 1-4** + substrate P2 validation + stress test + `llama.cpp --parallel` batching PoC | Infrastructure reliably supports multi-agent stress testing. `maxim peer restart` recovers in < 10s (vs ~63s measured 2026-04-12). Per-agent observability. Substrate P2 validated under multi-agent load. **Plan 1 R0+R1 shipped 2026-04-12** (see line above); Plans 2-4 + stress test remaining. See [llm_path_refinement.md](llm_path_refinement.md). |
 | **0.5 (formerly 0.4)** | P4 re-pass (production vision + email/Slack), B3, B4 (gates 1.0), B5 | Architecture generalizes; NPCs coherent; replanning recovers from failure |
 | **0.6 (formerly 0.5)** | P5 (stress persistence), P6 (extinction vs LRU), **P8 (minimum-viable sleep replay)** | Persists under load, forgets appropriately, actively strengthens rewarded associations offline |
 | **1.0** | Stress-test sim combining all phases; B4 passing; practice docs with experiments logged | Cross-session learning without fine-tuning at realistic scale, with coherent voice, with ongoing research program |
@@ -89,20 +89,37 @@ Channels (SMS, email, Slack, narrative speech) are **TEXT modality with context 
 
 ## How LLM path refinement interleaves with substrate P2
 
-Timeline (rough, not calendar-committed):
+Timeline (rough, not calendar-committed). As of 2026-04-12, step 1 is done.
 
-1. **SHIPPED (2026-04-12):** Plan 1 R0 + R1 — dead mesh deleted, unified HTTP client + `RequestContext` contract + `X-Maxim-*` header propagation live on main
-2. **Now:** Plan 2 (Typed Errors + Role Detection) — correctness primitives. Ready to start; see [llm_path_typed_errors.md](llm_path_typed_errors.md) "R1 learnings to apply before starting R2" section
-3. **Then:** Plan 3 (Fast Failover) — `_MaximPeerBackend`, kills the 52s retry loop
+1. **✅ SHIPPED (2026-04-12):** Plan 1 R0 + R1 + R1 loose ends.
+   - R0: dead mesh deleted (commit `e811787`)
+   - R1 core: 9-step urllib migration + `maxim/utils/http.py` (PRs #88, #90)
+   - R1 cleanup: dual-format logging + docs/memory/audit pass (commits `c8a07e9`, `845af61`)
+   - R1 loose ends: CI grep wired, `internal=False` default, `make_http_response` helper (PR #91, commit `3a579de`)
+   - Fast suite: 4004 passed on main. Leader updated + restarted cleanly. Pre-Plan-3 restart baseline: ~63s.
+
+2. **▶ NOW:** Plan 2 (Typed Errors + Role Detection) — correctness primitives.
+   - R2a: `detect_role()` as first runtime action (memorize the subcommand-dispatch gap from R1 — `cli.py::main` early-call pattern is load-bearing)
+   - R2b: `BackendError` hierarchy mirroring `HTTPError` shape from R1's `utils/http.py`
+   - R2c: two-stage probe — **R2c's `_probe_stage2_readiness` + `inference_broken` outcome already pre-landed** in `runtime/llm_server.py`, gated behind `enable_stage2=False`. R2c's remaining work: wire per-outcome TTL in `probe_cache.py`, flip the gate, tests. ~40 LOC, not ~100.
+   - R2d: SSRF check moved from `openai_backend.py` → `maxim/utils/net.py`
+
+3. **Then:** Plan 3 (Fast Failover) — `_MaximPeerBackend`, kills the ~50s retry loop. Measured leader restart recovery goes from ~63s → target < 10s.
+
 4. **Stress test (one combined run):**
    - Phase A: substrate P2 validation (satisfies 0.3-minimum P2 requirement) + Plan 3 baseline
    - Phase B: multi-agent fan-out (exercises AgentPool under the new LLM path)
-   - Phase C: `llama.cpp --parallel` batching PoC (decides whether we need multi-peer dispatch at all)
-   - Phase D: leader restart recovery test (the "52s is dead" proof)
+   - Phase C: `llama.cpp --parallel` batching PoC (decides whether Plan 4 needs multi-peer dispatch or just visibility)
+   - Phase D: leader restart recovery test (the "~50s is dead" proof — compare against the 63s 2026-04-12 baseline)
    - Phase E: fault injection (verifies typed exception coverage)
-5. **Then:** Plan 4 (Operator Visibility) — CLI + admin API + per-agent rate limiting
-6. **Release 0.4** with LLM path refinement complete + substrate P2 validated
-7. **Back to substrate work:** P3a + P3b + P4 in 0.5
+
+5. **Then:** Plan 4 (Operator Visibility) — CLI + admin API + per-agent rate limiting. Scope depends on Phase C outcome (scoped-only vs. scoped + multi-peer revival).
+
+6. **Release 0.4** with LLM path refinement complete + substrate P2 validated.
+
+7. **Back to substrate work:** P3a + P3b + P4 in 0.5, built on the stabilized LLM path.
+
+**Review pattern per plan:** each plan ships to a `feat/` branch, then spawns two review Claudes (Executor lens + Architecture lens) in parallel read-only sessions. Findings triage into a `fix/<plan>-loose-ends` PR, merge both, then start the next plan. R1 proved this pattern works — the executor review caught the CI grep gap and the `HTTPEndpoint.internal` unsafe default; the architecture review caught doc drift. Both would have rotted into Plan 2 if not flagged.
 
 **Why this order is load-bearing (decided 2026-04-12):**
 - Current LLM infrastructure is **too broken to use for P2 testing at all.** The 52s retry loop + probe fragility + lack of per-agent observability would make P2 validation data unreliable and un-attributable ("substrate bug vs. LLM flakiness?"). Running P2 first was considered and rejected.
