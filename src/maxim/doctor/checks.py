@@ -1487,12 +1487,27 @@ def _detect_doctor_role(explicit: str | None = None, peer_url: str | None = None
         return "peer", url
     if explicit in ("leader", "solo"):
         return explicit, None
-    # Auto-detect from env
+    # Auto-detect from env: URL wins (most specific signal)
     url = os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL")
     if url:
         host = urlparse(url).hostname or ""
         if host not in ("127.0.0.1", "localhost", "::1"):
             return "peer", url
+    # Fallback: MAXIM_ROLE is set by detect_and_apply_role() before any subcommand
+    # runs. If it says "peer", trust it and pull the URL from peer.yml.
+    maxim_role = os.environ.get("MAXIM_ROLE", "").strip().lower()
+    if maxim_role == "peer":
+        try:
+            from maxim.peer.config import read_peer_config
+
+            cfg = read_peer_config()
+            if cfg is not None:
+                return "peer", cfg.url
+        except Exception:
+            pass
+        return "peer", None
+    if maxim_role in ("leader", "solo"):
+        return maxim_role, None
     return "auto", None
 
 

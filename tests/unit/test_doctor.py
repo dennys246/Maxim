@@ -791,11 +791,47 @@ class TestDetectDoctorRole:
 
     def test_no_env_returns_auto(self, monkeypatch):
         monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
-        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        monkeypatch.delenv("MAXIM_ROLE", raising=False)
         from maxim.doctor.checks import _detect_doctor_role
 
         role, url = _detect_doctor_role()
         assert role == "auto"
+        assert url is None
+
+    def test_maxim_role_peer_falls_back_to_peer_yml(self, monkeypatch, tmp_path):
+        """MAXIM_ROLE=peer with no remote URL env var → reads URL from peer.yml."""
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        monkeypatch.setenv("MAXIM_ROLE", "peer")
+        peer_yml = tmp_path / "peer.yml"
+        peer_yml.write_text("url: https://myhost.cloudflareaccess.com\napi_key: testkey123\n")
+        monkeypatch.setattr(
+            "maxim.peer.config.peer_config_path", lambda: peer_yml
+        )
+        from maxim.doctor.checks import _detect_doctor_role
+
+        role, url = _detect_doctor_role()
+        assert role == "peer"
+        assert url == "https://myhost.cloudflareaccess.com"
+
+    def test_maxim_role_peer_no_yml_still_returns_peer(self, monkeypatch, tmp_path):
+        """MAXIM_ROLE=peer with no peer.yml → role is still peer, url is None."""
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        monkeypatch.setenv("MAXIM_ROLE", "peer")
+        missing = tmp_path / "nonexistent.yml"
+        monkeypatch.setattr("maxim.peer.config.peer_config_path", lambda: missing)
+        from maxim.doctor.checks import _detect_doctor_role
+
+        role, url = _detect_doctor_role()
+        assert role == "peer"
+        assert url is None
+
+    def test_maxim_role_solo_returns_solo(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
+        from maxim.doctor.checks import _detect_doctor_role
+
+        role, url = _detect_doctor_role()
+        assert role == "solo"
         assert url is None
 
 
