@@ -159,9 +159,21 @@ class LLMRouter:
         return self._session_cost_exceeded
 
     def reset_session_cost(self) -> None:
-        """Reset session cost accumulator (e.g., between simulation runs)."""
+        """Reset session cost accumulator and provider backoff state.
+
+        Called between simulation runs.  Clears both the cost ceiling and the
+        per-provider exponential backoff so that failures from a prior run
+        (e.g., a stress-test phase that timed out) don't silently silence
+        providers at the start of the next run.  ``_provider_states`` is
+        instance-scoped and never auto-resets, so without this the backoff from
+        run N bleeds into run N+1 for up to 60s.
+        """
         self._session_cost = 0.0
         self._session_cost_exceeded = False
+        for state in self._provider_states.values():
+            state.backoff_until = 0.0
+            state.consecutive_errors = 0
+            state.last_error = ""
 
     def set_session_cost_limit(self, limit: float) -> None:
         """Override the session cost ceiling at runtime."""

@@ -133,10 +133,18 @@ class _MaximPeerBackend:
     # ─── Interface methods ──────────────────────────────────────────────
 
     def warmup(self) -> bool:
-        """Validate auth + base URL. No billable call."""
+        """Validate auth + base URL + register the HTTP endpoint.
+
+        Calling ``_ensure_endpoint_registered()`` here (rather than deferring
+        it to the first ``complete_with_usage()`` call) surfaces DNS failures
+        at startup where they're expected and visible, instead of on the first
+        user-facing inference request where they produce a silent
+        ``dispatch_exhausted`` with ``total_elapsed_ms~0.2ms``.  The
+        ``_endpoint_registered`` flag ensures subsequent calls are a no-op.
+        """
         if not self._get_api_key():
             return False
-        if not self._resolve_base_url():
+        if not self._ensure_endpoint_registered():
             return False
         return True
 
