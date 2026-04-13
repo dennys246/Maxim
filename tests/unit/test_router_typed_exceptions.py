@@ -81,7 +81,15 @@ def _make_router() -> LLMRouter:
 
 
 def _call_try_provider(router: LLMRouter, side_effect: Exception):
-    """Invoke ``_try_provider`` with ``_invoke_backend`` raising."""
+    """Invoke ``_try_provider`` with ``_invoke_backend`` raising.
+
+    Acquires ``router._inference_lock`` before the call because
+    R3 review fix added an assertion in ``_record_attempt_outcome``
+    that the dispatch-attempt buffer is only mutated under the lock.
+    Production code holds the lock via ``_complete_text`` around a
+    full dispatch; the unit tests here exercise ``_try_provider`` in
+    isolation so they must acquire the lock explicitly.
+    """
     # Fake backend passes the _get_backend_for_provider branch without
     # hitting a real import. Use _backends cache to short-circuit the
     # lookup.
@@ -90,21 +98,22 @@ def _call_try_provider(router: LLMRouter, side_effect: Exception):
     fake_backend.complete_with_usage = MagicMock()
     router._backends["fake-peer"] = fake_backend
 
-    with patch.object(router, "_invoke_backend", side_effect=side_effect):
-        return router._try_provider(
-            provider_key="fake-peer",
-            system="",
-            user="hi",
-            temperature=0.0,
-            max_tokens=1,
-            prompt_tokens=1,
-            budget_tier="local_only",
-            tools=None,
-            thinking=None,
-            stream=False,
-            request_context=None,
-            now=0.0,
-        )
+    with router._inference_lock:
+        with patch.object(router, "_invoke_backend", side_effect=side_effect):
+            return router._try_provider(
+                provider_key="fake-peer",
+                system="",
+                user="hi",
+                temperature=0.0,
+                max_tokens=1,
+                prompt_tokens=1,
+                budget_tier="local_only",
+                tools=None,
+                thinking=None,
+                stream=False,
+                request_context=None,
+                now=0.0,
+            )
 
 
 class TestTypedExceptionHandlers:
@@ -254,7 +263,18 @@ class TestUnclassifiedSafetyNet:
 class TestDispatchExhausted:
     def test_dispatch_exhausted_emits_one_warn_with_all_attempts(self, caplog):
         """Wires up the aggregated failure log. One WARN line per failed
-        dispatch, with all per-provider attempts listed inline."""
+        dispatch, with all per-provider attempts listed inline.
+
+        **R3 review fix:** beefed up to assert the full payload reaches
+        the structured log record (agent_id, session_id, request_id,
+        lane, total_elapsed_ms, attempts). The original test only
+        asserted the event substring was present in the message, which
+        would have let a regression dropping the multi-agent fields
+        sail through. R3 also locked ``_emit_dispatch_exhausted`` to
+        use ``_normalize_request_context`` instead of reading
+        ``ctx.get("agent")`` inline — this test locks in the
+        canonical-shim delegation.
+        """
         import dataclasses
         import logging
 
@@ -283,22 +303,43 @@ class TestDispatchExhausted:
                     "_candidate_providers",
                     return_value=(["a", "b"], "local_only", {}),
                 ):
-                    text, usage = router._complete_text_locked(
-                        "",
-                        "hi",
-                        temperature=0.0,
-                        max_tokens=1,
-                        request_context={
-                            "agent_id": "npc-mother",
-                            "session_id": "sim-42",
-                            "request_id": "req-abc",
-                            "lane": "large",
-                        },
-                    )
+                    with router._inference_lock:
+                        text, usage = router._complete_text_locked(
+                            "",
+                            "hi",
+                            temperature=0.0,
+                            max_tokens=1,
+                            request_context={
+                                "agent_id": "npc-mother",
+                                "session_id": "sim-42",
+                                "request_id": "req-abc",
+                                "lane": "large",
+                            },
+                        )
         assert text == "" and usage is None
-        # Check the structured log contained event=dispatch_exhausted
+        # Find the dispatch_exhausted record
         exhausted = [r for r in caplog.records if "dispatch_exhausted" in r.getMessage()]
         assert exhausted, "expected one dispatch_exhausted WARN log line"
+        # R3 review fix: assert the actual payload fields. Structured
+        # logging attaches the data dict as attributes on the LogRecord
+        # via StructuredFormatter's flattening — read the "event_data"
+        # attribute (or equivalent) that log_structured populates.
+        rec = exhausted[-1]
+        # Walk the record's attributes looking for the multi-agent
+        # fields. log_structured attaches them as top-level record
+        # attributes so the StructuredFormatter can flatten them.
+        rec_dict = vars(rec)
+        # At minimum, agent_id / session_id / request_id / lane / attempts
+        # must all have reached the logging layer (either as direct
+        # attributes or nested in a data dict). Accept either shape.
+        serialized = str(rec_dict) + str(getattr(rec, "event_data", {}))
+        assert "npc-mother" in serialized, f"agent_id missing from log: {serialized[:400]}"
+        assert "sim-42" in serialized, f"session_id missing from log: {serialized[:400]}"
+        assert "req-abc" in serialized, f"request_id missing from log: {serialized[:400]}"
+        assert "large" in serialized, f"lane missing from log: {serialized[:400]}"
+        # Per-attempt breakdown must include both providers' outcomes
+        assert "overloaded" in serialized, "provider A outcome missing"
+        assert "timeout" in serialized, "provider B outcome missing"
 
     def test_successful_dispatch_does_not_emit_exhausted_log(self, caplog):
         """Sanity: a happy-path dispatch must not emit the aggregated
@@ -325,7 +366,88 @@ class TestDispatchExhausted:
                     "_candidate_providers",
                     return_value=(["a"], "local_only", {}),
                 ):
-                    text, usage = router._complete_text_locked("", "hi", temperature=0.0, max_tokens=1)
+                    with router._inference_lock:
+                        text, usage = router._complete_text_locked("", "hi", temperature=0.0, max_tokens=1)
         assert text == "ok"
         exhausted = [r for r in caplog.records if "dispatch_exhausted" in r.getMessage()]
         assert not exhausted, "dispatch_exhausted should not fire on success"
+
+
+# ─── BACKEND_CLASSES dispatch integration (R3 review fix) ──────────────
+#
+# Architecture-lens reviewer finding #6: the ``"maxim_peer"`` provider
+# type branch in ``LLMRouter._get_backend_for_provider`` was never
+# exercised by the unit tests — they stuffed a MagicMock into
+# ``router._backends`` directly to bypass the lookup. A typo in either
+# ``BACKEND_CLASSES`` or the router's lookup would slip through. These
+# tests build a real LLMConfig with a ``"type": "maxim_peer"`` provider
+# and assert the router instantiates the right class.
+
+
+class TestBackendClassesDispatch:
+    def test_maxim_peer_type_instantiates_maxim_peer_backend(self):
+        """The dispatch table must resolve ``"maxim_peer"`` to
+        :class:`_MaximPeerBackend`. Regression guard for the
+        two-hop dispatch drift the architecture reviewer flagged."""
+        import dataclasses
+
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        cfg = dataclasses.replace(
+            LLMConfig(),
+            enabled=True,
+            providers={
+                "peer-x": {
+                    "type": "maxim_peer",
+                    "base_url": "http://127.0.0.1:9995/v1",
+                    "model": "m",
+                    "allow_local_endpoints": True,
+                },
+            },
+        )
+        router = LLMRouter(cfg)
+        backend = router._get_backend_for_provider("peer-x")
+        assert backend is not None
+        assert isinstance(backend, _MaximPeerBackend), f"expected _MaximPeerBackend, got {type(backend).__name__}"
+
+    def test_hyphenated_maxim_peer_type_also_dispatches(self):
+        """``"maxim-peer"`` (hyphenated operator spelling) must resolve
+        to the same class — ``resolve_backend_class`` normalises the
+        identifier by stripping hyphens."""
+        import dataclasses
+
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        cfg = dataclasses.replace(
+            LLMConfig(),
+            enabled=True,
+            providers={
+                "peer-y": {
+                    "type": "maxim-peer",
+                    "base_url": "http://127.0.0.1:9994/v1",
+                    "model": "m",
+                    "allow_local_endpoints": True,
+                },
+            },
+        )
+        router = LLMRouter(cfg)
+        backend = router._get_backend_for_provider("peer-y")
+        assert backend is not None
+        assert isinstance(backend, _MaximPeerBackend)
+
+    def test_resolve_backend_class_unknown_returns_none(self):
+        """An unknown identifier must return None so the router falls
+        through to its "unknown provider type" warning path."""
+        from maxim.runtime.lane_backends import resolve_backend_class
+
+        assert resolve_backend_class("not-a-real-backend") is None
+        assert resolve_backend_class("") is None
+
+    def test_resolve_backend_class_maxim_peer(self):
+        """Direct lookup through the dispatch table returns the
+        correct class."""
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+        from maxim.runtime.lane_backends import resolve_backend_class
+
+        assert resolve_backend_class("maxim_peer") is _MaximPeerBackend
+        assert resolve_backend_class("maxim-peer") is _MaximPeerBackend

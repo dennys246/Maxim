@@ -332,18 +332,29 @@ def _probe_stage2_readiness(
 
 
 def _probe_once(url: str, api_key: str | None, timeout_s: float) -> ProbeResult:
-    """Single liveness probe attempt — internal shared helper.
+    """Single liveness probe attempt — **the** canonical liveness primitive.
 
-    .. deprecated:: 0.4 (Plan 3 R2.6)
-        Use :meth:`maxim.models.language.maxim_peer_backend._MaximPeerBackend._probe_liveness_once`
-        instead. This function is retained only for compatibility with
-        existing tests that patch ``maxim.runtime.llm_server._probe_once``.
+    R3 review fix: an earlier R2.6 docstring mislabelled this function
+    as "deprecated" and "a direct copy" of a now-deleted backend static
+    method. It is neither — ``_probe_once`` is the single shared
+    implementation of the liveness probe. Both
+    :meth:`maxim.models.language.maxim_peer_backend._MaximPeerBackend.health_check`
+    (via a lazy import inside the method body) and the compat shims
+    :func:`probe_llm_server` / :func:`llm_server_responding_at` delegate
+    into this function.
 
-    The implementation is intentionally a direct copy of the backend's
-    ``_probe_liveness_once`` static method — the two share identical
-    semantics (``fetch_url`` + typed-exception mapping + specific-before-
-    general ordering). When the deprecated callers are removed, this
-    wrapper goes too.
+    Lazy imports between ``llm_server.py`` and
+    ``models/language/maxim_peer_backend.py`` are load-bearing: the
+    shims lazy-import the backend class, and the backend's
+    ``health_check`` lazy-imports this function + ``_probe_stage2_readiness``.
+    Hoisting either side to module level materialises a circular
+    import. Keep the imports inside function bodies.
+
+    Specific-before-general ``except`` ordering — ``HTTPAuthError``
+    before ``HTTPError`` — guarantees auth rejection is classified as
+    ``auth_rejected`` rather than ``other``. The R2c stage-2 probe
+    review round caught the inverse bug; the same ordering discipline
+    applies here.
     """
     from maxim.utils import http as _http
 

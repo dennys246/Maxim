@@ -34,23 +34,55 @@ from maxim.runtime.worker_pool import LaneConfig
 
 # ─── Plan 3 R2.5: backend-class dispatch table ─────────────────────────
 #
-# Maps a short string identifier to the backend class that will serve a
-# remote-URL lane. ``_build_remote_backend`` writes the selected string
-# into the provider config's ``type`` field, and ``LLMRouter
-# ._get_backend_for_provider`` instantiates the corresponding class.
+# Maps a short string identifier to a lazy import path for the backend
+# class that will serve a remote-URL lane. ``_build_remote_backend``
+# writes the selected identifier into the provider config's ``type``
+# field, and ``LLMRouter._get_backend_for_provider`` imports +
+# instantiates the corresponding class via
+# :func:`resolve_backend_class` at call time.
 #
-# Extensible: add a new entry here when introducing a new remote-backend
-# type (e.g., dedicated Anthropic-compatible peer). Selection logic
-# lives in ``_classify_backend`` below.
+# **R3 review fix:** the original R2.5 shipped this as an identity map
+# (``{"openai": "openai", "maxim_peer": "maxim_peer"}``) with
+# ``_get_backend_for_provider`` hard-coding the ``"maxim_peer"`` /
+# ``"maxim-peer"`` branch as a string literal. That meant the dispatch
+# table provided zero indirection — adding a new backend required edits
+# in two places, and a typo in either would silently fall through to
+# the router's "unknown provider" warn. The table is now authoritative:
+# the router imports ``resolve_backend_class`` and dispatches through
+# it, so adding a new backend is exactly one change here.
 #
-# Keys are string identifiers (not class objects) so that lazy-imported
-# backend classes don't pay for an import at module-load time. The
-# router's ``_get_backend_for_provider`` performs the actual lazy
-# import based on the string.
-BACKEND_CLASSES: dict[str, str] = {
-    "openai": "openai",  # cloud providers (Anthropic, OpenAI, etc.) via _OpenAIBackend
-    "maxim_peer": "maxim_peer",  # self-hosted peers via _MaximPeerBackend
+# Values are ``(module_path, class_name)`` tuples rather than class
+# objects so optional-dependency backends (e.g., Anthropic SDK, future
+# Google Gemini peers) don't pay an import cost on every startup.
+BACKEND_CLASSES: dict[str, tuple[str, str]] = {
+    "openai": ("maxim.models.language.openai_backend", "_OpenAIBackend"),
+    "maxim_peer": ("maxim.models.language.maxim_peer_backend", "_MaximPeerBackend"),
 }
+
+
+def resolve_backend_class(identifier: str) -> type | None:
+    """Lazy-import the backend class for a ``BACKEND_CLASSES`` identifier.
+
+    Accepts the canonical ``"maxim_peer"`` spelling plus the
+    hyphenated variant ``"maxim-peer"`` so operator-written configs
+    that use either spelling resolve to the same class. Returns
+    ``None`` if the identifier is unknown or the import fails — the
+    router then treats it as an unclassified provider type and emits a
+    warning.
+    """
+    canonical = identifier.strip().lower().replace("-", "_")
+    entry = BACKEND_CLASSES.get(canonical)
+    if entry is None:
+        return None
+    module_path, class_name = entry
+    try:
+        module = __import__(module_path, fromlist=[class_name])
+        cls = getattr(module, class_name, None)
+    except Exception:  # pragma: no cover — optional dep missing
+        return None
+    if not isinstance(cls, type):
+        return None
+    return cls
 
 
 def _classify_backend(kind: str) -> str:
@@ -63,8 +95,8 @@ def _classify_backend(kind: str) -> str:
     full retry + cost tracking + PII redaction shape.
     """
     if kind == "self-hosted":
-        return BACKEND_CLASSES["maxim_peer"]
-    return BACKEND_CLASSES["openai"]
+        return "maxim_peer"
+    return "openai"
 
 
 def _safe_int_env(name: str, default: int) -> int:

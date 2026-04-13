@@ -525,3 +525,162 @@ class TestParseHelpers:
         with patch.object(_http, "post", return_value=bad):
             with pytest.raises(BackendInferenceBroken):
                 backend.complete_with_usage(system="", user="hi", max_tokens=1, temperature=0.0)
+
+
+# ─── Health check (R2.6) ──────────────────────────────────────────────
+#
+# R3 review fix: the executor-lens reviewer flagged that ``health_check``
+# had no direct unit tests — only indirect coverage via
+# ``test_two_stage_probe.py::_probe`` which routes through ``for_url``.
+# These tests lock in the two-stage probe contract: missing-base-url,
+# two-attempt fires on unreachable, stage-2 runs only when stage-1
+# returns ``ok``, and the ``auth_rejected`` short-circuit.
+
+
+class TestHealthCheck:
+    def test_missing_base_url_returns_other(self):
+        """An unset base_url must return ``outcome="other"`` with no
+        HTTP side effects (and no SSRF validation path)."""
+        import dataclasses
+
+        cfg = dataclasses.replace(
+            LLMConfig(),
+            providers={"empty": {"type": "maxim_peer", "model": "m"}},
+        )
+        backend = _MaximPeerBackend(cfg, provider_key="empty")
+        result = backend.health_check()
+        assert result.outcome == "other"
+        assert result.url == ""
+
+    def test_two_attempt_fires_on_unreachable_first_attempt(self):
+        """When the first liveness attempt is unreachable (not ``ok``
+        and not ``auth_rejected``), a second attempt runs with the
+        retry_timeout budget. R3 review fix: this was previously only
+        exercised indirectly via the ``_probe()`` helper in
+        test_two_stage_probe — add a direct call-count assertion."""
+        backend = _MaximPeerBackend.for_url("http://127.0.0.1:9/v1")
+        call_count = [0]
+
+        def fail_then_succeed(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise HTTPConnectionError("probe", fix_hint="refused")
+            # Second attempt returns ok
+            return Response(
+                status=200,
+                headers={},
+                content=b'{"data": []}',
+                elapsed_ms=1.0,
+                endpoint="_external",
+                request_id="r",
+            )
+
+        with patch.object(_http, "fetch_url", side_effect=fail_then_succeed):
+            result = backend.health_check(enable_stage2=False)
+        assert call_count[0] == 2, "two-attempt liveness did not fire the retry"
+        assert result.outcome == "ok"
+
+    def test_stage2_skipped_when_stage1_auth_rejected(self):
+        """``auth_rejected`` short-circuits — both stage-1 attempts
+        should NOT fire, and stage-2 MUST NOT run even with
+        ``enable_stage2=True``. Regression guard: if stage-2 ran after
+        an auth rejection it would mis-classify as
+        ``inference_broken``."""
+        backend = _MaximPeerBackend.for_url("http://127.0.0.1:9/v1")
+        call_count = [0]
+
+        def always_auth_reject(*args, **kwargs):
+            call_count[0] += 1
+            raise HTTPAuthError("probe", status=401, fix_hint="bad key")
+
+        with patch.object(_http, "fetch_url", side_effect=always_auth_reject):
+            result = backend.health_check(enable_stage2=True)
+        # Only stage-1 fires (one attempt; auth_rejected short-circuits
+        # the two-attempt retry because is_reachable returns True for it).
+        assert call_count[0] == 1, f"auth_rejected did not short-circuit: fetch_url called {call_count[0]}x"
+        assert result.outcome == "auth_rejected"
+        assert result.outcome != "inference_broken"
+
+    def test_stage2_runs_only_when_stage1_ok(self):
+        """Stage-2 runs only when stage-1 returned exactly ``ok`` AND
+        the caller passes ``enable_stage2=True``. Regression guard for
+        the two-stage probe contract."""
+        backend = _MaximPeerBackend.for_url("http://127.0.0.1:9/v1", model="m")
+        call_count = [0]
+
+        def stage1_ok_stage2_500(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return Response(
+                    status=200,
+                    headers={},
+                    content=b'{"data": []}',
+                    elapsed_ms=1.0,
+                    endpoint="_external",
+                    request_id="r",
+                )
+            # Second call is stage-2 readiness; raise 500
+            raise HTTPServerError("probe", status=500, fix_hint="chat broken")
+
+        with patch.object(_http, "fetch_url", side_effect=stage1_ok_stage2_500):
+            result = backend.health_check(enable_stage2=True)
+        assert call_count[0] == 2
+        assert result.outcome == "inference_broken"
+
+
+# ─── for_url factory safety (R3 review fix) ────────────────────────────
+
+
+class TestForUrlFactory:
+    def test_for_url_does_not_mutate_os_environ(self):
+        """R3 review critical finding #1: ``for_url`` previously stored
+        the probe API key in ``os.environ["MAXIM_PEER_PROBE_KEY"]``
+        which races across concurrent probes. The instance-override
+        replacement must leave the env untouched."""
+        import os
+
+        # Capture the pre-call state
+        had = "MAXIM_PEER_PROBE_KEY" in os.environ
+        prior = os.environ.get("MAXIM_PEER_PROBE_KEY")
+        try:
+            backend = _MaximPeerBackend.for_url(
+                "http://127.0.0.1:9999/v1",
+                api_key="my-secret-key",
+                model="m",
+            )
+            # The env var must NOT have been set
+            assert "MAXIM_PEER_PROBE_KEY" not in os.environ or os.environ["MAXIM_PEER_PROBE_KEY"] == prior
+            # The key must reach the instance via _get_api_key
+            assert backend._get_api_key() == "my-secret-key"
+        finally:
+            if had:
+                os.environ["MAXIM_PEER_PROBE_KEY"] = prior or ""
+            else:
+                os.environ.pop("MAXIM_PEER_PROBE_KEY", None)
+
+    def test_for_url_concurrent_instances_have_distinct_keys(self):
+        """Two backends built via ``for_url`` with different keys must
+        NOT observe each other's keys. This is the regression guard
+        for the env-var race the reviewer flagged."""
+        a = _MaximPeerBackend.for_url("http://127.0.0.1:9998/v1", api_key="key-A")
+        b = _MaximPeerBackend.for_url("http://127.0.0.1:9997/v1", api_key="key-B")
+        assert a._get_api_key() == "key-A"
+        assert b._get_api_key() == "key-B"
+        # Swap order — neither observation should have leaked
+        assert a._get_api_key() == "key-A"
+        assert b._get_api_key() == "key-B"
+
+    def test_for_url_none_key_returns_empty_string(self):
+        """``for_url(api_key=None)`` still builds a usable backend
+        whose ``_get_api_key`` returns an empty string (not a stale
+        value from the environment)."""
+        import os
+
+        os.environ.pop("MAXIM_PEER_PROBE_KEY", None)
+        backend = _MaximPeerBackend.for_url("http://127.0.0.1:9996/v1", api_key=None)
+        # _api_key_override is None, so _get_api_key falls through to
+        # the env path with the empty api_key_env fallback
+        assert backend._api_key_override is None
+        # Falls through to cfg["api_key_env"] which is "" in for_url's
+        # built cfg; os.getenv("", "") returns "".
+        assert backend._get_api_key() == ""

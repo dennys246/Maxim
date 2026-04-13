@@ -122,6 +122,13 @@ class _MaximPeerBackend:
         self._provider_key = provider_key
         self._endpoint_name = f"peer-{provider_key}"
         self._endpoint_registered = False
+        # R3 review fix: ``_MaximPeerBackend.for_url`` previously stored
+        # the probe API key in ``os.environ["MAXIM_PEER_PROBE_KEY"]``
+        # which races under concurrent probes (lane-A's key leaks into
+        # lane-B's request). Instance-level override consulted by
+        # ``_get_api_key`` first, which keeps the factory safe to call
+        # from parallel code paths.
+        self._api_key_override: str | None = None
 
     # ─── Interface methods ──────────────────────────────────────────────
 
@@ -309,8 +316,15 @@ class _MaximPeerBackend:
         """
         import uuid
 
+        # Lazy imports are load-bearing for cycle avoidance:
+        # ``runtime.llm_server`` lazy-imports ``_MaximPeerBackend`` from
+        # inside its deprecated ``probe_llm_server`` /
+        # ``llm_server_responding_at`` shims. Hoisting either side to
+        # module level materialises a circular import. Keep both sides
+        # inside function bodies.
         from maxim.runtime.llm_server import (
             ProbeResult,
+            _probe_once,
             _probe_stage2_readiness,
         )
 
@@ -348,9 +362,9 @@ class _MaximPeerBackend:
         )
 
         stage1_start = time.monotonic()
-        result = self._probe_liveness_once(base_url, api_key, first_timeout_s)
+        result = _probe_once(base_url, api_key, first_timeout_s)
         if not result.is_reachable:
-            result = self._probe_liveness_once(base_url, api_key, retry_timeout_s)
+            result = _probe_once(base_url, api_key, retry_timeout_s)
         stage1_ms = round((time.monotonic() - stage1_start) * 1000, 1)
 
         if enable_stage2 and result.outcome == "ok":
@@ -387,27 +401,6 @@ class _MaximPeerBackend:
         )
         return result
 
-    @staticmethod
-    def _probe_liveness_once(url: str, api_key: str | None, timeout_s: float):
-        """Single ``GET /v1/models`` probe attempt.
-
-        Delegates to :func:`maxim.runtime.llm_server._probe_once` — the
-        shared private helper that both this method and the historical
-        compat shims in ``llm_server.py`` use. The helper lives in
-        ``llm_server.py`` because :class:`ProbeResult` +
-        :func:`_classify_probe_cause` + :func:`_build_probe_url` also
-        live there and keeping everything together avoids a circular
-        import across modules.
-
-        Specific-before-general ``except`` ordering is preserved inside
-        ``_probe_once`` itself — ``HTTPAuthError`` before ``HTTPError``,
-        guaranteeing auth rejection is classified as ``auth_rejected``
-        rather than ``other``.
-        """
-        from maxim.runtime.llm_server import _probe_once
-
-        return _probe_once(url, api_key, timeout_s)
-
     @classmethod
     def for_url(
         cls,
@@ -422,6 +415,15 @@ class _MaximPeerBackend:
         Used by :mod:`maxim.runtime.lane_backends._validate_remote_urls`
         and :mod:`maxim.doctor.checks` — places that probe a peer URL
         without holding a full router-scoped config.
+
+        **Concurrency-safe:** R3 review fix. The earlier implementation
+        wrote ``MAXIM_PEER_PROBE_KEY`` into ``os.environ`` which races
+        across concurrent probes (lane-A's key leaked into lane-B's
+        request under parallel validation). This version captures the
+        key on the returned instance's ``_api_key_override`` so
+        ``_get_api_key`` returns the correct value per-instance without
+        touching global state. Safe to call from threads / doctor
+        re-probe loops / future parallel validation paths.
         """
         import dataclasses as _dc
 
@@ -431,18 +433,18 @@ class _MaximPeerBackend:
                 "probe": {
                     "type": "maxim_peer",
                     "base_url": url,
-                    "api_key_env": "MAXIM_PEER_PROBE_KEY",
+                    # ``api_key_env`` is a fallback only; the real key is
+                    # stored on the instance via ``_api_key_override``.
+                    "api_key_env": "",
                     "model": model or "default",
                     "allow_local_endpoints": True,
                     "pricing_required": False,
                 },
             },
         )
-        if api_key:
-            os.environ["MAXIM_PEER_PROBE_KEY"] = api_key
-        else:
-            os.environ.pop("MAXIM_PEER_PROBE_KEY", None)
-        return cls(cfg, provider_key="probe")
+        instance = cls(cfg, provider_key="probe")
+        instance._api_key_override = api_key
+        return instance
 
     # ─── Private helpers ────────────────────────────────────────────────
 
@@ -452,6 +454,10 @@ class _MaximPeerBackend:
         return raw if isinstance(raw, dict) else {}
 
     def _get_api_key(self) -> str:
+        # Per-instance override takes precedence so ``for_url(api_key=k)``
+        # is safe under concurrent probes (no env-var race).
+        if self._api_key_override is not None:
+            return self._api_key_override
         cfg = self._provider_cfg()
         env_key = str(cfg.get("api_key_env") or "MAXIM_PEER_API_KEY")
         return str(os.getenv(env_key, "")).strip()
@@ -659,13 +665,24 @@ class _MaximPeerBackend:
                         break
                     try:
                         chunk = json.loads(data)
-                    except Exception:
+                    except Exception as parse_exc:
                         # A malformed chunk mid-stream is a broken peer.
-                        # Do NOT silently accept partial output.
-                        raise BackendDown(
+                        # Do NOT silently accept partial output. R3
+                        # review fix: emit a per-call
+                        # ``peer_backend_failed`` WARN before raising so
+                        # the operator sees the malformed-chunk signal
+                        # in the per-call log, not just in the router's
+                        # aggregated ``dispatch_exhausted`` line.
+                        err = BackendDown(
                             self._provider_key,
-                            fix_hint="Peer streamed non-JSON chunk (broken upstream)",
+                            fix_hint=(
+                                f"Peer streamed non-JSON chunk "
+                                f"(broken upstream, model={model}): "
+                                f"{type(parse_exc).__name__}"
+                            ),
                         )
+                        self._log_failure("malformed_chunk", err, context, start)
+                        raise err
                     chunks_seen += 1
                     usage = chunk.get("usage")
                     if isinstance(usage, dict):
@@ -736,11 +753,15 @@ class _MaximPeerBackend:
             # Empty stream with no error is still a failure for this
             # backend's strict contract. Cloud backends treat this as
             # "try next provider"; we surface it the same way via
-            # BackendDown so the router falls over.
-            raise BackendDown(
+            # BackendDown so the router falls over. R3 review fix: emit
+            # a per-call WARN before raising so the empty-stream case
+            # is visible outside the aggregated dispatch WARN.
+            err = BackendDown(
                 self._provider_key,
-                fix_hint="Peer streamed zero content (upstream likely broken)",
+                fix_hint=f"Peer streamed zero content (upstream likely broken, model={model})",
             )
+            self._log_failure("empty_stream", err, context, start)
+            raise err
 
         uncached = max(0, input_tokens - cached) if input_tokens else 0
         elapsed_ms = (time.monotonic() - start) * 1000

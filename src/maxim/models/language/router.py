@@ -54,14 +54,46 @@ def _record_unclassified_backend_error(provider_key: str) -> None:
 
     Indirection lets the router catch the rare case where
     ``lane_metrics`` itself fails to import (optional dependency path) so
-    the safety net never raises from inside a safety net.
+    the safety net never raises from inside a safety net. **R3 review
+    fix:** import failures are now logged once via
+    ``_UNCLASSIFIED_IMPORT_WARNED`` so a silent zero counter never masks
+    a broken ``lane_metrics`` module — the whole point of the safety
+    net is to be the canary for missing typed-exception classes, and
+    silent import failures would defeat it.
     """
+    global _UNCLASSIFIED_IMPORT_WARNED  # noqa: PLW0603
     try:
         from maxim.models.language.lane_metrics import record_backend_unclassified_error
 
         record_backend_unclassified_error(provider_key)
+    except Exception as exc:  # pragma: no cover — defensive
+        if not _UNCLASSIFIED_IMPORT_WARNED:
+            _UNCLASSIFIED_IMPORT_WARNED = True
+            warn(
+                "backend_unclassified_errors_total counter unavailable: %s — "
+                "safety-net metric will not record missing typed exception classes",
+                exc,
+            )
+
+
+_UNCLASSIFIED_IMPORT_WARNED = False
+
+
+def _maybe_dispatch_backend_class(provider_type: str) -> type | None:
+    """Look up a backend class via ``lane_backends.BACKEND_CLASSES``.
+
+    Isolated helper so the router's ``_get_backend_for_provider``
+    branch that consults the dispatch table stays a single expression.
+    Returns ``None`` on any failure (unknown identifier, optional
+    dependency missing, import-time error) so the router falls through
+    to its ``unknown provider type`` warning path.
+    """
+    try:
+        from maxim.runtime.lane_backends import resolve_backend_class
+
+        return resolve_backend_class(provider_type)
     except Exception:  # pragma: no cover — defensive
-        pass
+        return None
 
 
 class LLMRouter:
@@ -283,16 +315,17 @@ class LLMRouter:
             from maxim.models.language.openai_backend import _OpenAIBackend
 
             backend = _OpenAIBackend(self.cfg, provider_key=provider_key)
-        elif provider_type in ("maxim_peer", "maxim-peer"):
-            # Plan 3 R2.5: self-hosted peers (llama-cpp-server,
-            # peer-tunnel LLM servers) use the purpose-built
-            # _MaximPeerBackend. Selection is driven by
-            # ``lane_backends.BACKEND_CLASSES`` which writes
-            # ``"maxim_peer"`` into ``providers[key]["type"]`` for
-            # self-hosted URLs.
-            from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
-
-            backend = _MaximPeerBackend(self.cfg, provider_key=provider_key)
+        elif _maybe_dispatch_backend_class(provider_type) is not None:
+            # Plan 3 R2.5 / R3 review fix: the
+            # ``lane_backends.BACKEND_CLASSES`` dispatch table is now
+            # authoritative. Self-hosted peers
+            # (``provider_type="maxim_peer"`` / ``"maxim-peer"``)
+            # resolve to ``_MaximPeerBackend``; future backend types
+            # only need a new entry in the dispatch table plus any
+            # ``_classify_backend`` wiring — no router edit.
+            backend_cls = _maybe_dispatch_backend_class(provider_type)
+            assert backend_cls is not None  # narrowed by the check above
+            backend = backend_cls(self.cfg, provider_key=provider_key)
         else:
             warn("Unknown LLM provider type: %s (%s)", provider_type, provider_key)
             backend = LLMRouter._INIT_FAILED
@@ -544,7 +577,19 @@ class LLMRouter:
     ) -> None:
         """Buffer a per-attempt outcome so
         :meth:`_emit_dispatch_exhausted` can log one aggregated WARN line
-        per failed dispatch (instead of one-per-attempt)."""
+        per failed dispatch (instead of one-per-attempt).
+
+        **R3 review fix:** ``_dispatch_attempts`` is a plain list and is
+        only safe because ``_complete_text`` holds ``_inference_lock``
+        for the full duration of a dispatch. The invariant is now
+        enforced at call time — any future code path that calls
+        ``_try_provider`` outside the lock (e.g., a warmup probe, a
+        benchmark hook) trips this assertion loudly instead of silently
+        corrupting the attempt buffer across dispatches.
+        """
+        assert self._inference_lock.locked(), (
+            "_record_attempt_outcome must be called under _inference_lock — _dispatch_attempts is not thread-safe"
+        )
         attempt: dict[str, Any] = {
             "provider": provider_key,
             "outcome": outcome,
@@ -564,19 +609,33 @@ class LLMRouter:
         Preserves multi-agent context (``agent_id``, ``session_id``,
         ``request_id``, ``lane``) and lists every per-provider attempt
         with its typed outcome. Grep-friendly via
-        ``jq 'select(.e=="dispatch_exhausted")'``."""
+        ``jq 'select(.e=="dispatch_exhausted")'``.
+
+        **R3 review fix:** delegates to
+        :func:`maxim.agents.llm_worker._normalize_request_context` (the
+        canonical Plan 2 R2b shim) instead of reading ``ctx.get("agent")``
+        inline. The shim is the only sanctioned bridge between the
+        legacy dict-shape ``request_context`` and typed
+        :class:`RequestContext`; duplicating its logic here would be
+        the same architectural drift the Plan 2 R2b commit forbid.
+        """
         attempts = list(self._dispatch_attempts)
         self._dispatch_attempts.clear()
-        ctx = request_context or {}
+
+        # Lazy import avoids a circular dependency via
+        # agents.llm_worker → router.
+        from maxim.agents.llm_worker import _normalize_request_context
+
+        ctx = _normalize_request_context(request_context)
         log_structured(
             logger,
             logging.WARNING,
             event="dispatch_exhausted",
             data={
-                "request_id": ctx.get("request_id", ""),
-                "agent_id": ctx.get("agent_id") or ctx.get("agent"),
-                "session_id": ctx.get("session_id"),
-                "lane": ctx.get("lane"),
+                "request_id": ctx.request_id,
+                "agent_id": ctx.agent_id,
+                "session_id": ctx.session_id,
+                "lane": ctx.lane,
                 "total_elapsed_ms": round(total_elapsed_ms, 1),
                 "attempts": attempts,
             },
@@ -830,10 +889,12 @@ class LLMRouter:
             return "", None, "failed"
         except BackendAuthFailed:
             # 300s hard cooldown — rotating a cluster key doesn't
-            # self-heal; operator intervention required. Record the
-            # ``last_error`` string first via a thin state update, then
-            # apply the long cooldown AFTER so ``_note_provider_failure``'s
-            # exponential ramp doesn't overwrite the hard value.
+            # self-heal; operator intervention required. Do NOT call
+            # ``_note_provider_failure`` in this branch: it runs the
+            # exponential ramp ``min(60, 2**n)`` which would clobber
+            # the 300s hard value with at most a 60s cooldown. The
+            # 300s value is load-bearing: it stops the router from
+            # hammering a key-rotated peer every few seconds.
             state = self._provider_states.get(provider_key)
             if state is not None:
                 state.last_error = "auth_failed"
@@ -842,7 +903,10 @@ class LLMRouter:
             return "", None, "failed"
         except BackendModelMissing as e:
             # 60s cooldown — operator needs to install the model; don't
-            # hammer the peer while it's not going to answer.
+            # hammer the peer while it's not going to answer. Same
+            # load-bearing rule as the auth branch above: no
+            # ``_note_provider_failure`` call — it would overwrite the
+            # hard 60s value with the exponential ramp.
             requested = getattr(e, "requested_model", "")
             state = self._provider_states.get(provider_key)
             if state is not None:
