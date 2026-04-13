@@ -321,7 +321,7 @@ def _probe_stage2_readiness(
 
     latency_ms = (time.monotonic() - start) * 1000
     if resp.status == 200:
-        return ProbeResult(url, "ok", f"stage2 HTTP 200", round(latency_ms, 1))
+        return ProbeResult(url, "ok", "stage2 HTTP 200", round(latency_ms, 1))
     return ProbeResult(
         url,
         "inference_broken",

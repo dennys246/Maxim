@@ -185,8 +185,8 @@ Plus `MAXIM_CLUSTER_KEY` (cluster bearer token) and `MAXIM_REQUEST_TRACE_SIZE` (
 |---|---|---|---|
 | Plan 1 R0 (dead mesh delete) | ✅ SHIPPED 2026-04-11 (commit `e811787`) | ✅ Done | ✅ [project_llm_path_r0_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r0_shipped.md) |
 | Plan 1 R1 (utils/http.py + 9 migrations) | ✅ SHIPPED 2026-04-12 (PRs #88, #90, pending cleanup PR for `c8a07e9`) | ✅ Done (4003 passed, CI grep CLEAN, smoke green) | ✅ [project_llm_path_r1_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r1_shipped.md) |
-| Plan 2: Typed Errors (R2a-d) | Draft v1 | ▶ **READY TO START** | ⏸ Pending |
-| Plan 3: Fast Failover (R2.5+R2.6) | Draft v2 | ⏸ Blocked on Plan 2 | ⏸ Pending |
+| Plan 2: Typed Errors (R2a-d) | ✅ SHIPPED 2026-04-12 (branch `feat/llm-path-r2`) | ✅ Done (4073 passed, CI grep CLEAN, smoke green with `role_detected` first event) | ✅ [project_llm_path_r2_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r2_shipped.md) |
+| Plan 3: Fast Failover (R2.5+R2.6) | Draft v2 | ▶ **READY TO START** | ⏸ Pending |
 | Stress test (A-E) | Draft protocol | ⏸ Blocked on Plan 3 | N/A |
 | Plan 4: Operator Visibility (R3.x) | Draft v2 | ⏸ Blocked on stress test | ⏸ Pending |
 | Deferred: multi-peer dispatch | Shell plan | ⏸ Revive trigger TBD | N/A |

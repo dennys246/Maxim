@@ -1,6 +1,6 @@
 # LLM Path Refinement — Plan 2: Role Detection + Typed Error Taxonomy
 
-**Status:** Draft — proposed 2026-04-12, split from Plan 1 per user request. **Plan 1 R0+R1 SHIPPED 2026-04-12 (PRs #88, #90, pending cleanup PR for `c8a07e9`).** R2a-d ready to start.
+**Status:** ✅ **SHIPPED 2026-04-12.** All four sub-phases (R2a role detection, R2b typed `BackendError` taxonomy + `_normalize_request_context`, R2c two-stage probe + TTL table + corruption log upgrade, R2d SSRF move to `utils/net.py`) landed on `feat/llm-path-r2`. 4073 fast-suite tests passing, CI grep invariant clean. Plan 3 (Fast Failover) is ready to start.
 **Scope:** ~280 LOC new
 **Target version:** 0.4 (single stability version containing all LLM path sub-plans)
 **Part of:** [llm_path_refinement.md](llm_path_refinement.md) — the LLM path refinement meta-plan
