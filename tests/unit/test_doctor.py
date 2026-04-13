@@ -797,3 +797,190 @@ class TestDetectDoctorRole:
         role, url = _detect_doctor_role()
         assert role == "auto"
         assert url is None
+
+
+# ─── check_env_config ─────────────────────────────────────────────────────
+
+
+class TestCheckEnvConfig:
+    def _info(self, **kwargs) -> PlatformInfo:
+        defaults = dict(
+            os="linux",
+            os_release="Ubuntu 24.04",
+            runtime="native",
+            distro="ubuntu",
+            arch="x86_64",
+            kernel_version="6.5.0",
+            windows_host_ip=None,
+        )
+        defaults.update(kwargs)
+        return PlatformInfo(**defaults)
+
+    def test_all_good_leader(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+        monkeypatch.setenv("MAXIM_LLM_ENABLED", "1")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "qwen2.5-14b")
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "16384")
+        monkeypatch.delenv("MAXIM_SKIP_REMOTE_PROBE", raising=False)
+        monkeypatch.delenv("MAXIM_PEER_PROBE_KEY", raising=False)
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        from maxim.doctor.checks import check_env_config
+
+        results = check_env_config(self._info(), role="leader")
+        statuses = {r.name: r.status for r in results}
+        assert statuses.get("MAXIM_ROLE") == "ok"
+        assert statuses.get("MAXIM_LLM_N_CTX") == "ok"
+        # No stale-var warnings
+        assert "MAXIM_SKIP_REMOTE_PROBE" not in statuses
+        assert "MAXIM_PEER_PROBE_KEY" not in statuses
+
+    def test_missing_maxim_role_warns(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_ROLE", raising=False)
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        from maxim.doctor.checks import check_env_config
+
+        results = check_env_config(self._info())
+        role_result = next((r for r in results if r.name == "MAXIM_ROLE"), None)
+        assert role_result is not None
+        assert role_result.status == "warn"
+        assert "not set" in role_result.message
+
+    def test_invalid_maxim_role_fails(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_ROLE", "superleader")
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        from maxim.doctor.checks import check_env_config
+
+        results = check_env_config(self._info())
+        role_result = next((r for r in results if r.name == "MAXIM_ROLE"), None)
+        assert role_result is not None
+        assert role_result.status == "fail"
+
+    def test_low_n_ctx_warns(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+        monkeypatch.setenv("MAXIM_LLM_ENABLED", "1")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "qwen2.5-14b")
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "4096")
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        from maxim.doctor.checks import check_env_config
+
+        results = check_env_config(self._info(), role="leader")
+        ctx_result = next((r for r in results if r.name == "MAXIM_LLM_N_CTX"), None)
+        assert ctx_result is not None
+        assert ctx_result.status == "warn"
+        assert "8192" in ctx_result.message
+
+    def test_skip_remote_probe_warns(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+        monkeypatch.setenv("MAXIM_LLM_ENABLED", "1")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "m")
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "16384")
+        monkeypatch.setenv("MAXIM_SKIP_REMOTE_PROBE", "1")
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        from maxim.doctor.checks import check_env_config
+
+        results = check_env_config(self._info(), role="leader")
+        probe_result = next((r for r in results if r.name == "MAXIM_SKIP_REMOTE_PROBE"), None)
+        assert probe_result is not None
+        assert probe_result.status == "warn"
+
+    def test_stale_probe_key_warns(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+        monkeypatch.setenv("MAXIM_LLM_ENABLED", "1")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "m")
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "16384")
+        monkeypatch.setenv("MAXIM_PEER_PROBE_KEY", "stale-key")
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        from maxim.doctor.checks import check_env_config
+
+        results = check_env_config(self._info(), role="leader")
+        pk_result = next((r for r in results if r.name == "MAXIM_PEER_PROBE_KEY"), None)
+        assert pk_result is not None
+        assert pk_result.status == "warn"
+
+    def test_peer_role_skips_llm_checks(self, monkeypatch):
+        """Peer machines don't run llama-cpp — no LLM env checks."""
+        monkeypatch.setenv("MAXIM_ROLE", "peer")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "https://maxim.example.com/v1")
+        monkeypatch.delenv("MAXIM_LLM_ENABLED", raising=False)
+        monkeypatch.delenv("MAXIM_LLM_N_CTX", raising=False)
+        from maxim.doctor.checks import check_env_config
+
+        results = check_env_config(self._info(), role="peer")
+        names = {r.name for r in results}
+        assert "MAXIM_LLM_ENABLED" not in names
+        assert "MAXIM_LLM_N_CTX" not in names
+
+    def test_macos_fix_hint_uses_zshrc(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_ROLE", raising=False)
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        from maxim.doctor.checks import check_env_config
+
+        results = check_env_config(self._info(os="macos"))
+        role_result = next((r for r in results if r.name == "MAXIM_ROLE"), None)
+        assert role_result is not None
+        assert role_result.fix is not None
+        assert "zshrc" in role_result.fix
+
+
+# ─── check_context_window ─────────────────────────────────────────────────
+
+
+class TestCheckContextWindow:
+    def test_server_not_reachable_returns_info(self, monkeypatch):
+        from maxim.doctor.checks import check_context_window
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        with patch.object(_MaximPeerBackend, "health_check", return_value=False):
+            result = check_context_window()
+        assert result.status == "info"
+
+    def test_n_ctx_ok_above_8192(self, monkeypatch):
+        import json
+        from unittest.mock import MagicMock, patch
+
+        from maxim.doctor.checks import check_context_window
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        models_response = json.dumps({"data": [{"id": "qwen2.5-14b", "context_length": 16384}]}).encode()
+
+        with patch.object(_MaximPeerBackend, "health_check", return_value=True):
+            import socket as _socket
+
+            mock_sock = MagicMock()
+            mock_sock.__enter__ = lambda s: s
+            mock_sock.__exit__ = MagicMock(return_value=False)
+            mock_sock.recv.side_effect = [
+                b"HTTP/1.0 200 OK\r\n\r\n" + models_response,
+                b"",
+            ]
+            with patch.object(_socket, "create_connection", return_value=mock_sock):
+                result = check_context_window()
+
+        assert result.status == "ok"
+        assert "16384" in result.message
+
+    def test_n_ctx_below_8192_warns(self, monkeypatch):
+        import json
+        from unittest.mock import MagicMock, patch
+
+        from maxim.doctor.checks import check_context_window
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        models_response = json.dumps({"data": [{"id": "model", "context_length": 4096}]}).encode()
+
+        with patch.object(_MaximPeerBackend, "health_check", return_value=True):
+            import socket as _socket
+
+            mock_sock = MagicMock()
+            mock_sock.__enter__ = lambda s: s
+            mock_sock.__exit__ = MagicMock(return_value=False)
+            mock_sock.recv.side_effect = [
+                b"HTTP/1.0 200 OK\r\n\r\n" + models_response,
+                b"",
+            ]
+            with patch.object(_socket, "create_connection", return_value=mock_sock):
+                result = check_context_window()
+
+        assert result.status == "warn"
+        assert "4096" in result.message
+        assert "overflow" in result.message or "KV cache" in result.message

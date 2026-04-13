@@ -206,6 +206,319 @@ def check_llm_model_active() -> CheckResult:
         )
 
 
+# ─── environment variable config ───────────────────────────────────────────
+
+
+def check_env_config(info: PlatformInfo, role: str | None = None) -> list["CheckResult"]:
+    """Validate critical Maxim environment variables.
+
+    Returns a list (may be empty if everything is fine) so the caller can
+    splice the results into the Environment section without a fixed slot.
+    Checks are cross-platform — only uses ``os.environ``, no shell calls.
+
+    Covers:
+    - MAXIM_ROLE missing or set to an invalid value
+    - MAXIM_LLM_ENABLED not set on a leader/solo machine
+    - MAXIM_LLM_PROFILE missing when LLM is enabled
+    - MAXIM_LLM_N_CTX not set (context overflow risk on 14B+ models)
+    - Stale MAXIM_PEER_PROBE_KEY from pre-R2.5 (now ignored, misleading)
+    - MAXIM_SKIP_REMOTE_PROBE left set from debugging (silently disables health probes)
+    - MAXIM_ROLE=peer set on a machine running as leader (role_divergence trigger)
+    """
+    import os
+
+    results: list[CheckResult] = []
+    is_peer = (role == "peer") or (os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip() != "")
+
+    # ── MAXIM_ROLE ────────────────────────────────────────────────────────────
+    maxim_role = os.environ.get("MAXIM_ROLE", "").strip().lower()
+    valid_roles = {"leader", "peer", "solo"}
+    if not maxim_role:
+        # Role is inferred from heuristics — warn so the user knows
+        # which heuristic fired and can make it explicit.
+        inferred = "peer" if is_peer else "leader"
+        if info.os == "macos":
+            export_cmd = f"export MAXIM_ROLE={inferred}  # add to ~/.zshrc"
+        else:
+            export_cmd = f'echo "MAXIM_ROLE={inferred}" >> ~/.maxim/.env  # or add to systemd unit'
+        results.append(
+            CheckResult(
+                name="MAXIM_ROLE",
+                status="warn",
+                message=f"not set — role inferred as '{inferred}' from heuristics. Set explicitly to silence role_divergence warnings.",
+                fix=export_cmd,
+            )
+        )
+    elif maxim_role not in valid_roles:
+        results.append(
+            CheckResult(
+                name="MAXIM_ROLE",
+                status="fail",
+                message=f"invalid value '{maxim_role}' — must be leader, peer, or solo",
+                fix="export MAXIM_ROLE=leader  # or peer / solo",
+            )
+        )
+    else:
+        results.append(
+            CheckResult(
+                name="MAXIM_ROLE",
+                status="ok",
+                message=f"MAXIM_ROLE={maxim_role}",
+            )
+        )
+
+    # ── LLM enablement (leader/solo only) ────────────────────────────────────
+    if not is_peer:
+        llm_enabled = os.environ.get("MAXIM_LLM_ENABLED", "").strip()
+        if llm_enabled not in ("1", "true", "yes"):
+            results.append(
+                CheckResult(
+                    name="MAXIM_LLM_ENABLED",
+                    status="warn",
+                    message="not set — LLM inference may be disabled",
+                    fix="export MAXIM_LLM_ENABLED=1",
+                )
+            )
+
+        # ── MAXIM_LLM_PROFILE ────────────────────────────────────────────────
+        profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
+        if not profile:
+            # Check persisted file before crying foul
+            try:
+                from maxim.runtime.lane_backends import _read_persisted_model
+
+                persisted = _read_persisted_model()
+            except Exception:
+                persisted = None
+            if persisted:
+                results.append(
+                    CheckResult(
+                        name="MAXIM_LLM_PROFILE",
+                        status="info",
+                        message=f"not set — using persisted model '{persisted}'",
+                        fix=f"export MAXIM_LLM_PROFILE={persisted}  # makes it explicit",
+                    )
+                )
+            else:
+                results.append(
+                    CheckResult(
+                        name="MAXIM_LLM_PROFILE",
+                        status="warn",
+                        message="not set and no persisted model — LLM will not start",
+                        fix="export MAXIM_LLM_PROFILE=qwen2.5-14b  # or your model name",
+                    )
+                )
+
+        # ── MAXIM_LLM_N_CTX ──────────────────────────────────────────────────
+        n_ctx_raw = os.environ.get("MAXIM_LLM_N_CTX", "").strip()
+        if not n_ctx_raw:
+            results.append(
+                CheckResult(
+                    name="MAXIM_LLM_N_CTX",
+                    status="warn",
+                    message=(
+                        "not set — llama-cpp will auto-select context size (often 4096). "
+                        "Long prompts on 14B+ models will fill the KV cache and return "
+                        "empty choices, causing inference_broken cascades."
+                    ),
+                    fix="export MAXIM_LLM_N_CTX=16384  # safe for Q4_K_M 14B on 16 GB+ VRAM",
+                )
+            )
+        else:
+            try:
+                n_ctx = int(n_ctx_raw)
+                if n_ctx < 8192:
+                    results.append(
+                        CheckResult(
+                            name="MAXIM_LLM_N_CTX",
+                            status="warn",
+                            message=f"MAXIM_LLM_N_CTX={n_ctx} — below 8192 risks context overflow on multi-turn sims",
+                            fix="export MAXIM_LLM_N_CTX=16384",
+                        )
+                    )
+                else:
+                    results.append(
+                        CheckResult(
+                            name="MAXIM_LLM_N_CTX",
+                            status="ok",
+                            message=f"MAXIM_LLM_N_CTX={n_ctx}",
+                        )
+                    )
+            except ValueError:
+                results.append(
+                    CheckResult(
+                        name="MAXIM_LLM_N_CTX",
+                        status="fail",
+                        message=f"MAXIM_LLM_N_CTX='{n_ctx_raw}' is not a valid integer",
+                        fix="export MAXIM_LLM_N_CTX=16384",
+                    )
+                )
+
+    # ── Stale debugging vars that cause silent failures ───────────────────────
+    if os.environ.get("MAXIM_SKIP_REMOTE_PROBE", "").strip().lower() in ("1", "true", "yes"):
+        results.append(
+            CheckResult(
+                name="MAXIM_SKIP_REMOTE_PROBE",
+                status="warn",
+                message="set — all health probes are bypassed. Inference will fire before the server is ready.",
+                fix="unset MAXIM_SKIP_REMOTE_PROBE",
+            )
+        )
+
+    if os.environ.get("MAXIM_PEER_PROBE_KEY", "").strip():
+        results.append(
+            CheckResult(
+                name="MAXIM_PEER_PROBE_KEY",
+                status="warn",
+                message="set — this variable was removed in Plan 3 R2.5 (probe key moved to instance level). It is ignored but may indicate a stale environment.",
+                fix="unset MAXIM_PEER_PROBE_KEY",
+            )
+        )
+
+    return results
+
+
+# ─── context window ─────────────────────────────────────────────────────────
+
+
+def check_context_window(port: int = 8100) -> CheckResult:
+    """Detect the context window actually in use by the running llama-cpp server.
+
+    Queries ``/v1/models`` first (cheap). If that doesn't carry n_ctx, falls
+    back to inspecting the process command-line on Linux (``/proc/*/cmdline``)
+    and macOS/Windows (``ps``/``wmic``). Returns info if server isn't running.
+
+    This check exists specifically to catch the silent inference_broken cascade
+    where llama-cpp runs at n_ctx=4096 and long prompts overflow the KV cache,
+    returning empty ``choices`` with HTTP 200.
+    """
+    import platform
+    import subprocess
+
+    url = f"http://127.0.0.1:{port}/v1"
+
+    # Step 1: is the server up at all?
+    try:
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        backend = _MaximPeerBackend.for_url(url)
+        healthy = backend.health_check(enable_stage2=False)
+        if not healthy:
+            return CheckResult(
+                name="Context window (n_ctx)",
+                status="info",
+                message="llama-cpp server not reachable — start it first",
+            )
+    except Exception:
+        return CheckResult(
+            name="Context window (n_ctx)",
+            status="info",
+            message="context window check unavailable (server not reachable)",
+        )
+
+    # Step 2: check /v1/models for n_ctx in metadata
+    n_ctx: int | None = None
+    try:
+        import socket
+
+        req_bytes = (f"GET /v1/models HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n").encode()
+        with socket.create_connection(("127.0.0.1", port), timeout=2.0) as s:
+            s.sendall(req_bytes)
+            raw = b""
+            while True:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                raw += chunk
+        body = raw.split(b"\r\n\r\n", 1)[-1]
+        import json as _json
+
+        data = _json.loads(body)
+        for model in data.get("data", []):
+            ctx = model.get("context_length") or model.get("n_ctx") or model.get("max_context_length")
+            if ctx:
+                n_ctx = int(ctx)
+                break
+    except Exception:
+        pass
+
+    # Step 3: inspect process args (cross-platform, best-effort)
+    if n_ctx is None:
+        try:
+            system = platform.system().lower()
+            if system == "linux":
+                # /proc is authoritative and doesn't require ps
+                import glob
+
+                for cmdline_path in glob.glob("/proc/*/cmdline"):
+                    try:
+                        with open(cmdline_path, "rb") as f:
+                            args = f.read().split(b"\x00")
+                        args_str = [a.decode("utf-8", errors="ignore") for a in args]
+                        if any("llama" in a or "llama-server" in a for a in args_str):
+                            for i, arg in enumerate(args_str):
+                                if arg in ("--ctx-size", "-c", "--n-ctx") and i + 1 < len(args_str):
+                                    n_ctx = int(args_str[i + 1])
+                                    break
+                                if arg.startswith("--ctx-size="):
+                                    n_ctx = int(arg.split("=", 1)[1])
+                                    break
+                    except Exception:
+                        continue
+                    if n_ctx is not None:
+                        break
+            elif system == "darwin":
+                out = subprocess.check_output(
+                    ["ps", "aux"],
+                    timeout=3.0,
+                    stderr=subprocess.DEVNULL,
+                ).decode("utf-8", errors="ignore")
+                for line in out.splitlines():
+                    if "llama" not in line:
+                        continue
+                    parts = line.split()
+                    for i, p in enumerate(parts):
+                        if p in ("--ctx-size", "-c", "--n-ctx") and i + 1 < len(parts):
+                            n_ctx = int(parts[i + 1])
+                            break
+                        if p.startswith("--ctx-size="):
+                            n_ctx = int(p.split("=", 1)[1])
+                            break
+                    if n_ctx is not None:
+                        break
+        except Exception:
+            pass
+
+    if n_ctx is None:
+        return CheckResult(
+            name="Context window (n_ctx)",
+            status="warn",
+            message=(
+                "server is running but n_ctx could not be determined. Set MAXIM_LLM_N_CTX=16384 to make it explicit."
+            ),
+            fix="export MAXIM_LLM_N_CTX=16384",
+        )
+
+    if n_ctx < 8192:
+        return CheckResult(
+            name="Context window (n_ctx)",
+            status="warn",
+            message=(
+                f"n_ctx={n_ctx} — too small for multi-turn sims with memory summaries. "
+                f"Long prompts will overflow the KV cache and return empty choices "
+                f"(inference_broken cascade)."
+            ),
+            fix="export MAXIM_LLM_N_CTX=16384  # then restart: maxim peer restart",
+            retry_id="ctx_window",
+        )
+
+    return CheckResult(
+        name="Context window (n_ctx)",
+        status="ok",
+        message=f"n_ctx={n_ctx}",
+    )
+
+
 # ─── LAN access ────────────────────────────────────────────────────────────
 
 
@@ -1096,9 +1409,30 @@ def check_peer_latency(url: str, key: str | None) -> CheckResult:
 
 
 def check_role() -> CheckResult:
-    from maxim.runtime.leader_mode import detect_role
+    from maxim.runtime.leader_mode import detect_role as _legacy_detect
+    from maxim.runtime.role import detect_role as _new_detect
 
-    decision = detect_role()
+    decision = _legacy_detect()
+    new_role, new_source = _new_detect()
+
+    # Normalise legacy "client" → "peer" for comparison
+    legacy_role = "peer" if decision.role == "client" else decision.role
+
+    if legacy_role != new_role:
+        # Two role-detection systems disagree — surface this in doctor output
+        # rather than burying it as a WARNING-only log event.  Operators need
+        # to set MAXIM_ROLE explicitly to resolve it.
+        return CheckResult(
+            name="Role",
+            status="warn",
+            message=(
+                f"role_divergence: leader_mode says '{legacy_role}' "
+                f"({decision.reason}), role.py says '{new_role}' ({new_source}). "
+                f"Set MAXIM_ROLE explicitly to resolve."
+            ),
+            fix=f"export MAXIM_ROLE={new_role}  # or 'leader' / 'solo' as appropriate",
+        )
+
     if decision.is_leader:
         return CheckResult(
             name="Role",
@@ -1429,20 +1763,21 @@ def run_all_checks(
     peer_url = peer_url or detected_url
 
     # ── environment (always) ──────────────────────────────────────────────
+    env_checks: list[CheckResult] = [
+        CheckResult(name="Platform", status="ok", message=info.display_name),
+        CheckResult(name="Architecture", status="ok", message=info.arch),
+        check_gpu(),
+        check_tier_detection(),
+        check_tier_effectiveness(),
+        check_disk_space(),
+        check_ram_headroom(),
+        check_storage_footprint(),
+    ]
+    # Splice env-var checks in after the hardware checks so operators see
+    # misconfigurations right alongside the hardware context.
+    env_checks.extend(check_env_config(info, role=detected_role))
     sections: list[tuple[str, list[CheckResult]]] = [
-        (
-            "Environment",
-            [
-                CheckResult(name="Platform", status="ok", message=info.display_name),
-                CheckResult(name="Architecture", status="ok", message=info.arch),
-                check_gpu(),
-                check_tier_detection(),
-                check_tier_effectiveness(),
-                check_disk_space(),
-                check_ram_headroom(),
-                check_storage_footprint(),
-            ],
-        ),
+        ("Environment", env_checks),
     ]
 
     if detected_role == "peer" and peer_url:
@@ -1484,6 +1819,7 @@ def run_all_checks(
                     check_llama_cpp_server_installed(),
                     check_server_reachable(),
                     check_llm_model_active(),
+                    check_context_window(),
                     check_inference_coherence(),
                 ],
             ),
@@ -1528,6 +1864,8 @@ __all__ = [
     "check_llama_cpp_server_installed",
     "check_server_reachable",
     "check_llm_model_active",
+    "check_env_config",
+    "check_context_window",
     "check_lan_access",
     "check_cloudflared",
     "check_tunnel_config",
