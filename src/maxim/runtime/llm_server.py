@@ -137,6 +137,7 @@ ProbeOutcome = Literal[
     "timeout",
     "http_5xx",
     "other",
+    "inference_broken",
 ]
 
 
@@ -254,12 +255,89 @@ def _probe_once(url: str, api_key: str | None, timeout_s: float) -> ProbeResult:
     return ProbeResult(url, "ok", f"HTTP {resp.status}", round(latency_ms, 1))
 
 
+def _probe_stage2_readiness(
+    url: str,
+    api_key: str | None,
+    model_name: str,
+    timeout_s: float = 3.0,
+) -> ProbeResult:
+    """Stage-2 readiness probe (Plan 2 R2c): micro-completion.
+
+    Runs only after stage-1 liveness (``GET /v1/models``) returns ``ok``.
+    Issues a tiny ``POST /v1/chat/completions`` with ``max_tokens=1`` to
+    confirm the model is actually loaded and the chat endpoint is wired.
+
+    Fallback safety: any non-HTTP exception (JSON parse error, library
+    crash) is logged WARN and treated as stage-1 ``ok``, so probe
+    fragility never makes the whole system look dead.
+    """
+    from maxim.utils import http as _http
+    from maxim.utils.structured_logging import log_structured
+
+    base = url.rstrip("/")
+    chat_url = base + "/chat/completions" if base.endswith("/v1") else base + "/v1/chat/completions"
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    body = {
+        "model": model_name or "default",
+        "messages": [{"role": "user", "content": "."}],
+        "max_tokens": 1,
+        "temperature": 0.0,
+    }
+    start = time.monotonic()
+    try:
+        resp = _http.fetch_url(
+            chat_url,
+            method="POST",
+            headers=headers,
+            json=body,
+            timeout=_http.TimeoutPolicy(
+                connect_s=min(timeout_s, 2.0),
+                read_s=timeout_s,
+                total_s=timeout_s + 1.0,
+            ),
+        )
+    except (_http.HTTPServerError, _http.HTTPClientError, _http.HTTPTimeout) as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(
+            url,
+            "inference_broken",
+            f"stage2: {type(e).__name__} {getattr(e, 'status', '')}",
+            round(latency_ms, 1),
+        )
+    except _http.HTTPConnectionError as e:
+        return ProbeResult(url, "inference_broken", f"stage2: {e.fix_hint or str(e)}", None)
+    except _http.HTTPError as e:
+        return ProbeResult(url, "inference_broken", f"stage2: {type(e).__name__}", None)
+    except Exception as e:  # noqa: BLE001 — fallback safety
+        log_structured(
+            logger,
+            logging.WARNING,
+            event="probe_stage2_fallback",
+            data={"endpoint": url, "reason": f"{type(e).__name__}: {e}"},
+        )
+        return ProbeResult(url, "ok", "stage1-ok (stage2 fallback)", None)
+
+    latency_ms = (time.monotonic() - start) * 1000
+    if resp.status == 200:
+        return ProbeResult(url, "ok", f"stage2 HTTP 200", round(latency_ms, 1))
+    return ProbeResult(
+        url,
+        "inference_broken",
+        f"stage2 HTTP {resp.status}",
+        round(latency_ms, 1),
+    )
+
+
 def probe_llm_server(
     url: str,
     *,
     api_key: str | None = None,
     first_timeout_s: float = 0.8,
     retry_timeout_s: float = 2.5,
+    model_name: str | None = None,
+    enable_stage2: bool = False,
 ) -> ProbeResult:
     """Probe ``GET /v1/models`` with optional Bearer auth, two-attempt retry.
 
@@ -273,10 +351,54 @@ def probe_llm_server(
     on. See :func:`_log_probe_failure` in lane_backends for the human-
     readable warning template per outcome.
     """
+    from maxim.utils.structured_logging import log_structured
+
+    log_structured(
+        logger,
+        logging.INFO,
+        event="probe_started",
+        data={"endpoint": url, "stage": "liveness", "cached": False},
+    )
+    stage1_start = time.monotonic()
     result = _probe_once(url, api_key, first_timeout_s)
-    if result.is_reachable:
-        return result
-    return _probe_once(url, api_key, retry_timeout_s)
+    if not result.is_reachable:
+        result = _probe_once(url, api_key, retry_timeout_s)
+    stage1_ms = round((time.monotonic() - stage1_start) * 1000, 1)
+
+    # Stage 2 runs only if explicitly requested and stage 1 returned ok.
+    # Plan 3's _MaximPeerBackend.health_check() will be the main consumer;
+    # legacy lane_backends probe paths leave enable_stage2=False to preserve
+    # current behavior until Plan 3 R2.5 supersedes this function entirely.
+    if enable_stage2 and result.outcome == "ok":
+        stage2 = _probe_stage2_readiness(url, api_key, model_name or "default")
+        stage2_ms = stage2.latency_ms
+        log_structured(
+            logger,
+            logging.INFO,
+            event="probe_completed",
+            data={
+                "endpoint": url,
+                "stage": "both",
+                "outcome": stage2.outcome,
+                "liveness_ms": stage1_ms,
+                "readiness_ms": stage2_ms,
+            },
+        )
+        return stage2
+
+    log_structured(
+        logger,
+        logging.INFO,
+        event="probe_completed",
+        data={
+            "endpoint": url,
+            "stage": "liveness",
+            "outcome": result.outcome,
+            "liveness_ms": stage1_ms,
+            "readiness_ms": None,
+        },
+    )
+    return result
 
 
 def llm_server_responding_at(url: str, *, timeout_s: float = 1.5) -> bool:
