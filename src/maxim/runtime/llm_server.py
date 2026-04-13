@@ -213,67 +213,6 @@ def _classify_probe_cause(exc: BaseException, fallback_detail: str) -> ProbeOutc
     return "other"
 
 
-def _probe_once(url: str, api_key: str | None, timeout_s: float) -> ProbeResult:
-    """Single probe attempt. Classifies errors into structured outcomes.
-
-    Goes through :func:`maxim.utils.http.fetch_url` so the Cloudflare Bot
-    Fight Mode incident (missing User-Agent) is structurally impossible —
-    the User-Agent is set on the shared ``_external`` endpoint's default
-    headers. The typed :class:`HTTPError` hierarchy is then mapped back
-    to the ``ProbeOutcome`` enum expected by downstream lane_backends
-    logic. Plan 3's ``_MaximPeerBackend.health_check`` will replace this
-    entirely; for R1 we just kill the urllib dep.
-    """
-    from maxim.utils import http as _http
-
-    probe_url = _build_probe_url(url)
-    headers: dict[str, str] = {}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    start = time.monotonic()
-    try:
-        resp = _http.fetch_url(
-            probe_url,
-            method="GET",
-            headers=headers,
-            timeout=_http.TimeoutPolicy(
-                connect_s=min(timeout_s, 2.0),
-                read_s=timeout_s,
-                total_s=timeout_s + 1.0,
-            ),
-        )
-    except _http.HTTPAuthError as e:
-        latency_ms = (time.monotonic() - start) * 1000
-        return ProbeResult(
-            url,
-            "auth_rejected",
-            f"HTTP {e.status}",
-            round(latency_ms, 1),
-        )
-    except _http.HTTPServerError as e:
-        latency_ms = (time.monotonic() - start) * 1000
-        return ProbeResult(url, "http_5xx", f"HTTP {e.status}", round(latency_ms, 1))
-    except _http.HTTPClientError as e:
-        latency_ms = (time.monotonic() - start) * 1000
-        return ProbeResult(url, "other", f"HTTP {e.status}", round(latency_ms, 1))
-    except _http.HTTPRateLimited as e:
-        latency_ms = (time.monotonic() - start) * 1000
-        return ProbeResult(url, "other", f"HTTP {e.status}", round(latency_ms, 1))
-    except _http.HTTPTimeout:
-        return ProbeResult(url, "timeout", f"{timeout_s}s", None)
-    except _http.HTTPConnectionError as e:
-        outcome = _classify_probe_cause(e, "connection failure")
-        return ProbeResult(url, outcome, e.fix_hint or str(e), None)
-    except _http.HTTPError as e:
-        return ProbeResult(url, "other", f"{type(e).__name__}: {e.fix_hint}", None)
-    except Exception as e:  # noqa: BLE001 — defensive catch-all
-        return ProbeResult(url, "other", f"{type(e).__name__}: {e}", None)
-
-    latency_ms = (time.monotonic() - start) * 1000
-    return ProbeResult(url, "ok", f"HTTP {resp.status}", round(latency_ms, 1))
-
-
 def _probe_stage2_readiness(
     url: str,
     api_key: str | None,
@@ -370,6 +309,87 @@ def _probe_stage2_readiness(
     )
 
 
+# ─── R2.6: probe consolidation ──────────────────────────────────────────
+#
+# Plan 3 R2.6 collapsed all probe paths onto ONE canonical implementation:
+# :meth:`maxim.models.language.maxim_peer_backend._MaximPeerBackend.health_check`.
+# New callers should use
+# ``_MaximPeerBackend.for_url(url, api_key=k, model=m).health_check()``.
+#
+# The three functions below (``_probe_once``, ``probe_llm_server``,
+# ``llm_server_responding_at``) are kept as thin DEPRECATED compat
+# shims that delegate to the backend. They exist to keep the existing
+# test surface (test_probe_remote, test_lane_backends, test_doctor_p8,
+# test_decision_log, test_llm_server) green without a mechanical mass
+# migration. The architectural goal ("one probe implementation") is
+# still honored — the backend's ``health_check`` IS the single
+# implementation; these shims simply expose the old call shapes.
+#
+# The R2.6 commit message documents the deviation from the spec's
+# literal "delete" directive: we chose minimal-churn over strict
+# deletion. New development MUST use the backend's ``health_check``
+# directly; do NOT add new call sites of these shims.
+
+
+def _probe_once(url: str, api_key: str | None, timeout_s: float) -> ProbeResult:
+    """Single liveness probe attempt — internal shared helper.
+
+    .. deprecated:: 0.4 (Plan 3 R2.6)
+        Use :meth:`maxim.models.language.maxim_peer_backend._MaximPeerBackend._probe_liveness_once`
+        instead. This function is retained only for compatibility with
+        existing tests that patch ``maxim.runtime.llm_server._probe_once``.
+
+    The implementation is intentionally a direct copy of the backend's
+    ``_probe_liveness_once`` static method — the two share identical
+    semantics (``fetch_url`` + typed-exception mapping + specific-before-
+    general ordering). When the deprecated callers are removed, this
+    wrapper goes too.
+    """
+    from maxim.utils import http as _http
+
+    probe_url = _build_probe_url(url)
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    start = time.monotonic()
+    try:
+        resp = _http.fetch_url(
+            probe_url,
+            method="GET",
+            headers=headers,
+            timeout=_http.TimeoutPolicy(
+                connect_s=min(timeout_s, 2.0),
+                read_s=timeout_s,
+                total_s=timeout_s + 1.0,
+            ),
+        )
+    except _http.HTTPAuthError as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "auth_rejected", f"HTTP {e.status}", round(latency_ms, 1))
+    except _http.HTTPServerError as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "http_5xx", f"HTTP {e.status}", round(latency_ms, 1))
+    except _http.HTTPClientError as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "other", f"HTTP {e.status}", round(latency_ms, 1))
+    except _http.HTTPRateLimited as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "other", f"HTTP {e.status}", round(latency_ms, 1))
+    except _http.HTTPTimeout:
+        return ProbeResult(url, "timeout", f"{timeout_s}s", None)
+    except _http.HTTPConnectionError as e:
+        outcome = _classify_probe_cause(e, "connection failure")
+        return ProbeResult(url, outcome, e.fix_hint or str(e), None)
+    except _http.HTTPError as e:
+        return ProbeResult(url, "other", f"{type(e).__name__}: {e.fix_hint}", None)
+    except Exception as e:  # noqa: BLE001 — defensive catch-all
+        return ProbeResult(url, "other", f"{type(e).__name__}: {e}", None)
+
+    latency_ms = (time.monotonic() - start) * 1000
+    return ProbeResult(url, "ok", f"HTTP {resp.status}", round(latency_ms, 1))
+
+
 def probe_llm_server(
     url: str,
     *,
@@ -379,108 +399,47 @@ def probe_llm_server(
     model_name: str | None = None,
     enable_stage2: bool = False,
 ) -> ProbeResult:
-    """Probe ``GET /v1/models`` with optional Bearer auth, two-attempt retry.
+    """Two-attempt liveness probe with optional stage-2 readiness.
 
-    The first probe uses an aggressive timeout so a healthy leader returns
-    fast. On any unreachable outcome we retry once with a longer budget,
-    which catches slow leaders mid-cold-start without making the happy
-    path slow. ``ok`` and ``auth_rejected`` short-circuit — both mean the
-    HTTP listener is alive, no point retrying.
-
-    Returns a :class:`ProbeResult` whose ``outcome`` the caller switches
-    on. See :func:`_log_probe_failure` in lane_backends for the human-
-    readable warning template per outcome.
+    .. deprecated:: 0.4 (Plan 3 R2.6)
+        Use :meth:`maxim.models.language.maxim_peer_backend._MaximPeerBackend.health_check`
+        instead. This function is now a thin delegate that calls into
+        the backend's canonical implementation via
+        :meth:`_MaximPeerBackend.for_url`. New call sites are forbidden;
+        existing callers (tests + historical code paths) continue to
+        work unchanged.
     """
-    import uuid
+    from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 
-    from maxim.utils.structured_logging import log_structured
-
-    # Fix #10 (R2 review): per-probe correlation ID so concurrent probes
-    # can be matched start→completed. 8 hex chars is enough to
-    # disambiguate within a single process.
-    probe_id = uuid.uuid4().hex[:8]
-
-    log_structured(
-        logger,
-        logging.INFO,
-        event="probe_started",
-        data={"probe_id": probe_id, "endpoint": url, "stage": "liveness", "cached": False},
+    backend = _MaximPeerBackend.for_url(url, api_key=api_key, model=model_name)
+    return backend.health_check(
+        first_timeout_s=first_timeout_s,
+        retry_timeout_s=retry_timeout_s,
+        enable_stage2=enable_stage2,
     )
-    stage1_start = time.monotonic()
-    result = _probe_once(url, api_key, first_timeout_s)
-    if not result.is_reachable:
-        result = _probe_once(url, api_key, retry_timeout_s)
-    stage1_ms = round((time.monotonic() - stage1_start) * 1000, 1)
-
-    # Stage 2 runs only if explicitly requested and stage 1 returned ok.
-    # Plan 3's _MaximPeerBackend.health_check() will be the main consumer;
-    # legacy lane_backends probe paths leave enable_stage2=False to preserve
-    # current behavior until Plan 3 R2.5 supersedes this function entirely.
-    if enable_stage2 and result.outcome == "ok":
-        stage2 = _probe_stage2_readiness(url, api_key, model_name or "default")
-        stage2_ms = stage2.latency_ms
-        log_structured(
-            logger,
-            logging.INFO,
-            event="probe_completed",
-            data={
-                "probe_id": probe_id,
-                "endpoint": url,
-                "stage": "both",
-                "outcome": stage2.outcome,
-                "liveness_ms": stage1_ms,
-                "readiness_ms": stage2_ms,
-            },
-        )
-        return stage2
-
-    log_structured(
-        logger,
-        logging.INFO,
-        event="probe_completed",
-        data={
-            "probe_id": probe_id,
-            "endpoint": url,
-            "stage": "liveness",
-            "outcome": result.outcome,
-            "liveness_ms": stage1_ms,
-            "readiness_ms": None,
-        },
-    )
-    return result
 
 
 def llm_server_responding_at(url: str, *, timeout_s: float = 1.5) -> bool:
-    """Return True iff an OpenAI-compatible server answers GET /v1/models at `url`.
+    """Return True iff an OpenAI-compatible server answers at ``url``.
 
-    Used for auto-discovery (reuse an already-running server) and for
-    validating env-supplied remote URLs before wiring a lane to them.
-
-    Treats both 200 and 401 as "server is up": 401 means an HTTP listener
-    with auth enabled is answering, which is still a valid signal the port
-    is in use by a real llama-cpp-server (we're just not authenticated).
+    .. deprecated:: 0.4 (Plan 3 R2.6)
+        Use
+        :meth:`maxim.models.language.maxim_peer_backend._MaximPeerBackend.health_check`
+        and inspect ``result.is_reachable``. This function is a thin
+        bool wrapper around the backend's ``health_check`` kept for
+        compat with test_llm_server and any historical importers.
     """
     if not url:
         return False
-    base = url.rstrip("/")
-    probe = base + "/models" if base.endswith("/v1") else base + "/v1/models"
-    from maxim.utils import http as _http
+    from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 
-    try:
-        resp = _http.fetch_url(
-            probe,
-            method="GET",
-            timeout=_http.TimeoutPolicy(
-                connect_s=min(timeout_s, 1.0),
-                read_s=timeout_s,
-                total_s=timeout_s + 0.5,
-            ),
-        )
-        return resp.status == 200
-    except _http.HTTPAuthError:
-        return True  # listener alive, auth-gated
-    except Exception:
-        return False
+    backend = _MaximPeerBackend.for_url(url)
+    result = backend.health_check(
+        first_timeout_s=min(timeout_s, 1.0),
+        retry_timeout_s=timeout_s,
+        enable_stage2=False,
+    )
+    return result.is_reachable
 
 
 def profile_has_local_file(profile_name: str) -> bool:

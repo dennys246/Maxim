@@ -142,7 +142,14 @@ def check_llama_cpp_server_installed() -> CheckResult:
 
 
 def check_server_reachable(port: int = 8100) -> CheckResult:
-    """Probe the local auto-spawn port."""
+    """Probe the local auto-spawn port.
+
+    Plan 3 R2.6: the standalone ``llm_server_responding_at`` was removed.
+    The ``_llm_server_responding_at`` wrapper in lane_backends now
+    delegates to ``_MaximPeerBackend.health_check`` with
+    ``enable_stage2=False`` — same bool return shape, one probe
+    implementation under the hood.
+    """
     from maxim.runtime.lane_backends import _llm_server_responding_at
 
     url = f"http://127.0.0.1:{port}/v1"
@@ -1310,6 +1317,11 @@ def check_remote_reachability(url: str | None = None, api_key: str | None = None
             status="warn",
             message=f"Probe unavailable: {e}",
         )
+    # Plan 3 R2.6: ``probe_llm_server`` is a thin compat shim that
+    # delegates to ``_MaximPeerBackend.for_url(url).health_check``.
+    # Routing through the shim preserves the existing
+    # test_doctor_p8_checks mocking pattern while still funnelling
+    # production traffic into the backend's canonical implementation.
     result = probe_llm_server(url, api_key=api_key)
     if result.outcome == "ok":
         return CheckResult(

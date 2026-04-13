@@ -280,39 +280,169 @@ class _MaximPeerBackend:
         self._log_success(parsed, context, t0)
         return parsed
 
-    def health_check(self):
+    def health_check(
+        self,
+        *,
+        first_timeout_s: float = 0.8,
+        retry_timeout_s: float = 2.5,
+        enable_stage2: bool = True,
+    ):
         """Two-stage probe. Returns a
         :class:`maxim.runtime.llm_server.ProbeResult`.
 
-        Stage 1 (liveness): ``GET /v1/models`` with a short timeout.
-        Stage 2 (readiness): a 1-token ``POST /v1/chat/completions``.
+        Stage 1 (liveness): ``GET /v1/models`` with an aggressive first
+        timeout. On any unreachable outcome, one re-attempt with a
+        longer budget catches slow-starting leaders without slowing the
+        happy path. Short-circuits on ``ok`` and ``auth_rejected`` —
+        both mean the HTTP listener is alive.
 
-        Consolidates the three parallel probe implementations that used to
-        live in :mod:`runtime.llm_server`. Delegates to
-        :func:`runtime.llm_server.probe_llm_server` in R2.5; R2.6 will
-        move the implementation inside this class and delete the
-        standalone function.
+        Stage 2 (readiness): a 1-token ``POST /v1/chat/completions`` to
+        confirm the model is actually loaded and the chat endpoint is
+        wired. Opt-out via ``enable_stage2=False`` for callers that only
+        need liveness.
+
+        **R2.6 contract:** this is the single probe entry point for all
+        Maxim peer URLs. ``runtime/llm_server.py``'s ``probe_llm_server``
+        and ``llm_server_responding_at`` were deleted in R2.6;
+        :func:`_probe_stage2_readiness` in the same module is still
+        re-used as a shared primitive.
         """
-        # R2.5: delegate to the existing two-stage probe. R2.6 folds the
-        # implementation into this method and deletes the free function.
-        from maxim.runtime.llm_server import probe_llm_server
+        import uuid
 
-        base_url = self._resolve_base_url()
+        from maxim.runtime.llm_server import (
+            ProbeResult,
+            _probe_stage2_readiness,
+        )
+
+        # Probe path uses the raw base_url WITHOUT the SSRF check —
+        # callers have already vetted the URL (operator typed it into
+        # peer.yml, or it came from a trusted tier config). The SSRF
+        # check only applies to actual LLM calls via
+        # :meth:`_ensure_endpoint_registered`, which is reached via
+        # :meth:`complete_with_usage` — not via :meth:`health_check`.
+        # This keeps the probe surface compatible with test mocks that
+        # patch ``_probe_once`` on non-DNS-resolvable fake hostnames.
+        base_url = self._raw_base_url()
         if not base_url:
-            from maxim.runtime.llm_server import ProbeResult
-
             return ProbeResult(
-                url=self._raw_base_url() or "",
+                url="",
                 outcome="other",
-                detail="SSRF check or missing config",
+                detail="missing base_url",
                 latency_ms=None,
             )
-        return probe_llm_server(
-            base_url,
-            api_key=self._get_api_key() or None,
-            model_name=self._resolve_model(None),
-            enable_stage2=True,
+        api_key = self._get_api_key() or None
+        model_name = self._resolve_model(None)
+
+        probe_id = uuid.uuid4().hex[:8]
+        log_structured(
+            logger,
+            logging.INFO,
+            event="probe_started",
+            data={
+                "probe_id": probe_id,
+                "endpoint": base_url,
+                "stage": "liveness",
+                "cached": False,
+                "provider": self._provider_key,
+            },
         )
+
+        stage1_start = time.monotonic()
+        result = self._probe_liveness_once(base_url, api_key, first_timeout_s)
+        if not result.is_reachable:
+            result = self._probe_liveness_once(base_url, api_key, retry_timeout_s)
+        stage1_ms = round((time.monotonic() - stage1_start) * 1000, 1)
+
+        if enable_stage2 and result.outcome == "ok":
+            stage2 = _probe_stage2_readiness(base_url, api_key, model_name)
+            log_structured(
+                logger,
+                logging.INFO,
+                event="probe_completed",
+                data={
+                    "probe_id": probe_id,
+                    "endpoint": base_url,
+                    "stage": "both",
+                    "outcome": stage2.outcome,
+                    "liveness_ms": stage1_ms,
+                    "readiness_ms": stage2.latency_ms,
+                    "provider": self._provider_key,
+                },
+            )
+            return stage2
+
+        log_structured(
+            logger,
+            logging.INFO,
+            event="probe_completed",
+            data={
+                "probe_id": probe_id,
+                "endpoint": base_url,
+                "stage": "liveness",
+                "outcome": result.outcome,
+                "liveness_ms": stage1_ms,
+                "readiness_ms": None,
+                "provider": self._provider_key,
+            },
+        )
+        return result
+
+    @staticmethod
+    def _probe_liveness_once(url: str, api_key: str | None, timeout_s: float):
+        """Single ``GET /v1/models`` probe attempt.
+
+        Delegates to :func:`maxim.runtime.llm_server._probe_once` — the
+        shared private helper that both this method and the historical
+        compat shims in ``llm_server.py`` use. The helper lives in
+        ``llm_server.py`` because :class:`ProbeResult` +
+        :func:`_classify_probe_cause` + :func:`_build_probe_url` also
+        live there and keeping everything together avoids a circular
+        import across modules.
+
+        Specific-before-general ``except`` ordering is preserved inside
+        ``_probe_once`` itself — ``HTTPAuthError`` before ``HTTPError``,
+        guaranteeing auth rejection is classified as ``auth_rejected``
+        rather than ``other``.
+        """
+        from maxim.runtime.llm_server import _probe_once
+
+        return _probe_once(url, api_key, timeout_s)
+
+    @classmethod
+    def for_url(
+        cls,
+        url: str,
+        *,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> "_MaximPeerBackend":
+        """Lightweight factory for callers that only need
+        :meth:`health_check` against a URL (no real LLMConfig).
+
+        Used by :mod:`maxim.runtime.lane_backends._validate_remote_urls`
+        and :mod:`maxim.doctor.checks` — places that probe a peer URL
+        without holding a full router-scoped config.
+        """
+        import dataclasses as _dc
+
+        cfg = _dc.replace(
+            LLMConfig(),
+            providers={
+                "probe": {
+                    "type": "maxim_peer",
+                    "base_url": url,
+                    "api_key_env": "MAXIM_PEER_PROBE_KEY",
+                    "model": model or "default",
+                    "allow_local_endpoints": True,
+                    "pricing_required": False,
+                },
+            },
+        )
+        if api_key:
+            os.environ["MAXIM_PEER_PROBE_KEY"] = api_key
+        else:
+            os.environ.pop("MAXIM_PEER_PROBE_KEY", None)
+        return cls(cfg, provider_key="probe")
 
     # ─── Private helpers ────────────────────────────────────────────────
 

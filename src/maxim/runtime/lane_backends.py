@@ -268,7 +268,7 @@ from maxim.runtime.llm_server import (  # noqa: F401, E402
     _model_state_file,
     read_persisted_model as _read_persisted_model,
     write_persisted_model as _write_persisted_model,
-    llm_server_responding_at as _llm_server_responding_at,
+    llm_server_responding_at as _llm_server_responding_at,  # Plan 3 R2.6 compat shim
     profile_has_local_file as _profile_has_local_file,
 )
 
@@ -1278,6 +1278,14 @@ def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> d
                 latency_ms=cached.get("latency_ms"),
             )
         else:
+            # Plan 3 R2.6: ``probe_llm_server`` is now a thin compat
+            # shim that delegates to
+            # ``_MaximPeerBackend.for_url(url).health_check``. Routing
+            # through the shim preserves the existing test surface
+            # (tests mock ``maxim.runtime.llm_server.probe_llm_server``
+            # and replace the whole thing with a canned ProbeResult)
+            # while still funneling production traffic into the
+            # backend's canonical implementation.
             result = probe_llm_server(
                 url,
                 api_key=cfg.remote_api_key,
