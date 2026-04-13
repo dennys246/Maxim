@@ -31,7 +31,6 @@ from maxim.tunnel.config import (
     write_config_yml,
 )
 from maxim.tunnel.keys import (
-    ENV_VAR,
     ensure_key,
     format_all_snippets,
     key_exists,
@@ -251,10 +250,8 @@ def _cmd_setup() -> int:
     print("  3. Share the API key with peers via a secure channel, then:")
     print("       maxim tunnel key export     # on this machine — shows copy-paste snippets")
     print()
-    print("  4. On each peer:")
-    print(f"       export MAXIM_LANE_LARGE_REMOTE_URL=https://{hostname}/v1")
-    print(f'       export {ENV_VAR}="<key-shared-securely>"')
-    print("       export MAXIM_MAX_CLOUD_LANES=1")
+    print("  4. On each peer (one-time setup — no shell rc edits needed):")
+    print(f"       maxim peer connect https://{hostname} --key <key-shared-securely>")
     print("       maxim")
     print("─" * 62)
     return 0
@@ -613,8 +610,12 @@ def _cmd_key_export() -> int:
     print(format_all_snippets(key))
     print()
     print("─" * 62)
-    print("  After setting the env var, the peer can connect:")
-    print("    maxim")
+    print("  Recommended: use peer connect (no shell rc edits needed):")
+    print("    maxim peer connect <leader-url> --key <key>")
+    print()
+    print("  The env snippets above are useful for CI/CD or Docker.")
+    print("  For interactive peers, peer connect saves to ~/.config/maxim/peer.yml")
+    print("  and auto-loads on every startup.")
     print("─" * 62)
     return 0
 

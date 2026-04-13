@@ -237,15 +237,19 @@ def check_env_config(info: PlatformInfo, role: str | None = None) -> list["Check
         # Role is inferred from heuristics — warn so the user knows
         # which heuristic fired and can make it explicit.
         inferred = "peer" if is_peer else "leader"
+        # MAXIM_ROLE is normally exported by detect_and_apply_role() at startup —
+        # this branch fires only if that path was bypassed (e.g. direct import).
+        # Don't suggest .zshrc for peer (auto-detected from peer.yml); for leader
+        # the systemd unit Environment= is the right persistent location.
         if info.os == "macos":
-            export_cmd = f"export MAXIM_ROLE={inferred}  # add to ~/.zshrc"
+            export_cmd = f"export MAXIM_ROLE={inferred}  # current session; auto-detected on normal startup"
         else:
-            export_cmd = f'echo "MAXIM_ROLE={inferred}" >> ~/.maxim/.env  # or add to systemd unit'
+            export_cmd = f"export MAXIM_ROLE={inferred}  # or set in systemd unit Environment="
         results.append(
             CheckResult(
                 name="MAXIM_ROLE",
                 status="warn",
-                message=f"not set — role inferred as '{inferred}' from heuristics. Set explicitly to silence role_divergence warnings.",
+                message=f"not set — role inferred as '{inferred}' from heuristics. Normally auto-exported at startup; check that cli.py::main ran before this check.",
                 fix=export_cmd,
             )
         )

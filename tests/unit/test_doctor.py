@@ -919,7 +919,10 @@ class TestCheckEnvConfig:
         role_result = next((r for r in results if r.name == "MAXIM_ROLE"), None)
         assert role_result is not None
         assert role_result.fix is not None
-        assert "zshrc" in role_result.fix
+        # Fix should show the export command but NOT suggest adding to .zshrc
+        # (MAXIM_ROLE is auto-detected at startup; persisting to shell rc is rarely needed)
+        assert "export MAXIM_ROLE=" in role_result.fix
+        assert "zshrc" not in role_result.fix
 
 
 # ─── check_context_window ─────────────────────────────────────────────────

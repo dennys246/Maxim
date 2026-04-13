@@ -120,12 +120,11 @@ def render_snippets(key: str) -> dict[str, str]:
 
 def _bash_snippet(key: str) -> str:
     return (
-        f"# bash / zsh — current session:\n"
+        f"# bash / zsh — current session only:\n"
         f'export {ENV_VAR}="{key}"\n'
         f"\n"
-        f"# Persist in your shell rc file (pick one):\n"
-        f"echo 'export {ENV_VAR}=\"{key}\"' >> ~/.bashrc\n"
-        f"echo 'export {ENV_VAR}=\"{key}\"' >> ~/.zshrc\n"
+        f"# Recommended: persist via peer config (no shell edits needed):\n"
+        f"# maxim peer connect <leader-url> --key {key[:8]}...\n"
     )
 
 
