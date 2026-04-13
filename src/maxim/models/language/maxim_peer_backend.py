@@ -291,7 +291,19 @@ class _MaximPeerBackend:
                 fix_hint=f"Peer returned non-JSON body: {type(e).__name__}",
             ) from e
 
-        parsed = self._parse_llm_response(raw, model=model, start=t0)
+        try:
+            parsed = self._parse_llm_response(raw, model=model, start=t0)
+        except BackendInferenceBroken as e:
+            # _parse_llm_response raises for empty choices (context overflow,
+            # model error, truncated body).  _log_failure must be called here
+            # because _parse_llm_response has no access to context/t0 and
+            # the exception propagates past the HTTP-error handlers above
+            # without triggering any peer_backend_failed event otherwise.
+            # This ensures the fix_hint ("prompt exceeded context length",
+            # "non-JSON body", etc.) appears in JSONL alongside the http_request
+            # so operators can diagnose without cross-referencing router logs.
+            self._log_failure("inference_broken", e, context, t0)
+            raise
         self._log_success(parsed, context, t0)
         return parsed
 
