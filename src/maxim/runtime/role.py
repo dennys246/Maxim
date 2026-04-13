@@ -41,6 +41,13 @@ RoleSource = Literal["env_var", "mesh_yml", "peer_yml", "cli_flag", "default"]
 
 _VALID_ROLES = ("leader", "peer", "solo")
 
+# Fix #2 (R2 review): subcommands have their own semantics and do NOT
+# drive role selection via ``--llm``. If ``argv[0]`` is one of these,
+# ``_has_local_llm_flag`` short-circuits to False so e.g.
+# ``maxim tunnel --llm foo`` on a leader machine doesn't falsely flip
+# the role to solo.
+_SUBCOMMAND_NAMES = frozenset({"doctor", "peer", "tunnel"})
+
 
 def _mesh_yml_path() -> str:
     """Path to the future mesh.yml config (Plan 4). Accepted here for
@@ -98,12 +105,16 @@ def detect_role(argv: list[str] | None = None) -> tuple[Role, RoleSource]:
 
 
 def _has_local_llm_flag(argv: list[str]) -> bool:
-    """Return True iff argv contains ``--llm <local-profile>`` or ``--language-model``.
+    """Return True iff argv contains ``--llm <profile>`` or ``--language-model``.
 
-    ``--llm claude-sonnet`` counts as local-ish — the CLI flag is present, and
-    no peer config → solo. Cloud-only distinction is not meaningful here;
-    the spec treats any explicit ``--llm`` flag + no peer config as solo.
+    Fix #2 (R2 review): skips the scan entirely when ``argv[0]`` is a known
+    subcommand (``doctor``, ``peer``, ``tunnel``). Without this guard,
+    ``maxim tunnel --llm foo`` on a leader would falsely trigger solo
+    detection because the tunnel subcommand carries a ``--llm`` flag with
+    unrelated semantics. Subcommands do not drive role selection.
     """
+    if argv and argv[0] in _SUBCOMMAND_NAMES:
+        return False
     flags = {"--llm", "--language-model", "--model"}
     for i, tok in enumerate(argv):
         if tok in flags and i + 1 < len(argv):
@@ -115,13 +126,18 @@ def _has_local_llm_flag(argv: list[str]) -> bool:
 
 
 def apply_role(role: Role, source: RoleSource) -> None:
-    """Export ``MAXIM_ROLE`` and log ``role_detected``. Idempotent."""
+    """Export ``MAXIM_ROLE`` and log ``role_detected``. Idempotent.
+
+    Fix #11 (R2 review): emits the decision-rule field as ``role_source``
+    (not ``source``) so it does not collide with the StructuredFormatter
+    top-level ``s`` short-key for the logger module name.
+    """
     os.environ["MAXIM_ROLE"] = role
     log_structured(
         logger,
         logging.INFO,
         event="role_detected",
-        data={"role": role, "source": source},
+        data={"role": role, "role_source": source},
     )
 
 
@@ -130,7 +146,38 @@ def detect_and_apply_role(argv: list[str] | None = None) -> Role:
     role, source = detect_role(argv)
     apply_role(role, source)
     migrate_persisted_model_file(role)
+    _check_leader_mode_divergence(role)
     return role
+
+
+def _check_leader_mode_divergence(role: Role) -> None:
+    """Fix #9 (R2 review): warn when the legacy ``leader_mode.detect_role``
+    disagrees with ``role.py``'s decision. Both functions are consumed by
+    different code paths (leader_mode drives bind_host + proxy boot; role
+    drives persisted-state + observability), and silent divergence is
+    the 2026-04-12 persisted-profile incident pattern. Plan 4 will
+    consolidate; until then, an explicit warning is our insurance.
+    """
+    try:
+        from maxim.runtime.leader_mode import detect_role as _legacy_detect
+
+        legacy = _legacy_detect()
+        # leader_mode returns client|leader|solo; role.py returns peer|leader|solo.
+        # Normalize: "client" in leader_mode maps to "peer" semantically.
+        legacy_role = "peer" if legacy.role == "client" else legacy.role
+        if legacy_role != role:
+            log_structured(
+                logger,
+                logging.WARNING,
+                event="role_divergence",
+                data={
+                    "role_py": role,
+                    "leader_mode": legacy.role,
+                    "leader_mode_reason": legacy.reason,
+                },
+            )
+    except Exception as e:
+        logger.debug("leader_mode divergence check skipped (%s)", e)
 
 
 def migrate_persisted_model_file(role: Role) -> None:
@@ -142,7 +189,10 @@ def migrate_persisted_model_file(role: Role) -> None:
     - leader role → rename to ``.leader.txt``
     - unclear/default → rename to ``.leader.txt`` (conservative)
 
-    Best-effort. Never raises.
+    Fix #4 (R2 review): failures log at WARNING, not DEBUG. A real
+    filesystem error during migration is operationally significant.
+    Fix #5 (R2 review): checks ``new_path.exists()`` before rename so
+    an existing role-specific file is never silently clobbered.
     """
     try:
         from maxim.utils.paths import resolve_user_state
@@ -164,6 +214,26 @@ def migrate_persisted_model_file(role: Role) -> None:
                 data={"old_path": str(old_path), "new_path": None, "role": role},
             )
             return
+        # Fix #5: destination collision — preserve the newer role-specific
+        # file, delete the legacy one, warn the operator.
+        if new_path.exists():
+            old_path.unlink()
+            logger.warning(
+                "legacy active_llm_model.txt coexisted with %s; removed legacy, preserved role-specific file",
+                new_path,
+            )
+            log_structured(
+                logger,
+                logging.WARNING,
+                event="persisted_model_migrated",
+                data={
+                    "old_path": str(old_path),
+                    "new_path": str(new_path),
+                    "role": role,
+                    "collision": True,
+                },
+            )
+            return
         old_path.replace(new_path)
         log_structured(
             logger,
@@ -176,7 +246,17 @@ def migrate_persisted_model_file(role: Role) -> None:
             },
         )
     except Exception as e:
-        logger.debug("persisted model migration skipped (%s)", e)
+        # Fix #4: promote from debug → warning.
+        logger.warning("persisted model migration failed: %s", e)
+        try:
+            log_structured(
+                logger,
+                logging.WARNING,
+                event="persisted_model_migration_failed",
+                data={"role": role, "error": f"{type(e).__name__}: {e}"},
+            )
+        except Exception:
+            pass
 
 
 __all__ = [

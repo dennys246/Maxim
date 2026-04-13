@@ -29,6 +29,9 @@ _llm_start_time: float | None = None
 _swap_lock = threading.Lock()
 
 
+_LAZY_MIGRATION_DONE = False
+
+
 def _model_state_file() -> Path:
     """Return the path to the persisted active model file.
 
@@ -36,12 +39,28 @@ def _model_state_file() -> Path:
     Reads ``MAXIM_ROLE`` from env (exported by ``runtime/role.py::detect_and_apply_role``
     at CLI startup). Falls back to ``leader`` when the env var is missing,
     matching the conservative migration default.
+
+    Fix #7 (R2 review): runs the legacy-file migration lazily on first
+    access per process, so Python-API users (``import maxim``) who never
+    go through ``cli.py::main`` also get their ``active_llm_model.txt``
+    migrated instead of orphaned. The migration is idempotent and
+    gated by a module-level flag so the cost is one ``is_file()`` check
+    after the first call.
     """
     from maxim.utils.paths import resolve_user_state
 
+    global _LAZY_MIGRATION_DONE  # noqa: PLW0603
     role = os.environ.get("MAXIM_ROLE", "").strip().lower() or "leader"
     if role not in ("leader", "peer", "solo"):
         role = "leader"
+    if not _LAZY_MIGRATION_DONE:
+        _LAZY_MIGRATION_DONE = True
+        try:
+            from maxim.runtime.role import migrate_persisted_model_file
+
+            migrate_persisted_model_file(role)  # type: ignore[arg-type]
+        except Exception as e:
+            logger.warning("lazy persisted-model migration failed: %s", e)
     return resolve_user_state(f"util/active_llm_model.{role}.txt")
 
 
@@ -298,6 +317,27 @@ def _probe_stage2_readiness(
                 total_s=timeout_s + 1.0,
             ),
         )
+    # Fix #1 (R2 review): auth + rate-limit must NOT be classified as
+    # inference_broken. 401/403 means the chat endpoint is alive but
+    # auth-gated; 429 means alive but throttled. Both are distinct from
+    # "model crashed / chat template wedged." Order matters — more specific
+    # subclasses BEFORE the generic HTTPError catch.
+    except _http.HTTPAuthError as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(
+            url,
+            "auth_rejected",
+            f"stage2 HTTP {e.status}",
+            round(latency_ms, 1),
+        )
+    except _http.HTTPRateLimited as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(
+            url,
+            "other",
+            f"stage2 HTTP {e.status} (rate limited)",
+            round(latency_ms, 1),
+        )
     except (_http.HTTPServerError, _http.HTTPClientError, _http.HTTPTimeout) as e:
         latency_ms = (time.monotonic() - start) * 1000
         return ProbeResult(
@@ -351,13 +391,20 @@ def probe_llm_server(
     on. See :func:`_log_probe_failure` in lane_backends for the human-
     readable warning template per outcome.
     """
+    import uuid
+
     from maxim.utils.structured_logging import log_structured
+
+    # Fix #10 (R2 review): per-probe correlation ID so concurrent probes
+    # can be matched start→completed. 8 hex chars is enough to
+    # disambiguate within a single process.
+    probe_id = uuid.uuid4().hex[:8]
 
     log_structured(
         logger,
         logging.INFO,
         event="probe_started",
-        data={"endpoint": url, "stage": "liveness", "cached": False},
+        data={"probe_id": probe_id, "endpoint": url, "stage": "liveness", "cached": False},
     )
     stage1_start = time.monotonic()
     result = _probe_once(url, api_key, first_timeout_s)
@@ -377,6 +424,7 @@ def probe_llm_server(
             logging.INFO,
             event="probe_completed",
             data={
+                "probe_id": probe_id,
                 "endpoint": url,
                 "stage": "both",
                 "outcome": stage2.outcome,
@@ -391,6 +439,7 @@ def probe_llm_server(
         logging.INFO,
         event="probe_completed",
         data={
+            "probe_id": probe_id,
             "endpoint": url,
             "stage": "liveness",
             "outcome": result.outcome,
