@@ -885,6 +885,7 @@ class StreamingResponse:
     _raw: httpx.Response
     _client: httpx.Client | None = None
     _owns_client: bool = False
+    _stream_ctx: Any | None = None  # keeps httpx stream context alive until close()
 
     def iter_bytes(self, chunk_size: int = 65536) -> Iterator[bytes]:
         yield from self._raw.iter_bytes(chunk_size=chunk_size)
@@ -904,6 +905,11 @@ class StreamingResponse:
             self._raw.close()
         except Exception:  # pragma: no cover
             pass
+        if self._stream_ctx is not None:
+            try:
+                self._stream_ctx.__exit__(None, None, None)
+            except Exception:  # pragma: no cover
+                pass
         if self._owns_client and self._client is not None:
             try:
                 self._client.close()
@@ -1214,6 +1220,7 @@ def raw_proxy_forward_streaming(
         endpoint=_EXTERNAL_ENDPOINT,
         request_id=headers.get("X-Maxim-Request-Id", ""),
         _raw=raw,
+        _stream_ctx=stream_ctx,
     )
 
 
