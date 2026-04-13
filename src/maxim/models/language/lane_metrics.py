@@ -295,8 +295,56 @@ def get_metrics_registry() -> MetricsRegistry:
         return _global_registry
 
 
+# ─── Plan 3 R2.5: typed-exception safety-net counter ────────────────────
+#
+# Incremented whenever :meth:`LLMRouter._try_provider` hits its
+# ``except Exception`` safety-net branch — meaning a backend raised
+# something outside the :class:`BackendError` hierarchy. Non-zero means
+# the typed taxonomy has a gap; file a bug and either extend the
+# hierarchy or wrap the call site. The router has explicit ordering of
+# ``except BackendOverloaded / BackendAuthFailed / BackendModelMissing /
+# BackendInferenceBroken / BackendTimeout / BackendDown / BackendError``
+# before the safety net, so this counter should stay at zero under
+# normal operation.
+_backend_unclassified_errors: dict[str, int] = {}
+_backend_unclassified_lock = threading.Lock()
+
+
+def record_backend_unclassified_error(provider: str) -> None:
+    """Bump the ``backend_unclassified_errors_total{provider}`` counter."""
+    with _backend_unclassified_lock:
+        _backend_unclassified_errors[provider] = _backend_unclassified_errors.get(provider, 0) + 1
+
+
+def reset_backend_unclassified_errors() -> None:
+    """Test helper — reset the counter between tests."""
+    with _backend_unclassified_lock:
+        _backend_unclassified_errors.clear()
+
+
+def metrics_snapshot() -> dict[str, Any]:
+    """Combined lane + backend-safety-net metrics snapshot.
+
+    Used by Plan 3's smoke-test invariant:
+    ``assert metrics_snapshot()['backend_unclassified_errors_total']['count'] == 0``.
+    """
+    with _backend_unclassified_lock:
+        unclassified = dict(_backend_unclassified_errors)
+    total = sum(unclassified.values())
+    return {
+        "lanes": get_metrics_registry().snapshot(),
+        "backend_unclassified_errors_total": {
+            "count": total,
+            "by_provider": unclassified,
+        },
+    }
+
+
 __all__ = [
     "LaneMetrics",
     "MetricsRegistry",
     "get_metrics_registry",
+    "metrics_snapshot",
+    "record_backend_unclassified_error",
+    "reset_backend_unclassified_errors",
 ]

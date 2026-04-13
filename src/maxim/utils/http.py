@@ -889,6 +889,16 @@ class StreamingResponse:
     def iter_bytes(self, chunk_size: int = 65536) -> Iterator[bytes]:
         yield from self._raw.iter_bytes(chunk_size=chunk_size)
 
+    def iter_lines(self) -> Iterator[str]:
+        """Yield decoded lines from the response stream.
+
+        Used by :mod:`maxim.models.language.maxim_peer_backend` to parse
+        server-sent events (``data: ...``) from a streaming chat-completion
+        response. Httpx's ``iter_lines`` already strips the trailing
+        newline; we pass-through.
+        """
+        yield from self._raw.iter_lines()
+
     def close(self) -> None:
         try:
             self._raw.close()
@@ -905,6 +915,119 @@ class StreamingResponse:
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         self.close()
+
+
+def stream_post(
+    endpoint_name: str,
+    path: str = "",
+    *,
+    context: RequestContext | None = None,
+    headers: Mapping[str, str] | None = None,
+    json: Any = None,
+    timeout: TimeoutPolicy | float | None = None,
+) -> StreamingResponse:
+    """Issue a streaming POST against a registered endpoint.
+
+    Wraps ``httpx.Client.stream`` so :class:`StreamingResponse` exposes the
+    same ``iter_lines`` / ``iter_bytes`` / context-manager surface as
+    :func:`fetch_url` callers get for non-streaming requests. The HTTP
+    status is checked on stream open — non-2xx raises the same typed
+    :class:`HTTPError` subclasses as :func:`post`, with the response body
+    attached where the server returned one.
+
+    Used by :class:`maxim.models.language.maxim_peer_backend._MaximPeerBackend`
+    for streaming chat completions. Exactly one HTTP call; partial-stream
+    failures mid-iteration surface as ``httpx.HTTPError`` to the caller
+    which maps them to ``BackendDown``.
+    """
+    ep = _registry.get(endpoint_name)
+    client = _registry.get_client(endpoint_name)
+    final_headers = _build_headers(ep, context, headers)
+    used_ctx = context or current_context() or new_request_context()
+    timeout_obj = _resolve_timeout(ep, timeout)
+
+    t0 = time.monotonic()
+    try:
+        stream_ctx = client.stream(
+            "POST",
+            path,
+            headers=final_headers,
+            json=json,
+            timeout=timeout_obj,
+        )
+        raw = stream_ctx.__enter__()
+    except httpx.HTTPError as e:
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        _metrics.record_request(endpoint_name, "error", elapsed_ms)
+        log_structured(
+            logger,
+            logging.WARNING,
+            event="http_request_failed",
+            data={
+                "endpoint": endpoint_name,
+                "method": "POST",
+                "request_id": used_ctx.request_id,
+                "error": type(e).__name__,
+                "latency_ms": round(elapsed_ms, 1),
+                "stream": True,
+            },
+        )
+        raise _classify_httpx_error(endpoint_name, e) from e
+
+    elapsed_ms = (time.monotonic() - t0) * 1000
+    _metrics.record_request(endpoint_name, raw.status_code, elapsed_ms)
+
+    # Non-2xx on stream open: read the body (bounded) and raise a typed
+    # error. Matches the shape of :func:`request`'s failure path so callers
+    # can treat streaming + non-streaming failures uniformly.
+    if raw.status_code >= 400:
+        try:
+            body = raw.read()
+        except Exception:  # pragma: no cover — defensive
+            body = b""
+        try:
+            stream_ctx.__exit__(None, None, None)
+        except Exception:  # pragma: no cover — defensive
+            pass
+        err = _classify_status(endpoint_name, raw.status_code, raw.headers)
+        if err is not None:
+            err.response = Response(
+                status=raw.status_code,
+                headers=dict(raw.headers),
+                content=body,
+                elapsed_ms=elapsed_ms,
+                endpoint=endpoint_name,
+                request_id=used_ctx.request_id,
+            )
+            raise err
+
+    level = logging.INFO if _http_trace_enabled() else logging.DEBUG
+    log_structured(
+        logger,
+        level,
+        event="http_request",
+        data={
+            "endpoint": endpoint_name,
+            "method": "POST",
+            "status": raw.status_code,
+            "latency_ms": round(elapsed_ms, 1),
+            "request_id": used_ctx.request_id,
+            "agent_id": used_ctx.agent_id,
+            "session_id": used_ctx.session_id,
+            "lane": used_ctx.lane,
+            "stream": True,
+        },
+    )
+
+    return StreamingResponse(
+        status=raw.status_code,
+        headers=dict(raw.headers),
+        endpoint=endpoint_name,
+        request_id=used_ctx.request_id,
+        _raw=raw,
+        _client=client,
+        _owns_client=False,
+    )
 
 
 def download_to_file(

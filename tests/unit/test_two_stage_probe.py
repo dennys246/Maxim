@@ -12,13 +12,22 @@ from unittest.mock import patch
 
 import pytest
 
+from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 from maxim.models.language.types import INFERENCE_BROKEN_BACKOFF_S
 from maxim.runtime.llm_server import (
     _probe_stage2_readiness,
-    probe_llm_server,
 )
 from maxim.runtime.probe_cache import load_cache, ttl_for_outcome
 from maxim.utils import http as _http
+
+
+def _probe(url: str, *, enable_stage2: bool = False, model_name: str = "default"):
+    """Run :meth:`_MaximPeerBackend.health_check` via the ``for_url``
+    factory. Plan 3 R2.6 deleted the standalone ``probe_llm_server`` —
+    all probe paths now funnel through the backend."""
+    return _MaximPeerBackend.for_url(url, model=model_name).health_check(
+        enable_stage2=enable_stage2,
+    )
 
 
 @pytest.fixture
@@ -61,14 +70,14 @@ class _FakeResp:
 
 def test_stage2_ok_returns_ok():
     with patch.object(_http, "fetch_url", return_value=_FakeResp(200)):
-        r = _probe_stage2_readiness("http://h:8080", None, "mistral-7b")
+        r = _probe_stage2_readiness("http://127.0.0.1:8080/v1", None, "mistral-7b")
     assert r.outcome == "ok"
 
 
 def test_stage2_http_500_returns_inference_broken():
     err = _http.HTTPServerError("peer", status=500, fix_hint="upstream crashed")
     with patch.object(_http, "fetch_url", side_effect=err):
-        r = _probe_stage2_readiness("http://h:8080", None, "mistral-7b")
+        r = _probe_stage2_readiness("http://127.0.0.1:8080/v1", None, "mistral-7b")
     assert r.outcome == "inference_broken"
     assert "stage2" in r.detail
 
@@ -76,14 +85,14 @@ def test_stage2_http_500_returns_inference_broken():
 def test_stage2_timeout_returns_inference_broken():
     err = _http.HTTPTimeout("peer", fix_hint="timed out")
     with patch.object(_http, "fetch_url", side_effect=err):
-        r = _probe_stage2_readiness("http://h:8080", None, "mistral-7b")
+        r = _probe_stage2_readiness("http://127.0.0.1:8080/v1", None, "mistral-7b")
     assert r.outcome == "inference_broken"
 
 
 def test_stage2_non_http_exception_falls_back_to_ok():
     # Library bug or JSON parse error — must not make system look dead.
     with patch.object(_http, "fetch_url", side_effect=ValueError("parse bomb")):
-        r = _probe_stage2_readiness("http://h:8080", None, "mistral-7b")
+        r = _probe_stage2_readiness("http://127.0.0.1:8080/v1", None, "mistral-7b")
     assert r.outcome == "ok"
     assert "fallback" in r.detail
 
@@ -94,7 +103,7 @@ def test_fix1_stage2_auth_rejected_not_inference_broken():
     operator needs to rotate the key — not wait for 'model to load'."""
     err = _http.HTTPAuthError("peer", status=401, fix_hint="bad key")
     with patch.object(_http, "fetch_url", side_effect=err):
-        r = _probe_stage2_readiness("http://h:8080", None, "mistral-7b")
+        r = _probe_stage2_readiness("http://127.0.0.1:8080/v1", None, "mistral-7b")
     assert r.outcome == "auth_rejected"
     assert r.outcome != "inference_broken"
 
@@ -104,20 +113,22 @@ def test_fix1_stage2_rate_limited_not_inference_broken():
     inference_broken. Throttled peer is alive, just busy."""
     err = _http.HTTPRateLimited("peer", status=429, retry_after_s=2.0)
     with patch.object(_http, "fetch_url", side_effect=err):
-        r = _probe_stage2_readiness("http://h:8080", None, "mistral-7b")
+        r = _probe_stage2_readiness("http://127.0.0.1:8080/v1", None, "mistral-7b")
     assert r.outcome != "inference_broken"
     assert r.outcome == "other"  # alongside other throttle signals
 
 
 def test_fix10_probe_correlation_id_in_events():
     """Fix #10: probe_started + probe_completed carry a shared probe_id
-    so concurrent probes can be matched in structured log output."""
+    so concurrent probes can be matched in structured log output. R2.6
+    moved the emission into ``_MaximPeerBackend.health_check`` but the
+    event shape stays identical."""
     from maxim.utils.structured_logging import get_abstraction_buffer
 
     buf = get_abstraction_buffer()
     buf.clear()
     with patch.object(_http, "fetch_url", return_value=_FakeResp(200)):
-        probe_llm_server("http://h:8080", enable_stage2=False)
+        _probe("http://127.0.0.1:8080/v1", enable_stage2=False)
     started = buf.get_by_event("probe_started", n=5)
     completed = buf.get_by_event("probe_completed", n=5)
     assert started and completed
@@ -133,16 +144,16 @@ def test_fix10_probe_correlation_id_in_events():
     assert matching, f"no matching probe_id between start {start_ids} and completed {completed_ids}"
 
 
-# ── End-to-end probe_llm_server with enable_stage2 ────────────────────────
+# ── End-to-end health_check with enable_stage2 (Plan 3 R2.6) ──────────────
 
 
-def test_probe_llm_server_stage2_disabled_preserves_stage1_ok():
+def test_health_check_stage2_disabled_preserves_stage1_ok():
     with patch.object(_http, "fetch_url", return_value=_FakeResp(200)):
-        r = probe_llm_server("http://h:8080", enable_stage2=False)
+        r = _probe("http://127.0.0.1:8080/v1", enable_stage2=False)
     assert r.outcome == "ok"
 
 
-def test_probe_llm_server_stage2_inference_broken():
+def test_health_check_stage2_inference_broken():
     # Stage 1 = 200, stage 2 = 500
     call_count = [0]
 
@@ -153,13 +164,13 @@ def test_probe_llm_server_stage2_inference_broken():
         raise _http.HTTPServerError("peer", status=500, fix_hint="broken")
 
     with patch.object(_http, "fetch_url", side_effect=_responses):
-        r = probe_llm_server("http://h:8080", enable_stage2=True, model_name="mistral-7b")
+        r = _probe("http://127.0.0.1:8080/v1", enable_stage2=True, model_name="mistral-7b")
     assert r.outcome == "inference_broken"
 
 
-def test_probe_llm_server_stage2_ok_when_both_succeed():
+def test_health_check_stage2_ok_when_both_succeed():
     with patch.object(_http, "fetch_url", return_value=_FakeResp(200)):
-        r = probe_llm_server("http://h:8080", enable_stage2=True, model_name="mistral-7b")
+        r = _probe("http://127.0.0.1:8080/v1", enable_stage2=True, model_name="mistral-7b")
     assert r.outcome == "ok"
 
 

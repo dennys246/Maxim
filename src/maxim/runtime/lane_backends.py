@@ -32,6 +32,72 @@ logger = logging.getLogger(__name__)
 
 from maxim.runtime.worker_pool import LaneConfig
 
+# ─── Plan 3 R2.5: backend-class dispatch table ─────────────────────────
+#
+# Maps a short string identifier to a lazy import path for the backend
+# class that will serve a remote-URL lane. ``_build_remote_backend``
+# writes the selected identifier into the provider config's ``type``
+# field, and ``LLMRouter._get_backend_for_provider`` imports +
+# instantiates the corresponding class via
+# :func:`resolve_backend_class` at call time.
+#
+# **R3 review fix:** the original R2.5 shipped this as an identity map
+# (``{"openai": "openai", "maxim_peer": "maxim_peer"}``) with
+# ``_get_backend_for_provider`` hard-coding the ``"maxim_peer"`` /
+# ``"maxim-peer"`` branch as a string literal. That meant the dispatch
+# table provided zero indirection — adding a new backend required edits
+# in two places, and a typo in either would silently fall through to
+# the router's "unknown provider" warn. The table is now authoritative:
+# the router imports ``resolve_backend_class`` and dispatches through
+# it, so adding a new backend is exactly one change here.
+#
+# Values are ``(module_path, class_name)`` tuples rather than class
+# objects so optional-dependency backends (e.g., Anthropic SDK, future
+# Google Gemini peers) don't pay an import cost on every startup.
+BACKEND_CLASSES: dict[str, tuple[str, str]] = {
+    "openai": ("maxim.models.language.openai_backend", "_OpenAIBackend"),
+    "maxim_peer": ("maxim.models.language.maxim_peer_backend", "_MaximPeerBackend"),
+}
+
+
+def resolve_backend_class(identifier: str) -> type | None:
+    """Lazy-import the backend class for a ``BACKEND_CLASSES`` identifier.
+
+    Accepts the canonical ``"maxim_peer"`` spelling plus the
+    hyphenated variant ``"maxim-peer"`` so operator-written configs
+    that use either spelling resolve to the same class. Returns
+    ``None`` if the identifier is unknown or the import fails — the
+    router then treats it as an unclassified provider type and emits a
+    warning.
+    """
+    canonical = identifier.strip().lower().replace("-", "_")
+    entry = BACKEND_CLASSES.get(canonical)
+    if entry is None:
+        return None
+    module_path, class_name = entry
+    try:
+        module = __import__(module_path, fromlist=[class_name])
+        cls = getattr(module, class_name, None)
+    except Exception:  # pragma: no cover — optional dep missing
+        return None
+    if not isinstance(cls, type):
+        return None
+    return cls
+
+
+def _classify_backend(kind: str) -> str:
+    """Pick a backend identifier for a classified lane.
+
+    ``kind`` is the output of :meth:`LaneBackendManager._classify` —
+    ``"self-hosted"`` or ``"cloud"``. Self-hosted lanes get the Plan 3
+    ``_MaximPeerBackend`` (single HTTP call, typed failure, no internal
+    repeat); cloud lanes keep the existing ``_OpenAIBackend`` with its
+    full retry + cost tracking + PII redaction shape.
+    """
+    if kind == "self-hosted":
+        return "maxim_peer"
+    return "openai"
+
 
 def _safe_int_env(name: str, default: int) -> int:
     """Parse an integer env var, returning *default* on invalid input."""
@@ -234,7 +300,7 @@ from maxim.runtime.llm_server import (  # noqa: F401, E402
     _model_state_file,
     read_persisted_model as _read_persisted_model,
     write_persisted_model as _write_persisted_model,
-    llm_server_responding_at as _llm_server_responding_at,
+    llm_server_responding_at as _llm_server_responding_at,  # Plan 3 R2.6 compat shim
     profile_has_local_file as _profile_has_local_file,
 )
 
@@ -638,7 +704,12 @@ class LaneBackendManager:
             os.environ.setdefault(api_key_env, "not-needed")
 
         providers = dict(base.providers or {})
+        # Plan 3 R2.5: dispatch to _MaximPeerBackend for self-hosted
+        # lanes, keep _OpenAIBackend for cloud. The "type" field drives
+        # LLMRouter._get_backend_for_provider's branch selection.
+        backend_type = _classify_backend(kind)
         providers[provider_key] = {
+            "type": backend_type,
             "base_url": cfg.remote_url,
             "api_key_env": api_key_env,
             "model": cfg.remote_model or cfg.model_profile or base.model,
@@ -1239,6 +1310,14 @@ def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> d
                 latency_ms=cached.get("latency_ms"),
             )
         else:
+            # Plan 3 R2.6: ``probe_llm_server`` is now a thin compat
+            # shim that delegates to
+            # ``_MaximPeerBackend.for_url(url).health_check``. Routing
+            # through the shim preserves the existing test surface
+            # (tests mock ``maxim.runtime.llm_server.probe_llm_server``
+            # and replace the whole thing with a canned ProbeResult)
+            # while still funneling production traffic into the
+            # backend's canonical implementation.
             result = probe_llm_server(
                 url,
                 api_key=cfg.remote_api_key,
