@@ -62,3 +62,15 @@ jobs:
               sys.exit(1)
           print(f'All {len(list(pathlib.Path(\"src/maxim\").rglob(\"*.py\")))} files parse OK')
           "
+
+      - name: CI grep invariants (urllib + dead mesh modules)
+        run: |
+          if grep -rn "urllib.request.urlopen" src/maxim/ | grep -v "utils/http.py"; then
+            echo "ERROR: raw urllib.request.urlopen outside utils/http.py"
+            exit 1
+          fi
+          if grep -rnE "from maxim\.mesh\.(peer_registry|peer_info|peer_channel|task_delegation|knowledge|clock|agent_identity|admission)" src/maxim/ tests/; then
+            echo "ERROR: import from deleted mesh modules"
+            exit 1
+          fi
+          echo "CI grep invariants clean"

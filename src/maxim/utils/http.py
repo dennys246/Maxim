@@ -183,7 +183,11 @@ class HTTPEndpoint:
     auth_provider: Callable[[], str | None] | None = None
     timeouts: TimeoutPolicy = field(default_factory=TimeoutPolicy)
     max_pool_connections: int = DEFAULT_POOL_PER_ENDPOINT
-    internal: bool = True
+    # Default False — data-sovereignty safe-by-default.
+    # Only flip to True for endpoints under our own cluster control
+    # (the leader, peer-to-peer tunnels). Never for third-party APIs
+    # like HuggingFace or web search. Propagates X-Maxim-* headers.
+    internal: bool = False
 
 
 # ─────────────────────────── RequestContext ─────────────────────────────
@@ -350,7 +354,7 @@ def metrics_snapshot() -> dict[str, Any]:
 
 def record_startup_phase(phase: str, duration_ms: float) -> None:
     """Record a named startup phase duration. Emitted as a structured event
-    so ``jq 'select(.event=="startup_phase")'`` on the JSONL log reveals
+    so ``jq 'select(.e=="startup_phase")'`` on the JSONL log reveals
     where cold-start time is spent."""
     _metrics.record_startup_phase(phase, duration_ms)
     log_structured(

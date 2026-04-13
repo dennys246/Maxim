@@ -164,7 +164,7 @@ class RequestContext:
 - `BackendTimeout` → exponential like Down
 - `BackendAuthFailed` → **300s hard backoff**
 - `BackendModelMissing` → 60s backoff
-- `BackendInferenceBroken` → 15s backoff (**should match** the `inference_broken` probe cache TTL — these two constants must stay in sync)
+- `BackendInferenceBroken` → 15s backoff (**should match** the probe cache `inference_broken` TTL — these two constants are linked via `INFERENCE_BROKEN_BACKOFF_S` in `models/language/types.py` (added in Plan 2 R2b) to prevent drift)
 - `BackendError` (generic) → normal failure
 - `Exception` (safety net) → increments `backend_unclassified_errors_total`; flag to investigate
 
@@ -281,7 +281,7 @@ def raw_proxy_forward(url, method, *, headers, body, timeout) -> Response: ...
 
 These headers are the **wire protocol between nodes**. Changing a header name is a breaking protocol change requiring a version bump. Adding new headers is non-breaking.
 
-**Input sanitization at boundary:** header values pass through `_sanitize_header_value` which rejects control chars, CR/LF, non-ASCII bytes, and values longer than `MAX_HEADER_VALUE_LEN = 256` (module-level named constant, not an inline magic number). Rejections raise `HTTPClientError` with a `fix_hint` identifying the offending field, and increment `http_header_rejected_total{field}` for observability. Prevents log injection from user-controlled values.
+**Input sanitization at boundary:** header values pass through `_sanitize_header_value` which rejects control chars, CR/LF, non-ASCII bytes, and lengths > `MAX_HEADER_VALUE_LEN` (256) — a module-level named constant, not an inline magic number. The limit is enforced in `maxim/utils/http.py::_sanitize_header_value`; rejections increment `http_header_rejected_total{field}` and raise `HTTPClientError` with a `fix_hint` identifying the offending field. Prevents log injection from user-controlled values.
 
 **Typed HTTP errors (all shipped):**
 - `HTTPTimeout` — caller (Plan 3) maps to `BackendTimeout`

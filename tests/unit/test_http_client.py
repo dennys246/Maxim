@@ -130,7 +130,7 @@ def test_register_endpoint_roundtrip() -> None:
     assert http.is_registered("_test_ep_1")
     fetched = http.get_endpoint("_test_ep_1")
     assert fetched.name == "_test_ep_1"
-    assert fetched.internal is True  # default
+    assert fetched.internal is False  # safe-by-default; opt in with internal=True
 
 
 def test_register_endpoint_idempotent_replace() -> None:
