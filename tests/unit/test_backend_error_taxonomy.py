@@ -96,6 +96,47 @@ def test_caller_can_attach_status_on_raise():
     assert e.status == 401
 
 
+# ── Fix #8: explicit __init__ — typos must raise TypeError ──────────────
+
+
+def test_fix8_typo_raises_typeerror_instead_of_silent_setattr():
+    """Fix #8: the old base __init__ swallowed arbitrary kwargs via
+    setattr. A typo like ``retry_after`` (missing ``_s``) silently set
+    a bogus attribute while the real ``retry_after_s`` stayed at its
+    class default. Plan 3's router would read ``retry_after_s`` and see
+    0.0 on a hot path. Explicit per-subclass __init__ makes typos loud."""
+    with pytest.raises(TypeError):
+        BackendOverloaded("peer", retry_after=2.5)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        BackendTimeout("peer", elapsed=42.0)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        BackendModelMissing("peer", model="mistral")  # type: ignore[call-arg]
+
+
+def test_fix8_named_kwargs_still_work():
+    """Sanity: correct named kwargs remain accepted after the refactor."""
+    e = BackendOverloaded("peer", retry_after_s=2.5, queue_depth=7, suggested_peer="p2")
+    assert e.retry_after_s == 2.5
+    assert e.queue_depth == 7
+    assert e.suggested_peer == "p2"
+
+    e = BackendTimeout("peer", elapsed_s=42.0)
+    assert e.elapsed_s == 42.0
+
+    e = BackendModelMissing("peer", requested_model="mistral")
+    assert e.requested_model == "mistral"
+
+
+def test_fix8_subclasses_without_extra_fields_use_base_init():
+    """BackendDown, BackendAuthFailed, BackendInferenceBroken have no
+    extra fields and inherit the base __init__ directly — extra kwargs
+    must still raise TypeError via the base signature."""
+    with pytest.raises(TypeError):
+        BackendDown("peer", anything=1)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        BackendAuthFailed("peer", token="x")  # type: ignore[call-arg]
+
+
 # ── _normalize_request_context canonical shim ────────────────────────────
 
 

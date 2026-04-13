@@ -78,10 +78,15 @@ class BackendError(Exception):
        optional per-instance override. Never user-controllable (prevents log
        injection via exception-body interpolation).
 
-    Subclasses MUST NOT override ``__init__`` unless they have a documentation
-    reason like :class:`BackendOverloaded` (explicit named kwargs for the
-    retry-after path). Instead, set class-level defaults and let the base
-    class handle kwargs.
+    Fix #8 (R2 review): the base ``__init__`` no longer accepts
+    ``**kwargs`` with ``setattr`` fallback. The old shape silently
+    swallowed typos like ``retry_after=2.5`` (missing ``_s``) and set
+    an unused attribute while the correctly-named class default
+    remained in place. Every subclass with extra fields now declares
+    an explicit ``__init__`` with named parameters so typos are
+    ``TypeError``\\s at call time, not silent hot-path bugs in Plan 3.
+    Subclasses without extra fields (``BackendDown``, ``BackendAuthFailed``,
+    ``BackendInferenceBroken``) inherit the base ``__init__`` directly.
     """
 
     provider_key: str = ""
@@ -93,25 +98,34 @@ class BackendError(Exception):
         *,
         status: int | None = None,
         fix_hint: str = "",
-        **kwargs: Any,
     ) -> None:
         self.provider_key = provider_key
         self.status = status
         if fix_hint:
             self.fix_hint = fix_hint
         self.response: Any | None = None  # attached by the router on body-bearing errors
-        for k, v in kwargs.items():
-            setattr(self, k, v)
         super().__init__(f"{type(self).__name__}[{provider_key}]: {self.fix_hint}")
 
 
 class BackendOverloaded(BackendError):
     """Peer is at or near capacity (429, admission-control throttle)."""
 
-    retry_after_s: float = 0.0
-    suggested_peer: str | None = None
-    queue_depth: int = 0
     fix_hint = "Peer is at capacity. Try a different peer or wait."
+
+    def __init__(
+        self,
+        provider_key: str,
+        *,
+        status: int | None = None,
+        fix_hint: str = "",
+        retry_after_s: float = 0.0,
+        suggested_peer: str | None = None,
+        queue_depth: int = 0,
+    ) -> None:
+        self.retry_after_s = retry_after_s
+        self.suggested_peer = suggested_peer
+        self.queue_depth = queue_depth
+        super().__init__(provider_key, status=status, fix_hint=fix_hint)
 
 
 class BackendDown(BackendError):
@@ -123,8 +137,18 @@ class BackendDown(BackendError):
 class BackendTimeout(BackendError):
     """Peer exceeded configured timeout without returning a response."""
 
-    elapsed_s: float = 0.0
     fix_hint = "Peer exceeded timeout. Check network or MAXIM_LANE_*_REMOTE_TIMEOUT_S."
+
+    def __init__(
+        self,
+        provider_key: str,
+        *,
+        status: int | None = None,
+        fix_hint: str = "",
+        elapsed_s: float = 0.0,
+    ) -> None:
+        self.elapsed_s = elapsed_s
+        super().__init__(provider_key, status=status, fix_hint=fix_hint)
 
 
 class BackendAuthFailed(BackendError):
@@ -136,8 +160,18 @@ class BackendAuthFailed(BackendError):
 class BackendModelMissing(BackendError):
     """Peer is up but the requested model is not loaded."""
 
-    requested_model: str = ""
     fix_hint = "Run `maxim peer --node <name> install <model>`."
+
+    def __init__(
+        self,
+        provider_key: str,
+        *,
+        status: int | None = None,
+        fix_hint: str = "",
+        requested_model: str = "",
+    ) -> None:
+        self.requested_model = requested_model
+        super().__init__(provider_key, status=status, fix_hint=fix_hint)
 
 
 class BackendInferenceBroken(BackendError):
