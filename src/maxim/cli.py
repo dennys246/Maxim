@@ -226,6 +226,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if peer_action in (
             "connect",
             "show",
+            "key",
             "forget",
             "update",
             "restart",
