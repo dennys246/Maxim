@@ -88,6 +88,51 @@ def test_stage2_non_http_exception_falls_back_to_ok():
     assert "fallback" in r.detail
 
 
+def test_fix1_stage2_auth_rejected_not_inference_broken():
+    """Fix #1: HTTPAuthError on stage 2 must classify as auth_rejected,
+    not inference_broken. The auth-gated chat endpoint is alive and the
+    operator needs to rotate the key — not wait for 'model to load'."""
+    err = _http.HTTPAuthError("peer", status=401, fix_hint="bad key")
+    with patch.object(_http, "fetch_url", side_effect=err):
+        r = _probe_stage2_readiness("http://h:8080", None, "mistral-7b")
+    assert r.outcome == "auth_rejected"
+    assert r.outcome != "inference_broken"
+
+
+def test_fix1_stage2_rate_limited_not_inference_broken():
+    """Fix #1: HTTPRateLimited on stage 2 must not classify as
+    inference_broken. Throttled peer is alive, just busy."""
+    err = _http.HTTPRateLimited("peer", status=429, retry_after_s=2.0)
+    with patch.object(_http, "fetch_url", side_effect=err):
+        r = _probe_stage2_readiness("http://h:8080", None, "mistral-7b")
+    assert r.outcome != "inference_broken"
+    assert r.outcome == "other"  # alongside other throttle signals
+
+
+def test_fix10_probe_correlation_id_in_events():
+    """Fix #10: probe_started + probe_completed carry a shared probe_id
+    so concurrent probes can be matched in structured log output."""
+    from maxim.utils.structured_logging import get_abstraction_buffer
+
+    buf = get_abstraction_buffer()
+    buf.clear()
+    with patch.object(_http, "fetch_url", return_value=_FakeResp(200)):
+        probe_llm_server("http://h:8080", enable_stage2=False)
+    started = buf.get_by_event("probe_started", n=5)
+    completed = buf.get_by_event("probe_completed", n=5)
+    assert started and completed
+    # Compact shape is flat-ish — look for probe_id on each record.
+    start_ids = {r.get("probe_id") for r in started} | {
+        r.get("data", {}).get("probe_id") for r in started if isinstance(r.get("data"), dict)
+    }
+    completed_ids = {r.get("probe_id") for r in completed} | {
+        r.get("data", {}).get("probe_id") for r in completed if isinstance(r.get("data"), dict)
+    }
+    # At least one matching id in both sets.
+    matching = (start_ids & completed_ids) - {None}
+    assert matching, f"no matching probe_id between start {start_ids} and completed {completed_ids}"
+
+
 # ── End-to-end probe_llm_server with enable_stage2 ────────────────────────
 
 

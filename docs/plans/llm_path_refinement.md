@@ -163,6 +163,7 @@ Non-negotiable:
 9. **Every new env var in CLAUDE.md table in the same PR.**
 10. **Dual-format logging.** Human stdout (unchanged), JSONL file via existing `StructuredFormatter`. New events use `log_structured()`.
 11. **Every sub-plan has a hard testing checkpoint + documentation step.**
+12. **Every sub-plan runs a pre-merge review round.** Two parallel review Claudes (Executor + Architecture lens) against the branch tip BEFORE the PR opens/merges. Findings fold into the same branch via a follow-up commit. No `fix/<plan>-loose-ends` split-PR pattern — that was R1's approach and got abandoned after R2 proved pre-merge review timing works. See [feedback_review_before_ship.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_review_before_ship.md) for evidence + templates. Skipping the review round is gambling — both R1 and R2 had bugs that passed 4000+ unit tests.
 
 ## Env var inventory (six new vars total)
 

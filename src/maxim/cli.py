@@ -186,10 +186,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         detect_and_apply_role(raw_argv)
     except Exception as _role_err:
-        # Role detection failures must not block startup. The legacy
-        # leader_mode.detect_role() further down is still the source of
-        # truth for bind_host; this is additive observability.
-        logging.getLogger(__name__).debug("role detection failed: %s", _role_err)
+        # Fix #3 (R2 review): role detection failures must not block
+        # startup, but a silent DEBUG log hides real problems. Promote
+        # to WARNING and emit a structured event so the failure shows
+        # up in both human logs and the JSONL stream.
+        _role_logger = logging.getLogger(__name__)
+        _role_logger.warning("role detection failed: %s", _role_err)
+        try:
+            from maxim.utils.structured_logging import log_structured
+
+            log_structured(
+                _role_logger,
+                logging.WARNING,
+                event="role_detection_failed",
+                data={"error": f"{type(_role_err).__name__}: {_role_err}"},
+            )
+        except Exception:
+            pass
 
     # Stage A observability: print loud warning if trace flags are active so
     # users don't leave them on accidentally (log volume + request-id exposure).

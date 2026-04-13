@@ -119,7 +119,11 @@ Timeline (rough, not calendar-committed). As of 2026-04-12, step 1 is done.
 
 7. **Back to substrate work:** P3a + P3b + P4 in 0.5, built on the stabilized LLM path.
 
-**Review pattern per plan:** each plan ships to a `feat/` branch, then spawns two review Claudes (Executor lens + Architecture lens) in parallel read-only sessions. Findings triage into a `fix/<plan>-loose-ends` PR, merge both, then start the next plan. R1 proved this pattern works — the executor review caught the CI grep gap and the `HTTPEndpoint.internal` unsafe default; the architecture review caught doc drift. Both would have rotted into Plan 2 if not flagged.
+**Review pattern per plan (refined after R2):** each plan implements on a `feat/<plan>` branch. Before opening/merging the PR — **not after** — spawn two review Claudes (Executor lens + Architecture lens) in parallel read-only sessions against the branch tip. Findings get folded into the same branch via a follow-up commit, THEN the PR opens. One PR per plan, no `fix/<plan>-loose-ends` split.
+
+R1 used the old "ship then review" timing → required PR #91 follow-up for CI grep gap + `HTTPEndpoint.internal` unsafe default + `make_http_response` helper + doc drift. R2 refined to "review before merge" → 11 findings (2 real behavior bugs: stage-2 probe mis-classification + argv scan subcommand gap) all folded into the same PR before it merged. Save the extra commit; catch the bugs earlier in the review loop.
+
+**Every plan without a pre-merge review round is gambling.** Tests catch known failure modes; reviews catch unknown ones. Both R1 and R2 had bugs that passed 4000+ unit tests and would have shipped silently. See [feedback_review_before_ship.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_review_before_ship.md) for the full evidence trail and the review prompt templates.
 
 **Why this order is load-bearing (decided 2026-04-12):**
 - Current LLM infrastructure is **too broken to use for P2 testing at all.** The 52s retry loop + probe fragility + lack of per-agent observability would make P2 validation data unreliable and un-attributable ("substrate bug vs. LLM flakiness?"). Running P2 first was considered and rejected.

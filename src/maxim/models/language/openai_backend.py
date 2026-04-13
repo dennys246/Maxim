@@ -14,6 +14,12 @@ from maxim.models.language.cancellation import is_shutdown_requested, shutdown_w
 from maxim.models.language.config import LLMConfig
 from maxim.models.language.types import LLMResponse
 
+# Fix #6 (R2 review): Plan 2 R2d moved the SSRF check from this module
+# to maxim.utils.net. The alias preserves backward compatibility for
+# anyone importing _validate_base_url from openai_backend. Moved to the
+# imports block so the E402 noqa suppression is no longer needed.
+from maxim.utils.net import validate_base_url as _validate_base_url
+
 
 def _is_auth_error(err: Exception) -> bool:
     msg = str(err).lower()
@@ -93,12 +99,6 @@ def _parse_processing_ms(headers: Any) -> float | None:
         return float(val)
     except (ValueError, TypeError):
         return None
-
-
-# Plan 2 R2d: SSRF check moved to maxim.utils.net — shared with Plan 3's
-# _MaximPeerBackend. Re-exported here for backward compatibility; any new
-# consumer should import from maxim.utils.net directly.
-from maxim.utils.net import validate_base_url as _validate_base_url  # noqa: E402
 
 
 class _OpenAIBackend:
