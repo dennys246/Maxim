@@ -167,6 +167,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
 
+    # Plan 1 R1 dual-format logging: honor MAXIM_LOG_FILE for every entry
+    # path, not just the main sim loop. Subcommands (doctor, peer, tunnel)
+    # short-circuit below before the sim loop calls configure_logging, so
+    # we need an early call here to attach the StructuredFormatter JSONL
+    # handler. Verbosity 0 (WARNING) is a safe default — the sim loop
+    # still calls configure_logging(force=True) later with its own
+    # verbosity, and the JSONL handler is deduped by absolute path.
+    configure_logging(verbosity=0)
+
     # Stage A observability: print loud warning if trace flags are active so
     # users don't leave them on accidentally (log volume + request-id exposure).
     from maxim.models.language.mesh_trace import print_startup_warning_if_enabled
