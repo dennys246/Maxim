@@ -717,38 +717,46 @@ def diagnose(
 def _run_peer_checks(peer_url: str, api_key: str | None) -> list:
     """Run peer connectivity checks against a remote URL."""
     from maxim.doctor.checks import CheckResult
+    from maxim.utils import http as _http
 
     results = []
     try:
-        import urllib.request
-        import urllib.error
-
-        headers = {"User-Agent": "maxim-peer/1.0"}
+        headers: dict[str, str] = {}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
-        req = urllib.request.Request(
+        resp = _http.fetch_url(
             f"{peer_url.rstrip('/')}/debug/version",
+            method="GET",
             headers=headers,
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=5.0, total_s=6.0),
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            if resp.status == 200:
-                results.append(
-                    CheckResult(
-                        name="Peer reachable",
-                        status="ok",
-                        message=f"Connected to {peer_url}",
-                    )
+        if resp.status == 200:
+            results.append(
+                CheckResult(
+                    name="Peer reachable",
+                    status="ok",
+                    message=f"Connected to {peer_url}",
                 )
-            else:
-                results.append(
-                    CheckResult(
-                        name="Peer reachable",
-                        status="fail",
-                        message=f"HTTP {resp.status}",
-                        fix=f"Check that the peer is running at {peer_url}",
-                    )
+            )
+        else:
+            results.append(
+                CheckResult(
+                    name="Peer reachable",
+                    status="fail",
+                    message=f"HTTP {resp.status}",
+                    fix=f"Check that the peer is running at {peer_url}",
                 )
+            )
+    except _http.HTTPError as e:
+        results.append(
+            CheckResult(
+                name="Peer reachable",
+                status="fail",
+                message=f"{type(e).__name__}: {e.fix_hint}",
+                fix=f"Verify the peer URL is correct and the peer is running: {peer_url}",
+            )
+        )
     except Exception as e:
         results.append(
             CheckResult(
