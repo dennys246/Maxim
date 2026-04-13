@@ -38,7 +38,14 @@ def configure_logging(
     level = verbosity_to_level(verbosity)
 
     root = logging.getLogger()
-    root.setLevel(level)
+    # Plan 1 R1: when MAXIM_LOG_FILE is set we want DEBUG-level visibility
+    # to the JSONL file while keeping stdout at the user-configured level.
+    # The root logger filter runs BEFORE handler-level filters, so if we
+    # set root=WARNING the JSONL handler never sees INFO/DEBUG records.
+    # Solution: root is DEBUG when JSONL is active, and stdout handler
+    # applies the verbosity-based filter itself.
+    jsonl_active = bool(os.environ.get("MAXIM_LOG_FILE", "").strip())
+    root.setLevel(logging.DEBUG if jsonl_active else level)
 
     formatter = logging.Formatter(fmt=fmt, datefmt=datefmt)
 
@@ -78,7 +85,10 @@ def configure_logging(
 
         os.makedirs(os.path.dirname(abs_path) or ".", exist_ok=True)
         jsonl_handler = logging.FileHandler(abs_path, mode="a", encoding="utf-8")
-        jsonl_handler.setLevel(level)
+        # JSONL file captures DEBUG+ regardless of stdout verbosity — the
+        # file is opt-in, noisy is fine, and low-level events are the
+        # whole point.
+        jsonl_handler.setLevel(logging.DEBUG)
         jsonl_handler.setFormatter(StructuredFormatter())
         jsonl_handler._maxim_jsonl = True  # type: ignore[attr-defined]
         root.addHandler(jsonl_handler)
@@ -92,6 +102,10 @@ def configure_logging(
         stream_handler.setFormatter(formatter)
         handlers: list[logging.Handler] = [stream_handler]
         logging.basicConfig(level=level, handlers=handlers, force=force)
+        # basicConfig just set root to `level`; override back to DEBUG if
+        # JSONL is active so the JSONL handler sees everything.
+        if jsonl_active:
+            root.setLevel(logging.DEBUG)
         if log_file:
             _ensure_file_handler(log_file)
         if jsonl_path:

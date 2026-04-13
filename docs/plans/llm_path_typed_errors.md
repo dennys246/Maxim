@@ -1,11 +1,23 @@
 # LLM Path Refinement — Plan 2: Role Detection + Typed Error Taxonomy
 
-**Status:** Draft — proposed 2026-04-12, split from Plan 1 per user request
+**Status:** Draft — proposed 2026-04-12, split from Plan 1 per user request. **Plan 1 R0+R1 SHIPPED 2026-04-12 (PRs #88, #90, pending cleanup PR for `c8a07e9`).** R2a-d ready to start.
 **Scope:** ~280 LOC new
 **Target version:** 0.4 (single stability version containing all LLM path sub-plans)
 **Part of:** [llm_path_refinement.md](llm_path_refinement.md) — the LLM path refinement meta-plan
-**Depends on:** [llm_path_foundation.md](llm_path_foundation.md) (Plan 1) — R0 + R1 must be shipped
+**Depends on:** [llm_path_foundation.md](llm_path_foundation.md) (Plan 1) — R0 + R1 SHIPPED, unblocks Plan 2
 **Blocks:** [llm_path_fast_failover.md](llm_path_fast_failover.md) (Plan 3, formerly Plan 2)
+
+## R1 learnings to apply before starting R2
+
+**Read before writing any code:** [project_llm_path_r1_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r1_shipped.md) + [docs/architecture/llm_routing.md](../architecture/llm_routing.md) Layer 7. The R1 implementation diverged from its plan spec in five load-bearing ways; Plan 2's own implementation should mirror R1's patterns, not invent new ones.
+
+**Specific R1 patterns Plan 2 must match:**
+
+1. **`BackendError` class shape mirrors `HTTPError`** — same three access patterns (`.status`, `.response`, `.fix_hint`). See R2b below.
+2. **`_normalize_request_context` is the single canonical shim** — R1 introduced `RequestContext` + `contextvars.ContextVar` in `utils/http.py`. R2b's `_normalize_request_context` in `agents/llm_worker.py` is the ONE place the legacy dict shape gets bridged to the typed dataclass. Plan 3's `_MaximPeerBackend` imports this function; do not define a parallel shim.
+3. **`probe_llm_server` + `_classify_probe_cause` are already migrated** — R2c adds stage-2 readiness on top of the already-migrated stage-1 probe. Do NOT re-write `_classify_probe_cause`; it stays until Plan 3 R2.5 supersedes the whole function.
+4. **`detect_role()` must be called from the EARLY `cli.py::main` block** — before subcommand dispatch, not at sim-loop entry. The subcommand-dispatch bug bit Plan 1 R1 (commit `c8a07e9` fixed it); Plan 2 R2a will re-encounter it if the `role_detected` log event doesn't fire for `maxim doctor` / `maxim peer X`. See [feedback_subcommand_logging_gap.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_subcommand_logging_gap.md).
+5. **JSONL log format uses single-letter top-level keys** (`t`/`l`/`s`/`e`) — runbook examples for R2a's `event=role_detected` MUST use `jq 'select(.e=="role_detected")'`, not `.event`. See [feedback_structured_formatter_short_keys.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_structured_formatter_short_keys.md).
 
 ## Goal
 
@@ -72,16 +84,32 @@ Migration test covers all four pre-existing user states.
 
 ### R2b — Typed exception taxonomy — ~60 LOC new
 
+**MANDATORY reference shape — Plan 1 R1's HTTPError hierarchy.** R1 shipped the exact pattern this section will mirror, including the three load-bearing access patterns that Plan 3's router integration will consume. Do not invent a parallel pattern — read `src/maxim/utils/http.py` before writing a single line of `types.py`. Matching the HTTPError shape keeps the `except HTTPRateLimited as e: raise BackendOverloaded(e.retry_after_s, ...)` bridge in Plan 3 trivial.
+
+**The three access patterns (match `HTTPError` exactly):**
+1. `e.status` — the HTTP status code (int or None for transport failures)
+2. `e.response.json()` — parsed error body, attached to the exception by `_classify_status` when the response had a body. Use `e.response` only — do NOT add a parallel `raw_body` attribute.
+3. `e.fix_hint` — human-actionable repair string. Class attribute with optional per-instance override.
+
 Extend `models/language/types.py`:
 
 ```python
 class BackendError(Exception):
-    """Base for all backend-raised errors. Every subclass has a fix_hint."""
+    """Base for all backend-raised errors. Mirrors the shape of
+    maxim.utils.http.HTTPError — same three access patterns (status,
+    response, fix_hint) so Plan 3's router can bridge HTTP → Backend
+    exceptions with a simple except/raise pair.
+    """
     provider_key: str
     fix_hint: str = ""
-    
-    def __init__(self, provider_key: str, **kwargs):
+
+    def __init__(self, provider_key: str, *, status: int | None = None,
+                 fix_hint: str = "", **kwargs):
         self.provider_key = provider_key
+        self.status = status
+        if fix_hint:
+            self.fix_hint = fix_hint
+        self.response: Any | None = None  # attached by router on body-bearing errors
         for k, v in kwargs.items():
             setattr(self, k, v)
         super().__init__(f"{type(self).__name__}[{provider_key}]: {self.fix_hint}")
@@ -93,7 +121,6 @@ class BackendOverloaded(BackendError):
     fix_hint = "Peer is at capacity. Try a different peer or wait."
 
 class BackendDown(BackendError):
-    http_status: int | None = None
     fix_hint = "Peer is not responding. Run `maxim peer --node <name> status`."
 
 class BackendTimeout(BackendError):
@@ -116,6 +143,8 @@ class BackendInferenceBroken(BackendError):
 - Every subclass sets `fix_hint` as a class attribute (mutable via `__init__` kwargs if needed for interpolation)
 - `fix_hint` content is **never user-controllable** — all strings are static or interpolated from validated identifiers only. Prevents log injection.
 - Static test iterates all `BackendError` subclasses and asserts `fix_hint != ""`.
+- `status` and `response` are set by the raiser (usually Plan 3's router `_try_provider` bridge), never by caller-supplied kwargs. This matches how `utils/http.py::_classify_status` attaches `response` to raised `HTTPError` subclasses.
+- **R1-tested helper pattern**: subclass `__init__` should NOT override `BackendError.__init__` — set class-level defaults and let the base handle kwargs. See `HTTPRateLimited.__init__` in `utils/http.py` for the one acceptable override pattern (explicit named kwargs for documentation purposes).
 
 **Backcompat shim — CANONICAL LOCATION:** `request_context["agent"]` → `request_context["agent_id"]` migration. Plan 1 R1 introduced `RequestContext` as a typed replacement. This plan's R2b adds the **single canonical** `_normalize_request_context` function in `agents/llm_worker.py`. **Plan 3's `_MaximPeerBackend` does not define a parallel shim** — it imports and calls this one. If you see `_build_request_context` in the peer backend, it is a thin wrapper that delegates to this function. One normalization path, one migration owner:
 
@@ -137,7 +166,13 @@ One-minor-version compatibility window. Then drop the `"agent"` key read in 0.5.
 
 ### R2c — Two-stage probe — ~100 LOC new
 
-Replaces the current single-stage probe in `runtime/llm_server.py::probe_llm_server`. Does **not** delete it yet — that happens in Plan 3 after `_MaximPeerBackend.health_check()` takes over.
+**R1 status:** `probe_llm_server` + `llm_server_responding_at` + `_probe_once` have already been migrated to use `maxim.utils.http.fetch_url` (step 2 of R1, commit `4cb748e`). The pre-R1 urllib implementation no longer exists. R2c adds the stage-2 readiness probe on top of the already-migrated stage-1 probe.
+
+**R1 already built** `_classify_probe_cause(exc, fallback)` — walks the `__cause__` chain of a caught `HTTPConnectionError` looking for `socket.gaierror` / `ssl.SSLError` / `TimeoutError` / `ConnectionRefusedError`, returning the coarse `ProbeOutcome` literal that downstream `lane_backends._validate_remote_urls` expects. **R2c must NOT re-invent this** — it stays in place until Plan 3 R2.5's `_MaximPeerBackend.health_check()` supersedes the whole function.
+
+**What R2c adds:** stage-2 readiness probe (micro-completion) + `BackendInferenceBroken` outcome + per-outcome cache TTL table. The plumbing from `http.fetch_url` to `ProbeResult` is already there.
+
+Does **not** delete `probe_llm_server` yet — that happens in Plan 3 after `_MaximPeerBackend.health_check()` takes over.
 
 **Stage 1 — liveness:** `GET /v1/models` via Plan 1's `http.get("leader", "/models", context=...)`, 1.5s timeout. Classifies into existing `ProbeOutcome` plus new `inference_broken`.
 

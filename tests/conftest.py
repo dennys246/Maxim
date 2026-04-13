@@ -9,7 +9,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from unittest.mock import Mock
 
 import pytest
@@ -578,3 +578,70 @@ def mock_llm(monkeypatch):
         lambda **kw: (router, manager),
     )
     return router, manager
+
+
+# ─── HTTP response factory (Plan 1 R1 loose ends) ────────────────────────
+#
+# Tests can be migrated to this helper incrementally — Plan 2 R2b will use
+# it for BackendError test fixtures. Existing hand-rolled Response stubs
+# in tests/unit/test_http_client.py and elsewhere stay as-is until then.
+
+
+def make_http_response(
+    *,
+    status: int = 200,
+    headers: Mapping[str, str] | None = None,
+    body: Any = None,
+    elapsed_ms: float = 1.0,
+    endpoint: str | None = None,
+    request_id: str = "test-req-id",
+):
+    """Factory for ``maxim.utils.http.Response`` test stubs.
+
+    Use this instead of hand-rolling ``Response(...)`` in every test. Saves
+    duplication and keeps the stub shape consistent as the Response
+    dataclass evolves.
+
+    ``body`` accepts:
+      - ``None`` → empty bytes
+      - ``bytes`` → passed through verbatim
+      - ``str`` → encoded as UTF-8
+      - any other JSON-serializable object → ``json.dumps`` then UTF-8 encoded
+
+    Usage as a fixture::
+
+        def test_something(http_response_factory):
+            resp = http_response_factory(status=429, body={"error": "rate limited"})
+
+    Direct import also works::
+
+        from tests.conftest import make_http_response
+        resp = make_http_response(status=200)
+    """
+    import json as _json
+
+    from maxim.utils import http as _http
+
+    if body is None:
+        content = b""
+    elif isinstance(body, bytes):
+        content = body
+    elif isinstance(body, str):
+        content = body.encode("utf-8")
+    else:
+        content = _json.dumps(body).encode("utf-8")
+
+    return _http.Response(
+        status=status,
+        headers=dict(headers or {}),
+        content=content,
+        elapsed_ms=elapsed_ms,
+        endpoint=endpoint or _http._EXTERNAL_ENDPOINT,
+        request_id=request_id,
+    )
+
+
+@pytest.fixture
+def http_response_factory():
+    """Pytest fixture wrapper around :func:`make_http_response`."""
+    return make_http_response

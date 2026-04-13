@@ -24,7 +24,7 @@ These accumulate evidence and refinement over time. They are not on the critical
 
 - [tool_refinement_plan.md](tool_refinement_plan.md) — living doc for agent tool surface curation
 - [llm_path_refinement.md](llm_path_refinement.md) — meta-plan for the LLM routing path refactor. Motivated by two 2026-04-12 peer-leader incidents + an audit that revealed `_OpenAIBackend` has a hidden ~52s retry loop. **Ships as 0.4 stability version**, contains four focused sub-plans + three deferred shell plans. Authoritative architecture reference at [../architecture/llm_routing.md](../architecture/llm_routing.md); stress test protocol at [../experiments/protocols/llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md).
-  - [llm_path_foundation.md](llm_path_foundation.md) — **Plan 1: Foundation**. Delete ~1,250 LOC dead mesh scaffolding. New `maxim/utils/http.py` with endpoint registry, typed `HTTPError` hierarchy, `RequestContext` dataclass + contextvars, automatic `X-Maxim-*` header propagation. ~450 LOC new, ~1,330 LOC deleted. Pure refactoring.
+  - [llm_path_foundation.md](llm_path_foundation.md) — **Plan 1: Foundation — R0 + R1 SHIPPED (2026-04-12).** Deleted ~1,250 LOC dead mesh scaffolding (R0, commit `e811787`). Shipped `maxim/utils/http.py` with endpoint registry, typed `HTTPError` hierarchy, `RequestContext` dataclass + contextvars, automatic `X-Maxim-*` header propagation (R1, PRs #88 + #90 + pending cleanup PR `c8a07e9`). All 11 urllib call sites migrated. CI grep invariant enforced. See [project_llm_path_r1_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r1_shipped.md) for the 5 design divergences + 10 gotchas.
   - [llm_path_typed_errors.md](llm_path_typed_errors.md) — **Plan 2: Typed Errors + Role Detection**. Split from Plan 1 per user decision. Role detection (`detect_role()` as first runtime action), typed `BackendError` taxonomy with `.fix_hint`, two-stage probe, SSRF check moved to `utils/net.py`. ~280 LOC new.
   - [llm_path_fast_failover.md](llm_path_fast_failover.md) — **Plan 3: Fast Failover**. New `_MaximPeerBackend` replaces `_OpenAIBackend` for self-hosted peers (single HTTP call, no retry loop, typed exceptions, streaming). Router catches typed exceptions for per-class backoff. Probe consolidation. ~420 LOC new. **The 52-second retry loop dies here.** Stress test protocol runs substrate P2 validation + `llama.cpp --parallel` batching PoC + multi-agent fan-out as triple duty.
   - [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — **Plan 4: Operator Visibility** (renamed from "Reactive Mesh"). `mesh.yml` + `maxim peer --node X` CLI + `install` command + admin API with per-agent request-trace filtering + per-agent rate limiting to prevent runaway agent starvation. ~650 LOC new. Ships unconditionally — multi-peer dispatch moved to deferred.
@@ -91,8 +91,8 @@ Channels (SMS, email, Slack, narrative speech) are **TEXT modality with context 
 
 Timeline (rough, not calendar-committed):
 
-1. **Now:** Plan 1 (Foundation) — delete dead mesh, unified HTTP client, RequestContext contract
-2. **Next:** Plan 2 (Typed Errors + Role Detection) — correctness primitives
+1. **SHIPPED (2026-04-12):** Plan 1 R0 + R1 — dead mesh deleted, unified HTTP client + `RequestContext` contract + `X-Maxim-*` header propagation live on main
+2. **Now:** Plan 2 (Typed Errors + Role Detection) — correctness primitives. Ready to start; see [llm_path_typed_errors.md](llm_path_typed_errors.md) "R1 learnings to apply before starting R2" section
 3. **Then:** Plan 3 (Fast Failover) — `_MaximPeerBackend`, kills the 52s retry loop
 4. **Stress test (one combined run):**
    - Phase A: substrate P2 validation (satisfies 0.3-minimum P2 requirement) + Plan 3 baseline
