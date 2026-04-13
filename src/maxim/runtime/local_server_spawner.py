@@ -105,19 +105,22 @@ def find_stale_llm_servers(port: int = DEFAULT_PORT) -> list[dict[str, Any]]:
     except ImportError:
         # No psutil — best-effort: check if something is listening on the port
         try:
-            import urllib.request
+            from maxim.utils import http as _http
 
-            req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/models")
-            with urllib.request.urlopen(req, timeout=1.0) as resp:  # noqa: S310
-                if resp.status == 200:
-                    results.append(
-                        {
-                            "pid": None,
-                            "cmdline": f"(unknown process on port {port})",
-                            "port_match": True,
-                            "status": "responding",
-                        }
-                    )
+            resp = _http.fetch_url(
+                f"http://127.0.0.1:{port}/v1/models",
+                method="GET",
+                timeout=_http.TimeoutPolicy(connect_s=0.5, read_s=1.0, total_s=1.5),
+            )
+            if resp.status == 200:
+                results.append(
+                    {
+                        "pid": None,
+                        "cmdline": f"(unknown process on port {port})",
+                        "port_match": True,
+                        "status": "responding",
+                    }
+                )
         except Exception:
             pass
         return results
@@ -395,18 +398,23 @@ class LocalServerSpawner:
         Bearer auth on this endpoint too, so we send our token. A 401 also
         counts as 'server up' since it proves the HTTP listener is live
         (just rejected the key, which would be a separate bug)."""
-        try:
-            import urllib.request
+        from maxim.utils import http as _http
 
-            req = urllib.request.Request(f"http://127.0.0.1:{self._port}/v1/models")
-            if self._api_key:
-                req.add_header("Authorization", f"Bearer {self._api_key}")
-            with urllib.request.urlopen(req, timeout=1.0) as resp:  # noqa: S310
-                return resp.status == 200
-        except urllib.error.HTTPError as e:
+        headers: dict[str, str] = {}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        try:
+            resp = _http.fetch_url(
+                f"http://127.0.0.1:{self._port}/v1/models",
+                method="GET",
+                headers=headers,
+                timeout=_http.TimeoutPolicy(connect_s=0.5, read_s=1.0, total_s=1.5),
+            )
+            return resp.status == 200
+        except _http.HTTPAuthError:
             # 401 = server up + listening, just rejected key. Counts as "ready":
             # the spawner only needs to know the HTTP listener is alive.
-            return e.code == 401
+            return True
         except Exception:
             return False
 
