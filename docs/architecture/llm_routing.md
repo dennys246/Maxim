@@ -7,7 +7,9 @@
 
 ## How to read this doc — Present vs Target markers
 
-**This document describes the POST-0.4 target state.** About 60% of the named artifacts (`_MaximPeerBackend`, `BACKEND_CLASSES`, `RequestContext`, `contextvars` propagation, `BackendError` taxonomy, two-stage probe, per-outcome cache TTLs, `cluster_key`, most structured log events, `utils/http.py`, `runtime/role.py`) do not yet exist in the codebase. They will exist once the four sub-plans ship.
+**This document describes the POST-0.4 target state.** About 50% of the named artifacts (`_MaximPeerBackend`, `BACKEND_CLASSES`, `BackendError` taxonomy, two-stage probe, per-outcome cache TTLs, `cluster_key`, `runtime/role.py`) do not yet exist in the codebase. They will exist once Plans 2-4 ship.
+
+**Plan 1 R1 has SHIPPED** (PRs #88, #90): `maxim/utils/http.py`, `RequestContext`, `contextvars` propagation, header sanitization, typed `HTTPError` hierarchy, endpoint registry, JSONL dual-format logging, and `http_*` metrics all exist today on main. Layer 7 below is [Present].
 
 To keep orientation clear, major subsections are tagged:
 - **[Present]** — describes code that exists today on main
@@ -229,36 +231,47 @@ BACKEND_CLASSES: dict[str, type] = {
 
 In-process local backends. Not relevant to the peer routing path. Documented in `reference.md`.
 
-## Layer 7: `maxim/utils/http.py` — unified HTTP client [Target — Plan 1 R1]
+## Layer 7: `maxim/utils/http.py` — unified HTTP client [Present — shipped in Plan 1 R1]
 
-**Does not exist yet.** The module is created in Plan 1 R1. Until then, HTTP calls are scattered across 11 files using raw `urllib.request` — this is the fragmentation that caused the 2026-04-12 Cloudflare User-Agent incident (commit `8b52cbd`). The section below describes the post-R1 shape.
+**Shipped in PRs #88 + #90 (2026-04-12).** Before R1, HTTP calls were scattered across ~11 files using raw `urllib.request` with inconsistent headers — the fragmentation that caused the 2026-04-12 Cloudflare User-Agent incident (commit `8b52cbd`). All eleven call sites are now routed through `maxim/utils/http.py`; the CI grep `grep -r "urllib.request.urlopen" src/maxim/` returns zero matches.
 
-**Who:** `src/maxim/utils/http.py` (created in Plan 1 R1)
+**Who:** [src/maxim/utils/http.py](../../src/maxim/utils/http.py)
 
-**Responsibility:** be the single place where outbound HTTP happens in the codebase. One endpoint registry, one connection pool per endpoint, one header contract, one metrics surface.
+**Responsibility:** single place where outbound HTTP happens in the codebase. One endpoint registry, one connection pool per endpoint, one header contract, one metrics surface.
 
-**Why it exists:** pre-refinement, ~11 files used `urllib.request` directly with inconsistent headers, no connection pooling, no metrics. The 2026-04-12 Cloudflare incident was a missing `User-Agent` header in one of those files. Centralizing prevents recurrence structurally.
-
-**Key abstractions:**
+**Key abstractions (as shipped):**
 
 ```python
 @dataclass(frozen=True)
 class HTTPEndpoint:
-    name: str                          # "leader", "huggingface", "doctor_probe"
+    name: str                          # "leader", "_external", etc.
     base_url: str | None
     default_headers: Mapping[str, str] # set ONCE at registration
     auth_provider: Callable[[], str | None] | None  # late-bound bearer token
     timeouts: TimeoutPolicy            # connect/read/total
-    max_pool_connections: int = 10
+    max_pool_connections: int = DEFAULT_POOL_PER_ENDPOINT  # 10
+    internal: bool = True              # gates X-Maxim-* propagation
 
-ENDPOINT_REGISTRY: dict[str, HTTPEndpoint] = {}
+def register_endpoint(endpoint: HTTPEndpoint) -> None: ...
 
-def get(name, path, *, context=None, **kwargs) -> Response: ...
-def post(name, path, json=None, *, context=None, **kwargs) -> Response: ...
-def stream(name, path, *, context=None, **kwargs) -> Iterator[bytes]: ...
+# Registry-based surface (internal endpoints, referenced by name):
+def get(endpoint_name, path, *, context=None, **kwargs) -> Response: ...
+def post(endpoint_name, path, json=None, *, context=None, **kwargs) -> Response: ...
+
+# Ad-hoc URL surface (user tools, HF downloads, peer-cli remote admin):
+def fetch_url(url, *, method="GET", context=None, **kwargs) -> Response: ...
+def download_to_file(url, dest_path, *, progress_hook=None, ...) -> int: ...
+
+# Escape hatch for leader_proxy reverse-proxy forwarding only:
+def raw_proxy_forward(url, method, *, headers, body, timeout) -> Response: ...
 ```
 
-**Automatic header propagation** from `RequestContext`:
+**Two registered endpoints today:**
+
+- `"leader"` — registered in `peer/config.apply_peer_config_to_env` when a peer config loads. Late-bound auth via closure over `MAXIM_LANE_LARGE_REMOTE_API_KEY` so cluster-key rotation doesn't touch call sites. `internal=True`.
+- `"_external"` — lazily registered on first use by `fetch_url`/`download_to_file`. Used for HuggingFace model downloads, tool-surface HTTP (`http_fetch`, `internet_search`), and peer-cli remote admin calls (`peer update/restart/llm/version/logs/install/deps`). `internal=False` — X-Maxim-* headers do NOT leak to third parties.
+
+**Automatic header propagation** from `RequestContext` (only for `internal=True` endpoints):
 - `X-Maxim-Request-Id: <request_id>` (always)
 - `X-Maxim-Agent-Id: <agent_id>` (when set)
 - `X-Maxim-Session-Id: <session_id>` (when set)
@@ -268,21 +281,42 @@ def stream(name, path, *, context=None, **kwargs) -> Iterator[bytes]: ...
 
 These headers are the **wire protocol between nodes**. Changing a header name is a breaking protocol change requiring a version bump. Adding new headers is non-breaking.
 
-**Input sanitization at boundary:** header values pass through a sanitizer in `maxim/utils/http.py::_sanitize_header_value` (Plan 1 R1) that rejects control chars, CR/LF, non-ASCII bytes, and values longer than `MAX_HEADER_VALUE_LEN = 256` (module-level named constant, not an inline magic number). Rejections raise `HTTPClientError` with a `fix_hint` identifying the offending field, and increment `http_header_rejected_total{field}` for observability. Prevents log injection from user-controlled values.
+**Input sanitization at boundary:** header values pass through `_sanitize_header_value` which rejects control chars, CR/LF, non-ASCII bytes, and values longer than `MAX_HEADER_VALUE_LEN = 256` (module-level named constant, not an inline magic number). Rejections raise `HTTPClientError` with a `fix_hint` identifying the offending field, and increment `http_header_rejected_total{field}` for observability. Prevents log injection from user-controlled values.
 
-**Typed HTTP errors:**
-- `HTTPTimeout` → caller can map to `BackendTimeout`
-- `HTTPConnectionError` → caller maps to `BackendDown`
-- `HTTPServerError` (5xx) → caller maps to `BackendDown`
-- `HTTPAuthError` (401/403) → caller maps to `BackendAuthFailed`
-- `HTTPRateLimited` (429) → caller maps to `BackendOverloaded` with retry_after + suggested_peer from response headers
-- `HTTPClientError` (other 4xx) → caller maps to `BackendError` or `BackendModelMissing` (404)
+**Typed HTTP errors (all shipped):**
+- `HTTPTimeout` — caller (Plan 3) maps to `BackendTimeout`
+- `HTTPConnectionError` — caller maps to `BackendDown` (wraps DNS, TLS, refused)
+- `HTTPServerError` (5xx) — caller maps to `BackendDown`
+- `HTTPAuthError` (401/403) — caller maps to `BackendAuthFailed`
+- `HTTPRateLimited` (429) — caller maps to `BackendOverloaded` with `retry_after_s` + `suggested_peer` from response headers
+- `HTTPClientError` (other 4xx) — caller maps to `BackendError` or `BackendModelMissing` (404)
 
-**Connection pool per endpoint:** `max_pool_connections=10` by default. Under multi-agent load, the pool is the concurrency ceiling for outbound calls to that endpoint. Metric `http_pool_exhausted_total{endpoint}` fires when a call waits for a pool slot — non-zero is a red flag and means raise the constant.
+The router-side backend taxonomy is still Plan 3 work; Plan 1 just ships the HTTP-side classes so callers (probes, doctor, tools, peer-cli) can branch on them.
+
+**Connection pool per endpoint:** `DEFAULT_POOL_PER_ENDPOINT = 10`. Under multi-agent load, the pool is the concurrency ceiling for outbound calls to that endpoint. Metric `http_pool_exhausted_total{endpoint}` fires when a call waits for a pool slot — non-zero means raise the constant.
+
+**Dual-format logging:** when `MAXIM_LOG_FILE=/path/to/log.jsonl` is set in the environment, `utils/logging.configure_logging()` attaches a JSONL `FileHandler` backed by `StructuredFormatter` from `maxim.utils.structured_logging`. stdout stays human-readable; the JSONL file captures structured events (`event=http_request`, `event=http_request_failed`, `event=startup_phase`) and every regular `logger.info/warning` call as `event=log` fallbacks.
+
+**Metrics exposed via `http.metrics_snapshot()`:**
+- `requests_total{endpoint/status}` — counter
+- `latency{endpoint}` — `{count, p50_ms, p99_ms}` reservoir (last 200 samples)
+- `pool_exhausted_total{endpoint}` — counter
+- `header_rejected_total{field}` — counter
+- `startup_phases{phase}` — duration_ms map, populated via `http.record_startup_phase(phase, ms)`
+
+Bounded cardinality: no `agent_id` labels on metrics. Per-agent debugging goes through JSONL logs with `jq 'select(.agent_id=="npc-X")'`.
 
 ## Layer 8: Wire transport
 
 Outside Maxim. HTTPS to the leader's Cloudflare tunnel (or direct LAN URL for private-IP peers). The leader proxy (`runtime/leader_proxy.py`) forwards to the upstream llama-cpp-server.
+
+**Proxy forwarding bypasses the HTTP client safety net — intentionally.** `leader_proxy._proxy_request` uses `http.raw_proxy_forward(url, method, headers=..., body=..., timeout=...)` instead of the regular `http.post` / `http.fetch_url` surface. The raw variant bypasses:
+
+- Header sanitization (`_sanitize_header_value`) — because peers send arbitrary headers that must be forwarded verbatim to upstream
+- `X-Maxim-*` injection — the proxy must preserve the peer's original request_id / agent_id / session_id, not overwrite them with its own
+- `auth_provider` late-binding — the proxy forwards whatever `Authorization` header the peer sent; it's not the auth-injection point
+
+`raw_proxy_forward` has an intentionally scary docstring: "Do NOT use this for anything else — it bypasses the registry's safety net." It reuses the shared `_external` httpx client for connection pooling, so the hot path still benefits from keepalive. The `Content-Length` header is stripped from forwarded headers because httpx sets it automatically from the body; duplicating it would cause "Transfer-Encoding: chunked + Content-Length" double-framing errors on strict HTTP servers (a latent bug that existed pre-R1 but never fired because urllib quietly ignored the duplicate).
 
 **What crosses this boundary** — see [data sovereignty](#data-sovereignty-what-crosses-node-boundaries).
 
@@ -317,29 +351,39 @@ BackendError
 
 **Contract:** any new backend class that raises typed exceptions MUST use these same classes. Backends cannot invent new exception types without the router knowing about them (or they hit the safety net and the `backend_unclassified_errors_total` counter fires).
 
-## Multi-agent context flow [Target — Plan 1 R1]
+## Multi-agent context flow [Present — shipped in Plan 1 R1]
 
-**Does not exist yet.** `RequestContext` + `contextvars.ContextVar` propagation is introduced in Plan 1 R1. Until then, `request_context: dict[str, Any]` is passed as a regular kwarg through `_invoke_backend`, and most log call sites don't include `agent_id`. A grep for `ContextVar` in `src/maxim/` currently returns zero matches.
+**Shipped.** `RequestContext` + `contextvars.ContextVar` propagation exist today in `maxim/utils/http.py`. A grep for `ContextVar` in `src/maxim/` now returns one match, in `utils/http.py`. The `_invoke_backend` path still takes `request_context: dict[str, Any]` as a regular kwarg (legacy shim — Plan 2 R2b's `_normalize_request_context` will bridge the dict to `RequestContext`).
 
 Maxim runs multiple agents concurrently under one user's API key (AgentPool, NPC campaigns). Every LLM call carries `agent_id`, `session_id`, `request_id` through every layer.
 
-**Propagation mechanism:** `contextvars.ContextVar` — Python's stdlib mechanism for request-scoped context. Set once at the caller (Layer 1), read at every layer down to the HTTP request body. The logging formatter reads the contextvar automatically, so log lines include these fields even if the log call didn't pass them explicitly.
+**Propagation mechanism:** `contextvars.ContextVar` — Python's stdlib mechanism for request-scoped context. Set once at the caller (Layer 1), read at every layer down to the HTTP request body. The HTTP client reads the contextvar automatically in `_build_headers()`, so outbound requests carry these fields even if the call site didn't pass them explicitly.
 
 **Why contextvars instead of threading the context through every function signature:** passing through function signatures means every intermediate layer has to know about context. That pollutes function signatures and breaks when callers forget to pass it. Contextvars are transparent: set at the boundary, read at the leaves.
 
+**Internal vs external endpoints — data sovereignty boundary.** `HTTPEndpoint.internal: bool` gates whether `X-Maxim-*` headers propagate. This is a load-bearing design decision that diverged from the initial plan:
+
+| Endpoint | `internal` | X-Maxim-* headers propagated? |
+|---|---|---|
+| `"leader"` | `True` | ✓ Request-Id, Agent-Id, Session-Id, Lane, Parent-Request-Id, Protocol-Version |
+| `"_external"` | `False` | ✗ Only User-Agent |
+
+`_external` is the shared endpoint used by HuggingFace model downloads, third-party tool surface (`tools/http_fetch`, `tools/internet_search`), and peer-cli remote admin calls. Suppressing X-Maxim-* on these calls prevents request IDs / agent IDs / session IDs from leaking to arbitrary web services. Future endpoints that cross node boundaries within the cluster must set `internal=True`; endpoints that talk to third parties must set `internal=False`.
+
 **What uses the context:**
-- `LLMRouter` passes it into `_try_provider` via `request_context=...`
-- `_MaximPeerBackend.complete_with_usage` reads from it to build `X-Maxim-*` headers
-- `utils/http.py` reads from it to set headers automatically
-- `log_structured(logger, level, event, data)` reads from it to enrich every log line
-- Plan 4's admin API reads from it to track per-agent stats
+- `utils/http.py::_build_headers` reads from it to set X-Maxim-* on outbound requests to internal endpoints
+- `log_structured(logger, level, event, data)` emits structured events that callers can enrich with agent_id from their own context
+- Plan 2 R2b's `_normalize_request_context` will bridge legacy dict contexts to `RequestContext`
+- Plan 3 R2.5's `_MaximPeerBackend.complete_with_usage` will use it directly (does not exist yet)
+- Plan 4's admin API will read from it for per-agent stats (does not exist yet)
 
 **What does NOT use the context:**
 - `_OpenAIBackend` — pre-existing cloud path, uses its own request ID scheme
 - Simulation generators / test fixtures — may run without a context; contextvar is None; logging falls back to null values
-- Probe calls — use null or synthetic context since they're not agent-scoped
+- Probe calls — use null or synthetic context since they're not agent-scoped. This is why the doctor smoke test's JSONL events show `agent_id: null` — doctor probes are cluster-scoped diagnostics, not agent-scoped inference calls. Context binding is the caller's responsibility and happens in the agent loop / sim orchestrator, not in `utils/http.py`.
+- `raw_proxy_forward` — explicitly bypasses context to preserve caller-supplied headers (see below)
 
-**If you add a new layer that handles requests:** read from the contextvar via `RequestContext.current()`; don't require it as a function parameter.
+**If you add a new layer that handles requests:** read from the contextvar via `http.current_context()`; don't require it as a function parameter.
 
 ## Data sovereignty — what crosses node boundaries
 
@@ -425,16 +469,30 @@ Role (`leader | peer | solo`) is detected **once** at process startup by `runtim
 
 ## Observability surfaces
 
-Summary of the metrics + logs + traces that Plans 1-4 introduce.
+Summary of the metrics + logs + traces that Plans 1-4 introduce. Two parallel metric registries exist today, and future metrics should be added to whichever fits better — don't try to unify them.
 
-### Metrics (via `lane_metrics.metrics_snapshot()`)
+### Two parallel metric singletons
 
-**Plan 1 (Foundation):**
-- `http_requests_total{endpoint, status}` counter
-- `http_latency_seconds{endpoint}` histogram
-- `http_pool_in_use{endpoint}` gauge
-- `http_pool_exhausted_total{endpoint}` counter
-- `startup_phase_duration_seconds{phase}` histogram
+1. **`lane_metrics.get_metrics_registry()` → `MetricsRegistry.snapshot()`**: LLM-lane scoped (per large/medium/small tier). Tracks jobs submitted/completed/failed, in-flight count, per-lane latency reservoir, token + cost accumulators. Owned by `LaneBackendManager` + `LeaderProxy` admission control.
+
+2. **`http.metrics_snapshot()`**: HTTP-endpoint scoped (per registered endpoint name). Tracks request counts by `(endpoint, status)`, per-endpoint latency reservoir, pool exhaustion, header sanitizer rejections, startup phase durations. Owned by `utils/http.py` module-level `_metrics` singleton.
+
+**Why separate:** lane metrics and HTTP metrics don't share a key space. Lane = `"large"` / `"medium"` / `"small"`; endpoint = `"leader"` / `"_external"` / etc. Forcing them into the same registry would either flatten the shape or introduce a fake composite key. Both snapshots are consumed by `maxim doctor` and will be consumed by Plan 4's `/v1/mesh/state` admin endpoint.
+
+### Metrics — Plan 1 R1 (shipped)
+
+Exposed via `http.metrics_snapshot()`. Field names use the dict-of-dicts shape, not the Prometheus `name{label=value}` serialization:
+
+- `requests_total` — `{"endpoint/status": count}` dict (e.g. `"leader/200": 42`)
+- `latency` — `{endpoint: {count, p50_ms, p99_ms}}` reservoir (last 200 samples per endpoint)
+- `pool_exhausted_total` — `{endpoint: count}` dict
+- `header_rejected_total` — `{field: count}` dict (sanitizer rejections)
+- `startup_phases` — `{phase: duration_ms}` dict
+
+**Reserved but not yet emitted:** `startup_phases` is populated via `http.record_startup_phase(phase, ms)`. The helper exists; no call sites invoke it yet. Plan 2's `detect_role()` or a future `cli.py` startup timer is the natural first caller. A future session that adds the first `record_startup_phase` call should also update this sentence.
+
+**Planned (Plans 2-4, not yet shipped):**
+- `http_pool_in_use{endpoint}` gauge — Plan 1 spec mentioned it; not implemented (httpx's pool doesn't expose a cheap gauge read)
 
 **Plan 2 (Typed Errors):**
 - `probe_outcome_total{endpoint, outcome, stage}` counter

@@ -1,10 +1,10 @@
 # LLM Path Refinement — Plan 1: Foundation Cleanup
 
-**Status:** Draft v3 — R2 split into its own sub-plan per user request
-**Scope:** ~450 LOC new + ~1,330 LOC deleted
+**Status:** ✅ **SHIPPED 2026-04-12**. R0 as commit `e811787`. R1 across PRs #88 (step 1) + #90 (steps 2-9) + pending cleanup PR for commit `c8a07e9` (dual-format logging fix). All 4003 fast-suite tests passing, CI grep invariant clean. See [project_llm_path_r1_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r1_shipped.md) for the 5 design divergences, 10 gotchas, and load-bearing invariants for Plan 2+.
+**Scope:** ~450 LOC new + ~1,330 LOC deleted (as shipped, close to spec)
 **Target version:** 0.4 (single stability version containing all LLM path sub-plans)
 **Part of:** [llm_path_refinement.md](llm_path_refinement.md) — the LLM path refinement meta-plan
-**Blocks:** [llm_path_typed_errors.md](llm_path_typed_errors.md) (Plan 2)
+**Unblocks:** [llm_path_typed_errors.md](llm_path_typed_errors.md) (Plan 2) — READY TO START
 
 ## Goal
 

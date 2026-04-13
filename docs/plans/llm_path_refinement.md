@@ -183,8 +183,9 @@ Plus `MAXIM_CLUSTER_KEY` (cluster bearer token) and `MAXIM_REQUEST_TRACE_SIZE` (
 
 | Sub-plan | Status | Checkpoint | Memory updated |
 |---|---|---|---|
-| Plan 1: Foundation (R0+R1) | Draft v3 | ⏸ Not started | ⏸ Pending |
-| Plan 2: Typed Errors (R2a-d) | Draft v1 | ⏸ Blocked on Plan 1 | ⏸ Pending |
+| Plan 1 R0 (dead mesh delete) | ✅ SHIPPED 2026-04-11 (commit `e811787`) | ✅ Done | ✅ [project_llm_path_r0_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r0_shipped.md) |
+| Plan 1 R1 (utils/http.py + 9 migrations) | ✅ SHIPPED 2026-04-12 (PRs #88, #90, pending cleanup PR for `c8a07e9`) | ✅ Done (4003 passed, CI grep CLEAN, smoke green) | ✅ [project_llm_path_r1_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r1_shipped.md) |
+| Plan 2: Typed Errors (R2a-d) | Draft v1 | ▶ **READY TO START** | ⏸ Pending |
 | Plan 3: Fast Failover (R2.5+R2.6) | Draft v2 | ⏸ Blocked on Plan 2 | ⏸ Pending |
 | Stress test (A-E) | Draft protocol | ⏸ Blocked on Plan 3 | N/A |
 | Plan 4: Operator Visibility (R3.x) | Draft v2 | ⏸ Blocked on stress test | ⏸ Pending |
@@ -193,6 +194,16 @@ Plus `MAXIM_CLUSTER_KEY` (cluster bearer token) and `MAXIM_REQUEST_TRACE_SIZE` (
 | Deferred: fair scheduling | Shell plan | ⏸ Revive trigger TBD + bio-inspired aspiration | N/A |
 
 Update this table as each plan ships.
+
+### Plan 1 R1 — lessons for future sub-plans
+
+The R1 execution surfaced five load-bearing patterns that Plans 2-4 must follow. See [project_llm_path_r1_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r1_shipped.md) for the full set, summarized here:
+
+1. **Error-handling idioms stabilize in an early commit.** R1 converged on `e.status` / `e.response.json()` / `e.fix_hint` as the three `HTTPError` access patterns through steps 2-3. Plan 2 R2b's `BackendError` MUST mirror this shape so Plan 3's `except HTTPRateLimited as e: raise BackendOverloaded(e.retry_after_s, ...)` bridge is trivial.
+2. **Migration steps are conceptually parallel but depend on idiom stability.** R1's 9 migration steps could have parallelized in principle, but steps 4+ copied the typed-error handling idiom from step 2 (`probe_llm_server`). If two executors had worked on steps 2 and 4 in parallel, they would have converged on different shapes. Future multi-step migration plans should say "the first 1-2 steps stabilize the idiom before later steps copy it."
+3. **Subcommand dispatch in `cli.py::main` bypasses logging setup.** Any feature with an "emit at startup" contract (Plan 2 R2a's `event=role_detected` is a hot candidate) needs `configure_logging` called at the TOP of `main()` before subcommand dispatch, not at sim-loop entry. R1 cleanup commit `c8a07e9` already fixed this for MAXIM_LOG_FILE; Plan 2 inherits the fix.
+4. **JSONL log format uses single-letter keys** (`t`/`l`/`s`/`e`). Runbook jq examples need `.e`, not `.event`. Every new runbook inherits this.
+5. **Shared test helpers.** R1 copy-pasted an `http.Response(...)` construction stub 8 times across test files. Plan 2 should add `tests/conftest.py::make_http_response(status=200, body={})` + `make_backend_error(...)` before starting, so later plans aren't tempted to copy-paste again.
 
 ## Motivation — the 2026-04-12 incidents
 

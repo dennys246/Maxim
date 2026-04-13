@@ -43,6 +43,10 @@ Additional guardrails:
 
 **Opt-in env vars in hot startup paths need autouse scrubs:** When you wire a new `if os.environ.get("MAXIM_FOO"): do_side_effect()` branch into anything reachable from `build_primary_router` (auto-spawn, tier detection, ensure_available, ...), pair it in the same commit with a `@pytest.fixture(autouse=True)` env-scrub fixture in [tests/conftest.py](tests/conftest.py). Without it, ANY test that sets the env var (e.g., a `normalize_args` unit test asserting `--auto-download` populates the var) leaks into every later test that constructs the runtime — and the leaked side effect runs for real. P5 cost a 9-minute pytest hang on a real 1 GB GGUF download to `~/.maxim/` before this was caught. The two existing scrubs (`_isolate_maxim_llm_profile_env`, `_isolate_maxim_auto_download_env`) are the template.
 
+**HTTP call sites must use `maxim/utils/http.py`:** Plan 1 R1 consolidated ~11 scattered `urllib.request` call sites into one registry-backed module. The invariant is CI-enforced: `grep -r "urllib.request.urlopen" src/maxim/ | grep -v "utils/http.py"` must return zero matches. The 2026-04-12 Cloudflare Bot Fight Mode incident (commit `8b52cbd`) was a missing `User-Agent` header in one of those call sites — the `_external` endpoint in `utils/http.py` sets it once at registration, so that class of bug is structurally impossible now. When adding a new outbound HTTP call: pick `http.get`/`http.post` (registered endpoint), `http.fetch_url` (arbitrary URL), or `http.download_to_file` (streaming file). The `raw_proxy_forward` escape hatch is reserved for `leader_proxy._proxy_request` ONLY — do not use it elsewhere.
+
+**Subcommand dispatch in `cli.py::main` bypasses logging setup by default:** `cli.py::main` short-circuits to `run_doctor_subcommand` / `run_peer_connect_subcommand` / `run_tunnel_subcommand` before reaching the sim loop that previously was the only caller of `configure_logging`. Any feature that depends on early logging setup (MAXIM_LOG_FILE JSONL handler, future structured event emission, Plan 2 R2a's `detect_role` log event) needs `configure_logging` called at the TOP of `main()` before subcommand dispatch, not at the sim-loop entry. This was a real bug during Plan 1 R1 — MAXIM_LOG_FILE silently did nothing for `maxim doctor` until commit `c8a07e9` added the early call. The sim loop's later `configure_logging(force=True)` call dedupes JSONL handlers by absolute path, so the early call + late call is safe.
+
 ## Running simulations — keep them small
 
 Simulations call a live LLM for every turn and can burn cost + time quickly. When running sims from this CLI (for diagnostics, verification, or debugging):
@@ -65,6 +69,8 @@ Simulations call a live LLM for every turn and can burn cost + time quickly. Whe
 - **LLM access goes through `models/language/router.py`**; backends (anthropic/llama/openai/transformers) should not be imported directly from outside `models/language/`.
 - **The WorkerPool is owned by LLMWorker**, which shuts it down on `stop()`. Don't create a parallel pool.
 - **`@resilient` decorator (runtime/resilient.py) wraps any callback that can fail** — use it instead of bare `except Exception: pass`.
+- **`RequestContext` + `contextvars.ContextVar` is the multi-agent contract.** Set at the request boundary (agent loop, sim orchestrator), read automatically by `maxim/utils/http.py::_build_headers` to populate `X-Maxim-*` outbound headers on internal endpoints. Callers don't thread the context through function signatures — set the contextvar, read at the leaves. The `HTTPEndpoint.internal: bool` flag gates which endpoints propagate X-Maxim-* — third-party URLs (HuggingFace, DuckDuckGo, tool fetches) use `internal=False` so request IDs don't leak. When adding a new cluster-internal endpoint, set `internal=True`; when adding an external one, set `internal=False`.
+- **HTTP errors are typed, not string-matched.** `maxim/utils/http.py` defines `HTTPError` + subclasses (`HTTPTimeout`, `HTTPConnectionError`, `HTTPAuthError`, `HTTPServerError`, `HTTPClientError`, `HTTPRateLimited`) with `.status` + `.fix_hint`. Callers branch on these instead of parsing exception messages. Plan 2 R2b's `BackendError` hierarchy will follow the exact same pattern (`.status`, `.response.json()`, `.fix_hint`) — reference shape is `utils/http.py`, don't invent a parallel.
 
 ## `maxim doctor` — environment diagnostics
 
@@ -236,6 +242,10 @@ MAXIM_PROVENANCE_VERBOSITY=1     # 0=off, 1=compact, 2=verbose
 
 # Substrate path (P1). Enables LinguisticEncoder → EC → ATL dual-write.
 MAXIM_SUBSTRATE_PATH=1           # Enable substrate encoding path (Phase 1 dual-write)
+
+# HTTP client trace (Plan 1 R1)
+MAXIM_HTTP_TRACE=1               # Bumps http_request events from DEBUG to INFO (every outbound call logged)
+MAXIM_LOG_FILE=/tmp/maxim.jsonl  # Attaches a JSONL file handler via StructuredFormatter. Dual-format: stdout stays human-readable, file is machine-parseable. Root logger runs at DEBUG when this is set; stdout still applies its own verbosity filter.
 
 # Heartbeat + trace (debug/diagnostics)
 MAXIM_HEARTBEAT=1                # System health heartbeat every 10s (GPU/CPU/RAM/disk/WiFi + stall detection)

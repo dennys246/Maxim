@@ -44,6 +44,8 @@ Text flows through the substrate and learning modulates it. Specifically: text p
 - P2 validation sweep + lab notebook entry
 - Text-to-prompt migration Phases 2-4 (shadow read → cutover → legacy removal)
 
+**P2 validation scheduling — runs as Phase A of the LLM path stress test.** Per the meta-plan + stress test protocol, P2 validation shares infrastructure with the Plan 3 Fast Failover stress test. See [../experiments/protocols/llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md) "Phase A — Baseline + substrate P2 validation (single-user, one agent)". Running them together means one setup serves both the "does substrate P2 pass mechanistic targets" question AND the "is the pre-Plan-3 52s retry loop still there" baseline. If you are running P2 validation standalone (no stress test), the test fixture in `tests/substrate/test_p2_reward_modulation.py` is the same one Phase A invokes — they are intentionally overlapping so pre-stress runs don't waste effort.
+
 ## Modality taxonomy reconciliation
 
 The existing `SensoryModality` enum (SIGHT, SOUND, TOUCH, etc.) captures biological senses for the SEM layer. The substrate needs a coarser TEXT/VISION distinction for EC routing and ATL tag filtering. These serve different purposes:
