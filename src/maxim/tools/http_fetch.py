@@ -56,33 +56,33 @@ _robots_cache = RobotsCache()
 
 def _fetch_robots_txt(domain: str, timeout_s: float = 5.0) -> set[str]:
     """Fetch and parse robots.txt for a domain."""
-    import urllib.request
-    import urllib.error
+    from maxim.utils import http as _http
 
     disallowed: set[str] = set()
 
     try:
         url = f"https://{domain}/robots.txt"
-        request = urllib.request.Request(
+        resp = _http.fetch_url(
             url,
+            method="GET",
             headers={"User-Agent": "Maxim/1.0 (Research Assistant)"},
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=timeout_s, total_s=timeout_s + 1.0),
         )
-        with urllib.request.urlopen(request, timeout=timeout_s) as response:
-            content = response.read().decode("utf-8", errors="ignore")
+        content = resp.text
 
-            # Parse robots.txt (simple parser for User-agent: * rules)
-            current_agent = None
-            for line in content.split("\n"):
-                line = line.strip().lower()
+        # Parse robots.txt (simple parser for User-agent: * rules)
+        current_agent = None
+        for line in content.split("\n"):
+            line = line.strip().lower()
 
-                if line.startswith("user-agent:"):
-                    agent = line.split(":", 1)[1].strip()
-                    current_agent = agent
+            if line.startswith("user-agent:"):
+                agent = line.split(":", 1)[1].strip()
+                current_agent = agent
 
-                elif line.startswith("disallow:") and current_agent in ("*", "maxim"):
-                    path = line.split(":", 1)[1].strip()
-                    if path:
-                        disallowed.add(path)
+            elif line.startswith("disallow:") and current_agent in ("*", "maxim"):
+                path = line.split(":", 1)[1].strip()
+                if path:
+                    disallowed.add(path)
 
     except Exception as e:
         logger.debug(f"Failed to fetch robots.txt for {domain}: {e}")
@@ -297,113 +297,145 @@ class HttpFetchTool(Tool):
 
         # Perform the fetch
         try:
-            import urllib.request
-            import urllib.error
+            from maxim.utils import http as _http
 
             self._request_times.append(now)
 
-            request = urllib.request.Request(
+            response = _http.fetch_url(
                 url,
+                method="GET",
                 headers={
                     "User-Agent": "Maxim/1.0 (Research Assistant; +https://github.com/maxim)",
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                     "Accept-Language": "en-US,en;q=0.5",
                 },
+                timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, total_s=timeout_s + 2.0),
             )
 
-            with urllib.request.urlopen(request, timeout=timeout_s) as response:
-                # Check content type
-                content_type = response.headers.get("Content-Type", "")
+            # Check content type
+            content_type = response.headers.get("Content-Type", "") or response.headers.get("content-type", "")
 
-                # Read content with size limit
-                content = response.read(max_bytes)
-                if len(content) >= max_bytes:
-                    logger.warning(f"Content truncated at {max_bytes} bytes")
+            # Read content with size limit
+            content = response.content
+            if len(content) > max_bytes:
+                logger.warning(f"Content truncated at {max_bytes} bytes")
+                content = content[:max_bytes]
 
-                # Get final URL (after redirects)
-                final_url = response.geturl()
+            # Final URL — httpx auto-follows redirects; httpx.Response stores it
+            # but our wrapper doesn't expose it yet. Use the requested URL as a
+            # safe fallback. (The request-path migration in Plan 3 may extend
+            # http.Response with a final_url field; for now this is fine.)
+            final_url = url
 
-                # Decode content
-                encoding = "utf-8"
-                if "charset=" in content_type:
-                    match = re.search(r"charset=([^\s;]+)", content_type)
-                    if match:
-                        encoding = match.group(1)
+            # Decode content
+            encoding = "utf-8"
+            if "charset=" in content_type:
+                match = re.search(r"charset=([^\s;]+)", content_type)
+                if match:
+                    encoding = match.group(1)
 
-                try:
-                    html = content.decode(encoding, errors="ignore")
-                except Exception:
-                    html = content.decode("utf-8", errors="ignore")
+            try:
+                html = content.decode(encoding, errors="ignore")
+            except Exception:
+                html = content.decode("utf-8", errors="ignore")
 
-                # Check for paywall
-                if block_paywalled and detect_paywall(html):
-                    return ToolResult(
-                        success=False,
-                        error="Content appears to be behind a paywall",
-                        metadata={"paywalled": True, "url": final_url},
-                    )
-
-                # Check content safety
-                if check_safety and self._content_safety_checker:
-                    is_safe, safety_reason = self._content_safety_checker(html)
-                    if not is_safe:
-                        return ToolResult(
-                            success=False,
-                            error=safety_reason or "Content failed safety check",
-                            metadata={"unsafe_content": True, "url": final_url},
-                        )
-
-                # Extract content
-                title = extract_title(html)
-                text = extract_text_content(html) if extract_text else ""
-
-                # Build result
-                result = {
-                    "url": final_url,
-                    "title": title,
-                    "content_type": content_type,
-                    "content_length": len(content),
-                }
-
-                if extract_text:
-                    result["text"] = text
-                    result["text_length"] = len(text)
-
-                # Build citation
-                citation = {
-                    "url": final_url,
-                    "title": title,
-                    "accessed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                }
-
+            # Check for paywall
+            if block_paywalled and detect_paywall(html):
                 return ToolResult(
-                    success=True,
-                    output=result,
-                    metadata={
-                        "citation": citation,
-                        "content_hash": hashlib.sha256(content).hexdigest()[:16],
-                    },
+                    success=False,
+                    error="Content appears to be behind a paywall",
+                    metadata={"paywalled": True, "url": final_url},
                 )
 
-        except urllib.error.HTTPError as e:
+            # Check content safety
+            if check_safety and self._content_safety_checker:
+                is_safe, safety_reason = self._content_safety_checker(html)
+                if not is_safe:
+                    return ToolResult(
+                        success=False,
+                        error=safety_reason or "Content failed safety check",
+                        metadata={"unsafe_content": True, "url": final_url},
+                    )
+
+            # Extract content
+            title = extract_title(html)
+            text = extract_text_content(html) if extract_text else ""
+
+            # Build result
+            result = {
+                "url": final_url,
+                "title": title,
+                "content_type": content_type,
+                "content_length": len(content),
+            }
+
+            if extract_text:
+                result["text"] = text
+                result["text_length"] = len(text)
+
+            # Build citation
+            citation = {
+                "url": final_url,
+                "title": title,
+                "accessed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+
             return ToolResult(
-                success=False,
-                error=f"HTTP error {e.code}: {e.reason}",
-                metadata={"http_code": e.code, "url": url},
+                success=True,
+                output=result,
+                metadata={
+                    "citation": citation,
+                    "content_hash": hashlib.sha256(content).hexdigest()[:16],
+                },
             )
 
-        except urllib.error.URLError as e:
+        except _http.HTTPRateLimited as e:
             return ToolResult(
                 success=False,
-                error=f"URL error: {e.reason}",
-                metadata={"url": url},
+                error=f"Rate limited (429), retry_after_s={e.retry_after_s}",
+                metadata={"http_code": 429, "url": url},
             )
 
-        except TimeoutError:
+        except _http.HTTPAuthError as e:
+            return ToolResult(
+                success=False,
+                error=f"HTTP error {e.status}: auth rejected",
+                metadata={"http_code": e.status, "url": url},
+            )
+
+        except _http.HTTPServerError as e:
+            return ToolResult(
+                success=False,
+                error=f"HTTP error {e.status}: server error",
+                metadata={"http_code": e.status, "url": url},
+            )
+
+        except _http.HTTPClientError as e:
+            return ToolResult(
+                success=False,
+                error=f"HTTP error {e.status}: {e.fix_hint}",
+                metadata={"http_code": e.status, "url": url},
+            )
+
+        except _http.HTTPTimeout:
             return ToolResult(
                 success=False,
                 error=f"Request timed out after {timeout_s}s",
                 metadata={"timeout": True, "url": url},
+            )
+
+        except _http.HTTPConnectionError as e:
+            return ToolResult(
+                success=False,
+                error=f"Connection failed: {e.fix_hint}",
+                metadata={"url": url},
+            )
+
+        except _http.HTTPError as e:
+            return ToolResult(
+                success=False,
+                error=f"HTTP error: {e.fix_hint}",
+                metadata={"url": url},
             )
 
         except Exception as e:

@@ -147,25 +147,32 @@ def fetch_leader_debug_status(
 
     Called after each inference request when MAXIM_LANE_TRACE=1 to capture
     server-side GPU utilization, VRAM, and temperature. Returns None silently
-    if the endpoint is unavailable (leader hasn't been upgraded, or debug
+    if the endpoint is unavailable (leader has not been upgraded, or debug
     endpoint not implemented yet).
     """
-    import urllib.error
-    import urllib.request
+    from maxim.utils import http as _http
 
     url = base_url.rstrip("/")
     if url.endswith("/v1"):
         url = url[:-3]
     url += "/v1/debug/status"
 
-    req = urllib.request.Request(url, method="GET")
+    headers: dict[str, str] = {}
     if api_key:
-        req.add_header("Authorization", f"Bearer {api_key}")
-    req.add_header("User-Agent", "maxim-peer/1.0")
+        headers["Authorization"] = f"Bearer {api_key}"
 
     try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # noqa: S310
-            return json.loads(resp.read())
+        resp = _http.fetch_url(
+            url,
+            method="GET",
+            headers=headers,
+            timeout=_http.TimeoutPolicy(
+                connect_s=min(timeout_s, 1.0),
+                read_s=timeout_s,
+                total_s=timeout_s + 0.5,
+            ),
+        )
+        return resp.json()
     except Exception:
         return None
 

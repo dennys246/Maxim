@@ -27,8 +27,6 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
-from urllib.request import urlretrieve
-from urllib.error import URLError
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +39,21 @@ logger = logging.getLogger(__name__)
 # and deletes them. Leave None for profiles where the upstream size has not
 # been verified yet; the download path skips the size check in that case.
 LLM_MODELS: dict[str, dict[str, Any]] = {
+    "smollm-135m-instruct": {
+        "description": (
+            "SmolLM 135M - Tiniest LLM in the registry (~90 MB). "
+            "Great for CI smoke tests, constrained hardware, and download "
+            "pipeline verification."
+        ),
+        "size_gb": 0.09,
+        # Pinned Q4_K_M from QuantFactory. expected_bytes left None because
+        # the upstream has not been byte-verified yet; the download path
+        # falls through on the size check and relies on streamed integrity.
+        "expected_bytes": None,
+        "quantization": "Q4_K_M",
+        "url": "https://huggingface.co/QuantFactory/SmolLM-135M-Instruct-GGUF/resolve/main/SmolLM-135M-Instruct.Q4_K_M.gguf",
+        "filename": "SmolLM-135M-Instruct.Q4_K_M.gguf",
+    },
     "smollm-1.7b-instruct": {
         "description": "SmolLM 1.7B - Small, fast, good for CPU (recommended for limited hardware)",
         "size_gb": 1.1,
@@ -288,8 +301,16 @@ def download_file(
     print(f"  Downloading: {desc or dest_path.name}")
     print(f"  From: {url}")
 
+    from maxim.utils import http as _http
+
     try:
-        urlretrieve(url, tmp_path, reporthook=_progress_hook)
+        _http.download_to_file(
+            url,
+            tmp_path,
+            progress_hook=_progress_hook,
+            # Large models can take 10+ minutes over slow links — generous budget.
+            timeout=_http.TimeoutPolicy(connect_s=10.0, read_s=300.0, total_s=3600.0),
+        )
     except BaseException as e:
         # BaseException catches KeyboardInterrupt (which Exception doesn't)
         # so Ctrl+C mid-download cleans up before exiting. Re-raise after
@@ -302,8 +323,8 @@ def download_file(
         if isinstance(e, KeyboardInterrupt):
             print("  Download interrupted — cleaned up partial file")
             raise
-        if isinstance(e, URLError):
-            print(f"  Download failed: {e}")
+        if isinstance(e, _http.HTTPError):
+            print(f"  Download failed: {e.fix_hint}")
             return False
         print(f"  Error: {e}")
         return False

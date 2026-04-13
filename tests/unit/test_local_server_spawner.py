@@ -217,17 +217,27 @@ class TestStop:
 
 
 class TestHealthCheck:
+    @staticmethod
+    def _ok_resp():
+        from maxim.utils import http as _http
+
+        return _http.Response(
+            status=200,
+            headers={},
+            content=b"{}",
+            elapsed_ms=1.0,
+            endpoint=_http._EXTERNAL_ENDPOINT,
+            request_id="r",
+        )
+
     def test_healthy_returns_true(self):
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
-        with patch("urllib.request.urlopen") as mock_open:
-            mock_resp = MagicMock()
-            mock_resp.status = 200
-            mock_open.return_value.__enter__.return_value = mock_resp
+        with patch("maxim.utils.http.fetch_url", return_value=self._ok_resp()):
             assert s._health_check() is True
 
     def test_unhealthy_returns_false_on_exception(self):
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
-        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+        with patch("maxim.utils.http.fetch_url", side_effect=OSError("refused")):
             assert s._health_check() is False
 
     def test_api_key_sent_as_bearer(self):
@@ -235,53 +245,48 @@ class TestHealthCheck:
         (llama-cpp-server's /v1/models endpoint requires auth when --api_key
         is passed, so missing header would cause a 401 -> false timeout)."""
         s = LocalServerSpawner(model_path="/tmp/fake.gguf", api_key="secret-token")
-        with patch("urllib.request.urlopen") as mock_open:
-            mock_resp = MagicMock()
-            mock_resp.status = 200
-            mock_open.return_value.__enter__.return_value = mock_resp
+        captured: dict = {}
+
+        def _capture(url, *, method="GET", headers=None, **_):
+            captured["headers"] = dict(headers or {})
+            return self._ok_resp()
+
+        with patch("maxim.utils.http.fetch_url", side_effect=_capture):
             assert s._health_check() is True
-            # Verify the request object had the Authorization header
-            called_req = mock_open.call_args[0][0]
-            assert called_req.get_header("Authorization") == "Bearer secret-token"
+            assert captured["headers"].get("Authorization") == "Bearer secret-token"
 
     def test_no_api_key_no_auth_header(self):
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")  # no api_key
-        with patch("urllib.request.urlopen") as mock_open:
-            mock_resp = MagicMock()
-            mock_resp.status = 200
-            mock_open.return_value.__enter__.return_value = mock_resp
+        captured: dict = {}
+
+        def _capture(url, *, method="GET", headers=None, **_):
+            captured["headers"] = dict(headers or {})
+            return self._ok_resp()
+
+        with patch("maxim.utils.http.fetch_url", side_effect=_capture):
             s._health_check()
-            called_req = mock_open.call_args[0][0]
-            assert called_req.get_header("Authorization") is None
+            assert "Authorization" not in captured["headers"]
 
     def test_401_counts_as_up(self):
         """401 means the HTTP listener is alive, just rejected the key.
         We treat this as 'server ready' — the spawner's job is just to
         confirm the listener is up, not to validate the auth itself."""
-        import urllib.error
+        from maxim.utils import http as _http
 
         s = LocalServerSpawner(model_path="/tmp/fake.gguf", api_key="wrong-key")
-        err = urllib.error.HTTPError(
-            url="http://127.0.0.1:8100/v1/models",
-            code=401,
-            msg="Unauthorized",
-            hdrs=None,
-            fp=None,
-        )
-        with patch("urllib.request.urlopen", side_effect=err):
+        with patch(
+            "maxim.utils.http.fetch_url",
+            side_effect=_http.HTTPAuthError("_external", status=401, fix_hint="Auth rejected (401)"),
+        ):
             assert s._health_check() is True
 
     def test_500_does_not_count_as_up(self):
         """A real server error should be treated as not-ready."""
-        import urllib.error
+        from maxim.utils import http as _http
 
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
-        err = urllib.error.HTTPError(
-            url="http://127.0.0.1:8100/v1/models",
-            code=500,
-            msg="Server Error",
-            hdrs=None,
-            fp=None,
-        )
-        with patch("urllib.request.urlopen", side_effect=err):
+        with patch(
+            "maxim.utils.http.fetch_url",
+            side_effect=_http.HTTPServerError("_external", status=500, fix_hint="Server error (500)"),
+        ):
             assert s._health_check() is False

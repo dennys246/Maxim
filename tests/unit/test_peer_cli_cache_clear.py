@@ -112,12 +112,20 @@ class TestCmdRestartClearsCache:
         from maxim.peer import cli as peer_cli
 
         # Make the HTTP call return a no-op restart response.
+        from maxim.utils import http as _http
+
+        fake_resp = _http.Response(
+            status=200,
+            headers={},
+            content=json.dumps({"status": "noop"}).encode(),
+            elapsed_ms=1.0,
+            endpoint=_http._EXTERNAL_ENDPOINT,
+            request_id="r",
+        )
         with (
-            patch("urllib.request.urlopen") as mock_open,
+            patch("maxim.utils.http.fetch_url", return_value=fake_resp),
             patch.object(peer_cli, "_clear_probe_cache") as mock_clear,
         ):
-            resp = mock_open.return_value.__enter__.return_value
-            resp.read.return_value = json.dumps({"status": "noop"}).encode()
             peer_cli._cmd_restart([])
         # Single-URL eviction (the leader's URL), not a full wipe
         mock_clear.assert_called_once()
@@ -132,12 +140,20 @@ class TestCmdUpdateClearsCache:
     def test_update_clears_cache_for_url(self, fake_data_home, fake_peer_cfg):
         from maxim.peer import cli as peer_cli
 
+        from maxim.utils import http as _http
+
+        fake_resp = _http.Response(
+            status=200,
+            headers={},
+            content=json.dumps({"status": "up_to_date"}).encode(),
+            elapsed_ms=1.0,
+            endpoint=_http._EXTERNAL_ENDPOINT,
+            request_id="r",
+        )
         with (
-            patch("urllib.request.urlopen") as mock_open,
+            patch("maxim.utils.http.fetch_url", return_value=fake_resp),
             patch.object(peer_cli, "_clear_probe_cache") as mock_clear,
         ):
-            resp = mock_open.return_value.__enter__.return_value
-            resp.read.return_value = json.dumps({"status": "up_to_date"}).encode()
             peer_cli._cmd_update([])
         mock_clear.assert_called_once()
         called_args = mock_clear.call_args.args
@@ -148,12 +164,20 @@ class TestCmdUpdateClearsCache:
         the cache shouldn't be invalidated."""
         from maxim.peer import cli as peer_cli
 
+        from maxim.utils import http as _http
+
+        fake_resp = _http.Response(
+            status=200,
+            headers={},
+            content=json.dumps({"status": "up_to_date"}).encode(),
+            elapsed_ms=1.0,
+            endpoint=_http._EXTERNAL_ENDPOINT,
+            request_id="r",
+        )
         with (
-            patch("urllib.request.urlopen") as mock_open,
+            patch("maxim.utils.http.fetch_url", return_value=fake_resp),
             patch.object(peer_cli, "_clear_probe_cache") as mock_clear,
         ):
-            resp = mock_open.return_value.__enter__.return_value
-            resp.read.return_value = json.dumps({"status": "up_to_date"}).encode()
             peer_cli._cmd_update(["--dry-run"])
         mock_clear.assert_not_called()
 
@@ -165,12 +189,20 @@ class TestCmdLlmClearsCache:
     def test_llm_swap_clears_cache_for_url(self, fake_data_home, fake_peer_cfg):
         from maxim.peer import cli as peer_cli
 
+        from maxim.utils import http as _http
+
+        fake_resp = _http.Response(
+            status=200,
+            headers={},
+            content=json.dumps({"status": "swapped", "model": "qwen2.5-14b-instruct"}).encode(),
+            elapsed_ms=1.0,
+            endpoint=_http._EXTERNAL_ENDPOINT,
+            request_id="r",
+        )
         with (
-            patch("urllib.request.urlopen") as mock_open,
+            patch("maxim.utils.http.fetch_url", return_value=fake_resp),
             patch.object(peer_cli, "_clear_probe_cache") as mock_clear,
         ):
-            resp = mock_open.return_value.__enter__.return_value
-            resp.read.return_value = json.dumps({"status": "swapped", "model": "qwen2.5-14b-instruct"}).encode()
             peer_cli._cmd_llm(["qwen2.5-14b-instruct"])
         mock_clear.assert_called_once()
         called_args = mock_clear.call_args.args

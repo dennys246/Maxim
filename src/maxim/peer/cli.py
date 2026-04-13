@@ -323,31 +323,36 @@ def _request_with_retry(
     Returns response body on success, None on failure after all retries.
     """
     import time
-    import urllib.error
-    import urllib.request
+
+    from maxim.utils import http as _http
 
     for attempt in range(max_retries + 1):
-        req = urllib.request.Request(url, method=method, data=body)
-        req.add_header("User-Agent", "maxim-peer/1.0")
-        if headers:
-            for k, v in headers.items():
-                req.add_header(k, v)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
-                return resp.read()
-        except urllib.error.HTTPError as e:
-            if e.code in (429, 502, 503):
-                # Transient — retry with backoff
-                if attempt < max_retries:
-                    wait = base_backoff * (2**attempt)
-                    time.sleep(wait)
-                    continue
-            return None  # Permanent HTTP error
-        except (urllib.error.URLError, OSError):
-            # Connection refused, timeout, etc.
+            resp = _http.fetch_url(
+                url,
+                method=method,
+                headers=headers or {},
+                content=body,
+                timeout=_http.TimeoutPolicy(
+                    connect_s=min(timeout, 3.0),
+                    read_s=timeout,
+                    total_s=timeout + 1.0,
+                ),
+            )
+            return resp.content
+        except _http.HTTPRateLimited:
             if attempt < max_retries:
-                wait = base_backoff * (2**attempt)
-                time.sleep(wait)
+                time.sleep(base_backoff * (2**attempt))
+                continue
+            return None
+        except _http.HTTPServerError as e:
+            if e.status in (502, 503) and attempt < max_retries:
+                time.sleep(base_backoff * (2**attempt))
+                continue
+            return None
+        except (_http.HTTPError, OSError):
+            if attempt < max_retries:
+                time.sleep(base_backoff * (2**attempt))
                 continue
             return None
     return None
@@ -358,29 +363,24 @@ def _check_proxy_ping(base_url: str, key: str | None = None, *, verbose: bool = 
 
     Returns the ping response dict, or None if the probe fails.
     """
-    import json
-    import urllib.error
-    import urllib.request
+    from maxim.utils import http as _http
 
     endpoint = f"{base_url}/v1/debug/ping"
-    req = urllib.request.Request(
-        endpoint,
-        method="GET",
-        headers={"User-Agent": "maxim-peer/1.0"},
-    )
+    headers: dict[str, str] = {}
     if key:
-        req.add_header("Authorization", f"Bearer {key}")
+        headers["Authorization"] = f"Bearer {key}"
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
-            return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
+        resp = _http.fetch_url(
+            endpoint,
+            method="GET",
+            headers=headers,
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=5.0, total_s=6.0),
+        )
+        return resp.json()
+    except _http.HTTPError as e:
         if verbose:
-            print(f"[{e.code}]", end="", flush=True)
-        return None
-    except urllib.error.URLError as e:
-        if verbose:
-            reason = str(getattr(e, "reason", e))[:30]
-            print(f"[{reason}]", end="", flush=True)
+            tag = str(e.status) if e.status else type(e).__name__
+            print(f"[{tag}]", end="", flush=True)
         return None
     except Exception as e:
         if verbose:
@@ -459,8 +459,8 @@ def _run_peer_test(url: str, key: str) -> int:
 def _cmd_update(argv: list[str]) -> int:
     """Trigger git pull + pip install on the leader via /v1/admin/update."""
     import json
-    import urllib.error
-    import urllib.request
+
+    from maxim.utils import http as _http
 
     # Determine URL: from arg, or from peer config
     url: str | None = None
@@ -498,20 +498,9 @@ def _cmd_update(argv: list[str]) -> int:
     endpoint = f"{base}/v1/admin/update"
 
     # Build request
-    body = json.dumps({"branch": branch, "dry_run": dry_run, "force": force}).encode()
-    req = urllib.request.Request(
-        endpoint,
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            # Cloudflare Bot Fight Mode blocks Python's default User-Agent.
-            # Use a neutral UA to avoid error 1010.
-            "User-Agent": "maxim-peer/1.0",
-        },
-    )
+    headers: dict[str, str] = {"Content-Type": "application/json"}
     if key:
-        req.add_header("Authorization", f"Bearer {key}")
+        headers["Authorization"] = f"Bearer {key}"
 
     # An update replaces the leader process. Drop the cached probe entry
     # so the next startup re-probes the new binary instead of trusting
@@ -524,22 +513,30 @@ def _cmd_update(argv: list[str]) -> int:
     print()
 
     try:
-        with urllib.request.urlopen(req, timeout=180) as resp:  # noqa: S310
-            data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        try:
-            data = json.loads(e.read())
-        except Exception:
-            data = {"error": str(e)}
-        if e.code == 403:
+        resp = _http.fetch_url(
+            endpoint,
+            method="POST",
+            headers=headers,
+            json={"branch": branch, "dry_run": dry_run, "force": force},
+            timeout=_http.TimeoutPolicy(connect_s=5.0, read_s=180.0, total_s=185.0),
+        )
+        data = resp.json()
+    except _http.HTTPError as e:
+        data = {}
+        if e.response is not None:
+            try:
+                data = e.response.json()
+            except Exception:
+                data = {"error": str(e)}
+        if e.status == 403:
             print("Remote update is disabled on the leader.", file=sys.stderr)
             print("  Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.", file=sys.stderr)
             return 1
-        if e.code == 404:
+        if e.status == 404:
             print("Admin endpoint returned 404.", file=sys.stderr)
             _print_404_diagnosis(base)
             return 1
-        if e.code == 409:
+        if e.status == 409:
             print("Leader has dirty working tree:", file=sys.stderr)
             for f in data.get("dirty_files", []):
                 print(f"  {f}", file=sys.stderr)
@@ -547,11 +544,14 @@ def _cmd_update(argv: list[str]) -> int:
             if hint:
                 print(f"\n  {hint}", file=sys.stderr)
             return 1
-        if e.code == 401:
+        if e.status == 401:
             print("Authentication failed.", file=sys.stderr)
-            print("  Check API key matches leader. Run: maxim tunnel key show (on leader)", file=sys.stderr)
+            print(
+                "  Check API key matches leader. Run: maxim tunnel key show (on leader)",
+                file=sys.stderr,
+            )
             return 1
-        print(f"Update failed ({e.code}): {data.get('error', str(e))}", file=sys.stderr)
+        print(f"Update failed ({e.status}): {data.get('error', e.fix_hint)}", file=sys.stderr)
         if data.get("stderr"):
             print(f"  stderr: {data['stderr']}", file=sys.stderr)
         if data.get("stdout"):
@@ -595,8 +595,8 @@ def _cmd_update(argv: list[str]) -> int:
 def _cmd_restart(argv: list[str]) -> int:
     """Soft-restart maxim on the leader via /v1/admin/restart."""
     import json
-    import urllib.error
-    import urllib.request
+
+    from maxim.utils import http as _http
 
     url: str | None = None
     key: str | None = None
@@ -618,18 +618,9 @@ def _cmd_restart(argv: list[str]) -> int:
         base = base[:-3]
     endpoint = f"{base}/v1/admin/restart"
 
-    body = json.dumps({"delay_s": 1.5}).encode()
-    req = urllib.request.Request(
-        endpoint,
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "maxim-peer/1.0",
-        },
-    )
+    headers: dict[str, str] = {"Content-Type": "application/json"}
     if key:
-        req.add_header("Authorization", f"Bearer {key}")
+        headers["Authorization"] = f"Bearer {key}"
 
     # Restart drops the leader briefly. Clear the probe cache so the next
     # startup re-probes instead of believing a now-stale "ok" entry.
@@ -639,26 +630,37 @@ def _cmd_restart(argv: list[str]) -> int:
     print()
 
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-            data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        try:
-            data = json.loads(e.read())
-        except Exception:
-            data = {"error": str(e)}
-        if e.code == 403:
+        resp = _http.fetch_url(
+            endpoint,
+            method="POST",
+            headers=headers,
+            json={"delay_s": 1.5},
+            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=30.0, total_s=33.0),
+        )
+        data = resp.json()
+    except _http.HTTPError as e:
+        data = {}
+        if e.response is not None:
+            try:
+                data = e.response.json()
+            except Exception:
+                data = {"error": str(e)}
+        if e.status == 403:
             print("Remote restart is disabled on the leader.", file=sys.stderr)
             print("  Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.", file=sys.stderr)
             return 1
-        if e.code == 404:
+        if e.status == 404:
             print("Admin endpoint returned 404.", file=sys.stderr)
             _print_404_diagnosis(base)
             return 1
-        if e.code == 401:
+        if e.status == 401:
             print("Authentication failed.", file=sys.stderr)
-            print("  Check API key matches leader. Run: maxim tunnel key show (on leader)", file=sys.stderr)
+            print(
+                "  Check API key matches leader. Run: maxim tunnel key show (on leader)",
+                file=sys.stderr,
+            )
             return 1
-        print(f"Restart failed ({e.code}): {data.get('error', str(e))}", file=sys.stderr)
+        print(f"Restart failed ({e.status}): {data.get('error', e.fix_hint)}", file=sys.stderr)
         return 1
     except Exception as e:
         print(f"Connection failed: {e}", file=sys.stderr)
@@ -725,9 +727,7 @@ def _cmd_restart(argv: list[str]) -> int:
 
 def _cmd_llm_status(argv: list[str]) -> int:
     """Show what LLM model is running on the leader."""
-    import json
-    import urllib.error
-    import urllib.request
+    from maxim.utils import http as _http
 
     url: str | None = None
     for a in argv:
@@ -746,13 +746,13 @@ def _cmd_llm_status(argv: list[str]) -> int:
         base = base[:-3]
 
     # Query debug/status (no auth required for debug endpoints)
-    req = urllib.request.Request(
-        f"{base}/v1/debug/status",
-        headers={"User-Agent": "maxim-peer/1.0"},
-    )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-            data = json.loads(resp.read())
+        resp = _http.fetch_url(
+            f"{base}/v1/debug/status",
+            method="GET",
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+        )
+        data = resp.json()
     except Exception as e:
         print(f"  Failed to query leader: {e}", file=sys.stderr)
         return 1
@@ -788,8 +788,8 @@ def _cmd_llm(argv: list[str]) -> int:
     """Hot-swap the LLM model on the leader via /v1/admin/llm-swap."""
     import json
     import time
-    import urllib.error
-    import urllib.request
+
+    from maxim.utils import http as _http
 
     if not argv or argv[0] in ("-h", "--help"):
         print("Usage: maxim peer llm <model> [url]")
@@ -832,18 +832,9 @@ def _cmd_llm(argv: list[str]) -> int:
         base = base[:-3]
     endpoint = f"{base}/v1/admin/llm-swap"
 
-    body = json.dumps({"model": model}).encode()
-    req = urllib.request.Request(
-        endpoint,
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "maxim-peer/1.0",
-        },
-    )
+    headers: dict[str, str] = {"Content-Type": "application/json"}
     if key:
-        req.add_header("Authorization", f"Bearer {key}")
+        headers["Authorization"] = f"Bearer {key}"
 
     # The leader is unreachable for 30-90 s during a swap; nuke the cache
     # entry so the next probe sees the new model state, not the old "ok".
@@ -853,21 +844,26 @@ def _cmd_llm(argv: list[str]) -> int:
     t0 = time.time()
 
     try:
-        with urllib.request.urlopen(req, timeout=180) as resp:  # noqa: S310
-            data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        try:
-            data = json.loads(e.read())
-        except Exception:
-            data = {"error": str(e)}
-        error_msg = data.get("error", str(e))
+        resp = _http.fetch_url(
+            endpoint,
+            method="POST",
+            headers=headers,
+            json={"model": model},
+            timeout=_http.TimeoutPolicy(connect_s=5.0, read_s=180.0, total_s=185.0),
+        )
+        data = resp.json()
+    except _http.HTTPError as e:
+        data = {}
+        if e.response is not None:
+            try:
+                data = e.response.json()
+            except Exception:
+                data = {"error": str(e)}
+        error_msg = data.get("error", e.fix_hint)
         hint = data.get("hint", "")
-        print(f"  Error ({e.code}): {error_msg}", file=sys.stderr)
+        print(f"  Error ({e.status}): {error_msg}", file=sys.stderr)
         if hint:
             print(f"  Hint: {hint}", file=sys.stderr)
-        return 1
-    except urllib.error.URLError as e:
-        print(f"  Connection failed: {e.reason}", file=sys.stderr)
         return 1
 
     elapsed = round(time.time() - t0, 1)
@@ -890,11 +886,8 @@ def _cmd_llm(argv: list[str]) -> int:
 
 def _cmd_version(argv: list[str]) -> int:
     """Show local and leader maxim version."""
-    import json
-    import urllib.error
-    import urllib.request
-
     from maxim import get_version_info
+    from maxim.utils import http as _http
 
     local = get_version_info()
     print(f"Local:  v{local['version']}", end="")
@@ -924,17 +917,18 @@ def _cmd_version(argv: list[str]) -> int:
         base = base[:-3]
     endpoint = f"{base}/v1/debug/version"
 
-    req = urllib.request.Request(
-        endpoint,
-        method="GET",
-        headers={"User-Agent": "maxim-peer/1.0"},
-    )
+    headers: dict[str, str] = {}
     if key:
-        req.add_header("Authorization", f"Bearer {key}")
+        headers["Authorization"] = f"Bearer {key}"
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-            data = json.loads(resp.read())
+        resp = _http.fetch_url(
+            endpoint,
+            method="GET",
+            headers=headers,
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+        )
+        data = resp.json()
     except Exception as e:
         print(f"Leader: (unreachable: {e})")
         return 1
@@ -957,11 +951,10 @@ def _cmd_version(argv: list[str]) -> int:
 
 def _cmd_logs(argv: list[str]) -> int:
     """Tail logs from the leader via /v1/debug/logs (polling)."""
-    import json
     import time
-    import urllib.error
-    import urllib.request
     from datetime import datetime
+
+    from maxim.utils import http as _http
 
     url: str | None = None
     key: str | None = None
@@ -1000,18 +993,19 @@ def _cmd_logs(argv: list[str]) -> int:
 
     def _fetch(seq: int, n: int) -> dict | None:
         endpoint = f"{base}/v1/debug/logs?since_seq={seq}&limit={n}"
-        req = urllib.request.Request(
-            endpoint,
-            method="GET",
-            headers={"User-Agent": "maxim-peer/1.0"},
-        )
+        headers: dict[str, str] = {}
         if key:
-            req.add_header("Authorization", f"Bearer {key}")
+            headers["Authorization"] = f"Bearer {key}"
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-                return json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            print(f"  Error: HTTP {e.code}", file=sys.stderr)
+            resp = _http.fetch_url(
+                endpoint,
+                method="GET",
+                headers=headers,
+                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+            )
+            return resp.json()
+        except _http.HTTPError as e:
+            print(f"  Error: HTTP {e.status}", file=sys.stderr)
             return None
         except Exception as e:
             print(f"  Connection error: {e}", file=sys.stderr)
@@ -1105,9 +1099,7 @@ def _cmd_install(argv: list[str]) -> int:
         maxim peer install semantic,llm-torch
         maxim peer install sentence-transformers   # raw pip package
     """
-    import json
-    import urllib.error
-    import urllib.request
+    from maxim.utils import http as _http
 
     url: str | None = None
     key: str | None = None
@@ -1153,16 +1145,10 @@ def _cmd_install(argv: list[str]) -> int:
         else:
             raw_packages.append(pkg)
 
-    body = json.dumps({"extras": extras, "packages": raw_packages}).encode()
     endpoint = f"{base}/v1/admin/install"
-    req = urllib.request.Request(
-        endpoint,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json", "User-Agent": "maxim-peer/1.0"},
-    )
+    headers: dict[str, str] = {"Content-Type": "application/json"}
     if key:
-        req.add_header("Authorization", f"Bearer {key}")
+        headers["Authorization"] = f"Bearer {key}"
 
     desc_parts = []
     if extras:
@@ -1172,22 +1158,32 @@ def _cmd_install(argv: list[str]) -> int:
     print(f"Installing on leader ({base}): {'; '.join(desc_parts)}...")
 
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
+        resp = _http.fetch_url(
+            endpoint,
+            method="POST",
+            headers=headers,
+            json={"extras": extras, "packages": raw_packages},
+            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=30.0, total_s=33.0),
+        )
+        data = resp.json()
+    except _http.HTTPError as e:
         body_text = ""
-        try:
-            body_text = e.read().decode()[:500]
-        except Exception:
-            pass
-        if e.code == 403:
-            print("Install disabled on leader. Set MAXIM_ALLOW_REMOTE_UPDATE=1.", file=sys.stderr)
-        elif e.code == 401:
+        if e.response is not None:
+            body_text = e.response.text[:500]
+        if e.status == 403:
+            print(
+                "Install disabled on leader. Set MAXIM_ALLOW_REMOTE_UPDATE=1.",
+                file=sys.stderr,
+            )
+        elif e.status == 401:
             print("Authentication failed. Check API key.", file=sys.stderr)
-        elif e.code == 404:
-            print("Leader does not support remote install (update leader first).", file=sys.stderr)
+        elif e.status == 404:
+            print(
+                "Leader does not support remote install (update leader first).",
+                file=sys.stderr,
+            )
         else:
-            print(f"Install failed (HTTP {e.code}): {body_text}", file=sys.stderr)
+            print(f"Install failed (HTTP {e.status}): {body_text}", file=sys.stderr)
         return 1
     except Exception as e:
         print(f"Install failed: {e}", file=sys.stderr)
@@ -1207,13 +1203,9 @@ def _cmd_install(argv: list[str]) -> int:
     # status == "started" — async install. Poll for completion.
     print("  Install started on leader. Waiting for completion...")
     poll_endpoint = f"{base}/v1/debug/install-status"
-    poll_req = urllib.request.Request(
-        poll_endpoint,
-        method="GET",
-        headers={"User-Agent": "maxim-peer/1.0"},
-    )
+    poll_headers: dict[str, str] = {}
     if key:
-        poll_req.add_header("Authorization", f"Bearer {key}")
+        poll_headers["Authorization"] = f"Bearer {key}"
 
     import time
 
@@ -1222,15 +1214,13 @@ def _cmd_install(argv: list[str]) -> int:
     while time.time() < deadline:
         time.sleep(5)
         try:
-            poll_req = urllib.request.Request(
+            poll_resp = _http.fetch_url(
                 poll_endpoint,
                 method="GET",
-                headers={"User-Agent": "maxim-peer/1.0"},
+                headers=poll_headers,
+                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
             )
-            if key:
-                poll_req.add_header("Authorization", f"Bearer {key}")
-            with urllib.request.urlopen(poll_req, timeout=10) as resp:
-                poll_data = json.loads(resp.read())
+            poll_data = poll_resp.json()
         except Exception:
             print("    (polling...)", end="\r")
             continue
@@ -1269,9 +1259,7 @@ def _cmd_install(argv: list[str]) -> int:
 
 def _cmd_deps(argv: list[str]) -> int:
     """Show installed packages on leader via /v1/debug/deps."""
-    import json
-    import urllib.error
-    import urllib.request
+    from maxim.utils import http as _http
 
     url: str | None = None
     key: str | None = None
@@ -1293,24 +1281,28 @@ def _cmd_deps(argv: list[str]) -> int:
         base = base[:-3]
 
     endpoint = f"{base}/v1/debug/deps"
-    req = urllib.request.Request(
-        endpoint,
-        method="GET",
-        headers={"User-Agent": "maxim-peer/1.0"},
-    )
+    headers: dict[str, str] = {}
     if key:
-        req.add_header("Authorization", f"Bearer {key}")
+        headers["Authorization"] = f"Bearer {key}"
 
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            print("Leader does not support deps endpoint (update leader first).", file=sys.stderr)
-        elif e.code == 401:
+        resp = _http.fetch_url(
+            endpoint,
+            method="GET",
+            headers=headers,
+            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=30.0, total_s=33.0),
+        )
+        data = resp.json()
+    except _http.HTTPError as e:
+        if e.status == 404:
+            print(
+                "Leader does not support deps endpoint (update leader first).",
+                file=sys.stderr,
+            )
+        elif e.status == 401:
             print("Authentication failed.", file=sys.stderr)
         else:
-            print(f"Failed (HTTP {e.code})", file=sys.stderr)
+            print(f"Failed (HTTP {e.status})", file=sys.stderr)
         return 1
     except Exception as e:
         print(f"Failed: {e}", file=sys.stderr)
