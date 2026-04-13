@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import ipaddress
 import logging
 import os
-import socket
 import time
 from typing import Any
-from urllib.parse import urlparse
 
 from maxim.utils.logging import warn
 
@@ -98,43 +95,10 @@ def _parse_processing_ms(headers: Any) -> float | None:
         return None
 
 
-def _is_private_ip(ip: str) -> bool:
-    try:
-        addr = ipaddress.ip_address(ip)
-    except Exception:
-        return True
-    return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast
-
-
-def _validate_base_url(base_url: str, allow_local: bool) -> str | None:
-    try:
-        parsed = urlparse(base_url)
-    except Exception:
-        return None
-    # https required for public endpoints; http acceptable for self-hosted LAN
-    # servers (llama-cpp-server, Ollama) running on private IPs.
-    if parsed.scheme == "https":
-        pass
-    elif parsed.scheme == "http" and allow_local:
-        pass
-    else:
-        return None
-    host = parsed.hostname
-    if not host:
-        return None
-    default_port = 443 if parsed.scheme == "https" else 80
-    try:
-        addrinfos = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
-    except Exception:
-        return None
-    for info in addrinfos:
-        ip = info[4][0]
-        if _is_private_ip(ip) and not allow_local:
-            return None
-        # http scheme is only allowed for private IPs, even when allow_local
-        if parsed.scheme == "http" and not _is_private_ip(ip):
-            return None
-    return base_url
+# Plan 2 R2d: SSRF check moved to maxim.utils.net — shared with Plan 3's
+# _MaximPeerBackend. Re-exported here for backward compatibility; any new
+# consumer should import from maxim.utils.net directly.
+from maxim.utils.net import validate_base_url as _validate_base_url  # noqa: E402
 
 
 class _OpenAIBackend:
