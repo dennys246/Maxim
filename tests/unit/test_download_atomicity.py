@@ -1,7 +1,13 @@
 """Regression tests for download_file atomicity.
 
+Post Plan 1 R1: the underlying transport switched from urlretrieve to
+``maxim.utils.http.download_to_file``. Tests mock at the new layer but
+exercise the same atomicity guarantees (partial cleanup on failure,
+KeyboardInterrupt re-raise, size mismatch rejection, stale .partial
+eviction).
+
 Covers:
-- URLError mid-download leaves no file (was: leaked partial at final path)
+- HTTPError mid-download leaves no file
 - KeyboardInterrupt mid-download leaves no file AND re-raises
 - Size mismatch after download rejects and cleans up
 - Successful download atomically renames .partial → final
@@ -13,11 +19,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import patch
-from urllib.error import URLError
 
 import pytest
 
 from maxim.models.download import download_file
+from maxim.utils import http as _http
 
 
 def _make_target(tmp_path: Path, name: str = "test.gguf") -> Path:
@@ -25,21 +31,19 @@ def _make_target(tmp_path: Path, name: str = "test.gguf") -> Path:
 
 
 class TestDownloadAtomicity:
-    def test_urlerror_leaves_no_file(self, tmp_path):
-        """URLError during urlretrieve must not leak a file at the final path
-        or at .partial. Previously download_file left the partial file on
-        disk after URLError, which would then pass profile_has_local_file
-        and crash the spawner on load."""
+    def test_http_error_leaves_no_file(self, tmp_path):
+        """An HTTPError during streaming must not leak a file at the final
+        path or at .partial. Previously download_file left the partial
+        file on disk after a URLError, which would then pass
+        profile_has_local_file and crash the spawner on load."""
         dest = _make_target(tmp_path)
 
-        def _boom(*args, **kwargs):
-            # Create the partial file first (simulating urlretrieve opening
-            # the output file) then fail, so we can verify cleanup
-            tmp_partial = Path(args[1])
-            tmp_partial.write_bytes(b"partial content")
-            raise URLError("network down")
+        def _boom(url, dest_path, **kwargs):
+            # Simulate a partial file being written before the failure
+            Path(dest_path).write_bytes(b"partial content")
+            raise _http.HTTPConnectionError("_external", fix_hint="network down")
 
-        with patch("maxim.models.download.urlretrieve", side_effect=_boom):
+        with patch("maxim.utils.http.download_to_file", side_effect=_boom):
             result = download_file("https://example.invalid/model.gguf", dest)
 
         assert result is False
@@ -53,12 +57,11 @@ class TestDownloadAtomicity:
         KeyboardInterrupt."""
         dest = _make_target(tmp_path)
 
-        def _interrupted(*args, **kwargs):
-            tmp_partial = Path(args[1])
-            tmp_partial.write_bytes(b"halfway there")
+        def _interrupted(url, dest_path, **kwargs):
+            Path(dest_path).write_bytes(b"halfway there")
             raise KeyboardInterrupt
 
-        with patch("maxim.models.download.urlretrieve", side_effect=_interrupted):
+        with patch("maxim.utils.http.download_to_file", side_effect=_interrupted):
             with pytest.raises(KeyboardInterrupt):
                 download_file("https://example.invalid/model.gguf", dest)
 
@@ -71,10 +74,11 @@ class TestDownloadAtomicity:
         checks would pass on a corrupted GGUF."""
         dest = _make_target(tmp_path)
 
-        def _write_wrong_size(*args, **kwargs):
-            Path(args[1]).write_bytes(b"only 12 bytes")
+        def _write_wrong_size(url, dest_path, **kwargs):
+            Path(dest_path).write_bytes(b"only 12 bytes")
+            return len(b"only 12 bytes")
 
-        with patch("maxim.models.download.urlretrieve", side_effect=_write_wrong_size):
+        with patch("maxim.utils.http.download_to_file", side_effect=_write_wrong_size):
             result = download_file(
                 "https://example.invalid/model.gguf",
                 dest,
@@ -91,10 +95,11 @@ class TestDownloadAtomicity:
         dest = _make_target(tmp_path)
         payload = b"x" * 1000
 
-        def _write_correct(*args, **kwargs):
-            Path(args[1]).write_bytes(payload)
+        def _write_correct(url, dest_path, **kwargs):
+            Path(dest_path).write_bytes(payload)
+            return len(payload)
 
-        with patch("maxim.models.download.urlretrieve", side_effect=_write_correct):
+        with patch("maxim.utils.http.download_to_file", side_effect=_write_correct):
             result = download_file(
                 "https://example.invalid/model.gguf",
                 dest,
@@ -112,10 +117,11 @@ class TestDownloadAtomicity:
         and accept any size."""
         dest = _make_target(tmp_path)
 
-        def _write_anything(*args, **kwargs):
-            Path(args[1]).write_bytes(b"any size is fine")
+        def _write_anything(url, dest_path, **kwargs):
+            Path(dest_path).write_bytes(b"any size is fine")
+            return len(b"any size is fine")
 
-        with patch("maxim.models.download.urlretrieve", side_effect=_write_anything):
+        with patch("maxim.utils.http.download_to_file", side_effect=_write_anything):
             result = download_file(
                 "https://example.invalid/model.gguf",
                 dest,
@@ -135,14 +141,15 @@ class TestDownloadAtomicity:
         stale.write_bytes(b"stale garbage from crashed run")
         assert stale.exists()
 
-        def _fresh_download(*args, **kwargs):
-            tmp_partial = Path(args[1])
-            # The stale file should already be gone by the time urlretrieve
-            # is called — verify that inside the mock
+        def _fresh_download(url, dest_path, **kwargs):
+            tmp_partial = Path(dest_path)
+            # The stale file should already be gone by the time the downloader
+            # is called — verify that inside the mock.
             assert not tmp_partial.exists() or tmp_partial.stat().st_size == 0
             tmp_partial.write_bytes(b"fresh content")
+            return len(b"fresh content")
 
-        with patch("maxim.models.download.urlretrieve", side_effect=_fresh_download):
+        with patch("maxim.utils.http.download_to_file", side_effect=_fresh_download):
             result = download_file(
                 "https://example.invalid/model.gguf",
                 dest,
@@ -156,13 +163,13 @@ class TestDownloadAtomicity:
 
     def test_already_exists_short_circuits(self, tmp_path):
         """If the final file already exists, download_file returns True
-        without calling urlretrieve at all."""
+        without calling the downloader at all."""
         dest = _make_target(tmp_path)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(b"already downloaded")
 
-        with patch("maxim.models.download.urlretrieve") as mock_urlretrieve:
+        with patch("maxim.utils.http.download_to_file") as mock_dl:
             result = download_file("https://example.invalid/model.gguf", dest)
 
         assert result is True
-        mock_urlretrieve.assert_not_called()
+        mock_dl.assert_not_called()
