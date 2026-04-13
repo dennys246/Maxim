@@ -45,6 +45,31 @@ logger = logging.getLogger(__name__)
 _CACHE_FILENAME = "last_probe_status.json"
 
 
+# ─── Plan 2 R2c — per-outcome cache TTL ───────────────────────────────────
+# Short TTL for `inference_broken` (model might be mid-load, retry sooner).
+# Sourced from models.language.types.INFERENCE_BROKEN_BACKOFF_S — Plan 3's
+# router backoff imports the same constant so the two values cannot drift.
+def _default_ttl_table() -> dict[str, float]:
+    from maxim.models.language.types import INFERENCE_BROKEN_BACKOFF_S
+
+    return {
+        "ok": 60.0,
+        "auth_rejected": 60.0,
+        "http_5xx": 60.0,
+        "timeout": 60.0,
+        "connection_refused": 60.0,
+        "dns_fail": 60.0,
+        "tls_error": 60.0,
+        "other": 60.0,
+        "inference_broken": INFERENCE_BROKEN_BACKOFF_S,
+    }
+
+
+def ttl_for_outcome(outcome: str) -> float:
+    """Return the cache freshness window for a given probe outcome."""
+    return _default_ttl_table().get(outcome, 60.0)
+
+
 def _cache_path() -> Path:
     """Return the on-disk cache path under ``$MAXIM_DATA_HOME/util``.
 
@@ -69,7 +94,20 @@ def load_cache() -> dict[str, dict[str, Any]]:
         # Defensive: drop any entries that aren't dicts.
         return {k: v for k, v in data.items() if isinstance(v, dict)}
     except (OSError, json.JSONDecodeError) as e:
-        logger.debug("probe_cache load failed (%s) — starting fresh", e)
+        # Plan 2 R2c: promoted from debug → warning. A corrupt probe cache
+        # is operationally significant — operators shouldn't need -v to see it.
+        logger.warning("probe_cache load failed (%s) — starting fresh at %s", e, path)
+        try:
+            from maxim.utils.structured_logging import log_structured
+
+            log_structured(
+                logger,
+                logging.WARNING,
+                event="probe_cache_corrupt",
+                data={"path": str(path), "error": f"{type(e).__name__}: {e}"},
+            )
+        except Exception:
+            pass
         return {}
 
 
@@ -118,4 +156,5 @@ __all__ = [
     "is_fresh",
     "load_cache",
     "save_cache",
+    "ttl_for_outcome",
 ]

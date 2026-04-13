@@ -320,9 +320,9 @@ Outside Maxim. HTTPS to the leader's Cloudflare tunnel (or direct LAN URL for pr
 
 **What crosses this boundary** — see [data sovereignty](#data-sovereignty-what-crosses-node-boundaries).
 
-## Error taxonomy [Target — Plan 2 R2b]
+## Error taxonomy [Present]
 
-**Does not exist yet.** The `BackendError` hierarchy is introduced in Plan 2 R2b. Until then, the router uses string-matching on exception messages (`"429" in str(e).lower()`) which has a documented fragility against Cloudflare HTML bodies and wrapped exceptions. The section below describes the post-Plan-2 design.
+**Plan 2 R2b SHIPPED 2026-04-12.** The `BackendError` hierarchy lives in [src/maxim/models/language/types.py](../../src/maxim/models/language/types.py) and mirrors the `HTTPError` shape from `utils/http.py` exactly — same three access patterns (`.status`, `.response`, `.fix_hint`). Plan 3's router integration bridges HTTP → Backend exceptions with a simple `except HTTPRateLimited as e: raise BackendOverloaded(...)` pair instead of string-matching. The shared `INFERENCE_BROKEN_BACKOFF_S = 15.0` constant links router backoff to probe cache TTL (see R2c).
 
 The `BackendError` hierarchy is the router's language for classifying failures. Every class has a `.fix_hint` attribute so log lines are actionable without the operator needing to look up exception codes.
 
@@ -413,9 +413,9 @@ Single-tenant deployment assumption: one user's API key controls one cluster. Mu
 
 **Operator implication:** for single-user deployments, this is fine — all data is yours anyway. For a hypothetical future multi-tenant deployment, the contract would need rework (per-tenant keys, tenant-scoped log partitioning, cross-tenant audit). **Multi-tenant is out of scope; see the note at the top.**
 
-## Probe lifecycle [Target — Plan 2 R2c]
+## Probe lifecycle [Present]
 
-**Stage 2 does not exist yet.** Current [Present] state: [`probe_llm_server`](../../src/maxim/runtime/llm_server.py#L216) does a single-stage `GET /v1/models` with a 2-attempt retry. Both attempts hit stage 1; there is no micro-completion readiness probe yet. Plan 2 R2c adds stage 2 and the per-outcome cache TTL table below.
+**Plan 2 R2c SHIPPED 2026-04-12.** `probe_llm_server` now accepts `enable_stage2=True` to run a stage-2 readiness probe (micro-completion `POST /v1/chat/completions` with `max_tokens=1`) after stage-1 liveness returns `ok`. Failure produces the new `inference_broken` outcome. Non-HTTP exceptions in stage 2 log `probe_stage2_fallback` WARN and fall back to stage-1 ok — probe fragility never makes the system look dead. `probe_llm_server` still does the 2-attempt stage-1 retry for transient transport failures. `_classify_probe_cause` is unchanged; Plan 3 R2.5 will supersede the whole function via `_MaximPeerBackend.health_check()`.
 
 Probes determine whether a peer is reachable and usable. Two stages:
 
@@ -440,16 +440,16 @@ Probes determine whether a peer is reachable and usable. Two stages:
 | `http_5xx`, `timeout`, `connection_refused` | 60s | Local fallback kicks in |
 | `dns_fail`, `tls_error` | 60s | Network issue; unlikely to resolve in 15s |
 
-**Corruption handling:** [Present] `probe_cache.load_cache` catches `JSONDecodeError` / `OSError` and returns an empty dict. Plan 2 R2c upgrades the log level on this path: current code logs at `logger.debug` (see [probe_cache.py:72](../../src/maxim/runtime/probe_cache.py#L72)); Plan 2 promotes it to `logger.warning` since a corrupted cache file is operationally significant enough to surface without needing `-v`.
+**Corruption handling:** [Present] `probe_cache.load_cache` catches `JSONDecodeError` / `OSError` and returns an empty dict. Plan 2 R2c **SHIPPED** the log-level promotion: the path now logs at `logger.warning` and emits a structured `probe_cache_corrupt` event so operators see corruption without needing `-v`. `probe_cache.ttl_for_outcome()` returns the per-outcome TTL; `inference_broken → 15s` is sourced from `INFERENCE_BROKEN_BACKOFF_S` (no drift possible).
 
 **Probe metrics:**
 - `probe_outcome_total{endpoint, outcome, stage}` — counter
 - `probe_latency_seconds{endpoint, stage}` — histogram
 - `probe_cache_hits_total{endpoint}` — counter
 
-## Role detection [Target — Plan 2 R2a]
+## Role detection [Present]
 
-**Does not exist yet.** `runtime/role.py::detect_role()` is introduced in Plan 2 R2a. Current [Present] state: role is inferred implicitly in three different places (`peer/config.py::read_peer_config` existence check, `lane_backends._apply_local_llm_override`, `cli.py::main`) which is exactly the pattern that caused the 2026-04-12 persisted-profile incident (commit `d875fb9`). The section below describes the post-R2a state.
+**Plan 2 R2a SHIPPED 2026-04-12.** `runtime/role.py::detect_role()` is the single source of truth. Called from the top of `cli.py::main()` AFTER `configure_logging` and BEFORE subcommand dispatch so `role_detected` fires for every entry point (including `maxim doctor` / `maxim peer X`, which short-circuit before the sim loop). Decision order: `MAXIM_ROLE` env var → `mesh.yml` → `peer.yml` → `--llm` CLI flag + no peer config → default leader. The detected role is exported to `MAXIM_ROLE` so `runtime/llm_server.py::_model_state_file` and future downstream code can read it without re-detecting. Persisted model state is split per role (`active_llm_model.{role}.txt`); legacy `active_llm_model.txt` auto-migrates on first startup.
 
 Role (`leader | peer | solo`) is detected **once** at process startup by `runtime/role.py::detect_role()`, called as the first action in `cli.py::main()`. Result is exported to `os.environ["MAXIM_ROLE"]` for downstream reads.
 

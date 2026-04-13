@@ -100,6 +100,38 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Plan 2 R2b — canonical request context normalization
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _normalize_request_context(ctx: dict[str, Any] | None) -> Any:
+    """Canonical shim from legacy ``dict`` shape to typed ``RequestContext``.
+
+    This is the ONLY location in the codebase that bridges the legacy
+    ``ctx["agent"]`` key to the new ``agent_id`` field. Plan 3's
+    ``_MaximPeerBackend._build_request_context`` imports and delegates to
+    this function — it does NOT define a parallel shim. Do not duplicate.
+
+    The legacy ``"agent"`` key read is a one-minor-version compatibility
+    window. Drop it in 0.5 and require the ``"agent_id"`` spelling.
+
+    Returns a :class:`maxim.utils.http.RequestContext`. Lazy-imports
+    ``utils.http`` to avoid a bootstrap circular dependency.
+    """
+    from maxim.utils.http import RequestContext, generate_request_id
+
+    if ctx is None:
+        return RequestContext(request_id=generate_request_id())
+    agent_id = ctx.get("agent_id") or ctx.get("agent")
+    return RequestContext(
+        request_id=ctx.get("request_id") or generate_request_id(),
+        agent_id=agent_id,
+        session_id=ctx.get("session_id"),
+        lane=ctx.get("lane"),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # LLM Worker
 # ─────────────────────────────────────────────────────────────────────────────
 
