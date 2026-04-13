@@ -1161,6 +1161,62 @@ def raw_proxy_forward(
     )
 
 
+def raw_proxy_forward_streaming(
+    url: str,
+    method: str,
+    *,
+    headers: Mapping[str, str],
+    body: bytes | None,
+    timeout: float = 60.0,
+) -> StreamingResponse:
+    """Streaming variant of :func:`raw_proxy_forward` for the leader proxy.
+
+    Opens an httpx stream to the upstream URL and returns a
+    :class:`StreamingResponse` whose :meth:`~StreamingResponse.iter_bytes`
+    yields chunks as they arrive from the origin.  The first byte is
+    available as soon as the origin begins writing — the caller can start
+    forwarding data to downstream clients immediately, preventing Cloudflare
+    524 timeouts on long-inference requests.
+
+    The caller **MUST** call :meth:`~StreamingResponse.close` when done
+    (or exhaust the iterator to completion).  Used exclusively by
+    :mod:`runtime.leader_proxy` — same escape-hatch rules as
+    :func:`raw_proxy_forward`.
+    """
+    _ensure_external_endpoint()
+    client = _registry.get_client(_EXTERNAL_ENDPOINT)
+    timeout_obj = httpx.Timeout(
+        connect=3.0,
+        read=float(timeout),
+        write=30.0,
+        pool=5.0,
+    )
+    t0 = time.monotonic()
+    try:
+        stream_ctx = client.stream(
+            method.upper(),
+            url,
+            headers=dict(headers),
+            content=body,
+            timeout=timeout_obj,
+        )
+        raw = stream_ctx.__enter__()
+    except httpx.HTTPError as e:
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        _metrics.record_request(_EXTERNAL_ENDPOINT, "error", elapsed_ms)
+        raise _classify_httpx_error(_EXTERNAL_ENDPOINT, e) from e
+
+    elapsed_ms = (time.monotonic() - t0) * 1000
+    _metrics.record_request(_EXTERNAL_ENDPOINT, raw.status_code, elapsed_ms)
+    return StreamingResponse(
+        status=raw.status_code,
+        headers=dict(raw.headers),
+        endpoint=_EXTERNAL_ENDPOINT,
+        request_id=headers.get("X-Maxim-Request-Id", ""),
+        _raw=raw,
+    )
+
+
 __all__ = [
     # Constants
     "MAX_HEADER_VALUE_LEN",
@@ -1200,6 +1256,7 @@ __all__ = [
     "fetch_url",
     "download_to_file",
     "raw_proxy_forward",
+    "raw_proxy_forward_streaming",
     # Metrics
     "metrics_snapshot",
     "record_startup_phase",

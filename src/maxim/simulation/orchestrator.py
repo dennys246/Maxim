@@ -1590,6 +1590,14 @@ def start_simulation_mode(
     if llm_router is not None and not getattr(llm_router, "session_cost_exceeded", False):
         try:
             display_status("Running LLM analysis roundup...")
+            # request_shutdown() was called above to cancel in-flight agent
+            # retries.  Clear the flag here so the roundup LLM call can
+            # proceed — without this _MaximPeerBackend.complete_with_usage()
+            # sees is_shutdown_requested()==True and raises BackendDown
+            # immediately (0.1ms dispatch_exhausted on every sim end).
+            from maxim.models.language.cancellation import reset_shutdown
+
+            reset_shutdown()
             analyze_simulation(report, llm_router=llm_router)
             save_report(report, base_dir=report_dir)
         except Exception:

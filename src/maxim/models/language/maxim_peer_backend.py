@@ -581,8 +581,24 @@ class _MaximPeerBackend:
         model: str,
         start: float,
     ) -> LLMResponse:
-        """Parse an OpenAI-compatible chat completion body."""
+        """Parse an OpenAI-compatible chat completion body.
+
+        Raises :class:`BackendInferenceBroken` when ``choices`` is empty —
+        this surfaces as a typed router exception so the provider gets a
+        15s backoff and failover is attempted.  Returning an empty
+        :class:`LLMResponse` silently would bypass the typed exception path
+        entirely (no backoff, no fallback, empty content propagates to the
+        agent).
+        """
         choices = raw.get("choices") or []
+        if not choices:
+            raise BackendInferenceBroken(
+                self._provider_key,
+                fix_hint=(
+                    "Peer returned a completion with no choices — "
+                    "model may be overloaded or the prompt exceeded context length"
+                ),
+            )
         content = ""
         stop_reason = ""
         if choices:

@@ -229,6 +229,14 @@ class _RequestLog:
 class _ProxyHandler(BaseHTTPRequestHandler):
     """Reverse-proxy handler with auth, logging, and debug endpoints."""
 
+    # HTTP/1.1 is required for Transfer-Encoding: chunked.  Without this,
+    # BaseHTTPRequestHandler defaults to HTTP/1.0 which doesn't support
+    # chunked responses, and _proxy_request() would have to buffer the entire
+    # llama-cpp response before sending — causing Cloudflare 524 timeouts on
+    # long-inference requests (~105-125s generation time > Cloudflare's edge
+    # timeout). HTTP/1.1 is a superset of HTTP/1.0 for all non-proxy paths.
+    protocol_version = "HTTP/1.1"
+
     # Set by the server factory (class-level attrs)
     api_key: str | None = None
     upstream_url: str = "http://127.0.0.1:8100"
@@ -555,34 +563,91 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             if key.lower() not in skip_headers:
                 forwarded_headers[key] = val
 
-        # Forward to upstream — use raw_proxy_forward to bypass sanitizer +
-        # X-Maxim-* injection (client headers are already correct, we must
-        # not mutate them). raw_proxy_forward reuses the shared _external
-        # pool so repeated /v1/chat/completions calls reuse connections.
+        # Forward to upstream — use raw_proxy_forward_streaming to stream
+        # chunks as they arrive from llama-cpp-server.  This prevents
+        # Cloudflare 524 timeouts: the edge sees the first byte of the
+        # response as soon as the model starts generating (~0.5s), rather
+        # than waiting for the full 105-125s inference to complete before
+        # any data is sent downstream.  protocol_version="HTTP/1.1" (set
+        # on the class) enables Transfer-Encoding: chunked on this path.
+        #
+        # For connection/timeout failures the stream never opens — fall
+        # through to the buffered 502 path instead.
         resp_code = 502
         resp_headers: dict[str, str] = {}
         resp_body = b""
         server_ms: float | None = None
+        gpu: dict | None = None
+        elapsed_ms: float = 0.0
 
+        stream: "_http.StreamingResponse | None" = None
         try:
-            proxy_resp = _http.raw_proxy_forward(
+            stream = _http.raw_proxy_forward_streaming(
                 upstream,
                 method,
                 headers=forwarded_headers,
                 body=body,
                 timeout=_INFERENCE_PROXY_TIMEOUT_S,
             )
-            resp_code = proxy_resp.status
-            resp_headers = dict(proxy_resp.headers)
-            resp_body = proxy_resp.content
+            resp_code = stream.status
+            resp_headers = dict(stream.headers)
             server_ms_raw = resp_headers.get("openai-processing-ms") or resp_headers.get("Openai-Processing-Ms")
             if server_ms_raw:
                 try:
                     server_ms = float(server_ms_raw)
                 except (ValueError, TypeError):
                     pass
+
+            elapsed_ms = (time.time() - t0) * 1000
+
+            # Headers are available immediately (before body) — send them
+            # now so Cloudflare and the peer know the response has started.
+            self.send_response(resp_code)
+            # Forward upstream headers; strip hop-by-hop and content-length
+            # (we're using chunked encoding so content-length is invalid).
+            skip_resp_headers = {"transfer-encoding", "connection", "keep-alive", "content-length"}
+            for key, val in resp_headers.items():
+                if key.lower() not in skip_resp_headers:
+                    self.send_header(key, val)
+            # Inject Maxim trace headers
+            self.send_header("X-Maxim-Proxy-Ms", f"{elapsed_ms:.0f}")
+            self.send_header("X-Maxim-Queue-Depth", f"{self._queue_depth()}")
+            if server_ms is not None:
+                self.send_header("X-Maxim-Server-Ms", f"{server_ms:.0f}")
+            gpu = _query_nvidia_smi()
+            if gpu is not None:
+                self.send_header("X-Maxim-GPU-Util", f"{gpu['utilization_pct']:.0f}")
+                self.send_header("X-Maxim-GPU-VRAM", f"{gpu['vram_used_gb']:.1f}/{gpu['vram_total_gb']:.0f}")
+                if gpu.get("temperature_c") is not None:
+                    self.send_header("X-Maxim-GPU-Temp", f"{gpu['temperature_c']:.0f}")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+
+            # Stream body — write each chunk in HTTP/1.1 chunked format so
+            # the peer receives tokens progressively.  Accumulate locally
+            # for post-send usage logging (body is at most a few KB for
+            # non-streaming chat completions).
+            body_chunks: list[bytes] = []
+            try:
+                for chunk in stream.iter_bytes(chunk_size=16384):
+                    if chunk:
+                        body_chunks.append(chunk)
+                        self.wfile.write(f"{len(chunk):x}\r\n".encode())
+                        self.wfile.write(chunk)
+                        self.wfile.write(b"\r\n")
+                        self.wfile.flush()
+            except Exception as chunk_err:
+                # Mid-stream failure: log and terminate cleanly so the peer
+                # sees EOF rather than a hung connection.
+                logger.warning("Upstream stream interrupted: %s", chunk_err)
+            # HTTP/1.1 chunked terminator
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+            resp_body = b"".join(body_chunks)
+
         except _http.HTTPError as e:
-            # Typed HTTP failure from httpx — log compactly + return 502.
+            # Typed HTTP failure from httpx (connection error, timeout, etc.)
+            # — stream never opened, return a 502 with our error body.
             err_type = type(e).__name__
             logger.warning("Upstream error: %s: %s", err_type, e.fix_hint)
             resp_code = 502
@@ -610,30 +675,23 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 }
             ).encode()
             resp_headers = {}
+        finally:
+            if stream is not None:
+                stream.close()
 
-        elapsed_ms = (time.time() - t0) * 1000
-
-        # Send response to client
-        self.send_response(resp_code)
-        # Forward upstream headers
-        skip_resp_headers = {"transfer-encoding", "connection", "keep-alive"}
-        for key, val in resp_headers.items():
-            if key.lower() not in skip_resp_headers:
-                self.send_header(key, val)
-        # Inject Maxim headers for peer-side trace enrichment
-        self.send_header("X-Maxim-Proxy-Ms", f"{elapsed_ms:.0f}")
-        self.send_header("X-Maxim-Queue-Depth", f"{self._queue_depth()}")
-        if server_ms is not None:
-            self.send_header("X-Maxim-Server-Ms", f"{server_ms:.0f}")
-        gpu = _query_nvidia_smi()
-        if gpu is not None:
-            self.send_header("X-Maxim-GPU-Util", f"{gpu['utilization_pct']:.0f}")
-            self.send_header("X-Maxim-GPU-VRAM", f"{gpu['vram_used_gb']:.1f}/{gpu['vram_total_gb']:.0f}")
-            if gpu.get("temperature_c") is not None:
-                self.send_header("X-Maxim-GPU-Temp", f"{gpu['temperature_c']:.0f}")
-        self.send_header("Content-Length", str(len(resp_body)))
-        self.end_headers()
-        self.wfile.write(resp_body)
+        # Error paths: stream never opened — send buffered 502 response.
+        if stream is None:
+            elapsed_ms = (time.time() - t0) * 1000
+            gpu = _query_nvidia_smi()
+            self.send_response(resp_code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("X-Maxim-Proxy-Ms", f"{elapsed_ms:.0f}")
+            self.send_header("X-Maxim-Queue-Depth", f"{self._queue_depth()}")
+            if gpu is not None:
+                self.send_header("X-Maxim-GPU-Util", f"{gpu['utilization_pct']:.0f}")
+            self.send_header("Content-Length", str(len(resp_body)))
+            self.end_headers()
+            self.wfile.write(resp_body)
 
         # Extract token counts from response body
         input_tokens = 0
