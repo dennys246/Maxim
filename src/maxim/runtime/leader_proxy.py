@@ -637,9 +637,18 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                         self.wfile.write(b"\r\n")
                         self.wfile.flush()
             except Exception as chunk_err:
-                # Mid-stream failure: log and terminate cleanly so the peer
-                # sees EOF rather than a hung connection.
-                logger.warning("Upstream stream interrupted: %s", chunk_err)
+                # Mid-stream failure: log with request context so operators
+                # can correlate with the peer-side dispatch_exhausted and
+                # distinguish upstream crashes from client disconnects.
+                logger.warning(
+                    "Upstream stream interrupted (req=%s peer=%s path=%s chunks=%d elapsed_ms=%.0f): %s",
+                    request_id[:8] if request_id else "none",
+                    peer_ip,
+                    self.path,
+                    len(body_chunks),
+                    (time.time() - t0) * 1000,
+                    chunk_err,
+                )
             # HTTP/1.1 chunked terminator
             self.wfile.write(b"0\r\n\r\n")
             self.wfile.flush()
@@ -1529,8 +1538,15 @@ def start_leader_proxy(
                 "Per-peer rate limit: %s RPM",
                 os.environ.get("MAXIM_PROXY_RATE_LIMIT_RPM", "0"),
             )
-    except Exception:
-        pass
+    except Exception as e:
+        # Rate limiter init failed — proxy will run without per-peer rate
+        # limiting even if MAXIM_PROXY_RATE_LIMIT_RPM is set. This is a
+        # silent security gap if the operator configured a rate limit
+        # expecting protection. Log at WARNING so it's immediately visible.
+        logger.warning(
+            "Failed to initialize per-peer rate limiter: %s — rate limiting disabled (check MAXIM_PROXY_RATE_LIMIT_RPM config)",
+            e,
+        )
 
     handler = type(
         "ProxyHandler",

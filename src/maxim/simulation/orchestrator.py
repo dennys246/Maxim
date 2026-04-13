@@ -1597,6 +1597,7 @@ def start_simulation_mode(
             # immediately (0.1ms dispatch_exhausted on every sim end).
             from maxim.models.language.cancellation import reset_shutdown
 
+            logger.debug("LLM shutdown signal cleared for sim roundup")
             reset_shutdown()
             analyze_simulation(report, llm_router=llm_router)
             save_report(report, base_dir=report_dir)

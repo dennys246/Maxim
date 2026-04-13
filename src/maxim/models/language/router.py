@@ -559,6 +559,21 @@ class LLMRouter:
             return
         state.consecutive_errors += 1
         state.backoff_until = time.time() + max(1.0, float(seconds))
+        # Emit a structured event so operators can see which providers are
+        # silenced and why without waiting for the next dispatch_exhausted.
+        # Hard cooldowns (300s auth, 60s model_missing) require operator
+        # intervention and should be immediately visible in logs.
+        log_structured(
+            logger,
+            logging.WARNING,
+            event="provider_silenced",
+            data={
+                "provider": provider_key,
+                "backoff_s": round(seconds, 1),
+                "reason": state.last_error or "unknown",
+                "consecutive_errors": state.consecutive_errors,
+            },
+        )
 
     def _set_short_backoff(self, provider_key: str, seconds: float) -> None:
         """Short cooldown matching the probe-cache TTL for
@@ -568,6 +583,17 @@ class LLMRouter:
             return
         state.consecutive_errors += 1
         state.backoff_until = time.time() + max(0.5, float(seconds))
+        log_structured(
+            logger,
+            logging.WARNING,
+            event="provider_silenced",
+            data={
+                "provider": provider_key,
+                "backoff_s": round(seconds, 1),
+                "reason": state.last_error or "unknown",
+                "consecutive_errors": state.consecutive_errors,
+            },
+        )
 
     def _record_suggested_peer_hint(self, suggested_peer: str | None) -> None:
         """No-op stub for the deferred multi-peer dispatch plan.
@@ -1117,7 +1143,16 @@ class LLMRouter:
                         timestamp=now,
                     )
                 except Exception as e:
-                    logger.debug("CostTracker.record failed: %s", e)
+                    # Pricing data corruption or type error — the session
+                    # cost ceiling will not trigger for this call. Elevated
+                    # to WARNING so operators see it immediately rather
+                    # than discovering a stale $0.00 cost after a session.
+                    logger.warning(
+                        "CostTracker.record failed (provider=%s model=%s): %s — cost ceiling will not trigger for this call",
+                        resp.provider or provider_key,
+                        resp.model or model_override,
+                        e,
+                    )
                     cost_usd = 0.0
                 usage["cost_usd"] = cost_usd
                 self._session_cost += cost_usd
