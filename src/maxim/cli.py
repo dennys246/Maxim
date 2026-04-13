@@ -176,6 +176,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     # verbosity, and the JSONL handler is deduped by absolute path.
     configure_logging(verbosity=0)
 
+    # Plan 2 R2a: explicit role detection. Must run AFTER configure_logging
+    # (so role_detected hits the JSONL handler if MAXIM_LOG_FILE is set) and
+    # BEFORE subcommand dispatch (so `maxim doctor` / `maxim peer X` both
+    # emit the event instead of only the sim loop). See
+    # docs/plans/llm_path_typed_errors.md R2a + feedback_subcommand_logging_gap.md.
+    try:
+        from maxim.runtime.role import detect_and_apply_role
+
+        detect_and_apply_role(raw_argv)
+    except Exception as _role_err:
+        # Role detection failures must not block startup. The legacy
+        # leader_mode.detect_role() further down is still the source of
+        # truth for bind_host; this is additive observability.
+        logging.getLogger(__name__).debug("role detection failed: %s", _role_err)
+
     # Stage A observability: print loud warning if trace flags are active so
     # users don't leave them on accidentally (log volume + request-id exposure).
     from maxim.models.language.mesh_trace import print_startup_warning_if_enabled

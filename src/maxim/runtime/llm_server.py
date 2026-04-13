@@ -30,10 +30,19 @@ _swap_lock = threading.Lock()
 
 
 def _model_state_file() -> Path:
-    """Return the path to the persisted active model file."""
+    """Return the path to the persisted active model file.
+
+    Plan 2 R2a split the file per role: ``active_llm_model.{role}.txt``.
+    Reads ``MAXIM_ROLE`` from env (exported by ``runtime/role.py::detect_and_apply_role``
+    at CLI startup). Falls back to ``leader`` when the env var is missing,
+    matching the conservative migration default.
+    """
     from maxim.utils.paths import resolve_user_state
 
-    return resolve_user_state("util/active_llm_model.txt")
+    role = os.environ.get("MAXIM_ROLE", "").strip().lower() or "leader"
+    if role not in ("leader", "peer", "solo"):
+        role = "leader"
+    return resolve_user_state(f"util/active_llm_model.{role}.txt")
 
 
 def stop_active_spawner() -> None:

@@ -46,6 +46,26 @@ def _isolate_maxim_llm_profile_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_role_env():
+    """Scrub ``MAXIM_ROLE`` across every test (Plan 2 R2a).
+
+    ``runtime/role.py::detect_and_apply_role`` exports the detected role
+    to env so downstream code (``runtime/llm_server.py::_model_state_file``)
+    can read it. Tests that exercise role detection or persisted-model
+    paths would leak the value into every later test that constructs the
+    runtime. Follow the auto-download scrub pattern: always unset on entry,
+    restore any pre-existing user value on exit.
+    """
+    saved = os.environ.pop("MAXIM_ROLE", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_ROLE", None)
+        if saved is not None:
+            os.environ["MAXIM_ROLE"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_auto_download_env():
     """Scrub ``MAXIM_AUTO_DOWNLOAD_MODELS`` across every test.
 
