@@ -10,7 +10,8 @@ Responsibilities:
   - /v1/debug/last-requests: ring buffer of last 100 requests
   - Injects X-Maxim-* response headers for peer-side trace enrichment
 
-Design: stdlib-only (http.server + urllib). No FastAPI/uvicorn dependency.
+Design: stdlib http.server for the listener side, maxim.utils.http
+(httpx) for upstream forwarding (post Plan 1 R1). No FastAPI/uvicorn dep.
 Adds ~1-2ms per request vs direct llama-cpp-server access.
 
 Supersedes debug_status_server.py (which only served /v1/debug/status).
@@ -27,8 +28,6 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
 
 # ── Input validation ─────────────────────────────────────────────────────────
 
@@ -451,16 +450,23 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         may have been started with --api_key, in which case unauthenticated
         probes get 401 and would never report ready.
         """
+        from maxim.utils import http as _http
+
         probe = f"{self.upstream_url}/v1/models"
+        headers: dict[str, str] = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
         try:
-            req = urllib.request.Request(probe, method="GET")
-            if self.api_key:
-                req.add_header("Authorization", f"Bearer {self.api_key}")
-            with urllib.request.urlopen(req, timeout=1.5) as resp:  # noqa: S310
-                return resp.status == 200
-        except urllib.error.HTTPError as e:
+            resp = _http.fetch_url(
+                probe,
+                method="GET",
+                headers=headers,
+                timeout=_http.TimeoutPolicy(connect_s=0.8, read_s=1.5, total_s=2.0),
+            )
+            return resp.status == 200
+        except _http.HTTPAuthError:
             # 401 means the server is up but auth failed — still "ready"
-            return e.code == 401
+            return True
         except Exception:
             return False
 
@@ -514,6 +520,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
     def _proxy_request(self, method: str) -> None:
         """Forward the request to the upstream llama-cpp-server."""
+        from maxim.utils import http as _http
+
         request_id = self.headers.get("X-Maxim-Request-Id", "")
         peer_ip = self.client_address[0]
         t0 = time.time()
@@ -522,40 +530,64 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length) if content_length > 0 else None
 
-        # Build upstream request
+        # Build upstream request — forward client headers verbatim
         upstream = f"{self.upstream_url}{self.path}"
-        req = urllib.request.Request(upstream, data=body, method=method)
 
         # Forward headers (skip hop-by-hop)
-        skip_headers = {"host", "connection", "transfer-encoding", "proxy-connection", "keep-alive"}
+        skip_headers = {
+            "host",
+            "connection",
+            "transfer-encoding",
+            "proxy-connection",
+            "keep-alive",
+            "content-length",  # httpx sets this from the body automatically
+        }
+        forwarded_headers: dict[str, str] = {}
         for key, val in self.headers.items():
             if key.lower() not in skip_headers:
-                req.add_header(key, val)
+                forwarded_headers[key] = val
 
-        # Forward to upstream
+        # Forward to upstream — use raw_proxy_forward to bypass sanitizer +
+        # X-Maxim-* injection (client headers are already correct, we must
+        # not mutate them). raw_proxy_forward reuses the shared _external
+        # pool so repeated /v1/chat/completions calls reuse connections.
         resp_code = 502
         resp_headers: dict[str, str] = {}
         resp_body = b""
         server_ms: float | None = None
 
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
-                resp_code = resp.status
-                resp_headers = dict(resp.headers)
-                resp_body = resp.read()
-                server_ms_raw = resp.headers.get("openai-processing-ms")
-                if server_ms_raw:
-                    try:
-                        server_ms = float(server_ms_raw)
-                    except (ValueError, TypeError):
-                        pass
-        except urllib.error.HTTPError as e:
-            resp_code = e.code
-            resp_body = e.read()
-            resp_headers = dict(e.headers)
+            proxy_resp = _http.raw_proxy_forward(
+                upstream,
+                method,
+                headers=forwarded_headers,
+                body=body,
+                timeout=60.0,
+            )
+            resp_code = proxy_resp.status
+            resp_headers = dict(proxy_resp.headers)
+            resp_body = proxy_resp.content
+            server_ms_raw = resp_headers.get("openai-processing-ms") or resp_headers.get("Openai-Processing-Ms")
+            if server_ms_raw:
+                try:
+                    server_ms = float(server_ms_raw)
+                except (ValueError, TypeError):
+                    pass
+        except _http.HTTPError as e:
+            # Typed HTTP failure from httpx — log compactly + return 502.
+            err_type = type(e).__name__
+            logger.warning("Upstream error: %s: %s", err_type, e.fix_hint)
+            resp_code = 502
+            resp_body = json.dumps(
+                {
+                    "error": "Upstream connection failed — LLM server may be restarting",
+                    "retry_after_s": 5,
+                }
+            ).encode()
+            resp_headers = {}
         except Exception as e:
-            # Log connection errors as a single line, not a full traceback.
-            # During server respawn these are expected and transient.
+            # Anything else — log single line (no traceback for transient
+            # connect errors during server respawn).
             err_type = type(e).__name__
             err_msg = str(e)
             if "Connection refused" in err_msg or "Connection reset" in err_msg:
@@ -569,6 +601,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     "retry_after_s": 5,
                 }
             ).encode()
+            resp_headers = {}
 
         elapsed_ms = (time.time() - t0) * 1000
 
