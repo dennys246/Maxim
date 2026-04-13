@@ -94,6 +94,14 @@ logger = logging.getLogger("maxim.leader_proxy")
 DEFAULT_PROXY_PORT = 8099
 DEFAULT_UPSTREAM_PORT = 8100
 _MAX_RECENT_REQUESTS = 100
+_INFERENCE_PROXY_TIMEOUT_S = 300.0
+"""Timeout for leader-proxy → llama-cpp-server inference calls.
+
+60s (the former value) is too short for Qwen-14B on long-context prompts —
+prefill alone can take 10-20s, leaving <40s for generation. 300s covers
+worst-case long-context + long-output on mid-range hardware and matches the
+peer backend's default ``timeout_s``.
+"""
 
 
 # ─── GPU metrics ──────────────────────────────────────────────────────────
@@ -562,7 +570,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 method,
                 headers=forwarded_headers,
                 body=body,
-                timeout=60.0,
+                timeout=_INFERENCE_PROXY_TIMEOUT_S,
             )
             resp_code = proxy_resp.status
             resp_headers = dict(proxy_resp.headers)

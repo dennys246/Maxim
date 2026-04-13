@@ -494,13 +494,13 @@ class _MaximPeerBackend:
     def _get_timeout_policy(self) -> TimeoutPolicy:
         cfg = self._provider_cfg()
         try:
-            total = float(cfg.get("timeout_s", 60.0))
+            total = float(cfg.get("timeout_s", 300.0))
         except (TypeError, ValueError):
-            total = 60.0
+            total = 300.0
         return TimeoutPolicy(
             connect_s=3.0,
-            read_s=min(total, 120.0),
-            total_s=total + 5.0,
+            read_s=total,
+            total_s=total + 60.0,
         )
 
     def _ensure_endpoint_registered(self) -> bool:
