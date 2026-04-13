@@ -4,12 +4,14 @@
   "shuffle": true,
   "centroid_update": true,
   "seeds": 10,
+  "seeds_passing": 7,
   "mean_collapse_rate": 0.9168,
   "std_collapse_rate": 0.0287,
   "mean_cross_cluster_rate": 0.0312,
   "std_cross_cluster_rate": 0.0131,
   "mean_node_growth": 0.0347,
   "std_node_growth": 0.0335,
+  "means_pass": true,
   "per_seed": [
     {
       "seed": 0,
@@ -101,7 +103,5 @@
       "modality_violations": 0,
       "passes": false
     }
-  ],
-  "means_pass": true,
-  "seeds_passing": 7
+  ]
 }

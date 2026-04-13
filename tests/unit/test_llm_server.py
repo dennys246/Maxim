@@ -116,15 +116,21 @@ class TestLlmServerResponding:
     def test_empty_url_returns_false(self):
         assert llm_server_responding_at("") is False
 
-    @patch("urllib.request.urlopen")
-    def test_200_returns_true(self, mock_urlopen):
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_urlopen.return_value = mock_resp
+    def test_200_returns_true(self):
+        # Plan 1 R1 migrated llm_server_responding_at off urllib onto
+        # maxim.utils.http.fetch_url. Mock at the new layer.
+        from maxim.utils import http as _http
 
-        assert llm_server_responding_at("http://localhost:8100/v1") is True
+        fake_resp = _http.Response(
+            status=200,
+            headers={},
+            content=b"{}",
+            elapsed_ms=1.0,
+            endpoint=_http._EXTERNAL_ENDPOINT,
+            request_id="r",
+        )
+        with patch("maxim.utils.http.fetch_url", return_value=fake_resp):
+            assert llm_server_responding_at("http://localhost:8100/v1") is True
 
     def test_connection_error_returns_false(self):
         # Non-existent URL — should not raise, just return False

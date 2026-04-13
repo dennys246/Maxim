@@ -4,7 +4,8 @@ Three layers:
 
 1. **probe_llm_server / _probe_once**: each network/HTTP failure mode is
    classified into a stable :class:`ProbeOutcome`. Tests mock
-   ``urllib.request.urlopen`` and assert the outcome string.
+   ``maxim.utils.http.fetch_url`` (post Plan 1 R1) and assert the outcome
+   string — pre-R1 these tests mocked ``urllib.request.urlopen`` directly.
 2. **probe_cache**: load/save round-trip, freshness window, single-URL
    eviction, full clear, missing-file tolerance.
 3. **_validate_remote_urls**: lanes whose probe says "unreachable" get
@@ -18,7 +19,6 @@ from __future__ import annotations
 import socket
 import ssl
 import time
-import urllib.error
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,6 +27,7 @@ from maxim.runtime import probe_cache
 from maxim.runtime.lane_backends import _validate_remote_urls
 from maxim.runtime.llm_server import ProbeResult, _probe_once, probe_llm_server
 from maxim.runtime.worker_pool import LaneConfig
+from maxim.utils import http as _http
 
 
 # ─── shared fixtures ────────────────────────────────────────────────────────
@@ -57,13 +58,15 @@ def _scrub_probe_env(monkeypatch):
         monkeypatch.delenv(k, raising=False)
 
 
-def _http_response(status: int = 200) -> MagicMock:
-    """Build a minimal context-manager-shaped urlopen response."""
-    resp = MagicMock()
-    resp.status = status
-    resp.__enter__ = MagicMock(return_value=resp)
-    resp.__exit__ = MagicMock(return_value=False)
-    return resp
+def _ok_response(status: int = 200) -> _http.Response:
+    return _http.Response(
+        status=status,
+        headers={},
+        content=b"{}",
+        elapsed_ms=1.0,
+        endpoint=_http._EXTERNAL_ENDPOINT,
+        request_id="r",
+    )
 
 
 # ─── _probe_once outcome classification ─────────────────────────────────────
@@ -73,88 +76,91 @@ class TestProbeOnce:
     URL = "http://leader.local:8100/v1"
 
     def test_ok_200(self):
-        with patch("urllib.request.urlopen", return_value=_http_response(200)):
+        with patch("maxim.utils.http.fetch_url", return_value=_ok_response(200)):
             result = _probe_once(self.URL, None, 1.0)
         assert result.outcome == "ok"
         assert result.latency_ms is not None and result.latency_ms >= 0
 
     def test_auth_rejected_401(self):
-        err = urllib.error.HTTPError(self.URL, 401, "Unauthorized", {}, None)
-        with patch("urllib.request.urlopen", side_effect=err):
+        err = _http.HTTPAuthError(_http._EXTERNAL_ENDPOINT, status=401, fix_hint="Auth rejected (401)")
+        with patch("maxim.utils.http.fetch_url", side_effect=err):
             result = _probe_once(self.URL, "wrong-key", 1.0)
         assert result.outcome == "auth_rejected"
         assert result.is_reachable is True
 
     def test_http_5xx(self):
-        err = urllib.error.HTTPError(self.URL, 502, "Bad Gateway", {}, None)
-        with patch("urllib.request.urlopen", side_effect=err):
+        err = _http.HTTPServerError(_http._EXTERNAL_ENDPOINT, status=502, fix_hint="Server error (502)")
+        with patch("maxim.utils.http.fetch_url", side_effect=err):
             result = _probe_once(self.URL, None, 1.0)
         assert result.outcome == "http_5xx"
 
     def test_http_4xx_other(self):
-        err = urllib.error.HTTPError(self.URL, 404, "Not Found", {}, None)
-        with patch("urllib.request.urlopen", side_effect=err):
+        err = _http.HTTPClientError(_http._EXTERNAL_ENDPOINT, status=404, fix_hint="Client error (404)")
+        with patch("maxim.utils.http.fetch_url", side_effect=err):
             result = _probe_once(self.URL, None, 1.0)
         assert result.outcome == "other"
         assert "404" in result.detail
 
     def test_dns_fail(self):
-        err = urllib.error.URLError(socket.gaierror("name or service not known"))
-        with patch("urllib.request.urlopen", side_effect=err):
+        root = socket.gaierror("name or service not known")
+        err = _http.HTTPConnectionError(_http._EXTERNAL_ENDPOINT, fix_hint="dns")
+        err.__cause__ = root
+        with patch("maxim.utils.http.fetch_url", side_effect=err):
             result = _probe_once(self.URL, None, 1.0)
         assert result.outcome == "dns_fail"
 
     def test_tls_error(self):
-        err = urllib.error.URLError(ssl.SSLError("certificate verify failed"))
-        with patch("urllib.request.urlopen", side_effect=err):
+        root = ssl.SSLError("certificate verify failed")
+        err = _http.HTTPConnectionError(_http._EXTERNAL_ENDPOINT, fix_hint="tls")
+        err.__cause__ = root
+        with patch("maxim.utils.http.fetch_url", side_effect=err):
             result = _probe_once(self.URL, None, 1.0)
         assert result.outcome == "tls_error"
 
     def test_connection_refused(self):
-        err = urllib.error.URLError(ConnectionRefusedError("nope"))
-        with patch("urllib.request.urlopen", side_effect=err):
+        root = ConnectionRefusedError("nope")
+        err = _http.HTTPConnectionError(_http._EXTERNAL_ENDPOINT, fix_hint="refused")
+        err.__cause__ = root
+        with patch("maxim.utils.http.fetch_url", side_effect=err):
             result = _probe_once(self.URL, None, 1.0)
         assert result.outcome == "connection_refused"
 
     def test_timeout(self):
-        err = urllib.error.URLError(TimeoutError("slow"))
-        with patch("urllib.request.urlopen", side_effect=err):
+        with patch(
+            "maxim.utils.http.fetch_url",
+            side_effect=_http.HTTPTimeout(_http._EXTERNAL_ENDPOINT, fix_hint="slow"),
+        ):
             result = _probe_once(self.URL, None, 1.0)
         assert result.outcome == "timeout"
 
     def test_other_unexpected(self):
-        with patch("urllib.request.urlopen", side_effect=RuntimeError("weird")):
+        with patch("maxim.utils.http.fetch_url", side_effect=RuntimeError("weird")):
             result = _probe_once(self.URL, None, 1.0)
         assert result.outcome == "other"
 
     def test_api_key_added_to_request(self):
-        captured = {}
+        captured: dict = {}
 
-        def fake_urlopen(req, timeout=None):
-            captured["headers"] = dict(req.header_items())
-            return _http_response(200)
+        def fake_fetch(url, *, method="GET", headers=None, timeout=None, **_):
+            captured["headers"] = dict(headers or {})
+            return _ok_response(200)
 
-        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch("maxim.utils.http.fetch_url", side_effect=fake_fetch):
             _probe_once(self.URL, "secret-token", 1.0)
-        assert any("Authorization" in k and "Bearer secret-token" in v for k, v in captured["headers"].items())
+        assert captured["headers"].get("Authorization") == "Bearer secret-token"
 
     def test_user_agent_set_for_cloudflare(self):
-        """Cloudflare Bot Fight Mode rejects urllib's default ``Python-urllib/*``
-        User-Agent with HTTP 403 + CF error 1010, even when the Bearer token
-        is valid. Every probe request must set a stable custom User-Agent or
-        the peer silently fails to reach any leader behind a CF tunnel.
+        """Post Plan 1 R1 the User-Agent is set once at _external endpoint
+        registration (http.DEFAULT_USER_AGENT = "maxim-peer/1.0"). The
+        Cloudflare incident is now structurally impossible — there is no
+        code path that builds an outbound HTTP request without inheriting
+        the endpoint's default headers.
         """
-        captured = {}
+        from maxim.utils import http as _h
 
-        def fake_urlopen(req, timeout=None):
-            captured["headers"] = dict(req.header_items())
-            return _http_response(200)
-
-        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            _probe_once(self.URL, None, 1.0)
-        ua_values = [v for k, v in captured["headers"].items() if k.lower() == "user-agent"]
-        assert ua_values, "probe must set a custom User-Agent header"
-        assert ua_values[0] == "maxim-peer/1.0"
+        _h._ensure_external_endpoint()
+        ep = _h.get_endpoint(_h._EXTERNAL_ENDPOINT)
+        assert ep.default_headers.get("User-Agent") == "maxim-peer/1.0"
 
 
 # ─── probe_llm_server two-attempt retry ─────────────────────────────────────

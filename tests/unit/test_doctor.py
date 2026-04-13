@@ -456,7 +456,10 @@ class TestKeyAuthSmoke:
         with (
             patch("maxim.tunnel.keys.key_exists", return_value=True),
             patch("maxim.tunnel.keys.read_key", return_value="test-key"),
-            patch("urllib.request.urlopen", side_effect=OSError("connection refused")),
+            patch(
+                "maxim.utils.http.fetch_url",
+                side_effect=OSError("connection refused"),
+            ),
         ):
             result = check_key_auth_smoke(port=19999)
         assert result.status == "info"
@@ -509,40 +512,42 @@ class TestRamHeadroom:
 # ─── inference coherence ──────────────────────────────────────────────────
 
 
+def _doctor_resp(body: dict) -> object:
+    """Build a maxim.utils.http.Response stub for doctor tests."""
+    from maxim.utils import http as _http
+
+    return _http.Response(
+        status=200,
+        headers={},
+        content=json.dumps(body).encode(),
+        elapsed_ms=1.0,
+        endpoint=_http._EXTERNAL_ENDPOINT,
+        request_id="r",
+    )
+
+
 class TestInferenceCoherence:
     def test_server_unreachable_returns_info(self):
         from maxim.doctor.checks import check_inference_coherence
 
-        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+        with patch("maxim.utils.http.fetch_url", side_effect=OSError("refused")):
             result = check_inference_coherence(port=19999)
         assert result.status == "info"
 
     def test_correct_answer_returns_ok(self):
-        import io
-
         from maxim.doctor.checks import check_inference_coherence
 
-        response_body = json.dumps({"choices": [{"message": {"content": "4"}}]}).encode()
-        mock_resp = io.BytesIO(response_body)
-        mock_resp.status = 200
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = lambda s, *a: None
-        with patch("urllib.request.urlopen", return_value=mock_resp):
+        resp = _doctor_resp({"choices": [{"message": {"content": "4"}}]})
+        with patch("maxim.utils.http.fetch_url", return_value=resp):
             result = check_inference_coherence(port=19999)
         assert result.status == "ok"
         assert "correct" in result.message
 
     def test_wrong_answer_returns_warn(self):
-        import io
-
         from maxim.doctor.checks import check_inference_coherence
 
-        response_body = json.dumps({"choices": [{"message": {"content": "banana"}}]}).encode()
-        mock_resp = io.BytesIO(response_body)
-        mock_resp.status = 200
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = lambda s, *a: None
-        with patch("urllib.request.urlopen", return_value=mock_resp):
+        resp = _doctor_resp({"choices": [{"message": {"content": "banana"}}]})
+        with patch("maxim.utils.http.fetch_url", return_value=resp):
             result = check_inference_coherence(port=19999)
         assert result.status == "warn"
         assert "unexpected" in result.message
@@ -597,13 +602,12 @@ class TestPeerAuth:
         assert result.status == "info"
 
     def test_401_returns_fail(self):
-        import urllib.error
-
         from maxim.doctor.checks import check_peer_auth
+        from maxim.utils import http as _http
 
         with patch(
-            "urllib.request.urlopen",
-            side_effect=urllib.error.HTTPError(None, 401, "Unauthorized", {}, None),
+            "maxim.utils.http.fetch_url",
+            side_effect=_http.HTTPAuthError("_external", status=401, fix_hint="Auth rejected (401)"),
         ):
             result = check_peer_auth("https://example.com/v1", key="bad-key")
         assert result.status == "fail"
@@ -612,29 +616,19 @@ class TestPeerAuth:
 
 class TestPeerModel:
     def test_model_found_returns_ok(self):
-        import io
-
         from maxim.doctor.checks import check_peer_model
 
-        body = json.dumps({"data": [{"id": "mistral-7b"}]}).encode()
-        mock_resp = io.BytesIO(body)
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = lambda s, *a: None
-        with patch("urllib.request.urlopen", return_value=mock_resp):
+        resp = _doctor_resp({"data": [{"id": "mistral-7b"}]})
+        with patch("maxim.utils.http.fetch_url", return_value=resp):
             result = check_peer_model("https://example.com/v1", key=None)
         assert result.status == "ok"
         assert "mistral-7b" in result.message
 
     def test_wrong_model_returns_warn(self):
-        import io
-
         from maxim.doctor.checks import check_peer_model
 
-        body = json.dumps({"data": [{"id": "mistral-7b"}]}).encode()
-        mock_resp = io.BytesIO(body)
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = lambda s, *a: None
-        with patch("urllib.request.urlopen", return_value=mock_resp):
+        resp = _doctor_resp({"data": [{"id": "mistral-7b"}]})
+        with patch("maxim.utils.http.fetch_url", return_value=resp):
             result = check_peer_model("https://example.com/v1", key=None, expected_model="qwen2.5-14b")
         assert result.status == "warn"
         assert "expected" in result.message
@@ -644,7 +638,7 @@ class TestPeerLatency:
     def test_all_probes_fail_returns_warn(self):
         from maxim.doctor.checks import check_peer_latency
 
-        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+        with patch("maxim.utils.http.fetch_url", side_effect=OSError("refused")):
             result = check_peer_latency("https://fake.invalid/v1", key=None)
         assert result.status == "warn"
         assert "failed" in result.message

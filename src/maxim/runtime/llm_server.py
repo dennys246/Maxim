@@ -161,62 +161,88 @@ def _build_probe_url(base_url: str) -> str:
     return base + "/models" if base.endswith("/v1") else base + "/v1/models"
 
 
+def _classify_probe_cause(exc: BaseException, fallback_detail: str) -> ProbeOutcome:
+    """Walk the ``__cause__`` chain of an ``HTTPError`` (or raw exception)
+    looking for a socket-level error class we recognize. Returns one of
+    the coarse :data:`ProbeOutcome` literals. Used by :func:`_probe_once`
+    to preserve the pre-R1 classification surface after the migration to
+    ``http.fetch_url``.
+    """
+    cur: BaseException | None = exc
+    seen = 0
+    while cur is not None and seen < 6:
+        if isinstance(cur, socket.gaierror):
+            return "dns_fail"
+        if isinstance(cur, ssl.SSLError):
+            return "tls_error"
+        if isinstance(cur, TimeoutError) or isinstance(cur, socket.timeout):
+            return "timeout"
+        if isinstance(cur, (ConnectionRefusedError, ConnectionResetError)):
+            return "connection_refused"
+        cur = cur.__cause__ or cur.__context__
+        seen += 1
+    return "other"
+
+
 def _probe_once(url: str, api_key: str | None, timeout_s: float) -> ProbeResult:
     """Single probe attempt. Classifies errors into structured outcomes.
 
-    Catches each network/HTTP exception class explicitly so the caller
-    can act on the outcome (drop the lane, warn the user, suggest a fix)
-    instead of branching on str(exception). New exception types fall into
-    ``other`` rather than crashing the probe.
+    Goes through :func:`maxim.utils.http.fetch_url` so the Cloudflare Bot
+    Fight Mode incident (missing User-Agent) is structurally impossible —
+    the User-Agent is set on the shared ``_external`` endpoint's default
+    headers. The typed :class:`HTTPError` hierarchy is then mapped back
+    to the ``ProbeOutcome`` enum expected by downstream lane_backends
+    logic. Plan 3's ``_MaximPeerBackend.health_check`` will replace this
+    entirely; for R1 we just kill the urllib dep.
     """
-    import urllib.error
-    import urllib.request
+    from maxim.utils import http as _http
 
     probe_url = _build_probe_url(url)
-    req = urllib.request.Request(probe_url)
+    headers: dict[str, str] = {}
     if api_key:
-        req.add_header("Authorization", f"Bearer {api_key}")
-    # Cloudflare Bot Fight Mode rejects urllib's default ``Python-urllib/*``
-    # User-Agent with a 403 + CF error 1010, even with a valid Bearer token.
-    # Every other urllib caller in the codebase already sets this header;
-    # this one got missed, which made leader probes silently fail for any
-    # peer whose leader is behind a Cloudflare tunnel with Bot Fight Mode.
-    req.add_header("User-Agent", "maxim-peer/1.0")
+        headers["Authorization"] = f"Bearer {api_key}"
 
     start = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # noqa: S310
-            latency_ms = (time.monotonic() - start) * 1000
-            return ProbeResult(url, "ok", f"HTTP {resp.status}", round(latency_ms, 1))
-    except urllib.error.HTTPError as e:
+        resp = _http.fetch_url(
+            probe_url,
+            method="GET",
+            headers=headers,
+            timeout=_http.TimeoutPolicy(
+                connect_s=min(timeout_s, 2.0),
+                read_s=timeout_s,
+                total_s=timeout_s + 1.0,
+            ),
+        )
+    except _http.HTTPAuthError as e:
         latency_ms = (time.monotonic() - start) * 1000
-        if e.code == 401:
-            return ProbeResult(url, "auth_rejected", "401 Unauthorized", round(latency_ms, 1))
-        if 500 <= e.code < 600:
-            return ProbeResult(url, "http_5xx", f"HTTP {e.code}", round(latency_ms, 1))
-        return ProbeResult(url, "other", f"HTTP {e.code}", round(latency_ms, 1))
-    except urllib.error.URLError as e:
-        # URLError wraps lower-level errors. Unwrap one layer to classify.
-        reason = getattr(e, "reason", e)
-        if isinstance(reason, socket.gaierror):
-            return ProbeResult(url, "dns_fail", str(reason), None)
-        if isinstance(reason, ssl.SSLError):
-            return ProbeResult(url, "tls_error", str(reason), None)
-        if isinstance(reason, TimeoutError) or isinstance(reason, socket.timeout):
-            return ProbeResult(url, "timeout", f"{timeout_s}s", None)
-        if isinstance(reason, (ConnectionRefusedError, ConnectionResetError)):
-            return ProbeResult(url, "connection_refused", str(reason), None)
-        return ProbeResult(url, "other", f"URLError: {reason}", None)
-    except socket.gaierror as e:
-        return ProbeResult(url, "dns_fail", str(e), None)
-    except ssl.SSLError as e:
-        return ProbeResult(url, "tls_error", str(e), None)
-    except TimeoutError:
+        return ProbeResult(
+            url,
+            "auth_rejected",
+            f"HTTP {e.status}",
+            round(latency_ms, 1),
+        )
+    except _http.HTTPServerError as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "http_5xx", f"HTTP {e.status}", round(latency_ms, 1))
+    except _http.HTTPClientError as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "other", f"HTTP {e.status}", round(latency_ms, 1))
+    except _http.HTTPRateLimited as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "other", f"HTTP {e.status}", round(latency_ms, 1))
+    except _http.HTTPTimeout:
         return ProbeResult(url, "timeout", f"{timeout_s}s", None)
-    except (ConnectionRefusedError, ConnectionResetError) as e:
-        return ProbeResult(url, "connection_refused", str(e), None)
+    except _http.HTTPConnectionError as e:
+        outcome = _classify_probe_cause(e, "connection failure")
+        return ProbeResult(url, outcome, e.fix_hint or str(e), None)
+    except _http.HTTPError as e:
+        return ProbeResult(url, "other", f"{type(e).__name__}: {e.fix_hint}", None)
     except Exception as e:  # noqa: BLE001 — defensive catch-all
         return ProbeResult(url, "other", f"{type(e).__name__}: {e}", None)
+
+    latency_ms = (time.monotonic() - start) * 1000
+    return ProbeResult(url, "ok", f"HTTP {resp.status}", round(latency_ms, 1))
 
 
 def probe_llm_server(
@@ -258,18 +284,21 @@ def llm_server_responding_at(url: str, *, timeout_s: float = 1.5) -> bool:
         return False
     base = url.rstrip("/")
     probe = base + "/models" if base.endswith("/v1") else base + "/v1/models"
-    try:
-        import urllib.error
-        import urllib.request
+    from maxim.utils import http as _http
 
-        # Cloudflare Bot Fight Mode rejects urllib's default User-Agent; set
-        # a stable identifier so leaders behind Cloudflare tunnels respond.
-        req = urllib.request.Request(probe)
-        req.add_header("User-Agent", "maxim-peer/1.0")
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # noqa: S310
-            return resp.status == 200
-    except urllib.error.HTTPError as e:
-        return e.code == 401  # server reachable, auth-gated
+    try:
+        resp = _http.fetch_url(
+            probe,
+            method="GET",
+            timeout=_http.TimeoutPolicy(
+                connect_s=min(timeout_s, 1.0),
+                read_s=timeout_s,
+                total_s=timeout_s + 0.5,
+            ),
+        )
+        return resp.status == 200
+    except _http.HTTPAuthError:
+        return True  # listener alive, auth-gated
     except Exception:
         return False
 

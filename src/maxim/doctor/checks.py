@@ -597,11 +597,8 @@ def check_key_permissions() -> CheckResult:
 
 def check_key_auth_smoke(port: int = 8100) -> CheckResult:
     """Verify the local server enforces the configured API key."""
-    import json
-    import urllib.error
-    import urllib.request
-
     from maxim.tunnel.keys import key_exists, read_key
+    from maxim.utils import http as _http
 
     if not key_exists():
         return CheckResult(
@@ -611,25 +608,28 @@ def check_key_auth_smoke(port: int = 8100) -> CheckResult:
         )
     key = read_key() or ""
     url = f"http://127.0.0.1:{port}/v1/models"
-    headers = {"User-Agent": "maxim-doctor/1.0", "Authorization": f"Bearer {key}"}
+    fast = _http.TimeoutPolicy(connect_s=1.0, read_s=3.0, total_s=4.0)
     # Test with correct key
     try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=3) as resp:  # noqa: S310
-            json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 401:
-            return CheckResult(
-                name="Key auth smoke",
-                status="fail",
-                message="server rejected our key (401)",
-                fix="Key mismatch — regenerate: maxim tunnel key rotate",
-                retry_id="key-auth",
-            )
+        _http.fetch_url(
+            url,
+            method="GET",
+            headers={"Authorization": f"Bearer {key}"},
+            timeout=fast,
+        )
+    except _http.HTTPAuthError:
+        return CheckResult(
+            name="Key auth smoke",
+            status="fail",
+            message="server rejected our key (401)",
+            fix="Key mismatch — regenerate: maxim tunnel key rotate",
+            retry_id="key-auth",
+        )
+    except _http.HTTPError as e:
         return CheckResult(
             name="Key auth smoke",
             status="warn",
-            message=f"server returned HTTP {e.code}",
+            message=f"server returned HTTP {e.status}",
         )
     except Exception:
         return CheckResult(
@@ -638,11 +638,13 @@ def check_key_auth_smoke(port: int = 8100) -> CheckResult:
             message="server not reachable — skipped",
         )
     # Test with bogus key — should get 401 if auth is enforced
-    bogus_headers = {"User-Agent": "maxim-doctor/1.0", "Authorization": "Bearer BOGUS"}
     try:
-        req = urllib.request.Request(url, headers=bogus_headers)
-        with urllib.request.urlopen(req, timeout=3) as resp:  # noqa: S310
-            resp.read()
+        _http.fetch_url(
+            url,
+            method="GET",
+            headers={"Authorization": "Bearer BOGUS"},
+            timeout=fast,
+        )
         return CheckResult(
             name="Key auth smoke",
             status="warn",
@@ -653,17 +655,17 @@ def check_key_auth_smoke(port: int = 8100) -> CheckResult:
                 "  Route through LeaderProxy (port 8099) to enforce auth."
             ),
         )
-    except urllib.error.HTTPError as e:
-        if e.code == 401:
-            return CheckResult(
-                name="Key auth smoke",
-                status="ok",
-                message="auth enforced — valid key accepted, bogus key rejected",
-            )
+    except _http.HTTPAuthError:
+        return CheckResult(
+            name="Key auth smoke",
+            status="ok",
+            message="auth enforced — valid key accepted, bogus key rejected",
+        )
+    except _http.HTTPError as e:
         return CheckResult(
             name="Key auth smoke",
             status="warn",
-            message=f"bogus-key probe returned HTTP {e.code} (expected 401)",
+            message=f"bogus-key probe returned HTTP {e.status} (expected 401)",
         )
     except Exception:
         return CheckResult(
@@ -783,10 +785,9 @@ def check_ram_headroom() -> CheckResult:
 
 def check_inference_coherence(port: int = 8100) -> CheckResult:
     """Send a fixed prompt and verify the LLM returns a sensible answer."""
-    import json
     import time
-    import urllib.error
-    import urllib.request
+
+    from maxim.utils import http as _http
 
     url = f"http://127.0.0.1:{port}/v1/chat/completions"
     payload = {
@@ -796,14 +797,15 @@ def check_inference_coherence(port: int = 8100) -> CheckResult:
         "temperature": 0.0,
     }
     try:
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json", "User-Agent": "maxim-doctor/1.0"},
-        )
         t0 = time.time()
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-            data = json.loads(resp.read())
+        resp = _http.fetch_url(
+            url,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+            json=payload,
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=30.0, total_s=32.0),
+        )
+        data = resp.json()
         dt_ms = (time.time() - t0) * 1000
     except Exception:
         return CheckResult(
@@ -842,9 +844,9 @@ def check_peer_url_reachable(url: str) -> CheckResult:
     """Resolve DNS and probe /v1/models on a remote leader."""
     import socket
     import time
-    import urllib.error
     import urllib.parse
-    import urllib.request
+
+    from maxim.utils import http as _http
 
     parsed = urllib.parse.urlparse(url)
     host = parsed.hostname or ""
@@ -870,22 +872,24 @@ def check_peer_url_reachable(url: str) -> CheckResult:
         models_url += "/v1"
     models_url += "/models"
     try:
-        req = urllib.request.Request(models_url, headers={"User-Agent": "maxim-doctor/1.0"})
         t0 = time.time()
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-            resp.read()
+        _http.fetch_url(
+            models_url,
+            method="GET",
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+        )
         dt_ms = (time.time() - t0) * 1000
-    except urllib.error.HTTPError as e:
-        if e.code == 401:
-            return CheckResult(
-                name="Remote URL",
-                status="ok",
-                message=f"{host} reachable (auth required — checked separately)",
-            )
+    except _http.HTTPAuthError:
+        return CheckResult(
+            name="Remote URL",
+            status="ok",
+            message=f"{host} reachable (auth required — checked separately)",
+        )
+    except _http.HTTPError as e:
         return CheckResult(
             name="Remote URL",
             status="warn",
-            message=f"{host} returned HTTP {e.code}",
+            message=f"{host} returned HTTP {e.status}",
             retry_id="peer-url",
         )
     except Exception as e:
@@ -940,9 +944,7 @@ def check_peer_key_set() -> CheckResult:
 
 def check_peer_auth(url: str, key: str | None) -> CheckResult:
     """Send an authenticated request to the leader and verify 200."""
-    import json
-    import urllib.error
-    import urllib.request
+    from maxim.utils import http as _http
 
     if not key:
         return CheckResult(
@@ -954,31 +956,30 @@ def check_peer_auth(url: str, key: str | None) -> CheckResult:
     if not base.endswith("/v1"):
         base += "/v1"
     models_url = f"{base}/models"
-    headers = {
-        "User-Agent": "maxim-doctor/1.0",
-        "Authorization": f"Bearer {key}",
-    }
     try:
-        req = urllib.request.Request(models_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-            json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 401:
-            return CheckResult(
-                name="Peer auth",
-                status="fail",
-                message="key rejected by leader (401)",
-                fix=(
-                    "Key mismatch. Ask the leader to regenerate:\n"
-                    "  On leader: maxim tunnel key rotate\n"
-                    "  Then: maxim tunnel key export"
-                ),
-                retry_id="peer-auth",
-            )
+        _http.fetch_url(
+            models_url,
+            method="GET",
+            headers={"Authorization": f"Bearer {key}"},
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+        )
+    except _http.HTTPAuthError:
+        return CheckResult(
+            name="Peer auth",
+            status="fail",
+            message="key rejected by leader (401)",
+            fix=(
+                "Key mismatch. Ask the leader to regenerate:\n"
+                "  On leader: maxim tunnel key rotate\n"
+                "  Then: maxim tunnel key export"
+            ),
+            retry_id="peer-auth",
+        )
+    except _http.HTTPError as e:
         return CheckResult(
             name="Peer auth",
             status="warn",
-            message=f"leader returned HTTP {e.code}",
+            message=f"leader returned HTTP {e.status}",
         )
     except Exception as e:
         return CheckResult(
@@ -995,21 +996,23 @@ def check_peer_auth(url: str, key: str | None) -> CheckResult:
 
 def check_peer_model(url: str, key: str | None, expected_model: str | None = None) -> CheckResult:
     """Check if the leader advertises the expected model."""
-    import json
-    import urllib.error
-    import urllib.request
+    from maxim.utils import http as _http
 
     base = url.rstrip("/")
     if not base.endswith("/v1"):
         base += "/v1"
     models_url = f"{base}/models"
-    headers = {"User-Agent": "maxim-doctor/1.0"}
+    headers: dict[str, str] = {}
     if key:
         headers["Authorization"] = f"Bearer {key}"
     try:
-        req = urllib.request.Request(models_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-            data = json.loads(resp.read())
+        resp = _http.fetch_url(
+            models_url,
+            method="GET",
+            headers=headers,
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+        )
+        data = resp.json()
         model_ids = [m.get("id", "") for m in data.get("data", [])]
     except Exception:
         return CheckResult(
@@ -1041,23 +1044,22 @@ def check_peer_model(url: str, key: str | None, expected_model: str | None = Non
 def check_peer_latency(url: str, key: str | None) -> CheckResult:
     """Measure round-trip latency to the leader (5 pings, report p50)."""
     import time
-    import urllib.error
-    import urllib.request
+
+    from maxim.utils import http as _http
 
     base = url.rstrip("/")
     if not base.endswith("/v1"):
         base += "/v1"
     ping_url = f"{base}/models"
-    headers = {"User-Agent": "maxim-doctor/1.0"}
+    headers: dict[str, str] = {}
     if key:
         headers["Authorization"] = f"Bearer {key}"
     timings: list[float] = []
+    fast = _http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0)
     for probe_idx in range(5):
         try:
-            req = urllib.request.Request(ping_url, headers=headers)
             t0 = time.time()
-            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-                resp.read()
+            _http.fetch_url(ping_url, method="GET", headers=headers, timeout=fast)
             timings.append((time.time() - t0) * 1000)
         except Exception as e:
             logger.debug("Latency probe %d failed: %s", probe_idx, e)

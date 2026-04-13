@@ -312,10 +312,10 @@ def _parse_peer_opts(opts: list[str]) -> tuple[str | None, str | None]:
 
 
 def _peer_test(base_url: str, *, key: str | None, model: str | None) -> int:
-    import urllib.error
-    import urllib.parse
-    import urllib.request
     import socket
+    import urllib.parse
+
+    from maxim.utils import http as _http
 
     base_url = base_url.rstrip("/")
     if not base_url.endswith("/v1"):
@@ -324,7 +324,7 @@ def _peer_test(base_url: str, *, key: str | None, model: str | None) -> int:
     print()
     print(f"Testing peer connection to {base_url}")
 
-    # 1. DNS
+    # 1. DNS — we still resolve directly for the human-readable error.
     try:
         parsed = urllib.parse.urlparse(base_url)
         host = parsed.hostname or ""
@@ -340,51 +340,67 @@ def _peer_test(base_url: str, *, key: str | None, model: str | None) -> int:
         return 1
 
     # 2. Proxy identity check — /v1/debug/ping (LeaderProxy-only endpoint)
-    headers = {"User-Agent": "maxim-peer-test/1.0"}
+    extra_headers: dict[str, str] = {}
     if key:
-        headers["Authorization"] = f"Bearer {key}"
+        extra_headers["Authorization"] = f"Bearer {key}"
     ping_url = f"{base_url}/debug/ping"
     try:
-        ping_req = urllib.request.Request(ping_url, headers=headers)
-        with urllib.request.urlopen(ping_req, timeout=5) as resp:  # noqa: S310
-            ping_data = json.loads(resp.read())
+        ping_resp = _http.fetch_url(
+            ping_url,
+            method="GET",
+            headers=extra_headers,
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=5.0, total_s=6.0),
+        )
+        ping_data = ping_resp.json()
         if ping_data.get("service") == "LeaderProxy":
             print(
-                f"  ✓ LeaderProxy confirmed (up {ping_data.get('uptime_s', '?')}s, auth={'on' if ping_data.get('auth_enabled') else 'off'})"
+                f"  ✓ LeaderProxy confirmed (up {ping_data.get('uptime_s', '?')}s, "
+                f"auth={'on' if ping_data.get('auth_enabled') else 'off'})"
             )
         else:
             print(f"  ? /v1/debug/ping responded but service={ping_data.get('service', '?')}")
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
+    except _http.HTTPClientError as e:
+        if e.status == 404:
             print("  ? /v1/debug/ping returned 404 — may be talking to llama-cpp-server directly")
             print("    → Check tunnel routes to port 8099 (LeaderProxy), not 8100")
         else:
-            print(f"  ? /v1/debug/ping returned HTTP {e.code}")
+            print(f"  ? /v1/debug/ping returned HTTP {e.status}")
+    except _http.HTTPError as e:
+        print(f"  ? /v1/debug/ping unreachable: {e}")
     except Exception as e:
         print(f"  ? /v1/debug/ping unreachable: {e}")
 
     # 3-4. HTTPS handshake + /v1/models
-    # NOTE: Cloudflare's default bot-protection WAF rules block the
-    # `Python-urllib/*` User-Agent with a 403. Send a neutral UA so the
-    # request looks like any other HTTP client — matches curl behavior.
+    # Cloudflare's default bot-protection WAF rules block the
+    # `Python-urllib/*` User-Agent with a 403. The _external endpoint
+    # registered by maxim.utils.http sets User-Agent=maxim-peer/1.0 at
+    # registration time — structurally impossible to forget.
     models_url = f"{base_url}/models"
     try:
-        req = urllib.request.Request(models_url, headers=headers)
         t0 = time.time()
-        with urllib.request.urlopen(req, timeout=10.0) as resp:  # noqa: S310
-            body = resp.read().decode()
-            data = json.loads(body)
-    except urllib.error.HTTPError as e:
-        print(f"  ✗ HTTP {e.code}: {e.reason}")
-        if e.code == 401:
-            print("    → Bearer token rejected. Check the key matches the leader's.")
-            print("    → On the leader, run: maxim tunnel key show")
-        elif e.code == 404:
+        resp = _http.fetch_url(
+            models_url,
+            method="GET",
+            headers=extra_headers,
+            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=10.0, total_s=12.0),
+        )
+        data = resp.json()
+    except _http.HTTPAuthError as e:
+        print(f"  ✗ HTTP {e.status}: auth rejected")
+        print("    → Bearer token rejected. Check the key matches the leader's.")
+        print("    → On the leader, run: maxim tunnel key show")
+        return 1
+    except _http.HTTPClientError as e:
+        print(f"  ✗ HTTP {e.status}: {e.fix_hint}")
+        if e.status == 404:
             print(f"    → /v1/models returned 404. Is {base_url} the right base URL?")
         return 1
-    except (urllib.error.URLError, socket.timeout) as e:
-        print(f"  ✗ Connection failed: {e}")
+    except (_http.HTTPTimeout, _http.HTTPConnectionError) as e:
+        print(f"  ✗ Connection failed: {e.fix_hint}")
         print(f"    → Is the server reachable? Try: curl -v {base_url}/models")
+        return 1
+    except _http.HTTPError as e:
+        print(f"  ✗ Probe failed: {e}")
         return 1
     except (OSError, json.JSONDecodeError) as e:
         print(f"  ✗ Response parse failed: {e}")
@@ -408,14 +424,15 @@ def _peer_test(base_url: str, *, key: str | None, model: str | None) -> int:
         "temperature": 0.0,
     }
     try:
-        req = urllib.request.Request(
-            completion_url,
-            data=json.dumps(payload).encode(),
-            headers={**headers, "Content-Type": "application/json"},
-        )
         t0 = time.time()
-        with urllib.request.urlopen(req, timeout=60.0) as resp:  # noqa: S310
-            data = json.loads(resp.read())
+        chat_resp = _http.fetch_url(
+            completion_url,
+            method="POST",
+            headers={**extra_headers, "Content-Type": "application/json"},
+            json=payload,
+            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=60.0, total_s=65.0),
+        )
+        data = chat_resp.json()
         dt = (time.time() - t0) * 1000
         text = data["choices"][0]["message"]["content"]
         print(f"  ✓ Chat completion in {dt:.0f} ms: {text!r}")
