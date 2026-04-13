@@ -9,7 +9,7 @@ from typing import Any
 from maxim.utils.logging import info, warn
 
 logger = logging.getLogger(__name__)
-from maxim.utils.structured_logging import log_agentic
+from maxim.utils.structured_logging import log_agentic, log_structured
 from maxim.models.language.cost_tracker import CostTracker
 from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult
 from maxim.utils.cloud_audit import CloudAuditEntry, CloudAuditLogger
@@ -23,7 +23,19 @@ from maxim.models.language.prompt_formats import _build_prompt
 from maxim.models.language.json_parser import _extract_json_object
 from maxim.models.language.llama_backend import _LlamaCppBackend
 from maxim.models.language.config import LLMConfig, load_llm_config
-from maxim.models.language.types import LLMResponse, RoutingPolicy, ProviderState
+from maxim.models.language.types import (
+    LLMResponse,
+    RoutingPolicy,
+    ProviderState,
+    INFERENCE_BROKEN_BACKOFF_S,
+    BackendError,
+    BackendOverloaded,
+    BackendDown,
+    BackendTimeout,
+    BackendAuthFailed,
+    BackendModelMissing,
+    BackendInferenceBroken,
+)
 from maxim.models.language.cloud_dispatch import (
     MODEL_DOWNGRADE_MAP as _MODEL_DOWNGRADE_MAP,
     SYSTEM_TOOL_RESPONSE as _SYSTEM_TOOL_RESPONSE,
@@ -34,6 +46,22 @@ from maxim.models.language.cloud_dispatch import (
     load_pricing_table as _load_pricing_table_fn,
     load_cost_config as _load_cost_config_fn,
 )
+
+
+def _record_unclassified_backend_error(provider_key: str) -> None:
+    """Thin wrapper around
+    :func:`maxim.models.language.lane_metrics.record_backend_unclassified_error`.
+
+    Indirection lets the router catch the rare case where
+    ``lane_metrics`` itself fails to import (optional dependency path) so
+    the safety net never raises from inside a safety net.
+    """
+    try:
+        from maxim.models.language.lane_metrics import record_backend_unclassified_error
+
+        record_backend_unclassified_error(provider_key)
+    except Exception:  # pragma: no cover — defensive
+        pass
 
 
 class LLMRouter:
@@ -71,6 +99,13 @@ class LLMRouter:
         # actually ran (important when the router spans local + cloud backends).
         self._last_used_model: str = ""
         self._last_used_provider: str = ""
+        # Plan 3 R2.5: per-dispatch attempt log, drained into a single
+        # ``dispatch_exhausted`` WARN when all providers fail. Populated
+        # by ``_record_attempt_outcome`` from inside ``_try_provider``.
+        # Safe as a plain list because ``_complete_text`` holds
+        # ``_inference_lock`` for the full duration of a dispatch.
+        self._dispatch_attempts: list[dict[str, Any]] = []
+        self._last_suggested_peer: str | None = None
         try:
             import atexit
 
@@ -248,6 +283,16 @@ class LLMRouter:
             from maxim.models.language.openai_backend import _OpenAIBackend
 
             backend = _OpenAIBackend(self.cfg, provider_key=provider_key)
+        elif provider_type in ("maxim_peer", "maxim-peer"):
+            # Plan 3 R2.5: self-hosted peers (llama-cpp-server,
+            # peer-tunnel LLM servers) use the purpose-built
+            # _MaximPeerBackend. Selection is driven by
+            # ``lane_backends.BACKEND_CLASSES`` which writes
+            # ``"maxim_peer"`` into ``providers[key]["type"]`` for
+            # self-hosted URLs.
+            from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+            backend = _MaximPeerBackend(self.cfg, provider_key=provider_key)
         else:
             warn("Unknown LLM provider type: %s (%s)", provider_type, provider_key)
             backend = LLMRouter._INIT_FAILED
@@ -437,6 +482,106 @@ class LLMRouter:
         backoff = min(60.0, 1.0 * (2 ** max(state.consecutive_errors - 1, 0)))
         state.backoff_until = time.time() + backoff
 
+    # ─── Plan 3 R2.5: typed-failure provider helpers ────────────────────
+    def _note_provider_overload(
+        self,
+        provider_key: str,
+        *,
+        retry_after_s: float = 0.0,
+    ) -> None:
+        """Apply cooldown for a :class:`BackendOverloaded` outcome.
+
+        Honors the upstream-supplied ``retry_after_s`` hint (clamped to a
+        sane range) when it is set; otherwise falls back to the exponential
+        cooldown applied by :meth:`_note_provider_failure`.
+        """
+        state = self._provider_states.get(provider_key)
+        if state is None:
+            return
+        state.consecutive_errors += 1
+        state.last_error = "overloaded"
+        if retry_after_s > 0:
+            delay = max(1.0, min(float(retry_after_s), 300.0))
+        else:
+            delay = min(60.0, 1.0 * (2 ** max(state.consecutive_errors - 1, 0)))
+        state.backoff_until = time.time() + delay
+
+    def _set_long_backoff(self, provider_key: str, seconds: float) -> None:
+        """Hard-set a long cooldown for hints that don't self-heal
+        (auth rejection, model missing). Bypasses the exponential ramp."""
+        state = self._provider_states.get(provider_key)
+        if state is None:
+            return
+        state.consecutive_errors += 1
+        state.backoff_until = time.time() + max(1.0, float(seconds))
+
+    def _set_short_backoff(self, provider_key: str, seconds: float) -> None:
+        """Short cooldown matching the probe-cache TTL for
+        :data:`INFERENCE_BROKEN_BACKOFF_S`."""
+        state = self._provider_states.get(provider_key)
+        if state is None:
+            return
+        state.consecutive_errors += 1
+        state.backoff_until = time.time() + max(0.5, float(seconds))
+
+    def _record_suggested_peer_hint(self, suggested_peer: str | None) -> None:
+        """No-op stub for the deferred multi-peer dispatch plan.
+
+        :class:`BackendOverloaded` carries a ``suggested_peer`` hint that
+        the leader sets via ``X-Maxim-Suggested-Peer``. Plan 3's scope is
+        single-peer failover; the hint is recorded here as a no-op so the
+        deferred multi-peer plan can light it up without refactoring the
+        router's error-handling branches."""
+        if suggested_peer:
+            self._last_suggested_peer = suggested_peer
+
+    def _record_attempt_outcome(
+        self,
+        provider_key: str,
+        *,
+        outcome: str,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        """Buffer a per-attempt outcome so
+        :meth:`_emit_dispatch_exhausted` can log one aggregated WARN line
+        per failed dispatch (instead of one-per-attempt)."""
+        attempt: dict[str, Any] = {
+            "provider": provider_key,
+            "outcome": outcome,
+        }
+        if extra:
+            attempt.update(extra)
+        self._dispatch_attempts.append(attempt)
+
+    def _emit_dispatch_exhausted(
+        self,
+        *,
+        request_context: dict[str, Any] | None,
+        total_elapsed_ms: float,
+    ) -> None:
+        """Emit one ``dispatch_exhausted`` WARN per failed dispatch.
+
+        Preserves multi-agent context (``agent_id``, ``session_id``,
+        ``request_id``, ``lane``) and lists every per-provider attempt
+        with its typed outcome. Grep-friendly via
+        ``jq 'select(.e=="dispatch_exhausted")'``."""
+        attempts = list(self._dispatch_attempts)
+        self._dispatch_attempts.clear()
+        ctx = request_context or {}
+        log_structured(
+            logger,
+            logging.WARNING,
+            event="dispatch_exhausted",
+            data={
+                "request_id": ctx.get("request_id", ""),
+                "agent_id": ctx.get("agent_id") or ctx.get("agent"),
+                "session_id": ctx.get("session_id"),
+                "lane": ctx.get("lane"),
+                "total_elapsed_ms": round(total_elapsed_ms, 1),
+                "attempts": attempts,
+            },
+        )
+
     def _emit_cloud_audit(
         self,
         *,
@@ -539,6 +684,12 @@ class LLMRouter:
             warn("No eligible LLM providers for request")
             return "", None
 
+        # Plan 3 R2.5: reset the per-dispatch attempt log at the top of
+        # every dispatch. Populated by ``_record_attempt_outcome`` inside
+        # ``_try_provider`` and drained into a single
+        # ``dispatch_exhausted`` WARN if all providers fail.
+        self._dispatch_attempts.clear()
+        dispatch_t0 = time.monotonic()
         for provider_key in providers:
             outcome = self._try_provider(
                 provider_key=provider_key,
@@ -559,11 +710,23 @@ class LLMRouter:
                 continue
             text, usage, status = outcome
             if status == "success":
+                # Clear the attempt buffer; a successful dispatch doesn't
+                # need an aggregated WARN even if earlier providers in
+                # the priority list failed.
+                self._dispatch_attempts.clear()
                 return text, usage
             if status == "budget_reject":
+                self._dispatch_attempts.clear()
                 return "", None
             # status == "failed" → try next provider
 
+        # All providers failed — emit one aggregated WARN with the
+        # full per-attempt breakdown and multi-agent context.
+        total_elapsed_ms = (time.monotonic() - dispatch_t0) * 1000
+        self._emit_dispatch_exhausted(
+            request_context=request_context,
+            total_elapsed_ms=total_elapsed_ms,
+        )
         return "", None
 
     def _try_provider(
@@ -628,6 +791,12 @@ class LLMRouter:
             treat_as_cloud=treat_as_cloud,
         )
 
+        # Plan 3 R2.5: typed exception handlers BEFORE the generic
+        # catch-all. Order is specific-before-general because Python's
+        # except dispatch is first-match-wins by source order — the
+        # 2026-04-12 stage-2-probe review round found the inverse bug
+        # (R2c initially classified HTTPAuthError as inference_broken
+        # because the generic catch came first).
         try:
             text, usage = self._invoke_backend(
                 backend=backend,
@@ -647,10 +816,102 @@ class LLMRouter:
             )
             if text:
                 return text, usage, "success"
-        except Exception as e:
+        except BackendOverloaded as e:
+            self._note_provider_overload(
+                provider_key,
+                retry_after_s=getattr(e, "retry_after_s", 0.0),
+            )
+            self._record_suggested_peer_hint(getattr(e, "suggested_peer", None))
+            self._record_attempt_outcome(
+                provider_key,
+                outcome="overloaded",
+                extra={"retry_after_s": getattr(e, "retry_after_s", 0.0)},
+            )
+            return "", None, "failed"
+        except BackendAuthFailed:
+            # 300s hard cooldown — rotating a cluster key doesn't
+            # self-heal; operator intervention required. Record the
+            # ``last_error`` string first via a thin state update, then
+            # apply the long cooldown AFTER so ``_note_provider_failure``'s
+            # exponential ramp doesn't overwrite the hard value.
+            state = self._provider_states.get(provider_key)
+            if state is not None:
+                state.last_error = "auth_failed"
+            self._set_long_backoff(provider_key, 300.0)
+            self._record_attempt_outcome(provider_key, outcome="auth_failed")
+            return "", None, "failed"
+        except BackendModelMissing as e:
+            # 60s cooldown — operator needs to install the model; don't
+            # hammer the peer while it's not going to answer.
+            requested = getattr(e, "requested_model", "")
+            state = self._provider_states.get(provider_key)
+            if state is not None:
+                state.last_error = f"model_missing:{requested}"[:200]
+            self._set_long_backoff(provider_key, 60.0)
+            self._record_attempt_outcome(
+                provider_key,
+                outcome="model_missing",
+                extra={"requested_model": requested},
+            )
+            return "", None, "failed"
+        except BackendInferenceBroken:
+            # Stage-2 probe outcome — match the probe-cache TTL.
+            state = self._provider_states.get(provider_key)
+            if state is not None:
+                state.last_error = "inference_broken"
+            self._set_short_backoff(provider_key, INFERENCE_BROKEN_BACKOFF_S)
+            self._record_attempt_outcome(provider_key, outcome="inference_broken")
+            return "", None, "failed"
+        except BackendTimeout as e:
+            elapsed = getattr(e, "elapsed_s", 0.0) or 0.0
+            self._note_provider_failure(
+                provider_key,
+                f"timeout_{elapsed:.1f}s"[:200],
+            )
+            self._record_attempt_outcome(
+                provider_key,
+                outcome="timeout",
+                extra={"elapsed_s": round(elapsed, 2)},
+            )
+            return "", None, "failed"
+        except BackendDown as e:
+            http_status = getattr(e, "status", None)
+            self._note_provider_failure(
+                provider_key,
+                f"down_{http_status}"[:200] if http_status is not None else "down",
+            )
+            self._record_attempt_outcome(
+                provider_key,
+                outcome="down",
+                extra={"http_status": http_status},
+            )
+            return "", None, "failed"
+        except BackendError as e:
+            # Unmapped BackendError subclass or generic base. Records as
+            # generic_backend_error (still typed, still actionable — the
+            # fix_hint propagates through _log_provider_error below).
             self._log_provider_error(provider_key, e)
+            self._note_provider_failure(provider_key, "generic_backend_error")
+            self._record_attempt_outcome(provider_key, outcome="generic_backend_error")
+            return "", None, "failed"
+        except Exception as e:
+            # Safety net for non-typed exceptions. Non-zero count of
+            # ``backend_unclassified_errors_total`` means a backend
+            # raised something outside the BackendError hierarchy —
+            # file a bug and either extend the hierarchy or wrap the
+            # call site. See docs/plans/llm_path_fast_failover.md.
+            self._log_provider_error(provider_key, e)
+            self._note_provider_failure(provider_key, "unclassified")
+            _record_unclassified_backend_error(provider_key)
+            self._record_attempt_outcome(
+                provider_key,
+                outcome="unclassified",
+                extra={"error": type(e).__name__},
+            )
+            return "", None, "failed"
 
         self._note_provider_failure(provider_key, "call_failed")
+        self._record_attempt_outcome(provider_key, outcome="empty_response")
         return "", None, "failed"
 
     def _check_provider_budget(
