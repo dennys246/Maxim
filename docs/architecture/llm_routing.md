@@ -7,9 +7,12 @@
 
 ## How to read this doc — Present vs Target markers
 
-**This document describes the POST-0.4 target state.** About 50% of the named artifacts (`_MaximPeerBackend`, `BACKEND_CLASSES`, `BackendError` taxonomy, two-stage probe, per-outcome cache TTLs, `cluster_key`, `runtime/role.py`) do not yet exist in the codebase. They will exist once Plans 2-4 ship.
+**This document describes the POST-0.4 target state.** Plans 1, 2, and 3 have all shipped; only Plan 4 (Operator Visibility) remains as `[Target]`. The named artifacts flagged as load-bearing in earlier drafts (`_MaximPeerBackend`, `BACKEND_CLASSES` dispatch, `BackendError` taxonomy, two-stage probe, per-outcome cache TTLs, `runtime/role.py`) **all exist on main today**. The remaining `[Target]` markers are for Plan 4 artifacts (`cluster_key` rotation flow, admin API, request trace ring buffer, per-agent rate limiting).
 
-**Plan 1 R1 has SHIPPED** (PRs #88, #90): `maxim/utils/http.py`, `RequestContext`, `contextvars` propagation, header sanitization, typed `HTTPError` hierarchy, endpoint registry, JSONL dual-format logging, and `http_*` metrics all exist today on main. Layer 7 below is [Present].
+**Shipped:**
+- **Plan 1 R1** (PRs #88, #90): `maxim/utils/http.py`, `RequestContext`, `contextvars` propagation, header sanitization, typed `HTTPError` hierarchy, endpoint registry, JSONL dual-format logging, `http_*` metrics. Layer 7 is [Present].
+- **Plan 2 R2a-d** (PRs #92, #93): `runtime/role.py` single-source role detection, `BackendError` taxonomy in `types.py`, `_normalize_request_context` canonical shim, two-stage probe with `enable_stage2=True`, per-outcome cache TTLs, SSRF check moved to `utils/net.py`. Error taxonomy + probe lifecycle + role detection sections are [Present].
+- **Plan 3 R2.5 + R2.6** (PR #94): `_MaximPeerBackend` purpose-built self-hosted peer backend (exactly one HTTP call, typed failure), router typed-exception branches (specific-before-general ordering), `BACKEND_CLASSES` real dispatch table (not a dead identity map — `resolve_backend_class` is the one extension point), aggregated `dispatch_exhausted` WARN, `backend_unclassified_errors_total` safety-net counter, probe consolidation through `_MaximPeerBackend.health_check`, `stream_post` primitive in `utils/http.py`. Layer 5 + Layer 6 + the streaming contract difference are [Present].
 
 To keep orientation clear, major subsections are tagged:
 - **[Present]** — describes code that exists today on main
@@ -168,54 +171,79 @@ class RequestContext:
 - `BackendError` (generic) → normal failure
 - `Exception` (safety net) → increments `backend_unclassified_errors_total`; flag to investigate
 
-## Layer 5: Backend dispatch — `BACKEND_CLASSES` table [Target — Plan 3 R2.5]
+## Layer 5: Backend dispatch — `BACKEND_CLASSES` table [Present]
 
-*Current [Present] state: `lane_backends.py::_build_remote_backend` constructs `_OpenAIBackend` unconditionally for any remote URL. There is no dispatch table. Plan 3 R2.5 introduces `BACKEND_CLASSES` as a module-level dict + a `"backend_class"` config field.*
+**Plan 3 R2.5 SHIPPED.** `BACKEND_CLASSES` lives in [src/maxim/runtime/lane_backends.py](../../src/maxim/runtime/lane_backends.py) as a real module-level dict that maps each identifier to a `(module_path, class_name)` tuple (lazy imports so optional-dependency backends don't pay a startup cost). `resolve_backend_class(identifier)` is the single extension point for adding a new backend type: one line in the dict + one branch in `_classify_backend`, no router edit.
 
-**Who:** `src/maxim/runtime/lane_backends.py` — a module-level dict
+**R3 review fix context:** the original R2.5 shipment had `BACKEND_CLASSES` as an identity map (`{"maxim_peer": "maxim_peer", "openai": "openai"}`) with `LLMRouter._get_backend_for_provider` hardcoding the string literal branches. The pre-merge review round caught that the dispatch table provided zero real indirection. The post-review fix (commit `b26ef4b`) rewrote the table as authoritative tuples + wired `_get_backend_for_provider` to consult `resolve_backend_class` via `_maybe_dispatch_backend_class`. The hyphenated spelling `"maxim-peer"` is normalised to `"maxim_peer"` by `resolve_backend_class`, so operator configs using either form land on the same class.
 
-**Responsibility:** pick the right backend class for a provider config. "If the provider has `backend_class: maxim_peer`, instantiate `_MaximPeerBackend`. If `backend_class: openai`, instantiate `_OpenAIBackend`."
+**Who:** [src/maxim/runtime/lane_backends.py](../../src/maxim/runtime/lane_backends.py) — module-level dict + `resolve_backend_class` + `_classify_backend` helper.
+
+**Responsibility:** pick the right backend class for a provider config. "If the provider has `type: maxim_peer`, instantiate `_MaximPeerBackend`. If `type: openai` / `openai_compatible`, instantiate `_OpenAIBackend`." The provider-config `type` field is the authoritative identifier; `_build_remote_backend` writes `"maxim_peer"` for self-hosted lanes via `_classify_backend` at lane construction time.
 
 ```python
-BACKEND_CLASSES: dict[str, type] = {
-    "maxim_peer": _MaximPeerBackend,  # self-hosted peers (default for self-hosted URLs)
-    "openai": _OpenAIBackend,          # cloud providers (Anthropic, OpenAI, Groq, etc.)
-    "llama_cpp": _LlamaCppBackend,     # local llama.cpp
-    "transformers": _PyTorchTransformersBackend,  # PyTorch/HuggingFace
+BACKEND_CLASSES: dict[str, tuple[str, str]] = {
+    "openai": ("maxim.models.language.openai_backend", "_OpenAIBackend"),
+    "maxim_peer": ("maxim.models.language.maxim_peer_backend", "_MaximPeerBackend"),
 }
+
+
+def resolve_backend_class(identifier: str) -> type | None:
+    """Lazy-import the backend class for a BACKEND_CLASSES identifier.
+    Accepts "maxim_peer" + "maxim-peer" (normalises hyphens). Returns
+    None on unknown identifier or import failure — router falls through
+    to its 'unknown provider type' warning path."""
 ```
 
 **Why two OpenAI-compatible backends:** `_OpenAIBackend` has an internal retry loop + cost tracking + PII redaction — correct for cloud providers, wrong for self-hosted peers. `_MaximPeerBackend` is purpose-built for peer tunnels: single HTTP call, typed exceptions, no retry, no cost tracking. See [plans/llm_path_refinement.md](../plans/llm_path_refinement.md) for the full justification of why the backends are split.
 
-**The classification** (self-hosted vs cloud) happens earlier in `lane_backends._classify`. By the time we reach the `BACKEND_CLASSES` lookup, `backend_class` is already set on the provider config.
+**The classification** (self-hosted vs cloud) happens in [`lane_backends.py::LaneBackendManager._classify`](../../src/maxim/runtime/lane_backends.py) + `_classify_backend`. By the time we reach the `BACKEND_CLASSES` lookup, the provider config's `"type"` field is already set to the canonical identifier.
 
-## Layer 6: The backends [Mixed]
+## Layer 6: The backends [Present]
 
-### `_MaximPeerBackend` — self-hosted peer tunnels [Target — Plan 3 R2.5]
+### `_MaximPeerBackend` — self-hosted peer tunnels [Present — shipped in Plan 3 R2.5]
 
-**Does not exist yet.** The file `src/maxim/models/language/maxim_peer_backend.py` will be created in Plan 3 R2.5. This entire subsection describes the target design; cross-reference against Plan 3's spec for the exact shape. Until Plan 3 ships, self-hosted peer URLs flow through `_OpenAIBackend` (with its ~50s internal retry loop — the problem Plan 3 fixes).
+**Plan 3 R2.5 SHIPPED 2026-04-12** (PR #94, commit `824d737`). Lives in [src/maxim/models/language/maxim_peer_backend.py](../../src/maxim/models/language/maxim_peer_backend.py) — ~640 LOC. Pre-Plan-3 baseline for the fail-slow incident: ~63s real leader-restart recovery (measured 2026-04-12, RTX 5080 + Mac peer, README.md). Post-Plan-3 programmatic gate: `< 5s` p99 against mocked-dead-peer fixture (`tests/performance/test_fast_failover.py`); the real leader-restart re-measurement runs in Phase D of the stress protocol.
 
-**Who:** `src/maxim/models/language/maxim_peer_backend.py` (created in Plan 3)
+**Who:** [src/maxim/models/language/maxim_peer_backend.py](../../src/maxim/models/language/maxim_peer_backend.py)
 
-**Responsibility:** make exactly one HTTP call per `complete_with_usage()`. Raise a typed exception on failure. Do not retry.
+**Responsibility:** make exactly one HTTP call per `complete_with_usage()`. Raise a typed `BackendError` subclass on failure. Do not retry.
 
-**Why this shape:** the router does fallback. Retries at the backend level defeat fallback — they hold `_inference_lock` for minutes while the router could be trying a different provider in milliseconds.
+**Why this shape:** the router does fallback. Retries at the backend level defeat fallback — they hold `_inference_lock` for minutes while the router could be trying a different provider in milliseconds. The 2026-04-12 fail-slow incident was caused by `_OpenAIBackend`'s internal ~50s gateway-retry loop amplified by the lane lock (50s × one stuck call stalls every agent on the lane).
+
+**Load-bearing invariant:** `_MaximPeerBackend.complete_with_usage()` makes EXACTLY one HTTP call. Adding a `try: ... except: <call again>` block anywhere in this file re-introduces the fail-slow incident. CI grep enforces: `grep -nE "retry|backoff|gateway" src/maxim/models/language/maxim_peer_backend.py | grep -vE "retry_after_s|retry_timeout_s"` must return zero matches. The two allowed parameter-name matches are `BackendOverloaded.retry_after_s` (Plan 2 R2b contract) and `health_check.retry_timeout_s` (inherited from pre-R2.6 probe signature).
 
 **What it does:**
+- Normalise `request_context` via the canonical `_normalize_request_context` shim (Plan 2 R2b) — single bridge from legacy dict to typed `RequestContext`, no parallel implementation
 - Build the OpenAI-compatible chat completions payload
-- Call `http.post("peer-{provider_key}", path="/chat/completions", json=payload, context=context)`
-- Classify the HTTP response: 200 → parse → return `LLMResponse`; 429 → `BackendOverloaded`; 5xx → `BackendDown`; etc.
-- Support streaming via `http.stream_post(...)` — still one HTTP call, just with streaming body
+- Call `http.post("peer-{provider_key}", path="/chat/completions", json=payload, context=context)` or `http.stream_post(...)` for streaming
+- Classify the HTTP response in specific-before-general `except` order:
+  - `HTTPAuthError` (401/403) → `BackendAuthFailed`
+  - `HTTPRateLimited` (429) → `BackendOverloaded` (carries `retry_after_s` + `suggested_peer` + `queue_depth` from `X-Maxim-Queue-Depth` header)
+  - `HTTPClientError` 404 → `BackendModelMissing`
+  - `HTTPClientError` other 4xx → generic `BackendError`
+  - `HTTPServerError` (5xx) → `BackendDown` with `.status`
+  - `HTTPTimeout` → `BackendTimeout` with `elapsed_s`
+  - `HTTPConnectionError` → `BackendDown` (no status)
+  - Non-JSON response body with 200 status → `BackendInferenceBroken` (listener alive, chat endpoint broken)
+- Parse the OpenAI-compatible JSON into `LLMResponse` (with `cached_input_tokens` + `uncached_input_tokens` from `usage.prompt_tokens_details`)
 
 **What it does NOT do:**
 - NO retry loop
-- NO cost tracking
-- NO PII redaction (self-infrastructure)
+- NO internal cooldown
+- NO cost tracking (zero cost on self-hosted peers)
+- NO PII redaction (self-infrastructure — the router's cloud-redaction filter is a no-op for self-hosted providers)
 - NO OpenAI SDK dependency (direct httpx via `utils/http.py`)
 
-**Streaming:** one HTTP call, streaming body via httpx. Collects chunks into an `LLMResponse`. Mid-stream errors raise `BackendDown` and the router tries the next provider.
+**Streaming contract — intentional difference vs `_OpenAIBackend._stream_response`:** one HTTP call via `http.stream_post` → iterate SSE `data: ` lines → collect chunks → return `LLMResponse`. **Mid-stream failures raise `BackendDown`** — a malformed JSON chunk, an `HTTPConnectionError` during `iter_lines()`, or an empty-content stream all raise `BackendDown` with a per-call `peer_backend_failed` WARN emitted before the raise. The router falls over to a different provider. This is the opposite of `_OpenAIBackend._stream_response`, which silently collects partial output (see "Behaviors not obvious" section below). Locked in by `test_streaming_mid_stream_malformed_chunk_raises_backend_down` + `test_streaming_connection_error_mid_stream_raises_backend_down` + `test_streaming_empty_content_raises_backend_down`.
 
-**Health check:** the backend exposes `health_check() -> ProbeResult` implementing the two-stage probe (Plan 2 R2c). This is THE canonical probe implementation — `probe_llm_server` and `llm_server_responding_at` are deleted in Plan 3 R2.6 in favor of this method.
+**Shutdown awareness:** `is_shutdown_requested()` is checked (a) at the top of `complete_with_usage` before any HTTP call, and (b) inside every stream chunk iteration. In-flight HTTP calls are cancelled when the shared httpx client closes on process shutdown. Ctrl+C responsiveness is bounded by per-chunk arrival time during streaming + by connect/read timeout (2-5s typical) during the initial call.
+
+**Multi-agent context propagation:** the endpoint is registered with `internal=True`, so `utils/http.py::_build_headers` automatically sets `X-Maxim-Request-Id` / `X-Maxim-Agent-Id` / `X-Maxim-Session-Id` / `X-Maxim-Lane` / `X-Maxim-Protocol-Version` on every outbound call. The backend never threads context through function signatures — it sets the typed `RequestContext` on the `http.post` call via `context=context`, and `_build_headers` reads from there.
+
+**Health check:** `health_check() -> ProbeResult` is the canonical two-stage probe. Stage 1 (liveness) runs `GET /v1/models` with a two-attempt retry (`first_timeout_s=0.8` default, `retry_timeout_s=2.5` default) via the shared `runtime/llm_server._probe_once` helper. Stage 2 (readiness, opt-in via `enable_stage2=True`) runs a 1-token `POST /v1/chat/completions` via `_probe_stage2_readiness`. Results short-circuit on `ok` and `auth_rejected`. Probe events are emitted as `probe_started` / `probe_completed` JSONL with a shared `probe_id` correlation. Used by `lane_backends._validate_remote_urls`, `doctor/checks.py`, and the deprecated `probe_llm_server` compat shim — all funnel through the same implementation.
+
+**Lightweight factory:** `_MaximPeerBackend.for_url(url, api_key=k, model=m)` builds a minimal-cfg instance for callers that only need `health_check` against a URL. **R3 review critical fix:** `for_url` is concurrency-safe via an instance-level `_api_key_override` attribute — it does NOT mutate `os.environ`. The original R2.5 shipment wrote the probe key to `os.environ["MAXIM_PEER_PROBE_KEY"]` which raced under concurrent probes; the post-review fix (commit `b26ef4b`) stores the key on the returned instance's `_api_key_override` which `_get_api_key` consults before the env fallback. Verified by `test_for_url_does_not_mutate_os_environ` + `test_for_url_concurrent_instances_have_distinct_keys`.
 
 ### `_OpenAIBackend` — cloud providers [Present, unchanged by refinement]
 
@@ -322,7 +350,7 @@ Outside Maxim. HTTPS to the leader's Cloudflare tunnel (or direct LAN URL for pr
 
 ## Error taxonomy [Present]
 
-**Plan 2 R2b SHIPPED 2026-04-12.** The `BackendError` hierarchy lives in [src/maxim/models/language/types.py](../../src/maxim/models/language/types.py) and mirrors the `HTTPError` shape from `utils/http.py` exactly — same three access patterns (`.status`, `.response`, `.fix_hint`). Plan 3's router integration bridges HTTP → Backend exceptions with a simple `except HTTPRateLimited as e: raise BackendOverloaded(...)` pair instead of string-matching. The shared `INFERENCE_BROKEN_BACKOFF_S = 15.0` constant links router backoff to probe cache TTL (see R2c).
+**Plan 2 R2b SHIPPED 2026-04-12** — the `BackendError` hierarchy lives in [src/maxim/models/language/types.py](../../src/maxim/models/language/types.py) and mirrors the `HTTPError` shape from `utils/http.py` exactly — same three access patterns (`.status`, `.response`, `.fix_hint`). **Plan 3 R2.5 SHIPPED 2026-04-12** (PR #94) — the router's `_try_provider` now catches each typed subclass in specific-before-general order (`BackendOverloaded` → `BackendAuthFailed` → `BackendModelMissing` → `BackendInferenceBroken` → `BackendTimeout` → `BackendDown` → `BackendError` → `Exception` safety net) with the per-class backoff policy documented below. The HTTP → Backend bridge happens inside `_MaximPeerBackend` via simple `except HTTPRateLimited as e: raise BackendOverloaded(...) from e` pairs — no string matching. `INFERENCE_BROKEN_BACKOFF_S = 15.0` is the single source of truth linking router backoff to probe-cache TTL; imported from `types.py` by both `router.py` and `probe_cache.py` so the value cannot drift.
 
 The `BackendError` hierarchy is the router's language for classifying failures. Every class has a `.fix_hint` attribute so log lines are actionable without the operator needing to look up exception codes.
 
@@ -374,7 +402,7 @@ Maxim runs multiple agents concurrently under one user's API key (AgentPool, NPC
 - `utils/http.py::_build_headers` reads from it to set X-Maxim-* on outbound requests to internal endpoints
 - `log_structured(logger, level, event, data)` emits structured events that callers can enrich with agent_id from their own context
 - Plan 2 R2b's `_normalize_request_context` will bridge legacy dict contexts to `RequestContext`
-- Plan 3 R2.5's `_MaximPeerBackend.complete_with_usage` will use it directly (does not exist yet)
+- Plan 3 R2.5's `_MaximPeerBackend.complete_with_usage` uses it directly (shipped — delegates to `_normalize_request_context` and passes the typed `RequestContext` to `http.post` via `context=`)
 - Plan 4's admin API will read from it for per-agent stats (does not exist yet)
 
 **What does NOT use the context:**
@@ -415,7 +443,9 @@ Single-tenant deployment assumption: one user's API key controls one cluster. Mu
 
 ## Probe lifecycle [Present]
 
-**Plan 2 R2c SHIPPED 2026-04-12.** `probe_llm_server` now accepts `enable_stage2=True` to run a stage-2 readiness probe (micro-completion `POST /v1/chat/completions` with `max_tokens=1`) after stage-1 liveness returns `ok`. Failure produces the new `inference_broken` outcome. Non-HTTP exceptions in stage 2 log `probe_stage2_fallback` WARN and fall back to stage-1 ok — probe fragility never makes the system look dead. `probe_llm_server` still does the 2-attempt stage-1 retry for transient transport failures. `_classify_probe_cause` is unchanged; Plan 3 R2.5 will supersede the whole function via `_MaximPeerBackend.health_check()`.
+**Plan 3 R2.6 SHIPPED 2026-04-12** — probe consolidation is complete. `_MaximPeerBackend.health_check()` is the canonical two-stage probe entry point. Callers that only need a `ProbeResult` for a bare URL (no full `LLMConfig`) use `_MaximPeerBackend.for_url(url, api_key=k, model=m).health_check(enable_stage2=...)`. The historical functions in `runtime/llm_server.py` — `probe_llm_server`, `llm_server_responding_at`, `_probe_once` — **still exist as DEPRECATED thin compat shims** that delegate to `_MaximPeerBackend.health_check` / `for_url`, kept to avoid mass-migrating ~35 test mock sites across `test_probe_remote`, `test_lane_backends`, `test_doctor_p8_checks`, `test_decision_log`, and `test_llm_server`. The architectural goal "one probe implementation" is honored: `_probe_once` is the single shared liveness primitive, and `_probe_stage2_readiness` is the single shared readiness primitive, used by both the backend's `health_check` method AND the compat shims. **No new code paths may add call sites of the deprecated shims** — CI grep enforces this via an allow-list of the 4 existing sites in `.github/workflows/test.yml` (any new match fails CI with a migration hint pointing at `_MaximPeerBackend.for_url(...).health_check()`).
+
+**Plan 2 R2c** (shipped earlier in PR #92) introduced the two-stage probe itself: `probe_llm_server` accepts `enable_stage2=True` to run a stage-2 readiness probe (micro-completion `POST /v1/chat/completions` with `max_tokens=1`) after stage-1 liveness returns `ok`. Failure produces the `inference_broken` outcome. Non-HTTP exceptions in stage 2 log `probe_stage2_fallback` WARN and fall back to stage-1 ok — probe fragility never makes the system look dead. The specific-before-general `except` ordering in `_probe_stage2_readiness` (HTTPAuthError before HTTPError) is the regression guard for the R2c review bug where stage-2 mis-classified 401 as inference_broken. That same ordering discipline is applied in `_MaximPeerBackend.complete_with_usage` + the router's `_try_provider` + tests (`test_403_maps_to_backend_auth_failed_not_inference_broken`).
 
 Probes determine whether a peer is reachable and usable. Two stages:
 
@@ -621,11 +651,15 @@ Grep for the metric name in `lane_metrics.py` and the plans. Every metric has a 
 
 A grab-bag of behaviors that span layers or aren't visible from the happy path. Claude 2's architecture review flagged these as missing from the earlier draft — including them here makes future refactors safer.
 
-### Mid-stream failure in `_OpenAIBackend._stream_response` [Present]
+### Mid-stream failure: the two backends have intentionally different contracts [Present]
 
-Current [Present] state: the streaming path at [openai_backend.py:421-478](../../src/maxim/models/language/openai_backend.py#L421-L478) collects text chunks into a list. If a chunk iteration raises mid-stream, the method doesn't re-raise — it returns whatever text was collected so far with whatever `stop_reason` was last seen. This is a **silent partial-response path** that the router's empty-content detection will *not* catch if any text was received.
+Plan 3 shipped the streaming contract difference as a load-bearing design decision, not an implementation accident. Cross-reference before touching either file.
 
-Plan 3's `_MaximPeerBackend` takes a stricter approach: mid-stream HTTP errors raise `BackendDown` so the router falls over to a new provider. The two backends have intentionally different contracts here — cloud providers (`_OpenAIBackend`) tolerate partial responses because cloud streaming is commonly used for first-token-latency UX where "got some tokens" is better than "nothing." Peer tunnels (`_MaximPeerBackend`) prefer hard failure because the router has fallback options.
+**`_OpenAIBackend._stream_response`** ([openai_backend.py:421-478](../../src/maxim/models/language/openai_backend.py#L421-L478)) collects text chunks into a list. If a chunk iteration raises mid-stream, the method doesn't re-raise — it returns whatever text was collected so far with whatever `stop_reason` was last seen. This is a **silent partial-response path** that the router's empty-content detection will *not* catch if any text was received. Cloud providers (`_OpenAIBackend`) tolerate partial responses because cloud streaming is commonly used for first-token-latency UX where "got some tokens" is better than "nothing."
+
+**`_MaximPeerBackend._stream_response`** ([maxim_peer_backend.py](../../src/maxim/models/language/maxim_peer_backend.py)) takes the opposite approach: **mid-stream failures raise `BackendDown`** — not a partial `LLMResponse`. A malformed JSON chunk, an `HTTPConnectionError` during `iter_lines()`, or an empty-content stream all raise `BackendDown` with a per-call `peer_backend_failed` WARN emitted before the raise. Peer tunnels prefer hard failure because the router has fallback options and can re-dispatch to a different provider faster than collecting garbage from a broken peer.
+
+Locked in by `test_streaming_mid_stream_malformed_chunk_raises_backend_down` + `test_streaming_connection_error_mid_stream_raises_backend_down` + `test_streaming_empty_content_raises_backend_down`. Any future refactor that introduces a unified streaming path MUST preserve the strict-fail contract for peer backends. Do NOT try to "fix" the peer backend to match the cloud one — that would re-introduce the class of silent-partial-output bugs Plan 3 was designed to eliminate.
 
 ### `LaneBackendManager.unload_all` shutdown semantics [Present]
 
