@@ -200,12 +200,7 @@ def _search_duckduckgo(
     logger.info("Lite scraper failed, trying Instant Answer API (limited)")
 
     # Method 3: Fall back to Instant Answer API (only works for knowledge queries)
-    try:
-        import urllib.request
-        import urllib.error
-    except ImportError:
-        logger.error("urllib not available")
-        return []
+    from maxim.utils import http as _http
 
     results: list[dict[str, str]] = []
 
@@ -213,61 +208,62 @@ def _search_duckduckgo(
     api_url = f"https://api.duckduckgo.com/?q={quote_plus(query)}&format=json&no_html=1&skip_disambig=1"
 
     try:
-        request = urllib.request.Request(
+        response = _http.fetch_url(
             api_url,
+            method="GET",
             headers={"User-Agent": "Maxim/1.0 (Research Assistant; +https://github.com/maxim)"},
+            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, total_s=timeout_s + 2.0),
         )
-        with urllib.request.urlopen(request, timeout=timeout_s) as response:
-            data = json.loads(response.read().decode("utf-8"))
+        data = response.json()
 
-            # Check for abstract (main result)
-            if data.get("Abstract"):
+        # Check for abstract (main result)
+        if data.get("Abstract"):
+            results.append(
+                _make_search_result(
+                    title=data.get("Heading", query),
+                    url=data.get("AbstractURL", ""),
+                    snippet=data.get("Abstract", ""),
+                )
+            )
+
+        # Check for related topics
+        for topic in data.get("RelatedTopics", [])[: max_results - len(results)]:
+            if isinstance(topic, dict):
+                if "Topics" in topic:
+                    # Nested topics
+                    for subtopic in topic.get("Topics", []):
+                        if len(results) >= max_results:
+                            break
+                        if isinstance(subtopic, dict) and subtopic.get("FirstURL"):
+                            results.append(
+                                _make_search_result(
+                                    title=subtopic.get("Text", "")[:100],
+                                    url=subtopic.get("FirstURL", ""),
+                                    snippet=subtopic.get("Text", ""),
+                                )
+                            )
+                elif topic.get("FirstURL"):
+                    results.append(
+                        _make_search_result(
+                            title=topic.get("Text", "")[:100],
+                            url=topic.get("FirstURL", ""),
+                            snippet=topic.get("Text", ""),
+                        )
+                    )
+
+        # Check for results (rarely populated)
+        for result in data.get("Results", [])[: max_results - len(results)]:
+            if isinstance(result, dict) and result.get("FirstURL"):
                 results.append(
                     _make_search_result(
-                        title=data.get("Heading", query),
-                        url=data.get("AbstractURL", ""),
-                        snippet=data.get("Abstract", ""),
+                        title=result.get("Text", "")[:100],
+                        url=result.get("FirstURL", ""),
+                        snippet=result.get("Text", ""),
                     )
                 )
 
-            # Check for related topics
-            for topic in data.get("RelatedTopics", [])[: max_results - len(results)]:
-                if isinstance(topic, dict):
-                    if "Topics" in topic:
-                        # Nested topics
-                        for subtopic in topic.get("Topics", []):
-                            if len(results) >= max_results:
-                                break
-                            if isinstance(subtopic, dict) and subtopic.get("FirstURL"):
-                                results.append(
-                                    _make_search_result(
-                                        title=subtopic.get("Text", "")[:100],
-                                        url=subtopic.get("FirstURL", ""),
-                                        snippet=subtopic.get("Text", ""),
-                                    )
-                                )
-                    elif topic.get("FirstURL"):
-                        results.append(
-                            _make_search_result(
-                                title=topic.get("Text", "")[:100],
-                                url=topic.get("FirstURL", ""),
-                                snippet=topic.get("Text", ""),
-                            )
-                        )
-
-            # Check for results (rarely populated)
-            for result in data.get("Results", [])[: max_results - len(results)]:
-                if isinstance(result, dict) and result.get("FirstURL"):
-                    results.append(
-                        _make_search_result(
-                            title=result.get("Text", "")[:100],
-                            url=result.get("FirstURL", ""),
-                            snippet=result.get("Text", ""),
-                        )
-                    )
-
-    except urllib.error.URLError as e:
-        logger.warning(f"DuckDuckGo API request failed: {e}")
+    except _http.HTTPError as e:
+        logger.warning(f"DuckDuckGo API request failed: {e.fix_hint}")
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse DuckDuckGo response: {e}")
     except Exception as e:
@@ -310,13 +306,16 @@ def _search_duckduckgo_lite(
             response = pool.request("GET", search_url, headers=headers)
             html = response.data.decode("utf-8", errors="ignore")
         else:
-            # Fall back to urllib
-            import urllib.request
-            import urllib.error
+            # Fall back to maxim.utils.http (httpx under the hood)
+            from maxim.utils import http as _http
 
-            request = urllib.request.Request(search_url, headers=headers)
-            with urllib.request.urlopen(request, timeout=timeout_s) as response:
-                html = response.read().decode("utf-8", errors="ignore")
+            maxim_resp = _http.fetch_url(
+                search_url,
+                method="GET",
+                headers=headers,
+                timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, total_s=timeout_s + 2.0),
+            )
+            html = maxim_resp.content.decode("utf-8", errors="ignore")
 
         logger.debug(f"DuckDuckGo HTML response length: {len(html)}")
 
