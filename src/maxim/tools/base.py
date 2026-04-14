@@ -14,6 +14,26 @@ class ToolOutput:
     Internal to the tools layer. The agent loop converts this to a bus
     ToolResult (agents.bus.ToolResult) before publishing, adding
     tool_call_id, tool_name, and params for downstream subscribers.
+
+    ``side_effects`` is a typed channel for bio-pipeline signals the
+    executor / bridge layer branches on. It is separate from ``metadata``
+    (caller-facing extras) and ``output`` (the main result). The
+    ``tools/`` layer itself stays agnostic of these signals — the shape
+    is a plain ``dict[str, Any]`` keyed by well-known strings, and
+    consumers (bridges, bio-systems) know the keys they care about.
+
+    Well-known ``side_effects`` keys (append-only, document new ones here):
+
+    - ``"embodiment_failures"``: ``list[dict]`` of SEM failure event dicts
+      with shape ``{"name": failure_mode, "entity": entity_path,
+      "pain": intensity}``. Populated by
+      ``ModulatorAffordanceTool.execute`` when
+      ``embodiment.evaluate_failures()`` fires post-action. Consumed by
+      ``runtime/executor.py`` which routes to
+      ``ToolPainBridge.record_tool_embodiment_failure`` for direct NAc
+      attribution. A tool that succeeded at its action but produced
+      embodiment failures still returns ``success=True`` — the tool did
+      what was asked; the side-effect reports what the body felt.
     """
 
     success: bool
@@ -21,6 +41,7 @@ class ToolOutput:
     error: str | None = None
     error_kind: ToolErrorKind | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    side_effects: dict[str, Any] | None = None
 
 
 # Backward-compat alias — existing tools that import ToolResult keep working.

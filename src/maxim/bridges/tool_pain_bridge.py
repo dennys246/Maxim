@@ -161,6 +161,128 @@ class ToolPainBridge:
             return rpe
         return 0.0
 
+    def record_tool_embodiment_failure(
+        self,
+        tool_name: str,
+        invocation_id: str,
+        failures: list[dict[str, Any]],
+    ) -> float:
+        """Attribute embodiment failures to a pending tool event — directly.
+
+        Called by the executor after ``tool.run()`` returns with
+        ``ToolOutput.side_effects["embodiment_failures"]`` populated
+        (the tool ran, but the body produced SEM failures). This is the
+        production replacement for the pre-fix attribution path that
+        relied on ``_on_embodiment_pain``'s context-similarity match —
+        which silently failed because the pending tool event's context
+        (``{"params": ...}``) shared zero keys with the rich outcome
+        context emitted by ``body.py::_publish_pain``. See
+        ``docs/plans/sem_execution_hook.md`` Stage 1 for the full
+        root-cause writeup.
+
+        This method pops the pending tool event by ``(tool_name,
+        invocation_id)`` and calls ``nac.record_outcome`` (not
+        ``record_outcome_full``) with a direct event_id — NO context
+        similarity, NO attribution ambiguity. Mirrors the shape of
+        :meth:`record_tool_complete` on the failure side. Specifically,
+        this method also:
+
+        - updates ``_tool_index`` with a negative outcome (the learned
+          tool index was previously asymmetric — only positive outcomes
+          updated the keyword weights, so the index silently biased
+          toward tools that happened to succeed first)
+        - generates + stores a reflexion memory when ``rpe > 0.3``
+          (surprising failures are exactly the signal reflexion is
+          designed to learn from — the pre-fix ``_on_pain`` embodiment
+          branch already did this, so dropping it would be a
+          behavioral regression)
+
+        Args:
+            tool_name: Name of the tool whose execution produced the
+                embodiment failures.
+            invocation_id: Unique invocation ID from the executor.
+            failures: Non-empty list of failure event dicts. Shape per
+                entry: ``{"name": failure_mode, "entity": entity_path,
+                "pain": intensity}``. The first entry's metadata
+                populates the outcome context. Callers MUST ensure the
+                list is non-empty — the executor's branch
+                (``runtime/executor.py``) already guards on this, and
+                an empty list here indicates a programming error.
+
+        Returns:
+            RPE magnitude from NAc's Rescorla-Wagner update. Zero if no
+            pending event matched or no links formed.
+
+        Raises:
+            ValueError: If ``failures`` is empty. This is a precondition
+                violation; the caller's guard is the load-bearing check.
+        """
+        if not failures:
+            raise ValueError(
+                "record_tool_embodiment_failure requires a non-empty failures list; "
+                "the caller (runtime/executor.py) is responsible for gating on this."
+            )
+
+        with self._lock:
+            event_signature = self._pending_tools.pop((tool_name, invocation_id), None)
+            tool_context = self._pending_contexts.pop((tool_name, invocation_id), None)
+        if not event_signature:
+            return 0.0
+
+        primary = failures[0]
+        outcome_context: dict[str, Any] = {
+            "source": "embodiment",
+            "failure_mode": primary.get("name", ""),
+            "entity": primary.get("entity", ""),
+            "intensity": float(primary.get("pain", 0.0)),
+            "failures": failures,
+        }
+
+        links = self._nac.record_outcome(
+            event_type="tool",
+            event_id=event_signature,
+            outcome_valence=Valence.NEGATIVE,
+            context=outcome_context,
+        )
+        rpe = max((lnk.last_rpe or 0.0 for lnk in links), default=0.0) if links else 0.0
+        self._last_rpe = rpe
+        self._create_causal_edges(links)
+
+        # Parity with record_tool_complete's tool-index update, on the
+        # negative side. Without this, the learned tool index silently
+        # biases toward tools that happened to succeed first — an
+        # asymmetric-bias bug the pre-merge review caught.
+        if self._tool_index is not None and tool_context:
+            goal_text = tool_context.get("goal", "")
+            if goal_text:
+                self._tool_index.record_outcome(goal_text, tool_name, success=False)
+
+        # Reflexion: generate + store verbal self-critique for surprising
+        # failures. Mirrors the `_on_pain` embodiment branch the pre-fix
+        # path used — dropping it would be a silent behavioral regression
+        # on exactly the signal reflexion exists to capture.
+        if rpe > 0.3 and links:
+            action_dict = {"tool_name": tool_name, "params": outcome_context}
+            error_str = f"embodiment:{outcome_context['failure_mode']}"
+            reflection = self._generate_reflection(links, action_dict, error_str, outcome_context)
+            if reflection:
+                self._store_reflection(reflection, action_dict)
+
+        # Register temporal context with SCN (mirror record_tool_complete path).
+        if self._scn is not None:
+            try:
+                from maxim.time.temporal_signature import TemporalSignature
+
+                self._scn.register(
+                    event_signature,
+                    TemporalSignature.now(),
+                    significance=outcome_context["intensity"] or 0.5,
+                )
+            except Exception:
+                pass  # SCN registration is best-effort.
+
+        return rpe
+
     def _on_pain(self, signal: PainSignal) -> None:
         """Handle pain signals from tool failures and embodiment failures."""
         # Embodiment-sourced failures (SEM entities)
@@ -214,9 +336,67 @@ class ToolPainBridge:
     def _on_embodiment_pain(self, signal: PainSignal) -> None:
         """Handle pain signals from embodiment failures (SEM entities).
 
-        Records the failure as a NAc causal link with composition metadata,
-        registers temporal context with SCN, and creates causal edges.
+        Two paths:
+
+        1. **Tool-invoked** (ANY pending tool is in flight): SKIP NAc
+           attribution here. The executor will call
+           :meth:`record_tool_embodiment_failure` after ``tool.run()``
+           returns, using direct ``(tool_name, invocation_id)`` lookup.
+           This is the production path for tool-invoked SEM affordances.
+           The pre-fix context-similarity attribution silently failed
+           for this case (``{"params": ...}`` vs the rich outcome
+           context shared zero keys).
+
+        2. **Out-of-band** (no pending tool): fall through to
+           ``record_outcome_full`` with the rich signal context, letting
+           NAc's temporal-window + context-similarity path attribute the
+           pain to any other pending events. This is the autonomous-SEM
+           tick path — a joint limit trips while no tool is running.
+
+        **Broad-guard semantics** (cross-confirmed in the pre-merge
+        review): the guard checks ``bool(self._pending_tools)`` — ANY
+        pending tool suppresses attribution here, not just the specific
+        tool whose modulator caused this pain. This is safe under the
+        current **serialized-executor** contract (one ``Executor`` +
+        one ``ToolPainBridge`` per agent instance; executions are
+        serialized through ``Executor._lock``; concurrent executions
+        happen only across agents and each agent has its own bridge).
+        If a future refactor introduces concurrent in-flight tool
+        executions sharing a single bridge, this guard becomes
+        **over-broad** and will silently drop out-of-band embodiment
+        pain for the duration of any pending tool. Narrow the guard
+        at that point by iterating ``_pending_contexts`` and matching
+        ``signal.context.get("entity")`` against stored per-pending
+        entity metadata — which requires the executor to record entity
+        at ``record_tool_start`` time.
+
+        **Out-of-band path weakness** (also cross-confirmed): the
+        context-similarity fall-through (``record_outcome_full`` below)
+        remains subject to the same ``{"params": ...}`` vs rich-context
+        mismatch that motivated this fix — it only attributes when a
+        pending NON-tool event happens to share keys with the
+        embodiment outcome. This is acceptable as Stage 1 scope
+        because out-of-band embodiment pain has no direct-lookup key
+        available. If this silently-drops-attribution case becomes a
+        problem in practice, the remedy is a future stage that enriches
+        the pending-event context on the non-tool path, not another
+        band-aid here.
+
+        The guard reads ``self._pending_tools`` under the existing lock
+        — no new threadlocal, no new ContextVar, no re-entrancy hazard
+        (explicitly forbidden by ``proprioception/pain_bus.py`` docstring
+        after the Substrate P2 Stage 2 incident).
         """
+        with self._lock:
+            has_pending_tool = bool(self._pending_tools)
+        if has_pending_tool:
+            # Executor will attribute via record_tool_embodiment_failure
+            # after tool.run returns. Skip here to avoid both (a) the
+            # broken context-similarity path and (b) double-recording.
+            # See the broad-guard-semantics note in the docstring for
+            # the serialized-executor assumption.
+            return
+
         entity_path = signal.context.get("entity", "")
         failure_mode = signal.context.get("failure_mode", "")
         composes = signal.context.get("composes", [])

@@ -213,7 +213,43 @@ class Executor:
             self._tools_succeeded.append(tool_name)
             self._consecutive_failures = 0
             if self._tool_pain_bridge is not None:
-                self._tool_pain_bridge.record_tool_complete(tool_name, invocation_id, success=True)
+                # Embodiment-failure side channel: the tool ran, but
+                # the body produced SEM failures (e.g., rusty_sword
+                # shattered on slash). Route to direct-attribution
+                # path instead of record_tool_complete so NAc learns
+                # tool→negative by event_id, not by the broken
+                # context-similarity path in _on_embodiment_pain.
+                # See ToolPainBridge.record_tool_embodiment_failure
+                # and tools/base.py::ToolOutput.side_effects.
+                #
+                # Wrapped in try/except per CLAUDE.md invariant that
+                # bridge callbacks must not crash the agent loop. A
+                # bug in NAc.record_outcome, _create_causal_edges, or
+                # the reflection path would otherwise propagate up
+                # through execute() into the loop controller. Bridge
+                # failures degrade learning, not availability.
+                try:
+                    embodiment_failures: list[dict[str, Any]] | None = None
+                    if result.side_effects:
+                        raw = result.side_effects.get("embodiment_failures")
+                        if isinstance(raw, list) and raw:
+                            embodiment_failures = raw
+                    if embodiment_failures is not None:
+                        self._tool_pain_bridge.record_tool_embodiment_failure(
+                            tool_name,
+                            invocation_id,
+                            embodiment_failures,
+                        )
+                    else:
+                        self._tool_pain_bridge.record_tool_complete(tool_name, invocation_id, success=True)
+                except Exception as bridge_err:
+                    import logging as _logging
+
+                    _logging.getLogger(__name__).warning(
+                        "tool_pain_bridge post-execute attribution failed for %s: %s",
+                        tool_name,
+                        bridge_err,
+                    )
         else:
             self._report_failure(tool_name, invocation_id, result, params)
 

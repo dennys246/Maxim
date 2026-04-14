@@ -173,14 +173,25 @@ class ModulatorAffordanceTool(Tool):
             except Exception:
                 pass
 
-        return {
+        output_dict: dict[str, Any] = {
             "entity": result.entity_name,
             "affordance": result.affordance,
             "success": True,
             "entity_state": entity_state,
+            # NOTE: `active_failures` stays in `output` for callers
+            # (LLMs, sim display) that want to reason about failures
+            # in the prompt. The bio-pipeline signal for NAc learning
+            # travels through `side_effects["embodiment_failures"]`
+            # and is consumed by runtime/executor.py. Two audiences,
+            # two channels, same data.
             "active_failures": active_failures,
             **result.metadata,
         }
+        return ToolOutput(
+            success=True,
+            output=output_dict,
+            side_effects=({"embodiment_failures": active_failures} if active_failures else None),
+        )
 
 
 class EntitySenseTool(Tool):
