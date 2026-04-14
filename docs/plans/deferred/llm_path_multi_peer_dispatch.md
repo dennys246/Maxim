@@ -119,5 +119,5 @@ Before reviving, ALL of the following must be true:
 ## Related docs
 
 - **Current plan:** [../llm_path_operator_visibility.md](../llm_path_operator_visibility.md)
-- **Previous plan:** [../llm_path_fast_failover.md](../llm_path_fast_failover.md)
+- **Previous plan:** [../llm_path_fast_failover.md](../archive/llm_path_fast_failover.md)
 - **Meta plan:** [../llm_path_refinement.md](../llm_path_refinement.md)

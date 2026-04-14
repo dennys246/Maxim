@@ -5,8 +5,8 @@
 **Target version:** A+B in 0.4. C spans 0.4/0.5 depending on session cadence.
 **Part of:** [llm_path_refinement.md](llm_path_refinement.md)
 **Depends on:**
-- [llm_path_fast_failover.md](llm_path_fast_failover.md) (Plan 3) — typed-exception router loop ✅ shipped
-- [llm_path_cancellation_hygiene.md](llm_path_cancellation_hygiene.md) (Plan 3.5) — "HTTP fires first" contract ✅ shipped
+- [archive/llm_path_fast_failover.md](archive/llm_path_fast_failover.md) (Plan 3) — typed-exception router loop ✅ shipped
+- [archive/llm_path_cancellation_hygiene.md](archive/llm_path_cancellation_hygiene.md) (Plan 3.5) — "HTTP fires first" contract ✅ shipped
 - [llm_path_peer_failover.md](llm_path_peer_failover.md) (Plan 3.6) — VRAM spillover detection + multi-leader precursor ✅ shipped
 **Note:** renamed from "Reactive Mesh" in v1. Multi-peer dispatch moved to [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md). Capability-aware ranking is [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md).
 **Bake-in target (2026-04-13):** the user's RTX 5080 + RTX 3070 setup is the concrete two-node deployment for testing `mesh.yml`'s schema validation, drain/resume, per-node admin endpoints, and per-agent rate limiting. Plan 3.6 unblocks failover testing without waiting for the full Plan 4 admin API.
@@ -652,9 +652,9 @@ Update `MEMORY.md`.
 
 ## Related docs
 
-- **Previous plan:** [llm_path_fast_failover.md](llm_path_fast_failover.md) — prerequisite
+- **Previous plan:** [archive/llm_path_fast_failover.md](archive/llm_path_fast_failover.md) — prerequisite
 - **Meta plan:** [llm_path_refinement.md](llm_path_refinement.md)
-- **Foundation:** [llm_path_foundation.md](llm_path_foundation.md)
+- **Foundation:** [archive/llm_path_foundation.md](archive/llm_path_foundation.md)
 - **Architecture:** [../architecture/llm_routing.md](../architecture/llm_routing.md) — extended by this plan
 - **Architecture:** [../architecture/mesh_operations.md](../architecture/mesh_operations.md) — created by this plan
 - **Deferred:** [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — multi-peer we chose NOT to build now

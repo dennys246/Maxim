@@ -3,7 +3,7 @@
 **Status:** Deferred shell plan — scope not fully designed
 **Revive when:** multi-agent workloads show significant head-of-line blocking on `LLMRouter._inference_lock` under post-Plan-2 stress tests, AND `llama.cpp --parallel` batching does not sufficiently hide the blocking.
 **Estimated scope:** ~800-1,200 LOC (large refactor)
-**Depends on:** [llm_path_fast_failover.md](../llm_path_fast_failover.md) (Plan 2) — `_MaximPeerBackend` must exist first
+**Depends on:** [llm_path_fast_failover.md](../archive/llm_path_fast_failover.md) (Plan 2) — `_MaximPeerBackend` must exist first
 **Related deferred:** [llm_path_fair_scheduling.md](llm_path_fair_scheduling.md)
 
 ## Why this was deferred
@@ -68,6 +68,6 @@ Approach B first (small, safe, fixes the 2-peer case). If stress tests still sho
 
 ## Related docs
 
-- **Plan:** [../llm_path_fast_failover.md](../llm_path_fast_failover.md) — shortens the blocking duration
+- **Plan:** [../llm_path_fast_failover.md](../archive/llm_path_fast_failover.md) — shortens the blocking duration
 - **Deferred sibling:** [llm_path_fair_scheduling.md](llm_path_fair_scheduling.md) — fairness layer that would sit on top
 - **Deferred sibling:** [llm_path_multi_peer_dispatch.md](llm_path_multi_peer_dispatch.md) — distribution alternative

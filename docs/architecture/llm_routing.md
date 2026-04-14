@@ -752,7 +752,7 @@ Each of these has a deferred plan documenting when to revive it.
 ## Related docs
 
 - **Plans:** [llm_path_refinement.md](../plans/llm_path_refinement.md) — meta-plan
-- **Sub-plans:** [llm_path_foundation.md](../plans/llm_path_foundation.md), [llm_path_typed_errors.md](../plans/llm_path_typed_errors.md), [llm_path_fast_failover.md](../plans/llm_path_fast_failover.md), [llm_path_operator_visibility.md](../plans/llm_path_operator_visibility.md)
+- **Sub-plans:** [llm_path_foundation.md](../plans/archive/llm_path_foundation.md), [llm_path_typed_errors.md](../plans/archive/llm_path_typed_errors.md), [llm_path_fast_failover.md](../plans/archive/llm_path_fast_failover.md), [llm_path_operator_visibility.md](../plans/llm_path_operator_visibility.md)
 - **Deferred plans:** [../plans/deferred/llm_path_multi_peer_dispatch.md](../plans/deferred/llm_path_multi_peer_dispatch.md), [../plans/deferred/llm_path_async_router.md](../plans/deferred/llm_path_async_router.md), [../plans/deferred/llm_path_fair_scheduling.md](../plans/deferred/llm_path_fair_scheduling.md)
 - **Operator runbook** (created by Plan 4): [mesh_operations.md](mesh_operations.md)
 - **Troubleshooting:** [../troubleshooting/http_debugging.md](../troubleshooting/http_debugging.md), [../troubleshooting/peer_backend_debug.md](../troubleshooting/peer_backend_debug.md), [../troubleshooting/mesh_debug.md](../troubleshooting/mesh_debug.md)

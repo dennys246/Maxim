@@ -1,10 +1,27 @@
 # LLM Path Refinement — meta-plan
 
-**Status:** Draft v4 — four sub-plans + three deferred shell plans
-**Scope:** ~1,800 LOC new + ~1,330 LOC deleted across four sub-plans
+**Status:** v5 — Plans 1, 2, 3, 3.5 fully shipped and archived. Plan 3.6 R5 + Plan 4 Stage A+B shipped. Only Plan 4 Stage C + remaining substrate P2 validation + stress phases A/B/C/E remain in scope.
+**Scope:** ~2,400 LOC new + ~1,330 LOC deleted across six sub-plans (1, 2, 3, 3.5, 3.6, 4)
 **Target version:** **0.4** (single stability version containing all LLM path sub-plans)
-**Last updated:** 2026-04-12
+**Last updated:** 2026-04-14
 **Deployment model:** single-tenant (one user controls their leader via API key; multi-agent under that key is in scope; multi-tenant user isolation is NOT)
+
+## Current ship state (2026-04-14)
+
+| Sub-plan | Status | PR / commit | Plan doc |
+|---|---|---|---|
+| Plan 1 (Foundation) | ✅ shipped | PRs #88, #90, #91 | [archive/llm_path_foundation.md](archive/llm_path_foundation.md) |
+| Plan 2 (Typed Errors) | ✅ shipped | PRs #92, #93 | [archive/llm_path_typed_errors.md](archive/llm_path_typed_errors.md) |
+| Plan 3 (Fast Failover) | ✅ shipped | PR #94 (`ce5f034`) | [archive/llm_path_fast_failover.md](archive/llm_path_fast_failover.md) |
+| Plan 3.5 (Cancellation Hygiene) | ✅ shipped | PR #96 (`6a4f505`) | [archive/llm_path_cancellation_hygiene.md](archive/llm_path_cancellation_hygiene.md) |
+| Plan 3.6 R5 (VRAM spillover) | ✅ shipped | PR #99 (`2884e58`) | [llm_path_peer_failover.md](llm_path_peer_failover.md) — R1–R4 remain draft |
+| Plan 4 Stage A (agent_id) | ✅ shipped in review | `71f7c24` on `feat/llm-path-operator-visibility` | [llm_path_operator_visibility.md](llm_path_operator_visibility.md) |
+| Plan 4 Stage B (bench) | ✅ shipped in review | same | same |
+| Plan 4 Stage C (mesh.yml + admin API) | ⏳ DEFERRED | — | same (Stage C section) |
+| Stress test Phase D | ✅ shipped | [llm_path_stress_20260413.md](../experiments/results/llm_path_stress_20260413.md) | — |
+| Stress test Phase D2 (bench) | ✅ shipped | [llm_path_stress_plan4_20260414.md](../experiments/results/llm_path_stress_plan4_20260414.md) | — |
+| Stress test Phases A, B, C, E | ⏳ remaining | — | — |
+| Substrate P2 validation | ⏳ remaining | — | — |
 
 ## What this is
 
@@ -23,7 +40,7 @@ The original meta-plan listed four sub-plans (1, 2, 3, 4). Two more have been ad
 
 All ship under version **0.4** as a single "major stability" milestone per user decision.
 
-### Plan 1: Foundation Cleanup — [llm_path_foundation.md](llm_path_foundation.md)
+### Plan 1: Foundation Cleanup — [llm_path_foundation.md](archive/llm_path_foundation.md)
 
 **~450 LOC new, ~1,330 LOC deleted. Pure refactoring.**
 
@@ -32,7 +49,7 @@ All ship under version **0.4** as a single "major stability" milestone per user 
 
 **Ship when:** zero `urllib.request.urlopen` outside `utils/http.py`, fast suite green, manual smoke passes.
 
-### Plan 2: Typed Errors + Role Detection — [llm_path_typed_errors.md](llm_path_typed_errors.md)
+### Plan 2: Typed Errors + Role Detection — [llm_path_typed_errors.md](archive/llm_path_typed_errors.md)
 
 **~280 LOC new. Split out of former Plan 1 per user decision — each sub-phase ships and tests independently.**
 
@@ -43,7 +60,7 @@ All ship under version **0.4** as a single "major stability" milestone per user 
 
 **Ship when:** all four sub-phases have independent tests green, first startup log line is `event=role_detected`, all typed exceptions have `.fix_hint`.
 
-### Plan 3: Fast Failover — [llm_path_fast_failover.md](llm_path_fast_failover.md)
+### Plan 3: Fast Failover — [llm_path_fast_failover.md](archive/llm_path_fast_failover.md)
 
 **~420 LOC new, ~-80 LOC deleted. The single most important reliability win.**
 
@@ -54,7 +71,7 @@ All ship under version **0.4** as a single "major stability" milestone per user 
 
 **Ship when:** p99 gate met, zero `retry|backoff|gateway` in `maxim_peer_backend.py` (CI grep), stress test protocol complete.
 
-### Plan 3.5: Cancellation Hygiene — [llm_path_cancellation_hygiene.md](llm_path_cancellation_hygiene.md)
+### Plan 3.5: Cancellation Hygiene — [llm_path_cancellation_hygiene.md](archive/llm_path_cancellation_hygiene.md)
 
 **~600 LOC new across 6 stages. Shipped 2026-04-13 (PR #96, `6a4f505`).** Inserted between Plan 3 and Plan 4 after stress test trace2 exposed a stacked-60s-timeout cascade.
 
