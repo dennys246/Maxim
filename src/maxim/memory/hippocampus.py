@@ -60,9 +60,9 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class EpisodeConfig:
-    """P3a Stage 1 — configuration knobs for episode binding.
+    """P3a Stage 1 + Stage 2 — configuration knobs for episode binding.
 
-    All four fields override cleanly via ``HippocampusConfig(episode=
+    Fields override cleanly via ``HippocampusConfig(episode=
     EpisodeConfig(hebbian_delta=0.2))``. No module-level constants, no
     monkeypatching required — this is the home for the knobs that
     Stage 2's fixture sweeps will move.
@@ -88,6 +88,27 @@ class EpisodeConfig:
     # Upper clamp on Hebbian edge weight — no single episode sequence
     # can drive a weight above this.
     hebbian_max: float = 1.0
+
+    # ─────────────────────────────────────────────────────────────────
+    # P3a Stage 2 — retrieval tuning (multi-hop spreading_activation)
+    # These knobs control ``Hippocampus.retrieve_on_cue(..., multi_hop=True)``.
+    # One-hop retrieval ignores them entirely.
+    # ─────────────────────────────────────────────────────────────────
+
+    # Per-hop activation decay for ``spreading_activation``. Values in
+    # ``[0, 1]``; higher = activation travels farther. Default 0.7
+    # gives ~3-hop effective reach on the Stage 2 hub+chain fixture
+    # before falling below ``retrieval_threshold``.
+    retrieval_decay: float = 0.7
+
+    # Minimum activation to keep a node in the retrieved set. Nodes
+    # whose multi-hop weight falls below this are pruned. Low values
+    # reach deeper chains; very low values risk spreading to
+    # cross-topic noise.
+    retrieval_threshold: float = 0.001
+
+    # Maximum hops from the cue. Hard cap on traversal depth.
+    retrieval_max_depth: int = 5
 
 
 @dataclass(frozen=True)
@@ -1168,12 +1189,36 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 return None
             return self._close_pending_episode_locked()
 
-    def retrieve_on_cue(self, cue_node_id: str, limit: int = 10) -> list[tuple[str, float]]:
+    def retrieve_on_cue(
+        self,
+        cue_node_id: str,
+        limit: int = 10,
+        *,
+        multi_hop: bool = False,
+    ) -> list[tuple[str, float]]:
         """Return substrate nodes co-activated with the cue, ranked by binding weight.
 
-        One-hop retrieval via ``DependencyGraph.get_associated`` — the
-        simplest possible partial-cue path. Multi-hop via
-        ``spreading_activation`` is a Stage 2 fallback per the plan.
+        **Two retrieval modes:**
+
+        - ``multi_hop=False`` (default, Stage 1 behavior) — one-hop
+          retrieval via ``DependencyGraph.get_associated``. Returns
+          direct neighbors of the cue sorted by edge weight. Fast and
+          deterministic, but cannot follow transitive structure (e.g.,
+          a chain ``a → b → c`` queried from cue ``a`` returns only
+          ``b``).
+        - ``multi_hop=True`` (Stage 2 primary path) — walks the
+          binding graph via ``DependencyGraph.spreading_activation``
+          with decay ``self.config.episode.retrieval_decay``,
+          threshold ``self.config.episode.retrieval_threshold``, and
+          max depth ``self.config.episode.retrieval_max_depth``.
+          Recovers nodes reachable through intermediate edges,
+          including transitive structure that bag-of-words baselines
+          (e.g., TF-IDF) cannot represent. The Hebbian binding
+          mechanism's structural advantage over TF-IDF manifests here.
+
+        Default stays one-hop so Stage 1 tests + existing call sites
+        keep their pre-Stage-2 behavior. Stage 2 fixture-validation
+        tests pass ``multi_hop=True`` explicitly.
 
         **Return shape is distinct from ``recall``/``recall_similar``**.
         Those methods return ``list[EpisodicMemory | CompressedMemory]``
@@ -1182,13 +1227,29 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         SUBSTRATE node identifier (from ``LinguisticEncoder`` + EC),
         NOT a memory record id. The two namespaces never overlap — a
         cue node id passed to ``recall`` retrieves nothing, and a
-        memory id passed here retrieves nothing. Stage 2 retrieval
-        fusion will normalize the shapes; for Stage 1, keep callers
-        distinct.
+        memory id passed here retrieves nothing.
 
         Queries ``self._binding_graph`` ONLY. Does NOT touch
         ``self._graph`` (memory-record associations).
         """
+        if multi_hop:
+            cfg = self.config.episode
+            activations = self._binding_graph.spreading_activation(
+                source_ids=[cue_node_id],
+                initial_activation=1.0,
+                decay=cfg.retrieval_decay,
+                threshold=cfg.retrieval_threshold,
+                max_depth=cfg.retrieval_max_depth,
+            )
+            # spreading_activation returns dict[str, float] including the
+            # cue itself with activation 1.0; filter it out.
+            ranked = sorted(
+                ((node, score) for node, score in activations.items() if node != cue_node_id),
+                key=lambda pair: pair[1],
+                reverse=True,
+            )
+            return ranked[:limit]
+
         associated = self._binding_graph.get_associated(
             cue_node_id,
             edge_types={EdgeType.ASSOCIATES},

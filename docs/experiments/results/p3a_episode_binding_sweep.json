@@ -1,0 +1,138 @@
+{
+  "generated_at": "2026-04-14T22:35:03.054370+00:00",
+  "plan": "substrate_p3a_episode_binding.md",
+  "stage": 2,
+  "fixture": {
+    "name": "hub+chain synthetic episodes",
+    "path": "scenarios/substrate/synthetic_episodes.yaml",
+    "topology": "10 topics \u00d7 (1 hub + 4 chain) + 3 peripherals/topic",
+    "episodes_per_topic": 17,
+    "total_episodes": 170,
+    "reinforcement": "core episodes presented 2\u00d7 (weight 0.4), peripheral 1\u00d7 (weight 0.3)",
+    "probes_per_seed": 50
+  },
+  "config": {
+    "hebbian_init": 0.3,
+    "hebbian_delta": 0.1,
+    "hebbian_max": 1.0,
+    "retrieval_decay": 0.7,
+    "retrieval_threshold": 0.001,
+    "retrieval_max_depth": 5,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ]
+  },
+  "runs": {
+    "hebbian_multihop": {
+      "name": "hebbian_multihop",
+      "n_seeds": 10,
+      "mean_precision": 1.0,
+      "std_precision": 0.0,
+      "mean_recall": 1.0,
+      "std_recall": 0.0,
+      "mean_f1": 1.0,
+      "std_f1": 0.0,
+      "per_seed_f1": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "vs_baseline": {
+        "baseline_name": "tfidf",
+        "baseline_mean_f1": 0.7,
+        "baseline_std_f1": 0.0,
+        "gate_value": 0.7,
+        "margin_absolute": 0.3,
+        "beats_baseline": true
+      }
+    },
+    "hebbian_onehop": {
+      "name": "hebbian_onehop",
+      "n_seeds": 10,
+      "mean_precision": 0.7,
+      "std_precision": 0.0,
+      "mean_recall": 0.7,
+      "std_recall": 0.0,
+      "mean_f1": 0.7,
+      "std_f1": 0.0,
+      "per_seed_f1": [
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7
+      ],
+      "vs_baseline": {
+        "baseline_name": "tfidf",
+        "baseline_mean_f1": 0.7,
+        "baseline_std_f1": 0.0,
+        "gate_value": 0.7,
+        "margin_absolute": 0.0,
+        "beats_baseline": false
+      }
+    },
+    "tfidf_baseline": {
+      "name": "tfidf_baseline",
+      "n_seeds": 10,
+      "mean_precision": 0.7,
+      "std_precision": 0.0,
+      "mean_recall": 0.7,
+      "std_recall": 0.0,
+      "mean_f1": 0.7,
+      "std_f1": 0.0,
+      "per_seed_f1": [
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7
+      ]
+    }
+  },
+  "breakdown_by_cue_kind_seed0": {
+    "hub_probes": {
+      "count": 10,
+      "hebbian_multihop_f1": 1.0,
+      "hebbian_onehop_f1": 1.0,
+      "tfidf_f1": 1.0
+    },
+    "chain_probes": {
+      "count": 40,
+      "hebbian_multihop_f1": 1.0,
+      "hebbian_onehop_f1": 0.625,
+      "tfidf_f1": 0.625
+    }
+  },
+  "pass_gate": {
+    "requirement_mean_precision_recall_gt": 0.7,
+    "requirement_beats_baseline_by_2sigma": true,
+    "cleared": true
+  },
+  "architectural_finding": "On a fixture with transitive structure, Hebbian multi-hop retrieval (spreading_activation) beats TF-IDF by 0.30 absolute F1. One-hop Hebbian ties TF-IDF (both \u2248 0.70 F1), confirming that the mechanism's value over bag-of-words baselines manifests specifically in multi-hop traversal \u2014 a capability TF-IDF structurally cannot replicate because bag-of-words has no graph edges."
+}
