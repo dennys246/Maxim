@@ -14,9 +14,14 @@ A four-part refinement of Maxim's LLM routing path, motivated by two back-to-bac
 
 **Multi-agent, single-user context:** concurrent agents (AgentPool, NPC campaigns) running under one user's API key are first-class. Multi-tenant user isolation is out of scope.
 
-## The four sub-plans
+## The sub-plans
 
-All four ship under version **0.4** as a single "major stability" milestone per user decision.
+The original meta-plan listed four sub-plans (1, 2, 3, 4). Two more have been added since:
+
+- **Plan 3.5** (Cancellation Hygiene) — shipped 2026-04-13 between Plan 3 and Plan 4 after stress test trace2 exposed a stacked-60s-timeout cascade. Establishes the "HTTP fires first" timeout contract.
+- **Plan 3.6** (Peer Failover) — drafted 2026-04-13 alongside Plan 3.5. The cheap multi-leader-URL precursor to Plan 4's full `mesh.yml`. ~150 LOC.
+
+All ship under version **0.4** as a single "major stability" milestone per user decision.
 
 ### Plan 1: Foundation Cleanup — [llm_path_foundation.md](llm_path_foundation.md)
 
@@ -48,6 +53,30 @@ All four ship under version **0.4** as a single "major stability" milestone per 
 **The performance gate:** `backend_call_duration_seconds` p99 < 5s against mocked dead peer. Pre-plan baseline is ~52s due to `_OpenAIBackend`'s hidden retry loop. **This is almost certainly why `maxim peer restart` feels broken today.**
 
 **Ship when:** p99 gate met, zero `retry|backoff|gateway` in `maxim_peer_backend.py` (CI grep), stress test protocol complete.
+
+### Plan 3.5: Cancellation Hygiene — [llm_path_cancellation_hygiene.md](llm_path_cancellation_hygiene.md)
+
+**~600 LOC new across 6 stages. Shipped 2026-04-13 (PR #96, `6a4f505`).** Inserted between Plan 3 and Plan 4 after stress test trace2 exposed a stacked-60s-timeout cascade.
+
+- **R1** — `maxim/utils/cancellation.py` (ContextVar + Event primitives) + failing reproducer test
+- **R2** — Timeout default 60s → 300s + `MAXIM_LLM_CALL_TIMEOUT_S` env override
+- **R3** — Audit no-op (Python's `with` already guarantees release)
+- **R4** — End-to-end cancellation propagation via `contextvars.copy_context().run`
+- **R6** — Pre-merge review fold (5 must-fix items from two parallel review agents)
+
+**The contract:** HTTP layer is authoritative, agent layer is strict safety net above it. If the agent timeout ever fires, it's a LOUD bug signal. See `docs/architecture/llm_routing.md` "Timeout layering" section for the full contract.
+
+### Plan 3.6: Peer Failover — [llm_path_peer_failover.md](llm_path_peer_failover.md)
+
+**~150 LOC new. Draft v1.** The cheap multi-leader-URL precursor to Plan 4's full `mesh.yml`. Allows `peer.yml` to list multiple leaders in priority order. Reuses Plan 3's typed-exception router loop — no new dispatch code.
+
+- **R1** — Schema + parsing (50 LOC)
+- **R2** — Router integration (50 LOC)
+- **R3** — Tests (30 LOC + fixtures)
+- **R4** — `maxim doctor` integration (10 LOC)
+- **R5** — Pre-merge review round
+
+**Ship when:** single-URL `peer.yml` works unchanged, multi-leader failover < 2s on stub backends, `maxim doctor` reports per-leader status.
 
 ### Plan 4: Operator Visibility — [llm_path_operator_visibility.md](llm_path_operator_visibility.md)
 
@@ -188,13 +217,43 @@ Plus `MAXIM_CLUSTER_KEY` (cluster bearer token) and `MAXIM_REQUEST_TRACE_SIZE` (
 | Plan 1 R1 (utils/http.py + 9 migrations) | ✅ SHIPPED 2026-04-12 (PRs #88, #90, pending cleanup PR for `c8a07e9`) | ✅ Done (4003 passed, CI grep CLEAN, smoke green) | ✅ [project_llm_path_r1_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r1_shipped.md) |
 | Plan 2: Typed Errors (R2a-d) | ✅ SHIPPED 2026-04-12 (branch `feat/llm-path-r2`) | ✅ Done (4073 passed, CI grep CLEAN, smoke green with `role_detected` first event) | ✅ [project_llm_path_r2_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r2_shipped.md) |
 | Plan 3: Fast Failover (R2.5+R2.6) | ✅ SHIPPED 2026-04-12 (PR #94, `ce5f034`) | ✅ Done (4142 passed, 3 CI grep invariants CLEAN, smoke green with `peer_backend_call` multi-agent context propagation) | ✅ [project_llm_path_r3_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r3_shipped.md) |
-| Stress test (A-E) | Draft protocol | ▶ **READY** (Phase D measures post-Plan-3 leader restart delta vs ~63s pre-baseline) | N/A |
-| Plan 4: Operator Visibility (R3.x) | Draft v2 | ▶ **READY TO START** (no longer blocked — scoped down per user decision; multi-peer revival waits on Phase D results) | ⏸ Pending |
-| Deferred: multi-peer dispatch | Shell plan | ⏸ Revive trigger TBD | N/A |
+| Plan 3.5: Cancellation Hygiene (R1-R6) | ✅ SHIPPED 2026-04-13 (PR #96, `6a4f505`) | ✅ Done (4177 passed, "HTTP fires first" contract enforced + clamp floor + cancel-event propagation) | ✅ [project_llm_path_cancellation_hygiene_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_cancellation_hygiene_shipped.md) |
+| Stress test (A-E) | Draft protocol | ▶ **READY** (Phase D measures post-Plan-3.5 leader restart recovery; phase-D prompt at `/tmp/prompt_phase_d_stress_test.md`) | N/A |
+| **Open investigation: 125s leader latency** | New | ▶ **READY** (separate from Plan 3.5; cancellation fix exposed it as the next bug; prompt at `/tmp/prompt_investigate_125s_latency.md`) | N/A |
+| Plan 3.6: Peer Failover (multi-URL `peer.yml`) | Draft v1 | ▶ **READY TO START** (cheap concrete first step toward true mesh; ~150 LOC; user has RTX 5080 + RTX 3070) | ⏸ Pending |
+| Plan 4: Operator Visibility (R3.x) | Draft v2 | ▶ **READY TO START** (no longer blocked; multi-peer revival waits on Phase D + Plan 3.6 results) | ⏸ Pending |
+| Deferred: multi-peer dispatch | Shell plan | ⏸ **Revive trigger met partially** — user has RTX 3070 as second GPU node; await Phase D + Plan 3.6 ship | N/A |
+| Deferred: capability-aware mesh | Shell plan (created 2026-04-13) | ⏸ Revive when ≥2 nodes have **different** loaded models | N/A |
 | Deferred: async router | Shell plan | ⏸ Revive trigger TBD | N/A |
 | Deferred: fair scheduling | Shell plan | ⏸ Revive trigger TBD + bio-inspired aspiration | N/A |
 
 Update this table as each plan ships.
+
+## Long-term roadmap — from leader/peer to true reactive mesh
+
+The current architecture is a **star topology** — one leader (RTX 5080 + cloudflared tunnel) with N peers connecting in. Calling it a "reactive mesh" is aspirational; the leader/peer label reflects real hardware asymmetry. The path from here to a true reactive mesh has concrete steps. **None require throwing away the current code** — each step extends the previous.
+
+| Step | What | Lives in | Trigger | Status |
+|---|---|---|---|---|
+| **0a** | **Multi-URL `peer.yml`** with priority-order failover + **VRAM spillover doctor check**. Reuses Plan 3's typed-exception router loop. ~190 LOC (150 multi-leader + 40 spillover detection added 2026-04-13 after 125s root-cause analysis). | [llm_path_peer_failover.md](llm_path_peer_failover.md) (Plan 3.6) | User has a hot-standby leader (RTX 3070 alongside RTX 5080) OR operator wants `maxim doctor` to catch VRAM-spillover slowdowns | ▶ READY (Draft v2) |
+| **0b** | **`mesh.yml`** as canonical multi-node config + admin API + drain/resume + per-agent rate limits. Supersedes 0a. ~650 LOC. | [llm_path_operator_visibility.md](llm_path_operator_visibility.md) (Plan 4) | Operator-grade visibility needed | ▶ READY |
+| **1** | **Multi-peer dispatch** with rendezvous-hash distribution + `X-Maxim-Suggested-Peer` 429 hints. Load-balances across homogeneous nodes. ~250 LOC. | [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) | Phase D shows leader saturation OR ≥2 GPU nodes serving the same model | ⏸ Revive when triggered |
+| **2** | **Capability advertisement + runtime spillover detection** — each node exposes `loaded_model`, `vram_free_gb`, `tier`, `tokens_per_sec`. Router caches + ranks providers by capability AND by measured tok/s vs baseline (catches VRAM spillover that the static doctor check misses). ~450 LOC. | [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) | ≥2 nodes with **different** loaded models OR static spillover check from step 0a proves insufficient | ⏸ Shell plan expanded 2026-04-13 |
+| **3** | **Discovery via mDNS or gossip** — nodes find each other on the LAN without static `mesh.yml`. ~400 LOC. | (Future shell plan, not yet drafted) | ≥3 nodes OR frequent node turnover | ⏸ Not drafted |
+| **4** | **Leader election** for the cloudflared tunnel — when the current tunnel-owning node dies, another GPU node takes over. ~200 LOC. | (Future shell plan, not yet drafted) | ≥2 nodes that can BOTH run cloudflared (i.e., both have public IPs or tunnels configured) | ⏸ Not drafted |
+
+**The current state (post-Plan-3.5):** steps 0-4 are all unimplemented. The router has the *primitive* (typed-exception fallback loop) that step 0a needs; everything else builds on that primitive. Step 0a is the smallest concrete shipping unit and the natural next move.
+
+**The user's RTX 5080 + RTX 3070 setup is the trigger for step 0a (Plan 3.6).** If the 3070 ever serves a different model than the 5080, step 2 (capability advertisement) becomes necessary. The intermediate steps 0b and 1 may or may not ship depending on whether step 0a alone is enough.
+
+**Why "reactive mesh" is aspirational today:** the current code calls it a mesh but has none of:
+- Discovery (everything is static config)
+- Capability advertisement (everything is operator-declared)
+- Per-request routing decisions made by the requesting node (the router has the primitive but only one provider in the list)
+- Failure detection + automatic re-routing (Plan 3 made fail-over fast, but there's only ONE thing to fail over to today)
+- Leader election (the leader is statically `rtx-5080`)
+
+After steps 0a + 1 + 2 ship, the term is accurate. After steps 3 + 4 ship, the system is genuinely a peer-to-peer mesh with no special "leader" designation outside of who happens to own the cloudflared tunnel at any given moment.
 
 ### Plan 1 R1 — lessons for future sub-plans
 

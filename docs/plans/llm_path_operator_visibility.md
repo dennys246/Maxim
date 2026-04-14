@@ -4,8 +4,12 @@
 **Scope:** ~650 LOC new
 **Target version:** 0.4 (single stability version)
 **Part of:** [llm_path_refinement.md](llm_path_refinement.md)
-**Depends on:** [llm_path_fast_failover.md](llm_path_fast_failover.md) (Plan 3) — must be fully shipped + stress-tested
-**Note:** renamed from "Reactive Mesh" in v1. Multi-peer dispatch moved to [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md).
+**Depends on:**
+- [llm_path_fast_failover.md](llm_path_fast_failover.md) (Plan 3) — typed-exception router loop ✅ shipped
+- [llm_path_cancellation_hygiene.md](llm_path_cancellation_hygiene.md) (Plan 3.5) — "HTTP fires first" contract ✅ shipped
+- [llm_path_peer_failover.md](llm_path_peer_failover.md) (Plan 3.6) — multi-leader `peer.yml` precursor (not strictly required but recommended; `mesh.yml` is the canonical successor)
+**Note:** renamed from "Reactive Mesh" in v1. Multi-peer dispatch moved to [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md). Capability-aware ranking is [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md).
+**Bake-in target (2026-04-13):** the user's RTX 5080 + RTX 3070 setup is the concrete two-node deployment for testing `mesh.yml`'s schema validation, drain/resume, per-node admin endpoints, and per-agent rate limiting. Plan 3.6 unblocks failover testing without waiting for the full Plan 4 admin API.
 
 ## Goal
 
