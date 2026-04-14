@@ -1570,6 +1570,18 @@ def _maybe_auto_spawn_server(
     _legacy_n_ctx = _safe_int_env("MAXIM_AUTO_SPAWN_N_CTX", 0)
     _tier_n_ctx = int(infer_cfg.n_ctx or 0)
     resolved_n_ctx = _cli_n_ctx or _legacy_n_ctx or _tier_n_ctx or 8192
+
+    # Plan 3.6 R5: warn loudly if this (profile, n_ctx) combo will push VRAM
+    # past the 95% spillover ratio. Observability only — does not override
+    # the operator's n_ctx choice.
+    _check_vram_spillover_risk(
+        profile_name=effective_profile,
+        resolved_n_ctx=resolved_n_ctx,
+        vram_gb=float(getattr(capabilities, "vram_gb", 0.0) or 0.0),
+        kv_quant_mode=str(getattr(infer_cfg, "kv_quant_mode", "") or "f16"),
+        logger=logger,
+    )
+
     spawner = LocalServerSpawner(
         model_path=model_path,
         port=port,
@@ -1719,6 +1731,79 @@ def _estimate_swap_n_ctx(cfg: Any, *, fallback: int = 8192) -> int:
     # Last resort: trust the profile's declared value, then the static fallback.
     declared = int(getattr(cfg, "n_ctx", 0) or 0)
     return declared if declared > 0 else fallback
+
+
+def _check_vram_spillover_risk(
+    profile_name: str,
+    resolved_n_ctx: int,
+    vram_gb: float,
+    kv_quant_mode: str,
+    logger: Any | None,
+) -> None:
+    """Emit a loud WARN if the spawning model will push VRAM past the spillover ratio.
+
+    Plan 3.6 R5. Pure observability: does NOT lower ``resolved_n_ctx``, does
+    NOT abort spawn. The operator made a choice (CLI flag, env var, tier
+    estimator); our job is to make the consequence visible BEFORE they hit a
+    30-50x slowdown.
+
+    The threshold is deliberately static (95% of physical VRAM). If the math
+    says the model fits but observed VRAM later shows otherwise, that's a
+    signal the ``estimate_max_ctx`` headroom assumption (1.5 GB) is too low
+    for this model class — capture it in lessons-learned, don't paper over
+    it here.
+    """
+    if logger is None:
+        return
+    if not profile_name or resolved_n_ctx <= 0 or vram_gb <= 0:
+        return
+    try:
+        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.runtime.lane_models import project_vram_usage
+    except Exception:
+        return
+
+    profile_meta = _BUILTIN_PROFILES.get(profile_name, {})
+    projection = project_vram_usage(
+        profile_name,
+        profile_meta,
+        resolved_n_ctx,
+        vram_gb,
+        kv_quant_mode=kv_quant_mode or "f16",
+    )
+    if projection is None or not projection.spillover_risk:
+        return
+
+    # StructuredFormatter reads `extra={"event": ..., "data": {...}}` — flat
+    # extra fields outside `data` are silently dropped from MAXIM_LOG_FILE
+    # JSONL. Same class as feedback_structured_formatter_short_keys.md.
+    logger.warning(
+        "vram_spillover_risk: profile=%s n_ctx=%d projected=%.1fGB "
+        "(weights=%.1f + kv=%.1f + headroom=%.1f) vs physical=%.1fGB. "
+        "Recommended n_ctx=%d. Expect 5-30x slowdown once KV cache fills. "
+        "Lower MAXIM_LLM_N_CTX or switch to a smaller profile.",
+        projection.profile,
+        projection.n_ctx,
+        projection.projected_total_gb,
+        projection.weights_gb,
+        projection.kv_cache_gb,
+        projection.headroom_gb,
+        projection.physical_vram_gb,
+        projection.recommended_n_ctx,
+        extra={
+            "event": "vram_spillover_risk",
+            "data": {
+                "profile": projection.profile,
+                "n_ctx": projection.n_ctx,
+                "projected_gb": projection.projected_total_gb,
+                "weights_gb": projection.weights_gb,
+                "kv_cache_gb": projection.kv_cache_gb,
+                "headroom_gb": projection.headroom_gb,
+                "physical_vram_gb": projection.physical_vram_gb,
+                "recommended_n_ctx": projection.recommended_n_ctx,
+            },
+        },
+    )
 
 
 def _drain_in_flight_requests(deadline_s: float = 5.0) -> None:

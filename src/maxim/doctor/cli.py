@@ -174,6 +174,7 @@ def _retry_loop(
         check_tier_detection,
         check_tunnel_config,
         check_tunnel_config_sync,
+        check_vram_pressure,
     )
 
     # Map retry_id → callable that re-runs the check.
@@ -197,6 +198,7 @@ def _retry_loop(
         "tunnel-config": check_tunnel_config,
         "tunnel-config-sync": check_tunnel_config_sync,
         "tier_detection": check_tier_detection,
+        "vram_pressure": check_vram_pressure,
         "key-age": check_key_age,
         "key-permissions": check_key_permissions,
         "key-auth": check_key_auth_smoke,

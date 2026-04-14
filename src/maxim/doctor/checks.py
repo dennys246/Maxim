@@ -172,9 +172,15 @@ def check_server_reachable(port: int = 8100) -> CheckResult:
 def check_llm_model_active() -> CheckResult:
     """Check if an LLM model is loaded and report which one."""
     try:
-        from maxim.runtime.lane_backends import _active_model, _read_persisted_model
+        # Must read `_active_model` through `_server_mod` — importing it by
+        # name binds the value at import time and diverges from the live
+        # state (CLAUDE.md "Mutable globals + module extraction" lesson).
+        # This was a silent bug: the check only ever reported the persisted
+        # model name, never the live one.
+        import maxim.runtime.llm_server as _server_mod
+        from maxim.runtime.lane_backends import _read_persisted_model
 
-        active = _active_model
+        active = _server_mod._active_model
         persisted = _read_persisted_model()
 
         if active:
@@ -520,6 +526,227 @@ def check_context_window(port: int = 8100) -> CheckResult:
         name="Context window (n_ctx)",
         status="ok",
         message=f"n_ctx={n_ctx}",
+    )
+
+
+# ─── VRAM spillover (Plan 3.6 R5) ──────────────────────────────────────────
+
+
+def _current_llama_server_n_ctx(port: int) -> int | None:
+    """Return the n_ctx the running llama-cpp-server is configured for, or None.
+
+    Reuses the detection strategy from :func:`check_context_window`: first
+    ``/v1/models`` metadata, then process command-line inspection. Kept as a
+    separate helper so :func:`check_vram_pressure` doesn't re-run the network
+    probe redundantly if the context window check already ran.
+    """
+    import socket
+
+    try:
+        req_bytes = (f"GET /v1/models HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n").encode()
+        with socket.create_connection(("127.0.0.1", port), timeout=2.0) as s:
+            s.sendall(req_bytes)
+            raw = b""
+            while True:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                raw += chunk
+        body = raw.split(b"\r\n\r\n", 1)[-1]
+        import json as _json
+
+        data = _json.loads(body)
+        for model in data.get("data", []):
+            ctx = model.get("context_length") or model.get("n_ctx") or model.get("max_context_length")
+            if ctx:
+                return int(ctx)
+    except Exception:
+        pass
+
+    # Process args fallback — best-effort, cross-platform
+    try:
+        import platform as _platform
+
+        system = _platform.system().lower()
+        if system == "linux":
+            import glob
+
+            for cmdline_path in glob.glob("/proc/*/cmdline"):
+                try:
+                    with open(cmdline_path, "rb") as f:
+                        args = f.read().split(b"\x00")
+                    args_str = [a.decode("utf-8", errors="ignore") for a in args]
+                    if any("llama" in a for a in args_str):
+                        for i, arg in enumerate(args_str):
+                            if arg in ("--ctx-size", "-c", "--n-ctx") and i + 1 < len(args_str):
+                                return int(args_str[i + 1])
+                            if arg.startswith("--ctx-size="):
+                                return int(arg.split("=", 1)[1])
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return None
+
+
+def check_vram_pressure(port: int = 8100) -> CheckResult:
+    """Detect KV-cache spillover risk — the 2026-04-13 ~125s-latency class bug.
+
+    Two signals:
+
+    1. **Live ratio** from ``nvidia-smi``: ``vram_used / vram_total > 0.95``
+       means the UMA driver is already spilling KV pages into shared system
+       memory, and inference will run at PCIe speeds (5-30x slower than
+       on-GPU). This is the primary signal — it catches the state the user
+       actually hit on 2026-04-13.
+    2. **Predictive KV-math**: given the currently loaded profile's ``arch``
+       + the running server's ``n_ctx``, project weights + KV cache +
+       headroom against physical VRAM. Catches misconfiguration BEFORE the
+       operator notices a slowdown.
+
+    Either signal alone produces a WARN. Both together → FAIL with a specific
+    ``MAXIM_LLM_N_CTX=<recommended>`` fix string, interpolating real numbers
+    (not ``<your-vram>`` placeholders).
+    """
+    # Lazy imports — keep the check fast on systems without a GPU.
+    try:
+        from maxim.runtime.leader_proxy import _query_nvidia_smi
+    except Exception:
+        return CheckResult(
+            name="VRAM pressure",
+            status="info",
+            message="VRAM pressure check unavailable (leader_proxy import failed)",
+        )
+
+    gpu = _query_nvidia_smi()
+    if gpu is None:
+        return CheckResult(
+            name="VRAM pressure",
+            status="info",
+            message="nvidia-smi unavailable — skipping VRAM pressure check",
+        )
+
+    vram_used_gb = float(gpu.get("vram_used_gb") or 0.0)
+    vram_total_gb = float(gpu.get("vram_total_gb") or 0.0)
+    if vram_total_gb <= 0:
+        return CheckResult(
+            name="VRAM pressure",
+            status="info",
+            message="nvidia-smi reported zero total VRAM — skipping",
+        )
+
+    ratio = vram_used_gb / vram_total_gb
+
+    # Resolve active profile (if any) so we can do the predictive projection.
+    # Must read through the llm_server module reference — `_active_model` is
+    # a mutable global and `from lane_backends import _active_model` binds by
+    # value (see CLAUDE.md "Mutable globals + module extraction" lesson).
+    active_profile: str | None = None
+    try:
+        import maxim.runtime.llm_server as _server_mod
+
+        active_profile = _server_mod._active_model
+    except Exception:
+        active_profile = None
+
+    projection = None
+    running_n_ctx: int | None = None
+    if active_profile:
+        running_n_ctx = _current_llama_server_n_ctx(port)
+        if running_n_ctx and running_n_ctx > 0:
+            try:
+                from maxim.models.language.config import _BUILTIN_PROFILES
+                from maxim.runtime.lane_models import project_vram_usage
+
+                profile_meta = _BUILTIN_PROFILES.get(active_profile, {})
+                projection = project_vram_usage(
+                    active_profile,
+                    profile_meta,
+                    running_n_ctx,
+                    vram_total_gb,
+                )
+            except Exception:
+                projection = None
+
+    # Import the named thresholds from lane_models rather than re-declaring
+    # literals here — single source of truth for spawn-time projection AND
+    # the live nvidia-smi ratio check. Drift between the two values is
+    # exactly the "future bug" pattern flagged in Plan 3.6 R5 review.
+    from maxim.runtime.lane_models import _SPILLOVER_RATIO, _SPILLOVER_WARN_RATIO
+
+    live_spillover = ratio > _SPILLOVER_RATIO
+    live_warning = ratio > _SPILLOVER_WARN_RATIO
+
+    # Build a fix hint that names REAL values — profile, n_ctx, VRAM. The
+    # operator should be able to copy-paste it.
+    def _build_fix(rec_n_ctx: int | None) -> str:
+        lines: list[str] = []
+        if rec_n_ctx and rec_n_ctx > 0:
+            lines.append(f"export MAXIM_LLM_N_CTX={rec_n_ctx}  # then: maxim peer restart")
+        else:
+            lines.append("export MAXIM_LLM_N_CTX=4096  # then: maxim peer restart")
+        if active_profile and active_profile.startswith("qwen2.5-14b"):
+            lines.append("# or switch to a smaller profile: maxim peer llm qwen2-7b-instruct")
+        else:
+            lines.append("# or switch to a smaller profile via `maxim peer llm <model>`")
+        lines.append("# or close other GPU consumers (browser hw accel, extra models)")
+        return "\n".join(lines)
+
+    # Case 1: live spillover confirmed — worst case. Inference is already slow.
+    if live_spillover:
+        msg = (
+            f"VRAM {vram_used_gb:.1f}/{vram_total_gb:.0f} GB "
+            f"({ratio * 100:.0f}% used) — KV cache likely spilled to shared GPU "
+            f"memory. Expect 5-30x slowdown (PCIe-bound inference)."
+        )
+        rec = projection.recommended_n_ctx if projection else None
+        return CheckResult(
+            name="VRAM pressure",
+            status="fail",
+            message=msg,
+            fix=_build_fix(rec),
+            retry_id="vram_pressure",
+        )
+
+    # Case 2: predictive projection says we'll spill even if we're currently fine.
+    # Can happen right after spawn before KV cache fills.
+    if projection is not None and projection.spillover_risk:
+        msg = (
+            f"Projected {projection.projected_total_gb:.1f} GB "
+            f"(weights {projection.weights_gb:.1f} + KV {projection.kv_cache_gb:.1f} "
+            f"+ {projection.headroom_gb:.1f} headroom) exceeds "
+            f"{_SPILLOVER_RATIO * 100:.0f}% of "
+            f"{projection.physical_vram_gb:.0f} GB VRAM at n_ctx={projection.n_ctx}. "
+            f"Will spill to shared memory once KV cache fills."
+        )
+        return CheckResult(
+            name="VRAM pressure",
+            status="fail",
+            message=msg,
+            fix=_build_fix(projection.recommended_n_ctx),
+            retry_id="vram_pressure",
+        )
+
+    # Case 3: in the warning band — no headroom for KV growth.
+    if live_warning:
+        return CheckResult(
+            name="VRAM pressure",
+            status="warn",
+            message=(
+                f"VRAM {vram_used_gb:.1f}/{vram_total_gb:.0f} GB "
+                f"({ratio * 100:.0f}% used) — no headroom for KV cache growth. "
+                f"Long prompts may spill."
+            ),
+            fix=_build_fix(projection.recommended_n_ctx if projection else None),
+            retry_id="vram_pressure",
+        )
+
+    # All clear.
+    suffix = f", n_ctx={running_n_ctx}" if running_n_ctx else ""
+    return CheckResult(
+        name="VRAM pressure",
+        status="ok",
+        message=f"VRAM {vram_used_gb:.1f}/{vram_total_gb:.0f} GB ({ratio * 100:.0f}% used{suffix})",
     )
 
 
@@ -1839,6 +2066,7 @@ def run_all_checks(
                     check_server_reachable(),
                     check_llm_model_active(),
                     check_context_window(),
+                    check_vram_pressure(),
                     check_inference_coherence(),
                 ],
             ),
@@ -1885,6 +2113,7 @@ __all__ = [
     "check_llm_model_active",
     "check_env_config",
     "check_context_window",
+    "check_vram_pressure",
     "check_lan_access",
     "check_cloudflared",
     "check_tunnel_config",
