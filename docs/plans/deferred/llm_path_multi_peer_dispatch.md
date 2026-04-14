@@ -1,10 +1,26 @@
 # Deferred: LLM Path — Multi-peer Reactive Dispatch
 
-**Status:** Deferred from [llm_path_operator_visibility.md](../llm_path_operator_visibility.md) (Plan 3)
-**Revive when:** post-Plan-2 stress test shows single-leader saturation that `llama.cpp --parallel` batching does not resolve, AND operator wants load to cascade to additional peers.
+**Status:** Deferred shell plan — partially triggered as of 2026-04-13 (user has RTX 3070 as a second GPU node)
+**Revive when:** ANY of the following:
+1. **Phase D stress test shows leader saturation** that `llama.cpp --parallel` batching does not resolve, OR
+2. **User has ≥2 GPU nodes that need to be reachable as a single cluster** (RTX 5080 + RTX 3070 setup is the current concrete trigger), OR
+3. **Plan 3.6 (multi-URL `peer.yml` failover) ships and the operator wants load distribution beyond strict-priority failover.**
 **Estimated scope:** ~250 LOC new
-**Depends on:** Plan 3 (`llm_path_operator_visibility.md`) must be shipped — specifically `mesh.yml` + `_MaximPeerBackend`
-**Related deferred:** [llm_path_async_router.md](llm_path_async_router.md) — if lane serialization is the bottleneck instead of leader compute
+**Depends on:**
+- Plan 3 (`llm_path_fast_failover.md`) shipped — `_MaximPeerBackend` + typed exceptions + router fallback loop
+- Plan 3.6 (`llm_path_peer_failover.md`) shipped — provides the multi-provider router config that this plan extends with rendezvous-hash distribution
+- Plan 4 (`llm_path_operator_visibility.md`) shipped — `mesh.yml` schema + drain state + admin API
+**Related deferred:**
+- [llm_path_async_router.md](llm_path_async_router.md) — if lane serialization is the bottleneck instead of leader compute
+- [llm_mesh_capability_aware.md](llm_mesh_capability_aware.md) — the next layer up (capability-aware ranking instead of homogeneous distribution)
+
+## Relationship to Plan 3.6 (peer failover)
+
+Plan 3.6 ships the **strict-priority multi-leader** primitive: `peer.yml` lists N leaders, the router tries them in order, falls through on `BackendDown`. That's enough for hot-standby setups (RTX 5080 primary + RTX 3070 fallback).
+
+This plan (multi-peer dispatch) is the **load-distribution layer on top**. Instead of strict priority, it uses rendezvous hashing keyed on `agent_id` or `session_id` so concurrent agents naturally spread across all healthy peers. Hot-standby becomes hot-active; both nodes serve real load.
+
+**Migration path:** Plan 3.6's `peer.yml::leaders:` and Plan 4's `mesh.yml::nodes:` both feed the same provider-list shape that this plan's rendezvous hash consumes. When this plan ships, the change is in the SELECTION strategy (`_rank_providers_for_request`), not in the config schema.
 
 ## Why this was deferred
 
@@ -84,14 +100,21 @@ Extend `runtime/leader_proxy.py`'s 429 path to set headers that `_MaximPeerBacke
 - Fair-share scheduling — separate deferred plan
 - Peer-to-peer GGUF streaming — out of scope permanently
 
-## Revive trigger checklist
+## Revive trigger checklist (updated 2026-04-13)
 
-Before reviving, all must be true:
-- [ ] Plan 2 stress test Phase C batching PoC shows `--parallel N` does NOT solve saturation
-- [ ] Plan 3 shipped with `mesh.yml` infrastructure in place
-- [ ] Operator has configured ≥2 nodes in `mesh.yml`
-- [ ] There's a measurable workload that spills leader capacity
-- [ ] Single-peer Plan 2 behavior has been running stably for ≥1 week
+Before reviving, ALL of the following must be true:
+
+- [x] Plan 3 (`llm_path_fast_failover.md`) shipped with typed-exception router loop ✅ (PR #94)
+- [x] Plan 3.5 (`llm_path_cancellation_hygiene.md`) shipped with the "HTTP fires first" contract ✅ (PR #96)
+- [ ] Plan 3.6 (`llm_path_peer_failover.md`) shipped — provides the multi-provider config primitive this plan extends with rendezvous hashing
+- [ ] Plan 4 (`llm_path_operator_visibility.md`) shipped — provides `mesh.yml` + drain state + admin API
+- [ ] User has ≥2 GPU nodes in the cluster (the RTX 5080 + RTX 3070 setup is **partially met** as of 2026-04-13 — the 3070 box exists but isn't yet wired into a `peer.yml` or `mesh.yml`)
+- [ ] At least one of:
+  - Phase D stress test shows leader saturation that `llama.cpp --parallel` does NOT solve
+  - Operator has a measurable workload that needs both nodes serving concurrent traffic
+  - Plan 3.6 strict-priority failover is shipping but operator wants load distribution beyond hot-standby
+
+**Current status (2026-04-13):** the hardware trigger is partially met but the dependency chain is not complete. The natural progression is Plan 3.6 → Plan 4 → this plan. Each unlocks the next.
 
 ## Related docs
 
