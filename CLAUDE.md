@@ -254,6 +254,9 @@ MAXIM_DATA_BUDGET_GB=50          # Optional soft cap on ~/.maxim disk usage; ref
 MAXIM_SKIP_REMOTE_PROBE=1        # Bypass the remote-URL probe (P6) — CI escape hatch.
 MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S=1.5   # First probe attempt timeout (clamped 0.2-5.0; cold httpx≈710ms)
 MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S=8.0   # Retry probe timeout (clamped 0.5-10.0; dormant Cloudflare tunnel re-establishment >2.5s)
+
+# Plan 3.5 R2 — agent-level LLM call timeout (strict safety net above HTTP layer)
+MAXIM_LLM_CALL_TIMEOUT_S=300              # LLMWorker agent-level timeout (clamped 10-1800; default 300s, was 60s pre-plan). Strictly larger than _INFERENCE_PROXY_TIMEOUT_S so HTTP layer fires first with typed BackendTimeout → clean lock release. If this ever fires, it's a LOUD bug signal (HTTP layer is wedged).
 MAXIM_REMOTE_PROBE_CACHE_TTL_S=60        # Probe cache freshness window (clamped 0-600)
 
 # Decision log (P9). Append-only JSONL at ~/.maxim/util/lane_decisions.jsonl.

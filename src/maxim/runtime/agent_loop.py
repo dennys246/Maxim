@@ -1304,7 +1304,12 @@ def run_agentic_loop(
 
                     # If this was a timeout retry prompt, store state for user response
                     if action.get("_timeout_retry") and success:
-                        timeout_s = action.get("_timeout_s", 60.0)
+                        # Plan 3.5 R2: fall back to the current agent-level LLM
+                        # timeout default if the action didn't include _timeout_s.
+                        # Was hardcoded 60.0 pre-plan (mesh-era value).
+                        from maxim.agents.llm_worker import DEFAULT_LLM_CALL_TIMEOUT_S
+
+                        timeout_s = action.get("_timeout_s", DEFAULT_LLM_CALL_TIMEOUT_S)
                         # In sim mode, auto-resolve instead of blocking
                         sim_timeout_response = sim.resolve_timeout_retry(timeout_s)
                         if sim_timeout_response is not None:

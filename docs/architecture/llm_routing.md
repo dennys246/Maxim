@@ -606,6 +606,27 @@ Three concurrency boundaries:
 2. **`LLMRouter._inference_lock`** serializes runtime calls within a router instance. **This is the per-lane head-of-line blocker under multi-agent load.** Plan 3 shortens the typical hold time from ~50s (gateway retries) + ~1.5s (normal retries) = ~52s total to ~100ms-5s. Full async routing is [deferred/llm_path_async_router.md](../plans/deferred/llm_path_async_router.md).
 3. **`httpx.Client` connection pool** in `utils/http.py` — bounded per endpoint, N concurrent calls max. Under multi-agent load, this is the cluster-level outbound cap.
 
+## Timeout layering — "HTTP fires first" contract [Present — shipped in Plan 3.5]
+
+There are **two** timeout layers governing every LLM call. The contract is that the HTTP layer is authoritative; the agent layer is a strict safety net above it.
+
+| Layer | Where | Default | Purpose |
+|---|---|---|---|
+| HTTP | [`runtime/leader_proxy.py::_INFERENCE_PROXY_TIMEOUT_S`](../../src/maxim/runtime/leader_proxy.py) + `_MaximPeerBackend` post timeout | 300s | Authoritative read timeout on the inference HTTP call. Fires first under normal conditions. Raises `HTTPTimeout` → `BackendTimeout`, propagated cleanly through the router's typed-exception dispatch and `_inference_lock` is released via the `with` block. |
+| Agent | [`agents/llm_worker.py::DEFAULT_LLM_CALL_TIMEOUT_S`](../../src/maxim/agents/llm_worker.py) | 300s | Safety net wrapping the executor future. Fires ONLY if the HTTP layer is wedged (deadlock, runaway streaming, genuine bug). When it fires, it's a LOUD bug signal — see warning text in `_call_llm_with_timeout`. |
+
+**The contract:** the agent-level timeout is **strictly larger than the HTTP layer** so HTTP always errors first. The clamp floor on `MAXIM_LLM_CALL_TIMEOUT_S` is `_INFERENCE_PROXY_TIMEOUT_S` (300s) — values below this are clamped UP with a loud warning that mentions the contract by name. To use a tighter timeout, lower `_INFERENCE_PROXY_TIMEOUT_S` first, not the agent-level value.
+
+**Why the contract matters:** before Plan 3.5 the agent-level default was 60s (a mesh-era value) and the HTTP layer was 300s. Every Qwen-14B-via-Cloudflare AUT call (~63s) triggered the agent-level timeout BEFORE HTTP completed. The agent abandoned the future via `future.cancel()`, but `cancel()` only sets a flag — it cannot stop a running thread. The orphan kept executing inside `with self._inference_lock:`, blocking every subsequent call, eventually erroring at Cloudflare's 524 ~125s later. Stress test trace2 captured two stacked 60s timeouts back-to-back for a single logical request.
+
+**Cooperative cancellation** — when the agent-level safety net DOES fire (it shouldn't, but a bug is a bug), it sets a `threading.Event` propagated through a `ContextVar` (lives in `maxim/utils/cancellation.py`, see [Layer 7 below](#layer-7-maximutilshttppy-)). Checkpoint checks inside `_MaximPeerBackend.complete_with_usage` and `_stream_response` raise `BackendDown(fix_hint="cancelled")` on the next iteration, unwinding `_inference_lock` cleanly. The router's state-mutating helpers (`_note_provider_failure`, `_note_provider_overload`, `_set_long_backoff`, `_set_short_backoff`, AND `_note_provider_success`) all check `is_cancelled()` before mutating `_provider_states`, so a cancelled orphan's eventual completion does NOT pollute provider state.
+
+**Cross-thread propagation gotcha:** `concurrent.futures.ThreadPoolExecutor.submit()` does **not** automatically propagate `ContextVar` bindings into the worker thread. The wrapper pattern is `executor.submit(contextvars.copy_context().run, worker_fn, *args)`. This is enforced by regression tests in `tests/unit/test_cancellation.py` (`test_naive_threadpoolexecutor_submit_does_NOT_propagate` is paired with `test_contextvars_propagate_with_copy_context`). The `ContextVar` value MUST be a `threading.Event` (mutable shared reference), NOT a `bool` — a bool would be copied into the snapshot at submit time and `set(True)` in the parent would not be visible in the worker.
+
+**Override:** `MAXIM_LLM_CALL_TIMEOUT_S=600` is the right shape for operators who want a longer agent-level safety net (slow CPU-only models). Values below 300s are clamped up.
+
+**Known limitation:** there is a race window between the cancellation checkpoint at the top of `complete_with_usage` and the `http.post` call. A request cancelled in this window will complete the HTTP call (worst case 300s), then the post-HTTP checkpoint in `_parse_llm_response` catches it before `_note_provider_success` is called — so state stays clean, but the orphan still holds `_inference_lock` for the HTTP duration. The 300s/300s timeout ordering makes this rare in practice (HTTP fires first, no cancellation needed); when it does happen, the post-HTTP checkpoint prevents bookkeeping pollution.
+
 **What's thread-safe:**
 - `ProviderState` mutations under `_inference_lock`
 - `probe_cache` reads/writes (internal lock)

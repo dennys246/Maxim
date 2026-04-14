@@ -10,6 +10,7 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -100,6 +101,96 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Plan 3.5 R2 — agent-level LLM call timeout
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# The agent-level timeout is a STRICT safety net above the HTTP-layer
+# timeout in ``utils/http.py`` / ``runtime/leader_proxy.py`` (300s via
+# ``_INFERENCE_PROXY_TIMEOUT_S``). Under normal operation the HTTP layer
+# fires first with a typed ``HTTPTimeout`` → ``BackendTimeout`` → router
+# records the attempt and releases ``_inference_lock`` cleanly. The
+# agent-level timeout only fires if the HTTP layer is wedged (deadlock,
+# stuck thread, genuine bug) — when it fires, it's a LOUD bug signal.
+#
+# The pre-Plan-3.5 default was 60s, a mesh-era value that was smaller
+# than the HTTP layer's read timeout. That inverted ordering meant the
+# agent-level timeout fired routinely on normal 14B inference (63-64s
+# observed with Qwen-14B through Cloudflare), abandoning the in-flight
+# call via ``future.cancel()`` which only sets a flag and does NOT stop
+# the running thread. The orphan kept ``_inference_lock`` held until
+# the underlying HTTP call eventually errored, blocking every
+# subsequent request and stacking 60s timeouts back-to-back.
+#
+# The new default (300s) is strictly larger than the HTTP layer's
+# timeout so the HTTP layer always errors first. Override via
+# ``MAXIM_LLM_CALL_TIMEOUT_S`` for edge cases (clamped 10s-1800s).
+
+DEFAULT_LLM_CALL_TIMEOUT_S: float = 300.0
+
+# Plan 3.5 R6 review (architecture lens 2a): the agent-level safety net
+# is meaningful ONLY if it is strictly larger than the HTTP layer's
+# inference timeout. The HTTP layer's authoritative timeout is
+# ``runtime.leader_proxy._INFERENCE_PROXY_TIMEOUT_S`` (300s). If an
+# operator overrides the agent-level value below this floor, the
+# agent-level timeout fires first and we re-introduce the orphan-thread
+# behavior Plan 3.5 was designed to eliminate. The clamp floor is set
+# to match _INFERENCE_PROXY_TIMEOUT_S so the contract cannot be
+# violated silently — and we log a loud WARN if a parsed value is
+# clamped up so operators see why their override didn't take effect.
+_HTTP_LAYER_TIMEOUT_FLOOR_S: float = 300.0
+_LLM_CALL_TIMEOUT_MAX_S: float = 1800.0
+
+
+def _read_llm_call_timeout_env(fallback: float = DEFAULT_LLM_CALL_TIMEOUT_S) -> float:
+    """Read ``MAXIM_LLM_CALL_TIMEOUT_S`` with clamping to a sane range.
+
+    Returns ``fallback`` if the env var is unset or unparseable.
+    Clamps the parsed value to ``[300.0, 1800.0]`` — the floor matches
+    the HTTP layer's ``_INFERENCE_PROXY_TIMEOUT_S`` so the agent-level
+    safety net cannot be configured below the HTTP layer (which would
+    re-introduce the Plan 3.5 stacked-timeout cascade). Operators who
+    want a tighter cap should adjust the HTTP layer instead.
+    """
+    raw = os.environ.get("MAXIM_LLM_CALL_TIMEOUT_S", "").strip()
+    if not raw:
+        return fallback
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "MAXIM_LLM_CALL_TIMEOUT_S=%r is not a valid float; using fallback %.1fs",
+            raw,
+            fallback,
+        )
+        return fallback
+    clamped = max(_HTTP_LAYER_TIMEOUT_FLOOR_S, min(value, _LLM_CALL_TIMEOUT_MAX_S))
+    if clamped != value:
+        if value < _HTTP_LAYER_TIMEOUT_FLOOR_S:
+            # Loud warning: operator tried to put the agent-level timeout
+            # below the HTTP layer, which would violate the Plan 3.5
+            # 'HTTP fires first' contract. Tell them why we ignored it.
+            logger.warning(
+                "MAXIM_LLM_CALL_TIMEOUT_S=%.1f is below the HTTP layer floor "
+                "(%.1fs = _INFERENCE_PROXY_TIMEOUT_S). Clamped to %.1fs to "
+                "preserve the 'HTTP fires first' contract from Plan 3.5. To "
+                "use a tighter timeout, lower _INFERENCE_PROXY_TIMEOUT_S in "
+                "runtime/leader_proxy.py first.",
+                value,
+                _HTTP_LAYER_TIMEOUT_FLOOR_S,
+                clamped,
+            )
+        else:
+            logger.warning(
+                "MAXIM_LLM_CALL_TIMEOUT_S=%.1f clamped to %.1f (range %.1f-%.1f)",
+                value,
+                clamped,
+                _HTTP_LAYER_TIMEOUT_FLOOR_S,
+                _LLM_CALL_TIMEOUT_MAX_S,
+            )
+    return clamped
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Plan 2 R2b — canonical request context normalization
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -152,7 +243,7 @@ class LLMWorker:
         llm: LLMBackend,
         max_queue_size: int = 5,
         stale_threshold_s: float = 5.0,
-        llm_timeout_s: float = 60.0,
+        llm_timeout_s: float | None = None,
         energy_tracker: "LLMEnergyTracker | None" = None,
         n_ctx: int = 4096,
         token_counter: Any | None = None,
@@ -161,7 +252,15 @@ class LLMWorker:
     ):
         self._llm = llm
         self._stale_threshold = stale_threshold_s
-        self._llm_timeout = llm_timeout_s
+        # Plan 3.5 R2: agent-level timeout is a strict safety net above
+        # the HTTP layer (default 300s, was 60s pre-plan). Explicit caller
+        # value wins; otherwise read MAXIM_LLM_CALL_TIMEOUT_S (clamped);
+        # otherwise fall back to DEFAULT_LLM_CALL_TIMEOUT_S. See module
+        # docstring for the "HTTP layer fires first" contract.
+        if llm_timeout_s is None:
+            self._llm_timeout = _read_llm_call_timeout_env()
+        else:
+            self._llm_timeout = llm_timeout_s
         self._energy_tracker = energy_tracker
         self._n_ctx = n_ctx
         self._tool_index = tool_index
@@ -359,9 +458,26 @@ class LLMWorker:
     ) -> dict[str, Any] | None:
         """Call LLM with timeout to allow graceful shutdown.
 
+        Plan 3.5 R4: wires a cooperative cancellation Event into the
+        submitted work via ``contextvars.copy_context().run``. When the
+        agent-level timeout fires (or ``_stop_event`` is set), we call
+        ``cancel_event.set()`` so the orphan thread's next checkpoint
+        check sees it and raises ``BackendDown``, unwinding the
+        ``router._inference_lock`` context manager cleanly. Without this,
+        ``future.cancel()`` only sets a flag and the orphan keeps the
+        lock held until the underlying HTTP call naturally errors —
+        which was the 125s stacked-timeout cascade exposed by trace2.
+
         Returns:
             LLM response dict or None if timeout/error/shutdown.
         """
+        import contextvars
+
+        from maxim.utils.cancellation import (
+            reset_cancel_event,
+            set_cancel_event,
+        )
+
         if self._stop_event.is_set():
             return None
 
@@ -369,8 +485,22 @@ class LLMWorker:
         if executor is None:
             return None
 
+        # Plan 3.5 R4: bind a cancellation Event in the current context
+        # BEFORE capturing the context for the worker thread. The Event
+        # is shared by reference — mutations in this thread are visible
+        # in the worker thread on its next checkpoint check.
+        cancel_event = threading.Event()
+        cancel_token = set_cancel_event(cancel_event)
         try:
+            # copy_context() snapshots the current context (including the
+            # cancellation binding we just set). ctx.run(worker_fn, *args)
+            # executes worker_fn inside that captured context in the
+            # worker thread. Without this wrapper, ContextVars don't
+            # propagate across ThreadPoolExecutor boundaries — see the
+            # regression test in tests/unit/test_cancellation.py.
+            ctx = contextvars.copy_context()
             future = executor.submit(
+                ctx.run,
                 self._llm.generate_json,
                 prompt,
                 temperature,
@@ -387,6 +517,8 @@ class LLMWorker:
             poll_interval = 0.5
             while timeout_remaining > 0:
                 if self._stop_event.is_set():
+                    # Signal the orphan to unwind, then drop the future.
+                    cancel_event.set()
                     future.cancel()
                     return None
                 try:
@@ -397,10 +529,16 @@ class LLMWorker:
                     continue
             # Final timeout exceeded
             logger.warning("LLM call timed out after %.1fs", self._llm_timeout)
+            # Plan 3.5 R4: set the cancellation Event BEFORE future.cancel().
+            # The orphan thread's next checkpoint check (inside the backend)
+            # will see is_cancelled() → True and raise BackendDown, which
+            # unwinds router._inference_lock cleanly via the with-block.
+            cancel_event.set()
             future.cancel()
-            # Replace the executor so the orphaned thread doesn't block
-            # future LLM calls (max_workers=1 means next submit() queues
-            # behind the still-running orphan, causing cascading timeouts).
+            # Replace the executor so if the orphaned thread is wedged
+            # before it reaches a checkpoint, future LLM calls still
+            # get a fresh worker thread. The cancellation Event is the
+            # primary unwind mechanism; this is belt-and-suspenders.
             try:
                 old_executor = self._llm_executor
                 self._llm_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="LLMCall")
@@ -414,6 +552,10 @@ class LLMWorker:
         except Exception as e:
             logger.error("LLM call failed: %s", e)
             return None
+        finally:
+            # Always restore the prior cancellation binding to avoid
+            # leaking this request's Event into any later context.
+            reset_cancel_event(cancel_token)
 
     def _record_usage(
         self,

@@ -193,6 +193,19 @@ class _MaximPeerBackend:
                 fix_hint="Process shutdown requested before peer call",
             )
 
+        # Plan 3.5 R4: cooperative cancellation checkpoint. If the
+        # agent-level timeout in LLMWorker has fired while we were
+        # waiting to execute, raise BackendDown immediately so the
+        # router unwinds _inference_lock cleanly without queuing
+        # another HTTP call.
+        from maxim.utils.cancellation import is_cancelled
+
+        if is_cancelled():
+            raise BackendDown(
+                self._provider_key,
+                fix_hint="Request cancelled by caller before peer call",
+            )
+
         # Ensure the endpoint is registered with utils/http. Lazy so a
         # backend that is created but never called doesn't touch the
         # registry (keeps startup cheap).
@@ -597,11 +610,25 @@ class _MaximPeerBackend:
 
         Raises :class:`BackendInferenceBroken` when ``choices`` is empty —
         this surfaces as a typed router exception so the provider gets a
-        15s backoff and failover is attempted.  Returning an empty
-        :class:`LLMResponse` silently would bypass the typed exception path
-        entirely (no backoff, no fallback, empty content propagates to the
-        agent).
+        15-second cooldown window and the router tries the next provider.
+        Returning an empty :class:`LLMResponse` silently would bypass the
+        typed exception path entirely (no cooldown, no router-level
+        re-dispatch, empty content propagates to the agent).
         """
+        # Plan 3.5 R6 review: cancellation checkpoint AFTER the HTTP call
+        # returned but BEFORE we do JSON parsing + return success. Closes
+        # the race window in non-streaming where cancellation fired
+        # mid-HTTP — the orphan completed the call but the caller already
+        # gave up. Bailing here means we don't write success bookkeeping
+        # via _note_provider_success for an abandoned request.
+        from maxim.utils.cancellation import is_cancelled
+
+        if is_cancelled():
+            raise BackendDown(
+                self._provider_key,
+                fix_hint="Request cancelled by caller after peer call returned",
+            )
+
         choices = raw.get("choices") or []
         if not choices:
             raise BackendInferenceBroken(
@@ -740,6 +767,18 @@ class _MaximPeerBackend:
                         raise BackendDown(
                             self._provider_key,
                             fix_hint="Process shutdown requested during stream",
+                        )
+                    # Plan 3.5 R4: cooperative cancellation checkpoint
+                    # between SSE chunks. The agent-level timeout in
+                    # LLMWorker may have fired while we were generating;
+                    # unwind now rather than accumulating more partial
+                    # output that will be discarded.
+                    from maxim.utils.cancellation import is_cancelled
+
+                    if is_cancelled():
+                        raise BackendDown(
+                            self._provider_key,
+                            fix_hint="Request cancelled by caller during stream",
                         )
         except HTTPAuthError as e:
             self._log_failure("auth_rejected", e, context, start)

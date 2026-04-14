@@ -507,6 +507,15 @@ class LLMRouter:
         return filtered, budget_tier, totals
 
     def _note_provider_success(self, provider_key: str, model: str = "") -> None:
+        # Plan 3.5 R6 review: guard success bookkeeping behind the
+        # cancellation check too. If an orphan thread completes the HTTP
+        # call after the agent-level timeout fired, we don't want it to
+        # write last_success/last_used_provider for a request the caller
+        # already abandoned. The plan's invariant is "cancelled requests
+        # leave _provider_states untouched" — applies to success AND
+        # failure paths.
+        if self._is_cancelled():
+            return
         state = self._provider_states.get(provider_key)
         if state is None:
             return
@@ -518,7 +527,30 @@ class LLMRouter:
         if model:
             self._last_used_model = model
 
+    def _is_cancelled(self) -> bool:
+        """Plan 3.5 R4: check if the current request has been cancelled
+        by ``LLMWorker._call_llm_with_timeout``'s agent-level timeout.
+
+        When True, all ``_note_provider_*``, ``_set_*_backoff``, AND
+        ``_note_provider_success`` helpers become no-ops so the cancelled
+        request's orphan-thread unwind does NOT pollute ``_provider_states``
+        with phantom state (failure OR success). Without this guard, a
+        cancelled call whose orphan eventually raises
+        ``BackendDown(fix_hint="cancelled")`` or completes successfully
+        would mutate ``consecutive_errors`` / ``last_success`` /
+        ``_last_used_provider`` for a request the caller already abandoned.
+
+        Lazy-imports ``maxim.utils.cancellation`` for cycle-free import
+        ordering. The primitive lives in ``utils/`` (Plan 3.5 R6 review)
+        precisely so router → utils is the only direction in the graph.
+        """
+        from maxim.utils.cancellation import is_cancelled
+
+        return is_cancelled()
+
     def _note_provider_failure(self, provider_key: str, error: str) -> None:
+        if self._is_cancelled():
+            return
         state = self._provider_states.get(provider_key)
         if state is None:
             return
@@ -540,6 +572,8 @@ class LLMRouter:
         sane range) when it is set; otherwise falls back to the exponential
         cooldown applied by :meth:`_note_provider_failure`.
         """
+        if self._is_cancelled():
+            return
         state = self._provider_states.get(provider_key)
         if state is None:
             return
@@ -554,6 +588,8 @@ class LLMRouter:
     def _set_long_backoff(self, provider_key: str, seconds: float) -> None:
         """Hard-set a long cooldown for hints that don't self-heal
         (auth rejection, model missing). Bypasses the exponential ramp."""
+        if self._is_cancelled():
+            return
         state = self._provider_states.get(provider_key)
         if state is None:
             return
@@ -578,6 +614,8 @@ class LLMRouter:
     def _set_short_backoff(self, provider_key: str, seconds: float) -> None:
         """Short cooldown matching the probe-cache TTL for
         :data:`INFERENCE_BROKEN_BACKOFF_S`."""
+        if self._is_cancelled():
+            return
         state = self._provider_states.get(provider_key)
         if state is None:
             return
