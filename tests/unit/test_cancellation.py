@@ -1,4 +1,4 @@
-"""Regression tests for maxim.agents.cancellation.
+"""Regression tests for maxim.utils.cancellation.
 
 The load-bearing invariant: the ContextVar's value MUST be a mutable
 reference (threading.Event), not a bool. If someone ever "simplifies"
@@ -18,7 +18,7 @@ import concurrent.futures
 import threading
 import time
 
-from maxim.agents.cancellation import (
+from maxim.utils.cancellation import (
     current_cancel_event,
     is_cancelled,
     reset_cancel_event,
@@ -74,7 +74,7 @@ def test_naive_threadpoolexecutor_submit_does_NOT_propagate():
         # Confirms the gotcha: child did NOT inherit the parent's binding.
         assert captured[0] is None, (
             "Python's ThreadPoolExecutor now propagates ContextVars automatically! "
-            "Good news — update maxim.agents.cancellation to drop the copy_context() "
+            "Good news — update maxim.utils.cancellation to drop the copy_context() "
             "wrapper in _call_llm_with_timeout."
         )
     finally:

@@ -130,7 +130,7 @@ def _isolate_maxim_llm_call_timeout_env():
 def _isolate_maxim_cancellation_contextvar():
     """Scrub the cancellation ``ContextVar`` between tests (Plan 3.5 R4).
 
-    ``maxim.agents.cancellation._cancel_event_var`` is module-level state
+    ``maxim.utils.cancellation._cancel_event_var`` is module-level state
     that persists across tests in the same pytest process. If a test (or
     a sim helper invoked from a test) calls ``set_cancel_event`` and
     leaks the binding without ``reset_cancel_event``, every later test
@@ -143,7 +143,7 @@ def _isolate_maxim_cancellation_contextvar():
     binding on exit. Same shape as the env-var scrubs above but applied
     to a ContextVar instead of os.environ.
     """
-    from maxim.agents.cancellation import (
+    from maxim.utils.cancellation import (
         reset_cancel_event,
         set_cancel_event,
     )

@@ -108,7 +108,7 @@ def blocking_backend():
         call_started.set()
         # Capture diagnostic state so tests can assert on what the
         # orphan thread actually saw via the ContextVar.
-        from maxim.agents.cancellation import current_cancel_event
+        from maxim.utils.cancellation import current_cancel_event
         from maxim.models.language.types import BackendDown
 
         diag["observed_event"] = current_cancel_event()
@@ -218,7 +218,7 @@ def stuck_backend():
 
     def fake_invoke_backend(**kwargs):
         call_started.set()
-        from maxim.agents.cancellation import is_cancelled
+        from maxim.utils.cancellation import is_cancelled
         from maxim.models.language.types import BackendDown
 
         deadline = time.monotonic() + 10.0  # safety cap
@@ -316,23 +316,46 @@ def test_env_var_unset_returns_default(monkeypatch):
 
 
 def test_env_var_parseable_value_wins(monkeypatch):
-    """Valid numeric env var overrides the fallback."""
-    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "120")
-    assert _read_llm_call_timeout_env() == 120.0
-    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "45.5")
-    assert _read_llm_call_timeout_env() == 45.5
+    """Valid numeric env var (within the allowed range) overrides the fallback."""
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "600")
+    assert _read_llm_call_timeout_env() == 600.0
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "450.5")
+    assert _read_llm_call_timeout_env() == 450.5
 
 
-def test_env_var_clamped_to_min(monkeypatch):
-    """Values below 10.0 are clamped up to 10.0 (can't disable the safety net)."""
-    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "0.5")
-    assert _read_llm_call_timeout_env() == 10.0
+def test_env_var_clamped_to_min(monkeypatch, caplog):
+    """Plan 3.5 R6 review: values below 300s are clamped up to 300s
+    (the HTTP layer's _INFERENCE_PROXY_TIMEOUT_S). The agent-level
+    timeout MUST be strictly above the HTTP layer or the 'HTTP fires
+    first' contract from Plan 3.5 is violated.
+    """
+    import logging
+
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "60")
+    with caplog.at_level(logging.WARNING):
+        assert _read_llm_call_timeout_env() == 300.0
+    # The clamp-up should come with a loud, specific warning that mentions
+    # the contract by name so operators understand why their override was
+    # ignored.
+    assert any("HTTP fires first" in rec.message for rec in caplog.records), (
+        "Clamp-up below HTTP floor must emit a contract-violation warning"
+    )
 
 
 def test_env_var_clamped_to_max(monkeypatch):
     """Values above 1800.0 are clamped down to 1800.0 (30 minutes absolute max)."""
     monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "3600")
     assert _read_llm_call_timeout_env() == 1800.0
+
+
+def test_env_var_at_floor_passes_through(monkeypatch):
+    """The exact floor value (300s, matching _INFERENCE_PROXY_TIMEOUT_S)
+    is the minimum allowed override. Any value at or above the floor
+    passes through unchanged."""
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "300")
+    assert _read_llm_call_timeout_env() == 300.0
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "301")
+    assert _read_llm_call_timeout_env() == 301.0
 
 
 def test_env_var_unparseable_returns_fallback(monkeypatch):
@@ -342,22 +365,34 @@ def test_env_var_unparseable_returns_fallback(monkeypatch):
 
 
 def test_llm_worker_uses_env_override(monkeypatch):
-    """Constructing an LLMWorker with no explicit timeout reads the env var."""
-    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "150")
+    """Constructing an LLMWorker with no explicit timeout reads the env var.
+
+    Uses 600s (above the 300s floor) — operators who genuinely want a
+    LARGER agent-level safety net (e.g., for a slow CPU-only model) set
+    the env var to extend the timeout, not shorten it.
+    """
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "600")
     router = _make_router()
     worker = LLMWorker(llm=router)  # no explicit llm_timeout_s
     try:
-        assert worker._llm_timeout == 150.0
+        assert worker._llm_timeout == 600.0
     finally:
         worker.stop()
 
 
 def test_llm_worker_explicit_arg_wins_over_env(monkeypatch):
-    """An explicit ``llm_timeout_s`` parameter overrides the env var."""
-    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "150")
+    """An explicit ``llm_timeout_s`` parameter overrides the env var.
+
+    Internal callers (test fixtures, sim helpers) bypass the env-var
+    clamp because they need to drive timing-sensitive tests with values
+    far below the operator-facing floor. The clamp is enforced ONLY for
+    operator-supplied configuration via env var.
+    """
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "600")
     router = _make_router()
     worker = LLMWorker(llm=router, llm_timeout_s=45.0)
     try:
+        # Explicit arg bypasses the env clamp by design — internal API.
         assert worker._llm_timeout == 45.0
     finally:
         worker.stop()

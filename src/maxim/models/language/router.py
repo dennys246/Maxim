@@ -507,6 +507,15 @@ class LLMRouter:
         return filtered, budget_tier, totals
 
     def _note_provider_success(self, provider_key: str, model: str = "") -> None:
+        # Plan 3.5 R6 review: guard success bookkeeping behind the
+        # cancellation check too. If an orphan thread completes the HTTP
+        # call after the agent-level timeout fired, we don't want it to
+        # write last_success/last_used_provider for a request the caller
+        # already abandoned. The plan's invariant is "cancelled requests
+        # leave _provider_states untouched" — applies to success AND
+        # failure paths.
+        if self._is_cancelled():
+            return
         state = self._provider_states.get(provider_key)
         if state is None:
             return
@@ -522,19 +531,20 @@ class LLMRouter:
         """Plan 3.5 R4: check if the current request has been cancelled
         by ``LLMWorker._call_llm_with_timeout``'s agent-level timeout.
 
-        When True, all ``_note_provider_*`` and ``_set_*_backoff`` helpers
-        become no-ops so the cancelled request's orphan-thread unwind does
-        NOT pollute ``_provider_states`` with phantom failures. Without
-        this guard, a cancelled call whose orphan eventually raises
-        ``BackendDown(fix_hint="cancelled")`` would bump
-        ``consecutive_errors`` and set ``backoff_until``, silencing the
-        provider for the next real request — which is exactly the
-        "No eligible LLM providers" cascade observed in trace2.
+        When True, all ``_note_provider_*``, ``_set_*_backoff``, AND
+        ``_note_provider_success`` helpers become no-ops so the cancelled
+        request's orphan-thread unwind does NOT pollute ``_provider_states``
+        with phantom state (failure OR success). Without this guard, a
+        cancelled call whose orphan eventually raises
+        ``BackendDown(fix_hint="cancelled")`` or completes successfully
+        would mutate ``consecutive_errors`` / ``last_success`` /
+        ``_last_used_provider`` for a request the caller already abandoned.
 
-        Lazy-imports to avoid a circular dependency with
-        ``agents.cancellation``.
+        Lazy-imports ``maxim.utils.cancellation`` for cycle-free import
+        ordering. The primitive lives in ``utils/`` (Plan 3.5 R6 review)
+        precisely so router → utils is the only direction in the graph.
         """
-        from maxim.agents.cancellation import is_cancelled
+        from maxim.utils.cancellation import is_cancelled
 
         return is_cancelled()
 

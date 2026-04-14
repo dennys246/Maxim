@@ -198,7 +198,7 @@ class _MaximPeerBackend:
         # waiting to execute, raise BackendDown immediately so the
         # router unwinds _inference_lock cleanly without queuing
         # another HTTP call.
-        from maxim.agents.cancellation import is_cancelled
+        from maxim.utils.cancellation import is_cancelled
 
         if is_cancelled():
             raise BackendDown(
@@ -615,6 +615,20 @@ class _MaximPeerBackend:
         typed exception path entirely (no cooldown, no router-level
         re-dispatch, empty content propagates to the agent).
         """
+        # Plan 3.5 R6 review: cancellation checkpoint AFTER the HTTP call
+        # returned but BEFORE we do JSON parsing + return success. Closes
+        # the race window in non-streaming where cancellation fired
+        # mid-HTTP — the orphan completed the call but the caller already
+        # gave up. Bailing here means we don't write success bookkeeping
+        # via _note_provider_success for an abandoned request.
+        from maxim.utils.cancellation import is_cancelled
+
+        if is_cancelled():
+            raise BackendDown(
+                self._provider_key,
+                fix_hint="Request cancelled by caller after peer call returned",
+            )
+
         choices = raw.get("choices") or []
         if not choices:
             raise BackendInferenceBroken(
@@ -759,7 +773,7 @@ class _MaximPeerBackend:
                     # LLMWorker may have fired while we were generating;
                     # unwind now rather than accumulating more partial
                     # output that will be discarded.
-                    from maxim.agents.cancellation import is_cancelled
+                    from maxim.utils.cancellation import is_cancelled
 
                     if is_cancelled():
                         raise BackendDown(

@@ -127,13 +127,29 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LLM_CALL_TIMEOUT_S: float = 300.0
 
+# Plan 3.5 R6 review (architecture lens 2a): the agent-level safety net
+# is meaningful ONLY if it is strictly larger than the HTTP layer's
+# inference timeout. The HTTP layer's authoritative timeout is
+# ``runtime.leader_proxy._INFERENCE_PROXY_TIMEOUT_S`` (300s). If an
+# operator overrides the agent-level value below this floor, the
+# agent-level timeout fires first and we re-introduce the orphan-thread
+# behavior Plan 3.5 was designed to eliminate. The clamp floor is set
+# to match _INFERENCE_PROXY_TIMEOUT_S so the contract cannot be
+# violated silently — and we log a loud WARN if a parsed value is
+# clamped up so operators see why their override didn't take effect.
+_HTTP_LAYER_TIMEOUT_FLOOR_S: float = 300.0
+_LLM_CALL_TIMEOUT_MAX_S: float = 1800.0
+
 
 def _read_llm_call_timeout_env(fallback: float = DEFAULT_LLM_CALL_TIMEOUT_S) -> float:
     """Read ``MAXIM_LLM_CALL_TIMEOUT_S`` with clamping to a sane range.
 
     Returns ``fallback`` if the env var is unset or unparseable.
-    Clamps the parsed value to ``[10.0, 1800.0]`` so a typo can't
-    disable the safety net entirely or make it absurdly long.
+    Clamps the parsed value to ``[300.0, 1800.0]`` — the floor matches
+    the HTTP layer's ``_INFERENCE_PROXY_TIMEOUT_S`` so the agent-level
+    safety net cannot be configured below the HTTP layer (which would
+    re-introduce the Plan 3.5 stacked-timeout cascade). Operators who
+    want a tighter cap should adjust the HTTP layer instead.
     """
     raw = os.environ.get("MAXIM_LLM_CALL_TIMEOUT_S", "").strip()
     if not raw:
@@ -147,13 +163,30 @@ def _read_llm_call_timeout_env(fallback: float = DEFAULT_LLM_CALL_TIMEOUT_S) -> 
             fallback,
         )
         return fallback
-    clamped = max(10.0, min(value, 1800.0))
+    clamped = max(_HTTP_LAYER_TIMEOUT_FLOOR_S, min(value, _LLM_CALL_TIMEOUT_MAX_S))
     if clamped != value:
-        logger.warning(
-            "MAXIM_LLM_CALL_TIMEOUT_S=%.1f clamped to %.1f (range 10.0-1800.0)",
-            value,
-            clamped,
-        )
+        if value < _HTTP_LAYER_TIMEOUT_FLOOR_S:
+            # Loud warning: operator tried to put the agent-level timeout
+            # below the HTTP layer, which would violate the Plan 3.5
+            # 'HTTP fires first' contract. Tell them why we ignored it.
+            logger.warning(
+                "MAXIM_LLM_CALL_TIMEOUT_S=%.1f is below the HTTP layer floor "
+                "(%.1fs = _INFERENCE_PROXY_TIMEOUT_S). Clamped to %.1fs to "
+                "preserve the 'HTTP fires first' contract from Plan 3.5. To "
+                "use a tighter timeout, lower _INFERENCE_PROXY_TIMEOUT_S in "
+                "runtime/leader_proxy.py first.",
+                value,
+                _HTTP_LAYER_TIMEOUT_FLOOR_S,
+                clamped,
+            )
+        else:
+            logger.warning(
+                "MAXIM_LLM_CALL_TIMEOUT_S=%.1f clamped to %.1f (range %.1f-%.1f)",
+                value,
+                clamped,
+                _HTTP_LAYER_TIMEOUT_FLOOR_S,
+                _LLM_CALL_TIMEOUT_MAX_S,
+            )
     return clamped
 
 
@@ -440,7 +473,7 @@ class LLMWorker:
         """
         import contextvars
 
-        from maxim.agents.cancellation import (
+        from maxim.utils.cancellation import (
             reset_cancel_event,
             set_cancel_event,
         )

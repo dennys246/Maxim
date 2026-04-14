@@ -160,6 +160,34 @@ No code changes in R3. This section exists to document the audit result so futur
 
 Spawn two parallel review Claudes (Executor + Architecture lens). Fold findings into the branch BEFORE opening the PR. The Plan 3 R3 session history is the template.
 
+**Findings folded into the branch (commit after the R5 sim run):**
+
+Both reviewers agreed on five blocking items:
+
+1. **Guard `_note_provider_success` with `_is_cancelled()`.** The plan's invariant says "cancelled requests leave `_provider_states` untouched" — applies symmetrically to success, not just failure. Without the guard, an orphan that completes the HTTP call after cancellation writes `last_success` / `_last_used_provider` / `_last_used_model` for an abandoned request. **Done.**
+
+2. **Cancellation checkpoint at the top of `_parse_llm_response`.** Closes the race window where the orphan completes HTTP between the `complete_with_usage` checkpoint and `_parse_llm_response`. Bails before the success bookkeeping path runs. **Done.**
+
+3. **Update [docs/architecture/llm_routing.md](../architecture/llm_routing.md) with the "HTTP fires first" contract.** Was in the original R2 task list, missed in implementation. The authoritative routing reference now has a "Timeout layering" section explaining the contract, the cooperative cancellation mechanism, the `copy_context()` requirement, and the known race window. **Done.**
+
+4. **Raise `MAXIM_LLM_CALL_TIMEOUT_S` clamp floor above `_INFERENCE_PROXY_TIMEOUT_S`.** The original R2 clamp range `[10.0, 1800.0]` allowed operators to silently violate the contract by setting the agent-level timeout below the HTTP layer's read timeout. New clamp is `[300.0, 1800.0]` with a contract-violation warning that names the contract. **Done.**
+
+5. **Move `maxim.agents.cancellation` → `maxim.utils.cancellation`.** The original location created a router → agents back-edge in the dependency graph (the router lazy-imported from `agents/`, which is conceptually higher in the stack). `utils/` is the neutral home that everyone can depend on. All call sites updated; module docstring documents the location rationale so future contributors don't move it back. **Done.**
+
+### R7 — Deferred follow-ups (track here, ship in 0.5+)
+
+Review findings that are real concerns but don't block this branch's merge. Tracked here so they don't get lost; will be folded into existing plans or a focused 0.5 cleanup pass.
+
+1. **Race window non-streaming cancellation is a known limitation** (executor lens 2.1). Documented in [`docs/architecture/llm_routing.md`](../architecture/llm_routing.md) "Timeout layering" section's "Known limitation" subsection. The 300s/300s ordering makes this rare; the post-HTTP checkpoint in `_parse_llm_response` prevents bookkeeping pollution when it does fire. No code fix needed unless Phase D stress test reveals real-world impact.
+
+2. **Two cancellation modules (`maxim.utils.cancellation` + `maxim.models.language.cancellation`)** still coexist. The first is per-request (Plan 3.5 R4); the second is process-wide shutdown (pre-existing). Architecturally distinct purposes, but the naming collision is a smell. **Action: rename `models.language.cancellation` to a clearer name like `models.language.process_shutdown` in 0.5.** Track as a follow-up bullet in [llm_path_operator_visibility.md](llm_path_operator_visibility.md) Plan 4 R3.0 cleanup.
+
+3. **`RequestContext` and cancellation `ContextVar` are parallel patterns.** Both per-request, both must propagate via `copy_context()`, both live in different modules (`utils/http.py` vs `utils/cancellation.py`). A future "request-scoped state" module could host both bindings + the propagation rule, eliminating the duplication. **Action: track in 0.5 cleanup as a single `maxim/utils/request_scope.py` consolidation. Not blocking.**
+
+4. **The `_call_llm_with_timeout` executor-replacement trick** (creates a fresh `ThreadPoolExecutor` on every timeout) becomes dead code if the cancellation contract holds — orphans always unwind via checkpoint, never wedge. **Action: schedule deletion for 0.5 once Phase D validates the contract under leader-restart load.**
+
+5. **Two-cancellation-module naming collision.** Same as item 2 above; consolidating into one place is the cleaner end-state but the rename alone unblocks discoverability.
+
 ## Success criteria
 
 **Must-have gates (blocking merge):**

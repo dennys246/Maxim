@@ -121,9 +121,15 @@ class TestSnippets:
 
     def test_bash_snippet_has_both_session_and_persist(self):
         out = keys.render_snippets("K")
+        # Session-only export
         assert "export" in out["bash_zsh"]
-        assert ".bashrc" in out["bash_zsh"]
-        assert ".zshrc" in out["bash_zsh"]
+        # Persistence hint — the snippet was simplified to recommend
+        # `maxim peer connect` for persistence instead of editing
+        # ~/.bashrc or ~/.zshrc directly. The snippet still contains
+        # both a session-only path and a persistence path; the
+        # persistence path is now operator-friendly rather than
+        # shell-rc-file-bound.
+        assert "maxim peer connect" in out["bash_zsh"]
 
     def test_fish_snippet_uses_universal_var(self):
         out = keys.render_snippets("K")

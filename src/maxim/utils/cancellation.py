@@ -1,5 +1,13 @@
 """Cooperative cancellation for LLM calls.
 
+**Module location:** lives in ``maxim/utils/`` (not ``maxim/agents/``)
+because the consumers span the full LLM stack — ``agents/llm_worker.py``,
+``models/language/router.py``, and ``models/language/maxim_peer_backend.py``
+all import these primitives. Putting the module in ``agents/`` would
+create a router → agents back-edge in the dependency graph; ``utils/``
+is the neutral home that everyone can depend on without cycles. (Plan
+3.5 R6 review caught this — the original location was ``agents/``.)
+
 When ``LLMWorker._call_llm_with_timeout`` abandons a future, the orphaned
 background thread is still executing inside the router's ``_inference_lock``.
 ``future.cancel()`` only sets a flag on the future object — it cannot stop
@@ -42,7 +50,7 @@ those tests fail loudly.
 Usage pattern::
 
     import contextvars
-    from maxim.agents.cancellation import (
+    from maxim.utils.cancellation import (
         current_cancel_event, set_cancel_event, reset_cancel_event,
     )
 
