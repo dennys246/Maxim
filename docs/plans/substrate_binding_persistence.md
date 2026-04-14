@@ -1,8 +1,11 @@
 # Substrate Binding, Persistence & Consolidation — P3a through P8 + B3-B5
 
-**Status:** Active — blocked on substrate_recognition.md (P1+P2 must pass first)
-**Scope:** ~3,200 LOC across 8 phases
-**Target version:** 0.3-target (P3a/P3b/P3.5/P4) through 0.5 (P5/P6/P8)
+**Status:** **SPLITTING** (2026-04-14). This monolithic plan is being broken into 8 focused per-phase plans following the P2 shipping pattern. See [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) for the narrative and [sem_execution_hook.md](sem_execution_hook.md) for the companion plan that closes a cross-cutting gap discovered during the split audit. Until the per-phase plan files land, this document remains the canonical reference for scope + pass criteria. The per-phase plan files will open as `substrate_p3a_episode_binding.md`, `substrate_p3b_channel_integration.md`, `substrate_p3_5_persistence_snapshot.md`, `substrate_p4_cross_modal_binding.md`, `substrate_p5_stress_persistence.md`, `substrate_p6_extinction.md`, `substrate_p8_sleep_replay.md`, and a separate `prompt_b3_b5_track.md` for Track B.
+
+**substrate_recognition.md predecessor closed (2026-04-14) for 0.3-minimum** — P1+P2 Stages 1+2+3 all shipped. This plan is no longer blocked.
+
+**Scope:** ~4,100 LOC across 10 phases (7 substrate + 3 prompt)
+**Target version:** 0.3-target (P3a/P3b/P3.5/P4) through 0.5 (P5/P6/P8), with prompt track at 0.4
 **Master reference:** [archive/substrate_plan.md](archive/substrate_plan.md) for full rationale, baselines, statistical hygiene
 
 ## Goal
