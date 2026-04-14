@@ -1,13 +1,22 @@
 # SEM Execution Hook — Production Forward Path for Affordances
 
-**Status:** Draft, awaiting approval via [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md).
-**Scope:** ~200-400 LOC (estimate sharpens after Stage 1 audit).
+**Status:** Stages 1+2 SHIPPED (2026-04-14). Stages 2b/2c/3/4 pending.
+**Scope:** ~1,100 LOC shipped so far (Stage 1 ~490 + Stage 2 ~820). Stages 3+4 estimated ~400-600 more.
 **Target version:** Ships anytime. Not on the substrate version-gate path.
 **Gates:** NOTHING in the release matrix, but unblocks behavioral convergence experiments that need real SEM execution loops (H1, H2, H4 in [behavioral_convergence_practice.md](behavioral_convergence_practice.md)).
 **Depends on:** substrate_recognition (✅ shipped), P2 Stage 2 pain cascade (✅ shipped).
 **Blocks:** Any production experiment that needs an agent to invoke SEM affordances from its prompt output (most of behavioral_convergence_practice H1-H4, the multi-session cross-modal sanity runs in P4).
 **Parent:** none — cross-cutting plan, not part of substrate_binding_persistence.
 **Related:** [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) (discovery), [substrate_recognition.md](substrate_recognition.md) (Stage 2 pain cascade PoC), [../experiments/p2_sem_pain_cascade.md](../experiments/p2_sem_pain_cascade.md) (the PoC this plan generalizes to production).
+
+## Shipped status (2026-04-14)
+
+- **Stage 1 ✅ SHIPPED** — PR #107, commit `6070241`. Direct-attribution for tool-invoked embodiment pain via the new `ToolOutput.side_effects` typed channel + `ToolPainBridge.record_tool_embodiment_failure` API + `_on_embodiment_pain` guard. See [project_sem_execution_hook_stage1.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_sem_execution_hook_stage1.md).
+- **Stage 2 ✅ SHIPPED** — PR #110, commit `99057a1` (merged as `efd0a38`). `runtime/embodiment_bootstrap.bootstrap_embodiment_and_pain_bridge` shared helper + `--embodiment <REF>` CLI flag + Reachy refactor. **Also closed a pre-existing production bug** where `maxim --llm X` had NEVER constructed a `ToolPainBridge` (silent no-op on the most common agent entry point). See [project_sem_execution_hook_stage2.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_sem_execution_hook_stage2.md).
+- **Stage 2b 🚧 DEFERRED** — `AgentFactory` / `AgentPool` / `maxim.create.agent()` embodiment wiring. See the "Stage 2b" section below.
+- **Stage 2c 🚧 DEFERRED** — sim orchestrator + `run_interactive_sim` migration to the helper. See the "Stage 2c" section below. Currently `--embodiment` + `--sim` is a hard `sys.exit(2)` error until this lands.
+- **Stage 3 ⏳ PENDING** — end-to-end production test on real `weapons/rusty_sword` via the `AgentFactory` path (not the PoC harness). Needs Stage 2b to construct the executor-per-turn wiring first, OR can use the CLI path directly.
+- **Stage 4 ⏳ PENDING** — `maxim doctor` check for missing `--embodiment` refs + CLI help text + `docs/embodiment_guide.md` section + smoke-run log verification.
 
 ## Goal
 
