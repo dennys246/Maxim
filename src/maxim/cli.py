@@ -180,7 +180,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # (so role_detected hits the JSONL handler if MAXIM_LOG_FILE is set) and
     # BEFORE subcommand dispatch (so `maxim doctor` / `maxim peer X` both
     # emit the event instead of only the sim loop). See
-    # docs/plans/llm_path_typed_errors.md R2a + feedback_subcommand_logging_gap.md.
+    # docs/plans/archive/llm_path_typed_errors.md R2a + feedback_subcommand_logging_gap.md.
     try:
         from maxim.runtime.role import detect_and_apply_role
 
@@ -219,6 +219,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         from maxim.doctor import run_doctor_subcommand
 
         return run_doctor_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "bench":
+        # Plan 4 B: recovery-time (and future) benchmark harnesses.
+        # Entry point lives in maxim.bench.cli — no CUDA imports,
+        # no sim orchestrator, just a tight LLM call loop.
+        from maxim.bench import run_bench_subcommand
+
+        return run_bench_subcommand(raw_argv[1:])
     if raw_argv and raw_argv[0] == "peer":
         # `peer connect/show/forget` go to the peer config module;
         # `peer test` is a diagnostic that lives with `doctor`.

@@ -360,7 +360,7 @@ description: R0 + R1 — dead mesh deleted, unified HTTP client, RequestContext 
 type: project
 ---
 
-**Shipped:** <date> as part of [llm_path_foundation.md](docs/plans/llm_path_foundation.md).
+**Shipped:** 2026-04-12 (archived 2026-04-14 when Plans 2, 3, 3.5 also landed — this file IS `docs/plans/archive/llm_path_foundation.md`, the original lived at `docs/plans/llm_path_foundation.md` before the audit move).
 
 **What changed:**
 - `src/maxim/mesh/` lost ~1,250 LOC of dead scaffolding

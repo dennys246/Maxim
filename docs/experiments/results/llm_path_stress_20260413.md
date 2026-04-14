@@ -69,7 +69,7 @@ Literal measurement: leader-ready at dt≈53, first success at dt=83.7 → 30.7s
 ## Follow-ups
 
 1. **Observability gap: `agent_id` on `peer_backend_call` / `peer_backend_failed`.** Router-side `dispatch_exhausted` correctly attributes to `llm_worker`, but backend-side events don't pull from the `RequestContext` contextvar. Likely a one-line fix in `_MaximPeerBackend._log_failure` and the success-path logger. **Plan 4 scope.**
-2. **Phase D protocol ambiguity: recovery-time measurement.** Should specify "use a benchmark workload for recovery timing; use a sim for end-to-end robustness under agent workload". Worth a one-paragraph refresh in [docs/plans/llm_path_fast_failover.md](../../plans/llm_path_fast_failover.md) lines 405-470.
+2. **Phase D protocol ambiguity: recovery-time measurement.** Should specify "use a benchmark workload for recovery timing; use a sim for end-to-end robustness under agent workload". Worth a one-paragraph refresh in [docs/plans/llm_path_fast_failover.md](../../plans/archive/llm_path_fast_failover.md) lines 405-470.
 3. **Latent streaming bug found during the parallel 125s latency investigation:** [utils/http.py:1028](../../../src/maxim/utils/http.py#L1028) is missing `_stream_ctx=stream_ctx` in the `StreamingResponse` constructor — same class of bug as the `raw_proxy_forward_streaming` fix in commit `627727e`. Dormant today because LLMWorker defaults `stream=False`, but will bite the moment streaming is turned on. Tracked separately.
 
 ## Reproduce

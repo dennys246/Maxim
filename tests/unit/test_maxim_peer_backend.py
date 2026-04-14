@@ -479,6 +479,112 @@ class TestRequestContext:
             )
         assert captured["context"].agent_id == "legacy-agent"
 
+    # ─── Plan 4 A.2: contextvar fallback when dict is None ────────────
+
+    def test_contextvar_fallback_populates_context_when_dict_is_none(self):
+        """Plan 4 A.2 regression guard: when complete_with_usage is called
+        with request_context=None, it must fall through to the
+        ``utils.http._current_context`` ContextVar rather than manufacturing
+        an empty RequestContext with agent_id=None. This was the Phase D
+        observability gap: the router was dropping the dict on the floor,
+        so every peer_backend_call event logged agent_id=null. With the
+        boundary set_context() wired in llm_worker, None-dict calls must
+        see the bound ContextVar.
+        """
+        from maxim.utils.http import RequestContext, reset_context, set_context
+
+        backend = _make_backend()
+        captured: dict[str, Any] = {}
+
+        def _capture(*args, **kwargs):
+            captured["context"] = kwargs.get("context")
+            return _make_response(
+                200,
+                {
+                    "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                },
+            )
+
+        bound = RequestContext(
+            request_id="r-from-contextvar",
+            agent_id="npc-from-contextvar",
+            session_id="sim-from-contextvar",
+            lane="large",
+        )
+        token = set_context(bound)
+        try:
+            with patch.object(_http, "post", side_effect=_capture):
+                backend.complete_with_usage(
+                    system="",
+                    user="hi",
+                    max_tokens=1,
+                    temperature=0.0,
+                    # NOTE: request_context=None — this is the gap path
+                )
+        finally:
+            reset_context(token)
+
+        ctx = captured["context"]
+        assert ctx is not None
+        # Must be the bound ContextVar value, not a freshly-generated empty
+        assert ctx.agent_id == "npc-from-contextvar"
+        assert ctx.session_id == "sim-from-contextvar"
+        assert ctx.request_id == "r-from-contextvar"
+        assert ctx.lane == "large"
+
+    def test_explicit_dict_still_wins_over_contextvar(self):
+        """Precedence: explicit non-None request_context dict beats the
+        bound ContextVar. The fallback only kicks in when the dict is
+        None."""
+        from maxim.utils.http import RequestContext, reset_context, set_context
+
+        backend = _make_backend()
+        captured: dict[str, Any] = {}
+
+        def _capture(*args, **kwargs):
+            captured["context"] = kwargs.get("context")
+            return _make_response(
+                200,
+                {
+                    "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                },
+            )
+
+        bound = RequestContext(
+            request_id="r-contextvar",
+            agent_id="from-contextvar",
+        )
+        token = set_context(bound)
+        try:
+            with patch.object(_http, "post", side_effect=_capture):
+                backend.complete_with_usage(
+                    system="",
+                    user="hi",
+                    max_tokens=1,
+                    temperature=0.0,
+                    request_context={
+                        "agent_id": "from-explicit-dict",
+                        "request_id": "r-explicit",
+                    },
+                )
+        finally:
+            reset_context(token)
+
+        ctx = captured["context"]
+        # Explicit dict wins — precedence locked in
+        assert ctx.agent_id == "from-explicit-dict"
+        assert ctx.request_id == "r-explicit"
+
+    def test_supports_request_context_capability_flag_is_declared(self):
+        """The router uses this flag to decide whether to forward the
+        kwarg. Cloud backends omit it to avoid 'unexpected keyword
+        argument' crashes. Regression guard: removing the flag would
+        silently drop agent_id from peer_backend_call logs again."""
+        backend = _make_backend()
+        assert getattr(backend, "supports_request_context", False) is True
+
 
 # ─── Parse helpers ─────────────────────────────────────────────────────
 

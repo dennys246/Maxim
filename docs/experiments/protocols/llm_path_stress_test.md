@@ -1,6 +1,6 @@
 # LLM Path Stress Test Protocol
 
-**Status:** Active protocol — runs after [llm_path_fast_failover.md](../../plans/llm_path_fast_failover.md) ships, before [llm_path_operator_visibility.md](../../plans/llm_path_operator_visibility.md) scope is finalized
+**Status:** Active protocol — runs after [llm_path_fast_failover.md](../../plans/archive/llm_path_fast_failover.md) ships, before [llm_path_operator_visibility.md](../../plans/llm_path_operator_visibility.md) scope is finalized
 **Purpose:** decide what (if any) multi-peer dispatch is needed, verify the 52-second retry loop is dead, validate substrate P2 under realistic load, measure `llama.cpp --parallel` batching as a distribution alternative
 **Expected runtime:** 4-6 hours focused execution + 2-3 hours for analysis + write-up
 
@@ -15,9 +15,9 @@ This is the gating experiment that determines Plan 4 (Operator Visibility) scope
 ## Prerequisites
 
 **Code:**
-- [llm_path_foundation.md](../../plans/llm_path_foundation.md) shipped (R0 + R1)
-- [llm_path_typed_errors.md](../../plans/llm_path_typed_errors.md) shipped (R2)
-- [llm_path_fast_failover.md](../../plans/llm_path_fast_failover.md) shipped (R2.5 + R2.6)
+- [llm_path_foundation.md](../../plans/archive/llm_path_foundation.md) shipped (R0 + R1)
+- [llm_path_typed_errors.md](../../plans/archive/llm_path_typed_errors.md) shipped (R2)
+- [llm_path_fast_failover.md](../../plans/archive/llm_path_fast_failover.md) shipped (R2.5 + R2.6)
 - [llm_path_operator_visibility.md](../../plans/llm_path_operator_visibility.md) **NOT** required — this protocol runs without Plan 4's admin API; observability comes from JSONL logs + `lane_metrics.metrics_snapshot()`
 - Substrate P2 code merged (already done)
 - P2 validation fixtures available in `tests/substrate/` and `scenarios/substrate/`

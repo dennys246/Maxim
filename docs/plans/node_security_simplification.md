@@ -1,10 +1,11 @@
 # Node Security — Immediate Fixes + Deferred Config Unification
 
-**Status:** Phase 1 in progress (immediate fixes), Phase 2 deferred  
-**Scope:** ~25 LOC immediate + ~300 LOC deferred config unification  
-**Target version:** 0.4 (immediate fixes land with Plan 4)  
-**Part of:** [llm_path_refinement.md](llm_path_refinement.md)  
+**Status:** Phase 1 ✅ SHIPPED (2026-04-13, folded into post-Plan-3 hotfixes on main). Phase 2 ⏳ DEFERRED until after Plan 4 Stage C.
+**Scope:** ~25 LOC immediate (shipped) + ~300 LOC deferred config unification
+**Target version:** Phase 1 shipped in 0.4. Phase 2 can target 0.4 or 0.5 depending on Stage C cadence.
+**Part of:** [llm_path_refinement.md](llm_path_refinement.md)
 **Depends on:** nothing — these fixes are self-contained
+**Phase 1 shipped items:** `secrets.compare_digest()` for auth comparison (timing-safe), rate-limiter bucket by source IP instead of auth token, corrected peer help text in `tunnel/cli.py`.
 
 ## What this plan is
 

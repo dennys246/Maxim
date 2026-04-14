@@ -3,7 +3,7 @@
 These are the foundational abstractions for multi-agent collaboration.
 Used by ``simulation/`` and ``create.py`` for research-protocol agent setups.
 
-**What was removed in R0 of llm_path_foundation.md (2026-04-12):**
+**What was removed in R0 of archive/llm_path_foundation.md (2026-04-12):**
 The peer_registry, peer_info, peer_channel, task_delegation, knowledge,
 clock, agent_identity, and admission modules were dead code (zero production
 imports) and have been deleted. If you're looking for rate limiting, see

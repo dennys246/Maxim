@@ -206,12 +206,26 @@ def _normalize_request_context(ctx: dict[str, Any] | None) -> Any:
     The legacy ``"agent"`` key read is a one-minor-version compatibility
     window. Drop it in 0.5 and require the ``"agent_id"`` spelling.
 
+    **Plan 4 A.2 (2026-04-13):** when ``ctx is None``, fall back to the
+    ``_current_context`` ContextVar before manufacturing an empty
+    RequestContext. The fallback catches paths where an upstream caller
+    bound the contextvar via :func:`maxim.utils.http.set_context` but
+    didn't thread the dict through function signatures — without it,
+    every such path produced ``peer_backend_call`` events with
+    ``agent_id=null`` (the Phase D observability gap). The contextvar
+    takes precedence over manufacturing an empty context but is still
+    superseded by an explicit non-None dict.
+
     Returns a :class:`maxim.utils.http.RequestContext`. Lazy-imports
     ``utils.http`` to avoid a bootstrap circular dependency.
     """
-    from maxim.utils.http import RequestContext, generate_request_id
+    from maxim.utils.http import RequestContext, current_context, generate_request_id
 
     if ctx is None:
+        # Plan 4 A.2 fallback: use the boundary-bound contextvar if set.
+        bound = current_context()
+        if bound is not None:
+            return bound
         return RequestContext(request_id=generate_request_id())
     agent_id = ctx.get("agent_id") or ctx.get("agent")
     return RequestContext(
@@ -477,6 +491,7 @@ class LLMWorker:
             reset_cancel_event,
             set_cancel_event,
         )
+        from maxim.utils.http import reset_context, set_context
 
         if self._stop_event.is_set():
             return None
@@ -491,6 +506,19 @@ class LLMWorker:
         # in the worker thread on its next checkpoint check.
         cancel_event = threading.Event()
         cancel_token = set_cancel_event(cancel_event)
+        # Plan 4 A.2: bind the typed RequestContext into the utils/http
+        # contextvar so (a) outbound X-Maxim-* headers on internal
+        # endpoints populate correctly, (b) the peer backend's
+        # _normalize_request_context fallback resolves to a real agent_id
+        # when callers didn't thread the dict, and (c) copy_context()
+        # below snapshots this binding into the worker thread alongside
+        # the cancellation Event. Without this, peer_backend_call events
+        # logged from the worker thread had agent_id=null (Phase D report
+        # observability gap). The binding is symmetric with set_cancel_event
+        # — both must reset in finally to avoid leaking per-request state
+        # into subsequent calls on the main thread.
+        normalized_ctx = _normalize_request_context(request_context)
+        context_token = set_context(normalized_ctx)
         try:
             # copy_context() snapshots the current context (including the
             # cancellation binding we just set). ctx.run(worker_fn, *args)
@@ -556,6 +584,10 @@ class LLMWorker:
             # Always restore the prior cancellation binding to avoid
             # leaking this request's Event into any later context.
             reset_cancel_event(cancel_token)
+            # Plan 4 A.2: reset the RequestContext binding for the same
+            # reason — sequential LLM calls must not inherit a previous
+            # request's agent_id/session_id via contextvar leakage.
+            reset_context(context_token)
 
     def _record_usage(
         self,

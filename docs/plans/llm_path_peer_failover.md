@@ -1,12 +1,14 @@
 # LLM Path Refinement — Plan 3.6: Peer Failover (Multi-URL `peer.yml`)
 
-**Status:** Draft v2 — 2026-04-13 (R5 VRAM-spillover detection added after the 125s leader latency was root-caused to GPU memory spillover)
-**Scope:** ~190 LOC new (150 multi-leader + 40 spillover detection)
-**Target version:** 0.4 (post-Plan-3.5)
+**Status:** v3 — 2026-04-14: **R5 VRAM spillover detection ✅ SHIPPED** (PR #99, commit `2884e58` on `main`). R1–R4 (multi-leader `peer.yml`) **remain draft** — on hold pending user-driven second-GPU bring-up.
+**Scope shipped (R5):** ~190 LOC (doctor `check_vram_pressure` + spawn-time `_check_vram_spillover_risk` + shared `project_vram_usage` math in `lane_models.py`) + 17 regression tests. Dynamic headroom `max(1.5, 0.55 × weights_gb)` calibrated to the 2026-04-13 incident. Also fixed a pre-existing silent bug in `check_llm_model_active` (mutable global import-by-name).
+**Scope remaining (R1–R4, multi-leader):** ~150 LOC — deferred until the second GPU comes online.
+**Target version:** R5 shipped in 0.4. R1–R4 can ship alongside Plan 4 Stage C.
 **Part of:** [llm_path_refinement.md](llm_path_refinement.md)
-**Depends on:** Plan 3 R2.5 (`_MaximPeerBackend` + router typed exceptions) — already shipped
-**Enables:** Multi-GPU mesh testing without waiting for full Plan 4 mesh infrastructure
+**Depends on:** Plan 3 R2.5 (`_MaximPeerBackend` + router typed exceptions) — shipped
+**Enables:** R5 is live now; R1–R4 unblocks multi-GPU mesh testing without waiting for Plan 4 Stage C
 **Sister plan:** [llm_path_operator_visibility.md](llm_path_operator_visibility.md) (Plan 4) — Plan 4's `mesh.yml` supersedes the multi-URL `peer.yml` shape introduced here
+**Load-bearing memory:** [project_vram_spillover_detection_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_vram_spillover_detection_shipped.md) — R5 load-bearing invariants (read before touching `estimate_max_ctx`, `_SPILLOVER_RATIO`, or `_ACTIVATION_OVERHEAD_RATIO`).
 
 ## Goal
 
@@ -200,8 +202,8 @@ Plan 4 (operator visibility) introduces `mesh.yml` as the more general successor
 ## Related
 
 - [llm_path_refinement.md](llm_path_refinement.md) — meta plan
-- [llm_path_fast_failover.md](llm_path_fast_failover.md) — Plan 3 (the typed-exception router loop this plan reuses)
-- [llm_path_cancellation_hygiene.md](llm_path_cancellation_hygiene.md) — Plan 3.5 (cancellation contract that makes the failover loop safe)
+- [archive/llm_path_fast_failover.md](archive/llm_path_fast_failover.md) — Plan 3 (the typed-exception router loop this plan reuses)
+- [archive/llm_path_cancellation_hygiene.md](archive/llm_path_cancellation_hygiene.md) — Plan 3.5 (cancellation contract that makes the failover loop safe)
 - [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — Plan 4 (the canonical successor)
 - [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — capability-aware multi-peer dispatch (the next step beyond strict-priority failover)
 - [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — capability advertisement shell plan

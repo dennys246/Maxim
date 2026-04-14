@@ -3,7 +3,7 @@
 Messages flow between agents via the LocalMessageBus (in-process). The
 envelope is transport-agnostic — a future networked transport could reuse it
 without schema changes. (The previous PeerChannel transport was deleted as
-dead code in R0 of llm_path_foundation.md; see
+dead code in R0 of archive/llm_path_foundation.md; see
 ``docs/plans/deferred/llm_path_multi_peer_dispatch.md`` for the replacement
 design.)
 """

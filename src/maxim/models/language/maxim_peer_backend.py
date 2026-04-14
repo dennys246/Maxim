@@ -15,7 +15,7 @@ pattern words (the only permitted match is the ``retry_after_s``
 parameter name, which is the :class:`BackendOverloaded` constructor shape
 fixed by Plan 2 R2b and cannot be renamed).
 
-Design principles (see docs/plans/llm_path_fast_failover.md for full
+Design principles (see docs/plans/archive/llm_path_fast_failover.md for full
 context):
 
 - **Single HTTP call per call-site.** No internal repeat, no internal
@@ -116,6 +116,13 @@ class _MaximPeerBackend:
     supports_model_override = True
     supports_streaming = True
     supports_tool_use = True
+    # Plan 4 A.1: declare to the router that this backend wants the
+    # request_context kwarg forwarded. Cloud backends
+    # (_OpenAIBackend, _AnthropicBackend) do not set this flag, so the
+    # router's capability-flag forwarding pattern only wires the kwarg
+    # for self-hosted peer calls — avoids "unexpected keyword argument"
+    # on cloud backends that don't accept it.
+    supports_request_context = True
 
     def __init__(self, cfg: LLMConfig, provider_key: str = "maxim_peer") -> None:
         self.cfg = cfg

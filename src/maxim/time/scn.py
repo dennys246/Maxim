@@ -232,7 +232,7 @@ class SCN:
 
         Note: this method is currently unused (the mesh clock-estimator it
         was designed for was deleted as dead code in R0 of
-        llm_path_foundation.md — 2026-04-12). Kept as a hook for a future
+        archive/llm_path_foundation.md — 2026-04-12). Kept as a hook for a future
         clock-sync layer. ``clock_estimator`` is duck-typed: any object with
         a ``correct_signature(peer_id, signature) -> TemporalSignature``
         method works.

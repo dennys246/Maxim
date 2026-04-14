@@ -243,9 +243,15 @@ def new_request_context(
     )
 
 
-def set_context(ctx: RequestContext) -> Any:
+def set_context(ctx: RequestContext | None) -> Any:
     """Bind a context for the current async/sync scope. Returns the token
-    produced by :meth:`contextvars.ContextVar.set` so callers can restore."""
+    produced by :meth:`contextvars.ContextVar.set` so callers can restore.
+
+    Accepts ``None`` so callers can explicitly scrub the binding — used
+    by the pytest autouse fixture in ``tests/conftest.py`` that isolates
+    the RequestContext between tests. The underlying ContextVar has
+    ``default=None`` so this is always safe.
+    """
     return _current_context.set(ctx)
 
 

@@ -451,3 +451,127 @@ class TestBackendClassesDispatch:
 
         assert resolve_backend_class("maxim_peer") is _MaximPeerBackend
         assert resolve_backend_class("maxim-peer") is _MaximPeerBackend
+
+
+# ─── Plan 4 A.1: request_context capability-flag forwarding ───────────────
+
+
+class TestRequestContextForwarding:
+    """Regression guards for Plan 4 A.1: _invoke_backend must forward
+    ``request_context`` to backends that declare
+    ``supports_request_context = True``, and must NOT forward it to
+    backends that don't (e.g., _OpenAIBackend which has no **kwargs
+    catch-all and would crash with TypeError).
+
+    This was the Phase D observability gap root cause: the kwarg was
+    being dropped on the floor during the kwargs dict construction in
+    _invoke_backend, so every peer_backend_call event logged
+    agent_id=null.
+    """
+
+    def _setup_router_with_mock_backend(self, backend_cls_attrs: dict):
+        """Build a router and wire a mock backend with configurable
+        class-level capability flags (supports_model_override,
+        supports_request_context, ...)."""
+        from maxim.models.language.types import LLMResponse
+
+        router = _make_router()
+        mock_backend = MagicMock()
+        # Mimic the class-attribute lookup pattern the router uses via
+        # getattr(backend, "name", default)
+        for k, v in backend_cls_attrs.items():
+            setattr(mock_backend, k, v)
+        mock_backend.requires_prompt_formatting = False
+        mock_backend.complete_with_usage = MagicMock(
+            return_value=LLMResponse(content="ok", provider="fake-peer", model="m"),
+        )
+        router._backends["fake-peer"] = mock_backend
+        return router, mock_backend
+
+    def test_kwarg_forwarded_when_capability_flag_set(self):
+        """When ``supports_request_context = True`` and request_context
+        is not None, the dict must appear in the complete_with_usage
+        kwargs. Without this, peer_backend_call emits agent_id=null."""
+        router, backend = self._setup_router_with_mock_backend(
+            {"supports_request_context": True},
+        )
+        request_ctx = {
+            "agent_id": "npc-mother",
+            "session_id": "sim-42",
+            "request_id": "r-abc",
+            "lane": "large",
+        }
+        with router._inference_lock:
+            router._invoke_backend(
+                backend=backend,
+                provider_key="fake-peer",
+                redacted_system="",
+                redacted_user="hi",
+                model="m",
+                model_override=None,
+                temperature=0.0,
+                max_tokens=1,
+                tools=None,
+                thinking=None,
+                stream=False,
+                redaction_result=None,
+                request_context=request_ctx,
+                now=0.0,
+            )
+        call = backend.complete_with_usage.call_args
+        assert call.kwargs.get("request_context") == request_ctx
+
+    def test_kwarg_NOT_forwarded_when_capability_flag_absent(self):
+        """Cloud backends (_OpenAIBackend, _AnthropicBackend) don't accept
+        request_context. Forwarding to them would crash with TypeError.
+        The capability-flag check prevents this. This test locks in the
+        invariant — removing the flag check must also update this test."""
+        router, backend = self._setup_router_with_mock_backend(
+            {"supports_request_context": False},
+        )
+        with router._inference_lock:
+            router._invoke_backend(
+                backend=backend,
+                provider_key="fake-peer",
+                redacted_system="",
+                redacted_user="hi",
+                model="m",
+                model_override=None,
+                temperature=0.0,
+                max_tokens=1,
+                tools=None,
+                thinking=None,
+                stream=False,
+                redaction_result=None,
+                request_context={"agent_id": "should-not-reach-backend"},
+                now=0.0,
+            )
+        call = backend.complete_with_usage.call_args
+        assert "request_context" not in call.kwargs
+
+    def test_kwarg_NOT_forwarded_when_request_context_is_none(self):
+        """Even with the capability flag set, a None request_context
+        must not be forwarded. (Keeps the backend's default-arg path
+        live for backends that branch on None.)"""
+        router, backend = self._setup_router_with_mock_backend(
+            {"supports_request_context": True},
+        )
+        with router._inference_lock:
+            router._invoke_backend(
+                backend=backend,
+                provider_key="fake-peer",
+                redacted_system="",
+                redacted_user="hi",
+                model="m",
+                model_override=None,
+                temperature=0.0,
+                max_tokens=1,
+                tools=None,
+                thinking=None,
+                stream=False,
+                redaction_result=None,
+                request_context=None,
+                now=0.0,
+            )
+        call = backend.complete_with_usage.call_args
+        assert "request_context" not in call.kwargs
