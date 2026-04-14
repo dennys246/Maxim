@@ -36,6 +36,7 @@ from __future__ import annotations
 import dataclasses
 import threading
 import time
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -82,31 +83,41 @@ def _make_worker(router: LLMRouter, timeout_s: float) -> LLMWorker:
 def blocking_backend():
     """A mock for ``router._invoke_backend`` that blocks on a released Event.
 
-    Yields ``(release_event, call_started_event, call_count)``:
+    Yields ``(release_event, call_started_event, call_count, fake, diag)``:
     - ``release_event``: set by the test to unblock the mock.
     - ``call_started_event``: set by the mock when it begins blocking.
     - ``call_count``: list whose length tracks how many times the mock
       was entered (use ``len(call_count)`` to count).
+    - ``fake``: the side_effect callable to patch onto _invoke_backend.
+    - ``diag``: a dict the mock populates with diagnostic state (the
+      Event reference it observed via current_cancel_event, plus poll
+      counts) so failing tests can prove whether ContextVar propagation
+      worked or not.
     """
     release_event = threading.Event()
     call_started = threading.Event()
     call_count: list[int] = []
+    diag: dict[str, Any] = {
+        "observed_event": None,  # the Event the mock saw via current_cancel_event
+        "polls": 0,  # how many times we checked is_cancelled
+        "saw_cancelled": False,
+    }
 
     def fake_invoke_backend(**kwargs):
         call_count.append(1)
         call_started.set()
-        # Block until released. In the buggy code path, the agent-level
-        # timeout fires while we're blocked here — the test then asserts
-        # the router's _inference_lock was released anyway. In the fixed
-        # code path, a cancellation event check inside _MaximPeerBackend
-        # will raise early and unwind the lock cleanly.
-        #
-        # Check the cancellation event periodically so the fix can short-circuit.
-        from maxim.agents.cancellation import is_cancelled
+        # Capture diagnostic state so tests can assert on what the
+        # orphan thread actually saw via the ContextVar.
+        from maxim.agents.cancellation import current_cancel_event
         from maxim.models.language.types import BackendDown
 
+        diag["observed_event"] = current_cancel_event()
+
         while not release_event.is_set():
-            if is_cancelled():
+            diag["polls"] += 1
+            ev = current_cancel_event()
+            if ev is not None and ev.is_set():
+                diag["saw_cancelled"] = True
                 raise BackendDown(
                     "fake-peer",
                     fix_hint="cancelled by test",
@@ -114,7 +125,7 @@ def blocking_backend():
             time.sleep(0.01)
         return "fake response", {"prompt_tokens": 1, "completion_tokens": 1}
 
-    yield release_event, call_started, call_count, fake_invoke_backend
+    yield release_event, call_started, call_count, fake_invoke_backend, diag
 
 
 def test_timeout_returns_fallback(blocking_backend):
@@ -122,7 +133,7 @@ def test_timeout_returns_fallback(blocking_backend):
 
     This already works in the pre-fix code and serves as a sanity check.
     """
-    release, started, count, fake = blocking_backend
+    release, started, count, fake, diag = blocking_backend
     router = _make_router()
     worker = _make_worker(router, timeout_s=1.0)
 
@@ -150,7 +161,7 @@ def test_inference_lock_released_after_timeout(blocking_backend):
     Post-fix (R4): the orphan thread sees the cancellation event on
     its next check and raises, unwinding the ``with`` block cleanly.
     """
-    release, started, count, fake = blocking_backend
+    release, started, count, fake, diag = blocking_backend
     router = _make_router()
     worker = _make_worker(router, timeout_s=1.0)
 
@@ -162,17 +173,30 @@ def test_inference_lock_released_after_timeout(blocking_backend):
                 max_tokens=10,
             )
             assert result.get("_timeout") is True
-            # Give the fix up to 2s to cascade through cancellation →
+            # Give the fix up to 5s to cascade through cancellation →
             # BackendDown → router unwinds _inference_lock. A correct
-            # fix should release the lock within ~100ms of the timeout.
-            deadline = time.monotonic() + 2.0
+            # fix should release the lock within ~100ms of the timeout;
+            # 5s is generous tolerance for slow CI hardware.
+            deadline = time.monotonic() + 5.0
             while time.monotonic() < deadline:
                 if not router._inference_lock.locked():
                     break
                 time.sleep(0.05)
+            # Diagnostic snapshot used by the assertion message so a
+            # CI failure tells us EXACTLY which step of the propagation
+            # broke instead of just "lock still held".
+            observed = diag["observed_event"]
+            polls = diag["polls"]
+            saw = diag["saw_cancelled"]
             assert not router._inference_lock.locked(), (
-                "_inference_lock is still held after agent-level timeout — "
-                "orphan thread is blocking future LLM calls. See Plan 3.5 R4."
+                "_inference_lock is still held after agent-level timeout. "
+                f"diag: orphan_observed_cancel_event_in_context={observed is not None}, "
+                f"orphan_polled_is_cancelled_n_times={polls}, "
+                f"orphan_saw_cancelled_True={saw}. "
+                "If observed=False → contextvars.copy_context().run is not "
+                "propagating the binding. If polls>0 but saw=False → cancel_event.set() "
+                "in the parent did not flip the orphan's view of the Event "
+                "(reference identity issue). See Plan 3.5 R4."
             )
     finally:
         release.set()

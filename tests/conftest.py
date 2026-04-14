@@ -126,6 +126,35 @@ def _isolate_maxim_llm_call_timeout_env():
             os.environ["MAXIM_LLM_CALL_TIMEOUT_S"] = saved
 
 
+@pytest.fixture(autouse=True)
+def _isolate_maxim_cancellation_contextvar():
+    """Scrub the cancellation ``ContextVar`` between tests (Plan 3.5 R4).
+
+    ``maxim.agents.cancellation._cancel_event_var`` is module-level state
+    that persists across tests in the same pytest process. If a test (or
+    a sim helper invoked from a test) calls ``set_cancel_event`` and
+    leaks the binding without ``reset_cancel_event``, every later test
+    that exercises ``LLMWorker._call_llm_with_timeout`` inherits the
+    stale Event — which can cause confusing failures where the orphan
+    thread sees a wrong Event reference and either fires cancellation
+    spuriously or fails to fire it at all.
+
+    Pattern: force the binding to None on test entry, restore the prior
+    binding on exit. Same shape as the env-var scrubs above but applied
+    to a ContextVar instead of os.environ.
+    """
+    from maxim.agents.cancellation import (
+        reset_cancel_event,
+        set_cancel_event,
+    )
+
+    scrub_token = set_cancel_event(None)
+    try:
+        yield
+    finally:
+        reset_cancel_event(scrub_token)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Memory Types Fixtures
 # ─────────────────────────────────────────────────────────────────────────────
