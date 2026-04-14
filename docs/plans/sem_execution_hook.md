@@ -49,48 +49,119 @@ So the gap is narrower but still real: **there is no production-agent path to LO
 
 ## Minimum implementation
 
-### Stage 1 — audit + minimal startup hook
+The Stage 1 audit (2026-04-14, [project_sem_execution_hook_stage1.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_sem_execution_hook_stage1.md)) surfaced a pre-existing root-cause bug in tool-invoked embodiment-pain attribution — the pending tool event's context (`{"params": ...}`) shared zero keys with the rich outcome context, so `_context_similarity` silently returned 0.0 and no NAc link ever formed. That bug was fixed in Stage 1 via direct-attribution through a new `ToolOutput.side_effects` typed channel + `ToolPainBridge.record_tool_embodiment_failure` API + executor wire. The audit also found a second pre-existing gap: **`maxim --llm X` in `cli.py` does NOT construct a `ToolPainBridge` at all**, so the Stage 1 fix is a silent no-op on that path. Stage 2 closes that gap as part of the startup hook work.
 
-Before writing any code, **AUDIT the existing wiring more carefully** (the 2026-04-14 planning audit found the cascade was already wired; it's entirely possible a second audit finds that the startup hook exists too and is just undocumented). Specifically:
+### Stage 1 — tool-pain bridge root-cause fix + `ToolOutput.side_effects` — **SHIPPED** (PR #107, commit `6070241`, 2026-04-14)
 
-1. **Read `runtime/loop_controller.py` LoopController.__init__`** — does it accept an `embodiment` parameter? If yes, what does it do with it?
-2. **Read `runtime/agent_factory.py`** — does AgentFactory construct an Embodiment? If yes, how is the tree specified (config file, CLI flag, default bundled component)?
-3. **Read `cli.py::main`** — is there a CLI flag to load a SEM component at agent startup? (`--embodiment`, `--sem-entity`, etc.)
-4. **Check `MaximAgent` / `AgentPool`** — do they hold an `Embodiment` reference?
-5. **Run `grep -rn "Embodiment(" src/maxim/ | grep -v test`** — every production call site for `Embodiment` construction.
+See [project_sem_execution_hook_stage1.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_sem_execution_hook_stage1.md) for the complete writeup including the 6 load-bearing invariants this establishes.
 
-If the audit finds existing startup wiring, Stage 1 becomes "wire `generate_tools_for_entity` into the existing path." If not, Stage 1 is:
+### Stage 2 — `runtime/embodiment_bootstrap.py` helper + CLI `--embodiment` flag + **CLI `ToolPainBridge` gap fix**
 
-- Add `embodiment: Embodiment | None = None` parameter to `LoopController.__init__` (or wherever the agent loop accepts its runtime dependencies).
-- Add a CLI flag `--embodiment <component_ref>` that loads a SEM component from the `ComponentRegistry` (using the `weapons/rusty_sword` ref format from P2 Stage 2).
-- In `LoopController` startup: if `embodiment is not None`, call `generate_tools_for_entity(embodiment.root, tool_registry, embodiment=embodiment, cerebellum=cerebellum)` so affordance tools register alongside the normal tool set.
-- In the executor wiring: pass `embodiment` through so `evaluate_failures()` fires post-action.
+**LOUD CALL-OUT — pre-existing bug this stage closes:** `maxim --llm X` (the non-sim, non-Reachy CLI entry point in [cli.py::main](../../src/maxim/cli.py)) has never constructed a `ToolPainBridge`. The bridge is wired in `simulation/orchestrator.py:940` (sim path) and `embodied_runtime/agentic_runtime.py:356` (Reachy path) but never in the regular CLI agent path. This means any tool failures during a regular `maxim --llm X` session silently skip NAc causal learning — the infrastructure Stage 1 shipped is a no-op on this path. This is PRE-EXISTING (since before the sem_execution_hook plan was drafted), NOT a Stage 1 regression. **Stage 2 fixes this as a side effect of the new shared helper.**
 
-**Pass criteria (Stage 1):** `maxim --llm mistral-7b --embodiment weapons/rusty_sword` starts an agent that has `rusty_sword_slash`, `rusty_sword_parry`, `rusty_sword_throw`, `rusty_sword_sharpen`, `rusty_sword_repair` in its tool list, and invoking any of them via the LLM's tool-use path fires through `ModulatorAffordanceTool.execute`. Unit test: construct a mock agent with a rusty_sword embodiment, have it call `executor.execute({"tool_name": "rusty_sword_slash", "params": {"target": "dummy", "force": 0.5}})`, assert the returned ToolOutput contains `active_failures` list.
+#### Shape
 
-### Stage 2 — end-to-end pain cascade integration test (no sim orchestrator)
+Extract a shared helper so all three production paths converge on one bootstrap:
 
-Port the P2 Stage 2 PoC (`tests/substrate/test_sem_pain_cascade.py`) to use the production wiring path:
+**New file: `src/maxim/runtime/embodiment_bootstrap.py`** (~100 LOC)
+
+```python
+def bootstrap_embodiment_and_pain_bridge(
+    *,
+    nac,
+    hippocampus,
+    scn,
+    memory_hub,
+    pain_bus,          # REQUIRED — caller always constructs one
+    executor,          # _tool_pain_bridge gets assigned on return
+    entity_ref: str | None = None,
+    component_registry: ComponentRegistry | None = None,
+    tool_index: Any | None = None,
+    cerebellum: Any | None = None,
+) -> tuple[Embodiment | None, ToolPainBridge]:
+    """Bootstrap ToolPainBridge (always) + Embodiment (when ref given).
+
+    Wires the bridge to the executor unconditionally so tool learning
+    works even without SEM. When entity_ref is provided, additionally
+    resolves the component, wraps in Embodiment(pain_bus=...),
+    generates affordance tools into executor.registry, and returns
+    the Embodiment for the caller to hold a reference to.
+
+    Returns (embodiment, bridge).
+    """
+```
+
+#### Changes
+
+1. **New `runtime/embodiment_bootstrap.py` helper** — the function above.
+2. **`cli.py` agent path**:
+   - New `--embodiment <component_ref>` CLI flag.
+   - Unconditionally construct `PainBus` + `create_pain_memory_subscriber` for the non-sim agent path (matching the sim block at `cli.py:1321`). This closes a second pre-existing gap where non-sim runs had no pain-memory capture.
+   - After `executor = build_executor(registry)` and before the FearGatedExecutor wrap, call `bootstrap_embodiment_and_pain_bridge(...)`. This wires `ToolPainBridge` for regular `maxim --llm X` (the core gap this stage closes) and additionally wires an `Embodiment` when `--embodiment` was passed.
+3. **`embodied_runtime/agentic_runtime.py:348-368`** — migrate the existing manual `ToolPainBridge` wiring to use the helper. Behavior-preserving refactor; eliminates drift risk between the two sites.
+
+#### Pass criteria (Stage 2)
+
+- `maxim --llm mistral-7b` (no `--embodiment`) constructs a `ToolPainBridge` and wires it to the executor. Unit test: build the helper with `entity_ref=None`, assert `executor._tool_pain_bridge is not None`.
+- `maxim --llm mistral-7b --embodiment weapons/rusty_sword` additionally loads the rusty_sword component and registers `rusty_sword_slash`, `rusty_sword_parry`, etc. in the tool registry. Unit test: build the helper with `entity_ref="weapons/rusty_sword"`, assert the expected tool names appear in `executor.registry.list()`.
+- `embodied_runtime/agentic_runtime.py` bootstrap path produces byte-identical bridge behavior to pre-refactor (regression-guarded via existing tests).
+- `maxim --llm X` path unconditionally constructs a `PainBus` and subscribes `create_pain_memory_subscriber` — verified by a CLI-level test that imports the entry point and walks the wiring.
+
+#### Explicitly OUT of scope for Stage 2
+
+- **`AgentFactory.create_agent` / `maxim.create.agent()` / `maxim.load.agent()` / `AgentPool` embodiment wiring.** These use `AgentInstance.entity` without ever constructing an `Executor` in the factory — the executor lifetime is per-turn in `AgentPool`, not per-session. Wiring the helper here requires rethinking the executor lifecycle and is deferred to **Stage 2b**. The Stage 2 helper is designed so Stage 2b can call it from inside `AgentPool.run_turn` (or wherever the per-turn executor is constructed) without modification.
+- **Sim-mode `ToolPainBridge` wiring.** The Stage 2 pre-merge review surfaced that both `--sim agent` (via `run_agentic_loop`) and `--sim interactive` (via `run_interactive_sim`) construct a `PainBus` but NO `ToolPainBridge`. This is a parallel pre-existing gap that matches the non-sim CLI gap this stage closes. Deferred to **Stage 2c** — migrate `simulation/orchestrator.py` + `simulation/interactive.py` to call the helper, then `--embodiment` can work under `--sim` too. Until then, `--embodiment` + `--sim` is a hard error (`sys.exit(2)`).
+
+### Stage 2c — Sim orchestrator + interactive migration — **DEFERRED**
+
+Not scheduled. Triggers when:
+- A sim-mode campaign needs SEM body wiring via `--embodiment` at the CLI surface.
+- A behavioral experiment needs NAc tool-outcome learning under `--sim agent` (currently a silent no-op on that path).
+- The sim-side drift between `orchestrator.py:940` (hand-rolled bridge) and the Stage 2 helper becomes a bisect problem.
+
+Scope sketch:
+- Replace `simulation/orchestrator.py:936-950` with a call to `bootstrap_embodiment_and_pain_bridge(entity_ref=<from campaign>, ...)`.
+- Add a call inside `run_interactive_sim` before handing the executor to the REPL.
+- Drop the hard error in `cli.py` when `--embodiment` + `--sim` is passed.
+- Regression test: end-to-end sim run with a bundled weapon component.
+
+### Stage 2b — `AgentFactory` / `AgentPool` embodiment wiring — **DEFERRED**
+
+Not scheduled. Activates when any of these hits:
+
+- A behavioral experiment using `maxim.create.agent("name", entity_ref="...")` needs the bio-cascade (currently the entity is stored raw on `AgentInstance.entity` and never exercised for failure learning).
+- `AgentPool` multi-agent scenarios need isolated per-agent embodiment + pain bridge (the current `ToolPainBridge` model is single-bridge-per-agent; concurrent NPC scenarios need one bridge per agent instance, which needs either Executor-per-agent or a bridge dispatcher keyed on agent_id).
+- `maxim.load.agent(...)` needs to restore an embodiment from persisted state.
+
+Scope sketch (subject to full design pass when it activates):
+- Decide executor lifetime in `AgentPool` (currently a per-turn concern — needs a re-read of `agent_pool.py` to confirm).
+- Add `embodiment` field to `AgentInstance`.
+- Call `bootstrap_embodiment_and_pain_bridge` from inside `AgentPool.run_turn` (or wherever the per-turn executor is built).
+- Multi-agent isolation: every agent must have its own `ToolPainBridge` instance, because the `_pending_tools` dict is bridge-scoped and shared state across agents would corrupt attribution.
+
+**Cross-reference:** this deferral is also noted in [project_sem_execution_hook_stage1.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_sem_execution_hook_stage1.md) under "Deferred / out of scope" and should be mirrored wherever the substrate-binding plan discusses multi-agent infrastructure.
+
+### Stage 3 — end-to-end pain cascade integration test (no sim orchestrator) — PENDING
+
+Port the P2 Stage 2 PoC (`tests/substrate/test_sem_pain_cascade.py`) to use the Stage 2 production wiring path:
 
 - Instantiate `ComponentRegistry.instantiate("weapons/rusty_sword")`
-- Wrap in `Embodiment(sword, pain_bus=pain_bus)`
-- Construct the full agent via `LoopController` or `AgentFactory` (whichever is the audit-discovered entry point), passing the embodiment
-- Call `executor.execute({"tool_name": "rusty_sword_slash", ...})` directly (don't route through an LLM) — this simulates the LLM's tool-use choice deterministically
+- Wrap in `Embodiment(sword, pain_bus=pain_bus)` via `bootstrap_embodiment_and_pain_bridge`
+- Construct the full executor + bridge via the Stage 2 helper (no PoC harness)
+- Call `executor.execute({"tool_name": "rusty_sword_slash", ...})` directly — this simulates the LLM's tool-use choice deterministically
 - Drive durability low to trigger shatter
 - Assert `nac.predict("tool", "tool:rusty_sword_slash", context={source, entity})` returns `NEGATIVE`
 
-Compare to the existing PoC: the existing test uses a custom `PoCAgent` that calls `nac.record_event("action", "slash:rusty_sword", context={source, entity})` directly. The production test uses `executor.execute(...)` which goes through `ToolPainBridge.record_tool_start` which calls `nac.record_event("tool", "tool:rusty_sword_slash", context={...})`. The `event_type` and `event_signature` differ. This is the REAL difference between the PoC and production, and the test needs to handle it.
+**Pass criteria (Stage 3):** end-to-end test in `tests/substrate/test_sem_execution_production.py` that runs the full cascade through the production executor, asserts NEGATIVE prediction after one learning cycle. No mocks in the chain.
 
-**Pass criteria (Stage 2):** end-to-end test in `tests/substrate/test_sem_execution_production.py` that runs the full cascade through the production executor, asserts NEGATIVE prediction after one learning cycle. No mocks in the chain. Matches the shape of `test_sem_pain_cascade.py::test_agent_prefers_drop_weapon_after_learning_slash_is_painful` but with the real agent entry point instead of the PoC harness.
+### Stage 4 — CLI smoke + doctor check + docs — PENDING
 
-### Stage 3 — CLI smoke + doctor check + docs
-
-- `maxim doctor` check that warns if `--embodiment` was specified but the component ref doesn't exist (use the error-hint pattern from existing doctor checks)
+- `maxim doctor` check that warns if `--embodiment` was specified but the component ref doesn't exist
 - CLI help text for `--embodiment` + one-line note in `docs/user/cli-reference.md`
-- Update `docs/embodiment_guide.md` with a "running an agent with a SEM body" section pointing at the new CLI flag
-- Smoke run: `maxim --llm claude-haiku --embodiment weapons/rusty_sword --goal "test the sword" --sandbox tmpdir` and eyeball the log for a `tool_invoke` event on `rusty_sword_slash` followed by a `pain_published` event
+- Update `docs/embodiment_guide.md` with a "running an agent with a SEM body" section
+- Smoke run validation
 
-**Pass criteria (Stage 3):** smoke run produces the expected log sequence; doctor check surfaces missing-component errors cleanly.
+**Pass criteria (Stage 4):** smoke run produces the expected log sequence; doctor check surfaces missing-component errors cleanly.
 
 ## Pre-merge review round
 

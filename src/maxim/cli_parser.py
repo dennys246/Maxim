@@ -76,6 +76,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "above the formula estimate may OOM the GPU at load time.",
     )
     core.add_argument(
+        "--embodiment",
+        type=str,
+        default=None,
+        metavar="REF",
+        help="SEM component reference for the agent's body (e.g. "
+        "'weapons/rusty_sword'). Loads the component, auto-generates "
+        "affordance tools, and wires the pain cascade through NAc. "
+        "Not yet supported with --sim.",
+    )
+    core.add_argument(
         "--epochs",
         type=int,
         default=0,
