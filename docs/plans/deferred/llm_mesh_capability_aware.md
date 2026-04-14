@@ -1,8 +1,8 @@
 # Deferred: LLM Mesh — Capability-Aware Routing
 
-**Status:** Shell plan — not yet active
-**Revive when:** the mesh has ≥2 GPU nodes with **different capabilities** (different models loaded, different VRAM, different speeds) and operators want the router to pick based on what each node can actually serve, not just static priority order.
-**Estimated scope:** ~300 LOC new
+**Status:** Shell plan — not yet active (expanded 2026-04-13 with Stage 5 spillover detection after the 125s leader latency was root-caused to VRAM spillover into shared memory)
+**Revive when:** the mesh has ≥2 GPU nodes with **different capabilities** (different models loaded, different VRAM, different speeds) and operators want the router to pick based on what each node can actually serve, not just static priority order. Stage 5 (runtime tok/s baseline) revives independently when the static VRAM ratio check from Plan 3.6 R5 proves insufficient — i.e., when an operator hits a slowdown that the static check missed.
+**Estimated scope:** ~450 LOC new (300 capability ranking + 150 spillover detection)
 **Depends on:**
 - [llm_path_operator_visibility.md](../llm_path_operator_visibility.md) (Plan 4) — `mesh.yml` schema, `/v1/mesh/state` admin endpoint, request-trace ring buffer
 - [llm_path_peer_failover.md](../llm_path_peer_failover.md) (Plan 3.6) — multi-leader provider list in router (the strict-priority precursor)
@@ -87,6 +87,40 @@ Capabilities can change underfoot — operator might `install qwen-72b` on a nod
 - `maxim doctor --capabilities` lists each node's advertised capabilities + flags mismatches.
 - `GET /v1/mesh/capabilities` returns the local node's capability snapshot.
 - `POST /v1/mesh/refresh-capabilities/<peer>` forces a fresh poll.
+
+### Stage 5 — Runtime spillover detection via tok/s baseline (~150 LOC)
+
+**Motivating evidence:** the 2026-04-13 125s leader latency was VRAM spillover into shared memory. Static `vram_used / vram_total > 0.93` (added in Plan 3.6 R5) catches the case at startup or via `maxim doctor`, but doesn't catch:
+- Models that load fine but spill once KV cache grows during a long prompt
+- Multi-process VRAM contention (another process eats VRAM after Maxim starts)
+- Driver-level overcommit on cards that allow it transparently
+
+The robust signal is **measured tok/s vs expected tok/s for this (model, GPU class) pair**. A node generating at 5 tok/s when the baseline says 32 tok/s is degraded — the cause is usually spillover, but it could also be thermal throttling, another GPU consumer, or a model-specific perf bug. The router doesn't need to know WHY; it just needs to know "this node is currently 5x slower than its baseline" and route accordingly.
+
+**Implementation:**
+
+1. **Baseline lookup table (`runtime/lane_models.py::_TOKENS_PER_SEC_BASELINE`).** Static table of measured tok/s per (model_profile, gpu_class) pair. Populated from real-world measurements on the user's hardware tier — extends the existing `_INFER_VRAM_TIERS` table that already maps GPU classes to VRAM-appropriate models. Format: `{("qwen2.5-14b-instruct", "rtx-50-class"): 32.5, ("qwen2.5-7b-instruct", "rtx-30-class"): 28.0, ...}`. Defaults conservative; specific entries override.
+
+2. **Per-call tok/s measurement.** `_MaximPeerBackend.complete_with_usage` already records `output_tokens` and `elapsed_ms` in the `peer_backend_call` JSONL event. Compute `tokens_per_sec = output_tokens / (elapsed_ms / 1000)` and compare against the baseline. Note: this is GENERATION speed, excluding prefill — prefill latency is mostly prompt-size-dependent and orthogonal.
+
+3. **Sliding-window degradation detector.** The router maintains a per-provider EMA of recent tok/s (window: last N=10 calls). When EMA drops below `0.5 * baseline`, mark the provider as `degraded` and emit a structured `provider_degraded` WARN with `provider`, `observed_tps`, `baseline_tps`, `degradation_ratio`. The capability ranking formula (Stage 2's `_provider_score`) penalizes degraded providers heavily — they fall to the bottom of the priority list but are NOT removed entirely (graceful degradation, not hard removal).
+
+4. **Recovery detection.** When EMA recovers above `0.8 * baseline` for N=5 consecutive calls, clear the degraded flag and emit `provider_recovered`. Same EMA window, hysteresis prevents flapping.
+
+5. **Per-call exposure.** Each `peer_backend_call` event gains a `degradation_ratio` field (0.0-1.0) so operators can grep the JSONL for slow nodes without waiting for the WARN. The aggregated `dispatch_exhausted` event (already present from Plan 3) gains a `degraded_providers` field listing any providers that were skipped due to degradation.
+
+**Why this lives in Stage 5 of the deferred plan, not Plan 3.6:**
+
+- The baseline table needs real measurements across the user's actual GPU classes. RTX 5080, RTX 3070, and Apple Silicon all have different baselines. Plan 3.6 only has the RTX 5080 + RTX 3070 setup; expanding the table needs more hardware coverage.
+- The router needs to be capability-aware (Stages 1-2 of this plan) before degradation-aware ranking is meaningful. Without capability data, a slow node is just "a node" — the router has nowhere to fall back to.
+- The 5x-slowdown threshold is heuristic. Tuning needs evidence from multiple workloads (sim, real chat, agent loop) before it's stable.
+
+**Cross-platform notes:**
+
+- **NVIDIA Linux:** the simplest signal is tok/s. `nvidia-smi --query-gpu=memory.used` does NOT include shared memory on Linux as of driver 535. Don't rely on it.
+- **NVIDIA Windows 11+:** `nvidia-smi --query-gpu=memory.used,memory.shared` reports shared memory directly on driver 545+. If available, use as a confirmation signal alongside tok/s.
+- **Apple Silicon (UMA):** there is no spillover by definition — system RAM IS GPU RAM. Tok/s baseline still useful for thermal throttling detection.
+- **AMD ROCm:** untested. The tok/s baseline approach works regardless of vendor; only the optional vendor-specific telemetry differs.
 
 ## What this plan does NOT add
 

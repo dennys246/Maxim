@@ -1,7 +1,7 @@
 # LLM Path Refinement — Plan 3.6: Peer Failover (Multi-URL `peer.yml`)
 
-**Status:** Draft v1 — 2026-04-13
-**Scope:** ~150 LOC new
+**Status:** Draft v2 — 2026-04-13 (R5 VRAM-spillover detection added after the 125s leader latency was root-caused to GPU memory spillover)
+**Scope:** ~190 LOC new (150 multi-leader + 40 spillover detection)
 **Target version:** 0.4 (post-Plan-3.5)
 **Part of:** [llm_path_refinement.md](llm_path_refinement.md)
 **Depends on:** Plan 3 R2.5 (`_MaximPeerBackend` + router typed exceptions) — already shipped
@@ -119,7 +119,29 @@ def _build_remote_backend(self, cfg: LaneConfig) -> Any | None:
 
 - Doctor's existing peer-mode probe checks `MAXIM_LANE_LARGE_REMOTE_URL` (one URL). Extend to check ALL configured leaders, report per-leader status with the typed exception class.
 
-### R5 — Pre-merge review round (per the Plan 3 ship pattern)
+### R5 — VRAM spillover detection (~40 LOC)
+
+**Motivating evidence (2026-04-13):** the 125s leader latency that Plan 3.5 exposed was eventually root-caused to **VRAM spillover into shared system memory**. When a model loads at >95% VRAM utilization, NVIDIA's UMA driver silently spills KV cache pages to system RAM. Inference still "works" but at 5-10x degraded throughput because every token generation pages in from system memory. The user's RTX 5080 was reporting `memory.used / memory.total ≈ 0.97` with Qwen-14B Q4_K_M, and that 3% margin was below the spillover threshold. Symptom: 125s for a "say hi" prompt that should take 10-15s.
+
+This stage adds detection so the next operator hits a loud warning instead of a silent 10x slowdown.
+
+**Three small additions, all under 40 LOC total:**
+
+1. **Doctor check (`doctor/checks.py::check_vram_pressure`).** New check that calls the existing `detect_compute_resources()` + `_query_nvidia_smi()` paths. Warns when:
+   - `vram_used_gb / vram_total_gb > 0.93` AND a model is currently loaded → likely spillover, expect 5-10x slowdown
+   - `vram_used_gb / vram_total_gb > 0.85` (warning band) → no headroom for KV cache growth, longer prompts will spill
+   - Threshold rationale: NVIDIA's own [VRAM headroom guidance](https://docs.nvidia.com) recommends 5% free for driver overhead. The 7% threshold (93% used) leaves margin for that overhead PLUS prompt-dependent KV growth. Exact numbers tuned during R5 against the user's RTX 5080 + RTX 3070 setup.
+   - Fix-hint string: actionable. Recommends a smaller model profile (e.g., `qwen2.5-7b-instruct`), a lower `MAXIM_LLM_N_CTX`, or per-node model routing via `peer.yml::leaders[].model`.
+
+2. **Leader proxy admin field (`runtime/leader_proxy.py::_query_nvidia_smi`).** Augment the existing dict return with a derived `vram_pressure` boolean and `vram_headroom_gb` float. Already collects `vram_used_gb` + `vram_total_gb`; the addition is one line of arithmetic. Surfaces in the existing `X-Maxim-GPU-VRAM` response header and the `/v1/debug/status` endpoint.
+
+3. **Doctor exposes the leader's vram_pressure when running in peer mode.** When `maxim doctor` runs as a peer (against a remote leader), it already calls the leader's debug status. Display the leader's `vram_pressure` flag in the doctor output so operators can detect spillover on REMOTE nodes, not just local ones.
+
+**What this stage does NOT add** (deferred to [llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) Stage 5):
+- **Runtime tok/s baseline detection.** The static VRAM ratio is the cheap signal. The robust signal is "this node is generating at 5 tok/s when the baseline for this model+GPU is 32 tok/s, must be degraded." Requires a baseline lookup table (model × GPU class → expected tok/s) and per-call measurement. ~150 LOC; belongs in the capability-aware mesh layer where the data drives routing decisions.
+- **Automatic eviction of spilled nodes from the router's provider list.** A spilled node is degraded but still functional. Filtering it would require capability-aware ranking, which is the deferred plan's territory. For Plan 3.6, the warning is the deliverable; routing changes happen later.
+
+### R6 — Pre-merge review round (per the Plan 3 ship pattern)
 
 Two parallel review Claudes (Executor + Architecture lens). Fold findings into the same branch before opening the PR.
 
@@ -132,10 +154,13 @@ Two parallel review Claudes (Executor + Architecture lens). Fold findings into t
 3. Failover test: with leader-1 stubbed to raise `BackendDown`, a single LLM call succeeds via leader-2 within < 2s.
 4. `maxim doctor` reports per-leader status when multi-leader config is detected.
 5. `maxim peer version` works against the FIRST leader by default; new `--leader <name>` flag selects a specific one (out of scope or stretch goal).
+6. **VRAM spillover detection:** `maxim doctor` warns when `vram_used / vram_total > 0.93` AND a model is loaded. The warning fix-hint is actionable (recommends a smaller model or lower n_ctx). Tested on a synthetic high-VRAM scenario via a mocked `_query_nvidia_smi` stub.
+7. **VRAM pressure surfaces in peer mode:** `maxim doctor` running as a peer reports the leader's `vram_pressure` flag from `/v1/debug/status`.
 
 **Nice-to-have:**
 
 1. Real-world test: user runs sim against `peer.yml` with the RTX 5080 as primary + RTX 3070 as standby. Kills the 5080 mid-sim. Sim continues on the 3070 within a few seconds.
+2. Real-world VRAM spillover test: user loads a model that pushes VRAM > 93% on the RTX 5080. `maxim doctor` flags it BEFORE the user runs a sim and gets bitten by the 5-10x slowdown. The warning matches what the user observed manually as the 125s latency root cause.
 
 ## Why this is "Plan 3.6" not "Plan 4"
 
