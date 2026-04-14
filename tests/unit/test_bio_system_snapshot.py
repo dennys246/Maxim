@@ -139,13 +139,14 @@ class TestSCNRoundTrip:
         restored.load_state(dumped)
         assert restored.dump() == dumped
 
-    def test_bad_version_rejected(self):
-        """SCN payload version check stays on load_state."""
+    def test_payload_version_mutation_does_not_affect_load(self):
+        """Round 2 fold: payload-layer 'version' check removed from
+        SCN.load_state for consistency with the envelope-authoritative
+        versioning tombstone. Mutating it must NOT break load."""
         scn = SCN()
-        bad = scn.dump()
-        bad["version"] = "99.0"
-        with pytest.raises(ValueError, match="Unsupported SCN version"):
-            SCN().load_state(bad)
+        mutated = scn.dump()
+        mutated["version"] = "999.0"
+        SCN().load_state(mutated)  # must not raise
 
 
 class TestPerceptTraceBufferRoundTrip:
@@ -157,6 +158,57 @@ class TestPerceptTraceBufferRoundTrip:
         restored.load_state(dumped)
         assert restored.dump() == dumped
         assert len(restored) == 0
+
+    def test_load_state_trims_to_max_entries(self):
+        """Round 2 Exec critical #3 regression — ring-buffer cap invariant.
+
+        Dump a state whose 'entries' list exceeds the live instance's
+        max_entries, load it, assert len(buffer) never exceeds the cap.
+        """
+        # Construct a "dumped" state with 150 entries targeting a
+        # max_entries=100 live instance.
+        dumped = {
+            "tick_counter": 150,
+            "max_entries": 150,
+            "tau": 10.0,
+            "tick_rate": 1.0,
+            "min_activation": 0.01,
+            "entries": [
+                {
+                    "agent_id": "a",
+                    "percept_id": f"p{i}",
+                    "tick": i,
+                    "activation_strength": 1.0,
+                    "registered_at": 0.0,
+                }
+                for i in range(150)
+            ],
+        }
+        live = PerceptTraceBuffer(max_entries=100, tau=10.0)
+        live.load_state(dumped)
+        assert len(live) == 100, "ring-buffer cap must never be exceeded post-load"
+        # Most-recent entries preserved (last 50 of the original 150)
+        snap_ids = {e.percept_id for e in live.snapshot(min_activation=0.0)}
+        assert "p149" in snap_ids
+        assert "p50" in snap_ids
+        assert "p0" not in snap_ids  # oldest 50 dropped
+
+    def test_load_state_warns_on_tuning_drift(self, caplog):
+        """Round 2 Arch critical #2 regression — tuning-drift surface."""
+        import logging
+
+        dumped = {
+            "tick_counter": 0,
+            "max_entries": 100,
+            "tau": 50.0,  # different from live
+            "tick_rate": 1.0,
+            "min_activation": 0.01,
+            "entries": [],
+        }
+        live = PerceptTraceBuffer(max_entries=100, tau=10.0)
+        with caplog.at_level(logging.WARNING):
+            live.load_state(dumped)
+        assert any("tuning drift" in rec.message for rec in caplog.records)
 
 
 class TestCrossLayerGraphRoundTrip:
@@ -231,18 +283,38 @@ class TestEnvelopeShape:
 
 
 class TestEnvelopeVersioningAuthoritative:
-    """Payload-layer legacy version strings are tombstoned — envelope rules."""
+    """Payload-layer legacy version strings are tombstoned — envelope rules.
 
-    def test_payload_legacy_string_does_not_affect_load(self):
-        """Mutating the payload's legacy 'version' string must NOT break load."""
+    Round 2 fold: Hippocampus + NAc load_state version checks were
+    removed to make the invariant uniform across all bio-systems. These
+    tests verify the tombstone holds for every system with a legacy
+    payload ``version`` string.
+    """
+
+    def test_atl_payload_legacy_string_does_not_affect_load(self):
         atl = ATL(ATLConfig())
         dumped = atl.dump()
-        # Payload still has legacy "version": "1.0" string
         assert dumped.get("version") == "1.0"
-        # Mutating it does not change ATL load_state behavior (no version check there)
         mutated = dict(dumped)
         mutated["version"] = "999.0"
-        ATL(ATLConfig()).load_state(mutated)  # should not raise
+        ATL(ATLConfig()).load_state(mutated)  # must not raise
+
+    def test_nac_payload_version_mutation_does_not_affect_load(self):
+        """Round 2 fold — NAc.load_state payload version check removed."""
+        nac = NAc(NACConfig())
+        dumped = nac.dump()
+        assert dumped.get("version") == "1.0"
+        mutated = dict(dumped)
+        mutated["version"] = "999.0"
+        NAc(NACConfig()).load_state(mutated)  # must not raise
+
+    def test_hippocampus_payload_legacy_version_absent_from_dump(self):
+        """Round 2 fold — Hippocampus.dump no longer emits a 'version'
+        key at all, since the field is load-ignored. Absence is the
+        cleanest form of the tombstone."""
+        h = Hippocampus(HippocampusConfig())
+        dumped = h.dump()
+        assert "version" not in dumped
 
     def test_envelope_version_bad_rejected(self):
         """Bumping the ENVELOPE schema_version IS load-affecting."""
@@ -445,3 +517,63 @@ class TestSessionSnapshotComposition:
         bad = {"schema_version": "1", "kind": "session", "systems": {}}
         with pytest.raises(ValueError, match="schema_version must be int"):
             SessionSnapshot.from_dict(bad)
+
+
+class TestSessionSnapshotStrictMode:
+    """Round 2 fold — strict=True raises on partial capture/restore."""
+
+    def test_capture_strict_missing_system_raises(self):
+        atl, hc, _, _, _, _ = _make_live_systems()
+        with pytest.raises(ValueError, match="missing bio-systems"):
+            SessionSnapshot.capture(atl=atl, hippocampus=hc, strict=True)
+
+    def test_capture_strict_all_systems_passes(self):
+        atl, hc, nac, scn, ptb, clg = _make_live_systems()
+        snap = SessionSnapshot.capture(
+            atl=atl,
+            hippocampus=hc,
+            nac=nac,
+            scn=scn,
+            percept_trace_buffer=ptb,
+            cross_layer_graph=clg,
+            strict=True,
+        )
+        assert len(snap.envelope["systems"]) == 6
+
+    def test_restore_into_strict_instance_without_envelope_raises(self):
+        """Live instance has no matching envelope sub-snapshot."""
+        atl1, hc1, _, _, _, _ = _make_live_systems()
+        snap = SessionSnapshot.capture(atl=atl1, hippocampus=hc1)  # only 2 systems
+        atl2, hc2, nac2, _, _, _ = _make_live_systems()
+        with pytest.raises(ValueError, match="without envelope"):
+            snap.restore_into(atl=atl2, hippocampus=hc2, nac=nac2, strict=True)
+
+    def test_restore_into_strict_envelope_without_instance_raises(self):
+        """Envelope has a sub-snapshot but caller didn't pass that system."""
+        atl1, hc1, nac1, _, _, _ = _make_live_systems()
+        snap = SessionSnapshot.capture(atl=atl1, hippocampus=hc1, nac=nac1)
+        atl2, hc2, _, _, _, _ = _make_live_systems()
+        with pytest.raises(ValueError, match="without instances"):
+            snap.restore_into(atl=atl2, hippocampus=hc2, strict=True)
+
+    def test_restore_into_strict_exact_match_passes(self):
+        atl1, hc1, nac1, scn1, ptb1, clg1 = _make_live_systems()
+        snap = SessionSnapshot.capture(
+            atl=atl1,
+            hippocampus=hc1,
+            nac=nac1,
+            scn=scn1,
+            percept_trace_buffer=ptb1,
+            cross_layer_graph=clg1,
+            strict=True,
+        )
+        atl2, hc2, nac2, scn2, ptb2, clg2 = _make_live_systems()
+        snap.restore_into(
+            atl=atl2,
+            hippocampus=hc2,
+            nac=nac2,
+            scn=scn2,
+            percept_trace_buffer=ptb2,
+            cross_layer_graph=clg2,
+            strict=True,
+        )  # must not raise

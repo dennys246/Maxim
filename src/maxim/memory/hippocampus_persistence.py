@@ -41,8 +41,11 @@ class PersistenceMixin:
         the same read lock the pre-refactor save() body held.
 
         Reserves an ``"episodes"`` key for P3a. The key is always present
-        (empty list when no episode store is wired) so downstream consumers
-        can rely on its existence without conditional access.
+        (empty list when no episode store is wired) so downstream
+        consumers can rely on its existence without conditional access.
+        Also dumps ``next_episode_ordinal`` (the monotonic counter that
+        generates ``ep_N`` ids) so reload+observe doesn't re-issue a
+        duplicate id — Round 2 Exec critical #1 fix.
         """
         with self._rwlock.read():
             # Serialize memories (handles both EpisodicMemory and CompressedMemory)
@@ -60,8 +63,9 @@ class PersistenceMixin:
             if episode_store is not None:
                 episodes_data = episode_store.to_dict().get("episodes", [])
 
+            next_episode_ordinal = getattr(self, "_next_episode_ordinal", 0)
+
             return {
-                "version": "3.0",  # legacy payload string — tombstoned, do not bump
                 "saved_at": time.time(),
                 "memories": memories_data,
                 "context_index": index_data,
@@ -69,20 +73,31 @@ class PersistenceMixin:
                 "compressed_count": self._compressed_count,
                 "associative_graph": graph_data,
                 "episodes": episodes_data,
+                "next_episode_ordinal": next_episode_ordinal,
             }
 
     def load_state(self, state: dict[str, Any]) -> None:
         """Mutate self in place from a state dict.
 
-        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Matches the
-        pre-refactor load() contract: parses OUTSIDE the write lock, then
-        atomically swaps inside it so a from_dict() failure leaves existing
-        data untouched.
-        """
-        version = state.get("version", "0.0")
-        if version not in ("1.0", "2.0", "3.0"):
-            raise ValueError(f"Unsupported hippocampus version: {version}")
+        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Matches
+        the pre-refactor load() contract: parses OUTSIDE the write lock,
+        then atomically swaps inside it so a from_dict() failure leaves
+        existing data untouched.
 
+        **Round 2 fold**: the legacy payload version check is REMOVED
+        (Round 2 Exec critical #2). Prior to Round 2 this method
+        rejected any payload whose ``version`` was not in
+        ``{"1.0","2.0","3.0"}``, which contradicted the tombstoned
+        envelope-authoritative versioning rule in ``snapshot.py``. The
+        envelope layer is now the only authoritative version.
+
+        **Round 2 fold**: binding graph is REBUILT from loaded episodes
+        via ``apply_hebbian_on_close`` (Round 2 Arch important #4).
+        Episodes round-trip through the ``episodes`` key; the binding
+        graph is derived, not persisted. Callers restoring a populated
+        snapshot get a consistent ``retrieve_on_cue`` result without a
+        separate binding-graph persistence pass.
+        """
         # Parse OUTSIDE write lock — if from_dict() raises, existing data is preserved
         temp_memories: dict[str, EpisodicMemory | CompressedMemory] = {}
         temp_compressed_count = 0
@@ -124,10 +139,51 @@ class PersistenceMixin:
             if graph_data:
                 self._restore_graph(graph_data)
 
-            # P3a Stage 1 — restore episodes into the EpisodeStore if wired.
+            # P3a Stage 1 — restore episodes into the EpisodeStore if wired,
+            # rebuild the binding graph from the loaded episodes, and
+            # restore the monotonic episode-id counter.
             episode_store = getattr(self, "_episode_store", None)
             if episode_store is not None:
                 episode_store.load_from_dict({"episodes": state.get("episodes", [])})
+
+                binding_graph = getattr(self, "_binding_graph", None)
+                cfg_episode = getattr(getattr(self, "config", None), "episode", None)
+                if binding_graph is not None and cfg_episode is not None:
+                    # Reset and rebuild — the pre-load binding graph state
+                    # is authoritative only against the pre-load episodes.
+                    # Clear internal structures in place rather than
+                    # calling __init__ on a live instance.
+                    with binding_graph._lock:
+                        binding_graph._nodes.clear()
+                        binding_graph._outgoing.clear()
+                        binding_graph._incoming.clear()
+
+                    from maxim.memory.episode import apply_hebbian_on_close
+
+                    for ep in episode_store.all_episodes():
+                        apply_hebbian_on_close(
+                            binding_graph,
+                            ep,
+                            hebbian_init=cfg_episode.hebbian_init,
+                            hebbian_delta=cfg_episode.hebbian_delta,
+                            hebbian_max=cfg_episode.hebbian_max,
+                        )
+
+                # Restore the monotonic ordinal. Prefer the dumped value;
+                # fall back to deriving from max episode id for corrupt-file
+                # recovery (episodes named ep_N).
+                dumped_ordinal = state.get("next_episode_ordinal")
+                if isinstance(dumped_ordinal, int) and dumped_ordinal >= 0:
+                    self._next_episode_ordinal = dumped_ordinal
+                else:
+                    max_ordinal = 0
+                    for ep in episode_store.all_episodes():
+                        if ep.id.startswith("ep_"):
+                            try:
+                                max_ordinal = max(max_ordinal, int(ep.id.split("_", 1)[1]))
+                            except ValueError:
+                                continue
+                    self._next_episode_ordinal = max_ordinal
 
     def save(self, path: str | None = None) -> None:
         """Save hippocampus to JSON file.

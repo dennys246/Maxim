@@ -258,18 +258,23 @@ Option 3 wins because:
 
 Stage 1 + Stage 2 + Stage 3 together constitute P3a's contribution to 0.3-target. 0.3-target closes when P3a + P3b + P3.5 + P4 are all `Status: COMPLETE`.
 
-## Load-bearing invariants (filled in AFTER shipping Stage 1)
+## Load-bearing invariants (post-Round-2 fold)
 
-TODO — populate after Stage 1 Round 2 review with the gotchas encountered. Expected candidates baked into the post-Round-1 fold:
-- Hebbian edges live on `Hippocampus._binding_graph`, NOT `ATL.graph`. Decouples from ATL compression.
-- `itertools.combinations` (unordered) for pair enumeration; ordered-pair formulation double-applies delta.
-- `add_edge` has no dedupe — always `find_edge` first on any write path; regression-guard test on `len(_outgoing[a])`.
-- `is not None` for bio-system wire checks, never truthy.
-- `HippocampusConfig.episode` is the config knob; no module constants.
-- `EpisodeStore` is a standalone class, not embedded on Hippocampus.
-- Boundary detector is a rule list, not if-chain — P3b extension seam.
-- Lock acquire order: `_episode_store._lock` → `_binding_graph._lock`, never reverse.
-- One-hop retrieval via `get_associated`; multi-hop via `spreading_activation` only if Stage 2 recall < 0.70.
+These are the invariants that both Round 1 and Round 2 pre-merge reviews established or hardened. Future changes to the episode binding surface must preserve all of them:
+
+- **Hebbian edges live on `Hippocampus._binding_graph`, NOT `ATL.graph`.** Decouples from ATL compression. The `_binding_graph` field is Hippocampus-owned and orthogonal to both `ATL.graph` (concept topology) and `Hippocampus._graph` (associative edges between memory records). Node-id namespaces never overlap. `retrieve_on_cue()` queries ONLY the binding graph.
+- **`itertools.combinations` (unordered) for pair enumeration.** Ordered-pair formulation visits each unordered pair twice under `add_bidirectional`, double-applying `hebbian_delta`. Regression guard: `test_episode_close_strengthens_existing_edges_by_exactly_delta`.
+- **`DependencyGraph.add_edge` has no dedupe — always `find_edge` first** on any Hebbian write path, followed by either `add_bidirectional` (new edge) or a pair of directional `update_edge` calls. Regression guard: `test_repeated_closes_no_edge_duplication`.
+- **`apply_hebbian_on_close` explicitly calls `add_node(id, id)` before any edge write** so the binding graph has a real node list for `to_dict()`. Regression guards: `test_binding_graph_nodes_populated_after_hebbian` + `test_binding_graph_to_dict_includes_nodes`.
+- **`is not None` for bio-system wire checks, never truthy.** Regression guard: in-tree `inspect.getsource` grep over `memory/episode.py` + Hippocampus P3a methods (`test_p3a_source_has_no_truthy_biosystem_checks`).
+- **`HippocampusConfig.episode: EpisodeConfig` is the config knob.** `EpisodeConfig` is defined ABOVE `HippocampusConfig` so `get_type_hints()` and dict-shaped YAML construction resolve eagerly (Round 2 Arch critical #1). No module-level constants, no monkeypatching.
+- **`EpisodeStore` is a standalone class held as `Hippocampus._episode_store`.** Extension seam for P3b per-channel state + P5 bounded-storage eviction.
+- **`EpisodeStore.load_from_dict` raises on duplicate episode ids** rather than silently overwriting. Guards against corrupt-file load corrupting the `_by_node` inverted index.
+- **Boundary detector is a rule list**, not an if-chain. P3b appends via `Hippocampus.add_boundary_rule(rule)` — a public seam on Hippocampus, not reaching into `_episode_detector` directly.
+- **Lock acquire order:** `Hippocampus._episode_lock` → `EpisodeStore._lock` → `binding_graph._lock`, never the reverse. Regression-guarded by the adversarial-thread deadlock test.
+- **`_next_episode_ordinal` is persisted in `Hippocampus.dump()` and restored on `load_state()`.** Dump+reload+observe pre-fold crashed with `duplicate episode id: ep_1` because the ordinal was re-initialized to 0. Load has a fallback that derives the max ordinal from loaded episode ids for corrupt-file recovery.
+- **Binding graph is rebuilt from loaded episodes on `load_state()`.** The binding graph itself is NOT persisted; its state is derived from the episodes. This eliminates the persistence asymmetry (Round 2 Arch important #4) — a restored Hippocampus produces the same `retrieve_on_cue` results as the original.
+- **One-hop retrieval via `get_associated`**; multi-hop via `spreading_activation` is a Stage 2 fallback, conditional on Stage 2 recall < 0.70.
 
 ## Review questions (Stage 3 reviewers — templates for Round 2 code review)
 
@@ -295,6 +300,22 @@ TODO — populate after Stage 1 Round 2 review with the gotchas encountered. Exp
 5. **Episode thread_id handling** — reserved in the dataclass but unused in Stage 1. P3b channel integration will wire it up.
 6. **`retrieve_on_cue` perf under P5 stress** — one-hop `get_associated` is fast for modest graph sizes. Under 10k+ nodes with popular-cue hot spots, may need index optimizations. Deferred to P5.
 7. **Binding graph ↔ ATL compression interaction (non-issue in Stage 1).** With the architectural pivot, ATL compression no longer destroys Hebbian edges because they're not on `ATL.graph`. If P4+ adds a cross-reference from binding graph nodes to ATL concepts, that cross-reference needs its own compression-safety check. Flagged here so P4 doesn't miss it.
+
+## Production integration path (Round 2 Arch important #2)
+
+`Hippocampus.observe_episode_event(event)` is the single Stage 1 entry point into the episode binding pipeline. In Stage 1 it is called only from `tests/substrate/test_p3a_episode_binding.py`; production integration is deferred to the session that wires behavioral experiments.
+
+**When production integration lands** (post-Stage-1 session, not in this PR):
+
+1. Call site will be inside `runtime/agent_loop.py` or `integration/memory_hub.py` alongside the existing `hippocampus.capture(...)` call — not replacing it. `capture()` persists the single-loop-cycle `EpisodicMemory` record; `observe_episode_event()` feeds the time-window episode binding detector. Both are load-bearing and orthogonal.
+
+2. The `CaptureEvent` passed to `observe_episode_event` will be constructed from the existing percept/tick context the agent loop already has: `tick` from the loop clock, `channel` from the percept's `SensoryTag`, `sender_id` from the `PerceptContext` sender, `thread_id` from any conversation thread state, `scn_tag` from the wired `SCN`, and `activated_nodes` from the substrate encoder's output for the current percept.
+
+3. **Do NOT invoke `observe_episode_event` from the `_capture_worker` background thread.** The Stage 1 lock-ordering test guarantees safety under controlled adversarial calls, but co-locating the call with `capture()` (which already runs on the main loop thread with clear lock semantics) is simpler.
+
+4. The production integration session will ship: (a) a small glue function in `integration/memory_hub.py` that builds a `CaptureEvent` from percept + loop context, (b) one call site in the capture path, and (c) an end-to-end test that observes a real agent turn and verifies an episode lands in `hippocampus._episode_store`.
+
+5. `Hippocampus.add_boundary_rule(rule)` is the public seam for P3b's per-channel rule additions. P3b will call this at agent construction time via the config surface, NOT by reaching into `_episode_detector` directly.
 
 ## Not in this plan
 

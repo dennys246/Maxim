@@ -287,13 +287,25 @@ class EpisodeStore:
             return {"episodes": [ep.to_dict() for ep in self._episodes.values()]}
 
     def load_from_dict(self, data: dict[str, Any]) -> None:
-        """Mutate in place — replace all episodes from a state dict."""
+        """Mutate in place — replace all episodes from a state dict.
+
+        Per-episode duplicate-id check: if the loaded state contains
+        two episodes with the same id (e.g., a corrupt file), raise
+        ``ValueError`` rather than silently overwriting. Round 2 Exec
+        important #4 — the pre-fold version did
+        ``self._episodes[ep.id] = ep`` which collapsed duplicates and
+        left stale node→episode references in ``_by_node``.
+        """
         episodes_list = data.get("episodes", [])
         with self._lock:
             self._episodes.clear()
             self._by_node.clear()
+            seen_ids: set[str] = set()
             for ep_data in episodes_list:
                 ep = Episode.from_dict(ep_data)
+                if ep.id in seen_ids:
+                    raise ValueError(f"duplicate episode id in loaded state: {ep.id!r}")
+                seen_ids.add(ep.id)
                 self._episodes[ep.id] = ep
                 for node_id in ep.activated_nodes:
                     self._by_node.setdefault(node_id, set()).add(ep.id)
@@ -331,12 +343,26 @@ def apply_hebbian_on_close(
     load-bearing — without it, repeated episode closes would stack
     parallel edges. Regression-guarded by
     ``TestP3aMechanism::test_repeated_closes_no_edge_duplication``.
+
+    Explicit ``add_node`` calls before edge creation (Round 2 Exec
+    important #3): ``DependencyGraph.add_edge`` appends to
+    ``_outgoing`` / ``_incoming`` but never touches ``_nodes``, so
+    ``to_dict`` would emit an empty nodes list and Stage 2 binding-
+    graph persistence would silently lose node identity. ``add_node``
+    is idempotent via its internal presence check, so repeat calls
+    are safe.
     """
     from maxim.agents.bus import EdgeType  # local import avoids startup cost
 
     nodes = episode.activated_nodes
     if len(nodes) < 2:
         return
+
+    # Ensure every activated node is a first-class graph node BEFORE any
+    # edge reference. Round 2 fix for the add_edge-does-not-touch-_nodes
+    # invariant gap.
+    for node_id in nodes:
+        binding_graph.add_node(node_id, node_id)
 
     for a, b in itertools.combinations(nodes, 2):
         existing = binding_graph.find_edge(a, b, EdgeType.ASSOCIATES)

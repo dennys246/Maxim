@@ -667,11 +667,11 @@ class SCN:
 
         P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Preserves
         runtime wires (persistence_path, any wired clock estimator).
-        """
-        version = state.get("version", "0.0")
-        if version not in ("1.0", "2.0", "3.0"):
-            raise ValueError(f"Unsupported SCN version: {version}")
 
+        Round 2 fold: the payload-layer ``version`` check is removed
+        for consistency with the envelope-authoritative versioning
+        tombstone documented in ``memory/snapshot.py``.
+        """
         # BoundedBin.from_list handles both v2 (list[str]) and v3 (list[dict])
         self._circadian_bins = defaultdict(
             BoundedBin,

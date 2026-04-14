@@ -91,6 +91,16 @@ class BioSystemSnapshot(Protocol):
     - ``maxim.time.scn.SCN``
     - ``maxim.memory.percept_trace_buffer.PerceptTraceBuffer``
     - ``maxim.memory.cross_layer.CrossLayerGraph``
+
+    Locking caveat (Round 2 Arch important #5): ``dump()`` on most
+    bio-systems acquires the bio-system's internal read lock (ATL
+    rwlock, NAc mutex, Hippocampus rwlock, PerceptTraceBuffer mutex)
+    to produce a point-in-time consistent dict. Callers that want to
+    snapshot a running system from a hot-path thread should spawn the
+    ``dump()`` call on a worker thread rather than blocking the hot
+    path on lock contention. ``load_state()`` similarly acquires write
+    locks where applicable; callers must ensure no concurrent writers
+    are active against the target bio-system before calling.
     """
 
     schema_version: int
@@ -242,15 +252,39 @@ class SessionSnapshot:
         scn: SCN | None = None,
         percept_trace_buffer: PerceptTraceBuffer | None = None,
         cross_layer_graph: CrossLayerGraph | None = None,
+        strict: bool = False,
     ) -> SessionSnapshot:
         """Build a SessionSnapshot from live bio-system instances.
 
-        All arguments are keyword-only and optional. A system that is not
-        provided is omitted from the envelope's ``systems`` dict, so the
-        caller can capture a partial snapshot for debug/testing. The
-        corresponding ``restore_into`` call must match — passing None
-        for a system whose envelope is present raises.
+        All bio-system arguments are keyword-only and optional. A
+        system that is not provided is omitted from the envelope's
+        ``systems`` dict.
+
+        When ``strict=False`` (default), any subset of systems can be
+        provided and the snapshot captures only those. This supports
+        debug / single-system checkpoint workflows.
+
+        When ``strict=True``, ALL six bio-systems must be provided;
+        any missing system raises ``ValueError``. Use this for P4
+        mug-test + P5 stress harness call sites that MUST capture the
+        full session — Round 2 Exec + Arch cross-confirmed finding.
         """
+        if strict:
+            missing = [
+                name
+                for name, obj in (
+                    ("atl", atl),
+                    ("hippocampus", hippocampus),
+                    ("nac", nac),
+                    ("scn", scn),
+                    ("percept_trace_buffer", percept_trace_buffer),
+                    ("cross_layer_graph", cross_layer_graph),
+                )
+                if obj is None
+            ]
+            if missing:
+                raise ValueError(f"SessionSnapshot.capture(strict=True) missing bio-systems: {missing}")
+
         systems: dict[str, dict[str, Any]] = {}
         if atl is not None:
             systems["atl"] = atl_to_snapshot(atl)
@@ -282,16 +316,45 @@ class SessionSnapshot:
         scn: SCN | None = None,
         percept_trace_buffer: PerceptTraceBuffer | None = None,
         cross_layer_graph: CrossLayerGraph | None = None,
+        strict: bool = False,
     ) -> None:
         """Mutate the provided live bio-systems in place from this snapshot.
 
         Each instance MUST be already constructed + wired; this method
-        only replaces state, not identity. Missing sub-snapshot for a
-        provided instance is silently skipped (capture-and-restore
-        partial-system workflows are Stage 2 territory).
+        only replaces state, not identity.
+
+        When ``strict=False`` (default), missing sub-snapshot for a
+        provided instance is silently skipped, and missing instance
+        for a present sub-snapshot is also silently skipped. This
+        matches the Stage 1 debug-friendly contract.
+
+        When ``strict=True``, both mismatches raise ``ValueError``:
+        every provided instance must have a matching sub-snapshot, and
+        every sub-snapshot in the envelope must have a matching
+        instance. Use this for P4 / P5 harness call sites.
         """
         self._validate_envelope()
         systems = self.envelope.get("systems", {})
+
+        if strict:
+            provided: dict[str, Any] = {
+                "atl": atl,
+                "hippocampus": hippocampus,
+                "nac": nac,
+                "scn": scn,
+                "percept_trace_buffer": percept_trace_buffer,
+                "cross_layer_graph": cross_layer_graph,
+            }
+            provided_keys = {name for name, obj in provided.items() if obj is not None}
+            envelope_keys = set(systems.keys())
+            missing_snapshots = provided_keys - envelope_keys
+            missing_instances = envelope_keys - provided_keys
+            if missing_snapshots or missing_instances:
+                raise ValueError(
+                    "SessionSnapshot.restore_into(strict=True) mismatch: "
+                    f"instances without envelope={sorted(missing_snapshots)}, "
+                    f"envelope without instances={sorted(missing_instances)}"
+                )
 
         if atl is not None and "atl" in systems:
             atl_from_snapshot(systems["atl"], atl)

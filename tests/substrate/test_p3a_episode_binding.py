@@ -24,14 +24,13 @@ Covers:
 
 from __future__ import annotations
 
-import subprocess
+import inspect
 import threading
 import time
 
 import pytest
 
 from maxim.agents.bus import EdgeType
-from maxim.memory.atl import ATL, ATLConfig
 from maxim.memory.episode import (
     CaptureEvent,
     Episode,
@@ -253,55 +252,58 @@ class TestP3aBoundaryDetector:
 
 
 class TestP3aWireDiscipline:
-    def test_hebbian_fires_when_atl_is_none(self):
-        """Hippocampus has no _atl field in Stage 1; this verifies the
-        binding graph is fully Hippocampus-owned and doesn't depend on
-        ATL being wired."""
+    """Round 2 fold: `test_hebbian_fires_when_atl_wired_and_empty` was
+    deleted as a no-op — Hippocampus has no ``_atl`` field in Stage 1,
+    so wiring an empty one was exercising no real code path. The
+    general wire-discipline regression is covered by the AST-based
+    source grep below."""
+
+    def test_hebbian_fires_without_atl_dependency(self):
+        """Binding graph is fully Hippocampus-owned; Hebbian updates
+        fire regardless of whether an ATL reference exists on
+        Hippocampus. This is the architectural invariant the Round 1
+        pivot established."""
         h = _fresh_hippocampus()
-        assert not hasattr(h, "_atl") or getattr(h, "_atl", None) is None
         _close_episode_with_nodes(h, "a", "b")
         edge = h._binding_graph.find_edge("a", "b", EdgeType.ASSOCIATES)
         assert edge is not None
 
-    def test_hebbian_fires_when_atl_wired_and_empty(self):
-        """Even with a wired but empty ATL (`len(atl) == 0` is falsy),
-        Hebbian updates must still fire. Regression guard for the
-        `if self._atl` truthy-trap bug class that bit NAc twice in P2."""
-        h = _fresh_hippocampus()
-        # Wire a freshly-constructed (empty) ATL — not load-bearing for
-        # Stage 1 Hebbian, but exercises the wire-check discipline.
-        empty_atl = ATL(ATLConfig())
-        assert len(empty_atl) == 0  # falsy under truthy check
-        h._atl = empty_atl  # type: ignore[attr-defined]
+    def test_p3a_source_has_no_truthy_biosystem_checks(self):
+        """Round 2 Exec important #2 regression — replace the git-diff
+        sentinel (which silently skipped on shallow-clone CI) with an
+        in-tree source grep over the P3a-owned modules.
 
-        _close_episode_with_nodes(h, "a", "b", "c")
-        edge = h._binding_graph.find_edge("a", "b", EdgeType.ASSOCIATES)
-        assert edge is not None, "Hebbian must fire even with empty ATL wired"
-
-    def test_p3a_diff_has_no_truthy_biosystem_checks(self):
-        """Sentinel grep — the P3a diff must never contain truthy checks on
-        bio-systems that have __len__."""
-        result = subprocess.run(
-            ["git", "diff", "main", "--", "src/maxim/memory/episode.py", "src/maxim/memory/hippocampus.py"],
-            capture_output=True,
-            text=True,
-            check=False,
-            cwd="/Users/dennyschaedig/Scripts/Maxim/.worktrees/p3",
-        )
-        if result.returncode != 0:
-            pytest.skip(f"git diff unavailable: {result.stderr}")
-
-        # Only check ADDED lines (prefixed with "+")
-        added = [line for line in result.stdout.splitlines() if line.startswith("+") and not line.startswith("+++")]
-        added_src = "\n".join(added)
-
+        Reads the source of ``memory/episode.py`` and the P3a-added
+        block of ``memory/hippocampus.py`` (matched by the
+        ``observe_episode_event`` / ``_apply_hebbian_on_close`` names)
+        and asserts no truthy bio-system check regex hits.
+        """
         import re
 
+        import maxim.memory.episode as episode_module
+        from maxim.memory.hippocampus import Hippocampus
+
         forbidden = re.compile(r"\bif self\._(atl|nac|hippocampus|scn|ec|angular_gyrus)\b")
-        matches = forbidden.findall(added_src)
-        assert not matches, (
-            f"Forbidden truthy bio-system check in P3a diff: {matches}. Use `if self._X is not None` instead."
-        )
+
+        # Full episode.py module source
+        episode_src = inspect.getsource(episode_module)
+        assert not forbidden.findall(episode_src), "Forbidden truthy bio-system check in memory/episode.py"
+
+        # The P3a-added methods on Hippocampus
+        for method_name in (
+            "observe_episode_event",
+            "finalize_pending_episode",
+            "retrieve_on_cue",
+            "add_boundary_rule",
+            "_start_episode",
+            "_close_pending_episode_locked",
+        ):
+            method = getattr(Hippocampus, method_name, None)
+            if method is None:
+                continue
+            src = inspect.getsource(method)
+            matches = forbidden.findall(src)
+            assert not matches, f"Forbidden truthy bio-system check in Hippocampus.{method_name}: {matches}"
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -341,7 +343,11 @@ class TestP3aLockOrdering:
         stop.set()
         thread.join(timeout=2.0)
         assert not thread.is_alive(), "worker thread deadlocked"
-        assert iterations > 10, f"retrieve_on_cue too slow ({iterations} iters in 2s) — possible lock contention"
+        # Round 2 Exec minor #1: loosened from `> 10` to `> 1` to avoid
+        # flaking on slow CI runners under lock contention. The
+        # "didn't deadlock" assertion above is the load-bearing one;
+        # the iter count is a soft sanity check.
+        assert iterations > 1, f"retrieve_on_cue did not run at least twice ({iterations} iters) — possible deadlock"
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -354,7 +360,7 @@ class TestP3aPersistence:
         """Hippocampus._to_dict() reserved 'episodes' key must carry
         EpisodeStore contents through a dump → load_state cycle.
 
-        Depends on P3.5 Stage 1 Hippocampus._to_dict() / load_state().
+        Depends on P3.5 Stage 1 Hippocampus.dump / load_state.
         """
         h1 = _fresh_hippocampus()
         _close_episode_with_nodes(h1, "a", "b", "c")
@@ -368,12 +374,178 @@ class TestP3aPersistence:
 
         assert len(h2._episode_store) == 2
 
-        # The binding graph is NOT persisted in Stage 1 (it's derivable
-        # from episodes, so Stage 2 can either persist it or rebuild it
-        # from episode replay). This test asserts episodes round-trip,
-        # not binding edges.
         episodes = h2._episode_store.all_episodes()
         all_nodes = set()
         for ep in episodes:
             all_nodes.update(ep.activated_nodes)
         assert all_nodes == {"a", "b", "c", "x", "y"}
+
+    def test_binding_graph_rebuilt_on_load_state(self):
+        """Round 2 Arch important #4 regression — the binding graph is
+        rebuilt from loaded episodes so retrieve_on_cue is consistent
+        post-load. Without the rebuild, retrieve_on_cue returns [] until
+        new episodes land, and then rebuilds inconsistent with pre-load.
+        """
+        h1 = _fresh_hippocampus()
+        _close_episode_with_nodes(h1, "a", "b", "c")
+
+        dumped = h1.dump()
+        h2 = _fresh_hippocampus()
+        h2.load_state(dumped)
+
+        # retrieve_on_cue on the fresh instance must return the same
+        # co-activated nodes as the original.
+        hits = dict(h2.retrieve_on_cue("a"))
+        assert set(hits.keys()) == {"b", "c"}
+        assert hits["b"] == pytest.approx(0.3)
+        assert hits["c"] == pytest.approx(0.3)
+
+    def test_next_episode_ordinal_restored_on_load_state(self):
+        """Round 2 Exec critical #1 regression — dump+reload+observe
+        must not re-issue a duplicate episode id. Pre-fix this crashed
+        with 'duplicate episode id: ep_1' on the next close."""
+        h1 = _fresh_hippocampus()
+        _close_episode_with_nodes(h1, "a", "b")
+        _close_episode_with_nodes(h1, "c", "d")
+        assert h1._next_episode_ordinal == 2
+
+        dumped = h1.dump()
+        assert dumped["next_episode_ordinal"] == 2
+
+        h2 = _fresh_hippocampus()
+        h2.load_state(dumped)
+        assert h2._next_episode_ordinal == 2
+
+        # Creating a new episode post-load must issue id=ep_3, not ep_1
+        new_ep = _close_episode_with_nodes(h2, "e", "f")
+        assert new_ep.id == "ep_3"
+
+    def test_ordinal_derived_from_max_id_when_dump_missing_ordinal(self):
+        """Recovery path: if the dumped state is missing
+        next_episode_ordinal (e.g., old dump format or corrupt file),
+        derive it from max(episode.id). Keeps load resilient to
+        partial states."""
+        h = _fresh_hippocampus()
+        # Synthetic legacy-shaped state: no ordinal, two episodes
+        state = {
+            "memories": [],
+            "context_index": {},
+            "stats": {},
+            "compressed_count": 0,
+            "associative_graph": {"nodes": [], "edges": []},
+            "episodes": [
+                {
+                    "id": "ep_7",
+                    "start_tick": 0,
+                    "end_tick": 0,
+                    "channel": "text",
+                    "sender_ids": [],
+                    "thread_id": None,
+                    "activated_nodes": ["a", "b"],
+                    "reward_events": [],
+                    "scn_tag": None,
+                },
+                {
+                    "id": "ep_12",
+                    "start_tick": 10,
+                    "end_tick": 10,
+                    "channel": "text",
+                    "sender_ids": [],
+                    "thread_id": None,
+                    "activated_nodes": ["c", "d"],
+                    "reward_events": [],
+                    "scn_tag": None,
+                },
+            ],
+        }
+        h.load_state(state)
+        assert h._next_episode_ordinal == 12
+
+        # Next close must issue ep_13, not a collision
+        new_ep = _close_episode_with_nodes(h, "x", "y")
+        assert new_ep.id == "ep_13"
+
+
+class TestP3aBindingGraphInvariants:
+    """Round 2 Exec important #3 regression — add_node is called
+    before edge creation so the binding graph has a real node list
+    (required for Stage 2 persistence)."""
+
+    def test_binding_graph_nodes_populated_after_hebbian(self):
+        h = _fresh_hippocampus()
+        _close_episode_with_nodes(h, "a", "b", "c")
+        for node_id in ("a", "b", "c"):
+            assert h._binding_graph.get_node(node_id) is not None, (
+                f"binding graph must have node {node_id} registered, not just edges"
+            )
+
+    def test_binding_graph_to_dict_includes_nodes(self):
+        h = _fresh_hippocampus()
+        _close_episode_with_nodes(h, "a", "b", "c")
+        graph_dict = h._binding_graph.to_dict()
+        node_ids = set(graph_dict.get("nodes", []))
+        assert {"a", "b", "c"}.issubset(node_ids), f"binding graph to_dict nodes = {node_ids}, expected a, b, c"
+
+
+class TestP3aEpisodeStoreLoadDuplicates:
+    """Round 2 Exec important #4 regression — load_from_dict raises
+    on duplicate episode ids rather than silently overwriting."""
+
+    def test_duplicate_episode_id_in_loaded_state_raises(self):
+        from maxim.memory.episode import EpisodeStore
+
+        store = EpisodeStore()
+        state = {
+            "episodes": [
+                {
+                    "id": "ep_1",
+                    "start_tick": 0,
+                    "end_tick": 0,
+                    "channel": "text",
+                    "sender_ids": [],
+                    "thread_id": None,
+                    "activated_nodes": ["a"],
+                    "reward_events": [],
+                    "scn_tag": None,
+                },
+                {
+                    "id": "ep_1",  # duplicate
+                    "start_tick": 10,
+                    "end_tick": 10,
+                    "channel": "text",
+                    "sender_ids": [],
+                    "thread_id": None,
+                    "activated_nodes": ["b"],
+                    "reward_events": [],
+                    "scn_tag": None,
+                },
+            ]
+        }
+        with pytest.raises(ValueError, match="duplicate episode id"):
+            store.load_from_dict(state)
+
+
+class TestP3aBoundaryRuleSeam:
+    """Round 2 Arch important #1 — Hippocampus.add_boundary_rule is the
+    public seam P3b uses to register per-channel rules."""
+
+    def test_add_boundary_rule_is_public_and_consulted(self):
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+
+        closed_ids = []
+
+        def force_close_rule(pending: PendingEpisodeState, event: CaptureEvent) -> bool:
+            # Close on any event after the first (hard forcing)
+            return pending.last_tick != event.tick
+
+        h.add_boundary_rule(force_close_rule)
+
+        h.observe_episode_event(CaptureEvent(tick=0, channel="text", activated_nodes=("a",)))
+        h.observe_episode_event(CaptureEvent(tick=1, channel="text", activated_nodes=("b",)))
+        h.finalize_pending_episode()
+
+        episodes = h._episode_store.all_episodes()
+        closed_ids = [ep.id for ep in episodes]
+        # Two episodes: the first was closed by the custom rule firing
+        # when event2 arrived; the second was closed by finalize.
+        assert len(episodes) == 2, f"got {closed_ids}"

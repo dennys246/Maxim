@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 from maxim.agents.bus import DependencyGraph, EdgeType
 from maxim.memory.episode import (
+    BoundaryRule,
     CaptureEvent,
     Episode,
     EpisodeBoundaryDetector,
@@ -55,6 +56,38 @@ from maxim.memory.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class EpisodeConfig:
+    """P3a Stage 1 — configuration knobs for episode binding.
+
+    All four fields override cleanly via ``HippocampusConfig(episode=
+    EpisodeConfig(hebbian_delta=0.2))``. No module-level constants, no
+    monkeypatching required — this is the home for the knobs that
+    Stage 2's fixture sweeps will move.
+
+    Defined ABOVE ``HippocampusConfig`` so the ``episode: EpisodeConfig``
+    field's type annotation resolves eagerly under ``get_type_hints()``
+    and dict-shaped YAML construction — Round 2 Arch-lens critical
+    finding #1.
+    """
+
+    # Episode boundary detector: close the pending episode when the next
+    # capture is more than this many ticks after the previous capture.
+    boundary_tick_gap: int = 50
+
+    # Initial edge weight for a fresh Hebbian edge between two nodes
+    # co-occurring in an episode for the first time.
+    hebbian_init: float = 0.3
+
+    # Per-close weight increment for an existing Hebbian edge whose
+    # endpoints co-occur again in a newly-closed episode.
+    hebbian_delta: float = 0.1
+
+    # Upper clamp on Hebbian edge weight — no single episode sequence
+    # can drive a weight above this.
+    hebbian_max: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -153,33 +186,6 @@ class HippocampusConfig:
     # ─────────────────────────────────────────────────────────────────────────
 
     episode: EpisodeConfig = field(default_factory=lambda: EpisodeConfig())
-
-
-@dataclass(frozen=True)
-class EpisodeConfig:
-    """P3a Stage 1 — configuration knobs for episode binding.
-
-    All four fields override cleanly via ``HippocampusConfig(episode=
-    EpisodeConfig(hebbian_delta=0.2))``. No module-level constants, no
-    monkeypatching required — this is the home for the knobs that
-    Stage 2's fixture sweeps will move.
-    """
-
-    # Episode boundary detector: close the pending episode when the next
-    # capture is more than this many ticks after the previous capture.
-    boundary_tick_gap: int = 50
-
-    # Initial edge weight for a fresh Hebbian edge between two nodes
-    # co-occurring in an episode for the first time.
-    hebbian_init: float = 0.3
-
-    # Per-close weight increment for an existing Hebbian edge whose
-    # endpoints co-occur again in a newly-closed episode.
-    hebbian_delta: float = 0.1
-
-    # Upper clamp on Hebbian edge weight — no single episode sequence
-    # can drive a weight above this.
-    hebbian_max: float = 1.0
 
 
 class _SnapshotState:
@@ -289,7 +295,18 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # Track compressed vs full memory counts
         self._compressed_count: int = 0
 
-        # Associative graph: memory nodes connected by recall-triggered edges
+        # Associative graph: memory nodes connected by recall-triggered
+        # edges. Nodes here are memory_id strings; edges represent "this
+        # memory record was recalled alongside that memory record". See
+        # ``_restore_graph`` for the persistence shape.
+        #
+        # NOTE (Round 2 Arch important #3): this is a DIFFERENT graph
+        # from ``self._binding_graph`` (P3a), which holds Hebbian edges
+        # between substrate node IDs (not memory record IDs). The two
+        # never share node-id namespaces and never cross-query. Stage 2
+        # may rename one of them for clarity; Stage 1 keeps the names
+        # distinguished via field comments + docstrings on the public
+        # methods that query each.
         self._graph: DependencyGraph[str] = DependencyGraph()
 
         # Optional SCN reference for temporal-aware strategies
@@ -312,11 +329,18 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # Hippocampus — Round 1 Arch important finding #1).
         self._episode_store: EpisodeStore = EpisodeStore()
 
-        # Separate DependencyGraph for Hebbian co-activation edges. Kept
+        # Separate DependencyGraph for Hebbian co-activation edges
+        # between SUBSTRATE NODE IDs (not memory record IDs). Kept
         # orthogonal to self._graph (which carries associative edges
         # between memory records) and orthogonal to ATL.graph (the
-        # concept topology). See memory/episode.py for the binding-graph
-        # ownership rationale.
+        # concept topology). See memory/episode.py for the binding-
+        # graph ownership rationale.
+        #
+        # NOTE (Round 2 Arch important #3): node-id namespaces never
+        # overlap with self._graph. Callers querying by memory record
+        # id get nothing from this graph; callers querying by substrate
+        # node id get nothing from self._graph. retrieve_on_cue() is
+        # the Stage 1 public query surface and hits ONLY this graph.
         self._binding_graph: DependencyGraph[str] = DependencyGraph()
 
         # Pending-episode state — the episode currently being built,
@@ -1145,11 +1169,25 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             return self._close_pending_episode_locked()
 
     def retrieve_on_cue(self, cue_node_id: str, limit: int = 10) -> list[tuple[str, float]]:
-        """Return nodes co-activated with the cue, ranked by binding weight.
+        """Return substrate nodes co-activated with the cue, ranked by binding weight.
 
         One-hop retrieval via ``DependencyGraph.get_associated`` — the
         simplest possible partial-cue path. Multi-hop via
         ``spreading_activation`` is a Stage 2 fallback per the plan.
+
+        **Return shape is distinct from ``recall``/``recall_similar``**.
+        Those methods return ``list[EpisodicMemory | CompressedMemory]``
+        (memory records). This method returns
+        ``list[tuple[node_id, weight]]`` where ``node_id`` is a
+        SUBSTRATE node identifier (from ``LinguisticEncoder`` + EC),
+        NOT a memory record id. The two namespaces never overlap — a
+        cue node id passed to ``recall`` retrieves nothing, and a
+        memory id passed here retrieves nothing. Stage 2 retrieval
+        fusion will normalize the shapes; for Stage 1, keep callers
+        distinct.
+
+        Queries ``self._binding_graph`` ONLY. Does NOT touch
+        ``self._graph`` (memory-record associations).
         """
         associated = self._binding_graph.get_associated(
             cue_node_id,
@@ -1158,6 +1196,17 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # get_associated returns list[(neighbor, weight)]; sort + cap
         associated.sort(key=lambda pair: pair[1], reverse=True)
         return associated[:limit]
+
+    def add_boundary_rule(self, rule: BoundaryRule) -> None:
+        """Append a boundary rule to the episode detector.
+
+        Public P3b extension seam (Round 2 Arch important #1). P3b
+        channel integration will call this to register per-channel
+        rules without reaching into ``self._episode_detector``
+        directly. The rule is appended to the existing rule list and
+        consulted on every subsequent ``observe_episode_event`` call.
+        """
+        self._episode_detector.add_rule(rule)
 
     # ─────────────────────────────────────────────────────────────────────────
     # P3a Stage 1 — Episode binding (private helpers)

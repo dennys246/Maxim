@@ -1044,12 +1044,13 @@ class NAc:
         runtime wires (self.config, self.ec, whatever was wired at
         construction). Does NOT acquire the NAc mutex because callers
         expect load-time quiescence; acquiring self._lock here would
-        deadlock with any concurrent observe() call in a long-running sim.
-        """
-        version = state.get("version", "0.0")
-        if version != "1.0":
-            raise ValueError(f"Unsupported NAc version: {version}")
+        deadlock with any concurrent observe() call in a long-running
+        sim.
 
+        Round 2 fold: the payload-layer ``version`` check is removed
+        for consistency with the envelope-authoritative versioning
+        tombstone documented in ``memory/snapshot.py``.
+        """
         self._links = {
             event_sig: [CausalLink.from_dict(link_data) for link_data in links]
             for event_sig, links in state.get("links", {}).items()

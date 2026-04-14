@@ -68,7 +68,7 @@ A user who wants SessionSnapshot state to land in Postgres writes a `SessionSnap
          schema_version: int
 
          def dump(self) -> dict[str, Any]: ...
-         def load(self, state: dict[str, Any]) -> None: ...
+         def load_state(self, state: dict[str, Any]) -> None: ...
      ```
      **Rationale (Round 1 cross-confirmed finding #1):** a classmethod factory can't accept the required init params (ATL config, NAc wiring, Hippocampus config + callbacks) and can't re-establish runtime wires. Every existing `load(path)` method on bio-systems already mutates self. In-place load preserves that contract.
    - `SessionSnapshot` dataclass composing all six systems with top-level envelope:
@@ -86,7 +86,7 @@ A user who wants SessionSnapshot state to land in Postgres writes a `SessionSnap
          },
      }
      ```
-     `SessionSnapshot.dump(path: Path | None = None) -> dict` orchestrates each sub-snapshot; if path is given, writes via `atomic_write_json`. `SessionSnapshot.load(state: dict, into: dict[str, Any]) -> None` takes a mapping of `kind -> live_instance` and calls each instance's `load(payload)` in place.
+     `SessionSnapshot.capture(...)` orchestrates each sub-snapshot; `SessionSnapshot.write(path)` writes to disk via `atomic_write_json`; `SessionSnapshot.restore_into(atl=..., hippocampus=..., ...)` takes live instances and calls each instance's `load_state(payload)` in place. The method is named `load_state` (not `load`) on every bio-system to avoid colliding with the pre-existing `load(path: str | None)` file-I/O method; the rename of `load(path)` across ~37 call sites is out of scope for Stage 1. Both `capture` and `restore_into` accept a `strict: bool = False` flag; under `strict=True`, any partial capture or mismatched restore raises, which P4/P5 harness call sites should use.
    - **Six thin conformance adapters** — the Protocol is the consumer contract; the adapters wrap the new bio-system `_to_dict()` / `_load_from_dict()` methods with the envelope. Adapters live as module-level functions (`atl_to_snapshot(atl)`, `atl_from_snapshot(state, into)`, etc.) and serve as both the canonical call sites for `SessionSnapshot` orchestration and a stable seam for future migration functions.
    - **Envelope-authoritative versioning (Round 1 Arch critical #3):** the envelope `schema_version: int = 1` is the ONLY authoritative version. Legacy payload version strings (`"1.0"`, `"3.0"`) are **tombstoned** — a module-level docstring in `snapshot.py` explicitly states that no new payload-layer version bumps are allowed; all migration lands at the envelope layer. A one-line comment is added next to each bio-system's `save()` pointing at the tombstone rule.
 2. **Mechanical `_to_dict()` + `_load_from_dict()` extraction** in all five bio-systems with existing save/load:
@@ -95,13 +95,13 @@ A user who wants SessionSnapshot state to land in Postgres writes a `SessionSnap
    - `Hippocampus._to_dict() -> dict` (on `PersistenceMixin` in [hippocampus_persistence.py:32](../../src/maxim/memory/hippocampus_persistence.py#L32), NOT `hippocampus.py:171` — Round 1 Exec important finding). **Reserves an `"episodes": []` top-level key for P3a** — Hippocampus itself doesn't know about episodes yet, so the key is written by P3a once `EpisodeStore` lives on Hippocampus.
    - `SCN._to_dict() -> dict` — builds the same dict [scn.py:640-654](../../src/maxim/time/scn.py#L640-L654). No lock; conditional `oscillator` key preserved. The fact that `SCN.save(path)` has a required `path` is now **irrelevant** to the adapter layer because `_to_dict()` never touches paths — `SessionSnapshot` owns path orchestration. The `SCN.save(path)` signature stays unchanged for backward compatibility.
    - `CrossLayerGraph._to_dict() -> dict` — piggybacks on the existing [cross_layer.py `to_dict()`](../../src/maxim/memory/cross_layer.py) method. Thin adapter — `cross_layer.py::to_dict` already returns a dict, so `_to_dict()` is essentially an alias for Protocol conformance. `CrossLayerGraph._load_from_dict(data)` wraps the existing load deserialization.
-3. **`PerceptTraceBuffer.dump()` / `PerceptTraceBuffer.load(state)` in Stage 1** — real methods on the class, not module stubs. Empty-buffer round-trip MUST pass in Stage 1 per Round 1 cross-confirmed finding #2. The existing `PerceptTraceBuffer.snapshot()` returns `list[TraceEntry]` — `dump()` wraps that list + ring-buffer metadata (head index, capacity, tick). `load(state)` clears the buffer and replays entries via the existing insertion path. Non-empty multi-agent edge cases (agent filter, min_activation parameter, concurrent insertion races) are deferred to Stage 2.
+3. **`PerceptTraceBuffer.dump()` / `PerceptTraceBuffer.load_state(state)` in Stage 1** — real methods on the class, not module stubs. Empty-buffer round-trip MUST pass in Stage 1 per Round 1 cross-confirmed finding #2. The existing `PerceptTraceBuffer.snapshot()` returns `list[TraceEntry]` — `dump()` wraps that list + ring-buffer metadata (tick counter, capacity, tau, tick_rate, min_activation). `load_state(state)` clears the buffer and replays entries, **trimming to `self._max_entries`** to preserve the ring-buffer capacity invariant, and emitting a WARN log if the dumped tuning parameters diverge from the live instance's values (Round 2 Exec critical #3 + Arch critical #2). Non-empty multi-agent edge cases (agent filter, min_activation parameter, concurrent insertion races) are deferred to Stage 2.
 4. **No migration tooling** (Stage 2).
 5. **No cross-layer round-trip subprocess harness** (Stage 2).
 
 **Pass gate (Stage 1):**
 
-- All six bio-system classes pass `isinstance(sys, BioSystemSnapshot)` via `runtime_checkable` — every one of them exposes `schema_version: int` + `dump()` + `load()` as instance attributes/methods.
+- All six bio-system classes pass `isinstance(sys, BioSystemSnapshot)` via `runtime_checkable` — every one of them exposes `schema_version: int` + `dump()` + `load_state()` as instance attributes/methods.
 - Every bio-system's `dump()` returns a dict with top-level `"schema_version"` key whose value is `int`, not string.
 - `Hippocampus.dump()` contains an `"episodes"` key whose value is `[]` (reserved for P3a).
 - Round-trip test per bio-system (6 tests): construct, populate with minimal state, `dump()` → `load()` into a fresh instance, assert state equality.
@@ -162,14 +162,16 @@ A user who wants SessionSnapshot state to land in Postgres writes a `SessionSnap
 
 Stage 1 unblocks P3a Stage 1's round-trip test. Stages 2 + 3 together close P3.5's contribution to 0.3-target. P4 (1.0-gating mug test) depends on Stage 2 + 3 being fully shipped — a subprocess round-trip with `CrossLayerGraph` carrying vision↔concept edges is literally the mug test's implementation substrate.
 
-## Load-bearing invariants (filled in AFTER shipping Stage 1)
+## Load-bearing invariants (post-Round-2 fold)
 
-TODO — will populate after Stage 1 review round (Round 2 of this branch) with the actual gotchas encountered. Expected candidates based on Round 1 folds:
-
-- Envelope-authoritative versioning — payload-layer version strings are tombstoned, do not bump them.
-- `BioSystemSnapshot.load` is in-place instance-mutating, NOT classmethod factory.
-- Every `_to_dict()` holds the same lock the original `save()` did.
-- `CrossLayerGraph` is the 6th system; P4 mug test depends on it.
+- **`BioSystemSnapshot.load_state` is in-place instance-mutating, NOT a classmethod factory.** Preserves runtime wires (ATL.config + semantics callbacks, NAc._ec, Hippocampus config, SCN persistence_path, CrossLayerGraph._layers). Regression guards: `TestLoadPreservesRuntimeWires` (3 tests).
+- **Method name is `load_state`, NOT `load`.** Avoids colliding with the existing `load(path: str | None)` filesystem-I/O method on all four pre-existing bio-systems. The `load(path)` rename across 37+ call sites is out of scope for Stage 1.
+- **Envelope `schema_version: int = 1` is the ONLY authoritative version.** Payload-layer legacy version strings (`"1.0"`, `"3.0"`) are **tombstoned** — Round 2 fold removed the payload-layer version checks from ATL / Hippocampus / NAc / SCN `load_state` for uniformity. Mutating a payload `version` string has no effect on load behavior. Regression guards: `TestEnvelopeVersioningAuthoritative` (4 tests).
+- **Every `dump()` holds the same lock the original `save()` did** (ATL rwlock read, NAc mutex, Hippocampus rwlock read, PerceptTraceBuffer mutex). Regression guards: `TestLockDisciplinePreserved` (AST-based `inspect.getsource` check on each dump() method).
+- **`CrossLayerGraph` is the 6th bio-system in `SessionSnapshot`.** P4 mug-test depends on vision↔concept edges surviving a subprocess round-trip; omitting it would silently lose them.
+- **`PerceptTraceBuffer.load_state` trims to `self._max_entries`** on load — the ring-buffer capacity invariant cannot be exceeded post-load (Round 2 Exec critical #3). Also emits a WARN on tuning-parameter drift between dumped and live values (Round 2 Arch critical #2).
+- **`SessionSnapshot.capture` and `restore_into` accept `strict: bool = False`.** Under `strict=True`, any partial capture or mismatched restore raises. P4 / P5 harness call sites should use strict mode.
+- **Protocol docstring documents lock-acquisition behavior** so callers on hot-path threads know to spawn `dump()` off to a worker thread.
 
 ## Review questions (Stage 3 reviewers — templates for Round 2 code review)
 
@@ -178,7 +180,7 @@ TODO — will populate after Stage 1 review round (Round 2 of this branch) with 
 - Does `PerceptTraceBuffer.dump` hold its lock correctly during snapshot iteration? Any race with concurrent `record()` calls?
 - Is `runtime_checkable` on `BioSystemSnapshot` correctly identifying all six bio-systems? What happens if a subclass adds a new field — does the Protocol check still hold?
 - Are there thread-safety concerns with calling `_to_dict()` on a live bio-system during a running agent loop?
-- Does `SessionSnapshot.load(state, into)` handle partial failures cleanly (e.g., one bio-system's `load` raises mid-way)?
+- Does `SessionSnapshot.restore_into` handle partial failures cleanly (e.g., one bio-system's `load_state` raises mid-way)?
 
 **Architecture lens:**
 - Is `SessionSnapshot` the right shape, or should it be a Protocol itself with multiple concrete implementations?
