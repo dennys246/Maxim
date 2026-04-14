@@ -1,106 +1,142 @@
 # Substrate P3.5 — Cross-session persistence + BioSystemSnapshot Protocol
 
-**Status:** Stage 1 in progress (2026-04-14)
-**Scope:** ~500 LOC across 3 stages (Stage 1: ~200, Stage 2: ~200, Stage 3: ~100)
+**Status:** Stage 1 in progress (2026-04-14, post-Round-1-review fold)
+**Scope:** ~500 LOC across 3 stages (Stage 1: ~250, Stage 2: ~150, Stage 3: ~100)
 **Target version:** 0.3-target
 **Gates:** Not directly version-gating, but load-bearing for P3a round-trip tests, P4 mug-test subprocess round-trip (1.0-GATING), and P5 stress persistence.
 **Depends on:** substrate_recognition ✅
-**Blocks:** P3a Stage 1 round-trip test (needs P3.5 Stage 1 shell), P4 (needs full Stage 2+3), P5 (needs full Stage 2+3)
+**Blocks:** P3a Stage 1 round-trip test (needs P3.5 Stage 1 `_to_dict()` extraction on Hippocampus), P4 (needs full Stage 2+3), P5 (needs full Stage 2+3)
 **Parent:** [substrate_binding_persistence.md](substrate_binding_persistence.md)
 **Related:** [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md), [substrate_p3a_episode_binding.md](substrate_p3a_episode_binding.md)
 
 ## Goal
 
-Introduce a unified `BioSystemSnapshot` Protocol + `SessionSnapshot` composition class that lets all five bio-systems (ATL, Hippocampus, NAc, SCN, PerceptTraceBuffer) round-trip through a single dict-shaped serialization surface. The Protocol exists so that downstream phases (P3a persistence round-trip, P4 mug-test subprocess boundary, P5 long-running stress cycles) can treat the five bio-systems uniformly rather than each hand-rolling save/load pairs with divergent signatures.
+Introduce a unified `BioSystemSnapshot` Protocol + `SessionSnapshot` composition class that lets all six bio-systems (ATL, Hippocampus, NAc, SCN, PerceptTraceBuffer, CrossLayerGraph) round-trip through a single dict-shaped serialization surface. The Protocol exists so that downstream phases (P3a persistence round-trip, P4 mug-test subprocess boundary, P5 long-running stress cycles) can treat the six systems uniformly rather than each hand-rolling save/load pairs with divergent signatures.
 
 ## Hypothesis (falsifiable)
 
-A `SessionSnapshot.dump()` → disk → `SessionSnapshot.load()` round-trip preserves enough state across all five bio-systems that: (a) retrieval behavior is bit-identical on post-load probes, (b) NAc reward biases round-trip within float tolerance, (c) edge weights in ATL's `DependencyGraph` round-trip exactly, (d) schema evolution is survivable because every sub-snapshot carries an explicit `schema_version: int`.
+A `SessionSnapshot.dump()` → disk → `SessionSnapshot.load()` round-trip preserves enough state across all six systems that: (a) retrieval behavior is bit-identical on post-load probes, (b) NAc reward biases round-trip within float tolerance, (c) edge weights in ATL's `DependencyGraph` and `CrossLayerGraph`'s inter-layer edges round-trip exactly, (d) schema evolution is survivable because every sub-snapshot carries an explicit envelope-layer `schema_version: int`.
 
 ## Dependencies — scaffolding audit
 
-Existing state (audited 2026-04-14 in worktree):
+Existing state (audited 2026-04-14 in worktree; Round 1 review confirmed):
 
 | Surface | Status | Notes |
 |---|---|---|
-| `ATL.save(path)` / `ATL.load(path)` / `ATL.load_safe(path)` | ✅ exists ([atl.py:306](../../src/maxim/memory/atl.py#L306)) | Builds inline dict, calls `atomic_write_json`. Version field is hardcoded `"1.0"` **string**. |
-| `Hippocampus.save/load` (via `PersistenceMixin`) | ✅ exists ([hippocampus.py:171](../../src/maxim/memory/hippocampus.py#L171)) | Version hardcoded `"3.0"` string. Has `associative_graph` key + `load_with_recovery`. |
-| `NAc.save(path)` / `NAc.load(path)` / `NAc.load_safe(path)` | ✅ exists ([nac.py:1019](../../src/maxim/decisions/nac.py#L1019)) | `reward_bias` field already persisted (P2 addition). Version `"1.0"` string. |
-| `SCN.save(path)` / `SCN.load(path)` | ✅ exists ([time/scn.py:640](../../src/maxim/time/scn.py#L640)) | **Signature mismatch:** `path` is required, not optional. Version `"3.0"` string. |
-| `PerceptTraceBuffer` persistence | ❌ missing ([percept_trace_buffer.py:26](../../src/maxim/memory/percept_trace_buffer.py#L26)) | Has in-memory `snapshot()` returning `list[TraceEntry]` but no disk I/O. |
-| `utils/atomic_io.atomic_write_json` | ✅ exists | Canonical bulk-write primitive. Reused. |
+| `ATL.save(path)` / `ATL.load(path)` / `ATL.load_safe(path)` | ✅ exists ([atl.py:306](../../src/maxim/memory/atl.py#L306)) | Builds inline dict under `self._rwlock.read()`, calls `atomic_write_json`. Legacy payload version string `"1.0"`. |
+| `Hippocampus.save/load` (via `PersistenceMixin`) | ✅ exists ([hippocampus_persistence.py:32](../../src/maxim/memory/hippocampus_persistence.py#L32)) | Mixin on `Hippocampus`. Legacy payload version string `"3.0"`. Has `associative_graph` key + `load_with_recovery`. No existing `episodes` key — no collision risk for P3a's reserved slot. |
+| `NAc.save(path)` / `NAc.load(path)` / `NAc.load_safe(path)` | ✅ exists ([nac.py:1019](../../src/maxim/decisions/nac.py#L1019)) | `reward_bias` field already persisted (P2 addition). Builds dict under `self._lock`. Legacy payload version string `"1.0"`. `save(None)` raises `ValueError` — contract stays on `save()`, not the new `_to_dict()`. |
+| `SCN.save(path)` / `SCN.load(path)` | ✅ exists ([time/scn.py:640](../../src/maxim/time/scn.py#L640)) | **`path` is REQUIRED**, no config fallback. No internal lock during dict build. Legacy payload version string `"3.0"`. Dissolved in Stage 1 because `_to_dict()` never takes a path — `SessionSnapshot` owns paths. |
+| `CrossLayerGraph.save/load/to_dict` | ✅ exists ([memory/cross_layer.py:216](../../src/maxim/memory/cross_layer.py#L216)) | Owns all cross-layer edges (`DERIVED_FROM`, `INSTANCE_OF`, `INFORMS`). **Added to SessionSnapshot per Round 1 Architecture-lens critical finding** — P4 mug-test (1.0-gating) cross-modal binding lives on this graph; omitting it would silently lose vision↔concept edges across a round-trip. |
+| `PerceptTraceBuffer` persistence | ❌ missing ([percept_trace_buffer.py:26](../../src/maxim/memory/percept_trace_buffer.py#L26)) | Has in-memory `snapshot(agent_id=None, min_activation=0.01) -> list[TraceEntry]` helper. Stage 1 ships **real** empty-buffer round-trip by adding thin `dump()`/`load()` methods on the class (not module functions, per Round 1 cross-confirmed finding #2). Non-empty multi-agent edge cases are Stage 2. |
+| `utils/atomic_io.atomic_write_json` | ✅ exists | Canonical bulk-write primitive. Reused everywhere. |
 | Existing `BioSystemSnapshot` / `SessionSnapshot` type | ❌ none | Grep confirmed zero hits. |
-| `memory/store.py` `EpisodicStore` / `CausalStore` / `SemanticStore` protocols | orthogonal | These are storage *targets* (where persistence writes), not snapshots. No collision. |
+| `memory/store.py` `EpisodicStore` / `CausalStore` / `SemanticStore` protocols | **disambiguated below** | These are **storage-target** Protocols (Mother Maxim DB implementations, `FileEpisodicStore`, etc.); `BioSystemSnapshot` is a **serialization-shape** Protocol. See "Protocol ownership boundaries" below. |
 
-**Key implication.** Every bio-system that has save/load builds its state dict inline inside `save()` and then calls `atomic_write_json`. The dict-building is a zero-behavior-change extract — pull the dict literal out of `save()` into a private `_to_dict() -> dict[str, Any]` method, then `save()` becomes a two-liner. This gives us the "return a dict" half of the Protocol without introducing any new serialization format.
+**Key implication — dict extraction is clean.** Every bio-system that has save/load builds its state dict inline inside `save()` and then calls `atomic_write_json`. The dict-building is a zero-behavior-change extract — pull the dict literal out of `save()` into a private `_to_dict() -> dict[str, Any]` method, then `save()` becomes a two-liner. **Lock discipline preservation is explicit** — each extracted `_to_dict()` acquires the SAME lock the original `save()` held (ATL: read lock, NAc: mutex, Hippocampus: its own lock) so that concurrent writes don't race against dict construction.
+
+**Protocol ownership boundaries (Round 1 Arch-lens important finding #6):**
+
+`BioSystemSnapshot` and `memory/store.py::EpisodicStore` overlap visually because both produce JSON for bio-system state. The split is:
+
+- **`BioSystemSnapshot`** (this plan) — the **serialization shape** a live, wired bio-system produces for a process-local snapshot checkpoint. Used by sim orchestrators + cross-session persistence. Always returns a dict; target is `atomic_write_json` or subprocess handoff.
+- **`EpisodicStore` / `CausalStore` / `SemanticStore`** (existing) — **storage-target protocols** wired into Hippocampus/NAc/ATL as pluggable backends. `FileEpisodicStore` writes JSON; Mother Maxim's DB extras implement the same Protocol against Postgres. Used during live operation, not for snapshot checkpointing.
+
+A user who wants SessionSnapshot state to land in Postgres writes a `SessionSnapshot` → dict → then loads it into a DB-backed `Hippocampus` constructed with a Postgres-backed `EpisodicStore`. The two protocols compose; they do NOT overlap. **Stage 1 ships a one-paragraph note in `memory/snapshot.py` docstring making this explicit.**
 
 ## Stages
 
-### Stage 1 — Protocol shell + thin adapters + P3a round-trip unblocker
+### Stage 1 — Protocol + thin adapters + P3a round-trip unblocker
 
 **What's built:**
 
-1. `src/maxim/memory/snapshot.py` (new, ~250 LOC):
-   - `BioSystemSnapshot` Protocol:
+1. **`src/maxim/memory/snapshot.py` (new, ~280 LOC):**
+   - `BioSystemSnapshot` Protocol — **in-place load semantics**, NOT classmethod factory:
      ```python
-     from typing import Any, Protocol, Self, runtime_checkable
+     from typing import Any, Protocol, runtime_checkable
+
      @runtime_checkable
      class BioSystemSnapshot(Protocol):
+         """Protocol for bio-systems that can dump/load their state as a dict.
+
+         Load is INSTANCE-LEVEL and mutates self in place, preserving runtime
+         wires (ATL config, NAc.ec, Hippocampus scn/callbacks). This matches
+         the existing save/load shape on all bio-systems and avoids the
+         PEP-544 classmethod pitfalls flagged in Round 1 review.
+         """
+
          schema_version: int
+
          def dump(self) -> dict[str, Any]: ...
-         @classmethod
-         def load(cls, state: dict[str, Any]) -> Self: ...
+         def load(self, state: dict[str, Any]) -> None: ...
      ```
-   - `SessionSnapshot` dataclass composing all five bio-system sub-snapshots with a top-level `{"schema_version": 1, "systems": {...}}` envelope. `dump()` orchestrates each sub-snapshot; `load()` dispatches by kind.
-   - Conformance adapters — thin wrapper functions `atl_to_snapshot(atl) -> dict`, `atl_from_snapshot(state) -> ATL`, and same for Hippocampus / NAc / SCN. Each wraps the sub-dict in `{"schema_version": 1, "kind": "atl", "payload": <existing dict>}`.
-   - `PerceptTraceBuffer` stub adapters: `ptb_to_snapshot` returns `{"schema_version": 1, "kind": "percept_trace_buffer", "payload": None, "_stub": True}`; `ptb_from_snapshot` raises `NotImplementedError("P3.5 Stage 2 will ship PTB save/load")`.
-2. **Mechanical `_to_dict()` extraction** in the four bio-systems that have save/load:
-   - [atl.py:306-322](../../src/maxim/memory/atl.py#L306-L322) `ATL.save()` body → new `ATL._to_dict() -> dict`
-   - [nac.py:1019](../../src/maxim/decisions/nac.py#L1019) `NAc.save()` body → new `NAc._to_dict() -> dict`
-   - [hippocampus.py](../../src/maxim/memory/hippocampus.py) `PersistenceMixin.save()` body → new `_to_dict() -> dict` (reserving an `"episodes": []` top-level key for P3a; the episode store persists its entries there once P3a ships)
-   - [scn.py:640](../../src/maxim/time/scn.py#L640) `SCN.save()` body → new `SCN._to_dict() -> dict`
-   - Each bio-system's existing `save(path)` refactored to one-line `atomic_write_json(path, self._to_dict())`.
-   - Matching `_from_dict(data: dict) -> Self` classmethods where the existing `load()` deserialization logic lives; `load(path)` refactored to `self._from_dict(json.load(open(path)))`.
-3. **No migration tooling.** No `migrate(old_state, from_v, to_v)` function. Deferred to Stage 2.
-4. **No cross-layer round-trip harness.** Deferred to Stage 2.
-5. **PTB save/load** is **not** implemented in Stage 1 — the stub is intentional.
+     **Rationale (Round 1 cross-confirmed finding #1):** a classmethod factory can't accept the required init params (ATL config, NAc wiring, Hippocampus config + callbacks) and can't re-establish runtime wires. Every existing `load(path)` method on bio-systems already mutates self. In-place load preserves that contract.
+   - `SessionSnapshot` dataclass composing all six systems with top-level envelope:
+     ```python
+     {
+         "schema_version": 1,
+         "kind": "session",
+         "systems": {
+             "atl": {"schema_version": 1, "kind": "atl", "payload": {...}},
+             "hippocampus": {"schema_version": 1, "kind": "hippocampus", "payload": {...}},
+             "nac": {"schema_version": 1, "kind": "nac", "payload": {...}},
+             "scn": {"schema_version": 1, "kind": "scn", "payload": {...}},
+             "percept_trace_buffer": {"schema_version": 1, "kind": "percept_trace_buffer", "payload": {...}},
+             "cross_layer_graph": {"schema_version": 1, "kind": "cross_layer_graph", "payload": {...}},
+         },
+     }
+     ```
+     `SessionSnapshot.dump(path: Path | None = None) -> dict` orchestrates each sub-snapshot; if path is given, writes via `atomic_write_json`. `SessionSnapshot.load(state: dict, into: dict[str, Any]) -> None` takes a mapping of `kind -> live_instance` and calls each instance's `load(payload)` in place.
+   - **Six thin conformance adapters** — the Protocol is the consumer contract; the adapters wrap the new bio-system `_to_dict()` / `_load_from_dict()` methods with the envelope. Adapters live as module-level functions (`atl_to_snapshot(atl)`, `atl_from_snapshot(state, into)`, etc.) and serve as both the canonical call sites for `SessionSnapshot` orchestration and a stable seam for future migration functions.
+   - **Envelope-authoritative versioning (Round 1 Arch critical #3):** the envelope `schema_version: int = 1` is the ONLY authoritative version. Legacy payload version strings (`"1.0"`, `"3.0"`) are **tombstoned** — a module-level docstring in `snapshot.py` explicitly states that no new payload-layer version bumps are allowed; all migration lands at the envelope layer. A one-line comment is added next to each bio-system's `save()` pointing at the tombstone rule.
+2. **Mechanical `_to_dict()` + `_load_from_dict()` extraction** in all five bio-systems with existing save/load:
+   - `ATL._to_dict() -> dict` — moves the inline dict literal from [atl.py:313-320](../../src/maxim/memory/atl.py#L313-L320) into its own method. **Acquires `self._rwlock.read()` internally** so the extraction is lock-equivalent to the pre-refactor code. `ATL._load_from_dict(data: dict) -> None` pulls the deserialization body from `load()`. `ATL.save(path)` / `ATL.load(path)` become thin wrappers.
+   - `NAc._to_dict() -> dict` — same pattern, acquires `self._lock`. `NAc.save(None)`'s `ValueError` contract stays on `save()`, not `_to_dict()`.
+   - `Hippocampus._to_dict() -> dict` (on `PersistenceMixin` in [hippocampus_persistence.py:32](../../src/maxim/memory/hippocampus_persistence.py#L32), NOT `hippocampus.py:171` — Round 1 Exec important finding). **Reserves an `"episodes": []` top-level key for P3a** — Hippocampus itself doesn't know about episodes yet, so the key is written by P3a once `EpisodeStore` lives on Hippocampus.
+   - `SCN._to_dict() -> dict` — builds the same dict [scn.py:640-654](../../src/maxim/time/scn.py#L640-L654). No lock; conditional `oscillator` key preserved. The fact that `SCN.save(path)` has a required `path` is now **irrelevant** to the adapter layer because `_to_dict()` never touches paths — `SessionSnapshot` owns path orchestration. The `SCN.save(path)` signature stays unchanged for backward compatibility.
+   - `CrossLayerGraph._to_dict() -> dict` — piggybacks on the existing [cross_layer.py `to_dict()`](../../src/maxim/memory/cross_layer.py) method. Thin adapter — `cross_layer.py::to_dict` already returns a dict, so `_to_dict()` is essentially an alias for Protocol conformance. `CrossLayerGraph._load_from_dict(data)` wraps the existing load deserialization.
+3. **`PerceptTraceBuffer.dump()` / `PerceptTraceBuffer.load(state)` in Stage 1** — real methods on the class, not module stubs. Empty-buffer round-trip MUST pass in Stage 1 per Round 1 cross-confirmed finding #2. The existing `PerceptTraceBuffer.snapshot()` returns `list[TraceEntry]` — `dump()` wraps that list + ring-buffer metadata (head index, capacity, tick). `load(state)` clears the buffer and replays entries via the existing insertion path. Non-empty multi-agent edge cases (agent filter, min_activation parameter, concurrent insertion races) are deferred to Stage 2.
+4. **No migration tooling** (Stage 2).
+5. **No cross-layer round-trip subprocess harness** (Stage 2).
 
 **Pass gate (Stage 1):**
 
-- All five bio-system classes pass `isinstance(sys, BioSystemSnapshot)` via `runtime_checkable` (PTB passes the structural check but its `load` raises when actually called).
+- All six bio-system classes pass `isinstance(sys, BioSystemSnapshot)` via `runtime_checkable` — every one of them exposes `schema_version: int` + `dump()` + `load()` as instance attributes/methods.
+- Every bio-system's `dump()` returns a dict with top-level `"schema_version"` key whose value is `int`, not string.
 - `Hippocampus.dump()` contains an `"episodes"` key whose value is `[]` (reserved for P3a).
-- Round-trip test: construct an empty `Hippocampus`, call `dump()`, construct a fresh `Hippocampus`, call `load(dumped)`, assert `.memories == []` and `.associative_graph` is equal.
-- Round-trip test: construct an ATL with 3 concepts, dump → load → assert concept IDs match and `graph.nodes()` matches.
-- Round-trip test: construct a NAc with `reward_bias` set on one node, dump → load → assert bias value round-trips within `1e-9`.
-- Round-trip test: construct a SCN with recorded ticks, dump → load → assert `circadian_bins` match.
-- `SessionSnapshot` full round-trip with PTB stubbed: assert sub-snapshot envelopes all have `schema_version=1` and `kind` set correctly.
+- Round-trip test per bio-system (6 tests): construct, populate with minimal state, `dump()` → `load()` into a fresh instance, assert state equality.
+- `SessionSnapshot` round-trip test: compose 6 systems (all empty or minimal), dump → write to tempfile → load → assert equality across all six.
+- **PTB empty round-trip:** `PerceptTraceBuffer() → dump() → PerceptTraceBuffer().load(dumped)` produces a buffer whose `snapshot()` returns `[]`. Non-empty case is Stage 2.
+- **Lock discipline regression guards (AST-based, NOT string grep):** a test loads each bio-system's `_to_dict()` via `inspect.getsource()` and asserts the source contains the expected lock acquisition pattern (`self._rwlock.read()` for ATL, `self._lock` for NAc, etc.). Round 1 Exec minor #3 flagged simple string grep as false-positive-prone on docstrings; the AST-based guard checks the actual function body tokens.
+- **Grep invariant** (separate test): `git grep` on the P3.5 diff confirms the four `save()` methods each contain `self._to_dict()` in their body via `inspect.getsource()` anchored to the function body's first non-blank line.
 - `ruff check` + `ruff format` clean on all touched files.
-- Fast suite clean (excluding the standing exclusions in CLAUDE.md).
+- Fast suite clean (standing exclusions per CLAUDE.md).
 
 **Tests (Stage 1):**
 
-- `tests/unit/test_bio_system_snapshot.py` (new):
-  - `TestProtocolConformance` — `runtime_checkable` check across all 5 bio-systems.
-  - `TestATLRoundTrip` / `TestHippocampusRoundTrip` / `TestNAcRoundTrip` / `TestSCNRoundTrip` — one round-trip test per bio-system.
-  - `TestSessionSnapshotComposition` — full 5-system compose + dump + load (PTB stubbed); assert envelope shape.
-  - `TestPTBStubRaises` — explicit assertion that `ptb_from_snapshot(...)` raises `NotImplementedError` with the expected message substring.
-  - `TestSchemaVersionEnvelope` — every sub-snapshot's top-level dict has `schema_version: int` (not string).
-- Regression guard: grep-style invariant test that `ATL.save`, `Hippocampus.save`, `NAc.save`, `SCN.save` each contain `self._to_dict()` in the body (ensures nobody silently re-inlines the dict literal).
+- `tests/unit/test_bio_system_snapshot.py` (new, ~350 LOC):
+  - `TestProtocolConformance` — `runtime_checkable` check across all 6 bio-systems.
+  - `TestATLRoundTrip` / `TestHippocampusRoundTrip` / `TestNAcRoundTrip` / `TestSCNRoundTrip` / `TestPTBRoundTrip` / `TestCrossLayerGraphRoundTrip` — one round-trip test per bio-system.
+  - `TestSessionSnapshotComposition` — full 6-system compose + dump + tempfile round-trip.
+  - `TestEnvelopeShape` — every sub-snapshot's envelope has `schema_version: int` + `kind: str` + `payload: dict`.
+  - `TestEnvelopeVersioningAuthoritative` — modifying the envelope version number in a dumped state invalidates load (or migrates); modifying the payload-layer legacy version string has no effect on load behavior.
+  - `TestLockDisciplinePreserved` — AST-based inspect.getsource check on each `_to_dict()`.
+  - `TestLoadPreservesRuntimeWires` — construct an ATL with a non-default config, dump, load a new ATL pre-wired with a DIFFERENT config, assert load() mutates state WITHOUT overwriting config (i.e., load is state-only, not wire-rewriting).
 
-### Stage 2 — Full protocol + PerceptTraceBuffer + cross-layer round-trip harness
+### Stage 2 — Non-empty PTB + migration tooling + subprocess round-trip harness
 
 **What's built:**
 
-- Real `PerceptTraceBuffer.save/load` using its existing `snapshot()` helper as the dict source. Lock discipline: read snapshot under its existing lock, serialize outside.
-- `BioSystemSnapshot.migrate(old_state, from_v, to_v)` function — pure forward migration, one version step per call, explicit "unknown version → raise" default.
-- Cross-layer round-trip harness reusing the S3 subprocess harness in `tests/substrate/persistence_harness.py`: parent dumps a `SessionSnapshot`, subprocess loads it and runs a retrieval probe, asserts probe results match parent-side expectation.
-- Schema versioning hygiene pass: audit every bio-system that still has a hardcoded `"1.0"` / `"3.0"` string version, replace with `schema_version: int = 1` (a tombstone comment in each file explains the legacy strings are pinned at the envelope layer, not the payload layer).
+- **Non-empty `PerceptTraceBuffer` round-trip:** multi-agent tag filtering, ring-buffer head/tail invariants on reload, concurrent insertion during serialization.
+- `BioSystemSnapshot.migrate(old_state, from_v, to_v)` — pure forward migration, one envelope-version step per call, explicit "unknown version → raise" default.
+- Subprocess round-trip harness reusing `tests/substrate/persistence_harness.py` (S3): parent dumps `SessionSnapshot`, subprocess loads into fresh instances + runs a retrieval probe, asserts probe results match parent-side expectation.
+- (Optional, only if needed by migration test fixtures.) Synthetic legacy snapshot with `schema_version=0` envelope for migration testing.
 
 **Pass gate (Stage 2):**
 
-- PTB round-trip test with non-empty buffer + multi-agent tag filtering.
-- Subprocess round-trip harness passes with all 5 bio-systems.
-- Migration from `schema_version=0` (synthetic legacy snapshot) → `schema_version=1` green on a fixture.
+- PTB round-trip with 100+ entries + 3 agents + concurrent insertion.
+- Subprocess round-trip harness passes with all 6 systems.
+- Migration `schema_version=0 → 1` green on synthetic legacy fixture.
 - Fast suite clean, substrate subset clean.
 
 **Tests (Stage 2):**
@@ -113,9 +149,8 @@ Existing state (audited 2026-04-14 in worktree):
 
 **What's built:**
 
-- End-to-end sweep on a real 1000+ node synthetic fixture (will reuse P3a's synthetic fixture once P3a Stage 2 ships): dump a populated 5-system state, load in a subprocess, assert retrieval F1 matches pre-dump within statistical tolerance.
-- Pre-merge review round: Executor lens + Architecture lens, both flagging on the full branch tip. Review prompt templates in this file's "Review questions" section below.
-- Fold all critical + important findings into one commit before PR opens.
+- End-to-end sweep on a real 1000+ node synthetic fixture (reuses P3a Stage 2 fixture once available): dump a populated 6-system state, load in subprocess, assert retrieval F1 matches pre-dump within statistical tolerance.
+- Pre-merge review round: Executor lens + Architecture lens in parallel, independent; fold critical + important findings into the same branch before the PR opens.
 
 **Pass gate (Stage 3):**
 
@@ -125,34 +160,41 @@ Existing state (audited 2026-04-14 in worktree):
 
 ## Pass criteria (maps to version gate)
 
-Stage 1 unblocks P3a Stage 1. Stages 2+3 close the P3.5 contribution to 0.3-target. P4 (1.0-gating) depends on Stage 2+3 being fully shipped.
+Stage 1 unblocks P3a Stage 1's round-trip test. Stages 2 + 3 together close P3.5's contribution to 0.3-target. P4 (1.0-gating mug test) depends on Stage 2 + 3 being fully shipped — a subprocess round-trip with `CrossLayerGraph` carrying vision↔concept edges is literally the mug test's implementation substrate.
 
 ## Load-bearing invariants (filled in AFTER shipping Stage 1)
 
-TODO. Populate after Stage 1 pre-merge review with the actual gotchas encountered.
+TODO — will populate after Stage 1 review round (Round 2 of this branch) with the actual gotchas encountered. Expected candidates based on Round 1 folds:
 
-## Review questions (Stage 3 reviewers — templates for later use)
+- Envelope-authoritative versioning — payload-layer version strings are tombstoned, do not bump them.
+- `BioSystemSnapshot.load` is in-place instance-mutating, NOT classmethod factory.
+- Every `_to_dict()` holds the same lock the original `save()` did.
+- `CrossLayerGraph` is the 6th system; P4 mug test depends on it.
+
+## Review questions (Stage 3 reviewers — templates for Round 2 code review)
 
 **Executor lens:**
 - Does every `_to_dict()` extraction preserve the pre-existing dict structure byte-for-byte? Any silent key rename re-introduces a migration problem we don't have yet.
-- Does `PerceptTraceBuffer.save` hold its lock correctly during snapshot iteration?
-- Is `runtime_checkable` on `BioSystemSnapshot` safe given that PTB's stub `load` raises at call time — does `isinstance` check succeed before `load` is exercised?
-- Are there any thread-safety concerns with calling `_to_dict()` on a live bio-system during a running agent loop?
+- Does `PerceptTraceBuffer.dump` hold its lock correctly during snapshot iteration? Any race with concurrent `record()` calls?
+- Is `runtime_checkable` on `BioSystemSnapshot` correctly identifying all six bio-systems? What happens if a subclass adds a new field — does the Protocol check still hold?
+- Are there thread-safety concerns with calling `_to_dict()` on a live bio-system during a running agent loop?
+- Does `SessionSnapshot.load(state, into)` handle partial failures cleanly (e.g., one bio-system's `load` raises mid-way)?
 
 **Architecture lens:**
-- Is `SessionSnapshot` the right shape, or should it be a Protocol itself with multiple concrete implementations (per-use-case)?
-- Does the `{"schema_version": 1, "kind": "...", "payload": ...}` envelope introduce unnecessary nesting compared to a flat payload with a sibling `schema_version` key?
-- When P4 ships vision nodes, does `VisionEncoder` state fit into this same Protocol, or does it need a 6th bio-system slot in `SessionSnapshot`?
-- Is the `_to_dict()` + `_from_dict()` split clean, or does it reintroduce the "mutable globals + module extraction" class of bug from CLAUDE.md? (Answer should be "no, these are instance methods, not module globals" — but flag any case where it drifts.)
+- Is `SessionSnapshot` the right shape, or should it be a Protocol itself with multiple concrete implementations?
+- When P4 ships vision nodes, does a `VisionEncoder` fit into this same Protocol as a 7th system, or does it live inside ATL's snapshot?
+- Do the tombstoned payload version strings create a migration footgun if someone ever needs to change a payload dict's shape without an envelope bump?
+- Is the `EpisodicStore` vs `BioSystemSnapshot` disambiguation (in `memory/snapshot.py` docstring) strong enough that a Mother Maxim implementer won't accidentally conflate them?
 
 ## Deferred follow-ups
 
 1. **Storage compression.** 10k-node snapshots may want a compressed-on-disk form. Deferred to P5.
 2. **Partial loads.** Loading just ATL without NAc/SCN. Useful for debugging; not needed for 0.3-target.
-3. **Legacy version string → int migration.** The existing string versions (`"1.0"`, `"3.0"`) at the payload layer stay as-is in Stage 1. Stage 2 adds the `schema_version: int` at the envelope layer. A future cleanup pass may unify them.
+3. **Vision encoder as 7th system.** If P4's `VisionEncoder` has enough state to warrant its own snapshot slot, P4 adds it. Otherwise vision nodes live inside ATL's snapshot.
 
 ## Not in this plan
 
 - Anything requiring substrate P4/P5/P6/P8 code to exist
-- Changes to `memory/store.py` storage-target protocols
+- Changes to `memory/store.py` storage-target protocols (`EpisodicStore` / `CausalStore` / `SemanticStore` — those remain pluggable backends, orthogonal to snapshot shape)
 - Database-backed snapshot storage (separate, post-1.0)
+- Any touch to the NAc reward-bias serialization beyond what's already in place (P2 Stage 2 shipped this)

@@ -1,10 +1,10 @@
 # Substrate P3a — Episode binding produces retrieval on partial cue
 
-**Status:** Stage 1 in progress (2026-04-14)
+**Status:** Stage 1 in progress (2026-04-14, post-Round-1-review fold)
 **Scope:** ~400 LOC + ~100 metric extractor across 3 stages
 **Target version:** 0.3-target
 **Gates:** First of the four plans (P3a + P3b + P3.5 + P4) that together close 0.3-target.
-**Depends on:** substrate_recognition ✅, P3.5 Stage 1 shell (for round-trip tests)
+**Depends on:** substrate_recognition ✅, P3.5 Stage 1 shell (for the `Hippocampus._to_dict()` extraction that the round-trip test uses — P3.5 Stage 1 MUST land in the same branch BEFORE P3a Stage 1)
 **Blocks:** P3b (channel integration reuses episode boundary machinery), P4 cross-modal binding (depends on episode-scoped binding working for same-modality first), B4 replanning (needs episode retrieval of prior attempts)
 **Parent:** [substrate_binding_persistence.md](substrate_binding_persistence.md)
 **Related:** [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md), [substrate_p3_5_persistence_snapshot.md](substrate_p3_5_persistence_snapshot.md)
@@ -15,41 +15,61 @@ Ship the Hebbian episode-binding mechanism. An episode is a multi-event time win
 
 ## Hypothesis (falsifiable)
 
-Nodes co-occurring in the same Hippocampus episode form durable links through Hebbian updates on ATL's within-layer `DependencyGraph` edges. Presenting a single node from a prior episode as a cue retrieves the other nodes from that episode by a margin greater than a TF-IDF bag-of-concepts baseline computed on the same episode fixtures. The margin is stable across ≥10 seeds at `precision > 0.70` and `recall > 0.70`.
+Nodes co-occurring in the same Hippocampus episode form durable links through Hebbian updates on a binding graph owned by Hippocampus. Presenting a single node from a prior episode as a cue retrieves the other nodes from that episode by a margin greater than a TF-IDF bag-of-concepts baseline computed on the same episode fixtures. The margin is stable across ≥10 seeds at `precision > 0.70` and `recall > 0.70`.
 
 ## Dependencies — scaffolding audit
 
-The [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) audit already established that P3a needs **less new infrastructure than the parent plan suggests**, because the Hebbian within-ATL edge mechanism has an existing home. This section pins the exact call sites.
+The [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) audit established that P3a reuses the existing `DependencyGraph` utility class. **Round 1 pre-merge review surfaced a critical Architecture-lens finding that forced an architectural pivot from "Hebbian on ATL.graph" to "Hebbian on a separate binding graph owned by Hippocampus"** — see "Binding graph ownership" below. The `DependencyGraph` utility reuse is preserved; what changes is the instance that owns the Hebbian edges.
 
 **Existing surfaces (verified 2026-04-14):**
 
 | Surface | File:line | Purpose in P3a |
 |---|---|---|
-| `DependencyGraph.add_bidirectional(a, b, edge_type=ASSOCIATES, weight=1.0)` | [agents/bus.py](../../src/maxim/agents/bus.py) | Create new Hebbian edge on first co-occurrence. |
-| `DependencyGraph.update_edge(src, tgt, ASSOCIATES, weight=new)` | agents/bus.py | Update existing Hebbian edge weight. |
+| `DependencyGraph.add_bidirectional(a, b, edge_type=ASSOCIATES, weight=1.0)` | [agents/bus.py](../../src/maxim/agents/bus.py) | Create new symmetric Hebbian edge pair. |
+| `DependencyGraph.update_edge(src, tgt, ASSOCIATES, weight=new)` | agents/bus.py | Update one direction of an existing edge. One call per direction needed. |
 | `DependencyGraph.find_edge(src, tgt, ASSOCIATES) -> Edge \| None` | agents/bus.py | Read current weight for Hebbian delta. |
-| `DependencyGraph.get_associated(node_id, edge_types={ASSOCIATES}) -> list[(str, float)]` | agents/bus.py | One-hop partial-cue retrieval. |
-| `DependencyGraph.spreading_activation(source_ids, ...)` | agents/bus.py | Multi-hop retrieval (deferred to Stage 2; one-hop is enough for Stage 1 mechanism test). |
+| `DependencyGraph.get_associated(node_id, edge_types={ASSOCIATES}) -> list[(str, float)]` | agents/bus.py | One-hop retrieval — candidates + weights. |
+| `DependencyGraph.spreading_activation(source_ids, ...)` | agents/bus.py | Multi-hop retrieval (Stage 2 fallback; decision rule below). |
 | `EdgeType.ASSOCIATES` | agents/bus.py | No new edge type needed. |
-| `ATL.graph` | [memory/atl.py](../../src/maxim/memory/atl.py) | ATL's internal `DependencyGraph`. Hebbian edges live here. |
-| `Hippocampus.capture(memory)` / `capture_from_loop(...)` | [memory/hippocampus.py](../../src/maxim/memory/hippocampus.py) | Single-event capture. P3a wraps this in a boundary detector that groups multiple events into an `Episode`. |
-| `BioSystemSnapshot` Protocol + `Hippocampus.dump()` with `episodes` key | [memory/snapshot.py](../../src/maxim/memory/snapshot.py) (P3.5 Stage 1) | Persistence round-trip for episodes lands here. |
-| `tests/substrate/persistence_harness.py` (S3) | existing | Subprocess round-trip harness. Used in P3a Stage 2+ for round-trip validation. |
+| `DependencyGraph.add_edge` (underlying) | agents/bus.py | **⚠ no dedupe** — appends a new Edge to `_outgoing[src]` unconditionally. Double-calling `add_edge` silently creates two parallel edges. P3a's logic must `find_edge` FIRST; regression guard test below. |
+| `Hippocampus.capture(memory)` / `capture_from_loop(...)` | [memory/hippocampus.py](../../src/maxim/memory/hippocampus.py) | Single-event capture. P3a wraps this in a boundary detector. |
+| `Hippocampus._to_dict()` / `_load_from_dict(data)` (P3.5 Stage 1) | [memory/hippocampus_persistence.py:32](../../src/maxim/memory/hippocampus_persistence.py#L32) | Round-trip surface for the episode store. P3.5 Stage 1 reserves the `"episodes"` key; P3a populates it. |
+| `BioSystemSnapshot` Protocol (P3.5 Stage 1) | [memory/snapshot.py](../../src/maxim/memory/snapshot.py) | In-place `load(state: dict) -> None` semantics. `EpisodeStore` piggybacks via Hippocampus. |
 
 **New surfaces (what P3a actually builds):**
 
 | Surface | Scope | Stage |
 |---|---|---|
-| `Episode` dataclass | ~50 LOC | 1 |
-| `EpisodeStore` on `Hippocampus` | ~80 LOC | 1 |
-| Episode boundary detector (tick gap + scene signal) | ~80 LOC | 1 |
-| Hebbian update rule on episode close | ~50 LOC | 1 |
-| Partial-cue retrieval path | ~60 LOC | 1 |
-| TF-IDF gate baseline | ~100 LOC | 2 |
+| `Episode` dataclass (`memory/episode.py`) | ~50 LOC | 1 |
+| `EpisodeStore` class (`memory/episode.py`, **standalone class**, held on `Hippocampus` as `self._episode_store`) | ~100 LOC | 1 |
+| `BoundaryRule` type + three default rule implementations (`memory/episode.py` — rule-list shape) | ~80 LOC | 1 |
+| `Hippocampus._binding_graph: DependencyGraph` (new field) + Hebbian update rule on episode close | ~70 LOC | 1 |
+| Partial-cue retrieval path (`Hippocampus.retrieve_on_cue`) | ~60 LOC | 1 |
+| `EpisodeConfig` dataclass on `HippocampusConfig` (`memory/hippocampus.py` config section) | ~25 LOC | 1 |
+| TF-IDF gate baseline (`tests/substrate/tfidf_baseline.py`) | ~100 LOC | 2 |
 | Metric extractor (`tests/substrate/p3a_metrics.py`) | ~100 LOC | 1 shell + 2 full |
 | Synthetic fixture (`scenarios/substrate/synthetic_episodes.yaml`) | YAML + loader | 2 |
 
-**Naming clarification.** There is an existing `EpisodicMemory` type at [memory/types.py:472](../../src/maxim/memory/types.py#L472), but it represents a single loop cycle (perception → decide → act → outcome), not a multi-event time window. These are orthogonal concepts. P3a's `Episode` is a new type, not an extension of `EpisodicMemory`. Simulation "episodes" (campaign runs) in `simulation/` are a third orthogonal concept in a different domain. The naming is unambiguous in context.
+### Binding graph ownership — Round 1 Arch-lens critical finding #6
+
+**Decision:** Hebbian edges live on `Hippocampus._binding_graph: DependencyGraph` (a new field), NOT on `ATL.graph`.
+
+**Why the pivot.** The original plan put Hebbian edges on `ATL.graph` with `EdgeType.ASSOCIATES`. Round 1 Architecture lens flagged that ATL runs concept eviction + compression in the background (`CompressedSemantic` replaces individual `SemanticMemory` records when staleness rules fire), which would silently destroy Hebbian edges whose endpoints got compressed. The Arch lens offered three resolutions:
+
+1. Block ATL compression on Hebbian-edge endpoints (couples ATL eviction to P3a; intrusive).
+2. Migrate Hebbian edges onto compressed nodes via a new ATL compression hook (new coupling surface).
+3. **Put Hebbian edges on a separate graph.** Decouples from ATL lifecycle entirely.
+
+Option 3 wins because:
+- It still reuses `DependencyGraph` + `EdgeType.ASSOCIATES` — the split-proposal audit's intent ("reuse existing infrastructure, no new edge type") is preserved. What changes is the *instance* of DependencyGraph holding the edges, not the class.
+- It decouples the substrate binding layer from ATL's concept-relationship semantics. `ATL.graph` stays the concept topology (REQUIRES/ENABLES/CAUSES/etc. domain edges); `Hippocampus._binding_graph` holds co-activation history. Two distinct kinds of graph = two distinct architectural layers. This is arguably the *right* shape even without the compression concern.
+- It avoids the CLAUDE.md "no band-aid fixes" rule — deferring the compression question to Stage 3 review (as the original plan did) is exactly the band-aid class the rule forbids.
+
+**Consequence for ATL wiring.** The `Hippocampus._atl` optional reference is no longer load-bearing for Stage 1 Hebbian mechanics (because Hebbian writes go to `self._binding_graph`, not `atl.graph`). The `is not None` vs truthy regression guard is preserved but repointed at a DIFFERENT check in Stage 1 — validating that `Hippocampus.finalize_pending_episode()` runs cleanly when `self._atl is None` AND when `self._atl is not None but len(self._atl) == 0`. The regression target is the general "never use truthy checks on bio-systems with `__len__`" discipline, not an ATL-specific Hebbian dependency. P3a Stage 2+ may optionally consult `atl.graph` as a secondary retrieval source (e.g., for spreading_activation across concept-topology edges after the binding-graph primary hop); that's a Stage 2 decision.
+
+**What happens on ATL compression with the pivot.** Nothing — the binding graph's edges are keyed by stable substrate node IDs (encoded by `LinguisticEncoder` + stored in `PerceptTraceBuffer`). ATL compression replaces concept records but IDs survive (per P1+P2 invariants). Binding edges remain valid. Any P4+ experiment that needs to cross-reference ATL-compressed concepts goes through a lookup, not through graph state.
+
+**Naming clarification.** There is an existing `EpisodicMemory` type at [memory/types.py:472](../../src/maxim/memory/types.py#L472), but it represents a single loop cycle (perception → decide → act → outcome), not a multi-event time window. These are orthogonal concepts. P3a's `Episode` is a new type, not an extension of `EpisodicMemory`. Simulation "episodes" (campaign runs) in `simulation/` are a third orthogonal concept in a different domain. **Alternative location considered + rejected:** `memory/types.py` already aggregates many memory types; CLAUDE.md's "many small files" convention + the standalone-`EpisodeStore` class fit better in a new `memory/episode.py` file co-locating all P3a-owned types. A reviewer re-opening this in Round 2 should close it by referencing this note.
 
 ## Stages
 
@@ -59,70 +79,138 @@ The [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) a
 
 1. **`src/maxim/memory/episode.py`** (new, ~50 LOC):
    ```python
-   @dataclass
+   @dataclass(frozen=True)
    class Episode:
        id: str
        start_tick: int
        end_tick: int
        channel: str
-       sender_ids: list[str]
+       sender_ids: tuple[str, ...]
        thread_id: str | None
-       activated_nodes: list[str]
-       reward_events: list[tuple[int, float]]  # (tick, delta)
+       activated_nodes: tuple[str, ...]
+       reward_events: tuple[tuple[int, float], ...]  # (tick, delta)
        scn_tag: str | None
    ```
-   Plus `Episode.to_dict()` / `Episode.from_dict()` for P3.5 round-trip.
+   Plus `Episode.to_dict()` / `Episode.from_dict()` for P3.5 round-trip. `frozen=True` because episodes are immutable once closed; mutation would race with retrieval.
 
-2. **`EpisodeStore` embedded in `Hippocampus`** (~80 LOC in hippocampus.py):
-   - `self._episodes: dict[str, Episode]` (id → episode)
-   - `self._episodes_by_node: dict[str, set[str]]` (node_id → set of episode ids — inverted index)
-   - `add_episode(episode)` / `get_episode(id)` / `episodes_containing(node_id)`
-   - Persistence: the P3.5 Stage 1 `Hippocampus._to_dict()` reserved key `"episodes"` is now populated by `[ep.to_dict() for ep in self._episodes.values()]`. Load symmetric.
+2. **`EpisodeStore` (standalone class in `memory/episode.py`, ~100 LOC)** — Round 1 Arch important finding #1:
+   ```python
+   class EpisodeStore:
+       """Owns episodes and the node→episode inverted index.
 
-3. **Episode boundary detector** (~80 LOC, new method on `Hippocampus`):
-   - Rule 1 (tick gap): if current tick > previous capture tick + `boundary_tick_gap` (config, default 50), close the pending episode and open a new one.
-   - Rule 2 (scene signal): if the incoming capture has `scn_tag != pending_episode.scn_tag`, close and open.
-   - Rule 3 (channel change): same — channel switch closes the episode.
-   - Pending episode state lives on the instance; episode close triggers the Hebbian update rule below.
-   - A new `Hippocampus.finalize_pending_episode()` explicit method is also exposed for test control (do not force tests to wait for gap rules).
+       Lives as a field on Hippocampus (hippocampus._episode_store) rather
+       than inlined so P3b channel rules and P5 bounded-storage can extend
+       this class without touching Hippocampus itself.
+       """
 
-4. **Hebbian update rule on episode close** (~50 LOC, new private method `_apply_hebbian_on_close(episode)` on `Hippocampus`, called from `finalize_pending_episode` if an ATL reference is wired):
-   - For every ordered pair `(a, b)` in `episode.activated_nodes`:
-     - If `atl.graph.find_edge(a, b, ASSOCIATES)` is `None` → `atl.graph.add_bidirectional(a, b, EdgeType.ASSOCIATES, weight=HEBBIAN_INIT)`
-     - Else → `update_edge(a, b, ASSOCIATES, weight=min(1.0, existing.weight + HEBBIAN_DELTA))` + symmetric update on `(b, a)`
-   - `HEBBIAN_INIT = 0.3`, `HEBBIAN_DELTA = 0.1` (config-overridable).
-   - **Load-bearing wire check:** the ATL reference is an **optional** wire on `Hippocampus` (passed via `set_atl(atl)` or constructor). The check MUST be `if self._atl is not None` and NEVER `if self._atl` — because ATL has `__len__` (concept count) and evaluates falsy when empty, which would silently skip Hebbian updates during a fresh-start sim. This is the exact bug class that bit P2 Stage 1 on NAc (see [feedback_is_not_none_over_truthy.md](https://github.com/dennys246/Maxim#is_not_none) and the P2 retrospective).
-   - Grep-before-commit discipline: the P3a diff MUST NOT contain any occurrence of `if self\._(atl|nac|hippocampus|scn|ec|angular_gyrus)` — always `is not None`.
+       def __init__(self) -> None:
+           self._episodes: dict[str, Episode] = {}
+           self._by_node: dict[str, set[str]] = {}
+           self._lock = threading.RLock()
 
-5. **Partial-cue retrieval path** (~60 LOC, new method `Hippocampus.retrieve_on_cue(cue_node_id, limit=10) -> list[tuple[str, float]]`):
-   - Look up episodes containing `cue_node_id` via `_episodes_by_node[cue]`.
-   - Union all `activated_nodes` across those episodes, excluding the cue itself.
-   - For each candidate, compute a score = max edge weight on `ASSOCIATES` edge between cue and candidate (via `find_edge`).
-   - Return top-`limit` sorted by descending score.
-   - **Simplest possible retrieval** — multi-hop via `spreading_activation` is Stage 2+.
+       def add(self, episode: Episode) -> None: ...
+       def get(self, id: str) -> Episode | None: ...
+       def episodes_containing(self, node_id: str) -> list[Episode]: ...
+       def to_dict(self) -> dict[str, Any]: ...
+       def load_from_dict(self, data: dict[str, Any]) -> None: ...  # in-place
+   ```
+   Held on `Hippocampus.__init__` as `self._episode_store = EpisodeStore()`. Hippocampus's `_to_dict()` (from P3.5 Stage 1) delegates the `episodes` key to `self._episode_store.to_dict()["episodes"]`; symmetric on load.
 
-6. **Metric extractor shell** (`tests/substrate/p3a_metrics.py`, ~50 LOC in Stage 1, full ~100 LOC in Stage 2):
-   - `precision_at_k(retrieved: list[str], ground_truth: set[str], k: int) -> float`
-   - `recall_at_k(...)` — same
-   - TODO marker for Stage 2: full metric including TF-IDF gate baseline comparison + F1 aggregation over a fixture.
+3. **Boundary detector as rule list** (~80 LOC in `memory/episode.py`) — Round 1 Arch important finding #2:
+   ```python
+   BoundaryRule = Callable[[PendingEpisodeState, CaptureEvent], bool]
 
-7. **Synthetic mechanism tests** — `tests/substrate/test_p3a_episode_binding.py::TestP3aMechanism` (~250 LOC test file):
-   - Use a `StubEncoder`-style approach — hand-crafted deterministic node IDs, no real text, no real embeddings.
-   - `test_episode_close_creates_hebbian_edges`: build an episode with nodes `["a", "b", "c"]`, finalize, assert edges `a↔b`, `a↔c`, `b↔c` all exist in `atl.graph` with weight ≥ `HEBBIAN_INIT`.
-   - `test_episode_close_strengthens_existing_edges`: pre-seed an `a↔b` edge at weight 0.3, close an episode containing both, assert new weight ≈ 0.4.
-   - `test_partial_cue_retrieves_co_activated_nodes`: close an episode `["a", "b", "c", "d"]`, call `retrieve_on_cue("a")`, assert `{"b", "c", "d"}` returned with non-zero scores.
-   - `test_partial_cue_baseline_non_member_returns_nothing`: close episode `["a", "b", "c"]`, call `retrieve_on_cue("z")` (never in any episode), assert empty.
-   - `test_multiple_episodes_with_shared_node_merge_weights`: episode 1 `[a, b]`, episode 2 `[a, c]`. Close both. Retrieve on `a`. Assert both `b` and `c` returned; assert the `a↔b` weight reflects one reinforcement, not two (unless episode 1 closes, then re-opens and closes again — then yes two reinforcements).
-   - `test_episode_boundary_tick_gap_closes_pending`: capture at ticks 0, 10, 20, then capture at tick 100 (> 50 gap). Assert the first three form one episode, the fourth starts a new pending episode.
-   - `test_episode_boundary_channel_change_closes_pending`: capture on channel "text" at tick 0, channel "vision" at tick 1. Assert two separate episodes.
-   - `test_hebbian_update_skipped_when_atl_is_none`: construct a `Hippocampus` without wiring ATL. Close an episode. Assert no crash, no edges created. Sanity + regression for the `is not None` guard.
-   - `test_hebbian_update_fires_when_atl_is_empty`: construct a `Hippocampus` wired to a **freshly-constructed empty ATL** (0 concepts, `len(atl) == 0`, evaluates falsy under truthy check). Close an episode. Assert Hebbian edges ARE created. This is the regression guard for the `is not None` vs truthy bug class.
-   - `test_episode_persistence_round_trip_via_hippocampus_dump`: close an episode, call `hippocampus._to_dict()`, construct a fresh hippocampus, call `_from_dict(dumped)`, assert the episode round-trips and `retrieve_on_cue` still works. **Depends on P3.5 Stage 1.**
+   def tick_gap_rule(max_gap: int) -> BoundaryRule: ...
+   def scn_tag_change_rule() -> BoundaryRule: ...
+   def channel_change_rule() -> BoundaryRule: ...
+
+   class EpisodeBoundaryDetector:
+       def __init__(self, rules: list[BoundaryRule]) -> None: ...
+       def should_close(self, pending, event) -> bool:
+           return any(rule(pending, event) for rule in self._rules)
+   ```
+   Stage 1 ships three default rules (tick gap, scn_tag change, channel change) constructed from `EpisodeConfig`. P3b will append additional per-channel rules without touching Stage 1 code — same LOC count, cleaner extension seam.
+
+4. **`EpisodeConfig` on `HippocampusConfig`** (~25 LOC in `memory/hippocampus.py` config block) — Round 1 cross-confirmed finding #3:
+   ```python
+   @dataclass
+   class EpisodeConfig:
+       boundary_tick_gap: int = 50
+       hebbian_init: float = 0.3
+       hebbian_delta: float = 0.1
+       hebbian_max: float = 1.0  # clamp ceiling
+   ```
+   Added as `HippocampusConfig.episode: EpisodeConfig = field(default_factory=EpisodeConfig)`. Tests override via `HippocampusConfig(episode=EpisodeConfig(hebbian_delta=0.2, ...))`. No module-level constants, no monkeypatching required.
+
+5. **Hebbian update rule on episode close** (~70 LOC, new private method `Hippocampus._apply_hebbian_on_close(episode)`, called from `finalize_pending_episode`) — folds Round 1 **cross-confirmed + Exec criticals**:
+   ```python
+   def _apply_hebbian_on_close(self, episode: Episode) -> None:
+       cfg = self._config.episode
+       graph = self._binding_graph  # owned by Hippocampus, not ATL
+       nodes = episode.activated_nodes
+       for a, b in itertools.combinations(nodes, 2):  # UNORDERED pairs — Round 1 Exec critical #1
+           existing = graph.find_edge(a, b, EdgeType.ASSOCIATES)
+           if existing is None:
+               # add_bidirectional creates BOTH directions at cfg.hebbian_init
+               graph.add_bidirectional(a, b, EdgeType.ASSOCIATES, weight=cfg.hebbian_init)
+           else:
+               # update_edge is directional — must update both (a,b) and (b,a)
+               new_w = min(cfg.hebbian_max, existing.weight + cfg.hebbian_delta)
+               graph.update_edge(a, b, EdgeType.ASSOCIATES, weight=new_w)
+               graph.update_edge(b, a, EdgeType.ASSOCIATES, weight=new_w)
+   ```
+   **Pair enumeration uses `itertools.combinations`** (unordered): for nodes `[a, b, c]` pairs are `(a,b), (a,c), (b,c)` — three unique pairs, three Hebbian operations. The pre-Round-1 ordered-pair formulation would have visited each pair twice under `add_bidirectional`, double-applying `HEBBIAN_DELTA`. Regression guard test below verifies `len(graph._outgoing[a])` after N episode closes = expected pair count, not 2N or 4N.
+
+6. **Wire discipline — `is not None` over truthy.** The binding graph is now held by Hippocampus directly (not via the optional ATL wire), so the truthy-trap regression case is slightly different. **Two regression guards required:**
+   - `test_hebbian_update_fires_when_atl_is_none`: construct a Hippocampus with NO atl wire; close an episode; assert binding edges ARE created (because binding graph is Hippocampus-owned, ATL is irrelevant to Stage 1).
+   - `test_hebbian_update_fires_when_atl_is_empty`: construct a Hippocampus wired to a freshly-constructed empty ATL (`len(atl) == 0`, evaluates falsy); close an episode; assert binding edges ARE created AND any ancillary ATL access code path uses `is not None`, never truthy.
+   - **Grep-before-commit:** the P3a diff MUST contain zero occurrences of `if self\._(atl|nac|hippocampus|scn|ec|angular_gyrus)` truthy checks. Test runs `git grep` on the diff and asserts zero matches. (This replaces the earlier github-anchor link to [feedback_is_not_none_over_truthy.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_is_not_none_over_truthy.md) — dead anchors fixed per Round 1 Exec minor finding.)
+
+7. **Partial-cue retrieval path** (~60 LOC, new method `Hippocampus.retrieve_on_cue(cue_node_id, limit=10) -> list[tuple[str, float]]`):
+   - Query `self._binding_graph.get_associated(cue, edge_types={EdgeType.ASSOCIATES})` — returns `list[(neighbor, weight)]` in one call. No per-candidate `find_edge` loop; the graph already returns weights directly.
+   - Sort by descending weight, take top-`limit`.
+   - **One-hop only in Stage 1.** Multi-hop via `spreading_activation` is Stage 2 fallback. **Decision rule:** if Stage 2 fixture validation returns `mean recall < 0.70` under one-hop retrieval, switch to `spreading_activation([cue], decay=0.5, threshold=0.1, max_depth=3)` and retain the weights-based sort. If one-hop recall ≥ 0.70, multi-hop is deferred. (Round 1 Arch minor #3.)
+   - **Perf note:** `get_associated` is O(|outgoing[cue]|) under a graph lock. On a popular cue with many binding edges, that's cheap. Stage 1 does NOT iterate episodes-containing-cue and union activated_nodes — that was the earlier quadratic formulation; get_associated is strictly faster.
+
+8. **`_capture_thread_lock_ordering` guard** — Round 1 Exec important #5: document the acquire order invariant (`Hippocampus._episode_store._lock` THEN `Hippocampus._binding_graph._lock` — both RLocks, never the reverse) in `memory/episode.py` docstring. Stage 1 ships a test that exercises `finalize_pending_episode()` from inside a capture-thread-style calling context and asserts no deadlock within a 2-second budget. The capture thread is real (`Hippocampus._capture_worker`), so this test uses a controlled background thread plus an event to force the overlap.
+
+9. **Metric extractor shell** (`tests/substrate/p3a_metrics.py`, ~50 LOC in Stage 1):
+   - `precision_at_k(retrieved, ground_truth, k) -> float`
+   - `recall_at_k(retrieved, ground_truth, k) -> float`
+   - TODO marker for Stage 2 full metric + TF-IDF baseline.
+
+10. **Synthetic mechanism tests** — `tests/substrate/test_p3a_episode_binding.py::TestP3aMechanism` (~350 LOC test file):
+    - Use a `StubEncoder`-style approach — hand-crafted deterministic node IDs, no real text, no real embeddings. `add_edge` accepts unknown node IDs (verified), so fake IDs work end-to-end.
+    - **Mechanism tests:**
+      - `test_episode_close_creates_hebbian_edges`: episode `(a,b,c)`, finalize, assert three unordered pairs exist in binding graph at weight `hebbian_init`.
+      - `test_episode_close_strengthens_existing_edges`: pre-seed `a↔b` at `hebbian_init`, close episode `(a,b)`, assert new weight = `hebbian_init + hebbian_delta` (no double-count — regression guard for Round 1 Exec critical #1).
+      - `test_repeated_closes_no_edge_duplication`: close the same episode signature 5 times, assert `len(binding_graph._outgoing[a])` equals the expected pair count (one edge per unordered pair per direction), not 5× that. Regression guard for Round 1 Exec critical #2 (`add_edge` no-dedupe).
+      - `test_strengthen_saturates_at_max`: close episode containing (a,b) N times where `N * delta >> max`, assert weight never exceeds `hebbian_max`.
+    - **Retrieval tests:**
+      - `test_partial_cue_retrieves_co_activated_nodes`: episode `(a,b,c,d)`, `retrieve_on_cue("a")` returns `{b, c, d}` with non-zero scores.
+      - `test_partial_cue_baseline_non_member_returns_nothing`: episode `(a,b,c)`, `retrieve_on_cue("z")` returns `[]`.
+      - `test_multiple_episodes_with_shared_node_merge_weights`: episode1 `(a,b)`, episode2 `(a,c)`; retrieve on `a`, assert both `b` and `c` present and `a↔b` weight reflects one reinforcement.
+    - **Boundary detector tests:**
+      - `test_boundary_tick_gap_closes_pending`: captures at ticks 0/10/20/100 produce two episodes.
+      - `test_boundary_channel_change_closes_pending`: text@0 then vision@1 produce two episodes.
+      - `test_boundary_scn_tag_change_closes_pending`: same-channel same-tick-band captures with different scn_tag produce two episodes.
+      - `test_boundary_rule_list_extension`: construct `EpisodeBoundaryDetector` with a custom extra rule, verify it's consulted alongside the three defaults (extension-point validation for P3b).
+    - **Wire discipline tests:**
+      - `test_hebbian_update_fires_when_atl_is_none` (binding graph is Hippocampus-owned, so ATL is irrelevant).
+      - `test_hebbian_update_fires_when_atl_is_empty` (len(atl) == 0, truthy-falsy trap, binding edges created anyway).
+      - `test_no_truthy_bio_system_checks_in_diff` — subprocess `git grep` sentinel.
+    - **Lock ordering test:**
+      - `test_finalize_pending_episode_no_deadlock_with_capture_thread` — spawns a controlled background "capture" thread that holds `_episode_store._lock` while the main thread calls `finalize_pending_episode`; asserts completion within a 2-second budget.
+    - **Persistence round-trip test:**
+      - `test_episode_persistence_round_trip_via_hippocampus_dump`: close an episode, call `hippocampus._to_dict()`, construct a fresh hippocampus, call `hippocampus._load_from_dict(dumped)` (in-place, per P3.5 fold), assert episode round-trips + binding graph round-trips + `retrieve_on_cue` still works. **⚠ Depends on P3.5 Stage 1 committing FIRST in the same branch — Round 1 Arch minor #1.**
 
 **Pass gate (Stage 1):**
-- All 9 synthetic mechanism tests in `TestP3aMechanism` pass.
+- All 15+ synthetic mechanism tests in `TestP3aMechanism` pass.
 - `ruff check` + `ruff format` clean on all touched files.
-- No `if self\._(atl|nac|hippocampus|scn|ec|angular_gyrus)` truthy checks in the P3a diff — `git diff | grep` verifies zero hits.
+- Zero `if self\._(atl|nac|hippocampus|scn|ec|angular_gyrus)` truthy checks in the diff (verified by the in-test `git grep` sentinel).
+- Zero edge duplication under repeated close (Round 1 Exec critical #2 regression guard).
+- Zero double-delta strengthening (Round 1 Exec critical #1 regression guard).
+- No capture-thread deadlock within 2s budget (Round 1 Exec important #5 test).
 - Fast suite clean (standing exclusions per CLAUDE.md).
 - Substrate subset clean: `PYTHONPATH=src python -m pytest tests/substrate/ tests/unit/test_pain_bus.py tests/unit/test_nac.py tests/unit/test_substrate_recognition.py tests/unit/test_bio_system_snapshot.py -q`.
 
@@ -133,11 +221,12 @@ The [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) a
 **What's built:**
 
 - `scenarios/substrate/synthetic_episodes.yaml` — 100 synthetic episodes with labeled co-occurrence ground truth. Each episode names its "cue" node + "target" node set. ~1-2 days authoring (per parent plan scope estimate).
-- TF-IDF bag-of-concepts baseline: computes a bag of concept IDs per episode, ranks candidate retrievals by IDF-weighted overlap. Ships as `tests/substrate/tfidf_baseline.py`.
+- TF-IDF bag-of-concepts baseline in `tests/substrate/tfidf_baseline.py`.
 - Full metric extractor in `p3a_metrics.py`: per-seed precision/recall/F1, aggregate mean+std across seeds, baseline comparison (Hebbian vs TF-IDF by `baseline_mean + 2×baseline_std`).
-- Fixture-driven validation test `tests/substrate/test_p3a_fixture_validation.py::TestP3aFixture` — runs the mechanism on the 100-episode fixture, asserts aggregate precision > 0.70, recall > 0.70, beats TF-IDF baseline.
-- Shuffle guard: test MUST run with shuffled fixture ordering (per [feedback_shuffle_fixture_ordering.md](https://github.com/dennys246/Maxim) — sequential ordering produced node-growth artifacts in P2).
-- Persistence round-trip on the fixture: dump after fixture run, load in subprocess, assert retrieval scores round-trip. Uses the P3.5 Stage 1 harness.
+- Fixture-driven validation test `tests/substrate/test_p3a_fixture_validation.py::TestP3aFixture`.
+- **Shuffle guard:** test MUST run with shuffled fixture ordering (per [feedback_shuffle_fixture_ordering.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_shuffle_fixture_ordering.md) — link fixed per Round 1 Exec minor).
+- Persistence round-trip on the fixture: dump after fixture run, load in subprocess, assert retrieval scores round-trip. Uses the P3.5 Stage 1/2 harness.
+- **Multi-hop switch decision**: if one-hop `get_associated` returns mean recall `< 0.70` on the fixture, switch to `spreading_activation`. Document the decision (and the pre-switch baseline) in the Stage 2 results writeup.
 
 **Pass gate (Stage 2):**
 - Aggregate precision > 0.70, recall > 0.70 across ≥10 seeds on the 100-episode fixture.
@@ -147,7 +236,7 @@ The [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) a
 
 **Tests (Stage 2):** See list above.
 
-**Budget 2-3 metric pivots.** Per [feedback_three_iteration_metric_pivot.md](https://github.com/dennys246/Maxim) and the P2 Stage 3 retrospective — the first fixture-based run WILL return numbers that look wrong. The response is NOT to widen the gate; the response is to figure out what the metric is actually measuring and rebuild it. A monolithic "write metric once and run it" approach is explicitly forbidden by the P2 retrospective.
+**Budget 2-3 metric pivots.** Per [feedback_three_iteration_metric_pivot.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_three_iteration_metric_pivot.md) and the P2 Stage 3 retrospective — the first fixture-based run WILL return numbers that look wrong. The response is NOT to widen the gate; the response is to figure out what the metric is actually measuring and rebuild it. A monolithic "write metric once and run it" approach is explicitly forbidden by the P2 retrospective.
 
 ### Stage 3 — real-data sweep + pre-merge review
 
@@ -171,39 +260,46 @@ Stage 1 + Stage 2 + Stage 3 together constitute P3a's contribution to 0.3-target
 
 ## Load-bearing invariants (filled in AFTER shipping Stage 1)
 
-TODO. Populate after Stage 1 review round with the actual gotchas encountered. Expected candidates based on the audit + P2 retrospective:
-- `is not None` for ATL wire check (prevented-bug; regression-guarded).
-- HEBBIAN_INIT / HEBBIAN_DELTA tuning bounds (empirical; TBD).
-- Episode boundary detector interaction with interleaved threads / multi-sender channels (TBD in Stage 2).
-- Partial-cue retrieval score normalization — max-weight vs sum-weight vs spreading-activation (TBD if Stage 1 retrieval is too noisy).
+TODO — populate after Stage 1 Round 2 review with the gotchas encountered. Expected candidates baked into the post-Round-1 fold:
+- Hebbian edges live on `Hippocampus._binding_graph`, NOT `ATL.graph`. Decouples from ATL compression.
+- `itertools.combinations` (unordered) for pair enumeration; ordered-pair formulation double-applies delta.
+- `add_edge` has no dedupe — always `find_edge` first on any write path; regression-guard test on `len(_outgoing[a])`.
+- `is not None` for bio-system wire checks, never truthy.
+- `HippocampusConfig.episode` is the config knob; no module constants.
+- `EpisodeStore` is a standalone class, not embedded on Hippocampus.
+- Boundary detector is a rule list, not if-chain — P3b extension seam.
+- Lock acquire order: `_episode_store._lock` → `_binding_graph._lock`, never reverse.
+- One-hop retrieval via `get_associated`; multi-hop via `spreading_activation` only if Stage 2 recall < 0.70.
 
-## Review questions (Stage 3 reviewers — templates for later use)
+## Review questions (Stage 3 reviewers — templates for Round 2 code review)
 
 **Executor lens:**
-- Does `_apply_hebbian_on_close` correctly handle N² pair enumeration when N is large (episodes with 50+ nodes)? Any quadratic explosion?
-- Does the episode boundary detector lose events during rapid channel switching? What happens to the "pending" episode buffer if a channel flip races with a tick-gap close?
-- Does `retrieve_on_cue` handle the case where a cue node is in an episode that has been persisted-and-reloaded but the ATL graph has NOT been? (Cross-system partial state.)
-- Is the `HEBBIAN_INIT` + `HEBBIAN_DELTA` value pair actually symmetric under `add_bidirectional`? Verify the `(b, a)` direction sees the same weight as `(a, b)`.
-- Any re-entrancy concerns with `finalize_pending_episode` being called from within a capture thread?
+- Does `_apply_hebbian_on_close` correctly handle N² pair enumeration when N is large (50+ nodes)? `itertools.combinations(N, 2)` is O(N²); any need to cap episode length?
+- Does the episode boundary detector lose events during rapid channel switching? What happens if two rules fire simultaneously?
+- Does `retrieve_on_cue` handle cases where a cue node is in a loaded episode but the binding graph was not round-tripped (partial-state scenario)?
+- Are there re-entrancy concerns with `finalize_pending_episode` being called from within a capture thread? Lock ordering documented, but does the test actually exercise the adversarial path?
+- Does the add-edge-no-dedupe regression guard catch the failure mode it claims to catch? Add a deliberate-bug test (call `add_edge` twice intentionally, verify the guard fires).
 
 **Architecture lens:**
-- Should `Episode` live in `memory/episode.py` (current plan) or be merged into `memory/types.py` with `EpisodicMemory`? Confirm the orthogonality argument holds.
-- Is `EpisodeStore` correctly embedded in `Hippocampus` (current plan) or should it be a separate class co-located in a new `memory/episode_store.py`?
-- The `is not None` ATL wire check — does this shape generalize, and should it be a helper utility `_require_wired(system, name)`?
-- When P3b ships channel integration, does the boundary detector API generalize or does P3b have to rewrite the detector? (Pre-plan the extension point now.)
-- Does the Hebbian update on `ATL.graph` interact correctly with ATL's existing concept eviction / compression? What happens to Hebbian edges when ATL compresses a concept node into a `CompressedSemantic`?
+- Does `EpisodeStore` as a standalone class cleanly compose with P3b's per-channel rule additions and P5's bounded-storage eviction? Confirm the extension seam holds.
+- Does the boundary detector rule-list shape force P3b to add rules in a specific order, or are rules commutative?
+- If Stage 2 switches to multi-hop `spreading_activation`, does the `_binding_graph` retrieval path need any restructuring, or is it a one-line swap?
+- When P4 ships cross-modal binding, should cross-modal binding edges live in `Hippocampus._binding_graph` alongside same-modality edges, or in a separate `_cross_modal_binding_graph`? Flag this before P4 opens.
 
 ## Deferred follow-ups
 
-1. **Multi-hop retrieval via `spreading_activation`.** Stage 1 uses one-hop `get_associated`. Multi-hop is a Stage 2 experiment; if one-hop is good enough, multi-hop becomes a deferred follow-up.
+1. **Multi-hop retrieval via `spreading_activation`.** Stage 1 uses one-hop `get_associated`. Multi-hop switch is conditional on Stage 2 recall numbers; if one-hop clears, multi-hop is deferred.
 2. **Episode compression** — merging similar episodes into a compressed representation. Deferred to P8 (sleep replay).
 3. **Episode decay** — Hebbian edge weights decaying without reinforcement. Deferred to P6 (extinction).
-4. **Reward-modulated Hebbian delta** — scaling `HEBBIAN_DELTA` by the reward events in the episode. Interesting but complicates the Stage 1 mechanism test. Deferred to Stage 2.
-5. **Episode thread_id handling** — currently reserved in the dataclass but unused. P3b channel integration will wire it up.
+4. **Reward-modulated Hebbian delta** — scaling `HEBBIAN_DELTA` by `sum(reward_events)` in the episode. Interesting but complicates the Stage 1 mechanism test. Deferred to Stage 2.
+5. **Episode thread_id handling** — reserved in the dataclass but unused in Stage 1. P3b channel integration will wire it up.
+6. **`retrieve_on_cue` perf under P5 stress** — one-hop `get_associated` is fast for modest graph sizes. Under 10k+ nodes with popular-cue hot spots, may need index optimizations. Deferred to P5.
+7. **Binding graph ↔ ATL compression interaction (non-issue in Stage 1).** With the architectural pivot, ATL compression no longer destroys Hebbian edges because they're not on `ATL.graph`. If P4+ adds a cross-reference from binding graph nodes to ATL concepts, that cross-reference needs its own compression-safety check. Flagged here so P4 doesn't miss it.
 
 ## Not in this plan
 
 - Anything requiring P3b channel rules, P4 cross-modal, P5 stress, P6 extinction, P8 sleep replay.
-- Integration with the production agent loop (captures via `runtime/agent_loop.py`). P3a wires to `Hippocampus` directly; runtime wiring is an integration step that lands when behavioral experiments need it.
+- Integration with the production agent loop (captures via `runtime/agent_loop.py`). P3a wires to `Hippocampus` directly; runtime wiring lands when behavioral experiments need it.
 - Real fixture YAML with natural-language text. Stage 1 is all synthetic. Real text fixtures land in Stage 2.
 - Any touch to `similarity/encoder.py`, `decisions/nac.py`, `proprioception/pain_bus.py`, or other P2-shipped surfaces. The P2 load-bearing invariants in CLAUDE.md remain in force.
+- Changes to `ATL.graph`. With the pivot, Hebbian edges never touch it.
