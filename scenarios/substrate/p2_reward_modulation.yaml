@@ -1,181 +1,287 @@
 # Substrate P2 — Reward-Modulated Recognition Fixture
 #
-# 10 clusters × 3 paraphrases = 30 sentences, designed to produce
-# measurable fragmentation at threshold=0.50 (stricter than P1's 0.40)
-# so the reward-bias pathway has room to demonstrate collapse.
+# 10 clusters x 5 paraphrases = 50 sentences, selected for pairwise
+# semantic distance in paraphrase-mpnet-base-v2 embedding space. Target
+# clusters were selected from a solo-target probe that identified which
+# clusters respond cleanly to reward modulation without cross-cluster
+# contamination (Stage 3 methodology, 2026-04-14).
 #
-# Target clusters receive a reward event after the first encoded
-# sentence. The bias widens EC's recognition radius around the
-# rewarded node, and subsequent paraphrases should complete to it
-# instead of separating.
+# Design criteria (Stage 3 revision, 2026-04-14):
 #
-# Distractor clusters receive no reward — they exist to verify
-# non-interference: the bias on target nodes must not bleed into
-# distractor-cluster recognition.
+#   - 5 targets + 5 distractors, all pairwise semantically distant in
+#     mpnet space. Pre-Stage-3 drafts used "pleasant daily scenes" as
+#     targets (morning_coffee, sunset_view, bookstore_visit, ocean_wave,
+#     garden_bloom) which mpnet treated as moderately close; reward
+#     bias widening one target pulled the others into the same node,
+#     destroying plurality ownership.
 #
-# Design criteria:
-#   - Lexical diversity within clusters (not trivial rewordings) so
-#     threshold=0.50 produces baseline fragmentation
-#   - Distractors share some vocabulary with targets to stress-test
-#     non-interference
-#   - Near-miss target paraphrases that flip from separate → collapse
-#     under reward bias
+#   - Each target cluster comes from a DIFFERENT domain:
+#       bookstore_visit  - reading/literature
+#       ocean_wave       - nature/physical/water
+#       garden_bloom     - nature/botanical
+#       laptop_repair    - technology/hardware failure
+#       chess_game       - game/strategy/abstract
+#
+#   - Each distractor cluster comes from a non-overlapping domain:
+#       weather_forecast - meteorology
+#       email_inbox      - communications
+#       piano_practice   - music/skill
+#       house_cleaning   - domestic chores
+#       dental_visit     - health/medical
+#
+#   - 5 sentences/cluster = 10 within-cluster pairs each, giving
+#     per-cluster self-collapse rates in {0, 0.1, ..., 1.0}.
+#
+#   - Paraphrase difficulty tiers: sentences 0-1 are close paraphrases;
+#     sentences 2-4 are harder rewordings with low lexical overlap.
+#     The mechanism must use reward bias to collapse the hard
+#     paraphrases onto the cluster's home node.
+#
+# Target clusters receive one reward event after the first encoded
+# sentence. Distractor clusters receive no reward. The p2_metrics
+# plurality-ownership self-collapse metric
+# (tests/substrate/p2_metrics.py) measures per-cluster self-collapse
+# rate (a pair "collapses" only if both sentences map to the same
+# node AND that node is plurality-owned by the cluster). This
+# correctly attributes reward-bias wins to the cluster that actually
+# benefits, and correctly penalizes cross-cluster contamination.
 
-name: p2_reward_modulation_v1
+name: p2_reward_modulation_v3
 description: |
-  P2 reward-modulated recognition fixture. 10 clusters, 5 target + 5
-  distractor. Injects reward after first sentence of each target
-  cluster; distractor clusters receive no reward. Validates the
-  rewarded-collapse ≥30% / distractor-interference ≤5% criteria.
+  P2 reward-modulated recognition fixture, Stage 3 revision.
+  10 pairwise-distant clusters, 5 targets + 5 distractors, 5 sentences each.
+  Plurality-ownership self-collapse metric (baseline vs rewarded).
+  Validates target_success_rate >=80%, distractor_drift <=5 pp,
+  target_monotone_fraction >=80%.
 
 timing: step_based
 
 reward_schedule:
-  reward: 1.0
+  reward: 2.0
   targets:
-    - morning_coffee
-    - sunset_view
     - bookstore_visit
     - ocean_wave
     - garden_bloom
+    - laptop_repair
+    - chess_game
 
 percepts:
-  # ── Target cluster 1: morning_coffee ─────────────────────────────
+  # ── Target cluster 1: bookstore_visit ────────────────────────────
   - at: 0
     source: cli
-    cli_input: "I had a hot coffee this morning to wake up."
-    metadata: { cluster: morning_coffee, role: target }
+    cli_input: "I spent hours browsing novels at the local bookstore."
+    metadata: { cluster: bookstore_visit, role: target, difficulty: easy }
   - at: 1
     source: cli
-    cli_input: "My morning started with a strong espresso to get going."
-    metadata: { cluster: morning_coffee, role: target }
+    cli_input: "Wandered the aisles of a bookshop looking at fiction."
+    metadata: { cluster: bookstore_visit, role: target, difficulty: easy }
   - at: 2
     source: cli
-    cli_input: "Brewed a fresh cup at breakfast to shake off sleep."
-    metadata: { cluster: morning_coffee, role: target }
-
-  # ── Target cluster 2: sunset_view ────────────────────────────────
+    cli_input: "Picked up a few paperbacks from the store downtown."
+    metadata: { cluster: bookstore_visit, role: target, difficulty: medium }
   - at: 3
     source: cli
-    cli_input: "The sunset painted the sky in orange and pink tonight."
-    metadata: { cluster: sunset_view, role: target }
+    cli_input: "Found a quiet reading corner and flipped through new releases."
+    metadata: { cluster: bookstore_visit, role: target, difficulty: hard }
   - at: 4
     source: cli
-    cli_input: "Watched the sun go down and the clouds turn red."
-    metadata: { cluster: sunset_view, role: target }
+    cli_input: "Lost track of time in the literature section of that shop."
+    metadata: { cluster: bookstore_visit, role: target, difficulty: hard }
+
+  # ── Target cluster 2: ocean_wave ─────────────────────────────────
   - at: 5
     source: cli
-    cli_input: "Evening light turned the horizon into warm colors."
-    metadata: { cluster: sunset_view, role: target }
-
-  # ── Target cluster 3: bookstore_visit ────────────────────────────
+    cli_input: "Waves crashed loudly against the rocky shoreline."
+    metadata: { cluster: ocean_wave, role: target, difficulty: easy }
   - at: 6
     source: cli
-    cli_input: "I spent hours browsing novels at the local bookstore."
-    metadata: { cluster: bookstore_visit, role: target }
+    cli_input: "The surf pounded the beach with white foam and spray."
+    metadata: { cluster: ocean_wave, role: target, difficulty: easy }
   - at: 7
     source: cli
-    cli_input: "Wandered the aisles of a bookshop looking at fiction."
-    metadata: { cluster: bookstore_visit, role: target }
+    cli_input: "Tide rolled in fast, breaking hard on the sand."
+    metadata: { cluster: ocean_wave, role: target, difficulty: medium }
   - at: 8
     source: cli
-    cli_input: "Picked up a few paperbacks from the store downtown."
-    metadata: { cluster: bookstore_visit, role: target }
-
-  # ── Target cluster 4: ocean_wave ─────────────────────────────────
+    cli_input: "Rollers smashed into the cliff base with a thunderous roar."
+    metadata: { cluster: ocean_wave, role: target, difficulty: hard }
   - at: 9
     source: cli
-    cli_input: "Waves crashed loudly against the rocky shoreline."
-    metadata: { cluster: ocean_wave, role: target }
+    cli_input: "Breakers churned the water white where the sea met the shore."
+    metadata: { cluster: ocean_wave, role: target, difficulty: hard }
+
+  # ── Target cluster 3: garden_bloom ───────────────────────────────
   - at: 10
     source: cli
-    cli_input: "The surf pounded the beach with white foam and spray."
-    metadata: { cluster: ocean_wave, role: target }
+    cli_input: "Spring flowers opened across the whole garden today."
+    metadata: { cluster: garden_bloom, role: target, difficulty: easy }
   - at: 11
     source: cli
-    cli_input: "Tide rolled in fast, breaking hard on the sand."
-    metadata: { cluster: ocean_wave, role: target }
-
-  # ── Target cluster 5: garden_bloom ───────────────────────────────
+    cli_input: "Tulips and daffodils filled the beds with color."
+    metadata: { cluster: garden_bloom, role: target, difficulty: easy }
   - at: 12
     source: cli
-    cli_input: "Spring flowers opened across the whole garden today."
-    metadata: { cluster: garden_bloom, role: target }
+    cli_input: "The yard burst into petals after the warm week."
+    metadata: { cluster: garden_bloom, role: target, difficulty: medium }
   - at: 13
     source: cli
-    cli_input: "Tulips and daffodils filled the beds with color."
-    metadata: { cluster: garden_bloom, role: target }
+    cli_input: "Crocuses and early perennials showed up all at once."
+    metadata: { cluster: garden_bloom, role: target, difficulty: hard }
   - at: 14
     source: cli
-    cli_input: "The yard burst into petals after the warm week."
-    metadata: { cluster: garden_bloom, role: target }
+    cli_input: "The whole yard came alive with new growth and color."
+    metadata: { cluster: garden_bloom, role: target, difficulty: hard }
 
-  # ── Distractor cluster 1: city_traffic ───────────────────────────
+  # ── Target cluster 4: laptop_repair ──────────────────────────────
   - at: 15
     source: cli
-    cli_input: "Traffic was backed up for miles this morning downtown."
-    metadata: { cluster: city_traffic, role: distractor }
+    cli_input: "My laptop battery died and I need a replacement."
+    metadata: { cluster: laptop_repair, role: target, difficulty: easy }
   - at: 16
     source: cli
-    cli_input: "Cars crawled along the interstate during rush hour."
-    metadata: { cluster: city_traffic, role: distractor }
+    cli_input: "The computer needs a new power supply, it won't charge."
+    metadata: { cluster: laptop_repair, role: target, difficulty: easy }
   - at: 17
     source: cli
-    cli_input: "Gridlock on the highway kept everyone stuck for hours."
-    metadata: { cluster: city_traffic, role: distractor }
-
-  # ── Distractor cluster 2: laptop_repair ──────────────────────────
+    cli_input: "Notebook stopped holding charge, time for service."
+    metadata: { cluster: laptop_repair, role: target, difficulty: medium }
   - at: 18
     source: cli
-    cli_input: "My laptop battery died and I need a replacement."
-    metadata: { cluster: laptop_repair, role: distractor }
+    cli_input: "Machine keeps shutting off — probably needs a new battery cell."
+    metadata: { cluster: laptop_repair, role: target, difficulty: hard }
   - at: 19
     source: cli
-    cli_input: "The computer needs a new power supply, it won't charge."
-    metadata: { cluster: laptop_repair, role: distractor }
+    cli_input: "Taking it into the shop; the hardware is on its last legs."
+    metadata: { cluster: laptop_repair, role: target, difficulty: hard }
+
+  # ── Target cluster 5: chess_game ─────────────────────────────────
   - at: 20
     source: cli
-    cli_input: "Notebook stopped holding charge, time for service."
-    metadata: { cluster: laptop_repair, role: distractor }
-
-  # ── Distractor cluster 3: dog_walk ───────────────────────────────
+    cli_input: "We played a long chess match at the club last night."
+    metadata: { cluster: chess_game, role: target, difficulty: easy }
   - at: 21
     source: cli
-    cli_input: "Took the dog around the neighborhood for exercise."
-    metadata: { cluster: dog_walk, role: distractor }
+    cli_input: "The game ended in a stalemate after forty moves."
+    metadata: { cluster: chess_game, role: target, difficulty: easy }
   - at: 22
     source: cli
-    cli_input: "Walked my puppy to the park and back this afternoon."
-    metadata: { cluster: dog_walk, role: distractor }
+    cli_input: "Opponent sacrificed a knight to open my kingside defense."
+    metadata: { cluster: chess_game, role: target, difficulty: medium }
   - at: 23
     source: cli
-    cli_input: "Leashed up the retriever for a long stroll."
-    metadata: { cluster: dog_walk, role: distractor }
-
-  # ── Distractor cluster 4: pizza_order ────────────────────────────
+    cli_input: "Worked through a Sicilian opening and got crushed in the endgame."
+    metadata: { cluster: chess_game, role: target, difficulty: hard }
   - at: 24
     source: cli
-    cli_input: "Ordered a large pepperoni pizza for dinner tonight."
-    metadata: { cluster: pizza_order, role: distractor }
+    cli_input: "Positional struggle where both sides castled queenside."
+    metadata: { cluster: chess_game, role: target, difficulty: hard }
+
+  # ── Distractor cluster 1: weather_forecast ───────────────────────
   - at: 25
     source: cli
-    cli_input: "Got a pie with extra cheese delivered to the house."
-    metadata: { cluster: pizza_order, role: distractor }
+    cli_input: "Tomorrow's forecast calls for thunderstorms in the afternoon."
+    metadata: { cluster: weather_forecast, role: distractor, difficulty: easy }
   - at: 26
     source: cli
-    cli_input: "Delivery arrived with a hot pepperoni from the place uptown."
-    metadata: { cluster: pizza_order, role: distractor }
-
-  # ── Distractor cluster 5: rainstorm ──────────────────────────────
+    cli_input: "Meteorologists predict rain moving into the area by noon."
+    metadata: { cluster: weather_forecast, role: distractor, difficulty: easy }
   - at: 27
     source: cli
-    cli_input: "Heavy rain pounded the windows all afternoon."
-    metadata: { cluster: rainstorm, role: distractor }
+    cli_input: "Weather outlook shows high pressure dominating the region this week."
+    metadata: { cluster: weather_forecast, role: distractor, difficulty: medium }
   - at: 28
     source: cli
-    cli_input: "A thunderstorm rolled through and soaked everything."
-    metadata: { cluster: rainstorm, role: distractor }
+    cli_input: "Radar indicates a cold front approaching from the northwest tonight."
+    metadata: { cluster: weather_forecast, role: distractor, difficulty: hard }
   - at: 29
     source: cli
-    cli_input: "Downpour kept the streets flooded for hours."
-    metadata: { cluster: rainstorm, role: distractor }
+    cli_input: "Channel 7 reported a warming trend with scattered showers midweek."
+    metadata: { cluster: weather_forecast, role: distractor, difficulty: hard }
+
+  # ── Distractor cluster 2: email_inbox ────────────────────────────
+  - at: 30
+    source: cli
+    cli_input: "Cleared out dozens of unread emails from my inbox this morning."
+    metadata: { cluster: email_inbox, role: distractor, difficulty: easy }
+  - at: 31
+    source: cli
+    cli_input: "Replied to several work messages and archived the rest."
+    metadata: { cluster: email_inbox, role: distractor, difficulty: easy }
+  - at: 32
+    source: cli
+    cli_input: "My mail folder was overflowing — spent the morning sorting it."
+    metadata: { cluster: email_inbox, role: distractor, difficulty: medium }
+  - at: 33
+    source: cli
+    cli_input: "Triaged client correspondence and flagged the urgent ones for later."
+    metadata: { cluster: email_inbox, role: distractor, difficulty: hard }
+  - at: 34
+    source: cli
+    cli_input: "Went through the queue of unread messages and responded where needed."
+    metadata: { cluster: email_inbox, role: distractor, difficulty: hard }
+
+  # ── Distractor cluster 3: piano_practice ─────────────────────────
+  - at: 35
+    source: cli
+    cli_input: "Practiced scales on the piano for an hour before breakfast."
+    metadata: { cluster: piano_practice, role: distractor, difficulty: easy }
+  - at: 36
+    source: cli
+    cli_input: "Ran through my arpeggios and some Bach inventions."
+    metadata: { cluster: piano_practice, role: distractor, difficulty: easy }
+  - at: 37
+    source: cli
+    cli_input: "Spent the afternoon working on the Chopin nocturne."
+    metadata: { cluster: piano_practice, role: distractor, difficulty: medium }
+  - at: 38
+    source: cli
+    cli_input: "Drilled left-hand voicings and metronome-driven tempo runs."
+    metadata: { cluster: piano_practice, role: distractor, difficulty: hard }
+  - at: 39
+    source: cli
+    cli_input: "Keyboard session focused on finger independence and articulation."
+    metadata: { cluster: piano_practice, role: distractor, difficulty: hard }
+
+  # ── Distractor cluster 4: house_cleaning ─────────────────────────
+  - at: 40
+    source: cli
+    cli_input: "Spent the weekend vacuuming carpets and dusting shelves."
+    metadata: { cluster: house_cleaning, role: distractor, difficulty: easy }
+  - at: 41
+    source: cli
+    cli_input: "Scrubbed the kitchen floor and wiped down the counters."
+    metadata: { cluster: house_cleaning, role: distractor, difficulty: easy }
+  - at: 42
+    source: cli
+    cli_input: "Did a deep clean of the bathroom with bleach and a brush."
+    metadata: { cluster: house_cleaning, role: distractor, difficulty: medium }
+  - at: 43
+    source: cli
+    cli_input: "Tackled the baseboards and finally organized the hall closet."
+    metadata: { cluster: house_cleaning, role: distractor, difficulty: hard }
+  - at: 44
+    source: cli
+    cli_input: "Polished wood surfaces and rotated the laundry through the week."
+    metadata: { cluster: house_cleaning, role: distractor, difficulty: hard }
+
+  # ── Distractor cluster 5: dental_visit ───────────────────────────
+  - at: 45
+    source: cli
+    cli_input: "Went to the dentist for a cleaning and a cavity check."
+    metadata: { cluster: dental_visit, role: distractor, difficulty: easy }
+  - at: 46
+    source: cli
+    cli_input: "The hygienist scraped plaque off my molars and flossed everything."
+    metadata: { cluster: dental_visit, role: distractor, difficulty: easy }
+  - at: 47
+    source: cli
+    cli_input: "Needed a filling in one of my back teeth, got it done today."
+    metadata: { cluster: dental_visit, role: distractor, difficulty: medium }
+  - at: 48
+    source: cli
+    cli_input: "Routine checkup plus X-rays — no major issues this time around."
+    metadata: { cluster: dental_visit, role: distractor, difficulty: hard }
+  - at: 49
+    source: cli
+    cli_input: "Oral exam and a set of panoramic radiographs at the office."
+    metadata: { cluster: dental_visit, role: distractor, difficulty: hard }
