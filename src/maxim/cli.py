@@ -242,6 +242,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "logs",
             "install",
             "deps",
+            "list-nodes",
+            "--node",
         ):
             from maxim.peer import run_peer_connect_subcommand
 

@@ -125,6 +125,31 @@ Subcommands for managing a remote leader node over a Cloudflare tunnel.
 | `maxim peer test <url>` | Verify peer connectivity to a leader URL |
 | `maxim peer install <extras>` | Install optional extras on leader (e.g., `semantic`, `llm-torch`). Accepts comma-separated extras or raw pip package names. |
 | `maxim peer deps` | Show installed packages and extras status on the leader |
+| `maxim peer list-nodes [--json]` | List mesh nodes + live status. Reads `~/.config/maxim/mesh.yml`; falls back to `peer.yml` as a synthesized one-node mesh. Probes each node via `_MaximPeerBackend.health_check()` and reports reachable / auth rejected / chat broken / network down with operator-readable fix hints. `--json` matches the `maxim doctor --json` schema for tooling. (Plan 4 Stage C1) |
+| `maxim peer --node <name> status` | Probe a single mesh node and print its live status + latency. Alias: `health`. |
+| `maxim peer --node <name> drain` | Mark a node as drained. Drained nodes show as `info` (not probed) in `list-nodes` and `maxim doctor`. Role-scoped persistence at `~/.maxim/util/drained_nodes.{role}.txt`. |
+| `maxim peer --node <name> resume` | Clear a node's drain state. |
+
+### Mesh config (`mesh.yml`)
+
+Optional multi-node topology at `~/.config/maxim/mesh.yml` (POSIX) or `%APPDATA%\maxim\mesh.yml` (Windows). When absent, the new mesh verbs synthesize a one-node mesh from the legacy `peer.yml` — existing installs see zero behavior change.
+
+```yaml
+cluster_key: sk-...                  # shared bearer token across all nodes
+self: leader-desk                    # MUST match one entry in nodes:
+protocol_version: 1
+nodes:
+  - name: leader-desk
+    url: http://192.168.1.10:8099/v1
+    role: leader
+  - name: mac-studio
+    url: https://mac.example.com/v1
+    role: peer
+drain:                               # optional; names of drained nodes
+  - mac-studio
+```
+
+Schema errors carry a line number (`mesh.yml line 7: url 'ftp://bad/v1' must use http:// or https://`). `self:` validation is load-bearing: startup fails loudly if `self` doesn't match any entry in `nodes:`.
 
 ## Bench Harnesses
 

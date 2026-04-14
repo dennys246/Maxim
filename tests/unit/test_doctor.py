@@ -1252,3 +1252,152 @@ class TestCheckVramPressure:
 
         assert result.fix is not None
         assert "qwen2-7b" in result.fix
+
+
+# ─── Plan 4 Stage C1: mesh node check ────────────────────────────────────
+
+
+class _FakeMeshProbe:
+    """Stub ProbeResult for mesh_node tests."""
+
+    def __init__(self, outcome: str, detail: str = "", latency_ms: float | None = None):
+        self.outcome = outcome
+        self.detail = detail
+        self.latency_ms = latency_ms
+
+
+class _FakeMeshBackend:
+    """Stub ``_MaximPeerBackend`` for mesh_node tests."""
+
+    _next_result: "_FakeMeshProbe" = _FakeMeshProbe("ok", "HTTP 200", 5.0)
+
+    def __init__(self, result):
+        self._result = result
+
+    @classmethod
+    def for_url(cls, url, *, api_key=None, model=None):
+        return cls(cls._next_result)
+
+    def health_check(self, *, enable_stage2=True):
+        return self._result
+
+
+_MESH_YAML = """\
+cluster_key: sk-cluster-abc
+self: leader-desk
+protocol_version: 1
+nodes:
+  - name: leader-desk
+    url: http://192.168.1.10:8099/v1
+    role: leader
+  - name: mac-studio
+    url: https://mac.example.com/v1
+    role: peer
+"""
+
+
+class TestCheckMeshNodes:
+    def _setup_mesh(self, tmp_path, monkeypatch, *, outcome="ok", detail="HTTP 200", latency=5.0):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+        from maxim.utils import paths
+
+        paths._reset_caches()
+        mesh_path = tmp_path / "config" / "maxim" / "mesh.yml"
+        mesh_path.parent.mkdir(parents=True)
+        mesh_path.write_text(_MESH_YAML)
+
+        _FakeMeshBackend._next_result = _FakeMeshProbe(outcome, detail, latency)
+        import maxim.models.language.maxim_peer_backend as mpb
+
+        monkeypatch.setattr(mpb, "_MaximPeerBackend", _FakeMeshBackend)
+
+    def test_no_mesh_yml_returns_info(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
+        from maxim.utils import paths
+
+        paths._reset_caches()
+        from maxim.doctor.checks import check_mesh_nodes
+
+        results = check_mesh_nodes()
+        assert len(results) == 1
+        assert results[0].status == "info"
+        assert "no mesh.yml" in results[0].message.lower()
+
+    def test_all_healthy_ok_per_node(self, tmp_path, monkeypatch):
+        self._setup_mesh(tmp_path, monkeypatch, outcome="ok")
+        from maxim.doctor.checks import check_mesh_nodes
+
+        results = check_mesh_nodes()
+        assert len(results) == 2
+        assert all(r.status == "ok" for r in results)
+        assert results[0].name == "Node leader-desk"
+        assert results[1].name == "Node mac-studio"
+
+    def test_auth_rejected_fail_with_key_rotate_hint(self, tmp_path, monkeypatch):
+        self._setup_mesh(tmp_path, monkeypatch, outcome="auth_rejected", detail="HTTP 401")
+        from maxim.doctor.checks import check_mesh_nodes
+
+        results = check_mesh_nodes()
+        assert all(r.status == "fail" for r in results)
+        assert any("tunnel key rotate" in (r.fix or "") for r in results)
+        assert all(r.retry_id and r.retry_id.startswith("mesh_node_") for r in results)
+
+    def test_inference_broken_fail_with_chat_hint(self, tmp_path, monkeypatch):
+        self._setup_mesh(tmp_path, monkeypatch, outcome="inference_broken", detail="stage2: HTTP 500")
+        from maxim.doctor.checks import check_mesh_nodes
+
+        results = check_mesh_nodes()
+        assert all(r.status == "fail" for r in results)
+        assert any("chat endpoint broken" in r.message for r in results)
+        assert any("maxim peer llm --status" in (r.fix or "") for r in results)
+
+    def test_dns_fail_mapped_to_warn(self, tmp_path, monkeypatch):
+        self._setup_mesh(tmp_path, monkeypatch, outcome="dns_fail", detail="no such host")
+        from maxim.doctor.checks import check_mesh_nodes
+
+        results = check_mesh_nodes()
+        assert all(r.status == "warn" for r in results)
+        assert any("dns fail" in r.message for r in results)
+
+    def test_drained_node_shown_as_info_not_probed(self, tmp_path, monkeypatch):
+        self._setup_mesh(tmp_path, monkeypatch, outcome="auth_rejected")
+        from maxim.peer.mesh_config import drain_node
+
+        drain_node("mac-studio")
+
+        # If the backend IS called for the drained node, it would return
+        # auth_rejected (→ fail). We assert it's `info` instead.
+        from maxim.doctor.checks import check_mesh_nodes
+
+        results = check_mesh_nodes()
+        mac = next(r for r in results if r.name == "Node mac-studio")
+        assert mac.status == "info"
+        assert "drained" in mac.message.lower()
+
+    def test_malformed_mesh_yml_returns_fail_with_schema_hint(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
+        from maxim.utils import paths
+
+        paths._reset_caches()
+        mesh_path = tmp_path / "config" / "maxim" / "mesh.yml"
+        mesh_path.parent.mkdir(parents=True)
+        mesh_path.write_text(_MESH_YAML.replace("self: leader-desk", "self: ghost"))
+
+        from maxim.doctor.checks import check_mesh_nodes
+
+        results = check_mesh_nodes()
+        assert len(results) == 1
+        assert results[0].status == "fail"
+        assert "does not match" in results[0].message
+
+    def test_retry_ids_registered_per_node(self, tmp_path, monkeypatch):
+        self._setup_mesh(tmp_path, monkeypatch, outcome="auth_rejected")
+        from maxim.doctor.checks import check_mesh_nodes
+
+        results = check_mesh_nodes()
+        retry_ids = {r.retry_id for r in results}
+        assert retry_ids == {"mesh_node_leader-desk", "mesh_node_mac-studio"}

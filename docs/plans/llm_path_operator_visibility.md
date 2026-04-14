@@ -136,15 +136,26 @@ traffic.
 **Report:** [../experiments/results/llm_path_stress_plan4_20260414.md](../experiments/results/llm_path_stress_plan4_20260414.md)
 **Rerun runbook:** [../experiments/protocols/bench_recovery_time_rerun.md](../experiments/protocols/bench_recovery_time_rerun.md)
 
-### Stage C — mesh.yml + admin API + per-agent rate limiting (DEFERRED to future sessions)
+### Stage C — mesh.yml + admin API + per-agent rate limiting (C1 ✅ SHIPPED, C2/C3 DEFERRED)
 
-This is the original Plan 4 scope (R3.0 + R3.5-lite + R3.6-lite, ~650
-LOC). Deferred to dedicated multi-session work because it requires:
+**Stage C1 — mesh.yml + CLI verb foundations — ✅ SHIPPED 2026-04-14** (branch `feat/plan4-c1-mesh-yml`). Delivered as a ~450 LOC slice of the original ~650 LOC Stage C:
 
-- ~250 LOC for `mesh.yml` config + schema validation + 11 new CLI verbs
-- ~100 LOC for `install` + VRAM precheck
+- `src/maxim/peer/mesh_config.py` — schema parser + line-numbered validation + fallback from `peer.yml` + role-scoped drain state persistence via `utils/atomic_io`
+- `src/maxim/peer/mesh_cli.py` — new verbs `maxim peer list-nodes [--json]` and `maxim peer --node <name> {status|health|drain|resume}`; probes via `_MaximPeerBackend.for_url(...).health_check()` — the canonical Plan 3 R2.6 entry point
+- `src/maxim/doctor/checks.py::check_mesh_nodes` — per-node `CheckResult` with typed-exception classification (`auth_rejected` → key-sync hint, `inference_broken` → chat-endpoint hint, network layer → generic fix); drained nodes surface as `info`, not probed
+- `src/maxim/doctor/cli.py` — dynamic `mesh_node_<name>` retry-id registration in the retry loop; re-probes re-read `mesh.yml` each iteration
+- 50 new unit tests (24 schema + 18 CLI + 8 doctor), all offline with stubbed `_MaximPeerBackend`
+
+Live smoke (RTX 5080 leader via Cloudflare tunnel) validated list-nodes, `--json`, `--node health`, and unknown-node rejection at 292-380ms stage-2 latency.
+
+**Zero behavior change for existing users:** when `mesh.yml` is absent, `read_or_synthesize_mesh_config()` builds a one-node mesh from `peer.yml`. The new verbs Just Work on existing peer installs.
+
+**C2/C3 — DEFERRED to future sessions.** The original Plan 4 scope (R3.0 + R3.5-lite + R3.6-lite, ~650 LOC). Remaining work split:
+
+- ~250 LOC for `mesh.yml` config + schema validation + 5 new CLI verbs (**shipped in C1**, 5 verbs: `list-nodes`, `--node {status|health|drain|resume}`)
+- ~100 LOC for `install` + VRAM precheck (**C2**: `--node install`, `--node refresh`, `add-node`, `remove-node`)
 - ~300 LOC for admin API + per-agent rate limiting + ring buffer +
-  cluster key rotation
+  cluster key rotation (**C3**: `/v1/mesh/*` endpoints, per-agent rate limiting, request-trace ring buffer, cluster key rotation)
 - 6 new doc files (mesh_operations.md, mesh_debug.md, CLAUDE.md updates,
   architecture updates)
 - 2-node integration test fixture + a hard-testing manual smoke

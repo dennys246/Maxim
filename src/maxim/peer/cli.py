@@ -86,6 +86,14 @@ def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
         return _cmd_install(list(argv[1:]))
     if action == "deps":
         return _cmd_deps(list(argv[1:]))
+    if action == "list-nodes":
+        from maxim.peer.mesh_cli import run_list_nodes
+
+        return run_list_nodes(list(argv[1:]))
+    if action == "--node":
+        from maxim.peer.mesh_cli import run_node_subcommand
+
+        return run_node_subcommand(list(argv))
     # Fall through to maxim.doctor.cli for `peer test` (kept in doctor/ because
     # test is a diagnostic, not a configuration subcommand)
     if action == "test":
@@ -114,6 +122,8 @@ def _print_peer_usage() -> None:
     print("  logs [url]       Tail live logs from leader (-f to follow)")
     print("  install <extras> Install optional extras on leader (e.g., semantic,llm-torch)")
     print("  deps [url]       Show installed packages on leader")
+    print("  list-nodes       List mesh nodes + live status (Plan 4 C1, needs mesh.yml)")
+    print("  --node <n> <v>   Per-node verbs: status|health|drain|resume")
 
 
 # ─── connect ──────────────────────────────────────────────────────────────
