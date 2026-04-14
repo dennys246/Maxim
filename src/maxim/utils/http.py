@@ -1033,6 +1033,7 @@ def stream_post(
         _raw=raw,
         _client=client,
         _owns_client=False,
+        _stream_ctx=stream_ctx,
     )
 
 
