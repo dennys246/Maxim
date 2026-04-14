@@ -297,3 +297,94 @@ def test_record_startup_phase() -> None:
     http.record_startup_phase("test_phase", 42.0)
     snap = http.metrics_snapshot()
     assert snap["startup_phases"]["test_phase"] == 42.0
+
+
+# ─── Streaming response lifetime ──────────────────────────────────────────
+#
+# Regression guards for the "httpx stream contexts must outlive their
+# consumers" lesson in CLAUDE.md. Both ``stream_post`` and
+# ``raw_proxy_forward_streaming`` enter an httpx stream context manager
+# manually via ``stream_ctx.__enter__()``. If the caller does not hold a
+# reference to ``stream_ctx`` beyond the function return, Python GC calls
+# ``stream_ctx.__exit__()`` and closes the underlying stream before the
+# consumer can call ``iter_bytes``/``iter_lines``. Storing the context on
+# ``StreamingResponse._stream_ctx`` keeps it alive until ``close()`` runs.
+#
+# The bug was originally caught in ``raw_proxy_forward_streaming`` by the
+# Cloudflare 524 incident (commit 627727e) but no regression test was
+# added at the time — ``stream_post`` had the same bug for the Mac peer's
+# streaming inference path and was only caught during the 2026-04-13
+# 125s-latency investigation.
+
+
+def test_stream_post_stores_stream_ctx() -> None:
+    """``stream_post`` must set ``_stream_ctx`` so GC does not close the stream."""
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"data: hi\n\n")
+
+    ep_name = "_test_stream_post_ctx"
+    http.register_endpoint(http.HTTPEndpoint(name=ep_name, base_url="http://test.local", internal=False))
+    http._registry._clients[ep_name] = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="http://test.local",
+    )
+    try:
+        response = http.stream_post(ep_name, path="/v1/chat", json={"x": 1})
+        try:
+            # Tight structural guard: the field is the fix. If it's None
+            # here, GC will close the stream before the consumer iterates
+            # (see CLAUDE.md "httpx stream contexts must outlive their
+            # consumers").
+            assert response._stream_ctx is not None, (
+                "stream_post must store stream_ctx on StreamingResponse — "
+                "without it, GC closes the httpx stream before the consumer "
+                "can iterate"
+            )
+        finally:
+            response.close()
+    finally:
+        http._registry._clients.pop(ep_name, None)
+        http._registry._endpoints.pop(ep_name, None)
+
+
+def test_raw_proxy_forward_streaming_stores_stream_ctx() -> None:
+    """``raw_proxy_forward_streaming`` must set ``_stream_ctx`` — same lesson.
+
+    Regression guard for commit 627727e ("fix(http): prevent GC from
+    closing httpx stream before iter_bytes()"). The fix landed without a
+    test; this locks it in.
+    """
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"chunk")
+
+    # raw_proxy_forward_streaming uses the reserved _external endpoint.
+    # Override its client with a MockTransport-backed one for this test.
+    http._ensure_external_endpoint()
+    original_client = http._registry._clients.get(http._EXTERNAL_ENDPOINT)
+    http._registry._clients[http._EXTERNAL_ENDPOINT] = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="",
+    )
+    try:
+        response = http.raw_proxy_forward_streaming(
+            "http://test.local/v1/chat",
+            "POST",
+            headers={"X-Maxim-Request-Id": "test-req"},
+            body=b"{}",
+        )
+        try:
+            assert response._stream_ctx is not None, (
+                "raw_proxy_forward_streaming must store stream_ctx on "
+                "StreamingResponse — GC closes the httpx stream otherwise"
+            )
+        finally:
+            response.close()
+    finally:
+        if original_client is not None:
+            http._registry._clients[http._EXTERNAL_ENDPOINT] = original_client
+        else:
+            http._registry._clients.pop(http._EXTERNAL_ENDPOINT, None)
