@@ -804,9 +804,7 @@ class TestDetectDoctorRole:
         monkeypatch.setenv("MAXIM_ROLE", "peer")
         peer_yml = tmp_path / "peer.yml"
         peer_yml.write_text("url: https://myhost.cloudflareaccess.com\napi_key: testkey123\n")
-        monkeypatch.setattr(
-            "maxim.peer.config.peer_config_path", lambda: peer_yml
-        )
+        monkeypatch.setattr("maxim.peer.config.peer_config_path", lambda: peer_yml)
         from maxim.doctor.checks import _detect_doctor_role
 
         role, url = _detect_doctor_role()
