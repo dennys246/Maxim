@@ -1,0 +1,141 @@
+{
+  "model": "paraphrase-mpnet-base-v2",
+  "threshold": 0.7,
+  "reward": 2.0,
+  "metric": "within-cluster pair collapse rate, baseline vs rewarded",
+  "pass_criteria": {
+    "mean_target_gain_pp": 0.3,
+    "mean_distractor_drift_pp": 0.05,
+    "mean_target_monotone_fraction": 0.5
+  },
+  "seeds": 10,
+  "seeds_passing": 9,
+  "mean_target_gain": 0.56,
+  "std_target_gain": 0.2898,
+  "mean_distractor_drift": 0.0,
+  "std_distractor_drift": 0.0,
+  "mean_target_monotone_fraction": 0.94,
+  "means_pass": true,
+  "per_seed": [
+    {
+      "seed": 0,
+      "target_gain": 0.58,
+      "distractor_drift": 0.0,
+      "baseline_target_mean": 0.02,
+      "rewarded_target_mean": 0.6,
+      "baseline_distractor_mean": 0.0,
+      "rewarded_distractor_mean": 0.0,
+      "target_monotone_fraction": 1.0,
+      "final_bias_mean": 0.2,
+      "passes": true
+    },
+    {
+      "seed": 1,
+      "target_gain": 0.58,
+      "distractor_drift": 0.0,
+      "baseline_target_mean": 0.02,
+      "rewarded_target_mean": 0.6,
+      "baseline_distractor_mean": 0.0,
+      "rewarded_distractor_mean": 0.0,
+      "target_monotone_fraction": 1.0,
+      "final_bias_mean": 0.2,
+      "passes": true
+    },
+    {
+      "seed": 2,
+      "target_gain": 0.38,
+      "distractor_drift": 0.0,
+      "baseline_target_mean": 0.02,
+      "rewarded_target_mean": 0.4,
+      "baseline_distractor_mean": 0.0,
+      "rewarded_distractor_mean": 0.0,
+      "target_monotone_fraction": 1.0,
+      "final_bias_mean": 0.2,
+      "passes": true
+    },
+    {
+      "seed": 3,
+      "target_gain": 0.58,
+      "distractor_drift": 0.0,
+      "baseline_target_mean": 0.02,
+      "rewarded_target_mean": 0.6,
+      "baseline_distractor_mean": 0.0,
+      "rewarded_distractor_mean": 0.0,
+      "target_monotone_fraction": 0.8,
+      "final_bias_mean": 0.2,
+      "passes": true
+    },
+    {
+      "seed": 4,
+      "target_gain": 0.98,
+      "distractor_drift": 0.0,
+      "baseline_target_mean": 0.02,
+      "rewarded_target_mean": 1.0,
+      "baseline_distractor_mean": 0.0,
+      "rewarded_distractor_mean": 0.0,
+      "target_monotone_fraction": 1.0,
+      "final_bias_mean": 0.2,
+      "passes": true
+    },
+    {
+      "seed": 5,
+      "target_gain": -0.02,
+      "distractor_drift": 0.0,
+      "baseline_target_mean": 0.02,
+      "rewarded_target_mean": 0.0,
+      "baseline_distractor_mean": 0.0,
+      "rewarded_distractor_mean": 0.0,
+      "target_monotone_fraction": 0.8,
+      "final_bias_mean": 0.2,
+      "passes": false
+    },
+    {
+      "seed": 6,
+      "target_gain": 0.98,
+      "distractor_drift": 0.0,
+      "baseline_target_mean": 0.02,
+      "rewarded_target_mean": 1.0,
+      "baseline_distractor_mean": 0.0,
+      "rewarded_distractor_mean": 0.0,
+      "target_monotone_fraction": 1.0,
+      "final_bias_mean": 0.2,
+      "passes": true
+    },
+    {
+      "seed": 7,
+      "target_gain": 0.58,
+      "distractor_drift": 0.0,
+      "baseline_target_mean": 0.02,
+      "rewarded_target_mean": 0.6,
+      "baseline_distractor_mean": 0.0,
+      "rewarded_distractor_mean": 0.0,
+      "target_monotone_fraction": 1.0,
+      "final_bias_mean": 0.2,
+      "passes": true
+    },
+    {
+      "seed": 8,
+      "target_gain": 0.38,
+      "distractor_drift": 0.0,
+      "baseline_target_mean": 0.02,
+      "rewarded_target_mean": 0.4,
+      "baseline_distractor_mean": 0.0,
+      "rewarded_distractor_mean": 0.0,
+      "target_monotone_fraction": 1.0,
+      "final_bias_mean": 0.2,
+      "passes": true
+    },
+    {
+      "seed": 9,
+      "target_gain": 0.58,
+      "distractor_drift": 0.0,
+      "baseline_target_mean": 0.02,
+      "rewarded_target_mean": 0.6,
+      "baseline_distractor_mean": 0.0,
+      "rewarded_distractor_mean": 0.0,
+      "target_monotone_fraction": 0.8,
+      "final_bias_mean": 0.2,
+      "passes": true
+    }
+  ]
+}

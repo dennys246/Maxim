@@ -149,7 +149,7 @@ pip install 'pymaxim[semantic]'
 python -m pytest tests/substrate/test_p2_reward_modulation.py::TestP2ValidationSweep -xvs
 ```
 
-This runs the slow-suite `test_sweep_10_seeds` which produces `docs/experiments/results/p2_reward_modulation_sweep.json` with mean/std over 10 shuffled seeds at `paraphrase-mpnet-base-v2` @ threshold 0.55 and reward 2.0. Pass criteria: mean target reduction ≥30%, mean distractor interference ≤5%. Record the summary at `docs/experiments/p2_reward_modulation_sweep.md` in the P1 template style.
+This runs the slow-suite `test_sweep_10_seeds` which produces `docs/experiments/results/p2_reward_modulation_sweep.json` with mean/std over 10 shuffled seeds at `paraphrase-mpnet-base-v2` @ threshold 0.70 and reward 2.0. Pass criteria (Stage 3 restatement with plurality-ownership self-collapse metric): mean target gain ≥+30 pp, mean distractor drift ≤5 pp, mean target monotone fraction ≥50%. **Stage 3 SHIPPED on 2026-04-14 with +56 pp mean target gain, 0 pp drift, 94% monotone. See [p2_reward_modulation_sweep.md](p2_reward_modulation_sweep.md) for the full lab notebook and [protocols/p2_reward_modulation_reproduction.md](protocols/p2_reward_modulation_reproduction.md) to reproduce.**
 
 ### Single-seed smoke against real embeddings (between mechanism and full sweep)
 

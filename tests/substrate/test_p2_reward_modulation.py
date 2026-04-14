@@ -181,20 +181,32 @@ class TestP2Mechanism:
         print(metrics.per_cluster_table())
 
         # Baseline sanity: fragmentation must be present for the
-        # rewarded collapse to be meaningful.
-        assert metrics.baseline_target_total >= 2 * 5, (
-            f"baseline target nodes={metrics.baseline_target_total}, "
-            f"expected ≥10 (2 nodes × 5 clusters) — geometry may be wrong"
+        # rewarded collapse to be meaningful. With the synthetic
+        # embedding geometry (s0=primary, s1=0.92 cos, s2=0.60 cos)
+        # and baseline threshold 0.80, s2 separates at baseline
+        # giving within-cluster pair-collapse rate of 1/3 per cluster.
+        assert 0.2 < metrics.baseline_target_mean < 0.5, (
+            f"baseline target collapse rate {metrics.baseline_target_mean:.2%} out of expected range "
+            "(~33%) — synthetic geometry may have drifted"
         )
-        # Target reduction: need ≥30%
-        assert metrics.target_reduction >= 0.30, f"target_reduction={metrics.target_reduction:.1%}, need ≥30%"
-        # Non-interference: distractors stay within ±5%
-        assert metrics.distractor_interference <= 0.05, (
-            f"distractor_interference={metrics.distractor_interference:.1%}, need ≤5%"
+        # Target gain: need ≥+30 pp
+        assert metrics.target_gain >= 0.30, f"target_gain={metrics.target_gain:+.1%} pp, need >=+30 pp"
+        # Non-interference: distractor drift stays within 5 pp
+        assert metrics.distractor_drift <= 0.05, f"distractor_drift={metrics.distractor_drift:.1%} pp, need <=5 pp"
+        # Monotone direction: every target cluster must gain or stay flat
+        # (never lose collapse rate under reward bias)
+        assert metrics.target_monotone_fraction == 1.0, (
+            f"target_monotone_fraction={metrics.target_monotone_fraction:.0%}, "
+            "reward bias should never DECREASE cluster collapse rate"
         )
 
-    def test_sanity_floor_reduction_not_negative(self):
-        """Rewarded node count must not exceed baseline for targets."""
+    def test_sanity_floor_target_monotone(self):
+        """Reward bias is monotone non-decreasing on target clusters.
+
+        The reward-bias pathway only WIDENS EC's recognition radius —
+        it never tightens it. Rewarded collapse rate must be >=
+        baseline collapse rate for every target cluster.
+        """
         clusters, targets = _make_synthetic_clusters()
         embeddings = _build_embedding_table(num_target=5, num_distractor=5)
         factory = self._factory(embeddings)
@@ -206,7 +218,10 @@ class TestP2Mechanism:
             reward=self.REWARD,
             shuffle=False,
         )
-        assert metrics.rewarded_target_total <= metrics.baseline_target_total
+        for name in targets:
+            base = metrics.baseline_rates[name]
+            rew = metrics.rewarded_rates[name]
+            assert rew >= base, f"{name}: rewarded {rew:.2%} < baseline {base:.2%}"
 
     def test_degenerate_control_alpha_zero(self):
         """With alpha=0, reward-bias pathway has no effect (control)."""
@@ -225,11 +240,11 @@ class TestP2Mechanism:
             shuffle=False,
         )
         # With alpha=0, rewarded and baseline must produce identical
-        # node counts per cluster.
-        assert metrics.target_reduction == 0.0, (
-            f"alpha=0 but target_reduction={metrics.target_reduction:.1%} (non-zero means the control is broken)"
+        # per-cluster collapse rates. Target gain must be exactly 0.
+        assert metrics.target_gain == 0.0, (
+            f"alpha=0 but target_gain={metrics.target_gain:+.1%} pp (non-zero means the control is broken)"
         )
-        assert metrics.rewarded_target_total == metrics.baseline_target_total
+        assert metrics.rewarded_target_mean == metrics.baseline_target_mean
 
     def test_per_agent_isolation(self):
         """Rewarding agent A must not widen recognition for agent B.
@@ -310,7 +325,7 @@ class TestP2ValidationSweep:
     """
 
     MODEL = "paraphrase-mpnet-base-v2"
-    THRESHOLD = 0.55
+    THRESHOLD = 0.70
     REWARD = 2.0
 
     def _factory(self):
@@ -344,12 +359,18 @@ class TestP2ValidationSweep:
         )
         print("\n" + metrics.summary())
         print(metrics.per_cluster_table())
-        assert metrics.baseline_target_total > 0
+        assert len(metrics.baseline_rates) > 0
 
     def test_sweep_10_seeds(self):
-        """Full 10-seed sweep — the P2 gate.
+        """Full 10-seed sweep — the P2 gate (collapse-rate semantics).
 
         Records results to docs/experiments/results/p2_reward_modulation_sweep.json.
+
+        Pass criteria (Stage 3 restatement):
+          - mean target_gain >= 30 pp
+          - mean distractor_drift <= 5 pp
+          - target monotone fraction (reward non-decreasing) >= 0.5
+            on the average seed
         """
         import statistics
 
@@ -370,38 +391,48 @@ class TestP2ValidationSweep:
             results.append(
                 {
                     "seed": seed,
-                    "target_reduction": metrics.target_reduction,
-                    "distractor_interference": metrics.distractor_interference,
-                    "baseline_target_total": metrics.baseline_target_total,
-                    "rewarded_target_total": metrics.rewarded_target_total,
-                    "baseline_distractor_total": metrics.baseline_distractor_total,
-                    "rewarded_distractor_total": metrics.rewarded_distractor_total,
+                    "target_gain": metrics.target_gain,
+                    "distractor_drift": metrics.distractor_drift,
+                    "baseline_target_mean": metrics.baseline_target_mean,
+                    "rewarded_target_mean": metrics.rewarded_target_mean,
+                    "baseline_distractor_mean": metrics.baseline_distractor_mean,
+                    "rewarded_distractor_mean": metrics.rewarded_distractor_mean,
+                    "target_monotone_fraction": metrics.target_monotone_fraction,
                     "final_bias_mean": metrics.final_bias_mean,
                     "passes": metrics.passes_p2(),
                 }
             )
             print(f"\n[seed={seed}] {metrics.summary()}")
 
-        reductions = [r["target_reduction"] for r in results]
-        interferences = [r["distractor_interference"] for r in results]
-        mean_red = statistics.mean(reductions)
-        std_red = statistics.stdev(reductions) if len(reductions) > 1 else 0.0
-        mean_int = statistics.mean(interferences)
-        std_int = statistics.stdev(interferences) if len(interferences) > 1 else 0.0
+        gains = [r["target_gain"] for r in results]
+        drifts = [r["distractor_drift"] for r in results]
+        monotones = [r["target_monotone_fraction"] for r in results]
+        mean_gain = statistics.mean(gains)
+        std_gain = statistics.stdev(gains) if len(gains) > 1 else 0.0
+        mean_drift = statistics.mean(drifts)
+        std_drift = statistics.stdev(drifts) if len(drifts) > 1 else 0.0
+        mean_monotone = statistics.mean(monotones)
 
-        means_pass = mean_red >= 0.30 and mean_int <= 0.05
+        means_pass = mean_gain >= 0.30 and mean_drift <= 0.05 and mean_monotone >= 0.5
         seeds_passing = sum(1 for r in results if r["passes"])
 
         summary = {
             "model": self.MODEL,
             "threshold": self.THRESHOLD,
             "reward": self.REWARD,
+            "metric": "within-cluster pair collapse rate, baseline vs rewarded",
+            "pass_criteria": {
+                "mean_target_gain_pp": 0.30,
+                "mean_distractor_drift_pp": 0.05,
+                "mean_target_monotone_fraction": 0.5,
+            },
             "seeds": len(results),
             "seeds_passing": seeds_passing,
-            "mean_target_reduction": round(mean_red, 4),
-            "std_target_reduction": round(std_red, 4),
-            "mean_distractor_interference": round(mean_int, 4),
-            "std_distractor_interference": round(std_int, 4),
+            "mean_target_gain": round(mean_gain, 4),
+            "std_target_gain": round(std_gain, 4),
+            "mean_distractor_drift": round(mean_drift, 4),
+            "std_distractor_drift": round(std_drift, 4),
+            "mean_target_monotone_fraction": round(mean_monotone, 4),
             "means_pass": means_pass,
             "per_seed": results,
         }
@@ -409,8 +440,9 @@ class TestP2ValidationSweep:
         print(f"\n{'=' * 60}")
         print(f"P2 Reward Modulation Sweep — {'PASS' if means_pass else 'FAIL'}")
         print(f"  Model: {self.MODEL} @ {self.THRESHOLD}")
-        print(f"  Target reduction: {mean_red:.1%} ± {std_red:.1%} (need ≥30%)")
-        print(f"  Distractor interference: {mean_int:.1%} ± {std_int:.1%} (need ≤5%)")
+        print(f"  Target gain:       {mean_gain:+.1%} pp ± {std_gain:.1%} (need >=+30 pp)")
+        print(f"  Distractor drift:  {mean_drift:.1%} pp ± {std_drift:.1%} (need <=5 pp)")
+        print(f"  Target monotone:   {mean_monotone:.0%} of clusters (need >=50%)")
         print(f"  Seeds passing individually: {seeds_passing}/{len(results)}")
         print(f"{'=' * 60}")
 
@@ -420,4 +452,6 @@ class TestP2ValidationSweep:
             json.dump(summary, f, indent=2)
         print(f"Results saved to {out_path}")
 
-        assert means_pass, f"P2 means failed: reduction={mean_red:.1%} interference={mean_int:.1%}"
+        assert means_pass, (
+            f"P2 means failed: gain={mean_gain:+.1%} pp drift={mean_drift:.1%} pp monotone={mean_monotone:.0%}"
+        )

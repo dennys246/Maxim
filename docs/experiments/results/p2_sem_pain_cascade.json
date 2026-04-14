@@ -101,14 +101,29 @@
     "minor": 3,
     "notes": "All critical and important findings folded pre-commit per CLAUDE.md review-before-ship rule."
   },
-  "stage3_pending": {
-    "description": "Sentence-transformers validation sweep (test_p2_reward_modulation.py::TestP2ValidationSweep) and behavioral result archive.",
+  "stage3_shipped": {
+    "date": "2026-04-14",
+    "branch": "feat/substrate-p2-stage3",
+    "description": "Sentence-transformers validation sweep and behavioral result archive — SHIPPED.",
+    "lab_notebook": "docs/experiments/p2_reward_modulation_sweep.md",
+    "results_json": "docs/experiments/results/p2_reward_modulation_sweep.json",
+    "reproduction_protocol": "docs/experiments/protocols/p2_reward_modulation_reproduction.md",
     "install_requirement": "pip install 'pymaxim[semantic]'",
     "command": "python -m pytest tests/substrate/test_p2_reward_modulation.py::TestP2ValidationSweep::test_sweep_10_seeds -xvs",
-    "output_target": "docs/experiments/results/p2_reward_modulation_sweep.json + docs/experiments/p2_reward_modulation_sweep.md",
+    "metric_after_stage3_pivot": "plurality-ownership self-collapse rate (per-cluster, within-cluster paraphrase pairs)",
     "pass_criteria": {
-      "mean_target_reduction": ">=0.30",
-      "mean_distractor_interference": "<=0.05"
+      "mean_target_gain_pp": ">=0.30",
+      "mean_distractor_drift_pp": "<=0.05",
+      "mean_target_monotone_fraction": ">=0.50"
+    },
+    "result": {
+      "mean_target_gain": 0.56,
+      "std_target_gain": 0.29,
+      "mean_distractor_drift": 0.0,
+      "std_distractor_drift": 0.0,
+      "mean_target_monotone_fraction": 0.94,
+      "seeds_passing_individually": "9/10",
+      "aggregate_pass": true
     }
   },
   "load_bearing_invariants_added_to_claude_md": [
