@@ -135,17 +135,44 @@ class NAc:
         return hashlib.sha256(str(sorted_items).encode()).hexdigest()[:8]
 
     def _context_similarity(self, ctx1: dict[str, Any], ctx2: dict[str, Any]) -> float:
-        """Calculate similarity between two contexts (0.0-1.0)."""
+        """How well does ctx1 appear inside ctx2? (0.0-1.0)
+
+        Directional: the denominator is ``len(ctx1)``, not the union of
+        keys. Semantics: "how much of the pending event's context is
+        matched by the outcome context (or: how much of a stored link's
+        event context is matched by the current query context)?"
+
+        This convention is load-bearing: every caller in this file
+        passes the pending-event / stored-link side as ``ctx1`` and the
+        outcome / current-query side as ``ctx2``. The outcome /
+        query side is allowed to carry EXTRA keys that ctx1 doesn't
+        have — those extras DO NOT dilute the similarity score. Keys
+        present in ctx1 but absent from ctx2 count as misses because
+        they're the things the event was conditioned on and the
+        outcome couldn't confirm.
+
+        Pre-Stage-2 this function used ``len(keys_union)`` as the
+        denominator, which meant any caller passing a richer context
+        on the outcome side (e.g., ``ToolPainBridge._on_embodiment_pain``
+        passing 7 cause-description keys) would dilute legitimate
+        2-key pending-event matches below the
+        ``context_similarity_threshold`` (0.5 default). This was a
+        silent learning failure: pending events never linked to
+        pain outcomes, causal-link buffers filled with unlinked
+        events, and nac.predict() returned None for actions that
+        had clearly produced pain in the past. The pre-merge review
+        round for Substrate P2 Stage 2 caught this.
+
+        Callers must pass arguments in (event_or_stored, outcome_or_query)
+        order. See ``_record_outcome_impl`` line ~322 and ``predict``
+        line ~581 for the canonical call sites.
+        """
         if not ctx1 or not ctx2:
             return 0.5  # Neutral if no context
 
-        keys = set(ctx1.keys()) | set(ctx2.keys())
-        if not keys:
-            return 1.0
-
         matches = 0.0
-        for key in keys:
-            v1 = ctx1.get(key)
+        for key in ctx1:
+            v1 = ctx1[key]
             v2 = ctx2.get(key)
             if v1 == v2:
                 matches += 1
@@ -154,7 +181,7 @@ class NAc:
                     if v1.lower() == v2.lower():
                         matches += 0.8
 
-        return matches / len(keys)
+        return matches / len(ctx1)
 
     # ─────────────────────────────────────────────────────────────────────────
     # COLD START PRIORS

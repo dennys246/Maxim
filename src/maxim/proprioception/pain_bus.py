@@ -1,18 +1,60 @@
-"""Backward-compatible PainBus — delegates to ReactionBus internally.
+"""PainBus — rich-context PainSignal delivery layered over ReactionBus.
 
-Phase 2a: PainBus wraps ReactionBus so existing code (PainDetector,
-pain bridges, sim orchestrator) keeps working without changes. New code
-should use ReactionBus directly. Phase 2b migrates remaining callers
-and deprecates this module.
+PainBus coexists with ReactionBus (the strict typed-surface layer).
+ReactionBus enforces the typed isolation rules documented in
+``reactions/types.py`` — its ``ReactionContext`` carries only
+TraceSnapshot bindings and scn/agent metadata. That's deliberate: it
+prevents cross-agent learning hints from leaking through the Reaction
+surface.
 
-The F0.R1 ``route_pain_percept`` function has been removed — pain
-injection now emits Reaction(kind="pain") directly without routing
-through Percept.metadata.
+Bio-pipeline-internal signals (embodiment failures, tool errors,
+sandbox violations) need to carry **cause-description metadata** —
+``source``, ``entity``, ``failure_mode``, ``sensor_readings`` —
+that feeds NAc causal learning. This metadata is not a learning hint
+in the isolation-rule sense; it's the description of *what happened*.
+``PainSignal.context`` (a free-form dict) is the carrier, and PainBus
+is the bus that delivers it without the round-trip loss the old
+Reaction-adapter path imposed.
+
+Delivery model:
+
+    body.py / sandbox.py / tool failure    →  PainBus.publish(signal)
+                                              ├→ direct PainSignal subscribers
+                                              │   (full signal.context)
+                                              └→ reaction_bus.publish(reaction)
+                                                  └→ ReactionBus subscribers
+                                                      (typed Reaction, lossy)
+
+Reactions published *directly* on ``self.reaction_bus`` (e.g., code
+that constructs its own Reaction) still reach PainBus subscribers via
+an internal bridge that falls back to the lossy
+``_reaction_to_pain_signal`` converter.
+
+Refractory filtering: PainBus applies a **per-(entity, failure_mode)
+refractory** on the PainSignal path (default 0.5s), finer-grained than
+ReactionBus's ``(kind, source)`` gate. This prevents two distinct
+embodiment failures (e.g., sword shattering + arm straining in the same
+tick) from collapsing into one dispatch because
+``pain_signal_to_reaction`` assigns them the same synthetic source
+string. The converted Reaction is ALSO delivered to ``reaction_bus``
+which applies its own gate for typed subscribers — the two gates serve
+different audiences and are allowed to disagree.
+
+Pre-Stage-2 this module used a ``contextvars.ContextVar`` signal-stash
+to smuggle the full signal into a nested reaction_bus subscriber. That
+pattern had two hazards: (a) re-entrancy when a subscriber triggered
+another publish, silently falling back to the lossy path on the outer
+dispatch, and (b) invisible coupling with ``@resilient`` retry and
+async contexts. The current design calls direct subscribers from
+``PainBus.publish`` itself, gated by PainBus's own refractory state.
+No ContextVar, no nested subscriber, no re-entrancy hazard.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.proprioception.pain import PainSignal, PainType
@@ -37,39 +79,146 @@ def _sim_log_reaction(reaction: "Reaction") -> None:
 
 
 class PainBus:
-    """Backward-compatible wrapper around ReactionBus.
+    """PainSignal-carrying bus with rich-context delivery.
 
-    Accepts PainSignal on publish (auto-converts to Reaction), dispatches
-    PainSignal to legacy subscribers (auto-converts back from Reaction).
-    New callers should use ``self.reaction_bus`` directly.
+    Subscribers registered via :meth:`subscribe` receive ``PainSignal``
+    with the full publisher-supplied ``context`` dict. Refractory is
+    keyed on ``(entity, failure_mode)`` so distinct failures do not
+    shadow each other during rapid cascades.
+
+    ``self.reaction_bus`` is exposed for code that wants typed
+    ``Reaction`` semantics directly; publishes on that bus still reach
+    PainSignal subscribers, but only through the lossy
+    ``_reaction_to_pain_signal`` fallback.
     """
 
-    def __init__(self, history_size: int = 200) -> None:
+    #: Default refractory window (seconds) for PainSignal dispatch to
+    #: direct subscribers, keyed on ``(entity, failure_mode)``.
+    DEFAULT_PAIN_REFRACTORY_S: float = 0.5
+
+    def __init__(
+        self,
+        history_size: int = 200,
+        pain_refractory_s: float | None = None,
+    ) -> None:
         self.reaction_bus = ReactionBus(
             history_size=history_size,
             refractory_overrides={"pain": 0.5},
         )
-        # Wire sim_logger so the simulation display shows reaction events.
-        # Replaces the sim_pain() call lost when route_pain_percept was
-        # deleted in Phase 2a.
+        self._pain_signal_subs: list[Callable[[PainSignal], None]] = []
+        self._pain_refractory_s = pain_refractory_s if pain_refractory_s is not None else self.DEFAULT_PAIN_REFRACTORY_S
+        # Per-(entity, failure_mode) last-fired timestamp (monotonic).
+        self._last_pain_fired: dict[tuple[str, str], float] = {}
+        self._lock = threading.Lock()
+        # sim_logger fires for every Reaction regardless of origin.
         self.reaction_bus.subscribe_all(_sim_log_reaction)
+        # Bridge: Reactions published directly on reaction_bus (e.g.,
+        # sandbox) ALSO reach our direct subscribers via the lossy
+        # reconstruction path. Publishes that go through PainBus.publish
+        # short-circuit this by setting ``_suppress_bridge`` for the
+        # duration of the nested reaction_bus.publish call.
+        self._suppress_bridge = False
+        self.reaction_bus.subscribe("pain", self._bridge_reaction_to_pain_subs)
 
     def subscribe(self, callback: Callable[[PainSignal], None]) -> None:
-        def _adapter(reaction: "Reaction") -> None:
-            callback(_reaction_to_pain_signal(reaction))
+        """Register a direct PainSignal subscriber.
 
-        _adapter._original = callback  # type: ignore[attr-defined]
-        self.reaction_bus.subscribe("pain", _adapter)
+        Callbacks are stored on ``self._pain_signal_subs`` and invoked
+        either from :meth:`publish` (rich-context path) or from the
+        internal :meth:`_bridge_reaction_to_pain_subs` (lossy fallback
+        for Reactions published directly on ``reaction_bus``).
+        """
+        with self._lock:
+            self._pain_signal_subs.append(callback)
 
     def unsubscribe(self, callback: Callable[[PainSignal], None]) -> None:
-        pass  # Not critical for Phase 2a; callers rarely unsubscribe
+        with self._lock:
+            try:
+                self._pain_signal_subs.remove(callback)
+            except ValueError:
+                pass
 
     def publish(self, signal: PainSignal) -> None:
-        reaction = pain_signal_to_reaction(signal)
-        self.reaction_bus.publish(reaction)
+        """Publish a PainSignal with full context.
+
+        Applies PainBus's own ``(entity, failure_mode)`` refractory gate
+        on the PainSignal path, then dispatches to direct subscribers
+        with the full ``signal.context``, then forwards the converted
+        Reaction to ``reaction_bus`` for typed subscribers (with
+        ``_suppress_bridge`` set so the bridge doesn't re-fire direct
+        subscribers for this signal).
+        """
+        ctx = signal.context or {}
+        entity = ctx.get("entity") or ctx.get("entity_path") or "unknown"
+        failure = ctx.get("failure_mode") or signal.pain_type.name
+        key = (str(entity), str(failure))
+        now = time.monotonic()
+
+        with self._lock:
+            last = self._last_pain_fired.get(key, 0.0)
+            if now - last < self._pain_refractory_s:
+                # Refractory — drop silently for direct subscribers.
+                # The Reaction ALSO gets dropped by reaction_bus's own
+                # (kind, source) gate, which is coarser but aligned.
+                return
+            self._last_pain_fired[key] = now
+            subs = list(self._pain_signal_subs)
+
+        # Dispatch to direct subscribers with full context.
+        for cb in subs:
+            try:
+                cb(signal)
+            except Exception as e:
+                logger.warning(
+                    "PainBus subscriber error (%s): %s",
+                    getattr(cb, "__name__", repr(cb)),
+                    e,
+                )
+
+        # Forward to reaction_bus for typed subscribers. Suppress the
+        # internal bridge during this call so direct subscribers are
+        # not re-fired with a lossy reconstruction.
+        self._suppress_bridge = True
+        try:
+            reaction = pain_signal_to_reaction(signal)
+            self.reaction_bus.publish(reaction)
+        finally:
+            self._suppress_bridge = False
+
+    def _bridge_reaction_to_pain_subs(self, reaction: "Reaction") -> None:
+        """Deliver reaction_bus-origin pain Reactions to direct subscribers.
+
+        Runs as a ``reaction_bus.subscribe("pain", ...)`` callback. When
+        :meth:`publish` forwards a reaction to ``reaction_bus`` it sets
+        ``_suppress_bridge`` so this handler no-ops and direct subscribers
+        are not dispatched twice. For reactions that arrive on
+        ``reaction_bus`` from outside PainBus (e.g., sandbox publishing
+        a Reaction directly), the bridge reconstructs a lossy PainSignal
+        via ``_reaction_to_pain_signal`` and fans it out to direct
+        subscribers.
+        """
+        if self._suppress_bridge:
+            return
+        signal = _reaction_to_pain_signal(reaction)
+        with self._lock:
+            subs = list(self._pain_signal_subs)
+        for cb in subs:
+            try:
+                cb(signal)
+            except Exception as e:
+                logger.warning(
+                    "PainBus subscriber error (%s): %s",
+                    getattr(cb, "__name__", repr(cb)),
+                    e,
+                )
 
     @property
     def recent(self) -> list[PainSignal]:
+        # Lossy reconstruction from reaction_bus history. No current
+        # callers in-tree — kept for API compatibility.
+        # TODO: back this with a dedicated PainSignal ring once callers
+        # materialize. Until then, direct subscribers see rich context
+        # while `.recent` sees the lossy view.
         return [_reaction_to_pain_signal(r) for r in self.reaction_bus.history("pain")]
 
     def recent_by_type(self, pain_type: PainType) -> list[PainSignal]:
@@ -77,9 +226,15 @@ class PainBus:
 
     def get_stats(self) -> dict[str, int]:
         stats = self.reaction_bus.get_stats()
+        # ReactionBus's subscriber_count does NOT know about our direct
+        # PainSignal subscriber list. Sum them explicitly so doctor /
+        # telemetry see the full count.
+        with self._lock:
+            direct_count = len(self._pain_signal_subs)
         return {
             "total_published": stats["total_published"],
-            "subscriber_count": stats["subscriber_count"],
+            "subscriber_count": stats["subscriber_count"] + direct_count,
+            "direct_pain_subscribers": direct_count,
             "history_size": stats["history_size"],
         }
 
@@ -172,14 +327,41 @@ def create_pain_nac_subscriber(
     nac: Any,
     intensity_threshold: float = 0.3,
 ) -> Callable[[PainSignal], None]:
-    """Create a PainBus subscriber that records pain as causal observations in NAc.
+    """Create a PainBus subscriber that attributes pain to recent actions.
 
-    When pain fires, NAc learns "action/entity → pain" so the agent can
-    predict and avoid painful situations in the future.
+    Pre-Stage-2 this function recorded tautological ``pain → pain``
+    causal links via ``nac.observe``, which could never satisfy a
+    ``nac.predict("action", ...)`` query. The rewrite calls
+    ``nac.record_outcome_full`` with NO ``attributed_event_id`` and
+    NO ``attributed_event_signature`` so NAc walks its
+    ``_pending_events`` buffer within the temporal window and links
+    the pain outcome to any pending action event whose context is
+    similar enough to the pain context (per
+    ``NACConfig.context_similarity_threshold``). For the link to
+    form, the agent must have called
+    ``nac.record_event("action", signature, context={"source":...,
+    "entity":...})`` before taking the action that caused the pain.
+    This is the full Percept→Reaction→Learning loop.
+
+    Context handling: the subscriber passes the **full**
+    ``signal.context`` dict through to ``record_outcome_full``.
+    ``NAc._context_similarity`` is directional — ``len(event_context)``
+    is the denominator, so extra cause-description keys on the outcome
+    side do NOT dilute the match. This lets the outcome side carry rich
+    metadata (``source``, ``entity``, ``failure_mode``, ``composes``,
+    ``sensor_readings``, ...) without hurting attribution. A pre-
+    Stage-2 Substrate P2 draft tried a "slim attribution context"
+    workaround here — do not re-introduce it; the root-cause fix lives
+    in ``NAc._context_similarity`` and any subscriber-side shim re-
+    creates the inconsistency with ``ToolPainBridge._on_embodiment_pain``
+    (which passes a 7-key dict on the same bus).
+
+    Exceptions are logged (not silently swallowed) so a broken wiring
+    surfaces in the log rather than silently degrading learning.
 
     Args:
-        nac: NAc instance for causal learning.
-        intensity_threshold: Minimum pain intensity to trigger observation.
+        nac: NAc instance.
+        intensity_threshold: Minimum intensity to trigger learning.
     """
     from maxim.decisions.causal_link import Valence
 
@@ -187,18 +369,20 @@ def create_pain_nac_subscriber(
         if signal.intensity < intensity_threshold:
             return
 
-        entity = signal.context.get("entity_path", "unknown")
+        context = dict(signal.context or {})
+        source = context.get("source", "unknown")
+        entity = context.get("entity") or context.get("entity_path") or "unknown"
+        failure = context.get("failure_mode") or signal.pain_type.name
+        outcome_signature = f"pain:{source}:{entity}:{failure}"
+
         try:
-            nac.observe(
-                event_type="pain",
-                event_signature=f"pain:{signal.pain_type.name}:{entity}",
+            nac.record_outcome_full(
                 outcome_type="pain",
-                outcome_signature=f"intensity:{signal.intensity:.2f}",
+                outcome_signature=outcome_signature,
                 outcome_valence=Valence.NEGATIVE,
-                delta_seconds=0.0,
-                context=signal.context,
+                context=context,
             )
         except Exception:
-            pass  # Don't let NAc errors disrupt pain processing
+            logger.exception("pain→NAc outcome recording failed")
 
     return _on_pain
