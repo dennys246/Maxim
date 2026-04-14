@@ -208,6 +208,34 @@ def _retry_loop(
         "peer-auth": lambda: check_peer_auth(peer_url, peer_key) if peer_url else None,
     }
 
+    # Plan 4 Stage C1: mesh node retry IDs are dynamic (``mesh_node_<name>``).
+    # Register one re-probe callable per node that re-reads mesh.yml at
+    # retry time so manual config edits between retries pick up without
+    # re-running `maxim doctor` from scratch.
+    def _make_mesh_node_reprobe(node_name: str):
+        def _reprobe():
+            from maxim.doctor.checks import _probe_mesh_node_to_check
+            from maxim.peer.mesh_config import read_or_synthesize_mesh_config
+
+            try:
+                mesh = read_or_synthesize_mesh_config()
+            except Exception:
+                return None
+            if mesh is None:
+                return None
+            node = mesh.get_node(node_name)
+            if node is None:
+                return None
+            return _probe_mesh_node_to_check(node, mesh.cluster_key)
+
+        return _reprobe
+
+    for _, results in sections:
+        for r in results:
+            if r.retry_id and r.retry_id.startswith("mesh_node_"):
+                node_name = r.retry_id[len("mesh_node_") :]
+                retryable_fns[r.retry_id] = _make_mesh_node_reprobe(node_name)
+
     # Collect failing checks that have retry_id, in section order
     retryable_results: list[tuple[str, CheckResult]] = []
     for _, results in sections:

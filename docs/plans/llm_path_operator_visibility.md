@@ -136,15 +136,30 @@ traffic.
 **Report:** [../experiments/results/llm_path_stress_plan4_20260414.md](../experiments/results/llm_path_stress_plan4_20260414.md)
 **Rerun runbook:** [../experiments/protocols/bench_recovery_time_rerun.md](../experiments/protocols/bench_recovery_time_rerun.md)
 
-### Stage C — mesh.yml + admin API + per-agent rate limiting (DEFERRED to future sessions)
+### Stage C — mesh.yml + admin API + per-agent rate limiting (C1 ✅ SHIPPED, C2/C3 DEFERRED)
 
-This is the original Plan 4 scope (R3.0 + R3.5-lite + R3.6-lite, ~650
-LOC). Deferred to dedicated multi-session work because it requires:
+**Stage C1 — mesh.yml + CLI verb foundations — ✅ SHIPPED 2026-04-14** (branch `feat/plan4-c1-mesh-yml`). Delivered as a read-only-verbs slice of the original Stage C after pre-merge review folded drain state + `drain:` schema field to C2:
 
-- ~250 LOC for `mesh.yml` config + schema validation + 11 new CLI verbs
-- ~100 LOC for `install` + VRAM precheck
+- `src/maxim/peer/mesh_config.py` — schema parser + line-numbered validation + fallback from `peer.yml` + `classify_probe_outcome()` shared classifier (single source of truth for probe outcome → (status, message, fix) mapping across mesh_cli and doctor)
+- `src/maxim/peer/mesh_cli.py` — new verbs `maxim peer list-nodes [--json]` and `maxim peer --node <name> {status|health}`; probes via `_MaximPeerBackend.for_url(...).health_check()` — the canonical Plan 3 R2.6 entry point
+- `src/maxim/doctor/checks.py::check_mesh_nodes` — per-node `CheckResult` routed through the shared classifier; returns `[]` (not a sentinel) when no mesh.yml is configured
+- `src/maxim/doctor/cli.py` — dynamic `mesh_node_<name>` retry-id registration in the retry loop; re-probes re-read `mesh.yml` each iteration
+- 53 new unit tests (31 schema + 14 CLI + 8 doctor), all offline with fresh-per-test fake backend classes (no shared class-level mutable state)
+
+**Parser hardening:** rejects tabs, bare `- ` entries, duplicate node names, inline `# comments` inside values, and unknown top-level keys — all with line-numbered errors. Pre-merge review caught four silent-mis-parse cases that the initial implementation tolerated.
+
+Live smoke (RTX 5080 leader via Cloudflare tunnel) validated list-nodes, `--json`, `--node health`, and unknown-node rejection at 292-380ms stage-2 latency.
+
+**Zero behavior change for existing users:** when `mesh.yml` is absent, `read_or_synthesize_mesh_config()` builds a one-node mesh from `peer.yml`. The new verbs Just Work on existing peer installs.
+
+**Deferred to C2 as a block** (pre-merge review cross-confirmed finding): drain/resume verbs, `mesh.yml::drain` schema field, runtime drain state file. The original C1 design had a two-layer config-vs-runtime drain with no reconciliation contract, no role-detection timing story for the `MAXIM_ROLE` env var, a read/write race, and no orphan validation. Four findings collapse into one deferral until C2 does a proper drain design pass.
+
+**C2/C3 — DEFERRED to future sessions.** The original Plan 4 scope (R3.0 + R3.5-lite + R3.6-lite, ~650 LOC). Remaining work split:
+
+- ~250 LOC for `mesh.yml` config + schema validation + 3 new CLI verbs (**shipped in C1**: `list-nodes`, `--node {status|health}`)
+- ~150 LOC for `install` + VRAM precheck + drain design (**C2**: `--node drain|resume`, `mesh.yml::drain` field with reconciliation contract, `--node install`, `--node refresh`, `add-node`, `remove-node`)
 - ~300 LOC for admin API + per-agent rate limiting + ring buffer +
-  cluster key rotation
+  cluster key rotation (**C3**: `/v1/mesh/*` endpoints, per-agent rate limiting, request-trace ring buffer, cluster key rotation)
 - 6 new doc files (mesh_operations.md, mesh_debug.md, CLAUDE.md updates,
   architecture updates)
 - 2-node integration test fixture + a hard-testing manual smoke
