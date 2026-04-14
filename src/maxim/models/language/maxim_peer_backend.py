@@ -193,6 +193,19 @@ class _MaximPeerBackend:
                 fix_hint="Process shutdown requested before peer call",
             )
 
+        # Plan 3.5 R4: cooperative cancellation checkpoint. If the
+        # agent-level timeout in LLMWorker has fired while we were
+        # waiting to execute, raise BackendDown immediately so the
+        # router unwinds _inference_lock cleanly without queuing
+        # another HTTP call.
+        from maxim.agents.cancellation import is_cancelled
+
+        if is_cancelled():
+            raise BackendDown(
+                self._provider_key,
+                fix_hint="Request cancelled by caller before peer call",
+            )
+
         # Ensure the endpoint is registered with utils/http. Lazy so a
         # backend that is created but never called doesn't touch the
         # registry (keeps startup cheap).
@@ -740,6 +753,18 @@ class _MaximPeerBackend:
                         raise BackendDown(
                             self._provider_key,
                             fix_hint="Process shutdown requested during stream",
+                        )
+                    # Plan 3.5 R4: cooperative cancellation checkpoint
+                    # between SSE chunks. The agent-level timeout in
+                    # LLMWorker may have fired while we were generating;
+                    # unwind now rather than accumulating more partial
+                    # output that will be discarded.
+                    from maxim.agents.cancellation import is_cancelled
+
+                    if is_cancelled():
+                        raise BackendDown(
+                            self._provider_key,
+                            fix_hint="Request cancelled by caller during stream",
                         )
         except HTTPAuthError as e:
             self._log_failure("auth_rejected", e, context, start)

@@ -179,11 +179,94 @@ def test_inference_lock_released_after_timeout(blocking_backend):
         worker.stop()
 
 
-# Additional regression guards (second-call-not-blocked, provider-state-clean)
-# will be added in R4 alongside the cancellation wiring. They require the
-# fix to exist before their assertions can be made tight enough — the
-# pre-fix code path can accidentally satisfy loose assertions, leading to
-# false-positive passes that mask the bug.
+# ─────────────────────────────────────────────────────────────────────────────
+# Plan 3.5 R4 — end-to-end cancellation propagation
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def stuck_backend():
+    """Backend mock that can ONLY be unblocked via the cancellation event,
+    not via an external release signal. Exposes the worst case: an
+    orphan thread that has no other exit path.
+    """
+    call_started = threading.Event()
+
+    def fake_invoke_backend(**kwargs):
+        call_started.set()
+        from maxim.agents.cancellation import is_cancelled
+        from maxim.models.language.types import BackendDown
+
+        deadline = time.monotonic() + 10.0  # safety cap
+        while time.monotonic() < deadline:
+            if is_cancelled():
+                raise BackendDown("fake-peer", fix_hint="cancelled by test")
+            time.sleep(0.01)
+        raise TimeoutError("stuck_backend hit 10s safety cap — cancellation never fired")
+
+    return call_started, fake_invoke_backend
+
+
+def test_cancellation_propagates_to_stuck_backend_under_500ms(stuck_backend):
+    """**The R4 end-to-end proof.** With cancellation wiring in place,
+    a stuck backend must observe the cancel event and unwind
+    ``_inference_lock`` within ~500ms of the agent-level timeout firing.
+    """
+    started, fake = stuck_backend
+    router = _make_router()
+    worker = _make_worker(router, timeout_s=1.0)
+
+    try:
+        with patch.object(router, "_invoke_backend", side_effect=fake):
+            t0 = time.monotonic()
+            result = worker._call_llm_with_timeout(prompt="test", temperature=0.0, max_tokens=10)
+            total_elapsed = time.monotonic() - t0
+            assert result.get("_timeout") is True
+            # Lock should release within 500ms of the timeout
+            deadline = time.monotonic() + 0.5
+            while time.monotonic() < deadline:
+                if not router._inference_lock.locked():
+                    break
+                time.sleep(0.01)
+            assert not router._inference_lock.locked(), (
+                "Orphan did not observe cancellation Event within 500ms — "
+                "check contextvars.copy_context().run wrapping in _call_llm_with_timeout"
+            )
+            assert total_elapsed < 3.0, (
+                f"Total elapsed {total_elapsed:.2f}s — orphan was not cancelled (10s safety cap hit?)"
+            )
+    finally:
+        worker.stop()
+
+
+def test_second_call_not_blocked_by_cancelled_orphan(stuck_backend):
+    """**Regression guard for the stacked-60s-timeout cascade from trace2.**
+
+    After the first call's cancellation, the second call must acquire
+    ``_inference_lock`` without waiting for the orphan's 10s safety cap.
+    It may hit its own 1s timeout, but must NOT stack behind the first.
+    """
+    started, fake = stuck_backend
+    router = _make_router()
+    worker = _make_worker(router, timeout_s=1.0)
+
+    try:
+        with patch.object(router, "_invoke_backend", side_effect=fake):
+            r1 = worker._call_llm_with_timeout(prompt="first", temperature=0.0, max_tokens=10)
+            assert r1.get("_timeout") is True
+
+            # Give the orphan a moment to observe cancellation and unwind
+            time.sleep(0.2)
+            assert not router._inference_lock.locked()
+
+            # Second call should complete within ~1.5s (its own 1s timeout + overhead)
+            t1 = time.monotonic()
+            r2 = worker._call_llm_with_timeout(prompt="second", temperature=0.0, max_tokens=10)
+            second_elapsed = time.monotonic() - t1
+            assert second_elapsed < 2.0, f"second call took {second_elapsed:.2f}s — blocked behind orphan"
+            assert r2.get("_timeout") is True
+    finally:
+        worker.stop()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

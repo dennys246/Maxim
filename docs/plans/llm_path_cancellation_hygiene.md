@@ -84,11 +84,13 @@ This test lives in `tests/unit/test_llm_worker_cancellation.py`. Must be skipped
 - Update [loop_controller.py:160](../../src/maxim/runtime/loop_controller.py#L160) and [agent_loop.py:1307](../../src/maxim/runtime/agent_loop.py#L1307) fallback defaults to read the same env var.
 - Document the new "HTTP layer fires first" contract in `docs/architecture/llm_routing.md`.
 
-### R3 — Guaranteed lock release
+### R3 — Guaranteed lock release (audit complete, no-op)
 
-- Audit [router.py](../../src/maxim/models/language/router.py) `_complete_text_locked`, `_try_provider`, and any other method that acquires `_inference_lock`. Every acquisition must be in a `try/finally` that releases on any exception.
-- Add a defensive `assert not self._inference_lock.locked()` at the end of the LLMWorker submission path (the repro test's main assertion).
-- No new threading primitives — just ensure exception paths don't skip the release.
+**Finding:** `_inference_lock` has exactly ONE acquisition site in the codebase ([router.py:746](../../src/maxim/models/language/router.py#L746)), and it uses a `with` context manager. Python's `with` statement guarantees release on any exception or normal return — there is no missing `try/finally` to add. The bug is NOT "exception path skips release"; the bug is that the orphan thread is still executing INSIDE the `with` block because the backend call hasn't returned yet.
+
+**Implication:** R4 is the real fix. The orphan thread must raise an exception from a checkpoint check inside the backend call, unwinding the `with` block and triggering normal lock release.
+
+No code changes in R3. This section exists to document the audit result so future reviewers don't re-audit the same path looking for a missing `try/finally` that isn't there.
 
 ### R4 — Provider state hygiene on cancellation (ContextVar + Event hybrid)
 

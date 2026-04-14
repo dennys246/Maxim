@@ -425,9 +425,26 @@ class LLMWorker:
     ) -> dict[str, Any] | None:
         """Call LLM with timeout to allow graceful shutdown.
 
+        Plan 3.5 R4: wires a cooperative cancellation Event into the
+        submitted work via ``contextvars.copy_context().run``. When the
+        agent-level timeout fires (or ``_stop_event`` is set), we call
+        ``cancel_event.set()`` so the orphan thread's next checkpoint
+        check sees it and raises ``BackendDown``, unwinding the
+        ``router._inference_lock`` context manager cleanly. Without this,
+        ``future.cancel()`` only sets a flag and the orphan keeps the
+        lock held until the underlying HTTP call naturally errors —
+        which was the 125s stacked-timeout cascade exposed by trace2.
+
         Returns:
             LLM response dict or None if timeout/error/shutdown.
         """
+        import contextvars
+
+        from maxim.agents.cancellation import (
+            reset_cancel_event,
+            set_cancel_event,
+        )
+
         if self._stop_event.is_set():
             return None
 
@@ -435,8 +452,22 @@ class LLMWorker:
         if executor is None:
             return None
 
+        # Plan 3.5 R4: bind a cancellation Event in the current context
+        # BEFORE capturing the context for the worker thread. The Event
+        # is shared by reference — mutations in this thread are visible
+        # in the worker thread on its next checkpoint check.
+        cancel_event = threading.Event()
+        cancel_token = set_cancel_event(cancel_event)
         try:
+            # copy_context() snapshots the current context (including the
+            # cancellation binding we just set). ctx.run(worker_fn, *args)
+            # executes worker_fn inside that captured context in the
+            # worker thread. Without this wrapper, ContextVars don't
+            # propagate across ThreadPoolExecutor boundaries — see the
+            # regression test in tests/unit/test_cancellation.py.
+            ctx = contextvars.copy_context()
             future = executor.submit(
+                ctx.run,
                 self._llm.generate_json,
                 prompt,
                 temperature,
@@ -453,6 +484,8 @@ class LLMWorker:
             poll_interval = 0.5
             while timeout_remaining > 0:
                 if self._stop_event.is_set():
+                    # Signal the orphan to unwind, then drop the future.
+                    cancel_event.set()
                     future.cancel()
                     return None
                 try:
@@ -463,10 +496,16 @@ class LLMWorker:
                     continue
             # Final timeout exceeded
             logger.warning("LLM call timed out after %.1fs", self._llm_timeout)
+            # Plan 3.5 R4: set the cancellation Event BEFORE future.cancel().
+            # The orphan thread's next checkpoint check (inside the backend)
+            # will see is_cancelled() → True and raise BackendDown, which
+            # unwinds router._inference_lock cleanly via the with-block.
+            cancel_event.set()
             future.cancel()
-            # Replace the executor so the orphaned thread doesn't block
-            # future LLM calls (max_workers=1 means next submit() queues
-            # behind the still-running orphan, causing cascading timeouts).
+            # Replace the executor so if the orphaned thread is wedged
+            # before it reaches a checkpoint, future LLM calls still
+            # get a fresh worker thread. The cancellation Event is the
+            # primary unwind mechanism; this is belt-and-suspenders.
             try:
                 old_executor = self._llm_executor
                 self._llm_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="LLMCall")
@@ -480,6 +519,10 @@ class LLMWorker:
         except Exception as e:
             logger.error("LLM call failed: %s", e)
             return None
+        finally:
+            # Always restore the prior cancellation binding to avoid
+            # leaking this request's Event into any later context.
+            reset_cancel_event(cancel_token)
 
     def _record_usage(
         self,

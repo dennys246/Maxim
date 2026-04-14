@@ -518,7 +518,29 @@ class LLMRouter:
         if model:
             self._last_used_model = model
 
+    def _is_cancelled(self) -> bool:
+        """Plan 3.5 R4: check if the current request has been cancelled
+        by ``LLMWorker._call_llm_with_timeout``'s agent-level timeout.
+
+        When True, all ``_note_provider_*`` and ``_set_*_backoff`` helpers
+        become no-ops so the cancelled request's orphan-thread unwind does
+        NOT pollute ``_provider_states`` with phantom failures. Without
+        this guard, a cancelled call whose orphan eventually raises
+        ``BackendDown(fix_hint="cancelled")`` would bump
+        ``consecutive_errors`` and set ``backoff_until``, silencing the
+        provider for the next real request — which is exactly the
+        "No eligible LLM providers" cascade observed in trace2.
+
+        Lazy-imports to avoid a circular dependency with
+        ``agents.cancellation``.
+        """
+        from maxim.agents.cancellation import is_cancelled
+
+        return is_cancelled()
+
     def _note_provider_failure(self, provider_key: str, error: str) -> None:
+        if self._is_cancelled():
+            return
         state = self._provider_states.get(provider_key)
         if state is None:
             return
@@ -540,6 +562,8 @@ class LLMRouter:
         sane range) when it is set; otherwise falls back to the exponential
         cooldown applied by :meth:`_note_provider_failure`.
         """
+        if self._is_cancelled():
+            return
         state = self._provider_states.get(provider_key)
         if state is None:
             return
@@ -554,6 +578,8 @@ class LLMRouter:
     def _set_long_backoff(self, provider_key: str, seconds: float) -> None:
         """Hard-set a long cooldown for hints that don't self-heal
         (auth rejection, model missing). Bypasses the exponential ramp."""
+        if self._is_cancelled():
+            return
         state = self._provider_states.get(provider_key)
         if state is None:
             return
@@ -578,6 +604,8 @@ class LLMRouter:
     def _set_short_backoff(self, provider_key: str, seconds: float) -> None:
         """Short cooldown matching the probe-cache TTL for
         :data:`INFERENCE_BROKEN_BACKOFF_S`."""
+        if self._is_cancelled():
+            return
         state = self._provider_states.get(provider_key)
         if state is None:
             return
