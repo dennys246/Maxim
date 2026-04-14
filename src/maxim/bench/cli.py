@@ -46,6 +46,15 @@ def _result_to_jsonl(result: BenchResult) -> list[dict]:
     Emits one ``peer_backend_call``/``peer_backend_failed`` event per
     attempt (matching production shape so existing ``jq`` queries work)
     plus one aggregate ``benchmark`` summary event at the end.
+
+    **Wire-compat invariant** (Plan 4 B pre-merge review finding #2):
+    every field that ``_MaximPeerBackend._log_success`` /
+    ``_log_failure`` emit must appear here with the same name and type
+    so existing ``jq 'select(.e=="peer_backend_call") | .provider'``
+    queries work unchanged on bench traces. The bench-specific tag
+    lives in a ``bench`` field; the ``submit_ts`` / ``complete_ts``
+    fields are bench-only timing and do not collide with any
+    production field.
     """
     events: list[dict] = []
     for attempt in result.attempts:
@@ -54,14 +63,20 @@ def _result_to_jsonl(result: BenchResult) -> list[dict]:
                 {
                     "e": "peer_backend_call",
                     "bench": "recovery_time",
+                    # Production shape (from _MaximPeerBackend._log_success)
+                    "provider": attempt.provider,
+                    "model": attempt.model,
+                    "status": 200,
+                    "latency_ms": attempt.latency_ms,
+                    "input_tokens": attempt.input_tokens,
+                    "output_tokens": attempt.output_tokens,
                     "request_id": attempt.request_id,
                     "agent_id": "bench_recovery_time",
                     "session_id": "bench_recovery_time",
                     "lane": "large",
+                    # Bench-specific timing (not in production)
                     "submit_ts": attempt.submit_ts,
                     "complete_ts": attempt.complete_ts,
-                    "latency_ms": attempt.latency_ms,
-                    "status": 200,
                 }
             )
         else:
@@ -69,15 +84,20 @@ def _result_to_jsonl(result: BenchResult) -> list[dict]:
                 {
                     "e": "peer_backend_failed",
                     "bench": "recovery_time",
+                    # Production shape (from _MaximPeerBackend._log_failure)
+                    "provider": attempt.provider,
+                    "error": attempt.error,
+                    "outcome": attempt.outcome,
+                    "status": attempt.http_status,
+                    "fix_hint": attempt.fix_hint,
+                    "latency_ms": attempt.latency_ms,
                     "request_id": attempt.request_id,
                     "agent_id": "bench_recovery_time",
                     "session_id": "bench_recovery_time",
                     "lane": "large",
+                    # Bench-specific timing (not in production)
                     "submit_ts": attempt.submit_ts,
                     "complete_ts": attempt.complete_ts,
-                    "latency_ms": attempt.latency_ms,
-                    "outcome": attempt.outcome,
-                    "error": attempt.error_message,
                 }
             )
     events.append(

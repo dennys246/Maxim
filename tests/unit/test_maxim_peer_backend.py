@@ -577,13 +577,13 @@ class TestRequestContext:
         assert ctx.agent_id == "from-explicit-dict"
         assert ctx.request_id == "r-explicit"
 
-    def test_accepts_request_context_capability_flag_is_declared(self):
+    def test_supports_request_context_capability_flag_is_declared(self):
         """The router uses this flag to decide whether to forward the
         kwarg. Cloud backends omit it to avoid 'unexpected keyword
         argument' crashes. Regression guard: removing the flag would
         silently drop agent_id from peer_backend_call logs again."""
         backend = _make_backend()
-        assert getattr(backend, "accepts_request_context", False) is True
+        assert getattr(backend, "supports_request_context", False) is True
 
 
 # ─── Parse helpers ─────────────────────────────────────────────────────

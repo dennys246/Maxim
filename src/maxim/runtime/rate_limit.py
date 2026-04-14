@@ -1,7 +1,7 @@
 """KeyedRateLimiter — per-key rate limiting, burst detection, and escalating gating.
 
 Cherry-picked from ``src/maxim/mesh/admission.py`` during R0 of the LLM path
-refinement (see ``docs/plans/llm_path_foundation.md``). The mesh admission
+refinement (see ``docs/plans/archive/llm_path_foundation.md``). The mesh admission
 control module was otherwise dead code (zero production imports), but this
 logic is solid and will serve Plan 4's admin API rate limiting plus the
 per-agent rate limiter.

@@ -752,9 +752,9 @@ Each of these has a deferred plan documenting when to revive it.
 ## Related docs
 
 - **Plans:** [llm_path_refinement.md](../plans/llm_path_refinement.md) — meta-plan
-- **Sub-plans:** [llm_path_foundation.md](../plans/archive/llm_path_foundation.md), [llm_path_typed_errors.md](../plans/archive/llm_path_typed_errors.md), [llm_path_fast_failover.md](../plans/archive/llm_path_fast_failover.md), [llm_path_operator_visibility.md](../plans/llm_path_operator_visibility.md)
-- **Deferred plans:** [../plans/deferred/llm_path_multi_peer_dispatch.md](../plans/deferred/llm_path_multi_peer_dispatch.md), [../plans/deferred/llm_path_async_router.md](../plans/deferred/llm_path_async_router.md), [../plans/deferred/llm_path_fair_scheduling.md](../plans/deferred/llm_path_fair_scheduling.md)
-- **Operator runbook** (created by Plan 4): [mesh_operations.md](mesh_operations.md)
+- **Sub-plans:** [llm_path_foundation.md](../plans/archive/llm_path_foundation.md) (Plan 1 ✅), [llm_path_typed_errors.md](../plans/archive/llm_path_typed_errors.md) (Plan 2 ✅), [llm_path_fast_failover.md](../plans/archive/llm_path_fast_failover.md) (Plan 3 ✅), [llm_path_cancellation_hygiene.md](../plans/archive/llm_path_cancellation_hygiene.md) (Plan 3.5 ✅), [llm_path_peer_failover.md](../plans/llm_path_peer_failover.md) (Plan 3.6 — R5 ✅ shipped, R1–R4 draft), [llm_path_operator_visibility.md](../plans/llm_path_operator_visibility.md) (Plan 4 — Stage A+B ✅ shipped, Stage C deferred)
+- **Deferred plans:** [../plans/deferred/llm_path_multi_peer_dispatch.md](../plans/deferred/llm_path_multi_peer_dispatch.md), [../plans/deferred/llm_path_async_router.md](../plans/deferred/llm_path_async_router.md), [../plans/deferred/llm_path_fair_scheduling.md](../plans/deferred/llm_path_fair_scheduling.md), [../plans/deferred/llm_mesh_capability_aware.md](../plans/deferred/llm_mesh_capability_aware.md)
+- **Operator runbook** — deferred to Plan 4 Stage C (`mesh_operations.md` does not exist yet; will be created when `mesh.yml` + admin API ship)
 - **Troubleshooting:** [../troubleshooting/http_debugging.md](../troubleshooting/http_debugging.md), [../troubleshooting/peer_backend_debug.md](../troubleshooting/peer_backend_debug.md), [../troubleshooting/mesh_debug.md](../troubleshooting/mesh_debug.md)
 - **Codebase reference:** [../reference.md](../reference.md)
 - **Project guide:** [../../CLAUDE.md](../../CLAUDE.md)

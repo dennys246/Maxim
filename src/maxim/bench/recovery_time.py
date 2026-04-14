@@ -63,7 +63,6 @@ leader never went down during the run).
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 import signal
 import threading
@@ -106,7 +105,19 @@ BENCH_USER = "say hi"
 
 @dataclass
 class BenchAttempt:
-    """One call's timing + outcome. Pure data."""
+    """One call's timing + outcome. Pure data.
+
+    Fields mirror the production ``peer_backend_call`` /
+    ``peer_backend_failed`` structured log event shape exactly so the
+    bench's JSONL output is wire-compatible — existing
+    ``jq 'select(.e=="peer_backend_call") | .input_tokens'`` queries
+    work unchanged on bench traces.
+
+    Successes carry ``provider``, ``model``, ``input_tokens``,
+    ``output_tokens`` from the returned ``LLMResponse``. Failures
+    carry ``error`` (exception class name) and ``fix_hint`` (from
+    ``BackendError.fix_hint`` or ``str(exc)`` as the fallback).
+    """
 
     request_id: str
     submit_ts: float  # monotonic seconds since start
@@ -114,7 +125,15 @@ class BenchAttempt:
     latency_ms: float
     status: str  # "success" | "failure"
     outcome: str  # BackendError subclass name, or "ok"
-    error_message: str = ""
+    # Success-path fields (match production peer_backend_call shape)
+    provider: str = ""
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    # Failure-path fields (match production peer_backend_failed shape)
+    error: str = ""  # exception class name (e.g., "BackendDown")
+    fix_hint: str = ""  # human-readable hint from BackendError.fix_hint or str(exc)
+    http_status: int | None = None  # exception.status if present
 
 
 @dataclass
@@ -135,25 +154,36 @@ class BenchResult:
 
 
 def _classify_error(exc: Exception) -> tuple[str, str]:
-    """Return (outcome_tag, error_message) for a raised exception.
+    """Return (outcome_tag, fix_hint) for a raised exception.
 
-    The tag matches the BackendError class name so the benchmark JSONL
-    shape lines up with production ``peer_backend_failed`` events.
+    The tag matches the production ``peer_backend_failed`` ``outcome``
+    field exactly so existing ``jq`` queries filter the same way on
+    bench traces.
+
+    The second element is the human-readable fix hint: for
+    ``BackendError`` subclasses it's ``exc.fix_hint`` (the typed
+    recovery suggestion); for anything else it's ``str(exc)``. This
+    mirrors ``_MaximPeerBackend._log_failure``'s
+    ``getattr(exc, "fix_hint", "") or str(exc)`` pattern exactly.
     """
+
+    def _hint(e: Exception) -> str:
+        return getattr(e, "fix_hint", "") or str(e)
+
     if isinstance(exc, BackendOverloaded):
-        return "overloaded", str(exc)
+        return "overloaded", _hint(exc)
     if isinstance(exc, BackendAuthFailed):
-        return "auth_rejected", str(exc)
+        return "auth_rejected", _hint(exc)
     if isinstance(exc, BackendModelMissing):
-        return "model_missing", str(exc)
+        return "model_missing", _hint(exc)
     if isinstance(exc, BackendInferenceBroken):
-        return "inference_broken", str(exc)
+        return "inference_broken", _hint(exc)
     if isinstance(exc, BackendTimeout):
-        return "timeout", str(exc)
+        return "timeout", _hint(exc)
     if isinstance(exc, BackendDown):
-        return "down", str(exc)
+        return "down", _hint(exc)
     if isinstance(exc, BackendError):
-        return "generic_backend_error", str(exc)
+        return "generic_backend_error", _hint(exc)
     return "unhandled_" + type(exc).__name__, str(exc)
 
 
@@ -184,6 +214,22 @@ def _analyse_recovery(attempts: list[BenchAttempt]) -> tuple[BenchResult, dict[s
         "recovery_time_s": None,
         "reason": "",
     }
+    # Empty-attempt edge case (Plan 4 B pre-merge review finding #3):
+    # distinguish "bench ran but leader never went down" from "bench
+    # was killed before its first call". Without this branch the empty
+    # list incorrectly labeled as "no_outage_observed" which implies
+    # a successful observation window.
+    if not attempts:
+        result_dict["reason"] = "no_attempts"
+        bench = BenchResult(
+            duration_s=0.0,
+            total_attempts=0,
+            successes=0,
+            failures=0,
+            attempts=[],
+            **result_dict,
+        )
+        return bench, result_dict
     state = "pre_outage"
     for attempt in attempts:
         if state == "pre_outage":
@@ -281,17 +327,6 @@ def run_recovery_benchmark(
         backend_factory = _MaximPeerBackend.for_url
     backend = backend_factory(url, api_key=api_key, model=model)
 
-    # Bind a stable benchmark RequestContext so all attempts share an
-    # agent_id that's easy to grep for in the JSONL log. Each attempt
-    # still gets its own request_id so per-call correlation works.
-    bench_ctx = RequestContext(
-        request_id=generate_request_id(),
-        agent_id=BENCH_AGENT_ID,
-        session_id="bench_recovery_time",
-        lane="large",
-    )
-    ctx_token = set_context(bench_ctx)
-
     attempts: list[BenchAttempt] = []
     start = time.monotonic()
     log_structured(
@@ -308,61 +343,86 @@ def run_recovery_benchmark(
         },
     )
 
-    try:
-        while not stop_event.is_set():
-            now = time.monotonic() - start
-            if now >= duration_s:
-                break
-            req_id = generate_request_id()
-            per_call_ctx = dataclasses.replace(bench_ctx, request_id=req_id)
-            per_call_token = set_context(per_call_ctx)
-            attempt_submit = time.monotonic() - start
-            t0 = time.monotonic()
-            try:
-                backend.complete_with_usage(
-                    system=BENCH_SYSTEM,
-                    user=BENCH_USER,
-                    max_tokens=max_tokens,
-                    temperature=0.0,
-                    request_context={
-                        "request_id": req_id,
-                        "agent_id": BENCH_AGENT_ID,
-                        "session_id": "bench_recovery_time",
-                        "lane": "large",
-                    },
-                )
-                latency_ms = (time.monotonic() - t0) * 1000.0
-                attempts.append(
-                    BenchAttempt(
-                        request_id=req_id,
-                        submit_ts=attempt_submit,
-                        complete_ts=time.monotonic() - start,
-                        latency_ms=round(latency_ms, 1),
-                        status="success",
-                        outcome="ok",
-                    )
-                )
-            except Exception as exc:  # noqa: BLE001 — we classify below
-                latency_ms = (time.monotonic() - t0) * 1000.0
-                outcome, error_msg = _classify_error(exc)
-                attempts.append(
-                    BenchAttempt(
-                        request_id=req_id,
-                        submit_ts=attempt_submit,
-                        complete_ts=time.monotonic() - start,
-                        latency_ms=round(latency_ms, 1),
-                        status="failure",
-                        outcome=outcome,
-                        error_message=error_msg[:500],
-                    )
-                )
-            finally:
-                reset_context(per_call_token)
+    # Provider key: what the production path sets on
+    # ``_MaximPeerBackend._log_success`` data["provider"]. For the bench
+    # we use a stable sentinel so operators can filter `jq
+    # 'select(.provider=="bench_recovery_time")'`. This lands in the
+    # production-shape ``provider`` field, not a bench-specific field.
+    bench_provider_key = "bench_recovery_time"
 
-            if pace_s > 0.0 and not stop_event.is_set():
-                stop_event.wait(pace_s)
-    finally:
-        reset_context(ctx_token)
+    while not stop_event.is_set():
+        now = time.monotonic() - start
+        if now >= duration_s:
+            break
+        req_id = generate_request_id()
+        # Plan 4 A.2: bind a fresh RequestContext per call so
+        # ``utils.http._build_headers`` populates X-Maxim-* headers on
+        # the outbound internal request. One binding per attempt — the
+        # pre-merge review round flagged an earlier draft that bound a
+        # stable outer context then shadowed it per-call, which was
+        # dead code. The per-call binding is the only useful one.
+        per_call_ctx = RequestContext(
+            request_id=req_id,
+            agent_id=BENCH_AGENT_ID,
+            session_id=BENCH_AGENT_ID,
+            lane="large",
+        )
+        per_call_token = set_context(per_call_ctx)
+        attempt_submit = time.monotonic() - start
+        t0 = time.monotonic()
+        try:
+            resp = backend.complete_with_usage(
+                system=BENCH_SYSTEM,
+                user=BENCH_USER,
+                max_tokens=max_tokens,
+                temperature=0.0,
+                request_context={
+                    "request_id": req_id,
+                    "agent_id": BENCH_AGENT_ID,
+                    "session_id": BENCH_AGENT_ID,
+                    "lane": "large",
+                },
+            )
+            latency_ms = (time.monotonic() - t0) * 1000.0
+            # Capture the LLMResponse fields so bench JSONL matches
+            # production peer_backend_call shape exactly.
+            attempts.append(
+                BenchAttempt(
+                    request_id=req_id,
+                    submit_ts=attempt_submit,
+                    complete_ts=time.monotonic() - start,
+                    latency_ms=round(latency_ms, 1),
+                    status="success",
+                    outcome="ok",
+                    provider=getattr(resp, "provider", "") or bench_provider_key,
+                    model=getattr(resp, "model", "") or (model or ""),
+                    input_tokens=int(getattr(resp, "input_tokens", 0) or 0),
+                    output_tokens=int(getattr(resp, "output_tokens", 0) or 0),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 — we classify below
+            latency_ms = (time.monotonic() - t0) * 1000.0
+            outcome, fix_hint = _classify_error(exc)
+            attempts.append(
+                BenchAttempt(
+                    request_id=req_id,
+                    submit_ts=attempt_submit,
+                    complete_ts=time.monotonic() - start,
+                    latency_ms=round(latency_ms, 1),
+                    status="failure",
+                    outcome=outcome,
+                    provider=bench_provider_key,
+                    model=model or "",
+                    error=type(exc).__name__,
+                    fix_hint=fix_hint[:500],
+                    http_status=getattr(exc, "status", None),
+                )
+            )
+        finally:
+            reset_context(per_call_token)
+
+        if pace_s > 0.0 and not stop_event.is_set():
+            stop_event.wait(pace_s)
 
     duration = time.monotonic() - start
     bench_result, _ = _analyse_recovery(attempts)

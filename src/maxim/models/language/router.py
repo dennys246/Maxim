@@ -1039,7 +1039,7 @@ class LLMRouter:
             # ``backend_unclassified_errors_total`` means a backend
             # raised something outside the BackendError hierarchy —
             # file a bug and either extend the hierarchy or wrap the
-            # call site. See docs/plans/llm_path_fast_failover.md.
+            # call site. See docs/plans/archive/llm_path_fast_failover.md.
             self._log_provider_error(provider_key, e)
             self._note_provider_failure(provider_key, "unclassified")
             _record_unclassified_backend_error(provider_key)
@@ -1165,7 +1165,7 @@ class LLMRouter:
             # was being dropped on the floor here. Cloud backends
             # (_OpenAIBackend, _AnthropicBackend) do not declare this
             # capability and continue to receive the same kwargs as before.
-            if request_context is not None and getattr(backend, "accepts_request_context", False):
+            if request_context is not None and getattr(backend, "supports_request_context", False):
                 kwargs["request_context"] = request_context
             resp = backend.complete_with_usage(**kwargs)
             if isinstance(resp, LLMResponse) and resp.content:

@@ -27,7 +27,7 @@ gap via three complementary changes:
 
 1. **Router capability-flag forwarding.** `LLMRouter._invoke_backend`
    now forwards `request_context` through `kwargs` for backends that
-   declare `accepts_request_context = True`. Matches the existing
+   declare `supports_request_context = True`. Matches the existing
    `supports_model_override`/`supports_tool_use`/`supports_streaming`
    capability-flag pattern. Only `_MaximPeerBackend` sets this flag;
    cloud backends are unchanged (no `**kwargs` catch-all →
@@ -49,14 +49,14 @@ gap via three complementary changes:
 **Regression guards (11 new tests):**
 - `TestRequestContext::test_contextvar_fallback_populates_context_when_dict_is_none`
 - `TestRequestContext::test_explicit_dict_still_wins_over_contextvar`
-- `TestRequestContext::test_accepts_request_context_capability_flag_is_declared`
+- `TestRequestContext::test_supports_request_context_capability_flag_is_declared`
 - `TestRequestContextForwarding` in `test_router_typed_exceptions.py` — 3 tests
 - `test_set_context_binding_propagates_into_worker_thread`
 - `test_set_context_binding_is_reset_between_sequential_calls`
 - `test_outbound_headers_populate_from_bound_context`
 
 **Load-bearing invariants locked in:**
-- The `accepts_request_context` capability flag on `_MaximPeerBackend`
+- The `supports_request_context` capability flag on `_MaximPeerBackend`
   is load-bearing. Removing it silently drops `agent_id` from
   `peer_backend_call` logs.
 - The `set_context` binding in `_call_llm_with_timeout` must live

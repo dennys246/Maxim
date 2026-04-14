@@ -126,6 +126,17 @@ Subcommands for managing a remote leader node over a Cloudflare tunnel.
 | `maxim peer install <extras>` | Install optional extras on leader (e.g., `semantic`, `llm-torch`). Accepts comma-separated extras or raw pip package names. |
 | `maxim peer deps` | Show installed packages and extras status on the leader |
 
+## Bench Harnesses
+
+Tight-loop benchmarks for measuring LLM path behavior without
+sim-workload cadence artifacts. **Distinct from `--benchmark`** (the
+model-evaluation flag above) — bench harnesses exercise the peer path
+directly rather than running a full scenario.
+
+| Command | Description |
+|---------|-------------|
+| `maxim bench recovery-time --url <url> --api-key <key> [--duration 240] [--pace 0.1] [--output <path>]` | Fire chat completions in a tight loop; report peer-side recovery time after a mid-run `maxim peer restart`. JSONL output matches production `peer_backend_call`/`peer_backend_failed` shape so existing `jq` queries work. See [../experiments/protocols/bench_recovery_time_rerun.md](../experiments/protocols/bench_recovery_time_rerun.md). |
+
 ## Utilities
 
 | Flag | Type | Default | Description |

@@ -459,7 +459,7 @@ class TestBackendClassesDispatch:
 class TestRequestContextForwarding:
     """Regression guards for Plan 4 A.1: _invoke_backend must forward
     ``request_context`` to backends that declare
-    ``accepts_request_context = True``, and must NOT forward it to
+    ``supports_request_context = True``, and must NOT forward it to
     backends that don't (e.g., _OpenAIBackend which has no **kwargs
     catch-all and would crash with TypeError).
 
@@ -472,7 +472,7 @@ class TestRequestContextForwarding:
     def _setup_router_with_mock_backend(self, backend_cls_attrs: dict):
         """Build a router and wire a mock backend with configurable
         class-level capability flags (supports_model_override,
-        accepts_request_context, ...)."""
+        supports_request_context, ...)."""
         from maxim.models.language.types import LLMResponse
 
         router = _make_router()
@@ -489,11 +489,11 @@ class TestRequestContextForwarding:
         return router, mock_backend
 
     def test_kwarg_forwarded_when_capability_flag_set(self):
-        """When ``accepts_request_context = True`` and request_context
+        """When ``supports_request_context = True`` and request_context
         is not None, the dict must appear in the complete_with_usage
         kwargs. Without this, peer_backend_call emits agent_id=null."""
         router, backend = self._setup_router_with_mock_backend(
-            {"accepts_request_context": True},
+            {"supports_request_context": True},
         )
         request_ctx = {
             "agent_id": "npc-mother",
@@ -527,7 +527,7 @@ class TestRequestContextForwarding:
         The capability-flag check prevents this. This test locks in the
         invariant — removing the flag check must also update this test."""
         router, backend = self._setup_router_with_mock_backend(
-            {"accepts_request_context": False},
+            {"supports_request_context": False},
         )
         with router._inference_lock:
             router._invoke_backend(
@@ -554,7 +554,7 @@ class TestRequestContextForwarding:
         must not be forwarded. (Keeps the backend's default-arg path
         live for backends that branch on None.)"""
         router, backend = self._setup_router_with_mock_backend(
-            {"accepts_request_context": True},
+            {"supports_request_context": True},
         )
         with router._inference_lock:
             router._invoke_backend(

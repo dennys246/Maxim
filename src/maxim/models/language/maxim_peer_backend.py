@@ -15,7 +15,7 @@ pattern words (the only permitted match is the ``retry_after_s``
 parameter name, which is the :class:`BackendOverloaded` constructor shape
 fixed by Plan 2 R2b and cannot be renamed).
 
-Design principles (see docs/plans/llm_path_fast_failover.md for full
+Design principles (see docs/plans/archive/llm_path_fast_failover.md for full
 context):
 
 - **Single HTTP call per call-site.** No internal repeat, no internal
@@ -122,7 +122,7 @@ class _MaximPeerBackend:
     # router's capability-flag forwarding pattern only wires the kwarg
     # for self-hosted peer calls — avoids "unexpected keyword argument"
     # on cloud backends that don't accept it.
-    accepts_request_context = True
+    supports_request_context = True
 
     def __init__(self, cfg: LLMConfig, provider_key: str = "maxim_peer") -> None:
         self.cfg = cfg

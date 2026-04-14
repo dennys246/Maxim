@@ -24,6 +24,36 @@ notice the leader is back and serve the next successful call?** The
 answer is dominated by the leader's intrinsic restart time — there
 should be effectively zero peer-side overhead.
 
+### Two different gates, two different denominators
+
+Plan 3's original recovery-time target was **"< 10s from
+leader-ready to first-success"** — the denominator is the moment the
+leader reports `LLM ready`, and the numerator is the gap between
+that and the next successful peer call. That gate measures
+**peer-side wedge latency**: how much dead time the peer adds
+AFTER the leader is back.
+
+This bench's `recovery_time_s` uses a **different denominator**:
+from the first observed failure to the first observed success. The
+denominator is when the PEER FIRST NOTICED the leader was down, and
+the numerator includes the entire restart window (model reload +
+proxy re-establishment + peer notices recovery). A 14B reload takes
+~50-55s on its own, so this bench's `recovery_time_s` is NECESSARILY
+larger than Plan 3's gate — they're measuring different things.
+
+**Both numbers matter:**
+- **Plan 3's gate (peer-side wedge latency):** < 10s. If the peer
+  takes longer than this to notice recovery after `LLM ready`, that's
+  a peer-side wedge — the thing Plan 3 killed.
+- **This bench's gate (end-to-end outage window):** dominated by
+  leader reload time. Expected: `recovery_time_s ≈
+  leader_self_reported_restart + ~5s` (proxy-up gap). A materially
+  larger value indicates peer-side overhead beyond leader reload.
+
+The reference run (2026-04-14) measured 58.68s bench `recovery_time_s`
+vs 53s leader self-report → ~5s gap → peer-side overhead ≈ 0s. Both
+Plan 3's gate AND this bench's gate pass.
+
 **Pre-fix baseline (Phase D, 2026-04-13):** sim-workload recovery gate
 was 30.7s from leader-ready to first-success, but investigation showed
 this was a workload artifact (the orchestrator was doing 30s of local
@@ -40,7 +70,7 @@ overhead is effectively zero.
 **Code state on peer:**
 - `main` at or past PR #99 (Plan 3.6 R5 VRAM spillover detection)
 - Plan 4 A+B shipped (this branch)
-- `ruff check` clean, `python -m pytest tests/unit/test_benchmark_recovery_time.py tests/unit/test_llm_worker_cancellation.py tests/unit/test_maxim_peer_backend.py tests/unit/test_router_typed_exceptions.py -q` green
+- `ruff check` clean, `python -m pytest tests/unit/test_bench_recovery_time.py tests/unit/test_llm_worker_cancellation.py tests/unit/test_maxim_peer_backend.py tests/unit/test_router_typed_exceptions.py -q` green
 
 **Hardware:**
 - **Leader**: GPU with enough VRAM headroom. Reference config: RTX 5080 (16 GB) running Qwen-14B Q4_K_M at `MAXIM_LLM_N_CTX` sized below the Plan 3.6 R5 spillover threshold. `maxim doctor` must show VRAM pressure ≤ 85% on the leader.

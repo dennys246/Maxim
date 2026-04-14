@@ -155,6 +155,34 @@ def _isolate_maxim_cancellation_contextvar():
         reset_cancel_event(scrub_token)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_maxim_request_context_contextvar():
+    """Scrub the ``RequestContext`` ``ContextVar`` between tests (Plan 4 A.2).
+
+    Plan 4 A.2 added a boundary ``set_context(normalized_ctx)`` call in
+    ``LLMWorker._call_llm_with_timeout`` so that
+    ``maxim.utils.http._current_context`` populates X-Maxim-* outbound
+    headers and acts as a fallback for
+    ``_normalize_request_context(None)``. If a test leaks a binding
+    without calling ``reset_context``, every later test that asserts on
+    ``_normalize_request_context(None) is empty`` or that reads
+    ``current_context()`` inherits the stale ``RequestContext``.
+
+    This is the exact same bug class the pre-merge review flagged as
+    latent in ``tests/unit/test_backend_error_taxonomy.py::
+    test_normalize_request_context_handles_none``. The fixture forces
+    the binding to None on test entry and restores the prior binding on
+    exit — matching the cancellation-contextvar pattern above.
+    """
+    from maxim.utils.http import reset_context, set_context
+
+    scrub_token = set_context(None)
+    try:
+        yield
+    finally:
+        reset_context(scrub_token)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Memory Types Fixtures
 # ─────────────────────────────────────────────────────────────────────────────

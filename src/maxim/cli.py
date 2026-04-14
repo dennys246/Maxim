@@ -180,7 +180,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # (so role_detected hits the JSONL handler if MAXIM_LOG_FILE is set) and
     # BEFORE subcommand dispatch (so `maxim doctor` / `maxim peer X` both
     # emit the event instead of only the sim loop). See
-    # docs/plans/llm_path_typed_errors.md R2a + feedback_subcommand_logging_gap.md.
+    # docs/plans/archive/llm_path_typed_errors.md R2a + feedback_subcommand_logging_gap.md.
     try:
         from maxim.runtime.role import detect_and_apply_role
 

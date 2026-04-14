@@ -81,7 +81,7 @@ jobs:
           if grep -nE "retry|backoff|gateway" src/maxim/models/language/maxim_peer_backend.py | grep -vE "retry_after_s|retry_timeout_s"; then
             echo "ERROR: Plan 3 no-retry-loop invariant violated in maxim_peer_backend.py"
             echo "       _MaximPeerBackend makes EXACTLY one HTTP call per complete_with_usage."
-            echo "       Failover is the router's job. See docs/plans/llm_path_fast_failover.md."
+            echo "       Failover is the router's job. See docs/plans/archive/llm_path_fast_failover.md."
             exit 1
           fi
           # Plan 3 R2.6 deprecated-shim allow list: probe_llm_server,
@@ -106,7 +106,7 @@ jobs:
             echo "$PROBE_SHIM_MATCHES"
             echo ""
             echo "New code must use _MaximPeerBackend.for_url(url, api_key=k, model=m).health_check()"
-            echo "See docs/plans/llm_path_fast_failover.md R2.6 section."
+            echo "See docs/plans/archive/llm_path_fast_failover.md R2.6 section."
             exit 1
           fi
           echo "CI grep invariants clean"
