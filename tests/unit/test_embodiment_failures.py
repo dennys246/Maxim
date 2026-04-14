@@ -335,6 +335,399 @@ class TestToolPainBridgeEmbodiment:
 
 
 # ---------------------------------------------------------------------------
+# Stage 1 (sem_execution_hook) — tool-invoked embodiment failure attribution
+# ---------------------------------------------------------------------------
+#
+# Pre-fix bug: when a tool-invoked SEM affordance produced embodiment
+# failures, `_on_embodiment_pain` tried to attribute via NAc
+# context-similarity. The pending tool event's context (`{"params": ...}`)
+# shared zero keys with the outcome context (`{source, entity, failure_mode,
+# ...}`), so the similarity score was 0/1 = 0.0 and the link never formed.
+# NAc could not learn that the tool was negative.
+#
+# Fix: direct attribution via `record_tool_embodiment_failure` called by
+# the executor, bypassing context similarity. `_on_embodiment_pain` is
+# guarded to skip NAc attribution while a tool is in flight.
+
+
+class TestToolEmbodimentAttribution:
+    """Stage 1 regression guards for the tool→embodiment-pain attribution fix."""
+
+    def test_record_tool_embodiment_failure_pops_pending_and_records_negative(self):
+        """Direct-attribution API: pops pending event, records NEGATIVE
+        via NAc.record_outcome (not record_outcome_full), and returns the RPE."""
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+        from maxim.decisions.causal_link import Valence
+
+        nac = MagicMock()
+        mock_link = MagicMock()
+        mock_link.last_rpe = 0.42
+        mock_link.predicted_value = 0.5  # Real float — reflection path formats it.
+        nac.record_outcome = MagicMock(return_value=[mock_link])
+
+        bridge = ToolPainBridge(nac=nac)
+        bridge.record_tool_start("rusty_sword_slash", "inv-1", context={"params": {"force": 0.9}})
+
+        failures = [
+            {"name": "shatter", "entity": "rusty_sword", "pain": 0.9},
+        ]
+        rpe = bridge.record_tool_embodiment_failure("rusty_sword_slash", "inv-1", failures)
+
+        # Direct attribution — NOT context similarity.
+        nac.record_outcome.assert_called_once()
+        call_kwargs = nac.record_outcome.call_args.kwargs
+        assert call_kwargs["event_type"] == "tool"
+        assert call_kwargs["event_id"] == "tool:rusty_sword_slash"
+        assert call_kwargs["outcome_valence"] == Valence.NEGATIVE
+        # The outcome context carries the failure metadata for diagnostics.
+        ctx = call_kwargs["context"]
+        assert ctx["source"] == "embodiment"
+        assert ctx["failure_mode"] == "shatter"
+        assert ctx["entity"] == "rusty_sword"
+        assert ctx["intensity"] == 0.9
+
+        # Pending entry is popped (no leak).
+        assert ("rusty_sword_slash", "inv-1") not in bridge._pending_tools
+        assert rpe == 0.42
+
+    def test_record_tool_embodiment_failure_no_pending_returns_zero(self):
+        """Calling without a pending tool is a no-op — no NAc call, no crash."""
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        nac.record_outcome = MagicMock()
+
+        bridge = ToolPainBridge(nac=nac)
+        rpe = bridge.record_tool_embodiment_failure("ghost_tool", "inv-missing", [{"name": "x"}])
+
+        nac.record_outcome.assert_not_called()
+        assert rpe == 0.0
+
+    def test_record_tool_embodiment_failure_empty_list_raises_value_error(self):
+        """Empty failures list is a programming error — raise, don't silently
+        succeed. The executor's guard is the load-bearing check; if the
+        bridge is called directly with [], that's a contract violation."""
+        import pytest
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        bridge = ToolPainBridge(nac=nac)
+        bridge.record_tool_start("t", "inv", context={"params": {}})
+
+        with pytest.raises(ValueError, match="non-empty"):
+            bridge.record_tool_embodiment_failure("t", "inv", [])
+
+    def test_tool_index_updated_negative_on_embodiment_failure(self):
+        """Parity with record_tool_complete: learned tool index gets a
+        negative outcome update. Pre-fix this was asymmetric — only
+        positive outcomes updated the index, silently biasing the
+        goal→tool selection toward whatever succeeded first."""
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        nac.record_outcome = MagicMock(return_value=[])
+        tool_index = MagicMock()
+
+        bridge = ToolPainBridge(nac=nac, tool_index=tool_index)
+        bridge.record_tool_start("sword_slash", "inv-ti", context={"goal": "defeat dummy"})
+
+        bridge.record_tool_embodiment_failure(
+            "sword_slash",
+            "inv-ti",
+            [{"name": "shatter", "entity": "sword", "pain": 0.9}],
+        )
+
+        tool_index.record_outcome.assert_called_once_with("defeat dummy", "sword_slash", success=False)
+
+    def test_reflection_fires_on_surprising_embodiment_failure(self):
+        """Parity with _on_pain: rpe > 0.3 triggers reflexion memory
+        generation. Dropping this would silently regress the signal the
+        hippocampus reflection path is specifically designed to capture."""
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        surprising_link = MagicMock()
+        surprising_link.last_rpe = 0.55  # Above the 0.3 threshold.
+        surprising_link.predicted_value = 0.5
+        nac.record_outcome = MagicMock(return_value=[surprising_link])
+
+        bridge = ToolPainBridge(nac=nac)
+        bridge.record_tool_start("sword_slash", "inv-r", context={"params": {}})
+        # Stub reflection path so we can assert without an LLM.
+        bridge._generate_reflection = MagicMock(return_value="noted: sword fragile")
+        bridge._store_reflection = MagicMock()
+
+        bridge.record_tool_embodiment_failure(
+            "sword_slash",
+            "inv-r",
+            [{"name": "shatter", "entity": "sword", "pain": 0.9}],
+        )
+
+        bridge._generate_reflection.assert_called_once()
+        bridge._store_reflection.assert_called_once()
+
+    def test_exactly_once_attribution_across_bridge_and_executor(self):
+        """INVARIANT: when a tool in flight triggers synchronous embodiment
+        pain during tool.run, the full flow (PainBus._on_pain callback →
+        guard skip, executor → record_tool_embodiment_failure) records
+        exactly ONE NAc outcome. Not zero (the pre-fix bug), not two
+        (double-recording regression if the guard is ever removed)."""
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+        from maxim.proprioception.pain import PainSignal, PainType
+
+        nac = MagicMock()
+        nac.record_outcome = MagicMock(return_value=[])
+        nac.record_outcome_full = MagicMock(return_value=[])
+
+        bridge = ToolPainBridge(nac=nac)
+        bridge.record_tool_start("sword_slash", "inv-1x", context={"params": {}})
+        # Clear the record_event() call count from record_tool_start.
+        nac.reset_mock()
+
+        # Simulate: during tool.run, embodiment fires pain → PainBus calls
+        # _on_pain → _on_embodiment_pain guards because tool is pending.
+        signal = PainSignal(
+            pain_type=PainType.EXTERNAL_SIGNAL,
+            intensity=0.9,
+            timestamp=1000.0,
+            context={
+                "source": "embodiment",
+                "entity": "sword",
+                "entity_type": "weapon",
+                "failure_mode": "shatter",
+                "composes": [],
+                "sensor_readings": {},
+            },
+        )
+        bridge._on_pain(signal)
+        assert nac.record_outcome.call_count == 0, "guard should suppress"
+        assert nac.record_outcome_full.call_count == 0, "guard should suppress full too"
+
+        # Then: tool.run returns with side_effects; executor calls the
+        # direct-attribution API.
+        bridge.record_tool_embodiment_failure(
+            "sword_slash",
+            "inv-1x",
+            [{"name": "shatter", "entity": "sword", "pain": 0.9}],
+        )
+
+        # EXACTLY ONCE across the combined flow.
+        assert nac.record_outcome.call_count == 1
+        assert nac.record_outcome_full.call_count == 0
+
+    def test_on_embodiment_pain_guards_when_tool_pending(self):
+        """With a pending tool, `_on_embodiment_pain` MUST skip NAc
+        attribution — the executor will drive direct attribution after
+        `tool.run` returns. This prevents double-recording AND prevents
+        the broken context-similarity path from firing."""
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+        from maxim.proprioception.pain import PainSignal, PainType
+
+        nac = MagicMock()
+        nac.record_outcome_full = MagicMock()
+
+        bridge = ToolPainBridge(nac=nac)
+        # A tool is in flight.
+        bridge.record_tool_start("rusty_sword_slash", "inv-2", context={"params": {"force": 0.8}})
+        # Clear the mock history from record_tool_start's record_event call.
+        nac.reset_mock()
+
+        signal = PainSignal(
+            pain_type=PainType.EXTERNAL_SIGNAL,
+            intensity=0.8,
+            timestamp=1000.0,
+            context={
+                "source": "embodiment",
+                "entity": "rusty_sword",
+                "entity_type": "weapon",
+                "failure_mode": "shatter",
+                "composes": [],
+                "sensor_readings": {"durability": 0.05},
+            },
+        )
+        bridge._on_pain(signal)
+
+        # GUARD: with a pending tool, record_outcome_full must NOT fire.
+        nac.record_outcome_full.assert_not_called()
+
+    def test_on_embodiment_pain_falls_through_when_no_tool_pending(self):
+        """Out-of-band embodiment pain (no tool in flight) still takes the
+        context-similarity path via `record_outcome_full`. Preserves the
+        autonomous-SEM-tick use case."""
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+        from maxim.proprioception.pain import PainSignal, PainType
+
+        nac = MagicMock()
+        nac.record_outcome_full = MagicMock(return_value=[])
+
+        bridge = ToolPainBridge(nac=nac)
+        # No pending tool — pure out-of-band case.
+
+        signal = PainSignal(
+            pain_type=PainType.EXTERNAL_SIGNAL,
+            intensity=0.8,
+            timestamp=1000.0,
+            context={
+                "source": "embodiment",
+                "entity": "arm.shoulder",
+                "entity_type": "joint",
+                "failure_mode": "overextension",
+                "composes": [],
+                "sensor_readings": {"angle": 176},
+            },
+        )
+        bridge._on_pain(signal)
+
+        # Fall-through path — context-similarity attribution still runs.
+        nac.record_outcome_full.assert_called_once()
+
+
+class TestExecutorEmbodimentAttributionWiring:
+    """End-to-end: Executor inspects ToolOutput.side_effects and routes
+    embodiment failures through the bridge's direct-attribution API."""
+
+    def _make_fake_tool_with_failures(self, failures):
+        """A minimal Tool that returns a ToolOutput with side_effects populated."""
+        from maxim.tools.base import Tool, ToolOutput
+
+        class FakeAffordanceTool(Tool):
+            name = "rusty_sword_slash"
+            description = "fake sword slash"
+            input_schema = {}
+
+            def execute(self, **kwargs):
+                return ToolOutput(
+                    success=True,
+                    output={"entity": "rusty_sword", "affordance": "slash"},
+                    side_effects={"embodiment_failures": failures},
+                )
+
+        return FakeAffordanceTool()
+
+    def _make_fake_tool_plain_success(self):
+        from maxim.tools.base import Tool, ToolOutput
+
+        class PlainTool(Tool):
+            name = "plain_search"
+            description = "plain tool"
+            input_schema = {}
+
+            def execute(self, **kwargs):
+                return ToolOutput(success=True, output={"hits": 3})
+
+        return PlainTool()
+
+    def test_executor_routes_embodiment_failures_to_bridge(self):
+        """When a tool's ToolOutput carries side_effects['embodiment_failures'],
+        the executor calls record_tool_embodiment_failure — NOT record_tool_complete."""
+        from maxim.runtime.executor import Executor
+        from maxim.tools.registry import ToolRegistry
+
+        failures = [{"name": "shatter", "entity": "rusty_sword", "pain": 0.9}]
+        tool = self._make_fake_tool_with_failures(failures)
+        registry = ToolRegistry()
+        registry.register(tool)
+
+        bridge = MagicMock()
+        bridge.record_tool_embodiment_failure = MagicMock(return_value=0.5)
+        bridge.record_tool_complete = MagicMock()
+
+        exe = Executor(tool_registry=registry, tool_pain_bridge=bridge)
+        result = exe.execute({"tool_name": "rusty_sword_slash", "params": {}})
+
+        assert result.success is True  # The TOOL succeeded; the entity failed.
+        bridge.record_tool_start.assert_called_once()
+        bridge.record_tool_embodiment_failure.assert_called_once()
+        bridge.record_tool_complete.assert_not_called()
+
+        # Assert the failures list was forwarded intact.
+        call = bridge.record_tool_embodiment_failure.call_args
+        assert call.args[0] == "rusty_sword_slash"
+        # invocation_id is uuid, just check it's the same one used in record_tool_start
+        assert call.args[2] == failures
+
+    def test_executor_routes_plain_success_to_complete(self):
+        """Regression guard: tools without side_effects still take the
+        record_tool_complete success path."""
+        from maxim.runtime.executor import Executor
+        from maxim.tools.registry import ToolRegistry
+
+        tool = self._make_fake_tool_plain_success()
+        registry = ToolRegistry()
+        registry.register(tool)
+
+        bridge = MagicMock()
+        bridge.record_tool_complete = MagicMock(return_value=0.0)
+        bridge.record_tool_embodiment_failure = MagicMock()
+
+        exe = Executor(tool_registry=registry, tool_pain_bridge=bridge)
+        result = exe.execute({"tool_name": "plain_search", "params": {}})
+
+        assert result.success is True
+        bridge.record_tool_complete.assert_called_once()
+        bridge.record_tool_embodiment_failure.assert_not_called()
+
+    def test_executor_empty_side_effects_takes_complete_path(self):
+        """Empty embodiment_failures list is indistinguishable from success."""
+        from maxim.runtime.executor import Executor
+        from maxim.tools.registry import ToolRegistry
+
+        tool = self._make_fake_tool_with_failures([])  # Empty list.
+        registry = ToolRegistry()
+        registry.register(tool)
+
+        bridge = MagicMock()
+        bridge.record_tool_complete = MagicMock(return_value=0.0)
+        bridge.record_tool_embodiment_failure = MagicMock()
+
+        exe = Executor(tool_registry=registry, tool_pain_bridge=bridge)
+        exe.execute({"tool_name": "rusty_sword_slash", "params": {}})
+
+        bridge.record_tool_complete.assert_called_once()
+        bridge.record_tool_embodiment_failure.assert_not_called()
+
+
+class TestToolOutputSideEffects:
+    """ToolOutput gains a typed side_effects field (backward-compatible default)."""
+
+    def test_side_effects_defaults_to_none(self):
+        from maxim.tools.base import ToolOutput
+
+        out = ToolOutput(success=True, output="hello")
+        assert out.side_effects is None
+
+    def test_side_effects_carries_embodiment_failures(self):
+        from maxim.tools.base import ToolOutput
+
+        failures = [{"name": "shatter", "entity": "rusty_sword", "pain": 0.9}]
+        out = ToolOutput(
+            success=True,
+            output={"entity": "rusty_sword"},
+            side_effects={"embodiment_failures": failures},
+        )
+        assert out.side_effects == {"embodiment_failures": failures}
+
+    def test_side_effects_survives_tool_run_wrapping(self):
+        """Tool.run() preserves side_effects when execute() returns a ToolOutput."""
+        from maxim.tools.base import Tool, ToolOutput
+
+        class T(Tool):
+            name = "t"
+            description = "t"
+            input_schema = {}
+
+            def execute(self, **kwargs):
+                return ToolOutput(
+                    success=True,
+                    output="x",
+                    side_effects={"embodiment_failures": [{"name": "y"}]},
+                )
+
+        result = T().run()
+        assert result.side_effects == {"embodiment_failures": [{"name": "y"}]}
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
