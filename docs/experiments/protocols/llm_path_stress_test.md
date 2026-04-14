@@ -349,7 +349,7 @@ Template:
 ```markdown
 # LLM Path Stress Test Results — <YYYY-MM-DD>
 
-**Protocol:** [llm_path_stress_test.md](../../protocols/llm_path_stress_test.md)
+**Protocol:** [llm_path_stress_test.md](../protocols/llm_path_stress_test.md)
 **Environment:** RTX 5080 leader (Qwen 14B Q4_K_M) + Mac 24GB peer
 **Total runtime:** <hours>
 

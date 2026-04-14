@@ -216,7 +216,7 @@ maxim peer forget
 
 **The leader's chat template leaks tokens** (e.g., output contains `<|im_start|>` / `<|im_end|>` fragments). Not fatal — the OpenAI SDK that Maxim uses in normal operation handles message structure correctly, so this only surfaces in `peer test`. If you want clean output anyway, tune the llama-cpp-server's `--chat_format` or stop-token list on the leader.
 
-**Latency over tunnel is ~65-94 ms per short completion** (Cloudflare tunnel hop + inference). Acceptable for planning/review lanes, tight for real-time motor control — keep a local backend for motion lanes if the peer is driving actuators. See the [latency baseline in the multi-LLM plan](../plans/agent_mesh.md#latency-baseline-2026-04-04) for measured numbers.
+**Latency over tunnel is ~65-94 ms per short completion** (Cloudflare tunnel hop + inference). Acceptable for planning/review lanes, tight for real-time motor control — keep a local backend for motion lanes if the peer is driving actuators. Historical latency baseline from 2026-04-04 measurements is preserved in the archived [agent_mesh.md](../archive/agent_mesh.md#latency-baseline-2026-04-04).
 
 **If the tunnel keeps flapping** (502 and 403 alternating on repeated requests), cloudflared is reconnecting. Check the leader's cloudflared logs — typically a local network flap or the leader process restarting the llama-cpp-server. Fix the leader's stability before troubleshooting the peer.
 

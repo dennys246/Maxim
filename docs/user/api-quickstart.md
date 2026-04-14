@@ -120,6 +120,6 @@ Maxim uses neuroscience-inspired names for its subsystems:
 ## Next Steps
 
 - [Full Python API Reference](python-api.md) - All verbs, types, and options
-- [CLI Usage Guide](usage-guide.md) - Command-line interface
+- [CLI Reference](cli-reference.md) - Command-line interface
 - [LLM Setup Guide](llm-setup.md) - Configure local and cloud models
 - [Simulation Guide](simulation.md) - Design and run experiments

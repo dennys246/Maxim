@@ -115,5 +115,5 @@ If no valid query is detected after alias resolution, falls back to `system_stat
 
 ## Related docs
 
-- [Tool refactoring plan](../plans/tool_refactoring_plan.md) — Phase 5e design and rationale
-- [Realtime refinement plan](../plans/realtime_refinement_plan.md) — alias metrics in refinement cycles
+- [Tool refactoring plan](../plans/archive/tool_refactoring_plan.md) (archived) — Phase 5e design and rationale
+- [Realtime refinement plan](../plans/archive/realtime_refinement_plan.md) (archived) — alias metrics in refinement cycles

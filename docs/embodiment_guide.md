@@ -249,7 +249,7 @@ Executes motor programs step by step with:
 - **Phase 2**: Composable failure modes — persistent failures with recovery conditions
 - **Phase 3**: Hardware adapter — wrap real robot SDKs as SEM backends
 
-See [embodiment_core_plan.md](plans/embodiment_core_plan.md) for the full roadmap.
+See [embodiment_core_plan.md](plans/archive/embodiment_core_plan.md) (archived) for the historical roadmap.
 
 ## Troubleshooting
 

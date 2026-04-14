@@ -14,7 +14,7 @@
 - [mother_maxim_plan.md](mother_maxim_plan.md) — adjacent but different (that plan is about persistent collective memory across sessions; this plan is about a stimulus-producing NPC that never shares state with the AUT)
 - [../archive/reaction_abstraction_plan.md](../archive/reaction_abstraction_plan.md) — provides the Percept/Reaction information barrier this plan's isolation requirements depend on
 - [../behavioral_convergence_practice.md](../behavioral_convergence_practice.md) — this plan is the likely infrastructure for H1–H5 experiments at scale
-- [unified_event_bus_plan.md](unified_event_bus_plan.md) — tangential; if that plan revives first, Mother NPC uses the unified bus; if this plan revives first, Mother NPC subscribes to the existing percept pipeline
+- [../archive/unified_event_bus_plan.md](../archive/unified_event_bus_plan.md) (archived — scope largely absorbed by reaction_abstraction) — tangential; if the remaining AgentBus/LocalMessageBus merge ever happens, Mother NPC uses the unified bus; otherwise Mother NPC subscribes to the existing percept pipeline
 
 ## The framing
 

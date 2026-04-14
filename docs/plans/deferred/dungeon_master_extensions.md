@@ -202,6 +202,6 @@ class AskUserTool(Tool):
 
 | Plan | Relationship |
 |------|-------------|
-| [DM MVP](../archive/dungeon_master_persona.md) | **Prerequisite** — extensions layer onto MVP |
+| [DM MVP](../../archive/dungeon_master_persona.md) | **Prerequisite** — extensions layer onto MVP |
 | **Realtime Refinement** (done) | Extension C consumes `InspectAUTTool` / `AUTIntrospector` |
 | **Multi-LLM Scaling** (done) | Architect + classification use cheap-lane model; synergistic, not required |

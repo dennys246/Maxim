@@ -92,7 +92,7 @@ Speculative abstraction is the enemy of simple plans. This one stays in `deferre
 ## Relationship to other plans
 
 - **[../archive/substrate_plan.md](../archive/substrate_plan.md)** — provides the `BioSystem` Protocol via the contracts layer. Without it, this plan starts with a larger Phase 0.
-- **[../foundations_plan.md](../foundations_plan.md)** — F0.5 (agent_id threading), F0.2 (PerceptTraceBuffer as a shared resource), and F0.6 (factory consolidation) are all load-bearing for the plugin system because they establish per-agent isolation patterns that plugins need to respect. Without them, a plugin system would inherit silent multi-agent bugs.
+- **[../archive/foundations_plan.md](../archive/foundations_plan.md)** (archived) — F0.5 (agent_id threading), F0.2 (PerceptTraceBuffer as a shared resource), and F0.6 (factory consolidation) are all load-bearing for the plugin system because they establish per-agent isolation patterns that plugins need to respect. Without them, a plugin system would inherit silent multi-agent bugs.
 - **robot plugin discovery (existing)** — this plan copies the pattern from `maxim.robots`. If that pattern changes substantially before this plan revives, re-read the robot plugin code first and adjust.
 
 ## Non-goals

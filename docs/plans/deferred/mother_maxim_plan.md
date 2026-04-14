@@ -2169,7 +2169,7 @@ When Mother ships, `maxim doctor` gains new check categories via `--as contribut
 
 ### CapabilityAgent integration
 
-The CapabilityAgent (designed in [future_plans.md](future_plans.md)) absorbs Mother-awareness with `can_contribute()` (pre-flight: model tier, deidentification, Mother reachability) and `mother_health()` (live cognitive health metrics). Doctor provides formatting + fix hints + retry loop.
+The CapabilityAgent (historical design — predates the current `docs/plans/` split, fully subsumed by [pecking_order_graph_plan.md](pecking_order_graph_plan.md)) absorbs Mother-awareness with `can_contribute()` (pre-flight: model tier, deidentification, Mother reachability) and `mother_health()` (live cognitive health metrics). Doctor provides formatting + fix hints + retry loop.
 
 ---
 
