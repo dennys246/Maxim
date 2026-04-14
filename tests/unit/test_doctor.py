@@ -1460,3 +1460,122 @@ class TestCheckMeshNodes:
         assert all(r.status == "warn" for r in results)
         assert all("peer backend import failed" in r.message for r in results)
         assert all("llm-server" in (r.fix or "") for r in results)
+
+
+class TestCheckMeshNodesDrainHandling:
+    """Plan 4 C2: drain handling in doctor's check_mesh_nodes.
+
+    Drained nodes render as ``info`` without a network call. Orphan
+    drain entries (drain state names that no longer match any
+    mesh.yml node) surface as a ``warn`` CheckResult with a resume
+    hint, not a hard fail.
+    """
+
+    def _setup_mesh(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+        from maxim.utils import paths
+
+        paths._reset_caches()
+        mesh_path = tmp_path / "config" / "maxim" / "mesh.yml"
+        mesh_path.parent.mkdir(parents=True)
+        mesh_path.write_text(_MESH_YAML)
+
+    def test_drained_node_renders_as_info_without_probe(self, tmp_path, monkeypatch):
+        """Plan 4 C2: drained nodes must NOT be probed. Counting backend
+        asserts zero calls for the drained node."""
+        self._setup_mesh(tmp_path, monkeypatch)
+
+        call_count = {"n": 0}
+
+        class _CountingBackend:
+            @classmethod
+            def for_url(cls, url, *, api_key=None, model=None):
+                call_count["n"] += 1
+                return cls()
+
+            def health_check(self, *, enable_stage2=True):
+                return _FakeMeshProbe("ok", "HTTP 200", 5.0)
+
+        import maxim.models.language.maxim_peer_backend as mpb
+
+        monkeypatch.setattr(mpb, "_MaximPeerBackend", _CountingBackend)
+
+        # Drain mac-studio
+        from maxim.peer.drain_state import drain_node
+
+        drain_node("mac-studio", {"leader-desk", "mac-studio"})
+
+        from maxim.doctor.checks import check_mesh_nodes
+
+        results = check_mesh_nodes()
+        assert len(results) == 2
+        mac = next(r for r in results if r.name == "Node mac-studio")
+        leader = next(r for r in results if r.name == "Node leader-desk")
+        assert mac.status == "info"
+        assert "drained" in mac.message.lower()
+        assert mac.retry_id is None  # no retry on drained
+        assert leader.status == "ok"
+        # Only leader-desk probed; mac-studio skipped
+        assert call_count["n"] == 1
+
+    def test_orphan_drain_entry_surfaces_as_warn(self, tmp_path, monkeypatch):
+        """Operator edits mesh.yml to remove a node that's still in
+        the drain state file. The orphan surfaces as a warn with a
+        resume hint, not a hard fail."""
+        self._setup_mesh(tmp_path, monkeypatch)
+
+        # Drain a node that exists
+        from maxim.peer.drain_state import drain_node
+
+        drain_node("mac-studio", {"leader-desk", "mac-studio"})
+
+        # Rewrite mesh.yml to remove mac-studio
+        mesh_path = tmp_path / "config" / "maxim" / "mesh.yml"
+        mesh_path.write_text(
+            "cluster_key: sk-cluster-abc\n"
+            "self: leader-desk\n"
+            "protocol_version: 1\n"
+            "nodes:\n"
+            "  - name: leader-desk\n"
+            "    url: http://192.168.1.10:8099/v1\n"
+            "    role: leader\n"
+        )
+
+        fake = _make_fake_mesh_backend(_FakeMeshProbe("ok", "HTTP 200", 5.0))
+        import maxim.models.language.maxim_peer_backend as mpb
+
+        monkeypatch.setattr(mpb, "_MaximPeerBackend", fake)
+
+        from maxim.doctor.checks import check_mesh_nodes
+
+        results = check_mesh_nodes()
+        # 1 live node + 1 orphan warning
+        orphan_results = [r for r in results if "orphan" in r.name.lower()]
+        assert len(orphan_results) == 1
+        assert orphan_results[0].status == "warn"
+        assert "mac-studio" in orphan_results[0].message
+        assert "resume" in (orphan_results[0].fix or "")
+        assert orphan_results[0].retry_id == "mesh_drain_orphan_mac-studio"
+
+    def test_drained_self_still_info(self, tmp_path, monkeypatch):
+        """If an operator force-drained themselves, doctor still
+        reports info (not fail) — they took the explicit action."""
+        self._setup_mesh(tmp_path, monkeypatch)
+
+        from maxim.peer.drain_state import drain_node
+
+        drain_node("leader-desk", {"leader-desk", "mac-studio"})
+
+        fake = _make_fake_mesh_backend(_FakeMeshProbe("ok", "HTTP 200", 5.0))
+        import maxim.models.language.maxim_peer_backend as mpb
+
+        monkeypatch.setattr(mpb, "_MaximPeerBackend", fake)
+
+        from maxim.doctor.checks import check_mesh_nodes
+
+        results = check_mesh_nodes()
+        leader = next(r for r in results if r.name == "Node leader-desk")
+        assert leader.status == "info"
+        assert "drained" in leader.message.lower()
