@@ -9,7 +9,8 @@ from __future__ import annotations
 import math
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -25,6 +26,11 @@ class TraceEntry:
 
 class PerceptTraceBuffer:
     """Ring buffer of recent percept activations with exponential τ-decay."""
+
+    # P3.5 Stage 1 — BioSystemSnapshot Protocol envelope version.
+    # No pre-existing payload version to tombstone; this buffer had no
+    # persistence layer before Stage 1. See memory/snapshot.py docstring.
+    schema_version: ClassVar[int] = 1
 
     def __init__(
         self,
@@ -96,6 +102,46 @@ class PerceptTraceBuffer:
     @property
     def current_tick(self) -> int:
         return self._tick_counter
+
+    # ─────────────────────────────────────────────────────────────────────
+    # P3.5 Stage 1 — BioSystemSnapshot Protocol
+    # Empty-buffer round-trip ships in Stage 1. Non-empty + concurrent
+    # insertion + agent-filtered restoration edge cases are Stage 2.
+    # ─────────────────────────────────────────────────────────────────────
+
+    def dump(self) -> dict[str, Any]:
+        """Return ring-buffer state as a JSON-serializable dict."""
+        with self._lock:
+            return {
+                "tick_counter": self._tick_counter,
+                "max_entries": self._max_entries,
+                "tau": self._tau,
+                "tick_rate": self._tick_rate,
+                "min_activation": self._min_activation,
+                "entries": [asdict(e) for e in self._entries],
+            }
+
+    def load_state(self, state: dict[str, Any]) -> None:
+        """Mutate self in place from a state dict.
+
+        Does NOT rewrite ring-buffer tuning parameters (max_entries, tau,
+        tick_rate, min_activation) — those come from the live instance's
+        construction. The dumped values are included for diagnostic
+        visibility but are not restored on load, matching how every other
+        bio-system handles runtime-wire vs state separation.
+        """
+        with self._lock:
+            self._tick_counter = int(state.get("tick_counter", 0))
+            self._entries = [
+                TraceEntry(
+                    agent_id=e["agent_id"],
+                    percept_id=e["percept_id"],
+                    tick=int(e["tick"]),
+                    activation_strength=float(e["activation_strength"]),
+                    registered_at=float(e["registered_at"]),
+                )
+                for e in state.get("entries", [])
+            ]
 
     def __len__(self) -> int:
         with self._lock:

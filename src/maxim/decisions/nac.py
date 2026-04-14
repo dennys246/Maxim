@@ -13,7 +13,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from maxim.decisions.causal_link import (
     CausalLink,
@@ -83,6 +83,11 @@ class NAc:
             print(f"Expected: {prediction.predicted_outcome}")
             print(f"Confidence: {prediction.confidence:.2f}")
     """
+
+    # P3.5 Stage 1 — BioSystemSnapshot Protocol envelope version.
+    # Payload-layer legacy version string "1.0" is tombstoned; all future
+    # migrations land at the envelope layer. See memory/snapshot.py docstring.
+    schema_version: ClassVar[int] = 1
 
     def __init__(self, config: NACConfig | None = None, ec: Any = None):
         self.config = config or NACConfig()
@@ -1016,6 +1021,50 @@ class NAc:
     # Persistence
     # ─────────────────────────────────────────────────────────────────────────
 
+    def dump(self) -> dict[str, Any]:
+        """Return NAc state as a JSON-serializable dict.
+
+        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Acquires
+        the same mutex the pre-refactor save() body held.
+        """
+        with self._lock:
+            return {
+                "version": "1.0",  # legacy payload string — tombstoned, do not bump
+                "links": {event_sig: [link.to_dict() for link in links] for event_sig, links in self._links.items()},
+                "outcome_index": {k: list(v) for k, v in self._outcome_index.items()},
+                "priors": self._priors,
+                "total_observations": self._total_observations,
+                "reward_bias": {f"{aid}:{nid}": bias for (aid, nid), bias in self._reward_bias.items()},
+            }
+
+    def load_state(self, state: dict[str, Any]) -> None:
+        """Mutate self in place from a state dict.
+
+        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Preserves
+        runtime wires (self.config, self.ec, whatever was wired at
+        construction). Does NOT acquire the NAc mutex because callers
+        expect load-time quiescence; acquiring self._lock here would
+        deadlock with any concurrent observe() call in a long-running sim.
+        """
+        version = state.get("version", "0.0")
+        if version != "1.0":
+            raise ValueError(f"Unsupported NAc version: {version}")
+
+        self._links = {
+            event_sig: [CausalLink.from_dict(link_data) for link_data in links]
+            for event_sig, links in state.get("links", {}).items()
+        }
+        self._outcome_index = {k: set(v) for k, v in state.get("outcome_index", {}).items()}
+        self._priors = state.get("priors", {})
+        self._total_observations = state.get("total_observations", 0)
+
+        # P2: Load reward biases
+        self._reward_bias = {}
+        for key_str, bias in state.get("reward_bias", {}).items():
+            parts = key_str.split(":", 1)
+            if len(parts) == 2:
+                self._reward_bias[(parts[0], parts[1])] = bias
+
     def save(self, path: str | None = None) -> None:
         """Save NAc state to JSON file.
 
@@ -1025,20 +1074,10 @@ class NAc:
         path = path or self.config.persistence_path
         if path is None:
             raise ValueError("NAc.save() requires a path or NACConfig.persistence_path to be set")
-        with self._lock:
-            data = {
-                "version": "1.0",
-                "links": {event_sig: [link.to_dict() for link in links] for event_sig, links in self._links.items()},
-                "outcome_index": {k: list(v) for k, v in self._outcome_index.items()},
-                "priors": self._priors,
-                "total_observations": self._total_observations,
-                "reward_bias": {f"{aid}:{nid}": bias for (aid, nid), bias in self._reward_bias.items()},
-            }
 
         from maxim.utils.atomic_io import atomic_write_json
 
-        atomic_write_json(path, data)
-
+        atomic_write_json(path, self.dump())
         logger.info("Saved NAc to %s (%d links)", path, len(self))
 
     def load(self, path: str | None = None) -> None:
@@ -1051,27 +1090,9 @@ class NAc:
         if path is None:
             raise ValueError("NAc.load() requires a path or NACConfig.persistence_path to be set")
         with open(path, encoding="utf-8") as f:
-            data = json.load(f)
+            state = json.load(f)
 
-        version = data.get("version", "0.0")
-        if version != "1.0":
-            raise ValueError(f"Unsupported NAc version: {version}")
-
-        self._links = {
-            event_sig: [CausalLink.from_dict(link_data) for link_data in links]
-            for event_sig, links in data.get("links", {}).items()
-        }
-        self._outcome_index = {k: set(v) for k, v in data.get("outcome_index", {}).items()}
-        self._priors = data.get("priors", {})
-        self._total_observations = data.get("total_observations", 0)
-
-        # P2: Load reward biases
-        self._reward_bias = {}
-        for key_str, bias in data.get("reward_bias", {}).items():
-            parts = key_str.split(":", 1)
-            if len(parts) == 2:
-                self._reward_bias[(parts[0], parts[1])] = bias
-
+        self.load_state(state)
         logger.info("Loaded NAc from %s (%d links, %d biases)", path, len(self), len(self._reward_bias))
 
     def load_safe(self, path: str | None = None) -> tuple[bool, str | None]:

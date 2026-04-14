@@ -20,7 +20,7 @@ import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     from maxim.memory.layer import MemoryLayer
@@ -64,6 +64,11 @@ class CrossLayerGraph:
     Lightweight: only stores edge data, delegates record access to
     the layer objects passed at construction.
     """
+
+    # P3.5 Stage 1 — BioSystemSnapshot Protocol envelope version.
+    # Payload-layer legacy version string "1.0" is tombstoned; all future
+    # migrations land at the envelope layer. See memory/snapshot.py docstring.
+    schema_version: ClassVar[int] = 1
 
     def __init__(
         self,
@@ -213,29 +218,24 @@ class CrossLayerGraph:
 
         return dict(result)
 
-    def save(self, path: str | None = None) -> None:
-        """Persist cross-layer graph to JSON."""
-        path = path or self._persistence_path
-        if path is None:
-            return
+    def dump(self) -> dict[str, Any]:
+        """Return cross-layer graph state as a JSON-serializable dict.
 
-        from maxim.utils.atomic_io import atomic_write_json
+        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Thin alias
+        over the existing to_dict() method.
+        """
+        return self.to_dict()
 
-        atomic_write_json(path, self.to_dict(), default=None)
+    def load_state(self, state: dict[str, Any]) -> None:
+        """Mutate self in place from a state dict.
 
-    def load(self, path: str | None = None) -> None:
-        """Restore cross-layer graph from JSON."""
-        path = path or self._persistence_path
-        if path is None or not os.path.exists(path):
-            return
-
-        with open(path) as f:
-            data = json.load(f)
-
+        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Preserves
+        runtime wires (self._layers, self._persistence_path).
+        """
         self._outgoing.clear()
         self._incoming.clear()
 
-        for e_data in data.get("edges", []):
+        for e_data in state.get("edges", []):
             try:
                 edge_type = CrossLayerEdgeType[e_data["edge_type"]]
             except KeyError:
@@ -249,6 +249,27 @@ class CrossLayerGraph:
                 weight=e_data.get("weight", 1.0),
                 metadata=e_data.get("metadata", {}),
             )
+
+    def save(self, path: str | None = None) -> None:
+        """Persist cross-layer graph to JSON."""
+        path = path or self._persistence_path
+        if path is None:
+            return
+
+        from maxim.utils.atomic_io import atomic_write_json
+
+        atomic_write_json(path, self.dump(), default=None)
+
+    def load(self, path: str | None = None) -> None:
+        """Restore cross-layer graph from JSON."""
+        path = path or self._persistence_path
+        if path is None or not os.path.exists(path):
+            return
+
+        with open(path) as f:
+            state = json.load(f)
+
+        self.load_state(state)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for persistence."""

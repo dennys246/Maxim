@@ -11,7 +11,7 @@ import logging
 import time as _time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 from maxim.time.temporal_signature import TemporalSignature
 
@@ -191,6 +191,11 @@ class SCN:
     # save. Kept as ``persistence_path`` (public, typed) instead of the old
     # untyped ``_persistence_path`` attribute.
     persistence_path: str | None = None
+
+    # P3.5 Stage 1 — BioSystemSnapshot Protocol envelope version.
+    # Payload-layer legacy version string "3.0" is tombstoned; all future
+    # migrations land at the envelope layer. See memory/snapshot.py docstring.
+    schema_version: ClassVar[int] = 1
 
     def register(
         self,
@@ -637,10 +642,15 @@ class SCN:
     # Persistence
     # ─────────────────────────────────────────────────────────────────────────
 
-    def save(self, path: str) -> None:
-        """Save SCN state to JSON file (v3.0 with bounded bins)."""
+    def dump(self) -> dict[str, Any]:
+        """Return SCN state as a JSON-serializable dict.
+
+        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. SCN has
+        no internal lock; the pre-refactor save() body also didn't lock.
+        Preserves that contract.
+        """
         data: dict[str, Any] = {
-            "version": "3.0",
+            "version": "3.0",  # legacy payload string — tombstoned, do not bump
             "circadian_bins": {str(k): v.to_list() for k, v in self._circadian_bins.items() if v},
             "weekly_bins": {str(k): v.to_list() for k, v in self._weekly_bins.items() if v},
             "monthly_bins": {str(k): v.to_list() for k, v in self._monthly_bins.items() if v},
@@ -648,53 +658,60 @@ class SCN:
             "signatures": {k: v.to_dict() for k, v in self._signatures.items()},
             "priors": {k: list(v) for k, v in self._priors.items()},
         }
-
         if self._oscillator is not None:
             data["oscillator"] = self._oscillator.to_dict()
+        return data
 
-        from maxim.utils.atomic_io import atomic_write_json
+    def load_state(self, state: dict[str, Any]) -> None:
+        """Mutate self in place from a state dict.
 
-        atomic_write_json(path, data)
-        logger.info("Saved SCN to %s (%d signatures)", path, len(self._signatures))
-
-    def load(self, path: str) -> None:
-        """Load SCN state from JSON file (supports v1.0, v2.0, and v3.0)."""
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-
-        version = data.get("version", "0.0")
+        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Preserves
+        runtime wires (persistence_path, any wired clock estimator).
+        """
+        version = state.get("version", "0.0")
         if version not in ("1.0", "2.0", "3.0"):
             raise ValueError(f"Unsupported SCN version: {version}")
 
         # BoundedBin.from_list handles both v2 (list[str]) and v3 (list[dict])
         self._circadian_bins = defaultdict(
             BoundedBin,
-            {int(k): BoundedBin.from_list(v) for k, v in data.get("circadian_bins", {}).items()},
+            {int(k): BoundedBin.from_list(v) for k, v in state.get("circadian_bins", {}).items()},
         )
         self._weekly_bins = defaultdict(
             BoundedBin,
-            {int(k): BoundedBin.from_list(v) for k, v in data.get("weekly_bins", {}).items()},
+            {int(k): BoundedBin.from_list(v) for k, v in state.get("weekly_bins", {}).items()},
         )
         self._monthly_bins = defaultdict(
             BoundedBin,
-            {int(k): BoundedBin.from_list(v) for k, v in data.get("monthly_bins", {}).items()},
+            {int(k): BoundedBin.from_list(v) for k, v in state.get("monthly_bins", {}).items()},
         )
         self._annual_bins = defaultdict(
             BoundedBin,
-            {int(k): BoundedBin.from_list(v) for k, v in data.get("annual_bins", {}).items()},
+            {int(k): BoundedBin.from_list(v) for k, v in state.get("annual_bins", {}).items()},
         )
-        self._signatures = {k: TemporalSignature.from_dict(v) for k, v in data.get("signatures", {}).items()}
-        self._priors = defaultdict(set, {k: set(v) for k, v in data.get("priors", {}).items()})
+        self._signatures = {k: TemporalSignature.from_dict(v) for k, v in state.get("signatures", {}).items()}
+        self._priors = defaultdict(set, {k: set(v) for k, v in state.get("priors", {}).items()})
 
-        # Restore oscillator if present (v2.0)
-        osc_data = data.get("oscillator")
+        # Restore oscillator if present
+        osc_data = state.get("oscillator")
         if osc_data is not None:
             from maxim.time.oscillator import OscillatorNetwork
 
             self._oscillator = OscillatorNetwork.from_dict(osc_data)
-            logger.info("Restored oscillator (%d observations)", self._oscillator._observation_count)
 
-        logger.info("Loaded SCN v%s from %s (%d signatures)", version, path, len(self._signatures))
+    def save(self, path: str) -> None:
+        """Save SCN state to JSON file (v3.0 with bounded bins)."""
+        from maxim.utils.atomic_io import atomic_write_json
+
+        atomic_write_json(path, self.dump())
+        logger.info("Saved SCN to %s (%d signatures)", path, len(self._signatures))
+
+    def load(self, path: str) -> None:
+        """Load SCN state from JSON file (supports v1.0, v2.0, and v3.0)."""
+        with open(path, encoding="utf-8") as f:
+            state = json.load(f)
+        self.load_state(state)
+        logger.info("Loaded SCN from %s (%d signatures)", path, len(self._signatures))
 
     def get_version(self) -> str:
         """Return data format version."""

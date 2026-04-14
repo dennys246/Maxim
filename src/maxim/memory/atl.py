@@ -20,7 +20,7 @@ import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, ClassVar, Iterator
 from uuid import uuid4
 
 from maxim.agents.bus import DependencyGraph
@@ -61,6 +61,11 @@ class ATL(MemoryLayer):
 
     Thread-safe via RWLock.
     """
+
+    # P3.5 Stage 1 — BioSystemSnapshot Protocol envelope version.
+    # Payload-layer legacy version string "1.0" is tombstoned; all future
+    # migrations land at the envelope layer. See memory/snapshot.py docstring.
+    schema_version: ClassVar[int] = 1
 
     def __init__(self, config: ATLConfig | None = None) -> None:
         self.config = config or ATLConfig()
@@ -303,15 +308,16 @@ class ATL(MemoryLayer):
             results.sort(key=lambda x: x[1], reverse=True)
             return results[:limit]
 
-    def save(self, path: str | None = None) -> None:
-        """Persist ATL state to JSON."""
-        path = path or self.config.persistence_path
-        if path is None:
-            return
+    def dump(self) -> dict[str, Any]:
+        """Return ATL state as a JSON-serializable dict.
 
+        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Acquires the
+        same read lock the pre-refactor save() body held, so concurrent
+        concept inserts cannot race the dict build.
+        """
         with self._rwlock.read():
-            data = {
-                "version": "1.0",
+            return {
+                "version": "1.0",  # legacy payload string — tombstoned, do not bump
                 "concepts": {cid: c.to_dict() for cid, c in self._concepts.items()},
                 "graph": self._graph.to_dict(),
                 "registry": self._semantics.registry.to_dict(),
@@ -319,18 +325,13 @@ class ATL(MemoryLayer):
                 "compressed_count": self._compressed_count,
             }
 
-        atomic_write_json(path, data, default=None)
-        logger.debug("ATL saved to %s (%d concepts)", path, len(self._concepts))
+    def load_state(self, state: dict[str, Any]) -> None:
+        """Mutate self in place from a state dict.
 
-    def load(self, path: str | None = None) -> None:
-        """Restore ATL state from JSON."""
-        path = path or self.config.persistence_path
-        if path is None or not os.path.exists(path):
-            return
-
-        with open(path) as f:
-            data = json.load(f)
-
+        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Does NOT
+        construct a new ATL; this preserves runtime wires (config,
+        self._semantics callbacks, self._concept_deletion_callback, etc.).
+        """
         with self._rwlock.write():
             self._concepts.clear()
             self._context_index.clear()
@@ -338,7 +339,7 @@ class ATL(MemoryLayer):
             self._modality_index.clear()
             self._compressed_count = 0
 
-            for cid, c_data in data.get("concepts", {}).items():
+            for cid, c_data in state.get("concepts", {}).items():
                 if c_data.get("_compressed"):
                     concept = CompressedSemantic.from_dict(c_data)
                     self._compressed_count += 1
@@ -351,18 +352,38 @@ class ATL(MemoryLayer):
                 self._index_concept(cid, concept)
 
             # Restore graph
-            graph_data = data.get("graph")
+            graph_data = state.get("graph")
             if graph_data:
                 self._graph = DependencyGraph.from_dict(graph_data)
                 self._semantics = Semantics(self._graph)
 
             # Restore registry
-            reg_data = data.get("registry")
+            reg_data = state.get("registry")
             if reg_data:
                 self._semantics._registry = RelationshipRegistry.from_dict(reg_data)
 
-            self._stats = data.get("stats", {"concepts_stored": 0, "queries": 0})
-            self._compressed_count = data.get("compressed_count", self._compressed_count)
+            self._stats = state.get("stats", {"concepts_stored": 0, "queries": 0})
+            self._compressed_count = state.get("compressed_count", self._compressed_count)
+
+    def save(self, path: str | None = None) -> None:
+        """Persist ATL state to JSON."""
+        path = path or self.config.persistence_path
+        if path is None:
+            return
+
+        atomic_write_json(path, self.dump(), default=None)
+        logger.debug("ATL saved to %s (%d concepts)", path, len(self._concepts))
+
+    def load(self, path: str | None = None) -> None:
+        """Restore ATL state from JSON."""
+        path = path or self.config.persistence_path
+        if path is None or not os.path.exists(path):
+            return
+
+        with open(path) as f:
+            state = json.load(f)
+
+        self.load_state(state)
 
         logger.debug("ATL loaded from %s (%d concepts)", path, len(self._concepts))
 
