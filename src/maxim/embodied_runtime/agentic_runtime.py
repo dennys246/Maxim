@@ -345,25 +345,33 @@ class AgenticRuntimeMixin:
         except Exception as e:
             warn("Failed to create LearnedToolIndex: %s", e, logger=self.log)
 
-        # --- ToolPainBridge ---
-        # Wire NAc causal learning + keyword index to tool outcomes.
+        # --- ToolPainBridge (+ optional Embodiment) ---
+        # Wire NAc causal learning + keyword index to tool outcomes
+        # via the shared runtime/embodiment_bootstrap helper. Behavior-
+        # preserving refactor of the pre-Stage-2 manual wiring.
+        # `pain_detector` (legacy path) is still forwarded for this
+        # call site; no `pain_bus` / `entity_ref` here because the
+        # Reachy runtime currently doesn't load a SEM body through
+        # this path. (Stage 2b will revisit when/if it does.)
         tool_pain_bridge = None
         try:
-            from maxim.bridges.tool_pain_bridge import ToolPainBridge
+            from maxim.runtime.embodiment_bootstrap import (
+                bootstrap_embodiment_and_pain_bridge,
+            )
 
             pain_detector = getattr(self, "_pain_detector", None)
             if nac is not None:
-                tool_pain_bridge = ToolPainBridge(
+                _, tool_pain_bridge = bootstrap_embodiment_and_pain_bridge(
                     nac=nac,
-                    pain_detector=pain_detector,
-                    scn=memory_hub.scn if memory_hub else None,
                     hippocampus=memory_hub.hippocampus if memory_hub else None,
+                    scn=memory_hub.scn if memory_hub else None,
+                    executor=executor,
+                    pain_bus=None,  # legacy: subscribes via pain_detector
+                    pain_detector=pain_detector,
                     tool_index=tool_index,
                 )
-                # Attach to executor for tool start/complete tracking
-                executor._tool_pain_bridge = tool_pain_bridge
                 self._tool_pain_bridge = tool_pain_bridge
-                self.log.debug("ToolPainBridge wired to executor (with tool index)")
+                self.log.debug("ToolPainBridge wired via bootstrap helper (with tool index)")
         except Exception as e:
             warn("Failed to create ToolPainBridge: %s", e, logger=self.log)
 
