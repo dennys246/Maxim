@@ -30,9 +30,9 @@ Two test surfaces, both in `tests/substrate/`:
 
 - **`src/maxim/_data/components/weapons/rusty_sword.yaml`** — bundled weapon component with `durability` sensor (initial 0.3), `combat.slash` affordance, and `shatter` failure mode triggered at `durability < 0.1` with `pain: 0.6`. No drift needed — this YAML was already aligned to the Stage 2 architecture.
 
-### Validation sweep (slow suite, Stage 3 pending)
+### Validation sweep (slow suite — Stage 3 ✅ SHIPPED 2026-04-14)
 
-`TestP2ValidationSweep` in `test_p2_reward_modulation.py` requires `sentence-transformers`. Not run in Stage 2; reserved for Stage 3 once the env is ready.
+`TestP2ValidationSweep` in `test_p2_reward_modulation.py` requires `sentence-transformers`. It was not run during Stage 2; it shipped on 2026-04-14 as Substrate P2 Stage 3. The sweep required three metric pivots (node-count → raw pair-collapse → plurality-ownership self-collapse) and a fixture pivot to pairwise-distant domains. Final result at `paraphrase-mpnet-base-v2 @ threshold 0.70, reward 2.0`: **mean target gain +56.0 ± 29.0 pp, distractor drift 0.0 ± 0.0 pp, monotone 94%, 9/10 seeds individually**. Full lab notebook: [p2_reward_modulation_sweep.md](p2_reward_modulation_sweep.md). Reproduction runbook: [protocols/p2_reward_modulation_reproduction.md](protocols/p2_reward_modulation_reproduction.md).
 
 ### Hardware
 

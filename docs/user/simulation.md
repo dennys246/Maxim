@@ -396,7 +396,7 @@ encounters:
 
 Templates store campaign-independent parts (scene prose, choices, dice mechanics). Campaign YAML adds the wiring (active_npcs, branches, on_choice, dialogue_hints). Templates are discovered from three search paths: campaign-local directory, `~/.maxim/encounters/`, and bundled encounters.
 
-For full details on campaign authoring, character definitions, and the encounter system, see [DM Campaigns Guide](../dm_campaigns_guide.md).
+For full details on campaign authoring, character definitions, and the encounter system, see [DM Campaigns Guide](dm-campaigns.md) and [Generative Campaigns Guide](../generative_campaigns_guide.md).
 
 ## Research Protocol
 

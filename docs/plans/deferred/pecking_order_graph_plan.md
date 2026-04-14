@@ -4,7 +4,7 @@
 >
 > **Revive when:** (1) [substrate_plan.md](../archive/substrate_plan.md) A6 convergence harnesses pass, AND (2) a second real node exists in the mesh that isn't the Mac peer (i.e., there's an actual multi-node topology to unify). Until then, the single-leader + peer model is sufficient and POG's 1,200 LOC would be abstracting over a structure that doesn't exist yet.
 >
-> **Note on overlap with [cleanup_wave.md](../cleanup_wave.md) C4:** Agent Permissions ships standalone in the cleanup wave. When POG is revived, it consumes the permissions layer via its AUTHORITY domain rather than replacing it.
+> **Note on overlap with [cleanup_wave.md](../archive/cleanup_wave.md) (archived) C4:** Agent Permissions ships standalone in the cleanup wave. When POG is revived, it consumes the permissions layer via its AUTHORITY domain rather than replacing it.
 > **Goal:** Unify leader/peer roles, mesh topology, compute routing, and Mother Maxim hierarchy into a single directed graph with domain-scoped pecking relationships on each edge.
 > **Depends on:** PyPI publication (v1.0.0). Subsumes Mesh Phase 0a/0b, Capability Agent, Multi-Node Admin, and reshapes Mother Maxim's federation model.
 > **Estimated scope:** ~1,200 LOC across 5 phases + prep items woven into publication.
@@ -553,14 +553,14 @@ The pecking order graph **restructures** how Mother relates to other nodes:
 - Phase 0b (InferenceRouter) → absorbed into POG-3c.
 - Phases 1-7 (already shipped) → unchanged. AgentIdentity, ExperienceBroker, TaskDelegator, PeerChannel all continue to work. The graph adds a topology layer on top.
 
-### Capability Agent (future_plans.md)
+### Capability Agent (historical — design lived in an old `future_plans.md` that predates the current `docs/plans/` split)
 - **Fully subsumed.** All 5 planned phases (CA-1 through CA-5) are replaced by `PeckingGraph` methods.
 - `CapabilitySnapshot` → `PeckingNode.capabilities + .load`
 - `check_model_availability()` → `graph.route_request(domain=COMPUTE, requirements={"model": X})`
 - `gate_action()` → `graph.check_gate()`
 - `on_peer_joined/left` → `graph.register() / deregister()`
 
-### Multi-Node Admin (future_plans.md)
+### Multi-Node Admin (historical — same origin as Capability Agent above)
 - **Fully subsumed.** Update cascade through the graph replaces the node registry + fan-out CLI.
 - `maxim peer update --all` → `maxim update --cascade` (authority cascade from current node down).
 
@@ -568,7 +568,7 @@ The pecking order graph **restructures** how Mother relates to other nodes:
 
 ## Stress-Test Campaign: The Kings' Duel
 
-A dedicated DM campaign ([`scenarios/campaigns/kings_duel_v1.yaml`](../../scenarios/campaigns/kings_duel_v1.yaml)) that exercises hierarchical social dynamics and cascading authority transfer — the exact patterns the pecking order graph is designed to handle.
+A dedicated DM campaign ([`scenarios/campaigns/kings_duel_v1.yaml`](../../../scenarios/campaigns/kings_duel_v1.yaml)) that exercises hierarchical social dynamics and cascading authority transfer — the exact patterns the pecking order graph is designed to handle.
 
 **Scenario:** Medieval duel between English and French kings. The player is a herald (observer/diplomat) watching the hierarchy react to the outcome. 8 NPCs across a clear pecking order:
 

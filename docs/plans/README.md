@@ -5,11 +5,11 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## Active (gating 1.0)
 
-Three focused plans remain, split from the master substrate plan. Foundations, reaction abstraction, and simulator upgrades are all complete. P0 pilot and P1 recognition are complete. P2 core is merged, P2 validation is next. The sequence is: recognition P2 validation → binding/persistence (P3a through P8 + B3-B5).
+Foundations, reaction abstraction, and simulator upgrades are all complete. P0 pilot, P1 recognition, and P2 reward modulation are complete — `substrate_recognition.md` closed for 0.3-minimum on 2026-04-14. The sequence resumes with binding/persistence (P3a through P8 + B3-B5).
 
 - [substrate_p0_pilot.md](substrate_p0_pilot.md) — **COMPLETE** (2026-04-12). Baseline pinned at 78.5% (mpnet@0.50). P1 sanity floor = 73.5%. Results: [experiments/p0_baseline_sweep.md](../experiments/p0_baseline_sweep.md).
-- [substrate_recognition.md](substrate_recognition.md) — **in progress.** B1+P1 **SHIPPED** (2026-04-12): 91.7% ± 2.9% collapse with paraphrase-mpnet@0.40 + centroid update. P2 core merged, P2 validation remaining. Results: [experiments/p1_recognition_sweep.md](../experiments/p1_recognition_sweep.md). ~2,230 LOC. Targets 0.3-pre through 0.3-minimum.
-- [substrate_binding_persistence.md](substrate_binding_persistence.md) — blocked on recognition P2 validation. P3a episode binding through P8 sleep replay + B3-B5 prompt layer. Includes the 1.0-gating P4 cross-modal head-to-head vs OpenCLIP. ~4,100 LOC. Targets 0.3-target through 0.5.
+- [substrate_recognition.md](substrate_recognition.md) — **COMPLETE** (2026-04-14). B1+P1 shipped 2026-04-12 at 91.7% ± 2.9% collapse (`paraphrase-mpnet-base-v2 @ 0.40`). P2 Stage 1+2 shipped as PR #100 (SEM pain cascade end-to-end on real `rusty_sword` + NAc `_context_similarity` directional denominator root-cause fix + PainBus dual-layer rewrite). P2 Stage 3 shipped as PR #102 — real-embedding sweep at `paraphrase-mpnet-base-v2 @ 0.70, reward 2.0` cleared with **+56.0 ± 29.0 pp target gain / 0.0 ± 0.0 pp distractor drift / 94% monotone / 9-of-10 seeds**, after three forced metric pivots (node-count → raw pair-collapse → plurality-ownership self-collapse) + a fixture pivot to pairwise-distant domains. Results: [experiments/p1_recognition_sweep.md](../experiments/p1_recognition_sweep.md) + [experiments/p2_reward_modulation_sweep.md](../experiments/p2_reward_modulation_sweep.md) + [experiments/p2_sem_pain_cascade.md](../experiments/p2_sem_pain_cascade.md). Reproduction runbook: [experiments/protocols/p2_reward_modulation_reproduction.md](../experiments/protocols/p2_reward_modulation_reproduction.md). **Text-to-prompt migration phases 2-4** (shadow read → cutover → legacy removal) remain on the plan but are explicitly NOT gating 0.3-minimum.
+- [substrate_binding_persistence.md](substrate_binding_persistence.md) — **unblocked** (2026-04-14) by substrate_recognition closure. P3a episode binding through P8 sleep replay + B3-B5 prompt layer. Includes the 1.0-gating P4 cross-modal head-to-head vs OpenCLIP. ~4,100 LOC. Targets 0.3-target through 0.5. **Next substrate plan to open.**
 
 The master reference for rationale, baselines, and statistical hygiene is archived at [archive/substrate_plan.md](archive/substrate_plan.md).
 
@@ -77,7 +77,7 @@ Earlier archives (2026-04-11/12, S1–S4 shipped 2026-04-12):
 Two tracks run in parallel:
 - **Track A — Substrate:** the bio-inspired research claim. F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4 → P5 → P6 → P8.
 - **Track B — Prompt layer:** B1 → B3 → B4 → B5.
-- **Track C — Infrastructure (2026-04-12, mostly shipped 2026-04-12/14):** LLM path refinement. Plans 1, 2, 3, 3.5 shipped and archived; Plan 3.6 R5 + Plan 4 Stage A+B shipped; Plan 4 Stage C + remaining substrate P2 validation + stress phases A/B/C/E remain. Ships as 0.4 stability version.
+- **Track C — Infrastructure (2026-04-12, mostly shipped 2026-04-12/14):** LLM path refinement. Plans 1, 2, 3, 3.5 shipped and archived; Plan 3.6 R5 + Plan 4 Stage A+B shipped; substrate P2 Stage 3 shipped (stress phase A). Plan 4 Stage C + stress phases B/C/E remain. Ships as 0.4 stability version.
 
 Track C is a pause-insertion between Track A's 0.3 and Track B's 0.4 because the 2026-04-12 peer-leader incidents + `_OpenAIBackend` retry-loop discovery made it clear the substrate work cannot be reliably stress-tested on the current LLM path.
 
@@ -89,7 +89,7 @@ Each substrate phase is a falsifiable claim validated with mechanistic criteria 
 | **0.3-pre** | foundations_plan, simulator_upgrades_plan, P0 pilot, B1+P1 combined migration | Foundations solid; substrate phases cheap to run; fixtures calibrated; text flows through percepts end-to-end |
 | **0.3-minimum** | 0.3-pre plus P1, P2, P3.5 | Mechanism + reward modulation + persistence certification. Defensible version bump if P3a/b/P4 slip to 0.3.1. |
 | **0.3-target** | 0.3-minimum plus P3a, P3b, P4 (OpenCLIP head-to-head) | Full substrate proven with cross-modal binding across real process boundary |
-| **0.4 (Track C — stability)** | **LLM path refinement Plans 1–3.5 SHIPPED** (archived); Plan 3.6 R5 SHIPPED; Plan 4 Stage A+B SHIPPED (in review); Plan 4 Stage C + substrate P2 validation + remaining stress phases (A/B/C/E) + `llama.cpp --parallel` batching PoC REMAINING | Infrastructure reliably supports multi-agent stress testing. `maxim peer restart` recovers in ~58s end-to-end on real hardware (peer-side overhead ≈ 0s, dominated by leader's 53s model reload). Per-agent observability via `agent_id` on every `peer_backend_call`/`peer_backend_failed` event. Rigorous recovery-time measurable via `maxim bench recovery-time`. Substrate P2 validation still pending. See [llm_path_refinement.md](llm_path_refinement.md). |
+| **0.4 (Track C — stability)** | **LLM path refinement Plans 1–3.5 SHIPPED** (archived); Plan 3.6 R5 SHIPPED; Plan 4 Stage A+B SHIPPED; **substrate P2 Stage 3 SHIPPED** (real-embedding sweep PASS); Plan 4 Stage C + remaining stress phases (B/C/E) + `llama.cpp --parallel` batching PoC REMAINING | Infrastructure reliably supports multi-agent stress testing. `maxim peer restart` recovers in ~58s end-to-end on real hardware (peer-side overhead ≈ 0s, dominated by leader's 53s model reload). Per-agent observability via `agent_id` on every `peer_backend_call`/`peer_backend_failed` event. Rigorous recovery-time measurable via `maxim bench recovery-time`. Substrate P2 reward modulation validated on real embeddings at +56 pp target gain. See [llm_path_refinement.md](llm_path_refinement.md) + [substrate_recognition.md](substrate_recognition.md). |
 | **0.5 (formerly 0.4)** | P4 re-pass (production vision + email/Slack), B3, B4 (gates 1.0), B5 | Architecture generalizes; NPCs coherent; replanning recovers from failure |
 | **0.6 (formerly 0.5)** | P5 (stress persistence), P6 (extinction vs LRU), **P8 (minimum-viable sleep replay)** | Persists under load, forgets appropriately, actively strengthens rewarded associations offline |
 | **1.0** | Stress-test sim combining all phases; B4 passing; practice docs with experiments logged | Cross-session learning without fine-tuning at realistic scale, with coherent voice, with ongoing research program |
@@ -98,13 +98,13 @@ Each substrate phase is a falsifiable claim validated with mechanistic criteria 
 
 **0.4 is a pure infrastructure version bump.** No new substrate phases. No new prompt-layer features. It exists because the 2026-04-12 incidents + architecture audit made stability work non-optional. Substrate work continues in 0.5 on top of the stabilized LLM path.
 
-**P2 validation runs INSIDE Plan 3's stress test** (Phase A). The substrate P2 reward modulation validation happens alongside Plan 3's fast-failover verification — one stress test serves both needs. See [../experiments/protocols/llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md).
+**P2 validation was originally scoped to run INSIDE Plan 3's stress test** (Phase A). In practice the P2 Stage 3 sweep is CPU-only and ~27s wall clock, so it shipped standalone on 2026-04-14 via `TestP2ValidationSweep::test_sweep_10_seeds` without waiting on the combined stress run. The reproduction runbook lives at [../experiments/protocols/p2_reward_modulation_reproduction.md](../experiments/protocols/p2_reward_modulation_reproduction.md). Stress phases B (multi-agent fan-out), C (`llama.cpp --parallel`), and E (fault injection) remain and will run under the combined [llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md) protocol.
 
 Channels (SMS, email, Slack, narrative speech) are **TEXT modality with context metadata**, not separate modalities. Channel rollout: SMS + narrative in 0.3, email + Slack in 0.5. See [substrate_plan.md](archive/substrate_plan.md) for phase definitions.
 
 ## How LLM path refinement interleaves with substrate P2
 
-Timeline (rough, not calendar-committed). As of 2026-04-14, steps 1–3a and Plan 3.6 R5 + Plan 4 Stage A+B are done. Only Plan 4 Stage C and substrate P2 validation remain.
+Timeline (rough, not calendar-committed). As of 2026-04-14, steps 1–3a, Plan 3.6 R5, Plan 4 Stage A+B, and substrate P2 Stage 3 are done. Only Plan 4 Stage C and stress phases B/C/E remain.
 
 1. **✅ SHIPPED (2026-04-12):** Plan 1 R0 + R1 + R1 loose ends.
    - R0: dead mesh deleted (commit `e811787`)
@@ -137,7 +137,7 @@ Timeline (rough, not calendar-committed). As of 2026-04-14, steps 1–3a and Pla
    - **Security fixes (node_security_simplification.md Phase 1):** `secrets.compare_digest()` for auth comparison, rate-limiter buckets by source IP (not auth token), corrected peer help text in `tunnel/cli.py`.
 
 4. **Stress test (one combined run):**
-   - Phase A: substrate P2 validation (satisfies 0.3-minimum P2 requirement) + Plan 3 baseline — REMAINING
+   - **Phase A: ✅ SHIPPED (2026-04-14)** as substrate P2 Stage 3. Ran standalone outside the combined stress test because the sweep is fast (~27s wall clock on CPU) and the substrate work didn't need to wait on multi-agent fan-out. Results: [experiments/p2_reward_modulation_sweep.md](../experiments/p2_reward_modulation_sweep.md). Mean target gain **+56.0 ± 29.0 pp**, distractor drift **0.0 ± 0.0 pp**, monotone **94%**, 9/10 seeds individually.
    - Phase B: multi-agent fan-out (exercises AgentPool under the new LLM path) — REMAINING
    - Phase C: `llama.cpp --parallel` batching PoC — REMAINING
    - **Phase D: ✅ SHIPPED (2026-04-13)** — [llm_path_stress_20260413.md](../experiments/results/llm_path_stress_20260413.md). All designed-for gates PASS: fast-fail, no stacked timeouts, no provider pollution, sim resumes. Recovery-time gate was inconclusive under sim workload (sim-cadence artifact), addressed in Phase D2 below.
@@ -151,11 +151,11 @@ Timeline (rough, not calendar-committed). As of 2026-04-14, steps 1–3a and Pla
    - **Stage B: recovery-time bench harness.** New `maxim bench recovery-time` CLI subcommand at `src/maxim/bench/` (package named `bench` not `benchmark` to avoid shadowing the existing `maxim.api.benchmark` public verb). Fires chat completions in a tight loop against a peer URL, extracts a rigorous recovery-time number from the first `success → failure → success` transition. 21 new tests. Real hardware validation is the Phase D2 run above.
    - **Stage C (mesh.yml + admin API + per-agent rate limiting)** — DEFERRED to dedicated multi-session work. ~650 LOC + 6 doc files + 2-node integration fixture. Full scope preserved in [llm_path_operator_visibility.md](llm_path_operator_visibility.md) under "Phases".
 
-7. **▶ NEXT (substrate track resumes):** Substrate P2 validation + remaining stress-test phases (A, B, C, E). Plan 4 Stage C can run in parallel as a dedicated session when operator visibility becomes the bottleneck.
+7. **▶ NEXT (substrate track resumes):** Substrate P2 Stage 3 **COMPLETE (2026-04-14)** — `substrate_recognition.md` closed. Remaining stress-test phases B, C, E + Plan 4 Stage C can run in any order when their respective bottlenecks surface. Next substrate plan: [substrate_binding_persistence.md](substrate_binding_persistence.md) (P3a onward).
 
-8. **Release 0.4** with LLM path refinement complete + substrate P2 validated.
+8. **Release 0.4** with LLM path refinement complete + substrate P2 validated on real embeddings. Substrate P2 gate is CLOSED; 0.4 ships when the remaining stress phases (B, C, E) + Plan 4 Stage C are ready.
 
-9. **Back to substrate work:** P3a + P3b + P4 in 0.5, built on the stabilized LLM path.
+9. **Back to substrate work:** P3a + P3b + P4 in 0.5, built on the stabilized LLM path. Plan doc: [substrate_binding_persistence.md](substrate_binding_persistence.md).
 
 **Review pattern per plan (refined after R2):** each plan implements on a `feat/<plan>` branch. Before opening/merging the PR — **not after** — spawn two review Claudes (Executor lens + Architecture lens) in parallel read-only sessions against the branch tip. Findings get folded into the same branch via a follow-up commit, THEN the PR opens. One PR per plan, no `fix/<plan>-loose-ends` split.
 
@@ -163,13 +163,15 @@ R1 used the old "ship then review" timing → required PR #91 follow-up for CI g
 
 **Every plan without a pre-merge review round is gambling.** Tests catch known failure modes; reviews catch unknown ones. Both R1 and R2 had bugs that passed 4000+ unit tests and would have shipped silently. See [feedback_review_before_ship.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_review_before_ship.md) for the full evidence trail and the review prompt templates.
 
-**Why this order is load-bearing (decided 2026-04-12):**
-- Current LLM infrastructure is **too broken to use for P2 testing at all.** The 52s retry loop + probe fragility + lack of per-agent observability would make P2 validation data unreliable and un-attributable ("substrate bug vs. LLM flakiness?"). Running P2 first was considered and rejected.
-- Substrate P2 needs a stable LLM path to validate correctly
-- Multi-agent P2 runs need per-agent observability (which Plans 1-2 provide via `RequestContext`)
+**Why this order was load-bearing (decided 2026-04-12):**
+- At 2026-04-12 the LLM infrastructure was **too broken to use for P2 testing at all.** The 52s retry loop + probe fragility + lack of per-agent observability would have made P2 validation data unreliable and un-attributable ("substrate bug vs. LLM flakiness?"). Running P2 first was considered and rejected.
+- Substrate P2 needs a stable LLM path to validate correctly (for multi-agent stress runs — the 2026-04-14 Stage 3 sweep is single-process and CPU-only, so it didn't need the full LLM path; the multi-agent cross-session-learning 1.0 gate will).
+- Multi-agent P2 runs need per-agent observability (which Plans 1-2 provide via `RequestContext`, and Plan 4 Stage A closed the last gap)
 - Stress test needs typed exceptions to classify failures properly (Plan 2)
 - Plan 4's admin API is where you'd inspect per-agent P2 reward modulation under load
 - Shipping Plans 1-3 alone without Plan 4 means you can't debug concurrent-agent P2 validation effectively
+
+**What actually happened (2026-04-14 retrospective):** the LLM path stabilization + substrate P2 ran in parallel after Plan 3.5 shipped. The single-process P2 sweep didn't need to wait on the combined stress test — it's fast and CPU-only. Multi-agent behavioral convergence (1.0 gate) still needs the full stable LLM path.
 
 ## 1.0 exit criteria
 
