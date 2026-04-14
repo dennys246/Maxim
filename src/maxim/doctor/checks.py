@@ -668,8 +668,14 @@ def check_vram_pressure(port: int = 8100) -> CheckResult:
             except Exception:
                 projection = None
 
-    live_spillover = ratio > 0.95
-    live_warning = ratio > 0.85
+    # Import the named thresholds from lane_models rather than re-declaring
+    # literals here — single source of truth for spawn-time projection AND
+    # the live nvidia-smi ratio check. Drift between the two values is
+    # exactly the "future bug" pattern flagged in Plan 3.6 R5 review.
+    from maxim.runtime.lane_models import _SPILLOVER_RATIO, _SPILLOVER_WARN_RATIO
+
+    live_spillover = ratio > _SPILLOVER_RATIO
+    live_warning = ratio > _SPILLOVER_WARN_RATIO
 
     # Build a fix hint that names REAL values — profile, n_ctx, VRAM. The
     # operator should be able to copy-paste it.
@@ -708,7 +714,8 @@ def check_vram_pressure(port: int = 8100) -> CheckResult:
         msg = (
             f"Projected {projection.projected_total_gb:.1f} GB "
             f"(weights {projection.weights_gb:.1f} + KV {projection.kv_cache_gb:.1f} "
-            f"+ {projection.headroom_gb:.1f} headroom) exceeds 95% of "
+            f"+ {projection.headroom_gb:.1f} headroom) exceeds "
+            f"{_SPILLOVER_RATIO * 100:.0f}% of "
             f"{projection.physical_vram_gb:.0f} GB VRAM at n_ctx={projection.n_ctx}. "
             f"Will spill to shared memory once KV cache fills."
         )

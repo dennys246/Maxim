@@ -197,6 +197,11 @@ _NCTX_SAFE_FALLBACK: dict[str, tuple[tuple[float, int], ...]] = {
 # 95% leaves room for llama-cpp's ~1.5 GB of activation scratchpads +
 # driver overhead before the UMA fallback kicks in.
 _SPILLOVER_RATIO = 0.95
+# Warning band: below spillover but with no headroom for KV growth during
+# long prompts. Doctor emits WARN (not FAIL) in this band. Single source of
+# truth for both spawn-time projection and the live nvidia-smi ratio check
+# in doctor/checks.py::check_vram_pressure.
+_SPILLOVER_WARN_RATIO = 0.85
 
 # Dynamic headroom for Plan 3.6's spillover projection. The _DEFAULT_SAFETY_MARGIN_GB
 # above (1.5 GB) is calibrated for 7B-class models and underestimates activation
@@ -211,9 +216,20 @@ _SPILLOVER_RATIO = 0.95
 #     headroom_gb = max(1.5, weights_gb * 0.55)
 #
 # This is OBSERVABILITY, not a routing change. estimate_max_ctx() continues to
-# use the 1.5 GB floor because its callers are protected by _NCTX_SAFE_FALLBACK
-# (which encodes measured-good n_ctx values per profile and VRAM). Lowering
+# use the 1.5 GB floor because most of its callers take `min(formula, fallback)`
+# against _NCTX_SAFE_FALLBACK (measured-good n_ctx per profile × VRAM). Lowering
 # estimate_max_ctx's headroom would ripple through auto-spawn on every install.
+#
+# KNOWN GAP (Plan 3.6 R5 review finding B2): detect_tiers()'s MAXIM_LLM_PROFILE
+# env-profile branch below (around line 444) takes the formula value directly
+# and only consults the fallback when the formula returns ≤ 0. An
+# optimistic-but-positive formula value (e.g., qwen2.5-14b @ 16 GB) bypasses
+# the fallback table. That's the exact user-facing path most likely to hit
+# the 14B-on-16GB spillover this plan exists to detect, and the spawn-time
+# _check_vram_spillover_risk warn is currently the only safety net for it.
+# Deferred to a follow-up: either (a) extend the env-profile branch to also
+# take min(formula, fallback), or (b) raise estimate_max_ctx's headroom floor
+# with hardware validation across 7B/14B/24B+ tiers.
 _ACTIVATION_OVERHEAD_RATIO = 0.55
 
 

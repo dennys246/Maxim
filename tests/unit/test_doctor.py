@@ -1023,6 +1023,51 @@ class TestCheckContextWindow:
         assert "overflow" in result.message or "KV cache" in result.message
 
 
+# ─── check_llm_model_active (regression guard for mutable-global binding) ─
+
+
+class TestCheckLlmModelActive:
+    """Regression guard for the CLAUDE.md 'Mutable globals + module extraction'
+    anti-pattern: `from maxim.runtime.lane_backends import _active_model` binds
+    by value at import time and never reflects runtime mutations. The fix in
+    checks.py:174 reads through `maxim.runtime.llm_server._active_model` via a
+    module reference. Without this test, the next refactor can silently
+    re-introduce the buggy import pattern — the doctor's 'active model' line
+    was reporting stale state for an unknown period before Plan 3.6 R5 caught
+    it during review.
+    """
+
+    def test_reads_live_active_model_not_import_time_value(self, monkeypatch):
+        import maxim.runtime.llm_server as _server_mod
+        from maxim.doctor.checks import check_llm_model_active
+
+        original_active = _server_mod._active_model
+        try:
+            _server_mod._active_model = "qwen2.5-14b-instruct"
+            result = check_llm_model_active()
+            assert result.status == "ok"
+            assert "qwen2.5-14b-instruct" in result.message
+        finally:
+            _server_mod._active_model = original_active
+
+    def test_falls_through_to_persisted_when_not_active(self, monkeypatch):
+        import maxim.runtime.llm_server as _server_mod
+        from maxim.doctor.checks import check_llm_model_active
+
+        original_active = _server_mod._active_model
+        try:
+            _server_mod._active_model = None
+            with patch(
+                "maxim.runtime.lane_backends._read_persisted_model",
+                return_value="mistral-7b",
+            ):
+                result = check_llm_model_active()
+            assert result.status == "warn"
+            assert "mistral-7b" in result.message
+        finally:
+            _server_mod._active_model = original_active
+
+
 # ─── VRAM pressure (Plan 3.6 R5) ──────────────────────────────────────────
 
 
@@ -1068,7 +1113,27 @@ class TestCheckVramPressure:
         # Fix string must contain a concrete MAXIM_LLM_N_CTX= with a real value
         assert result.fix is not None
         assert "MAXIM_LLM_N_CTX=" in result.fix
-        # Recommended n_ctx should be smaller than the spilling n_ctx (12380)
+        # The recommendation must come from project_vram_usage, NOT the
+        # hard-coded 4096 fallback path in _build_fix. If the projection
+        # silently falls through to None (import error, arch-block missing,
+        # etc.), _build_fix emits MAXIM_LLM_N_CTX=4096 which is ALSO < 12380
+        # and would false-green this test. Compute the expected value from
+        # project_vram_usage directly and compare — that's the only way to
+        # verify the projection path was actually taken.
+        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.runtime.lane_models import project_vram_usage
+
+        expected = project_vram_usage(
+            "qwen2.5-14b-instruct",
+            _BUILTIN_PROFILES["qwen2.5-14b-instruct"],
+            12380,
+            16.0,
+        )
+        assert expected is not None
+        assert f"MAXIM_LLM_N_CTX={expected.recommended_n_ctx}" in result.fix
+        # Additional structural guards: must be a multiple of 1024 (the
+        # project_vram_usage rounding contract), must not equal the static
+        # 4096 fallback, must be < the spilling n_ctx.
         import re
 
         match = re.search(r"MAXIM_LLM_N_CTX=(\d+)", result.fix)
@@ -1076,6 +1141,14 @@ class TestCheckVramPressure:
         recommended = int(match.group(1))
         assert recommended < 12380
         assert recommended > 0
+        assert recommended % 1024 == 0
+        # The projection result for this input should NOT accidentally equal
+        # 4096 — if it does, add another profile to the test matrix.
+        assert expected.recommended_n_ctx != 4096, (
+            "projection recommendation equals the static fallback placeholder; "
+            "this test can no longer distinguish projection-path from fallback-path"
+        )
+        assert recommended != 4096
         assert result.retry_id == "vram_pressure"
 
     def test_predictive_spillover_fires_without_live_ratio(self):

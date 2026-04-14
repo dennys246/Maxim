@@ -692,11 +692,15 @@ class TestCheckVramSpilloverRisk:
         call = logger.warning.call_args
         extra = call.kwargs["extra"]
         assert extra["event"] == "vram_spillover_risk"
-        assert extra["profile"] == "qwen2.5-14b-instruct"
-        assert extra["n_ctx"] == 32768
-        assert extra["physical_vram_gb"] == 16.0
-        assert 0 < extra["recommended_n_ctx"] < 32768
-        assert extra["projected_gb"] > 15.2
+        # Payload MUST live under the "data" key so StructuredFormatter
+        # surfaces it in MAXIM_LOG_FILE JSONL (see utils/structured_logging.py).
+        # Flat extra fields are silently dropped — regression guard.
+        data = extra["data"]
+        assert data["profile"] == "qwen2.5-14b-instruct"
+        assert data["n_ctx"] == 32768
+        assert data["physical_vram_gb"] == 16.0
+        assert 0 < data["recommended_n_ctx"] < 32768
+        assert data["projected_gb"] > 15.2
 
     def test_qwen7b_8k_on_16gb_does_not_fire(self):
         from maxim.runtime.lane_backends import _check_vram_spillover_risk
@@ -818,8 +822,14 @@ class TestProjectVramUsage:
             _BUILTIN_PROFILES["qwen2.5-14b-instruct"],
             16.0,
         )
-        if raw_budget_ctx <= 0:
-            pytest.skip("estimate_max_ctx returned 0 for this budget")
+        # Guard against a silent no-op: if estimate_max_ctx ever regresses
+        # to returning a tiny value, the `recommended < raw_budget` assertion
+        # becomes meaningless. Qwen-14b at 16 GB should produce a value at
+        # least in the multi-thousand range (current baseline: 32768 capped
+        # by profile max).
+        assert raw_budget_ctx >= 8192, (
+            f"estimate_max_ctx regressed to {raw_budget_ctx} for qwen2.5-14b-instruct @ 16 GB — test loses its teeth"
+        )
         proj = project_vram_usage(
             "qwen2.5-14b-instruct",
             _BUILTIN_PROFILES["qwen2.5-14b-instruct"],
@@ -827,6 +837,7 @@ class TestProjectVramUsage:
             16.0,
         )
         assert proj is not None
-        # recommended must be strictly smaller than the raw-budget value,
-        # since the spillover ratio is tighter than the raw budget.
+        # Recommended must be strictly smaller than the raw-budget value,
+        # since the spillover ratio + dynamic headroom is tighter than
+        # estimate_max_ctx's raw budget + 1.5 GB floor.
         assert proj.recommended_n_ctx < raw_budget_ctx

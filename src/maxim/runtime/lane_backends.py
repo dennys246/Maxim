@@ -1774,6 +1774,9 @@ def _check_vram_spillover_risk(
     if projection is None or not projection.spillover_risk:
         return
 
+    # StructuredFormatter reads `extra={"event": ..., "data": {...}}` — flat
+    # extra fields outside `data` are silently dropped from MAXIM_LOG_FILE
+    # JSONL. Same class as feedback_structured_formatter_short_keys.md.
     logger.warning(
         "vram_spillover_risk: profile=%s n_ctx=%d projected=%.1fGB "
         "(weights=%.1f + kv=%.1f + headroom=%.1f) vs physical=%.1fGB. "
@@ -1789,14 +1792,16 @@ def _check_vram_spillover_risk(
         projection.recommended_n_ctx,
         extra={
             "event": "vram_spillover_risk",
-            "profile": projection.profile,
-            "n_ctx": projection.n_ctx,
-            "projected_gb": projection.projected_total_gb,
-            "weights_gb": projection.weights_gb,
-            "kv_cache_gb": projection.kv_cache_gb,
-            "headroom_gb": projection.headroom_gb,
-            "physical_vram_gb": projection.physical_vram_gb,
-            "recommended_n_ctx": projection.recommended_n_ctx,
+            "data": {
+                "profile": projection.profile,
+                "n_ctx": projection.n_ctx,
+                "projected_gb": projection.projected_total_gb,
+                "weights_gb": projection.weights_gb,
+                "kv_cache_gb": projection.kv_cache_gb,
+                "headroom_gb": projection.headroom_gb,
+                "physical_vram_gb": projection.physical_vram_gb,
+                "recommended_n_ctx": projection.recommended_n_ctx,
+            },
         },
     )
 
