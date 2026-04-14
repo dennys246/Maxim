@@ -56,6 +56,17 @@ def _result_to_jsonl(result: BenchResult) -> list[dict]:
     fields are bench-only timing and do not collide with any
     production field.
     """
+    # Plan 4 follow-up (2026-04-14): session_id is now a distinct
+    # per-run value (e.g., "bench_20260414_152300") sourced from
+    # ``BenchResult.session_id``. Older traces that reused
+    # ``BENCH_AGENT_ID`` as the session_id are still readable — just
+    # filter on ``agent_id == "bench_recovery_time"`` which remains
+    # stable. Empty-string session_id (test-fixture path) degrades to
+    # ``BENCH_AGENT_ID`` for backwards compat with existing regression
+    # guards that constructed BenchResult directly without going
+    # through ``run_recovery_benchmark``.
+    session_id = result.session_id or "bench_recovery_time"
+
     events: list[dict] = []
     for attempt in result.attempts:
         if attempt.status == "success":
@@ -72,7 +83,7 @@ def _result_to_jsonl(result: BenchResult) -> list[dict]:
                     "output_tokens": attempt.output_tokens,
                     "request_id": attempt.request_id,
                     "agent_id": "bench_recovery_time",
-                    "session_id": "bench_recovery_time",
+                    "session_id": session_id,
                     "lane": "large",
                     # Bench-specific timing (not in production)
                     "submit_ts": attempt.submit_ts,
@@ -93,7 +104,7 @@ def _result_to_jsonl(result: BenchResult) -> list[dict]:
                     "latency_ms": attempt.latency_ms,
                     "request_id": attempt.request_id,
                     "agent_id": "bench_recovery_time",
-                    "session_id": "bench_recovery_time",
+                    "session_id": session_id,
                     "lane": "large",
                     # Bench-specific timing (not in production)
                     "submit_ts": attempt.submit_ts,
@@ -104,6 +115,7 @@ def _result_to_jsonl(result: BenchResult) -> list[dict]:
         {
             "e": "benchmark",
             "bench": "recovery_time",
+            "session_id": session_id,
             "duration_s": result.duration_s,
             "total_attempts": result.total_attempts,
             "successes": result.successes,

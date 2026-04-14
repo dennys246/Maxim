@@ -263,9 +263,21 @@ class LLMWorker:
         token_counter: Any | None = None,
         pool: "WorkerPool | None" = None,
         tool_index: Any = None,
+        session_id: str | None = None,
     ):
         self._llm = llm
         self._stale_threshold = stale_threshold_s
+        # Plan 4 follow-up (2026-04-14): the owning sim/session passes
+        # session_id at LLMWorker construction time so every
+        # request_context dict this worker builds carries it. This
+        # populates session_id on peer_backend_call/peer_backend_failed
+        # structured log events AND on outbound X-Maxim-Session-Id
+        # headers via the Plan 4 A.2 set_context boundary binding.
+        # Callers that don't track sessions (internal sub-workers,
+        # exec_agent, api.py) pass session_id=None and their logs
+        # continue to emit session_id=null — that's the correct
+        # semantic for non-session contexts.
+        self._session_id = session_id
         # Plan 3.5 R2: agent-level timeout is a strict safety net above
         # the HTTP layer (default 300s, was 60s pre-plan). Explicit caller
         # value wins; otherwise read MAXIM_LLM_CALL_TIMEOUT_S (clamped);
@@ -699,6 +711,7 @@ class LLMWorker:
             "agent": agent_name,
             "lane": lane_name,
             "provider_hint": provider_hint or "",
+            "session_id": self._session_id,
         }
 
         call_kwargs: dict[str, Any] = {
@@ -951,6 +964,7 @@ class LLMWorker:
                 "agent": "llm_worker",
                 "lane": request.lane or "large",
                 "provider_hint": provider_hint or "",
+                "session_id": self._session_id,
             }
 
             if provider_semaphore:

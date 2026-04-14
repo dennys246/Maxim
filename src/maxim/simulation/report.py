@@ -79,9 +79,20 @@ def build_report(
     llm_router: Any | None = None,
     language_model: str = "",
     llm_finish_context: dict[str, Any] | None = None,
+    session_id: str | None = None,
 ) -> SimulationReport:
-    """Build a SimulationReport from all available data sinks."""
-    session_id = time.strftime("%Y%m%d_%H%M%S")
+    """Build a SimulationReport from all available data sinks.
+
+    Plan 4 follow-up (2026-04-14): ``session_id`` is now optionally
+    supplied by the caller. The simulation orchestrator pre-generates
+    the timestamp at sim entry (so it can thread it into every
+    LLMWorker's ``request_context``) and forwards the same value here
+    so the report directory name matches the session_id in the JSONL
+    log trace. Legacy callers that don't supply it fall back to the
+    old behavior (self-generated timestamp at report-build time).
+    """
+    if session_id is None:
+        session_id = time.strftime("%Y%m%d_%H%M%S")
 
     all_actions = bridge.get_all_actions()
     blocked = [a for a in all_actions if a.blocked]
