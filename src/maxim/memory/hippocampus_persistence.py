@@ -7,7 +7,7 @@ import logging
 import os
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     pass
@@ -29,16 +29,24 @@ class PersistenceMixin:
     and graph restoration. Mixed into the Hippocampus class.
     """
 
-    def save(self, path: str | None = None) -> None:
-        """Save hippocampus to JSON file.
+    # P3.5 Stage 1 — BioSystemSnapshot Protocol envelope version.
+    # Payload-layer legacy version string "3.0" is tombstoned; all future
+    # migrations land at the envelope layer. See memory/snapshot.py docstring.
+    schema_version: ClassVar[int] = 1
 
-        Args:
-            path: File path. Uses config.persistence_path if None.
+    def dump(self) -> dict[str, Any]:
+        """Return hippocampus state as a JSON-serializable dict.
+
+        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Acquires
+        the same read lock the pre-refactor save() body held.
+
+        Reserves an ``"episodes"`` key for P3a. The key is always present
+        (empty list when no episode store is wired) so downstream
+        consumers can rely on its existence without conditional access.
+        Also dumps ``next_episode_ordinal`` (the monotonic counter that
+        generates ``ep_N`` ids) so reload+observe doesn't re-issue a
+        duplicate id — Round 2 Exec critical #1 fix.
         """
-        path = path or self.config.persistence_path
-        if not path:
-            raise ValueError("No persistence path specified")
-
         with self._rwlock.read():
             # Serialize memories (handles both EpisodicMemory and CompressedMemory)
             memories_data = [m.to_dict() for m in self._memories.values()]
@@ -49,19 +57,147 @@ class PersistenceMixin:
             # Serialize associative graph edges
             graph_data = self._graph.to_dict()
 
-            payload = {
-                "version": "3.0",  # Updated for associative graph support
+            # P3a Stage 1 reserved slot. EpisodeStore populates this when wired.
+            episodes_data: list[dict[str, Any]] = []
+            episode_store = getattr(self, "_episode_store", None)
+            if episode_store is not None:
+                episodes_data = episode_store.to_dict().get("episodes", [])
+
+            next_episode_ordinal = getattr(self, "_next_episode_ordinal", 0)
+
+            return {
                 "saved_at": time.time(),
                 "memories": memories_data,
                 "context_index": index_data,
                 "stats": dict(self._stats),
                 "compressed_count": self._compressed_count,
                 "associative_graph": graph_data,
+                "episodes": episodes_data,
+                "next_episode_ordinal": next_episode_ordinal,
             }
 
-        atomic_write_json(path, payload)
+    def load_state(self, state: dict[str, Any]) -> None:
+        """Mutate self in place from a state dict.
 
-        logger.info("Saved hippocampus to %s (%d memories)", path, len(memories_data))
+        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Matches
+        the pre-refactor load() contract: parses OUTSIDE the write lock,
+        then atomically swaps inside it so a from_dict() failure leaves
+        existing data untouched.
+
+        **Round 2 fold**: the legacy payload version check is REMOVED
+        (Round 2 Exec critical #2). Prior to Round 2 this method
+        rejected any payload whose ``version`` was not in
+        ``{"1.0","2.0","3.0"}``, which contradicted the tombstoned
+        envelope-authoritative versioning rule in ``snapshot.py``. The
+        envelope layer is now the only authoritative version.
+
+        **Round 2 fold**: binding graph is REBUILT from loaded episodes
+        via ``apply_hebbian_on_close`` (Round 2 Arch important #4).
+        Episodes round-trip through the ``episodes`` key; the binding
+        graph is derived, not persisted. Callers restoring a populated
+        snapshot get a consistent ``retrieve_on_cue`` result without a
+        separate binding-graph persistence pass.
+        """
+        # Parse OUTSIDE write lock — if from_dict() raises, existing data is preserved
+        temp_memories: dict[str, EpisodicMemory | CompressedMemory] = {}
+        temp_compressed_count = 0
+        for m_data in state.get("memories", []):
+            if m_data.get("_compressed", False):
+                memory = CompressedMemory.from_dict(m_data)
+                temp_memories[memory.id] = memory
+                temp_compressed_count += 1
+            else:
+                memory = EpisodicMemory.from_dict(m_data)
+                temp_memories[memory.id] = memory
+
+        temp_context_index: defaultdict[str, set[str]] = defaultdict(
+            set,
+            {k: set(v) for k, v in state.get("context_index", {}).items()},
+        )
+        temp_memory_contexts: defaultdict[str, set[str]] = defaultdict(set)
+        for index_key, memory_ids in temp_context_index.items():
+            for memory_id in memory_ids:
+                temp_memory_contexts[memory_id].add(index_key)
+
+        temp_stats = state.get("stats", {})
+
+        if "compressed_count" in state:
+            temp_compressed_count = state["compressed_count"]
+
+        temp_graph = DependencyGraph()
+        graph_data = state.get("associative_graph")
+
+        # Atomically swap inside the write lock
+        with self._rwlock.write():
+            self._memories.clear()
+            self._memories.update(temp_memories)
+            self._compressed_count = temp_compressed_count
+            self._context_index = temp_context_index
+            self._memory_contexts = temp_memory_contexts
+            self._stats = temp_stats
+            self._graph = temp_graph
+            if graph_data:
+                self._restore_graph(graph_data)
+
+            # P3a Stage 1 — restore episodes into the EpisodeStore if wired,
+            # rebuild the binding graph from the loaded episodes, and
+            # restore the monotonic episode-id counter.
+            episode_store = getattr(self, "_episode_store", None)
+            if episode_store is not None:
+                episode_store.load_from_dict({"episodes": state.get("episodes", [])})
+
+                binding_graph = getattr(self, "_binding_graph", None)
+                cfg_episode = getattr(getattr(self, "config", None), "episode", None)
+                if binding_graph is not None and cfg_episode is not None:
+                    # Reset and rebuild — the pre-load binding graph state
+                    # is authoritative only against the pre-load episodes.
+                    # Clear internal structures in place rather than
+                    # calling __init__ on a live instance.
+                    with binding_graph._lock:
+                        binding_graph._nodes.clear()
+                        binding_graph._outgoing.clear()
+                        binding_graph._incoming.clear()
+
+                    from maxim.memory.episode import apply_hebbian_on_close
+
+                    for ep in episode_store.all_episodes():
+                        apply_hebbian_on_close(
+                            binding_graph,
+                            ep,
+                            hebbian_init=cfg_episode.hebbian_init,
+                            hebbian_delta=cfg_episode.hebbian_delta,
+                            hebbian_max=cfg_episode.hebbian_max,
+                        )
+
+                # Restore the monotonic ordinal. Prefer the dumped value;
+                # fall back to deriving from max episode id for corrupt-file
+                # recovery (episodes named ep_N).
+                dumped_ordinal = state.get("next_episode_ordinal")
+                if isinstance(dumped_ordinal, int) and dumped_ordinal >= 0:
+                    self._next_episode_ordinal = dumped_ordinal
+                else:
+                    max_ordinal = 0
+                    for ep in episode_store.all_episodes():
+                        if ep.id.startswith("ep_"):
+                            try:
+                                max_ordinal = max(max_ordinal, int(ep.id.split("_", 1)[1]))
+                            except ValueError:
+                                continue
+                    self._next_episode_ordinal = max_ordinal
+
+    def save(self, path: str | None = None) -> None:
+        """Save hippocampus to JSON file.
+
+        Args:
+            path: File path. Uses config.persistence_path if None.
+        """
+        path = path or self.config.persistence_path
+        if not path:
+            raise ValueError("No persistence path specified")
+
+        payload = self.dump()
+        atomic_write_json(path, payload)
+        logger.info("Saved hippocampus to %s (%d memories)", path, len(payload["memories"]))
 
     def load(self, path: str | None = None) -> None:
         """Load hippocampus from JSON file.
@@ -78,61 +214,13 @@ class PersistenceMixin:
             return
 
         with open(path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+            state = json.load(f)
 
-        # Version check - support 1.0, 2.0, and 3.0
-        version = payload.get("version", "0.0")
-        if version not in ("1.0", "2.0", "3.0"):
-            raise ValueError(f"Unsupported hippocampus version: {version}")
-
-        # Parse OUTSIDE write lock — if from_dict() raises, existing data is preserved
-        temp_memories: dict[str, EpisodicMemory | CompressedMemory] = {}
-        temp_compressed_count = 0
-        for m_data in payload.get("memories", []):
-            if m_data.get("_compressed", False):
-                memory = CompressedMemory.from_dict(m_data)
-                temp_memories[memory.id] = memory
-                temp_compressed_count += 1
-            else:
-                memory = EpisodicMemory.from_dict(m_data)
-                temp_memories[memory.id] = memory
-
-        # Build context index and reverse index from payload
-        temp_context_index: defaultdict[str, set[str]] = defaultdict(
-            set,
-            {k: set(v) for k, v in payload.get("context_index", {}).items()},
-        )
-        temp_memory_contexts: defaultdict[str, set[str]] = defaultdict(set)
-        for index_key, memory_ids in temp_context_index.items():
-            for memory_id in memory_ids:
-                temp_memory_contexts[memory_id].add(index_key)
-
-        temp_stats = payload.get("stats", {})
-
-        # Restore compressed count from payload if available
-        if "compressed_count" in payload:
-            temp_compressed_count = payload["compressed_count"]
-
-        # Build associative graph
-        temp_graph = DependencyGraph()
-        graph_data = payload.get("associative_graph")
-
-        # All parsing succeeded — atomically swap inside the write lock
-        with self._rwlock.write():
-            self._memories.clear()
-            self._memories.update(temp_memories)
-            self._compressed_count = temp_compressed_count
-            self._context_index = temp_context_index
-            self._memory_contexts = temp_memory_contexts
-            self._stats = temp_stats
-            self._graph = temp_graph
-            if graph_data:
-                self._restore_graph(graph_data)
+        self.load_state(state)
 
         edge_count = sum(
             len(self._graph.get_associated(mid)) for mid in self._memories if self._graph.get_node(mid) is not None
         )
-
         logger.info(
             "Loaded hippocampus from %s (%d memories, %d compressed, %d edges)",
             path,
