@@ -46,12 +46,34 @@ The P2 core commit (`734f3ca`) landed two latent bugs in `similarity/encoder.py`
 
 Both bugs are the same root-cause class: conflating "wired NAc" with "NAc that has learned something." Any future code that checks for NAc wiring must use `is not None`, never truthiness. Grep enforcement is not yet in place — candidate for CI invariant if another recurrence lands.
 
-**P2 remaining (what needs to ship for this plan to close):**
-- P2 metric extractor plugin (~100 LOC)
-- Reward-annotated fixtures (extend paraphrase_clusters.yaml with reward events)
-- SEM pain cascade PoC (~230 LOC)
-- P2 validation sweep + lab notebook entry
-- Text-to-prompt migration Phases 2-4 (shadow read → cutover → legacy removal)
+**Stage 1 — SHIPPED on `feat/substrate-p2-finish` (2026-04-13, commit `3ebe356`):**
+- `tests/substrate/p2_metrics.py` — P2 metric extractor (baseline-vs-rewarded cluster comparison)
+- `scenarios/substrate/p2_reward_modulation.yaml` — 10-cluster reward-modulation fixture (5 target / 5 distractor)
+- `tests/substrate/test_p2_reward_modulation.py` — fast mechanism tests (synthetic embeddings via `StubEncoder`) + slow-suite validation sweep
+- Plus the two `similarity/encoder.py` fixes described above (eligibility-on-new-node guard + NAc truthy-check)
+- Mechanism test results: target reduction 50.0%, distractor interference 0.0%, final bias 0.200
+
+**Stage 2 — SHIPPED on `feat/substrate-p2-finish` (2026-04-13):**
+
+The SEM pain cascade PoC + the root-cause fixes it surfaced during the pre-merge review round.
+
+Production changes:
+- `src/maxim/embodiment/body.py::_publish_pain` — rewritten to publish a rich-context `PainSignal` via `PainBus.publish(signal)` instead of constructing a thin `Reaction` on `reaction_bus` directly. Downstream consumers (`ToolPainBridge._on_embodiment_pain`, `create_pain_nac_subscriber`, hippocampus episodic capture) now see full cause-description metadata: `source`, `entity`, `entity_type`, `failure_mode`, `composes`, `sensor_readings`.
+- `src/maxim/proprioception/pain_bus.py` — `PainBus` rewritten with its own direct `_pain_signal_subs` list and a per-`(entity, failure_mode)` refractory gate (default 0.5s). `PainBus.subscribe` no longer wraps callbacks through the lossy `_reaction_to_pain_signal` adapter on `reaction_bus`; subscribers receive the full `signal.context` dict. An internal `_bridge_reaction_to_pain_subs` still fans sandbox-style direct-reaction publishes through the lossy reconstruction for back-compat. `get_stats` now counts direct subscribers.
+- `src/maxim/proprioception/pain_bus.py::create_pain_nac_subscriber` — rewritten from a tautological `event="pain"→outcome="pain"` shape to call `nac.record_outcome_full` with the full `signal.context`, letting NAc's temporal-window + context-similarity match attribute the pain to recent pending action events. Exceptions are now logged via `logger.exception` instead of silently swallowed.
+- `src/maxim/decisions/nac.py::_context_similarity` — **root-cause fix.** The pre-Stage-2 denominator was `len(ctx1 | ctx2)` (key union), which silently diluted legitimate matches whenever the outcome side carried more keys than the pending event. Every caller of `record_outcome_full` without `attributed_event_signature` was silently broken for rich outcomes, including the (previously dead-code) `ToolPainBridge._on_embodiment_pain` path. The fix: change the denominator to `len(ctx1)` (event-side only). Semantics: "how much of the pending event's context is matched by the outcome context?" Extra outcome-side keys no longer hurt attribution. An earlier Stage 2 draft worked around the bug by passing a slim 2-key context from `create_pain_nac_subscriber`; that band-aid was explicitly removed during the pre-merge review round (CLAUDE.md no-band-aid rule) and replaced with the directional fix in `_context_similarity`.
+
+New test surfaces:
+- `tests/unit/test_pain_bus.py` — 19 tests covering direct dispatch, lossy fallback, refractory gating (same-entity, different-entity, different-failure-mode), get_stats counts, and the rewritten `create_pain_nac_subscriber` semantics. Includes explicit regression guards for the cross-entity refractory collapse bug the pre-merge review caught.
+- `tests/unit/test_nac.py::TestContextSimilarity` — 7 regression guards for the directional `_context_similarity`: full event-inside-rich-outcome match, partial match, no match, empty context, case-insensitive string, outcome-extra-keys-do-not-dilute (inverse guard), and end-to-end `record_outcome_full` with rich outcome + slim event.
+- `tests/substrate/test_components_smoke.py` — standing YAML drift guard. Loads every `_data/components/**/*.yaml` through `ComponentRegistry.instantiate`, reads sensors, runs `evaluate_failures`. Surfaces the legacy body-spec gap (4 files in `scenarios/embodiment/` that the registry indexes but cannot instantiate via the component API; tracked follow-up noted in `component_registry.py` docstring).
+- `tests/substrate/test_sem_pain_cascade.py` — 6 integration tests against the real `weapons/rusty_sword` bundled component. `PoCAgent` harness records actions → Embodiment fires shatter → PainBus delivers rich-context PainSignal → `create_pain_nac_subscriber` creates NEGATIVE causal link → `nac.predict` returns NEGATIVE → agent chooses `drop_weapon` over `slash`. Full end-to-end loop without mocks. Includes strict-monotonic confidence growth test with tight `observation_count == 3` assertion.
+
+Pre-merge review round (Executor + Architecture lenses, both sandboxed initially, worktree relocated to `.worktrees/p2/` for access) produced 3 critical findings (cross-entity refractory collapse, band-aid slim-context workaround, repeated-pain test looseness), 5 important findings, 3 minor findings. All critical + important findings folded into the same branch before commit.
+
+**Deferred / RC3 — out of Stage 2 scope:** No production code path currently records NAc pending events for SEM actions. When the agent's motor/executor layer dispatches an affordance (e.g., `slash` on `rusty_sword`), there is no call to `nac.record_event("action", signature, context={source, entity})`. The PoC harness records it directly from the test to demonstrate the learning loop works end-to-end. Wiring the real hook belongs in a follow-up that touches `runtime/executor.py` or `embodiment/motor.py` — tracked by the `TODO(substrate-p2-followup)` comment in `tests/substrate/test_sem_pain_cascade.py::PoCAgent`.
+
+**Stage 3 — validation sweep + experiment report (remaining).** The slow-suite `TestP2ValidationSweep` in `test_p2_reward_modulation.py` needs to run with `paraphrase-mpnet-base-v2` installed against `scenarios/substrate/p2_reward_modulation.yaml` over 10 seeds, with the result recorded at `docs/experiments/p2_reward_modulation_sweep.md` + `docs/experiments/results/p2_reward_modulation_sweep.json`. Text-to-prompt migration Phases 2-4 (shadow read → cutover → legacy removal) remain in the plan but are scheduled separately.
 
 **P2 validation scheduling — runs as Phase A of the LLM path stress test.** Per the meta-plan + stress test protocol, P2 validation shares infrastructure with the Plan 3 Fast Failover stress test. See [../experiments/protocols/llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md) "Phase A — Baseline + substrate P2 validation (single-user, one agent)". Running them together means one setup serves both the "does substrate P2 pass mechanistic targets" question AND the "is the pre-Plan-3 52s retry loop still there" baseline. If you are running P2 validation standalone (no stress test), the test fixture in `tests/substrate/test_p2_reward_modulation.py` is the same one Phase A invokes — they are intentionally overlapping so pre-stress runs don't waste effort.
 

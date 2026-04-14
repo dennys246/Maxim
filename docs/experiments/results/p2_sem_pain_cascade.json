@@ -1,0 +1,119 @@
+{
+  "phase": "P2 Stage 2 — SEM pain cascade integration",
+  "date": "2026-04-13",
+  "branch": "feat/substrate-p2-finish",
+  "hardware": "MacBook Pro M3, Python 3.12, CPU-only",
+  "status": "mechanism_green_stage3_sweep_pending",
+  "mechanism_tests": {
+    "test_nac_TestContextSimilarity": {"total": 7, "passed": 7},
+    "test_pain_bus_TestPainBusDirectDispatch": {"total": 5, "passed": 5},
+    "test_pain_bus_TestPainBusFallbackDispatch": {"total": 2, "passed": 2},
+    "test_pain_bus_TestPainBusRefractory": {"total": 5, "passed": 5},
+    "test_pain_bus_TestCreatePainNacSubscriber": {"total": 5, "passed": 5},
+    "test_components_smoke_TestAllComponentsLoad": {"total": 4, "passed": 4},
+    "test_components_smoke_TestDurabilityFailureCascade": {"total": 2, "passed": 2},
+    "test_sem_pain_cascade_TestSEMPainCascadePoC": {"total": 6, "passed": 6},
+    "test_embodiment_failures_TestComposedFailures": {"total": 4, "passed": 4},
+    "test_embodiment_failures_TestFailurePersistence": {"total": 6, "passed": 6},
+    "test_embodiment_failures_TestToolPainBridgeEmbodiment": {"total": 3, "passed": 3},
+    "total": 49,
+    "passed": 49
+  },
+  "fast_suite_total": {
+    "passed": 4211,
+    "skipped": 2,
+    "deselected": 25,
+    "notes": "2 deselected tests are pre-existing environmental flakes unrelated to Stage 2 (test_bash_tool_cwd path-realpath drift in /private/tmp, test_leader_proxy TestVersionInfo subprocess git discovery)."
+  },
+  "headline_poc_result": {
+    "test": "test_agent_prefers_drop_weapon_after_learning_slash_is_painful",
+    "component": "weapons/rusty_sword",
+    "cycle": {
+      "setup": {
+        "durability_initial": 0.3,
+        "durability_driven_to": 0.05,
+        "shatter_threshold": 0.1,
+        "pain_intensity": 0.6
+      },
+      "action_recorded": {
+        "event_type": "action",
+        "event_signature": "slash:rusty_sword",
+        "context_keys": ["source", "entity"]
+      },
+      "pain_published": {
+        "publisher": "body.py::_publish_pain via PainBus.publish",
+        "signal_context_keys": [
+          "source",
+          "entity",
+          "entity_type",
+          "failure_mode",
+          "composes",
+          "sensor_readings",
+          "entity_path"
+        ]
+      },
+      "attribution": {
+        "function": "nac.record_outcome_full",
+        "outcome_signature": "pain:embodiment:<sword_path>:shatter",
+        "outcome_valence": "NEGATIVE",
+        "context_similarity": 1.0,
+        "similarity_formula": "matches / len(event_ctx) = 2/2 = 1.0"
+      },
+      "prediction_after_1_cycle": {
+        "slash": {"predicted_valence": "NEGATIVE", "confidence": 0.55},
+        "drop_weapon": {"predicted_valence": null, "confidence": 0.0}
+      },
+      "agent_choice": "drop_weapon"
+    }
+  },
+  "repeated_pain_confidence_growth": {
+    "iterations": 3,
+    "confidence_progression": "~0.55 → ~0.64 → ~0.67",
+    "formula": "confidence = min(0.99, 0.5 + 0.1 * sqrt(observation_count))",
+    "final_observation_count": 3,
+    "assertion": "strict > (not >=)"
+  },
+  "pre_merge_review_findings": {
+    "critical": [
+      {
+        "id": "C1",
+        "title": "NAc._context_similarity union-of-keys dilution",
+        "root_cause": "denominator = len(ctx1 | ctx2) instead of len(ctx1)",
+        "fix_location": "src/maxim/decisions/nac.py::_context_similarity",
+        "regression_guard": "tests/unit/test_nac.py::TestContextSimilarity (7 tests)"
+      },
+      {
+        "id": "C2",
+        "title": "Cross-entity refractory collapse",
+        "root_cause": "pain_signal_to_reaction synthesizes reaction_bus source from pain_type alone; two distinct entities collide on (kind, source)",
+        "fix_location": "src/maxim/proprioception/pain_bus.py::PainBus — own (entity, failure_mode) refractory",
+        "regression_guard": "tests/unit/test_pain_bus.py::TestPainBusRefractory::test_different_entity_NOT_refractory_gated"
+      },
+      {
+        "id": "C3",
+        "title": "Repeated-pain test used loose >= assertion",
+        "root_cause": "test pass trivially with same value repeated if iterations 2-3 no-op'd",
+        "fix_location": "tests/substrate/test_sem_pain_cascade.py::test_repeated_pain_strengthens_negative_confidence",
+        "regression_guard": "strict > + observation_count == 3 + per-iteration events_per_iter sanity check"
+      }
+    ],
+    "important": 5,
+    "minor": 3,
+    "notes": "All critical and important findings folded pre-commit per CLAUDE.md review-before-ship rule."
+  },
+  "stage3_pending": {
+    "description": "Sentence-transformers validation sweep (test_p2_reward_modulation.py::TestP2ValidationSweep) and behavioral result archive.",
+    "install_requirement": "pip install 'pymaxim[semantic]'",
+    "command": "python -m pytest tests/substrate/test_p2_reward_modulation.py::TestP2ValidationSweep::test_sweep_10_seeds -xvs",
+    "output_target": "docs/experiments/results/p2_reward_modulation_sweep.json + docs/experiments/p2_reward_modulation_sweep.md",
+    "pass_criteria": {
+      "mean_target_reduction": ">=0.30",
+      "mean_distractor_interference": "<=0.05"
+    }
+  },
+  "load_bearing_invariants_added_to_claude_md": [
+    "NAc._context_similarity denominator is len(ctx1), not the key union — directional, callers pass (event_or_stored, outcome_or_query)",
+    "PainBus is the rich-context carrier; ReactionBus is the typed isolation surface — bio-internal publishers call PainBus.publish(PainSignal(...)), direct subscribers receive full signal.context",
+    "PainBus refractory is per-(entity, failure_mode), not reaction_bus's coarser (kind, source)"
+  ]
+}

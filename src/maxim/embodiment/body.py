@@ -152,35 +152,48 @@ class Embodiment:
         failure: FailureMode,
         readings: dict[str, float],
     ) -> None:
-        """Publish a Reaction(kind="pain") for an embodiment failure."""
+        """Publish a rich-context ``PainSignal`` for an embodiment failure.
+
+        Publishing through ``PainBus.publish`` (rather than constructing
+        a ``Reaction`` directly on ``reaction_bus``) lets downstream
+        bio-pipeline consumers — ``ToolPainBridge._on_embodiment_pain``,
+        ``create_pain_nac_subscriber``, hippocampus episodic capture —
+        see the full cause-description metadata: ``source``, ``entity``,
+        ``entity_type``, ``failure_mode``, ``composes``,
+        ``sensor_readings``. The downstream Reaction published to
+        ``reaction_bus`` still carries the typed surface for subscribers
+        that want the strict view.
+        """
         if not self.config.enable_pain or self._pain_bus is None:
             return
 
         try:
-            from maxim.decisions.causal_link import Valence
-            from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
+            from maxim.proprioception.pain import PainSignal, PainType
 
-            reaction = Reaction(
-                kind="pain",
+            signal = PainSignal(
+                pain_type=PainType.EXTERNAL_SIGNAL,
                 intensity=failure.pain_intensity,
-                valence=Valence.NEGATIVE,
                 timestamp=time.time(),
-                source="embodiment:external_signal",
-                context=ReactionContext(
-                    bindings={
-                        "entity_path": TraceSnapshot(percept_id=entity.full_path),
-                    },
-                ),
+                context={
+                    "source": "embodiment",
+                    "entity": entity.full_path,
+                    "entity_type": entity.entity_type,
+                    "failure_mode": failure.name,
+                    "composes": list(failure.composes or []),
+                    "sensor_readings": dict(readings),
+                    # Retained for legacy consumers that read entity_path.
+                    "entity_path": entity.full_path,
+                },
             )
-            self._pain_bus.reaction_bus.publish(reaction)
+            self._pain_bus.publish(signal)
             log.debug(
                 "Pain published: %s on %s (%.2f)",
                 failure.name,
                 entity.full_path,
                 failure.pain_intensity,
             )
-        except ImportError:
-            log.warning("ReactionBus not available — pain signal dropped")
+        except Exception:
+            log.exception("Failed to publish embodiment pain signal")
 
     # -- vital metric drift -------------------------------------------------
 

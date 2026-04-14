@@ -98,14 +98,24 @@ class TestComposedFailures:
         emb = Embodiment(ent, pain_bus=pain_bus)
         events = emb.evaluate_failures()
         assert any(e.failure_name == "tennis_elbow" for e in events)
-        pain_bus.reaction_bus.publish.assert_called()
 
-        # Verify Reaction(kind="pain") was published with entity_path binding
-        reaction = pain_bus.reaction_bus.publish.call_args[0][0]
-        assert reaction.kind == "pain"
-        assert reaction.intensity == 0.5
-        assert reaction.source == "embodiment:external_signal"
-        assert reaction.context.bindings["entity_path"].percept_id == ent.full_path
+        # Stage 2: Embodiment publishes PainSignal via PainBus.publish with
+        # the rich cause-description context dict, not a thin Reaction on
+        # reaction_bus. The PainBus dual-dispatch path internally converts
+        # to Reaction + fires both direct PainSignal subscribers and
+        # reaction_bus subscribers.
+        pain_bus.publish.assert_called()
+        signal = pain_bus.publish.call_args[0][0]
+        from maxim.proprioception.pain import PainSignal, PainType
+
+        assert isinstance(signal, PainSignal)
+        assert signal.intensity == 0.5
+        assert signal.pain_type == PainType.EXTERNAL_SIGNAL
+        assert signal.context["source"] == "embodiment"
+        assert signal.context["entity"] == ent.full_path
+        assert signal.context["failure_mode"] == "tennis_elbow"
+        assert signal.context["composes"] == ["strain", "fatigue"]
+        assert signal.context["entity_path"] == ent.full_path  # legacy key preserved
 
 
 # ---------------------------------------------------------------------------

@@ -448,3 +448,117 @@ class TestNAcStats:
         )
 
         assert len(nac) == 1
+
+
+class TestContextSimilarity:
+    """Regression guards for the directional ``_context_similarity``.
+
+    The Stage 2 substrate P2 pre-merge review caught that the old
+    implementation used ``len(keys_union)`` as the denominator, which
+    silently diluted legitimate matches whenever the outcome side
+    carried more keys than the pending event. The fix: ``len(ctx1)``
+    (event-side only) so extra outcome-side keys don't hurt
+    attribution.
+
+    Call convention (enforced by all in-file call sites):
+    ``_context_similarity(event_or_stored_link, outcome_or_query)``.
+    """
+
+    def test_full_match_event_inside_rich_outcome(self, nac):
+        """Sparse event context fully contained in rich outcome = 1.0.
+
+        This is the regression guard: pre-Stage-2 the union-of-keys
+        denominator made this case ratio = 2/7 ≈ 0.29, below the 0.5
+        threshold. Post-fix it's 2/2 = 1.0.
+        """
+        event_ctx = {"source": "embodiment", "entity": "rusty_sword"}
+        outcome_ctx = {
+            "source": "embodiment",
+            "entity": "rusty_sword",
+            "entity_type": "weapon",
+            "failure_mode": "shatter",
+            "composes": [],
+            "sensor_readings": {"durability": 0.05},
+            "intensity": 0.6,
+        }
+        assert nac._context_similarity(event_ctx, outcome_ctx) == 1.0
+
+    def test_partial_match(self, nac):
+        """One of two event keys matches -> 0.5."""
+        event_ctx = {"source": "embodiment", "entity": "rusty_sword"}
+        outcome_ctx = {"source": "embodiment", "entity": "longbow"}
+        assert nac._context_similarity(event_ctx, outcome_ctx) == 0.5
+
+    def test_no_match(self, nac):
+        """Disjoint keys -> 0.0. All event keys present but values differ -> 0.0."""
+        # Disjoint key sets
+        assert nac._context_similarity({"a": 1, "b": 2}, {"c": 3, "d": 4}) == 0.0
+        # Shared keys, different values (non-string)
+        assert nac._context_similarity({"a": 1, "b": 2}, {"a": 9, "b": 8}) == 0.0
+
+    def test_empty_context_neutral(self, nac):
+        """Empty context on either side returns 0.5 neutral."""
+        assert nac._context_similarity({}, {"a": 1}) == 0.5
+        assert nac._context_similarity({"a": 1}, {}) == 0.5
+
+    def test_case_insensitive_string_match(self, nac):
+        """String values match case-insensitively at 0.8 weight."""
+        event_ctx = {"source": "EMBODIMENT"}
+        outcome_ctx = {"source": "embodiment"}
+        assert nac._context_similarity(event_ctx, outcome_ctx) == 0.8
+
+    def test_outcome_extra_keys_do_not_dilute(self, nac):
+        """Adding extra keys to the outcome side MUST NOT lower similarity.
+
+        This is the inverse regression guard: if a future refactor
+        changes the denominator back to union-of-keys, this test fails
+        because adding extra outcome keys would drop the ratio.
+        """
+        event_ctx = {"source": "embodiment", "entity": "sword"}
+        baseline = nac._context_similarity(event_ctx, {"source": "embodiment", "entity": "sword"})
+        enriched = nac._context_similarity(
+            event_ctx,
+            {
+                "source": "embodiment",
+                "entity": "sword",
+                "extra_1": "x",
+                "extra_2": "y",
+                "extra_3": "z",
+            },
+        )
+        assert baseline == enriched == 1.0, (
+            f"outcome-side extra keys diluted the match: baseline={baseline}, enriched={enriched} — "
+            "the union-of-keys bug has returned"
+        )
+
+    def test_record_outcome_full_matches_despite_rich_context(self, nac, valence_negative):
+        """End-to-end: pending event with slim context links to outcome with rich context.
+
+        Simulates the SEM pain cascade attribution path. If this fails
+        the slim-context workaround in create_pain_nac_subscriber would
+        have to come back.
+        """
+        nac.record_event(
+            event_type="action",
+            event_signature="slash:rusty_sword",
+            context={"source": "embodiment", "entity": "rusty_sword"},
+        )
+        assert len(nac._pending_events) == 1
+
+        nac.record_outcome_full(
+            outcome_type="pain",
+            outcome_signature="pain:embodiment:rusty_sword:shatter",
+            outcome_valence=valence_negative,
+            context={
+                "source": "embodiment",
+                "entity": "rusty_sword",
+                "entity_type": "weapon",
+                "failure_mode": "shatter",
+                "composes": [],
+                "sensor_readings": {"durability": 0.05},
+                "intensity": 0.6,
+            },
+        )
+        links = nac._links.get("slash:rusty_sword", [])
+        assert len(links) == 1, f"rich-context outcome failed to link: {dict(nac._links)}"
+        assert links[0].outcome_valence == valence_negative

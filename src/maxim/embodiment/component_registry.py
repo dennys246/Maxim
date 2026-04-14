@@ -86,6 +86,21 @@ def _read_component_header(path: Path) -> dict[str, Any] | None:
     Returns the header dict, or None if the file doesn't have one.
     Falls back to auto-detection for legacy files (``body:`` or
     ``world_entities:`` without a ``component:`` header).
+
+    KNOWN GAP (tracked as a substrate P2 follow-up, 2026-04-13): the
+    auto-detection path below stamps legacy YAMLs with ``_legacy=True``
+    and indexes them, but :meth:`ComponentRegistry.instantiate` cannot
+    route them — it only knows the modern ``component:/entity:`` shape.
+    Callers that need the 4 legacy ``scenarios/embodiment/*.yaml``
+    files (``embodiment_baseline``, ``engram_cycle_test``,
+    ``robot_arm_3dof``, ``sword_npc_demo``) must use
+    ``embodiment.spec.load_spec`` directly. The standing drift guard in
+    ``tests/substrate/test_components_smoke.py`` filters these out via
+    ``_is_legacy_body_spec``. Fixing this asymmetry — either by routing
+    legacy specs through ``load_spec`` in ``instantiate``, or by
+    dropping legacy auto-detection entirely and forcing every file to
+    carry a ``component:`` header — belongs in its own focused PR and
+    is explicitly out of substrate P2 Stage 2 scope.
     """
     try:
         with open(path) as f:
