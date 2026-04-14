@@ -206,6 +206,19 @@ def start_simulation_mode(
 
     start_time = time.time()
 
+    # Plan 4 follow-up (2026-04-14): generate session_id AT ENTRY so
+    # every LLMWorker constructed downstream can thread it into its
+    # request_context dict. Previously this id was created lazily in
+    # ``build_report`` after the sim finished, which was too late —
+    # every peer_backend_call event during the sim's lifetime logged
+    # session_id=null. The same ``time.strftime`` timestamp is forwarded
+    # to ``build_report(session_id=...)`` later so the sim directory
+    # name matches the session_id in the log trace; cross-correlating
+    # report files with JSONL events is now a string-equality match
+    # instead of a "figure out the right timestamp window" exercise.
+    # Matches the pattern already in ``research_orchestrator.py:73``.
+    session_id = time.strftime("%Y%m%d_%H%M%S")
+
     # ── Validate persona ─────────────────────────────────────────────────
     persona_strategy = get_persona(persona, continuous=continuous)
     if persona_strategy is None:
@@ -654,6 +667,7 @@ def start_simulation_mode(
             stale_threshold_s=30.0 if aut_router is llm_router else 15.0,
             n_ctx=aut_router.n_ctx,
             token_counter=aut_router.get_token_counter(),
+            session_id=session_id,
         )
         aut_llm_worker.start()
 
@@ -867,6 +881,7 @@ def start_simulation_mode(
             stale_threshold_s=60.0,  # High threshold: orchestrator waits for shared LLM
             n_ctx=llm_router.n_ctx,
             token_counter=llm_router.get_token_counter(),
+            session_id=session_id,
         )
         orch_llm_worker.start()
 
@@ -1546,6 +1561,12 @@ def start_simulation_mode(
         if llm_router
         else "",
         llm_finish_context=llm_finish,
+        # Plan 4 follow-up (2026-04-14): forward the session_id we
+        # generated at sim entry so the report's session_id matches the
+        # same value every LLMWorker threaded into its request_context
+        # dict. Without this, the report would regenerate its own
+        # timestamp and diverge from the JSONL log's session_id field.
+        session_id=session_id,
     )
 
     # Attach fixture/substrate metrics if present

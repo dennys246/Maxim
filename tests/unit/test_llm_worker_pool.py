@@ -516,3 +516,175 @@ class TestLLMPerRequestTimeout:
         )
 
         assert request.timeout_override is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Plan 4 follow-up (2026-04-14): session_id plumbing
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class _RequestContextCapturingLLM:
+    """Mock LLM backend that captures the request_context dict it receives.
+
+    Used to verify that LLMWorker threads session_id (and agent_id,
+    request_id, lane) into the dict it passes through to
+    ``router.generate_json``. The captured dicts are available as
+    ``self.captured_contexts`` for per-call assertions.
+    """
+
+    def __init__(self, response: dict[str, Any] | None = None):
+        self._response = response or {
+            "action": {"tool_name": "respond", "params": {"message": "ok"}},
+            "reasoning": "test_response",
+            "strategy": "assist",
+            "confidence": 0.9,
+            "mode_goal_achieved": False,
+        }
+        self.captured_contexts: list[dict[str, Any] | None] = []
+        self.call_count = 0
+
+    def generate_json(
+        self,
+        prompt: str,
+        temperature: float = 0.3,
+        max_tokens: int = 1024,
+        *,
+        provider_hint: str | None = None,
+        request_context: dict[str, Any] | None = None,
+        system_override: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        thinking: dict[str, Any] | None = None,
+        stream: bool = False,
+    ) -> dict[str, Any] | None:
+        self.call_count += 1
+        # Snapshot the dict so later mutations don't corrupt the record
+        self.captured_contexts.append(dict(request_context) if request_context else None)
+        return dict(self._response)
+
+
+class TestSessionIdPlumbing:
+    """Regression guards for Plan 4 follow-up (2026-04-14).
+
+    Closes the explicit out-of-scope item Plan 4 Stage A flagged:
+    ``SimulationOrchestrator`` generates a session_id but wasn't
+    threading it into the dict ``LLMWorker`` builds. The fix adds
+    ``session_id`` as an optional ``LLMWorker.__init__`` parameter,
+    stores it on the instance, and includes it in every
+    ``request_context`` dict the worker constructs at its two
+    dict-build sites.
+    """
+
+    def test_session_id_defaults_to_none_for_non_session_callers(self):
+        """Backward-compat guard: LLMWorker constructed without a
+        session_id (the old signature) still works, and its
+        ``_session_id`` attribute is None. Non-sim callers — exec_agent
+        sub-workers, api.py verb consumers, bench harness,
+        embodied_runtime — all rely on this default.
+        """
+        from maxim.agents.llm_worker import LLMWorker
+
+        worker = LLMWorker(llm=FakeLLM())
+        try:
+            assert worker._session_id is None
+        finally:
+            worker.stop()
+
+    def test_session_id_init_arg_stored_on_instance(self):
+        """Passing session_id at construction stores it on the instance
+        so both dict-build sites can read it."""
+        from maxim.agents.llm_worker import LLMWorker
+
+        worker = LLMWorker(llm=FakeLLM(), session_id="sim-20260414_120000")
+        try:
+            assert worker._session_id == "sim-20260414_120000"
+        finally:
+            worker.stop()
+
+    def test_session_id_present_in_process_request_dict_source(self):
+        """The ``_process_request`` dict-build site at line ~962 in
+        llm_worker.py is the primary entry point for queued LLM calls.
+        Static-source regression guard: confirm that the literal
+        ``request_context`` dict in that method includes
+        ``"session_id": self._session_id``.
+
+        A pool-path integration test would be ideal, but the pool
+        path's ``_build_prompt`` short-circuits trivial inputs like
+        "maxim hello" through the ``{"action": ...}`` pre-built JSON
+        shortcut (llm_worker.py:917), never reaching the LLM — so the
+        existing ``test_submit_and_get_proposal`` ALSO never actually
+        calls the FakeLLM. Instead we lock the dict shape via source
+        inspection to catch silent regressions in the dict-build site.
+        The equivalent end-to-end coverage lives in
+        ``test_session_id_threaded_into_generate_json_direct_dict``
+        below, which DOES exercise the LLM code path end-to-end.
+        """
+        import inspect
+
+        from maxim.agents.llm_worker import LLMWorker
+
+        src = inspect.getsource(LLMWorker._process_request)
+        # Strip whitespace variations — look for the key/value pair
+        # in any form that would produce the dict we need.
+        assert '"session_id": self._session_id' in src, (
+            "LLMWorker._process_request dict-build site is missing "
+            '`"session_id": self._session_id` — regression in Plan 4 '
+            "session_id plumbing"
+        )
+        # Also lock the other fields the regression guard should catch
+        # if a future refactor drops them.
+        assert '"request_id"' in src
+        assert '"agent": "llm_worker"' in src
+        assert '"lane"' in src
+
+    def test_session_id_threaded_into_generate_json_direct_dict(self):
+        """The ``generate_json_direct`` ExecAgent path (line 709 in
+        llm_worker.py as of 2026-04-14) is the second dict-build site.
+        Bypasses the request queue and calls ``_call_llm_with_timeout``
+        synchronously — useful for specialized ExecAgent prompts.
+        """
+        from maxim.agents.llm_worker import LLMWorker
+
+        fake = _RequestContextCapturingLLM()
+        worker = LLMWorker(llm=fake, session_id="sim-direct-test")
+        worker.start()
+        try:
+            worker.generate_json_direct(
+                system="You are a test assistant.",
+                user="Say hi",
+                request_id="req-direct-test",
+                agent_name="test-agent",
+                lane="large",
+                temperature=0.3,
+                max_tokens=32,
+            )
+            assert fake.call_count == 1
+            ctx = fake.captured_contexts[0]
+            assert ctx is not None
+            assert ctx.get("session_id") == "sim-direct-test"
+            assert ctx.get("agent") == "test-agent"
+            assert ctx.get("request_id") == "req-direct-test"
+            assert ctx.get("lane") == "large"
+        finally:
+            worker.stop()
+
+    def test_normalize_request_context_surfaces_session_id(self):
+        """End-to-end sanity: the canonical ``_normalize_request_context``
+        shim (agents/llm_worker.py) reads ``session_id`` from the dict
+        into the typed ``RequestContext.session_id`` field. This is
+        the handoff to ``_MaximPeerBackend._log_success`` which reads
+        ``context.session_id`` when emitting ``peer_backend_call`` JSONL.
+        """
+        from maxim.agents.llm_worker import _normalize_request_context
+
+        ctx = _normalize_request_context(
+            {
+                "request_id": "r",
+                "agent": "test",
+                "lane": "large",
+                "session_id": "sim-normalize-test",
+            }
+        )
+        assert ctx.session_id == "sim-normalize-test"
+        assert ctx.agent_id == "test"
+        assert ctx.request_id == "r"
+        assert ctx.lane == "large"

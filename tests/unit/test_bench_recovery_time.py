@@ -369,6 +369,45 @@ class TestRunRecoveryBenchmark:
             assert ctx_dict is not None
             assert ctx_dict.get("agent_id") == BENCH_AGENT_ID
 
+    def test_bench_run_has_distinct_per_run_session_id(self):
+        """Plan 4 follow-up (2026-04-14): the bench's ``session_id``
+        must be a distinct per-run value (not reuse ``BENCH_AGENT_ID``).
+        Two back-to-back bench runs should be distinguishable by
+        session_id even though they share the agent_id. The initial
+        Plan 4 B ship reused agent_id as session_id which was
+        semantically wrong per the pre-merge review.
+        """
+        captured: list[Any] = []
+
+        def _capture_factory(url, api_key=None, model=None):
+            backend = MagicMock()
+
+            def _complete_with_usage(**kwargs):
+                captured.append(kwargs.get("request_context"))
+                return _ok_response()
+
+            backend.complete_with_usage = _complete_with_usage
+            return backend
+
+        result = run_recovery_benchmark(
+            url="http://fake/v1",
+            api_key="k",
+            duration_s=0.1,
+            backend_factory=_capture_factory,
+        )
+        # Per-run session_id gets set on the BenchResult
+        assert result.session_id != ""
+        assert result.session_id != BENCH_AGENT_ID
+        assert result.session_id.startswith("bench_")
+
+        # Every attempt's request_context dict carries the same
+        # per-run value
+        assert len(captured) >= 1
+        for ctx_dict in captured:
+            assert ctx_dict.get("session_id") == result.session_id
+            # And it is NOT the agent_id — the two must be distinct
+            assert ctx_dict.get("session_id") != ctx_dict.get("agent_id")
+
     def test_contextvar_cleaned_up_after_run(self):
         """Regression guard: the bench binds set_context and must
         reset the binding so the caller's contextvar state is not
@@ -450,6 +489,11 @@ class TestBenchCliOutput:
         assert s["input_tokens"] == 12
         assert s["output_tokens"] == 3
         assert s["latency_ms"] == 100.0
+        # Session_id fallback: when BenchResult.session_id is unset
+        # (this test fixture path), the CLI falls back to BENCH_AGENT_ID
+        # for backward compat. The Plan 4 follow-up regression guard
+        # that the CLI RESPECTS a set session_id lives in
+        # test_cli_respects_per_run_session_id below.
         assert s["session_id"] == BENCH_AGENT_ID
         assert s["lane"] == "large"
         # Failure event: production peer_backend_failed wire-compat
@@ -558,6 +602,49 @@ class TestBenchCliOutput:
         event = _result_to_jsonl(result)[0]
         missing = PRODUCTION_FAILURE_FIELDS - set(event.keys())
         assert not missing, f"bench failure JSONL missing production fields: {missing}"
+
+    def test_cli_respects_per_run_session_id(self):
+        """Plan 4 follow-up (2026-04-14): when ``BenchResult.session_id``
+        is set (the real run_recovery_benchmark path), the CLI JSONL
+        emitter must use that value instead of the legacy hard-coded
+        ``"bench_recovery_time"`` fallback. Back-to-back runs produce
+        distinct JSONL session_id values so they can be filtered apart.
+        """
+        from maxim.bench.cli import _result_to_jsonl
+        from maxim.bench.recovery_time import BenchAttempt, BenchResult
+
+        result = BenchResult(
+            duration_s=1.0,
+            total_attempts=1,
+            successes=1,
+            failures=0,
+            attempts=[
+                BenchAttempt(
+                    request_id="r1",
+                    submit_ts=0.0,
+                    complete_ts=0.1,
+                    latency_ms=100.0,
+                    status="success",
+                    outcome="ok",
+                    provider="bench_recovery_time",
+                    model="qwen",
+                    input_tokens=1,
+                    output_tokens=1,
+                )
+            ],
+            session_id="bench_20260414_152300",
+            reason="no_outage_observed",
+        )
+        events = _result_to_jsonl(result)
+        # Attempt event carries the per-run session_id
+        assert events[0]["session_id"] == "bench_20260414_152300"
+        # Summary event also carries it
+        summary = events[-1]
+        assert summary["e"] == "benchmark"
+        assert summary["session_id"] == "bench_20260414_152300"
+        # Agent_id stays stable (the distinguishing dimension)
+        assert events[0]["agent_id"] == BENCH_AGENT_ID
+        assert events[0]["session_id"] != events[0]["agent_id"]
 
     def test_unknown_subcommand_returns_2(self):
         from maxim.bench.cli import run_bench_subcommand

@@ -95,6 +95,25 @@ logger = logging.getLogger("maxim.bench.recovery_time")
 # alone.
 BENCH_AGENT_ID = "bench_recovery_time"
 
+
+def _new_bench_session_id() -> str:
+    """Return a distinct session_id for this bench run.
+
+    Plan 4 follow-up (2026-04-14): the initial Plan 4 B ship reused
+    ``BENCH_AGENT_ID`` as the session_id value, which was flagged in
+    the pre-merge review as semantically wrong — agent_id and
+    session_id are different dimensions (WHO is making the call vs
+    WHICH execution context the call belongs to). Two back-to-back
+    bench runs should be distinguishable by session_id even though
+    they share the agent_id.
+
+    Matches the ``time.strftime("%Y%m%d_%H%M%S")`` pattern the sim
+    orchestrator uses for its session_id so both emit the same shape
+    into the JSONL trace.
+    """
+    return "bench_" + time.strftime("%Y%m%d_%H%M%S")
+
+
 # Short prompt to keep the leader's decode time low (tight loop wants
 # each call to be ~1s not ~10s). "say hi" is intentionally trivial —
 # the benchmark measures the PEER path, not the model's generation
@@ -145,6 +164,10 @@ class BenchResult:
     successes: int
     failures: int
     attempts: list[BenchAttempt] = field(default_factory=list)
+    # Plan 4 follow-up (2026-04-14): per-run session_id so CLI output
+    # + multiple archived traces can be distinguished. Empty string
+    # when the bench is driven by a test fixture that doesn't care.
+    session_id: str = ""
     # Recovery-time analysis (computed post-run):
     last_success_before_failure: float | None = None  # ts of last pre-outage success
     first_failure: float | None = None  # ts of first failure after last success
@@ -329,6 +352,11 @@ def run_recovery_benchmark(
 
     attempts: list[BenchAttempt] = []
     start = time.monotonic()
+    # Plan 4 follow-up (2026-04-14): distinct per-run session_id so
+    # two back-to-back bench runs can be filtered apart even though
+    # they share BENCH_AGENT_ID. Emits a timestamped value like
+    # ``bench_20260414_152300``.
+    bench_session_id = _new_bench_session_id()
     log_structured(
         logger,
         logging.INFO,
@@ -340,6 +368,7 @@ def run_recovery_benchmark(
             "duration_s": duration_s,
             "max_tokens": max_tokens,
             "pace_s": pace_s,
+            "session_id": bench_session_id,
         },
     )
 
@@ -364,7 +393,7 @@ def run_recovery_benchmark(
         per_call_ctx = RequestContext(
             request_id=req_id,
             agent_id=BENCH_AGENT_ID,
-            session_id=BENCH_AGENT_ID,
+            session_id=bench_session_id,
             lane="large",
         )
         per_call_token = set_context(per_call_ctx)
@@ -379,7 +408,7 @@ def run_recovery_benchmark(
                 request_context={
                     "request_id": req_id,
                     "agent_id": BENCH_AGENT_ID,
-                    "session_id": BENCH_AGENT_ID,
+                    "session_id": bench_session_id,
                     "lane": "large",
                 },
             )
@@ -427,6 +456,7 @@ def run_recovery_benchmark(
     duration = time.monotonic() - start
     bench_result, _ = _analyse_recovery(attempts)
     bench_result.duration_s = round(duration, 3)
+    bench_result.session_id = bench_session_id
 
     log_structured(
         logger,
@@ -434,6 +464,7 @@ def run_recovery_benchmark(
         event="benchmark",
         data={
             "bench": "recovery_time",
+            "session_id": bench_session_id,
             "duration_s": bench_result.duration_s,
             "total_attempts": bench_result.total_attempts,
             "successes": bench_result.successes,

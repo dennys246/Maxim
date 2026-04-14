@@ -67,11 +67,26 @@ gap via three complementary changes:
   it, sequential calls leak the first call's `agent_id` into later
   calls' outbound HTTP headers.
 
-**Out of scope (deferred):** `session_id` plumbing from
-`SimulationOrchestrator` through `MaximAgent` → `LLMWorker`. The orchestrator
-generates a session_id but doesn't thread it into the dict that
-llm_worker builds. Fix is architectural (add a session field to the
-agent-facing interface) and belongs in its own small PR.
+**~~Out of scope (deferred):~~ ✅ RESOLVED (2026-04-14 follow-up):**
+`session_id` plumbing from `SimulationOrchestrator` through
+`LLMWorker`. The fix turned out simpler than the original framing
+implied — no agent-facing interface change needed. ``LLMWorker``
+gained an optional ``session_id`` constructor argument stored on the
+instance; both dict-build sites in ``llm_worker.py`` now include
+``"session_id": self._session_id``. The simulation orchestrator
+pre-generates the ``time.strftime`` timestamp at sim entry (matching
+the ``research_orchestrator.py:73`` pattern) and passes the same
+value to both ``LLMWorker(session_id=...)`` constructors and to
+``build_report(session_id=...)`` so the report directory name
+matches the id in the JSONL log trace. Non-sim callers (exec_agent,
+api.py, bench, embodied_runtime) keep ``session_id=None`` as the
+default and their logs continue to emit ``session_id=null`` — the
+correct semantic for non-session contexts. Also folded: the bench
+harness now generates a distinct per-run ``bench_YYYYMMDD_HHMMSS``
+session_id instead of reusing ``BENCH_AGENT_ID``, so back-to-back
+bench runs are distinguishable in the JSONL log. Six new regression
+tests across ``test_llm_worker_pool.py::TestSessionIdPlumbing`` (5)
+and ``test_bench_recovery_time.py`` (1 per-run + 1 CLI emitter).
 
 ### Stage B — recovery-time benchmark harness ✅ SHIPPED (2026-04-14)
 
